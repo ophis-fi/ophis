@@ -1,0 +1,4 @@
+packages:
+  - "packages/*"
+  - "apps/backend"
+# apps/frontend is excluded — cowswap upstream ships its own package manager
