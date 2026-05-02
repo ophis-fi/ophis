@@ -17,15 +17,19 @@ url = "http://chain:8545"
 
 [liquidity]
 base-tokens = [
-  "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",  # WETH
-  "0x6B175474E89094C44Da98b954EedeAC495271d0F",  # DAI
-  "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  # USDC
-  "0xdAC17F958D2ee523a2206206994597C13D831ec7",  # USDT
-  "0xc00e94Cb662C3520282E6f5717214004A7f26888",  # COMP
-  "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2",  # MKR
-  "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",  # WBTC
-  "0x6810e776880C02933D47DB1b9fc05908e5386b96",  # GNO
+  "0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d",  # wxDAI
+  "0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83",  # USDC.e
+  "0x4ECaBa5870353805a9F068101A40E0f32ed605C6",  # USDT
+  "0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1",  # WETH on Gnosis
+  "0x9C58BAcC331c9aa871AFD802DB6379a98e80CEdb",  # GNO
+  "0x177127622c4A00F3d409B75571e12cB3c8973d3c",  # COW
 ]
 
-[[liquidity.uniswap-v2]]  # Uniswap V2 configuration
-preset = "uniswap-v2"
+[[liquidity.uniswap-v2]]  # Honeyswap — primary Gnosis Chain AMM
+preset = "honeyswap"
+
+[[liquidity.uniswap-v2]]  # Baoswap — secondary Gnosis Chain AMM
+preset = "baoswap"
+
+[[liquidity.swapr]]  # Swapr — Gnosis Chain AMM
+preset = "swapr"
