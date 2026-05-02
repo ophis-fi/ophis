@@ -1,4 +1,5 @@
 packages:
   - "packages/*"
   - "apps/backend"
+  - "infra/rpc"
 # apps/frontend is excluded — cowswap upstream ships its own package manager
