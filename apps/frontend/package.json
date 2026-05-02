@@ -6,6 +6,30 @@
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.30.3",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@sentry/cli",
+      "@swc/core",
+      "blake-hash",
+      "bufferutil",
+      "core-js",
+      "core-js-pure",
+      "es5-ext",
+      "esbuild",
+      "keccak",
+      "nx",
+      "protobufjs",
+      "secp256k1",
+      "sharp",
+      "tiny-secp256k1",
+      "unrs-resolver",
+      "utf-8-validate",
+      "web3",
+      "web3-bzz",
+      "web3-shh"
+    ]
+  },
   "config": {
     "enabledApps": "cowswap-frontend cowswap-frontend-e2e abis ui ui-utils widget-lib widget-react"
   },
