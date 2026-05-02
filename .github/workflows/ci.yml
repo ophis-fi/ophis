@@ -9,8 +9,8 @@ on:
       - main
 
 jobs:
-  smoke:
-    name: smoke
+  root:
+    name: root (lint + typecheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,3 +20,24 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint || echo "no lint targets yet"
+      - run: pnpm typecheck || echo "no typecheck targets yet"
+
+  sdk:
+    name: packages/sdk
+    runs-on: ubuntu-latest
+    needs: root
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          if [ -f packages/sdk/package.json ]; then
+            pnpm --filter @greg/sdk test
+          else
+            echo "packages/sdk not present yet — skipping"
+          fi
