@@ -1,0 +1,265 @@
+use {
+    autopilot::shutdown_controller::ShutdownController,
+    configs::{
+        autopilot::{Configuration, run_loop::RunLoopConfig},
+        order_quoting::{ExternalSolver, OrderQuoting},
+        shared::SharedConfig,
+        test_util::TestDefault,
+    },
+    e2e::setup::{
+        OnchainComponents,
+        Services,
+        TIMEOUT,
+        colocation,
+        proxy::ReverseProxy,
+        run_test,
+        wait_for_condition,
+    },
+    ethrpc::{Web3, alloy::CallBuilderExt},
+    model::order::{OrderCreation, OrderKind},
+    number::units::EthUnit,
+};
+
+#[tokio::test]
+#[ignore]
+async fn local_node_dual_autopilot_only_leader_produces_auctions() {
+    run_test(dual_autopilot_only_leader_produces_auctions).await;
+}
+
+async fn dual_autopilot_only_leader_produces_auctions(web3: Web3) {
+    // TODO: Implement test that checks auction creation frequency against db
+    // to see that only one autopilot produces auctions
+    let mut onchain = OnchainComponents::deploy(web3).await;
+    let [trader] = onchain.make_accounts(1u64.eth()).await;
+    let [solver1, solver2] = onchain.make_solvers(1u64.eth()).await;
+    let [token_a] = onchain
+        .deploy_tokens_with_weth_uni_v2_pools(1_000u64.eth(), 1_000u64.eth())
+        .await;
+
+    // Fund trader, settlement accounts, and pool creation
+    token_a.mint(solver1.address(), 1000u64.eth()).await;
+    token_a.mint(solver2.address(), 1000u64.eth()).await;
+
+    token_a.mint(trader.address(), 200u64.eth()).await;
+
+    // Approve GPv2 for trading
+    token_a
+        .approve(onchain.contracts().allowance, 1000u64.eth())
+        .from(trader.address())
+        .send_and_watch()
+        .await
+        .unwrap();
+
+    // set up 2 solvers
+    // test_solver will be used by autopilot-leader
+    // test_solver2 will be used by autopilot-backup
+    colocation::start_driver(
+        onchain.contracts(),
+        vec![
+            colocation::start_baseline_solver(
+                "test_solver".into(),
+                solver1.clone(),
+                *onchain.contracts().weth.address(),
+                vec![],
+                1,
+                true,
+            )
+            .await,
+            colocation::start_baseline_solver(
+                "test_solver2".into(),
+                solver2.clone(),
+                *onchain.contracts().weth.address(),
+                vec![],
+                1,
+                true,
+            )
+            .await,
+        ],
+        colocation::LiquidityProvider::UniswapV2,
+        false,
+    );
+
+    let services = Services::new(&onchain).await;
+    let (manual_shutdown, control) = ShutdownController::new_manual_shutdown();
+
+    // Start proxy for native price API with automatic failover
+    let _proxy = ReverseProxy::start(
+        "0.0.0.0:9588".parse().unwrap(),
+        &[
+            "http://0.0.0.0:12088".parse().unwrap(), // autopilot_leader
+            "http://0.0.0.0:12089".parse().unwrap(), // autopilot_follower
+        ],
+    );
+
+    let leader_config = Configuration::test("test_solver", solver1.address());
+    let leader_config = Configuration {
+        metrics_address: "0.0.0.0:9590".parse().unwrap(),
+        api_address: "0.0.0.0:12088".parse().unwrap(),
+        run_loop: RunLoopConfig {
+            enable_leader_lock: true,
+            ..leader_config.run_loop
+        },
+        shared: SharedConfig {
+            gas_estimators: vec![TestDefault::test_default()],
+            ..leader_config.shared
+        },
+        order_quoting: OrderQuoting::test_with_drivers(vec![ExternalSolver::new(
+            "test_quoter",
+            "http://localhost:11088/test_solver",
+        )]),
+
+        ..leader_config
+    };
+
+    let autopilot_leader = services
+        .start_autopilot_with_shutdown_controller(None, leader_config, control)
+        .await;
+
+    let follower_config = Configuration::test("test_solver2", solver2.address());
+    let follower_config = Configuration {
+        metrics_address: "0.0.0.0:9591".parse().unwrap(),
+        api_address: "0.0.0.0:12089".parse().unwrap(),
+        run_loop: RunLoopConfig {
+            enable_leader_lock: true,
+            ..follower_config.run_loop
+        },
+        order_quoting: OrderQuoting::test_with_drivers(vec![ExternalSolver::new(
+            "test_quoter",
+            "http://localhost:11088/test_solver2",
+        )]),
+        shared: SharedConfig {
+            gas_estimators: vec![TestDefault::test_default()],
+            ..follower_config.shared
+        },
+        ..follower_config
+    };
+
+    let _autopilot_follower = services.start_autopilot(None, follower_config).await;
+
+    services
+        .start_api(configs::orderbook::Configuration {
+            order_quoting: OrderQuoting::test_with_drivers(vec![
+                ExternalSolver::new("test_quoter", "http://localhost:11088/test_solver1"),
+                ExternalSolver::new("test_solver2", "http://localhost:11088/test_solver2"),
+            ]),
+            native_price_estimation: configs::orderbook::native_price::NativePriceConfig {
+                estimators: configs::native_price_estimators::NativePriceEstimators::new(vec![
+                    vec![
+                        configs::native_price_estimators::NativePriceEstimator::forwarder(
+                            "http://0.0.0.0:9588".parse().unwrap(),
+                        ),
+                    ],
+                ]),
+                ..configs::orderbook::native_price::NativePriceConfig::test_default()
+            },
+            ..configs::orderbook::Configuration::test_default()
+        })
+        .await;
+
+    let order = || {
+        OrderCreation {
+            sell_token: *token_a.address(),
+            sell_amount: 10u64.eth(),
+            buy_token: *onchain.contracts().weth.address(),
+            buy_amount: 5u64.eth(),
+            valid_to: model::time::now_in_epoch_seconds() + 300,
+            kind: OrderKind::Sell,
+            ..Default::default()
+        }
+        .sign(
+            model::signature::EcdsaSigningScheme::Eip712,
+            &onchain.contracts().domain_separator,
+            &trader.signer,
+        )
+    };
+
+    // Run 10 txs, autopilot-leader is in charge
+    // - only test_solver should participate and settle
+    for i in 1..=10 {
+        tracing::info!("Tx with autopilot-leader {i}");
+        let uid = services.create_order(&order()).await.unwrap();
+
+        tracing::info!("waiting for trade");
+        let indexed_trades = || async {
+            onchain.mint_block().await;
+
+            if let Some(trade) = services.get_trades(&uid).await.unwrap().first() {
+                services
+                    .get_solver_competition(trade.tx_hash.unwrap())
+                    .await
+                    .ok()
+                    .as_ref()
+                    .and_then(|competition| competition.solutions.first())
+                    .map(|solution| {
+                        solution.is_winner && solution.solver_address == solver1.address()
+                    })
+            } else {
+                None
+            }
+        };
+        wait_for_condition(TIMEOUT, indexed_trades).await.unwrap();
+    }
+
+    // Stop autopilot-leader, follower should take over
+    manual_shutdown.shutdown();
+    let is_leader_shutdown = || async {
+        onchain.mint_block().await;
+        autopilot_leader.is_finished()
+    };
+    wait_for_condition(TIMEOUT, is_leader_shutdown)
+        .await
+        .unwrap();
+
+    // Wait for the follower to step up as leader by checking its metrics endpoint
+    let is_follower_leader = || async {
+        onchain.mint_block().await;
+        let Ok(response) = reqwest::get("http://0.0.0.0:9591/metrics").await else {
+            return false;
+        };
+        let Ok(body) = response.text().await else {
+            return false;
+        };
+        body.lines()
+            .any(|line| line.trim().contains("leader_lock_tracker_is_leader 1"))
+    };
+    wait_for_condition(TIMEOUT, is_follower_leader)
+        .await
+        .unwrap();
+
+    // Run 10 txs, autopilot-backup is in charge
+    // - only test_solver2 should participate and settle
+    for i in 1..=10 {
+        tracing::info!("Tx with autopilot-backup {i}");
+        let uid_cell = std::cell::Cell::new(None);
+        let try_create_order = || async {
+            onchain.mint_block().await;
+            if let Ok(uid) = services.create_order(&order()).await {
+                uid_cell.set(Some(uid));
+                return true;
+            }
+            false
+        };
+        wait_for_condition(TIMEOUT, try_create_order).await.unwrap();
+        let uid = uid_cell.into_inner().unwrap();
+
+        tracing::info!("waiting for trade");
+        let indexed_trades = || async {
+            onchain.mint_block().await;
+
+            if let Some(trade) = services.get_trades(&uid).await.unwrap().first() {
+                services
+                    .get_solver_competition(trade.tx_hash.unwrap())
+                    .await
+                    .ok()
+                    .as_ref()
+                    .and_then(|competition| competition.solutions.first())
+                    .map(|solution| {
+                        solution.is_winner && solution.solver_address == solver2.address()
+                    })
+            } else {
+                None
+            }
+        };
+        wait_for_condition(TIMEOUT, indexed_trades).await.unwrap();
+    }
+}

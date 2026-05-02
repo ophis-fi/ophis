@@ -1,0 +1,54 @@
+[package]
+name = "liquidity-sources"
+version = "0.1.0"
+authors = ["Cow Protocol Developers <dev@cow.fi>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+alloy = { workspace = true, features = ["contract", "rand", "rpc-types"] }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bytes-hex = { workspace = true }
+cached = { workspace = true }
+chain = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+const-hex = { workspace = true }
+contracts = { workspace = true }
+ethrpc = { workspace = true }
+event-indexing = { workspace = true }
+futures = { workspace = true }
+hex-literal = { workspace = true }
+itertools = { workspace = true }
+mockall = { workspace = true, optional = true }
+model = { workspace = true }
+num = { workspace = true }
+number = { workspace = true }
+observe = { workspace = true }
+prometheus = { workspace = true }
+prometheus-metric-storage = { workspace = true }
+request-sharing = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+thiserror = { workspace = true }
+token-info = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+ethrpc = { workspace = true, features = ["test-util"] }
+maplit = { workspace = true }
+mockall = { workspace = true }
+regex = { workspace = true }
+testlib = { workspace = true }
+token-info = { workspace = true, features = ["test-util"] }
+
+[features]
+test-util = ["dep:mockall"]
+
+[lints]
+workspace = true

@@ -1,0 +1,40 @@
+[package]
+name = "model"
+version = "0.1.0"
+authors = ["Gnosis Developers <developers@gnosis.io>", "Cow Protocol Developers <dev@cow.fi>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+alloy-primitives = { workspace = true, features = ["rand"] }
+alloy-signer = { workspace = true }
+alloy-signer-local = { workspace = true }
+alloy-sol-types = { workspace = true }
+anyhow = { workspace = true }
+app-data = { workspace = true }
+bigdecimal = { workspace = true }
+bytes-hex = { workspace = true }
+chrono = { workspace = true, features = ["clock", "serde"] }
+const-hex = { workspace = true }
+derive_more = { workspace = true }
+hex-literal = { workspace = true }
+num = { workspace = true }
+number = { workspace = true }
+serde = { workspace = true }
+serde-ext = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+strum = { workspace = true }
+
+[dev-dependencies]
+maplit = { workspace = true }
+testlib = { workspace = true }
+
+[features]
+e2e = []
+
+[lints]
+workspace = true

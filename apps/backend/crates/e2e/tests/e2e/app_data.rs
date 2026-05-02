@@ -1,0 +1,297 @@
+use {
+    app_data::{AppDataHash, hash_full_app_data},
+    e2e::setup::*,
+    ethrpc::alloy::CallBuilderExt,
+    model::{
+        order::{OrderCreation, OrderCreationAppData, OrderKind},
+        quote::{OrderQuoteRequest, OrderQuoteSide, SellAmount},
+        signature::EcdsaSigningScheme,
+    },
+    number::units::EthUnit,
+    reqwest::StatusCode,
+    shared::web3::Web3,
+    std::str::FromStr,
+};
+
+#[tokio::test]
+#[ignore]
+async fn local_node_app_data() {
+    run_test(app_data).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn local_node_app_data_full_format() {
+    run_test(app_data_full_format).await;
+}
+
+// Test that orders can be placed with the new app data format.
+async fn app_data(web3: Web3) {
+    let mut onchain = OnchainComponents::deploy(web3).await;
+    let [solver] = onchain.make_solvers(1u64.eth()).await;
+    let [trader] = onchain.make_accounts(1u64.eth()).await;
+    let [token_a, token_b] = onchain
+        .deploy_tokens_with_weth_uni_v2_pools(1_000u64.eth(), 1_000u64.eth())
+        .await;
+
+    token_a.mint(trader.address(), 10u64.eth()).await;
+
+    token_a
+        .approve(onchain.contracts().allowance, 10u64.eth())
+        .from(trader.address())
+        .send_and_watch()
+        .await
+        .unwrap();
+
+    let mut valid_to: u32 = model::time::now_in_epoch_seconds() + 300;
+    let mut create_order = |app_data| {
+        let order = OrderCreation {
+            app_data,
+            sell_token: *token_a.address(),
+            sell_amount: 2u64.eth(),
+            buy_token: *token_b.address(),
+            buy_amount: 1u64.eth(),
+            valid_to,
+            kind: OrderKind::Sell,
+            ..Default::default()
+        }
+        .sign(
+            EcdsaSigningScheme::Eip712,
+            &onchain.contracts().domain_separator,
+            &trader.signer,
+        );
+        // Adjust valid to make sure we get unique UIDs.
+        valid_to += 1;
+        order
+    };
+
+    let services = Services::new(&onchain).await;
+    services.start_protocol(solver).await;
+
+    // Unknown hashes are not accepted.
+    let order0 = create_order(OrderCreationAppData::Hash {
+        hash: AppDataHash([1; 32]),
+    });
+    let err = services
+        .get_app_data(AppDataHash([1; 32]))
+        .await
+        .unwrap_err();
+    assert_eq!(err.0, StatusCode::NOT_FOUND);
+
+    assert!(services.create_order(&order0).await.is_err());
+
+    // hash matches
+    let app_data = "{}";
+    let app_data_hash = AppDataHash(hash_full_app_data(app_data.as_bytes()));
+    let order1 = create_order(OrderCreationAppData::Both {
+        full: app_data.to_string(),
+        expected: app_data_hash,
+    });
+    let uid = services.create_order(&order1).await.unwrap();
+    let order1_ = services.get_order(&uid).await.unwrap();
+    assert_eq!(order1_.data.app_data, app_data_hash);
+    assert_eq!(order1_.metadata.full_app_data, Some(app_data.to_string()));
+
+    let app_data_ = services.get_app_data(app_data_hash).await.unwrap();
+    assert_eq!(app_data_, app_data);
+
+    // hash doesn't match
+    let order2 = create_order(OrderCreationAppData::Both {
+        full: r#"{"hello":"world"}"#.to_string(),
+        expected: app_data_hash,
+    });
+    let err = services.create_order(&order2).await.unwrap_err();
+    dbg!(err);
+
+    // no full app data specified but hash matches existing hash in database from
+    // order1
+    let order3 = create_order(OrderCreationAppData::Hash {
+        hash: app_data_hash,
+    });
+    services
+        .submit_quote(&OrderQuoteRequest {
+            sell_token: order3.sell_token,
+            buy_token: order3.buy_token,
+            side: OrderQuoteSide::Sell {
+                sell_amount: SellAmount::AfterFee {
+                    value: order3.sell_amount.try_into().unwrap(),
+                },
+            },
+            app_data: OrderCreationAppData::Hash {
+                hash: app_data_hash,
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let uid = services.create_order(&order3).await.unwrap();
+    let order3_ = services.get_order(&uid).await.unwrap();
+    assert_eq!(order3_.data.app_data, app_data_hash);
+    // Contrast this with order0, which doesn't have full app data.
+    assert_eq!(order3_.metadata.full_app_data.as_deref(), Some(app_data));
+
+    // invalid app data
+    let invalid_app_data = r#"{"metadata":"invalid"}"#;
+    let order4 = create_order(OrderCreationAppData::Full {
+        full: invalid_app_data.to_string(),
+    });
+    let err = services.create_order(&order4).await.unwrap_err();
+    dbg!(err);
+
+    // pre-register some app-data with the API.
+    let pre_app_data = r#"{"pre":"registered"}"#;
+    let pre_app_data_hash = AppDataHash(hash_full_app_data(pre_app_data.as_bytes()));
+    let err = services.get_app_data(pre_app_data_hash).await.unwrap_err();
+    dbg!(err);
+
+    // not specifying the app data hash will make the backend compute it.
+    let response = services.put_app_data(None, pre_app_data).await.unwrap();
+    dbg!(&response);
+    assert_eq!(AppDataHash::from_str(&response).unwrap(), pre_app_data_hash);
+    assert_eq!(
+        services.get_app_data(pre_app_data_hash).await.unwrap(),
+        pre_app_data
+    );
+
+    // creating an order with the pre-registed app-data works.
+    let order5 = create_order(OrderCreationAppData::Hash {
+        hash: pre_app_data_hash,
+    });
+    let uid = services.create_order(&order5).await.unwrap();
+    let order5_ = services.get_order(&uid).await.unwrap();
+    assert_eq!(
+        order5_.metadata.full_app_data.as_deref(),
+        Some(pre_app_data)
+    );
+
+    // pre-registering is idempotent.
+    services
+        .put_app_data(Some(pre_app_data_hash), pre_app_data)
+        .await
+        .unwrap();
+    assert_eq!(
+        services.get_app_data(pre_app_data_hash).await.unwrap(),
+        pre_app_data
+    );
+
+    // pre-registering invalid app-data fails.
+    let err = services
+        .put_app_data(
+            Some(AppDataHash(hash_full_app_data(invalid_app_data.as_bytes()))),
+            invalid_app_data,
+        )
+        .await
+        .unwrap_err();
+    dbg!(err);
+}
+
+/// Tests that orders can be placed with an app data JSON containing
+/// all supported features.
+async fn app_data_full_format(web3: Web3) {
+    let mut onchain = OnchainComponents::deploy(web3).await;
+    let [solver] = onchain.make_solvers(1u64.eth()).await;
+    let [trader] = onchain.make_accounts(1u64.eth()).await;
+    let [token_a, token_b] = onchain
+        .deploy_tokens_with_weth_uni_v2_pools(1_000u64.eth(), 1_000u64.eth())
+        .await;
+
+    token_a.mint(trader.address(), 10u64.eth()).await;
+
+    token_a
+        .approve(onchain.contracts().allowance, 10u64.eth())
+        .from(trader.address())
+        .send_and_watch()
+        .await
+        .unwrap();
+
+    let mut valid_to: u32 = model::time::now_in_epoch_seconds() + 300;
+    let mut create_order = |app_data| {
+        let order = OrderCreation {
+            app_data,
+            sell_token: *token_a.address(),
+            sell_amount: 2u64.eth(),
+            buy_token: *token_b.address(),
+            buy_amount: 1u64.eth(),
+            valid_to,
+            kind: OrderKind::Sell,
+            ..Default::default()
+        }
+        .sign(
+            EcdsaSigningScheme::Eip712,
+            &onchain.contracts().domain_separator,
+            &trader.signer,
+        );
+        // Adjust valid to make sure we get unique UIDs.
+        valid_to += 1;
+        order
+    };
+
+    let services = Services::new(&onchain).await;
+    services.start_protocol(solver).await;
+
+    // Unknown hashes are not accepted.
+    let order0 = create_order(OrderCreationAppData::Hash {
+        hash: AppDataHash([0; 32]),
+    });
+    let order_uid = services.create_order(&order0).await.unwrap();
+
+    // appdata using all features
+    let app_data = format!(
+        r#"{{
+        "version": "0.9.0",
+        "appCode": "CoW Swap",
+        "environment": "barn",
+        "metadata": {{
+            "quote": {{
+                "slippageBps": "50"
+            }},
+            "hooks": {{
+                "pre": [
+                    {{
+                        "target": "0x0000000000000000000000000000000000000000",
+                        "callData": "0x12345678",
+                        "gasLimit": "21000"
+                    }}
+                ],
+                "post": [
+                    {{
+                        "target": "0x0000000000000000000000000000000000000000",
+                        "callData": "0x12345678",
+                        "gasLimit": "21000"
+                    }}
+                ]
+            }},
+            "flashloan": {{
+                "liquidityProvider": "0x1111111111111111111111111111111111111111",
+                "receiver": "0x2222222222222222222222222222222222222222",
+                "token": "0x3333333333333333333333333333333333333333",
+                "protocolAdapter": "0x4444444444444444444444444444444444444444",
+                "amount": "1234"
+            }},
+            "signer": "{:?}",
+            "replacedOrder": {{
+                "uid": "{}"
+            }},
+            "partnerFee": {{
+                "bps": 1,
+                "recipient": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }}
+        }}
+    }}"#,
+        trader.address(),
+        order_uid
+    );
+
+    let app_data_hash = AppDataHash(hash_full_app_data(app_data.as_bytes()));
+    let order1 = create_order(OrderCreationAppData::Full {
+        full: app_data.to_string(),
+    });
+    let uid = services.create_order(&order1).await.unwrap();
+    let order1_ = services.get_order(&uid).await.unwrap();
+    assert_eq!(order1_.data.app_data, app_data_hash);
+    assert_eq!(order1_.metadata.full_app_data, Some(app_data.to_string()));
+
+    let app_data_ = services.get_app_data(app_data_hash).await.unwrap();
+    assert_eq!(app_data_, app_data);
+}

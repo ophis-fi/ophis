@@ -1,0 +1,8 @@
+.DS_Store
+
+/target
+/.vscode
+/.idea
+**/testing.*.toml
+/playground/.env
+.env.claude

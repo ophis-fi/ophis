@@ -1,0 +1,128 @@
+use {
+    crate::domain::{self, competition::solution::encoding::codec, quote},
+    eth_domain_types as eth,
+    model::{
+        order::{BuyTokenDestination, SellTokenSource},
+        signature::SigningScheme,
+    },
+    serde::Serialize,
+    serde_with::serde_as,
+    std::collections::HashMap,
+};
+
+impl Quote {
+    pub fn new(quote: quote::Quote) -> Self {
+        Self {
+            clearing_prices: quote.clearing_prices,
+            pre_interactions: quote.pre_interactions.into_iter().map(Into::into).collect(),
+            interactions: quote.interactions.into_iter().map(Into::into).collect(),
+            solver: quote.solver,
+            gas: quote.gas.map(|gas| {
+                gas.0
+                    .try_into()
+                    .expect("value should be lower than u64::MAX")
+            }),
+            tx_origin: quote.tx_origin,
+            jit_orders: quote.jit_orders.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Quote {
+    #[serde_as(as = "HashMap<_, serde_ext::U256>")]
+    clearing_prices: HashMap<eth::Address, eth::U256>,
+    pre_interactions: Vec<Interaction>,
+    interactions: Vec<Interaction>,
+    solver: eth::Address,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gas: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tx_origin: Option<eth::Address>,
+    jit_orders: Vec<JitOrder>,
+}
+
+#[serde_as]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Interaction {
+    target: eth::Address,
+    #[serde_as(as = "serde_ext::U256")]
+    value: eth::U256,
+    #[serde_as(as = "serde_ext::Hex")]
+    call_data: Vec<u8>,
+}
+
+impl From<domain::Interaction> for Interaction {
+    fn from(interaction: domain::Interaction) -> Self {
+        Self {
+            target: interaction.target,
+            value: interaction.value.into(),
+            call_data: interaction.call_data.into(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct JitOrder {
+    buy_token: eth::Address,
+    sell_token: eth::Address,
+    #[serde_as(as = "serde_ext::U256")]
+    sell_amount: eth::U256,
+    #[serde_as(as = "serde_ext::U256")]
+    buy_amount: eth::U256,
+    #[serde_as(as = "serde_ext::U256")]
+    executed_amount: eth::U256,
+    receiver: eth::Address,
+    partially_fillable: bool,
+    valid_to: u32,
+    #[serde_as(as = "serde_ext::Hex")]
+    app_data: [u8; 32],
+    side: Side,
+    sell_token_source: SellTokenSource,
+    buy_token_destination: BuyTokenDestination,
+    #[serde_as(as = "serde_ext::Hex")]
+    signature: Vec<u8>,
+    signing_scheme: SigningScheme,
+}
+
+impl From<domain::competition::solution::trade::Jit> for JitOrder {
+    fn from(jit: domain::competition::solution::trade::Jit) -> Self {
+        Self {
+            sell_token: jit.order().sell.token.into(),
+            buy_token: jit.order().buy.token.into(),
+            sell_amount: jit.order().sell.amount.into(),
+            buy_amount: jit.order().buy.amount.into(),
+            executed_amount: jit.executed().into(),
+            receiver: jit.order().receiver,
+            partially_fillable: jit.order().partially_fillable,
+            valid_to: jit.order().valid_to.into(),
+            app_data: jit.order().app_data.into(),
+            side: jit.order().side.into(),
+            sell_token_source: jit.order().sell_token_balance.into(),
+            buy_token_destination: jit.order().buy_token_balance.into(),
+            signature: codec::signature(&jit.order().signature).into(),
+            signing_scheme: jit.order().signature.scheme.to_boundary_scheme(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum Side {
+    Sell,
+    Buy,
+}
+
+impl From<domain::competition::order::Side> for Side {
+    fn from(side: domain::competition::order::Side) -> Self {
+        match side {
+            domain::competition::order::Side::Sell => Side::Sell,
+            domain::competition::order::Side::Buy => Side::Buy,
+        }
+    }
+}

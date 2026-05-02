@@ -1,0 +1,93 @@
+use {
+    serde::{Deserializer, Serializer, de},
+    serde_with::{DeserializeAs, SerializeAs},
+};
+
+/// Serialize and deserialize binary data as a hexadecimal string.
+#[derive(Debug)]
+pub struct Hex;
+
+impl<'de> DeserializeAs<'de, Vec<u8>> for Hex {
+    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        struct Visitor;
+
+        impl de::Visitor<'_> for Visitor {
+            type Value = Vec<u8>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a hex-encoded string starting with \"0x\"")
+            }
+
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if !s.starts_with("0x") {
+                    return Err(de::Error::custom(format!(
+                        "failed to decode {s:?} as a hex string: missing \"0x\" prefix",
+                    )));
+                }
+                const_hex::decode(&s[2..]).map_err(|err| {
+                    de::Error::custom(format!("failed to decode {s:?} as a hex string: {err}",))
+                })
+            }
+        }
+
+        deserializer.deserialize_str(Visitor)
+    }
+}
+
+impl SerializeAs<Vec<u8>> for Hex {
+    fn serialize_as<S: Serializer>(source: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&const_hex::encode_prefixed(source))
+    }
+}
+
+impl<'de, const N: usize> DeserializeAs<'de, [u8; N]> for Hex {
+    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> Result<[u8; N], D::Error> {
+        struct Visitor<const N: usize> {
+            result: [u8; N],
+        }
+
+        impl<const N: usize> de::Visitor<'_> for Visitor<N> {
+            type Value = [u8; N];
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(
+                    formatter,
+                    "a hex-encoded string starting with \"0x\" containing {N} bytes",
+                )
+            }
+
+            fn visit_str<E>(mut self, s: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if !s.starts_with("0x") {
+                    return Err(de::Error::custom(format!(
+                        "failed to decode {s:?} as a hex string: missing \"0x\" prefix",
+                    )));
+                }
+                let decoded = const_hex::decode(&s[2..]).map_err(|err| {
+                    de::Error::custom(format!("failed to decode {s:?} as a hex string: {err}",))
+                })?;
+                if decoded.len() != N {
+                    return Err(de::Error::custom(format!(
+                        "failed to decode {s:?} as a hex string: expected {N} bytes, got {}",
+                        decoded.len()
+                    )));
+                }
+                self.result.copy_from_slice(&decoded);
+                Ok(self.result)
+            }
+        }
+
+        deserializer.deserialize_str(Visitor { result: [0; N] })
+    }
+}
+
+impl<const N: usize> SerializeAs<[u8; N]> for Hex {
+    fn serialize_as<S: Serializer>(source: &[u8; N], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&const_hex::encode_prefixed(source))
+    }
+}

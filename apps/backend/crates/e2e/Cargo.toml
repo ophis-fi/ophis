@@ -1,0 +1,75 @@
+[package]
+name = "e2e"
+version = "1.0.0"
+authors = [
+  "Gnosis Developers <developers@gnosis.io>",
+  "Cow Protocol Developers <dev@cow.fi>",
+]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+alloy = { workspace = true, default-features = false, features = [
+  "json-rpc",
+  "provider-anvil-api",
+  "provider-debug-api",
+  "provider-txpool-api",
+  "providers",
+  "reqwest",
+  "rpc-client",
+  "rpc-types",
+  "signer-local",
+  "signer-mnemonic",
+  "signers",
+  "sol-types",
+  "transports"
+] }
+alloy-signer = { workspace = true, default-features = false, features = ["eip712"] }
+anyhow = { workspace = true }
+app-data = { workspace = true }
+autopilot = { workspace = true, features = ["test-util"] }
+axum = { workspace = true }
+balance-overrides = { workspace = true }
+bigdecimal = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+configs = { workspace = true, features = ["test-util"] }
+const-hex = { workspace = true }
+contracts = { workspace = true }
+cow-amm = { workspace = true }
+database = { workspace = true }
+driver = { workspace = true }
+eth-domain-types = { workspace = true }
+ethrpc = { workspace = true, features = ["test-util"] }
+futures = { workspace = true }
+hex-literal = { workspace = true }
+itertools = { workspace = true }
+liquidity-sources = { workspace = true }
+model = { workspace = true, features = ["e2e"] }
+number = { workspace = true }
+observe = { workspace = true }
+orderbook = { workspace = true, features = ["e2e", "test-util"] }
+price-estimation = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "query"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+shared = { workspace = true }
+signature-validator = { workspace = true }
+simulator = { workspace = true }
+solver = { workspace = true }
+solvers = { workspace = true }
+solvers-dto = { workspace = true }
+sqlx = { workspace = true }
+tempfile = { workspace = true }
+testlib = { workspace = true }
+tokio = { workspace = true, features = ["macros", "process"] }
+toml = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+refunder = { workspace = true }
+rstest = { workspace = true }
+
+[lints]
+workspace = true
