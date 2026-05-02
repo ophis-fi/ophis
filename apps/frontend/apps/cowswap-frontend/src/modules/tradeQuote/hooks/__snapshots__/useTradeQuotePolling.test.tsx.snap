@@ -1,0 +1,77 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`useTradeQuotePolling() When wallet is NOT connected Then the "receiver" field in the quote request should be undefined 1`] = `
+{
+  "account": "0xD711bD26Bf5B153001a7C0ACcb289782b6f775e9",
+  "amount": 10000000n,
+  "appCode": "CoW Swap",
+  "buyTokenAddress": "0x0625aFB445C3B6B7B929342a04A22599fd5dBB59",
+  "buyTokenChainId": 11155111,
+  "buyTokenDecimals": 18,
+  "ethFlowContractOverride": {
+    "1": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "100": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "11155111": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "137": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "42161": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "43114": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "56": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "57073": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "59144": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "8453": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "9745": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+  },
+  "kind": "sell",
+  "owner": "0xD711bD26Bf5B153001a7C0ACcb289782b6f775e9",
+  "partiallyFillable": false,
+  "receiver": undefined,
+  "sellTokenAddress": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+  "sellTokenChainId": 11155111,
+  "sellTokenDecimals": 18,
+  "validFor": 1800,
+}
+`;
+
+exports[`useTradeQuotePolling() When wallet is connected Then should put account address into "receiver" field in the quote request 1`] = `
+[
+  {
+    "account": "0x333333f332a06ecb5d20d35da44ba07986d6e203",
+    "amount": 10000000n,
+    "appCode": "CoW Swap",
+    "buyTokenAddress": "0x0625aFB445C3B6B7B929342a04A22599fd5dBB59",
+    "buyTokenChainId": 11155111,
+    "buyTokenDecimals": 18,
+    "ethFlowContractOverride": {
+      "1": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "100": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "11155111": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "137": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "42161": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "43114": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "56": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "57073": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "59144": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "8453": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "9745": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    },
+    "kind": "sell",
+    "owner": "0x333333f332a06ecb5d20d35da44ba07986d6e203",
+    "partiallyFillable": false,
+    "receiver": "0x333333f332a06ecb5d20d35da44ba07986d6e203",
+    "sellTokenAddress": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+    "sellTokenChainId": 11155111,
+    "sellTokenDecimals": 18,
+    "signer": {},
+    "validFor": 1800,
+  },
+  {
+    "appData": undefined,
+    "getCorrelatedTokens": [Function],
+    "getSlippageSuggestion": undefined,
+    "quoteRequest": {
+      "priceQuality": "optimal",
+    },
+    "quoteSigner": undefined,
+  },
+]
+`;

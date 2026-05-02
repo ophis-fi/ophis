@@ -1,0 +1,6 @@
+export { initCoWHookDapp } from './initCoWHookDapp'
+export * from './hookDappIframeTransport'
+export * from './types'
+export * from './consts'
+export * from './utils'
+export { hookDappsRegistry } from './hookDappsRegistry'

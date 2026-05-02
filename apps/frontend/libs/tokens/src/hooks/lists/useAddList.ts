@@ -1,0 +1,50 @@
+import { useAtomValue, useSetAtom } from 'jotai'
+import { useCallback } from 'react'
+
+import { environmentAtom } from '../../state/environmentAtom'
+import { addListAtom } from '../../state/tokenLists/tokenListsActionsAtom'
+import { listsStatesByChainAtom } from '../../state/tokenLists/tokenListsStateAtom'
+import { ListState } from '../../types'
+
+const TOKEN_LISTS_CONTENT_LIMIT = 10_000
+
+export function useAddList(onAddList: (source: string) => void): (state: ListState) => void {
+  const { chainId } = useAtomValue(environmentAtom)
+  const listsStatesByChain = useAtomValue(listsStatesByChainAtom)
+  const addList = useSetAtom(addListAtom)
+
+  return useCallback(
+    (state: ListState) => {
+      const currentStateCount = getTokenListsStateCount(
+        Object.values(listsStatesByChain[chainId] || {}).filter((value) => value !== 'deleted'),
+      )
+      const updateCount = getTokenListsStateCount([state])
+      const totalCount = currentStateCount + updateCount
+
+      // Limit token lists volume to control app performance
+      if (totalCount > TOKEN_LISTS_CONTENT_LIMIT) {
+        throw new Error(getTokenListsLimitError(currentStateCount, updateCount))
+      }
+
+      addList(state)
+      onAddList(state.source)
+    },
+    [addList, listsStatesByChain, chainId, onAddList],
+  )
+}
+
+function getTokenListsLimitError(currentStateCount: number, updateCount: number): string {
+  return `
+Cannot add token list.
+Token lists content limit exceeded: ${TOKEN_LISTS_CONTENT_LIMIT}.
+Current tokens count: ${currentStateCount}.
+Tokens in update: ${updateCount}.
+  `
+}
+
+function getTokenListsStateCount(states: ListState[]): number {
+  return states
+    .map((item) => (item ? item.list.tokens.length : 0))
+    .flat()
+    .reduce((acc, count) => acc + count, 0)
+}

@@ -1,0 +1,24 @@
+import { Currency, CurrencyAmount, Fraction, Price } from '@cowprotocol/currency'
+
+export type ComposableCowInfo = {
+  id?: string
+  parentId?: string
+  isVirtualPart?: boolean
+  isTheLastPart?: boolean
+}
+
+export type FractionLike = Fraction | Price<Currency, Currency> | CurrencyAmount<Currency>
+
+export const BadgeTypes = {
+  INFORMATION: 'information',
+  SUCCESS: 'success',
+  ALERT: 'alert',
+  ALERT2: 'alert2',
+  DEFAULT: 'default',
+} as const
+
+export type BadgeType = (typeof BadgeTypes)[keyof typeof BadgeTypes]
+
+export const COW_SWAP_THEMES = ['dark', 'light', 'darkHalloween', 'lightChristmas', 'darkChristmas'] as const
+
+export type CowSwapTheme = (typeof COW_SWAP_THEMES)[number]

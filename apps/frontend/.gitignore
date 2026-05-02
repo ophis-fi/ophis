@@ -1,0 +1,77 @@
+# See http://help.github.com/ignore-files/ for more about ignoring files.
+
+# compiled output
+build
+dist
+tmp
+/out-tsc
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.swc
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.cursor/
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# Environment variables (local only)
+.env.local
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.yalc*
+yalc.lock
+
+# vercel
+.vercel
+
+# NX
+.nx
+
+# Next.js
+.next
+out
+
+# Next.js sitemap
+apps/cow-fi/public/robots.txt
+apps/cow-fi/public/sitemap*
+apps/cowswap-frontend/public/robots.txt
+
+# Claude context files (local only)
+CLAUDE.md
+.claude/
+.superpowers/**/*
+
+# Agents context files (local only)
+.agents/
+
+# Serena project files
+.serena/
+
+# Github
+/.npmrc

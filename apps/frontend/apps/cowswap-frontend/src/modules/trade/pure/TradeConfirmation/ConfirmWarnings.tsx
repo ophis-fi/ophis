@@ -1,0 +1,40 @@
+import { ReactNode } from 'react'
+
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { Nullish } from '@cowprotocol/types'
+import { BannerOrientation } from '@cowprotocol/ui'
+
+import { CustomRecipientWarningBanner } from 'common/pure/CustomRecipientWarningBanner'
+
+import { PriceUpdatedBanner } from '../PriceUpdatedBanner'
+
+interface ConfirmWarningsProps {
+  resetPriceChanged(): void
+  recipient: Nullish<string>
+  account: string | undefined
+  ensName: string | undefined
+  isPriceChanged: boolean
+  isPriceStatic: boolean | undefined
+}
+
+export function ConfirmWarnings({
+  resetPriceChanged,
+  recipient,
+  account,
+  ensName,
+  isPriceChanged,
+  isPriceStatic,
+}: ConfirmWarningsProps): ReactNode {
+  const showRecipientWarning =
+    recipient &&
+    (account || ensName) &&
+    !areAddressesEqual(account, recipient) &&
+    !areAddressesEqual(ensName, recipient)
+
+  return (
+    <>
+      {showRecipientWarning && <CustomRecipientWarningBanner orientation={BannerOrientation.Horizontal} />}
+      {isPriceChanged && !isPriceStatic && <PriceUpdatedBanner onClick={resetPriceChanged} />}
+    </>
+  )
+}

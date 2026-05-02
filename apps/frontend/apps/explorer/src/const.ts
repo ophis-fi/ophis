@@ -1,0 +1,120 @@
+import {
+  ALL_SUPPORTED_CHAINS_MAP,
+  getAddressKey,
+  mapSupportedNetworks,
+  SupportedChainId,
+  WRAPPED_NATIVE_CURRENCIES,
+} from '@cowprotocol/cow-sdk'
+
+import { TokenErc20 } from '@gnosis.pm/dex-js'
+import BigNumber from 'bignumber.js'
+
+export {
+  ALLOWANCE_FOR_ENABLED_TOKEN,
+  ALLOWANCE_MAX_VALUE,
+  BATCH_TIME,
+  DEFAULT_PRECISION,
+  FEE_DENOMINATOR,
+  FEE_PERCENTAGE,
+  MAX_BATCH_ID,
+  ONE,
+  TEN,
+  TWO,
+  UNLIMITED_ORDER_AMOUNT,
+  ZERO,
+} from '@gnosis.pm/dex-js'
+
+export const DEFAULT_TIMEOUT = 5000
+
+export const ZERO_BIG_NUMBER = new BigNumber(0)
+export const ONE_BIG_NUMBER = new BigNumber(1)
+export const TEN_BIG_NUMBER = new BigNumber(10)
+export const ONE_HUNDRED_BIG_NUMBER = new BigNumber(100)
+
+// Value used on formatSmart's smallLimit for integer values, such as raw token amounts
+export const MINIMUM_ATOM_VALUE = '1'
+
+export const APP_NAME = 'CoW Protocol'
+
+export const DEFAULT_DECIMALS = 5
+// The prices on the contract will update at max once every batch, which is 5min long
+export const PRICES_CACHE_TIME = 60 // in seconds
+
+export const MEDIA = {
+  MOBILE_LARGE_PX: 500,
+  tinyScreen: '320px',
+  xSmallScreen: '430px',
+  smallScreen: '736px',
+  smallScreenUp: '737px',
+  mediumScreenSmall: '850px',
+  mediumEnd: '1024px',
+  desktopScreen: '1025px',
+  desktopScreenLarge: '1366px',
+  get tinyDown(): string {
+    return `only screen and (max-width : ${this.tinyScreen})`
+  },
+  get xSmallDown(): string {
+    return `only screen and (max-width : ${this.xSmallScreen})`
+  },
+  get mobile(): string {
+    return `only screen and (max-width : ${this.smallScreen})`
+  },
+  get mediumUp(): string {
+    return `only screen and (min-width : ${this.smallScreenUp})`
+  },
+  get mediumDown(): string {
+    return `only screen and (max-width : ${this.mediumEnd})`
+  },
+  get mediumOnly(): string {
+    return `only screen and (min-width : ${this.smallScreenUp}) and (max-width : ${this.mediumEnd})`
+  },
+  get desktop(): string {
+    return `only screen and (min-width : ${this.desktopScreen})`
+  },
+  get desktopLarge(): string {
+    return `only screen and (min-width: ${this.desktopScreenLarge})`
+  },
+  get tabletPortrait(): string {
+    return `(min-device-width: ${this.smallScreenUp}) and (max-device-width: ${this.mediumEnd}) and (orientation: portrait)`
+  },
+  get tabletLandscape(): string {
+    return `(min-device-width: ${this.smallScreenUp}) and (max-device-width: ${this.mediumEnd}) and (orientation: landscape)`
+  },
+  get tablet(): string {
+    return `(min-width: ${this.smallScreenUp}) and (max-width: ${this.mediumEnd}), ${this.tabletPortrait}, ${this.tabletLandscape}`
+  },
+  get tabletNoPortrait(): string {
+    return `(min-width: ${this.smallScreenUp}) and (max-width: ${this.mediumEnd}), ${this.tabletLandscape}`
+  },
+  get tabletSmall(): string {
+    return `(min-width: ${this.smallScreenUp}) and (max-width: ${this.mediumScreenSmall})`
+  },
+}
+
+export const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+export const NATIVE_TOKEN_ADDRESS_NORMALIZED = getAddressKey(NATIVE_TOKEN_ADDRESS)
+
+export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = mapSupportedNetworks(
+  (chainId) => WRAPPED_NATIVE_CURRENCIES[chainId].address,
+)
+
+export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = mapSupportedNetworks(
+  (chainId) => ALL_SUPPORTED_CHAINS_MAP[chainId].nativeCurrency,
+)
+
+export const TENDERLY_API_URL = 'https://api.tenderly.co/api/v1/public-contract'
+export const DEFAULT_IPFS_READ_URI = process.env.REACT_APP_IPFS_READ_URI || 'https://ipfs.io/ipfs'
+export const IPFS_INVALID_APP_IDS = [
+  '0x0000000000000000000000000000000000000000000000000000000000000000',
+  '0x0000000000000000000000000000000000000000000000000000000000000001',
+  '0x0000000000000000000000000000000000000000000000000000000000000002',
+  '0xf6a005bde820da47fdbb19bc07e56782b9ccec403a6899484cf502090627af8a',
+  '0x00000000000000000000000055662e225a3376759c24331a9aed764f8f0c9fbb',
+]
+
+/**
+ * The maximum percentage of the surplus that can be used for the surplus
+ * Values above this will not be displayed.
+ * Instead, the Surplus amount will be used
+ */
+export const MAX_SURPLUS_PERCENTAGE = '1000'

@@ -1,0 +1,205 @@
+import { getEthFlowContractAddresses } from '@cowprotocol/common-const'
+import { captureError, ERROR_TYPES, normalizeError, reportPlaceOrderWithExpiredQuote } from '@cowprotocol/common-utils'
+import { areAddressesEqual, OrderClass, SigningScheme, SigningStepManager } from '@cowprotocol/cow-sdk'
+import { Percent } from '@cowprotocol/currency'
+import { UiOrderType } from '@cowprotocol/types'
+
+import { t } from '@lingui/core/macro'
+import { SigningSteps } from 'entities/trade'
+
+import { PriceImpact } from 'legacy/hooks/usePriceImpact'
+import { mapUnsignedOrderToOrder, wrapErrorInOperatorError } from 'legacy/utils/trade'
+
+import { removePermitHookFromAppData } from 'modules/appData'
+import { emitPostedOrderEvent } from 'modules/orders'
+import { addPendingOrderStep } from 'modules/trade/utils/addPendingOrderStep'
+import { logTradeFlow } from 'modules/trade/utils/logger'
+import { TradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
+import { TradeFlowContext } from 'modules/tradeFlow'
+import { isQuoteExpired } from 'modules/tradeQuote'
+
+import { ethFlowEnv } from 'common/hooks/useContract'
+import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
+
+import { EthFlowContext } from '../../types'
+
+export interface EthFlowParams {
+  tradeContext: TradeFlowContext
+  ethFlowContext: EthFlowContext
+  priceImpactParams: PriceImpact
+  confirmPriceImpactWithoutFee: (priceImpact: Percent) => Promise<boolean>
+  analytics: TradeFlowAnalytics
+}
+
+// TODO: Break down this large function into smaller functions
+// eslint-disable-next-line max-lines-per-function
+export async function ethFlow({
+  tradeContext,
+  ethFlowContext,
+  priceImpactParams,
+  confirmPriceImpactWithoutFee,
+  analytics,
+}: EthFlowParams): Promise<void | boolean> {
+  const {
+    tradeConfirmActions,
+    swapFlowAnalyticsContext,
+    context,
+    callbacks,
+    orderParams,
+    typedHooks,
+    tradeQuote,
+    tradeQuoteState,
+    bridgeQuoteAmounts,
+  } = tradeContext
+  const { contract, addTransaction, checkEthFlowOrderExists, addInFlightOrderId } = ethFlowContext
+  const { chainId, inputAmount, outputAmount } = context
+  const tradeAmounts = { inputAmount, outputAmount }
+  const { account, recipientAddressOrName, kind } = orderParams
+  const { addBridgeOrder, setSigningStep, closeModals, dispatch } = callbacks
+
+  const isBridgingOrder = inputAmount.currency.chainId !== outputAmount.currency.chainId
+
+  logTradeFlow('ETH FLOW', 'STEP 1: confirm price impact')
+  if (priceImpactParams?.priceImpact && !(await confirmPriceImpactWithoutFee(priceImpactParams.priceImpact))) {
+    return false
+  }
+
+  orderParams.appData = await removePermitHookFromAppData(orderParams.appData, typedHooks)
+
+  logTradeFlow('ETH FLOW', 'STEP 2: send transaction')
+  analytics.trade(swapFlowAnalyticsContext)
+  tradeConfirmActions.onSign(tradeAmounts)
+
+  try {
+    // Do not proceed if fee is expired
+    if (isQuoteExpired(tradeQuoteState)) {
+      reportPlaceOrderWithExpiredQuote({
+        ...orderParams,
+        fee: tradeQuote.quoteResults.quoteResponse.quote.feeAmount,
+      })
+      throw new Error(t`Quote expired. Please refresh.`)
+    }
+
+    // Last check before signing the order of the actual eth flow contract address (sending ETH to the wrong contract could lead to loss of funds)
+    const actualContractAddress = contract.address
+    const expectedContractAddress = getEthFlowContractAddresses(ethFlowEnv, chainId)
+
+    if (!areAddressesEqual(actualContractAddress, expectedContractAddress)) {
+      throw new Error(
+        t`EthFlow contract (${actualContractAddress}) address don't match the expected address for chain ${chainId} (${expectedContractAddress}). Please refresh the page and try again.`,
+      )
+    }
+
+    logTradeFlow('ETH FLOW', 'STEP 3: sign order')
+
+    const signingStepManager: SigningStepManager = {
+      beforeBridgingSign() {
+        const isReceiverAccountBridgeProvider =
+          tradeQuoteState.bridgeQuote?.providerInfo.type === 'ReceiverAccountBridgeProvider'
+
+        setSigningStep(
+          '1/2',
+          isReceiverAccountBridgeProvider ? SigningSteps.PreparingDepositAddress : SigningSteps.BridgingSigning,
+        )
+      },
+      beforeOrderSign() {
+        setSigningStep('2/2', SigningSteps.OrderSigning)
+      },
+    }
+
+    const {
+      orderId,
+      txHash,
+      signature,
+      signingScheme,
+      orderToSign: unsignedOrder,
+    } = await wrapErrorInOperatorError(() =>
+      tradeQuote
+        .postSwapOrderFromQuote(
+          {
+            appData: orderParams.appData.doc,
+            additionalParams: {
+              checkEthFlowOrderExists,
+            },
+            quoteRequest: {
+              signingScheme: SigningScheme.EIP1271,
+              validTo: orderParams.validTo,
+              receiver: orderParams.recipient,
+            },
+          },
+          isBridgingOrder ? signingStepManager : undefined,
+        )
+        .finally(closeModals),
+    )
+
+    const quoteId = tradeQuote.quoteResults.quoteResponse.id
+
+    const order = mapUnsignedOrderToOrder({
+      unsignedOrder,
+      additionalParams: {
+        ...orderParams,
+        orderId,
+        signingScheme,
+        signature,
+        // For ETH-flow we always set order class to 'market' since we don't support ETH-flow in Limit orders
+        class: OrderClass.MARKET,
+        quoteId,
+        orderCreationHash: txHash,
+        isOnChain: true, // always on-chain
+      },
+    })
+
+    addInFlightOrderId(orderId)
+
+    emitPostedOrderEvent({
+      chainId,
+      id: orderId,
+      orderCreationHash: txHash,
+      kind,
+      receiver: recipientAddressOrName,
+      inputAmount,
+      outputAmount: bridgeQuoteAmounts?.bridgeMinReceiveAmount || outputAmount,
+      owner: account,
+      uiOrderType: UiOrderType.SWAP,
+      isEthFlow: true,
+    })
+
+    logTradeFlow('ETH FLOW', 'STEP 5: add pending order step')
+
+    if (bridgeQuoteAmounts) {
+      addBridgeOrder({
+        orderUid: orderId,
+        quoteAmounts: bridgeQuoteAmounts,
+        creationTimestamp: Date.now(),
+        recipient: orderParams.recipient,
+      })
+    }
+
+    addPendingOrderStep(
+      {
+        id: orderId,
+        chainId: context.chainId,
+        order,
+        isSafeWallet: orderParams.isSafeWallet,
+      },
+      dispatch,
+    )
+    // TODO: maybe move this into addPendingOrderStep?
+    addTransaction({ hash: txHash!, ethFlow: { orderId: order.id, subType: 'creation' } })
+
+    logTradeFlow('ETH FLOW', 'STEP 6: show UI of the successfully sent transaction', orderId)
+    tradeConfirmActions.onSuccess(orderId)
+    analytics.sign(swapFlowAnalyticsContext)
+
+    return true
+  } catch (err: unknown) {
+    const error = normalizeError(err)
+    logTradeFlow('ETH FLOW', 'STEP 7: ERROR: ', error)
+    const swapErrorMessage = getSwapErrorMessage(error)
+
+    captureError(error, ERROR_TYPES.ON_SWAP, { swapErrorMessage })
+    analytics.error(error, swapErrorMessage, swapFlowAnalyticsContext)
+
+    tradeConfirmActions.onError(swapErrorMessage)
+  }
+}

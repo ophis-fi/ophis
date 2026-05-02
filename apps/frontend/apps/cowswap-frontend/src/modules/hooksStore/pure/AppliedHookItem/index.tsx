@@ -1,0 +1,133 @@
+import ICON_CHECK_ICON from '@cowprotocol/assets/cow-swap/check-singular.svg'
+import ICON_GRID from '@cowprotocol/assets/cow-swap/grid.svg'
+import TenderlyLogo from '@cowprotocol/assets/cow-swap/tenderly-logo.svg'
+import ICON_X from '@cowprotocol/assets/cow-swap/x.svg'
+import { CowHookDetails } from '@cowprotocol/hook-dapp-lib'
+import { InfoTooltip } from '@cowprotocol/ui'
+
+import { t } from '@lingui/core/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Edit2, Trash2, ExternalLink as ExternalLinkIcon, RefreshCw } from 'react-feather'
+import SVG from 'react-inlinesvg'
+
+import { useSimulationData } from 'modules/tenderly/hooks/useSimulationData'
+import { useTenderlyBundleSimulation } from 'modules/tenderly/hooks/useTenderlyBundleSimulation'
+
+import * as styledEl from './styled'
+
+import { TenderlySimulate } from '../../containers/TenderlySimulate'
+import { HookDapp } from '../../types/hooks'
+
+interface HookItemProp {
+  account: string | undefined
+  hookDetails: CowHookDetails
+  dapp: HookDapp | undefined
+  disabled?: boolean
+  isPreHook: boolean
+  removeHook: (uuid: string, isPreHook: boolean) => void
+  editHook: (uuid: string) => void
+  index: number
+}
+
+// TODO: refactor tu use single simulation as fallback
+const isBundleSimulationReady = true
+
+// TODO: Break down this large function into smaller functions
+// TODO: Add proper return type annotation
+// TODO: Reduce function complexity by extracting logic
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type, complexity, max-lines-per-function
+export function AppliedHookItem({
+  account,
+  hookDetails,
+  dapp,
+  disabled = false,
+  isPreHook,
+  editHook,
+  removeHook,
+  index,
+}: HookItemProp) {
+  const { isValidating, mutate } = useTenderlyBundleSimulation()
+  const { i18n } = useLingui()
+  const simulationData = useSimulationData(hookDetails.uuid)
+
+  const simulationStatus = simulationData?.status ? t`Simulation successful` : t`Simulation failed`
+  const simulationTooltip = simulationData?.status
+    ? t`The Tenderly simulation was successful. Your transaction is expected to succeed.`
+    : t`The Tenderly simulation failed. Please review your transaction.`
+
+  const dAppName = dapp?.name ? i18n._(dapp.name) : ''
+
+  return (
+    <styledEl.HookItemWrapper data-uid={hookDetails.uuid} as="li">
+      <styledEl.HookItemHeader title={hookDetails.uuid}>
+        <styledEl.HookItemInfo className="DragArea">
+          <styledEl.DragIcon>
+            <SVG src={ICON_GRID} />
+          </styledEl.DragIcon>
+          <styledEl.HookNumber>{index + 1}</styledEl.HookNumber>
+          <img src={dapp?.image || ''} alt={dAppName} />
+          <span>{dAppName}</span>
+          {isValidating && <styledEl.Spinner />}
+        </styledEl.HookItemInfo>
+        <styledEl.HookItemActions>
+          <styledEl.ActionBtn onClick={() => mutate()} disabled={isValidating || disabled}>
+            <RefreshCw size={14} />
+          </styledEl.ActionBtn>
+          <styledEl.ActionBtn onClick={disabled ? undefined : () => editHook(hookDetails.uuid)} disabled={disabled}>
+            <Edit2 size={14} />
+          </styledEl.ActionBtn>
+          <styledEl.ActionBtn
+            onClick={disabled ? undefined : () => removeHook(hookDetails.uuid, isPreHook)}
+            actionType="remove"
+            disabled={disabled}
+          >
+            <Trash2 size={14} />
+          </styledEl.ActionBtn>
+        </styledEl.HookItemActions>
+      </styledEl.HookItemHeader>
+
+      {account && isBundleSimulationReady && simulationData && (
+        <styledEl.SimulateContainer isSuccessful={simulationData.status}>
+          {simulationData.status ? (
+            <SVG src={ICON_CHECK_ICON} color="green" width={16} height={16} aria-label={t`Simulation Successful`} />
+          ) : (
+            <SVG src={ICON_X} color="red" width={14} height={14} aria-label={t`Simulation Failed`} />
+          )}
+          {simulationData.link ? (
+            <a href={simulationData.link} target="_blank" rel="noopener noreferrer">
+              {simulationStatus}
+              <ExternalLinkIcon size={14} />
+            </a>
+          ) : (
+            <span>{simulationStatus}</span>
+          )}
+          <InfoTooltip content={simulationTooltip} />
+        </styledEl.SimulateContainer>
+      )}
+
+      {!isBundleSimulationReady && (
+        <styledEl.OldSimulateContainer>
+          <div>
+            <styledEl.SimulateHeader>
+              <strong>
+                <Trans>Run a simulation</Trans>
+              </strong>
+              <InfoTooltip
+                content={t`This transaction can be simulated before execution to ensure that it will be succeed, generating a detailed report of the transaction execution.`}
+              />
+            </styledEl.SimulateHeader>
+            <styledEl.SimulateFooter>
+              <span>
+                <Trans>Powered by</Trans>
+              </span>
+              <SVG src={TenderlyLogo} description="Tenderly" />
+            </styledEl.SimulateFooter>
+          </div>
+          <div>
+            <TenderlySimulate hook={hookDetails.hook} />
+          </div>
+        </styledEl.OldSimulateContainer>
+      )}
+    </styledEl.HookItemWrapper>
+  )
+}

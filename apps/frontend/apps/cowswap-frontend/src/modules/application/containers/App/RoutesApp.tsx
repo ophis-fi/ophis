@@ -1,0 +1,137 @@
+import { lazy, ReactNode, Suspense, useEffect } from 'react'
+
+import {
+  COWDAO_COWSWAP_ABOUT_LINK,
+  COWDAO_KNOWLEDGE_BASE_LINK,
+  COWDAO_LEGAL_LINK,
+  DISCORD_LINK,
+  DOCS_LINK,
+  DUNE_DASHBOARD_LINK,
+  TWITTER_LINK,
+} from '@cowprotocol/common-const'
+import { useFeatureFlags } from '@cowprotocol/common-hooks'
+
+import { Navigate, Route, Routes } from 'react-router'
+
+import { Loading } from 'legacy/components/FlashingLoading'
+import { RedirectPathToSwapOnly, RedirectToPath } from 'legacy/pages/Swap/redirects'
+
+import {
+  AccountProxyWidgetPage,
+  AccountProxyHelpPage,
+  AccountProxyPage,
+  AccountProxyRecoverPage,
+  AccountProxiesPage,
+} from 'modules/accountProxy'
+
+import { Routes as RoutesEnum, RoutesValues } from 'common/constants/routes'
+import Account, { AccountOverview } from 'pages/Account'
+import { AdvancedOrdersPage } from 'pages/AdvancedOrders/AdvancedOrders.page'
+import AnySwapAffectedUsers from 'pages/error/AnySwapAffectedUsers'
+import { HooksPage } from 'pages/Hooks'
+import { LimitOrdersPage } from 'pages/LimitOrders/LimitOrders.page'
+import { SwapPage } from 'pages/Swap'
+import YieldPage from 'pages/Yield'
+
+// Async routes
+const NotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
+const CowRunner = lazy(() => import(/* webpackChunkName: "cow_runner" */ 'pages/games/CowRunner'))
+const MevSlicer = lazy(() => import(/* webpackChunkName: "mev_slicer" */ 'pages/games/MevSlicer'))
+
+// External routes
+const LegalExternal = <ExternalRedirect url={COWDAO_LEGAL_LINK} />
+
+// Account
+const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
+const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
+const AccountAffiliateTrader = lazy(
+  () => import(/* webpackChunkName: "affiliate_trader" */ 'pages/Account/AffiliateTrader'),
+)
+const AccountNotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
+
+function ExternalRedirect({ url }: { url: string }): null {
+  useEffect(() => {
+    window.location.replace(url)
+  }, [url])
+
+  return null
+}
+
+type LazyRouteProps = { route: RoutesValues; element: ReactNode; key?: number }
+
+function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
+  return <Route key={key} path={route} element={<Suspense fallback={<Loading />}>{element}</Suspense>} />
+}
+
+const lazyRoutes: LazyRouteProps[] = [
+  { route: RoutesEnum.YIELD, element: <YieldPage /> },
+  { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
+  { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },
+  { route: RoutesEnum.ABOUT, element: <ExternalRedirect url={COWDAO_COWSWAP_ABOUT_LINK} /> },
+  { route: RoutesEnum.FAQ, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
+  { route: RoutesEnum.FAQ_PROTOCOL, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
+  { route: RoutesEnum.FAQ_TOKEN, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
+  { route: RoutesEnum.FAQ_TRADING, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
+  { route: RoutesEnum.FAQ_LIMIT_ORDERS, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
+  { route: RoutesEnum.FAQ_ETH_FLOW, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
+  { route: RoutesEnum.PLAY_COWRUNNER, element: <CowRunner /> },
+  { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
+  { route: RoutesEnum.PRIVACY_POLICY, element: LegalExternal },
+  { route: RoutesEnum.COOKIE_POLICY, element: LegalExternal },
+  { route: RoutesEnum.TERMS_CONDITIONS, element: LegalExternal },
+]
+
+export function RoutesApp(): ReactNode {
+  const { isAffiliateProgramEnabled } = useFeatureFlags()
+
+  return (
+    <Routes>
+      {/*Account*/}
+      <Route path={RoutesEnum.ACCOUNT} element={<Account />}>
+        <Route path={RoutesEnum.ACCOUNT} element={<AccountOverview />} />
+        <Route path={RoutesEnum.ACCOUNT_TOKENS} element={<AccountTokensOverview />} />
+        {isAffiliateProgramEnabled && (
+          <Route path={RoutesEnum.ACCOUNT_AFFILIATE_PARTNER} element={<AccountAffiliatePartner />} />
+        )}
+        {isAffiliateProgramEnabled && (
+          <Route path={RoutesEnum.ACCOUNT_AFFILIATE_TRADER} element={<AccountAffiliateTrader />} />
+        )}
+        <Route path="*" element={<AccountNotFound />} />
+      </Route>
+
+      <Route path={RoutesEnum.ACCOUNT_PROXIES} element={<AccountProxyWidgetPage />}>
+        <Route path={RoutesEnum.ACCOUNT_PROXY} element={<AccountProxyPage />} />
+        <Route path={RoutesEnum.ACCOUNT_PROXY_RECOVER} element={<AccountProxyRecoverPage />} />
+        <Route path={RoutesEnum.ACCOUNT_PROXY_HELP} element={<AccountProxyHelpPage />} />
+        <Route index element={<AccountProxiesPage />} />
+      </Route>
+      <Route path="claim" element={<Navigate to={RoutesEnum.ACCOUNT} />} />
+      <Route path="profile" element={<Navigate to={RoutesEnum.ACCOUNT} />} />
+
+      {/*Swap*/}
+      <Route path={RoutesEnum.SWAP} element={<SwapPage />} />
+      <Route path={RoutesEnum.LIMIT_ORDERS} element={<LimitOrdersPage />} />
+      <Route path={RoutesEnum.ADVANCED_ORDERS} element={<AdvancedOrdersPage />} />
+      <Route path={RoutesEnum.HOOKS} element={<HooksPage />} />
+      <Route path={RoutesEnum.SEND} element={<RedirectPathToSwapOnly />} />
+
+      {lazyRoutes.map((item, key) => LazyRoute({ ...item, key }))}
+
+      <Route path={RoutesEnum.ANYSWAP_AFFECTED} element={<AnySwapAffectedUsers />} />
+      <Route path={RoutesEnum.CHAT} element={<ExternalRedirect url={DISCORD_LINK} />} />
+      <Route path={RoutesEnum.DOCS} element={<ExternalRedirect url={DOCS_LINK} />} />
+      <Route path={RoutesEnum.STATS} element={<ExternalRedirect url={DUNE_DASHBOARD_LINK} />} />
+      <Route path={RoutesEnum.TWITTER} element={<ExternalRedirect url={TWITTER_LINK} />} />
+
+      <Route path={RoutesEnum.HOME} element={<RedirectPathToSwapOnly />} />
+      <Route
+        path="*"
+        element={
+          <Suspense fallback={<Loading />}>
+            <NotFound />
+          </Suspense>
+        }
+      />
+    </Routes>
+  )
+}

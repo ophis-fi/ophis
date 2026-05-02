@@ -1,0 +1,50 @@
+import { atom } from 'jotai'
+
+import { deepEqual } from '@cowprotocol/common-utils'
+import { walletInfoAtom } from '@cowprotocol/wallet'
+
+import { twapOrdersAtom, TwapOrdersList } from 'entities/twap'
+
+import { cowSwapStore } from 'legacy/state'
+import { deleteOrders } from 'legacy/state/orders/actions'
+
+import { TWAP_FINAL_STATUSES } from '../const'
+import { TwapOrderItem, TwapOrderStatus } from '../types'
+import { updateTwapOrdersList } from '../utils/updateTwapOrdersList'
+
+export const updateTwapOrdersListAtom = atom(null, (get, set, nextState: TwapOrdersList) => {
+  const currentState = get(twapOrdersAtom)
+  const newState = updateTwapOrdersList(currentState, nextState)
+
+  if (!deepEqual(currentState, newState)) {
+    set(twapOrdersAtom, newState)
+  }
+})
+
+export const addTwapOrderToListAtom = atom(null, (get, set, order: TwapOrderItem) => {
+  const currentState = get(twapOrdersAtom)
+
+  set(twapOrdersAtom, { ...currentState, [order.id]: order })
+})
+
+export const deleteTwapOrdersFromListAtom = atom(null, (get, set, ids: string[]) => {
+  const { chainId } = get(walletInfoAtom)
+  const currentState = get(twapOrdersAtom)
+
+  ids.forEach((id) => {
+    delete currentState[id]
+  })
+
+  cowSwapStore.dispatch(deleteOrders({ chainId, ids }))
+
+  set(twapOrdersAtom, currentState)
+})
+
+export const setTwapOrderStatusAtom = atom(null, (get, set, orderId: string, status: TwapOrderStatus) => {
+  const currentState = get(twapOrdersAtom)
+  const currentOrder = currentState[orderId]
+
+  if (TWAP_FINAL_STATUSES.includes(currentOrder.status)) return
+
+  set(twapOrdersAtom, { ...currentState, [orderId]: { ...currentOrder, status } })
+})

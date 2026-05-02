@@ -1,0 +1,218 @@
+import { useAtomValue } from 'jotai'
+import { ReactNode, useRef, useState } from 'react'
+
+import ICON_ARROW_DOWN from '@cowprotocol/assets/images/carret-down.svg'
+import ICON_X from '@cowprotocol/assets/images/x.svg'
+import { CODE_LINK } from '@cowprotocol/common-const'
+import { useOnClickOutside } from '@cowprotocol/common-hooks'
+import { getEtherscanLink, isBarnBackendEnv } from '@cowprotocol/common-utils'
+import {
+  CONTRACTS_PKG_VERSION,
+  COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS,
+  COW_PROTOCOL_VAULT_RELAYER_ADDRESS,
+  SupportedChainId as ChainId,
+} from '@cowprotocol/cow-sdk'
+import { ExternalLink, Media, UI } from '@cowprotocol/ui'
+import { useWalletInfo } from '@cowprotocol/wallet'
+
+import { atomWithQuery } from 'jotai-tanstack-query'
+import SVG from 'react-inlinesvg'
+import styled from 'styled-components/macro'
+
+import pkg from '../../../../package.json'
+import { orderBookApi } from '../../../cowSdk'
+
+const contractsTsVersion = CONTRACTS_PKG_VERSION
+
+const _getContractsUrls = (
+  chainId: ChainId,
+  contractAddressMap: typeof COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS,
+): string => {
+  const contractAddress = contractAddressMap[chainId]
+  return contractAddress ? getEtherscanLink(chainId, 'address', contractAddress) : '-'
+}
+
+type VersionInfo = {
+  version: string
+  href: (_chainId: ChainId) => string
+}
+
+const orderbookApiVersionQueryAtom = atomWithQuery(() => ({
+  queryKey: ['orderbookApiVersion'],
+  queryFn: async (): Promise<string> => {
+    try {
+      return await orderBookApi.getVersion()
+    } catch (error) {
+      console.error('Failed to fetch OrderBook API version', error)
+      return 'unknown'
+    }
+  },
+}))
+
+const Dropdown = styled.div`
+  position: relative;
+  display: inline-block;
+`
+
+const DropdownContent = styled.div`
+  display: block;
+  position: absolute;
+  background-color: var(${UI.COLOR_PAPER});
+  min-width: 160px;
+  box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.2);
+  padding: 12px 16px;
+  bottom: 100%;
+  right: 0;
+  height: min-content;
+  z-index: 999;
+  width: max-content;
+  border-radius: 16px;
+  margin: auto auto 12px;
+
+  ${Media.upToLarge()} {
+    left: 0;
+    right: initial;
+  }
+
+  ${Media.upToMedium()} {
+    width: 100%;
+    position: fixed;
+    bottom: 56px;
+    margin: 0;
+    padding: 18px 24px;
+    box-shadow: 0 -100vh 0 100vh rgb(0 0 0 / 40%);
+    border-bottom: 1px solid var(${UI.COLOR_BORDER});
+    border-radius: 16px 16px 0 0;
+  }
+`
+
+const DropdownButton = styled.div`
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 4px;
+  border-radius: 16px;
+
+  &:hover {
+    > svg {
+      transform: rotate(-90deg);
+    }
+  }
+
+  > svg {
+    --size: 12px;
+    color: inherit;
+    width: var(--size);
+    height: var(--size);
+    transition: transform 0.2s ease-in-out;
+  }
+`
+
+const VersionLink = styled(ExternalLink)<{ onClick: () => void }>`
+  display: block;
+  margin: 5px 0;
+
+  ${Media.upToMedium()} {
+    margin: 24px 0;
+    font-size: 16px;
+  }
+
+  span {
+    font-size: 12px;
+    color: var(${UI.COLOR_INFO_TEXT});
+    background: var(${UI.COLOR_INFO_BG});
+    border-radius: 8px;
+    padding: 2px 4px;
+  }
+`
+
+const CloseButton = styled.span`
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(${UI.COLOR_TEXT_OPACITY_50});
+  transition: color 0.2s ease-in-out;
+
+  ${Media.upToMedium()} {
+    top: 16px;
+    right: 16px;
+  }
+
+  &:hover {
+    color: var(${UI.COLOR_TEXT});
+  }
+
+  > svg {
+    --size: 8px;
+    width: var(--size);
+    height: var(--size);
+
+    ${Media.upToMedium()} {
+      --size: 16px;
+    }
+  }
+`
+
+export const Version = ({ className }: { className?: string }): ReactNode => {
+  const { chainId } = useWalletInfo()
+  const [showDropdown, setShowDropdown] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const orderbookApiVersion = useAtomValue(orderbookApiVersionQueryAtom)?.data || 'unknown'
+
+  const VERSIONS: Record<string, VersionInfo> = {
+    Web: {
+      version: 'v' + pkg.version,
+      href: () => CODE_LINK,
+    },
+    'Vault Relayer': {
+      version: 'v' + contractsTsVersion,
+      href: (chainId: ChainId) => _getContractsUrls(chainId, COW_PROTOCOL_VAULT_RELAYER_ADDRESS),
+    },
+    'Settlement Contract': {
+      version: 'v' + contractsTsVersion,
+      href: (chainId: ChainId) => _getContractsUrls(chainId, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS),
+    },
+    'Orderbook API': {
+      version: `${isBarnBackendEnv ? 'barn' : 'prod'}:` + orderbookApiVersion,
+      href: () => 'https://github.com/cowprotocol/services/releases',
+    },
+  }
+
+  const versionsList = Object.keys(VERSIONS)
+  const webVersion = VERSIONS['Web'].version
+
+  useOnClickOutside([dropdownRef], () => setShowDropdown(false))
+
+  // TODO: Add proper return type annotation
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  const handleLinkClick = () => {
+    setShowDropdown(false)
+  }
+
+  return (
+    <Dropdown className={className} ref={dropdownRef}>
+      <DropdownButton onClick={() => setShowDropdown(!showDropdown)}>
+        {webVersion} <SVG src={ICON_ARROW_DOWN} />
+      </DropdownButton>
+      {showDropdown && (
+        <DropdownContent>
+          <CloseButton onClick={() => setShowDropdown(false)}>
+            <SVG src={ICON_X} />
+          </CloseButton>
+          {versionsList.map((key) => {
+            const { href, version } = VERSIONS[key]
+            const chainHref = href(chainId)
+            return (
+              <VersionLink key={key} href={chainHref} onClick={handleLinkClick}>
+                {key} <span>{version}</span>
+              </VersionLink>
+            )
+          })}
+        </DropdownContent>
+      )}
+    </Dropdown>
+  )
+}

@@ -1,0 +1,43 @@
+/* eslint-disable @typescript-eslint/no-restricted-imports */ // TODO: Don't use 'modules' import
+import { ReactNode } from 'react'
+
+import { useCowAnalytics } from '@cowprotocol/analytics'
+import { WidgetTokensListsUpdater } from '@cowprotocol/tokens'
+
+import { useInjectedWidgetParams } from 'modules/injectedWidget'
+import { useOnTokenListAddingError } from 'modules/tokensList'
+
+import { CowSwapAnalyticsCategory } from '../analytics/types'
+
+export function WidgetTokensUpdater(): ReactNode {
+  const { tokenLists, appCode, customTokens, sellTokenLists, buyTokenLists, hideFavoriteTokens } =
+    useInjectedWidgetParams()
+  const onTokenListAddingError = useOnTokenListAddingError()
+  const cowAnalytics = useCowAnalytics()
+
+  return (
+    <WidgetTokensListsUpdater
+      tokenLists={tokenLists}
+      sellTokenLists={sellTokenLists}
+      buyTokenLists={buyTokenLists}
+      customTokens={customTokens}
+      appCode={appCode}
+      hideFavoriteTokens={hideFavoriteTokens}
+      onTokenListAddingError={onTokenListAddingError}
+      onAddList={(source) => {
+        cowAnalytics.sendEvent({
+          category: CowSwapAnalyticsCategory.LIST,
+          action: 'Add List Success',
+          label: source,
+        })
+      }}
+      onRemoveList={(source) => {
+        cowAnalytics.sendEvent({
+          category: CowSwapAnalyticsCategory.LIST,
+          action: 'Remove List',
+          label: source,
+        })
+      }}
+    />
+  )
+}

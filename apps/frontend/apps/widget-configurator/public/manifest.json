@@ -1,0 +1,25 @@
+{
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "homepage_url": "https://widget.cow.fi",
+  "description": "Widget configurator for CoW Swap",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "orientation": "portrait",
+  "name": "CoW Swap Widget",
+  "short_name": "CoW Swap Widget",
+  "start_url": ".",
+  "theme_color": "#ffffff"
+}

@@ -1,0 +1,250 @@
+import { useAtomValue, useSetAtom } from 'jotai'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
+
+import { useCowAnalytics } from '@cowprotocol/analytics'
+import { renderTooltip } from '@cowprotocol/ui'
+import { useWalletInfo } from '@cowprotocol/wallet'
+import { TradeType } from '@cowprotocol/widget-lib'
+
+import { useAdvancedOrdersDerivedState } from 'modules/advancedOrders'
+import { AffiliateTraderRewardsRow, useIsRewardsRowEnabled } from 'modules/affiliate'
+import { useInjectedWidgetDeadline } from 'modules/injectedWidget'
+import { useGetReceiveAmountInfo } from 'modules/trade'
+import { useTradeState } from 'modules/trade/hooks/useTradeState'
+import { TradeNumberInput } from 'modules/trade/pure/TradeNumberInput'
+import { TradeTextBox } from 'modules/trade/pure/TradeTextBox'
+import { useGetTradeFormValidations, useShouldHideTradeRateDetails } from 'modules/tradeFormValidation'
+import { TwapFormState } from 'modules/twap/pure/PrimaryActionButton/getTwapFormState'
+
+import { CowSwapAnalyticsCategory } from 'common/analytics/types'
+import { usePrice } from 'common/hooks/usePrice'
+import { useRateInfoParams } from 'common/hooks/useRateInfoParams'
+import { RateInfo } from 'common/pure/RateInfo'
+
+import * as styledEl from './styled'
+import { useLabelsTooltips } from './tooltips'
+
+import {
+  DEFAULT_NUM_OF_PARTS,
+  DEFAULT_TWAP_SLIPPAGE,
+  MAX_PART_TIME,
+  MAX_TWAP_SLIPPAGE,
+  MINIMUM_PART_TIME,
+  ORDER_DEADLINES,
+} from '../../const'
+import {
+  useFallbackHandlerVerification,
+  useIsFallbackHandlerCompatible,
+  useIsFallbackHandlerRequired,
+} from '../../hooks/useFallbackHandlerVerification'
+import { useTwapFormState } from '../../hooks/useTwapFormState'
+import { useTwapSlippage } from '../../hooks/useTwapSlippage'
+import { DeadlineSelector } from '../../pure/DeadlineSelector'
+import { twapTimeIntervalAtom } from '../../state/twapOrderAtom'
+import { twapOrdersSettingsAtom, updateTwapOrdersSettingsAtom } from '../../state/twapOrdersSettingsAtom'
+import { deadlinePartsDisplay } from '../../utils/deadlinePartsDisplay'
+import { ActionButtons } from '../ActionButtons'
+import { AmountParts } from '../AmountParts'
+import { TwapFormWarnings } from '../TwapFormWarnings'
+
+export type { LabelTooltip, LabelTooltipItems } from './tooltips'
+
+interface TwapFormWidget {
+  tradeWarnings: ReactNode
+}
+
+// TODO: Break down this large function into smaller functions
+// eslint-disable-next-line max-lines-per-function
+export function TwapFormWidget({ tradeWarnings }: TwapFormWidget): ReactNode {
+  const { account } = useWalletInfo()
+  const isRewardsRowEnabled = useIsRewardsRowEnabled()
+
+  const { numberOfPartsValue, deadline, customDeadline, isCustomDeadline } = useAtomValue(twapOrdersSettingsAtom)
+
+  const { inputCurrencyAmount, outputCurrencyAmount } = useAdvancedOrdersDerivedState()
+  const { updateState } = useTradeState()
+  const isFallbackHandlerRequired = useIsFallbackHandlerRequired()
+  const isFallbackHandlerCompatible = useIsFallbackHandlerCompatible()
+  const verification = useFallbackHandlerVerification()
+
+  const twapOrderSlippage = useTwapSlippage()
+  const timeInterval = useAtomValue(twapTimeIntervalAtom)
+  const updateSettingsState = useSetAtom(updateTwapOrdersSettingsAtom)
+
+  const localFormValidation = useTwapFormState()
+  const validations = useGetTradeFormValidations()
+  const primaryFormValidation = validations?.[0] || null
+
+  const hideQuoteAmount = useShouldHideTradeRateDetails({ hideIfWrapUnwrap: true })
+  const rateInfoParams = useRateInfoParams(inputCurrencyAmount, outputCurrencyAmount)
+
+  const receiveAmountInfo = useGetReceiveAmountInfo()
+
+  const executionPrice = usePrice(
+    receiveAmountInfo?.amountsToSign.sellAmount,
+    receiveAmountInfo?.amountsToSign.buyAmount,
+  )
+
+  const widgetDeadline = useInjectedWidgetDeadline(TradeType.ADVANCED)
+
+  const cowAnalytics = useCowAnalytics()
+
+  useEffect(() => {
+    if (widgetDeadline) {
+      // Ensure min part duration
+      const minDuration = Math.floor(MINIMUM_PART_TIME / 60) * 2 // it must have at least 2 parts
+
+      const maxDuration = Math.floor(MAX_PART_TIME / 60) * numberOfPartsValue
+
+      let minutes = widgetDeadline
+      if (widgetDeadline < minDuration) {
+        minutes = minDuration
+      } else if (widgetDeadline > maxDuration) {
+        minutes = maxDuration
+      }
+
+      updateSettingsState({
+        customDeadline: { hours: 0, minutes },
+        isCustomDeadline: true,
+      })
+    }
+  }, [widgetDeadline, updateSettingsState, numberOfPartsValue])
+
+  const isDeadlineDisabled = !!widgetDeadline
+
+  const deadlineState = {
+    deadline,
+    customDeadline,
+    isCustomDeadline,
+  }
+
+  // Reset warnings flags once on start
+  useEffect(() => {
+    updateSettingsState({ isFallbackHandlerSetupAccepted: false })
+    cowAnalytics.sendEvent({
+      category: CowSwapAnalyticsCategory.TWAP,
+      action: 'Open Advanced Orders Tab',
+    })
+  }, [updateSettingsState, cowAnalytics])
+
+  useEffect(() => {
+    if (account && verification) {
+      if (localFormValidation === TwapFormState.TX_BUNDLING_NOT_SUPPORTED) {
+        cowAnalytics.sendEvent({
+          category: CowSwapAnalyticsCategory.TWAP,
+          action: 'non-compatible',
+        })
+      } else if (isFallbackHandlerRequired) {
+        cowAnalytics.sendEvent({
+          category: CowSwapAnalyticsCategory.TWAP,
+          action: 'safe-that-could-be-converted',
+        })
+      } else if (isFallbackHandlerCompatible) {
+        cowAnalytics.sendEvent({
+          category: CowSwapAnalyticsCategory.TWAP,
+          action: 'compatible',
+        })
+      }
+    }
+  }, [account, isFallbackHandlerRequired, isFallbackHandlerCompatible, localFormValidation, verification, cowAnalytics])
+
+  const isInvertedState = useState(false)
+  const [isInverted] = isInvertedState
+
+  const { onSlippageInput, onNumOfPartsInput } = useMemo(() => {
+    return {
+      onSlippageInput: (value: number | null) => updateSettingsState({ slippageValue: value }),
+      onNumOfPartsInput: (value: number | null) => {
+        updateSettingsState({ numberOfPartsValue: value || DEFAULT_NUM_OF_PARTS })
+        updateState?.({ outputCurrencyAmount: null })
+      },
+    }
+  }, [updateSettingsState, updateState])
+
+  const tooltips = useLabelsTooltips()
+
+  return (
+    <>
+      {!hideQuoteAmount && (
+        <>
+          <styledEl.FooterBox>
+            <RateInfo
+              label={tooltips.price.label}
+              rateInfoParams={rateInfoParams}
+              isInvertedState={isInvertedState}
+              fontSize={13}
+              rightAlign
+            />
+            {isRewardsRowEnabled && <AffiliateTraderRewardsRow />}
+          </styledEl.FooterBox>
+        </>
+      )}
+      <TradeNumberInput
+        value={+twapOrderSlippage.toFixed(2)}
+        onUserInput={onSlippageInput}
+        decimalsPlaces={2}
+        placeholder={DEFAULT_TWAP_SLIPPAGE.toFixed(1)}
+        min={0}
+        max={MAX_TWAP_SLIPPAGE}
+        label={tooltips.slippage.label}
+        tooltip={renderTooltip(tooltips.slippage.tooltip)}
+        showUpDownArrows={true}
+        upDownArrowsLeftAlign={true}
+        prefixComponent={
+          <em>
+            {executionPrice && !hideQuoteAmount ? (
+              <styledEl.ExecutionPriceStyled
+                executionPrice={executionPrice}
+                isInverted={isInverted}
+                hideFiat
+                hideSeparator
+              />
+            ) : (
+              '0'
+            )}
+          </em>
+        }
+        suffix="%"
+        step={0.1}
+      />
+      <styledEl.Row>
+        <TradeNumberInput
+          value={numberOfPartsValue}
+          onUserInput={onNumOfPartsInput}
+          min={DEFAULT_NUM_OF_PARTS}
+          label={tooltips.numberOfParts.label}
+          tooltip={renderTooltip(tooltips.numberOfParts.tooltip)}
+          showUpDownArrows={true}
+        />
+      </styledEl.Row>
+
+      <styledEl.Row>
+        <DeadlineSelector
+          deadline={deadlineState}
+          isDeadlineDisabled={isDeadlineDisabled}
+          items={ORDER_DEADLINES}
+          setDeadline={updateSettingsState}
+          label={tooltips.totalDuration.label}
+          tooltip={renderTooltip(tooltips.totalDuration.tooltip, {
+            parts: numberOfPartsValue,
+            partDuration: timeInterval,
+          })}
+        />
+
+        <TradeTextBox label={tooltips.partDuration.label} tooltip={tooltips.partDuration.tooltip}>
+          <>{deadlinePartsDisplay(timeInterval)}</>
+        </TradeTextBox>
+      </styledEl.Row>
+
+      <AmountParts />
+
+      {tradeWarnings}
+      <TwapFormWarnings localFormValidation={localFormValidation} />
+      <ActionButtons
+        fallbackHandlerIsNotSet={isFallbackHandlerRequired}
+        localFormValidation={localFormValidation}
+        primaryFormValidation={primaryFormValidation}
+      />
+    </>
+  )
+}

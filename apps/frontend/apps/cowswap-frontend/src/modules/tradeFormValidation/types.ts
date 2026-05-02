@@ -1,0 +1,118 @@
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { Command } from '@cowprotocol/types'
+import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
+
+import { PriceImpact } from 'legacy/hooks/usePriceImpact'
+
+import { ApprovalState, ApproveRequiredReason } from 'modules/erc20Approve'
+import { TradeDerivedState } from 'modules/trade'
+import { TradeQuoteState } from 'modules/tradeQuote'
+
+export interface TradeFormButtonContext {
+  defaultText: string
+  amountToApprove: CurrencyAmount<Currency> | null
+  derivedState: TradeDerivedState
+  quote: TradeQuoteState
+  isSupportedWallet: boolean
+  widgetStandaloneMode?: boolean
+  supportsPartialApprove?: boolean
+  customTokenError?: string
+  minAmountToSignForSwap?: CurrencyAmount<Currency>
+  balancesError: string | null
+  confirmClickEvent?: string
+  approveClickEvent?: string
+  widgetPriceImpactThreshold: number | undefined
+
+  confirmTrade(): void
+
+  connectWallet: Command
+
+  wrapNativeFlow(): void
+}
+
+export interface TradeFormValidationCommonContext {
+  account: string | undefined
+  derivedTradeState: TradeDerivedState
+  approvalState: ApprovalState
+  tradeQuote: TradeQuoteState
+  recipientEnsAddress: string | null
+  isWrapUnwrap: boolean
+  isBundlingSupported: boolean | null
+  isSupportedWallet: boolean
+  isSwapUnsupported: boolean
+  isSafeReadonlyUser: boolean
+  isApproveRequired: ApproveRequiredReason
+  isInsufficientBalanceOrderAllowed: boolean
+  isProviderNetworkUnsupported: boolean
+  isProviderNetworkDeprecated: boolean
+  isOnline: boolean
+  intermediateTokenToBeImported: boolean
+  isAccountProxyLoading: boolean
+  isProxySetupValid: boolean | null | undefined
+  customTokenError?: string
+  isRestrictedForCountry: boolean
+  isBalancesLoading: boolean
+  balancesError: string | null
+  isInputCurrencyXstock: boolean
+  isOutputCurrencyXstock: boolean
+  injectedWidgetParams: Partial<CowSwapWidgetAppParams>
+  tradePriceImpact: PriceImpact
+}
+
+export interface TradeFormValidationContext extends TradeFormValidationCommonContext {}
+
+export enum TradeFormValidation {
+  // Wrap/unwrap
+  WrapUnwrapFlow,
+
+  // Quote errors
+  QuoteErrors,
+  CurrencyNotSupported,
+
+  // Wallet
+  WalletNotConnected,
+  WalletNotSupported,
+  SafeReadonlyUser,
+  WalletCapabilitiesLoading,
+
+  // Quote request params
+  CurrencyNotSet,
+  InputAmountNotSet,
+  RecipientInvalid,
+  NetworkNotSupported,
+  NetworkDeprecated,
+  BrowserOffline,
+
+  // Quote loading indicator
+  QuoteLoading,
+  ImpactLoading,
+  QuoteExpired,
+
+  // Balances
+  BalancesLoading,
+  BalancesNotLoaded,
+  BalanceInsufficient,
+
+  // Approve
+  ApproveAndSwapInBundle,
+  ApproveRequired,
+
+  // Intermediate token
+  ImportingIntermediateToken,
+
+  // Native - this should be the last validation, as it overrides all other validations
+  SellNativeToken,
+
+  // Bridging
+  ProxyAccountLoading,
+  ProxyAccountUnknown,
+  CustomTokenError,
+
+  // RWA/Geo restrictions
+  RestrictedForCountry,
+  XstockMinimumTradeSize,
+
+  // Widget controlled
+  DisableTradeWithUnknownPriceImpact,
+  DisableTradeWithHighPriceImpact,
+}

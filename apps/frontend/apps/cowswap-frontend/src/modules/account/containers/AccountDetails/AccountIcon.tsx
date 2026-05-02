@@ -1,0 +1,57 @@
+import { useState } from 'react'
+
+import { LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
+import { HoverTooltip } from '@cowprotocol/ui'
+import { ConnectorType, useConnectionType, useWalletDetails } from '@cowprotocol/wallet'
+
+import { t } from '@lingui/core/macro'
+import { useConnection } from 'wagmi'
+
+import { StatusIcon } from 'modules/wallet/pure/StatusIcon'
+
+import { IconWrapper } from './styled'
+
+interface AccountIconProps {
+  size?: number
+  account?: string
+}
+
+// TODO: Add proper return type annotation
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+export const AccountIcon = ({ size = 16, account }: AccountIconProps) => {
+  const { connector } = useConnection()
+  const walletDetails = useWalletDetails()
+  const connectionType = useConnectionType()
+  const [imageLoadError, setImageLoadError] = useState(false)
+
+  const { icon, walletName } = walletDetails
+  const isIdenticon = icon === 'Identicon'
+
+  if (imageLoadError || isIdenticon || !icon) {
+    return (
+      <IconWrapper size={size}>
+        <StatusIcon
+          size={size}
+          account={account}
+          connectionType={LAUNCH_DARKLY_VIEM_MIGRATION ? (connector?.type as ConnectorType) : connectionType}
+        />
+      </IconWrapper>
+    )
+  }
+
+  if (walletDetails && !walletDetails.isSupportedWallet) {
+    return (
+      <HoverTooltip wrapInContainer content={t`This wallet is not yet supported`}>
+        <IconWrapper role="img" aria-label={t`Warning sign. Wallet not supported`}>
+          ⚠️
+        </IconWrapper>
+      </HoverTooltip>
+    )
+  }
+
+  return (
+    <IconWrapper size={size}>
+      <img src={icon} alt={walletName || connectionType} onError={() => setImageLoadError(true)} />
+    </IconWrapper>
+  )
+}
