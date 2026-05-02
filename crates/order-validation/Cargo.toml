@@ -1,0 +1,18 @@
+[package]
+name = "order-validation"
+version = "0.1.0"
+authors = ["Cow Protocol Developers <dev@cow.fi>"]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+alloy-contract = { workspace = true }
+alloy-primitives = { workspace = true }
+contracts = { workspace = true }
+futures = { workspace = true }
+moka = { workspace = true, features = ["sync"] }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

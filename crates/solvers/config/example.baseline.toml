@@ -1,0 +1,8 @@
+chain-id = "1"
+# Alternatively, you can manually specify a WETH contract address:
+# weth = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+base-tokens = []
+max-hops = 0
+max-partial-attempts = 5
+native-token-price-estimation-amount = "100000000000000000"
+# solution-gas-offset = 106391 # rough estimate of the settlement overhead

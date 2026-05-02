@@ -1,0 +1,243 @@
+use {
+    alloy_primitives::U256,
+    serde::{Deserialize, Deserializer, de},
+    std::{error::Error, fmt::Display, time::Duration},
+};
+
+/// Represents each available chain
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u64)]
+pub enum Chain {
+    Mainnet = 1,
+    Goerli = 5,
+    Gnosis = 100,
+    Sepolia = 11155111,
+    ArbitrumOne = 42161,
+    Base = 8453,
+    Hardhat = 31337,
+    Bnb = 56,
+    Avalanche = 43114,
+    Optimism = 10,
+    Polygon = 137,
+    Linea = 59144,
+    Plasma = 9745,
+    Ink = 57073,
+}
+
+impl Chain {
+    /// Returns the chain's chain ID
+    pub fn id(&self) -> u64 {
+        *self as u64
+    }
+
+    /// Returns the canonical name of the chain on CoW Protocol.
+    pub fn name(&self) -> &'static str {
+        // You can find a list of available networks by chain and chain id here:
+        // https://chainid.network/chains.json
+        match &self {
+            Self::Mainnet => "Ethereum / Mainnet",
+            Self::Goerli => "Ethereum / Goerli",
+            Self::Gnosis => "xDAI",
+            Self::Sepolia => "Ethereum / Sepolia",
+            Self::ArbitrumOne => "Arbitrum One",
+            Self::Base => "Base",
+            Self::Hardhat => "Hardhat",
+            Self::Bnb => "BNB Smart Chain",
+            Self::Avalanche => "Avalanche",
+            Self::Optimism => "Optimism",
+            Self::Polygon => "Polygon",
+            Self::Linea => "Linea",
+            Self::Plasma => "Plasma",
+            Self::Ink => "Ink",
+        }
+    }
+
+    /// The default amount in native tokens atoms to use for price estimation
+    pub fn default_amount_to_estimate_native_prices_with(&self) -> U256 {
+        match &self {
+            Self::Mainnet
+            | Self::Goerli
+            | Self::Sepolia
+            | Self::ArbitrumOne
+            | Self::Base
+            | Self::Bnb
+            | Self::Linea
+            | Self::Optimism
+            | Self::Ink => U256::from(10u128.pow(17)),
+            Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
+            Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
+            Self::Hardhat => {
+                panic!("unsupported chain for default amount to estimate native prices with")
+            }
+        }
+    }
+
+    /// Returns the block time in milliseconds
+    pub fn block_time_in_ms(&self) -> Duration {
+        match self {
+            Self::Mainnet => Duration::from_millis(12_000),
+            Self::Goerli => Duration::from_millis(12_000),
+            Self::Gnosis => Duration::from_millis(5_000),
+            Self::Sepolia => Duration::from_millis(12_000),
+            Self::ArbitrumOne => Duration::from_millis(250),
+            Self::Base => Duration::from_millis(2_000),
+            Self::Hardhat => Duration::from_millis(12_000), // Arbitrary reasonable value
+            Self::Bnb => Duration::from_millis(3_000),
+            Self::Avalanche => Duration::from_millis(2_000),
+            Self::Optimism => Duration::from_millis(2_000),
+            Self::Polygon => Duration::from_millis(2_000),
+            Self::Linea => Duration::from_millis(2_000),
+            Self::Plasma => Duration::from_millis(1_000),
+            Self::Ink => Duration::from_millis(1_000),
+        }
+    }
+
+    /// Returns the number of blocks that fits into the given time (in
+    /// milliseconds)
+    pub fn blocks_in(&self, time_in_ms: u64) -> f64 {
+        time_in_ms as f64 / self.block_time_in_ms().as_millis() as f64
+    }
+}
+
+impl TryFrom<u64> for Chain {
+    type Error = ChainIdNotSupported;
+
+    /// Initializes `Network` from a chain ID, returns error if the chain id is
+    /// not supported
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        let network = match value {
+            x if x == Self::Mainnet as u64 => Self::Mainnet,
+            x if x == Self::Goerli as u64 => Self::Goerli,
+            x if x == Self::Gnosis as u64 => Self::Gnosis,
+            x if x == Self::Sepolia as u64 => Self::Sepolia,
+            x if x == Self::ArbitrumOne as u64 => Self::ArbitrumOne,
+            x if x == Self::Base as u64 => Self::Base,
+            x if x == Self::Hardhat as u64 => Self::Hardhat,
+            x if x == Self::Bnb as u64 => Self::Bnb,
+            x if x == Self::Avalanche as u64 => Self::Avalanche,
+            x if x == Self::Optimism as u64 => Self::Optimism,
+            x if x == Self::Polygon as u64 => Self::Polygon,
+            x if x == Self::Linea as u64 => Self::Linea,
+            x if x == Self::Plasma as u64 => Self::Plasma,
+            x if x == Self::Ink as u64 => Self::Ink,
+            _ => Err(ChainIdNotSupported)?,
+        };
+        Ok(network)
+    }
+}
+
+impl TryFrom<U256> for Chain {
+    type Error = ChainIdNotSupported;
+
+    /// Initializes `Network` from a chain ID, returns error if the chain id is
+    /// not supported
+    fn try_from(value: U256) -> Result<Self, Self::Error> {
+        u64::try_from(value)
+            .map_err(|_| ChainIdNotSupported)?
+            .try_into()
+    }
+}
+
+impl<'de> Deserialize<'de> for Chain {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct NetworkVisitor;
+
+        impl de::Visitor<'_> for NetworkVisitor {
+            type Value = Chain;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a u64 or a string")
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Chain::try_from(value).map_err(de::Error::custom)
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Chain::try_from(value.parse::<u64>().map_err(de::Error::custom)?)
+                    .map_err(de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_any(NetworkVisitor)
+    }
+}
+
+#[derive(Debug)]
+pub struct ChainIdNotSupported;
+
+impl Display for ChainIdNotSupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "chain id not supported")
+    }
+}
+
+impl Error for ChainIdNotSupported {}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_blocks_in() {
+        const TARGET_AGE: u64 = 6 * 60 * 60 * 1000; // 6h in ms
+
+        assert_eq!(Chain::Mainnet.blocks_in(TARGET_AGE).round(), 1800.0);
+        assert_eq!(Chain::Sepolia.blocks_in(TARGET_AGE).round(), 1800.0);
+        assert_eq!(Chain::Goerli.blocks_in(TARGET_AGE).round(), 1800.0);
+        assert_eq!(Chain::Gnosis.blocks_in(TARGET_AGE).round(), 4320.0);
+        assert_eq!(Chain::Base.blocks_in(TARGET_AGE).round(), 10800.0);
+        assert_eq!(Chain::ArbitrumOne.blocks_in(TARGET_AGE).round(), 86400.0);
+    }
+
+    #[test]
+    fn test_deserialize_from_u64() {
+        // Test valid u64 deserialization
+        let json_data = "1"; // Should deserialize to Network::Mainnet
+        let network: Chain = serde_json::from_str(json_data).unwrap();
+        assert_eq!(network, Chain::Mainnet);
+
+        let json_data = "5"; // Should deserialize to Network::Goerli
+        let network: Chain = serde_json::from_str(json_data).unwrap();
+        assert_eq!(network, Chain::Goerli);
+
+        let json_data = "100"; // Should deserialize to Network::Gnosis
+        let network: Chain = serde_json::from_str(json_data).unwrap();
+        assert_eq!(network, Chain::Gnosis);
+
+        // Test invalid u64 deserialization (should return an error)
+        let json_data = "9999999"; // Not a valid Network variant
+        let result: Result<Chain, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deserialize_from_str() {
+        // Test valid string deserialization
+        let json_data = "\"1\""; // Should parse to u64 1 and then to Network::Mainnet
+        let network: Chain = serde_json::from_str(json_data).unwrap();
+        assert_eq!(network, Chain::Mainnet);
+
+        let json_data = "\"5\""; // Should parse to u64 5 and then to Network::Goerli
+        let network: Chain = serde_json::from_str(json_data).unwrap();
+        assert_eq!(network, Chain::Goerli);
+
+        let json_data = "\"100\""; // Should parse to u64 100 and then to Network::Gnosis
+        let network: Chain = serde_json::from_str(json_data).unwrap();
+        assert_eq!(network, Chain::Gnosis);
+
+        // Test invalid string deserialization (should return an error)
+        let json_data = "\"invalid\""; // Cannot be parsed as u64
+        let result: Result<Chain, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+    }
+}

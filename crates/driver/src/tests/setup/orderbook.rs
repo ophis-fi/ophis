@@ -1,0 +1,86 @@
+use {
+    crate::{domain::competition::order::app_data::AppData, tests::setup::Order},
+    app_data::AppDataDocument,
+    axum::{
+        Extension,
+        Json,
+        Router,
+        extract::Path,
+        http::StatusCode,
+        response::{IntoResponse, Response},
+        routing::get,
+    },
+    std::{collections::HashMap, net::SocketAddr},
+};
+
+/// A mocked orderbook service that provides `/v1/app_data/{app_data_hash}` API.
+/// Uses in-memory app_data storage implemented with an axum extension layer and
+/// a `HashMap` which is sufficient due to read-only concurrent access.
+pub struct Orderbook {
+    pub addr: SocketAddr,
+}
+
+impl Orderbook {
+    /// Starts the orderbook server.
+    /// Uses the provided orders to populate the app_data storage where only
+    /// full app_data is stored. The server listens on a random port.
+    ///
+    /// # Returns
+    /// The `Orderbook` instance with the server listening address.
+    pub async fn start(orders: &[Order]) -> Self {
+        let app_data_storage = orders
+            .iter()
+            .filter_map(|order| {
+                if let AppData::Full(validated_data) = &order.app_data {
+                    Some((
+                        app_data::AppDataHash(order.app_data.hash().0.0),
+                        app_data::Root::new(Some(validated_data.protocol.clone())),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<HashMap<_, _>>();
+
+        let app = Router::new()
+            .route("/api/v1/app_data/{app_data}", get(Self::app_data_handler))
+            .layer(Extension(app_data_storage));
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tracing::info!("Orderbook mock server listening on {}", addr);
+
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        Orderbook { addr }
+    }
+
+    async fn app_data_handler(
+        Path(app_data): Path<String>,
+        Extension(app_data_storage): Extension<HashMap<app_data::AppDataHash, app_data::Root>>,
+    ) -> Response {
+        tracing::debug!("Orderbook received an app_data request: {}", app_data);
+
+        let app_data_hash = match app_data.parse::<app_data::AppDataHash>() {
+            Ok(hash) => hash,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "Invalid app_data format" })),
+                )
+                    .into_response();
+            }
+        };
+
+        if let Some(full_app_data) = app_data_storage.get(&app_data_hash) {
+            let response = AppDataDocument {
+                full_app_data: serde_json::to_string(full_app_data).unwrap(),
+            };
+            return Json(response).into_response();
+        }
+
+        StatusCode::NOT_FOUND.into_response()
+    }
+}

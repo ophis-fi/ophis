@@ -1,0 +1,1557 @@
+//! Solvers propose solutions to an [`crate::domain::Auction`].
+//!
+//! A winning solution becomes a [`Settlement`] once it is executed on-chain in
+//! a form of settlement transaction.
+
+use {
+    crate::{
+        domain::{self, Metrics, OrderUid, auction::order, settlement::transaction::EncodedTrade},
+        infra::{self, persistence::dto::AuctionId},
+    },
+    chain::Chain,
+    chrono::{DateTime, Utc},
+    database::{orders::OrderKind, solver_competition_v2::Solution},
+    eth_domain_types as eth,
+    futures::TryFutureExt,
+    number::conversions::big_decimal_to_u256,
+    std::collections::{HashMap, HashSet},
+};
+
+mod auction;
+mod observer;
+mod trade;
+pub mod transaction;
+pub use {
+    auction::Auction,
+    observer::Observer,
+    trade::{Trade, TradeEvent, math},
+    transaction::Transaction,
+};
+
+/// A settled transaction together with the `Auction`, for which it was executed
+/// on-chain.
+///
+/// Referenced as a [`Settlement`] in the codebase.
+#[derive(Debug)]
+pub struct Settlement {
+    /// The gas used by the settlement transaction.
+    gas: eth::Gas,
+    /// The effective gas price of the settlement transaction.
+    gas_price: eth::EffectiveGasPrice,
+    /// The block number of the block that contains the settlement transaction.
+    #[allow(dead_code, reason = "we want this data for the Debug printing")]
+    block: eth::BlockNo,
+    /// The solver (is different from `tx.from` for smart contract solvers)
+    solver: eth::Address,
+    /// The corresponding solver's winning solution UID.
+    solution_uid: i64,
+    /// The associated auction.
+    auction: Auction,
+    /// Trades that were settled by the transaction.
+    trades: Vec<Trade>,
+}
+
+impl Settlement {
+    pub fn auction_id(&self) -> i64 {
+        self.auction.id
+    }
+
+    pub fn solver(&self) -> eth::Address {
+        self.solver
+    }
+
+    /// The gas used by the settlement.
+    pub fn gas(&self) -> eth::Gas {
+        self.gas
+    }
+
+    /// The effective gas price at the time of settlement.
+    pub fn gas_price(&self) -> eth::EffectiveGasPrice {
+        self.gas_price
+    }
+
+    /// The solution UID associated with this settlement.
+    pub fn solution_uid(&self) -> i64 {
+        self.solution_uid
+    }
+
+    /// Total surplus for all trades in the settlement.
+    pub fn surplus_in_ether(&self) -> eth::Ether {
+        self.trades
+            .iter()
+            .map(|trade| {
+                trade
+                    .surplus_in_ether(&self.auction.prices)
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(
+                            ?err,
+                            trade = %trade.uid(),
+                            "possible incomplete surplus calculation",
+                        );
+                        num::zero()
+                    })
+            })
+            .sum()
+    }
+
+    /// Total fee taken for all the trades in the settlement.
+    pub fn fee_in_ether(&self) -> eth::Ether {
+        self.trades
+            .iter()
+            .map(|trade| {
+                trade
+                    .fee_in_ether(&self.auction.prices)
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(
+                            ?err,
+                            trade = %trade.uid(),
+                            "possible incomplete fee calculation",
+                        );
+                        num::zero()
+                    })
+            })
+            .sum()
+    }
+
+    /// Per order fees breakdown. Contains all orders from the settlement
+    pub fn fee_breakdown(&self) -> HashMap<domain::OrderUid, trade::FeeBreakdown> {
+        self.trades
+            .iter()
+            .map(|trade| {
+                let fee_breakdown = trade.fee_breakdown(&self.auction).unwrap_or_else(|err| {
+                    tracing::warn!(
+                        ?err,
+                        trade = %trade.uid(),
+                        "possible incomplete fee breakdown calculation",
+                    );
+                    trade::FeeBreakdown {
+                        total: eth::Asset {
+                            // TODO surplus token
+                            token: trade.sell_token(),
+                            amount: num::zero(),
+                        },
+                        protocol: vec![],
+                    }
+                });
+                (*trade.uid(), fee_breakdown)
+            })
+            .collect()
+    }
+
+    /// Return all trades that are classified as Just-In-Time (JIT) orders.
+    pub fn jit_orders(&self) -> Vec<&trade::Jit> {
+        self.trades
+            .iter()
+            .filter_map(|trade| trade.as_jit())
+            .collect()
+    }
+
+    pub async fn new(
+        settled: Transaction,
+        persistence: &infra::Persistence,
+        chain: &Chain,
+    ) -> Result<Self, Error> {
+        let (auction, solver_winning_solutions) = tokio::try_join!(
+            persistence
+                .get_auction(settled.auction_id, &settled.trades)
+                .map_err(Error::from),
+            persistence
+                .get_solver_winning_solutions(settled.auction_id, settled.solver)
+                .map_err(Error::from),
+        )?;
+
+        if settled.block > auction.block + max_settlement_age(chain) {
+            // A settled transaction references a VERY old auction.
+            //
+            // A hacky way to detect processing of production settlements in the staging
+            // environment, as production is lagging with auction ids by ~270 days on
+            // Ethereum mainnet.
+            //
+            // TODO: remove once https://github.com/cowprotocol/services/issues/2848 is resolved and ~270 days are passed since bumping.
+            return Err(Error::WrongEnvironment);
+        }
+
+        // Check this only if we are sure the settlement is from the current
+        // environment.
+        let Some(solution_uid) =
+            find_winning_solution_uid(&solver_winning_solutions, &settled.trades)
+        else {
+            Metrics::get()
+                .inconsistent_settlements
+                .with_label_values(&[&format!("{:?}", settled.solver.0)])
+                .inc();
+            return Err(Error::InconsistentData(InconsistentData::SolutionNotFound));
+        };
+
+        let trades = settled
+            .trades
+            .into_iter()
+            .map(|trade| Trade::new(trade, &auction, settled.timestamp))
+            .collect();
+
+        Ok(Self {
+            block: settled.block,
+            gas: settled.gas,
+            gas_price: settled.gas_price,
+            solver: settled.solver,
+            solution_uid,
+            trades,
+            auction,
+        })
+    }
+}
+
+/// A settlement event emitted by a settlement smart contract.
+#[derive(Debug, Clone, Copy)]
+pub struct SettlementEvent {
+    pub block: eth::BlockNo,
+    pub log_index: u64,
+    pub transaction: eth::TxId,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq)]
+struct OrderMatchKey {
+    uid: OrderUid,
+    token: eth::TokenAddress,
+    executed: eth::U256,
+}
+
+fn trade_to_key(trade: &EncodedTrade) -> OrderMatchKey {
+    let (token, executed) = match trade.side {
+        order::Side::Sell => (trade.sell.token, trade.sell.amount.0),
+        order::Side::Buy => (trade.buy.token, trade.buy.amount.0),
+    };
+
+    // The Settlement smart contract overrides the "executed" field in the Trade
+    // event when the order is not partially fillable, so we need to
+    // differentiate between both cases.
+    // https://github.com/cowprotocol/contracts/blob/main/src/contracts/GPv2Settlement.sol#L385-L386
+    // https://github.com/cowprotocol/contracts/blob/main/src/contracts/GPv2Settlement.sol#L407-L408
+    let executed = if trade.partially_fillable {
+        trade.executed.0
+    } else {
+        executed
+    };
+
+    OrderMatchKey {
+        uid: trade.uid,
+        token,
+        executed,
+    }
+}
+
+fn order_to_key(order: &database::solver_competition_v2::Order) -> OrderMatchKey {
+    OrderMatchKey {
+        uid: OrderUid(order.uid.0),
+        token: match order.side {
+            OrderKind::Sell => eth::Address::new(order.sell_token.0).into(),
+            OrderKind::Buy => eth::Address::new(order.buy_token.0).into(),
+        },
+        executed: match order.side {
+            OrderKind::Sell => big_decimal_to_u256(&order.executed_sell).unwrap_or_default(),
+            OrderKind::Buy => big_decimal_to_u256(&order.executed_buy).unwrap_or_default(),
+        },
+    }
+}
+
+/// Finds a winning solution UID for a given set of trades by comparing the
+/// order UID and the sell/buy token with their executed amounts.
+fn find_winning_solution_uid(
+    solver_winning_solutions: &[Solution],
+    settled_trades: &[EncodedTrade],
+) -> Option<i64> {
+    let settled_keys: HashSet<_> = settled_trades.iter().map(trade_to_key).collect();
+
+    solver_winning_solutions.iter().find_map(|solution| {
+        let solution_keys: HashSet<_> = solution.orders.iter().map(order_to_key).collect();
+        (settled_keys == solution_keys).then_some(solution.uid)
+    })
+}
+
+/// How old (in terms of blocks) a settlement should be, to be considered as a
+/// settlement from another environment.
+///
+/// Currently set to ~6h
+fn max_settlement_age(chain: &Chain) -> u64 {
+    const TARGET_AGE: u64 = 6 * 60 * 60 * 1000; // 6h in ms
+    chain.blocks_in(TARGET_AGE).round() as u64
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("failed communication with the database: {0}")]
+    Infra(anyhow::Error),
+    #[error("failed to prepare the data fetched from database for domain: {0}")]
+    InconsistentData(InconsistentData),
+    #[error("settlement refers to an auction from a different environment")]
+    WrongEnvironment,
+}
+
+/// Errors that can occur when fetching data from the persistence layer.
+///
+/// These errors cover missing data, conversion of data into domain objects etc.
+///
+/// This is a separate enum to allow for more specific error handling.
+#[derive(Debug, thiserror::Error)]
+pub enum InconsistentData {
+    #[error("auction not found in the persistence layer")]
+    AuctionNotFound,
+    #[error("invalid fee policy fetched from persistence layer: {0} for order: {1}")]
+    InvalidFeePolicy(infra::persistence::dto::fee_policy::Error, domain::OrderUid),
+    #[error("invalid fetched price from persistence layer for token: {0:?}")]
+    InvalidPrice(eth::TokenAddress),
+    #[error("no solution exists for this settlement")]
+    SolutionNotFound,
+}
+
+impl From<infra::persistence::error::Auction> for Error {
+    fn from(err: infra::persistence::error::Auction) -> Self {
+        match err {
+            infra::persistence::error::Auction::DatabaseError(err) => Self::Infra(err.into()),
+            infra::persistence::error::Auction::NotFound => {
+                Self::InconsistentData(InconsistentData::AuctionNotFound)
+            }
+            infra::persistence::error::Auction::InvalidFeePolicy(err, order) => {
+                Self::InconsistentData(InconsistentData::InvalidFeePolicy(err, order))
+            }
+            infra::persistence::error::Auction::InvalidPrice(token) => {
+                Self::InconsistentData(InconsistentData::InvalidPrice(token))
+            }
+        }
+    }
+}
+
+impl From<infra::persistence::DatabaseError> for Error {
+    fn from(err: infra::persistence::DatabaseError) -> Self {
+        Self::Infra(err.0)
+    }
+}
+
+#[derive(Debug)]
+pub struct ExecutionStarted {
+    pub auction_id: AuctionId,
+    pub solver: eth::Address,
+    pub solution_uid: usize,
+    pub start_timestamp: DateTime<Utc>,
+    pub start_block: u64,
+    pub deadline_block: u64,
+}
+
+#[derive(Debug)]
+pub struct ExecutionEnded {
+    pub auction_id: AuctionId,
+    pub solver: eth::Address,
+    pub solution_uid: usize,
+    pub end_timestamp: DateTime<Utc>,
+    pub end_block: u64,
+    pub outcome: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        crate::domain::{
+            self,
+            auction,
+            blockchain,
+            settlement::{OrderMatchKey, trade_to_key},
+        },
+        alloy::{eips::BlockId, primitives::address},
+        eth_domain_types::{self as eth, Address},
+        hex_literal::hex,
+        number::u256_ext::U256Ext,
+        std::collections::{HashMap, HashSet},
+        winner_selection::{self as ws, state::RankedItem},
+    };
+
+    #[derive(Clone)]
+    struct MockAuthenticator;
+
+    #[async_trait::async_trait]
+    impl super::transaction::Authenticator for MockAuthenticator {
+        async fn is_valid_solver(
+            &self,
+            _prospective_solver: eth::Address,
+            _block: BlockId,
+        ) -> Result<bool, super::transaction::Error> {
+            return Ok(true);
+        }
+    }
+
+    fn score_trade_with_winner_selection(
+        trade: &super::trade::Trade,
+        auction: &super::Auction,
+    ) -> eth::U256 {
+        let order = ws_order_from_trade(trade);
+        let prices = ws_prices_from_auction(auction);
+        let context = ws::AuctionContext {
+            fee_policies: auction
+                .orders
+                .iter()
+                .map(|(uid, policies)| {
+                    let policies = policies.iter().copied().map(to_ws_fee_policy).collect();
+                    (ws::OrderUid(uid.0), policies)
+                })
+                .collect(),
+            surplus_capturing_jit_order_owners: auction
+                .surplus_capturing_jit_order_owners
+                .iter()
+                .copied()
+                .collect(),
+            native_prices: prices.clone(),
+        };
+        let solution = ws::Solution::new(0, ws::Address::ZERO, vec![order]);
+        let arbitrator = ws::Arbitrator {
+            max_winners: 1,
+            weth: ws::Address::ZERO,
+        };
+        let ranking = arbitrator.arbitrate(vec![solution], &context);
+
+        ranking
+            .ranked
+            .first()
+            .map(|solution| solution.score())
+            .unwrap_or_default()
+    }
+
+    fn ws_order_from_trade(trade: &super::trade::Trade) -> ws::Order {
+        let trade = super::trade::math::Trade::from(trade);
+        let (executed_sell, executed_buy) = ws_executed_amounts(&trade);
+
+        ws::Order {
+            uid: ws::OrderUid(trade.uid.0),
+            sell_token: *trade.sell.token,
+            buy_token: *trade.buy.token,
+            sell_amount: trade.sell.amount.0,
+            buy_amount: trade.buy.amount.0,
+            executed_sell,
+            executed_buy,
+            side: match trade.side {
+                auction::order::Side::Buy => ws::Side::Buy,
+                auction::order::Side::Sell => ws::Side::Sell,
+            },
+        }
+    }
+
+    fn ws_executed_amounts(trade: &super::trade::math::Trade) -> (eth::U256, eth::U256) {
+        match trade.side {
+            auction::order::Side::Sell => {
+                let executed_sell = trade.executed.0;
+                let executed_buy = executed_sell
+                    .checked_mul(trade.prices.custom.sell)
+                    .and_then(|value| value.checked_ceil_div(&trade.prices.custom.buy))
+                    .expect("invalid sell trade executed amounts");
+                (executed_sell, executed_buy)
+            }
+            auction::order::Side::Buy => {
+                let executed_buy = trade.executed.0;
+                let executed_sell = executed_buy
+                    .checked_mul(trade.prices.custom.buy)
+                    .and_then(|value| value.checked_div(trade.prices.custom.sell))
+                    .expect("invalid buy trade executed amounts");
+                (executed_sell, executed_buy)
+            }
+        }
+    }
+
+    fn ws_prices_from_auction(auction: &super::Auction) -> HashMap<ws::Address, ws::U256> {
+        auction
+            .prices
+            .iter()
+            .map(|(token, price)| (Address::from(*token), price.get().0))
+            .collect()
+    }
+
+    fn to_ws_fee_policy(policy: domain::fee::Policy) -> ws::primitives::FeePolicy {
+        match policy {
+            domain::fee::Policy::Surplus {
+                factor,
+                max_volume_factor,
+            } => ws::primitives::FeePolicy::Surplus {
+                factor: factor.get(),
+                max_volume_factor: max_volume_factor.get(),
+            },
+            domain::fee::Policy::PriceImprovement {
+                factor,
+                max_volume_factor,
+                quote,
+            } => ws::primitives::FeePolicy::PriceImprovement {
+                factor: factor.get(),
+                max_volume_factor: max_volume_factor.get(),
+                quote: ws::primitives::Quote {
+                    sell_amount: quote.sell_amount,
+                    buy_amount: quote.buy_amount,
+                    fee: quote.fee,
+                    solver: quote.solver,
+                },
+            },
+            domain::fee::Policy::Volume { factor } => ws::primitives::FeePolicy::Volume {
+                factor: factor.get(),
+            },
+        }
+    }
+
+    // https://etherscan.io/tx/0x030623e438f28446329d8f4ff84db897907fcac59b9943b31b7be66f23c877af
+    // A transfer transaction that emits a settlement event, but it's not actually a
+    // swap.
+    #[tokio::test]
+    async fn not_a_swap() {
+        let calldata = hex!(
+            "
+        13d79a0b
+        0000000000000000000000000000000000000000000000000000000000000080
+        00000000000000000000000000000000000000000000000000000000000000a0
+        00000000000000000000000000000000000000000000000000000000000000c0
+        00000000000000000000000000000000000000000000000000000000000000e0
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000080
+        00000000000000000000000000000000000000000000000000000000000017a0
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000011
+        0000000000000000000000000000000000000000000000000000000000000220
+        0000000000000000000000000000000000000000000000000000000000000360
+        00000000000000000000000000000000000000000000000000000000000004a0
+        00000000000000000000000000000000000000000000000000000000000005e0
+        0000000000000000000000000000000000000000000000000000000000000720
+        0000000000000000000000000000000000000000000000000000000000000860
+        00000000000000000000000000000000000000000000000000000000000009a0
+        0000000000000000000000000000000000000000000000000000000000000ae0
+        0000000000000000000000000000000000000000000000000000000000000c20
+        0000000000000000000000000000000000000000000000000000000000000d60
+        0000000000000000000000000000000000000000000000000000000000000ea0
+        0000000000000000000000000000000000000000000000000000000000000fe0
+        0000000000000000000000000000000000000000000000000000000000001120
+        0000000000000000000000000000000000000000000000000000000000001260
+        00000000000000000000000000000000000000000000000000000000000013a0
+        00000000000000000000000000000000000000000000000000000000000014e0
+        0000000000000000000000000000000000000000000000000000000000001620
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000388674df3c7f96ac76c6fa06813b758322b5b64ce14bf46f0f9b4ec6f2
+        d015ff9a9008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000383f19e12409d5913e40bfde35a1607a1a43f1f9d26e76dd2d9d409cc7
+        50125f769008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        00000038a91a488e41e46dedbe71ae0c0d9f41be8de9f45ffc62271970362777
+        9e302e8d9008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        0000003820621f141681025ffcbce03b51c3ea78c93da8739df9202210647968
+        6d2efad59008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000385846bbbcee39039678e529973cf6962b90d49663d5ff49220adfb240
+        4805d11e9008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000388a608a3e6fd6f95797d376ffa35ae077d78440b627dce2b3d2278e04
+        8d37f7c09008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        00000038436b1ae2723b42982a435ede8f92033fbdf1505e5dac97c1099b5ffd
+        fc1debda9008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        00000038c31724565adeb2d0e4d6a6980f45b9fd91bb0b858fa8c8ada300e697
+        45d1ab379008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        0000003812789b110b2bf7353d054d978dd30972f2f33e54c4c7b93a1f992d20
+        fd2f29619008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        00000038f527dd3ad4938713bff3fb23a62d7b454caf40bc80f3eeed77c3d269
+        d9ff8eb69008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000388a63a1ed3d671e94aafe29b9ad479340ee04ad1fb5796c73cb71b25a
+        e8e2b0a49008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000384acca1a9694919daee72c0f20b64a2c0103750c26ce9b25cc864609f
+        2f4977269008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        00000038bdbeba9388a200bfa8c3f153c31a539622e2994a2cc59bfdc8c562a3
+        2f20b9919008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000383649cc08adbf44018756fec310e9348d64139f33530166ef53f1834f
+        2f5c8c469008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        0000003864bee671badbb222a43006744c89b70a368ca34a356dcf41f755923e
+        aab5b4029008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000009008d19f58aabd9ed0d60971565aa8510560ab41
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        ec6cb13f00000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000100000000000000000000000000000000000000000000000000000000
+        000000382285ea60762c9a58d407e5aa3b8c3287628290793bc7260b0e0324ed
+        6f8bb1269008d19f58aabd9ed0d60971565aa8510560ab41678716a000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000044
+        a9059cbb000000000000000000000000a03be496e67ec29bc62f01a428683d7f
+        9c2049300000000000000000000000000000000000000000000000002136c5d9
+        c1570aef00000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000"
+        )
+        .to_vec();
+
+        let domain_separator = eth::DomainSeparator(hex!(
+            "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943"
+        ));
+        let settlement_contract = address!("9008d19f58aabd9ed0d60971565aa8510560ab41");
+
+        let transaction = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: calldata.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap_err();
+
+        // These transfer transactions don't have the auction_id attached so overall bad
+        // calldata is expected
+        assert!(matches!(
+            transaction,
+            super::transaction::Error::Decoding(_)
+        ));
+    }
+
+    // https://etherscan.io/tx/0xc48dc0d43ffb43891d8c3ad7bcf05f11465518a2610869b20b0b4ccb61497634
+    #[tokio::test]
+    async fn settlement() {
+        let calldata = hex!(
+            "
+        13d79a0b
+        0000000000000000000000000000000000000000000000000000000000000080
+        0000000000000000000000000000000000000000000000000000000000000120
+        00000000000000000000000000000000000000000000000000000000000001c0
+        00000000000000000000000000000000000000000000000000000000000003c0
+        0000000000000000000000000000000000000000000000000000000000000004
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        000000000000000000000000c52fafdc900cb92ae01e6e4f8979af7f436e2eb2
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        000000000000000000000000c52fafdc900cb92ae01e6e4f8979af7f436e2eb2
+        0000000000000000000000000000000000000000000000000000000000000004
+        0000000000000000000000000000000000000000000000010000000000000000
+        0000000000000000000000000000000000000000000000000023f003f04b5a92
+        0000000000000000000000000000000000000000000000f676b2510588839eb6
+        00000000000000000000000000000000000000000000000022b1c8c1227a0000
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000009398a8948e1ac88432a509b218f9ac8cf9cecdee
+        00000000000000000000000000000000000000000000000022b1c8c1227a0000
+        0000000000000000000000000000000000000000000000f11f89f17728c24a5c
+        00000000000000000000000000000000000000000000000000000000ffffffff
+        ae848d463143d030dd3875930a875de6417f58adc5dde0e94d485706d34b4797
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000040
+        00000000000000000000000000000000000000000000000022b1c8c1227a0000
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000028
+        40a50cf069e992aa4536211b23f286ef8875218740a50cf069e992aa4536211b
+        23f286ef88752187000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000140
+        00000000000000000000000000000000000000000000000000000000000004c0
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        00000000000000000000000040a50cf069e992aa4536211b23f286ef88752187
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000004
+        4c84c1c800000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000140
+        0000000000000000000000000000000000000000000000000000000000000220
+        00000000000000000000000000000000be48a3000b818e9615d85aacfed4ca97
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        000000000000000000000000000000000000000000000000000000000000004f
+        0000000101010000000000000000063a508037887d5d5aca4b69771e56f3c92c
+        20840dd09188a65771d8000000000000002c400000000000000001c02aaa39b2
+        23fe8d0a0e5c4f27ead9083c756cc20000000000000000000000000000000000
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000044
+        a9059cbb000000000000000000000000c88deb1ce0bc4a4306b7f20be2abd28a
+        d3a5c8d10000000000000000000000000000000000000000000000001c5efcf2
+        c41873fd00000000000000000000000000000000000000000000000000000000
+        000000000000000000000000c88deb1ce0bc4a4306b7f20be2abd28ad3a5c8d1
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000000a4
+        022c0d9f00000000000000000000000000000000000000000000000000000000
+        000000000000000000000000000000000000000000000000000000ca2b0dae6c
+        b90dbc4b0000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        0000008000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000084120c"
+        )
+        .to_vec();
+
+        let domain_separator = eth::DomainSeparator(hex!(
+            "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943"
+        ));
+        let settlement_contract = address!("9008d19f58aabd9ed0d60971565aa8510560ab41");
+        let transaction = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: calldata.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap();
+
+        let order_uid = transaction.trades[0].uid;
+
+        let auction = super::Auction {
+            block: eth::BlockNo(0),
+            // prices read from https://solver-instances.s3.eu-central-1.amazonaws.com/prod/mainnet/legacy/8655372.json
+            prices: auction::Prices::from([
+                (
+                    eth::TokenAddress::from(address!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
+                    auction::Price::try_new(eth::U256::from(1000000000000000000u128).into())
+                        .unwrap(),
+                ),
+                (
+                    eth::TokenAddress::from(address!("c52fafdc900cb92ae01e6e4f8979af7f436e2eb2")),
+                    auction::Price::try_new(eth::U256::from(537359915436704u128).into()).unwrap(),
+                ),
+            ]),
+            surplus_capturing_jit_order_owners: Default::default(),
+            id: 0,
+            orders: HashMap::from([(order_uid, vec![])]),
+        };
+
+        let trade = super::trade::Trade::new(transaction.trades[0].clone(), &auction, 0);
+
+        // surplus (score) read from https://api.cow.fi/mainnet/api/v1/solver_competition/by_tx_hash/0xc48dc0d43ffb43891d8c3ad7bcf05f11465518a2610869b20b0b4ccb61497634
+        assert_eq!(
+            trade.surplus_in_ether(&auction.prices).unwrap().0,
+            eth::U256::from(52937525819789126u128)
+        );
+        // fee read from "executedFee" https://api.cow.fi/mainnet/api/v1/orders/0x10dab31217bb6cc2ace0fe601c15d342f7626a1ee5ef0495449800e73156998740a50cf069e992aa4536211b23f286ef88752187ffffffff
+        // but not equal to 6890975030480504 anymore, since after this tx we switched to
+        // convert the fee from surplus token directly to ether
+        assert_eq!(
+            trade.fee_in_ether(&auction.prices).unwrap().0,
+            eth::U256::from(6752697350740628u128)
+        );
+    }
+
+    // https://etherscan.io/tx/0x688508eb59bd20dc8c0d7c0c0b01200865822c889f0fcef10113e28202783243
+    #[tokio::test]
+    async fn settlement_with_protocol_fee() {
+        let calldata = hex!(
+            "
+        13d79a0b
+        0000000000000000000000000000000000000000000000000000000000000080
+        0000000000000000000000000000000000000000000000000000000000000120
+        00000000000000000000000000000000000000000000000000000000000001c0
+        00000000000000000000000000000000000000000000000000000000000003e0
+        0000000000000000000000000000000000000000000000000000000000000004
+        000000000000000000000000056fd409e1d7a124bd7017459dfea2f387b6d5cd
+        000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7
+        000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7
+        000000000000000000000000056fd409e1d7a124bd7017459dfea2f387b6d5cd
+        0000000000000000000000000000000000000000000000000000000000000004
+        00000000000000000000000000000000000000000000000000000019b743b945
+        0000000000000000000000000000000000000000000000000000000000a87cf3
+        0000000000000000000000000000000000000000000000000000000000a87c7c
+        00000000000000000000000000000000000000000000000000000019b8b69873
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000003
+        000000000000000000000000f87da2093abee9b13a6f89671e4c3a3f80b42767
+        0000000000000000000000000000000000000000000000000000006d6e2edc00
+        0000000000000000000000000000000000000000000000000000000002cccdff
+        000000000000000000000000000000000000000000000000000000006799c219
+        2d365e5affcfa62cf1067b845add9c01bedcb2fc5d7a37442d2177262af26a0c
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000002
+        00000000000000000000000000000000000000000000000000000019b8b69873
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000041
+        e2ef661343676f9f4371ce809f728bb39a406f47835ee2b0104a8a1f340409ae
+        742dfe47fe469c024dc2fb7f80b99878b35985d66312856a8b5dcf5de4b069ee
+        1c00000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000080
+        0000000000000000000000000000000000000000000000000000000000000520
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000140
+        00000000000000000000000000000000000000000000000000000000000002e0
+        000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000044
+        095ea7b3000000000000000000000000e592427a0aece92de3edee1f18e0157c
+        05861564ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        ffffffff00000000000000000000000000000000000000000000000000000000
+        000000000000000000000000e592427a0aece92de3edee1f18e0157c05861564
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000104
+        db3e2198000000000000000000000000dac17f958d2ee523a2206206994597c1
+        3d831ec7000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce
+        3606eb4800000000000000000000000000000000000000000000000000000000
+        000001f40000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        66abb94e00000000000000000000000000000000000000000000000000000019
+        b4b64b9b00000000000000000000000000000000000000000000000000000019
+        bdd90a1800000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000000000e592427a0aece92de3edee1f18e0157c05861564
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000104
+        db3e2198000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce
+        3606eb48000000000000000000000000056fd409e1d7a124bd7017459dfea2f3
+        87b6d5cd00000000000000000000000000000000000000000000000000000000
+        000001f40000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        66abb94e00000000000000000000000000000000000000000000000000000000
+        00a87cf300000000000000000000000000000000000000000000000000000019
+        bb4af52700000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000008c912c"
+        )
+        .to_vec();
+
+        let domain_separator = eth::DomainSeparator(hex!(
+            "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943"
+        ));
+        let settlement_contract = address!("9008d19f58aabd9ed0d60971565aa8510560ab41");
+        let transaction = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: calldata.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap();
+
+        let prices: auction::Prices = From::from([
+            (
+                eth::TokenAddress::from(address!("dac17f958d2ee523a2206206994597c13d831ec7")),
+                auction::Price::try_new(eth::U256::from(321341140475275961528483840u128).into())
+                    .unwrap(),
+            ),
+            (
+                eth::TokenAddress::from(address!("056fd409e1d7a124bd7017459dfea2f387b6d5cd")),
+                auction::Price::try_new(
+                    eth::U256::from(3177764302250520038326415654912u128).into(),
+                )
+                .unwrap(),
+            ),
+        ]);
+
+        let order_uid = transaction.trades[0].uid;
+        let auction = super::Auction {
+            block: eth::BlockNo(0),
+            prices,
+            surplus_capturing_jit_order_owners: Default::default(),
+            id: 0,
+            orders: HashMap::from([(
+                order_uid,
+                vec![domain::fee::Policy::Surplus {
+                    factor: 0.5f64.try_into().unwrap(),
+                    max_volume_factor: 0.01.try_into().unwrap(),
+                }],
+            )]),
+        };
+        let trade = super::trade::Trade::new(transaction.trades[0].clone(), &auction, 0);
+
+        assert_eq!(
+            trade.surplus_in_ether(&auction.prices).unwrap().0,
+            eth::U256::from(384509480572312u128)
+        );
+
+        assert_eq!(
+            score_trade_with_winner_selection(&trade, &auction),
+            eth::U256::from(769018961144625u128) // 2 x surplus
+        );
+    }
+
+    // https://etherscan.io/tx/0x24ea2ea3d70db3e864935008d14170389bda124c786ca90dfb745278db9d24ee
+    #[tokio::test]
+    async fn settlement_with_cow_amm() {
+        let calldata = hex!(
+            "
+        13d79a0b
+        0000000000000000000000000000000000000000000000000000000000000080
+        0000000000000000000000000000000000000000000000000000000000000120
+        00000000000000000000000000000000000000000000000000000000000001c0
+        0000000000000000000000000000000000000000000000000000000000000520
+        0000000000000000000000000000000000000000000000000000000000000004
+        000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
+        0000000000000000000000000000000000000000000000000000000000000004
+        000000000000000000000000000000000000000000000000019a3146915f155e
+        000000000000000000000000000000000000000000000000000000001270a05f
+        000000000000000000000000000000000000000000000000000000001270a05f
+        000000000000000000000000000000000000000000000000019b4a78844e21f2
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000000000000000000000000000000000019b4a78844e21f2
+        00000000000000000000000000000000000000000000000000000000126f1d1f
+        0000000000000000000000000000000000000000000000000000000066c84917
+        362e5182440b52aa8fffe70a251550fbbcbca424740fe5a14f59bf0c1b06fe1d
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000042
+        000000000000000000000000000000000000000000000000019b4a78844e21f2
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000194
+        f08d4dea369c456d26a3168ff0024b904f2d8b91000000000000000000000000
+        c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2000000000000000000000000
+        a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000000000019b4a78844e21f2000000000000000000000000
+        00000000000000000000000000000000126f1d1f000000000000000000000000
+        0000000000000000000000000000000066c84917362e5182440b52aa8fffe70a
+        251550fbbcbca424740fe5a14f59bf0c1b06fe1d000000000000000000000000
+        0000000000000000000000000000000000000000f3b277728b3fee749481eb3e
+        0b3b48980dbbab78658fc419025cb16eee346775000000000000000000000000
+        00000000000000000000000000000000000000015a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc95a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc9000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000740
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        000000000000000000000000f08d4dea369c456d26a3168ff0024b904f2d8b91
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000024
+        f14fcbc8bfb27bd6d0a9e23c8bbc1cc85596e1c0639265a3c0b46a72f850529d
+        17bc1b5b00000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        0000000000000000000000009c05bdcc909c2b190837e8fe71619cf389598c2c
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000504
+        3732900900000000000000000000000000000000000000000000000000000000
+        0000002000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000000000000000000000000000000000000019b4a78
+        844e21f200000000000000000000000000000000000000000000000000000000
+        1270a05f00000000000000000000000000000000000000000000000000000000
+        66c848250000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab41000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce
+        3606eb4800000000000000000000000000000000000000000000000000000000
+        0000010000000000000000000000000000000000000000000000000000000000
+        0000008000000000000000000000000000000000000000000000000000000000
+        0000036000000000000000000000000000000000000000000000000000000000
+        0000038000000000000000000000000000000000000000000000000000000000
+        000003a000000000000000000000000000000000000000000000000000000000
+        000002c0000000000000000000000000000000000000000000000000019b4a78
+        844e21f20000000000000000000000000000000000004b905f8f54ec051e2802
+        2bde09620000000000000000000000000000000000004b905f8f54ec051e2802
+        2bde09620000000000000000000000000000000000004b8f0f47c8c28d464eaa
+        a8087e530000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab410000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        66c847e500000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000a00000000000000000000000000000000000000000000000000000000
+        0000006400000000000000000000000000000000000000000000000000000000
+        000001f400000000000000000000000000000000000000000000000000000000
+        0000000a00000000000000000000000000000000000000000000000000000000
+        0000006400000000000000000000000000000000000000000000000000000000
+        000001f400000000000000000000000000000000000000000000000000000000
+        0000001900000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000024000000000000000000000000000000000000000000000000000000000
+        00000041abcdb567a3168a149e106f95473e0605b44540005c64336deb7a17e8
+        3d7275616e37d90b0431a7fe719c619db5103bab6054a120bd6b9e20d78a3b70
+        6a76d2841b000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000131000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000008dd870"
+        )
+        .to_vec();
+
+        let domain_separator = eth::DomainSeparator(hex!(
+            "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943"
+        ));
+        let settlement_contract =
+            eth::Address::from_slice(&hex!("9008d19f58aabd9ed0d60971565aa8510560ab41"));
+        let transaction = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: calldata.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap();
+
+        let prices: auction::Prices = From::from([
+            (
+                eth::TokenAddress::from(address!("a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
+                auction::Price::try_new(eth::U256::from(374263465721452989998170112u128).into())
+                    .unwrap(),
+            ),
+            (
+                eth::TokenAddress::from(address!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
+                auction::Price::try_new(eth::U256::from(1000000000000000000u128).into()).unwrap(),
+            ),
+        ]);
+
+        let auction = super::Auction {
+            block: eth::BlockNo(0),
+            prices,
+            surplus_capturing_jit_order_owners: HashSet::from([address!(
+                "f08d4dea369c456d26a3168ff0024b904f2d8b91"
+            )]),
+            id: 0,
+            orders: Default::default(),
+        };
+        let trade = super::trade::Trade::new(transaction.trades[0].clone(), &auction, 0);
+        println!("{}", trade.uid().owner());
+        assert_eq!(
+            trade.surplus_in_ether(&auction.prices).unwrap().0,
+            eth::U256::from(37102982937761u128)
+        );
+    }
+
+    // https://etherscan.io/tx/0x0ee0a609c54cb006d024a4d009db8751730c064b26524379793144c07c3575b3
+    // A special case where the user order and a liquidity order trade the common
+    // token, where liquidity order is supposed to be executed at its limit price
+    // and without fees.
+    #[tokio::test]
+    async fn settlement_with_liquidity_order_and_user_order() {
+        let calldata = hex!(
+            "
+        13d79a0b
+        0000000000000000000000000000000000000000000000000000000000000080
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000240
+        00000000000000000000000000000000000000000000000000000000000008e0
+        0000000000000000000000000000000000000000000000000000000000000006
+        000000000000000000000000812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee
+        000000000000000000000000a21af1050f7b26e0cff45ee51548254c41ed6b5c
+        000000000000000000000000a21af1050f7b26e0cff45ee51548254c41ed6b5c
+        000000000000000000000000812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee
+        000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2
+        000000000000000000000000a21af1050f7b26e0cff45ee51548254c41ed6b5c
+        0000000000000000000000000000000000000000000000000000000000000006
+        0000000000000000000000000000000000000000009d252036621245bccfee44
+        00000000000000000000000000000000000000000000000000006dd9404a1acb
+        00000000000000000000000000000000000000000000000000006dd9404a1acb
+        000000000000000000000000000000000000000000ab3e6cee134b96efa57fd8
+        000000000000000000000000000000000000000000ab3e6cee134b96efa57fd8
+        00000000000000000000000000000000000000000000000000bb8c2a13aae7f2
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000040
+        0000000000000000000000000000000000000000000000000000000000000360
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000000000000000000000000000ab3e6cee134b96efa57fd8
+        000000000000000000000000000000000000000000000000000039dab59ed3a0
+        0000000000000000000000000000000000000000000000000000000066f9d607
+        362e5182440b52aa8fffe70a251550fbbcbca424740fe5a14f59bf0c1b06fe1d
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000042
+        000000000000000000000000000000000000000000ab3e6cee134b96efa57fd8
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000194
+        b3d37552eebbbdbea36258ba0948f4bbcaa3584e000000000000000000000000
+        a21af1050f7b26e0cff45ee51548254c41ed6b5c000000000000000000000000
+        812ba41e071c7b7fa4ebcfb62df5f45f6fa853ee000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000ab3e6cee134b96efa57fd8000000000000000000000000
+        000000000000000000000000000039dab59ed3a0000000000000000000000000
+        0000000000000000000000000000000066f9d607362e5182440b52aa8fffe70a
+        251550fbbcbca424740fe5a14f59bf0c1b06fe1d000000000000000000000000
+        0000000000000000000000000000000000000000f3b277728b3fee749481eb3e
+        0b3b48980dbbab78658fc419025cb16eee346775000000000000000000000000
+        00000000000000000000000000000000000000015a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc95a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc9000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000004
+        0000000000000000000000000000000000000000000000000000000000000005
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000000000000000000000000000000bb8c2a13aae7f2
+        000000000000000000000000000000000000000000ab3e6cee134b96efa57fd8
+        0000000000000000000000000000000000000000000000000000000066f9d54a
+        362e5182440b52aa8fffe70a251550fbbcbca424740fe5a14f59bf0c1b06fe1d
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000040
+        00000000000000000000000000000000000000000000000000bb8c2a13aae7f2
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000194
+        477a8982515e3a3d3aa6447b019b7c647e4162f8000000000000000000000000
+        c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2000000000000000000000000
+        a21af1050f7b26e0cff45ee51548254c41ed6b5c000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000000bb8c2a13aae7f2000000000000000000000000
+        000000000000000000ab3e6cee134b96efa57fd8000000000000000000000000
+        0000000000000000000000000000000066f9d54a362e5182440b52aa8fffe70a
+        251550fbbcbca424740fe5a14f59bf0c1b06fe1d000000000000000000000000
+        0000000000000000000000000000000000000000f3b277728b3fee749481eb3e
+        0b3b48980dbbab78658fc419025cb16eee346775000000000000000000000000
+        00000000000000000000000000000000000000005a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc95a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc9000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000240
+        0000000000000000000000000000000000000000000000000000000000000580
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000040
+        0000000000000000000000000000000000000000000000000000000000000100
+        000000000000000000000000477a8982515e3a3d3aa6447b019b7c647e4162f8
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000024
+        f14fcbc87f5c83e02f5be47badc76a48a42cec3e3d78c4f80e8cd189e9596302
+        fb57634e00000000000000000000000000000000000000000000000000000000
+        000000000000000000000000b3d37552eebbbdbea36258ba0948f4bbcaa3584e
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000024
+        f14fcbc8c1cd2e1ebcf050e89c8e3891eae25653f0f829ffec61718d6d1962b2
+        20d49ec400000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000001
+        0000000000000000000000000000000000000000000000000000000000000020
+        000000000000000000000000bbbbbbb520d69a9775e85b458c58c648259fad5f
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000264
+        4dcebcba00000000000000000000000000000000000000000000000000000000
+        66f9d53e0000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000067336cec42645f55059eff241cb02ea5
+        cc52ff8600000000000000000000000000000000000000000000000000000192
+        3fe79c05000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead908
+        3c756cc2000000000000000000000000812ba41e071c7b7fa4ebcfb62df5f45f
+        6fa853ee00000000000000000000000000000000000000000000000000bb8c2a
+        13aae7f2000000000000000000000000000000000000000000000000000077b4
+        3fe5656d0000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        00000000cf1d82b73e592a800000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000001a000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000004148974983130d2ad3667c1f71bb5dfaa18a89d2445f1537658e50db86
+        0394f4361184d1eaf2187386e318c39691a3e02b1790661c647fa2b619cc67e1
+        d244f3191c000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000900f47"
+        )
+        .to_vec();
+
+        let domain_separator = eth::DomainSeparator(hex!(
+            "c078f884a2676e1345748b1feace7b0abee5d00ecadb6e574dcdd109a63e8943"
+        ));
+        let settlement_contract = address!("9008d19f58aabd9ed0d60971565aa8510560ab41");
+        let transaction = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: calldata.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap();
+
+        let prices: auction::Prices = From::from([
+            (
+                eth::TokenAddress::from(address!("812Ba41e071C7b7fA4EBcFB62dF5F45f6fA853Ee")),
+                auction::Price::try_new(eth::U256::from(400373909534592401408u128).into()).unwrap(),
+            ),
+            (
+                eth::TokenAddress::from(address!("a21Af1050F7B26e0cfF45ee51548254C41ED6b5c")),
+                auction::Price::try_new(eth::U256::from(127910593u128).into()).unwrap(),
+            ),
+            (
+                eth::TokenAddress::from(address!("c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")),
+                auction::Price::try_new(eth::U256::from(1000000000000000000u128).into()).unwrap(),
+            ),
+        ]);
+
+        let auction = super::Auction {
+            block: eth::BlockNo(0),
+            prices,
+            surplus_capturing_jit_order_owners: Default::default(),
+            id: 0,
+            orders: HashMap::from([(
+                transaction.trades[0].uid,
+                vec![domain::fee::Policy::Surplus {
+                    factor: 0.5f64.try_into().unwrap(),
+                    max_volume_factor: 0.01.try_into().unwrap(),
+                }],
+            )]),
+        };
+        let jit_trade = super::trade::Trade::new(transaction.trades[1].clone(), &auction, 0);
+        assert_eq!(
+            jit_trade.fee_in_ether(&auction.prices).unwrap().0,
+            eth::U256::ZERO
+        );
+        assert_eq!(
+            score_trade_with_winner_selection(&jit_trade, &auction),
+            eth::U256::ZERO
+        );
+        assert_eq!(
+            jit_trade.fee_breakdown(&auction).unwrap().total.amount.0,
+            eth::U256::ZERO
+        );
+        assert!(
+            jit_trade
+                .fee_breakdown(&auction)
+                .unwrap()
+                .protocol
+                .is_empty()
+        );
+    }
+
+    // https://gnosisscan.io/tx/0xf4556c35d421623c63571d1006fd1888932c1b78a6e0f3b9b9590bb9781b02af
+    // A special case to reproduce an issue where we don't match a settled trade due
+    // to a mismatch in executed token amounts. The smart contract, for
+    // non-partially-fillable orders, does force executed = sellAmount on the
+    // transaction events. https://github.com/cowprotocol/contracts/blob/main/src/contracts/GPv2Settlement.sol#L385-L386
+    // https://github.com/cowprotocol/contracts/blob/main/src/contracts/GPv2Settlement.sol#L407-L408
+    #[tokio::test]
+    async fn settlement_with_fill_or_kill() {
+        let calldata = hex!(
+            "
+        13d79a0b
+        0000000000000000000000000000000000000000000000000000000000000080
+        0000000000000000000000000000000000000000000000000000000000000180
+        0000000000000000000000000000000000000000000000000000000000000280
+        0000000000000000000000000000000000000000000000000000000000000920
+        0000000000000000000000000000000000000000000000000000000000000007
+        0000000000000000000000006a023ccd1ff6f2045c3309768ead9e68f978f6e1
+        0000000000000000000000006c76971f98945ae98dd7d4dfca8711ebea946ea6
+        000000000000000000000000af204776c7245bf4147c2612bf6e5972ee483701
+        000000000000000000000000af204776c7245bf4147c2612bf6e5972ee483701
+        0000000000000000000000006c76971f98945ae98dd7d4dfca8711ebea946ea6
+        000000000000000000000000af204776c7245bf4147c2612bf6e5972ee483701
+        0000000000000000000000006a023ccd1ff6f2045c3309768ead9e68f978f6e1
+        0000000000000000000000000000000000000000000000000000000000000007
+        0000000000000000000000000000000018aac0db454523f1db5511b44df57857
+        000000000000000000000000000000001dbab1abfb7a148ace92ebff84840000
+        000000000000000000000000000000000002f75ceb1742fa2adaf5199f9c0000
+        0000000000000000000000000000000000000000000000000036a3f9b90f8dc2
+        00000000000000000000000000000000000000000000000224688666a61b1c89
+        00000000000000000000000000000000000000000000000000012f446f6d0715
+        00000000000000000000000000000000000000000000000009d9f1a17ee19ade
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000040
+        0000000000000000000000000000000000000000000000000000000000000360
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000000000000000000000000000000000000000000004
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000000000000000000000000000224688666a61b1c89
+        0000000000000000000000000000000000000000000000000036a3f9b90f8dc2
+        00000000000000000000000000000000000000000000000000000000684f2eb3
+        362e5182440b52aa8fffe70a251550fbbcbca424740fe5a14f59bf0c1b06fe1d
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000040
+        000000000000000000000000000000000000000000000002246883b125dcb53b
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000194
+        5089007dec8e93f891dcb908c9e2af8d9dedb72e000000000000000000000000
+        af204776c7245bf4147c2612bf6e5972ee483701000000000000000000000000
+        6c76971f98945ae98dd7d4dfca8711ebea946ea6000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000224688666a61b1c89000000000000000000000000
+        0000000000000000000000000036a3f9b90f8dc2000000000000000000000000
+        00000000000000000000000000000000684f2eb3362e5182440b52aa8fffe70a
+        251550fbbcbca424740fe5a14f59bf0c1b06fe1d000000000000000000000000
+        0000000000000000000000000000000000000000f3b277728b3fee749481eb3e
+        0b3b48980dbbab78658fc419025cb16eee346775000000000000000000000000
+        00000000000000000000000000000000000000005a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc95a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc9000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000005
+        0000000000000000000000000000000000000000000000000000000000000006
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000000000000000000000000000009d9f1a17ee19ade
+        00000000000000000000000000000000000000000000000000012ed43b5c37e4
+        00000000000000000000000000000000000000000000000000000000684f2eb3
+        362e5182440b52aa8fffe70a251550fbbcbca424740fe5a14f59bf0c1b06fe1d
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000040
+        00000000000000000000000000000000000000000000000009d9f1a17ee19ade
+        0000000000000000000000000000000000000000000000000000000000000160
+        0000000000000000000000000000000000000000000000000000000000000194
+        6a83c4f5fe2205d84dcdcf9463fe4c55a25a306b000000000000000000000000
+        af204776c7245bf4147c2612bf6e5972ee483701000000000000000000000000
+        6a023ccd1ff6f2045c3309768ead9e68f978f6e1000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        00000000000000000000000009d9f1a17ee19ade000000000000000000000000
+        00000000000000000000000000012ed43b5c37e4000000000000000000000000
+        00000000000000000000000000000000684f2eb3362e5182440b52aa8fffe70a
+        251550fbbcbca424740fe5a14f59bf0c1b06fe1d000000000000000000000000
+        0000000000000000000000000000000000000000f3b277728b3fee749481eb3e
+        0b3b48980dbbab78658fc419025cb16eee346775000000000000000000000000
+        00000000000000000000000000000000000000005a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc95a28e9363bb942b639270062
+        aa6bb295f434bcdfc42c97267bf003f272060dc9000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000240
+        0000000000000000000000000000000000000000000000000000000000000840
+        0000000000000000000000000000000000000000000000000000000000000002
+        0000000000000000000000000000000000000000000000000000000000000040
+        0000000000000000000000000000000000000000000000000000000000000100
+        0000000000000000000000005089007dec8e93f891dcb908c9e2af8d9dedb72e
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000024
+        f14fcbc87106b5cf7c6f173d3df96049b51898977858abaffe00557932f532d6
+        5f370b9c00000000000000000000000000000000000000000000000000000000
+        0000000000000000000000006a83c4f5fe2205d84dcdcf9463fe4c55a25a306b
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000024
+        f14fcbc8dc5f3e9c63e483408a1ee572ce3fbb3c23183663081ece80ac2d123e
+        eb97467d00000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000003
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000140
+        0000000000000000000000000000000000000000000000000000000000000380
+        000000000000000000000000af204776c7245bf4147c2612bf6e5972ee483701
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        0000000000000000000000000000000000000000000000000000000000000044
+        095ea7b300000000000000000000000033afc6f6aa4d18e53cf8540c8d867d7a
+        027e1dab0000000000000000000000000000000000000000000000022e427808
+        24fcb76700000000000000000000000000000000000000000000000000000000
+        00000000000000000000000033afc6f6aa4d18e53cf8540c8d867d7a027e1dab
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000001a4
+        1cff79cd000000000000000000000000e8a249626d3f3b876b887c30a3355513
+        cb3fa9e400000000000000000000000000000000000000000000000000000000
+        0000004000000000000000000000000000000000000000000000000000000000
+        00000124128acb080000000000000000000000009008d19f58aabd9ed0d60971
+        565aa8510560ab41000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000002
+        2e42780824fcb767000000000000000000000000fffd8963efd1fc6a50648849
+        5d951d5263988d25000000000000000000000000000000000000000000000000
+        00000000000000a0000000000000000000000000000000000000000000000000
+        00000000000000600000000000000000000000009008d19f58aabd9ed0d60971
+        565aa8510560ab41000000000000000000000000af204776c7245bf4147c2612
+        bf6e5972ee483701000000000000000000000000000000000000000000000000
+        0037b342b3be1864000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        000000000000000000000000ba12222222228d8ba445958a75a0704d566bf2c8
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000060
+        00000000000000000000000000000000000000000000000000000000000001c4
+        52bbbe2900000000000000000000000000000000000000000000000000000000
+        000000e00000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        000000000000000000000000000000009008d19f58aabd9ed0d60971565aa851
+        0560ab4100000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000012f44
+        297bbd66ffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+        ffffffffbad20c15a773bf03ab973302f61fabcea5101f0a0000000000000000
+        0000003400000000000000000000000000000000000000000000000000000000
+        000000000000000000000000000000006c76971f98945ae98dd7d4dfca8711eb
+        ea946ea60000000000000000000000006a023ccd1ff6f2045c3309768ead9e68
+        f978f6e10000000000000000000000000000000000000000000000000000fba1
+        0151ee8000000000000000000000000000000000000000000000000000000000
+        000000c000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000000000000000000000000000000000000000000000000000000000
+        0000000000c5f428"
+        )
+        .to_vec();
+
+        let domain_separator = eth::DomainSeparator(hex!(
+            "8f05589c4b810bc2f706854508d66d447cd971f8354a4bb0b3471ceb0a466bc7"
+        ));
+        let settlement_contract = address!("9008d19f58aabd9ed0d60971565aa8510560ab41");
+        let transaction = super::transaction::Transaction::try_new(
+            &blockchain::Transaction {
+                trace_calls: blockchain::CallFrame {
+                    to: Some(settlement_contract),
+                    input: calldata.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            &domain_separator,
+            settlement_contract,
+            &MockAuthenticator,
+        )
+        .await
+        .unwrap();
+
+        let key = trade_to_key(&transaction.trades[0]);
+        let expected_key = OrderMatchKey {
+            uid: transaction.trades[0].uid,
+            token: transaction.trades[0].sell.token,
+            // We expect the order's sell amount instead of the faulty `executedAmount`
+            // provided by the solver because this is a fill-or-kill order.
+            executed: transaction.trades[0].sell.amount.into(),
+        };
+
+        assert_eq!(key, expected_key)
+    }
+}
