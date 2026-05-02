@@ -1,7 +1,9 @@
 name: CI
+
 on:
-  push: { branches: [main] }
-  pull_request: {}
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   root:
@@ -10,9 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
+        with:
+          version: 9
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with:
+          node-version: 20
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint || echo "no lint targets yet"
       - run: pnpm typecheck || echo "no typecheck targets yet"
@@ -25,8 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
+        with:
+          version: 9
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
+        with:
+          node-version: 20
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @greg/sdk test
