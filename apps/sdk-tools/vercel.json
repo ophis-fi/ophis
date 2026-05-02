@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "buildCommand": "cd ../../ && pnpm run build:sdk-tools",
+  "outputDirectory": "../../build/sdk-tools",
+  "installCommand": "cd ../../ && pnpm run install:ci"
+}

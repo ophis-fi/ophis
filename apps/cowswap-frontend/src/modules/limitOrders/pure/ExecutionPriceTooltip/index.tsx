@@ -1,0 +1,97 @@
+import { Currency, CurrencyAmount, Fraction, Price } from '@cowprotocol/currency'
+import { FiatAmount, TokenAmount } from '@cowprotocol/ui'
+
+import { Trans } from '@lingui/react/macro'
+
+import { useUsdAmount } from 'modules/usdAmount'
+
+import { ExecutionPrice } from 'common/pure/ExecutionPrice'
+import { convertAmountToCurrency } from 'utils/orderUtils/calculateExecutionPrice'
+
+import * as styledEl from './styled'
+
+export interface ExecutionPriceTooltipProps {
+  isInverted: boolean
+  feeAmount: CurrencyAmount<Currency> | null
+  displayedRate: string | null
+  executionPrice: Price<Currency, Currency> | null
+  marketRate: Fraction | null
+  isOpenOrdersTab?: boolean
+}
+
+// TODO: Add proper return type annotation
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+export function ExecutionPriceTooltip(props: ExecutionPriceTooltipProps) {
+  const { isInverted, displayedRate, executionPrice } = props
+
+  const currentCurrency = isInverted ? executionPrice?.baseCurrency : executionPrice?.quoteCurrency
+  const formattedFeeAmount = formatFeeAmount(props)
+
+  const feeUsdValue = useUsdAmount(formattedFeeAmount || undefined).value
+
+  return (
+    <styledEl.FeeTooltipWrapper>
+      <styledEl.FeeItem borderTop>
+        <span>
+          <p>
+            <Trans>Limit price</Trans>
+          </p>
+          <b>
+            {displayedRate} {currentCurrency?.symbol}
+          </b>
+        </span>
+      </styledEl.FeeItem>
+
+      <styledEl.FeeItem>
+        <i>
+          <Trans>Included in the estimated execution price</Trans>
+        </i>
+        {formattedFeeAmount && (
+          <span>
+            <p>
+              <Trans>Current network fees</Trans>
+            </p>
+            <span>
+              <b>
+                {'\u2248 '}
+                <TokenAmount amount={formattedFeeAmount} tokenSymbol={formattedFeeAmount?.currency} />
+              </b>
+              <br />
+              {feeUsdValue && (
+                <>
+                  (<FiatAmount accurate={true} amount={feeUsdValue} />)
+                </>
+              )}
+            </span>
+          </span>
+        )}
+      </styledEl.FeeItem>
+
+      <styledEl.FeeItem highlighted>
+        <b>
+          <Trans>Order executes at</Trans>
+        </b>
+        <span>
+          <b>{executionPrice && <ExecutionPrice executionPrice={executionPrice} isInverted={isInverted} />}</b>
+        </span>
+      </styledEl.FeeItem>
+    </styledEl.FeeTooltipWrapper>
+  )
+}
+
+function formatFeeAmount({
+  marketRate,
+  feeAmount,
+  isInverted,
+  executionPrice,
+}: ExecutionPriceTooltipProps): CurrencyAmount<Currency> | null {
+  const currency = isInverted ? executionPrice?.baseCurrency : executionPrice?.quoteCurrency
+  const invertedFee = marketRate && feeAmount ? marketRate.multiply(feeAmount) : null
+
+  return !isInverted && invertedFee && currency && feeAmount
+    ? convertAmountToCurrency(
+        CurrencyAmount.fromFractionalAmount(feeAmount.currency, invertedFee.numerator, invertedFee.denominator),
+        currency,
+      )
+    : feeAmount
+}

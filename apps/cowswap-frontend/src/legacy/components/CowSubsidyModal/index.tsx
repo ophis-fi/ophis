@@ -1,0 +1,78 @@
+import { ReactNode } from 'react'
+
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { ExternalLink, Row } from '@cowprotocol/ui'
+import { useWalletInfo } from '@cowprotocol/wallet'
+
+import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
+import { Text } from 'rebass'
+
+import { AutoColumn } from 'legacy/components/Column'
+import useCowBalanceAndSubsidy from 'legacy/hooks/useCowBalanceAndSubsidy'
+
+import { CowModal } from 'common/pure/Modal'
+
+import { SUBSIDY_INFO_MESSAGE } from './constants'
+import SubsidyTable from './SubsidyTable'
+
+import CowBalance from '../CowBalance'
+import {
+  ConfirmationModalContentProps,
+  LegacyConfirmationModalContent,
+} from '../TransactionConfirmationModal/LegacyConfirmationModalContent'
+
+export type CowSubsidy = { tier: number; discount: number }
+export interface CowSubsidyInfoProps {
+  account?: string
+  balance?: CurrencyAmount<Currency>
+  subsidy: CowSubsidy
+}
+
+const CowSubsidyInfo = ({ account, balance, subsidy }: CowSubsidyInfoProps): ReactNode => (
+  <AutoColumn style={{ marginTop: 32 }} gap="18px" justify="center">
+    <Text fontWeight={400} fontSize={15} style={{ textAlign: 'center', width: '100%', wordBreak: 'break-word' }}>
+      {SUBSIDY_INFO_MESSAGE}
+    </Text>
+    {/* VCOW LOGO */}
+    {account && <CowBalance account={account} balance={balance} />}
+    <SubsidyTable {...subsidy} />
+  </AutoColumn>
+)
+
+export default function CowSubsidyModal({
+  isOpen,
+  onDismiss,
+  ...restProps
+}: { isOpen: boolean } & Omit<ConfirmationModalContentProps, 'title' | 'topContent'>): ReactNode {
+  const { account, chainId } = useWalletInfo()
+
+  const { subsidy, balance } = useCowBalanceAndSubsidy()
+
+  const TopContent = <CowSubsidyInfo account={account ?? undefined} balance={balance} subsidy={subsidy} />
+
+  const BottomContent = (
+    <Row style={{ justifyContent: 'center' }}>
+      <ExternalLink href="https://medium.com/@cow-protocol/cow-token-is-moving-forward-at-full-speed-d9f047a23b57">
+        <Trans>Read more about the tokenomics</Trans>
+      </ExternalLink>
+    </Row>
+  )
+
+  if (!chainId) return null
+
+  // TODO: use TradeConfirmModal
+  return (
+    <CowModal isOpen={isOpen} onDismiss={onDismiss} maxHeight={90} maxWidth={500} padding={'12px 0 18px'}>
+      <LegacyConfirmationModalContent
+        {...restProps}
+        title={t`CoWmunity fees discount`}
+        titleSize={21}
+        styles={{ textAlign: 'center', width: '100%' }}
+        onDismiss={onDismiss}
+        topContent={TopContent}
+        bottomContent={BottomContent}
+      />
+    </CowModal>
+  )
+}

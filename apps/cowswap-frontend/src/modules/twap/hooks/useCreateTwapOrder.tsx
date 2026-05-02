@@ -1,0 +1,249 @@
+import { useSetAtom } from 'jotai'
+import { useCallback } from 'react'
+
+import { useCowAnalytics } from '@cowprotocol/analytics'
+import { OrderKind } from '@cowprotocol/cow-sdk'
+import { CurrencyAmount, Token } from '@cowprotocol/currency'
+import { UiOrderType } from '@cowprotocol/types'
+import { useIsSmartContractWallet, useSendBatchTransactions, useWalletInfo } from '@cowprotocol/wallet'
+import { WidgetHookEvents } from '@cowprotocol/widget-lib'
+
+import { Nullish } from 'types'
+
+import { useAdvancedOrdersDerivedState, useUpdateAdvancedOrdersRawState } from 'modules/advancedOrders'
+import { uploadAppDataDocOrderbookApi, useAppData } from 'modules/appData'
+import { buildTradeWidgetHookPayload, callWidgetHook } from 'modules/injectedWidget'
+import { emitPostedOrderEvent } from 'modules/orders'
+import { OrderTabId, useNavigateToOrdersTableTab } from 'modules/ordersTable'
+import { getCowSoundSend } from 'modules/sounds'
+import { useTradeConfirmActions, useTradePriceImpact } from 'modules/trade'
+import { TradeFlowAnalyticsContext, useTradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
+
+import { CowSwapAnalyticsCategory } from 'common/analytics/types'
+import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImpactWithoutFee'
+import { getAreBridgeCurrencies } from 'common/utils/getAreBridgeCurrencies'
+
+import { useExtensibleFallbackContext } from './useExtensibleFallbackContext'
+import { useTwapOrder } from './useTwapOrder'
+import { useTwapOrderCreationContext } from './useTwapOrderCreationContext'
+
+import { DEFAULT_TWAP_EXECUTION } from '../const'
+import { createTwapOrderTxs } from '../services/createTwapOrderTxs'
+import { extensibleFallbackSetupTxs } from '../services/extensibleFallbackSetupTxs'
+import { addTwapOrderToListAtom } from '../state/twapOrdersListAtom'
+import { TwapOrderItem, TwapOrderStatus } from '../types'
+import { buildTwapOrderParamsStruct } from '../utils/buildTwapOrderParamsStruct'
+import { getConditionalOrderId } from '../utils/getConditionalOrderId'
+import { getErrorMessage } from '../utils/parseTwapError'
+import { twapOrderToStruct } from '../utils/twapOrderToStruct'
+
+interface TwapAnalyticsEvent {
+  category: CowSwapAnalyticsCategory.TWAP
+  action: string
+  label: string
+}
+
+interface TwapConversionEvent extends TwapAnalyticsEvent {
+  action: 'Conversion'
+  label: `${string}|${'no-handler' | 'handler-set'}`
+}
+
+interface TwapOrderEvent extends TwapAnalyticsEvent {
+  action: 'Place Order'
+  label: `${UiOrderType.TWAP}|${string}`
+}
+
+// TODO: Break down this large function into smaller functions
+// TODO: Add proper return type annotation
+// eslint-disable-next-line max-lines-per-function, @typescript-eslint/explicit-function-return-type
+export function useCreateTwapOrder() {
+  const { chainId, account } = useWalletInfo()
+  const isSmartContractWallet = useIsSmartContractWallet()
+  const twapOrder = useTwapOrder()
+  const addTwapOrderToList = useSetAtom(addTwapOrderToListAtom)
+  const navigateToOrdersTableTab = useNavigateToOrdersTableTab()
+
+  const { inputCurrencyAmount, outputCurrencyAmount } = useAdvancedOrdersDerivedState()
+
+  const appDataInfo = useAppData()
+  const sendSafeTransactions = useSendBatchTransactions()
+  const twapOrderCreationContext = useTwapOrderCreationContext(inputCurrencyAmount as Nullish<CurrencyAmount<Token>>)
+  const extensibleFallbackContext = useExtensibleFallbackContext()
+
+  const updateAdvancedOrdersState = useUpdateAdvancedOrdersRawState()
+
+  const tradeConfirmActions = useTradeConfirmActions()
+
+  const { priceImpact } = useTradePriceImpact()
+  const isBridge = getAreBridgeCurrencies(inputCurrencyAmount?.currency, outputCurrencyAmount?.currency)
+  const { confirmPriceImpactWithoutFee } = useConfirmPriceImpactWithoutFee(isBridge)
+
+  const analytics = useCowAnalytics()
+  const tradeFlowAnalytics = useTradeFlowAnalytics()
+
+  const sendOrderAnalytics = useCallback(
+    (action: string, context: string) => {
+      const analyticsEvent: TwapOrderEvent = {
+        category: CowSwapAnalyticsCategory.TWAP,
+        action: 'Place Order',
+        label: `${UiOrderType.TWAP}|${context}`,
+      }
+      analytics.sendEvent(analyticsEvent)
+    },
+    [analytics],
+  )
+
+  const sendTwapConversionAnalytics = useCallback(
+    (status: string, fallbackHandlerIsNotSet: boolean) => {
+      const analyticsEvent: TwapConversionEvent = {
+        category: CowSwapAnalyticsCategory.TWAP,
+        action: 'Conversion',
+        label: `${status}|${fallbackHandlerIsNotSet ? 'no-handler' : 'handler-set'}`,
+      }
+      analytics.sendEvent(analyticsEvent)
+    },
+    [analytics],
+  )
+
+  return useCallback(
+    // TODO: Break down this large function into smaller functions
+    // TODO: Reduce function complexity by extracting logic
+
+    async (fallbackHandlerIsNotSet: boolean) => {
+      if (!chainId || !account || chainId !== twapOrderCreationContext?.chainId) return
+      if (
+        !inputCurrencyAmount ||
+        !outputCurrencyAmount ||
+        !twapOrderCreationContext ||
+        !extensibleFallbackContext ||
+        !appDataInfo ||
+        !twapOrder
+      )
+        return
+
+      const isPriceImpactConfirmed = await confirmPriceImpactWithoutFee(priceImpact)
+
+      if (!isPriceImpactConfirmed) {
+        return
+      }
+
+      const pendingTrade = {
+        inputAmount: inputCurrencyAmount,
+        outputAmount: outputCurrencyAmount,
+      }
+
+      const orderType = UiOrderType.TWAP
+
+      const twapFlowAnalyticsContext: TradeFlowAnalyticsContext = {
+        account,
+        recipient: twapOrder.receiver,
+        recipientAddress: twapOrder.receiver,
+        marketLabel: [inputCurrencyAmount.currency.symbol, outputCurrencyAmount.currency.symbol].join(','),
+        orderType,
+      }
+
+      try {
+        const isWidgetHookPassed = await callWidgetHook(
+          WidgetHookEvents.ON_BEFORE_TRADE,
+          buildTradeWidgetHookPayload({
+            orderType,
+            inputAmount: inputCurrencyAmount,
+            outputAmount: outputCurrencyAmount,
+            recipient: twapOrder.receiver,
+            orderKind: OrderKind.SELL,
+          }),
+        )
+
+        if (!isWidgetHookPassed) {
+          return
+        }
+
+        const paramsStruct = buildTwapOrderParamsStruct(chainId, twapOrder)
+        const orderId = getConditionalOrderId(paramsStruct)
+
+        tradeConfirmActions.onSign(pendingTrade)
+        tradeFlowAnalytics.placeAdvancedOrder(twapFlowAnalyticsContext)
+        sendTwapConversionAnalytics('posted', fallbackHandlerIsNotSet)
+
+        const fallbackSetupTxs = fallbackHandlerIsNotSet
+          ? await extensibleFallbackSetupTxs(extensibleFallbackContext)
+          : []
+
+        await uploadAppDataDocOrderbookApi({
+          appDataKeccak256: appDataInfo.appDataKeccak256,
+          fullAppData: appDataInfo.fullAppData,
+          chainId,
+          env: 'prod', // Since WatchTower creates orders only in PROD env, we should have `prod` here
+        })
+
+        const createOrderTxs = createTwapOrderTxs(twapOrder, paramsStruct, twapOrderCreationContext)
+        const safeTxHash = await sendSafeTransactions([...fallbackSetupTxs, ...createOrderTxs])
+
+        const orderItem: TwapOrderItem = {
+          order: twapOrderToStruct(twapOrder),
+          status: TwapOrderStatus.WaitSigning,
+          chainId,
+          safeAddress: account,
+          submissionDate: new Date().toISOString(),
+          id: orderId,
+          executionInfo: { ...DEFAULT_TWAP_EXECUTION },
+        }
+
+        addTwapOrderToList(orderItem)
+
+        getCowSoundSend().play()
+
+        emitPostedOrderEvent({
+          chainId,
+          id: orderId,
+          orderCreationHash: safeTxHash,
+          kind: OrderKind.SELL,
+          receiver: twapOrder.receiver,
+          inputAmount: twapOrder.sellAmount,
+          outputAmount: twapOrder.buyAmount,
+          owner: account,
+          uiOrderType: orderType,
+        })
+
+        sendOrderAnalytics('Place Order', `${orderType}|${twapFlowAnalyticsContext.marketLabel}`)
+
+        updateAdvancedOrdersState({ recipient: null, recipientAddress: null })
+        tradeConfirmActions.onSuccess(safeTxHash)
+        tradeFlowAnalytics.sign(twapFlowAnalyticsContext)
+        sendTwapConversionAnalytics('signed', fallbackHandlerIsNotSet)
+
+        // TODO: Clear filters if the new order is not visible before navigating.
+
+        // Navigate to open orders after successful placement
+        navigateToOrdersTableTab(isSmartContractWallet ? OrderTabId.signing : OrderTabId.open)
+      } catch (error) {
+        console.error('[useCreateTwapOrder] error', error)
+        const errorMessage = getErrorMessage(error)
+        tradeConfirmActions.onError(errorMessage)
+        tradeFlowAnalytics.error(error, errorMessage, twapFlowAnalyticsContext)
+        sendTwapConversionAnalytics('rejected', fallbackHandlerIsNotSet)
+      }
+    },
+    [
+      chainId,
+      account,
+      inputCurrencyAmount,
+      outputCurrencyAmount,
+      twapOrderCreationContext,
+      extensibleFallbackContext,
+      sendSafeTransactions,
+      appDataInfo,
+      twapOrder,
+      confirmPriceImpactWithoutFee,
+      priceImpact,
+      tradeConfirmActions,
+      addTwapOrderToList,
+      updateAdvancedOrdersState,
+      sendOrderAnalytics,
+      sendTwapConversionAnalytics,
+      tradeFlowAnalytics,
+      navigateToOrdersTableTab,
+      isSmartContractWallet,
+    ],
+  )
+}

@@ -1,0 +1,94 @@
+import { useCallback, useMemo } from 'react'
+
+import { useCowAnalytics } from '@cowprotocol/analytics'
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { UiOrderType } from '@cowprotocol/types'
+import { useWalletInfo } from '@cowprotocol/wallet'
+import { WidgetHookEvents } from '@cowprotocol/widget-lib'
+
+import { Nullish } from 'types'
+
+import {
+  wrapUnwrapCallback,
+  WrapUnwrapCallback,
+  WrapUnwrapCallbackParams,
+  WrapUnwrapContext,
+} from 'legacy/hooks/useWrapCallback'
+import { useTransactionAdder } from 'legacy/state/enhancedTransactions/hooks'
+
+import { buildTradeWidgetHookPayload, callWidgetHook } from 'modules/injectedWidget'
+
+import { useWethContract } from 'common/hooks/useContract'
+
+import { useDerivedTradeState } from './useDerivedTradeState'
+import { useWrapNativeScreenState } from './useWrapNativeScreenState'
+
+export function useWrapNativeFlow(): WrapUnwrapCallback {
+  const state = useDerivedTradeState()
+  const wrapCallback = useWrapNativeCallback(state?.inputCurrencyAmount)
+
+  return useCallback(
+    async (params?: WrapUnwrapCallbackParams) => {
+      if (!wrapCallback) return Promise.resolve(null)
+
+      const isWidgetHookPassed = await callWidgetHook(
+        WidgetHookEvents.ON_BEFORE_WRAP_UNWRAP,
+        buildTradeWidgetHookPayload({
+          orderType: UiOrderType.SWAP,
+          inputAmount: state?.inputCurrencyAmount,
+          outputAmount: state?.outputCurrencyAmount,
+        }),
+      ).catch(() => false)
+
+      if (!isWidgetHookPassed) {
+        return null
+      }
+
+      return wrapCallback(params)
+    },
+    [wrapCallback, state?.inputCurrencyAmount, state?.outputCurrencyAmount],
+  )
+}
+
+function useWrapNativeCallback(inputAmount: Nullish<CurrencyAmount<Currency>>): WrapUnwrapCallback | null {
+  const context = useWrapNativeContext(inputAmount)
+
+  return useMemo(() => {
+    if (!context) {
+      return null
+    }
+
+    return (params?: WrapUnwrapCallbackParams) => {
+      return wrapUnwrapCallback(context, params)
+    }
+  }, [context])
+}
+
+function useWrapNativeContext(amount: Nullish<CurrencyAmount<Currency>>): WrapUnwrapContext | null {
+  const { account } = useWalletInfo()
+  const { contract: wethContract, chainId: wethChainId } = useWethContract()
+  const addTransaction = useTransactionAdder()
+  const [, setWrapNativeState] = useWrapNativeScreenState()
+  const analytics = useCowAnalytics()
+
+  return useMemo(() => {
+    if (!wethContract || !amount || !account) {
+      return null
+    }
+
+    return {
+      chainId: wethChainId,
+      account,
+      wethContract,
+      amount,
+      addTransaction,
+      analytics,
+      closeModals() {
+        setWrapNativeState({ isOpen: false })
+      },
+      openTransactionConfirmationModal() {
+        setWrapNativeState({ isOpen: true })
+      },
+    }
+  }, [wethChainId, wethContract, amount, addTransaction, setWrapNativeState, account, analytics])
+}

@@ -1,0 +1,62 @@
+import { Token } from '@cowprotocol/currency'
+import { LpTokenProvider, TokenInfo } from '@cowprotocol/types'
+
+const emptyTokens = [] as string[]
+
+export class TokenWithLogo extends Token {
+  static fromToken(token: Token | TokenInfo, logoURI?: string): TokenWithLogo {
+    if (!token || token.chainId === undefined || !token.address) {
+      throw new Error('TokenWithLogo.fromToken requires a token with chainId and address')
+    }
+
+    return new TokenWithLogo(
+      logoURI,
+      token.chainId,
+      token.address,
+      token.decimals,
+      token.symbol,
+      token.name,
+      ('tags' in token && token.tags) || [],
+    )
+  }
+
+  constructor(
+    public logoURI: string | undefined, // <--- this is the only difference
+    chainId: number,
+    address: string,
+    decimals: number,
+    symbol?: string,
+    name?: string,
+    public tags: string[] = [],
+  ) {
+    super(chainId, address, decimals, symbol, name)
+  }
+}
+
+export class LpToken extends TokenWithLogo {
+  static fromTokenToLp(token: Token | TokenInfo, lpTokenProvider?: LpTokenProvider): LpToken {
+    return new LpToken(
+      token instanceof Token ? emptyTokens : token.tokens || emptyTokens,
+      lpTokenProvider,
+      token.chainId,
+      token.address,
+      token.decimals,
+      token.symbol,
+      token.name,
+      ('tags' in token && token.tags) || [],
+    )
+  }
+
+  constructor(
+    public tokens: string[],
+    public lpTokenProvider: LpTokenProvider | undefined,
+    chainId: number,
+    address: string,
+    decimals: number,
+    symbol?: string,
+    name?: string,
+    override tags: string[] = [],
+  ) {
+    super(undefined, chainId, address, decimals, symbol, name)
+  }
+}
