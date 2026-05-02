@@ -1,0 +1,152 @@
+# infra/local/docker-compose.fork.yml
+# Greg Stage-1 stack — anvil-forked Gnosis. No UIs, no observability containers.
+# Boot: docker compose -f infra/local/docker-compose.fork.yml --env-file infra/local/.env up -d
+
+services:
+  chain:
+    build:
+      context: ../../apps/backend/playground
+      dockerfile: Dockerfile.chain
+    restart: always
+    entrypoint: /usr/local/bin/anvil
+    command: --fork-url ${FORK_RPC_URL} --block-time 12
+    environment:
+      - ANVIL_IP_ADDR=0.0.0.0
+    ports:
+      - "8545:8545"
+    healthcheck:
+      # Patches allow-list manager with bytecode that always returns true,
+      # so solvers don't need to be registered in the upstream contract.
+      test: [
+          "CMD-SHELL",
+          "
+          response=$$(wget -qO- --header='Content-Type: application/json' --post-data='{\"jsonrpc\":\"2.0\", \"method\":\"eth_blockNumber\", \"params\":[], \"id\":1}' http://127.0.0.1:8545);
+          block=$$(echo $$response | sed -n 's/.*\"result\":\"\\([^\"\\]*\\)\".*/\\1/p');
+          if [ -n \"$$block\" ] && [ \"$$block\" != \"0x0\" ] && [ \"$$block\" != \"null\" ]; then
+          /usr/local/bin/cast rpc -r http://127.0.0.1:8545 anvil_setCode 0x2c4c28DDBdAc9C5E7055b4C863b72eA0149D8aFE 0x600160005260206000F3;
+          exit 0;
+          else
+          exit 1;
+          fi;
+          ",
+        ]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 5s
+
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+    # No volume needed — SQL files are baked into the migrations image at build time
+    # (COPY database/ /flyway/ in the Dockerfile migrations stage)
+
+  orderbook:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+      chain:
+        condition: service_healthy
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: http://chain:8545
+    volumes:
+      - ./configs/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "8080:80"
+
+  autopilot:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+      chain:
+        condition: service_healthy
+      orderbook:
+        condition: service_started
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: http://chain:8545
+    volumes:
+      - ./configs/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+
+  driver:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+    restart: always
+    depends_on:
+      chain:
+        condition: service_healthy
+      baseline:
+        condition: service_started
+    environment:
+      ETHRPC: http://chain:8545
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "8081:80"
+
+  baseline:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/baseline.toml:/baseline.toml:ro
+    # The solvers binary takes a subcommand; "baseline" selects the baseline solver engine
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "9001:80"
+
+volumes:
+  postgres:
