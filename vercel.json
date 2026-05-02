@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bash scripts/vercel-build.sh",
+  "outputDirectory": "apps/frontend/build/cowswap",
+  "installCommand": "echo 'install handled in buildCommand'",
+  "framework": null
+}
