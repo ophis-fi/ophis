@@ -5,3 +5,10 @@ export {
   GREG_PARTNER_RECIPIENT,
   type GregDefaults,
 } from './config.js';
+
+export {
+  gregDefaultPartnerFee,
+  GREG_PARTNER_FEE_RECIPIENT,
+  COW_SUPPORTED_CHAIN_IDS,
+  type GregPartnerFee,
+} from './partner-fee.js';
