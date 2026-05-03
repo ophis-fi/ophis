@@ -39,6 +39,8 @@ jobs:
 
       - name: build cowswap
         working-directory: apps/frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm run build:cowswap
 
       - name: deploy to Cloudflare Pages
