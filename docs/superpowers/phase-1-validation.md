@@ -70,4 +70,21 @@ The `GPv2AllowListAuthentication` owner is `0x6Fb5916c0f57f88004d5b5EB25f6f4D773
 
 - **Stage 1** (forked Gnosis): full end-to-end settlement ✅ PASS
 - **Stage 2** (real Sepolia): production-shape stack boots, orders accepted, solver finds routes — blocked at settlement submission by solver registration requirement ⚠️ DONE_WITH_CONCERNS
-- Open for Phase 2: register `0x00f98b...` as a Sepolia solver with the CoW Protocol team, then retry Stage 2 to confirm full end-to-end on real chain.
+
+## Strategic finding: solver allowlist gates self-hosted settlement
+
+CoW Protocol's [`GPv2AllowListAuthentication`](https://docs.cow.fi/cow-protocol/reference/contracts/core) is a permissioned allowlist — only solvers approved by CoW DAO governance can call `GPv2Settlement.settle()` on any of CoW's deployments. Approval is a multi-week governance process: forum proposal → code review → DAO vote → bonded capital. There is no technical bypass; deploying our own settlement is Level 3 in the brief and requires either deploying CoW's audited bytecode unchanged on a chain CoW has not deployed to, or paying for a separate audit.
+
+This invalidates the original spec's assumption that we could ship a self-hosted backend on CoW's chains in Phase 1. The architecture is sound; the deployment is governance-gated.
+
+## Strategic pivot (locked 2026-05-03)
+
+Two-track approach:
+
+1. **Short-term (Phases 1.5 → 2.5): partner-fee injection on CoW's existing chains.** Greg's frontend uses the cowswap fork's existing partner-fee plumbing to route a fixed bps to our recipient address. Orders flow through CoW's official orderbook and settle on CoW's contracts. We earn the partner-fee revenue line described in [CoW Protocol's partner-fee documentation](https://docs.cow.fi/governance/fees/partner-fee). No solver allowlist needed because we are not submitting settlements ourselves. Covers all 10 chains in the [supported networks list](https://docs.cow.fi/cow-protocol/reference/contracts/core) (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink, Gnosis).
+
+2. **Mid-term (Phase 3): chain-native fork-deploy on MegaETH.** Deploy [`GPv2Settlement`](https://github.com/cowprotocol/contracts) and [`GPv2VaultRelayer`](https://github.com/cowprotocol/contracts) bytecode unchanged on [MegaETH](https://www.megaeth.com/) (chain ID 4326, mainnet live since Feb 9, 2026), under our own `AllowListAuthentication` deployment. We become the chain-native intent broker on a chain CoW has not deployed to. The vendored `cowprotocol/services` stack we built and validated in Phase 1 (orderbook + autopilot + driver + baseline solver) becomes the production runtime against our own settlement contracts. Apply for [MegaETH ecosystem grants](https://www.megaeth.com/) (foundation reserve = 7.5% of supply) in parallel.
+
+## What's preserved from Phase 1 work
+
+The Rust services stack vendored in this phase is **not discarded** — it is the runtime for Phase 3 on MegaETH. Stage 1's settlement-on-fork validation proves the stack is mechanically correct. The Sepolia config set under `infra/local/configs/sepolia/` is preserved for future re-use if/when CoW DAO ever opens the allowlist. The Gnosis-targeted configs at `infra/local/configs/` and `docker-compose.fork.yml` / `docker-compose.gnosis.yml` will be adapted for MegaETH in Phase 3 (chain-id 4326, MegaETH-native DEX presets).
