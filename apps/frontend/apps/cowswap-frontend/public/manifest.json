@@ -1,8 +1,9 @@
 {
   "background_color": "#ffffff",
   "display": "standalone",
-  "homepage_url": "https://swap.cow.fi",
-  "description": "CoW Swap finds the lowest prices from all decentralized exchanges and DEX aggregators & saves you more with p2p trading and protection from MEV",
+  "homepage_url": "https://greg-git-main-clementfrmds-projects.vercel.app",
+  "description": "Greg — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain.",
+  "iconPath": "/android-chrome-512x512.png",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
