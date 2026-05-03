@@ -81,3 +81,20 @@ describe('exportJson', () => {
     expect(exportJson(receipt)).toBe(exportJson(receipt))
   })
 })
+
+import { exportPdf } from './exportPdf'
+
+describe('exportPdf', () => {
+  it('produces a non-empty Blob with PDF mime type', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 11155111 })
+    const blob = exportPdf(receipt)
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe('application/pdf')
+    expect(blob.size).toBeGreaterThan(500)
+  })
+
+  it('does not throw on a not-yet-settled order (no trade)', () => {
+    const receipt = buildReceipt({ order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' }, trade: null, chainId: 11155111 })
+    expect(() => exportPdf(receipt)).not.toThrow()
+  })
+})
