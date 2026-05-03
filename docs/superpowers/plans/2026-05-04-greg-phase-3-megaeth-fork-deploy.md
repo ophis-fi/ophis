@@ -23,7 +23,7 @@
 | **D1** | Deployer EOA — fresh wallet vs reuse Phase-1 driver-submitter `0x00f98b…502F` | **Generate a fresh dedicated EOA** (`greg-megaeth-deployer` Keychain entry). Cleaner audit trail; deployer has admin rights on the auth contract until Phase 3.x transfers to a Safe. |
 | **D2** | Settlement-contract authority (initial owner of `GPv2AllowListAuthentication`) | **Same EOA as D1** for Stage 1 testnet (low value, easy to manage). For mainnet, transfer ownership to the existing Phase-2.5 Gnosis Safe `0x858f0F5e…CeF8` after deploy. |
 | **D3** | Driver-submitter EOA on MegaETH (the EOA that signs settle() txs) | **Reuse Phase-1 driver-submitter** `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (Keychain `greg-driver-submitter`). Lazy-fund on MegaETH testnet, then mainnet. The auth contract's `addSolver(...)` call adds it to our allowlist. |
-| **D4** | MegaETH foundation grant application — apply or skip in Phase 3 | **Apply in parallel, non-blocking.** Task 11 captures the application; doesn't gate the phase. |
+| **D4** | MegaETH foundation grant application | **DEFERRED** (Clement 2026-05-04) — only apply once production is fully live: real domain, real brand, app validated by real users, contracts deployed and stable. Task 11 keeps the **draft template** in the plan so we don't lose context, but submission moves to Phase 4+ once "production-ready" is true. |
 
 ---
 
@@ -838,7 +838,9 @@ Verdict: PASS
 
 ### Step 6: No commit (final log in Task 12)
 
-## Task 11: MegaETH foundation grant application (parallel, optional)
+## Task 11: MegaETH foundation grant application — DRAFT ONLY in Phase 3 (submission deferred)
+
+**Submission gated on:** real domain + real brand + real-user-validated UX + stable mainnet contracts. None of those exist yet at Phase 3 start. We commit the **draft** so the application materials exist; actual submission is a Phase 4+ task once production-ready is true.
 
 **Files:**
 - Create: `docs/superpowers/megaeth-grant-application.md`
