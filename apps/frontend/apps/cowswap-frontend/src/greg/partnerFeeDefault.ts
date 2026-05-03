@@ -13,8 +13,12 @@
 
 import type { PartnerFee } from '@cowprotocol/widget-lib'
 
-/** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`. */
-const GREG_PARTNER_FEE_RECIPIENT = '0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E' as const
+/**
+ * Recipient — Safe multisig on Gnosis (CREATE2-deterministic, same address
+ * resolves on all 10 CoW chains). Threshold 1-of-1 at deploy; upgrade to
+ * ≥2-of-N before significant accrual. See `packages/sdk/src/partner-fee.ts`.
+ */
+const GREG_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as const
 
 /** Default fee in basis points. 1 bps = 0.01%. CoW caps partner fees at 100 bps. */
 const GREG_PARTNER_FEE_BPS = 5

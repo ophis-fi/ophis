@@ -7,9 +7,8 @@
 
 ## Recipient
 
-- **Address:** `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`
-- **Private key:** macOS Keychain entry `greg-partner-fee-recipient` (single-sig EOA)
-- **Multisig upgrade:** deferred to Phase 2.5 (public-launch prep). Current single-sig EOA is acceptable while accrued fees are below first weekly-payout threshold (0.001 WETH per [CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)).
+- **Phase 1.5 → Phase 2.5 (current):** Safe multisig `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` on Gnosis Chain (Safe v1.4.1, threshold 1-of-1 at deploy, owner `0x0494F503…d1A`). CREATE2-deterministic — same address resolves on all 10 CoW-supported chains. Lazy-deploy on each chain when payouts there warrant the gas. Phase 2.6 / pre-revenue task: upgrade threshold to ≥ 2-of-N.
+- **Phase 1.5 original (retired 2026-05-03):** single-sig EOA `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`, key in macOS Keychain entry `greg-partner-fee-recipient`. Was the partner-fee recipient until Phase 2.5 Task 6 swapped to Safe.
 
 ## Verification — three-tier proof
 
