@@ -3,6 +3,8 @@ import { ReactElement } from 'react'
 import { ExplorerDataType, getExplorerLink, isSellOrder, shortenAddress } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Fraction, Token } from '@cowprotocol/currency'
+
+import { DownloadReceiptButton } from 'modules/mevReceipt'
 import { Command } from '@cowprotocol/types'
 import { BannerOrientation, ExternalLink, Icon, IconType, InlineBanner, StatusColorVariant, UI } from '@cowprotocol/ui'
 
@@ -158,6 +160,26 @@ export function ReceiptModal({
               </styledEl.LightButton>
             )}
           </div>
+          <DownloadReceiptButton
+            format="json"
+            input={{
+              order: {
+                uid: order.id,
+                owner: order.owner,
+                status: order.status,
+                sellToken: order.inputToken.address,
+                buyToken: order.outputToken.address,
+                sellAmount: order.sellAmount,
+                buyAmount: order.buyAmount,
+                executedSellAmount: order.executionData.executedSellAmount.toString(),
+                executedBuyAmount: order.executionData.executedBuyAmount.toString(),
+                validTo: Math.floor(order.expirationTime.getTime() / 1000),
+                fullAppData: order.fullAppData ?? null,
+              },
+              trade: null,
+              chainId,
+            }}
+          />
           <CloseIcon onClick={() => onDismiss()} />
         </styledEl.Header>
 

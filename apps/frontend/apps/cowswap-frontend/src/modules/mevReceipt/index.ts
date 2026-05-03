@@ -1,3 +1,5 @@
 export { buildReceipt } from './services/buildReceipt'
 export { exportJson } from './services/exportJson'
+export { exportPdf } from './services/exportPdf'
+export { DownloadReceiptButton } from './containers/DownloadReceiptButton'
 export type { MevProofReceipt, PartnerFeeInfo, BuildReceiptInput } from './types'
