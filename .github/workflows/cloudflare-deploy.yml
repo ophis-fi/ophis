@@ -41,6 +41,11 @@ jobs:
         working-directory: apps/frontend
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+          # Tags every order produced by this build with appCode "greg"
+          # (instead of cowswap's upstream default "CoW Swap"). Tracked
+          # in apps/frontend/.greg-divergences.md. UPDATE THIS WHEN BRAND
+          # WORK LANDS A REAL PROJECT NAME.
+          REACT_APP_APP_CODE: greg
         run: pnpm run build:cowswap
 
       - name: install wrangler globally
