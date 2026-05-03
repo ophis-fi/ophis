@@ -1,0 +1,16 @@
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "https://ethereum-sepolia.publicnode.com"
+simulation-node-url = "https://ethereum-sepolia.publicnode.com"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]

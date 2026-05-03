@@ -1,0 +1,114 @@
+# infra/local/docker-compose.sepolia.yml
+# Greg Stage-2 stack — real Sepolia testnet (no anvil). Requires SEPOLIA_RPC_URL in .env.
+# Boot: docker compose -f infra/local/docker-compose.sepolia.yml --env-file infra/local/.env up -d
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+    # No volume needed — SQL files are baked into the migrations image at build time
+    # (COPY database/ /flyway/ in the Dockerfile migrations stage)
+
+  orderbook:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${SEPOLIA_RPC_URL}
+    volumes:
+      - ./configs/sepolia/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "8080:80"
+
+  autopilot:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+      orderbook:
+        condition: service_started
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${SEPOLIA_RPC_URL}
+    volumes:
+      - ./configs/sepolia/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+
+  driver:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+    restart: always
+    depends_on:
+      baseline:
+        condition: service_started
+    environment:
+      ETHRPC: ${SEPOLIA_RPC_URL}
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/sepolia/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "8081:80"
+
+  baseline:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/sepolia/baseline.toml:/baseline.toml:ro
+    # The solvers binary takes a subcommand; "baseline" selects the baseline solver engine
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "9001:80"
+
+volumes:
+  postgres:

@@ -1,0 +1,25 @@
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "45000000"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "REMOVED_LEAKED_KEY_2026_05_14"  # driver-submitter EOA (0x00f98b...)
+
+[submission]
+gas-price-cap = "1000000000000"
+
+[[submission.mempool]]
+url = "https://ethereum-sepolia.publicnode.com"
+
+[liquidity]
+base-tokens = [
+  "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",  # WETH (Sepolia)
+  "0x0625aFB445C3B6B7B929342a04A22599fd5dBB59",  # COW token (Sepolia)
+]
+
+[[liquidity.uniswap-v2]]  # TestnetUniswapV2 — deployed on Sepolia at 0x86dcd3293C53Cf8EFd7303B57beb2a3F671dDE98
+preset = "testnet-uniswap-v2"
