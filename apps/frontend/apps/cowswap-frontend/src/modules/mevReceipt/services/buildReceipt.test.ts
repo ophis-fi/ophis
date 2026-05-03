@@ -61,3 +61,23 @@ describe('buildReceipt', () => {
     expect(receipt.partnerFee).toBeNull()
   })
 })
+
+import { exportJson } from './exportJson'
+
+describe('exportJson', () => {
+  it('produces a valid JSON string round-trippable to the original receipt', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 11155111 })
+    const json = exportJson(receipt)
+    const parsed = JSON.parse(json)
+    expect(parsed.orderUid).toBe(receipt.orderUid)
+    expect(parsed.partnerFee).toEqual(receipt.partnerFee)
+    expect(parsed.receiptVersion).toBe('1')
+    expect(parsed.executedBuyAmount).toBe(receipt.executedBuyAmount)
+  })
+
+  it('produces deterministic output: identical receipts yield identical JSON', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 11155111 })
+    // The same receipt object exported twice must hash to the same string
+    expect(exportJson(receipt)).toBe(exportJson(receipt))
+  })
+})
