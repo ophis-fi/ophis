@@ -1,0 +1,8 @@
+chain-id = "11155111"  # Sepolia testnet
+base-tokens = [
+  "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",  # WETH (Sepolia)
+  "0x0625aFB445C3B6B7B929342a04A22599fd5dBB59",  # COW token (Sepolia)
+]
+max-hops = 2
+max-partial-attempts = 5
+native-token-price-estimation-amount = "100000000000000000"  # 0.1 ETH
