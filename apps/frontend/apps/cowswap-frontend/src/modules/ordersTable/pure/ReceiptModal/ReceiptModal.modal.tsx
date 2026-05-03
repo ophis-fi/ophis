@@ -1,9 +1,10 @@
-import { ReactElement } from 'react'
+import { ReactElement, useEffect, useState } from 'react'
 
 import { ExplorerDataType, getExplorerLink, isSellOrder, shortenAddress } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Fraction, Token } from '@cowprotocol/currency'
 
+import { orderBookApi } from 'cowSdk'
 import { DownloadReceiptButton } from 'modules/mevReceipt'
 import { Command } from '@cowprotocol/types'
 import { BannerOrientation, ExternalLink, Icon, IconType, InlineBanner, StatusColorVariant, UI } from '@cowprotocol/ui'
@@ -103,6 +104,13 @@ const TOOLTIPS_JSX: Record<string, ReactElement> = {
 
 const TWAP_PART_ORDER_EXISTS_STATES = new Set([OrderStatus.PENDING, OrderStatus.FULFILLED, OrderStatus.EXPIRED])
 
+interface MinimalTrade {
+  blockNumber: number
+  txHash: string
+  buyAmount: string
+  sellAmount: string
+}
+
 // TODO: add cosmos fixture for this component
 // TODO: Break down this large function into smaller functions
 // TODO: Add proper return type annotation
@@ -129,6 +137,37 @@ export function ReceiptModal({
 
   const isCustomRecipient = getIsCustomRecipient(order)
   const showCustomRecipientBanner = isCustomRecipient && isCustomRecipientWarningBannerVisible && isPending(order)
+
+  const [tradeForReceipt, setTradeForReceipt] = useState<MinimalTrade | null>(null)
+
+  useEffect(() => {
+    if (order.status !== OrderStatus.FULFILLED || !order.id || !chainId) {
+      setTradeForReceipt(null)
+      return
+    }
+
+    let cancelled = false
+    orderBookApi
+      .getTrades({ orderUid: order.id }, { chainId })
+      .then((trades) => {
+        if (cancelled || !trades || trades.length === 0) return
+        const t = trades[0]
+        if (t.txHash === null) return
+        setTradeForReceipt({
+          blockNumber: t.blockNumber,
+          txHash: t.txHash,
+          buyAmount: String(t.buyAmount),
+          sellAmount: String(t.sellAmount),
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setTradeForReceipt(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [order.status, order.id, chainId])
 
   if (!order || !chainId) {
     return null
@@ -176,7 +215,7 @@ export function ReceiptModal({
                 validTo: Math.floor(order.expirationTime.getTime() / 1000),
                 fullAppData: order.fullAppData ?? null,
               },
-              trade: null,
+              trade: tradeForReceipt,
               chainId,
             }}
           />
