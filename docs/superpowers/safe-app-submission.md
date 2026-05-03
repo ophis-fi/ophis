@@ -4,7 +4,7 @@ This document captures everything needed to submit Greg to the Safe app store, p
 
 ## Current app URL
 
-- **Vercel branch alias (always-latest main):** `https://greg-git-main-clementfrmds-projects.vercel.app`
+- **Vercel branch alias (always-latest main):** `https://greg-etm.pages.dev`
 - **Phase 2.5 will swap this for a real Greg domain** (`greg.app`, one of the openletz domains, or whatever brand work picks).
 
 ## Manifest
@@ -15,7 +15,7 @@ Served at `/manifest.json` on the deployment. Contents (verified 2026-05-03 agai
 {
   "background_color": "#ffffff",
   "display": "standalone",
-  "homepage_url": "https://greg-git-main-clementfrmds-projects.vercel.app",
+  "homepage_url": "https://greg-etm.pages.dev",
   "description": "Greg — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain.",
   "iconPath": "/android-chrome-512x512.png",
   "icons": [
@@ -38,7 +38,7 @@ Served at `/manifest.json` on the deployment. Contents (verified 2026-05-03 agai
 Safe fetches the manifest cross-origin from `app.safe.global`. CORS must allow it.
 
 ```
-$ curl -sI https://greg-git-main-clementfrmds-projects.vercel.app/manifest.json | grep -iE 'access-control|content-type'
+$ curl -sI https://greg-etm.pages.dev/manifest.json | grep -iE 'access-control|content-type'
 access-control-allow-origin: *
 content-type: application/json; charset=utf-8
 ```
@@ -50,7 +50,7 @@ content-type: application/json; charset=utf-8
 Safe iframes the app URL with `<iframe src="$appUrl" sandbox="...">`. Check for blocking response headers:
 
 ```
-$ curl -sI https://greg-git-main-clementfrmds-projects.vercel.app/ | grep -iE 'x-frame|content-security-policy|frame-ancestors'
+$ curl -sI https://greg-etm.pages.dev/ | grep -iE 'x-frame|content-security-policy|frame-ancestors'
 (no output)
 ```
 
@@ -63,7 +63,7 @@ To visually confirm the iframe loads with cowswap's Safe SDK detecting the Safe 
 ```bash
 SAFE_APP_TEST_URL="https://app.safe.global/apps/open?safe=eth%3A0xfb1bffc9d739b8d520daf37df666da4c687191ea&appUrl=$(python3 -c "
 import urllib.parse
-print(urllib.parse.quote('https://greg-git-main-clementfrmds-projects.vercel.app'))
+print(urllib.parse.quote('https://greg-etm.pages.dev'))
 ")"
 echo "$SAFE_APP_TEST_URL"
 # Open in browser; the Greg UI should render inside Safe's iframe.

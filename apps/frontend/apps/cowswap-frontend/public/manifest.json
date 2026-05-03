@@ -1,7 +1,7 @@
 {
   "background_color": "#ffffff",
   "display": "standalone",
-  "homepage_url": "https://greg-git-main-clementfrmds-projects.vercel.app",
+  "homepage_url": "https://greg-etm.pages.dev",
   "description": "Greg — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain.",
   "iconPath": "/greg-icon.svg",
   "icons": [
