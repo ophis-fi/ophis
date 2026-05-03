@@ -43,9 +43,13 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm run build:cowswap
 
+      - name: install wrangler globally
+        run: npm install -g wrangler@latest
+
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
           command: pages deploy apps/frontend/build/cowswap --project-name=greg --branch=main --commit-dirty=true
