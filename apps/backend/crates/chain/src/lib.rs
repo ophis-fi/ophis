@@ -29,6 +29,13 @@ pub enum Chain {
     // Greg additions for Phase 3b — Hyperliquid HyperEVM.
     HyperEvmTestnet = 998,
     HyperEvmMainnet = 999,
+    // Greg additions for Phase 3c — multi-chain expansion (Optimism mainnet
+    // is already declared above; just add OP Sepolia for testnet).
+    OptimismSepolia = 11155420,
+    KatanaTestnet = 737373,    // "Bokuto" testnet
+    KatanaMainnet = 747474,
+    MantleTestnet = 5003,      // Mantle Sepolia
+    MantleMainnet = 5000,
 }
 
 impl Chain {
@@ -60,6 +67,11 @@ impl Chain {
             Self::MegaethMainnet => "MegaETH",
             Self::HyperEvmTestnet => "Hyperliquid / HyperEVM Testnet",
             Self::HyperEvmMainnet => "Hyperliquid / HyperEVM",
+            Self::OptimismSepolia => "Optimism / Sepolia",
+            Self::KatanaTestnet => "Katana / Bokuto",
+            Self::KatanaMainnet => "Katana",
+            Self::MantleTestnet => "Mantle / Sepolia",
+            Self::MantleMainnet => "Mantle",
         }
     }
 
@@ -78,7 +90,12 @@ impl Chain {
             | Self::MegaethTestnet
             | Self::MegaethMainnet
             | Self::HyperEvmTestnet
-            | Self::HyperEvmMainnet => U256::from(10u128.pow(17)),
+            | Self::HyperEvmMainnet
+            | Self::OptimismSepolia
+            | Self::KatanaTestnet
+            | Self::KatanaMainnet
+            | Self::MantleTestnet
+            | Self::MantleMainnet => U256::from(10u128.pow(17)),
             Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
             Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
             Self::Hardhat => {
@@ -110,6 +127,14 @@ impl Chain {
             // HyperEVM small blocks are 1s (big blocks 60s; we tune for steady-state which is small blocks).
             Self::HyperEvmTestnet => Duration::from_millis(1_000),
             Self::HyperEvmMainnet => Duration::from_millis(1_000),
+            // Optimism: ~2s blocks. OP Sepolia same.
+            Self::OptimismSepolia => Duration::from_millis(2_000),
+            // Katana: 1s block time per docs.
+            Self::KatanaTestnet => Duration::from_millis(1_000),
+            Self::KatanaMainnet => Duration::from_millis(1_000),
+            // Mantle: 1s blocks.
+            Self::MantleTestnet => Duration::from_millis(1_000),
+            Self::MantleMainnet => Duration::from_millis(1_000),
         }
     }
 
@@ -145,6 +170,11 @@ impl TryFrom<u64> for Chain {
             x if x == Self::MegaethMainnet as u64 => Self::MegaethMainnet,
             x if x == Self::HyperEvmTestnet as u64 => Self::HyperEvmTestnet,
             x if x == Self::HyperEvmMainnet as u64 => Self::HyperEvmMainnet,
+            x if x == Self::OptimismSepolia as u64 => Self::OptimismSepolia,
+            x if x == Self::KatanaTestnet as u64 => Self::KatanaTestnet,
+            x if x == Self::KatanaMainnet as u64 => Self::KatanaMainnet,
+            x if x == Self::MantleTestnet as u64 => Self::MantleTestnet,
+            x if x == Self::MantleMainnet as u64 => Self::MantleMainnet,
             _ => Err(ChainIdNotSupported)?,
         };
         Ok(network)

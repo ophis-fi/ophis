@@ -71,13 +71,17 @@ pub fn defaults_for_network(chain: &Chain) -> Vec<BaselineSource> {
         Chain::Ink => vec![BaselineSource::UniswapV3],
         Chain::Sepolia => vec![BaselineSource::TestnetUniswapV2],
         Chain::Hardhat => panic!("unsupported baseline sources for Hardhat"),
-        // MegaETH (testnet 6343 + mainnet 4326) + Hyperliquid HyperEVM (testnet
-        // 998 + mainnet 999): ship empty so the driver disables built-in
-        // baseline DEX presets. Greg supplies its own liquidity sources via
-        // the [[liquidity.uniswap-v2]] manual config (Greg-deployed V2 fork).
+        // Greg-deployed chains (MegaETH, HyperEVM, OP Sepolia, Katana, Mantle):
+        // ship empty so the driver disables built-in baseline DEX presets and
+        // we wire the manual `[[liquidity.uniswap-v2]]` config per chain.
         Chain::MegaethTestnet
         | Chain::MegaethMainnet
         | Chain::HyperEvmTestnet
-        | Chain::HyperEvmMainnet => vec![],
+        | Chain::HyperEvmMainnet
+        | Chain::OptimismSepolia
+        | Chain::KatanaTestnet
+        | Chain::KatanaMainnet
+        | Chain::MantleTestnet
+        | Chain::MantleMainnet => vec![],
     }
 }
