@@ -1,0 +1,31 @@
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "https://rpc.sepolia.linea.build"
+simulation-node-url = "https://rpc.sepolia.linea.build"
+
+# Filled post-deploy. Settlement / Auth / VaultRelayer / helpers will land at
+# the same canonical addresses as on our other Greg-deployed chains (CREATE2
+# from constant SALT + same Greg owner). Linea Sepolia has no OP-Stack WETH
+# predeploy, so we deploy our own WETH9 as part of the bring-up.
+[shared.contracts]
+settlement = "0x0000000000000000000000000000000000000000"
+balances = "0x0000000000000000000000000000000000000000"
+signatures = "0x0000000000000000000000000000000000000000"
+native-token = "0x0000000000000000000000000000000000000000"
+hooks = "0x0000000000000000000000000000000000000000"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH

@@ -34,8 +34,9 @@ pub enum Chain {
     OptimismSepolia = 11155420,
     KatanaTestnet = 737373,    // "Bokuto" testnet
     KatanaMainnet = 747474,
-    MantleTestnet = 5003,      // Mantle Sepolia
+    MantleTestnet = 5003,      // Mantle Sepolia (paused 2026-05-04)
     MantleMainnet = 5000,
+    LineaSepolia = 59141,      // Linea mainnet (59144) is already declared above
 }
 
 impl Chain {
@@ -72,6 +73,7 @@ impl Chain {
             Self::KatanaMainnet => "Katana",
             Self::MantleTestnet => "Mantle / Sepolia",
             Self::MantleMainnet => "Mantle",
+            Self::LineaSepolia => "Linea / Sepolia",
         }
     }
 
@@ -95,7 +97,8 @@ impl Chain {
             | Self::KatanaTestnet
             | Self::KatanaMainnet
             | Self::MantleTestnet
-            | Self::MantleMainnet => U256::from(10u128.pow(17)),
+            | Self::MantleMainnet
+            | Self::LineaSepolia => U256::from(10u128.pow(17)),
             Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
             Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
             Self::Hardhat => {
@@ -135,6 +138,8 @@ impl Chain {
             // Mantle: 1s blocks.
             Self::MantleTestnet => Duration::from_millis(1_000),
             Self::MantleMainnet => Duration::from_millis(1_000),
+            // Linea Sepolia: ~2s blocks (matches mainnet).
+            Self::LineaSepolia => Duration::from_millis(2_000),
         }
     }
 
@@ -175,6 +180,7 @@ impl TryFrom<u64> for Chain {
             x if x == Self::KatanaMainnet as u64 => Self::KatanaMainnet,
             x if x == Self::MantleTestnet as u64 => Self::MantleTestnet,
             x if x == Self::MantleMainnet as u64 => Self::MantleMainnet,
+            x if x == Self::LineaSepolia as u64 => Self::LineaSepolia,
             _ => Err(ChainIdNotSupported)?,
         };
         Ok(network)
