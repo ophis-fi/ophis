@@ -1,0 +1,29 @@
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "https://rpc.sepolia.mantle.xyz"
+simulation-node-url = "https://rpc.sepolia.mantle.xyz"
+
+# Override every contract address — Mantle Sepolia (chain 5003).
+[shared.contracts]
+settlement = "0x0000000000000000000000000000000000000000"
+balances = "0x0000000000000000000000000000000000000000"
+signatures = "0x0000000000000000000000000000000000000000"
+# WMNT (native) on Mantle Sepolia. Verify post-deploy.
+native-token = "0x0000000000000000000000000000000000000000"
+hooks = "0x0000000000000000000000000000000000000000"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"
