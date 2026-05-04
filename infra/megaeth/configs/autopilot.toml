@@ -41,6 +41,10 @@ read-url = "%DB_READ_URL"
 [order-quoting]
 price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
 
+# Same small probe as orderbook — testnet pool has only 0.1 WETH total.
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
+
 [native-price-estimation]
 estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
 

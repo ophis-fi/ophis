@@ -24,10 +24,14 @@ url = "https://carrot.megaeth.com/rpc"
 [liquidity]
 base-tokens = [
   "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy)
+  "0xd031ce1c577cad1530bd8283caa6a6a106a5b61b",  # GTUSD (Greg test stable, seeded in WETH/GTUSD pool)
 ]
 
-# NOTE — Stage 1 has no DEX deployed on MegaETH testnet (chain 6343); the
-# liquidity sub-tables intentionally have no entries so the baseline solver
-# probes nothing. The stack still boots and serves /api/v1/version, but
-# quotes will return NoLiquidity. Phase gate (real first swap) is on
-# mainnet (chain 4326) via Kumbaya V3 — see configs/mainnet/.
+# Greg-deployed Uniswap V2 fork on testnet. Manual config: no subgraph needed
+# since V2 pools are CREATE2-deterministic from (factory, sortedTokens) keyed
+# by the canonical Pair init-code hash. Pool-discovery probes the factory
+# directly via getPair() once the pair is hot.
+[[liquidity.uniswap-v2]]
+router = "0x75ded14ecead092aeccdcba693ac4d1b8921b7df"
+pool-code = "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"
+missing-pool-cache-time = "5m"

@@ -26,3 +26,8 @@ estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseli
 
 [order-quoting]
 price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+# Use a small probe amount for native-price computation. Default for MegaETH
+# is 0.1 ETH which exceeds our testnet pool's total liquidity (0.1 WETH).
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
