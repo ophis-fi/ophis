@@ -57,12 +57,16 @@ const deploySettlement: DeployFunction = async function ({
     }
   }
 
+  // Greg patch: chain-aware gas limit. See 001_authenticator.ts for context.
+  const overrideGas = process.env.GREG_SETTLEMENT_GAS_LIMIT;
+  const gasLimit = overrideGas
+    ? Number(overrideGas)
+    : (process.env.HARDHAT_NETWORK ?? "").startsWith("megaeth")
+      ? 250000000
+      : 28000000;
   await deploy(settlement, {
     from: deployer,
-    // Greg patch: bumped from 5_000_000 to 250_000_000 for MegaETH parity.
-    // See comment in 001_authenticator.ts. Settlement deploys VaultRelayer in
-    // its constructor, so the budget needs to cover both contracts.
-    gasLimit: 250000000,
+    gasLimit,
     args: [authenticatorAddress, vaultAddress],
     deterministicDeployment: SALT,
     log: true,

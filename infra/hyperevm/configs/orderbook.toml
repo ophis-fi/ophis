@@ -10,11 +10,11 @@ simulation-node-url = "https://rpc.hyperliquid-testnet.xyz/evm"
 # every address explicitly bypasses the lookup entirely.
 # (Addresses filled in post-deploy; this file is updated in-place.)
 [shared.contracts]
-settlement = "0x0000000000000000000000000000000000000000"   # GREG_SETTLEMENT_HYPEREVM_TESTNET
-balances = "0x0000000000000000000000000000000000000000"     # GREG_BALANCES_HYPEREVM_TESTNET
-signatures = "0x0000000000000000000000000000000000000000"   # GREG_SIGNATURES_HYPEREVM_TESTNET
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+balances = "0x13f618796e8c8626168340558453ebda02add1ff"
+signatures = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
 native-token = "0x5555555555555555555555555555555555555555"  # WHYPE
-hooks = "0x0000000000000000000000000000000000000000"        # GREG_HOOKS_TRAMPOLINE_HYPEREVM_TESTNET
+hooks = "0xe4137bd2ecfdfb96d80629ec254dadec71bc498c"
 balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical fallback
 
 [database]
