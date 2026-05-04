@@ -104,6 +104,7 @@ services:
     environment:
       ETHRPC: ${MEGAETH_TESTNET_RPC}
       ADDR: 0.0.0.0:80
+      LOG_FILTER: "info,driver=debug,driver::infra::observe=trace,driver::infra::solver=trace"
     volumes:
       - ./configs/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]
