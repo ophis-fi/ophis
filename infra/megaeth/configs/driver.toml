@@ -1,0 +1,27 @@
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "45000000"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "REMOVED_LEAKED_KEY_2026_05_14"  # driver-submitter EOA (0x00f98b...)
+
+[submission]
+gas-price-cap = "1000000000000"
+
+[[submission.mempool]]
+url = "https://carrot.megaeth.com/rpc"
+
+[liquidity]
+base-tokens = [
+  "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy)
+]
+
+# NOTE — Stage 1 has no DEX deployed on MegaETH testnet (chain 6343); the
+# liquidity sub-tables intentionally have no entries so the baseline solver
+# probes nothing. The stack still boots and serves /api/v1/version, but
+# quotes will return NoLiquidity. Phase gate (real first swap) is on
+# mainnet (chain 4326) via Kumbaya V3 — see configs/mainnet/.

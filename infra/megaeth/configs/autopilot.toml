@@ -1,0 +1,39 @@
+node-url = "https://carrot.megaeth.com/rpc"
+simulation-node-url = "https://carrot.megaeth.com/rpc"
+
+[logging]
+filter = "warn,autopilot=debug,shared=info,price_estimation=info"
+
+[current-block]
+poll-interval = "1s"
+
+[run-loop]
+solve-deadline = "20s"
+
+[[gas-estimators]]
+type = "Web3"
+
+[[gas-estimators]]
+type = "Alloy"
+
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F"
+
+[fee-policies]
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+# No ethflow on MegaETH; native-ETH-via-eth-flow is a Phase 3.x follow-up.
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[native-price-estimation.cache]
+max-age = "20m"
