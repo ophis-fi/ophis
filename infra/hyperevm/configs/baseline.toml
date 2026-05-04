@@ -1,0 +1,10 @@
+# HyperEVM testnet (chain 998). Same pattern as MegaETH: pass weth directly
+# rather than chain-id (the for_chain lookup probes the auto-gen contracts
+# registry which has no HyperEVM entries).
+weth = "0x5555555555555555555555555555555555555555"  # WHYPE
+base-tokens = [
+  "0x5555555555555555555555555555555555555555",  # WHYPE
+]
+max-hops = 2
+max-partial-attempts = 5
+native-token-price-estimation-amount = "1000000000000000"  # 0.001 HYPE (small testnet pool)

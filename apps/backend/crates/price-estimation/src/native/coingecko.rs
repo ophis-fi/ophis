@@ -85,7 +85,9 @@ impl CoinGecko {
             | Chain::Goerli
             | Chain::Hardhat
             | Chain::MegaethTestnet
-            | Chain::MegaethMainnet => {
+            | Chain::MegaethMainnet
+            | Chain::HyperEvmTestnet
+            | Chain::HyperEvmMainnet => {
                 anyhow::bail!("unsupported network {}", chain.name())
             }
         };

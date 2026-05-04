@@ -26,6 +26,9 @@ pub enum Chain {
     // deprecated previous testnet) and MegaETH mainnet.
     MegaethTestnet = 6343,
     MegaethMainnet = 4326,
+    // Greg additions for Phase 3b — Hyperliquid HyperEVM.
+    HyperEvmTestnet = 998,
+    HyperEvmMainnet = 999,
 }
 
 impl Chain {
@@ -55,6 +58,8 @@ impl Chain {
             Self::Ink => "Ink",
             Self::MegaethTestnet => "MegaETH / Testnet",
             Self::MegaethMainnet => "MegaETH",
+            Self::HyperEvmTestnet => "Hyperliquid / HyperEVM Testnet",
+            Self::HyperEvmMainnet => "Hyperliquid / HyperEVM",
         }
     }
 
@@ -71,7 +76,9 @@ impl Chain {
             | Self::Optimism
             | Self::Ink
             | Self::MegaethTestnet
-            | Self::MegaethMainnet => U256::from(10u128.pow(17)),
+            | Self::MegaethMainnet
+            | Self::HyperEvmTestnet
+            | Self::HyperEvmMainnet => U256::from(10u128.pow(17)),
             Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
             Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
             Self::Hardhat => {
@@ -100,6 +107,9 @@ impl Chain {
             // MegaETH does sub-second mini-blocks plus 1s EVM blocks; use 1s.
             Self::MegaethTestnet => Duration::from_millis(1_000),
             Self::MegaethMainnet => Duration::from_millis(1_000),
+            // HyperEVM small blocks are 1s (big blocks 60s; we tune for steady-state which is small blocks).
+            Self::HyperEvmTestnet => Duration::from_millis(1_000),
+            Self::HyperEvmMainnet => Duration::from_millis(1_000),
         }
     }
 
@@ -133,6 +143,8 @@ impl TryFrom<u64> for Chain {
             x if x == Self::Ink as u64 => Self::Ink,
             x if x == Self::MegaethTestnet as u64 => Self::MegaethTestnet,
             x if x == Self::MegaethMainnet as u64 => Self::MegaethMainnet,
+            x if x == Self::HyperEvmTestnet as u64 => Self::HyperEvmTestnet,
+            x if x == Self::HyperEvmMainnet as u64 => Self::HyperEvmMainnet,
             _ => Err(ChainIdNotSupported)?,
         };
         Ok(network)
