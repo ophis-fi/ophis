@@ -59,7 +59,10 @@ const deploySettlement: DeployFunction = async function ({
 
   await deploy(settlement, {
     from: deployer,
-    gasLimit: 5e6,
+    // Greg patch: bumped from 5_000_000 to 250_000_000 for MegaETH parity.
+    // See comment in 001_authenticator.ts. Settlement deploys VaultRelayer in
+    // its constructor, so the budget needs to cover both contracts.
+    gasLimit: 250000000,
     args: [authenticatorAddress, vaultAddress],
     deterministicDeployment: SALT,
     log: true,
