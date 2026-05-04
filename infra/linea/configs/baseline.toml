@@ -1,10 +1,8 @@
-# Linea Sepolia (chain 59141). Pass `weth` directly to bypass the
-# chain-keyed for_chain lookup.
-weth = "0x0000000000000000000000000000000000000000"
+weth = "0x89bd2e1756ef0c73a425b0387f3a43b3b83bf755"  # GTETH stand-in
 base-tokens = [
-  "0x0000000000000000000000000000000000000000",  # WETH
-  "0x0000000000000000000000000000000000000000",  # GTUSD
+  "0x89bd2e1756ef0c73a425b0387f3a43b3b83bf755",  # GTETH
+  "0x78f476a1e4fab1697b624a28e14513fdcab2da7e",  # GTUSD
 ]
 max-hops = 2
 max-partial-attempts = 5
-native-token-price-estimation-amount = "1000000000000000"  # 0.001 ETH
+native-token-price-estimation-amount = "1000000000000000"

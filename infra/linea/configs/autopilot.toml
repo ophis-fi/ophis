@@ -2,18 +2,18 @@ node-url = "https://rpc.sepolia.linea.build"
 simulation-node-url = "https://rpc.sepolia.linea.build"
 
 [contracts]
-settlement = "0x0000000000000000000000000000000000000000"
-balances = "0x0000000000000000000000000000000000000000"
-signatures = "0x0000000000000000000000000000000000000000"
-native-token = "0x0000000000000000000000000000000000000000"
-hooks = "0x0000000000000000000000000000000000000000"
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+balances = "0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1"
+signatures = "0xe3d494a299f35c00668047c5ae2117470c413f5c"
+native-token = "0x89bd2e1756ef0c73a425b0387f3a43b3b83bf755"
+hooks = "0x0e9ca200bbc926e2023c856841111feed2818b29"
 balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
 
 [logging]
 filter = "warn,autopilot=debug,shared=info,price_estimation=info"
 
 [current-block]
-poll-interval = "2s"  # OP block time
+poll-interval = "2s"
 
 [run-loop]
 solve-deadline = "20s"
