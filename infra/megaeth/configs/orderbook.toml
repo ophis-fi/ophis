@@ -5,6 +5,18 @@ bind-address = "0.0.0.0:80"
 node-url = "https://carrot.megaeth.com/rpc"
 simulation-node-url = "https://carrot.megaeth.com/rpc"
 
+# Override every contract address — MegaETH testnet (chain 6343) is not in
+# upstream's `apps/backend/contracts/src/networks.rs` registry, so the default
+# `Instance::deployed(provider)` lookup panics. Providing every address
+# explicitly bypasses the lookup entirely.
+[shared.contracts]
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"  # GPv2Settlement (Greg-deployed)
+balances = "0x7c2461066e6af18520384ecfb5afdd7209ea9be7"     # Balances helper
+signatures = "0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1"   # Signatures helper
+native-token = "0x4200000000000000000000000000000000000006"  # WETH (OP Stack predeploy)
+hooks = "0x0e9ca200bbc926e2023c856841111feed2818b29"        # HooksTrampoline
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical addr; not deployed on MegaETH but treated as the default fallback by the deployed Settlement
+
 [database]
 write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"

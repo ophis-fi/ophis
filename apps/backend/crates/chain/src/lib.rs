@@ -22,6 +22,10 @@ pub enum Chain {
     Linea = 59144,
     Plasma = 9745,
     Ink = 57073,
+    // Greg additions for Phase 3 — MegaETH testnet (live; chain 6342 is the
+    // deprecated previous testnet) and MegaETH mainnet.
+    MegaethTestnet = 6343,
+    MegaethMainnet = 4326,
 }
 
 impl Chain {
@@ -49,6 +53,8 @@ impl Chain {
             Self::Linea => "Linea",
             Self::Plasma => "Plasma",
             Self::Ink => "Ink",
+            Self::MegaethTestnet => "MegaETH / Testnet",
+            Self::MegaethMainnet => "MegaETH",
         }
     }
 
@@ -63,7 +69,9 @@ impl Chain {
             | Self::Bnb
             | Self::Linea
             | Self::Optimism
-            | Self::Ink => U256::from(10u128.pow(17)),
+            | Self::Ink
+            | Self::MegaethTestnet
+            | Self::MegaethMainnet => U256::from(10u128.pow(17)),
             Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
             Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
             Self::Hardhat => {
@@ -89,6 +97,9 @@ impl Chain {
             Self::Linea => Duration::from_millis(2_000),
             Self::Plasma => Duration::from_millis(1_000),
             Self::Ink => Duration::from_millis(1_000),
+            // MegaETH does sub-second mini-blocks plus 1s EVM blocks; use 1s.
+            Self::MegaethTestnet => Duration::from_millis(1_000),
+            Self::MegaethMainnet => Duration::from_millis(1_000),
         }
     }
 
@@ -120,6 +131,8 @@ impl TryFrom<u64> for Chain {
             x if x == Self::Linea as u64 => Self::Linea,
             x if x == Self::Plasma as u64 => Self::Plasma,
             x if x == Self::Ink as u64 => Self::Ink,
+            x if x == Self::MegaethTestnet as u64 => Self::MegaethTestnet,
+            x if x == Self::MegaethMainnet as u64 => Self::MegaethMainnet,
             _ => Err(ChainIdNotSupported)?,
         };
         Ok(network)
