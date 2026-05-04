@@ -70,6 +70,36 @@ const config = {
       chainId: 999,
       accounts,
     },
+    "optimism-sepolia": {
+      url: process.env.OP_SEPOLIA_RPC ?? "https://sepolia.optimism.io",
+      chainId: 11155420,
+      accounts,
+    },
+    "optimism-mainnet": {
+      url: process.env.OP_MAINNET_RPC ?? "https://mainnet.optimism.io",
+      chainId: 10,
+      accounts,
+    },
+    "katana-testnet": {
+      url: process.env.KATANA_TESTNET_RPC ?? "https://rpc-bokuto.katanarpc.com",
+      chainId: 737373,
+      accounts,
+    },
+    "katana-mainnet": {
+      url: process.env.KATANA_MAINNET_RPC ?? "https://rpc.katana.network",
+      chainId: 747474,
+      accounts,
+    },
+    "mantle-testnet": {
+      url: process.env.MANTLE_TESTNET_RPC ?? "https://rpc.sepolia.mantle.xyz",
+      chainId: 5003,
+      accounts,
+    },
+    "mantle-mainnet": {
+      url: process.env.MANTLE_MAINNET_RPC ?? "https://rpc.mantle.xyz",
+      chainId: 5000,
+      accounts,
+    },
   },
   namedAccounts: {
     ...((baseConfig as { namedAccounts?: Record<string, unknown> })
@@ -81,6 +111,12 @@ const config = {
       "megaeth-mainnet": GREG_DEPLOYER_ADDRESS,
       "hyperevm-testnet": GREG_DEPLOYER_ADDRESS,
       "hyperevm-mainnet": GREG_DEPLOYER_ADDRESS,
+      "optimism-sepolia": GREG_DEPLOYER_ADDRESS,
+      "optimism-mainnet": GREG_DEPLOYER_ADDRESS,
+      "katana-testnet": GREG_DEPLOYER_ADDRESS,
+      "katana-mainnet": GREG_DEPLOYER_ADDRESS,
+      "mantle-testnet": GREG_DEPLOYER_ADDRESS,
+      "mantle-mainnet": GREG_DEPLOYER_ADDRESS,
     },
     manager: {
       ...(((baseConfig as { namedAccounts?: { manager?: unknown } })
@@ -89,6 +125,12 @@ const config = {
       "megaeth-mainnet": GREG_DEPLOYER_ADDRESS,
       "hyperevm-testnet": GREG_DEPLOYER_ADDRESS,
       "hyperevm-mainnet": GREG_DEPLOYER_ADDRESS,
+      "optimism-sepolia": GREG_DEPLOYER_ADDRESS,
+      "optimism-mainnet": GREG_DEPLOYER_ADDRESS,
+      "katana-testnet": GREG_DEPLOYER_ADDRESS,
+      "katana-mainnet": GREG_DEPLOYER_ADDRESS,
+      "mantle-testnet": GREG_DEPLOYER_ADDRESS,
+      "mantle-mainnet": GREG_DEPLOYER_ADDRESS,
     },
   },
 };
