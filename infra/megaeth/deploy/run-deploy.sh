@@ -37,6 +37,10 @@ GREG_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
   -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
 export GREG_MEGAETH_DEPLOYER_PK
 
+# Sourced from .env above; export so the hardhat config sees it for the
+# namedAccounts override (owner + manager → Greg deployer EOA).
+export GREG_MEGAETH_DEPLOYER_ADDRESS
+
 # Sanity: mainnet RPC must be set if we're hitting mainnet.
 if [[ "$NETWORK" == "megaeth-mainnet" && -z "${MEGAETH_MAINNET_RPC:-}" ]]; then
   echo "ERROR: MEGAETH_MAINNET_RPC is empty in $ENV_FILE." >&2

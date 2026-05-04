@@ -25,6 +25,16 @@ const MEGAETH_TESTNET_RPC =
   process.env.MEGAETH_TESTNET_RPC ?? "https://carrot.megaeth.com/rpc";
 const MEGAETH_MAINNET_RPC = process.env.MEGAETH_MAINNET_RPC ?? "";
 
+// CRITICAL OVERRIDE: upstream defaults namedAccounts.owner and .manager to
+// the canonical CoW EOA `0x6Fb5916c…1eD` so that the proxy lands at the
+// canonical CREATE2 address on every chain. For Greg, that hands control of
+// our deploy to CoW's key-holder — they could addSolver/setManager on a
+// contract we deployed. We override both to the Greg deployer EOA so we own
+// the allowlist on MegaETH (testnet 6343 + mainnet 4326). Side-effect: our
+// proxy + Settlement land at NEW addresses, distinct from the canonical CoW
+// addresses on every other chain. That is the desired behaviour for Greg.
+const GREG_DEPLOYER_ADDRESS = process.env.GREG_MEGAETH_DEPLOYER_ADDRESS ?? "";
+
 const config = {
   ...baseConfig,
   networks: {
@@ -40,6 +50,22 @@ const config = {
       url: MEGAETH_MAINNET_RPC,
       chainId: 4326,
       accounts,
+    },
+  },
+  namedAccounts: {
+    ...((baseConfig as { namedAccounts?: Record<string, unknown> })
+      .namedAccounts ?? {}),
+    owner: {
+      ...(((baseConfig as { namedAccounts?: { owner?: unknown } })
+        .namedAccounts?.owner ?? {}) as Record<string, unknown>),
+      "megaeth-testnet": GREG_DEPLOYER_ADDRESS,
+      "megaeth-mainnet": GREG_DEPLOYER_ADDRESS,
+    },
+    manager: {
+      ...(((baseConfig as { namedAccounts?: { manager?: unknown } })
+        .namedAccounts?.manager ?? {}) as Record<string, unknown>),
+      "megaeth-testnet": GREG_DEPLOYER_ADDRESS,
+      "megaeth-mainnet": GREG_DEPLOYER_ADDRESS,
     },
   },
 };
