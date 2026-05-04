@@ -1,0 +1,34 @@
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "https://rpc.hyperliquid-testnet.xyz/evm"
+simulation-node-url = "https://rpc.hyperliquid-testnet.xyz/evm"
+
+# Override every contract address — HyperEVM testnet (chain 998) is not in
+# upstream's `apps/backend/contracts/src/networks.rs` registry, so providing
+# every address explicitly bypasses the lookup entirely.
+# (Addresses filled in post-deploy; this file is updated in-place.)
+[shared.contracts]
+settlement = "0x0000000000000000000000000000000000000000"   # GREG_SETTLEMENT_HYPEREVM_TESTNET
+balances = "0x0000000000000000000000000000000000000000"     # GREG_BALANCES_HYPEREVM_TESTNET
+signatures = "0x0000000000000000000000000000000000000000"   # GREG_SIGNATURES_HYPEREVM_TESTNET
+native-token = "0x5555555555555555555555555555555555555555"  # WHYPE
+hooks = "0x0000000000000000000000000000000000000000"        # GREG_HOOKS_TRAMPOLINE_HYPEREVM_TESTNET
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical fallback
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+# Use a small probe amount for native-price computation. Default for HyperEVM
+# would scale to chain-specific defaults; the seeded testnet pool will be
+# small ($5-ish liquidity) so probe with 0.001 HYPE.
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 HYPE
