@@ -1,6 +1,15 @@
 node-url = "https://carrot.megaeth.com/rpc"
 simulation-node-url = "https://carrot.megaeth.com/rpc"
 
+# Override every contract address — see same comment in orderbook.toml.
+[contracts]
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+balances = "0x7c2461066e6af18520384ecfb5afdd7209ea9be7"
+signatures = "0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1"
+native-token = "0x4200000000000000000000000000000000000006"
+hooks = "0x0e9ca200bbc926e2023c856841111feed2818b29"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
 [logging]
 filter = "warn,autopilot=debug,shared=info,price_estimation=info"
 
