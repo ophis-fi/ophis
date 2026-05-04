@@ -3,10 +3,10 @@ orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"  # HyperEVM big-block gas limit
 
 [contracts]
-gp-v2-settlement = "0x0000000000000000000000000000000000000000"
+gp-v2-settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
 weth = "0x5555555555555555555555555555555555555555"  # WHYPE
-balances = "0x0000000000000000000000000000000000000000"
-signatures = "0x0000000000000000000000000000000000000000"
+balances = "0x13f618796e8c8626168340558453ebda02add1ff"
+signatures = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
 
 [[solver]]
 name = "baseline"
@@ -24,9 +24,10 @@ url = "https://rpc.hyperliquid-testnet.xyz/evm"
 [liquidity]
 base-tokens = [
   "0x5555555555555555555555555555555555555555",  # WHYPE
+  "0xe3d494a299f35c00668047c5ae2117470c413f5c",  # GTUSD
 ]
 
 [[liquidity.uniswap-v2]]
-router = "0x0000000000000000000000000000000000000000"  # GREG_V2_ROUTER_HYPEREVM_TESTNET
+router = "0x7c2461066e6af18520384ecfb5afdd7209ea9be7"
 pool-code = "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"
 missing-pool-cache-time = "5m"

@@ -11,14 +11,19 @@ const deployAuthenticator: DeployFunction = async function ({
   const { deploy } = deployments;
 
   const { authenticator } = CONTRACT_NAMES;
+  // Greg patch: chain-aware gas limit. MegaETH consumes ~45× more gas per
+  // opcode than standard EVM, so we ship a high default for it; HyperEVM
+  // (and other normal chains) cap at 30M per big block, so we use a much
+  // lower value there. Read GREG_AUTH_PROXY_GAS_LIMIT to override.
+  const overrideGas = process.env.GREG_AUTH_PROXY_GAS_LIMIT;
+  const gasLimit = overrideGas
+    ? Number(overrideGas)
+    : (process.env.HARDHAT_NETWORK ?? "").startsWith("megaeth")
+      ? 100000000
+      : 25000000;
   await deploy(authenticator, {
     from: deployer,
-    // Greg patch: bumped from 2_000_000 to 100_000_000. MegaETH (chains 6343
-    // testnet, 4326 mainnet) consumes ~45× more gas per opcode than typical
-    // EVM chains for contract deploys; MegaETH block gas limit is 2_000_000_000
-    // ("2 Giga gas") so 100M is well within bounds. On other chains the unused
-    // gas is refunded so the bump is harmless. Keep this on subtree pulls.
-    gasLimit: 100000000,
+    gasLimit,
     deterministicDeployment: SALT,
     log: true,
     proxy: {
