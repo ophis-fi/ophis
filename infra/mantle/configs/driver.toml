@@ -1,0 +1,30 @@
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "30000000"
+
+[contracts]
+gp-v2-settlement = "0x0000000000000000000000000000000000000000"
+weth = "0x0000000000000000000000000000000000000000"  # WMNT on Mantle Sepolia (TBD post-deploy)
+balances = "0x0000000000000000000000000000000000000000"
+signatures = "0x0000000000000000000000000000000000000000"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "0x5526242708484237fe28470f9da70efc031431ae58fbb623829798c9105520ac"
+
+[submission]
+gas-price-cap = "1000000000000"
+
+[[submission.mempool]]
+url = "https://rpc.sepolia.mantle.xyz"
+
+[liquidity]
+base-tokens = []  # filled post-deploy
+
+[[liquidity.uniswap-v2]]
+router = "0x0000000000000000000000000000000000000000"
+pool-code = "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"
+missing-pool-cache-time = "5m"

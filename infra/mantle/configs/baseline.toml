@@ -1,0 +1,6 @@
+# Mantle Sepolia (5003). WMNT TBD post-deploy.
+weth = "0x0000000000000000000000000000000000000000"
+base-tokens = []
+max-hops = 2
+max-partial-attempts = 5
+native-token-price-estimation-amount = "1000000000000000"

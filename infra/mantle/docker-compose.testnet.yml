@@ -1,0 +1,109 @@
+# infra/optimism/docker-compose.testnet.yml — Greg Phase 3c Mantle testnet stack
+# Ports shifted (5434/8100/8101/9021) to avoid collisions with megaeth + hyperevm stacks.
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: backend-migrations:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+
+  orderbook:
+    image: local-orderbook:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+    restart: always
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${MANTLE_TESTNET_RPC}
+    volumes:
+      - ./configs/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "8120:80"
+
+  autopilot:
+    image: local-autopilot:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+    restart: always
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      orderbook: { condition: service_started }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${MANTLE_TESTNET_RPC}
+    volumes:
+      - ./configs/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+
+  driver:
+    image: local-driver:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+    restart: always
+    depends_on:
+      baseline: { condition: service_started }
+    environment:
+      ETHRPC: ${MANTLE_TESTNET_RPC}
+      ADDR: 0.0.0.0:80
+      LOG_FILTER: "info,driver=debug,driver::infra::observe=trace"
+    volumes:
+      - ./configs/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "8121:80"
+
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "9041:80"
+
+volumes:
+  postgres:
