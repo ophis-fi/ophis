@@ -127,6 +127,8 @@ const config = {
       "katana-mainnet": GREG_DEPLOYER_ADDRESS,
       "mantle-testnet": GREG_DEPLOYER_ADDRESS,
       "mantle-mainnet": GREG_DEPLOYER_ADDRESS,
+      "linea-sepolia": GREG_DEPLOYER_ADDRESS,
+      "linea-mainnet": GREG_DEPLOYER_ADDRESS,
     },
     manager: {
       ...(((baseConfig as { namedAccounts?: { manager?: unknown } })
@@ -141,6 +143,8 @@ const config = {
       "katana-mainnet": GREG_DEPLOYER_ADDRESS,
       "mantle-testnet": GREG_DEPLOYER_ADDRESS,
       "mantle-mainnet": GREG_DEPLOYER_ADDRESS,
+      "linea-sepolia": GREG_DEPLOYER_ADDRESS,
+      "linea-mainnet": GREG_DEPLOYER_ADDRESS,
     },
   },
 };
