@@ -92,7 +92,8 @@ impl CoinGecko {
             | Chain::KatanaTestnet
             | Chain::KatanaMainnet
             | Chain::MantleTestnet
-            | Chain::MantleMainnet => {
+            | Chain::MantleMainnet
+            | Chain::LineaSepolia => {
                 anyhow::bail!("unsupported network {}", chain.name())
             }
         };

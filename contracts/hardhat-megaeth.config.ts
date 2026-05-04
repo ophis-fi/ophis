@@ -100,6 +100,16 @@ const config = {
       chainId: 5000,
       accounts,
     },
+    "linea-sepolia": {
+      url: process.env.LINEA_SEPOLIA_RPC ?? "https://rpc.sepolia.linea.build",
+      chainId: 59141,
+      accounts,
+    },
+    "linea-mainnet": {
+      url: process.env.LINEA_MAINNET_RPC ?? "https://rpc.linea.build",
+      chainId: 59144,
+      accounts,
+    },
   },
   namedAccounts: {
     ...((baseConfig as { namedAccounts?: Record<string, unknown> })

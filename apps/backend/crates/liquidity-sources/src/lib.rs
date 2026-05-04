@@ -82,6 +82,7 @@ pub fn defaults_for_network(chain: &Chain) -> Vec<BaselineSource> {
         | Chain::KatanaTestnet
         | Chain::KatanaMainnet
         | Chain::MantleTestnet
-        | Chain::MantleMainnet => vec![],
+        | Chain::MantleMainnet
+        | Chain::LineaSepolia => vec![],
     }
 }
