@@ -1,0 +1,11 @@
+chain-id = "6343"  # MegaETH testnet (live; 6342 is deprecated)
+# Stage-1 caveat: testnet has no DEX with discoverable liquidity, so the
+# baseline solver will return NoLiquidity for any quote. Stage 1 boots the
+# stack to verify the deploy + ABI integration; the real first-swap (phase
+# gate) lives in Stage 2 on mainnet (4326), where Kumbaya V3 holds liquidity.
+base-tokens = [
+  "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy)
+]
+max-hops = 2
+max-partial-attempts = 5
+native-token-price-estimation-amount = "100000000000000000"  # 0.1 ETH
