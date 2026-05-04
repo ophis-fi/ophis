@@ -1,10 +1,14 @@
-chain-id = "6343"  # MegaETH testnet (live; 6342 is deprecated)
+# MegaETH testnet (live chain 6343; 6342 is deprecated). Pass `weth` directly
+# rather than `chain-id`: baseline.rs panics if both are set, and the
+# `for_chain` lookup it uses when only chain-id is set probes the auto-gen
+# contracts registry which has no MegaETH entries.
+weth = "0x4200000000000000000000000000000000000006"  # OP Stack predeploy
 # Stage-1 caveat: testnet has no DEX with discoverable liquidity, so the
-# baseline solver will return NoLiquidity for any quote. Stage 1 boots the
-# stack to verify the deploy + ABI integration; the real first-swap (phase
-# gate) lives in Stage 2 on mainnet (4326), where Kumbaya V3 holds liquidity.
+# baseline solver returns NoLiquidity for any quote. Stage 1 boots the stack
+# to verify the deploy + ABI integration; the real first-swap (phase gate)
+# lives in Stage 2 on mainnet (4326), via a Greg-deployed Uniswap V2 fork.
 base-tokens = [
-  "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy)
+  "0x4200000000000000000000000000000000000006",
 ]
 max-hops = 2
 max-partial-attempts = 5
