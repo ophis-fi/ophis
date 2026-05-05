@@ -1,16 +1,15 @@
 # Greg Phase 0 — Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up the `san-npm/greg` monorepo, vendor `cowprotocol/cowswap` and `cowprotocol/services` as subtrees, deploy a minimally-rebranded frontend to Vercel, and complete one real swap on Gnosis Chiado testnet via the Greg frontend hitting CoW's official APIs.
 
-**Architecture:** pnpm + turbo monorepo. `apps/frontend/` = subtree of `cowprotocol/cowswap` (kept on its native package manager — yarn or pnpm — to avoid breaking the upstream toolchain). `apps/backend/` = subtree of `cowprotocol/services` (Rust/cargo, builds independently). `packages/sdk/` = thin TS wrapper around `cow-sdk`. `.claude/agents/` defines `pm`, `frontend`, `backend`, `cto` roles. CI on GitHub Actions. Frontend deployed to Vercel; backend stays local in Phase 0 (Aleph deploy lands in Phase 1).
+**Architecture:** pnpm + turbo monorepo. `apps/frontend/` = subtree of `cowprotocol/cowswap` (kept on its native package manager — yarn or pnpm — to avoid breaking the upstream toolchain). `apps/backend/` = subtree of `cowprotocol/services` (Rust/cargo, builds independently). `packages/sdk/` = thin TS wrapper around `cow-sdk`. `agents/` defines `pm`, `frontend`, `backend`, `cto` roles. CI on GitHub Actions. Frontend deployed to Vercel; backend stays local in Phase 0 (Aleph deploy lands in Phase 1).
 
 **Tech Stack:** pnpm, turbo, TypeScript, GitHub Actions, gh CLI, git subtree, Vercel CLI, yarn/pnpm (whichever cowswap uses), cargo, cow-sdk (Apache-2.0), Gnosis Chiado testnet, Safe testnet faucet.
 
-**Spec:** [`docs/superpowers/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md)
+**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md)
 
-**Phase gate:** A test wallet completes a swap on Gnosis Chiado, signed via the Greg-branded frontend, settled by CoW's solver network on Chiado, and a one-page validation log is committed to `docs/superpowers/phase-0-validation.md`.
+**Phase gate:** A test wallet completes a swap on Gnosis Chiado, signed via the Greg-branded frontend, settled by CoW's solver network on Chiado, and a one-page validation log is committed to `docs/development/phase-0-validation.md`.
 
 ---
 
@@ -28,10 +27,10 @@
 | `README.md` | root | one-paragraph project description, links to spec |
 | `.eslintrc.cjs`, `.prettierrc` | root | shared lint/format config (skipped inside `apps/frontend` which has its own) |
 | `.github/workflows/ci.yml` | root | lint + typecheck + frontend build |
-| `.claude/agents/cto.md` | root | CTO operating mode (documentation, not a Task subagent) |
-| `.claude/agents/pm.md` | root | PM agent definition |
-| `.claude/agents/frontend.md` | root | Frontend agent definition |
-| `.claude/agents/backend.md` | root | Backend agent definition |
+| `agents/cto.md` | root | CTO operating mode (documentation, not a Task subagent) |
+| `agents/pm.md` | root | PM agent definition |
+| `agents/frontend.md` | root | Frontend agent definition |
+| `agents/backend.md` | root | Backend agent definition |
 | `apps/frontend/` | subtree | `cowprotocol/cowswap` vendored via `git subtree add` |
 | `apps/backend/` | subtree | `cowprotocol/services` vendored via `git subtree add` |
 | `packages/sdk/package.json` | new | `@greg/sdk` package metadata |
@@ -39,7 +38,7 @@
 | `packages/sdk/tsconfig.json` | new | extends `tsconfig.base.json` |
 | `packages/sdk/tests/sdk.test.ts` | new | unit test verifying default config |
 | `infra/rpc/fallback.ts` | new | `viem` fallback transport config (Alchemy → PublicNode → Ankr) for Gnosis |
-| `docs/superpowers/phase-0-validation.md` | new | phase-gate evidence log |
+| `docs/development/phase-0-validation.md` | new | phase-gate evidence log |
 
 ---
 
@@ -189,8 +188,8 @@ Expected: first line is `                    GNU GENERAL PUBLIC LICENSE`.
 
 Stage-2 fork of [CoW Protocol](https://docs.cow.fi) on Gnosis Chain, targeting DeFi power-user retail.
 
-- Spec: [`docs/superpowers/specs/2026-05-02-greg-design.md`](docs/superpowers/specs/2026-05-02-greg-design.md)
-- Phase 0 plan: [`docs/superpowers/plans/2026-05-02-greg-phase-0-foundation.md`](docs/superpowers/plans/2026-05-02-greg-phase-0-foundation.md)
+- Spec: [`docs/development/specs/2026-05-02-greg-design.md`](docs/development/specs/2026-05-02-greg-design.md)
+- Phase 0 plan: [`docs/development/plans/2026-05-02-greg-phase-0-foundation.md`](docs/development/plans/2026-05-02-greg-phase-0-foundation.md)
 
 License: GPL-3.0. Codename `greg`; rebrand TBD before public launch.
 ```
@@ -228,18 +227,18 @@ git commit -m "chore: monorepo skeleton (pnpm + turbo + tsconfig + GPL-3.0)"
 
 ---
 
-## Task 2: `.claude/agents/` role definitions
+## Task 2: `agents/` role definitions
 
 **Files:**
-- Create: `.claude/agents/cto.md`, `.claude/agents/pm.md`, `.claude/agents/frontend.md`, `.claude/agents/backend.md`
+- Create: `agents/cto.md`, `agents/pm.md`, `agents/frontend.md`, `agents/backend.md`
 
-- [ ] **Step 1: Write `.claude/agents/cto.md`** (documentation, not a Task subagent)
+- [ ] **Step 1: Write `agents/cto.md`** (documentation, not a Task subagent)
 
 ```markdown
 # CTO (operating mode)
 
 Not a dispatched subagent — this file documents the operating mode for the
-main Claude Code session driving the project.
+main operator session driving the project.
 
 **Responsibilities**
 - Cross-cutting architectural decisions
@@ -258,7 +257,7 @@ main Claude Code session driving the project.
 - Cross-package refactors: CTO writes the diff, both agents review.
 ```
 
-- [ ] **Step 2: Write `.claude/agents/pm.md`**
+- [ ] **Step 2: Write `agents/pm.md`**
 
 ````markdown
 ---
@@ -272,13 +271,13 @@ job is to keep the roadmap visible and the backlog clean. You do **not**
 write code or modify files outside `docs/`.
 
 ## Authoritative documents
-- Spec: `docs/superpowers/specs/2026-05-02-greg-design.md`
-- Active plan(s): `docs/superpowers/plans/`
+- Spec: `docs/development/specs/2026-05-02-greg-design.md`
+- Active plan(s): `docs/development/plans/`
 
 ## What you do
 - Read the latest plan and report progress against checkboxes.
 - Open and label GitHub issues from open plan tasks (`gh issue create`).
-- Write weekly status sweeps to `docs/superpowers/status/YYYY-MM-DD.md`.
+- Write weekly status sweeps to `docs/development/status/YYYY-MM-DD.md`.
 - Detect drift between spec and code; flag, do not fix.
 
 ## Hard rules
@@ -287,7 +286,7 @@ write code or modify files outside `docs/`.
 - Never make architectural decisions; surface options to the CTO.
 ````
 
-- [ ] **Step 3: Write `.claude/agents/frontend.md`**
+- [ ] **Step 3: Write `agents/frontend.md`**
 
 ````markdown
 ---
@@ -324,7 +323,7 @@ the SDK wrapper, and Vercel deployments.
   to track upstream updates; never rewrite the subtree directory's git history.
 ````
 
-- [ ] **Step 4: Write `.claude/agents/backend.md`**
+- [ ] **Step 4: Write `agents/backend.md`**
 
 ````markdown
 ---
@@ -363,17 +362,17 @@ integration — and (from Phase 1) the Aleph Cloud deployments.
 - [ ] **Step 5: Verify frontmatter is valid**
 
 ```bash
-ls .claude/agents/
-head -5 .claude/agents/pm.md
-head -5 .claude/agents/frontend.md
-head -5 .claude/agents/backend.md
+ls agents/
+head -5 agents/pm.md
+head -5 agents/frontend.md
+head -5 agents/backend.md
 ```
 Expected: all four files exist; `pm`, `frontend`, `backend` each start with a `---` frontmatter block.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add .claude/agents/
+git add agents/
 git commit -m "chore: define CTO/PM/frontend/backend agent roles"
 ```
 
@@ -887,7 +886,7 @@ git commit -m "feat(sdk): @greg/sdk minimal wrapper with Gnosis defaults + 5bps 
 ## Task 12: Phase-0 gate — manual Chiado swap & validation log
 
 **Files:**
-- Create: `docs/superpowers/phase-0-validation.md`.
+- Create: `docs/development/phase-0-validation.md`.
 
 This is a manual milestone. The task is to **execute** the swap end-to-end, not to write Playwright now (E2E automation lands in Phase 2).
 
@@ -921,7 +920,7 @@ Record:
 
 - [ ] **Step 6: Write the validation log**
 
-`docs/superpowers/phase-0-validation.md`:
+`docs/development/phase-0-validation.md`:
 
 ```markdown
 # Phase 0 — Validation Log
@@ -962,7 +961,7 @@ Record:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add docs/superpowers/phase-0-validation.md
+git add docs/development/phase-0-validation.md
 git commit -m "docs: phase-0 validation log — first Greg swap on Chiado"
 git push
 ```
@@ -977,7 +976,7 @@ git push
 
 ```bash
 gh issue create --title "Phase 1: self-hosted backend on Aleph" \
-  --body "Tracking issue for Phase 1 deliverables. Plan: docs/superpowers/plans/<phase-1>.md (TBD)" \
+  --body "Tracking issue for Phase 1 deliverables. Plan: docs/development/plans/<phase-1>.md (TBD)" \
   --label phase-1
 ```
 
@@ -990,7 +989,7 @@ git push --tags
 
 - [ ] **Step 3: Status sweep**
 
-Dispatch the `pm` agent to write `docs/superpowers/status/<date>.md` summarizing Phase 0 outcomes and Phase 1 readiness.
+Dispatch the `pm` agent to write `docs/development/status/<date>.md` summarizing Phase 0 outcomes and Phase 1 readiness.
 
 ---
 

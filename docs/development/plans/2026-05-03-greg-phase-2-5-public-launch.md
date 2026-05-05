@@ -1,6 +1,5 @@
 # Greg Phase 2.5 — Public Launch Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Take the Phase-2 substrate to a public launch — finish the engineering polish (trade-data threading into receipts, SVG icon for Safe, top-level DCA CTA), make operational decisions (real brand + domain + multisig recipient), and ship the launch (production Vercel deploy + Safe-list submission + Show HN).
 
@@ -8,9 +7,9 @@
 
 **Tech Stack:** TypeScript, cow-sdk's `orderBookApi`, the vendored cowswap fork, Vercel custom domains + production target, Cloudflare DNS, Safe wallet (deployed via [app.safe.global](https://app.safe.global) for the multisig recipient), GitHub PR against [`safe-global/safe-apps-list`](https://github.com/safe-global/safe-apps-list).
 
-**Spec:** [`docs/superpowers/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/superpowers/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
+**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
 
-**Predecessor plan:** [`docs/superpowers/plans/2026-05-03-greg-phase-2-retail-substrate.md`](2026-05-03-greg-phase-2-retail-substrate.md) — Phase 2 PASS, tag `v0.2-phase2`.
+**Predecessor plan:** [`docs/development/plans/2026-05-03-greg-phase-2-retail-substrate.md`](2026-05-03-greg-phase-2-retail-substrate.md) — Phase 2 PASS, tag `v0.2-phase2`.
 
 ---
 
@@ -34,9 +33,9 @@ If Clement does not decide D1 / D2 by the time Tasks 4 (manifest update) or 7 (p
 4. Multisig partner-fee recipient deployed and live in `@greg/sdk` + `partnerFeeDefault.ts`.
 5. Production Vercel deployment promoted (or already serving the same content with SSO disabled on production target only).
 6. Safe-list PR against `safe-global/safe-apps-list` open with our deployment URL.
-7. Show HN draft committed to `docs/superpowers/show-hn-draft.md`; Product Hunt page draft committed to `docs/superpowers/product-hunt-draft.md`.
+7. Show HN draft committed to `docs/development/show-hn-draft.md`; Product Hunt page draft committed to `docs/development/product-hunt-draft.md`.
 
-Validation log committed to `docs/superpowers/phase-2-5-validation.md`. Tag `v0.2.5-phase2-5`.
+Validation log committed to `docs/development/phase-2-5-validation.md`. Tag `v0.2.5-phase2-5`.
 
 ---
 
@@ -52,9 +51,9 @@ Validation log committed to `docs/superpowers/phase-2-5-validation.md`. Tag `v0.
 | `packages/sdk/src/partner-fee.ts` | modify | `GREG_PARTNER_FEE_RECIPIENT` → multisig address |
 | `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | modify | mirror update |
 | `apps/frontend/.greg-divergences.md` | modify | track Phase-2.5 entries |
-| `docs/superpowers/show-hn-draft.md` | create | Show HN post + thread plan |
-| `docs/superpowers/product-hunt-draft.md` | create | Product Hunt submission text |
-| `docs/superpowers/phase-2-5-validation.md` | create | phase-gate evidence |
+| `docs/development/show-hn-draft.md` | create | Show HN post + thread plan |
+| `docs/development/product-hunt-draft.md` | create | Product Hunt submission text |
+| `docs/development/phase-2-5-validation.md` | create | phase-gate evidence |
 
 **Not modified:** `apps/backend/`, `infra/`, the partner-fee atom (Phase 1.5), the mevReceipt module's internals (Phase 2 — only the consumer changes).
 
@@ -461,7 +460,7 @@ Expected: 7 sdk tests still pass (4 of them assert `recipient` matches the const
 
 ### Step 5: Update docs
 
-Edit `apps/frontend/.greg-divergences.md` to note the recipient change. Edit `docs/superpowers/safe-app-submission.md` and `docs/superpowers/phase-1-5-validation.md` to reflect the new recipient (search-replace the old EOA address).
+Edit `apps/frontend/.greg-divergences.md` to note the recipient change. Edit `docs/development/safe-app-submission.md` and `docs/development/phase-1-5-validation.md` to reflect the new recipient (search-replace the old EOA address).
 
 ### Step 6: Commit
 
@@ -470,7 +469,7 @@ cd /Users/scep/greg
 git add packages/sdk/src/partner-fee.ts \
         apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts \
         apps/frontend/.greg-divergences.md \
-        docs/superpowers/
+        docs/development/
 git status
 git commit -m "feat(partnerFee): upgrade recipient from single-sig EOA to multisig Safe"
 git push
@@ -478,7 +477,7 @@ git push
 
 ### Step 7: Memory + Keychain update
 
-- Update `~/.claude/projects/-Users-scep/memory/project_greg.md` — replace the EOA address with the Safe address; note signer setup.
+- Update `<local notes>/project_greg.md` — replace the EOA address with the Safe address; note signer setup.
 - Optionally: keychain entry `greg-partner-fee-recipient` can be **deleted** since the EOA is no longer the recipient (Safe is signed via owner EOAs, which Clement holds elsewhere).
 
 ## Task 7: Promote production Vercel deployment + SSO state
@@ -534,7 +533,7 @@ If production is unexpectedly 401: the project may have `ssoProtection.deploymen
 
 ### Step 3: Document in `infra/local/README.md` or a new ops doc
 
-Add a brief operator note to `docs/superpowers/` capturing the production URL + SSO state for future reference.
+Add a brief operator note to `docs/development/` capturing the production URL + SSO state for future reference.
 
 ### Step 4: No code commit (Vercel-side state)
 
@@ -597,7 +596,7 @@ Served at `<URL>/manifest.json` with `Access-Control-Allow-Origin: *`. Includes 
 - [x] Cowswap upstream's `@safe-global/safe-apps-sdk` integration detects Safe parent
 - [x] Manifest includes Safe-spec `iconPath` + `description`
 
-Verification log: <link to docs/superpowers/safe-app-submission.md>
+Verification log: <link to docs/development/safe-app-submission.md>
 EOF
 )"
 ```
@@ -609,13 +608,13 @@ The Safe-list PR URL is part of the Phase 2.5 validation log (Task 11).
 ## Task 9: Show HN draft
 
 **Files:**
-- Create: `docs/superpowers/show-hn-draft.md`
+- Create: `docs/development/show-hn-draft.md`
 
 Write the post + comment thread plan. Engineering-light, content-heavy. Treat as a writing task, not a code task.
 
 ### Step 1: Write the draft
 
-`docs/superpowers/show-hn-draft.md`:
+`docs/development/show-hn-draft.md`:
 
 ```markdown
 # Show HN draft — Greg
@@ -680,7 +679,7 @@ weekends (lower traffic) and Mondays (everyone posts then).
 
 ```bash
 cd /Users/scep/greg
-git add docs/superpowers/show-hn-draft.md
+git add docs/development/show-hn-draft.md
 git commit -m "docs(launch): Show HN post draft"
 git push
 ```
@@ -688,9 +687,9 @@ git push
 ## Task 10: Product Hunt draft
 
 **Files:**
-- Create: `docs/superpowers/product-hunt-draft.md`
+- Create: `docs/development/product-hunt-draft.md`
 
-`docs/superpowers/product-hunt-draft.md`:
+`docs/development/product-hunt-draft.md`:
 
 ```markdown
 # Product Hunt draft — Greg
@@ -731,7 +730,7 @@ Commit: `git commit -m "docs(launch): Product Hunt draft"`
 ## Task 11: Phase 2.5 close-out
 
 **Files:**
-- Create: `docs/superpowers/phase-2-5-validation.md`
+- Create: `docs/development/phase-2-5-validation.md`
 - Modify: `apps/frontend/.greg-divergences.md` (add Phase 2.5 entries)
 
 ### Step 1: Append Phase 2.5 divergences
@@ -752,7 +751,7 @@ Open `apps/frontend/.greg-divergences.md`. Append:
 - `apps/cowswap-frontend/public/greg-icon.svg` — Safe-app SVG icon. Phase 2.5 Task 4.
 ```
 
-### Step 2: Write `docs/superpowers/phase-2-5-validation.md`
+### Step 2: Write `docs/development/phase-2-5-validation.md`
 
 ```markdown
 # Phase 2.5 — Public Launch Validation Log
@@ -795,7 +794,7 @@ GPv2Settlement + GPv2VaultRelayer bytecode unchanged on MegaETH (chainId
 
 ```bash
 cd /Users/scep/greg
-git add apps/frontend/.greg-divergences.md docs/superpowers/phase-2-5-validation.md
+git add apps/frontend/.greg-divergences.md docs/development/phase-2-5-validation.md
 git status
 git commit -m "docs(phase-2-5): close-out — Greg launched publicly"
 git push
@@ -822,13 +821,13 @@ git push --tags
 ### Step 5: Close issue #5; verify Phase 3 issue (#4) still accurate
 
 ```bash
-gh issue close 5 --repo san-npm/greg --comment "Phase 2.5 complete and tagged \`v0.2.5-phase2-5\`. Validation: \`docs/superpowers/phase-2-5-validation.md\`. Phase 3 (issue #4) is next."
+gh issue close 5 --repo san-npm/greg --comment "Phase 2.5 complete and tagged \`v0.2.5-phase2-5\`. Validation: \`docs/development/phase-2-5-validation.md\`. Phase 3 (issue #4) is next."
 ```
 
 ### Step 6: Update memory
 
-- `~/.claude/projects/-Users-scep/memory/project_greg.md` — append Phase 2.5 to gates section, add `v0.2.5-phase2-5` tag, update Next Step to reference Phase 3 (MegaETH).
-- `~/.claude/projects/-Users-scep/memory/MEMORY.md` — update Greg one-liner.
+- `<local notes>/project_greg.md` — append Phase 2.5 to gates section, add `v0.2.5-phase2-5` tag, update Next Step to reference Phase 3 (MegaETH).
+- `<local notes>/MEMORY.md` — update Greg one-liner.
 
 ## Task 12: Operational follow-ups (non-blocking)
 

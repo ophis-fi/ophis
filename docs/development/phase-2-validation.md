@@ -69,8 +69,8 @@ Known limitation: the current mount uses `ParsedOrder` from cowswap, which does 
 | `/service-worker.js` reachable | PASS | HTTP 200, 41 KB workbox-based |
 | Service worker has fetch handler | PASS | Workbox routing constants present |
 | Manifest linked from HTML head | PASS | `<link rel="manifest" href="./manifest.json">` |
-| Safe app submission package documented | PASS | `docs/superpowers/safe-app-submission.md` |
-| PWA install criteria documented + verified programmatically | PASS | `docs/superpowers/pwa-verification.md` |
+| Safe app submission package documented | PASS | `docs/development/safe-app-submission.md` |
+| PWA install criteria documented + verified programmatically | PASS | `docs/development/pwa-verification.md` |
 
 **Verdict:** Substrate PASS. Phase 2.5 can now layer brand work, real domain, DCA UX redesign, Safe app store submission PR, and Show-HN/PH launch on top.
 
@@ -98,15 +98,15 @@ Tag: `v0.2-phase2`.
 
 ## Files committed in Phase 2
 
-- `docs/superpowers/plans/2026-05-03-greg-phase-2-retail-substrate.md` — plan (already committed before execution).
+- `docs/development/plans/2026-05-03-greg-phase-2-retail-substrate.md` — plan (already committed before execution).
 - `apps/frontend/apps/cowswap-frontend/src/modules/mevReceipt/{types,services/{buildReceipt,exportJson,exportPdf},containers/DownloadReceiptButton,index}.ts(x)` — new module.
 - `apps/frontend/apps/cowswap-frontend/src/modules/mevReceipt/services/buildReceipt.test.ts` — 7 Jest tests.
 - `apps/frontend/apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx` — mount point.
 - `apps/frontend/apps/cowswap-frontend/public/manifest.json` — Greg fields + iconPath.
 - `apps/frontend/apps/cowswap-frontend/package.json` + `apps/frontend/pnpm-lock.yaml` — `jspdf` dep.
 - `apps/frontend/.greg-divergences.md` — Phase-2 entries appended.
-- `docs/superpowers/safe-app-submission.md` — submission package.
-- `docs/superpowers/pwa-verification.md` — PWA evidence.
-- `docs/superpowers/phase-2-validation.md` — this file.
+- `docs/development/safe-app-submission.md` — submission package.
+- `docs/development/pwa-verification.md` — PWA evidence.
+- `docs/development/phase-2-validation.md` — this file.
 
 Total commits in Phase 2: 6 (`feat(mevReceipt) ×3`, `feat(manifest) ×1`, `docs(safe-app) ×1`, `docs(pwa) ×1`) + this close-out commit.

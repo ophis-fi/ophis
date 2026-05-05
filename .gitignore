@@ -3,6 +3,7 @@ dist/
 .next/
 .turbo/
 .vercel/
+.wrangler/
 target/
 .env
 .env.local
@@ -14,4 +15,6 @@ coverage/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
-.vercel
+
+# Local agent / tooling configs (not part of the public repo)
+.claude/

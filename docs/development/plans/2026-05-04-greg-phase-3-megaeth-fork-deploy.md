@@ -1,6 +1,5 @@
 # Greg Phase 3 — MegaETH Fork-Deploy Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deploy CoW Protocol's audited `GPv2Settlement` + `GPv2VaultRelayer` bytecode unchanged on MegaETH (chainId `4326`), under our own `GPv2AllowListAuthentication` we control. Wire the vendored `apps/backend/` Rust services (orderbook + autopilot + driver + baseline solver) as the production runtime against our own settlement contracts. Greg becomes the chain-native intent broker on a chain CoW has not deployed to. First swap on MegaETH settles end-to-end via Greg's stack.
 
@@ -8,9 +7,9 @@
 
 **Tech Stack:** Solidity (cowprotocol/contracts source), Hardhat (their build system), Foundry `cast` for deployment + tx ops, the existing Rust services workspace at `apps/backend/`, Docker + Colima (existing Phase-1 pattern), MegaETH testnet + mainnet RPCs, MegaETH explorer (`https://megaexplorer.xyz` for testnet; mainnet explorer to be confirmed at deploy time).
 
-**Spec:** [`docs/superpowers/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/superpowers/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md).
+**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md).
 
-**Predecessor plan:** [`docs/superpowers/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md`](2026-05-02-greg-phase-1-local-self-hosted-stack.md) — the vendored `apps/backend/` services stack from Phase 1 is the production runtime here.
+**Predecessor plan:** [`docs/development/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md`](2026-05-02-greg-phase-1-local-self-hosted-stack.md) — the vendored `apps/backend/` services stack from Phase 1 is the production runtime here.
 
 **Phase gate (Stage 2 — the real one):** A small swap on MegaETH **mainnet** (chainId `4326`) using our test wallet settles via Greg's own deployed `GPv2Settlement`. Trade record visible on MegaETH's explorer. Validation log committed.
 
@@ -43,8 +42,8 @@
 | `infra/megaeth/docker-compose.testnet.yml` | Create | Stage-1 stack (no anvil; real testnet RPC) |
 | `infra/megaeth/docker-compose.mainnet.yml` | Create | Stage-2 stack |
 | `infra/megaeth/README.md` | Create | Operator runbook |
-| `docs/superpowers/phase-3-validation.md` | Create | Phase-gate evidence (Stage 1 + Stage 2) |
-| `docs/superpowers/megaeth-grant-application.md` | Create | Grant application draft (Task 11) |
+| `docs/development/phase-3-validation.md` | Create | Phase-gate evidence (Stage 1 + Stage 2) |
+| `docs/development/megaeth-grant-application.md` | Create | Grant application draft (Task 11) |
 
 **Not modified:** `apps/frontend/`, `apps/backend/` (vendored upstream — read-only), `packages/`, the partner-fee atom, the mevReceipt module. Phase 3 leaves the existing CoW-chain product untouched; MegaETH is additive.
 
@@ -524,7 +523,7 @@ git push
 
 **Files:**
 - Create: `infra/megaeth/docker-compose.testnet.yml`
-- Append to: `docs/superpowers/phase-3-validation.md` (Stage 1 section, file created at the end of Task 12)
+- Append to: `docs/development/phase-3-validation.md` (Stage 1 section, file created at the end of Task 12)
 
 ### Step 1: Write `docker-compose.testnet.yml`
 
@@ -843,7 +842,7 @@ Verdict: PASS
 **Submission gated on:** real domain + real brand + real-user-validated UX + stable mainnet contracts. None of those exist yet at Phase 3 start. We commit the **draft** so the application materials exist; actual submission is a Phase 4+ task once production-ready is true.
 
 **Files:**
-- Create: `docs/superpowers/megaeth-grant-application.md`
+- Create: `docs/development/megaeth-grant-application.md`
 
 Per [megaeth.com](https://www.megaeth.com/), the MegaETH Foundation has an ecosystem reserve (7.5% of supply / 750M MEGA) earmarked for developer grants, liquidity, and community rewards.
 
@@ -856,7 +855,7 @@ Check:
 
 ### Step 2: Draft the application
 
-Write `/Users/scep/greg/docs/superpowers/megaeth-grant-application.md`:
+Write `/Users/scep/greg/docs/development/megaeth-grant-application.md`:
 
 ```markdown
 # MegaETH Foundation Grant — Greg Application Draft
@@ -913,7 +912,7 @@ Per the foundation's actual application channel.
 
 ```bash
 cd /Users/scep/greg
-git add docs/superpowers/megaeth-grant-application.md
+git add docs/development/megaeth-grant-application.md
 git commit -m "docs(megaeth-grant): application draft"
 git push
 ```
@@ -923,7 +922,7 @@ The actual submission is operator-driven; the plan only commits the draft so it'
 ## Task 12: Phase 3 close-out
 
 **Files:**
-- Create: `docs/superpowers/phase-3-validation.md`
+- Create: `docs/development/phase-3-validation.md`
 - Modify: `apps/frontend/.greg-divergences.md`? **No.** Phase 3 doesn't touch the frontend; nothing to track in cowswap-divergence file.
 - Modify: `infra/megaeth/README.md`
 
@@ -965,7 +964,7 @@ and mainnet (4326).
 
 Fill in the actual addresses captured during Tasks 5 and 8.
 
-### Step 2: Write `docs/superpowers/phase-3-validation.md`
+### Step 2: Write `docs/development/phase-3-validation.md`
 
 Combine the temp Stage-1 + Stage-2 capture files:
 
@@ -996,7 +995,7 @@ Combine the temp Stage-1 + Stage-2 capture files:
 | 7 | Contracts deployed on MegaETH mainnet | Settlement `<addr>`, VaultRelayer `<addr>`, Authentication `<addr>` | PASS |
 | 8 | Driver-submitter in mainnet allowlist | `isSolver(0x00f98b…)` returns `true` on mainnet auth | PASS |
 | 9 | **Stage-2 e2e — mainnet swap settled** | tx `<hash>` on mainnet explorer | **PASS — phase gate** |
-| 10 | Foundation grant application drafted (D4) | `docs/superpowers/megaeth-grant-application.md` | <PASS / DEFERRED> |
+| 10 | Foundation grant application drafted (D4) | `docs/development/megaeth-grant-application.md` | <PASS / DEFERRED> |
 
 ## Stage 1 evidence
 
@@ -1030,7 +1029,7 @@ Phase 3.5 — Treasury tier (T2 self-serve), or whatever Clement prioritises.
 
 ```bash
 cd /Users/scep/greg
-git add docs/superpowers/phase-3-validation.md infra/megaeth/README.md
+git add docs/development/phase-3-validation.md infra/megaeth/README.md
 git commit -m "docs(phase-3): close-out — Greg deployed on MegaETH mainnet, first sovereign settlement"
 git push
 git tag -a v0.3-phase3 -m "Phase 3 — MegaETH Fork-Deploy PASS
@@ -1051,18 +1050,18 @@ git push --tags
 ### Step 4: Close issue #4
 
 ```bash
-gh issue close 4 --repo san-npm/greg --comment "Phase 3 complete and tagged \`v0.3-phase3\`. Greg deployed sovereign on MegaETH mainnet. Validation: \`docs/superpowers/phase-3-validation.md\`."
+gh issue close 4 --repo san-npm/greg --comment "Phase 3 complete and tagged \`v0.3-phase3\`. Greg deployed sovereign on MegaETH mainnet. Validation: \`docs/development/phase-3-validation.md\`."
 ```
 
 ### Step 5: Update memory
 
-Edit `~/.claude/projects/-Users-scep/memory/project_greg.md`:
+Edit `<local notes>/project_greg.md`:
 - Append Phase 3 PASS to gates section
 - Add `v0.3-phase3` to tags
 - Add MegaETH addresses + RPCs
 - Update Next step to Phase 3.5 (Treasury tier) or whatever Clement prioritises next
 
-Edit `~/.claude/projects/-Users-scep/memory/MEMORY.md`:
+Edit `<local notes>/MEMORY.md`:
 - Update one-liner
 
 ---
