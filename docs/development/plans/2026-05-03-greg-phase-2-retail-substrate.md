@@ -1,16 +1,15 @@
 # Greg Phase 2 — Retail Engineering Substrate Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the engineering substrate that Phase 2.5 (public launch) needs. Verify Greg's deployed cowswap fork drives the existing TWAP / DCA flow correctly with our Phase-1.5 partner-fee patch on every leg. Ship one new Greg-only feature — MEV-proof receipt download (JSON + PDF). Verify PWA installability and prepare Safe app submission package (manifest + iframe load-test).
 
-**Architecture:** Phase 2 layers on top of Phase 1.5 — no changes to the partner-fee atom. The TWAP / DCA flow already exists in cowswap at `apps/cowswap-frontend/src/modules/twap/` and the `/advanced` route via `TwapFormWidget`. Composable-cow contract is deployed at `0xfdaFc9d1902f4e0b84f65F49f244b32b31013b74` on 9 chains (Ethereum, Gnosis, Arbitrum, Base, Avalanche, Polygon, BNB, Sepolia, Lens). New code lands in a new module `apps/cowswap-frontend/src/modules/mevReceipt/` for the receipt-download feature. Documentation files for Safe app submission and PWA verification land in `docs/superpowers/`.
+**Architecture:** Phase 2 layers on top of Phase 1.5 — no changes to the partner-fee atom. The TWAP / DCA flow already exists in cowswap at `apps/cowswap-frontend/src/modules/twap/` and the `/advanced` route via `TwapFormWidget`. Composable-cow contract is deployed at `0xfdaFc9d1902f4e0b84f65F49f244b32b31013b74` on 9 chains (Ethereum, Gnosis, Arbitrum, Base, Avalanche, Polygon, BNB, Sepolia, Lens). New code lands in a new module `apps/cowswap-frontend/src/modules/mevReceipt/` for the receipt-download feature. Documentation files for Safe app submission and PWA verification land in `docs/development/`.
 
 **Tech Stack:** TypeScript, Jotai (cowswap's state), `vite-plugin-pwa` + workbox (already wired in cowswap), `jspdf` (lightweight PDF generation), the vendored `apps/frontend/` cowswap fork, Vercel for deploy, `@cowprotocol/cow-sdk` already in cowswap deps.
 
-**Spec:** [`docs/superpowers/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/superpowers/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
+**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
 
-**Predecessor plan:** [`docs/superpowers/plans/2026-05-03-greg-phase-1-5-monetized-frontend.md`](2026-05-03-greg-phase-1-5-monetized-frontend.md) — Phase 1.5 PASS, recipient `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`.
+**Predecessor plan:** [`docs/development/plans/2026-05-03-greg-phase-1-5-monetized-frontend.md`](2026-05-03-greg-phase-1-5-monetized-frontend.md) — Phase 1.5 PASS, recipient `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`.
 
 **Out of scope for Phase 2** (deferred to Phase 2.5 / Phase 4):
 - Brand work (real name, real domain, logo)
@@ -26,7 +25,7 @@
 3. The deployed Greg.app loads cleanly inside a Safe iframe (`app.safe.global/apps/open?appUrl=...`).
 4. The deployed Greg.app installs as a PWA on at least Chrome desktop and one mobile browser.
 
-Validation log committed to `docs/superpowers/phase-2-validation.md`. Tag `v0.2-phase2`.
+Validation log committed to `docs/development/phase-2-validation.md`. Tag `v0.2-phase2`.
 
 ---
 
@@ -45,9 +44,9 @@ Validation log committed to `docs/superpowers/phase-2-validation.md`. Tag `v0.2-
 | `apps/frontend/apps/cowswap-frontend/public/manifest.json` | modify | replace `homepage_url` + `description` with Greg-specific values; add `iconPath` for Safe app compatibility |
 | `apps/frontend/apps/cowswap-frontend/package.json` | modify | add `jspdf` dependency |
 | `apps/frontend/.greg-divergences.md` | modify | track new files + edits |
-| `docs/superpowers/safe-app-submission.md` | create | Safe app submission instructions for Phase 2.5 |
-| `docs/superpowers/pwa-verification.md` | create | PWA install evidence |
-| `docs/superpowers/phase-2-validation.md` | create | phase-gate evidence |
+| `docs/development/safe-app-submission.md` | create | Safe app submission instructions for Phase 2.5 |
+| `docs/development/pwa-verification.md` | create | PWA install evidence |
+| `docs/development/phase-2-validation.md` | create | phase-gate evidence |
 
 **Not modified:** `apps/backend/`, `packages/sdk/`, `packages/rpc/`, `infra/local/`, the partner-fee atom (Phase 1.5).
 
@@ -64,7 +63,7 @@ Validation log committed to `docs/superpowers/phase-2-validation.md`. Tag `v0.2-
 
 ## Task 1: TWAP / DCA flow verification on Sepolia
 
-**Files:** `docs/superpowers/phase-2-validation.md` (created at end of plan in Task 8; Task 1 captures notes locally).
+**Files:** `docs/development/phase-2-validation.md` (created at end of plan in Task 8; Task 1 captures notes locally).
 
 This task confirms the existing cowswap TWAP module works correctly with Phase 1.5's partner-fee patch. **No new code.** If something breaks, surface it — do not fix in Task 1; capture in DONE_WITH_CONCERNS.
 
@@ -178,7 +177,7 @@ Verdict: PASS — every child order inherited Greg's partner fee
 
 ### Step 7: No commit (validation only)
 
-The notes file goes into `docs/superpowers/phase-2-validation.md` in Task 8. Do not commit `/tmp/greg-task1-notes.md`.
+The notes file goes into `docs/development/phase-2-validation.md` in Task 8. Do not commit `/tmp/greg-task1-notes.md`.
 
 ## Task 2: MEV-proof receipt — types + buildReceipt logic (TDD)
 
@@ -789,7 +788,7 @@ git push
 ## Task 6: Safe app readiness — iframe load test + submission package
 
 **Files:**
-- Create: `docs/superpowers/safe-app-submission.md`
+- Create: `docs/development/safe-app-submission.md`
 
 ### Step 1: Wait for Vercel auto-deploy of the latest commit
 
@@ -858,7 +857,7 @@ If the iframe loads but the Safe SDK doesn't connect: check the cowswap Safe int
 
 ### Step 4: Document the submission package
 
-Write `/Users/scep/greg/docs/superpowers/safe-app-submission.md`:
+Write `/Users/scep/greg/docs/development/safe-app-submission.md`:
 ```markdown
 # Greg — Safe app store submission package
 
@@ -915,7 +914,7 @@ Verified <YYYY-MM-DD>: Greg loads cleanly inside `https://app.safe.global/apps/o
 
 ```bash
 cd /Users/scep/greg
-git add docs/superpowers/safe-app-submission.md
+git add docs/development/safe-app-submission.md
 # If a vercel.json edit was needed in Step 2, also add it.
 git add vercel.json 2>/dev/null || true
 git status
@@ -926,7 +925,7 @@ git push
 ## Task 7: PWA install verification
 
 **Files:**
-- Create: `docs/superpowers/pwa-verification.md`
+- Create: `docs/development/pwa-verification.md`
 
 ### Step 1: Wait for the latest deploy to be READY
 
@@ -966,7 +965,7 @@ If a phone is available, open the URL in mobile Safari or Chrome and use "Add to
 
 ### Step 6: Document
 
-Write `/Users/scep/greg/docs/superpowers/pwa-verification.md`:
+Write `/Users/scep/greg/docs/development/pwa-verification.md`:
 ```markdown
 # Greg — PWA install verification
 
@@ -1003,7 +1002,7 @@ The deployed app installs as a PWA on at least Chrome desktop and Safari macOS. 
 
 ```bash
 cd /Users/scep/greg
-git add docs/superpowers/pwa-verification.md
+git add docs/development/pwa-verification.md
 git status
 git commit -m "docs(pwa): PWA install verified on Chrome + Safari macOS"
 git push
@@ -1012,7 +1011,7 @@ git push
 ## Task 8: Phase 2 close-out
 
 **Files:**
-- Create: `docs/superpowers/phase-2-validation.md`
+- Create: `docs/development/phase-2-validation.md`
 - Modify: `apps/frontend/.greg-divergences.md` (add the new Modified / Added paths from Phase 2)
 
 ### Step 1: Append Phase 2 divergences to `apps/frontend/.greg-divergences.md`
@@ -1031,7 +1030,7 @@ Read the file, then append under the existing sections:
 - `apps/cowswap-frontend/src/modules/mevReceipt/` — Greg-only feature. MEV-proof receipt JSON + PDF export. Phase 2 Tasks 2–4.
 ```
 
-### Step 2: Write `docs/superpowers/phase-2-validation.md`
+### Step 2: Write `docs/development/phase-2-validation.md`
 
 ```markdown
 # Phase 2 — Retail Engineering Substrate Validation Log
@@ -1049,15 +1048,15 @@ Read the file, then append under the existing sections:
 | MEV-proof receipt downloadable as PDF | Task 4 — 7 vitest tests pass; UI button supports `format="pdf"` | PASS |
 | Manifest Greg-specific + Safe-compatible | Task 5 — manifest.json delta committed; CORS allows Safe to fetch | PASS |
 | Deployment loads inside Safe iframe | Task 6 — verified at `app.safe.global/apps/open?appUrl=...` | PASS |
-| PWA installable on Chrome + Safari macOS | Task 7 — `docs/superpowers/pwa-verification.md` | PASS |
+| PWA installable on Chrome + Safari macOS | Task 7 — `docs/development/pwa-verification.md` | PASS |
 
 ## Verification artifacts
 
 - TWAP child orders verified: `<list of UIDs from Task 1>`
 - Sample MEV-proof receipt (JSON): `<paste from Task 3 manual download>`
 - Sample MEV-proof receipt (PDF): `<paste filename from Task 4 manual download>`
-- Safe app submission package: `docs/superpowers/safe-app-submission.md`
-- PWA install evidence: `docs/superpowers/pwa-verification.md`
+- Safe app submission package: `docs/development/safe-app-submission.md`
+- PWA install evidence: `docs/development/pwa-verification.md`
 
 ## Phase 2 verdict: PASS
 
@@ -1077,7 +1076,7 @@ The retail engineering substrate is in place. Phase 2.5 (public launch) can now 
 
 ```bash
 cd /Users/scep/greg
-git add apps/frontend/.greg-divergences.md docs/superpowers/phase-2-validation.md
+git add apps/frontend/.greg-divergences.md docs/development/phase-2-validation.md
 git status
 git commit -m "docs(phase-2): close-out — substrate ready for public launch (Phase 2.5)"
 git push
@@ -1105,12 +1104,12 @@ git push --tags
 ### Step 5: Close Phase 2 issue + Open Phase 2.5 + Phase 3 issues (if not already)
 
 ```bash
-gh issue close 3 --repo san-npm/greg --comment "Phase 2 complete and tagged \`v0.2-phase2\`. Validation: \`docs/superpowers/phase-2-validation.md\`. Phase 2.5 (public launch) and Phase 3 (MegaETH fork-deploy) are next."
+gh issue close 3 --repo san-npm/greg --comment "Phase 2 complete and tagged \`v0.2-phase2\`. Validation: \`docs/development/phase-2-validation.md\`. Phase 2.5 (public launch) and Phase 3 (MegaETH fork-deploy) are next."
 
 # If Phase 2.5 doesn't have an issue yet, open it:
 gh issue create --repo san-npm/greg \
   --title "Phase 2.5: Public launch — brand, real domain, DCA UX redesign, Safe app submission PR, Show HN/PH" \
-  --body "Predecessor: Phase 2 (\`v0.2-phase2\`). Plan to be drafted via \`superpowers:writing-plans\` when Clement says go.
+  --body "Predecessor: Phase 2 (\`v0.2-phase2\`). Plan to be drafted via \`the writing-plans methodology\` when Clement says go.
 
 ## Scope
 - [ ] Real project name + domain (codename \`greg\` retired)
@@ -1128,7 +1127,7 @@ May 25–31 (~1 week)"
 
 ## Task 9: Update memory
 
-**Files:** `/Users/scep/.claude/projects/-Users-scep/memory/project_greg.md`, `/Users/scep/.claude/projects/-Users-scep/memory/MEMORY.md`
+**Files:** `<local notes>/project_greg.md`, `<local notes>/MEMORY.md`
 
 ### Step 1: Edit `project_greg.md`
 

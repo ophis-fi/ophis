@@ -1,6 +1,5 @@
 # Greg Phase 1 — Local Self-Hosted Stack Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stand up Greg's full self-hosted backend (orderbook + autopilot + driver + baseline solver + Postgres) on Clement's Mac mini, end-to-end-test it against a forked Gnosis mainnet, then point it at *real* Gnosis mainnet RPC and settle one tiny real-money swap (≤ €5).
 
@@ -10,11 +9,11 @@
 
 **Spec correction (callout):** The spec said "settlements still ride CoW's existing Gnosis solver network" in Phase 1. Engineering reality: CoW's solvers only watch CoW's own orderbook — they will not auto-discover a private Greg orderbook. Once we self-host the orderbook we must also run autopilot + driver + at least one solver. This plan does that with the upstream `baseline` solver. Spec to be amended in Phase 2 paperwork.
 
-**Phase gate:** A signed Gnosis-mainnet order from a Greg-funded test wallet, posted to **our** locally-running orderbook on `localhost:8080`, settles via Greg's autopilot + driver + baseline solver, with an on-chain `GPv2Settlement.settle()` tx visible on Gnosis explorer. Validation log committed to `docs/superpowers/phase-1-validation.md`.
+**Phase gate:** A signed Gnosis-mainnet order from a Greg-funded test wallet, posted to **our** locally-running orderbook on `localhost:8080`, settles via Greg's autopilot + driver + baseline solver, with an on-chain `GPv2Settlement.settle()` tx visible on Gnosis explorer. Validation log committed to `docs/development/phase-1-validation.md`.
 
-**Spec:** [`docs/superpowers/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md)
+**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md)
 
-**Predecessor plan:** [`docs/superpowers/plans/2026-05-02-greg-phase-0-foundation.md`](2026-05-02-greg-phase-0-foundation.md)
+**Predecessor plan:** [`docs/development/plans/2026-05-02-greg-phase-0-foundation.md`](2026-05-02-greg-phase-0-foundation.md)
 
 ---
 
@@ -32,7 +31,7 @@
 | `infra/local/README.md` | Operator runbook (boot order, smoke test, teardown) |
 | `infra/rpc/fallback.ts` | `viem` `fallback()` transport: Alchemy → PublicNode → Ankr (Gnosis) |
 | `apps/frontend/.env.development.local.example` | Documented FE env template pointing FE at `http://localhost:8080` |
-| `docs/superpowers/phase-1-validation.md` | Gate evidence (Stage 1 + Stage 2 logs) |
+| `docs/development/phase-1-validation.md` | Gate evidence (Stage 1 + Stage 2 logs) |
 
 **Not modified:** `apps/backend/` (vendored upstream — track upstream cleanly via subtree pull). `apps/frontend/` source (only env templates).
 
@@ -459,7 +458,7 @@ Note: depending on the upstream driver's routing, the `/info` path may differ. I
 ## Task 6: Stage-1 e2e — settle a test swap on the fork
 
 **Files:**
-- Create: `docs/superpowers/phase-1-validation.md` (Stage 1 section, append later in Stage 2).
+- Create: `docs/development/phase-1-validation.md` (Stage 1 section, append later in Stage 2).
 
 - [ ] **Step 1: Use anvil's account[0] as the trader**
 
@@ -608,7 +607,7 @@ If it doesn't fill: relax the buy floor to 80% and try with `partiallyFillable: 
 ```bash
 cd /Users/scep/greg
 mkdir -p docs/superpowers
-cat > docs/superpowers/phase-1-validation.md <<'EOF'
+cat > docs/development/phase-1-validation.md <<'EOF'
 # Phase 1 — Validation Log
 
 ## Stage 1: Forked Gnosis (no real money)
@@ -620,7 +619,7 @@ Settlement tx (on the anvil fork): <hash from Step 6 trades>
 Stage 1 verdict: PASS / FAIL — <one-line>
 
 EOF
-git add docs/superpowers/phase-1-validation.md
+git add docs/development/phase-1-validation.md
 git commit -m "docs(phase-1): stage-1 validation evidence (forked Gnosis swap settled)"
 git push
 ```
@@ -859,7 +858,7 @@ Expected: ≥ 5 on test wallet, ≥ 0.5 on driver. Stop and re-fund if not.
 ## Task 10: Stage-2 e2e — settle a real Gnosis-mainnet swap
 
 **Files:**
-- Append to: `docs/superpowers/phase-1-validation.md`.
+- Append to: `docs/development/phase-1-validation.md`.
 
 - [ ] **Step 1: Boot the Stage-2 stack**
 
@@ -960,12 +959,12 @@ Expected: order transitions to `fulfilled`; trade record contains an on-chain Gn
 
 - [ ] **Step 7: Append Stage-2 evidence**
 
-Edit `docs/superpowers/phase-1-validation.md`, add a Stage-2 section with: order UID, settlement tx hash, gnosisscan link, time-to-settle, trader balance change.
+Edit `docs/development/phase-1-validation.md`, add a Stage-2 section with: order UID, settlement tx hash, gnosisscan link, time-to-settle, trader balance change.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add docs/superpowers/phase-1-validation.md
+git add docs/development/phase-1-validation.md
 git commit -m "docs(phase-1): stage-2 validation — real Gnosis-mainnet swap settled via Greg orderbook"
 git push
 ```
@@ -976,7 +975,7 @@ git push
 
 **Files:**
 - Modify: `infra/local/README.md` (fill in operational sections)
-- Create: `docs/superpowers/status/<today>.md` (Phase 1 status sweep)
+- Create: `docs/development/status/<today>.md` (Phase 1 status sweep)
 
 - [ ] **Step 1: Flesh out the README**
 
@@ -994,7 +993,7 @@ gh issue create --repo san-npm/greg \
   --title "Phase 2: cloud deploy + E features" \
   --body "Tracking issue for Phase 2: deploy the Phase-1 stack to Aleph + Supabase + Grafana, repoint frontend at the deployed orderbook URL, add CI jobs for FE and BE, and ship the E features (DCA / TWAP, Safe app, MEV-proof receipts, PWA polish).
 
-Predecessor plan: docs/superpowers/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md
+Predecessor plan: docs/development/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md
 Predecessor tag: v0.1-phase1
 "
 ```
@@ -1008,7 +1007,7 @@ git push --tags
 
 - [ ] **Step 4: Status sweep**
 
-Dispatch the `pm` agent (per `.claude/agents/pm.md`) to write `docs/superpowers/status/<today>.md` summarising:
+Dispatch the `pm` agent (per `agents/pm.md`) to write `docs/development/status/<today>.md` summarising:
 - All 11 task outcomes
 - Stage 1 + Stage 2 phase-gate evidence (with order UIDs and tx hashes)
 - Open follow-ups for Phase 2 (cloud deploy, observability, CI jobs)
@@ -1017,7 +1016,7 @@ Dispatch the `pm` agent (per `.claude/agents/pm.md`) to write `docs/superpowers/
 - [ ] **Step 5: Commit**
 
 ```bash
-git add infra/local/README.md docs/superpowers/status/
+git add infra/local/README.md docs/development/status/
 git commit -m "docs: phase-1 close-out (runbook + status sweep)"
 git push
 ```

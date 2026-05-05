@@ -3,7 +3,7 @@
 > **Goal:** Confirm a real swap completes via the Greg deployment hitting CoW's official APIs. This is the Phase 0 gate.
 
 **Date:** 2026-05-02
-**Operator:** Clement (executed programmatically by the Claude main session via Foundry `cast` + cow.fi API)
+**Operator:** Clement (executed programmatically by the operator session via Foundry `cast` + cow.fi API)
 
 ---
 

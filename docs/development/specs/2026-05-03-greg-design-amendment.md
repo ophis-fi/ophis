@@ -47,7 +47,7 @@ Phase 5+   Multi-chain expansion (zkSync, Linea, OP)   Aug+
 
 Original model: 5bps partner fee on Greg's UI as primary revenue. Same as today's competitor benchmark assumption.
 
-Competitor benchmarking (May 2026, all from official sources cited at bottom of [`docs/superpowers/status/2026-05-02.md`](../status/2026-05-02.md)):
+Competitor benchmarking (May 2026, all from official sources cited at bottom of [`docs/development/status/2026-05-02.md`](../status/2026-05-02.md)):
 
 | Aggregator | User-facing fee on swap |
 |---|---|

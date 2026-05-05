@@ -88,7 +88,7 @@ greg/
 │   └── superpowers/
 │       ├── specs/         # design specs
 │       └── plans/         # implementation plans
-└── .claude/
+└── agents/
     └── agents/            # pm.md, frontend.md, backend.md, cto.md
 ```
 
@@ -143,7 +143,7 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 ## 7. Phased Roadmap
 
 ### Phase 0 — Foundation (weeks 1–3)
-- Monorepo scaffolded (pnpm + turbo), GPL-3.0, `.claude/agents/`, CI bones.
+- Monorepo scaffolded (pnpm + turbo), GPL-3.0, `agents/`, CI bones.
 - Fork `cowprotocol/cowswap` → `apps/frontend`, rebrand to Greg minimal, deploy to Vercel.
 - Fork `cowprotocol/services` → `apps/backend`, build locally.
 - Frontend → CoW's official Gnosis API (no self-hosted backend yet).
@@ -177,14 +177,14 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 - Expand to Base / Arbitrum / Mainnet (CoW already supports these).
 - **Phase gate:** one paying integrator.
 
-## 8. Sub-agent Definitions (`.claude/agents/`)
+## 8. Sub-agent Definitions (`agents/`)
 
 | File | Role | Tools | Skills loaded | Forbidden |
 |---|---|---|---|---|
-| `pm.md` | Roadmap, GitHub issues, status reports, status sweeps. No code. | Read, Grep, Glob, Bash (read-only), TaskCreate, WebFetch | `superpowers:writing-plans`, `superpowers:executing-plans` | Edit, Write, destructive Bash |
-| `frontend.md` | React/TS/Next.js, cowswap fork patches, Greg UX, Safe app, Vercel deploy. | Read, Edit, Write, Bash, Grep, Glob | `vercel:*`, `frontend-design`, `web-design-guidelines`, `ethskills`, `claude-api` | Touching `apps/backend/` |
+| `pm.md` | Roadmap, GitHub issues, status reports, status sweeps. No code. | Read, Grep, Glob, Bash (read-only), TaskCreate, WebFetch | `the writing-plans methodology`, `the executing-plans methodology` | Edit, Write, destructive Bash |
+| `frontend.md` | React/TS/Next.js, cowswap fork patches, Greg UX, Safe app, Vercel deploy. | Read, Edit, Write, Bash, Grep, Glob | `vercel:*`, `frontend-design`, `web-design-guidelines`, `ethskills`,  | Touching `apps/backend/` |
 | `backend.md` | Rust, cowprotocol/services fork, Postgres schema, Aleph deploy. | Read, Edit, Write, Bash, Grep, Glob | `ethskills`, `building-secure-contracts:*`, `testing-handbook-skills:*`, `dimensional-analysis:*` | Touching `apps/frontend/` |
-| `cto.md` | Documentation only — describes the operating mode for the main session (Clement + Claude main). | — | All available | — |
+| `cto.md` | Documentation only — describes the operating mode for the main session (Clement + operator main). | — | All available | — |
 
 **Dispatch rules.** The CTO (main session) dispatches FE + BE in parallel via the Task tool when work is independent. PM gets dispatched for status sweeps and issue grooming. Cross-cutting strategic decisions stay with the CTO. Each agent file is self-contained — no cross-references that break in isolation.
 

@@ -26,7 +26,7 @@ The frontend deploy pipeline. Nothing else changed:
 | 3 | GitHub Action auto-deploys on push to main | `.github/workflows/cloudflare-deploy.yml` — run `25292283390` succeeded in 5m20s | PASS |
 | 4 | Subsequent push triggers another auto-deploy | Run `25292479…` (manifest URL update commit `19bcde1f1`) — GH Action triggered | PASS |
 | 5 | Manifest `homepage_url` repointed at CF | `apps/cowswap-frontend/public/manifest.json` → `https://greg-etm.pages.dev` | PASS |
-| 6 | Safe-app submission package URL repointed at CF | `docs/superpowers/safe-app-submission.md` updated (5 occurrences) | PASS |
+| 6 | Safe-app submission package URL repointed at CF | `docs/development/safe-app-submission.md` updated (5 occurrences) | PASS |
 | 7 | Bundle parity with Vercel | Safe recipient `0x858f0F5e…CeF8` present in CF-deployed bundle; `<title>Greg</title>`; manifest serves correctly with CORS open | PASS |
 
 ## Workflow gotchas captured (so we don't relearn next time)

@@ -1,6 +1,5 @@
 # Greg Phase 1.5 — Monetised Frontend Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Inject a Greg-controlled partner fee into every order the deployed cowswap fork produces, so each swap routed through `https://greg-29v5viw8p-clementfrmds-projects.vercel.app` (and successor URLs) accrues a 5 bps `appData.metadata.partnerFee` payable to a Greg recipient. Settlement keeps happening through CoW's official orderbook + solver network on whichever of the [10 supported chains](https://docs.cow.fi/cow-protocol/reference/contracts/core) (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink, Gnosis) the user has connected.
 
@@ -8,11 +7,11 @@
 
 **Tech Stack:** TypeScript, Jotai (cowswap's existing state library), the vendored `apps/frontend/` (cowswap fork pinned at `0174f35e7…`), Vercel for deploy, `@cowprotocol/cow-sdk` already in cowswap's dependency tree, Foundry `cast` for wallet operations, macOS Keychain for key storage.
 
-**Spec:** [`docs/superpowers/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/superpowers/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
+**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
 
-**Predecessor plan:** [`docs/superpowers/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md`](2026-05-02-greg-phase-1-local-self-hosted-stack.md)
+**Predecessor plan:** [`docs/development/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md`](2026-05-02-greg-phase-1-local-self-hosted-stack.md)
 
-**Phase gate:** A real swap submitted via the deployed Greg.app on Sepolia (or any CoW-supported chain) is recorded in `https://api.cow.fi/<chain>/api/v1/orders/<uid>` with `fullAppData` containing `metadata.partnerFee` set to `{ bps: 5, recipient: <Greg recipient address>, volumeBps: 5 }`. Validation log committed to `docs/superpowers/phase-1-5-validation.md`.
+**Phase gate:** A real swap submitted via the deployed Greg.app on Sepolia (or any CoW-supported chain) is recorded in `https://api.cow.fi/<chain>/api/v1/orders/<uid>` with `fullAppData` containing `metadata.partnerFee` set to `{ bps: 5, recipient: <Greg recipient address>, volumeBps: 5 }`. Validation log committed to `docs/development/phase-1-5-validation.md`.
 
 ---
 
@@ -26,7 +25,7 @@
 | `apps/frontend/apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts` | modify | atom defaults to Greg's partner-fee config when widget params do not supply one |
 | `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | create | inline Greg constants for cowswap (mirrors `@greg/sdk` values; small file with explanatory comment about why we inline) |
 | `apps/frontend/.greg-divergences.md` | create | tracking document for upstream-conflict-on-pull files |
-| `docs/superpowers/phase-1-5-validation.md` | create | phase-gate evidence |
+| `docs/development/phase-1-5-validation.md` | create | phase-gate evidence |
 
 **Not modified:** `apps/backend/`, `infra/local/`, `infra/rpc/`, `packages/sdk/src/config.ts` (the Phase 0 file, kept stable).
 
@@ -95,7 +94,7 @@ This `.env` is for local reference only. The address will also be hardcoded in t
 
 - [ ] **Step 5: Document the address publicly**
 
-The recipient address is **not a secret** — only the private key is. Append to `docs/superpowers/phase-1-5-validation.md` (which Task 7 will create):
+The recipient address is **not a secret** — only the private key is. Append to `docs/development/phase-1-5-validation.md` (which Task 7 will create):
 
 ```markdown
 ## Recipient
@@ -163,7 +162,7 @@ Expected: fails — `gregDefaultPartnerFee` is not exported.
  * Greg.app. Surfaced via cow-sdk's appData metadata.partnerFee, paid out by
  * CoW DAO weekly in WETH. See:
  *   - https://docs.cow.fi/governance/fees/partner-fee
- *   - docs/superpowers/specs/2026-05-03-greg-design-amendment.md
+ *   - docs/development/specs/2026-05-03-greg-design-amendment.md
  */
 
 /** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`.
@@ -257,7 +256,7 @@ The cowswap fork lives in its own pnpm workspace (`apps/frontend/`) which is **d
  * Source of truth: `packages/sdk/src/partner-fee.ts`. Keep these values in
  * sync. Whenever `@greg/sdk` changes, mirror the change here in the same PR.
  *
- * See docs/superpowers/specs/2026-05-03-greg-design-amendment.md for the
+ * See docs/development/specs/2026-05-03-greg-design-amendment.md for the
  * partner-fee strategy. See https://docs.cow.fi/governance/fees/partner-fee
  * for the protocol-level mechanism.
  */
@@ -467,7 +466,7 @@ Expected: `HTTP/2 401` if SSO is still on (gated to team members), or `HTTP/2 20
 ## Task 7: End-to-end verification — partner fee in `api.cow.fi`
 
 **Files:**
-- Create: `docs/superpowers/phase-1-5-validation.md`
+- Create: `docs/development/phase-1-5-validation.md`
 
 This task confirms the on-chain settlement records our partner fee. We submit a real Sepolia order via the deployed frontend, then read the order from CoW's API and verify the `fullAppData` contains our partner fee.
 
@@ -549,7 +548,7 @@ curl -sS "https://api.cow.fi/sepolia/api/v1/trades?orderUid=$ORDER_UID" \
 
 If the order settles (likely within 1-2 minutes), capture the `txHash`. Sepolia solver coverage is sparse — if it expires, that is fine for this phase gate (the phase gate is partner-fee injection, not settlement timing).
 
-- [ ] **Step 6: Write `docs/superpowers/phase-1-5-validation.md`**
+- [ ] **Step 6: Write `docs/development/phase-1-5-validation.md`**
 
 ```markdown
 # Phase 1.5 — Monetised Frontend Validation Log
@@ -595,7 +594,7 @@ fees ≥ 0.001 WETH per
 
 ```bash
 cd /Users/scep/greg
-git add docs/superpowers/phase-1-5-validation.md
+git add docs/development/phase-1-5-validation.md
 git status
 git commit -m "docs(phase-1-5): partner-fee injection validated on Sepolia"
 git push
@@ -640,7 +639,7 @@ Build the differentiation that justifies users choosing Greg over CowSwap (we ar
 May 11–24 (~2 weeks)
 
 ## Predecessor
-Phase 1.5 — `docs/superpowers/plans/2026-05-03-greg-phase-1-5-monetized-frontend.md`
+Phase 1.5 — `docs/development/plans/2026-05-03-greg-phase-1-5-monetized-frontend.md`
 Tag: `v0.1.5-phase1-5`
 EOF
 )"
@@ -682,7 +681,7 @@ EOF
 
 ## Task 9: Update memory
 
-**Files:** `/Users/scep/.claude/projects/-Users-scep/memory/project_greg.md`
+**Files:** `<local notes>/project_greg.md`
 
 - [ ] **Step 1: Reflect Phase 1.5 outcome and partner-fee recipient address**
 

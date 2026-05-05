@@ -22,9 +22,9 @@
 | 3 | DCA top-level CTA on home page | `apps/cowswap-frontend/src/pages/Swap/index.tsx` — `<InlineBanner>` with `NavLink` to `/advanced`, mounted via `<SwapWidget topContent>` prop. Same component pattern as upstream's `TwapSuggestionBanner`. Commit `a2bab8373`. | PASS |
 | 4 | Multisig partner-fee recipient deployed and live in code | `packages/sdk/src/partner-fee.ts` + `apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` both reference `0x858f0F5e…CeF8`. 7 sdk tests pass; cowswap build green. Commit `c5f54f06f`. | PASS |
 | 5 | Production Vercel deploy + correct SSO state | Production target serves HTTP 200 (public) on `greg-clementfrmds-projects.vercel.app` and `greg-git-main-clementfrmds-projects.vercel.app`. Preview deployments serve HTTP 401 (team-gated) — `ssoProtection.deploymentType: "preview"`. Vercel git-connect made every push to main a production deploy automatically. | PASS |
-| 6 | Safe-list PR open against `safe-global/safe-apps-list` | **DEFERRED** — public action under Clement's GitHub identity; pending operator go-ahead. Submission package ready in `docs/superpowers/safe-app-submission.md`. | DEFERRED |
-| 7 | Show HN draft committed | `docs/superpowers/show-hn-draft.md` — title options, body, pre-staged OP follow-up, Q&A bank, timing notes. Commit `2a7b6a607`. | PASS |
-| 8 | Product Hunt draft committed | `docs/superpowers/product-hunt-draft.md` — taglines, description, media checklist, maker comment, timing. Commit `58bb708d6`. | PASS |
+| 6 | Safe-list PR open against `safe-global/safe-apps-list` | **DEFERRED** — public action under Clement's GitHub identity; pending operator go-ahead. Submission package ready in `docs/development/safe-app-submission.md`. | DEFERRED |
+| 7 | Show HN draft committed | `docs/development/show-hn-draft.md` — title options, body, pre-staged OP follow-up, Q&A bank, timing notes. Commit `2a7b6a607`. | PASS |
+| 8 | Product Hunt draft committed | `docs/development/product-hunt-draft.md` — taglines, description, media checklist, maker comment, timing. Commit `58bb708d6`. | PASS |
 
 ## Phase 2.5 verdict: PASS (with one deferred operational task)
 
