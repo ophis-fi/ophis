@@ -3,10 +3,12 @@ import { UI } from '@cowprotocol/ui'
 import { Box } from 'rebass/styled-components'
 import styled from 'styled-components/macro'
 
+// Greg/Nucleus: card defaults align with the Nucleus radius scale (lg=16) and
+// generous padding (space/5 = 24px). Callers can still override via props.
 const Card = styled(Box)<{ width?: string; padding?: string; border?: string; $borderRadius?: string }>`
   width: ${({ width }) => width ?? '100%'};
-  padding: ${({ padding }) => padding ?? '1rem'};
-  border-radius: ${({ $borderRadius }) => $borderRadius ?? '16px'};
+  padding: ${({ padding }) => padding ?? 'var(--greg-space-5, 24px)'};
+  border-radius: ${({ $borderRadius }) => $borderRadius ?? 'var(--greg-radius-lg, 16px)'};
   border: ${({ border }) => border};
   color: inherit;
 `
