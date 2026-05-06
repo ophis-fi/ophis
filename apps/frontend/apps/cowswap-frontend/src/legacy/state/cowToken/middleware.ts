@@ -1,53 +1,18 @@
-import { isAnyOf, Middleware } from '@reduxjs/toolkit'
+import { Middleware } from '@reduxjs/toolkit'
 
-import { getCowSoundError, getCowSoundSuccess } from 'modules/sounds'
-
-import { setSwapVCowStatus, SwapVCowStatus } from './actions'
-
-import { finalizeTransaction } from '../enhancedTransactions/actions'
 import { AppState } from '../index'
 
-const isFinalizeTransaction = isAnyOf(finalizeTransaction)
-
-// Watch for swapVCow tx being finalized and triggers a change of status
-export const cowTokenMiddleware: Middleware<Record<string, unknown>, AppState> = (store) => (next) => (action) => {
-  const result = next(action)
-
-  let cowSound
-
-  if (isFinalizeTransaction(action)) {
-    const { chainId, hash } = action.payload
-    const transaction = store.getState().transactions[chainId][hash]
-
-    if (transaction.swapVCow || transaction.swapLockedGNOvCow) {
-      const status = transaction.receipt?.status
-
-      console.debug(
-        `[stat:swapVCow:middleware] Convert vCOW to COW transaction finalized with status ${status}`,
-        transaction.hash,
-      )
-
-      if (status === 1 && transaction.replacementType !== 'cancel') {
-        cowSound = getCowSoundSuccess()
-
-        if (transaction.swapVCow) {
-          store.dispatch(setSwapVCowStatus(SwapVCowStatus.CONFIRMED))
-        }
-      } else {
-        cowSound = getCowSoundError()
-
-        if (transaction.swapVCow) {
-          store.dispatch(setSwapVCowStatus(SwapVCowStatus.INITIAL))
-        }
-      }
-    }
-  }
-
-  if (cowSound) {
-    cowSound.play().catch((e) => {
-      console.error('🐮 [middleware::swapVCow] Moooooo cannot be played', e)
-    })
-  }
-
-  return result
-}
+/**
+ * vCOW → COW token-conversion middleware (no-op on Greg).
+ *
+ * Upstream this middleware listened for finalized swapVCow / swapLockedGNOvCow
+ * transactions and played a CoW success/error sound. vCOW is CoW DAO's locked
+ * governance token — Greg does not surface that conversion route to users, so
+ * the middleware never has work to do here.
+ *
+ * Kept as a pass-through (rather than deleted) so the redux registration site
+ * does not need to know about the strip. Remove once the cowToken slice itself
+ * is dropped from the store.
+ */
+export const cowTokenMiddleware: Middleware<Record<string, unknown>, AppState> = () => (next) => (action) =>
+  next(action)

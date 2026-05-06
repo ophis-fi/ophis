@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo } from 'react'
+import { ReactNode, useEffect } from 'react'
 
 import { ButtonPrimary, Media, UI } from '@cowprotocol/ui'
 
@@ -6,11 +6,7 @@ import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
-import { useDarkModeManager } from 'legacy/state/user/hooks'
-
 import { usePageBackground, Content, GdocsListStyle, Page, Title } from 'modules/application'
-
-import { CowSaucerScene } from './CowSaucerScene'
 
 const Wrapper = styled(Page)`
   ${GdocsListStyle};
@@ -56,12 +52,10 @@ const Container = styled.div`
 
 export default function NotFound(): ReactNode {
   const { setVariant, setScene } = usePageBackground()
-  const [darkMode] = useDarkModeManager()
-
-  const scene = useMemo(() => <CowSaucerScene darkMode={darkMode} />, [darkMode])
 
   useEffect(() => {
     setVariant('nocows')
+    setScene(null)
 
     return () => {
       setVariant('default')
@@ -69,14 +63,10 @@ export default function NotFound(): ReactNode {
     }
   }, [setVariant, setScene])
 
-  useEffect(() => {
-    setScene(scene)
-  }, [scene, setScene])
-
   return (
     <Wrapper>
       <Title>
-        <Trans>Page not found!</Trans>
+        <Trans>Page not found</Trans>
       </Title>
       <Content>
         <Container>
