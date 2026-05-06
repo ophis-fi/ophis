@@ -28,7 +28,7 @@ type JotaiStore = ReturnType<typeof createStore>
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/explicit-function-return-type
 const MockedI18nProvider = ({ children }: any) => <I18nProvider i18n={i18n}>{children}</I18nProvider>
 
-const MockThemeProvider = ({ children }: { children: React.ReactNode }): ReactNode => {
+const MockThemeProvider = ({ children }: { children: ReactNode }): ReactNode => {
   const darkMode = useIsDarkMode()
 
   const themeObject = useMemo(() => getCowswapTheme(darkMode), [darkMode])
@@ -54,7 +54,10 @@ const WithProviders = ({ children }: { children?: ReactNode }): ReactNode => {
 
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-const customRender = (ui: ReactElement) => render(ui, { wrapper: WithProviders })
+// @testing-library/react bundles its own @types/react — cast to bridge the nominal mismatch.
+const customRender = (ui: ReactNode) =>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  render(ui as React.ReactNode, { wrapper: WithProviders as any })
 
 export * from '@testing-library/react'
 export { customRender as render }

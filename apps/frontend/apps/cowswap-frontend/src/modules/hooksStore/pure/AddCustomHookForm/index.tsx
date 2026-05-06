@@ -1,4 +1,4 @@
-import { ReactElement, useCallback, useState } from 'react'
+import { ReactElement, ReactNode, useCallback, useState } from 'react'
 
 import { isDevelopmentEnv, uriToHttp } from '@cowprotocol/common-utils'
 import { HookDappWalletCompatibility } from '@cowprotocol/hook-dapp-lib'
@@ -39,7 +39,7 @@ export function AddCustomHookForm({ addHookDapp, children, isPreHook, walletType
   const [isWarningAccepted, setWarningAccepted] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(false)
   const [isFinalStep, setFinalStep] = useState<boolean>(false)
-  const [manifestError, setManifestError] = useState<string | React.ReactNode | null>(null)
+  const [manifestError, setManifestError] = useState<string | ReactNode | null>(null)
   const [dappInfo, setDappInfo] = useState<HookDappIframe | null>(null)
 
   const dismiss = useCallback(() => {

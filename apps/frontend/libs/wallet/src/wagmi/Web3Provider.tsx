@@ -13,11 +13,12 @@ interface Web3ProviderProps {
   children: ReactNode
 }
 
-export function Web3Provider({ children }: Web3ProviderProps): React.ReactNode {
+export function Web3Provider({ children }: Web3ProviderProps): ReactNode {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <SafeProvider>{children}</SafeProvider>
+        {/* Cross-package ReactNode identity mismatch: SafeProvider bundles its own @types/react instance. */}
+        <SafeProvider>{children as React.ReactNode}</SafeProvider>
       </QueryClientProvider>
     </WagmiProvider>
   )
