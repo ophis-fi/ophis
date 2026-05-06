@@ -10,9 +10,11 @@ import Popover, { PopoverProps } from '../Popover'
 
 const TOOLTIP_CLOSE_DELAY = 300 // in milliseconds
 
+// Greg/Nucleus: tooltip body — Plus Jakarta family, token-driven padding.
 export const TooltipContainer = styled.div`
   max-width: 320px;
-  padding: 4px 6px;
+  padding: var(--greg-space-1, 4px) var(--greg-space-2, 8px);
+  font-family: var(--greg-font-body);
   font-weight: 400;
   word-break: break-word;
 `
