@@ -1287,6 +1287,10 @@ msgstr "How it works"
 msgid "any token into CoW AMM pools to start benefiting from attractive APRs."
 msgstr "any token into CoW AMM pools to start benefiting from attractive APRs."
 
+#: apps/cowswap-frontend/src/pages/error/NotFound/index.tsx
+msgid "Page not found"
+msgstr "Page not found"
+
 #: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
 msgid "Solvers"
 msgstr "Solvers"
@@ -1837,8 +1841,8 @@ msgid "Need help"
 msgstr "Need help"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid "CoW Swap is the only token exchange that gets you extra tokens."
-msgstr "CoW Swap is the only token exchange that gets you extra tokens."
+#~ msgid "CoW Swap is the only token exchange that gets you extra tokens."
+#~ msgstr "CoW Swap is the only token exchange that gets you extra tokens."
 
 #: apps/cowswap-frontend/src/pages/Account/Balances.tsx
 #: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
@@ -3248,8 +3252,8 @@ msgstr "Tokens overview"
 #~ msgstr "Enter slippage percentage between {min}% and {max}%"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid "Learn how"
-msgstr "Learn how"
+#~ msgid "Learn how"
+#~ msgstr "Learn how"
 
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/CodeCreationPrimaryButton.tsx
 #~ msgid "Enter a referral code with 5 to 20 characters"
@@ -6377,6 +6381,10 @@ msgstr "Your trade will be executed in 2 stops. First, you swap on <0>{COW_PROTO
 msgid "Wallet chainId differs from app chainId. Wallet: {networkString}, App: {chainId}. Action: {description}"
 msgstr "Wallet chainId differs from app chainId. Wallet: {networkString}, App: {chainId}. Action: {description}"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid "Greg returns surplus to you when solvers find a better price than quoted."
+msgstr "Greg returns surplus to you when solvers find a better price than quoted."
+
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerQrModal.tsx
 msgid "Download referral QR code"
 msgstr "Download referral QR code"
@@ -7556,8 +7564,8 @@ msgid "Your order was successfully cancelled."
 msgstr "Your order was successfully cancelled."
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid "surplus cow"
-msgstr "surplus cow"
+#~ msgid "surplus cow"
+#~ msgstr "surplus cow"
 
 #: apps/cowswap-frontend/src/pages/Account/Affiliate.tsx
 #~ msgid "Copy link"
@@ -7685,8 +7693,8 @@ msgid "Missing currency for Eth Flow Fee"
 msgstr "Missing currency for Eth Flow Fee"
 
 #: apps/cowswap-frontend/src/pages/error/NotFound/index.tsx
-msgid "Page not found!"
-msgstr "Page not found!"
+#~ msgid "Page not found!"
+#~ msgstr "Page not found!"
 
 #: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
 msgid "Safe App License Fee"
