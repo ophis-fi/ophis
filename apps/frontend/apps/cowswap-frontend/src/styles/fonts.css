@@ -1,4 +1,15 @@
-/* Static font declarations to prevent re-injection on navigation */
+/*
+ * Greg fonts.
+ *
+ * StudioFeixen (CoW's licensed face) replaced with OFL-licensed alternatives:
+ *   - Plus Jakarta Sans  → body, UI labels, sub-headings (H2-H6)
+ *   - Fraunces           → display headlines (Display 1/2, H1)
+ *   - JetBrains Mono     → addresses, hashes, numeric data
+ *
+ * Loading: see <link rel="stylesheet"> for fonts.googleapis.com in index.html.
+ * Inter retained as fallback only (some legacy components reference it directly).
+ */
+
 /* Inter variable fonts - covers all weights and styles */
 @font-face {
   font-family: "Inter var";
@@ -14,45 +25,4 @@
   font-display: fallback;
   font-style: italic;
   src: url("/static/Inter-italic.var.woff2") format("woff2");
-}
-
-/* StudioFeixen fonts - all commonly used weights to prevent styled-components lookups */
-@font-face {
-  font-family: 'studiofeixen';
-  src: url('/static/StudioFeixenSans-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: fallback;
-}
-
-@font-face {
-  font-family: 'studiofeixen';
-  src: url('/static/StudioFeixenSans-Medium.woff2') format('woff2');
-  font-weight: 500;
-  font-style: normal;
-  font-display: fallback;
-}
-
-@font-face {
-  font-family: 'studiofeixen';
-  src: url('/static/StudioFeixenSans-Semibold.woff2') format('woff2');
-  font-weight: 600;
-  font-style: normal;
-  font-display: fallback;
-}
-
-@font-face {
-  font-family: 'studiofeixen';
-  src: url('/static/StudioFeixenSans-Bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: normal;
-  font-display: fallback;
-}
-
-@font-face {
-  font-family: 'studiofeixenmono';
-  src: url('/static/StudioFeixenMono-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: fallback;
 }

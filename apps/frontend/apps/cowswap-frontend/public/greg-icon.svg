@@ -1,7 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <rect width="256" height="256" rx="48" fill="#0F172A"/>
-  <text x="50%" y="50%"
-        font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-        font-size="160" font-weight="700" fill="#F8FAFC"
-        text-anchor="middle" dominant-baseline="central">G</text>
+  <defs>
+    <linearGradient id="greg-sunset" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A52"/>
+      <stop offset="30%" stop-color="#FF6B5A"/>
+      <stop offset="65%" stop-color="#E55A88"/>
+      <stop offset="100%" stop-color="#A44E91"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#greg-sunset)"/>
+  <text x="50%" y="55%"
+        font-family="Fraunces, ui-serif, Georgia, serif"
+        font-size="180" font-weight="700" fill="#FFF3EE"
+        text-anchor="middle" dominant-baseline="central"
+        letter-spacing="-6">G</text>
 </svg>

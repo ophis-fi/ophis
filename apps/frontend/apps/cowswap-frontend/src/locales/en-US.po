@@ -97,14 +97,14 @@ msgstr "Set to trade"
 #~ msgstr "Order cannot be filled due to insufficient allowance on the current account."
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-msgid ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on swap.cow.fi #CoWSwap @CoWSwap 🐮"
-msgstr ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on swap.cow.fi #CoWSwap @CoWSwap 🐮"
+#~ msgid ""
+#~ "Did you know? {benefit}\n"
+#~ "\n"
+#~ "Start swapping on swap.cow.fi #CoWSwap @CoWSwap 🐮"
+#~ msgstr ""
+#~ "Did you know? {benefit}\n"
+#~ "\n"
+#~ "Start swapping on swap.cow.fi #CoWSwap @CoWSwap 🐮"
 
 #: libs/hook-dapp-lib/src/hookDappsRegistry.ts
 #~ msgid "This hook allows you to permit an address to spend your tokens on your behalf. This is useful for allowing a smart contract to spend your tokens without needing to approve each transaction."
@@ -486,14 +486,24 @@ msgid "30 Minutes"
 msgstr "30 Minutes"
 
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
+#~ msgid ""
+#~ "My CoW fortune cookie 🐮💬: \"{openFortuneText}\" \n"
+#~ "\n"
+#~ " Get yours at swap.cow.fi @CoWSwap"
+#~ msgstr ""
+#~ "My CoW fortune cookie 🐮💬: \"{openFortuneText}\" \n"
+#~ "\n"
+#~ " Get yours at swap.cow.fi @CoWSwap"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
 msgid ""
-"My CoW fortune cookie 🐮💬: \"{openFortuneText}\" \n"
+"Did you know? {benefit}\n"
 "\n"
-" Get yours at swap.cow.fi @CoWSwap"
+"Start swapping on Greg — https://greg-etm.pages.dev"
 msgstr ""
-"My CoW fortune cookie 🐮💬: \"{openFortuneText}\" \n"
+"Did you know? {benefit}\n"
 "\n"
-" Get yours at swap.cow.fi @CoWSwap"
+"Start swapping on Greg — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "amount per"
@@ -1310,6 +1320,17 @@ msgstr "Bridge transaction costs."
 msgid "Custom"
 msgstr "Custom"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid ""
+"I just {actionWord} an extra {surplus} on Greg.\n"
+"\n"
+"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+msgstr ""
+"I just {actionWord} an extra {surplus} on Greg.\n"
+"\n"
+"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "Est. partial fill price"
 msgstr "Est. partial fill price"
@@ -1789,14 +1810,14 @@ msgstr "View your private {accountProxyLabelString}"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid ""
-"Hey, I just {actionWord} an extra {surplus} on @CoWSwap! 🐮💸\n"
-"\n"
-"Start swapping on swap.cow.fi"
-msgstr ""
-"Hey, I just {actionWord} an extra {surplus} on @CoWSwap! 🐮💸\n"
-"\n"
-"Start swapping on swap.cow.fi"
+#~ msgid ""
+#~ "Hey, I just {actionWord} an extra {surplus} on @CoWSwap! 🐮💸\n"
+#~ "\n"
+#~ "Start swapping on swap.cow.fi"
+#~ msgstr ""
+#~ "Hey, I just {actionWord} an extra {surplus} on @CoWSwap! 🐮💸\n"
+#~ "\n"
+#~ "Start swapping on swap.cow.fi"
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerOnboard.tsx
 msgid "See Terms"
@@ -1988,8 +2009,8 @@ msgid "Make the modification when placing order"
 msgstr "Make the modification when placing order"
 
 #: apps/cowswap-frontend/src/modules/trade/pure/LimitOrdersPromoBanner/index.tsx
-msgid "Limit orders, but <0>s-moooo-ther</0> than ever"
-msgstr "Limit orders, but <0>s-moooo-ther</0> than ever"
+#~ msgid "Limit orders, but <0>s-moooo-ther</0> than ever"
+#~ msgstr "Limit orders, but <0>s-moooo-ther</0> than ever"
 
 #: apps/cowswap-frontend/src/legacy/state/cowToken/hooks.ts
 msgid "vCOW contract not present"
@@ -2271,8 +2292,8 @@ msgstr "Provide Feedback"
 #~ msgstr "solvers"
 
 #: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
-msgid "This token supports gas-free approvals. Enjoy! 🐮"
-msgstr "This token supports gas-free approvals. Enjoy! 🐮"
+#~ msgid "This token supports gas-free approvals. Enjoy! 🐮"
+#~ msgstr "This token supports gas-free approvals. Enjoy! 🐮"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/HookDappDetails/index.tsx
 msgid "Wallet support"
@@ -3993,6 +4014,10 @@ msgstr "Hook Store"
 #~ msgid "CoW Swap dynamically adjusts your slippage tolerance to ensure your trade executes quickly while still getting the best price."
 #~ msgstr "CoW Swap dynamically adjusts your slippage tolerance to ensure your trade executes quickly while still getting the best price."
 
+#: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
+msgid "A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
+msgstr "A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
+
 #: libs/hook-dapp-lib/src/hookDappsRegistry.ts
 #~ msgid "Bungee Protocol - Swap tokens across chains"
 #~ msgstr "Bungee Protocol - Swap tokens across chains"
@@ -4425,8 +4450,8 @@ msgstr "Market:"
 #~ msgstr "No orders"
 
 #: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
-msgid "This token is unsupported as it does not operate optimally with CoW Protocol. Please refer to the FAQ for more information."
-msgstr "This token is unsupported as it does not operate optimally with CoW Protocol. Please refer to the FAQ for more information."
+#~ msgid "This token is unsupported as it does not operate optimally with CoW Protocol. Please refer to the FAQ for more information."
+#~ msgstr "This token is unsupported as it does not operate optimally with CoW Protocol. Please refer to the FAQ for more information."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/containers/HookRegistryList/index.tsx
 msgid "You haven't added any custom hooks yet. Add a custom hook to get started."
@@ -4764,6 +4789,10 @@ msgstr "off-chain"
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeBasicConfirmDetails/index.tsx
 msgid "Price"
 msgstr "Price"
+
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
+msgid "This token supports gas-free approvals."
+msgstr "This token supports gas-free approvals."
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/TransactionSlippageInput/TransactionSlippageInput.container.tsx
 #~ msgid "Your transaction may expire"
@@ -5655,6 +5684,10 @@ msgstr "parts"
 msgid "This is the cost of settling your order on-chain, including gas and any LP fees."
 msgstr "This is the cost of settling your order on-chain, including gas and any LP fees."
 
+#: apps/cowswap-frontend/src/modules/trade/pure/LimitOrdersPromoBanner/index.tsx
+msgid "Limit orders, <0>smoother</0> than ever"
+msgstr "Limit orders, <0>smoother</0> than ever"
+
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 msgid "more signature is"
 msgstr "more signature is"
@@ -6498,6 +6531,10 @@ msgstr "yield"
 msgid "Quote not yet verified by CoW Protocol simulation"
 msgstr "Quote not yet verified by CoW Protocol simulation"
 
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
+msgid "This token is unsupported and may not settle reliably. See the FAQ for details."
+msgstr "This token is unsupported and may not settle reliably. See the FAQ for details."
+
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
 msgid "Buy token"
 msgstr "Buy token"
@@ -6739,6 +6776,10 @@ msgstr "Request is being rate limited"
 #: apps/cowswap-frontend/src/modules/trade/const/common.ts
 msgid "When enabled, the orders table will be displayed on the left side on desktop screens. On mobile, the orders table will always be stacked below."
 msgstr "When enabled, the orders table will be displayed on the left side on desktop screens. On mobile, the orders table will always be stacked below."
+
+#: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
+msgid "Dismiss incident notice"
+msgstr "Dismiss incident notice"
 
 #: apps/cowswap-frontend/src/pages/Account/Governance.tsx
 msgid "View proposals"
@@ -7049,6 +7090,10 @@ msgstr "Confirm Swap"
 msgid "Modified recipient address to"
 msgstr "Modified recipient address to"
 
+#: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
+msgid "CoW Swap <0>is back online</0>"
+msgstr "CoW Swap <0>is back online</0>"
+
 #: apps/cowswap-frontend/src/api/cowProtocol/errors/OperatorError.ts
 #~ msgid "Something failed. Please try again later."
 #~ msgstr "Something failed. Please try again later."
@@ -7202,6 +7247,16 @@ msgstr "Minimum sell size"
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 msgid "Min. to deposit"
 msgstr "Min. to deposit"
+
+#: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
+msgid ""
+"Greg fortune: \"{openFortuneText}\"\n"
+"\n"
+"https://greg-etm.pages.dev"
+msgstr ""
+"Greg fortune: \"{openFortuneText}\"\n"
+"\n"
+"https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/pages/games/CowRunner/index.tsx
 msgid "MEV is lethal these days!"

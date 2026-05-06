@@ -284,7 +284,7 @@ export function FortuneWidget({ menuTitle, isMobileMenuOpen }: FortuneWidgetProp
   const { t } = useLingui()
 
   const twitterText = openFortune
-    ? encodeURIComponent(t`My CoW fortune cookie 🐮💬: "${openFortuneText}" \n\n Get yours at swap.cow.fi @CoWSwap`)
+    ? encodeURIComponent(t`Greg fortune: "${openFortuneText}"\n\nhttps://greg-etm.pages.dev`)
     : ''
 
   const isDailyFortuneChecked = useMemo(() => {

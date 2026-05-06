@@ -214,6 +214,6 @@ function getTwitterText(surplusAmount: string, surplusToken: string, orderKind: 
   const actionWord = isSellOrder(orderKind) ? t`got` : t`saved`
   const surplus = `${surplusAmount} ${surplusToken}`
   return encodeURIComponent(
-    t`Hey, I just ${actionWord} an extra ${surplus} on @CoWSwap! 🐮💸\n\nStart swapping on swap.cow.fi`,
+    t`I just ${actionWord} an extra ${surplus} on Greg.\n\nIntent-based swaps with MEV protection — https://greg-etm.pages.dev`,
   )
 }

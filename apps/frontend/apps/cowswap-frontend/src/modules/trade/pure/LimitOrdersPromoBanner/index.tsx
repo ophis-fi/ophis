@@ -74,7 +74,7 @@ export function LimitOrdersPromoBanner({
       <styledEl.TitleSection>
         <h3>
           <Trans>
-            Limit orders, but <span>s-moooo-ther</span> than ever
+            Limit orders, <span>smoother</span> than ever
           </Trans>
         </h3>
         <strong>
