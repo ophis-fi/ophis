@@ -212,6 +212,8 @@ export const GdocsListStyle = css`
 export type PageProps = PropsWithChildren<WithClassName>
 
 export function Page(props: PageProps): ReactNode {
-  // styled-components bundles its own @types/react — cast bridges the cross-package ReactNode mismatch.
+  // styled-components' `.d.ts` declares its own `React.ReactNode` (compiled against
+  // an older `@types/react` that predates the React 19 `bigint` addition).
+  // Cast bridges the version skew at the JSX boundary.
   return <PageWrapper className={props?.className}>{props?.children as React.ReactNode}</PageWrapper>
 }

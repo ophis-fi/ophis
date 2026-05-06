@@ -54,7 +54,8 @@ const WithProviders = ({ children }: { children?: ReactNode }): ReactNode => {
 
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-// @testing-library/react bundles its own @types/react — cast to bridge the nominal mismatch.
+// `@testing-library/react`'s `.d.ts` was compiled against an older `@types/react` whose
+// `React.ReactNode` does not include `bigint`. Cast bridges the version skew.
 const customRender = (ui: ReactNode) =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(ui as React.ReactNode, { wrapper: WithProviders as any })
