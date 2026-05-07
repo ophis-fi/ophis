@@ -1,34 +1,55 @@
 'use client'
 
 import { useCowAnalytics } from '@cowprotocol/analytics'
-import IMG_ICON_BULB_COW from '@cowprotocol/assets/images/icon-bulb-cow.svg'
-import IMG_ICON_GOVERNANCE from '@cowprotocol/assets/images/icon-governance.svg'
-import IMG_ICON_GRANTS_CARTON from '@cowprotocol/assets/images/icon-grants-carton.svg'
-import VIDEO_HERO_HOME from '@cowprotocol/assets/video/cow-dao-hero-animation.mp4'
-import { Font, UI } from '@cowprotocol/ui'
 
 import { CowFiCategory } from 'src/common/analytics/types'
 
-import LazySVG from '@/components/LazySVG'
 import { Link, LinkType } from '@/components/Link'
-import { CHANNEL_LIST, PRODUCT_CONTAINERS } from '@/data/home/const'
+import { CONFIG } from '@/const/meta'
 import {
   ContainerCard,
   ContainerCardSection,
   HeroBackground,
   HeroContainer,
   HeroContent,
+  HeroSubtitle,
   HeroTitle,
   PageWrapper,
   SectionTitleDescription,
-  SectionTitleIcon,
   SectionTitleText,
   SectionTitleWrapper,
   TopicCard,
-  TopicImage,
+  TopicDescription,
   TopicList,
   TopicTitle,
 } from '@/styles/styled'
+
+const FEATURES = [
+  {
+    title: 'DCA & TWAP',
+    description:
+      'Split a trade across time. Every leaf is a real order — solvers compete on each one, MEV-protected by construction.',
+    bgColor: '#FFF3EE',
+    textColor: '#2A0B07',
+    descriptionColor: '#53575A',
+  },
+  {
+    title: 'MEV-proof receipts',
+    description:
+      'Every settled order produces a downloadable proof — solver competition, executed price, surplus returned. Auditable trade history without trusting us.',
+    bgColor: '#E66A55',
+    textColor: '#FFF3EE',
+    descriptionColor: '#FFDFD3',
+  },
+  {
+    title: 'Treasury-ready',
+    description:
+      'Ophis as a Safe app. DAOs sign batched approvals, route on-chain via the same intent system, export CSV for accounting.',
+    bgColor: '#2F3133',
+    textColor: '#FFF3EE',
+    descriptionColor: '#C1C4C6',
+  },
+]
 
 export default function Page() {
   const cowAnalytics = useCowAnalytics()
@@ -42,114 +63,69 @@ export default function Page() {
 
   return (
     <PageWrapper>
-      <HeroContainer minHeight="700px" maxWidth={'100%'} margin="-76px auto -48px" padding="142px 20px 56px">
-        <HeroBackground>
-          <video autoPlay loop muted playsInline>
-            <source src={VIDEO_HERO_HOME} type="video/mp4" />
-          </video>
-        </HeroBackground>
+      <HeroContainer minHeight="640px" maxWidth={'100%'} margin="-76px auto -48px" padding="160px 20px 72px">
+        <HeroBackground
+          style={{
+            background:
+              'radial-gradient(120% 100% at 20% 30%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%)',
+          }}
+        />
         <HeroContent flex={'0 1 0'}>
-          <HeroTitle fontSize={148} fontSizeMobile={80}>
-            Don&apos;t get milked!
+          <HeroTitle fontSize={148} fontSizeMobile={80} style={{ color: '#FFF3EE' }}>
+            Ophis returns surplus.
           </HeroTitle>
+          <HeroSubtitle color="#FFF3EE" style={{ opacity: 0.92, maxWidth: 720, fontSize: 20 }}>
+            Intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.
+          </HeroSubtitle>
+          <Link
+            external
+            linkType={LinkType.HeroButton}
+            href={CONFIG.url.swap}
+            onClick={() => sendHomeEvent('click-hero-trade')}
+          >
+            Start swapping
+          </Link>
         </HeroContent>
       </HeroContainer>
 
-      {PRODUCT_CONTAINERS}
-
-      <ContainerCard bgColor={'transparent'}>
+      <ContainerCard bgColor={'#FFF3EE'}>
         <ContainerCardSection>
           <SectionTitleWrapper maxWidth={900}>
-            <SectionTitleIcon $size={126}>
-              <LazySVG src={IMG_ICON_BULB_COW} />
-            </SectionTitleIcon>
-            <SectionTitleText>Innovation in action</SectionTitleText>
-            <SectionTitleDescription color={`var(${UI.COLOR_NEUTRAL_30})`}>
-              CoW DAO is famous for pioneering technology at the forefront of intents, MEV protection, and more. <br />
-              Whether you&apos;re a crypto beginner or an Ethereum OG, you can learn more about these important topics
-              in the CoW DAO Knowledge Base.
-            </SectionTitleDescription>
-
-            <Link
-              linkType={LinkType.SectionTitleButton}
-              href="/learn"
-              onClick={() => sendHomeEvent('click-cow-knowledge-base-learn-more')}
-            >
-              Learn more
-            </Link>
-          </SectionTitleWrapper>
-        </ContainerCardSection>
-      </ContainerCard>
-
-      <ContainerCard bgColor={`var(${UI.COLOR_NEUTRAL_10})`} color={`var(${UI.COLOR_NEUTRAL_98})`}>
-        <ContainerCardSection>
-          <SectionTitleWrapper padding="150px 0 0" maxWidth={900}>
-            <SectionTitleIcon $size={90}>
-              <LazySVG src={IMG_ICON_GOVERNANCE} />
-            </SectionTitleIcon>
-            <SectionTitleText textAlign="center">Governance</SectionTitleText>
-            <SectionTitleDescription
-              color={`var(${UI.COLOR_NEUTRAL_60})`}
-              fontWeight={Font.weight.regular}
-              textAlign="center"
-            >
-              Anyone can join CoW DAO by holding{' '}
-              <Link
-                href="https://swap.cow.fi/#/1/swap/USDC/COW"
-                onClick={() => sendHomeEvent('click-cow-tokens')}
-                external
-              >
-                COW tokens
-              </Link>
-              . Tokenholders contribute to CoW DAO&apos;s mission by participating in &quot;CoWmunity&quot; discussions
-              on Discord, by adding proposals to the CoW DAO Forum, and by voting on governance actions in Snapshot.
+            <SectionTitleText>Three reasons</SectionTitleText>
+            <SectionTitleDescription>
+              Every order signed on Ophis is a single intent. Solvers compete in batch auctions, the winner settles your
+              trade, and any price improvement over your quote comes back to you. There&apos;s no public mempool, no
+              sandwich risk, and no opportunity for the operator to silently capture surplus.
             </SectionTitleDescription>
           </SectionTitleWrapper>
 
           <TopicList columns={3} columnsTablet={2}>
-            {CHANNEL_LIST.map((social, index) => (
-              <TopicCard
-                key={index}
-                textColor={social.textColor}
-                bgColor={social.iconColor}
-                href={social.href}
-                rel="noopener noreferrer"
-                target="_blank"
-                onClick={() => sendHomeEvent(social.linkEvent)}
-              >
-                <TopicImage iconColor="transparent" maxWidth={290} maxHeight={290} height={290} width={290}>
-                  <LazySVG src={social.iconImage} title={social.title} />
-                </TopicImage>
-                <TopicTitle fontSize={38}>{social.title}</TopicTitle>
+            {FEATURES.map((f, i) => (
+              <TopicCard key={i} bgColor={f.bgColor} textColor={f.textColor}>
+                <TopicTitle fontSize={32}>{f.title}</TopicTitle>
+                <TopicDescription color={f.descriptionColor}>{f.description}</TopicDescription>
               </TopicCard>
             ))}
           </TopicList>
         </ContainerCardSection>
       </ContainerCard>
 
-      <ContainerCard bgColor={`var(${UI.COLOR_NEUTRAL_90})`} color={`var(${UI.COLOR_NEUTRAL_10})`} touchFooter>
+      <ContainerCard bgColor={'#2A0B07'} color={'#FFF3EE'} touchFooter>
         <ContainerCardSection>
           <SectionTitleWrapper maxWidth={900}>
-            <SectionTitleIcon $size={90}>
-              <LazySVG src={IMG_ICON_GRANTS_CARTON} />
-            </SectionTitleIcon>
-            <SectionTitleText textAlign="center">Grants</SectionTitleText>
-            <SectionTitleDescription
-              color={`var(${UI.COLOR_NEUTRAL_30})`}
-              fontWeight={Font.weight.regular}
-              textAlign="center"
-            >
-              The CoW DAO Grants Program funds mission-aligned projects and people working on MEV protection, trading
-              innovation, and ecosystem development.
+            <SectionTitleText textAlign="center">Built on CoW Protocol</SectionTitleText>
+            <SectionTitleDescription color={'#FFDFD3'} textAlign="center">
+              Ophis is a self-hosted intent broker that routes orders into CoW Protocol&apos;s solver network.
+              Settlement is on-chain via audited GPv2Settlement contracts; we don&apos;t custody, we don&apos;t fork
+              consensus, we don&apos;t run our own solvers. The plumbing is theirs. The product is ours.
             </SectionTitleDescription>
             <Link
               external
               linkType={LinkType.SectionTitleButton}
-              utmContent="home-page-apply-for-a-grant"
-              href="https://grants.cow.fi/"
-              onClick={() => sendHomeEvent('click-apply-for-a-grant')}
+              href="https://docs.cow.fi"
+              onClick={() => sendHomeEvent('click-cow-protocol-docs')}
             >
-              Explore grants
+              CoW Protocol docs
             </Link>
           </SectionTitleWrapper>
         </ContainerCardSection>

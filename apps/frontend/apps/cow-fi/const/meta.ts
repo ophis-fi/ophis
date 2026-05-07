@@ -5,13 +5,13 @@ export const DATA_CACHE_TIME_SECONDS = 60 * 60 // 1 hour
 
 export const CONFIG = {
   title: {
-    template: '%s · Greg',
-    default: 'Greg',
+    template: '%s · Ophis',
+    default: 'Ophis',
   },
   metatitle_tokenDetail: 'Live Token Price Chart & Metrics',
   description:
-    'Greg — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.',
-  descriptionShort: 'Greg returns surplus.',
+    'Ophis — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.',
+  descriptionShort: 'Ophis returns surplus.',
   ogImage: 'https://greg-etm.pages.dev/og-image.png',
   ogImageCOWAMM: 'https://greg-etm.pages.dev/og-image.png',
   ogImageCOWSWAPP: 'https://greg-etm.pages.dev/og-image.png',
