@@ -496,14 +496,14 @@ msgstr "30 Minutes"
 #~ " Get yours at swap.cow.fi @CoWSwap"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-msgid ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Greg — https://greg-etm.pages.dev"
-msgstr ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Greg — https://greg-etm.pages.dev"
+#~ msgid ""
+#~ "Did you know? {benefit}\n"
+#~ "\n"
+#~ "Start swapping on Greg — https://greg-etm.pages.dev"
+#~ msgstr ""
+#~ "Did you know? {benefit}\n"
+#~ "\n"
+#~ "Start swapping on Greg — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "amount per"
@@ -711,6 +711,10 @@ msgstr "h"
 #: apps/cowswap-frontend/src/modules/account/pure/ConnectedAccountBlocked/index.tsx
 #~ msgid "If you believe this is an error, please send an email including your address to "
 #~ msgstr "If you believe this is an error, please send an email including your address to "
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid "Ophis returns surplus to you when solvers find a better price than quoted."
+msgstr "Ophis returns surplus to you when solvers find a better price than quoted."
 
 #: apps/cowswap-frontend/src/modules/ethFlow/services/ethFlow/index.ts
 msgid "EthFlow contract ({actualContractAddress}) address don't match the expected address for chain {chainId} ({expectedContractAddress}). Please refresh the page and try again."
@@ -1326,14 +1330,14 @@ msgstr "Custom"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid ""
-"I just {actionWord} an extra {surplus} on Greg.\n"
-"\n"
-"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
-msgstr ""
-"I just {actionWord} an extra {surplus} on Greg.\n"
-"\n"
-"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+#~ msgid ""
+#~ "I just {actionWord} an extra {surplus} on Greg.\n"
+#~ "\n"
+#~ "Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+#~ msgstr ""
+#~ "I just {actionWord} an extra {surplus} on Greg.\n"
+#~ "\n"
+#~ "Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "Est. partial fill price"
@@ -3466,6 +3470,16 @@ msgstr "Reduce your slippage by breaking big orders into smaller ones"
 msgid "CoW Swap is the only exchange that matches Coincidences of Wants (CoWs): peer-to-peer swaps that save on settlement costs."
 msgstr "CoW Swap is the only exchange that matches Coincidences of Wants (CoWs): peer-to-peer swaps that save on settlement costs."
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+msgid ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis — https://greg-etm.pages.dev"
+msgstr ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis — https://greg-etm.pages.dev"
+
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/RowQuoteId.container.tsx
 msgid "Copied!"
 msgstr "Copied!"
@@ -4339,6 +4353,17 @@ msgstr "My orders <0/>"
 #: apps/cowswap-frontend/src/modules/notifications/pure/NotificationSettingsPopover.tsx
 msgid "Trade alert settings info"
 msgstr "Trade alert settings info"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+msgstr ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/twap/pure/CustomDeadlineSelector/index.tsx
 msgid "Define custom total time"
@@ -6382,8 +6407,8 @@ msgid "Wallet chainId differs from app chainId. Wallet: {networkString}, App: {c
 msgstr "Wallet chainId differs from app chainId. Wallet: {networkString}, App: {chainId}. Action: {description}"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid "Greg returns surplus to you when solvers find a better price than quoted."
-msgstr "Greg returns surplus to you when solvers find a better price than quoted."
+#~ msgid "Greg returns surplus to you when solvers find a better price than quoted."
+#~ msgstr "Greg returns surplus to you when solvers find a better price than quoted."
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerQrModal.tsx
 msgid "Download referral QR code"

@@ -2,7 +2,7 @@
   "background_color": "#E66A55",
   "display": "standalone",
   "homepage_url": "https://greg-etm.pages.dev",
-  "description": "Greg — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.",
+  "description": "Ophis — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.",
   "iconPath": "/greg-icon.svg",
   "icons": [
     {
@@ -19,8 +19,8 @@
     }
   ],
   "orientation": "portrait",
-  "name": "Greg",
-  "short_name": "Greg",
+  "name": "Ophis",
+  "short_name": "Ophis",
   "start_url": ".",
   "theme_color": "#E66A55"
 }

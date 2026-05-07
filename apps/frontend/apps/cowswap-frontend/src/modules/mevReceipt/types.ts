@@ -43,7 +43,7 @@ export interface MevProofReceipt {
   readonly partnerFee: PartnerFeeInfo | null
   /** Fractional surplus over the quoted minimum buyAmount; null if not settled. (executed - quoted) / quoted */
   readonly surplusVsQuote: number | null
-  /** Greg's receipt schema version. */
+  /** Ophis's receipt schema version. */
   readonly receiptVersion: '1'
   /** ISO-8601 UTC timestamp of receipt creation. */
   readonly generatedAt: string
