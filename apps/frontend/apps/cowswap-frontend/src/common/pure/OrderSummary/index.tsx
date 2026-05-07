@@ -17,7 +17,7 @@ type OrderSummaryProps = {
   srcChainData?: ChainInfo
   dstChainData?: ChainInfo
   children?: ReactElement | string
-  customTemplate?: React.ComponentType<OrderSummaryTemplateProps>
+  customTemplate?: (props: OrderSummaryTemplateProps) => ReactNode
 } & (TradeAmounts | TokensAndAmounts)
 
 interface TokensAndAmounts {

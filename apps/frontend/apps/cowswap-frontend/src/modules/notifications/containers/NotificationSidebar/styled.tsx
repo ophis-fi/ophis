@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ButtonHTMLAttributes, ReactNode } from 'react'
 
 import ICON_ARROW from '@cowprotocol/assets/images/arrow-left.svg'
 import ICON_BELL_ALERT from '@cowprotocol/assets/images/icon-bell-alert.svg'
@@ -170,7 +170,7 @@ export const EnableAlertsButton = styled.button`
 export const EnableAlertsButtonWithIcon = ({
   onClick,
   ...props
-}: IconProps & React.ButtonHTMLAttributes<HTMLButtonElement>): ReactNode => (
+}: IconProps & ButtonHTMLAttributes<HTMLButtonElement>): ReactNode => (
   <EnableAlertsButton onClick={onClick} {...props}>
     <BellIcon src={ICON_BELL_ALERT} />
     Enable trade alerts

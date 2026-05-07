@@ -6,11 +6,9 @@ import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
-import { useDarkModeManager } from 'legacy/state/user/hooks'
+import { Greg404Scene } from 'greg/components'
 
 import { usePageBackground, Content, GdocsListStyle, Page, Title } from 'modules/application'
-
-import { CowSaucerScene } from './CowSaucerScene'
 
 const Wrapper = styled(Page)`
   ${GdocsListStyle};
@@ -56,27 +54,22 @@ const Container = styled.div`
 
 export default function NotFound(): ReactNode {
   const { setVariant, setScene } = usePageBackground()
-  const [darkMode] = useDarkModeManager()
-
-  const scene = useMemo(() => <CowSaucerScene darkMode={darkMode} />, [darkMode])
+  const scene = useMemo(() => <Greg404Scene />, [])
 
   useEffect(() => {
     setVariant('nocows')
+    setScene(scene)
 
     return () => {
       setVariant('default')
       setScene(null)
     }
-  }, [setVariant, setScene])
-
-  useEffect(() => {
-    setScene(scene)
-  }, [scene, setScene])
+  }, [setVariant, setScene, scene])
 
   return (
     <Wrapper>
       <Title>
-        <Trans>Page not found!</Trans>
+        <Trans>Page not found</Trans>
       </Title>
       <Content>
         <Container>

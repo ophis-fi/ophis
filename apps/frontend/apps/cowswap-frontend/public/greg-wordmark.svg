@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160" fill="none">
+  <style>
+    .greg-wordmark {
+      font-family: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
+      font-weight: 700;
+      font-size: 144px;
+      font-feature-settings: 'ss01' on;
+      font-variation-settings: 'opsz' 144, 'SOFT' 50;
+      letter-spacing: -0.02em;
+      fill: #E66A55;
+    }
+  </style>
+  <text class="greg-wordmark" x="0" y="120">Greg</text>
+</svg>

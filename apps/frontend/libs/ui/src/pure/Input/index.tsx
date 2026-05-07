@@ -17,9 +17,10 @@ const SearchIcon = styled(Search)`
 `
 
 const SearchInputEl = styled.input`
+  // Greg/Nucleus: token-driven padding + radius, Plus Jakarta inheritance.
   position: relative;
   display: flex;
-  padding: 8px 16px 8px 10px;
+  padding: var(--greg-space-2, 8px) var(--greg-space-4, 16px);
   align-items: center;
   width: 100%;
   white-space: nowrap;
@@ -27,14 +28,15 @@ const SearchInputEl = styled.input`
   background: transparent;
   color: inherit;
   appearance: none;
+  font-family: var(--greg-font-body);
   font-size: 16px;
-  border-radius: 12px;
+  border-radius: var(--greg-radius-md, 8px);
   border: none;
 
   &::placeholder {
     color: inherit;
     opacity: 0.7;
-    transition: color 0.1s ease-in-out;
+    transition: color var(${UI.ANIMATION_DURATION}) ease-in-out;
   }
 
   &:focus::placeholder {

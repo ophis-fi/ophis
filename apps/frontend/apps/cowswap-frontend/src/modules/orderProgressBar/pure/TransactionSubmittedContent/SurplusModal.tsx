@@ -1,5 +1,4 @@
 import CheckSingular from '@cowprotocol/assets/cow-swap/check-singular.svg'
-import SurplusCow from '@cowprotocol/assets/cow-swap/surplus-cow.svg'
 import twitterImage from '@cowprotocol/assets/cow-swap/twitter.svg'
 import { isSellOrder } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
@@ -169,9 +168,6 @@ export function SurplusModal(props: SurplusModalProps) {
       <h2>
         <SVG src={CheckSingular} title={t`check`} /> <Trans>Swap completed</Trans>
       </h2>
-      <span>
-        <img src={SurplusCow} alt={t`surplus cow`} />
-      </span>
       <h3>
         <Trans>Great!</Trans> {surplusMsg}
       </h3>
@@ -199,10 +195,7 @@ export function SurplusModal(props: SurplusModalProps) {
         </StyledExternalLink>
       )}
       <p>
-        <Trans>CoW Swap is the only token exchange that gets you extra tokens.</Trans>{' '}
-        <ExternalLink href={'https://blog.cow.fi/announcing-cow-swap-surplus-notifications-f679c77702ea'}>
-          <Trans>Learn how</Trans> ↗
-        </ExternalLink>
+        <Trans>Greg returns surplus to you when solvers find a better price than quoted.</Trans>
       </p>
     </Wrapper>
   )
@@ -214,6 +207,6 @@ function getTwitterText(surplusAmount: string, surplusToken: string, orderKind: 
   const actionWord = isSellOrder(orderKind) ? t`got` : t`saved`
   const surplus = `${surplusAmount} ${surplusToken}`
   return encodeURIComponent(
-    t`Hey, I just ${actionWord} an extra ${surplus} on @CoWSwap! 🐮💸\n\nStart swapping on swap.cow.fi`,
+    t`I just ${actionWord} an extra ${surplus} on Greg.\n\nIntent-based swaps with MEV protection — https://greg-etm.pages.dev`,
   )
 }

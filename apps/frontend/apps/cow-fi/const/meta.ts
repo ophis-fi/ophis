@@ -5,21 +5,22 @@ export const DATA_CACHE_TIME_SECONDS = 60 * 60 // 1 hour
 
 export const CONFIG = {
   title: {
-    template: '%s - CoW DAO',
-    default: 'CoW DAO',
+    template: '%s · Greg',
+    default: 'Greg',
   },
   metatitle_tokenDetail: 'Live Token Price Chart & Metrics',
-  description: 'CoW DAO develops the most user-protective products in Ethereum - so you can do more with less worry.',
-  descriptionShort: "Don't get milked!",
-  ogImage: 'https://cow.fi/images/og-meta-cowdao.png',
-  ogImageCOWAMM: 'https://cow.fi/images/og-meta-cowamm.png',
-  ogImageCOWSWAPP: 'https://cow.fi/images/og-meta-cowswap.png',
-  ogImageMEVBLOCKER: 'https://cow.fi/images/og-meta-mevblocker.png',
-  ogImageCOWPROTOCOL: 'https://cow.fi/images/og-meta-cowprotocol.png',
+  description:
+    'Greg — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.',
+  descriptionShort: 'Greg returns surplus.',
+  ogImage: 'https://greg-etm.pages.dev/og-image.png',
+  ogImageCOWAMM: 'https://greg-etm.pages.dev/og-image.png',
+  ogImageCOWSWAPP: 'https://greg-etm.pages.dev/og-image.png',
+  ogImageMEVBLOCKER: 'https://greg-etm.pages.dev/og-image.png',
+  ogImageCOWPROTOCOL: 'https://greg-etm.pages.dev/og-image.png',
   url: {
-    root: 'https://cow.fi',
-    swap: 'https://swap.cow.fi/#/1/swap/DAI/COW?sellAmount=500',
-    docs: 'https://docs.cow.fi',
+    root: 'https://greg-etm.pages.dev',
+    swap: 'https://greg-etm.pages.dev/#/1/swap/DAI/USDC?sellAmount=500',
+    docs: 'https://github.com/san-npm/greg',
     api: API_BASE_URL + '/mainnet',
     apiDocs: API_BASE_URL + '/docs',
     daos: '/daos',
@@ -35,13 +36,13 @@ export const CONFIG = {
   },
   ashbyHqApi: 'https://jobs.ashbyhq.com/api/non-user-graphql',
   social: {
-    twitter: { label: 'Twitter', account: '@CoWSwap', url: 'https://twitter.com/CoWSwap' },
+    twitter: { label: 'Twitter', account: '@greg_etm', url: 'https://twitter.com/' },
     discord: { label: 'Discord', url: 'https://discord.com/invite/cowprotocol' },
-    github: { label: 'GitHub', url: 'https://github.com/cowprotocol/' },
+    github: { label: 'GitHub', url: 'https://github.com/san-npm/greg' },
     forum: { label: 'Forum', url: 'https://forum.cow.fi/' },
   },
   utm: {
-    utmSource: 'cow.fi',
+    utmSource: 'greg-etm.pages.dev',
     utmMedium: 'web',
   },
   tokenDisclaimer:

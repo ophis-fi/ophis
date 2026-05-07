@@ -1,3 +1,5 @@
+import { ReactNode } from 'react'
+
 import ShieldImage from '@cowprotocol/assets/cow-swap/protection.svg'
 
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -18,10 +20,10 @@ const IconImage = styled.div`
 `
 
 export interface LabelTooltip {
-  label: React.ReactNode
+  label: ReactNode
   // TODO: Replace any with proper type definitions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tooltip?: React.ReactNode | ((params: any) => React.ReactNode)
+  tooltip?: ReactNode | ((params: any) => ReactNode)
 }
 
 export interface LabelTooltipItems {

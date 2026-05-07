@@ -33,13 +33,15 @@ export const PopoverContainer = styled.div<PopoverContainerProps>`
     visibility 0.15s linear,
     opacity 0.15s linear;
 
+  // Greg/Nucleus: tight popover (radius md=8) with Plus Jakarta inheritance.
   background: ${({ bgColor }) => bgColor || `var(${UI.COLOR_PAPER_DARKER})`};
   color: ${({ color }) => color || `var(${UI.COLOR_TEXT_PAPER})`};
-  box-shadow: var(${UI.BOX_SHADOW});
+  box-shadow: var(--greg-shadow-medium, var(${UI.BOX_SHADOW}));
   border: 1px solid ${({ borderColor, bgColor }) => borderColor || bgColor || `var(${UI.COLOR_PAPER_DARKEST})`};
-  border-radius: 12px;
-  padding: 6px 3px;
+  border-radius: var(--greg-radius-md, 8px);
+  padding: var(--greg-space-2, 8px);
   z-index: 10;
+  font-family: var(--greg-font-body);
   font-size: 13px;
   backdrop-filter: blur(20px);
 
