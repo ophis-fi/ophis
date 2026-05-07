@@ -1008,8 +1008,8 @@ msgid "Signing"
 msgstr "Signing"
 
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
-msgid "Already seen today's fortune? Return tomorrow for a fresh one!"
-msgstr "Already seen today's fortune? Return tomorrow for a fresh one!"
+#~ msgid "Already seen today's fortune? Return tomorrow for a fresh one!"
+#~ msgstr "Already seen today's fortune? Return tomorrow for a fresh one!"
 
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 msgid "Enough signatures, <0>but not executed</0>"
@@ -1632,8 +1632,8 @@ msgstr "Price impact due to current liquidity levels and estimated swap fees and
 
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
-msgid "Share on Twitter"
-msgstr "Share on Twitter"
+#~ msgid "Share on Twitter"
+#~ msgstr "Share on Twitter"
 
 #: apps/cowswap-frontend/src/common/pure/CurrencyArrowSeparator/index.tsx
 #~ msgid "loading"
@@ -6341,8 +6341,8 @@ msgstr "From {PROTOCOL_FEE_START_DATETIME_UTC}, and pursuant to <0>CIP-74</0>, a
 #~ msgstr "Invite your friends <0/> and earn rewards"
 
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
-msgid "Hide today's fortune cookie"
-msgstr "Hide today's fortune cookie"
+#~ msgid "Hide today's fortune cookie"
+#~ msgstr "Hide today's fortune cookie"
 
 #: apps/cowswap-frontend/src/common/containers/OrderHooksDetails/index.tsx
 msgid "Post Hooks"
@@ -6500,8 +6500,8 @@ msgid "Set approval amount"
 msgstr "Set approval amount"
 
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
-msgid "CoW Fortune of the day"
-msgstr "CoW Fortune of the day"
+#~ msgid "CoW Fortune of the day"
+#~ msgstr "CoW Fortune of the day"
 
 #: apps/cowswap-frontend/src/utils/orderUtils/parseOrder.ts
 msgid "Order ID"
@@ -7257,14 +7257,14 @@ msgid "Min. to deposit"
 msgstr "Min. to deposit"
 
 #: apps/cowswap-frontend/src/modules/fortune/containers/FortuneWidget/index.tsx
-msgid ""
-"Greg fortune: \"{openFortuneText}\"\n"
-"\n"
-"https://greg-etm.pages.dev"
-msgstr ""
-"Greg fortune: \"{openFortuneText}\"\n"
-"\n"
-"https://greg-etm.pages.dev"
+#~ msgid ""
+#~ "Greg fortune: \"{openFortuneText}\"\n"
+#~ "\n"
+#~ "https://greg-etm.pages.dev"
+#~ msgstr ""
+#~ "Greg fortune: \"{openFortuneText}\"\n"
+#~ "\n"
+#~ "https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/pages/games/CowRunner/index.tsx
 msgid "MEV is lethal these days!"

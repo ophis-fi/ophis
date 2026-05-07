@@ -1,10 +1,12 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useMemo } from 'react'
 
 import { ButtonPrimary, Media, UI } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
+
+import { Greg404Scene } from 'greg/components'
 
 import { usePageBackground, Content, GdocsListStyle, Page, Title } from 'modules/application'
 
@@ -52,16 +54,17 @@ const Container = styled.div`
 
 export default function NotFound(): ReactNode {
   const { setVariant, setScene } = usePageBackground()
+  const scene = useMemo(() => <Greg404Scene />, [])
 
   useEffect(() => {
     setVariant('nocows')
-    setScene(null)
+    setScene(scene)
 
     return () => {
       setVariant('default')
       setScene(null)
     }
-  }, [setVariant, setScene])
+  }, [setVariant, setScene, scene])
 
   return (
     <Wrapper>
