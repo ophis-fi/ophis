@@ -1,51 +1,48 @@
 /**
- * Greg design tokens — source of truth.
+ * Ophis design tokens — source of truth.
  *
  * Token *system* (scale, naming, ramp shape, spacing rhythm) lifted from
- * Nucleus UI Lite (Gumroad, Lite tier). Token *values* are Greg-specific:
- * a warm "sunset" coral primary derived from the kit's gradient card studies
- * (`Auto Layout-2.svg`).
+ * Nucleus UI Lite (Gumroad, Lite tier). Token *values* are Ophis-specific:
+ * an electric-violet primary with an amber accent — the "cosmic eclipse"
+ * palette derived from the brand mockup (`new-layout-website.svg`).
  *
- * Sunset rationale: every DEX aggregator (1inch, Velora, Jumper, Bungee,
- * Matcha) lives in the cool blue/purple/teal cluster. Warm tones make Greg
- * visually unmistakable in a competitive screenshot — free brand recall.
+ * Brand pivot 2026-05-07: previously a warm coral "sunset" palette;
+ * pivoted to cosmic violet/amber after the new-layout mockup. Same token
+ * structure, swapped values.
  *
- * See docs/development/specs/2026-05-06-greg-brand-foundations.md for license
- * notes, decisions, and the semantic-token mapping.
- *
- * NOTE: Dark mode is derived (Nucleus Lite ships light only).
+ * See docs/development/specs/2026-05-07-ophis-brand-guidelines.md for the
+ * naming conventions (Ophis vs Greg vs Ophie) and usage rules.
  */
 
 export const colors = {
-  // Greg's primary brand ramp — warm coral. Designed to match Nucleus's
-  // contrast curve (10 = pale tint near white, 60 = primary action,
-  // 100 = deep near-black warm). Anchor `#E66A55` derived from the
-  // sunset gradient's saturated peak.
+  // Ophis primary brand ramp — electric violet. Anchor `#5827E0` derived
+  // from the cosmic-eclipse mockup's mid-saturation violet zone.
   brand: {
-    10: '#FFF3EE',
-    20: '#FFDFD3',
-    30: '#FFBDA8',
-    40: '#FF9579',
-    50: '#FF7A60',
-    60: '#E66A55', // primary action (light mode)
-    70: '#C2503D',
-    80: '#993627',
-    90: '#5C1D14',
-    100: '#2A0B07',
+    10: '#F4F1FF',
+    20: '#E0D6FF',
+    30: '#C2AFFF',
+    40: '#9D7CFF',
+    50: '#7B53F5',
+    60: '#5827E0', // primary action (light mode)
+    70: '#411DC3',
+    80: '#301494',
+    90: '#1B0A61',
+    100: '#0A0435',
   },
-  // Secondary accent — magenta/rose. Used sparingly for highlights, gradient
-  // stops, illustration. Derived from the gradient's bottom-right magenta peak.
+  // Secondary accent — amber/orange. The "eclipse" warm against the violet
+  // cool. Used for highlights, gradient stops, illustration. Anchor `#F4A93B`
+  // sampled from the mockup's solar-rim glow.
   accent: {
-    10: '#FFF0F6',
-    20: '#FFD4E2',
-    30: '#FFA9C2',
-    40: '#F47AA0',
-    50: '#E55A88',
-    60: '#C73D6C', // secondary action / hover
-    70: '#A02855',
-    80: '#7A1A40',
-    90: '#4A0E28',
-    100: '#220612',
+    10: '#FFF7E8',
+    20: '#FFE9C2',
+    30: '#FFD085',
+    40: '#FFB54D',
+    50: '#F4A93B', // secondary anchor
+    60: '#E0922A',
+    70: '#B57315',
+    80: '#825005',
+    90: '#4C2E00',
+    100: '#211400',
   },
   neutral: {
     10: '#F4F6F7',
@@ -112,7 +109,8 @@ export const colors = {
 
 export const fontFamily = {
   // Display face — Fraunces (OFL, variable). Warm humanist serif with a SOFT
-  // axis that complements the sunset palette. Used for Display 1/2 and H1.
+  // axis. Used for Display 1/2 and H1. The serif warmth contrasts the cool
+  // cosmic-violet palette — that contrast is intentional.
   display: '"Fraunces", ui-serif, Georgia, "Times New Roman", serif',
   // Body face — Plus Jakarta Sans (OFL, variable). Geometric humanist sans,
   // tabular figures available, pairs cleanly with Fraunces.
@@ -205,14 +203,20 @@ export const shadow = {
   focus: `0 0 0 3px ${colors.brand[40]}`,
 } as const
 
-// Sunset gradient — hero / marketing / receipt artwork. NOT for UI affordances
-// (use solid `brand` tokens for buttons, links, etc.). Stops sampled from
-// `Auto Layout-2.svg`.
+// Cosmic-eclipse gradient — hero / marketing / receipt artwork. NOT for UI
+// affordances (use solid `brand` tokens for buttons, links, etc.). Stops
+// sampled from `new-layout-website.svg`.
 export const gradient = {
-  sunset: 'linear-gradient(135deg, #FF8A52 0%, #FF6B5A 30%, #E55A88 65%, #A44E91 100%)',
-  sunsetSoft: 'linear-gradient(135deg, #FFE0CE 0%, #FFCABE 35%, #F8B8CC 70%, #D5B6D8 100%)',
-  // Radial wash (for hero blocks, card backgrounds)
-  sunsetRadial: 'radial-gradient(120% 80% at 20% 20%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%)',
+  // Linear cosmic — the planet-rim sweep
+  cosmic: 'linear-gradient(135deg, #5827E0 0%, #9A34C2 25%, #F4A93B 50%, #5C219C 75%, #0A0435 100%)',
+  cosmicSoft: 'linear-gradient(135deg, #C2AFFF 0%, #E0D6FF 35%, #FFE9C2 70%, #C2AFFF 100%)',
+  // Radial — the eclipse, sun-edge in upper-right
+  cosmicRadial: 'radial-gradient(120% 100% at 70% 30%, #F4A93B 0%, #9A34C2 20%, #5827E0 45%, #1B0A61 75%, #0A0435 100%)',
+  // Backwards-compat aliases — old "sunset" names point at cosmic for any
+  // call sites that haven't been swept yet. Will remove once code is clean.
+  sunset: 'linear-gradient(135deg, #5827E0 0%, #9A34C2 25%, #F4A93B 50%, #5C219C 75%, #0A0435 100%)',
+  sunsetSoft: 'linear-gradient(135deg, #C2AFFF 0%, #E0D6FF 35%, #FFE9C2 70%, #C2AFFF 100%)',
+  sunsetRadial: 'radial-gradient(120% 100% at 70% 30%, #F4A93B 0%, #9A34C2 20%, #5827E0 45%, #1B0A61 75%, #0A0435 100%)',
 } as const
 
 export const semantic = {

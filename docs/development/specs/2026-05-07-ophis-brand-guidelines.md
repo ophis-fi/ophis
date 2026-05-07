@@ -30,9 +30,9 @@ The brand expresses three things at once:
 
 | Quality | How it shows up |
 |---|---|
-| **Cyclical** — settlement is a closed loop | The Ophie mark (ouroboros) |
-| **Warm** — Ophis returns surplus to humans, not extracts it | The sunset palette (coral → magenta) |
-| **Confident, dry, slightly literary** | Fraunces display + terse copy |
+| **Cyclical** — settlement is a closed loop | The Ophie mark (spiked ouroboros) |
+| **Cosmic** — orders sweep through batches like a planet through eclipse | The cosmic-eclipse palette (violet → amber) |
+| **Confident, dry, slightly literary** | Fraunces display (warm serif) against cool violet — intentional contrast |
 
 Ophis is **not** Web3-zany, not crypto-bro, not aggressive. The voice is closer to a senior trader who happens to like serifs.
 
@@ -92,49 +92,52 @@ Around any standalone Ophie or lockup, leave at least **0.25× the icon's height
 1. **Don't** rotate or mirror the mark. The bite point reads from a single orientation.
 2. **Don't** strip the eye. The eye is half the personality.
 3. **Don't** strip the beads. Without them the ring reads as a generic circle and we lose the rhythm.
-4. **Don't** apply the sunset gradient to UI affordances (buttons, links). Gradient = hero only. Solid coral = interactive.
-5. **Don't** place the cream variant on a non-Ophis-coral background — the holes/beads will show whatever's behind, which gets messy on patterned surfaces.
-6. **Don't** add stroke. The mark is fill-only, single-path.
-7. **Don't** write "Greg" in user-facing copy. Codename stays internal.
+4. **Don't** strip the spikes. They're what separates Ophis-Ophie from a generic ouroboros.
+5. **Don't** apply the cosmic gradient to UI affordances (buttons, links). Gradient = hero only. Solid violet = interactive.
+6. **Don't** place the cream variant on a non-Ophis-violet background — the holes/beads/spikes will show whatever's behind, which gets messy on patterned surfaces.
+7. **Don't** add stroke. The mark is fill-only.
+8. **Don't** write "Greg" in user-facing copy. Codename stays internal.
 
 ---
 
 ## 3. Color
 
-### Brand — sunset coral (10-step)
+### Brand — electric violet (10-step)
 
-`brand/60` `#E66A55` is the **primary action color**. Every link, button-fill, focus ring, active state derives from this anchor.
+`brand/60` `#5827E0` is the **primary action color**. Every link, button-fill, focus ring, active state derives from this anchor.
 
 | Token | Hex | Use |
 |---|---|---|
-| `brand/10` | `#FFF3EE` | Hover wash, badge bg, subtle accent, *cream* — also used as inverse-logo color |
-| `brand/20` | `#FFDFD3` | Subtle accent bg |
-| `brand/30` | `#FFBDA8` | Decorative |
-| `brand/40` | `#FF9579` | Disabled, focus ring |
-| `brand/50` | `#FF7A60` | Dark-mode primary |
-| `brand/60` | `#E66A55` | **Light-mode primary action** |
-| `brand/70` | `#C2503D` | Primary hover, accent text |
-| `brand/80` | `#993627` | Primary pressed |
-| `brand/90` | `#5C1D14` | Dark-mode subtle accent bg |
-| `brand/100` | `#2A0B07` | Deepest accent |
+| `brand/10` | `#F4F1FF` | Hover wash, badge bg, subtle accent, *cream* — also used as inverse-logo color |
+| `brand/20` | `#E0D6FF` | Subtle accent bg |
+| `brand/30` | `#C2AFFF` | Decorative |
+| `brand/40` | `#9D7CFF` | Disabled, focus ring |
+| `brand/50` | `#7B53F5` | Dark-mode primary |
+| `brand/60` | `#5827E0` | **Light-mode primary action** |
+| `brand/70` | `#411DC3` | Primary hover, accent text |
+| `brand/80` | `#301494` | Primary pressed |
+| `brand/90` | `#1B0A61` | Dark-mode subtle accent bg |
+| `brand/100` | `#0A0435` | Deepest violet (near-black) |
 
-### Accent — magenta/rose (10-step)
+### Accent — amber/orange (10-step)
 
-For highlights, gradient stops, illustration. Used **sparingly** — never as a primary action.
+The eclipse glow against the violet cool. For highlights, gradient stops, illustration, celebratory cues (surplus reveals can use amber for warmth). Used **sparingly** — never as a primary action.
 
-`accent/60` `#C73D6C` is the secondary anchor.
+`accent/50` `#F4A93B` is the secondary anchor.
 
 ### Functional palettes
 
 10-step ramps for `green` (success), `yellow` (warning), `red` (danger), `blue` (info). Anchors at index 50 (light mode) and index 40 (dark mode). See `tokens.ts` for full ramps.
 
-### Sunset gradient
+### Cosmic-eclipse gradient
 
 ```
-linear-gradient(135deg, #FF8A52 0%, #FF6B5A 30%, #E55A88 65%, #A44E91 100%)
+linear-gradient(135deg, #5827E0 0%, #9A34C2 25%, #F4A93B 50%, #5C219C 75%, #0A0435 100%)
 ```
 
-A radial variant is also defined for hero blocks (`gradient.sunsetRadial`).
+A radial variant is also defined for hero blocks (`gradient.cosmicRadial`) — the eclipse moment with the amber sun-rim in the upper right.
+
+Legacy alias: `gradient.sunset` resolves to `gradient.cosmic` so any pre-pivot call sites continue to render correctly. New code should consume `cosmic` directly.
 
 **Rule**: gradient never touches affordances. Use it on:
 - Landing-page hero block
@@ -157,7 +160,7 @@ Three families, all SIL Open Font License (free, commercial OK, no attribution).
 
 ### Display — Fraunces
 
-Variable serif with an `opsz` (optical size) and a `SOFT` axis. Ophis uses `opsz: 144` and `SOFT: 50` — large display optical size with the SOFT axis dialed up gives Fraunces its warm, slightly humanist character. Pairs with the sunset palette by *temperature* — both lean warm.
+Variable serif with an `opsz` (optical size) and a `SOFT` axis. Ophis uses `opsz: 144` and `SOFT: 50` — large display optical size with the SOFT axis dialed up gives Fraunces its warm, slightly humanist character. The serif warmth contrasts the cool cosmic-violet palette — that contrast is intentional.
 
 Used for: Display 1, Display 2, Heading 1.
 

@@ -29,24 +29,24 @@ const FEATURES = [
     title: 'DCA & TWAP',
     description:
       'Split a trade across time. Every leaf is a real order — solvers compete on each one, MEV-protected by construction.',
-    bgColor: '#FFF3EE',
-    textColor: '#2A0B07',
+    bgColor: '#F4F1FF',
+    textColor: '#0A0435',
     descriptionColor: '#53575A',
   },
   {
     title: 'MEV-proof receipts',
     description:
       'Every settled order produces a downloadable proof — solver competition, executed price, surplus returned. Auditable trade history without trusting us.',
-    bgColor: '#E66A55',
-    textColor: '#FFF3EE',
-    descriptionColor: '#FFDFD3',
+    bgColor: '#5827E0',
+    textColor: '#F4F1FF',
+    descriptionColor: '#E0D6FF',
   },
   {
     title: 'Treasury-ready',
     description:
       'Ophis as a Safe app. DAOs sign batched approvals, route on-chain via the same intent system, export CSV for accounting.',
     bgColor: '#2F3133',
-    textColor: '#FFF3EE',
+    textColor: '#F4F1FF',
     descriptionColor: '#C1C4C6',
   },
 ]
@@ -67,14 +67,14 @@ export default function Page() {
         <HeroBackground
           style={{
             background:
-              'radial-gradient(120% 100% at 20% 30%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%)',
+              'radial-gradient(120% 100% at 70% 30%, #F4A93B 0%, #9A34C2 20%, #5827E0 45%, #1B0A61 75%, #0A0435 100%)',
           }}
         />
         <HeroContent flex={'0 1 0'}>
-          <HeroTitle fontSize={148} fontSizeMobile={80} style={{ color: '#FFF3EE' }}>
+          <HeroTitle fontSize={148} fontSizeMobile={80} style={{ color: '#F4F1FF' }}>
             Ophis returns surplus.
           </HeroTitle>
-          <HeroSubtitle color="#FFF3EE" style={{ opacity: 0.92, maxWidth: 720, fontSize: 20 }}>
+          <HeroSubtitle color="#F4F1FF" style={{ opacity: 0.92, maxWidth: 720, fontSize: 20 }}>
             Intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.
           </HeroSubtitle>
           <Link
@@ -88,7 +88,7 @@ export default function Page() {
         </HeroContent>
       </HeroContainer>
 
-      <ContainerCard bgColor={'#FFF3EE'}>
+      <ContainerCard bgColor={'#F4F1FF'}>
         <ContainerCardSection>
           <SectionTitleWrapper maxWidth={900}>
             <SectionTitleText>Three reasons</SectionTitleText>
@@ -110,11 +110,11 @@ export default function Page() {
         </ContainerCardSection>
       </ContainerCard>
 
-      <ContainerCard bgColor={'#2A0B07'} color={'#FFF3EE'} touchFooter>
+      <ContainerCard bgColor={'#0A0435'} color={'#F4F1FF'} touchFooter>
         <ContainerCardSection>
           <SectionTitleWrapper maxWidth={900}>
             <SectionTitleText textAlign="center">Built on CoW Protocol</SectionTitleText>
-            <SectionTitleDescription color={'#FFDFD3'} textAlign="center">
+            <SectionTitleDescription color={'#E0D6FF'} textAlign="center">
               Ophis is a self-hosted intent broker that routes orders into CoW Protocol&apos;s solver network.
               Settlement is on-chain via audited GPv2Settlement contracts; we don&apos;t custody, we don&apos;t fork
               consensus, we don&apos;t run our own solvers. The plumbing is theirs. The product is ours.

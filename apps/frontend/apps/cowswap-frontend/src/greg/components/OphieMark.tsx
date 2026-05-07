@@ -2,21 +2,24 @@ import { ReactNode } from 'react'
 
 import styled, { css, keyframes } from 'styled-components/macro'
 
-import { OPHIE_PAD_X, OPHIE_PATH, OPHIE_VIEWBOX } from '../ophiePath'
+import { OPHIE_PATH_BODY, OPHIE_PATH_SPIKES_BOTTOM, OPHIE_PATH_SPIKES_TOP, OPHIE_VIEWBOX } from '../ophiePath'
 
 export type OphieAnimation = 'none' | 'spin' | 'spin-fast' | 'pulse'
 
 export type OphieFill =
-  | 'coral' // brand/60 — workhorse
+  | 'coral' // legacy alias for `violet` (kept for callers; will resolve to brand/60)
+  | 'violet' // brand/60 — primary action workhorse
   | 'cream' // brand/10 — inverse / dark surfaces
-  | 'dark' // neutral/100 — mono dark
-  | 'sunset' // gradient — hero only
+  | 'dark' // brand/100 — deep cosmic violet
+  | 'sunset' // legacy alias for `cosmic` — hero gradient
+  | 'cosmic' // gradient — hero only (cosmic eclipse)
   | 'currentColor' // inherit
 
-const FILLS: Record<Exclude<OphieFill, 'sunset' | 'currentColor'>, string> = {
-  coral: '#E66A55',
-  cream: '#FFF3EE',
-  dark: '#131214',
+const FILLS: Record<Exclude<OphieFill, 'sunset' | 'cosmic' | 'currentColor'>, string> = {
+  coral: '#5827E0', // legacy: now resolves to violet
+  violet: '#5827E0',
+  cream: '#F4F1FF',
+  dark: '#0A0435',
 }
 
 const spin = keyframes`
@@ -56,37 +59,38 @@ export interface OphieMarkProps {
   animate?: OphieAnimation
   /** Optional className for additional styling. */
   className?: string
-  /** Aria label for accessibility. Defaults to "Greg". */
+  /** Aria label for accessibility. Defaults to "Ophis". */
   ariaLabel?: string
 }
 
 function resolveFill(fill: OphieFill | string | undefined): string {
   if (!fill || fill === 'currentColor') return 'currentColor'
-  if (fill === 'sunset') return 'url(#greg-ophie-sunset)'
+  if (fill === 'sunset' || fill === 'cosmic') return 'url(#greg-ophie-cosmic)'
   if (fill in FILLS) return FILLS[fill as keyof typeof FILLS]
   return fill
 }
 
 /**
- * The Greg / Ophie ouroboros mark — single-source SVG component.
+ * The Ophie ouroboros mark — single-source SVG component.
  *
- * Use the `fill` prop for the standard variants; pass `'sunset'` to render
- * the hero gradient (a `<defs>` block is included automatically).
+ * Renders the three-path Ophie (body + top spikes + bottom-left spikes) at the
+ * requested fill. Pass `'cosmic'` (or legacy `'sunset'`) to render the hero
+ * eclipse gradient — a `<defs>` block is included automatically.
  *
- * For animated favicons / loading states, use `animate="spin"` (slow drift)
- * or `animate="spin-fast"` (active loading) or `animate="pulse"` (heartbeat).
+ * For animated favicons / loading states, use `animate="spin"` (slow drift),
+ * `animate="spin-fast"` (active loading), or `animate="pulse"` (heartbeat).
  *
- * Brand rule: never apply `'sunset'` fill to UI affordances. Hero only.
+ * Brand rule: never apply `'cosmic'` to UI affordances. Hero only.
  */
 export function OphieMark({
   size = 96,
-  fill = 'coral',
+  fill = 'violet',
   animate = 'none',
   className,
-  ariaLabel = 'Greg',
+  ariaLabel = 'Ophis',
 }: OphieMarkProps): ReactNode {
   const resolvedFill = resolveFill(fill)
-  const needsGradient = fill === 'sunset'
+  const needsGradient = fill === 'sunset' || fill === 'cosmic'
 
   return (
     <Svg
@@ -101,17 +105,18 @@ export function OphieMark({
     >
       {needsGradient && (
         <defs>
-          <linearGradient id="greg-ophie-sunset" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#FF8A52" />
-            <stop offset="30%" stopColor="#FF6B5A" />
-            <stop offset="65%" stopColor="#E55A88" />
-            <stop offset="100%" stopColor="#A44E91" />
+          <linearGradient id="greg-ophie-cosmic" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#5827E0" />
+            <stop offset="25%" stopColor="#9A34C2" />
+            <stop offset="50%" stopColor="#F4A93B" />
+            <stop offset="75%" stopColor="#5C219C" />
+            <stop offset="100%" stopColor="#0A0435" />
           </linearGradient>
         </defs>
       )}
-      <g transform={`translate(${OPHIE_PAD_X},0)`}>
-        <path d={OPHIE_PATH} fill={resolvedFill} />
-      </g>
+      <path d={OPHIE_PATH_BODY} fill={resolvedFill} />
+      <path d={OPHIE_PATH_SPIKES_TOP} fill={resolvedFill} />
+      <path d={OPHIE_PATH_SPIKES_BOTTOM} fill={resolvedFill} />
     </Svg>
   )
 }

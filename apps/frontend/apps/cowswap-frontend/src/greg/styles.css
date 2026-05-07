@@ -9,29 +9,29 @@
  */
 
 :root {
-  /* Brand — coral sunset */
-  --greg-brand-10: #FFF3EE;
-  --greg-brand-20: #FFDFD3;
-  --greg-brand-30: #FFBDA8;
-  --greg-brand-40: #FF9579;
-  --greg-brand-50: #FF7A60;
-  --greg-brand-60: #E66A55;
-  --greg-brand-70: #C2503D;
-  --greg-brand-80: #993627;
-  --greg-brand-90: #5C1D14;
-  --greg-brand-100: #2A0B07;
+  /* Brand — electric violet (cosmic eclipse) */
+  --greg-brand-10: #F4F1FF;
+  --greg-brand-20: #E0D6FF;
+  --greg-brand-30: #C2AFFF;
+  --greg-brand-40: #9D7CFF;
+  --greg-brand-50: #7B53F5;
+  --greg-brand-60: #5827E0;
+  --greg-brand-70: #411DC3;
+  --greg-brand-80: #301494;
+  --greg-brand-90: #1B0A61;
+  --greg-brand-100: #0A0435;
 
-  /* Accent — magenta/rose */
-  --greg-accent-10: #FFF0F6;
-  --greg-accent-20: #FFD4E2;
-  --greg-accent-30: #FFA9C2;
-  --greg-accent-40: #F47AA0;
-  --greg-accent-50: #E55A88;
-  --greg-accent-60: #C73D6C;
-  --greg-accent-70: #A02855;
-  --greg-accent-80: #7A1A40;
-  --greg-accent-90: #4A0E28;
-  --greg-accent-100: #220612;
+  /* Accent — amber/orange (eclipse glow) */
+  --greg-accent-10: #FFF7E8;
+  --greg-accent-20: #FFE9C2;
+  --greg-accent-30: #FFD085;
+  --greg-accent-40: #FFB54D;
+  --greg-accent-50: #F4A93B;
+  --greg-accent-60: #E0922A;
+  --greg-accent-70: #B57315;
+  --greg-accent-80: #825005;
+  --greg-accent-90: #4C2E00;
+  --greg-accent-100: #211400;
 
   /* Neutral — Greg-specific scale (light → dark) */
   --greg-neutral-10: #F4F6F7;
@@ -85,10 +85,15 @@
   --greg-shadow-high: 0 12px 24px rgba(0, 0, 0, 0.08), 0 24px 48px rgba(0, 0, 0, 0.12);
   --greg-shadow-focus: 0 0 0 3px var(--greg-brand-40);
 
-  /* Sunset gradient — hero / receipt artwork ONLY (never click affordances) */
-  --greg-gradient-sunset: linear-gradient(135deg, #FF8A52 0%, #FF6B5A 30%, #E55A88 65%, #A44E91 100%);
-  --greg-gradient-sunset-soft: linear-gradient(135deg, #FFE0CE 0%, #FFCABE 35%, #F8B8CC 70%, #D5B6D8 100%);
-  --greg-gradient-sunset-radial: radial-gradient(120% 80% at 20% 20%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%);
+  /* Cosmic-eclipse gradient — hero / receipt artwork ONLY (never click affordances) */
+  --greg-gradient-cosmic: linear-gradient(135deg, #5827E0 0%, #9A34C2 25%, #F4A93B 50%, #5C219C 75%, #0A0435 100%);
+  /* Backwards-compat alias — old "sunset" name resolves to cosmic */
+  --greg-gradient-sunset: linear-gradient(135deg, #5827E0 0%, #9A34C2 25%, #F4A93B 50%, #5C219C 75%, #0A0435 100%);
+  --greg-gradient-cosmic-soft: linear-gradient(135deg, #C2AFFF 0%, #E0D6FF 35%, #FFE9C2 70%, #C2AFFF 100%);
+  --greg-gradient-cosmic-radial: radial-gradient(120% 100% at 70% 30%, #F4A93B 0%, #9A34C2 20%, #5827E0 45%, #1B0A61 75%, #0A0435 100%);
+  /* Aliases for legacy callers */
+  --greg-gradient-sunset-soft: var(--greg-gradient-cosmic-soft);
+  --greg-gradient-sunset-radial: var(--greg-gradient-cosmic-radial);
 
   /* Type families */
   --greg-font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;

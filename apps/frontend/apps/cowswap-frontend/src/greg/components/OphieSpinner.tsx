@@ -41,7 +41,7 @@ export interface OphieSpinnerProps {
 export function OphieSpinner({ size = 96, caption, pace = 'fast' }: OphieSpinnerProps): ReactNode {
   return (
     <Wrapper $size={size}>
-      <OphieMark size={size} fill="coral" animate={pace === 'fast' ? 'spin-fast' : 'spin'} />
+      <OphieMark size={size} fill="violet" animate={pace === 'fast' ? 'spin-fast' : 'spin'} />
       {caption && <Caption>{caption}</Caption>}
     </Wrapper>
   )

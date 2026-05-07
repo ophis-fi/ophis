@@ -12,7 +12,7 @@ What's on the sheet:
   speeds (slow / normal / fast) showing the favicon cycle.
 - **Components** — pill button hierarchy (BIG/DEFAULT/SMALL secondary), tabs
   with coral underline, snackbar with `--greg-shadow-medium`.
-- **Color anchor** — `brand/10..100` ramp with `brand/60 #E66A55` as the
+- **Color anchor** — `brand/10..100` ramp with `brand/60 #5827E0` as the
   primary action anchor (★).
 
 Source-of-truth files:

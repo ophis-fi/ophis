@@ -14,8 +14,8 @@ const SceneRoot = styled.div`
   align-items: center;
   justify-content: center;
   background: var(
-    --greg-gradient-sunset-radial,
-    radial-gradient(120% 80% at 20% 20%, #ff8a52 0%, #e66a55 40%, #c73d6c 75%, #5c1d14 100%)
+    --greg-gradient-cosmic-radial,
+    radial-gradient(120% 100% at 70% 30%, #f4a93b 0%, #9a34c2 20%, #5827e0 45%, #1b0a61 75%, #0a0435 100%)
   );
 
   &::after {
@@ -37,10 +37,12 @@ const Watermark = styled.div`
 `
 
 /**
- * Full-viewport Greg 404 scene — sunset radial gradient + low-opacity Ophie watermark.
+ * Full-viewport Ophis 404 scene — cosmic-eclipse radial gradient + low-opacity Ophie watermark.
  *
  * Used by the 404 page via `usePageBackground().setScene(<Greg404Scene />)`.
  * Renders behind the page content (z-index -1, pointer-events: none).
+ *
+ * Class name kept as `Greg404Scene` (codename); the rendered scene is Ophis.
  */
 export function Greg404Scene(): ReactNode {
   return (

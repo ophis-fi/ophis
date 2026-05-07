@@ -7,8 +7,8 @@
       font-feature-settings: 'ss01' on;
       font-variation-settings: 'opsz' 144, 'SOFT' 50;
       letter-spacing: -0.02em;
-      fill: #E66A55;
+      fill: #5827E0;
     }
   </style>
-  <text class="greg-wordmark" x="0" y="120">Greg</text>
+  <text class="greg-wordmark" x="0" y="120">Ophis</text>
 </svg>

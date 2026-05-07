@@ -1,5 +1,5 @@
 {
-  "background_color": "#E66A55",
+  "background_color": "#5827E0",
   "display": "standalone",
   "homepage_url": "https://greg-etm.pages.dev",
   "description": "Ophis — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.",
@@ -22,5 +22,5 @@
   "name": "Ophis",
   "short_name": "Ophis",
   "start_url": ".",
-  "theme_color": "#E66A55"
+  "theme_color": "#5827E0"
 }
