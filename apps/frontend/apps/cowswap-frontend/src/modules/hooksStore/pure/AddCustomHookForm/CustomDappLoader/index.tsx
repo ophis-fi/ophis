@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useEffect, useCallback } from 'react'
+import { Dispatch, ReactNode, SetStateAction, useEffect, useCallback } from 'react'
 
 import { fetchWithTimeout } from '@cowprotocol/common-utils'
 import { HookDappType, HookDappWalletCompatibility } from '@cowprotocol/hook-dapp-lib'
@@ -17,7 +17,7 @@ interface ExternalDappLoaderProps {
   walletType: HookDappWalletCompatibility
   setDappInfo: Dispatch<SetStateAction<HookDappIframe | null>>
   setLoading: Dispatch<SetStateAction<boolean>>
-  setManifestError: Dispatch<SetStateAction<string | React.ReactNode | null>>
+  setManifestError: Dispatch<SetStateAction<string | ReactNode | null>>
 }
 
 const TIMEOUT = 5000
@@ -49,7 +49,7 @@ export function ExternalDappLoader({
   const { chainId } = useWalletInfo()
   const { i18n, t } = useLingui()
   const setError = useCallback(
-    (message: string | React.ReactNode) => {
+    (message: string | ReactNode) => {
       setManifestError(message)
       setDappInfo(null)
       setLoading(false)

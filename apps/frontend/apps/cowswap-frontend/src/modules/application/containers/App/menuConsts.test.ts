@@ -30,10 +30,6 @@ jest.mock('legacy/components/Version', () => ({
   Version: () => null,
 }))
 
-jest.mock('modules/fortune', () => ({
-  FortuneWidget: () => null,
-}))
-
 jest.mock('./menuConsts.utils', () => ({
   getSolversExplorerUrl: () => 'https://explorer.cow.fi/solvers',
 }))

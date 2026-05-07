@@ -2,11 +2,11 @@ import { transparentize } from 'color2k'
 import styled from 'styled-components/macro'
 
 export const Section = styled.section`
-  --padding: 16px;
+  --padding: var(--greg-space-4, 16px);
 
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--greg-space-4, 16px);
   padding: var(--padding);
 
   & + & {
@@ -16,9 +16,12 @@ export const Section = styled.section`
   }
 `
 
+// Greg/Nucleus: section titles are sm-bold (sm=14, weight 700).
 export const Title = styled.h4`
-  font-weight: 600;
-  font-size: 15px;
+  font-family: var(--greg-font-body);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.005em;
   color: inherit;
   margin: 0;
 `

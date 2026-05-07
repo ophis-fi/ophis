@@ -23,7 +23,8 @@ export const QuestionTooltipIconWrapper = styled.div<{ $size?: number; $dimmed?:
   border: none;
   outline: none;
   cursor: default;
-  border-radius: 16px;
+  // Greg/Nucleus: explicit circle intent on the question-icon hit area.
+  border-radius: var(--greg-radius-full, 9999px);
   background-color: transparent;
   transition: opacity var(${UI.ANIMATION_DURATION}) ease-in-out;
   color: inherit;

@@ -8,7 +8,6 @@ import { msg } from '@lingui/core/macro'
 import AppziButton from 'legacy/components/AppziButton'
 import { Version } from 'legacy/components/Version'
 
-import { FortuneWidget } from 'modules/fortune'
 
 import { Routes } from 'common/constants/routes'
 
@@ -194,7 +193,6 @@ export const NAV_ITEMS = (
 export const ADDITIONAL_FOOTER_CONTENT = (
   <>
     <Version />
-    <FortuneWidget />
     <AppziButton />
   </>
 )

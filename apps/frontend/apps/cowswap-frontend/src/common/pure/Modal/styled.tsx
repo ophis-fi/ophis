@@ -47,8 +47,8 @@ export const HoverText = styled.div`
 export const ContentWrapper = styled.div`
   background-color: var(${UI.COLOR_PAPER});
   padding: 0 1rem 1rem 1rem;
-  border-bottom-left-radius: 20px;
-  border-bottom-right-radius: 20px;
+  border-bottom-left-radius: 24px;
+  border-bottom-right-radius: 24px;
   ${Media.upToMedium()} {
     padding: 0 1rem 1rem 1rem;
   }
@@ -80,11 +80,13 @@ export const StyledDialogContent = styled(({ ...rest }) => <AnimatedDialogConten
 })`
   overflow-y: auto;
 
+  // Greg/Nucleus: radius xl (24px feels right for hero modals — half-step
+  // between Nucleus lg=16 and xl=32), token-driven shadow.
   &[data-reach-dialog-content] {
     margin: 0 0 2rem 0;
     background: var(${UI.COLOR_PAPER});
     border: 1px solid var(${UI.COLOR_PAPER_DARKER});
-    box-shadow: 0 4px 8px 0 ${({ theme }) => transparentize(theme.shadow1, 0.95)};
+    box-shadow: var(--greg-shadow-high, 0 12px 24px rgba(0, 0, 0, 0.08), 0 24px 48px rgba(0, 0, 0, 0.12));
     padding: 0px;
     width: 50vw;
     overflow-y: auto;
@@ -102,7 +104,7 @@ export const StyledDialogContent = styled(({ ...rest }) => <AnimatedDialogConten
         min-height: ${$minHeight}vh;
       `}
     display: flex;
-    border-radius: 20px;
+    border-radius: 24px;
     ${Media.upToMedium()} {
       width: 65vw;
       margin: 0;
@@ -114,7 +116,7 @@ export const StyledDialogContent = styled(({ ...rest }) => <AnimatedDialogConten
         ${$mobile &&
         css`
           width: 100vw;
-          border-radius: 20px;
+          border-radius: 24px;
           border-bottom-left-radius: 0;
           border-bottom-right-radius: 0;
           padding: 0 0 58px;

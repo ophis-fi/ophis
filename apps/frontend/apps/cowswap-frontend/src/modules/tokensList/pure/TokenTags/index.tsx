@@ -16,14 +16,14 @@ import * as styledEl from './styled'
 const APP_TOKEN_TAGS: TokenListTags = {
   unsupported: {
     name: msg`Unsupported`,
-    description: msg`This token is unsupported as it does not operate optimally with CoW Protocol. Please refer to the FAQ for more information.`,
+    description: msg`This token is unsupported and may not settle reliably. See the FAQ for details.`,
     id: '0',
     color: StatusColorVariant.Warning,
   },
   'gas-free': {
     name: msg`Gas-free`,
     icon: ICON_GAS_FREE,
-    description: msg`This token supports gas-free approvals. Enjoy! 🐮`,
+    description: msg`This token supports gas-free approvals.`,
     id: '1',
     color: StatusColorVariant.Success,
   },

@@ -10,7 +10,7 @@ import { checkEnvironment } from '@/util/environment'
 import { getPageMetadata } from '@/util/getPageMetadata'
 
 export const viewport: Viewport = {
-  themeColor: '#ffffff',
+  themeColor: '#E66A55',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -42,32 +42,31 @@ export async function generateMetadata(): Promise<Metadata> {
           },
     icons: {
       icon: [
-        { url: '/favicon-light-mode.png', type: 'image/png', media: '(prefers-color-scheme: light)' },
-        { url: '/favicon-dark-mode.png', type: 'image/png', media: '(prefers-color-scheme: dark)' },
-        { url: '/favicon-dark-mode.png', type: 'image/png', media: '(prefers-color-scheme: no-preference)' },
+        { url: '/greg-icon.svg', type: 'image/svg+xml' },
+        { url: '/greg-icon-inverse.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
       ],
-      apple: '/apple-touch-icon.png',
+      apple: '/greg-mark-app-icon.svg',
       other: {
         rel: 'mask-icon',
-        url: '/safari-pinned-tab.svg',
-        color: '#000000',
+        url: '/greg-icon.svg',
+        color: '#E66A55',
       },
     },
     twitter: {
       ...defaultMetadata.twitter,
       card: 'summary_large_image',
       site: CONFIG.social.twitter.account,
-      images: [{ url: `${CONFIG.url.root}/images/og-meta-cowdao.png` }],
+      images: [{ url: `${CONFIG.url.root}/og-image.png` }],
     },
     openGraph: {
       ...defaultMetadata.openGraph,
       type: 'website',
       url: './',
-      images: [{ url: `${CONFIG.url.root}/images/og-meta-cowdao.png` }],
+      images: [{ url: `${CONFIG.url.root}/og-image.png` }],
     },
     manifest: '/site.webmanifest',
     other: {
-      'msapplication-TileColor': '#000000',
+      'msapplication-TileColor': '#E66A55',
     },
   }
 }

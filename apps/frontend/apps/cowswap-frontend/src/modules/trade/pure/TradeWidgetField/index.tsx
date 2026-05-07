@@ -1,4 +1,4 @@
-import { ReactElement } from 'react'
+import { ReactElement, ReactNode } from 'react'
 
 import { HelpTooltip, renderTooltip } from '@cowprotocol/ui'
 
@@ -7,11 +7,11 @@ import { Content, ErrorText, TradeWidgetFieldBox, TradeWidgetFieldLabel } from '
 export type TradeWidgetFieldError = { type: 'error' | 'warning'; text: string | null } | null
 
 export interface TradeWidgetFieldProps {
-  label: React.ReactNode
+  label: ReactNode
   children?: ReactElement
   // TODO: Replace any with proper type definitions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tooltip?: React.ReactNode | ((params: any) => React.ReactNode)
+  tooltip?: ReactNode | ((params: any) => ReactNode)
   error?: TradeWidgetFieldError
   className?: string
   hasPrefix?: boolean

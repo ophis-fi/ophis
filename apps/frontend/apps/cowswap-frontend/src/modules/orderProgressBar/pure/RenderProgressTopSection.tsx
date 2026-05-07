@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, lazy, Suspense } from 'react'
+import { CSSProperties, ReactNode, useMemo, lazy, Suspense } from 'react'
 
 import { getRandomInt } from '@cowprotocol/common-utils'
 
@@ -124,12 +124,12 @@ export function RenderProgressTopSection({
   return (
     <>
       {isFinishedStep && (!disablePostTradeTips || shouldShowSurplus) && (
-        <FinishedStepContentSection style={cssVariables as React.CSSProperties}>
+        <FinishedStepContentSection style={cssVariables as CSSProperties}>
           <ProgressContent {...progressContentProps} />
         </FinishedStepContentSection>
       )}
       {!isFinishedStep && (
-        <styledEl.ProgressTopSection style={cssVariables as React.CSSProperties}>
+        <styledEl.ProgressTopSection style={cssVariables as CSSProperties}>
           <ProgressContent {...progressContentProps} />
         </styledEl.ProgressTopSection>
       )}

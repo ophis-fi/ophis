@@ -7,45 +7,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="CoW Swap finds the lowest prices from all decentralized exchanges and DEX aggregators & saves you more with p2p trading and protection from MEV"
+      content="Greg — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries."
     />
     <script src="/emergency.js"></script>
 
     <!-- Manifest, theme & colors  -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" href="/favicon-light-mode.png" media="(prefers-color-scheme: light)" />
-    <link rel="icon" type="image/png" href="/favicon-dark-mode.png" media="(prefers-color-scheme: dark)" />
-    <link rel="icon" type="image/png" href="/favicon-light-mode.png" media="(prefers-color-scheme: no-preference)" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/greg-mark-app-icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/greg-icon.svg" />
+    <link rel="alternate icon" type="image/svg+xml" href="/greg-icon-inverse.svg" media="(prefers-color-scheme: dark)" />
 
     <link rel="manifest" href="/manifest.json" />
-    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#000000" />
-    <meta name="msapplication-TileColor" content="#000000" />
-    <meta name="theme-color" content="#ffffff" />
+    <link rel="mask-icon" href="/greg-icon.svg" color="#E66A55" />
+    <meta name="msapplication-TileColor" content="#E66A55" />
+    <meta name="theme-color" content="#E66A55" />
 
-    <!-- Preload critical fonts -->
+    <!-- Greg fonts: Fraunces (display), Plus Jakarta Sans (body), JetBrains Mono (data). All OFL. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..800,0..100&family=Plus+Jakarta+Sans:wght@300..800&family=JetBrains+Mono:wght@300..800&display=swap"
+    />
+    <!-- Inter retained for legacy components that reference it directly. -->
     <link rel="preload" href="/static/Inter-roman.var.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/static/Inter-italic.var.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/StudioFeixenSans-Regular.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/StudioFeixenSans-Medium.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/StudioFeixenSans-Semibold.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/StudioFeixenSans-Bold.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/StudioFeixenMono-Regular.woff2" as="font" type="font/woff2" crossorigin />
 
     <!-- Social media tags -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Greg" />
+    <meta property="og:title" content="Greg — intent-based DEX aggregator" />
     <meta
       property="og:description"
-      content="CoW Swap finds the lowest prices from all decentralized exchanges and DEX aggregators & saves you more with p2p trading and protection from MEV"
+      content="DCA, TWAP, and MEV-protected swaps. Built on CoW Protocol, run by Greg."
     />
-    <meta property="og:image" content="https://swap.cow.fi/images/og-meta-cowswap.png?v=4" />
-    <meta property="og:url" content="https://swap.cow.fi" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Greg — Ophie ouroboros mark on a sunset gradient" />
+    <meta property="og:url" content="https://greg-etm.pages.dev" />
 
     <!-- Twitter media tags -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@CoWSwap" />
-    <meta name="twitter:title" content="Greg" />
-    <meta name="twitter:image" content="https://swap.cow.fi/images/og-meta-cowswap.png?v=4" />
+    <meta name="twitter:title" content="Greg — intent-based DEX aggregator" />
+    <meta name="twitter:description" content="DCA, TWAP, and MEV-protected swaps. Built on CoW Protocol, run by Greg." />
+    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="twitter:image:alt" content="Greg — Ophie ouroboros mark on a sunset gradient" />
     <style>
       html,
       body {
@@ -60,34 +65,27 @@
       <style>
         main {
           margin: 0 auto;
+          max-width: 640px;
+          padding: 48px 24px;
+          font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
-
-        main img {
-          width: 100%;
-        }
-
         .banner {
-          padding: 10px;
-          background-color: #fdfda8;
+          padding: 16px;
+          background: #FFF3EE;
+          border: 1px solid #FFBDA8;
           border-radius: 16px;
+          color: #2A0B07;
         }
       </style>
       <main>
-        <img src="https://swap.cow.fi/images/og-meta-cowswap.png?v=4" alt="CoW Swap Logo" />
+        <h1>Greg requires JavaScript</h1>
         <p class="banner">
-          CoW Swap uses JavaScript. Please
+          Greg is a single-page application. Please
           <a href="https://support.google.com/adsense/answer/12654?hl=en" target="_blank" rel="noopener noreferrer"
-            >enable it in your browser</a
+            >enable JavaScript</a
           >
-          🐮
+          to continue.
         </p>
-        <ul>
-          <li><a href="https://swap.cow.fi/">Home | CoW Swap</a></li>
-          <li><a href="https://discord.com/invite/cowprotocol">Chat</a></li>
-          <li><a href="https://docs.cow.fi">Docs</a></li>
-          <li><a href="https://dune.com/cowprotocol/cowswap">Stats</a></li>
-          <li><a href="https://twitter.com/CoWSwap">Twitter (@CoWSwap)</a></li>
-        </ul>
       </main>
     </noscript>
 
