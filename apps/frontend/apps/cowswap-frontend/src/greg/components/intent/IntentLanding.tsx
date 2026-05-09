@@ -133,13 +133,25 @@ function isReadyToSubmit(parsed: ParsedIntent | null): boolean {
   return parsed.entities.some((e) => e.type === 'sellToken' || e.type === 'buyToken')
 }
 
-function helperText(text: string, status: string, parsed: ParsedIntent | null, errorCode: string | null): {
+function helperText(
+  text: string,
+  status: string,
+  parsed: ParsedIntent | null,
+  errorCode: string | null,
+  errorMessage: string | null,
+): {
   variant: 'hint' | 'error'
   message: string
 } {
   if (errorCode) {
+    // Surface "key not configured" verbatim so operators see exactly
+    // what's missing instead of a generic "couldn't read that".
+    if (errorMessage && /key not configured/i.test(errorMessage)) {
+      return { variant: 'error', message: 'Search not enabled yet — operator setup pending.' }
+    }
     if (errorCode === 'TIMEOUT') return { variant: 'error', message: 'Took too long — try the manual swap.' }
-    return { variant: 'error', message: 'Couldn’t read that — try the manual swap.' }
+    if (errorCode === 'INVALID_JSON') return { variant: 'error', message: 'Couldn’t read that — try the manual swap.' }
+    return { variant: 'error', message: 'Couldn’t reach the parser — try the manual swap.' }
   }
   if (text.trim().length === 0) {
     return { variant: 'hint', message: 'Try: "swap 100 USDC for ETH on Base"' }
@@ -163,8 +175,8 @@ export function IntentLanding(): ReactNode {
   }, [navigate, parseState.parsed, ready])
 
   const helper = useMemo(
-    () => helperText(text, parseState.status, parseState.parsed, parseState.errorCode),
-    [text, parseState.status, parseState.parsed, parseState.errorCode],
+    () => helperText(text, parseState.status, parseState.parsed, parseState.errorCode, parseState.errorMessage),
+    [text, parseState.status, parseState.parsed, parseState.errorCode, parseState.errorMessage],
   )
 
   const entities = parseState.parsed?.entities ?? []
