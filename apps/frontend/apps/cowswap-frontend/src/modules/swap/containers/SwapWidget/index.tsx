@@ -180,14 +180,12 @@ export function SwapWidget({ topContent, bottomContent, allowSwapSameToken }: Sw
   const isNetworkUnsupported = useIsProviderNetworkUnsupported()
   const isNetworkDeprecated = useIsProviderNetworkDeprecated()
 
-  // Guarded render: require hydration and no active eager-connect; show only for confirmed EOAs or truly disconnected users.
-  const shouldShowLockScreen =
-    isHydrated &&
-    !isUnlocked &&
-    !isNetworkUnsupported &&
-    !isNetworkDeprecated &&
-    !isInjectedWidget() &&
-    ((isConnected && isSmartContractWallet === false) || (!isConnected && !isEagerConnectInProgress))
+  // Greg/Ophis: suppress the upstream CoW cross-chain unlock-promo
+  // ("Cross-chain swaps are here / Mooove between any chain..."). It's
+  // CoW-marketing copy that doesn't belong on Ophis. Tracked in
+  // apps/frontend/.greg-divergences.md.
+  const shouldShowLockScreen = false
+  void [isHydrated, isUnlocked, isNetworkUnsupported, isNetworkDeprecated, isConnected, isSmartContractWallet, isEagerConnectInProgress]
 
   const slots: TradeWidgetSlots = {
     topContent,
