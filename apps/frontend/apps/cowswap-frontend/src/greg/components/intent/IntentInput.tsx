@@ -119,29 +119,66 @@ interface Segment {
   entity?: Entity
 }
 
-// Word-character regex for entity-range expansion. Matches symbol-like
-// content (alnum, dot for "1.5", underscore, hyphen) so a token symbol
-// or chain slug stays intact even when the user has typed past the
-// in-flight LLM's snapshot of the input.
+// Word-character regex for entity-range anchoring.
 const WORD_RE = /[a-zA-Z0-9._-]/
 
 /**
- * Expand an entity range to the nearest non-word boundary in the
- * current text — but only if the expanded substring still contains
- * the LLM's `raw` value. This prevents stale offsets from leaving a
- * token chip cropped (e.g. "et" after the user has typed "eth").
+ * Anchor the entity to the WORD that contains the LLM's range — not
+ * to the nearest word boundary in either direction, which can bridge
+ * across an adjacent space when the LLM's offset is off-by-one and
+ * sits on a separator.
+ *
+ * Strategy: pick a "core" character within the LLM's range that's a
+ * word-character; from that core, walk both sides while word-char.
+ * The resulting span is the single word containing the core. If no
+ * word-char exists in the range (LLM landed on a separator only),
+ * scan a few chars right / left for the closest word-char.
+ *
+ * The expanded slice is accepted only if it contains the LLM's `raw`
+ * substring (case-insensitive), or vice versa, ensuring we never
+ * mis-anchor onto an unrelated word.
  */
 function expandRange(text: string, e: Entity): { start: number; end: number } {
-  let s = Math.max(0, Math.min(e.start, text.length))
-  let t = Math.max(s, Math.min(e.end, text.length))
+  const lo = Math.max(0, Math.min(e.start, text.length))
+  const hi = Math.max(lo, Math.min(e.end, text.length))
+  const fallback = { start: lo, end: hi }
+
+  // Find a word-char anchor inside the range; else look just outside.
+  let core = -1
+  for (let i = lo; i < hi; i++) {
+    if (WORD_RE.test(text[i])) {
+      core = i
+      break
+    }
+  }
+  if (core === -1) {
+    for (let i = hi; i < text.length && i < hi + 4; i++) {
+      if (WORD_RE.test(text[i])) {
+        core = i
+        break
+      }
+    }
+  }
+  if (core === -1) {
+    for (let i = lo - 1; i >= 0 && i >= lo - 4; i--) {
+      if (WORD_RE.test(text[i])) {
+        core = i
+        break
+      }
+    }
+  }
+  if (core === -1) return fallback
+
+  let s = core
+  let t = core + 1
   while (s > 0 && WORD_RE.test(text[s - 1])) s--
   while (t < text.length && WORD_RE.test(text[t])) t++
 
   const expanded = text.slice(s, t).toLowerCase()
-  const raw = e.raw.toLowerCase()
-  if (expanded.length > 0 && expanded.includes(raw)) return { start: s, end: t }
-  // Fall back to the LLM's offsets clamped into bounds.
-  return { start: Math.min(e.start, text.length), end: Math.min(e.end, text.length) }
+  const raw = e.raw.toLowerCase().trim()
+  if (expanded.length === 0 || raw.length === 0) return fallback
+  if (expanded.includes(raw) || raw.includes(expanded)) return { start: s, end: t }
+  return fallback
 }
 
 function buildSegments(text: string, entities: Entity[]): Segment[] {
