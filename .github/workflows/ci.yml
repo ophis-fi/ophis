@@ -8,6 +8,11 @@ on:
     branches:
       - main
 
+# Default GITHUB_TOKEN to read-only — fork PRs run lint/typecheck only,
+# they do not need write access to the repo. Audit finding 2026-05-09.
+permissions:
+  contents: read
+
 jobs:
   root:
     name: root (lint + typecheck)
