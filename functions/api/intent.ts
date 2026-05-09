@@ -12,6 +12,12 @@
 
 interface Env {
   LIBERTAI_API_KEY: string
+  // KV namespace `OPHIS_RATELIMIT` — distributed rate-limit counter,
+  // bound to this Pages project at the production env level. See
+  // docs/development/specs/2026-05-08-ophis-intent-input-design.md.
+  // If unbound (e.g. during local wrangler dev without the binding),
+  // the rate limiter falls back to an in-isolate Map (best-effort).
+  OPHIS_RATELIMIT?: KVNamespace
 }
 
 type EntityType = 'sellToken' | 'buyToken' | 'amount' | 'chain'
@@ -40,17 +46,15 @@ const LIBERTAI_MODEL = 'qwen3.5-122b-a10b'
 const TIMEOUT_MS = 5000
 const MAX_TEXT_LEN = 280
 
-// Rate limit (per IP, per isolate) — sliding window. The cap below
-// fits a normal user (typing ~10 phrases per minute, debounced 400 ms
-// → ~10 calls/min); abusers spamming the endpoint get 429s after the
-// first window. Caveat: Cloudflare Pages Functions run in isolates
-// that are not 1:1 with users, so an attacker hitting different edge
-// POPs can bypass each isolate's view. Provides best-effort throttling
-// without standing up a KV namespace; upgrade to a KV-backed bucket
-// once abuse is observed.
+// Rate limit (per IP, sliding window). Primary path: a KV-backed
+// counter (`env.OPHIS_RATELIMIT`) with N distinct strongly-consistent
+// reads — works across all CF isolates and edge POPs. Fallback path:
+// an in-isolate Map (per-isolate, near-useless on Pages Functions
+// because each request often gets a fresh isolate, but kept so the
+// function still imposes *some* cap if the binding ever drops).
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 30
-const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate
+const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate (fallback path)
 const ipBuckets = new Map<string, number[]>()
 
 const ALLOWED_ORIGINS = new Set<string>([
@@ -72,10 +76,39 @@ function isAllowedOrigin(origin: string | null): boolean {
   }
 }
 
-function checkRateLimit(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
+async function checkRateLimitKV(
+  kv: KVNamespace,
+  ip: string,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS
-  // Lazy GC: cap the map size to bound per-isolate memory.
+  const key = `rl:${ip}`
+  // KV.get returns the most recent timestamps array (or null). Strong
+  // consistency is not guaranteed across regions, but Cloudflare KV's
+  // typical replication lag (<1s) is well within our window.
+  const raw = await kv.get(key)
+  let timestamps: number[] = []
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) timestamps = parsed.filter((t): t is number => typeof t === 'number' && t >= cutoff)
+    } catch {
+      // bad value in KV — treat as empty; will be overwritten below.
+    }
+  }
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSec = Math.max(1, Math.ceil((timestamps[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
+    return { ok: false, retryAfterSec }
+  }
+  timestamps.push(now)
+  // expirationTtl: window + small buffer; KV cleans up automatically.
+  await kv.put(key, JSON.stringify(timestamps), { expirationTtl: 120 })
+  return { ok: true }
+}
+
+function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
+  const now = Date.now()
+  const cutoff = now - RATE_LIMIT_WINDOW_MS
   if (ipBuckets.size > RATE_LIMIT_MAX_KEYS) {
     const oldest = Array.from(ipBuckets.keys()).slice(0, ipBuckets.size - RATE_LIMIT_MAX_KEYS + 64)
     for (const k of oldest) ipBuckets.delete(k)
@@ -91,6 +124,22 @@ function checkRateLimit(ip: string): { ok: true } | { ok: false; retryAfterSec: 
   recent.push(now)
   ipBuckets.set(ip, recent)
   return { ok: true }
+}
+
+async function checkRateLimit(
+  env: Env,
+  ip: string,
+): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      return await checkRateLimitKV(env.OPHIS_RATELIMIT, ip)
+    } catch {
+      // KV outage → fall back to the per-isolate cap rather than
+      // failing open. Logging would happen via CF logs.
+      return checkRateLimitIsolate(ip)
+    }
+  }
+  return checkRateLimitIsolate(ip)
 }
 
 const SYSTEM_PROMPT = `You parse natural-language swap requests for Ophis, an intent-based DEX aggregator. Given user text, return ONLY a single JSON object, no prose, no markdown fences.
@@ -217,11 +266,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json({ ok: false, error: { code: 'FORBIDDEN', message: 'origin not allowed' } }, 403)
   }
 
-  // Per-IP rate limit. cf-connecting-ip is set by Cloudflare on every
-  // request. Falls back to an ip-less bucket if the header is missing
-  // (which would be unusual on the CF edge).
+  // Per-IP rate limit, KV-backed (distributed across all isolates).
+  // cf-connecting-ip is set by Cloudflare on every edge request.
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
-  const rl = checkRateLimit(ip)
+  const rl = await checkRateLimit(env, ip)
   if (!rl.ok) {
     return json(
       { ok: false, error: { code: 'RATE_LIMITED', message: 'too many requests' } },
