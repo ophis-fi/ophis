@@ -48,7 +48,7 @@ export function ProxyAccountBanner({ recipient, bridgeReceiverOverride, chainId 
         ) : (
           <div>
             <Trans>
-              CoW Swap uses a dedicated {accountProxyLabelString}, controlled only by you, to ensure smooooth bridging.
+              Ophis uses a dedicated {accountProxyLabelString}, controlled only by you, to ensure smooooth bridging.
               Confirm the recipient address above is <AddressLink address={recipient} chainId={chainId} />
             </Trans>
             <br />

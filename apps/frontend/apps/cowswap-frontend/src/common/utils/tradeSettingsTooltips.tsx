@@ -97,7 +97,7 @@ export function getNonNativeSlippageTooltip({
       <SimpleStyledText>
         <p>
           <Trans>
-            CoW Swap has dynamically selected this slippage tolerance, accounting for current gas prices and trade size,
+            Ophis has dynamically selected this slippage tolerance, accounting for current gas prices and trade size,
             to ensure your trade executes quickly while still getting the best price.
           </Trans>
         </p>
@@ -160,7 +160,7 @@ export function getNonNativeSlippageTooltip({
       {isSettingsModal ? (
         <>
           <p>
-            <Trans>To let Cow Swap automatically select the slippage tolerance, toggle the "Auto" option.</Trans>
+            <Trans>To let Ophis automatically select the slippage tolerance, toggle the "Auto" option.</Trans>
           </p>
           <p>
             <Trans>Either way, trades are protected from MEV, so your slippage can't be exploited!</Trans>

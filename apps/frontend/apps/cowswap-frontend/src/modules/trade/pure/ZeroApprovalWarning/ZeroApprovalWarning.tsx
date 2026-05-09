@@ -30,7 +30,7 @@ export function ZeroApprovalWarning({ currency }: ZeroApprovalWarningProps) {
       <Trans>
         <strong>Note:</strong> {symbol} specifically requires 2 approval transactions. The first resets your spending
         cap to 0, and the second sets your desired spending cap. To avoid this in the future, set your spending cap to
-        CoW Swap's recommended default amount.
+        Ophis's recommended default amount.
       </Trans>{' '}
       {faqLink && (
         <Link target="_blank" to={faqLink}>

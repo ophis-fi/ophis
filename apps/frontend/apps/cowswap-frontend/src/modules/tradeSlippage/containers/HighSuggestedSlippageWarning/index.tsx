@@ -52,7 +52,7 @@ export function HighSuggestedSlippageWarning(props: HighSuggestedSlippageWarning
       <Trans>Slippage adjusted to {slippageBpsPercentage}% to ensure quick execution</Trans>
       <InfoTooltip
         size={24}
-        content={t`CoW Swap dynamically adjusts your slippage tolerance based on current gas prices and trade size. You can set a custom slippage using the settings icon above.`}
+        content={t`Ophis dynamically adjusts your slippage tolerance based on current gas prices and trade size. You can set a custom slippage using the settings icon above.`}
       />
     </StyledInlineBanner>
   )

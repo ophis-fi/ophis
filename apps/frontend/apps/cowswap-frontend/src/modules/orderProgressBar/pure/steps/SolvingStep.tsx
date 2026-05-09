@@ -95,7 +95,7 @@ function SubmissionFailedDescription(): ReactNode {
           label: 'Submission Failed',
         })}
       >
-        CoW Swap solvers
+        Ophis solvers
       </styledEl.Link>{' '}
       are searching again for the best price for you.
     </Trans>
@@ -105,7 +105,7 @@ function SubmissionFailedDescription(): ReactNode {
 function SolvedDescription(): ReactNode {
   return (
     <Trans>
-      Something went wrong and your order couldn't be executed with this batch. But don't worry! CoW Swap is already
+      Something went wrong and your order couldn't be executed with this batch. But don't worry! Ophis is already
       holding another competition for your order.
     </Trans>
   )
@@ -123,7 +123,7 @@ function DefaultSolvingDescription(): ReactNode {
           label: 'Solving',
         })}
       >
-        CoW Swap solvers
+        Ophis solvers
       </styledEl.Link>{' '}
       are scanning liquidity sources across DeFi. The one that finds you the best price wins!
     </Trans>
