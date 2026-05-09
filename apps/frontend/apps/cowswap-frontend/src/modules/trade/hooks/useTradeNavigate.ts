@@ -55,7 +55,19 @@ export function useTradeNavigate(): UseTradeNavigateCallback {
       // Don't navigate if we're already on this route
       if (location.pathname === route && location.search.slice(1) === search) return
 
-      return navigate({ pathname: route, search })
+      // Greg/Ophis: when the navigate is filling in defaults (we're on a
+      // bare path like `/swap` and target is a fully-qualified
+      // `/{chainId}/swap/...`), use `replace` so the bare path doesn't
+      // sit in history and trap the back button. Without this, browser
+      // back from `/1/swap/WETH/USDC` lands on `/swap` which immediately
+      // redirects forward again. See
+      // docs/development/specs/2026-05-08-ophis-intent-input-design.md
+      // (issue #3 from the 2026-05-09 review).
+      const fromHasChainId = /^\/\d+\//.test(location.pathname)
+      const toHasChainId = /^\/\d+\//.test(route)
+      const isDefaultsFill = !fromHasChainId && toHasChainId
+
+      return navigate({ pathname: route, search }, isDefaultsFill ? { replace: true } : undefined)
     },
     [tradeRoute, navigate, location.pathname, location.search],
   )

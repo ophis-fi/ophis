@@ -55,12 +55,22 @@ Schema:
 }
 
 Rules:
-- Token canonical values: uppercase symbols (USDC, ETH, WETH, USDT, DAI). "ether" -> ETH. "wrapped eth" -> WETH. "stables"/"stablecoin" -> omit.
-- Chain canonical values: lowercase slugs (ethereum, optimism, base, arbitrum, polygon, avalanche, gnosis, linea, bnb, megaeth). "eth mainnet"/"l1" -> ethereum. "op" -> optimism. "polygon pos" -> polygon.
-- Amount: numeric string only ("100", "1.5"). "a hundred" -> "100". No units.
+- Token canonical values: uppercase symbols. Allowed:
+    Stablecoins:   USDC, USDT, DAI, FRAX, LUSD, SUSD, GUSD, TUSD, USDP, USDE, PYUSD
+    ETH-pegs:      ETH, WETH, STETH, WSTETH, RETH, CBETH, SFRXETH, EZETH, RSETH
+    BTC-pegs:      WBTC, TBTC, CBBTC, BTCB
+    Blue-chips:    UNI, AAVE, MKR, LDO, COMP, CRV, SUSHI, SNX, BAL, GNO, YFI, 1INCH, LINK, FXS, RPL, PENDLE, ENS
+    Native gov:    MATIC, ARB, OP, AVAX, BNB
+    Memes:         PEPE, SHIB, DOGE, BONK
+- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth" -> WETH. "lido staked eth" -> STETH. "wrapped btc" -> WBTC. "uniswap" -> UNI. "aave" -> AAVE. "chainlink" -> LINK. "polygon" (the token) -> MATIC.
+- "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
+- Chain canonical values: lowercase slugs. Allowed:
+    ethereum, optimism, base, arbitrum, polygon, avalanche, gnosis, linea, bnb, megaeth, scroll, blast, mantle, zksync
+- Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "zk sync"/"zk-sync" -> zksync.
+- Amount: numeric string only ("100", "1.5"). "a hundred" -> "100". "a thousand" -> "1000". No units. No suffix multipliers like "k" / "m".
 - ETH disambiguation: chain only when preceded by "on"/"via"/"using"; otherwise it is a token.
-- Unknown tokens/chains: OMIT, do not invent.
-- start/end are 0-indexed character offsets in the original input. start inclusive, end exclusive.
+- Unknown tokens/chains: OMIT, do not invent. Do not output anything outside the allowed lists.
+- start/end are 0-indexed character offsets in the ORIGINAL input. start inclusive, end exclusive. The substring text.slice(start, end) MUST equal the "raw" field exactly.
 - If the input is not a swap request, return {"intent":"unknown","entities":[]}.
 - Output ONLY the JSON.`
 
@@ -73,7 +83,22 @@ const json = (body: IntentResponse, status = 200): Response =>
     },
   })
 
-const TOKEN_VALUES = new Set(['USDC', 'ETH', 'WETH', 'USDT', 'DAI'])
+const TOKEN_VALUES = new Set([
+  // Stablecoins
+  'USDC', 'USDT', 'DAI', 'FRAX', 'LUSD', 'SUSD', 'GUSD', 'TUSD', 'USDP', 'USDE', 'PYUSD',
+  // ETH-pegs
+  'ETH', 'WETH', 'STETH', 'WSTETH', 'RETH', 'CBETH', 'SFRXETH', 'EZETH', 'RSETH',
+  // BTC-pegs
+  'WBTC', 'TBTC', 'CBBTC', 'BTCB',
+  // Blue-chips
+  'UNI', 'AAVE', 'MKR', 'LDO', 'COMP', 'CRV', 'SUSHI', 'SNX', 'BAL', 'GNO', 'YFI', '1INCH',
+  'LINK', 'FXS', 'RPL', 'PENDLE', 'ENS',
+  // Native gov
+  'MATIC', 'ARB', 'OP', 'AVAX', 'BNB',
+  // Memes
+  'PEPE', 'SHIB', 'DOGE', 'BONK',
+])
+
 const CHAIN_VALUES = new Set([
   'ethereum',
   'optimism',
@@ -85,6 +110,10 @@ const CHAIN_VALUES = new Set([
   'linea',
   'bnb',
   'megaeth',
+  'scroll',
+  'blast',
+  'mantle',
+  'zksync',
 ])
 
 function isValidEntity(e: unknown, textLen: number): e is Entity {

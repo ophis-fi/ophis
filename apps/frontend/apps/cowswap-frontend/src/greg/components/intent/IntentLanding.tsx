@@ -14,6 +14,9 @@ import { ReactNode, useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import styled from 'styled-components/macro'
 
+import { OphisFooter } from '../OphisFooter'
+import { OphisHeader } from '../OphisHeader'
+
 import { ExampleChips } from './ExampleChips'
 import { IntentInput } from './IntentInput'
 import { intentToUrl } from './intentToUrl'
@@ -52,45 +55,6 @@ const Page = styled.main`
     position: relative;
     z-index: 1;
   }
-`
-
-const Header = styled.header`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 22px 36px;
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  @media (max-width: 600px) {
-    padding: 18px 20px;
-  }
-`
-
-const Wordmark = styled(Link)`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
-  font-weight: 600;
-  font-size: 22px;
-  letter-spacing: -0.01em;
-  color: #f5efe6;
-  text-decoration: none;
-  user-select: none;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  &:hover {
-    color: #ffffff;
-  }
-`
-
-const WordmarkAccent = styled.span`
-  color: #f2a63e;
-`
-
-const Nav = styled.nav`
-  display: flex;
-  gap: 22px;
-  align-items: center;
 `
 
 const NavLink = styled(Link)`
@@ -236,55 +200,6 @@ const SkipLink = styled(Link)`
   }
 `
 
-const Footer = styled.footer`
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 28px 36px 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
-  font-size: 13px;
-  color: rgba(245, 239, 230, 0.5);
-  border-top: 1px solid rgba(245, 239, 230, 0.08);
-  @media (max-width: 600px) {
-    padding: 22px 20px 26px;
-    font-size: 12px;
-  }
-`
-
-const FooterLeft = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-`
-
-const FooterRight = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-`
-
-const FooterLink = styled.a`
-  color: rgba(245, 239, 230, 0.55);
-  text-decoration: none;
-  &:hover {
-    color: rgba(245, 239, 230, 0.85);
-  }
-`
-
-const InternalFooterLink = styled(Link)`
-  color: rgba(245, 239, 230, 0.55);
-  text-decoration: none;
-  &:hover {
-    color: rgba(245, 239, 230, 0.85);
-  }
-`
-
 function isReadyToSubmit(parsed: ParsedIntent | null): boolean {
   if (!parsed || parsed.intent !== 'swap') return false
   return parsed.entities.some((e) => e.type === 'sellToken' || e.type === 'buyToken')
@@ -335,15 +250,10 @@ export function IntentLanding(): ReactNode {
 
   return (
     <Page>
-      <Header>
-        <Wordmark to="/">
-          ophis<WordmarkAccent>.</WordmarkAccent>
-        </Wordmark>
-        <Nav>
-          <NavLink to="/swap">Manual swap</NavLink>
-          <OpenSwapButton to="/1/swap">Open Swap →</OpenSwapButton>
-        </Nav>
-      </Header>
+      <OphisHeader transparent>
+        <NavLink to="/1/swap/_/_">Manual swap</NavLink>
+        <OpenSwapButton to="/1/swap/_/_">Open Swap →</OpenSwapButton>
+      </OphisHeader>
 
       <Hero>
         <Eyebrow>Intent-based DEX aggregator</Eyebrow>
@@ -373,21 +283,10 @@ export function IntentLanding(): ReactNode {
           Continue →
         </ContinueButton>
 
-        <SkipLink to="/swap">Skip to manual swap</SkipLink>
+        <SkipLink to="/1/swap/_/_">Skip to manual swap</SkipLink>
       </Hero>
 
-      <Footer>
-        <FooterLeft>© Ophis 2026</FooterLeft>
-        <FooterRight>
-          <InternalFooterLink to="/swap">Swap</InternalFooterLink>
-          <FooterLink href="https://github.com/san-npm/greg" target="_blank" rel="noreferrer">
-            GitHub
-          </FooterLink>
-          <FooterLink href="https://docs.cow.fi/governance/fees/partner-fee" target="_blank" rel="noreferrer">
-            Powered by CoW Protocol
-          </FooterLink>
-        </FooterRight>
-      </Footer>
+      <OphisFooter borderless />
     </Page>
   )
 }
