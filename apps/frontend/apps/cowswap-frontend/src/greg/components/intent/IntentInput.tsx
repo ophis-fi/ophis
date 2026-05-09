@@ -17,7 +17,7 @@
  * createTextNode) — never via innerHTML — so user input cannot inject
  * markup.
  */
-import { ForwardedRef, forwardRef, KeyboardEvent, ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import { ClipboardEvent, ForwardedRef, forwardRef, KeyboardEvent, ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 
 import styled from 'styled-components/macro'
 
@@ -401,6 +401,30 @@ export const IntentInput = forwardRef(function IntentInput(
     [onSubmit],
   )
 
+  // Sanitize paste: strip rich-text HTML and only insert the clipboard's
+  // plain-text payload at the caret. Default contenteditable behavior
+  // accepts <img>/<style>/styled spans, including markup that could
+  // carry `data-entity-chip="true"` to fool the rebuild-skip heuristic.
+  // Self-XSS scope only, but trivially fixable here.
+  const handlePaste = useCallback((e: ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const text = e.clipboardData.getData('text/plain').replace(/[\r\n]+/g, ' ')
+    if (!text) return
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) return
+    const range = sel.getRangeAt(0)
+    range.deleteContents()
+    range.insertNode(document.createTextNode(text))
+    range.collapse(false)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    // Manually fire onInput-equivalent: read the canonical plain text.
+    const el = editorRef.current
+    if (!el) return
+    const next = readPlainTextValue(el).replace(/\n+/g, ' ')
+    if (next !== value) onChange(next)
+  }, [onChange, value])
+
   return (
     <Wrap>
       <ChipStyles>
@@ -415,6 +439,7 @@ export const IntentInput = forwardRef(function IntentInput(
           data-placeholder={placeholder}
           onInput={handleInput}
           onKeyDown={handleKey}
+          onPaste={handlePaste}
         />
       </ChipStyles>
       {pending && <Spinner aria-label="Parsing" />}
