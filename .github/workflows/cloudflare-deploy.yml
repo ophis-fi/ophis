@@ -48,6 +48,19 @@ jobs:
           REACT_APP_APP_CODE: greg
         run: pnpm run build:cowswap
 
+      - name: drop production source maps
+        # Cowswap's vite.config.mts ships sourcemap:true; the resulting
+        # index-*.js.map files weigh ~25-26 MB and trip Cloudflare Pages'
+        # 25 MiB per-file limit. Source maps add nothing for the public
+        # production deploy. Future option if local debugging needs them:
+        # set `sourcemap: process.env.NODE_ENV !== 'production'` in
+        # apps/cowswap-frontend/vite.config.mts (would be a tracked
+        # divergence on subtree pulls — see apps/frontend/.greg-divergences.md).
+        run: |
+          find apps/frontend/build/cowswap -name '*.js.map' -type f -delete
+          echo "remaining map files (none expected):"
+          find apps/frontend/build/cowswap -name '*.map' -type f | head
+
       - name: stage Pages Functions into build output
         # CF Pages picks up `functions/` adjacent to the deployed root.
         # Source lives at repo root (`functions/`) so it's editable
