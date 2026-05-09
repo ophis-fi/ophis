@@ -53,7 +53,7 @@ export function useHooksEnabledManager(): [boolean, Command] {
 }
 
 export function useIsDarkMode(): boolean {
-  const { userDarkMode, matchesDarkMode } = useAppSelector(
+  const { userDarkMode } = useAppSelector(
     ({ user: { matchesDarkMode, userDarkMode } }) => ({
       userDarkMode,
       matchesDarkMode,
@@ -61,7 +61,10 @@ export function useIsDarkMode(): boolean {
     shallowEqual,
   )
 
-  return userDarkMode === null ? matchesDarkMode : userDarkMode
+  // Greg/Ophis: default to dark on first load. The cosmic palette is
+  // designed dark-first; light remains a togglable fallback. Tracked
+  // in apps/frontend/.greg-divergences.md.
+  return userDarkMode === null ? true : userDarkMode
 }
 
 export function useSelectedWallet(): string | undefined {
