@@ -7,6 +7,12 @@ import type { NotificationModel } from '@cowprotocol/core'
 import { Footer, Media } from '@cowprotocol/ui'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
+// Greg/Ophis: route-aware chrome — `/` renders the natural-language intent
+// landing without the cowswap header/footer/hiring-banner. See
+// apps/frontend/.greg-divergences.md and
+// docs/development/specs/2026-05-08-ophis-intent-input-design.md.
+import { useLocation } from 'react-router'
+
 import { URLWarning } from 'legacy/components/Header/URLWarning'
 import { useDarkModeManager } from 'legacy/state/user/hooks'
 
@@ -78,6 +84,9 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
 
   useInitializeUtm()
   const isInjectedWidgetMode = isInjectedWidget()
+  // Greg/Ophis: detect the intent-landing route so we can skip cowswap
+  // chrome (header, footer, hiring banner, cow scene, page backgrounds).
+  const isStandaloneLanding = useLocation().pathname === '/' && !isInjectedWidgetMode
   const [darkMode] = useDarkModeManager()
   const [pageBackgroundVariant, setPageBackgroundVariant] = useState<PageBackgroundVariant>('default')
   const [pageScene, setPageScene] = useState<ReactNode | null>(null)
@@ -107,6 +116,17 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
   const { currentNotification, dismiss } = useSpeechBubbleNotification()
   const hasActiveSpeechBubbleNotification = shouldRenderCowSpeechBubble && Boolean(currentNotification)
   const showSnowfall = !isInjectedWidgetMode && isChristmasTheme
+
+  // Greg/Ophis: chrome-less landing. The intent-landing page (`/`)
+  // renders without cowswap's header/footer/banners. Chrome is back
+  // on every other route — manual swap, account, hooks, games, etc.
+  if (isStandaloneLanding) {
+    return (
+      <PageBackgroundContext.Provider value={pageBackgroundValue}>
+        <styledEl.AppWrapper>{children}</styledEl.AppWrapper>
+      </PageBackgroundContext.Provider>
+    )
+  }
 
   return (
     <PageBackgroundContext.Provider value={pageBackgroundValue}>

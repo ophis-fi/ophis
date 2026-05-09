@@ -19,9 +19,10 @@ export interface IntentParseState {
   status: IntentParseStatus
   parsed: ParsedIntent | null
   errorCode: IntentErrorCode | null
+  errorMessage: string | null
 }
 
-const INITIAL: IntentParseState = { status: 'idle', parsed: null, errorCode: null }
+const INITIAL: IntentParseState = { status: 'idle', parsed: null, errorCode: null, errorMessage: null }
 
 export function useIntentParse(text: string): IntentParseState {
   const [state, setState] = useState<IntentParseState>(INITIAL)
@@ -35,7 +36,7 @@ export function useIntentParse(text: string): IntentParseState {
     const controller = new AbortController()
     abortRef.current = controller
 
-    setState((s) => ({ ...s, status: 'pending', errorCode: null }))
+    setState((s) => ({ ...s, status: 'pending', errorCode: null, errorMessage: null }))
 
     try {
       const res = await fetch(ENDPOINT, {
@@ -50,14 +51,14 @@ export function useIntentParse(text: string): IntentParseState {
 
       const body = (await res.json()) as IntentResponse
       if (!body.ok) {
-        setState({ status: 'error', parsed: null, errorCode: body.error.code })
+        setState({ status: 'error', parsed: null, errorCode: body.error.code, errorMessage: body.error.message })
         return
       }
-      setState({ status: 'ok', parsed: body.data, errorCode: null })
+      setState({ status: 'ok', parsed: body.data, errorCode: null, errorMessage: null })
     } catch (err) {
       if (controller.signal.aborted) return
       if (requestId !== requestIdRef.current) return
-      setState({ status: 'error', parsed: null, errorCode: 'UPSTREAM' })
+      setState({ status: 'error', parsed: null, errorCode: 'UPSTREAM', errorMessage: 'network error' })
     }
   }, [])
 
