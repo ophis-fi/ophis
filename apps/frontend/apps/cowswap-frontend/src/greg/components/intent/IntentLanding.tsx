@@ -21,6 +21,11 @@ import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
 
 const Page = styled.main`
+  /* Cover the full viewport even though the cowswap AppWrapper has its
+     own width constraints (we bypass the chrome but the wrapper still
+     wraps us). 100vw avoids relying on parent layout. */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -30,8 +35,8 @@ const Page = styled.main`
   gap: 28px;
   background: ${({ theme }) =>
     theme.darkMode
-      ? 'radial-gradient(120% 80% at 20% 0%, #2a0b07 0%, #1f2224 70%, #131214 100%)'
-      : 'radial-gradient(120% 80% at 20% 0%, #fff3ee 0%, #ffe1d4 50%, #fff8f4 100%)'};
+      ? 'radial-gradient(140% 110% at 30% 0%, #2a0b07 0%, #1f2224 65%, #131214 100%)'
+      : 'radial-gradient(140% 110% at 30% 0%, #fff3ee 0%, #ffe1d4 55%, #fff8f4 100%)'};
 `
 
 const Hero = styled.section`
