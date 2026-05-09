@@ -48,6 +48,18 @@ jobs:
           REACT_APP_APP_CODE: greg
         run: pnpm run build:cowswap
 
+      - name: stage Pages Functions into build output
+        # CF Pages picks up `functions/` adjacent to the deployed root.
+        # Source lives at repo root (`functions/`) so it's editable
+        # alongside the frontend; copied into the deploy dir before push.
+        run: |
+          if [ -d functions ]; then
+            mkdir -p apps/frontend/build/cowswap/functions
+            cp -R functions/. apps/frontend/build/cowswap/functions/
+            echo "staged functions:"
+            find apps/frontend/build/cowswap/functions -type f
+          fi
+
       - name: install wrangler globally
         run: npm install -g wrangler@latest
 
