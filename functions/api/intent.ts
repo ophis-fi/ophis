@@ -29,14 +29,69 @@ interface ParsedIntent {
   entities: Entity[]
 }
 
+type ErrorCode = 'TIMEOUT' | 'UPSTREAM' | 'INVALID_JSON' | 'BAD_INPUT' | 'RATE_LIMITED' | 'FORBIDDEN'
+
 type IntentResponse =
   | { ok: true; data: ParsedIntent }
-  | { ok: false; error: { code: 'TIMEOUT' | 'UPSTREAM' | 'INVALID_JSON' | 'BAD_INPUT'; message: string } }
+  | { ok: false; error: { code: ErrorCode; message: string } }
 
 const LIBERTAI_URL = 'https://api.libertai.io/v1/chat/completions'
 const LIBERTAI_MODEL = 'qwen3.5-122b-a10b'
 const TIMEOUT_MS = 5000
 const MAX_TEXT_LEN = 280
+
+// Rate limit (per IP, per isolate) — sliding window. The cap below
+// fits a normal user (typing ~10 phrases per minute, debounced 400 ms
+// → ~10 calls/min); abusers spamming the endpoint get 429s after the
+// first window. Caveat: Cloudflare Pages Functions run in isolates
+// that are not 1:1 with users, so an attacker hitting different edge
+// POPs can bypass each isolate's view. Provides best-effort throttling
+// without standing up a KV namespace; upgrade to a KV-backed bucket
+// once abuse is observed.
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX_REQUESTS = 30
+const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate
+const ipBuckets = new Map<string, number[]>()
+
+const ALLOWED_ORIGINS = new Set<string>([
+  'https://greg-etm.pages.dev',
+  // Cloudflare Pages preview deploys land at *.greg-etm.pages.dev or
+  // *.greg.pages.dev. Allow them by suffix in `isAllowedOrigin` below.
+])
+
+const ALLOWED_ORIGIN_SUFFIXES = ['.greg-etm.pages.dev', '.greg.pages.dev']
+
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false
+  if (ALLOWED_ORIGINS.has(origin)) return true
+  try {
+    const url = new URL(origin)
+    return ALLOWED_ORIGIN_SUFFIXES.some((suffix) => url.host.endsWith(suffix))
+  } catch {
+    return false
+  }
+}
+
+function checkRateLimit(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
+  const now = Date.now()
+  const cutoff = now - RATE_LIMIT_WINDOW_MS
+  // Lazy GC: cap the map size to bound per-isolate memory.
+  if (ipBuckets.size > RATE_LIMIT_MAX_KEYS) {
+    const oldest = Array.from(ipBuckets.keys()).slice(0, ipBuckets.size - RATE_LIMIT_MAX_KEYS + 64)
+    for (const k of oldest) ipBuckets.delete(k)
+  }
+  const bucket = ipBuckets.get(ip) ?? []
+  const recent: number[] = []
+  for (const t of bucket) if (t >= cutoff) recent.push(t)
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSec = Math.max(1, Math.ceil((recent[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
+    ipBuckets.set(ip, recent)
+    return { ok: false, retryAfterSec }
+  }
+  recent.push(now)
+  ipBuckets.set(ip, recent)
+  return { ok: true }
+}
 
 const SYSTEM_PROMPT = `You parse natural-language swap requests for Ophis, an intent-based DEX aggregator. Given user text, return ONLY a single JSON object, no prose, no markdown fences.
 
@@ -74,7 +129,7 @@ Rules:
 - If the input is not a swap request, return {"intent":"unknown","entities":[]}.
 - Output ONLY the JSON.`
 
-const json = (body: IntentResponse, status = 200): Response =>
+const json = (body: IntentResponse, status = 200, extraHeaders: Record<string, string> = {}): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -86,6 +141,7 @@ const json = (body: IntentResponse, status = 200): Response =>
       'x-frame-options': 'DENY',
       // Strict referrer policy on API responses.
       'referrer-policy': 'no-referrer',
+      ...extraHeaders,
     },
   })
 
@@ -151,6 +207,29 @@ function stripFences(s: string): string {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Origin allow-list: block calls from non-Ophis pages and most
+  // non-browser callers (curl/scripts typically omit Origin entirely).
+  // Not a security boundary against motivated attackers — Origin can
+  // be spoofed by anything that's not a browser — but it raises the
+  // bar for casual abuse.
+  const origin = request.headers.get('origin')
+  if (origin && !isAllowedOrigin(origin)) {
+    return json({ ok: false, error: { code: 'FORBIDDEN', message: 'origin not allowed' } }, 403)
+  }
+
+  // Per-IP rate limit. cf-connecting-ip is set by Cloudflare on every
+  // request. Falls back to an ip-less bucket if the header is missing
+  // (which would be unusual on the CF edge).
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  const rl = checkRateLimit(ip)
+  if (!rl.ok) {
+    return json(
+      { ok: false, error: { code: 'RATE_LIMITED', message: 'too many requests' } },
+      429,
+      { 'retry-after': String(rl.retryAfterSec) },
+    )
+  }
+
   if (!env.LIBERTAI_API_KEY) {
     // Operator-facing message: still says "LibertAI key not configured"
     // verbatim because IntentLanding's helperText regex looks for that

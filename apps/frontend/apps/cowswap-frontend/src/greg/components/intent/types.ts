@@ -20,7 +20,13 @@ export interface ParsedIntent {
   entities: Entity[]
 }
 
-export type IntentErrorCode = 'TIMEOUT' | 'UPSTREAM' | 'INVALID_JSON' | 'BAD_INPUT'
+export type IntentErrorCode =
+  | 'TIMEOUT'
+  | 'UPSTREAM'
+  | 'INVALID_JSON'
+  | 'BAD_INPUT'
+  | 'RATE_LIMITED'
+  | 'FORBIDDEN'
 
 export type IntentResponse =
   | { ok: true; data: ParsedIntent }

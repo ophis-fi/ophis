@@ -21,13 +21,17 @@ jobs:
       # No fetch-depth: 0 — pages deploy doesn't need full history. Audit
       # finding 2026-05-09: shrinking the working tree shrinks the
       # surface for any pre-build hook that touches git history.
-      - uses: actions/checkout@v4
+      #
+      # All actions pinned to commit SHAs (audit finding M3, 2026-05-09).
+      # Tag refs are mutable; SHAs are immutable. Bump via dependabot or
+      # by re-running the audit script.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa  # v4
         with:
           run_install: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 20
           cache: pnpm
@@ -74,11 +78,11 @@ jobs:
             find apps/frontend/build/cowswap/functions -type f
           fi
 
-      - name: install wrangler globally
-        run: npm install -g wrangler@latest
-
+      # `cloudflare/wrangler-action` installs its own wrangler. The prior
+      # `npm install -g wrangler@latest` step was redundant AND a floating
+      # tag against npm — audit finding M2 (2026-05-09). Removed.
       - name: deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd  # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
