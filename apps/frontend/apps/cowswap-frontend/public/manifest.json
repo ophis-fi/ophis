@@ -1,26 +1,26 @@
 {
-  "background_color": "#E66A55",
+  "background_color": "#02000d",
   "display": "standalone",
   "homepage_url": "https://greg-etm.pages.dev",
-  "description": "Greg — intent-based DEX aggregator. DCA, TWAP, and MEV-protected swaps for power-user retail and DAO treasuries.",
-  "iconPath": "/greg-icon.svg",
+  "description": "Ophis — intent-based DEX aggregator. Tell us what to swap in plain English; we'll route you to a pre-filled, MEV-protected swap.",
+  "iconPath": "/ophis-icon.svg",
   "icons": [
     {
-      "src": "/greg-icon.svg",
+      "src": "/ophis-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/greg-mark-app-icon.svg",
+      "src": "/ophis-mark-app-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
     }
   ],
   "orientation": "portrait",
-  "name": "Greg",
-  "short_name": "Greg",
+  "name": "Ophis",
+  "short_name": "Ophis",
   "start_url": ".",
-  "theme_color": "#E66A55"
+  "theme_color": "#F2A63E"
 }

@@ -48,12 +48,12 @@ const getConfirmModalConfig = (): {
       <p>
         <Trans>
           Since TWAP orders consist of multiple parts, prices are expected to fluctuate. However, to protect you against
-          bad prices, CoW Swap will not execute your TWAP if the price dips below this percentage.
+          bad prices, Ophis will not execute your TWAP if the price dips below this percentage.
         </Trans>
       </p>
       <p>
         <Trans>
-          This percentage only applies to dips; if prices are better than this percentage, CoW Swap will still execute
+          This percentage only applies to dips; if prices are better than this percentage, Ophis will still execute
           your order.
         </Trans>
       </p>
@@ -62,8 +62,8 @@ const getConfirmModalConfig = (): {
   limitPriceLabel: t`Limit price (incl. fees)`,
   limitPriceTooltip: (
     <Trans>
-      If CoW Swap cannot get this price or better (taking into account fees and price protection tolerance), your TWAP
-      will not execute. CoW Swap will <strong>always</strong> improve on this price if possible.
+      If Ophis cannot get this price or better (taking into account fees and price protection tolerance), your TWAP
+      will not execute. Ophis will <strong>always</strong> improve on this price if possible.
     </Trans>
   ),
   minReceivedLabel: t`Minimum receive`,

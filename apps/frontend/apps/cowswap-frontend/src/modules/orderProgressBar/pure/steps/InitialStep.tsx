@@ -27,7 +27,7 @@ export function InitialStep({ children, isBridgingTrade }: InitialStepProps) {
         currentStep={0}
         extraContent={
           <Description>
-            <Trans>On CoW Swap, orders placed at the same time are</Trans>{' '}
+            <Trans>On Ophis, orders placed at the same time are</Trans>{' '}
             <styledEl.Link
               href="https://cow.fi/learn/understanding-batch-auctions"
               target="_blank"

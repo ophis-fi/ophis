@@ -34,7 +34,7 @@ export function ApproveButton(props: ApproveButtonProps): ReactNode {
           <>
             <span>
               <Trans>
-                Allow CoW Swap to use your <TokenSymbol token={currency} />
+                Allow Ophis to use your <TokenSymbol token={currency} />
               </Trans>
             </span>
             <span>{isPending && <styledEl.StyledLoader />}</span>

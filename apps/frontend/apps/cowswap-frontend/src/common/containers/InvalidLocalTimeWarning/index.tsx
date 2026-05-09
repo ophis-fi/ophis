@@ -21,7 +21,7 @@ export function InvalidLocalTimeWarning(): ReactNode | null {
   return (
     <GlobalWarning>
       <Trans>
-        Local device time is not accurate, CoW Swap most likely will not work correctly. Please adjust your device's
+        Local device time is not accurate, Ophis most likely will not work correctly. Please adjust your device's
         time.
       </Trans>
     </GlobalWarning>

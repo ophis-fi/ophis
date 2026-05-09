@@ -30,7 +30,7 @@ export const CompatibilityIssuesWarning = memo((props: CompatibilityIssuesWarnin
         showDetailsText={msg`Read more about unsupported wallets`}
         detailsText={
           <Trans>
-            <p>CoW Swap requires offline signatures, which is currently not supported by some wallets.</p>
+            <p>Ophis requires offline signatures, which is currently not supported by some wallets.</p>
             <p>
               Read more in the{' '}
               <ReactRouterLink target="_blank" to="/faq/protocol#wallet-not-supported">

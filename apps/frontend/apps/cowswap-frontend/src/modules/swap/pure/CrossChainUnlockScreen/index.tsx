@@ -26,7 +26,7 @@ export function CrossChainUnlockScreen({ handleUnlock }: CrossChainUnlockScreenP
           </styledEl.Title>
           <styledEl.Subtitle>
             <Trans>
-              Mooove between <br /> any chain, hassle-free
+              Move between <br /> any chain, hassle-free
             </Trans>
           </styledEl.Subtitle>
         </styledEl.Content>

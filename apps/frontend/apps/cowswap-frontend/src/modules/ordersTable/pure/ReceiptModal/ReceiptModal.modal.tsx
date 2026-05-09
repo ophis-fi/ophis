@@ -71,7 +71,7 @@ const TOOLTIPS_MSG: Record<string, MessageDescriptor> = {
   NETWORK_COSTS: msg`CoW Protocol covers the fees and costs by executing your order at a slightly better price than your limit price.`,
   CREATED: msg`Your order was created on this date & time. It will remain open until it expires or is filled.`,
   RECEIVER: msg`The account address which will/did receive the bought amount.`,
-  EXPIRY: msg`If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on CoW Swap!`,
+  EXPIRY: msg`If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on Ophis!`,
   TOTAL_FEE: msg`This fee helps pay for maintenance & improvements to the trade experience`,
 }
 
@@ -89,7 +89,7 @@ const TOOLTIPS_JSX: Record<string, ReactElement> = {
   ORDER_TYPE: (
     <span>
       <Trans>
-        Orders on CoW Swap can either be market orders (which fill at the market price within the slippage tolerance you
+        Orders on Ophis can either be market orders (which fill at the market price within the slippage tolerance you
         set) or limit orders (which fill at a price you specify).
       </Trans>
       <br />

@@ -56,7 +56,7 @@ export function HookDappDetails({ dapp, onSelect, walletType }: HookDappDetailsP
         label: t`Type`,
         value: typeLabel,
         tooltip: isInternal
-          ? t`${typeLabel} hooks are integrated code and part of the CoW Swap codebase.`
+          ? t`${typeLabel} hooks are integrated code and part of the Ophis codebase.`
           : t`${typeLabel} hooks are externally hosted code which needs to be independently verified by the user.`,
       },
       {

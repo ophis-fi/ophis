@@ -69,7 +69,7 @@ export const soundMiddleware: Middleware<Record<string, unknown>, AppState> = (s
 
   if (cowSound) {
     cowSound.play().catch((e) => {
-      console.error('🐮 Moooooo sound cannot be played', e)
+      console.error(' Heads-up sound cannot be played', e)
     })
   }
 

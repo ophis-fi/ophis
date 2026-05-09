@@ -58,7 +58,7 @@ export function PermitModal(props: PermitModalProps) {
       step === 'approve' ? (
         <>
           <Trans>
-            Approve spending <TokenSymbol token={inputAmount?.currency} /> <br /> on CoW Swap
+            Approve spending <TokenSymbol token={inputAmount?.currency} /> <br /> on Ophis
           </Trans>
         </>
       ) : (

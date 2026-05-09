@@ -58,7 +58,7 @@ export function LegacyApproveButton(props: ApproveButtonProps): ReactNode {
           {/* we need to shorten this string on mobile */}
           <ApproveButtonContentWrapper>
             <Trans>
-              Allow CoW Swap to use your <TokenSymbol token={currency} />
+              Allow Ophis to use your <TokenSymbol token={currency} />
             </Trans>
           </ApproveButtonContentWrapper>
           <HoverTooltip wrapInContainer content={<ApprovalTooltip currency={currency} isLegacyApproval={true} />}>
