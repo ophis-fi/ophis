@@ -1,67 +1,62 @@
 import { type ReactNode, useMemo, useState } from 'react'
 
+import styled from 'styled-components/macro'
+
 import { initPixelAnalytics, useAnalyticsReporter, useCowAnalytics, WebVitalsAnalytics } from '@cowprotocol/analytics'
-import { useFeatureFlags, useMediaQuery } from '@cowprotocol/common-hooks'
+import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
-import type { NotificationModel } from '@cowprotocol/core'
-import { Footer, Media } from '@cowprotocol/ui'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
-// Greg/Ophis: route-aware chrome — `/` renders the natural-language intent
-// landing without the cowswap header/footer/hiring-banner. See
-// apps/frontend/.greg-divergences.md and
-// docs/development/specs/2026-05-08-ophis-intent-input-design.md.
+// Greg/Ophis: route-aware chrome.
+//   /          → chrome-less landing (IntentLanding handles its own).
+//   anywhere   → Ophis header (wordmark + wallet controls) + Ophis footer.
+// Cowswap's AppMenu, hiring banner, cow scene, snowfall, AMM banner are
+// dropped wholesale. See apps/frontend/.greg-divergences.md.
 import { useLocation } from 'react-router'
 
 import { URLWarning } from 'legacy/components/Header/URLWarning'
-import { useDarkModeManager } from 'legacy/state/user/hooks'
 
 import { OrdersPanel } from 'modules/account'
 import { AffiliateTraderModal } from 'modules/affiliate'
 import { useInjectedWidgetMetaData } from 'modules/injectedWidget'
-import { useSpeechBubbleNotification } from 'modules/notifications'
 import { useInitializeUtm } from 'modules/utm'
 
-import { CoWAmmBanner } from 'common/containers/CoWAmmBanner'
 import { InvalidLocalTimeWarning } from 'common/containers/InvalidLocalTimeWarning'
 import { useCustomTheme } from 'common/hooks/useCustomTheme'
 import { useGetMarketDimension } from 'common/hooks/useGetMarketDimension'
 
-import { CowSpeechBubbleHiringBanner } from './CowSpeechBubble/CowSpeechBubbleHiringBanner'
-import { CowSpeechBubbleNotificationBanner } from './CowSpeechBubble/CowSpeechBubbleNotificationBanner'
+import { OphisFooter } from 'greg/components/OphisFooter'
+import { OphisHeader } from 'greg/components/OphisHeader'
+
 import { RecoveryBanner } from './RecoveryBanner'
-import { SnowfallOverlay } from './SnowfallOverlay.pure'
 
 import { PageBackgroundContext, PageBackgroundVariant } from '../../contexts/PageBackgroundContext'
-import { ADDITIONAL_FOOTER_CONTENT, PRODUCT_VARIANT } from '../App/menuConsts'
 import * as styledEl from '../App/styled'
-import { isChristmasTheme as isChristmasThemeHelper } from '../App/styled'
-import { AppMenu } from '../AppMenu'
 import { NetworkAndAccountControls } from '../NetworkAndAccountControls/NetworkAndAccountControls.container'
 
 // Initialize static analytics instance
 const pixel = initPixelAnalytics()
 
+// Greg/Ophis body wrapper — neutral dark surface for cowswap routes
+// after we strip the upstream chrome. The cowswap swap-form internals
+// keep their own card backgrounds; this just paints what's around them.
+const OphisBodyWrapper = styled.div`
+  flex: 1 1 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 56px 16px 64px;
+  background: linear-gradient(180deg, #02000d 0%, #070328 50%, #02000d 100%);
+  color: #f5efe6;
+
+  & > * {
+    margin: 0 auto;
+  }
+`
+
 interface AppContainerProps {
   children: ReactNode | ReactNode[]
-}
-
-interface CowSpeechBubbleVisibilityParams {
-  isInjectedWidgetMode: boolean
-  pageScene: ReactNode | null
-  pageBackgroundVariant: PageBackgroundVariant
-  customTheme: CustomThemeKey
-  isChristmasTheme: boolean
-}
-
-type CustomThemeKey = ReturnType<typeof useCustomTheme>
-
-interface FooterSectionProps {
-  show: boolean
-  showCowSpeechBubble: boolean
-  currentNotification: NotificationModel | null
-  onDismissNotification: () => void
-  pageScene: ReactNode | null
 }
 
 export function AppContainer({ children }: AppContainerProps): ReactNode {
@@ -69,7 +64,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
   const { walletName } = useWalletDetails()
   const cowAnalytics = useCowAnalytics()
   const webVitals = useMemo(() => new WebVitalsAnalytics(cowAnalytics), [cowAnalytics])
-  const { isYieldEnabled, isAffiliateProgramEnabled } = useFeatureFlags()
+  const { isAffiliateProgramEnabled } = useFeatureFlags()
 
   useAnalyticsReporter({
     account,
@@ -84,14 +79,9 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
 
   useInitializeUtm()
   const isInjectedWidgetMode = isInjectedWidget()
-  // Greg/Ophis: detect the intent-landing route so we can skip cowswap
-  // chrome (header, footer, hiring banner, cow scene, page backgrounds).
   const isStandaloneLanding = useLocation().pathname === '/' && !isInjectedWidgetMode
-  const [darkMode] = useDarkModeManager()
   const [pageBackgroundVariant, setPageBackgroundVariant] = useState<PageBackgroundVariant>('default')
   const [pageScene, setPageScene] = useState<ReactNode | null>(null)
-
-  const isMobile = useMediaQuery(Media.upToMedium(false))
 
   const customTheme = useCustomTheme()
   const pageBackgroundValue = useMemo(
@@ -104,22 +94,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
     [pageBackgroundVariant, pageScene],
   )
 
-  const networkAndAccountControls = <NetworkAndAccountControls />
-  const isChristmasTheme = isChristmasThemeHelper(customTheme)
-  const shouldRenderCowSpeechBubble = shouldDisplayCowSpeechBubble({
-    isInjectedWidgetMode,
-    pageScene,
-    pageBackgroundVariant,
-    customTheme,
-    isChristmasTheme,
-  })
-  const { currentNotification, dismiss } = useSpeechBubbleNotification()
-  const hasActiveSpeechBubbleNotification = shouldRenderCowSpeechBubble && Boolean(currentNotification)
-  const showSnowfall = !isInjectedWidgetMode && isChristmasTheme
-
-  // Greg/Ophis: chrome-less landing. The intent-landing page (`/`)
-  // renders without cowswap's header/footer/banners. Chrome is back
-  // on every other route — manual swap, account, hooks, games, etc.
+  // Landing (`/`) handles its own chrome — render passthrough.
   if (isStandaloneLanding) {
     return (
       <PageBackgroundContext.Provider value={pageBackgroundValue}>
@@ -128,6 +103,21 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
     )
   }
 
+  // Injected-widget mode is host-controlled — render minimal shell.
+  if (isInjectedWidgetMode) {
+    return (
+      <PageBackgroundContext.Provider value={pageBackgroundValue}>
+        <styledEl.AppWrapper>
+          <styledEl.BodyWrapper customTheme={customTheme} backgroundVariant={pageBackgroundVariant}>
+            {children}
+            <styledEl.Marginer />
+          </styledEl.BodyWrapper>
+        </styledEl.AppWrapper>
+      </PageBackgroundContext.Provider>
+    )
+  }
+
+  // Every other route: Ophis chrome wrapping cowswap's body.
   return (
     <PageBackgroundContext.Provider value={pageBackgroundValue}>
       <styledEl.AppWrapper>
@@ -137,76 +127,19 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
 
         <OrdersPanel />
 
-        <AppMenu customTheme={customTheme}>{networkAndAccountControls}</AppMenu>
+        <OphisHeader>
+          <NetworkAndAccountControls />
+        </OphisHeader>
 
-        {isYieldEnabled && <CoWAmmBanner />}
-
-        <styledEl.BodyWrapper
-          customTheme={customTheme}
-          backgroundVariant={pageBackgroundVariant}
-          $hasActiveSpeechBubbleNotification={hasActiveSpeechBubbleNotification}
-        >
+        <OphisBodyWrapper>
           {children}
           <styledEl.Marginer />
-        </styledEl.BodyWrapper>
+        </OphisBodyWrapper>
 
-        <SnowfallOverlay show={showSnowfall} isMobile={isMobile} darkMode={darkMode} />
-        <FooterSection
-          show={!isInjectedWidgetMode}
-          showCowSpeechBubble={shouldRenderCowSpeechBubble}
-          currentNotification={currentNotification}
-          onDismissNotification={dismiss}
-          pageScene={pageScene}
-        />
+        <OphisFooter />
 
-        {/* Render MobileHeaderControls outside of MenuBar on mobile */}
-        {isMobile && !isInjectedWidgetMode && networkAndAccountControls}
         {isAffiliateProgramEnabled && <AffiliateTraderModal />}
       </styledEl.AppWrapper>
     </PageBackgroundContext.Provider>
-  )
-}
-
-function FooterSection({
-  show,
-  showCowSpeechBubble,
-  currentNotification,
-  onDismissNotification,
-  pageScene,
-}: FooterSectionProps): ReactNode {
-  if (!show) {
-    return null
-  }
-
-  const bubbleElement: ReactNode = showCowSpeechBubble ? (
-    currentNotification ? (
-      <CowSpeechBubbleNotificationBanner currentNotification={currentNotification} onClose={onDismissNotification} />
-    ) : (
-      <CowSpeechBubbleHiringBanner />
-    )
-  ) : null
-
-  return (
-    <styledEl.FooterSlot>
-      {bubbleElement}
-      {pageScene && <styledEl.SceneContainer>{pageScene}</styledEl.SceneContainer>}
-      <Footer productVariant={PRODUCT_VARIANT} additionalFooterContent={ADDITIONAL_FOOTER_CONTENT} hasTouchFooter />
-    </styledEl.FooterSlot>
-  )
-}
-
-function shouldDisplayCowSpeechBubble({
-  isInjectedWidgetMode,
-  pageScene,
-  pageBackgroundVariant,
-  customTheme,
-  isChristmasTheme,
-}: CowSpeechBubbleVisibilityParams): boolean {
-  return (
-    !isInjectedWidgetMode &&
-    !pageScene &&
-    pageBackgroundVariant !== 'nocows' &&
-    customTheme !== 'darkHalloween' &&
-    !isChristmasTheme
   )
 }

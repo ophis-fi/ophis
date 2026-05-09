@@ -119,16 +119,43 @@ interface Segment {
   entity?: Entity
 }
 
+// Word-character regex for entity-range expansion. Matches symbol-like
+// content (alnum, dot for "1.5", underscore, hyphen) so a token symbol
+// or chain slug stays intact even when the user has typed past the
+// in-flight LLM's snapshot of the input.
+const WORD_RE = /[a-zA-Z0-9._-]/
+
+/**
+ * Expand an entity range to the nearest non-word boundary in the
+ * current text — but only if the expanded substring still contains
+ * the LLM's `raw` value. This prevents stale offsets from leaving a
+ * token chip cropped (e.g. "et" after the user has typed "eth").
+ */
+function expandRange(text: string, e: Entity): { start: number; end: number } {
+  let s = Math.max(0, Math.min(e.start, text.length))
+  let t = Math.max(s, Math.min(e.end, text.length))
+  while (s > 0 && WORD_RE.test(text[s - 1])) s--
+  while (t < text.length && WORD_RE.test(text[t])) t++
+
+  const expanded = text.slice(s, t).toLowerCase()
+  const raw = e.raw.toLowerCase()
+  if (expanded.length > 0 && expanded.includes(raw)) return { start: s, end: t }
+  // Fall back to the LLM's offsets clamped into bounds.
+  return { start: Math.min(e.start, text.length), end: Math.min(e.end, text.length) }
+}
+
 function buildSegments(text: string, entities: Entity[]): Segment[] {
   if (entities.length === 0) return [{ text }]
-  const sorted = [...entities].sort((a, b) => a.start - b.start)
+  const sorted = [...entities]
+    .map((e) => ({ entity: e, ...expandRange(text, e) }))
+    .sort((a, b) => a.start - b.start)
   const out: Segment[] = []
   let cursor = 0
-  for (const e of sorted) {
-    const s = Math.max(e.start, cursor)
-    const t = Math.max(e.end, s)
+  for (const r of sorted) {
+    const s = Math.max(r.start, cursor)
+    const t = Math.max(r.end, s)
     if (s > cursor) out.push({ text: text.slice(cursor, s) })
-    if (t > s) out.push({ text: text.slice(s, t), entity: e })
+    if (t > s) out.push({ text: text.slice(s, t), entity: r.entity })
     cursor = t
   }
   if (cursor < text.length) out.push({ text: text.slice(cursor) })
