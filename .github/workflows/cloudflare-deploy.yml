@@ -18,9 +18,10 @@ jobs:
       group: cloudflare-pages-${{ github.ref }}
       cancel-in-progress: true
     steps:
+      # No fetch-depth: 0 — pages deploy doesn't need full history. Audit
+      # finding 2026-05-09: shrinking the working tree shrinks the
+      # surface for any pre-build hook that touches git history.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:

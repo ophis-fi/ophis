@@ -80,6 +80,12 @@ const json = (body: IntentResponse, status = 200): Response =>
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
+      // Defense-in-depth: prevent MIME-sniffing on the JSON response.
+      'x-content-type-options': 'nosniff',
+      // No frames; this endpoint is not meant to be embedded.
+      'x-frame-options': 'DENY',
+      // Strict referrer policy on API responses.
+      'referrer-policy': 'no-referrer',
     },
   })
 
@@ -146,6 +152,10 @@ function stripFences(s: string): string {
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.LIBERTAI_API_KEY) {
+    // Operator-facing message: still says "LibertAI key not configured"
+    // verbatim because IntentLanding's helperText regex looks for that
+    // exact phrase to surface the operator-action banner. If you change
+    // the message, update IntentLanding.helperText too.
     return json({ ok: false, error: { code: 'UPSTREAM', message: 'LibertAI key not configured' } }, 500)
   }
 
@@ -189,12 +199,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   } catch (err: unknown) {
     clearTimeout(timer)
     const aborted = err instanceof Error && err.name === 'AbortError'
+    // Generic error messages — don't reveal the upstream provider.
     return json(
       {
         ok: false,
         error: {
           code: aborted ? 'TIMEOUT' : 'UPSTREAM',
-          message: aborted ? 'LibertAI did not respond within 5s' : 'failed to reach LibertAI',
+          message: aborted ? 'parser did not respond within 5s' : 'failed to reach parser',
         },
       },
       aborted ? 504 : 502,
@@ -203,21 +214,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   clearTimeout(timer)
 
   if (!upstreamRes.ok) {
-    return json({ ok: false, error: { code: 'UPSTREAM', message: `LibertAI returned ${upstreamRes.status}` } }, 502)
+    return json({ ok: false, error: { code: 'UPSTREAM', message: `parser returned ${upstreamRes.status}` } }, 502)
   }
 
   let raw: unknown
   try {
     raw = await upstreamRes.json()
   } catch {
-    return json({ ok: false, error: { code: 'INVALID_JSON', message: 'LibertAI returned non-JSON' } }, 502)
+    return json({ ok: false, error: { code: 'INVALID_JSON', message: 'parser returned non-JSON' } }, 502)
   }
 
   // OpenAI-compatible: choices[0].message.content is the model's text.
   const content =
     (raw as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content
   if (typeof content !== 'string') {
-    return json({ ok: false, error: { code: 'INVALID_JSON', message: 'no content in LibertAI response' } }, 502)
+    return json({ ok: false, error: { code: 'INVALID_JSON', message: 'no content in parser response' } }, 502)
   }
 
   let parsed: unknown
