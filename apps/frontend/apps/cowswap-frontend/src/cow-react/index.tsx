@@ -38,7 +38,31 @@ import { APP_HEADER_ELEMENT_ID } from '../common/constants/common'
 import { WalletUnsupportedNetworkBanner } from '../common/containers/WalletUnsupportedNetworkBanner'
 import { BlockNumberProvider } from '../common/hooks/useBlockNumber'
 
-const cowAnalytics = initGtm()
+// Greg/Ophis: skip the upstream GTM bootstrap. `initGtm()` ships CoW's
+// GTM container `GTM-TBX4BV5M` by default and would phone home to
+// Google Tag Manager from every page load — off-brand for Ophis (we
+// don't want CoW analytics on our deploy) and a CSP concern
+// (script-src 'self' can't load googletagmanager.com without
+// 'unsafe-inline'). Stubbed with a no-op CowAnalytics matching the
+// interface so the existing CowAnalyticsProvider tree just receives a
+// no-op. Re-enable once Ophis has its own GTM ID + privacy policy —
+// tracked in apps/frontend/.greg-divergences.md.
+const cowAnalytics: ReturnType<typeof initGtm> = {
+  setUserAccount: () => undefined,
+  sendPageView: () => undefined,
+  sendEvent: () => undefined,
+  sendTiming: () => undefined,
+  sendError: () => undefined,
+  outboundLink: ({ hitCallback }) => {
+    try {
+      hitCallback()
+    } catch {
+      /* ignore */
+    }
+  },
+  setContext: () => undefined,
+}
+void initGtm // keep the import for the day we re-enable analytics
 const helmetContext = {}
 
 // Node removeChild hackaround
