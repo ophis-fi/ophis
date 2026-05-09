@@ -16,6 +16,10 @@ import { Navigate, Route, Routes } from 'react-router'
 import { Loading } from 'legacy/components/FlashingLoading'
 import { RedirectPathToSwapOnly, RedirectToPath } from 'legacy/pages/Swap/redirects'
 
+// Greg/Ophis: natural-language intent landing replaces upstream `/` redirect.
+// docs/development/specs/2026-05-08-ophis-intent-input-design.md
+import { IntentLanding } from 'greg/components/intent'
+
 import {
   AccountProxyWidgetPage,
   AccountProxyHelpPage,
@@ -123,7 +127,8 @@ export function RoutesApp(): ReactNode {
       <Route path={RoutesEnum.STATS} element={<ExternalRedirect url={DUNE_DASHBOARD_LINK} />} />
       <Route path={RoutesEnum.TWITTER} element={<ExternalRedirect url={TWITTER_LINK} />} />
 
-      <Route path={RoutesEnum.HOME} element={<RedirectPathToSwapOnly />} />
+      {/* Greg/Ophis: `/` shows the intent landing instead of redirecting to /swap. */}
+      <Route path={RoutesEnum.HOME} element={<IntentLanding />} />
       <Route
         path="*"
         element={
