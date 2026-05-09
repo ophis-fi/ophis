@@ -1,89 +1,88 @@
 /**
- * Layered text input that highlights extracted entity character ranges
- * with a translucent background colour while the user types.
+ * IntentInput — contenteditable single-line text input that renders
+ * recognized entity ranges as inline chips with logos.
  *
- * Implementation pattern: a regular <input> for keystrokes/IME (correct
- * caret behavior, selection, accessibility) plus an absolutely positioned
- * underlay <div> that renders the same string with <mark> spans behind
- * each entity range. Both layers share font, padding, and width so the
- * highlight aligns with the visible characters; the input text itself
- * stays opaque on top.
+ * Why contenteditable: the previous layered <input> + overlay approach
+ * cannot align the input caret with overlay chips that have variable
+ * widths (logos change the chip width). contenteditable lets the
+ * browser handle caret/selection natively while we render mixed
+ * text + chip nodes inline.
+ *
+ * Caret preservation across re-renders: because we rebuild the DOM
+ * when entities arrive, we record the caret's offset in plain-text
+ * terms before the rebuild and restore it after. Chips are non-editable
+ * (`contenteditable=false`) so the caret jumps over them as a unit.
+ *
+ * Security note: DOM is constructed programmatically (createElement +
+ * createTextNode) — never via innerHTML — so user input cannot inject
+ * markup.
  */
-import { ChangeEvent, ForwardedRef, KeyboardEvent, ReactNode, forwardRef, useMemo } from 'react'
+import { ForwardedRef, forwardRef, KeyboardEvent, ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 
 import styled from 'styled-components/macro'
 
 import type { Entity, EntityType } from './types'
+import { entityLogo } from './tokenAssets'
 
-const HIGHLIGHT_BG: Record<EntityType, string> = {
-  sellToken: 'rgba(230, 106, 85, 0.22)',
-  buyToken: 'rgba(199, 61, 108, 0.22)',
-  amount: 'rgba(0, 133, 87, 0.22)',
-  chain: 'rgba(110, 115, 117, 0.22)',
+const CHIP_BG: Record<EntityType, string> = {
+  sellToken: 'rgba(247, 147, 60, 0.16)',
+  buyToken: 'rgba(217, 96, 181, 0.18)',
+  amount: 'rgba(245, 239, 230, 0.10)',
+  chain: 'rgba(122, 110, 224, 0.20)',
 }
 
-const SHARED_TEXT_STYLES = `
-  font-family: var(--cow-font-family-primary);
-  font-size: 18px;
-  line-height: 28px;
-  letter-spacing: 0.005em;
-  padding: 18px 56px 18px 22px;
-  white-space: pre;
-`
+const CHIP_BORDER: Record<EntityType, string> = {
+  sellToken: '#F2A63E',
+  buyToken: '#D960B5',
+  amount: 'rgba(245, 239, 230, 0.55)',
+  chain: '#7A6EE0',
+}
+
+const CHIP_TEXT: Record<EntityType, string> = {
+  sellToken: '#FFC57E',
+  buyToken: '#FFB7E2',
+  amount: '#F5EFE6',
+  chain: '#C8BEFF',
+}
 
 const Wrap = styled.div`
   position: relative;
   width: 100%;
 `
 
-const Underlay = styled.div`
-  ${SHARED_TEXT_STYLES}
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  color: transparent;
-  border-radius: 16px;
-  overflow: hidden;
-  /* The input scrolls horizontally on overflow; we don't replicate that
-     here. The visible text is the input's; the underlay only colours the
-     ranges that are in view. Long inputs that overflow will lose the
-     highlight on offscreen text — acceptable for V1. */
-`
-
-const Mark = styled.span<{ $type: EntityType }>`
-  background: ${({ $type }) => HIGHLIGHT_BG[$type]};
-  border-radius: 4px;
-  padding: 2px 0;
-  margin: -2px 0;
-`
-
-const InputEl = styled.input`
-  ${SHARED_TEXT_STYLES}
-  position: relative;
+const Editor = styled.div`
+  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-size: 18px;
+  line-height: 32px;
+  letter-spacing: 0.01em;
   width: 100%;
-  background: transparent;
-  border: 1.5px solid var(--greg-color-stroke-strong, #c1c4c6);
-  border-radius: 16px;
-  color: var(--greg-color-text-primary, #1f2224);
+  min-height: 64px;
+  padding: 16px 56px 16px 22px;
+  border-radius: 18px;
+  border: 1.5px solid rgba(245, 239, 230, 0.18);
+  background: rgba(8, 4, 24, 0.55);
+  color: #f5efe6;
+  caret-color: #f2a63e;
   outline: none;
-  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
-
-  &::placeholder {
-    color: var(--greg-color-text-tertiary, #898d8f);
-  }
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out, background 160ms ease-out;
+  overflow-wrap: break-word;
 
   &:hover {
-    border-color: #e66a55;
+    border-color: rgba(242, 166, 62, 0.55);
   }
 
   &:focus {
-    border-color: #e66a55;
-    box-shadow: 0 0 0 3px rgba(230, 106, 85, 0.18);
+    border-color: #f2a63e;
+    background: rgba(8, 4, 24, 0.78);
+    box-shadow: 0 0 0 4px rgba(242, 166, 62, 0.18), 0 12px 32px rgba(0, 0, 0, 0.45);
   }
 
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
+  &:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(245, 239, 230, 0.42);
+    pointer-events: none;
   }
 `
 
@@ -95,10 +94,10 @@ const Spinner = styled.div`
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid rgba(230, 106, 85, 0.25);
-  border-top-color: #e66a55;
+  border: 2px solid rgba(242, 166, 62, 0.25);
+  border-top-color: #f2a63e;
   animation: spin 700ms linear infinite;
-
+  pointer-events: none;
   @keyframes spin {
     to {
       transform: translateY(-50%) rotate(360deg);
@@ -113,72 +112,247 @@ interface Props {
   entities: Entity[]
   pending: boolean
   placeholder?: string
-  disabled?: boolean
 }
 
-function buildSegments(text: string, entities: Entity[]): Array<{ text: string; type?: EntityType }> {
+interface Segment {
+  text: string
+  entity?: Entity
+}
+
+function buildSegments(text: string, entities: Entity[]): Segment[] {
   if (entities.length === 0) return [{ text }]
-
-  // Normalize: sort by start, drop overlaps. The function only emits
-  // valid non-overlapping ranges, but be defensive against drift.
   const sorted = [...entities].sort((a, b) => a.start - b.start)
-  const out: Array<{ text: string; type?: EntityType }> = []
+  const out: Segment[] = []
   let cursor = 0
-
   for (const e of sorted) {
     const s = Math.max(e.start, cursor)
     const t = Math.max(e.end, s)
     if (s > cursor) out.push({ text: text.slice(cursor, s) })
-    if (t > s) out.push({ text: text.slice(s, t), type: e.type })
+    if (t > s) out.push({ text: text.slice(s, t), entity: e })
     cursor = t
   }
   if (cursor < text.length) out.push({ text: text.slice(cursor) })
   return out
 }
 
-export const IntentInput = forwardRef(function IntentInput(
-  { value, onChange, onSubmit, entities, pending, placeholder, disabled }: Props,
-  ref: ForwardedRef<HTMLInputElement>,
-): ReactNode {
-  const segments = useMemo(() => buildSegments(value, entities), [value, entities])
+function getCaretPlainOffset(root: HTMLElement): number {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return 0
+  const range = sel.getRangeAt(0)
+  if (!root.contains(range.endContainer)) return 0
+  const pre = range.cloneRange()
+  pre.selectNodeContents(root)
+  pre.setEnd(range.endContainer, range.endOffset)
+  return pre.toString().length
+}
 
-  const handleKey = (e: KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === 'Enter' && onSubmit) {
-      e.preventDefault()
-      onSubmit()
+function setCaretPlainOffset(root: HTMLElement, target: number): void {
+  const sel = window.getSelection()
+  if (!sel) return
+  const range = document.createRange()
+  let remaining = target
+  let placed = false
+
+  function visit(node: Node): boolean {
+    if (placed) return true
+    if (node.nodeType === Node.TEXT_NODE) {
+      const len = (node.nodeValue ?? '').length
+      if (remaining <= len) {
+        range.setStart(node, remaining)
+        range.collapse(true)
+        placed = true
+        return true
+      }
+      remaining -= len
+      return false
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement
+      if (el.dataset.entityChip === 'true') {
+        const chipLen = (el.dataset.chipText ?? '').length
+        if (remaining <= chipLen) {
+          range.setStartAfter(el)
+          range.collapse(true)
+          placed = true
+          return true
+        }
+        remaining -= chipLen
+        return false
+      }
+      for (let i = 0; i < node.childNodes.length; i++) {
+        if (visit(node.childNodes[i])) return true
+      }
+    }
+    return false
+  }
+
+  visit(root)
+  if (!placed) {
+    range.selectNodeContents(root)
+    range.collapse(false)
+  }
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
+
+function buildChip(seg: Segment & { entity: Entity }): HTMLSpanElement {
+  const e = seg.entity
+  const span = document.createElement('span')
+  span.className = 'entity-chip'
+  span.dataset.entityChip = 'true'
+  span.dataset.chipText = seg.text
+  span.dataset.entityType = e.type
+  span.contentEditable = 'false'
+  span.style.setProperty('--chip-bg', CHIP_BG[e.type])
+  span.style.setProperty('--chip-border', CHIP_BORDER[e.type])
+  span.style.setProperty('--chip-fg', CHIP_TEXT[e.type])
+
+  const logo = entityLogo(e.type, e.value)
+  if (logo) {
+    const img = document.createElement('img')
+    img.src = logo
+    img.alt = ''
+    img.loading = 'lazy'
+    img.className = 'chip-logo'
+    span.appendChild(img)
+  }
+  const text = document.createElement('span')
+  text.className = 'chip-text'
+  text.appendChild(document.createTextNode(seg.text))
+  span.appendChild(text)
+  return span
+}
+
+function buildFragment(value: string, entities: Entity[]): DocumentFragment {
+  const frag = document.createDocumentFragment()
+  for (const seg of buildSegments(value, entities)) {
+    if (seg.entity) {
+      frag.appendChild(buildChip(seg as Segment & { entity: Entity }))
+    } else if (seg.text) {
+      frag.appendChild(document.createTextNode(seg.text))
     }
   }
+  return frag
+}
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>): void => {
-    onChange(e.target.value)
+function readPlainTextValue(el: HTMLElement): string {
+  let out = ''
+  function visit(node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.nodeValue ?? ''
+      return
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const e = node as HTMLElement
+      if (e.dataset.entityChip === 'true') {
+        out += e.dataset.chipText ?? ''
+        return
+      }
+      if (e.tagName === 'BR') {
+        out += '\n'
+        return
+      }
+      for (let i = 0; i < e.childNodes.length; i++) visit(e.childNodes[i])
+    }
   }
+  visit(el)
+  return out
+}
+
+const ChipStyles = styled.div`
+  & .entity-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 10px 2px 6px;
+    margin: 0 1px;
+    border: 1px solid var(--chip-border);
+    background: var(--chip-bg);
+    border-radius: 999px;
+    color: var(--chip-fg);
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    vertical-align: baseline;
+    user-select: none;
+  }
+  & .entity-chip .chip-logo {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.85);
+    display: block;
+  }
+`
+
+export interface IntentInputHandle {
+  focus: () => void
+}
+
+export const IntentInput = forwardRef(function IntentInput(
+  { value, onChange, onSubmit, entities, pending, placeholder }: Props,
+  ref: ForwardedRef<IntentInputHandle>,
+): ReactNode {
+  const editorRef = useRef<HTMLDivElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => editorRef.current?.focus(),
+  }))
+
+  useEffect(() => {
+    const el = editorRef.current
+    if (!el) return
+
+    const focused = document.activeElement === el
+    const caret = focused ? getCaretPlainOffset(el) : null
+
+    // Skip the rebuild when our DOM already represents this state
+    // (avoids fighting the user's own typing on every keystroke).
+    const currentPlain = readPlainTextValue(el)
+    const currentEntityCount = el.querySelectorAll('[data-entity-chip="true"]').length
+    if (currentPlain === value && currentEntityCount === entities.length) return
+
+    el.replaceChildren(buildFragment(value, entities))
+
+    if (focused && caret !== null) {
+      setCaretPlainOffset(el, caret)
+    }
+  }, [value, entities])
+
+  const handleInput = useCallback(() => {
+    const el = editorRef.current
+    if (!el) return
+    const next = readPlainTextValue(el).replace(/\n+/g, ' ')
+    if (next !== value) onChange(next)
+  }, [onChange, value])
+
+  const handleKey = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        if (onSubmit) onSubmit()
+      }
+    },
+    [onSubmit],
+  )
 
   return (
     <Wrap>
-      <Underlay aria-hidden>
-        {segments.map((seg, i) =>
-          seg.type ? (
-            <Mark key={i} $type={seg.type}>
-              {seg.text}
-            </Mark>
-          ) : (
-            <span key={i}>{seg.text}</span>
-          ),
-        )}
-      </Underlay>
-      <InputEl
-        ref={ref}
-        type="text"
-        spellCheck={false}
-        autoComplete="off"
-        autoCorrect="off"
-        value={value}
-        onChange={handleChange}
-        onKeyDown={handleKey}
-        placeholder={placeholder}
-        disabled={disabled}
-        aria-label="Describe the swap you want to make"
-      />
+      <ChipStyles>
+        <Editor
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck={false}
+          role="textbox"
+          aria-label="Describe the swap you want to make"
+          aria-multiline="false"
+          data-placeholder={placeholder}
+          onInput={handleInput}
+          onKeyDown={handleKey}
+        />
+      </ChipStyles>
       {pending && <Spinner aria-label="Parsing" />}
     </Wrap>
   )
