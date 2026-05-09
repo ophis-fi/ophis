@@ -36,8 +36,10 @@ export const DEFAULT_APP_CODE = 'CoW Swap'
 export const SAFE_APP_CODE = `${DEFAULT_APP_CODE}-SafeApp`
 
 // Greg/Ophis: brand-replacement for the document <title> suffix shown
-// across all routes. Tracked in apps/frontend/.greg-divergences.md.
-export const APP_TITLE = msg`Ophis — intent-based DEX aggregator`
+// across all routes. Plain string (no lingui i18n) — fine because the
+// brand name shouldn't be translated. Tracked in
+// apps/frontend/.greg-divergences.md.
+export const APP_TITLE = 'Ophis — intent-based DEX aggregator'
 
 export const PAGE_TITLES = {
   SWAP: msg`Swap`,
