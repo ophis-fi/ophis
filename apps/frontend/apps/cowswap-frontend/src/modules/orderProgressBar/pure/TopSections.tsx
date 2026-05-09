@@ -153,7 +153,7 @@ export function FinishedCancellationFailedTopSection({
             height={19}
             logoIconOnly
           />
-          <b>CoW Swap</b>
+          <b>Ophis</b>
         </styledEl.FinishedLogo>
       </styledEl.FinishedImageContent>
     </ProgressImageWrapper>

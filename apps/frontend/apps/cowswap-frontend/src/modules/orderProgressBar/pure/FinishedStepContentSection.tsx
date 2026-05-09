@@ -9,7 +9,7 @@ import styled from 'styled-components/macro'
  * - Finished steps display a BOTTOM content section with either:
  *   - Educational tips ("Did you know?")
  *   - Surplus information (when user received surplus)
- * - This content includes: cow image + text content + CoW Swap logo
+ * - This content includes: cow image + text content + Ophis logo
  * - On desktop: laid out horizontally with fixed height (246px)
  * - On mobile: content stacks vertically and needs flexible height
  */

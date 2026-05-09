@@ -41,7 +41,7 @@ export function InvalidCoWShedSetup(): ReactNode {
           </div>
           <div>
             <ExternalLink href={DISCORD_LINK}>
-              <Trans>Please contact CoW Swap support!</Trans>
+              <Trans>Please contact Ophis support!</Trans>
             </ExternalLink>
           </div>
         </div>

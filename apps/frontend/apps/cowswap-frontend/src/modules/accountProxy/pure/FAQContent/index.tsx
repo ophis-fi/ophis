@@ -23,7 +23,7 @@ const Answer1: FC = () => {
       <ExternalLink href="https://github.com/cowdao-grants/cow-shed">
         {accountProxyLabelString} <Trans>(also known as CoW Shed)</Trans>
       </ExternalLink>{' '}
-      <Trans>is a helper contract that improves the user experience within CoW Swap for features like</Trans>{' '}
+      <Trans>is a helper contract that improves the user experience within Ophis for features like</Trans>{' '}
       <ExternalLink href="https://docs.cow.fi/cow-protocol/reference/core/intents/hooks">
         <Trans>CoW Hooks</Trans>
       </ExternalLink>

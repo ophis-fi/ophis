@@ -36,7 +36,7 @@ export function NetworkCostsRow({
           <Trans>This is the cost of settling your order on-chain, including gas and any LP fees.</Trans>
           <br />
           <br />
-          <Trans>CoW Swap will try to lower this cost where possible.</Trans>
+          <Trans>Ophis will try to lower this cost where possible.</Trans>
           {tooltipSuffix}
         </>
       }

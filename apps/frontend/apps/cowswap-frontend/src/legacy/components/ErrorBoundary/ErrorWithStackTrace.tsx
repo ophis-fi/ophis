@@ -91,7 +91,7 @@ export const ErrorWithStackTrace = ({ error, eventId }: ErrorWithStackTraceProps
         <StyledTitle>
           <Trans>Something went wrong</Trans>
         </StyledTitle>
-        <img src={CowError} alt={t`CowSwap Error`} height="125" />
+        <img src={CowError} alt={t`Ophis Error`} height="125" />
       </FlexContainer>
       <AutoColumn gap={'md'}>
         {eventId && (

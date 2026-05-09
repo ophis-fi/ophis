@@ -132,7 +132,7 @@ export const ChunkLoadError = ({ eventId }: ChunkLoadErrorProps): ReactNode => {
               </IdRow>
             )}
           </NoConnectionDesc>
-          {cowNoConnectionIMGCache && <NoConnectionImg src={cowNoConnectionIMGCache} alt={t`CowSwap no connection`} />}
+          {cowNoConnectionIMGCache && <NoConnectionImg src={cowNoConnectionIMGCache} alt={t`Ophis no connection`} />}
         </NoConnectionContainer>
         <AutoRowWithGap justify="center">
           <ButtonPrimary width="fit-content" onClick={reloadPage}>

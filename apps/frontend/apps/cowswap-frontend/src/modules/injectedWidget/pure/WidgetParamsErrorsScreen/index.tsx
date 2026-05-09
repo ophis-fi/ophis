@@ -27,7 +27,7 @@ export function WidgetParamsErrorsScreen({ errors }: { errors: WidgetParamsError
   return (
     <Container>
       <h3>
-        <Trans>The are some errors with CoW Swap widget configuration</Trans>
+        <Trans>The are some errors with Ophis widget configuration</Trans>
       </h3>
       <Code value={JSON.stringify(errors, null, 4)}></Code>
     </Container>

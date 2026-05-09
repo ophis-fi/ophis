@@ -76,24 +76,24 @@ export const FINAL_STATES: OrderProgressBarStepName[] = [
 ]
 
 export const COW_SWAP_BENEFITS = [
-  msg`CoW Swap solvers search Uniswap, 1inch, Matcha, Sushi and more to find you the best price.`,
-  msg`CoW Swap sets the standard for protecting against MEV attacks such as frontrunning and sandwiching.`,
-  msg`CoW Swap was the first DEX to offer intent-based trading, gasless swaps, coincidences of wants, and many other DeFi innovations.`,
-  msg`CoW Swap is the only exchange that matches Coincidences of Wants (CoWs): peer-to-peer swaps that save on settlement costs.`,
-  msg`You can avoid price impact on large trades by using TWAP orders on CoW Swap.`,
-  msg`Limit orders on CoW Swap capture surplus - so if the price moves in your favor, you're likely to get more than you asked for.`,
-  msg`On CoW Swap, you can set limit orders for balances you don't have yet.`,
-  msg`Limit orders on CoW Swap are free to place and cancel. That's unique in DeFi!`,
-  msg`You can protect all your Ethereum transactions from MEV - not just trades on CoW Swap - by installing MEV Blocker.`,
+  msg`Ophis solvers search Uniswap, 1inch, Matcha, Sushi and more to find you the best price.`,
+  msg`Ophis sets the standard for protecting against MEV attacks such as frontrunning and sandwiching.`,
+  msg`Ophis was the first DEX to offer intent-based trading, gasless swaps, coincidences of wants, and many other DeFi innovations.`,
+  msg`Ophis is the only exchange that matches Coincidences of Wants (CoWs): peer-to-peer swaps that save on settlement costs.`,
+  msg`You can avoid price impact on large trades by using TWAP orders on Ophis.`,
+  msg`Limit orders on Ophis capture surplus - so if the price moves in your favor, you're likely to get more than you asked for.`,
+  msg`On Ophis, you can set limit orders for balances you don't have yet.`,
+  msg`Limit orders on Ophis are free to place and cancel. That's unique in DeFi!`,
+  msg`You can protect all your Ethereum transactions from MEV - not just trades on Ophis - by installing MEV Blocker.`,
   msg`Liquidity pools on CoW AMM grow faster than on other AMMs because they don't lose money to arbitrage bots.`,
-  msg`CoW Swap has over 20 active solvers - more than any other exchange.`,
-  msg`CoW Swap's robust solver competition protects your slippage from being exploited by MEV bots.`,
+  msg`Ophis has over 20 active solvers - more than any other exchange.`,
+  msg`Ophis's robust solver competition protects your slippage from being exploited by MEV bots.`,
   msg`Advanced users can create complex, conditional orders directly through CoW Protocol. Read the docs for more info.`,
-  msg`Unlike most other exchanges, CoW Swap doesn't charge you any fees if your trade fails.`,
+  msg`Unlike most other exchanges, Ophis doesn't charge you any fees if your trade fails.`,
 ]
 
 const availableChainsText = getAvailableChainsText()
-export const TRADE_ON_NEW_CHAINS_BENEFIT = msg`CoW Swap is live on ${availableChainsText}. Switch the network toggle in the nav bar for quick, cheap transactions.`
+export const TRADE_ON_NEW_CHAINS_BENEFIT = msg`Ophis is live on ${availableChainsText}. Switch the network toggle in the nav bar for quick, cheap transactions.`
 
 export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor[]> = {
   [SupportedChainId.MAINNET]: [TRADE_ON_NEW_CHAINS_BENEFIT, ...COW_SWAP_BENEFITS],

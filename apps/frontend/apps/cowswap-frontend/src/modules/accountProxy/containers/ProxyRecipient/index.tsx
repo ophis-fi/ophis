@@ -56,7 +56,7 @@ export function ProxyRecipient({
       {bridgeReceiverOverride ? (
         <InfoTooltip
           content={
-            'This bridge provider uses special receiver address to bridge funds. This address is deterministic for a quote and has been verified by CoW Swap.'
+            'This bridge provider uses special receiver address to bridge funds. This address is deterministic for a quote and has been verified by Ophis.'
           }
         />
       ) : (
