@@ -1,0 +1,51 @@
+# Cloudflare Pages _headers
+# Audit follow-up F2 (2026-05-10): Content-Security-Policy + transport
+# security headers for the Ophis SPA. Applies to every path.
+#
+# Notes:
+# - script-src is strict ('self' + 'wasm-unsafe-eval' only). No
+#   'unsafe-inline', no 'unsafe-eval'. Vite production bundles have
+#   no inline scripts; wallet libs (WalletConnect, ethers) need WASM.
+# - style-src includes 'unsafe-inline' because styled-components
+#   injects runtime style tags. Standard practice.
+# - connect-src and img-src use the broad `https:` / `wss:` schemes
+#   because cowswap reaches dozens of RPC providers, subgraphs,
+#   token-list CDNs, wallet-connect relays, etc. Tightening to an
+#   explicit allow-list is brittle and would routinely break on
+#   cowswap subtree pulls. Acceptable trade-off: still blocks
+#   mixed-content + non-HTTPS exfiltration.
+# - frame-ancestors 'self' permits same-origin iframes for the
+#   widget/Safe-app flow without allowing arbitrary third-party
+#   embeds. Loosen to specific wallet origins (e.g.
+#   https://app.safe.global) when widget embedding is promoted.
+# - object-src 'none' kills <embed>/<object>/<applet>.
+# - upgrade-insecure-requests forces any plain-http URL the bundle
+#   contains to be fetched over HTTPS.
+#
+# To debug CSP violations after a deploy: check browser DevTools
+# Console + Network for blocked-by-CSP entries. If a legitimate
+# resource is blocked, add its origin to the matching directive.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; frame-ancestors 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), midi=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  X-DNS-Prefetch-Control: on
+
+# Long-cache hashed assets (Vite emits content-hashes in filenames).
+/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Self-hosted token + chain logos — small, cacheable, never change
+# content under a given filename.
+/logos/*
+  Cache-Control: public, max-age=2592000, immutable
+
+# HTML / index — no-cache so deploys propagate immediately.
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate

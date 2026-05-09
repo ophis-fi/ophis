@@ -1,0 +1,63 @@
+# Dependabot configuration — audit follow-up F4 (2026-05-10).
+#
+# Watches:
+#   1. github-actions: keeps the SHA-pinned action references in
+#      .github/workflows/*.yml updated. We pinned all `uses:` to
+#      commit SHAs (audit finding M3); without dependabot we'd never
+#      receive security patches to those actions. Weekly bumps land
+#      as PRs — review and merge as normal.
+#   2. npm (root): we don't currently have a root package.json; the
+#      monorepo's lockfile lives at apps/frontend/pnpm-lock.yaml.
+#      Dependabot supports `pnpm` as of 2024 via `package-ecosystem:
+#      npm` pointing at the lockfile directory.
+#
+# Vendored upstream subtrees (apps/frontend/apps/cowswap-frontend/,
+# apps/backend/, contracts/) are intentionally excluded — bumping
+# their inner deps is a CoW-protocol concern, propagated via subtree
+# pulls, not by dependabot here.
+
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      # Bundle non-major bumps into one PR per week to reduce noise.
+      actions-non-major:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+
+  # npm (cowswap-frontend lockfile).
+  # Security-only on the heavy frontend lockfile — we don't want
+  # weekly noise from Nx / Vite minor bumps. Dependabot still opens
+  # PRs for any direct-dependency security advisories.
+  - package-ecosystem: npm
+    directory: /apps/frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(frontend)"
+    labels:
+      - dependencies
+      - frontend
+    allow:
+      - dependency-type: direct
+        update-type: security
+    groups:
+      frontend-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
