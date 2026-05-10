@@ -4,6 +4,7 @@ import React from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { affiliateTraderSavedCodeAtom, useIsRefCodeExpired } from 'modules/affiliate'
+import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useReplacedOrderUid } from 'modules/trade/state/alternativeOrder'
 import { useUtm } from 'modules/utm'
@@ -30,6 +31,11 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   const typedHooks = useAppDataHooks()
   const appCodeWithWidgetMetadata = useAppCodeWidgetAware(appCode)
   const volumeFee = useVolumeFee()
+  // Greg/Ophis: price-improvement partnerFee shape (CIP-75) takes
+  // precedence over the volumeFee pipeline when set. The volumeFee
+  // path stays for widget consumers that override partnerFee with
+  // their own volumeBps shape via injectedWidgetParamsAtom.
+  const ophisAppDataPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
@@ -45,7 +51,7 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
       orderClass={orderClass}
       utm={utm}
       typedHooks={typedHooks}
-      volumeFee={volumeFee}
+      volumeFee={ophisAppDataPartnerFee ?? volumeFee}
       replacedOrderUid={replacedOrderUid}
       userConsent={userConsent}
       refCode={isRefCodeExpired ? undefined : refCode}
