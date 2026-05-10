@@ -58,6 +58,11 @@ const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate (fallb
 const ipBuckets = new Map<string, number[]>()
 
 const ALLOWED_ORIGINS = new Set<string>([
+  // Production canonical domain (registered 2026-05-10).
+  'https://ophis.fi',
+  // Legacy Pages URL — kept during the .pages.dev → ophis.fi transition,
+  // safe to drop once the custom domain has been live for a while and
+  // no traffic remains on the .pages.dev hostname.
   'https://greg-etm.pages.dev',
   // Cloudflare Pages preview deploys land at *.greg-etm.pages.dev or
   // *.greg.pages.dev. Allow them by suffix in `isAllowedOrigin` below.
