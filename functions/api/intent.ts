@@ -159,14 +159,29 @@ Schema:
 }
 
 Rules:
-- Token canonical values: uppercase symbols. Allowed:
-    Stablecoins:   USDC, USDT, DAI, FRAX, LUSD, SUSD, GUSD, TUSD, USDP, USDE, PYUSD
-    ETH-pegs:      ETH, WETH, STETH, WSTETH, RETH, CBETH, SFRXETH, EZETH, RSETH
-    BTC-pegs:      WBTC, TBTC, CBBTC, BTCB
-    Blue-chips:    UNI, AAVE, MKR, LDO, COMP, CRV, SUSHI, SNX, BAL, GNO, YFI, 1INCH, LINK, FXS, RPL, PENDLE, ENS
-    Native gov:    MATIC, ARB, OP, AVAX, BNB
-    Memes:         PEPE, SHIB, DOGE, BONK
-- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth" -> WETH. "lido staked eth" -> STETH. "wrapped btc" -> WBTC. "uniswap" -> UNI. "aave" -> AAVE. "chainlink" -> LINK. "polygon" (the token) -> MATIC.
+- Token canonical values: uppercase symbols of well-known crypto
+  assets traded on EVM DEXes. Examples by category:
+    Stablecoins:   USDC, USDT, DAI, FRAX, LUSD, GHO, FDUSD, EURC, MIM
+    ETH-pegs:      ETH, WETH, STETH, WSTETH, RETH, CBETH, EZETH
+    BTC-pegs:      WBTC, TBTC, CBBTC, BTC
+    Native L1/L2:  ARB, OP, MATIC, AVAX, BNB, APT, SUI, NEAR, ATOM,
+                   FIL, HBAR, ICP, ALGO, TRX, LTC, BCH, XRP, ADA,
+                   SOL, DOT, TIA, TAO, MNT, IMX, STRK, INJ, SEI, METIS
+    DeFi:          UNI, AAVE, MKR, LDO, COMP, CRV, SUSHI, SNX, BAL,
+                   GNO, YFI, 1INCH, LINK, FXS, RPL, PENDLE, ENS,
+                   EIGEN, GRT, JUP, JTO, PYTH, GMX, AERO, VELO, CAKE
+    AI/RWA:        FET, RNDR, ARKM, AKT, ONDO, ETHFI, IO, WLD, TAO
+    Memes:         PEPE, SHIB, DOGE, BONK, WIF, FLOKI, BRETT, MOG,
+                   MEW, POPCAT, TURBO, GIGA
+    Gaming:        SAND, MANA, AXS, GALA, APE, ENJ, CHZ
+  If you recognise a symbol not listed but commonly traded on DEXes
+  (e.g. ATOM, NEAR, RUNE, OSMO, KAVA, WAVES, ROSE), emit it. The
+  client filters unknown symbols out — better to emit a recognisable
+  token than to omit it.
+- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth" -> WETH.
+  "lido staked eth" -> STETH. "wrapped btc" -> WBTC. "bitcoin"/"btc" -> BTC.
+  "uniswap" -> UNI. "aave" -> AAVE. "chainlink" -> LINK. "polygon"
+  (the token) -> MATIC. "solana" (token) -> SOL. "cardano" -> ADA.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
 - Chain canonical values: lowercase slugs. Allowed:
     ethereum, optimism, base, arbitrum, polygon, avalanche, gnosis, linea, bnb, megaeth, scroll, blast, mantle, zksync
@@ -196,18 +211,35 @@ const json = (body: IntentResponse, status = 200, extraHeaders: Record<string, s
 
 const TOKEN_VALUES = new Set([
   // Stablecoins
-  'USDC', 'USDT', 'DAI', 'FRAX', 'LUSD', 'SUSD', 'GUSD', 'TUSD', 'USDP', 'USDE', 'PYUSD',
+  'USDC', 'USDT', 'DAI', 'FRAX', 'LUSD', 'SUSD', 'GUSD', 'TUSD',
+  'USDP', 'USDE', 'PYUSD', 'GHO', 'FDUSD', 'EURC', 'MIM', 'CRVUSD',
   // ETH-pegs
-  'ETH', 'WETH', 'STETH', 'WSTETH', 'RETH', 'CBETH', 'SFRXETH', 'EZETH', 'RSETH',
+  'ETH', 'WETH', 'STETH', 'WSTETH', 'RETH', 'CBETH', 'SFRXETH',
+  'EZETH', 'RSETH',
   // BTC-pegs
-  'WBTC', 'TBTC', 'CBBTC', 'BTCB',
-  // Blue-chips
-  'UNI', 'AAVE', 'MKR', 'LDO', 'COMP', 'CRV', 'SUSHI', 'SNX', 'BAL', 'GNO', 'YFI', '1INCH',
-  'LINK', 'FXS', 'RPL', 'PENDLE', 'ENS',
-  // Native gov
-  'MATIC', 'ARB', 'OP', 'AVAX', 'BNB',
+  'WBTC', 'TBTC', 'CBBTC', 'BTCB', 'BTC',
+  // Native L1/L2
+  'BNB', 'MATIC', 'ARB', 'OP', 'AVAX', 'APT', 'SUI', 'NEAR', 'ATOM',
+  'FIL', 'HBAR', 'ICP', 'ALGO', 'ROSE', 'TON', 'SEI', 'INJ', 'RUNE',
+  'OSMO', 'MNT', 'IMX', 'TRX', 'LTC', 'BCH', 'ETC', 'XRP', 'ADA',
+  'SOL', 'DOT', 'KSM', 'XMR', 'XLM', 'FLOW', 'VET', 'HNT', 'AR',
+  'FLR', 'TIA', 'TAO', 'CRO', 'CFX', 'FTM', 'CELO', 'KAVA', 'STX',
+  'WAVES', 'ZEC', 'DASH',
+  // DeFi blue-chips
+  'UNI', 'AAVE', 'MKR', 'LDO', 'COMP', 'CRV', 'SUSHI', 'SNX', 'BAL',
+  'GNO', 'YFI', '1INCH', 'LINK', 'FXS', 'RPL', 'PENDLE', 'ENS',
+  'EIGEN', 'GRT', 'JUP', 'JTO', 'PYTH', 'GMX', 'AERO', 'VELO', 'KAS',
+  'DYM', 'CAKE', 'OCEAN', 'NMR', 'RLC', 'BAND', 'ZRX', 'PRIME', 'RON',
+  'NEXO', 'STRK', 'METIS',
+  // AI / RWA
+  'FET', 'RNDR', 'ARKM', 'AKT', 'ONDO', 'ETHFI', 'IO', 'WLD',
   // Memes
-  'PEPE', 'SHIB', 'DOGE', 'BONK',
+  'PEPE', 'SHIB', 'DOGE', 'BONK', 'WIF', 'FLOKI', 'BRETT', 'MOG',
+  'MEW', 'POPCAT', 'TURBO', 'GIGA',
+  // Gaming
+  'SAND', 'MANA', 'AXS', 'GALA', 'APE', 'ENJ', 'CHZ', 'JASMY',
+  // Other
+  'STG', 'RAD',
 ])
 
 const CHAIN_VALUES = new Set([
@@ -239,12 +271,21 @@ function isValidEntity(e: unknown, textLen: number): e is Entity {
   return false
 }
 
-function isValidParsedIntent(d: unknown, textLen: number): d is ParsedIntent {
-  if (!d || typeof d !== 'object') return false
+/**
+ * Filter the model's output instead of rejecting the whole response
+ * when individual entities don't pass validation. Lets the LLM emit
+ * symbols outside our hard allow-list (the model is encouraged to
+ * extract any well-known DEX-traded token) while still guaranteeing
+ * the frontend only sees entities it can render. Returns null if the
+ * top-level shape itself is wrong.
+ */
+function filterParsedIntent(d: unknown, textLen: number): ParsedIntent | null {
+  if (!d || typeof d !== 'object') return null
   const o = d as Record<string, unknown>
-  if (o.intent !== 'swap' && o.intent !== 'unknown') return false
-  if (!Array.isArray(o.entities)) return false
-  return o.entities.every((e) => isValidEntity(e, textLen))
+  if (o.intent !== 'swap' && o.intent !== 'unknown') return null
+  if (!Array.isArray(o.entities)) return null
+  const entities = o.entities.filter((e): e is Entity => isValidEntity(e, textLen))
+  return { intent: o.intent, entities }
 }
 
 function stripFences(s: string): string {
@@ -365,14 +406,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json({ ok: false, error: { code: 'INVALID_JSON', message: 'model output was not JSON' } }, 502)
   }
 
-  if (!isValidParsedIntent(parsed, text.length)) {
+  const filtered = filterParsedIntent(parsed, text.length)
+  if (!filtered) {
     return json(
       { ok: false, error: { code: 'INVALID_JSON', message: 'model output failed schema validation' } },
       502,
     )
   }
 
-  return json({ ok: true, data: parsed })
+  return json({ ok: true, data: filtered })
 }
 
 // Reject anything else.

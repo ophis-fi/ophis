@@ -23,7 +23,7 @@ export function CodeLinkingStatusSection(props: CodeLinkingStatusSectionProps): 
         <InlineAlert bannerType={StatusColorVariant.Warning} hideIcon>
           <Trans>
             We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you
-            traded on CoW Swap before.
+            traded on Ophis before.
           </Trans>
         </InlineAlert>
       </StatusMessage>

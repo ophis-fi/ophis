@@ -65,7 +65,7 @@ const LEARN_ITEM = {
   children: [
     {
       href: 'https://cow.fi/cow-swap',
-      label: msg`About CoW Swap`,
+      label: msg`About Ophis`,
       external: true,
     },
     {

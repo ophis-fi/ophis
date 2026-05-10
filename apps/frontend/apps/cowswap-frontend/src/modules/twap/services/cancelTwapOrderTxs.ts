@@ -82,7 +82,7 @@ let APP_DATA_HASH: string | undefined
 
 function getAppDataHash(): string {
   if (!APP_DATA_HASH) {
-    APP_DATA_HASH = toKeccak256(JSON.stringify({ version: '1.6.0', appCode: 'CoW Swap', metadata: {} }))
+    APP_DATA_HASH = toKeccak256(JSON.stringify({ version: '1.6.0', appCode: 'Ophis', metadata: {} }))
   }
   return APP_DATA_HASH
 }

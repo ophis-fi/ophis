@@ -24,7 +24,7 @@ import {
 const EMPTY_VALUE_LABEL = '-'
 
 const AFFILIATE_TYPED_DATA_DOMAIN = {
-  name: 'CoW Swap Affiliate',
+  name: 'Ophis Affiliate',
   version: '1',
 } as const
 
@@ -211,7 +211,7 @@ export function getRefCodeFromAppData(fullAppData: string | undefined): string |
 }
 
 export function getReferralLink(refCode: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://swap.cow.fi'
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ophis.app'
   return `${origin}?ref=${refCode}`
 }
 

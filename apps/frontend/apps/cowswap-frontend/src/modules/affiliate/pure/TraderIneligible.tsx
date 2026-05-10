@@ -17,7 +17,7 @@ export function TraderIneligible(): ReactNode {
     [account],
   )
 
-  const title = <Trans>This wallet has already traded on CoW Swap.</Trans>
+  const title = <Trans>This wallet has already traded on Ophis.</Trans>
 
   return (
     <>
