@@ -87,6 +87,9 @@ export const FlyoutRowActiveIndicator = styled.div<{ $active: boolean }>`
   transition: background-color 0.16s ease-in-out, box-shadow 0.16s ease-in-out;
 `
 
+// Greg/Ophis: active chain always at the top of the list (mobile and
+// desktop) — users want to see what they're currently on, not hunt
+// through an alphabetical list to find it.
 export const ActiveRowWrapper = styled.div`
   background-color: var(${UI.COLOR_PAPER_DARKER});
   border-radius: 12px;
@@ -94,9 +97,9 @@ export const ActiveRowWrapper = styled.div`
   width: 100%;
   padding: 8px;
   margin: 12px 0;
+  order: -1;
 
   ${Media.upToMedium()} {
     padding: 0;
-    order: -1;
   }
 `

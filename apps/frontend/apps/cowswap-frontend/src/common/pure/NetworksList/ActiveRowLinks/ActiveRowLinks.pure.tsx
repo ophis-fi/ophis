@@ -1,6 +1,5 @@
 import { ReactNode } from 'react'
 
-import { getExplorerBaseUrl } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { Trans } from '@lingui/react/macro'
@@ -15,12 +14,14 @@ export interface ActiveRowLinksProps {
   targetChainId: SupportedChainId
 }
 
+// Greg/Ophis: dropped the hardcoded "CoW Protocol Explorer" row.
+// Block-explorer (Etherscan, Arbiscan, etc.) and bridge stay — those
+// are chain-native resources, not CoW branding.
 export function ActiveRowLinks({
   bridge,
   explorer,
   explorerTitle,
   helpCenterUrl,
-  targetChainId,
 }: ActiveRowLinksProps): ReactNode {
   return (
     <styledEl.ActiveRowLinkList>
@@ -52,14 +53,6 @@ export function ActiveRowLinks({
           </styledEl.LinkOutIconWrapper>
         </styledEl.ActiveRowLink>
       )}
-      <styledEl.ActiveRowLink href={getExplorerBaseUrl(targetChainId)}>
-        <styledEl.ActiveRowLinkLabel>
-          <Trans>CoW Protocol Explorer</Trans>
-        </styledEl.ActiveRowLinkLabel>
-        <styledEl.LinkOutIconWrapper>
-          <styledEl.LinkOutCircle aria-hidden="true" />
-        </styledEl.LinkOutIconWrapper>
-      </styledEl.ActiveRowLink>
     </styledEl.ActiveRowLinkList>
   )
 }
