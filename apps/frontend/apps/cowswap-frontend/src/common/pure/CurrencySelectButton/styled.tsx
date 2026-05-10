@@ -55,11 +55,16 @@ export const StyledTokenSymbol = styled(TokenSymbol)<{ displayTokenName: boolean
   transition: color var(${UI.ANIMATION_DURATION}) ease-in-out;
 `
 
+// Greg/Ophis: empty-state token picker reads as an outlined affordance,
+// not a primary CTA. Solid coral on every input row was visually
+// dominating the swap card and competing with the actual primary
+// button at the bottom. Outlined coral chip → fills on hover.
 const getButtonColors = ($noCurrencySelected: boolean): ReturnType<typeof css> => css`
-  --button-bg: ${$noCurrencySelected ? `var(${UI.COLOR_PRIMARY})` : `var(${UI.COLOR_PAPER})`};
-  --button-text: ${$noCurrencySelected ? `var(${UI.COLOR_BUTTON_TEXT})` : `var(${UI.COLOR_TEXT_PAPER})`};
-  --button-bg-hover: ${$noCurrencySelected ? `var(${UI.COLOR_PRIMARY_LIGHTER})` : `var(${UI.COLOR_PRIMARY})`};
+  --button-bg: ${$noCurrencySelected ? 'transparent' : `var(${UI.COLOR_PAPER})`};
+  --button-text: ${$noCurrencySelected ? `var(${UI.COLOR_PRIMARY})` : `var(${UI.COLOR_TEXT_PAPER})`};
+  --button-bg-hover: ${$noCurrencySelected ? `var(${UI.COLOR_PRIMARY})` : `var(${UI.COLOR_PRIMARY})`};
   --button-text-hover: var(${UI.COLOR_BUTTON_TEXT});
+  --button-border: ${$noCurrencySelected ? `var(${UI.COLOR_PRIMARY})` : 'transparent'};
 `
 
 const getHoverColor = (readonlyMode: boolean): string => {
@@ -83,11 +88,11 @@ export const CurrencySelectWrapper = styled.button<{
   align-items: center;
   cursor: ${({ readonlyMode }) => (readonlyMode ? 'default' : 'pointer')};
   gap: 6px;
-  border: 0;
+  border: 1.5px solid var(--button-border, transparent);
   outline: none;
   background: var(--button-bg);
   color: var(--button-text);
-  box-shadow: var(${UI.BOX_SHADOW_2});
+  box-shadow: ${({ $noCurrencySelected }) => ($noCurrencySelected ? 'none' : `var(${UI.BOX_SHADOW_2})`)};
   opacity: ${({ isLoading }) => (isLoading ? 0.6 : 1)};
   border-radius: var(${UI.BORDER_RADIUS_NORMAL});
   transition: background var(${UI.ANIMATION_DURATION}) ease-in-out;
