@@ -13,7 +13,7 @@ export const FlyoutHeader = styled.div`
   top: 0;
   z-index: 1;
   width: 100%;
-  padding: 16px;
+  padding: 16px 16px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -21,16 +21,23 @@ export const FlyoutHeader = styled.div`
   color: inherit;
   font-weight: 400;
   background-color: var(${UI.COLOR_PAPER});
+  border-bottom: 1px solid var(${UI.COLOR_PAPER_DARKEST});
 `
 
+// Greg/Ophis: monospace eyebrow tag for the flyout header, in line
+// with the brand's "JetBrains Mono labels next to data" treatment.
 export const FlyoutHeaderTitle = styled.div`
   flex: 1 1 auto;
-  font-size: 16px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
   font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(${UI.COLOR_TEXT_OPACITY_70});
   margin: 0;
 
   ${Media.upToMedium()} {
-    font-size: 18px;
+    font-size: 12px;
   }
 `
 
@@ -87,6 +94,9 @@ export const FlyoutMenu = styled.div`
   }
 `
 
+// Greg/Ophis: chain-selector flyout reads as an Ophis-branded card,
+// not a cowswap dropdown. 20px radius (matches input rows), saffron
+// hairline at the edge, and a deeper shadow so it lifts off the page.
 export const FlyoutMenuContents = styled.div.attrs(() => ({
   role: 'dialog',
   'aria-modal': true,
@@ -97,10 +107,13 @@ export const FlyoutMenuContents = styled.div.attrs(() => ({
   overflow: hidden;
   background-color: var(${UI.COLOR_PAPER});
   border: 1px solid var(${UI.COLOR_PAPER_DARKEST});
-  box-shadow: var(${UI.BOX_SHADOW});
-  border-radius: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    0 4px 12px rgba(0, 0, 0, 0.32);
+  border-radius: 20px;
   font-size: 16px;
-  min-width: 175px;
+  min-width: 220px;
   z-index: 99;
   max-height: calc(100dvh - 66px - 32px);
 
@@ -109,8 +122,8 @@ export const FlyoutMenuContents = styled.div.attrs(() => ({
     left: 0;
     position: fixed;
     width: 100%;
-    border-radius: 12px 12px 0 0;
-    box-shadow: 0 -100vh 0 100vh ${transparentize('black', 0.4)};
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -100vh 0 100vh ${transparentize('black', 0.5)};
     max-height: calc(100dvh - 56px) !important;
   }
 `

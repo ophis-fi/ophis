@@ -1,19 +1,21 @@
 /**
- * OphisGlobeLoader — 200×200 monochrome globe loader.
+ * OphisGlobeLoader — monochrome cosmic globe with the Ophie ouroboros
+ * orbiting around it.
  *
- * Spec from Clement (2026-05-10): orthographic projection of the
- * world-atlas country topology, slowly rotating with a slight axial
- * tilt. Three Ophie ouroboros marks orbit it at different radii and
- * speeds (counter-spin on the middle ring, faster on the outer)
- * replacing the original three "whirl layers" spec — gives the
- * orbital "loading" feel without abstract arcs.
+ * Visual: a slowly rotating earth (orthographic projection of the
+ * world-atlas country topology, drawn into canvas every frame), with
+ * a single Ophie mark sliding around it on a circular orbit and
+ * counter-spinning on its own axis as it travels — so the loop reads
+ * as "Ophis circling the planet" rather than three random arcs.
  *
- * Palette: warm off-white background, single near-black ink. The
- * loader is a paper card sitting on the dark cosmic landing.
+ * Palette: cosmic indigo card on the dark page, cream ink for both
+ * the land masses and the Ophie. Match the rest of the Ophis dark
+ * surfaces (paper #13072B, ink #F5EFE6) so the loader plugs cleanly
+ * into any pending state.
  *
- * The TopoJSON data ships at /data/countries-110m.json (~105 KB,
- * cached one-month-immutable via _headers). Decoded once on mount,
- * then drawn into canvas every frame via requestAnimationFrame.
+ * Topology data ships at /data/countries-110m.json (~105 KB, cached
+ * one-month-immutable via _headers). Decoded once on mount, then
+ * drawn each frame via requestAnimationFrame.
  */
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
@@ -44,8 +46,9 @@ const DEFAULT_SIZE = 200
 const AXIAL_TILT_DEG = -23.5
 const ROTATION_PERIOD_MS = 60_000
 
-const PAPER = '#FAF6EE' // warm off-white
-const INK = '#0F0E0B' // near-black
+const PAPER = '#13072B' // cosmic card surface
+const INK = '#F5EFE6' // cream ink
+const SPHERE_INK = 'rgba(245, 239, 230, 0.40)'
 
 let cachedLand: GeoPermissibleObjects | null = null
 
@@ -70,12 +73,12 @@ const Wrap = styled.div<{ $size: number }>`
   border-radius: 999px;
   background: ${PAPER};
   color: ${INK};
-  /* Subtle paper edge — looks intentional on the dark cosmic page. */
+  /* Subtle paper edge so the loader reads as a small disc on the dark page. */
   box-shadow:
-    0 1px 0 rgba(15, 14, 11, 0.04) inset,
-    0 0 0 1px rgba(15, 14, 11, 0.06),
-    0 12px 32px rgba(0, 0, 0, 0.32),
-    0 2px 6px rgba(0, 0, 0, 0.18);
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 0 0 1px rgba(245, 239, 230, 0.08),
+    0 12px 32px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.32);
 `
 
 const GlobeCanvas = styled.canvas<{ $diameter: number }>`
@@ -88,17 +91,22 @@ const GlobeCanvas = styled.canvas<{ $diameter: number }>`
   display: block;
 `
 
-const spin = keyframes`
+// Orbit container spins around the disc center; the Ophie mark sits
+// pinned to the top of that container so as the container rotates,
+// the mark traces a circle around the globe.
+const orbitSpin = keyframes`
   from { transform: translate(-50%, -50%) rotate(0deg); }
   to   { transform: translate(-50%, -50%) rotate(360deg); }
 `
 
-const Orbit = styled.div<{
-  $diameter: number
-  $duration: string
-  $direction: 'normal' | 'reverse'
-  $delay: string
-}>`
+// Counter-spin keeps the Ophie mark visually upright (or gives it a
+// subtle independent tumble) while it orbits.
+const ophieSpin = keyframes`
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(-360deg); }
+`
+
+const Orbit = styled.div<{ $diameter: number }>`
   position: absolute;
   top: 50%;
   left: 50%;
@@ -106,41 +114,26 @@ const Orbit = styled.div<{
   height: ${({ $diameter }) => $diameter}px;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  animation: ${spin} ${({ $duration }) => $duration}
-    linear infinite;
-  animation-direction: ${({ $direction }) => $direction};
-  animation-delay: ${({ $delay }) => $delay};
+  animation: ${orbitSpin} 8s linear infinite;
 `
 
-const OphieDot = styled.svg<{ $size: number; $opacity: number }>`
+const OphieDot = styled.svg<{ $size: number }>`
   position: absolute;
   top: 0;
   left: 50%;
   width: ${({ $size }) => $size}px;
   height: ${({ $size }) => $size}px;
   transform: translate(-50%, -50%);
-  opacity: ${({ $opacity }) => $opacity};
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
+  animation: ${ophieSpin} 8s linear infinite;
 `
-
-interface OrbitConfig {
-  ratio: number // orbit diameter / wrapper size
-  ophieSize: number
-  duration: string
-  direction: 'normal' | 'reverse'
-  opacity: number
-  delay: string
-}
-
-const ORBITS: OrbitConfig[] = [
-  { ratio: 0.78, ophieSize: 16, duration: '9s', direction: 'normal', opacity: 0.7, delay: '0s' },
-  { ratio: 0.9, ophieSize: 14, duration: '14s', direction: 'reverse', opacity: 0.45, delay: '-3s' },
-  { ratio: 0.98, ophieSize: 12, duration: '22s', direction: 'normal', opacity: 0.28, delay: '-7s' },
-]
 
 export function OphisGlobeLoader({ size = DEFAULT_SIZE, className, ariaLabel = 'Loading' }: Props): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [ready, setReady] = useState(cachedLand !== null)
-  const globeDiameter = Math.round(size * 0.66)
+  const globeDiameter = Math.round(size * 0.62)
+  const orbitDiameter = Math.round(size * 0.92)
+  const ophieSize = Math.max(14, Math.round(size * 0.14))
 
   useEffect(() => {
     let raf = 0
@@ -174,18 +167,18 @@ export function OphisGlobeLoader({ size = DEFAULT_SIZE, className, ariaLabel = '
 
         ctx.clearRect(0, 0, globeDiameter, globeDiameter)
 
-        // Sphere outline (paper-ink contrast).
+        // Sphere outline.
         ctx.beginPath()
         path(sphere)
-        ctx.strokeStyle = INK
-        ctx.globalAlpha = 0.55
+        ctx.strokeStyle = SPHERE_INK
+        ctx.globalAlpha = 1
         ctx.stroke()
 
         // Land masses.
         ctx.beginPath()
         path(land)
         ctx.fillStyle = INK
-        ctx.globalAlpha = 1
+        ctx.globalAlpha = 0.95
         ctx.fill()
 
         raf = requestAnimationFrame(tick)
@@ -218,29 +211,13 @@ export function OphisGlobeLoader({ size = DEFAULT_SIZE, className, ariaLabel = '
   return (
     <Wrap className={className} $size={size} role="status" aria-label={ariaLabel}>
       <GlobeCanvas ref={canvasRef} $diameter={globeDiameter} aria-hidden style={{ opacity: ready ? 1 : 0 }} />
-      {ORBITS.map((orbit, i) => {
-        const orbitDiameter = Math.round(size * orbit.ratio)
-        return (
-          <Orbit
-            key={i}
-            $diameter={orbitDiameter}
-            $duration={orbit.duration}
-            $direction={orbit.direction}
-            $delay={orbit.delay}
-            aria-hidden
-          >
-            <OphieDot
-              $size={orbit.ophieSize}
-              $opacity={orbit.opacity}
-              viewBox={OPHIE_VIEWBOX}
-            >
-              <g transform={`translate(${OPHIE_PAD_X},0)`}>
-                <path d={OPHIE_PATH} fill={INK} />
-              </g>
-            </OphieDot>
-          </Orbit>
-        )
-      })}
+      <Orbit $diameter={orbitDiameter} aria-hidden>
+        <OphieDot $size={ophieSize} viewBox={OPHIE_VIEWBOX}>
+          <g transform={`translate(${OPHIE_PAD_X},0)`}>
+            <path d={OPHIE_PATH} fill={INK} />
+          </g>
+        </OphieDot>
+      </Orbit>
     </Wrap>
   )
 }

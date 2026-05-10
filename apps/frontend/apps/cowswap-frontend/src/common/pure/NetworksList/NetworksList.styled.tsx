@@ -32,24 +32,30 @@ export const NetworkLabel = styled.div`
   }
 `
 
+// Greg/Ophis: chain rows get a 12px radius (matches Ophis chip rhythm)
+// and a saffron-tinted active background instead of the cowswap blue
+// `theme.bg2`. Active row uses COLOR_PRIMARY_OPACITY_10 so the
+// selected chain reads as "lit by the brand".
 export const FlyoutRow = styled.button<{ $active: boolean }>`
   align-items: center;
-  background-color: ${({ $active, theme }) => ($active ? theme.bg2 : 'transparent')};
-  border-radius: 8px;
-  border: 0;
+  background-color: ${({ $active }) => ($active ? `var(${UI.COLOR_PRIMARY_OPACITY_10})` : 'transparent')};
+  border-radius: 12px;
+  border: 1px solid ${({ $active }) => ($active ? `var(${UI.COLOR_PRIMARY_OPACITY_25})` : 'transparent')};
   cursor: pointer;
   display: flex;
-  font-weight: 400;
+  font-weight: 500;
   justify-content: space-between;
-  padding: 6px 8px;
+  padding: 8px 10px;
   text-align: left;
   width: 100%;
-  color: ${({ $active, theme }) => ($active ? theme.white : `var(${UI.COLOR_TEXT})`)};
+  color: ${({ $active }) => ($active ? `var(${UI.COLOR_PRIMARY})` : `var(${UI.COLOR_TEXT})`)};
   appearance: none;
 
   &:hover {
-    color: ${({ theme, $active }) => ($active ? 'inherit' : theme.text1)};
-    background: ${({ theme, $active }) => ($active ? 'inherit' : transparentize(theme.text, 0.9))};
+    color: ${({ $active, theme }) => ($active ? `var(${UI.COLOR_PRIMARY})` : theme.text1)};
+    background: ${({ theme, $active }) =>
+      $active ? `var(${UI.COLOR_PRIMARY_OPACITY_25})` : transparentize(theme.text, 0.9)};
+    border-color: ${({ $active }) => ($active ? `var(${UI.COLOR_PRIMARY})` : 'transparent')};
   }
 
   &:focus-visible {
@@ -67,19 +73,24 @@ export const FlyoutRow = styled.button<{ $active: boolean }>`
     height: ${ROW_HEIGHT_MOBILE};
   }
 
-  transition: background 0.13s ease-in-out;
+  transition: background 0.16s ease-in-out, border-color 0.16s ease-in-out;
 `
 
+// Active-row dot: brand coral when selected, muted lavender-grey when
+// idle — matches the dark cosmic palette.
 export const FlyoutRowActiveIndicator = styled.div<{ $active: boolean }>`
-  background-color: ${({ $active, theme }) => ($active ? theme.green1 : '#a7a7a7')};
+  background-color: ${({ $active }) => ($active ? `var(${UI.COLOR_PRIMARY})` : 'rgba(168, 162, 184, 0.6)')};
+  box-shadow: ${({ $active }) => ($active ? `0 0 0 3px var(${UI.COLOR_PRIMARY_OPACITY_25})` : 'none')};
   border-radius: 50%;
-  height: 9px;
-  width: 9px;
+  height: 8px;
+  width: 8px;
+  transition: background-color 0.16s ease-in-out, box-shadow 0.16s ease-in-out;
 `
 
 export const ActiveRowWrapper = styled.div`
   background-color: var(${UI.COLOR_PAPER_DARKER});
-  border-radius: 8px;
+  border-radius: 12px;
+  border: 1px solid var(${UI.COLOR_PAPER_DARKEST});
   width: 100%;
   padding: 8px;
   margin: 12px 0;

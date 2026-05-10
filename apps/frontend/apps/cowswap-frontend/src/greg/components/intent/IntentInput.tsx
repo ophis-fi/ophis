@@ -21,38 +21,30 @@ import { ClipboardEvent, ForwardedRef, forwardRef, KeyboardEvent, ReactNode, use
 
 import styled from 'styled-components/macro'
 
-import { OphisGlobeLoader } from '../OphisGlobeLoader'
-
 import type { Entity, EntityType } from './types'
 import { entityLogo } from './tokenAssets'
 
-// Paper-card aesthetic per Clement's V3 design call (2026-05-10):
-// the search box is a warm off-white card on the dark cosmic landing.
-// Near-black ink, monospace label accents on chips.
-const PAPER = '#FAF6EE'
-const INK = '#0F0E0B'
-const INK_MUTED = 'rgba(15, 14, 11, 0.55)'
-const HAIRLINE = 'rgba(15, 14, 11, 0.10)'
-
+// Cosmic palette — chips sit on the dark indigo input surface, with
+// type-specific accents in the brand's coral/magenta/indigo trio.
 const CHIP_BG: Record<EntityType, string> = {
-  sellToken: 'rgba(204, 95, 38, 0.10)', // warm coral on paper
-  buyToken: 'rgba(150, 41, 105, 0.10)', // muted magenta on paper
-  amount: 'rgba(15, 14, 11, 0.06)', // grey on paper
-  chain: 'rgba(53, 41, 132, 0.10)', // indigo on paper
+  sellToken: 'rgba(247, 147, 60, 0.16)',
+  buyToken: 'rgba(217, 96, 181, 0.18)',
+  amount: 'rgba(245, 239, 230, 0.10)',
+  chain: 'rgba(122, 110, 224, 0.20)',
 }
 
 const CHIP_BORDER: Record<EntityType, string> = {
-  sellToken: 'rgba(204, 95, 38, 0.55)',
-  buyToken: 'rgba(150, 41, 105, 0.55)',
-  amount: 'rgba(15, 14, 11, 0.18)',
-  chain: 'rgba(53, 41, 132, 0.55)',
+  sellToken: '#F2A63E',
+  buyToken: '#D960B5',
+  amount: 'rgba(245, 239, 230, 0.55)',
+  chain: '#7A6EE0',
 }
 
 const CHIP_TEXT: Record<EntityType, string> = {
-  sellToken: '#7A3811',
-  buyToken: '#5B1542',
-  amount: INK,
-  chain: '#2C2070',
+  sellToken: '#FFC57E',
+  buyToken: '#FFB7E2',
+  amount: '#F5EFE6',
+  chain: '#C8BEFF',
 }
 
 const Wrap = styled.div`
@@ -60,68 +52,59 @@ const Wrap = styled.div`
   width: 100%;
 `
 
-const Card = styled.div`
-  position: relative;
-  width: 100%;
-  background: ${PAPER};
-  border-radius: 22px;
-  padding: 14px 16px 16px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.4) inset,
-    0 0 0 1px ${HAIRLINE},
-    0 18px 40px rgba(0, 0, 0, 0.32),
-    0 4px 10px rgba(0, 0, 0, 0.18);
-  transition: box-shadow 200ms ease-out;
-
-  &:focus-within {
-    box-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.4) inset,
-      0 0 0 1px rgba(15, 14, 11, 0.16),
-      0 0 0 4px rgba(242, 166, 62, 0.20),
-      0 18px 40px rgba(0, 0, 0, 0.36),
-      0 4px 10px rgba(0, 0, 0, 0.22);
-  }
-`
-
-const Eyebrow = styled.span`
-  display: block;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: ${INK_MUTED};
-  margin: 0 4px 8px;
-`
-
 const Editor = styled.div`
   font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
   font-size: 18px;
   line-height: 32px;
-  letter-spacing: 0.005em;
+  letter-spacing: 0.01em;
   width: 100%;
-  min-height: 36px;
-  padding: 6px 80px 6px 4px;
-  background: transparent;
-  color: ${INK};
-  caret-color: ${INK};
+  min-height: 64px;
+  padding: 16px 56px 16px 22px;
+  border-radius: 18px;
+  border: 1.5px solid rgba(245, 239, 230, 0.18);
+  background: rgba(8, 4, 24, 0.55);
+  color: #f5efe6;
+  caret-color: #f2a63e;
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out, background 160ms ease-out;
   overflow-wrap: break-word;
+
+  &:hover {
+    border-color: rgba(242, 166, 62, 0.55);
+  }
+
+  &:focus {
+    border-color: #f2a63e;
+    background: rgba(8, 4, 24, 0.78);
+    box-shadow: 0 0 0 4px rgba(242, 166, 62, 0.18), 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
 
   &:empty::before {
     content: attr(data-placeholder);
-    color: rgba(15, 14, 11, 0.36);
+    color: rgba(245, 239, 230, 0.42);
     pointer-events: none;
   }
 `
 
-const LoaderSlot = styled.div`
+const Spinner = styled.div`
   position: absolute;
-  right: 14px;
-  top: 12px;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(242, 166, 62, 0.25);
+  border-top-color: #f2a63e;
+  animation: spin 700ms linear infinite;
   pointer-events: none;
+  @keyframes spin {
+    to {
+      transform: translateY(-50%) rotate(360deg);
+    }
+  }
 `
 
 interface Props {
@@ -376,13 +359,6 @@ const ChipStyles = styled.div`
     background: rgba(255, 255, 255, 0.85);
     display: block;
   }
-  /* The label fragment beside the symbol is rendered with the brand
-     monospace, so the chip reads as "tagged data" rather than UI copy. */
-  & .entity-chip .chip-text {
-    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
-    font-size: 13px;
-    letter-spacing: 0.01em;
-  }
   @keyframes chip-stream-in {
     from {
       opacity: 0;
@@ -463,7 +439,6 @@ export const IntentInput = forwardRef(function IntentInput(
     range.collapse(false)
     sel.removeAllRanges()
     sel.addRange(range)
-    // Manually fire onInput-equivalent: read the canonical plain text.
     const el = editorRef.current
     if (!el) return
     const next = readPlainTextValue(el).replace(/\n+/g, ' ')
@@ -471,8 +446,7 @@ export const IntentInput = forwardRef(function IntentInput(
   }, [onChange, value])
 
   return (
-    <Card>
-      <Eyebrow>Describe your swap</Eyebrow>
+    <Wrap>
       <ChipStyles>
         <Editor
           ref={editorRef}
@@ -488,11 +462,7 @@ export const IntentInput = forwardRef(function IntentInput(
           onPaste={handlePaste}
         />
       </ChipStyles>
-      {pending && (
-        <LoaderSlot>
-          <OphisGlobeLoader size={56} ariaLabel="Parsing intent" />
-        </LoaderSlot>
-      )}
-    </Card>
+      {pending && <Spinner />}
+    </Wrap>
   )
 })
