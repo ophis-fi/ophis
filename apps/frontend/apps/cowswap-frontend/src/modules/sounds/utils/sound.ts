@@ -1,6 +1,6 @@
 // Greg/Ophis: silence upstream audio cues.
 //
-// CoW Swap shipped a "moo" sound on order success and other branded
+// Ophis shipped a "moo" sound on order success and other branded
 // audio cues that are off-brand for Ophis. Rather than ship audio
 // files we don't yet have, these helpers return a no-op audio stub.
 // Replace with Ophis sound design later — keep the named exports so

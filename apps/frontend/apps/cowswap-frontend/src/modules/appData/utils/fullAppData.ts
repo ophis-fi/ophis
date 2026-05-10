@@ -5,7 +5,7 @@ import { toKeccak256 } from 'common/utils/toKeccak256'
 
 import { AppDataInfo } from '../types'
 
-const DEFAULT_FULL_APP_DATA_OBJ = { version: LATEST_APP_DATA_VERSION, appCode: 'CoW Swap', metadata: {} }
+const DEFAULT_FULL_APP_DATA_OBJ = { version: LATEST_APP_DATA_VERSION, appCode: 'Ophis', metadata: {} }
 const DEFAULT_FULL_APP_DATA = JSON.stringify(DEFAULT_FULL_APP_DATA_OBJ)
 
 const APP_DATA_PER_ENV: Record<EnvironmentName, string> = {

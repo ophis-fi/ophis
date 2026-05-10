@@ -650,9 +650,9 @@ msgstr "Sell amount"
 msgid "Unfillable"
 msgstr "Unfillable"
 
-#: apps/ophis-frontend/src/modules/application/containers/App/menuConsts.tsx
-#~ msgid "About Ophis"
-#~ msgstr "About Ophis"
+#: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
+msgid "About Ophis"
+msgstr "About Ophis"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/constants.tsx
 msgid "Request timed out. Please try again."
@@ -1943,8 +1943,8 @@ msgid "Approving <0/> <1><2/></1> for trading"
 msgstr "Approving <0/> <1><2/></1> for trading"
 
 #: apps/cowswap-frontend/src/modules/affiliate/pure/TraderIneligible.tsx
-msgid "This wallet has already traded on CoW Swap."
-msgstr "This wallet has already traded on CoW Swap."
+#~ msgid "This wallet has already traded on CoW Swap."
+#~ msgstr "This wallet has already traded on CoW Swap."
 
 #: libs/hook-dapp-lib/src/hookDappsRegistry.ts
 #~ msgid "Reduce or withdraw liquidity from a pool before a token swap integrating the process directly into the transaction flow. By adjusting your liquidity ahead of time, you gain more control over your assets without any extra steps. Optimize your position in a pool, all in one seamless action — no need for multiple transactions or added complexity."
@@ -3935,9 +3935,9 @@ msgstr "This destination is not supported for this source chain"
 #~ msgid "Wrap <0/> and Swap"
 #~ msgstr "Wrap <0/> and Swap"
 
-#: apps/ophis-frontend/src/modules/affiliate/pure/TraderIneligible.tsx
-#~ msgid "This wallet has already traded on Ophis."
-#~ msgstr "This wallet has already traded on Ophis."
+#: apps/cowswap-frontend/src/modules/affiliate/pure/TraderIneligible.tsx
+msgid "This wallet has already traded on Ophis."
+msgstr "This wallet has already traded on Ophis."
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerQrModal.tsx
 msgid "Black"
@@ -4048,8 +4048,8 @@ msgid "Hook Store"
 msgstr "Hook Store"
 
 #: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
-msgid "A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
-msgstr "A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
+#~ msgid "A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
+#~ msgstr "A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
 
 #: apps/cowswap-frontend/src/common/pure/PermitModal/index.tsx
 msgid "Approve spending <0/> <1/> on Ophis"
@@ -4500,9 +4500,9 @@ msgstr "Transaction was cancelled or sped up"
 msgid "Custom Recipient"
 msgstr "Custom Recipient"
 
-#: apps/ophis-frontend/src/modules/affiliate/pure/AffiliateTraderModal/CodeLinkingStatusSection.tsx
-#~ msgid "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on Ophis before."
-#~ msgstr "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on Ophis before."
+#: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/CodeLinkingStatusSection.tsx
+msgid "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on Ophis before."
+msgstr "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on Ophis before."
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerCodeInfo.tsx
 msgid "Download QR"
@@ -5295,9 +5295,9 @@ msgstr "is"
 msgid "Transaction {errorType}"
 msgstr "Transaction {errorType}"
 
-#: apps/ophis-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
-#~ msgid "A recent DNS incident has been resolved. Ophis contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
-#~ msgstr "A recent DNS incident has been resolved. Ophis contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
+#: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
+msgid "A recent DNS incident has been resolved. Ophis contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
+msgstr "A recent DNS incident has been resolved. Ophis contracts remain safe. If you interacted with the site on April 14, review your token approvals on <0>Revoke.cash</0>."
 
 #: apps/cowswap-frontend/src/modules/trade/containers/NoImpactWarning/index.tsx
 msgid "Price impact <0>unknown</0> - trade carefully"
@@ -6535,9 +6535,9 @@ msgstr "Set approval amount"
 #~ msgid "CoW Fortune of the day"
 #~ msgstr "CoW Fortune of the day"
 
-#: apps/ophis-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
-#~ msgid "Ophis <0>is back online</0>"
-#~ msgstr "Ophis <0>is back online</0>"
+#: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
+msgid "Ophis <0>is back online</0>"
+msgstr "Ophis <0>is back online</0>"
 
 #: apps/cowswap-frontend/src/utils/orderUtils/parseOrder.ts
 msgid "Order ID"
@@ -6691,8 +6691,8 @@ msgstr "signing"
 #~ msgstr "Cow meditating..."
 
 #: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
-msgid "About CoW Swap"
-msgstr "About CoW Swap"
+#~ msgid "About CoW Swap"
+#~ msgstr "About CoW Swap"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/ExpiredStep.tsx
 msgid "Unlike on other exchanges, you won't be charged for this! Feel free to"
@@ -7158,8 +7158,8 @@ msgid "Modified recipient address to"
 msgstr "Modified recipient address to"
 
 #: apps/cowswap-frontend/src/modules/application/containers/AppContainer/RecoveryBanner/RecoveryBanner.container.tsx
-msgid "CoW Swap <0>is back online</0>"
-msgstr "CoW Swap <0>is back online</0>"
+#~ msgid "CoW Swap <0>is back online</0>"
+#~ msgstr "CoW Swap <0>is back online</0>"
 
 #: apps/ophis-frontend/src/api/cowProtocol/errors/OperatorError.ts
 #~ msgid "Something failed. Please try again later."
@@ -7463,8 +7463,8 @@ msgstr "Manage"
 #~ msgstr "Rewards data updates every 6 hours at 00:00, 06:00, 12:00, 18:00 (UTC) and take about one hour to appear here."
 
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/CodeLinkingStatusSection.tsx
-msgid "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on CoW Swap before."
-msgstr "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on CoW Swap before."
+#~ msgid "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on CoW Swap before."
+#~ msgstr "We weren't able to check your eligibility. Feel free to continue, but you won't receive rewards if you traded on CoW Swap before."
 
 #: apps/cowswap-frontend/src/modules/zeroApproval/containers/ZeroApprovalModal/ZeroApprovalModal.tsx
 msgid "Reset {symbol} allowance to 0 before setting new spending cap"

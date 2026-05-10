@@ -45,7 +45,7 @@ export function AffiliatePartnerCodeInfo(): ReactNode {
   const referralLink = useMemo(() => getReferralLink(refCode || ''), [refCode])
   const shareUrl = useMemo(
     () =>
-      `https://x.com/intent/tweet?text=${encodeURIComponent(`Trade on CoW Swap with my referral link! @CoWSwap`)}&url=${encodeURIComponent(referralLink)}`,
+      `https://x.com/intent/tweet?text=${encodeURIComponent(`Trade on Ophis with my referral link! `)}&url=${encodeURIComponent(referralLink)}`,
     [referralLink],
   )
 
