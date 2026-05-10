@@ -35,23 +35,27 @@ export const Box = styled.div<{
     `}
 `
 
+// Greg/Ophis: pill-shaped arrow swap button (32px round disc) that
+// punches through the seam between the two input rows. Card bg as
+// the disc surface (so it sits on a "puck" of card colour), with a
+// brand coral border by default — the affordance is loud, not shy.
 export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
-  --size: 26px;
+  --size: 32px;
 
   position: absolute;
   left: calc(50% - var(--size) / 2);
   top: 0;
   bottom: 0;
-  height: 100%;
+  height: var(--size);
   text-align: center;
   transform-style: preserve-3d;
   transform-origin: center right;
-  transition: transform 0.25s;
-  border: 0;
-  box-shadow: 0 0 0 3px var(${UI.COLOR_PAPER});
-  background: var(${UI.COLOR_PAPER_DARKER});
-  color: inherit;
-  border-radius: 8px;
+  transition: transform 0.25s ease-out, box-shadow 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
+  border: 1.5px solid var(${UI.COLOR_PRIMARY});
+  box-shadow: 0 0 0 4px var(${UI.COLOR_PAPER}), 0 6px 18px rgba(0, 0, 0, 0.45);
+  background: var(${UI.COLOR_PAPER});
+  color: var(${UI.COLOR_PRIMARY});
+  border-radius: 50%;
   width: var(--size);
   margin: auto;
   display: flex;
@@ -61,6 +65,7 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
 
   &:disabled {
     cursor: not-allowed;
+    opacity: 0.6;
   }
 
   ${({ $isLoading }) =>
@@ -68,7 +73,13 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
       ? loadingAnimationMixin
       : css`
           &:not(:disabled):hover {
-            transform: translateY(-2px);
+            transform: translateY(-2px) rotate(180deg);
+            background: var(${UI.COLOR_PRIMARY});
+            color: var(${UI.COLOR_PAPER});
+            box-shadow:
+              0 0 0 4px var(${UI.COLOR_PAPER}),
+              0 0 0 6px var(${UI.COLOR_PRIMARY_OPACITY_25}),
+              0 6px 18px rgba(0, 0, 0, 0.45);
           }
         `}
 `
