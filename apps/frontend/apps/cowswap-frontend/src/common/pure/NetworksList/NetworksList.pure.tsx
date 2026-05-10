@@ -29,9 +29,16 @@ export function NetworksList({
 }: NetworksListProps): ReactNode {
   const deprecatedChains = useDeprecatedChains()
 
+  // Greg/Ophis: render chains alphabetically by label. The active
+  // chain pops to the top via `order: -1` on the wrapper, so the
+  // user always sees their current network first.
+  const sortedChains = [...availableChains].sort((a, b) =>
+    getChainInfo(a).label.localeCompare(getChainInfo(b).label),
+  )
+
   return (
     <>
-      {availableChains.map((targetChainId: TargetChainId) => {
+      {sortedChains.map((targetChainId: TargetChainId) => {
         const info = getChainInfo(targetChainId)
         const { label, logo } = info
 

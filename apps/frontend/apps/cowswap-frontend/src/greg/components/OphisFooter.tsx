@@ -69,9 +69,6 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
         <ExternalLink href="https://github.com/san-npm/greg" target="_blank" rel="noreferrer">
           GitHub
         </ExternalLink>
-        <ExternalLink href="https://docs.cow.fi/governance/fees/partner-fee" target="_blank" rel="noreferrer">
-          Powered by CoW Protocol
-        </ExternalLink>
       </Right>
     </Bar>
   )

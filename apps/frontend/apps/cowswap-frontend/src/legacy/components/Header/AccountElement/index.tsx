@@ -63,14 +63,21 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
 
   const portalTarget = typeof document !== 'undefined' ? document.body : null
 
+  // Greg/Ophis: hide the "Connect wallet" pill in the header when no
+  // wallet is connected — the swap form already has its own contextual
+  // CTA at the bottom of the card, so showing both is a redundant
+  // affordance. Once connected, the Web3Status shows the address pill
+  // (wallet management — different purpose), so we render it then.
   return (
     <>
       <Wrapper className={className} active={!!account} ref={wrapperRef}>
         <AffiliateTraderHeaderButton />
-        <Web3Status
-          joinedLeft={shouldShowAffiliateTraderHeaderButton}
-          onClick={() => account && toggleAccountModal()}
-        />
+        {account && (
+          <Web3Status
+            joinedLeft={shouldShowAffiliateTraderHeaderButton}
+            onClick={() => toggleAccountModal()}
+          />
+        )}
         {account && (
           <NotificationAlertPopover
             show={shouldShowPopover}
