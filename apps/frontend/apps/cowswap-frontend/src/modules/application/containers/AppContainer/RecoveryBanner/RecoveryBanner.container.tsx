@@ -70,13 +70,13 @@ export function RecoveryBanner(): ReactNode {
       <styledEl.Content>
         <styledEl.Title>
           <Trans>
-            CoW Swap <styledEl.TitleAccent>is back online</styledEl.TitleAccent>
+            Ophis <styledEl.TitleAccent>is back online</styledEl.TitleAccent>
           </Trans>
         </styledEl.Title>
 
         <styledEl.Description>
           <Trans>
-            A recent DNS incident has been resolved. CoW Swap contracts remain safe. If you interacted with the site on
+            A recent DNS incident has been resolved. Ophis contracts remain safe. If you interacted with the site on
             April 14, review your token approvals on{' '}
             <styledEl.Link href={RECOVERY_BANNER_REVOKE_URL} onClickOptional={handleRevokeClick}>
               Revoke.cash

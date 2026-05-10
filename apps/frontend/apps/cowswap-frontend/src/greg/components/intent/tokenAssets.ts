@@ -1,40 +1,65 @@
 /**
- * Asset URL maps for the V2 token + chain set used by the swap-intent
- * landing page. All logos self-hosted under `/logos/` to drop the
- * CoinGecko CDN dependency (audit follow-up F1, 2026-05-10). Sourced
- * from CoinGecko + trustwallet/assets at fetch time; redistribution
- * permitted under each project's license.
+ * Asset URL maps for the V3 token + chain set used by the swap-intent
+ * landing page. All logos self-hosted under `/logos/` (audit follow-up
+ * F1, 2026-05-10) sourced from cryptologos.cc + spothq/cryptocurrency-icons
+ * + CoinGecko.
  *
  * Filename convention: `<kind>-<canonical>.<ext>` where:
  *   - kind = 'token' | 'chain'
  *   - canonical = lowercase symbol / chain slug (matches the values
  *     emitted by the LibertAI parser)
- *   - ext = png / jpg (preserved from upstream where applicable)
+ *   - ext = svg / png / jpg (preserved from upstream)
  *
- * Adding a new token/chain: drop the file under
+ * If a token recognised by the parser has no logo file, `tokenLogo()`
+ * returns `undefined` and IntentInput renders a logo-less chip
+ * (graceful degradation — chip still appears with text + colored
+ * border).
+ *
+ * Adding a new token: drop the file under
  * apps/cowswap-frontend/public/logos/ and add an entry below.
  */
 
-const TOKEN_LOGO_EXT: Record<string, 'png' | 'jpg'> = {
+const TOKEN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   // Stablecoins
   USDC: 'png', USDT: 'png', DAI: 'png', FRAX: 'png', LUSD: 'png',
-  SUSD: 'png', GUSD: 'png', TUSD: 'png', USDP: 'png', USDE: 'png', PYUSD: 'png',
+  SUSD: 'png', GUSD: 'png', TUSD: 'png', USDP: 'png', USDE: 'png',
+  PYUSD: 'png', GHO: 'png', FDUSD: 'svg', EURC: 'png', MIM: 'png',
   // ETH-pegs
   ETH: 'png', WETH: 'png', STETH: 'png', WSTETH: 'png', RETH: 'png',
   CBETH: 'png', SFRXETH: 'png', EZETH: 'png', RSETH: 'png',
   // BTC-pegs
-  WBTC: 'png', TBTC: 'png', CBBTC: 'png', BTCB: 'png',
-  // Blue-chips
-  UNI: 'png', AAVE: 'png', MKR: 'png', LDO: 'png', COMP: 'png', CRV: 'png',
-  SUSHI: 'png', SNX: 'png', BAL: 'png', GNO: 'png', YFI: 'png',
-  '1INCH': 'png', LINK: 'png', FXS: 'png', RPL: 'png', PENDLE: 'png', ENS: 'png',
-  // Native gov
-  MATIC: 'png', ARB: 'jpg', OP: 'png', AVAX: 'png', BNB: 'png',
+  WBTC: 'png', TBTC: 'png', CBBTC: 'png', BTCB: 'png', BTC: 'svg',
+  // Native L1 / L2
+  BNB: 'png', MATIC: 'png', ARB: 'jpg', OP: 'png', AVAX: 'png',
+  APT: 'svg', SUI: 'svg', NEAR: 'svg', ATOM: 'svg', FIL: 'svg',
+  HBAR: 'svg', ICP: 'svg', ALGO: 'svg', ROSE: 'svg', TON: 'svg',
+  SEI: 'svg', INJ: 'svg', RUNE: 'svg', OSMO: 'svg', MNT: 'svg',
+  IMX: 'svg', TRX: 'svg', LTC: 'svg', BCH: 'svg', ETC: 'svg',
+  XRP: 'svg', ADA: 'svg', SOL: 'svg', DOT: 'svg', KSM: 'svg',
+  XMR: 'svg', XLM: 'svg', FLOW: 'svg', VET: 'svg', HNT: 'svg',
+  AR: 'svg', FLR: 'svg', TIA: 'svg', TAO: 'svg', CRO: 'svg',
+  CFX: 'svg', FTM: 'svg', CELO: 'svg', KAVA: 'svg', STX: 'svg',
+  WAVES: 'svg', ZEC: 'svg', DASH: 'svg',
+  // DeFi blue-chips
+  UNI: 'png', AAVE: 'png', MKR: 'png', LDO: 'png', COMP: 'png',
+  CRV: 'png', SUSHI: 'png', SNX: 'png', BAL: 'png', GNO: 'png',
+  YFI: 'png', '1INCH': 'png', LINK: 'png', FXS: 'png', RPL: 'png',
+  PENDLE: 'png', ENS: 'png', EIGEN: 'svg', GRT: 'svg', JUP: 'svg',
+  JTO: 'png', PYTH: 'svg', GMX: 'png', AERO: 'png', VELO: 'png',
+  KAS: 'svg', DYM: 'png', CAKE: 'svg', OCEAN: 'svg', NMR: 'svg',
+  RLC: 'svg', BAND: 'svg', ZRX: 'svg', PRIME: 'svg', RON: 'svg',
+  NEXO: 'svg', STRK: 'png',
+  // AI / RWA
+  RNDR: 'png', AKT: 'svg', ONDO: 'svg', WLD: 'svg',
   // Memes
-  PEPE: 'png', SHIB: 'png', DOGE: 'png', BONK: 'png',
+  PEPE: 'png', SHIB: 'png', DOGE: 'png', BONK: 'png', WIF: 'svg',
+  FLOKI: 'svg',
+  // Gaming
+  SAND: 'svg', MANA: 'svg', AXS: 'svg', GALA: 'svg', APE: 'svg',
+  ENJ: 'svg', CHZ: 'svg',
 }
 
-const CHAIN_LOGO_EXT: Record<string, 'png' | 'jpg'> = {
+const CHAIN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   ethereum: 'png',
   optimism: 'png',
   base: 'png',
