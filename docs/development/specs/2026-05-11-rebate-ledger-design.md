@@ -1,7 +1,7 @@
 # Ophis Rebate Ledger — Design
 
 **Status:** Approved, ready for implementation plan
-**Author:** Clement (with Claude)
+**Author:** Clement
 **Date:** 2026-05-11
 **Related:** Phase 4 (sovereign orderbook) — Phase boundary in §7
 
