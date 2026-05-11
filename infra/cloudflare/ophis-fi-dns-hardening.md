@@ -149,6 +149,35 @@ Already enabled this week per session log (`Traficom monitor active`). Verify:
 - Cert-transparency monitor: subscribe to https://crt.sh/?q=ophis.fi RSS or set
   up a Cloudflare Worker that polls hourly and Telegrams on unexpected issuances
 
+## Fallback domains (same defenses, separate registries)
+
+The redirect-only domains `ophis.xyz`, `ophis.finance`, `ophis.exchange`
+(all 301 → `ophis.fi`) got the **same CAA + DNSSEC-signing** applied
+on 2026-05-11. Smaller attack surface (different TLDs = different
+registries = different social-engineering targets), but the same
+defense-in-depth so a hijacked fallback can't be turned into a phishing
+funnel against users who type the wrong domain.
+
+| Domain | DS record to paste at the registrar |
+|---|---|
+| `ophis.fi`       | `ophis.fi. 3600 IN DS 2371 13 2 5B7DFDBA23103B6378808EA0A27AB6257DB48513A2FD931852F49A5C730EBF66` |
+| `ophis.xyz`      | `ophis.xyz. 3600 IN DS 2371 13 2 10A2D76075FE6571FFDA15D7E76A51ACAAD334711476A1BF35E66A42F0BB7B5C` |
+| `ophis.finance`  | `ophis.finance. 3600 IN DS 2371 13 2 57013D7C6C07609FECB4F586A700260DC6DB8503F70D0151EA5ECBB237BBD52B` |
+| `ophis.exchange` | `ophis.exchange. 3600 IN DS 2371 13 2 BF5C524A2FE0D10D6E78D3CDE5F7E51A5465F8C2B8DE78866E47A2E7E0468888` |
+
+Field-form for each (Key tag, Algorithm, Digest type, Digest are all
+the same shape — only the digest hex string differs):
+
+- **Key tag:** `2371` (all four; Cloudflare's KSK rotation cycle happens to align)
+- **Algorithm:** `13` (ECDSAP256SHA256)
+- **Digest type:** `2` (SHA256)
+- **Digest:** the 64-hex-char string from the table above
+
+Registry-lock for the fallbacks is **not currently warranted** — they're
+redirect-only and carry no rebate-relevant cookies, no API endpoints, and
+no user-signed transactions land on them. If usage shifts (e.g., one of
+the fallbacks becomes canonical for a partner integration), revisit.
+
 ## Rollback procedures
 
 **Roll back CAA records** (if cert renewal starts failing for an unanticipated
