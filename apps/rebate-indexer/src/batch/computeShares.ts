@@ -8,6 +8,9 @@ export interface EligibleWallet {
 /**
  * Weighted-share distribution. See spec §"Volume → Tier → Rebate math" for derivation.
  *
+ * Caller must normalize wallet addresses to a single canonical case before passing.
+ * The internal Map treats different cases as distinct keys, which would split shares.
+ *
  * Properties enforced by tests in tests/computeShares.test.ts:
  *   - Σ shares ≤ pool, always
  *   - Single wallet gets the entire pool
@@ -27,12 +30,15 @@ export function computeShares(
   let total_weight = 0n;
   const weights = new Map<`0x${string}`, bigint>();
   for (const w of wallets) {
-    if (w.volume_30d_usd <= 0) continue;
+    if (!Number.isFinite(w.volume_30d_usd) || w.volume_30d_usd <= 0) continue;
     const { rebate_pct } = assignTier(w.volume_30d_usd);
     const volume_fp = BigInt(Math.round(w.volume_30d_usd * 10_000));
     const pct_fp = BigInt(Math.round(rebate_pct * 10_000));
     const weight = volume_fp * pct_fp;
     if (weight === 0n) continue;
+    if (weights.has(w.wallet)) {
+      throw new Error(`computeShares: duplicate wallet ${w.wallet}`);
+    }
     weights.set(w.wallet, weight);
     total_weight += weight;
   }
