@@ -1,0 +1,56 @@
+# Boot:  docker compose --env-file .env up -d
+# Tear:  docker compose down
+# Logs:  docker compose logs -f indexer
+
+services:
+  pg:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rebates}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-rebates}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U ${POSTGRES_USER:-rebates}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  indexer:
+    build:
+      context: ../..
+      dockerfile: apps/rebate-indexer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      pg:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-rebates}:${POSTGRES_PASSWORD}@pg:5432/${POSTGRES_DB:-rebates}
+      COW_API_BASE: ${COW_API_BASE:-https://api.cow.fi}
+      GNOSIS_RPC_URL: ${GNOSIS_RPC_URL}
+      SAFE_PROPOSER_PRIVATE_KEY: ${SAFE_PROPOSER_PRIVATE_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      API_PORT: 8080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      BATCHER_PROPOSE_ENABLED: ${BATCHER_PROPOSE_ENABLED:-true}
+    ports:
+      - "8080:8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [indexer]
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:
