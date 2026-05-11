@@ -18,6 +18,8 @@ import { Web3Status } from 'modules/wallet'
 
 import { CowSwapAnalyticsCategory, toCowSwapGtmEvent } from 'common/analytics/types'
 
+import { TierChip } from 'greg/components/TierChip'
+
 import { NotificationAlertPopover } from './NotificationAlertPopover'
 import { Wrapper } from './styled'
 
@@ -78,6 +80,7 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
             onClick={() => toggleAccountModal()}
           />
         )}
+        {account && <TierChip wallet={account as `0x${string}`} />}
         {account && (
           <NotificationAlertPopover
             show={shouldShowPopover}

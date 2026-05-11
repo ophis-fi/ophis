@@ -55,6 +55,9 @@ jobs:
           # (instead of cowswap's upstream default "CoW Swap"). Tracked
           # in apps/frontend/.greg-divergences.md.
           REACT_APP_APP_CODE: ophis
+          # Base URL for the rebate-indexer API (TierChip + useTier hook).
+          # Defaults to the same value at runtime if the env var is missing.
+          REACT_APP_REBATES_API: https://rebates.ophis.fi
         run: pnpm run build:cowswap
 
       - name: drop production source maps
