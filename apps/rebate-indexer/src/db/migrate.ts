@@ -1,13 +1,14 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sql } from './index.js';
 import { logger } from '../logger.js';
 
 const migrationsDir = fileURLToPath(new URL('../../migrations', import.meta.url));
 const log = logger.child({ module: 'migrate' });
 
 async function ensureMigrationsTable() {
+  // Import db lazily so this module can be loaded without DATABASE_URL set.
+  const { sql } = await import('./index.js');
   await sql.unsafe(`
     CREATE TABLE IF NOT EXISTS __migrations (
       filename TEXT PRIMARY KEY,
@@ -17,6 +18,7 @@ async function ensureMigrationsTable() {
 }
 
 async function appliedMigrations(): Promise<Set<string>> {
+  const { sql } = await import('./index.js');
   const rows = await sql<{ filename: string }[]>`SELECT filename FROM __migrations`;
   return new Set(rows.map((r) => r.filename));
 }
@@ -33,6 +35,7 @@ export async function runMigrations() {
     }
     const sqlText = readFileSync(join(migrationsDir, file), 'utf8');
     log.info({ file }, 'applying migration');
+    const { sql } = await import('./index.js');
     await sql.begin(async (tx) => {
       await tx.unsafe(sqlText);
       await tx`INSERT INTO __migrations (filename) VALUES (${file})`;
@@ -42,10 +45,12 @@ export async function runMigrations() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runMigrations()
-    .then(() => sql.end())
-    .catch((err) => {
-      log.error({ err }, 'migration failed');
-      process.exit(1);
-    });
+  import('./index.js').then(({ sql }) =>
+    runMigrations()
+      .then(() => sql.end())
+      .catch((err) => {
+        log.error({ err }, 'migration failed');
+        process.exit(1);
+      }),
+  );
 }
