@@ -85,6 +85,29 @@ const TOKEN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   BABYDOGE: 'jpg',
   // Gaming
   BEAM: 'png', ALICE: 'jpg',
+
+  // ─────────────────────────────────────────────────────────────────
+  // P3 phase 3 additions (2026-05-11) — manual sourcing for the
+  // 42 symbols that didn't appear in the CG top-1500 phase-2 sweep.
+  // Same self-host pattern. Closes the loop: 235/236 logo coverage;
+  // only IPOR remains text-only (not in CG's coin list).
+  // ─────────────────────────────────────────────────────────────────
+  // Stablecoins
+  AGEUR: 'png', SUSDS: 'png', SDAI: 'png', USDR: 'png', CRVUSD: 'jpg',
+  // ETH LSTs/LRTs
+  METH: 'png', EETH: 'png', WEETH: 'png', PUFETH: 'png', OSETH: 'png',
+  SWETH: 'jpg', ETHX: 'png', WBETH: 'png', ANKRETH: 'png', OETH: 'png',
+  // DeFi
+  RDNT: 'png', SWELL: 'png', RBN: 'png', SDT: 'jpg', QUICK: 'png',
+  POLY: 'png', OMG: 'jpg', ATA: 'png', STG: 'png', RAD: 'png',
+  METIS: 'png',
+  // AI / DePIN / RWA — including pre-existing-but-logo-less symbols
+  ARKM: 'png', FET: 'png', ETHFI: 'jpg', IO: 'png', AI16Z: 'jpg',
+  // Memes — including pre-existing-but-logo-less symbols
+  BRETT: 'png', MOG: 'png', MEW: 'png', POPCAT: 'jpg', TURBO: 'png',
+  GIGA: 'png', MICHI: 'png',
+  // Gaming
+  JASMY: 'jpg', PIXEL: 'png', PORTAL: 'jpg', VOXEL: 'png',
 }
 
 const CHAIN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
