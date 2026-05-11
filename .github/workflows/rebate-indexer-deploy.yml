@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "apps/rebate-indexer/**"
+      - "packages/sdk/**"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
       - ".github/workflows/rebate-indexer-deploy.yml"
   workflow_dispatch: {}
 
@@ -21,31 +24,61 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349  # v3.7.1
-      - name: docker build
-        run: |
-          docker build \
-            -f apps/rebate-indexer/Dockerfile \
-            -t ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:${{ github.sha }} \
-            -t ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:latest \
-            .
-      - name: push to GHCR
-        env:
-          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
-        run: |
-          echo "$GHCR_TOKEN" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
-          docker push ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:${{ github.sha }}
-          docker push ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:latest
-      - name: ssh deploy to Aleph VM
+
+      - name: rsync source to Aleph VM
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ALEPH_REBATES_SSH_KEY }}
           SSH_HOST:        ${{ secrets.ALEPH_REBATES_SSH_HOST }}
           SSH_USER:        ${{ secrets.ALEPH_REBATES_SSH_USER }}
+          SSH_PORT:        ${{ secrets.ALEPH_REBATES_SSH_PORT }}
         run: |
-          mkdir -p ~/.ssh && echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SSH_HOST" \
-            "cd /srv/rebate-indexer && \
-             docker compose pull && \
-             docker compose up -d --force-recreate indexer && \
-             docker compose ps"
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          # The VM builds the image locally — no GHCR push needed. We rsync
+          # the minimal source subset (excluding workspace siblings the
+          # indexer doesn't import + node_modules + the VM's .env file).
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $SSH_PORT" \
+            --exclude="node_modules" \
+            --exclude="dist" \
+            --exclude=".turbo" \
+            --exclude=".wrangler" \
+            --exclude=".git" \
+            --exclude=".gitmodules" \
+            --exclude="apps/frontend" \
+            --exclude="apps/backend" \
+            --exclude="contracts" \
+            --exclude="v2-core" \
+            --exclude="v2-periphery" \
+            --exclude="infra" \
+            --exclude="docs" \
+            --exclude="*.log" \
+            --exclude="apps/rebate-indexer/.env" \
+            --exclude="apps/rebate-indexer/pg_data" \
+            --exclude="apps/rebate-indexer/caddy_data" \
+            ./ "$SSH_USER@$SSH_HOST:/srv/ophis/"
+
+      - name: build + restart on Aleph VM
+        env:
+          SSH_HOST: ${{ secrets.ALEPH_REBATES_SSH_HOST }}
+          SSH_USER: ${{ secrets.ALEPH_REBATES_SSH_USER }}
+          SSH_PORT: ${{ secrets.ALEPH_REBATES_SSH_PORT }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "set -e
+             cd /srv/ophis/apps/rebate-indexer
+             docker compose up -d --build
+             docker compose ps
+             # Wait for /health to return 200 before declaring success
+             for i in 1 2 3 4 5 6 7 8 9 10; do
+               if curl -fsS http://localhost:8080/health >/dev/null; then
+                 echo 'health ok'
+                 exit 0
+               fi
+               sleep 3
+             done
+             echo 'health check failed after 30s'
+             docker compose logs indexer | tail -30
+             exit 1"
