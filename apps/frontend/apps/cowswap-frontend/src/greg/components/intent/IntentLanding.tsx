@@ -105,7 +105,8 @@ const Hero = styled.section`
   margin: 0 auto;
   text-align: center;
   @media (max-width: 600px) {
-    padding: 32px 18px 60px;
+    padding: 28px 16px 48px;
+    gap: 20px;
   }
 `
 
@@ -184,6 +185,14 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   &:focus-visible {
     outline: 2px solid #f2a63e;
     outline-offset: 3px;
+  }
+  /* Thumb-friendly on phones — wider tap target, slightly tighter horizontal
+     so it doesn't blow past the input on 360px screens. */
+  @media (max-width: 600px) {
+    width: 100%;
+    max-width: 320px;
+    padding: 18px 28px;
+    font-size: 16px;
   }
 `
 

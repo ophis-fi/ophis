@@ -9,11 +9,33 @@
   text-decoration: none;
   border: 1px solid;
   transition: transform 120ms ease, box-shadow 120ms ease;
+  white-space: nowrap;
 }
 .chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
 .tierName { text-transform: capitalize; font-weight: 700; letter-spacing: 0.02em; }
 .divider { opacity: 0.5; }
 .volume, .nextTier { font-variant-numeric: tabular-nums; }
+
+/* Phones / narrow viewports: progressively hide secondary copy so the chip
+   stays single-line and doesn't push the wallet pill off-screen. ≤480px
+   drops the "next tier" hint; ≤360px drops the 30d volume too. The tier
+   name + colored border always remain, so the rebate program stays
+   visibly advertised even at the smallest layout. */
+@media (max-width: 480px) {
+  .chip .nextTier,
+  .chip .divider:last-of-type {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .chip .volume,
+  .chip .divider {
+    display: none;
+  }
+  .chip {
+    padding: 4px 10px;
+  }
+}
 
 .bronze   { color: #cd7f32; border-color: rgba(205,127,50,0.5);  background: rgba(205,127,50,0.06); }
 .silver   { color: #9aa3b2; border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
