@@ -11,8 +11,9 @@ multiple EVM chains under Greg-controlled settlement contracts.
 - **Live (testnet):** four chains validated end-to-end at canonical Greg
   contract addresses — MegaETH (6343), HyperEVM (998, paused), Optimism Sepolia
   (11155420), Linea Sepolia (59141).
-- **Public app:** [greg-etm.pages.dev](https://greg-etm.pages.dev) — frontend
-  served via Cloudflare Pages.
+- **Public app:** [ophis.fi](https://ophis.fi) — frontend served via Cloudflare
+  Pages (canonical Pages alias is still `greg-etm.pages.dev` until the project
+  is renamed; see backlog item R2).
 - **Mainnet deploy:** deferred to launch; gated on brand + domain.
 
 ## Architecture
