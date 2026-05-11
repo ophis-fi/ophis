@@ -53,6 +53,36 @@ describe('computeShares — edge cases', () => {
     expect(shares.has(a)).toBe(false);
     expect(shares.get(b)).toBe(10n ** 18n);
   });
+
+  it('throws on duplicate wallet address (caller contract violation)', () => {
+    const a = wallet('1');
+    expect(() => computeShares(
+      [{ wallet: a, volume_30d_usd: 100 }, { wallet: a, volume_30d_usd: 200 }],
+      10n ** 18n,
+    )).toThrow(/duplicate wallet/);
+  });
+
+  it('skips NaN volume gracefully (does not crash the batch)', () => {
+    const a = wallet('a');
+    const b = wallet('b');
+    const shares = computeShares(
+      [{ wallet: a, volume_30d_usd: NaN }, { wallet: b, volume_30d_usd: 100 }],
+      10n ** 18n,
+    );
+    expect(shares.has(a)).toBe(false);
+    expect(shares.get(b)).toBe(10n ** 18n);
+  });
+
+  it('skips Infinity volume gracefully', () => {
+    const a = wallet('a');
+    const b = wallet('b');
+    const shares = computeShares(
+      [{ wallet: a, volume_30d_usd: Infinity }, { wallet: b, volume_30d_usd: 100 }],
+      10n ** 18n,
+    );
+    expect(shares.has(a)).toBe(false);
+    expect(shares.get(b)).toBe(10n ** 18n);
+  });
 });
 
 describe('computeShares — property: Σ shares ≤ pool, always', () => {
