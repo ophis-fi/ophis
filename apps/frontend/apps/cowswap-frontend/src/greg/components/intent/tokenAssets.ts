@@ -57,6 +57,34 @@ const TOKEN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   // Gaming
   SAND: 'svg', MANA: 'svg', AXS: 'svg', GALA: 'svg', APE: 'svg',
   ENJ: 'svg', CHZ: 'svg',
+
+  // ─────────────────────────────────────────────────────────────────
+  // P3 phase 2 additions (2026-05-11) — logos sourced from CoinGecko
+  // top-1500 by market cap, self-hosted under /logos/. 62 new entries
+  // matching the TOKEN_VALUES expansion in functions/api/intent.ts.
+  // ─────────────────────────────────────────────────────────────────
+  // Stablecoins
+  USDS: 'png', BUSD: 'jpg',
+  // L1 EVM-bridged
+  QNT: 'jpg', ICX: 'png', ZIL: 'png', ASTR: 'png', LSK: 'png',
+  // DeFi
+  ENA: 'png', MORPHO: 'png', JOE: 'png', ORDI: 'png', USUAL: 'jpg',
+  DYDX: 'png', BICO: 'jpg', KNC: 'jpg', MAGIC: 'png', MASK: 'jpg',
+  OGN: 'jpg', BAT: 'png', LRC: 'png', GMT: 'png', WOO: 'png',
+  GLM: 'png', CFG: 'jpg', ALCX: 'png', LPT: 'png', HOT: 'png',
+  CVX: 'png', AMP: 'png', RSR: 'png', STORJ: 'png', BNT: 'png',
+  ANT: 'png', ANKR: 'png', KEEP: 'jpg', MTL: 'png', AUDIO: 'png',
+  CHR: 'png', SUPER: 'png', MAV: 'png', CKB: 'png', ADX: 'png',
+  REQ: 'png', ELF: 'png',
+  // AI / DePIN
+  VIRTUAL: 'png', AIXBT: 'png', GRASS: 'jpg', NOS: 'jpg',
+  MOBILE: 'png', IOTX: 'png', TFUEL: 'png',
+  // Memes
+  TOSHI: 'png', NEIRO: 'jpg', GOAT: 'jpg', PNUT: 'png',
+  MOODENG: 'jpg', DEGEN: 'png', TRUMP: 'png', ZRO: 'jpg',
+  BABYDOGE: 'jpg',
+  // Gaming
+  BEAM: 'png', ALICE: 'jpg',
 }
 
 const CHAIN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
