@@ -1,6 +1,8 @@
 name: rebate-indexer CI
 
 on:
+  schedule:
+    - cron: '0 3 * * *'                                  # 03:00 UTC daily — runs after deploy and prod cron
   pull_request:
     paths:
       - "apps/rebate-indexer/**"
@@ -12,6 +14,7 @@ on:
     branches: [main]
     paths:
       - "apps/rebate-indexer/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,3 +37,24 @@ jobs:
       - run: pnpm --filter @ophis/rebate-indexer test:integration
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
+
+  e2e:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+        with:
+          run_install: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ophis/rebate-indexer...
+      - run: pnpm --filter @ophis/rebate-indexer test:e2e
+        env:
+          RUN_E2E: '1'
+          E2E_SAFE_ADDRESS: ${{ vars.E2E_SAFE_ADDRESS }}
+          E2E_SAFE_BURNER_KEY: ${{ secrets.E2E_SAFE_BURNER_KEY }}
+          SEPOLIA_RPC_URL: ${{ secrets.SEPOLIA_RPC_URL }}
