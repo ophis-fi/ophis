@@ -115,28 +115,38 @@ export async function priceTrade(row: {
 
 export async function runPricer(): Promise<{ priced: number; failed: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
-  const { sql, db, schema } = await import('./db/index.js');
-  const unpriced = await db
-    .select({
-      tradeUid: schema.trades.tradeUid,
-      chainId: schema.trades.chainId,
-      sellToken: schema.trades.sellToken,
-      sellAmount: schema.trades.sellAmount,
-    })
-    .from(schema.trades)
-    .where(sql`value_usd IS NULL`)
-    .limit(1_000);
+  const { sql } = await import('./db/index.js');
+  const rows = await sql<{
+    trade_uid: Buffer;
+    chain_id: number;
+    sell_token: Buffer;
+    sell_amount: string;
+  }[]>`
+    SELECT trade_uid, chain_id, sell_token, sell_amount::text
+    FROM trades
+    WHERE value_usd IS NULL
+    LIMIT 1000
+  `;
+
+  // Map postgres-js snake_case / Buffer results to the camelCase shape priceTrade expects.
+  const unpriced = rows.map((r) => ({
+    tradeUid: `0x${r.trade_uid.toString('hex')}` as `0x${string}`,
+    chainId: r.chain_id,
+    sellToken: `0x${r.sell_token.toString('hex')}` as `0x${string}`,
+    sellAmount: BigInt(r.sell_amount),
+  }));
 
   let priced = 0;
   let failed = 0;
   for (const row of unpriced) {
     try {
       const usd = await priceTrade(row);
-      await db.execute(sql`
+      const tradeUidBuf = Buffer.from(row.tradeUid.slice(2), 'hex');
+      await sql`
         UPDATE trades
         SET value_usd = ${usd}, priced_at = now()
-        WHERE trade_uid = ${row.tradeUid}
-      `);
+        WHERE trade_uid = ${tradeUidBuf}
+      `;
       priced++;
     } catch (err) {
       log.warn({ err, tradeUid: row.tradeUid }, 'pricing failed');
