@@ -86,6 +86,17 @@ const Editor = styled.div`
     color: rgba(245, 239, 230, 0.42);
     pointer-events: none;
   }
+
+  /* Mobile: tighter horizontal padding so the placeholder doesn't get
+     truncated awkwardly on 360px screens. Keep font-size ≥16px to
+     prevent iOS auto-zoom on focus. */
+  @media (max-width: 600px) {
+    font-size: 17px;
+    line-height: 28px;
+    min-height: 56px;
+    padding: 14px 44px 14px 16px;
+    border-radius: 14px;
+  }
 `
 
 const Spinner = styled.div`
@@ -100,6 +111,11 @@ const Spinner = styled.div`
   border-top-color: #f2a63e;
   animation: spin 700ms linear infinite;
   pointer-events: none;
+  @media (max-width: 600px) {
+    right: 14px;
+    width: 16px;
+    height: 16px;
+  }
   @keyframes spin {
     to {
       transform: translateY(-50%) rotate(360deg);
@@ -358,6 +374,18 @@ const ChipStyles = styled.div`
     object-fit: cover;
     background: rgba(255, 255, 255, 0.85);
     display: block;
+  }
+  @media (max-width: 600px) {
+    & .entity-chip {
+      font-size: 15px;
+      line-height: 22px;
+      padding: 1px 9px 1px 5px;
+      gap: 5px;
+    }
+    & .entity-chip .chip-logo {
+      width: 16px;
+      height: 16px;
+    }
   }
   @keyframes chip-stream-in {
     from {
