@@ -55,3 +55,13 @@
   Cache-Control: no-cache, no-store, must-revalidate
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
+
+# /docs is a separate static HTML page (not the SPA). Short max-age
+# so doc edits propagate within an hour, but still cacheable so we
+# get crawler-friendly response times.
+/docs
+  Cache-Control: public, max-age=3600, must-revalidate
+/docs/
+  Cache-Control: public, max-age=3600, must-revalidate
+/docs/*
+  Cache-Control: public, max-age=3600, must-revalidate
