@@ -1,0 +1,36 @@
+name: rebate-indexer CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/rebate-indexer/**"
+      - "packages/sdk/**"
+      - "pnpm-workspace.yaml"
+      - "tsconfig.base.json"
+      - ".github/workflows/rebate-indexer-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/rebate-indexer/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+        with:
+          run_install: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @ophis/rebate-indexer...
+      - run: pnpm --filter @ophis/rebate-indexer typecheck
+      - run: pnpm --filter @ophis/rebate-indexer test
+      - run: pnpm --filter @ophis/rebate-indexer test:integration
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
