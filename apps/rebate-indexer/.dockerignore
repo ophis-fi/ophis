@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/.env
+**/.git
+**/coverage
+**/pg_data
+**/caddy_data
