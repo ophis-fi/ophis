@@ -595,7 +595,7 @@ Five anchors any user can verify independently:
 
 Skeptical user's full verification flow:
 ```bash
-git clone github.com/san-npm/ophis && cd ophis/apps/rebate-indexer
+git clone github.com/ophis-fi/ophis && cd ophis/apps/rebate-indexer
 docker compose up -d
 pnpm tsx src/cli.ts replay-from-genesis
 curl http://localhost:8080/batches | jq '.[] | {month, total_weth}'

@@ -3856,7 +3856,7 @@ Tick each item; do NOT proceed until every item is green.
 - [ ] Safe Transaction Service configured to accept the proposer key
 - [ ] Cloudflare Tunnel mapping `rebates.ophis.fi` → Aleph VM live (curl returns 200)
 - [ ] Telegram bot DMs configured to ping `735726338`
-- [ ] `RUNBOOK.md` committed, linked from `/health` response (add `runbook: "https://github.com/san-npm/greg/blob/main/apps/rebate-indexer/RUNBOOK.md"` to the /health JSON)
+- [ ] `RUNBOOK.md` committed, linked from `/health` response (add `runbook: "https://github.com/ophis-fi/ophis/blob/main/apps/rebate-indexer/RUNBOOK.md"` to the /health JSON)
 - [ ] `src/tiers.ts` reviewed and acknowledged (the only number that can't be wrong)
 - [ ] Status page `rebates.ophis.fi/status` returns 200
 - [ ] `BATCHER_PROPOSE_ENABLED=false` in production .env for the first month — first batch run is dry-run only
@@ -3916,7 +3916,7 @@ Once the first real batch is mined, write a short post (Twitter / Farcaster / Di
 > Volume-tiered WETH rebates every month, paid from price-improvement revenue
 > First batch: 0.X WETH to Y wallets (Bronze ≥ 10%, Silver 20%, Gold 35%, Platinum 50%)
 > Verify: https://rebates.ophis.fi/batches
-> Code: https://github.com/san-npm/greg/tree/main/apps/rebate-indexer
+> Code: https://github.com/ophis-fi/ophis/tree/main/apps/rebate-indexer
 
 ### Step 6: Commit (the checklist itself)
 

@@ -20,7 +20,7 @@ export const CONFIG = {
   url: {
     root: 'https://greg-etm.pages.dev',
     swap: 'https://greg-etm.pages.dev/#/1/swap/DAI/USDC?sellAmount=500',
-    docs: 'https://github.com/san-npm/greg',
+    docs: 'https://github.com/ophis-fi/ophis',
     api: API_BASE_URL + '/mainnet',
     apiDocs: API_BASE_URL + '/docs',
     daos: '/daos',
@@ -38,7 +38,7 @@ export const CONFIG = {
   social: {
     twitter: { label: 'Twitter', account: '@greg_etm', url: 'https://twitter.com/' },
     discord: { label: 'Discord', url: 'https://discord.com/invite/cowprotocol' },
-    github: { label: 'GitHub', url: 'https://github.com/san-npm/greg' },
+    github: { label: 'GitHub', url: 'https://github.com/ophis-fi/ophis' },
     forum: { label: 'Forum', url: 'https://forum.cow.fi/' },
   },
   utm: {
