@@ -361,6 +361,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     <a href="#fees">Fees</a>
     <a href="#networks">Networks</a>
     <a href="#faq">FAQ</a>
+    <a href="/docs/api">API</a>
   </nav>
   <a href="/" class="cta">Open Ophis</a>
 </header>
@@ -509,6 +510,10 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
       <summary>Is Ophis open source?</summary>
       <p>Yes — full source at <a href="https://github.com/ophis-fi/ophis" rel="noreferrer">github.com/ophis-fi/ophis</a>. Ophis is a fork of the open-source CoW Swap frontend with an added natural-language intent-parsing layer.</p>
     </details>
+    <details>
+      <summary>Can I use Ophis's intent parser in my own app?</summary>
+      <p>Yes. The natural-language → structured-order endpoint is publicly available at <code>POST /api/intent</code> with a 30/min/IP rate limit, no auth, no key. Full reference at <a href="/docs/api">ophis.fi/docs/api</a>. Build it into a Telegram bot, browser extension, agent framework, or your own UI.</p>
+    </details>
   </section>
 </main>
 
@@ -518,6 +523,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     <a href="/">Home</a>
     <a href="/#/1/swap/_/_">Swap</a>
     <a href="/docs">Docs</a>
+    <a href="/docs/api">API</a>
     <a href="https://github.com/ophis-fi/ophis" rel="noreferrer">GitHub</a>
   </span>
 </footer>
