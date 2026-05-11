@@ -1,0 +1,21 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+.tierName { text-transform: capitalize; font-weight: 700; letter-spacing: 0.02em; }
+.divider { opacity: 0.5; }
+.volume, .nextTier { font-variant-numeric: tabular-nums; }
+
+.bronze   { color: #cd7f32; border-color: rgba(205,127,50,0.5);  background: rgba(205,127,50,0.06); }
+.silver   { color: #9aa3b2; border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
+.gold     { color: #d4af37; border-color: rgba(212,175,55,0.5);  background: rgba(212,175,55,0.06); }
+.platinum { color: #b9f2ff; border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }

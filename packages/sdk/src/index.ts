@@ -12,3 +12,10 @@ export {
   COW_SUPPORTED_CHAIN_IDS,
   type GregPartnerFee,
 } from './partner-fee.js';
+
+export {
+  TIERS,
+  POOL_SPLIT_BPS,
+  assignTier,
+  type Tier,
+} from './tiers.js';
