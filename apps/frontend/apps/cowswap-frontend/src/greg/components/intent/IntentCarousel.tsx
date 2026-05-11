@@ -89,6 +89,13 @@ const Track = styled.div`
     animation-play-state: paused;
   }
 
+  /* On phones, slow the marquee considerably — hover-pause doesn't exist
+     for touch and chips become unreadable at desktop speed. 120s lets the
+     user follow a specific chip across the screen and tap it. */
+  @media (max-width: 600px) {
+    animation-duration: 120s;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
@@ -128,6 +135,14 @@ const Chip = styled.button`
   &:focus-visible {
     outline: 2px solid #f2a63e;
     outline-offset: 2px;
+  }
+
+  /* Mobile: chips need a ≥44px tap-target (Apple HIG / Material 48dp) to
+     be reliably hittable with a thumb. Larger padding + slightly bigger
+     font for readability while the marquee moves. */
+  @media (max-width: 600px) {
+    padding: 12px 16px;
+    font-size: 14px;
   }
 `
 
