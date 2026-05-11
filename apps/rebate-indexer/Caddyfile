@@ -1,0 +1,8 @@
+:80 {
+    encode gzip zstd
+    reverse_proxy indexer:8080 {
+        header_up X-Real-IP {remote_host}
+        health_uri /health
+        health_interval 30s
+    }
+}
