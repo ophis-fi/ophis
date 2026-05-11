@@ -214,13 +214,31 @@ const json = (body: IntentResponse, status = 200, extraHeaders: Record<string, s
     },
   })
 
+// Source-of-truth allow-list for tokens the parser will surface to the UI.
+// The LibertAI prompt is encouraged to emit *any* DEX-traded token symbol;
+// this set is the post-LLM filter. Symbols missing here are silently dropped
+// (the LLM may emit them but `filterParsedIntent` strips them). Adding a
+// symbol here does NOT guarantee the cowswap upstream can resolve it to an
+// on-chain address — that's a separate token-list concern in apps/frontend.
+//
+// Categorisation is for human readability only; canonical lookup is the Set
+// membership check in `isValidEntity`. Keep entries UPPERCASE.
+//
+// Updated 2026-05-11 (P3): expanded from 146 to 236 to improve intent-parser
+// coverage on long-tail symbols. Curated against tokens with active EVM-DEX
+// liquidity per CoinGecko top-volume snapshot. Logo coverage in
+// apps/frontend/.../tokenAssets.ts remains a separate concern — symbols added
+// here without a logo render as text-only chips (graceful degradation).
 const TOKEN_VALUES = new Set([
   // Stablecoins
   'USDC', 'USDT', 'DAI', 'FRAX', 'LUSD', 'SUSD', 'GUSD', 'TUSD',
   'USDP', 'USDE', 'PYUSD', 'GHO', 'FDUSD', 'EURC', 'MIM', 'CRVUSD',
-  // ETH-pegs
+  'USDS', 'SUSDS', 'SDAI', 'USDR', 'AGEUR', 'BUSD',
+  // ETH-pegs + LSTs/LRTs
   'ETH', 'WETH', 'STETH', 'WSTETH', 'RETH', 'CBETH', 'SFRXETH',
   'EZETH', 'RSETH',
+  'METH', 'EETH', 'WEETH', 'PUFETH', 'OSETH', 'SWETH', 'ETHX',
+  'WBETH', 'ANKRETH', 'OETH',
   // BTC-pegs
   'WBTC', 'TBTC', 'CBBTC', 'BTCB', 'BTC',
   // Native L1/L2
@@ -229,20 +247,31 @@ const TOKEN_VALUES = new Set([
   'OSMO', 'MNT', 'IMX', 'TRX', 'LTC', 'BCH', 'ETC', 'XRP', 'ADA',
   'SOL', 'DOT', 'KSM', 'XMR', 'XLM', 'FLOW', 'VET', 'HNT', 'AR',
   'FLR', 'TIA', 'TAO', 'CRO', 'CFX', 'FTM', 'CELO', 'KAVA', 'STX',
-  'WAVES', 'ZEC', 'DASH',
+  'WAVES', 'ZEC', 'DASH', 'QNT', 'ICX', 'ZIL', 'ASTR', 'LSK',
   // DeFi blue-chips
   'UNI', 'AAVE', 'MKR', 'LDO', 'COMP', 'CRV', 'SUSHI', 'SNX', 'BAL',
   'GNO', 'YFI', '1INCH', 'LINK', 'FXS', 'RPL', 'PENDLE', 'ENS',
   'EIGEN', 'GRT', 'JUP', 'JTO', 'PYTH', 'GMX', 'AERO', 'VELO', 'KAS',
   'DYM', 'CAKE', 'OCEAN', 'NMR', 'RLC', 'BAND', 'ZRX', 'PRIME', 'RON',
   'NEXO', 'STRK', 'METIS',
-  // AI / RWA
+  'ENA', 'MORPHO', 'RDNT', 'JOE', 'SWELL', 'ORDI', 'USUAL', 'RBN',
+  'DYDX', 'BICO', 'KNC', 'SDT', 'MAGIC', 'QUICK', 'MASK', 'OGN',
+  'BAT', 'LRC', 'GMT', 'WOO', 'GLM', 'CFG', 'ALCX', 'LPT', 'HOT',
+  'CVX', 'AMP', 'RSR', 'POLY', 'OMG', 'STORJ', 'BNT', 'ANT', 'ANKR',
+  'KEEP', 'MTL', 'AUDIO', 'CHR', 'SUPER', 'MAV', 'CKB', 'ADX', 'REQ',
+  'ELF', 'ATA',
+  // AI / DePIN / RWA
   'FET', 'RNDR', 'ARKM', 'AKT', 'ONDO', 'ETHFI', 'IO', 'WLD',
+  'VIRTUAL', 'AIXBT', 'AI16Z', 'GRASS', 'NOS', 'IPOR', 'MOBILE',
+  'IOTX', 'TFUEL',
   // Memes
   'PEPE', 'SHIB', 'DOGE', 'BONK', 'WIF', 'FLOKI', 'BRETT', 'MOG',
   'MEW', 'POPCAT', 'TURBO', 'GIGA',
+  'TOSHI', 'NEIRO', 'GOAT', 'PNUT', 'MOODENG', 'DEGEN', 'MICHI',
+  'TRUMP', 'ZRO', 'BABYDOGE',
   // Gaming
   'SAND', 'MANA', 'AXS', 'GALA', 'APE', 'ENJ', 'CHZ', 'JASMY',
+  'BEAM', 'PIXEL', 'PORTAL', 'ALICE', 'VOXEL',
   // Other
   'STG', 'RAD',
 ])
