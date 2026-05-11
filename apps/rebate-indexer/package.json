@@ -1,0 +1,45 @@
+{
+  "name": "@ophis/rebate-indexer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests --max-warnings=0",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration.test.ts",
+    "test:e2e": "vitest run tests/e2e",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@safe-global/api-kit": "^2.5.0",
+    "@safe-global/protocol-kit": "^5.0.0",
+    "@safe-global/safe-deployments": "^1.37.0",
+    "@safe-global/types-kit": "^1.0.0",
+    "drizzle-orm": "^0.36.0",
+    "fastify": "^5.0.0",
+    "fast-check": "^3.22.0",
+    "node-cron": "^3.0.3",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "postgres": "^3.4.5",
+    "viem": "^2.21.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "@types/node-cron": "^3.0.11",
+    "drizzle-kit": "^0.28.0",
+    "msw": "^2.6.0",
+    "testcontainers": "^10.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}
