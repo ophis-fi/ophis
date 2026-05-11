@@ -1,0 +1,51 @@
+name: rebate-indexer deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/rebate-indexer/**"
+      - ".github/workflows/rebate-indexer-deploy.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: rebate-indexer-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349  # v3.7.1
+      - name: docker build
+        run: |
+          docker build \
+            -f apps/rebate-indexer/Dockerfile \
+            -t ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:${{ github.sha }} \
+            -t ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:latest \
+            .
+      - name: push to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+          docker push ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository_owner }}/ophis-rebate-indexer:latest
+      - name: ssh deploy to Aleph VM
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ALEPH_REBATES_SSH_KEY }}
+          SSH_HOST:        ${{ secrets.ALEPH_REBATES_SSH_HOST }}
+          SSH_USER:        ${{ secrets.ALEPH_REBATES_SSH_USER }}
+        run: |
+          mkdir -p ~/.ssh && echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SSH_HOST" \
+            "cd /srv/rebate-indexer && \
+             docker compose pull && \
+             docker compose up -d --force-recreate indexer && \
+             docker compose ps"
