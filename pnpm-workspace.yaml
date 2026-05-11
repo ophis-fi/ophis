@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
   - "apps/backend"
+  - "apps/rebate-indexer"
   - "infra/rpc"
 # apps/frontend is excluded — cowswap upstream ships its own package manager
