@@ -17,7 +17,7 @@ import styled from 'styled-components/macro'
 import { OphisFooter } from '../OphisFooter'
 import { OphisHeader } from '../OphisHeader'
 
-import { ExampleChips } from './ExampleChips'
+import { IntentCarousel } from './IntentCarousel'
 import { IntentInput } from './IntentInput'
 import { intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
@@ -283,7 +283,7 @@ export function IntentLanding(): ReactNode {
           <Helper $variant={helper.variant}>{helper.message || ' '}</Helper>
         </InputBlock>
 
-        <ExampleChips onPick={(t) => setText(t)} />
+        <IntentCarousel onPick={(t) => setText(t)} />
 
         <ContinueButton type="button" onClick={handleSubmit} disabled={!ready} $active={ready}>
           Continue →
