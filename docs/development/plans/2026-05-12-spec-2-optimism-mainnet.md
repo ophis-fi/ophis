@@ -39,7 +39,7 @@ To be created:
 | `infra/optimism/node/README.md` | runbook for the node side (snapshot URL, sync time, restart) |
 
 Existing files updated:
-- `infra/optimism/.env` (deploy script appends GREG_*_OP_MAINNET addresses)
+- `infra/optimism/.env` (deploy script appends OPHIS_*_OP_MAINNET addresses)
 - `infra/cloudflare/ophis-chain-backends.md` (extended with optimism-mainnet row)
 - `apps/rebate-indexer/src/alerter.ts` (extend to watch OP mainnet driver-submitter balance)
 
@@ -239,7 +239,7 @@ Read tail of `infra/optimism/.env`:
 tail -10 infra/optimism/.env
 ```
 
-Should see all `GREG_*_OP_MAINNET` keys.
+Should see all `OPHIS_*_OP_MAINNET` keys.
 
 - [ ] **Step 3: Sanity-check contracts on chain**
 
@@ -332,7 +332,7 @@ Same pattern as Spec 3 plan Task 7 Step 1, but for `greg-optimism-test`.
 
 Key params:
 - chain ID `10`, RPC = our op-geth
-- `GPV2_SETTLEMENT = GREG_SETTLEMENT_OP_MAINNET`
+- `GPV2_SETTLEMENT = OPHIS_SETTLEMENT_OP_MAINNET`
 - Buy token: native USDC `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85`
 - 0.001 WETH → at-least-3.5 USDC
 - **Exit 0 only on `status: fulfilled` + non-empty `txHash`**

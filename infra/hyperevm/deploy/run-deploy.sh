@@ -31,16 +31,16 @@ set -a
 source "$ENV_FILE"
 set +a
 
-GREG_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
+OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
   -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
-export GREG_MEGAETH_DEPLOYER_PK GREG_MEGAETH_DEPLOYER_ADDRESS
+export OPHIS_MEGAETH_DEPLOYER_PK OPHIS_MEGAETH_DEPLOYER_ADDRESS
 
 LOG_FILE="$REPO_ROOT/infra/hyperevm/deploy-log-${NETWORK}-$(date +%Y%m%d-%H%M%S).log"
 
 cd "$REPO_ROOT/contracts"
 
 echo "=== Greg HyperEVM deploy: $NETWORK ==="
-echo "=== Deployer: ${GREG_MEGAETH_DEPLOYER_ADDRESS:?must be set in .env} ==="
+echo "=== Deployer: ${OPHIS_MEGAETH_DEPLOYER_ADDRESS:?must be set in .env} ==="
 echo ""
 
 HARDHAT_CONFIG=hardhat-megaeth.config.ts \
@@ -50,7 +50,7 @@ echo ""
 echo "=== Capture deployed addresses from the log + write to:"
 echo "      $ENV_FILE"
 if [[ "$NETWORK" == "hyperevm-testnet" ]]; then
-  echo "    fields: GREG_AUTH_HYPEREVM_TESTNET, GREG_SETTLEMENT_HYPEREVM_TESTNET, GREG_VAULT_RELAYER_HYPEREVM_TESTNET"
+  echo "    fields: OPHIS_AUTH_HYPEREVM_TESTNET, OPHIS_SETTLEMENT_HYPEREVM_TESTNET, OPHIS_VAULT_RELAYER_HYPEREVM_TESTNET"
 else
-  echo "    fields: GREG_*_HYPEREVM_MAINNET"
+  echo "    fields: OPHIS_*_HYPEREVM_MAINNET"
 fi

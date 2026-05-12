@@ -141,7 +141,7 @@ The implementation plan must close on one branch before execution.
    - CoW helpers via `cast send --create`
    - Allowlists driver-submitter on the AuthList
    - **No** Ophis V2 deploy — Velodrome V2 is the liquidity source
-   - Appends `GREG_*_OP_MAINNET` keys to `infra/optimism/.env`
+   - Appends `OPHIS_*_OP_MAINNET` keys to `infra/optimism/.env`
 4. **Verify Velodrome V2 access** — call `factory()` on the Velodrome V2 router; sanity-check it returns the expected Velodrome factory address.
 
 ## VM deploy sequence (Branch A example; Branch B differs at step 5-7)
@@ -215,7 +215,7 @@ Pre-condition: a separate `greg-optimism-test` Keychain entry with ≥0.001 OP-m
 
 ### Repo state
 - [ ] `infra/optimism-mainnet/` exists with docker-compose + configs + scripts + deploy/
-- [ ] all mainnet addresses in `infra/optimism/.env` under `GREG_*_OP_MAINNET` keys
+- [ ] all mainnet addresses in `infra/optimism/.env` under `OPHIS_*_OP_MAINNET` keys
 - [ ] operator runbook extended with optimism-mainnet row + Branch A/B/C decision recorded
 
 ### Telegram alerts

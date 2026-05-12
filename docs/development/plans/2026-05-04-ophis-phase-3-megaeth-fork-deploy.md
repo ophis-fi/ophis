@@ -130,23 +130,23 @@ MEGAETH_MAINNET_EXPLORER=
 
 # --- Deployer EOA (Ophis) ---
 # Private key in macOS Keychain entry `greg-megaeth-deployer`.
-GREG_MEGAETH_DEPLOYER_ADDRESS=<DEPLOYER_ADDR from Step 4>
+OPHIS_MEGAETH_DEPLOYER_ADDRESS=<DEPLOYER_ADDR from Step 4>
 
 # --- Driver submitter (reuse Phase 1) ---
 # Private key in macOS Keychain entry `greg-driver-submitter`.
-GREG_DRIVER_SUBMITTER_ADDRESS=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
+OPHIS_DRIVER_SUBMITTER_ADDRESS=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 
 # --- Ophis-deployed contract addresses (filled after Tasks 4-5) ---
-GREG_AUTH_TESTNET=
-GREG_SETTLEMENT_TESTNET=
-GREG_VAULT_RELAYER_TESTNET=
-GREG_AUTH_MAINNET=
-GREG_SETTLEMENT_MAINNET=
-GREG_VAULT_RELAYER_MAINNET=
+OPHIS_AUTH_TESTNET=
+OPHIS_SETTLEMENT_TESTNET=
+OPHIS_VAULT_RELAYER_TESTNET=
+OPHIS_AUTH_MAINNET=
+OPHIS_SETTLEMENT_MAINNET=
+OPHIS_VAULT_RELAYER_MAINNET=
 
 # --- Partner-fee recipient (unchanged from Phase 2.5) ---
 # Gnosis Safe; CREATE2-deterministic; same address on MegaETH after lazy proxy deploy.
-GREG_PARTNER_FEE_RECIPIENT=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+OPHIS_PARTNER_FEE_RECIPIENT=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
 ```
 
 Replace `<DEPLOYER_ADDR from Step 4>` with the actual address. Do NOT include the private key in this file.
@@ -311,7 +311,7 @@ import baseConfig from '../../../contracts/hardhat.config'
 
 const MEGAETH_TESTNET_RPC = process.env.MEGAETH_TESTNET_RPC ?? 'https://carrot.megaeth.com/rpc'
 const MEGAETH_MAINNET_RPC = process.env.MEGAETH_MAINNET_RPC ?? ''
-const DEPLOYER_PK = process.env.GREG_MEGAETH_DEPLOYER_PK ?? ''
+const DEPLOYER_PK = process.env.OPHIS_MEGAETH_DEPLOYER_PK ?? ''
 
 const config: HardhatUserConfig = {
   ...baseConfig,
@@ -353,7 +353,7 @@ source /Users/scep/greg/infra/megaeth/.env
 set +a
 
 # Read deployer PK from Keychain into env (do NOT commit anywhere)
-export GREG_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
+export OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
   -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
 
 # Run hardhat deploy with our config
@@ -364,7 +364,7 @@ HARDHAT_CONFIG=../infra/megaeth/deploy/hardhat-megaeth.config.ts \
 
 echo ""
 echo "=== capture the deployed addresses from the log above and add to infra/megaeth/.env ==="
-echo "=== fields: GREG_AUTH_${NETWORK}_UPPER, GREG_SETTLEMENT_${NETWORK}_UPPER, GREG_VAULT_RELAYER_${NETWORK}_UPPER ==="
+echo "=== fields: OPHIS_AUTH_${NETWORK}_UPPER, OPHIS_SETTLEMENT_${NETWORK}_UPPER, OPHIS_VAULT_RELAYER_${NETWORK}_UPPER ==="
 ```
 
 ```bash
@@ -391,7 +391,7 @@ git push
 Visit a MegaETH testnet faucet (`https://testnet.megaeth.com` lists faucets) and request testnet ETH for the deployer address. Need ~0.5 testnet ETH for safe contract deploys.
 
 ```bash
-DEPLOYER_ADDR=$(grep GREG_MEGAETH_DEPLOYER_ADDRESS /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
+DEPLOYER_ADDR=$(grep OPHIS_MEGAETH_DEPLOYER_ADDRESS /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 RPC=https://carrot.megaeth.com/rpc
 cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether
 ```
@@ -422,9 +422,9 @@ If the upstream deploy script does anything different, follow the actual output.
 Edit `/Users/scep/greg/infra/megaeth/.env` (gitignored):
 
 ```ini
-GREG_AUTH_TESTNET=0x<address>
-GREG_SETTLEMENT_TESTNET=0x<address>
-GREG_VAULT_RELAYER_TESTNET=0x<address>
+OPHIS_AUTH_TESTNET=0x<address>
+OPHIS_SETTLEMENT_TESTNET=0x<address>
+OPHIS_VAULT_RELAYER_TESTNET=0x<address>
 ```
 
 ### Step 4: Sanity-check on the explorer
@@ -436,7 +436,7 @@ Visit `https://megaexplorer.xyz/address/<settlement address>`. Expect: contract 
 ```bash
 DEPLOYER_PK=$(security find-generic-password -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
 RPC=https://carrot.megaeth.com/rpc
-AUTH=$(grep GREG_AUTH_TESTNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
+AUTH=$(grep OPHIS_AUTH_TESTNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 
 # Authentication contract has addSolver(address) restricted to manager
@@ -489,8 +489,8 @@ cp infra/local/configs/baseline.toml  infra/megaeth/configs/baseline.toml
 ### Step 3: Edit `driver.toml`
 
 - `chain-id` → `"6342"`
-- Replace Ophis's deployed Settlement address: any field referencing `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` → `$GREG_SETTLEMENT_TESTNET` (read from .env at runtime via env-var substitution; the upstream config supports `%VAR_NAME` placeholders for some fields).
-- Replace VaultRelayer reference if present: `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` → `$GREG_VAULT_RELAYER_TESTNET`.
+- Replace Ophis's deployed Settlement address: any field referencing `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` → `$OPHIS_SETTLEMENT_TESTNET` (read from .env at runtime via env-var substitution; the upstream config supports `%VAR_NAME` placeholders for some fields).
+- Replace VaultRelayer reference if present: `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` → `$OPHIS_VAULT_RELAYER_TESTNET`.
 - DEX presets: drop Honeyswap (Gnosis-only); add Uniswap V3 if deployed on MegaETH (factory deterministic address `0x1F98431c8aD98523631AE4a59f267346ea31F984` may or may not exist on MegaETH — verify with `cast code <factory>` against the testnet RPC). Add native MegaETH DEXes via inspection of `https://docs.megaeth.com` or `https://www.coingecko.com/en/exchanges/decentralized/megaeth`.
 
 If no V3 deployment is verified at deploy time, fall back to Uniswap V2-style preset pointed at any mainnet-style V2 router that's been deployed on MegaETH testnet.
@@ -507,7 +507,7 @@ If NO DEX-with-liquidity is found on testnet, the swap won't have anything to ro
 
 - `[[drivers]]` block: ensure the driver address matches our driver-submitter `0x00f98b…502F` AND the driver URL points at our driver service.
 - chain-id → `"6342"`
-- Settlement contract → Ophis's deployed `GREG_SETTLEMENT_TESTNET`.
+- Settlement contract → Ophis's deployed `OPHIS_SETTLEMENT_TESTNET`.
 
 ### Step 6: Commit
 
@@ -578,7 +578,7 @@ cast balance --rpc-url "$RPC" "$TEST_ADDR" --ether
 ```bash
 TEST_PK=$(security find-generic-password -s greg-chiado-test -w)
 WETH=<MegaETH testnet WETH address from Task 6 Step 2>
-RELAYER=$(grep GREG_VAULT_RELAYER_TESTNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
+RELAYER=$(grep OPHIS_VAULT_RELAYER_TESTNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 RPC=https://carrot.megaeth.com/rpc
 
 cast send --rpc-url "$RPC" --private-key "$TEST_PK" "$WETH" "deposit()" --value 0.01ether
@@ -596,7 +596,7 @@ domain: {
   name: 'Gnosis Protocol',
   version: 'v2',
   chainId: 6342,
-  verifyingContract: <GREG_SETTLEMENT_TESTNET from .env>
+  verifyingContract: <OPHIS_SETTLEMENT_TESTNET from .env>
 }
 ```
 
@@ -627,9 +627,9 @@ Append to a temp file `/tmp/greg-phase3-stage1.md` for inclusion in the final va
 ## Stage 1: MegaETH testnet (chainId 6342)
 
 Date: <YYYY-MM-DD>
-Settlement: <GREG_SETTLEMENT_TESTNET>
-VaultRelayer: <GREG_VAULT_RELAYER_TESTNET>
-Authentication: <GREG_AUTH_TESTNET>
+Settlement: <OPHIS_SETTLEMENT_TESTNET>
+VaultRelayer: <OPHIS_VAULT_RELAYER_TESTNET>
+Authentication: <OPHIS_AUTH_TESTNET>
 Pair: WETH → USDC
 Order UID: <paste>
 Settlement tx: <paste>
@@ -642,7 +642,7 @@ Verdict: PASS / DONE_WITH_CONCERNS — <details>
 ## Task 8: Deploy contracts on MegaETH mainnet (Stage 2)
 
 **Files:**
-- Modify: `infra/megaeth/.env` (fill in `GREG_*_MAINNET` addresses + `MEGAETH_MAINNET_RPC`)
+- Modify: `infra/megaeth/.env` (fill in `OPHIS_*_MAINNET` addresses + `MEGAETH_MAINNET_RPC`)
 
 Pre-requisites:
 - Stage 1 (Tasks 5-7) PASSED.
@@ -668,7 +668,7 @@ Expected: `4326`.
 ### Step 2: Fund deployer on mainnet
 
 ```bash
-DEPLOYER_ADDR=$(grep GREG_MEGAETH_DEPLOYER_ADDRESS /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
+DEPLOYER_ADDR=$(grep OPHIS_MEGAETH_DEPLOYER_ADDRESS /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether
 ```
 Expected: ≥ 0.05 ETH.
@@ -685,9 +685,9 @@ Capture the three deployed addresses (Authentication, Settlement, VaultRelayer) 
 ### Step 4: Update `.env` with mainnet addresses
 
 ```ini
-GREG_AUTH_MAINNET=0x<address>
-GREG_SETTLEMENT_MAINNET=0x<address>
-GREG_VAULT_RELAYER_MAINNET=0x<address>
+OPHIS_AUTH_MAINNET=0x<address>
+OPHIS_SETTLEMENT_MAINNET=0x<address>
+OPHIS_VAULT_RELAYER_MAINNET=0x<address>
 ```
 
 ### Step 5: Add driver-submitter to mainnet auth allowlist
@@ -695,7 +695,7 @@ GREG_VAULT_RELAYER_MAINNET=0x<address>
 ```bash
 DEPLOYER_PK=$(security find-generic-password -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
 RPC=$(grep MEGAETH_MAINNET_RPC /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
-AUTH=$(grep GREG_AUTH_MAINNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
+AUTH=$(grep OPHIS_AUTH_MAINNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 
 cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" "$AUTH" \
@@ -730,7 +730,7 @@ cp infra/megaeth/configs/{orderbook,autopilot,driver,baseline}.toml \
 
 In each of the four mainnet TOMLs:
 - `chain-id` → `"4326"`
-- Settlement / VaultRelayer / Authentication addresses → `GREG_*_MAINNET` (from Task 8 .env)
+- Settlement / VaultRelayer / Authentication addresses → `OPHIS_*_MAINNET` (from Task 8 .env)
 - WETH + base-token addresses → MegaETH **mainnet** equivalents (look up via mainnet explorer or docs.megaeth.com)
 - DEX presets → MegaETH mainnet DEX deployments. Uniswap V3 factory may live at the same canonical address as on the testnet — verify with `cast code`.
 - `node-url` / `simulation-node-url` → `${MEGAETH_MAINNET_RPC}` (or hardcoded mainnet RPC if env-var substitution isn't supported by the upstream config)
@@ -785,7 +785,7 @@ TEST_PK=$(security find-generic-password -s greg-chiado-test -w)
 TEST_ADDR=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
 RPC=$(grep MEGAETH_MAINNET_RPC /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 WETH=<MegaETH mainnet WETH from Task 9 base-tokens>
-RELAYER=$(grep GREG_VAULT_RELAYER_MAINNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
+RELAYER=$(grep OPHIS_VAULT_RELAYER_MAINNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 
 cast balance --rpc-url "$RPC" "$TEST_ADDR" --ether
 cast send --rpc-url "$RPC" --private-key "$TEST_PK" "$WETH" "deposit()" --value 0.001ether
@@ -801,7 +801,7 @@ EIP-712 domain:
   name: 'Gnosis Protocol',
   version: 'v2',
   chainId: 4326,
-  verifyingContract: <GREG_SETTLEMENT_MAINNET>
+  verifyingContract: <OPHIS_SETTLEMENT_MAINNET>
 }
 ```
 Submit to `http://localhost:8080/api/v1/orders` (our own orderbook).
@@ -823,9 +823,9 @@ Append to `/tmp/greg-phase3-stage2.md`:
 ## Stage 2: MegaETH mainnet (chainId 4326) — Phase 3 phase gate
 
 Date: <YYYY-MM-DD>
-Settlement: <GREG_SETTLEMENT_MAINNET>
-VaultRelayer: <GREG_VAULT_RELAYER_MAINNET>
-Authentication: <GREG_AUTH_MAINNET>
+Settlement: <OPHIS_SETTLEMENT_MAINNET>
+VaultRelayer: <OPHIS_VAULT_RELAYER_MAINNET>
+Authentication: <OPHIS_AUTH_MAINNET>
 Pair: WETH → USDC (or whatever pair has liquidity)
 Order UID: <paste>
 Settlement tx: <paste>
@@ -870,9 +870,9 @@ intent-based DEX aggregator on MegaETH.
 <production URL — Cloudflare Pages: https://greg-etm.pages.dev>
 
 ## Live contracts on MegaETH mainnet (chainId 4326)
-- GPv2Settlement: `<GREG_SETTLEMENT_MAINNET>`
-- GPv2VaultRelayer: `<GREG_VAULT_RELAYER_MAINNET>`
-- GPv2AllowListAuthentication: `<GREG_AUTH_MAINNET>`
+- GPv2Settlement: `<OPHIS_SETTLEMENT_MAINNET>`
+- GPv2VaultRelayer: `<OPHIS_VAULT_RELAYER_MAINNET>`
+- GPv2AllowListAuthentication: `<OPHIS_AUTH_MAINNET>`
 
 ## Why MegaETH
 
@@ -940,13 +940,13 @@ and mainnet (4326).
 ## Deployed contracts
 
 - **Testnet (6342):**
-  - Settlement: `<GREG_SETTLEMENT_TESTNET>`
-  - VaultRelayer: `<GREG_VAULT_RELAYER_TESTNET>`
-  - Authentication: `<GREG_AUTH_TESTNET>`
+  - Settlement: `<OPHIS_SETTLEMENT_TESTNET>`
+  - VaultRelayer: `<OPHIS_VAULT_RELAYER_TESTNET>`
+  - Authentication: `<OPHIS_AUTH_TESTNET>`
 - **Mainnet (4326):**
-  - Settlement: `<GREG_SETTLEMENT_MAINNET>`
-  - VaultRelayer: `<GREG_VAULT_RELAYER_MAINNET>`
-  - Authentication: `<GREG_AUTH_MAINNET>`
+  - Settlement: `<OPHIS_SETTLEMENT_MAINNET>`
+  - VaultRelayer: `<OPHIS_VAULT_RELAYER_MAINNET>`
+  - Authentication: `<OPHIS_AUTH_MAINNET>`
 
 ## Operator commands
 
@@ -1083,7 +1083,7 @@ A few `<placeholder>` markers in code blocks where runtime values must be substi
 **Type / name consistency**
 
 - Auth contract function names: `addSolver(address)` per upstream cowprotocol/contracts. If actual name differs (`grantSolverRole`, `setSolver`, etc.), Task 5 Step 5 says to inspect the source and adapt.
-- Env var names follow `GREG_<CONTRACT>_<NETWORK>` pattern consistently.
+- Env var names follow `OPHIS_<CONTRACT>_<NETWORK>` pattern consistently.
 - Chain IDs: 6342 (testnet), 4326 (mainnet) — referenced consistently.
 
 **Risk acknowledged**
