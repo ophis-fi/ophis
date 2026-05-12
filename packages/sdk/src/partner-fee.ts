@@ -1,9 +1,9 @@
 /**
- * Greg's partner-fee configuration injected into every order routed through
- * Greg.app. Surfaced via cow-sdk's appData metadata.partnerFee, paid out by
+ * Ophis's partner-fee configuration injected into every order routed through
+ * Ophis.fi. Surfaced via cow-sdk's appData metadata.partnerFee, paid out by
  * CoW DAO weekly in WETH. See:
  *   - https://docs.cow.fi/governance/fees/partner-fee
- *   - docs/superpowers/specs/2026-05-03-greg-design-amendment.md
+ *   - docs/superpowers/specs/2026-05-03-ophis-design-amendment.md
  */
 
 /**
@@ -20,11 +20,11 @@
  * Previous recipient (Phase 1.5 single-sig EOA, retired 2026-05-03):
  *   `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E` (Keychain `greg-partner-fee-recipient`).
  */
-export const GREG_PARTNER_FEE_RECIPIENT =
+export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;
 
 /** Default fee in basis points. 1 bps = 0.01%. CoW caps partner fees at 100 bps. */
-export const GREG_PARTNER_FEE_BPS = 5;
+export const OPHIS_PARTNER_FEE_BPS = 5;
 
 /** Chains where CoW Protocol is deployed (May 2026). Source: https://docs.cow.fi/cow-protocol/reference/contracts/core */
 export const COW_SUPPORTED_CHAIN_IDS = new Set<number>([
@@ -42,13 +42,13 @@ export const COW_SUPPORTED_CHAIN_IDS = new Set<number>([
   11155111,
 ]);
 
-export interface GregPartnerFee {
+export interface OphisPartnerFee {
   readonly bps: number;
   readonly recipient: `0x${string}`;
 }
 
-/** Returns Greg's default partner-fee config for a given chain, or undefined for unsupported chains. */
-export const gregDefaultPartnerFee = (chainId: number): GregPartnerFee | undefined => {
+/** Returns Ophis's default partner-fee config for a given chain, or undefined for unsupported chains. */
+export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undefined => {
   if (!COW_SUPPORTED_CHAIN_IDS.has(chainId)) return undefined;
-  return { bps: GREG_PARTNER_FEE_BPS, recipient: GREG_PARTNER_FEE_RECIPIENT };
+  return { bps: OPHIS_PARTNER_FEE_BPS, recipient: OPHIS_PARTNER_FEE_RECIPIENT };
 };

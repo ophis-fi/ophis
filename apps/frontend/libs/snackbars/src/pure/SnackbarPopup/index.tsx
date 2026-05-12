@@ -6,17 +6,17 @@ import { animated, useSpring } from '@react-spring/web'
 import { X } from 'react-feather'
 import styled from 'styled-components/macro'
 
-// Greg/Nucleus: lg radius (16), softer 1px border, token-driven padding.
+// Ophis/Nucleus: lg radius (16), softer 1px border, token-driven padding.
 const Wrapper = styled.div`
   display: inline-block;
   width: 100%;
   background-color: var(${UI.COLOR_PAPER});
   position: relative;
-  border-radius: var(--greg-radius-lg, 16px);
-  padding: var(--greg-space-5, 20px) 36px var(--greg-space-5, 20px) var(--greg-space-5, 20px);
+  border-radius: var(--ophis-radius-lg, 16px);
+  padding: var(--ophis-space-5, 20px) 36px var(--ophis-space-5, 20px) var(--ophis-space-5, 20px);
   overflow: hidden;
   border: 1px solid var(${UI.COLOR_TEXT_OPACITY_25});
-  box-shadow: var(--greg-shadow-medium, 0 4px 6px rgba(0, 0, 0, 0.04));
+  box-shadow: var(--ophis-shadow-medium, 0 4px 6px rgba(0, 0, 0, 0.04));
 `
 
 const ContentWrapper = styled.div`

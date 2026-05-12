@@ -38,7 +38,7 @@ import { APP_HEADER_ELEMENT_ID } from '../common/constants/common'
 import { WalletUnsupportedNetworkBanner } from '../common/containers/WalletUnsupportedNetworkBanner'
 import { BlockNumberProvider } from '../common/hooks/useBlockNumber'
 
-// Greg/Ophis: skip the upstream GTM bootstrap. `initGtm()` ships CoW's
+// Ophis: skip the upstream GTM bootstrap. `initGtm()` ships CoW's
 // GTM container `GTM-TBX4BV5M` by default and would phone home to
 // Google Tag Manager from every page load — off-brand for Ophis (we
 // don't want CoW analytics on our deploy) and a CSP concern
@@ -46,7 +46,7 @@ import { BlockNumberProvider } from '../common/hooks/useBlockNumber'
 // 'unsafe-inline'). Stubbed with a no-op CowAnalytics matching the
 // interface so the existing CowAnalyticsProvider tree just receives a
 // no-op. Re-enable once Ophis has its own GTM ID + privacy policy —
-// tracked in apps/frontend/.greg-divergences.md.
+// tracked in apps/frontend/.ophis-divergences.md.
 const cowAnalytics: ReturnType<typeof initGtm> = {
   setUserAccount: () => undefined,
   sendPageView: () => undefined,

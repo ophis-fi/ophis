@@ -42,13 +42,13 @@ export async function generateMetadata(): Promise<Metadata> {
           },
     icons: {
       icon: [
-        { url: '/greg-icon.svg', type: 'image/svg+xml' },
-        { url: '/greg-icon-inverse.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
+        { url: '/ophis-icon.svg', type: 'image/svg+xml' },
+        { url: '/ophis-icon-inverse.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
       ],
-      apple: '/greg-mark-app-icon.svg',
+      apple: '/ophis-mark-app-icon.svg',
       other: {
         rel: 'mask-icon',
-        url: '/greg-icon.svg',
+        url: '/ophis-icon.svg',
         color: '#E66A55',
       },
     },

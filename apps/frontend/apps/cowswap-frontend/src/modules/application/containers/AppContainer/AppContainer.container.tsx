@@ -7,11 +7,11 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
-// Greg/Ophis: route-aware chrome.
+// Ophis: route-aware chrome.
 //   /          → chrome-less landing (IntentLanding handles its own).
 //   anywhere   → Ophis header (wordmark + wallet controls) + Ophis footer.
 // Cowswap's AppMenu, hiring banner, cow scene, snowfall, AMM banner are
-// dropped wholesale. See apps/frontend/.greg-divergences.md.
+// dropped wholesale. See apps/frontend/.ophis-divergences.md.
 import { useLocation } from 'react-router'
 
 import { URLWarning } from 'legacy/components/Header/URLWarning'
@@ -25,8 +25,8 @@ import { InvalidLocalTimeWarning } from 'common/containers/InvalidLocalTimeWarni
 import { useCustomTheme } from 'common/hooks/useCustomTheme'
 import { useGetMarketDimension } from 'common/hooks/useGetMarketDimension'
 
-import { OphisFooter } from 'greg/components/OphisFooter'
-import { OphisHeader } from 'greg/components/OphisHeader'
+import { OphisFooter } from 'ophis/components/OphisFooter'
+import { OphisHeader } from 'ophis/components/OphisHeader'
 
 import { RecoveryBanner } from './RecoveryBanner'
 
@@ -37,7 +37,7 @@ import { NetworkAndAccountControls } from '../NetworkAndAccountControls/NetworkA
 // Initialize static analytics instance
 const pixel = initPixelAnalytics()
 
-// Greg/Ophis body wrapper — neutral dark surface for cowswap routes
+// Ophis body wrapper — neutral dark surface for cowswap routes
 // after we strip the upstream chrome. The cowswap swap-form internals
 // keep their own card backgrounds; this just paints what's around them.
 const OphisBodyWrapper = styled.div`

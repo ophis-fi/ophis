@@ -6,7 +6,7 @@ import { Trans } from '@lingui/react/macro'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
-import { Greg404Scene } from 'greg/components'
+import { Ophis404Scene } from 'ophis/components'
 
 import { usePageBackground, Content, GdocsListStyle, Page, Title } from 'modules/application'
 
@@ -54,7 +54,7 @@ const Container = styled.div`
 
 export default function NotFound(): ReactNode {
   const { setVariant, setScene } = usePageBackground()
-  const scene = useMemo(() => <Greg404Scene />, [])
+  const scene = useMemo(() => <Ophis404Scene />, [])
 
   useEffect(() => {
     setVariant('nocows')

@@ -35,7 +35,7 @@ export const Box = styled.div<{
     `}
 `
 
-// Greg/Ophis: pill-shaped arrow swap button (32px round disc) that
+// Ophis: pill-shaped arrow swap button (32px round disc) that
 // punches through the seam between the two input rows. Card bg as
 // the disc surface (so it sits on a "puck" of card colour), with a
 // brand coral border by default — the affordance is loud, not shy.

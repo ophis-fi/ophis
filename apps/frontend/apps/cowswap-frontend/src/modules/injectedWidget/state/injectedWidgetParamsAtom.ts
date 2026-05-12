@@ -2,7 +2,7 @@ import { atom } from 'jotai'
 
 import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
 
-import { GREG_DEFAULT_APP_DATA_PARTNER_FEE, GREG_DEFAULT_PARTNER_FEE } from 'greg/partnerFeeDefault'
+import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE } from 'ophis/partnerFeeDefault'
 
 export type WidgetParamsErrors = Partial<{ [key in keyof CowSwapWidgetAppParams]: string[] | undefined }>
 
@@ -13,7 +13,7 @@ export const injectedWidgetParamsAtom = atom<{ params: Partial<CowSwapWidgetAppP
 
 export const injectedWidgetPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
-  return widgetFee ?? GREG_DEFAULT_PARTNER_FEE
+  return widgetFee ?? OPHIS_DEFAULT_PARTNER_FEE
 })
 
 /**
@@ -31,5 +31,5 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
 export const injectedWidgetAppDataPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
   if (widgetFee) return undefined
-  return GREG_DEFAULT_APP_DATA_PARTNER_FEE
+  return OPHIS_DEFAULT_APP_DATA_PARTNER_FEE
 })

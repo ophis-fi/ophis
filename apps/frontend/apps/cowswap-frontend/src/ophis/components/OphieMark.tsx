@@ -56,19 +56,19 @@ export interface OphieMarkProps {
   animate?: OphieAnimation
   /** Optional className for additional styling. */
   className?: string
-  /** Aria label for accessibility. Defaults to "Greg". */
+  /** Aria label for accessibility. Defaults to "Ophis". */
   ariaLabel?: string
 }
 
 function resolveFill(fill: OphieFill | string | undefined): string {
   if (!fill || fill === 'currentColor') return 'currentColor'
-  if (fill === 'sunset') return 'url(#greg-ophie-sunset)'
+  if (fill === 'sunset') return 'url(#ophis-ophie-sunset)'
   if (fill in FILLS) return FILLS[fill as keyof typeof FILLS]
   return fill
 }
 
 /**
- * The Greg / Ophie ouroboros mark — single-source SVG component.
+ * The Ophis / Ophie ouroboros mark — single-source SVG component.
  *
  * Use the `fill` prop for the standard variants; pass `'sunset'` to render
  * the hero gradient (a `<defs>` block is included automatically).
@@ -83,7 +83,7 @@ export function OphieMark({
   fill = 'coral',
   animate = 'none',
   className,
-  ariaLabel = 'Greg',
+  ariaLabel = 'Ophis',
 }: OphieMarkProps): ReactNode {
   const resolvedFill = resolveFill(fill)
   const needsGradient = fill === 'sunset'
@@ -101,7 +101,7 @@ export function OphieMark({
     >
       {needsGradient && (
         <defs>
-          <linearGradient id="greg-ophie-sunset" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id="ophis-ophie-sunset" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#FF8A52" />
             <stop offset="30%" stopColor="#FF6B5A" />
             <stop offset="65%" stopColor="#E55A88" />
