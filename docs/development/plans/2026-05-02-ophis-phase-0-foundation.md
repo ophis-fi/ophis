@@ -772,7 +772,7 @@ git commit -m "build(backend): document local build path for services subtree"
 `packages/sdk/tests/sdk.test.ts`:
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { gregDefaults, GREG_PARTNER_FEE_BPS, GREG_PARTNER_RECIPIENT } from '@greg/sdk';
+import { gregDefaults, OPHIS_PARTNER_FEE_BPS, OPHIS_PARTNER_RECIPIENT } from '@greg/sdk';
 
 describe('@greg/sdk defaults', () => {
   it('targets Gnosis Chain (chainId 100)', () => {
@@ -780,11 +780,11 @@ describe('@greg/sdk defaults', () => {
   });
 
   it('exposes a partner-fee config matching the spec default of 5 bps', () => {
-    expect(GREG_PARTNER_FEE_BPS).toBe(5);
+    expect(OPHIS_PARTNER_FEE_BPS).toBe(5);
   });
 
   it('has a placeholder partner-fee recipient that callers must override', () => {
-    expect(GREG_PARTNER_RECIPIENT).toMatch(/^0x0{40}$/);
+    expect(OPHIS_PARTNER_RECIPIENT).toMatch(/^0x0{40}$/);
   });
 });
 ```
@@ -837,10 +837,10 @@ Expected: fails with "Cannot find module '@greg/sdk'" or unresolved imports.
 
 `packages/sdk/src/config.ts`:
 ```typescript
-export const GREG_CHAIN_IDS = { gnosis: 100 } as const;
+export const OPHIS_CHAIN_IDS = { gnosis: 100 } as const;
 
-export const GREG_PARTNER_FEE_BPS = 5;
-export const GREG_PARTNER_RECIPIENT =
+export const OPHIS_PARTNER_FEE_BPS = 5;
+export const OPHIS_PARTNER_RECIPIENT =
   '0x0000000000000000000000000000000000000000' as const;
 
 export interface GregDefaults {
@@ -850,9 +850,9 @@ export interface GregDefaults {
 }
 
 export const gregDefaults: GregDefaults = {
-  chainId: GREG_CHAIN_IDS.gnosis,
-  partnerFeeBps: GREG_PARTNER_FEE_BPS,
-  partnerRecipient: GREG_PARTNER_RECIPIENT,
+  chainId: OPHIS_CHAIN_IDS.gnosis,
+  partnerFeeBps: OPHIS_PARTNER_FEE_BPS,
+  partnerRecipient: OPHIS_PARTNER_RECIPIENT,
 };
 ```
 
@@ -860,9 +860,9 @@ export const gregDefaults: GregDefaults = {
 ```typescript
 export {
   gregDefaults,
-  GREG_CHAIN_IDS,
-  GREG_PARTNER_FEE_BPS,
-  GREG_PARTNER_RECIPIENT,
+  OPHIS_CHAIN_IDS,
+  OPHIS_PARTNER_FEE_BPS,
+  OPHIS_PARTNER_RECIPIENT,
   type GregDefaults,
 } from './config.js';
 ```
@@ -997,5 +997,5 @@ Dispatch the `pm` agent to write `docs/development/status/<date>.md` summarizing
 
 - **Spec coverage:** every Phase-0 spec bullet (monorepo, frontend fork, backend fork, Vercel deploy, frontend → CoW API, Chiado phase gate) maps to a task above. Sub-agent definitions land in Task 2; CI in Task 3; SDK in Task 11; Vercel + branding in Tasks 7–8.
 - **Placeholders:** none. The few `<fill in>` spots are *runtime values* (commit SHAs, wallet addresses, tx hashes) that can only be filled when the task runs, not plan-author placeholders.
-- **Type consistency:** `GREG_PARTNER_FEE_BPS` / `GREG_PARTNER_RECIPIENT` / `gregDefaults` consistent across Task 11. No FE→BE name overlap.
+- **Type consistency:** `OPHIS_PARTNER_FEE_BPS` / `OPHIS_PARTNER_RECIPIENT` / `gregDefaults` consistent across Task 11. No FE→BE name overlap.
 - **Risk:** Tasks 6, 8, 10 contain inspection-then-decide steps because cowswap's exact build/deploy contract isn't reproduced in the brief — the engineer must read upstream first. This is correct: hard-coding paths would lie about what we know.

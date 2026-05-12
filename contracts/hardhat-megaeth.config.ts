@@ -11,8 +11,8 @@
 //     pnpm exec hardhat deploy --network <megaeth-{testnet,mainnet}|hyperevm-{testnet,mainnet}>
 //
 // Env vars consumed:
-//   GREG_MEGAETH_DEPLOYER_PK      : deployer private key (Keychain `greg-megaeth-deployer`)
-//   GREG_MEGAETH_DEPLOYER_ADDRESS : deployer EOA address (used as owner+manager override)
+//   OPHIS_MEGAETH_DEPLOYER_PK      : deployer private key (Keychain `greg-megaeth-deployer`)
+//   OPHIS_MEGAETH_DEPLOYER_ADDRESS : deployer EOA address (used as owner+manager override)
 //   MEGAETH_TESTNET_RPC           : RPC for chainId 6343
 //   MEGAETH_MAINNET_RPC           : RPC for chainId 4326
 //   HYPEREVM_TESTNET_RPC          : RPC for chainId 998
@@ -20,7 +20,7 @@
 
 import baseConfig from "./hardhat.config";
 
-const PK = process.env.GREG_MEGAETH_DEPLOYER_PK ?? "";
+const PK = process.env.OPHIS_MEGAETH_DEPLOYER_PK ?? "";
 const accounts = PK ? [PK] : [];
 
 const MEGAETH_TESTNET_RPC =
@@ -39,7 +39,7 @@ const HYPEREVM_MAINNET_RPC =
 // the allowlist on every Greg-target chain. Side-effect: our proxy + Settlement
 // land at NEW addresses, distinct from the canonical CoW addresses on every
 // other chain. That is the desired behaviour for Greg.
-const GREG_DEPLOYER_ADDRESS = process.env.GREG_MEGAETH_DEPLOYER_ADDRESS ?? "";
+const OPHIS_DEPLOYER_ADDRESS = process.env.OPHIS_MEGAETH_DEPLOYER_ADDRESS ?? "";
 
 const config = {
   ...baseConfig,
@@ -117,34 +117,34 @@ const config = {
     owner: {
       ...(((baseConfig as { namedAccounts?: { owner?: unknown } })
         .namedAccounts?.owner ?? {}) as Record<string, unknown>),
-      "megaeth-testnet": GREG_DEPLOYER_ADDRESS,
-      "megaeth-mainnet": GREG_DEPLOYER_ADDRESS,
-      "hyperevm-testnet": GREG_DEPLOYER_ADDRESS,
-      "hyperevm-mainnet": GREG_DEPLOYER_ADDRESS,
-      "optimism-sepolia": GREG_DEPLOYER_ADDRESS,
-      "optimism-mainnet": GREG_DEPLOYER_ADDRESS,
-      "katana-testnet": GREG_DEPLOYER_ADDRESS,
-      "katana-mainnet": GREG_DEPLOYER_ADDRESS,
-      "mantle-testnet": GREG_DEPLOYER_ADDRESS,
-      "mantle-mainnet": GREG_DEPLOYER_ADDRESS,
-      "linea-sepolia": GREG_DEPLOYER_ADDRESS,
-      "linea-mainnet": GREG_DEPLOYER_ADDRESS,
+      "megaeth-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "megaeth-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "hyperevm-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "hyperevm-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "optimism-sepolia": OPHIS_DEPLOYER_ADDRESS,
+      "optimism-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "katana-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "katana-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "mantle-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "mantle-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "linea-sepolia": OPHIS_DEPLOYER_ADDRESS,
+      "linea-mainnet": OPHIS_DEPLOYER_ADDRESS,
     },
     manager: {
       ...(((baseConfig as { namedAccounts?: { manager?: unknown } })
         .namedAccounts?.manager ?? {}) as Record<string, unknown>),
-      "megaeth-testnet": GREG_DEPLOYER_ADDRESS,
-      "megaeth-mainnet": GREG_DEPLOYER_ADDRESS,
-      "hyperevm-testnet": GREG_DEPLOYER_ADDRESS,
-      "hyperevm-mainnet": GREG_DEPLOYER_ADDRESS,
-      "optimism-sepolia": GREG_DEPLOYER_ADDRESS,
-      "optimism-mainnet": GREG_DEPLOYER_ADDRESS,
-      "katana-testnet": GREG_DEPLOYER_ADDRESS,
-      "katana-mainnet": GREG_DEPLOYER_ADDRESS,
-      "mantle-testnet": GREG_DEPLOYER_ADDRESS,
-      "mantle-mainnet": GREG_DEPLOYER_ADDRESS,
-      "linea-sepolia": GREG_DEPLOYER_ADDRESS,
-      "linea-mainnet": GREG_DEPLOYER_ADDRESS,
+      "megaeth-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "megaeth-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "hyperevm-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "hyperevm-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "optimism-sepolia": OPHIS_DEPLOYER_ADDRESS,
+      "optimism-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "katana-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "katana-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "mantle-testnet": OPHIS_DEPLOYER_ADDRESS,
+      "mantle-mainnet": OPHIS_DEPLOYER_ADDRESS,
+      "linea-sepolia": OPHIS_DEPLOYER_ADDRESS,
+      "linea-mainnet": OPHIS_DEPLOYER_ADDRESS,
     },
   },
 };

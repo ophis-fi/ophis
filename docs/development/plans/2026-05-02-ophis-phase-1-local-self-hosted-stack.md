@@ -827,12 +827,12 @@ This task is **manual**. The Ophis test wallet `0x412cbCCe46FCBa707A3190ECEd8113
 - [ ] **Step 1: Confirm balances are zero**
 
 ```bash
-GREG_RPC=https://gnosis.publicnode.com
+OPHIS_RPC=https://gnosis.publicnode.com
 TEST_ADDR=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
 DRIVER_ADDR=$(grep DRIVER_SUBMITTER_ADDRESS /Users/scep/greg/infra/local/.env | cut -d= -f2)
 
-cast balance --rpc-url "$GREG_RPC" "$TEST_ADDR" --ether
-cast balance --rpc-url "$GREG_RPC" "$DRIVER_ADDR" --ether
+cast balance --rpc-url "$OPHIS_RPC" "$TEST_ADDR" --ether
+cast balance --rpc-url "$OPHIS_RPC" "$DRIVER_ADDR" --ether
 ```
 Expected: both 0 (or very close).
 
@@ -846,8 +846,8 @@ Options:
 - [ ] **Step 3: Verify funded**
 
 ```bash
-cast balance --rpc-url "$GREG_RPC" "$TEST_ADDR" --ether
-cast balance --rpc-url "$GREG_RPC" "$DRIVER_ADDR" --ether
+cast balance --rpc-url "$OPHIS_RPC" "$TEST_ADDR" --ether
+cast balance --rpc-url "$OPHIS_RPC" "$DRIVER_ADDR" --ether
 ```
 Expected: ≥ 5 on test wallet, ≥ 0.5 on driver. Stop and re-fund if not.
 

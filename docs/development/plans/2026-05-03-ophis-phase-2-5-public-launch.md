@@ -48,7 +48,7 @@ Validation log committed to `docs/development/phase-2-5-validation.md`. Tag `v0.
 | `apps/frontend/apps/cowswap-frontend/public/greg-icon.svg` | create | Square SVG ≥ 128×128 for Safe app store |
 | `apps/frontend/apps/cowswap-frontend/public/manifest.json` | modify | `iconPath` → `/greg-icon.svg` |
 | `apps/frontend/apps/cowswap-frontend/src/<home page>` | modify | Add a "Set up a DCA" top-level CTA linking to `/advanced` |
-| `packages/sdk/src/partner-fee.ts` | modify | `GREG_PARTNER_FEE_RECIPIENT` → multisig address |
+| `packages/sdk/src/partner-fee.ts` | modify | `OPHIS_PARTNER_FEE_RECIPIENT` → multisig address |
 | `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | modify | mirror update |
 | `apps/frontend/.greg-divergences.md` | modify | track Phase-2.5 entries |
 | `docs/development/show-hn-draft.md` | create | Show HN post + thread plan |
@@ -435,7 +435,7 @@ After deployment, capture the Safe's address. **Verify the same address resolves
 
 Edit `/Users/scep/greg/packages/sdk/src/partner-fee.ts`:
 ```typescript
-export const GREG_PARTNER_FEE_RECIPIENT =
+export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x<NEW_SAFE_ADDRESS>' as `0x${string}`;
 ```
 
@@ -443,7 +443,7 @@ export const GREG_PARTNER_FEE_RECIPIENT =
 
 Edit `/Users/scep/greg/apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`:
 ```typescript
-const GREG_PARTNER_FEE_RECIPIENT = '0x<NEW_SAFE_ADDRESS>' as const
+const OPHIS_PARTNER_FEE_RECIPIENT = '0x<NEW_SAFE_ADDRESS>' as const
 ```
 
 ### Step 4: Run tests
@@ -860,7 +860,7 @@ These are not phase-gate items but should be tracked.
 
 **Placeholders:** explicit `<placeholder>` tokens are used where Clement-decided values are required (D1/D2/D3, PR URLs, Safe address). The plan is honest about which fields the implementer fills at runtime vs which Clement decides upfront.
 
-**Type / name consistency:** `GREG_PARTNER_FEE_RECIPIENT` / `GREG_DEFAULT_PARTNER_FEE` / `MevProofReceipt` / `BuildReceiptInput` / `tradeForReceipt` types are reused consistently across Tasks 1, 6.
+**Type / name consistency:** `OPHIS_PARTNER_FEE_RECIPIENT` / `OPHIS_DEFAULT_PARTNER_FEE` / `MevProofReceipt` / `BuildReceiptInput` / `tradeForReceipt` types are reused consistently across Tasks 1, 6.
 
 **Out of scope (to prevent drift)**
 
