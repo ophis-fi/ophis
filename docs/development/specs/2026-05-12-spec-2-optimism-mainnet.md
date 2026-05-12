@@ -6,7 +6,7 @@
 
 1. Deploy the canonical CoW contracts on Optimism mainnet using Greg's deployer + salt (same CREATE2-deterministic address as testnet: `0x0864b65F…Bfce`).
 2. Deploy CoW supporting contracts (`Balances`, `Signatures`, `HooksTrampoline`).
-3. **Do NOT deploy a Greg V2 factory** — configure the CoW baseline solver to route liquidity through Velodrome V2 (`0x9c12939390052919aF3155f41Bf4160Fd3666A6f`).
+3. **Do NOT deploy a Greg V2 factory** — configure the CoW baseline solver to route liquidity through **Uniswap V3** on OP mainnet (canonical 0.05% WETH/USDC.e pool has deep liquidity). Velodrome V2 — OP's dominant DEX (~99% of OP V2-style TVL) — is *not* a candidate for this spec: our forked CoW solver supports `uniswap-v2`, `swapr`, `uniswap-v3`, `balancer-v2`, `0x` — but not Velodrome's Solidly-style pools. Adding that adapter is a ~1-2 day Rust task scoped to Spec 5.
 4. Stand up the CoW services stack as a co-tenant on vm4 (or a new dedicated host, see Architecture Branch A/B/C below).
 5. Wire `optimism.ophis.fi` via a new Cloudflare tunnel.
 6. Smoke-test end-to-end with an actual WETH→USDC settlement against real Velodrome liquidity.
@@ -151,7 +151,7 @@ The implementation plan must close on one branch before execution.
 10. **Configure** `infra/optimism-mainnet/configs/{autopilot,driver,orderbook}.toml`:
     - `node-url` + `simulation-node-url` → `http://<tailscale-hostname>:8545`
     - `[contracts]` → mainnet-deployed addresses
-    - `[[liquidity.uniswap-v2]]` → Velodrome V2 router `0x9c12939390052919aF3155f41Bf4160Fd3666A6f`, with Velodrome's init-code-hash (research before plan-write — Velodrome v2 forks tend to vary)
+    - `[[liquidity.uniswap-v3]]` → Uniswap V3 factory on Optimism `0x1F98431c8aD98523631AE4a59f267346ea31F984`, subgraph URL `https://api.thegraph.com/subgraphs/name/ianlapham/optimism-post-regenesis` (verify still up before plan-write) or self-hosted subgraph alternative
     - chain ID env → `10`, explorer → `https://optimistic.etherscan.io`
 11. **`rsync` to vm4** + `docker compose up -d` (same pattern as Spec 1).
 12. **Cloudflare tunnel** `ophis-optimism-mainnet`, CNAME `optimism.ophis.fi → <UUID>.cfargotunnel.com`. Single-level subdomain per the Spec 1 lesson.
@@ -172,7 +172,7 @@ Pre-condition: a separate `greg-optimism-test` Keychain entry with ≥0.001 OP-m
 | Risk | Likelihood | Impact | Mitigation | Rollback |
 |---|---|---|---|---|
 | op-node sync stalls past 24h | Medium | Spec blocked | Use a known-good snapshot URL from Optimism's docs page. Allow 36h. | Switch to a different snapshot or temporary Branch C. |
-| Velodrome V2 init-code-hash mismatch | Low | Baseline solver finds no pools | Pre-compute hash from a known pair address; verify against config before deploy. | Re-derive correct hash, redeploy driver. |
+| Uniswap V3 subgraph rate-limits or goes down | Medium | Solver can't discover pools | Self-host the subgraph on the same VM. ~2-4h additional ops. | Fallback to a hardcoded pool address list. |
 | L1 RPC rate-limits (op-node's call rate to L1 Ethereum) | Low | Sync stalls, driver stalls | Use a list of 3-4 free L1 RPCs (`eth.llamarpc.com`, `cloudflare-eth.com`, `ethereum.publicnode.com`, `1rpc.io/eth`) with round-robin in op-node config. | Add a paid L1 endpoint if needed. |
 | Driver-submitter EOA runs dry on Optimism mainnet gas | Medium | Settlement stops | Telegram heartbeat checks balance every 6h, alerts < 0.01 ETH | Refill from deployer wallet. |
 | Velodrome V2 liquidity insufficient for the buy amount | Low | Order doesn't fill | Test with small amounts (0.001 WETH) initially. | Use larger amounts only after demonstrated success. |
@@ -224,7 +224,7 @@ Pre-condition: a separate `greg-optimism-test` Keychain entry with ≥0.001 OP-m
 ## Open questions for implementation plan
 
 1. **Branch choice (A/B/C).** Pending Clement decision after he checks Aleph CMO pricing for the new VM spec.
-2. **Velodrome V2 init-code-hash.** Compute from a known Velodrome pair address before plan-write.
+2. **Uniswap V3 subgraph reliability + fallback strategy.** Verify The Graph hosted subgraph still serves the OP V3 subgraph; if not, self-host or list pools statically.
 3. **L1 RPC for op-node.** Pick a primary + 2-3 fallbacks. Configure round-robin.
 4. **Snapshot source for op-geth initial sync.** Use Optimism's official snapshot URL (TBD which one) or a third-party (Quicknode, dwellir).
 5. **Test wallet provisioning.** Generate `greg-optimism-test` Keychain entry; fund via the deployer.
