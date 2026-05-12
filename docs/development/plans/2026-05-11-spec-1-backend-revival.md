@@ -463,7 +463,7 @@ Expected: 5 images listed (orderbook, autopilot, driver, baseline, migrations).
 ### Step 1: Pull the driver-submitter PK from local Keychain + pipe into the VM (key value never appears in shell history or this output)
 
 ```bash
-DRIVER_PK=$(security find-generic-password -l greg-driver-submitter -w) ; \
+DRIVER_PK=$(security find-generic-password -l ophis-driver-submitter -w) ; \
   ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26 \
     "umask 077 && cat > /srv/ophis/.env.shared <<EOF
 DRIVER_SUBMITTER_PRIVATE_KEY=${DRIVER_PK}
@@ -871,7 +871,7 @@ When Spec 2/3 promote to mainnet (or a new testnet) the same pattern repeats:
 
 ## Where the secrets live
 
-- Driver-submitter EOA private key: `/srv/ophis/.env.shared`, key `DRIVER_SUBMITTER_PRIVATE_KEY`. Mode 600. Sourced from macOS Keychain entry `greg-driver-submitter` at deploy time.
+- Driver-submitter EOA private key: `/srv/ophis/.env.shared`, key `DRIVER_SUBMITTER_PRIVATE_KEY`. Mode 600. Sourced from macOS Keychain entry `ophis-driver-submitter` at deploy time.
 - Cloudflare API token: GitHub secret `CLOUDFLARE_API_TOKEN`, macOS Keychain `cloudflare-api-token`. Same token as the rebate-indexer.
 - Cloudflare tunnel cert.pem: `/root/.cloudflared/cert.pem` on the VM. Created once during the rebate-indexer revival; reused by all subsequent tunnels.
 
@@ -1117,7 +1117,7 @@ main().catch((err) => {
 ```bash
 cd /Users/scep/greg/infra/optimism/scripts
 export OPTIMISM_SEPOLIA_GTUSD=<paste from infra/optimism/.env.example>
-export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l greg-chiado-test -w)
+export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l ophis-chiado-test -w)
 pnpm smoke 2>&1 | tee /tmp/smoke-optimism.log
 ```
 
@@ -1304,7 +1304,7 @@ main().catch((err) => {
 ```bash
 cd /Users/scep/greg/infra/megaeth/scripts
 export MEGAETH_TESTNET_GTUSD=<paste from infra/megaeth/.env.example>
-export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l greg-megaeth-deployer -w)
+export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l ophis-megaeth-deployer -w)
 pnpm smoke 2>&1 | tee /tmp/smoke-megaeth.log
 ```
 
@@ -1358,7 +1358,7 @@ VM at `149.86.227.106:24019` (instance presumed reclaimed by Aleph).
   as its own systemd unit (`cloudflared-<chain>.service`). Stable URLs, no
   `*.trycloudflare.com` rotation.
 - **Driver-submitter PK** lives at `/srv/ophis/.env.shared` (mode 600).
-  Sourced from macOS Keychain `greg-driver-submitter`.
+  Sourced from macOS Keychain `ophis-driver-submitter`.
 - **Runbook:** `infra/cloudflare/ophis-chain-backends.md`.
 ```
 

@@ -11,7 +11,7 @@
 //     pnpm exec hardhat deploy --network <megaeth-{testnet,mainnet}|hyperevm-{testnet,mainnet}>
 //
 // Env vars consumed:
-//   OPHIS_MEGAETH_DEPLOYER_PK      : deployer private key (Keychain `greg-megaeth-deployer`)
+//   OPHIS_MEGAETH_DEPLOYER_PK      : deployer private key (Keychain `ophis-megaeth-deployer`)
 //   OPHIS_MEGAETH_DEPLOYER_ADDRESS : deployer EOA address (used as owner+manager override)
 //   MEGAETH_TESTNET_RPC           : RPC for chainId 6343
 //   MEGAETH_MAINNET_RPC           : RPC for chainId 4326

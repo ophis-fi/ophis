@@ -18,7 +18,7 @@
  * Phase 2.6 / pre-revenue task: upgrade to ≥ 2-of-N before significant accrual.
  *
  * Previous recipient (Phase 1.5 single-sig EOA, retired 2026-05-03):
- *   `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E` (Keychain `greg-partner-fee-recipient`).
+ *   `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E` (Keychain `ophis-partner-fee-recipient`).
  */
 export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;

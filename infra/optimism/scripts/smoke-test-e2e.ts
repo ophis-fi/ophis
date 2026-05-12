@@ -5,7 +5,7 @@
 // optimism-sepolia.ophis.fi/api/v1/orders, polls for settlement,
 // verifies the on-chain settlement tx.
 //
-// Pre-condition: greg-chiado-test wallet (0x412c…294aB) must hold
+// Pre-condition: ophis-chiado-test wallet (0x412c…294aB) must hold
 // ≥ 0.001 ETH (gas) AND ≥ 0.001 WETH on Optimism Sepolia. Fund via
 // https://docs.optimism.io/builders/tools/build/faucets then wrap to
 // the WETH predeploy at 0x4200000000000000000000000000000000000006.

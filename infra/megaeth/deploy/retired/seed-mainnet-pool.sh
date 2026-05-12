@@ -19,7 +19,7 @@ source "$ENV_FILE"
 set +a
 
 RPC="$MEGAETH_MAINNET_RPC"
-DEPLOYER_PK=$(security find-generic-password -a greg-megaeth-deployer -s greg-megaeth-deployer -w)
+DEPLOYER_PK=$(security find-generic-password -a ophis-megaeth-deployer -s ophis-megaeth-deployer -w)
 DEPLOYER_ADDR=$(cast wallet address "$DEPLOYER_PK")
 
 WETH=0x4200000000000000000000000000000000000006
