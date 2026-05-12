@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Greg Phase 3 Stage-2 mainnet bootstrap
+# Greg Phase 4 Spec 3 — MegaETH mainnet bootstrap.
 #
-# Runs end-to-end once the deployer is funded with mainnet ETH:
+# Runs end-to-end once the deployer is funded with mainnet MEGA:
 #   1. CoW core: Settlement + VaultRelayer + AllowListAuth (via hardhat-deploy)
 #   2. CoW helpers: Balances + Signatures + HooksTrampoline (via cast send --create)
-#   3. Uniswap V2: Factory + Router02 (pre-built bytecode in v2-artifacts/)
-#   4. Driver-submitter added to allowlist
+#   3. Driver-submitter added to allowlist
 #
-# Pool seeding (addLiquidity) is a separate step that requires WETH + USDT0
-# to be in the deployer's wallet. Run seed-mainnet-pool.sh after this.
+# Liquidity source is Kumbaya (MegaETH's dominant UniV3-fork DEX,
+# factory 0x68b34591…988a09, custom pool init code hash). NOT a
+# Greg-deployed V2. No bootstrap pool seeding is needed; Kumbaya
+# already has ~$53M TVL.
+#
+# Rationale documented in
+# docs/development/specs/2026-05-12-spec-3-megaeth-mainnet.md.
 
 set -euo pipefail
 
@@ -90,32 +94,9 @@ echo "  Balances:        $GREG_BALANCES_MAINNET"
 echo "  Signatures:      $GREG_SIGNATURES_MAINNET"
 echo "  HooksTrampoline: $GREG_HOOKS_TRAMPOLINE_MAINNET"
 
-# --- 3. Uniswap V2 ---
+# --- 3. Allowlist driver-submitter ---
 echo ""
-echo "=== [3/4] Deploying Uniswap V2 ==="
-WETH_MAINNET=0x4200000000000000000000000000000000000006
-
-# Factory takes a feeToSetter constructor arg (32-byte padded address)
-DEPLOYER_HEX=${DEPLOYER_ADDR#0x}
-DEPLOYER_PADDED=$(printf '%0*d' 24 0)$DEPLOYER_HEX
-GREG_V2_FACTORY_MAINNET=$(deploy_artifact_create UniswapV2Factory \
-    infra/megaeth/v2-artifacts/UniswapV2Factory.json \
-    "$DEPLOYER_PADDED")
-echo "  V2 Factory:  $GREG_V2_FACTORY_MAINNET"
-
-# Router02 takes (factory, WETH) constructor args
-FACTORY_HEX=${GREG_V2_FACTORY_MAINNET#0x}
-FACTORY_PADDED=$(printf '%0*d' 24 0)$FACTORY_HEX
-WETH_HEX=${WETH_MAINNET#0x}
-WETH_PADDED=$(printf '%0*d' 24 0)$WETH_HEX
-GREG_V2_ROUTER_MAINNET=$(deploy_artifact_create UniswapV2Router02 \
-    infra/megaeth/v2-artifacts/UniswapV2Router02.json \
-    "$FACTORY_PADDED$WETH_PADDED")
-echo "  V2 Router:   $GREG_V2_ROUTER_MAINNET"
-
-# --- 4. Allowlist driver-submitter ---
-echo ""
-echo "=== [4/4] Allowlisting driver-submitter ==="
+echo "=== [3/3] Allowlisting driver-submitter ==="
 DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" \
   "$GREG_AUTH_MAINNET" "addSolver(address)" "$DRIVER" \
@@ -127,7 +108,7 @@ echo ""
 echo "=== Writing addresses to .env ==="
 cat <<EOF >> "$ENV_FILE"
 
-# Phase 3 Stage-2 mainnet deploy ($(date +%Y-%m-%d))
+# Spec 3 MegaETH mainnet deploy ($(date +%Y-%m-%d))
 GREG_AUTH_MAINNET=$GREG_AUTH_MAINNET
 GREG_AUTH_IMPLEMENTATION_MAINNET=$GREG_AUTH_IMPLEMENTATION_MAINNET
 GREG_SETTLEMENT_MAINNET=$GREG_SETTLEMENT_MAINNET
@@ -135,9 +116,12 @@ GREG_VAULT_RELAYER_MAINNET=$GREG_VAULT_RELAYER_MAINNET
 GREG_BALANCES_MAINNET=$GREG_BALANCES_MAINNET
 GREG_SIGNATURES_MAINNET=$GREG_SIGNATURES_MAINNET
 GREG_HOOKS_TRAMPOLINE_MAINNET=$GREG_HOOKS_TRAMPOLINE_MAINNET
-GREG_V2_FACTORY_MAINNET=$GREG_V2_FACTORY_MAINNET
-GREG_V2_ROUTER_MAINNET=$GREG_V2_ROUTER_MAINNET
 EOF
 
 echo ""
-echo "=== Done. Next: seed-mainnet-pool.sh after acquiring WETH+USDT0 in deployer wallet."
+echo "=== Done. ==="
+echo ""
+echo "Liquidity source on this chain is Kumbaya UniV3 fork at"
+echo "  factory   0x68b34591f662508076927803c567Cc8006988a09"
+echo "  poolHash  0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7"
+echo "Configure the chain stack's driver.toml with these in [[liquidity.uniswap-v3]]."
