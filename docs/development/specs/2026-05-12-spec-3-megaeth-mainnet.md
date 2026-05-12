@@ -7,8 +7,8 @@
 Deploy Greg's CoW-based settlement stack to MegaETH mainnet:
 
 1. Deploy the canonical CoW contracts (`GPv2Settlement`, `GPv2VaultRelayer`, `AllowListAuthentication`) under Greg's own deployer + salt — same CREATE2-deterministic address pattern as testnet (`0x0864b65F…Bfce`).
-2. Deploy supporting contracts (`Balances`, `Signatures`, `HooksTrampoline`) and a Uniswap V2 fork (Greg V2 Factory + Router02) for bootstrap liquidity.
-3. Seed a WETH/USDT0 pool with $X of liquidity from Clement to provide a fillable pair on day 1.
+2. Deploy supporting contracts (`Balances`, `Signatures`, `HooksTrampoline`).
+3. **Route through Kumbaya** — MegaETH's dominant DEX (~$53M TVL, UniswapV3 fork). No Greg V2 deploy. No bootstrap pool seeding. Greg routes orders through existing Kumbaya liquidity.
 4. Stand up the CoW services stack (orderbook + autopilot + driver + baseline) as a new co-tenant on vm4 (`45.144.209.26:24014`).
 5. Wire `megaeth.ophis.fi` via a new Cloudflare tunnel.
 6. Smoke-test end-to-end with an actual on-chain settlement transaction (mainnet RPC has headroom for the broadcast, unlike Spec 1's testnet RPC).
@@ -71,23 +71,22 @@ Same 4-service Rust stack as Spec 1 (orderbook, autopilot, driver, baseline) + 1
 **Per-service config diffs from Spec 1 megaeth-testnet:**
 - `orderbook.toml` / `autopilot.toml` / `driver.toml` `node-url` and `simulation-node-url` → `https://mainnet.megaeth.com/rpc`
 - `[contracts]` block addresses → the mainnet-deployed Greg contracts (filled post-deploy by `deploy-mainnet-all.sh`)
-- `[[liquidity.uniswap-v2]]` router → mainnet `GREG_V2_ROUTER_MAINNET`
+- `[[liquidity.uniswap-v3]]` (instead of v2) → Kumbaya UniswapV3Factory `0x68b34591f662508076927803c567Cc8006988a09` with **custom pool init-code-hash** `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7` (Kumbaya forked V3 with a modified salt; differs from canonical UniV3's `0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54`)
 - chain ID env → `4326`
-- explorer URL → `https://megaexplorer.xyz`
+- explorer URL → `https://megaeth.blockscout.com/` (per Kumbaya kit; megaexplorer.xyz also works)
 
 ## On-chain deploy sequence
 
-Scripts in `infra/megaeth/deploy/` are already written (2026-05-04) and have been quietly waiting for funding. Re-using verbatim.
+The existing `infra/megaeth/deploy/deploy-mainnet-all.sh` (written 2026-05-04) **needs modification** before running — its V2 factory/router deploy block must be commented out or removed for mainnet, since we route through Kumbaya now instead of a Greg-deployed V2 fork. The `seed-mainnet-pool.sh` script is no longer needed at all.
 
-1. **Fund deployer wallet.** `0xb398C789F8690357e2b3D2ef6d1CDe62B1e4D020` needs ~0.05 mainnet MEGA for gas. Bridge or buy. Same wallet seeds the bootstrap pool, so also needs WETH + USDT0 (target: 0.5 WETH + ~$1,500 USDT0 for a $3k pool).
+1. **Fund deployer wallet.** `0xb398C789F8690357e2b3D2ef6d1CDe62B1e4D020` needs ~0.05 mainnet MEGA for gas. Bridge in. **No pool-seed funding needed** (Kumbaya already has $53M TVL).
 2. **Fund driver-submitter.** `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` needs ~0.05 mainnet MEGA for ongoing settlement gas.
-3. **Run `infra/megaeth/deploy/deploy-mainnet-all.sh`** — deploys:
+3. **Modify `infra/megaeth/deploy/deploy-mainnet-all.sh`** — comment out section `[3/4] Deploying Uniswap V2` and renumber subsequent sections; remove the V2 entries from the address-append at the bottom. Commit the change.
+4. **Run the modified `deploy-mainnet-all.sh`** — deploys:
    - CoW core: `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication` (via hardhat-deploy / `hardhat-megaeth.config.ts`)
    - CoW helpers: `Balances`, `Signatures`, `HooksTrampoline` (via `cast send --create`)
-   - Uniswap V2: `UniswapV2Factory` + `UniswapV2Router02` (pre-built artifacts in `infra/megaeth/v2-artifacts/`)
    - Allowlists driver-submitter as solver
    - Appends addresses to `infra/megaeth/.env` under `GREG_*_MAINNET` keys.
-4. **Run `infra/megaeth/deploy/seed-mainnet-pool.sh`** — approves router, calls `addLiquidity(WETH, USDT0, …)`, prints pair address + reserves.
 
 After step 4 the on-chain side is done. Step 5+ is backend infra.
 
@@ -108,7 +107,7 @@ After step 4 the on-chain side is done. Step 5+ is backend infra.
 - Poll `/api/v1/orders/$UID` and `/api/v1/trades?orderUid=$UID`
 - **Exit 0 only on `status: fulfilled` with a real `txHash`** — no winning-solver fallback. Mainnet RPC has headroom; broadcast must succeed.
 
-Test parameters: 0.001 WETH → at-least-2.0-USDT0 (a 1% slippage limit against a ~$3k seed pool at $4k/ETH gives plenty of room).
+Test parameters: 0.001 WETH → some target buy amount of a major Kumbaya-listed token. At execution time, query Kumbaya's deepest WETH-pair on-chain (or via the integrator-kit) and pick that. Likely candidates per the integrator kit: WETH/USDC, WETH/USDT — confirm at run-time.
 
 Pre-condition: a separate `greg-megaeth-test` Keychain entry with a funded test wallet (0.001 ETH + 0.001 WETH minimum). Wallet to be created during execution.
 
@@ -129,12 +128,12 @@ Pre-condition: a separate `greg-megaeth-test` Keychain entry with a funded test 
 |---|---|
 | MegaETH mainnet gas (deploys + allowlist) | ~$5 in mainnet MEGA |
 | MegaETH mainnet gas (driver settlement, ongoing) | ~$0.01/tx, refilled as-needed |
-| Bootstrap pool seed | $3,000 in WETH + USDT0 (Clement-funded, recoverable via `removeLiquidity` minus impermanent loss) |
 | Infrastructure (vm4 co-tenant) | $0 incremental (existing VM with 9 GiB free memory headroom) |
 | Cloudflare tunnel + DNS | $0 (within existing free-tier limits) |
 | RPC provider | $0 (public `mainnet.megaeth.com/rpc`) |
+| Bootstrap liquidity | **$0** (route through Kumbaya's existing $53M TVL) |
 | **Total recurring monthly** | **$0** |
-| **One-time setup** | **~$5 gas + $3,000 pool seed (recoverable)** |
+| **One-time setup** | **~$5 gas, no pool seed** |
 
 ## Success metrics + done-checklist
 

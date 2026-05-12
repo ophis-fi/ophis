@@ -36,7 +36,11 @@
 | RPC | Public RPC handles our workload | All free RPCs fail under CoW driver pressure |
 | Risk profile | Mostly contract-deploy risk | RPC operational risk + competing against incumbent |
 
-## Architecture branches — choose ONE before plan
+## Architecture — Branch A (Aleph Cloud) locked 2026-05-12
+
+Branch A locked: Clement is Aleph's CMO; compute on Aleph is free for him. Spec 2 hosts the op-node + op-geth pair on a new Aleph VM (or single-VM-co-located with the chain stack — implementation plan picks). The three-branch matrix below is preserved as decision-record context for future infra moves.
+
+## Architecture branches (decision record only)
 
 ### Branch A: Aleph Cloud (RECOMMENDED if Clement gets CMO pricing)
 
@@ -223,7 +227,7 @@ Pre-condition: a separate `greg-optimism-test` Keychain entry with ≥0.001 OP-m
 
 ## Open questions for implementation plan
 
-1. **Branch choice (A/B/C).** Pending Clement decision after he checks Aleph CMO pricing for the new VM spec.
+1. **Branch choice (A/B/C).** ~~Pending~~ **Locked: Branch A (Aleph) 2026-05-12.**
 2. **Uniswap V3 subgraph reliability + fallback strategy.** Verify The Graph hosted subgraph still serves the OP V3 subgraph; if not, self-host or list pools statically.
 3. **L1 RPC for op-node.** Pick a primary + 2-3 fallbacks. Configure round-robin.
 4. **Snapshot source for op-geth initial sync.** Use Optimism's official snapshot URL (TBD which one) or a third-party (Quicknode, dwellir).
