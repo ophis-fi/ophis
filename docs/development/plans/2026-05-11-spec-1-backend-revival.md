@@ -4,7 +4,7 @@
 
 **Goal:** Revive the Phase 3 Greg backend (Rust services for orderbook / autopilot / driver / baseline solver) by co-tenanting Optimism Sepolia and MegaETH testnet chain stacks onto the existing rebates VM, drop Linea (CoW serves it natively), and validate end-to-end with a real settled order on Optimism Sepolia.
 
-**Architecture:** Two Docker Compose stacks (`infra/optimism/`, `infra/megaeth/`) sharing a single Aleph VM (`vm4.alephvision.eu` at `45.144.209.26:24014`) with the existing rebate-indexer. Each stack = 4 Rust services (orderbook + autopilot + driver + baseline) + Postgres, fronted by Caddy → cloudflared → public `api.<chain>-testnet.ophis.fi`. Reuses Phase 3's bytecode-verified testnet contracts at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (CREATE2-deterministic same address on every Greg-target chain). No new contracts, no new wallets, no real ETH spent.
+**Architecture:** Two Docker Compose stacks (`infra/optimism/`, `infra/megaeth/`) sharing a single Aleph VM (`vm4.alephvision.eu` at `45.144.209.26:24014`) with the existing rebate-indexer. Each stack = 4 Rust services (orderbook + autopilot + driver + baseline) + Postgres, fronted by Caddy → cloudflared → public `<chain>-testnet.ophis.fi`. Reuses Phase 3's bytecode-verified testnet contracts at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (CREATE2-deterministic same address on every Greg-target chain). No new contracts, no new wallets, no real ETH spent.
 
 **Tech Stack:** Rust + Cargo (vendored `cowprotocol/services` subtree at `apps/backend/`), Postgres 16, Docker Compose, Caddy, Cloudflare Tunnel + DNS API, viem + cow-sdk for the smoke-test client, ssh + rsync for VM ops.
 
@@ -12,7 +12,7 @@
 
 **Predecessor work:** Phase 3 testnet validation 2026-05-04 — same compose stacks ran successfully on the now-deceased VM at `149.86.227.106:24019`. Memory snapshot in `project_greg.md` § "Phase 3.5 — Aleph VM hosting".
 
-**Phase gate:** `infra/optimism/scripts/smoke-test-e2e.sh` returns `✓ E2E passed, settlement tx 0x<hash>` against `api.optimism-sepolia.ophis.fi`, AND the tx is on-chain on Optimism Sepolia, AND the rebate-indexer at `rebates.ophis.fi/health` still returns `{ok: true}` after the revival is live.
+**Phase gate:** `infra/optimism/scripts/smoke-test-e2e.sh` returns `✓ E2E passed, settlement tx 0x<hash>` against `optimism-sepolia.ophis.fi`, AND the tx is on-chain on Optimism Sepolia, AND the rebate-indexer at `rebates.ophis.fi/health` still returns `{ok: true}` after the revival is live.
 
 ---
 
@@ -319,7 +319,7 @@ Two changes since the original 2026-05-04 Phase 3 validation:
   optimism-sepolia and megaeth-testnet stacks onto the existing rebates
   VM at `vm4.alephvision.eu` (`45.144.209.26:24014`). Same SSH context as
   the rebate-indexer; chains exposed via per-chain named Cloudflare
-  Tunnels (`api.optimism-sepolia.ophis.fi`, `api.megaeth-testnet.ophis.fi`)
+  Tunnels (`optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`)
   instead of the rotating `*.trycloudflare.com` quick-tunnels Phase 3 used.
 
 - **Testnet contracts are unchanged.** CREATE2-deterministic deployment
@@ -625,7 +625,7 @@ Expected:
 **Files:**
 - Create on VM: `/root/.cloudflared/<UUID>-optimism-sepolia.json`
 - Create on VM: `/etc/cloudflared/optimism-sepolia.yml`
-- Create CF DNS record: `api.optimism-sepolia.ophis.fi`
+- Create CF DNS record: `optimism-sepolia.ophis.fi`
 
 ### Step 1: Create the tunnel via cert.pem (already on VM from rebates work)
 
@@ -654,7 +654,7 @@ ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26 \
 tunnel: ${TUNNEL_UUID}
 credentials-file: /root/.cloudflared/${TUNNEL_UUID}.json
 ingress:
-  - hostname: api.optimism-sepolia.ophis.fi
+  - hostname: optimism-sepolia.ophis.fi
     service: http://localhost:8100
   - service: http_status:404
 EOF
@@ -672,7 +672,7 @@ ZONE_ID="dd7588af506387891f094a4927e11d7a"  # ophis.fi zone
 
 curl -sS -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
   -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-  -d "{\"type\":\"CNAME\",\"name\":\"api.optimism-sepolia\",\"content\":\"${TUNNEL_UUID}.cfargotunnel.com\",\"proxied\":true,\"ttl\":1}" \
+  -d "{\"type\":\"CNAME\",\"name\":\"optimism-sepolia\",\"content\":\"${TUNNEL_UUID}.cfargotunnel.com\",\"proxied\":true,\"ttl\":1}" \
   | jq '{success, errors, name: .result.name, content: .result.content, proxied: .result.proxied}'
 ```
 
@@ -707,7 +707,7 @@ ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26 \
 tunnel: ${TUNNEL_UUID}
 credentials-file: /root/.cloudflared/${TUNNEL_UUID}.json
 ingress:
-  - hostname: api.megaeth-testnet.ophis.fi
+  - hostname: megaeth-testnet.ophis.fi
     service: http://localhost:8082
   - service: http_status:404
 EOF
@@ -723,7 +723,7 @@ ZONE_ID="dd7588af506387891f094a4927e11d7a"
 
 curl -sS -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
   -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-  -d "{\"type\":\"CNAME\",\"name\":\"api.megaeth-testnet\",\"content\":\"${TUNNEL_UUID}.cfargotunnel.com\",\"proxied\":true,\"ttl\":1}" \
+  -d "{\"type\":\"CNAME\",\"name\":\"megaeth-testnet\",\"content\":\"${TUNNEL_UUID}.cfargotunnel.com\",\"proxied\":true,\"ttl\":1}" \
   | jq '{success, errors, name: .result.name, content: .result.content}'
 ```
 
@@ -745,7 +745,7 @@ Expected: `success: true`.
 ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26 \
   'cat > /etc/systemd/system/cloudflared-optimism-sepolia.service <<EOF
 [Unit]
-Description=cloudflared for api.optimism-sepolia.ophis.fi
+Description=cloudflared for optimism-sepolia.ophis.fi
 After=network.target
 
 [Service]
@@ -766,7 +766,7 @@ echo "wrote unit"'
 ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26 \
   'cat > /etc/systemd/system/cloudflared-megaeth-testnet.service <<EOF
 [Unit]
-Description=cloudflared for api.megaeth-testnet.ophis.fi
+Description=cloudflared for megaeth-testnet.ophis.fi
 After=network.target
 
 [Service]
@@ -796,10 +796,10 @@ Expected: both services show `active (running)`. The journal should show `Regist
 ### Step 4: Verify the public endpoints
 
 ```bash
-echo "=== api.optimism-sepolia ===" && \
-  curl -fsS https://api.optimism-sepolia.ophis.fi/api/v1/version | jq -c '{version, commit}' && \
-echo "=== api.megaeth-testnet ===" && \
-  curl -fsS https://api.megaeth-testnet.ophis.fi/api/v1/version | jq -c '{version, commit}'
+echo "=== optimism-sepolia ===" && \
+  curl -fsS https://optimism-sepolia.ophis.fi/api/v1/version | jq -c '{version, commit}' && \
+echo "=== megaeth-testnet ===" && \
+  curl -fsS https://megaeth-testnet.ophis.fi/api/v1/version | jq -c '{version, commit}'
 ```
 
 Expected: both return version JSON over HTTPS.
@@ -818,7 +818,7 @@ Expected: both return version JSON over HTTPS.
 ```bash
 cd /Users/scep/greg
 cat > infra/cloudflare/ophis-chain-backends.md <<'EOF'
-# `api.<chain>.ophis.fi` — chain backend runbook (Spec 1)
+# `<chain>.ophis.fi` — chain backend runbook (Spec 1)
 
 ## SSH
 
@@ -828,8 +828,8 @@ ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26
 
 Co-tenants on this VM (don't disturb each other):
 - `apps/rebate-indexer/` at `/srv/ophis/apps/rebate-indexer/` — public `rebates.ophis.fi`, on host port 8080
-- `infra/optimism/` at `/srv/ophis/infra/optimism/` — public `api.optimism-sepolia.ophis.fi`, on host port 8100
-- `infra/megaeth/` at `/srv/ophis/infra/megaeth/` — public `api.megaeth-testnet.ophis.fi`, on host port 8082
+- `infra/optimism/` at `/srv/ophis/infra/optimism/` — public `optimism-sepolia.ophis.fi`, on host port 8100
+- `infra/megaeth/` at `/srv/ophis/infra/megaeth/` — public `megaeth-testnet.ophis.fi`, on host port 8082
 
 ## Logs
 
@@ -866,7 +866,7 @@ When Spec 2/3 promote to mainnet (or a new testnet) the same pattern repeats:
 2. `rsync` to `/srv/ophis/infra/<chain>/`
 3. `docker compose build`, then `up -d` with `--env-file /srv/ophis/.env.shared`
 4. `cloudflared tunnel create ophis-<chain>`, write `/etc/cloudflared/<chain>.yml`
-5. Add a CNAME `api.<chain>.ophis.fi → <UUID>.cfargotunnel.com` proxied via the CF API
+5. Add a CNAME `<chain>.ophis.fi → <UUID>.cfargotunnel.com` proxied via the CF API
 6. Write `/etc/systemd/system/cloudflared-<chain>.service`, `systemctl enable --now`
 
 ## Where the secrets live
@@ -975,7 +975,7 @@ git commit -m "feat(infra): bootstrap smoke-test scripts npm/tsx scaffolding"
 //
 // Programmatic end-to-end smoke test of the Optimism Sepolia chain
 // backend. Signs a WETH→GTUSD order with a test wallet, posts to
-// api.optimism-sepolia.ophis.fi/api/v1/orders, polls for settlement,
+// optimism-sepolia.ophis.fi/api/v1/orders, polls for settlement,
 // verifies the on-chain settlement tx.
 //
 // Exits 0 on full success, 1 on any failure.
@@ -994,7 +994,7 @@ const OPTIMISM_SEPOLIA = {
   rpcUrls: { default: { http: ['https://sepolia.optimism.io'] } },
 } as const;
 
-const ORDERBOOK_URL = 'https://api.optimism-sepolia.ophis.fi';
+const ORDERBOOK_URL = 'https://optimism-sepolia.ophis.fi';
 const SETTLEMENT = '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce' as const;
 const VAULT_RELAYER = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205' as const;
 const WETH = process.env.OPTIMISM_SEPOLIA_WETH as `0x${string}` ?? '0x4200000000000000000000000000000000000006';
@@ -1169,7 +1169,7 @@ const MEGAETH_TESTNET = {
   rpcUrls: { default: { http: ['https://carrot.megaeth.com/rpc'] } },
 } as const;
 
-const ORDERBOOK_URL = 'https://api.megaeth-testnet.ophis.fi';
+const ORDERBOOK_URL = 'https://megaeth-testnet.ophis.fi';
 const SETTLEMENT = '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce' as const;
 const VAULT_RELAYER = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205' as const;
 const WETH = process.env.MEGAETH_TESTNET_WETH as `0x${string}` ?? '0x4200000000000000000000000000000000000006';
@@ -1354,7 +1354,7 @@ VM at `149.86.227.106:24019` (instance presumed reclaimed by Aleph).
   before co-tenancy collided with the rebate-indexer). Linea Sepolia dropped
   (CoW serves Linea natively).
 - **External exposure:** per-chain named Cloudflare Tunnels via
-  `api.optimism-sepolia.ophis.fi` + `api.megaeth-testnet.ophis.fi`. Each runs
+  `optimism-sepolia.ophis.fi` + `megaeth-testnet.ophis.fi`. Each runs
   as its own systemd unit (`cloudflared-<chain>.service`). Stable URLs, no
   `*.trycloudflare.com` rotation.
 - **Driver-submitter PK** lives at `/srv/ophis/.env.shared` (mode 600).
@@ -1420,9 +1420,9 @@ Verify:
 
 ```bash
 echo "=== /version optimism ===" && \
-  curl -fsS https://api.optimism-sepolia.ophis.fi/api/v1/version | jq && \
+  curl -fsS https://optimism-sepolia.ophis.fi/api/v1/version | jq && \
 echo "=== /version megaeth ===" && \
-  curl -fsS https://api.megaeth-testnet.ophis.fi/api/v1/version | jq && \
+  curl -fsS https://megaeth-testnet.ophis.fi/api/v1/version | jq && \
 echo "=== rebates /health ===" && \
   curl -fsS https://rebates.ophis.fi/health | jq
 ```

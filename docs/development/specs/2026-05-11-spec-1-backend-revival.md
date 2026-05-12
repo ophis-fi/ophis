@@ -20,7 +20,7 @@ Spec 1 revives the backend by co-tenanting the chain stacks onto the *existing* 
 
 **Goals.**
 - Two chain stacks (Optimism Sepolia, MegaETH testnet) running on the rebates VM, each with 4 Rust services + Postgres
-- Two named Cloudflare Tunnel subdomains: `api.optimism-sepolia.ophis.fi`, `api.megaeth-testnet.ophis.fi`
+- Two named Cloudflare Tunnel subdomains: `optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`
 - Programmatic end-to-end smoke test: sign + submit order → on-chain settlement observed on Optimism Sepolia
 - `infra/linea/` removed from the tree; Linea variants removed from `apps/backend/`
 - Phase 3 validation doc annotated to reflect new VM + Linea drop
@@ -57,7 +57,7 @@ Spec 1 revives the backend by co-tenanting the chain stacks onto the *existing* 
                     └─────────────────────────────────────────────┘
                               │              │              │
                               ▼              ▼              ▼
-                    rebates.ophis.fi   api.optimism-    api.megaeth-
+                    rebates.ophis.fi   optimism-        megaeth-
                        (exists)        sepolia.ophis.fi  testnet.ophis.fi
                                           (new)             (new)
 ```
@@ -66,7 +66,7 @@ Spec 1 revives the backend by co-tenanting the chain stacks onto the *existing* 
 
 **Port allocation.** `infra/optimism/docker-compose.testnet.yml` uses `8100/8101/9021/5434` — no conflict with the rebate-indexer on `8080`. `infra/megaeth/docker-compose.testnet.yml` originally used `8080/8081` — **must be remapped to `8082/8083`** before deploy or it collides with the rebate-indexer. Internal Postgres ports (`5432`) are container-network-scoped, no collision.
 
-**Why programmatic E2E, not frontend-integrated.** Spec 1 validates "the backend can produce a settled trade on Optimism Sepolia." Frontend wiring (teaching the cowswap fork to route Optimism Sepolia orders to `api.optimism-sepolia.ophis.fi` instead of CoW's URL) is Spec 2 scope. Separate surfaces, separate validations.
+**Why programmatic E2E, not frontend-integrated.** Spec 1 validates "the backend can produce a settled trade on Optimism Sepolia." Frontend wiring (teaching the cowswap fork to route Optimism Sepolia orders to `optimism-sepolia.ophis.fi` instead of CoW's URL) is Spec 2 scope. Separate surfaces, separate validations.
 
 ## Components
 
@@ -105,7 +105,7 @@ Per chain (× 2 chains: optimism-sepolia, megaeth-testnet):
    Cloudflare network         │   ↳ listens 8083/8101        │
         │                     └──────┬───────────────────────┘
         ▼                            │
-   api.<chain>.ophis.fi              │ POST /solve
+   <chain>.ophis.fi              │ POST /solve
                                      ▼
                               ┌──────────────────────────────┐
                               │ baseline solver              │
@@ -180,20 +180,20 @@ Stage E: Tunnel + DNS           (~15 min)
   ├─ For each chain, on the VM:
   │   cloudflared tunnel create ophis-<chain>-testnet
   ├─ Config file at /etc/cloudflared/<chain>.yml with ingress:
-  │   - hostname: api.<chain>-testnet.ophis.fi
+  │   - hostname: <chain>-testnet.ophis.fi
   │     service: http://localhost:<orderbook_port>
   │   - service: http_status:404
   ├─ Install as separate systemd unit:
   │   cloudflared service install --config /etc/cloudflared/<chain>.yml
-  ├─ Cloudflare API: create CNAME api.<chain>-testnet → <UUID>.cfargotunnel.com
-  └─ Verify: curl -fsS https://api.optimism-sepolia.ophis.fi/api/v1/version
+  ├─ Cloudflare API: create CNAME <chain>-testnet → <UUID>.cfargotunnel.com
+  └─ Verify: curl -fsS https://optimism-sepolia.ophis.fi/api/v1/version
 
 Stage F: E2E smoke test         (~30 min)
   ├─ CLI script (in infra/optimism/scripts/smoke-test-e2e.sh):
   │  1. Mint test tokens to a test wallet
   │  2. Approve VaultRelayer on test tokens
   │  3. Sign a WETH→GTUSD order with the cow-sdk
-  │  4. POST to api.optimism-sepolia.ophis.fi/api/v1/orders
+  │  4. POST to optimism-sepolia.ophis.fi/api/v1/orders
   │  5. Poll order status until "fulfilled"
   │  6. Verify settlementTxHash on Optimism Sepolia explorer
   │  7. Output: ✓ E2E passed in Xs, settlement tx <hash>
@@ -236,13 +236,13 @@ Spec 1 is **done** when every box below is checked, observable from the operator
 - [ ] `free -h` shows ≥ 4 GB free under both chain stacks
 
 ### Public endpoints
-- [ ] `curl -fsS https://api.optimism-sepolia.ophis.fi/api/v1/version` returns 200 with CoW orderbook version JSON
-- [ ] Same for `https://api.megaeth-testnet.ophis.fi/api/v1/version`
-- [ ] `dig +short api.optimism-sepolia.ophis.fi @1.1.1.1` returns Cloudflare proxy IPs (104.x or 172.67.x)
-- [ ] `dig +short CAA api.optimism-sepolia.ophis.fi @1.1.1.1` inherits the `ophis.fi` CAA records (no per-subdomain CAA needed)
+- [ ] `curl -fsS https://optimism-sepolia.ophis.fi/api/v1/version` returns 200 with CoW orderbook version JSON
+- [ ] Same for `https://megaeth-testnet.ophis.fi/api/v1/version`
+- [ ] `dig +short optimism-sepolia.ophis.fi @1.1.1.1` returns Cloudflare proxy IPs (104.x or 172.67.x)
+- [ ] `dig +short CAA optimism-sepolia.ophis.fi @1.1.1.1` inherits the `ophis.fi` CAA records (no per-subdomain CAA needed)
 
 ### End-to-end smoke test (the actual gate)
-- [ ] `infra/optimism/scripts/smoke-test-e2e.sh` runs to completion, signs an order with a test wallet, posts to `api.optimism-sepolia.ophis.fi/api/v1/orders`, polls until status `fulfilled`, prints `✓ E2E passed, settlement tx 0x<hash>`
+- [ ] `infra/optimism/scripts/smoke-test-e2e.sh` runs to completion, signs an order with a test wallet, posts to `optimism-sepolia.ophis.fi/api/v1/orders`, polls until status `fulfilled`, prints `✓ E2E passed, settlement tx 0x<hash>`
 - [ ] The reported tx hash resolves on the Optimism Sepolia explorer and shows a successful `settle()` call on `0x0864b65F…Bfce`
 - [ ] The order's `fullAppData.metadata.appCode` reads `"ophis"`
 - [ ] Re-running the smoke test from a fresh shell, fresh order UID, on the same day succeeds → reproducibility check

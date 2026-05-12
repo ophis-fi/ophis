@@ -144,7 +144,7 @@ Two changes since the original 2026-05-04 Phase 3 validation:
   optimism-sepolia and megaeth-testnet stacks onto the existing rebates
   VM at `vm4.alephvision.eu` (`45.144.209.26:24014`). Same SSH context as
   the rebate-indexer; chains exposed via per-chain named Cloudflare
-  Tunnels (`api.optimism-sepolia.ophis.fi`, `api.megaeth-testnet.ophis.fi`)
+  Tunnels (`optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`)
   instead of the rotating `*.trycloudflare.com` quick-tunnels Phase 3 used.
 
 - **Testnet contracts are unchanged.** CREATE2-deterministic deployment
