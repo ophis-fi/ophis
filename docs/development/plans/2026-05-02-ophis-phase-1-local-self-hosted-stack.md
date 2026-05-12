@@ -109,7 +109,7 @@ GNOSIS_RPC_FALLBACK_1=https://rpc.ankr.com/gnosis
 GNOSIS_RPC_FALLBACK_2=https://rpc.gnosischain.com
 ETH_RPC_URL=$GNOSIS_RPC_URL                   # services historically reads ETH_RPC_URL
 
-# Ophis test wallet (Phase 0 throwaway). Private key in macOS Keychain entry "greg-chiado-test".
+# Ophis test wallet (Phase 0 throwaway). Private key in macOS Keychain entry "ophis-chiado-test".
 TEST_WALLET_ADDRESS=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
 
 # Driver submission account (the EOA that submits settlement txs).
@@ -669,7 +669,7 @@ Capture the address and private key. Save to macOS Keychain:
 ```bash
 DRIVER_PK=<paste>
 DRIVER_ADDR=<paste>
-security add-generic-password -a "greg-driver-submitter" -s "greg-driver-submitter" -w "$DRIVER_PK" -U
+security add-generic-password -a "ophis-driver-submitter" -s "ophis-driver-submitter" -w "$DRIVER_PK" -U
 ```
 
 Update `infra/local/.env`:
@@ -886,7 +886,7 @@ Expected: log entries showing block heights advancing in sync with public Gnosis
 - [ ] **Step 4: Wrap a small amount of xDAI on the test wallet**
 
 ```bash
-TEST_PK=$(security find-generic-password -s greg-chiado-test -w)
+TEST_PK=$(security find-generic-password -s ophis-chiado-test -w)
 TEST_ADDR=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
 WXDAI=0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d
 RELAYER=0xC92E8bdf79f0507f65a392b0ab4667716BFE0110

@@ -61,21 +61,21 @@ RECIPIENT_PK=<paste private key from Step 1>
 RECIPIENT_ADDR=<paste address from Step 1>
 
 security add-generic-password \
-  -a "greg-partner-fee-recipient" \
-  -s "greg-partner-fee-recipient" \
+  -a "ophis-partner-fee-recipient" \
+  -s "ophis-partner-fee-recipient" \
   -w "$RECIPIENT_PK" \
   -U
 
 security find-generic-password \
-  -a "greg-partner-fee-recipient" \
-  -s "greg-partner-fee-recipient" -w | head -c 6
+  -a "ophis-partner-fee-recipient" \
+  -s "ophis-partner-fee-recipient" -w | head -c 6
 ```
 Expected: prints `0x` + 4 hex characters (sanity check the keychain entry was written).
 
 - [ ] **Step 3: Verify the public address matches the keychain entry**
 
 ```bash
-RETRIEVED_PK=$(security find-generic-password -a "greg-partner-fee-recipient" -s "greg-partner-fee-recipient" -w)
+RETRIEVED_PK=$(security find-generic-password -a "ophis-partner-fee-recipient" -s "ophis-partner-fee-recipient" -w)
 DERIVED_ADDR=$(cast wallet address "$RETRIEVED_PK")
 echo "Derived: $DERIVED_ADDR"
 echo "Expected: $RECIPIENT_ADDR"
@@ -99,7 +99,7 @@ The recipient address is **not a secret** — only the private key is. Append to
 ```markdown
 ## Recipient
 - Address: <RECIPIENT_ADDR>
-- Private key: macOS Keychain entry `greg-partner-fee-recipient`
+- Private key: macOS Keychain entry `ophis-partner-fee-recipient`
 - Multisig upgrade: deferred to Phase 2.5
 ```
 
@@ -165,7 +165,7 @@ Expected: fails — `gregDefaultPartnerFee` is not exported.
  *   - docs/development/specs/2026-05-03-ophis-design-amendment.md
  */
 
-/** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`.
+/** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `ophis-partner-fee-recipient`.
  *  REPLACE WITH THE TASK-1 ADDRESS BEFORE COMMITTING. */
 export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0xREPLACE_WITH_TASK_1_ADDRESS' as `0x${string}`;
@@ -263,7 +263,7 @@ The cowswap fork lives in its own pnpm workspace (`apps/frontend/`) which is **d
 
 import type { PartnerFee } from '@cowprotocol/widget-lib';
 
-/** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`. */
+/** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `ophis-partner-fee-recipient`. */
 const OPHIS_PARTNER_FEE_RECIPIENT = '0xREPLACE_WITH_TASK_1_ADDRESS' as const;
 
 /** Default fee in basis points. 1 bps = 0.01%. CoW caps partner fees at 100 bps. */
@@ -560,7 +560,7 @@ If the order settles (likely within 1-2 minutes), capture the `txHash`. Sepolia 
 ## Recipient
 
 - Address: `<Ophis recipient address from Task 1>`
-- Private key: macOS Keychain entry `greg-partner-fee-recipient`
+- Private key: macOS Keychain entry `ophis-partner-fee-recipient`
 - Multisig upgrade: deferred to Phase 2.5 (public-launch prep)
 
 ## Test transaction

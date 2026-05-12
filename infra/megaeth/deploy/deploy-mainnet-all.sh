@@ -29,7 +29,7 @@ if [[ -z "${MEGAETH_MAINNET_RPC:-}" ]]; then
 fi
 RPC="$MEGAETH_MAINNET_RPC"
 
-DEPLOYER_PK=$(security find-generic-password -a greg-megaeth-deployer -s greg-megaeth-deployer -w)
+DEPLOYER_PK=$(security find-generic-password -a ophis-megaeth-deployer -s ophis-megaeth-deployer -w)
 DEPLOYER_ADDR=$(cast wallet address "$DEPLOYER_PK")
 
 echo "=== Deployer: $DEPLOYER_ADDR ==="

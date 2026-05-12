@@ -34,7 +34,7 @@ set +a
 
 # Read deployer PK from Keychain (NEVER persisted to disk).
 OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
-  -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
+  -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w)
 export OPHIS_MEGAETH_DEPLOYER_PK
 
 # Sourced from .env above; export so the hardhat config sees it for the

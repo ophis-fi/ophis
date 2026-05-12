@@ -11,7 +11,7 @@
 # That choice is documented in docs/development/specs/2026-05-12-spec-2-optimism-mainnet.md.
 #
 # Pre-requisites:
-#   - macOS Keychain entry `greg-optimism-deployer` exists with the private key
+#   - macOS Keychain entry `ophis-optimism-deployer` exists with the private key
 #   - the corresponding EOA holds ≥ 0.05 mainnet OP ETH for gas
 #   - infra/optimism/.env exists (committed example: ./.env.example) with at
 #     minimum OP_MAINNET_RPC set (defaults to https://mainnet.optimism.io but
@@ -39,11 +39,11 @@ if [[ -z "${OP_MAINNET_RPC:-}" ]]; then
 fi
 RPC="$OP_MAINNET_RPC"
 
-if ! DEPLOYER_PK=$(security find-generic-password -a greg-optimism-deployer -s greg-optimism-deployer -w 2>/dev/null); then
-  echo "ERROR: macOS Keychain entry 'greg-optimism-deployer' not found." >&2
+if ! DEPLOYER_PK=$(security find-generic-password -a ophis-optimism-deployer -s ophis-optimism-deployer -w 2>/dev/null); then
+  echo "ERROR: macOS Keychain entry 'ophis-optimism-deployer' not found." >&2
   echo "Create one with:" >&2
   echo "  cast wallet new" >&2
-  echo "  security add-generic-password -U -a \$USER -s greg-optimism-deployer -w <PRIVATE_KEY>" >&2
+  echo "  security add-generic-password -U -a \$USER -s ophis-optimism-deployer -w <PRIVATE_KEY>" >&2
   echo "Then fund the corresponding EOA with ≥ 0.05 ETH on Optimism mainnet." >&2
   exit 3
 fi

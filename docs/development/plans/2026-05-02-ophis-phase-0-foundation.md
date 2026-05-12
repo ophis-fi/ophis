@@ -895,7 +895,7 @@ This is a manual milestone. The task is to **execute** the swap end-to-end, not 
 ```bash
 cast wallet new
 ```
-Save the address and key in macOS Keychain under entry `greg-chiado-test`. Never commit the key.
+Save the address and key in macOS Keychain under entry `ophis-chiado-test`. Never commit the key.
 
 - [ ] **Step 2: Fund on Chiado testnet**
 
