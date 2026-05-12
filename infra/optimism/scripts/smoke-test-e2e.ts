@@ -12,23 +12,26 @@
 //
 // Exits 0 on full success, 1 on any failure.
 
-import {
-  OrderBookApi,
-  OrderKind,
-  OrderSigningUtils,
-  SupportedChainId,
-} from '@cowprotocol/cow-sdk';
+import { OrderKind, SigningScheme } from '@cowprotocol/cow-sdk';
 import {
   createPublicClient,
   createWalletClient,
   getContract,
   http,
+  keccak256,
   parseEther,
   parseUnits,
+  toBytes,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import chalk from 'chalk';
+
+// Greg's CoW settlement deployment — CREATE2-deterministic across all
+// Greg-deployed chains (Optimism Sepolia, MegaETH testnet, future mainnets).
+// Different from canonical CoW (0x9008…ab41) because Greg uses its own
+// deployer + salt.
+const GPV2_SETTLEMENT = '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce' as const;
 
 const OPTIMISM_SEPOLIA = {
   ...sepolia,
@@ -138,53 +141,128 @@ async function main() {
     console.log(chalk.green(`  ✓ approved (tx ${txHash})`));
   }
 
-  // Step 3: Build + sign order via cow-sdk
-  const orderBookApi = new OrderBookApi({
-    chainId: 11155420 as unknown as SupportedChainId,
-    backendUrl: ORDERBOOK_URL,
-  });
-
+  // Step 3: Build + sign order. We talk to our self-hosted orderbook
+  // via raw fetch — the cow-sdk's OrderBookApi has a hardcoded chain→URL
+  // map and won't honor backendUrl for chains it doesn't know.
   const sellAmount = parseEther('0.001');
   const buyAmount = parseUnits('2', 18);
 
+  const validTo = Math.floor(Date.now() / 1000) + 30 * 60;
+  const appData = '{"appCode":"ophis"}';
+  // appDataHash must equal keccak256(utf8(appData)) — the orderbook
+  // recomputes and rejects on mismatch.
+  const appDataHash = keccak256(toBytes(appData));
   const order = {
     sellToken: WETH,
     buyToken: GTUSD,
     receiver: account.address,
     sellAmount: sellAmount.toString(),
     buyAmount: buyAmount.toString(),
-    validTo: Math.floor(Date.now() / 1000) + 30 * 60,
+    validTo,
     feeAmount: '0',
     kind: OrderKind.SELL,
     partiallyFillable: false,
-    appData: '{"appCode":"ophis"}',
-    appDataHash:
-      '0x0000000000000000000000000000000000000000000000000000000000000000',
+    appData,
+    appDataHash,
   };
 
-  console.log(chalk.yellow('Signing order...'));
-  const signature = await OrderSigningUtils.signOrder(
-    order as any,
-    11155420,
-    walletClient as any,
-  );
+  // Sign EIP-712 manually — the cow-sdk's OrderSigningUtils.signOrder
+  // hardcodes domains for canonical chains only and rejects 11155420.
+  // The settlement contract is at the same CREATE2 address on every
+  // chain we deploy it to, so the domain just swaps chainId.
+  console.log(chalk.yellow('Signing order (manual EIP-712)...'));
+  const signature = await walletClient.signTypedData({
+    domain: {
+      name: 'Gnosis Protocol',
+      version: 'v2',
+      chainId: 11155420,
+      verifyingContract: GPV2_SETTLEMENT,
+    },
+    types: {
+      Order: [
+        { name: 'sellToken', type: 'address' },
+        { name: 'buyToken', type: 'address' },
+        { name: 'receiver', type: 'address' },
+        { name: 'sellAmount', type: 'uint256' },
+        { name: 'buyAmount', type: 'uint256' },
+        { name: 'validTo', type: 'uint32' },
+        { name: 'appData', type: 'bytes32' },
+        { name: 'feeAmount', type: 'uint256' },
+        { name: 'kind', type: 'string' },
+        { name: 'partiallyFillable', type: 'bool' },
+        { name: 'sellTokenBalance', type: 'string' },
+        { name: 'buyTokenBalance', type: 'string' },
+      ],
+    },
+    primaryType: 'Order',
+    message: {
+      sellToken: WETH,
+      buyToken: GTUSD,
+      receiver: account.address,
+      sellAmount,
+      buyAmount,
+      validTo,
+      appData: appDataHash,
+      feeAmount: 0n,
+      kind: 'sell',
+      partiallyFillable: false,
+      sellTokenBalance: 'erc20',
+      buyTokenBalance: 'erc20',
+    },
+  });
 
   // Step 4: Submit
   console.log(chalk.yellow('Submitting to orderbook...'));
-  const orderUid = await orderBookApi.sendOrder({
-    ...order,
-    ...signature,
+  const orderPayload = {
+    sellToken: WETH,
+    buyToken: GTUSD,
+    receiver: account.address,
+    sellAmount: sellAmount.toString(),
+    buyAmount: buyAmount.toString(),
+    validTo,
+    appData,
+    appDataHash,
+    feeAmount: '0',
+    kind: 'sell',
+    partiallyFillable: false,
+    sellTokenBalance: 'erc20',
+    buyTokenBalance: 'erc20',
+    signature,
+    signingScheme: SigningScheme.EIP712,
     from: account.address,
-  } as any);
+  };
+  const submitRes = await fetch(`${ORDERBOOK_URL}/api/v1/orders`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(orderPayload),
+  });
+  if (!submitRes.ok) {
+    const body = await submitRes.text();
+    console.error(chalk.red(`POST /orders → ${submitRes.status}: ${body}`));
+    process.exit(1);
+  }
+  const orderUid = (await submitRes.json()) as string;
   console.log(chalk.green(`  ✓ order accepted, uid ${orderUid}`));
 
   // Step 5: Poll for settlement (max 5 min)
   console.log(chalk.yellow('Polling for settlement (up to 5 min)...'));
   const deadline = Date.now() + 5 * 60_000;
   while (Date.now() < deadline) {
-    const status = await orderBookApi.getOrder(orderUid);
+    const statusRes = await fetch(`${ORDERBOOK_URL}/api/v1/orders/${orderUid}`);
+    if (!statusRes.ok) {
+      console.error(
+        chalk.red(`GET /orders/${orderUid} → ${statusRes.status}`),
+      );
+      process.exit(1);
+    }
+    const status = (await statusRes.json()) as {
+      status: string;
+    };
     if (status.status === 'fulfilled') {
-      const trades = await orderBookApi.getTrades({ orderUid });
+      const tradesRes = await fetch(
+        `${ORDERBOOK_URL}/api/v1/trades?orderUid=${orderUid}`,
+      );
+      const trades = (await tradesRes.json()) as Array<{ txHash?: string }>;
       const settlementTx = trades[0]?.txHash;
       if (!settlementTx) {
         console.error(
