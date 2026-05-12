@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
-# Greg Spec 2 — Optimism mainnet bootstrap.
+# Ophis — Optimism mainnet bootstrap (Spec 2).
 #
-# Runs end-to-end once the deployer is funded with mainnet OP ETH:
-#   1. CoW core: Settlement + VaultRelayer + AllowListAuth (via hardhat-deploy)
-#   2. CoW helpers: Balances + Signatures + HooksTrampoline (via cast send --create)
-#   3. Driver-submitter added to allowlist
+# Hardware-wallet flow (Spec 5):
+#   - Ledger at 0xBeC5B03ffDcac50071693E87bFDb88bAa6710199 signs every tx
+#   - Ownership of AllowListAuthentication is auto-transferred to the
+#     Ophis protocol Safe at 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF
+#     within the same Ledger session (~30s window)
 #
-# Liquidity source is Uniswap V3 on Optimism — NOT a Greg-deployed V2 fork.
-# No pool seeding is needed (UniV3 pools already exist with deep liquidity).
-# That choice is documented in docs/development/specs/2026-05-12-spec-2-optimism-mainnet.md.
+# Steps:
+#   1. CoW core (Settlement + VaultRelayer + AllowListAuth) via hardhat-deploy
+#      using @nomicfoundation/hardhat-ledger
+#   2. CoW helpers (Balances + Signatures + HooksTrampoline) via cast send --ledger
+#   3. Allowlist driver-submitter
+#   4. Transfer AuthList ownership + manager to Ophis protocol Safe
 #
-# Pre-requisites:
-#   - macOS Keychain entry `ophis-optimism-deployer` exists with the private key
-#   - the corresponding EOA holds ≥ 0.05 mainnet OP ETH for gas
-#   - infra/optimism/.env exists (committed example: ./.env.example) with at
-#     minimum OP_MAINNET_RPC set (defaults to https://mainnet.optimism.io but
-#     a paid endpoint is recommended for the deploy run to avoid 429s)
+# Liquidity source is Uniswap V3 on Optimism — NOT an Ophis-deployed V2 fork.
+# UniV3 pools already exist with deep liquidity (canonical 0.05% WETH/USDC.e).
 #
-# Writes deployed addresses to infra/optimism/.env as OPHIS_*_OP_MAINNET keys.
+# Pre-conditions:
+#   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.05 OP ETH
+#   - Driver EOA 0x00f9…502F is funded with ≥ 0.05 OP ETH
+#   - infra/optimism/.env exists with OPHIS_PROTOCOL_SAFE_OP_MAINNET set
+#   - Ledger Live is CLOSED (USB device contention with hardhat-ledger plugin)
+#   - Ledger is connected via USB and Ethereum app is open
+#   - OP_MAINNET_RPC points at a reliable endpoint (recommend the self-hosted
+#     op-reth via Tailscale once the new VM is up)
+#
+# Rationale documented in
+# docs/development/specs/2026-05-12-spec-2-optimism-mainnet.md.
 
 set -euo pipefail
 
@@ -39,17 +49,25 @@ if [[ -z "${OP_MAINNET_RPC:-}" ]]; then
 fi
 RPC="$OP_MAINNET_RPC"
 
-if ! DEPLOYER_PK=$(security find-generic-password -a ophis-optimism-deployer -s ophis-optimism-deployer -w 2>/dev/null); then
-  echo "ERROR: macOS Keychain entry 'ophis-optimism-deployer' not found." >&2
-  echo "Create one with:" >&2
-  echo "  cast wallet new" >&2
-  echo "  security add-generic-password -U -a \$USER -s ophis-optimism-deployer -w <PRIVATE_KEY>" >&2
-  echo "Then fund the corresponding EOA with ≥ 0.05 ETH on Optimism mainnet." >&2
+DEPLOYER_ADDR=0xBeC5B03ffDcac50071693E87bFDb88bAa6710199
+DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
+SAFE="${OPHIS_PROTOCOL_SAFE_OP_MAINNET:-}"
+
+if [[ -z "$SAFE" ]]; then
+  echo "ERROR: OPHIS_PROTOCOL_SAFE_OP_MAINNET not set in $ENV_FILE" >&2
+  echo "       This is the 2-of-3 Safe that takes AllowListAuth ownership post-deploy." >&2
   exit 3
 fi
-DEPLOYER_ADDR=$(cast wallet address "$DEPLOYER_PK")
 
-echo "=== Deployer: $DEPLOYER_ADDR ==="
+echo "⚠️  Hardware wallet flow. Make sure:"
+echo "    - Ledger Live is CLOSED"
+echo "    - Ledger device is connected via USB"
+echo "    - Ethereum app is open on the device"
+echo "    - ~6 tx prompts incoming (3 deploys + 1 allowlist + 2 ownership transfers)"
+read -p "Press ENTER when ready..."
+
+echo ""
+echo "=== Deployer (HW wallet): $DEPLOYER_ADDR ==="
 echo "=== Mainnet RPC: $RPC ==="
 BAL_WEI=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR")
 BAL_ETH=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether)
@@ -61,15 +79,9 @@ if [[ "$BAL_WEI" -lt 50000000000000000 ]]; then  # 0.05 ETH
   exit 4
 fi
 
-# --- 1. CoW core via hardhat-deploy ---
-echo "=== [1/3] Deploying CoW Settlement + VaultRelayer + Auth ==="
+# --- 1. CoW core via hardhat-deploy (Ledger-signed) ---
+echo "=== [1/4] Deploying CoW Settlement + VaultRelayer + Auth (Ledger) ==="
 cd "$REPO_ROOT/contracts"
-
-# hardhat-megaeth.config.ts (despite the name) covers all non-CoW chains including OP mainnet.
-# It overrides namedAccounts.owner and .manager to OPHIS_MEGAETH_DEPLOYER_ADDRESS — that env var
-# name is historical; we export it pointed at the OP deployer here for compatibility.
-export OPHIS_MEGAETH_DEPLOYER_PK="$DEPLOYER_PK"
-export OPHIS_MEGAETH_DEPLOYER_ADDRESS="$DEPLOYER_ADDR"
 export OP_MAINNET_RPC
 
 LOG="$REPO_ROOT/infra/optimism/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
@@ -88,9 +100,9 @@ echo "  Auth Implementation:  $OPHIS_AUTH_IMPLEMENTATION_OP_MAINNET"
 echo "  Settlement:           $OPHIS_SETTLEMENT_OP_MAINNET"
 echo "  VaultRelayer:         $OPHIS_VAULT_RELAYER_OP_MAINNET"
 
-# --- 2. CoW helpers via cast send --create ---
+# --- 2. CoW helpers via cast send --create --ledger ---
 echo ""
-echo "=== [2/3] Deploying CoW helpers ==="
+echo "=== [2/4] Deploying CoW helpers (Ledger) ==="
 cd "$REPO_ROOT"
 
 deploy_artifact_create() {
@@ -102,7 +114,7 @@ bc=d['bytecode']
 if isinstance(bc, dict): bc=bc.get('object', bc.get('bytecode'))
 if not bc.startswith('0x'): bc='0x'+bc
 print(bc + '$extra_args')")
-  result=$(cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" \
+  result=$(cast send --rpc-url "$RPC" --ledger \
            --create "$CODE" --json)
   echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('contractAddress'))"
 }
@@ -122,9 +134,8 @@ echo "  HooksTrampoline: $OPHIS_HOOKS_TRAMPOLINE_OP_MAINNET"
 
 # --- 3. Allowlist driver-submitter ---
 echo ""
-echo "=== [3/3] Allowlisting driver-submitter ==="
-DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
-cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" \
+echo "=== [3/4] Allowlisting driver-submitter (Ledger) ==="
+cast send --rpc-url "$RPC" --ledger \
   "$OPHIS_AUTH_OP_MAINNET" "addSolver(address)" "$DRIVER" >/dev/null
 IS_SOLVER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_OP_MAINNET" "isSolver(address)(bool)" "$DRIVER")
 echo "  isSolver(driver): $IS_SOLVER"
@@ -133,6 +144,40 @@ if [[ "$IS_SOLVER" != "true" ]]; then
   echo "ERROR: driver-submitter not allowlisted after addSolver — investigate before proceeding" >&2
   exit 5
 fi
+
+# --- 4. Transfer ownership + manager to the Ophis protocol Safe ---
+# CRITICAL: this closes the dangerous window where the HW wallet still has
+# unilateral protocol-level power. After these two txs, only the 2-of-3
+# Safe can addSolver / removeSolver / transferOwnership / upgrade.
+echo ""
+echo "=== [4/4] Transferring AuthList ownership to Ophis protocol Safe (Ledger) ==="
+echo "  Safe: $SAFE"
+cast send --rpc-url "$RPC" --ledger \
+  "$OPHIS_AUTH_OP_MAINNET" "transferOwnership(address)" "$SAFE" >/dev/null
+echo "  transferOwnership ✓"
+
+cast send --rpc-url "$RPC" --ledger \
+  "$OPHIS_AUTH_OP_MAINNET" "setManager(address)" "$SAFE" >/dev/null
+echo "  setManager ✓"
+
+NEW_OWNER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_OP_MAINNET" "owner()(address)")
+NEW_MANAGER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_OP_MAINNET" "manager()(address)")
+echo ""
+echo "  Verified — owner:   $NEW_OWNER"
+echo "  Verified — manager: $NEW_MANAGER"
+
+LOWER_SAFE=$(echo "$SAFE" | tr '[:upper:]' '[:lower:]')
+LOWER_OWNER=$(echo "$NEW_OWNER" | tr '[:upper:]' '[:lower:]')
+LOWER_MANAGER=$(echo "$NEW_MANAGER" | tr '[:upper:]' '[:lower:]')
+if [[ "$LOWER_OWNER" != "$LOWER_SAFE" ]]; then
+  echo "ERROR: owner is $NEW_OWNER, expected $SAFE" >&2
+  exit 6
+fi
+if [[ "$LOWER_MANAGER" != "$LOWER_SAFE" ]]; then
+  echo "ERROR: manager is $NEW_MANAGER, expected $SAFE" >&2
+  exit 7
+fi
+echo "  ✓ Protocol authority fully handed to the 2-of-3 Safe"
 
 # --- Persist all addresses ---
 echo ""
@@ -154,6 +199,7 @@ echo "=== Done. ==="
 echo ""
 echo "Next: build infra/optimism-mainnet/ chain stack pointing at:"
 echo "  - settlement: $OPHIS_SETTLEMENT_OP_MAINNET"
-echo "  - liquidity: Uniswap V3 on Optimism (factory 0x1F98431c8aD98523631AE4a59f267346ea31F984)"
+echo "  - liquidity:  Uniswap V3 on Optimism (factory 0x1F98431c8aD98523631AE4a59f267346ea31F984)"
+echo "  - RPC:        the self-hosted op-reth via Tailscale once the new VM is up"
 echo ""
-echo "See docs/development/plans/2026-05-12-spec-2-optimism-mainnet.md once it's written."
+echo "Protocol authority: 2-of-3 Safe $SAFE"
