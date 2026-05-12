@@ -106,3 +106,49 @@ Order uid `0xe1f34360ad9eeec2febb38df225ad39392f1284e61fc60023262506089df7205412
 | GTUSD test token | `0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1` | (see VM `.env`) |
 | Driver-submitter EOA | `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` | same |
 | Test wallet (greg-chiado-test) | `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` | n/a |
+
+## Deferred operator task: re-enable rebate-indexer nightly e2e
+
+PR #21 commented out the `schedule:` trigger on `.github/workflows/rebate-indexer-ci.yml` because the e2e job's required secrets (Sepolia test Safe + burner key) were never set. To re-enable nightly runs:
+
+1. **Generate the burner wallet:**
+   ```bash
+   cast wallet new
+   ```
+   Save the printed private key into macOS Keychain:
+   ```bash
+   security add-generic-password -U -a "$USER" -s greg-rebate-e2e-burner \
+     -w "<PRIVATE_KEY>"
+   ```
+
+2. **Fund the burner with Sepolia ETH.** Public faucets: [Alchemy](https://www.alchemy.com/faucets/ethereum-sepolia), [PoW faucet](https://sepolia-faucet.pk910.de/), [QuickNode](https://faucet.quicknode.com/ethereum/sepolia). Aim for ≥ 0.1 SEP ETH (Safe deploys cost ~0.005 ETH each).
+
+3. **Deploy a 1-of-1 Safe** owned by the burner on Sepolia. Two paths:
+   - **UI** (easiest): https://app.safe.global → switch network to Sepolia → "Create new Safe", paste the burner address, set threshold 1, deploy. Copy the resulting Safe address.
+   - **CLI** (scriptable): `npx @safe-global/safe-cli create --rpc https://rpc.sepolia.org --owners <burner> --threshold 1 --signer <burner-pk>`
+
+4. **Set GitHub Actions secrets** (Clement has admin scope):
+   ```bash
+   gh secret set E2E_SAFE_BURNER_KEY --repo ophis-fi/ophis -b "<burner-private-key>"
+   gh secret set SEPOLIA_RPC_URL --repo ophis-fi/ophis -b "https://rpc.sepolia.org"
+   ```
+   And the Safe address goes in repo Variables (public, not secret):
+   ```bash
+   gh variable set E2E_SAFE_ADDRESS --repo ophis-fi/ophis -b "<safe-address>"
+   ```
+
+5. **Re-enable the schedule** by uncommenting the `schedule:` block at the top of `.github/workflows/rebate-indexer-ci.yml`:
+   ```yaml
+   on:
+     schedule:
+       - cron: '0 3 * * *'  # 03:00 UTC daily
+     pull_request: ...
+   ```
+
+6. **Verify** by manually triggering the workflow once:
+   ```bash
+   gh workflow run rebate-indexer-ci.yml --repo ophis-fi/ophis
+   ```
+   Wait for the e2e job to succeed (~3-5 min). If it does, the nightly schedule is good to go.
+
+Estimated time: ~30 minutes total.
