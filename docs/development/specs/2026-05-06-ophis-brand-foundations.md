@@ -1,4 +1,4 @@
-# Greg — Brand Foundations Spec
+# Ophis — Brand Foundations Spec
 
 > **Date:** 2026-05-06
 > **Owner:** Clement (san-npm)
@@ -9,9 +9,9 @@
 
 ## 1. Summary
 
-Greg's visual system inherits its **structure** (token naming, scale steps, ramp shape, spacing rhythm) from Nucleus UI Lite. Token **values** start as Nucleus defaults (purple brand, light-mode only) and will diverge as the brand sharpens.
+Ophis's visual system inherits its **structure** (token naming, scale steps, ramp shape, spacing rhythm) from Nucleus UI Lite. Token **values** start as Nucleus defaults (purple brand, light-mode only) and will diverge as the brand sharpens.
 
-Nucleus's role is the chassis. Greg's role is everything that makes Greg *Greg*: mascot/persona, copy voice, signature sound, motion language, the surplus-receipt artifact, the DCA/TWAP builder UI.
+Nucleus's role is the chassis. Ophis's role is everything that makes Ophis *Ophis*: mascot/persona, copy voice, signature sound, motion language, the surplus-receipt artifact, the DCA/TWAP builder UI.
 
 ## 2. License
 
@@ -32,9 +32,9 @@ Nucleus's role is the chassis. Greg's role is everything that makes Greg *Greg*:
 
 ## 3. Color tokens
 
-### Greg brand palette — sunset coral (10-step)
+### Ophis brand palette — sunset coral (10-step)
 
-Derived from the kit's gradient card studies (`Auto Layout-2.svg`). Saturated peak `#E6766A` anchors `brand/60`. Strategic rationale: every DEX aggregator (1inch, Velora, Jumper, Bungee, Matcha) lives in the cool blue/purple/teal cluster; warm tones make Greg unmistakable in a competitive screenshot.
+Derived from the kit's gradient card studies (`Auto Layout-2.svg`). Saturated peak `#E6766A` anchors `brand/60`. Strategic rationale: every DEX aggregator (1inch, Velora, Jumper, Bungee, Matcha) lives in the cool blue/purple/teal cluster; warm tones make Ophis unmistakable in a competitive screenshot.
 
 | Token | Hex | Use |
 |---|---|---|
@@ -49,7 +49,7 @@ Derived from the kit's gradient card studies (`Auto Layout-2.svg`). Saturated pe
 | `brand/90` | `#5C1D14` | Dark-mode subtle accent bg |
 | `brand/100` | `#2A0B07` | Deepest accent |
 
-### Greg secondary accent — magenta/rose (10-step)
+### Ophis secondary accent — magenta/rose (10-step)
 
 For highlights, gradient stops, illustration. Used sparingly. Anchor `#C73D6C`.
 
@@ -148,13 +148,13 @@ Three elevations + focus, derived (Nucleus exact values not yet measured at pixe
 | 2 | Typeface | **Fraunces (display) + Plus Jakarta Sans (body) + JetBrains Mono (data)** — all OFL. |
 | 3 | Modes | **Light + dark from day 1.** Light = canonical Nucleus values. Dark = derived. |
 | 4 | Mascot/motif | **TBD** — searching. Does not block tokens or component work. |
-| 5 | Greg logo | TBD — `public/greg-icon.svg` is a placeholder. |
+| 5 | Ophis logo | TBD — `public/greg-icon.svg` is a placeholder. |
 
 ## 8. Next steps
 
 1. Decide §7 items 1–3.
 2. Wire `tokens.ts` into `theme/getCowswapTheme.ts` (replace `baseTheme()` overrides) + emit CSS custom properties for runtime theming.
 3. Replace `fonts.css` — drop StudioFeixen (license risk), load Plus Jakarta Sans (OFL).
-4. Sweep ~480 source references to cow/🐮/moo (separate spec — see `2026-05-02-greg-design.md` audit).
+4. Sweep ~480 source references to cow/🐮/moo (separate spec — see `2026-05-02-ophis-design.md` audit).
 5. Map Nucleus Core components → cowswap fork primitives one by one (Button, Input, Card, Tabs, Modal, Toast, Badge, Tooltip, Dropdown, Switch, Checkbox, Radio).
-6. Build new screens unique to Greg (DCA/TWAP builder, MEV-proof receipt, dashboard) using the resulting system.
+6. Build new screens unique to Ophis (DCA/TWAP builder, MEV-proof receipt, dashboard) using the resulting system.

@@ -1,6 +1,6 @@
-# Greg — Design Spec Amendment (2026-05-03)
+# Ophis — Design Spec Amendment (2026-05-03)
 
-> **Amends:** [`2026-05-02-greg-design.md`](2026-05-02-greg-design.md)
+> **Amends:** [`2026-05-02-ophis-design.md`](2026-05-02-ophis-design.md)
 > **Trigger:** Phase 1 Stage 2 validation surfaced an architectural constraint that invalidates the original Phase 1 deployment shape.
 > **Owner:** Clement (san-npm), CTO
 
@@ -10,12 +10,12 @@ This document records the strategic changes locked on 2026-05-03 after Phase 1's
 
 ## What changed and why
 
-The original spec assumed Greg could self-host a CoW Protocol backend (orderbook + autopilot + driver + solver) on Gnosis Chain in Phase 1, with settlements "still riding CoW's existing Gnosis solver network." Phase 1 Stage 2 validation discovered:
+The original spec assumed Ophis could self-host a CoW Protocol backend (orderbook + autopilot + driver + solver) on Gnosis Chain in Phase 1, with settlements "still riding CoW's existing Gnosis solver network." Phase 1 Stage 2 validation discovered:
 
-1. **CoW solvers will not read from a private orderbook.** They poll `api.cow.fi`. A self-hosted Greg orderbook is invisible to them.
+1. **CoW solvers will not read from a private orderbook.** They poll `api.cow.fi`. A self-hosted Ophis orderbook is invisible to them.
 2. **CoW's `GPv2Settlement` contract uses a permissioned `AllowListAuthentication`** ([docs](https://docs.cow.fi/cow-protocol/reference/contracts/core)). Only solvers approved via CoW DAO governance can submit settlement transactions. Approval is a multi-week process (forum proposal → code review → DAO vote → bonded capital). No technical bypass.
 
-The combination means **on any chain CoW is deployed to, Greg cannot self-host settlement without CoW DAO governance approval.** The original Phase 1 architecture is structurally infeasible for a no-budget bootstrap.
+The combination means **on any chain CoW is deployed to, Ophis cannot self-host settlement without CoW DAO governance approval.** The original Phase 1 architecture is structurally infeasible for a no-budget bootstrap.
 
 ## Amended phase structure
 
@@ -45,7 +45,7 @@ Phase 5+   Multi-chain expansion (zkSync, Linea, OP)   Aug+
 
 ## Amended monetisation model
 
-Original model: 5bps partner fee on Greg's UI as primary revenue. Same as today's competitor benchmark assumption.
+Original model: 5bps partner fee on Ophis's UI as primary revenue. Same as today's competitor benchmark assumption.
 
 Competitor benchmarking (May 2026, all from official sources cited at bottom of [`docs/development/status/2026-05-02.md`](../status/2026-05-02.md)):
 
@@ -56,16 +56,16 @@ Competitor benchmarking (May 2026, all from official sources cited at bottom of 
 | CowSwap (cow.fi) | ~5 bps protocol fee on volatile pairs (CoW DAO captures) |
 | Matcha | ~10 bps Standard, up to 15 bps on 0x routes |
 
-Charging users a partner fee on top of CoW's protocol fee makes Greg the most expensive aggregator in the market for retail. Updated model:
+Charging users a partner fee on top of CoW's protocol fee makes Ophis the most expensive aggregator in the market for retail. Updated model:
 
 | Tier | What it is | Pricing |
 |---|---|---|
-| **Retail (T1)** | Free Greg.app — DCA, Safe app, MEV-proof receipts, embed widget | **0 bps** (acquisition channel) |
+| **Retail (T1)** | Free Ophis.app — DCA, Safe app, MEV-proof receipts, embed widget | **0 bps** (acquisition channel) |
 | **Treasury (T2 = formerly Phase 3 "DAO desk")** | Same UI, unlocks dashboards/batched approvals/CSV export when a Safe wallet connects with ≥2 signers | 5 bps per swap (transactional, no subscription) |
 | **API (T3 = formerly Phase 4 "B2B API")** | `/developers` self-signup with API key; partner-fee `appData` injected automatically on routed orders | 5–10 bps per swap (transactional, on-chain billing only) |
 | **Enterprise (T4)** | White-label + custom features | Custom (sales-led only when inbound pulls) |
 
-All tiers use **on-chain partner-fee accrual** ([CoW partner-fee mechanism](https://docs.cow.fi/governance/fees/partner-fee)). CoW DAO disburses Greg's share weekly in WETH to a recipient address we control. **No Stripe, no invoices, no OFAC compliance work in scope.**
+All tiers use **on-chain partner-fee accrual** ([CoW partner-fee mechanism](https://docs.cow.fi/governance/fees/partner-fee)). CoW DAO disburses Ophis's share weekly in WETH to a recipient address we control. **No Stripe, no invoices, no OFAC compliance work in scope.**
 
 ## Acquisition model: product-led growth (PLG)
 
@@ -79,8 +79,8 @@ Retail user (free, T1) ─organic─→ Treasury client (T2, self-serve) ─inbo
 
 Acquisition channels (all free or near-free):
 
-- **[Safe App store](https://app.safe.global/apps)** listing — Safe ecosystem holds tens of billions in TVL; one PR review puts Greg in front of every active treasury using Safe.
-- **Public execution proofs on social** — weekly tweet with order UID + Etherscan link for big swaps Greg routed.
+- **[Safe App store](https://app.safe.global/apps)** listing — Safe ecosystem holds tens of billions in TVL; one PR review puts Ophis in front of every active treasury using Safe.
+- **Public execution proofs on social** — weekly tweet with order UID + Etherscan link for big swaps Ophis routed.
 - **SEO** — own "ethereum DCA", "DAO treasury swap", "TWAP onchain", "recurring buy crypto" — niche intents incumbents do not target.
 - **Embed widget** — drop-in DCA / TWAP component for yield protocols, DeFi blogs, Safe wallet plugins. Each embed = free distribution.
 - **Open-source default** — GPL-3.0 forces this anyway. GitHub stars / forks → developer awareness → API tier signups.
@@ -118,11 +118,11 @@ Removed risks (the amended plan retires these):
 
 | Phase | Metric | Target |
 |---|---|---|
-| 1.5 | Real swap settles via Greg.app with partner fee in `appData` | Order UID + tx hash recorded in `phase-1-5-validation.md` |
+| 1.5 | Real swap settles via Ophis.app with partner fee in `appData` | Order UID + tx hash recorded in `phase-1-5-validation.md` |
 | 2 | DCA + Safe app + MEV receipts shipped, embed widget loadable | Demo URL + walkthrough video |
 | 2.5 | Public launch — Show HN, Product Hunt, Safe app store | Live brand + 10 inbound retail users in first 24h |
 | 3 | MegaETH deployment live — own settlement, settled real swap on chain ID 4326 | Tx hash on MegaETH explorer |
-| 3.5 | First Treasury (T2) client | 1 DAO actively using Greg, partner fee accruing |
+| 3.5 | First Treasury (T2) client | 1 DAO actively using Ophis, partner fee accruing |
 | 4 | First API (T3) integrator | 1 wallet/dApp routing through `/developers` API key |
 
 ## What this amendment does NOT change

@@ -1,8 +1,8 @@
 # Ophis natural-language swap-intent input — design
 
 **Status:** approved 2026-05-08
-**Successor to:** Phase 2.6 brand foundations (`2026-05-06-greg-brand-foundations.md`, `2026-05-07-greg-brand-guidelines.md`)
-**Codename note:** the project is being rebranded Greg → Ophis; this spec uses the new name throughout. The mascot is **Ophie** (ouroboros).
+**Successor to:** Phase 2.6 brand foundations (`2026-05-06-ophis-brand-foundations.md`, `2026-05-07-ophis-brand-guidelines.md`)
+**Codename note:** the project is being rebranded Ophis → Ophis; this spec uses the new name throughout. The mascot is **Ophie** (ouroboros).
 
 ## 1. Goal
 
@@ -220,8 +220,8 @@ No PII (the `text` field is not logged). Browser-side: standard CF Pages analyti
 
 ## 10. Sources
 
-- [`2026-05-06-greg-brand-foundations.md`](2026-05-06-greg-brand-foundations.md) — token system & rationale.
-- [`2026-05-07-greg-brand-guidelines.md`](2026-05-07-greg-brand-guidelines.md) — Ophie mascot usage.
+- [`2026-05-06-ophis-brand-foundations.md`](2026-05-06-ophis-brand-foundations.md) — token system & rationale.
+- [`2026-05-07-ophis-brand-guidelines.md`](2026-05-07-ophis-brand-guidelines.md) — Ophie mascot usage.
 - LibertAI [`/v1/chat/completions`](https://api.libertai.io/docs) — OpenAI-compatible endpoint, Bearer auth.
 - LibertAI Qwen 3.5 122B smoke-test results (2026-05-08): 7 representative inputs, 100% schema-conforming JSON, 0.36–1.03 s latency.
 - Cowswap upstream — URL params (`inputCurrency`, `outputCurrency`, `chainId`, `exactField`, `exactAmount`) and wallet-chain-mismatch flow.
