@@ -4,15 +4,15 @@
 
 **Goal:** Deploy Greg's first mainnet backend on MegaETH (chain 4326), settling a real on-chain WETH→USDT0 trade through the self-hosted CoW stack.
 
-**Architecture:** Co-tenant on existing vm4. New `infra/megaeth-mainnet/` from a copy of `infra/megaeth/`. Public RPC at `mainnet.megaeth.com/rpc` (verified handles our load). Greg-deployed CoW core + V2 + seeded WETH/USDT0 bootstrap pool. New Cloudflare tunnel `ophis-megaeth-mainnet` → `megaeth.ophis.fi`.
+**Architecture:** Co-tenant on existing vm4. New `infra/megaeth-mainnet/` from a copy of `infra/megaeth/`. Public RPC at `mainnet.megaeth.com/rpc` (verified handles our load). Greg-deployed CoW core only — liquidity routes through **Kumbaya** (MegaETH's dominant DEX, ~$53M TVL, UniV3 fork at factory `0x68b34591f662508076927803c567Cc8006988a09`). New Cloudflare tunnel `ophis-megaeth-mainnet` → `megaeth.ophis.fi`.
 
 **Tech Stack:** Solidity 0.7.6 (CoW contracts) via hardhat-deploy, Rust services from cowprotocol/services vendored at `apps/backend/`, Docker Compose, postgres:16-alpine, Cloudflared, viem + cow-sdk for smoke test.
 
 **Open questions from spec — resolved here:**
-1. **Pool tokens:** WETH + USDT0 (per existing `seed-mainnet-pool.sh`).
-2. **Initial price:** Whatever 80% of the deployer's WETH and USDT0 balances yield as the implied ratio. Target seed: ~$3000 of each side. If Clement seeds asymmetrically, the implied price is wrong on day 1 but arbs will correct in minutes.
+1. **Liquidity source:** **Kumbaya UniV3** (not Greg V2). No pool seeding needed. Custom init-code-hash `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7`. Factory `0x68b34591f662508076927803c567Cc8006988a09`.
+2. **Test pair:** At execution time, query Kumbaya's deepest WETH-quoted pool (likely WETH/USDC) and use that for the smoke test buy token.
 3. **Deployer wallet bridge route:** Operator-side; not part of code. Document only.
-4. **Test wallet:** New Keychain entry `greg-megaeth-test`. Fund from deployer post-pool-seed.
+4. **Test wallet:** New Keychain entry `greg-megaeth-test`. Fund from deployer with ~0.005 MEGA.
 
 ---
 
@@ -71,26 +71,21 @@ cast balance 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F \
   --rpc-url https://mainnet.megaeth.com/rpc --ether
 ```
 
-- [ ] **Step 3: Send WETH + USDT0 to deployer for pool seed**
+No commit at this step — funding is off-chain. **No pool-seed funding needed** (Kumbaya is the liquidity source).
 
-Target: 1 WETH + ~$3000 USDT0 (whichever is more limiting in MEGA gas). Send via bridge or Kumbaya.
-
-```bash
-WETH=0x4200000000000000000000000000000000000006
-USDT0=0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb
-cast call $WETH "balanceOf(address)(uint256)" 0xb398C789F8690357e2b3D2ef6d1CDe62B1e4D020 \
-  --rpc-url https://mainnet.megaeth.com/rpc
-cast call $USDT0 "balanceOf(address)(uint256)" 0xb398C789F8690357e2b3D2ef6d1CDe62B1e4D020 \
-  --rpc-url https://mainnet.megaeth.com/rpc
-```
-
-No commit at this step — funding is off-chain.
-
-### Task 2: Deploy CoW core + helpers + V2 on MegaETH mainnet
+### Task 2: Modify deploy script + deploy CoW core + helpers on MegaETH mainnet
 
 **Files:**
-- Read: `infra/megaeth/deploy/deploy-mainnet-all.sh`
-- Modify: `infra/megaeth/.env` (script appends)
+- Modify: `infra/megaeth/deploy/deploy-mainnet-all.sh` (comment out V2 section)
+- Modify: `infra/megaeth/.env` (script appends after run)
+
+- [ ] **Step 0 (pre-Step-1): Comment out V2 deploy in the script**
+
+In `infra/megaeth/deploy/deploy-mainnet-all.sh`:
+- Comment out the entire section `# --- 3. Uniswap V2 ---` through `echo "  V2 Router:   $GREG_V2_ROUTER_MAINNET"`
+- Renumber sections (3 → no longer exists, 4 → 3 of 3)
+- Remove `GREG_V2_FACTORY_MAINNET` + `GREG_V2_ROUTER_MAINNET` from the address-append cat block at the bottom
+- Commit: `git commit -m "fix(megaeth): drop V2 deploy from mainnet bootstrap (Kumbaya is liquidity source)"`
 
 - [ ] **Step 1: Verify deployer funded + RPC reachable**
 
@@ -128,44 +123,35 @@ Expected: settlement has bytecode (not `0x`), vaultRelayer matches `GREG_VAULT_R
 
 - [ ] **Step 4: Commit nothing — `.env` is gitignored, scripts emit only on-chain state**
 
-### Task 3: Seed bootstrap WETH/USDT0 pool
+### Task 3: Identify Kumbaya target pool for smoke test
 
-**Files:**
-- Read: `infra/megaeth/deploy/seed-mainnet-pool.sh`
-- Modify: `infra/megaeth/.env` (script appends pair address)
+**Files:** none (read-only on-chain query)
 
-- [ ] **Step 1: Verify deployer has WETH + USDT0 from Task 1 Step 3**
+- [ ] **Step 1: Find the deepest WETH-quoted pool on Kumbaya**
 
 ```bash
-source /Users/scep/greg/infra/megaeth/.env
+KUMBAYA_FACTORY=0x68b34591f662508076927803c567Cc8006988a09
 WETH=0x4200000000000000000000000000000000000006
-USDT0=0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb
 RPC=https://mainnet.megaeth.com/rpc
-DEPLOYER=0xb398C789F8690357e2b3D2ef6d1CDe62B1e4D020
-cast call --rpc-url $RPC $WETH "balanceOf(address)(uint256)" $DEPLOYER
-cast call --rpc-url $RPC $USDT0 "balanceOf(address)(uint256)" $DEPLOYER
+
+# UniV3 has multiple fee tiers per pair (100, 500, 3000, 10000)
+# For each likely counter-token (USDC, USDT, ...) check all 4 fee tiers
+# Pick whichever pool has the highest WETH balance.
+
+# Example for USDC (replace with actual MegaETH USDC address from a Kumbaya pool):
+# USDC=0x???
+# for fee in 100 500 3000 10000; do
+#   POOL=$(cast call --rpc-url $RPC $KUMBAYA_FACTORY "getPool(address,address,uint24)(address)" $WETH $USDC $fee)
+#   if [ "$POOL" != "0x0000000000000000000000000000000000000000" ]; then
+#     BAL=$(cast call --rpc-url $RPC $WETH "balanceOf(address)(uint256)" $POOL)
+#     echo "fee=$fee pool=$POOL weth=$BAL"
+#   fi
+# done
 ```
 
-Both > 0.
+Record the chosen `(pool address, fee tier, counter token)` in a temp note. Use that token as the smoke-test buy token.
 
-- [ ] **Step 2: Execute seed-mainnet-pool.sh**
-
-```bash
-cd /Users/scep/greg/infra/megaeth/deploy
-./seed-mainnet-pool.sh 2>&1 | tee /tmp/megaeth-mainnet-seed-$(date +%Y%m%d-%H%M%S).log
-```
-
-Expected: `=== Pool created === Pair: 0x...` and non-zero reserves.
-
-- [ ] **Step 3: Verify pool reserves on chain**
-
-```bash
-source /Users/scep/greg/infra/megaeth/.env
-cast call --rpc-url https://mainnet.megaeth.com/rpc \
-  $GREG_V2_PAIR_WETH_USDT0_MAINNET "getReserves()(uint112,uint112,uint32)"
-```
-
-Expected: non-zero `(reserve0, reserve1, blockTimestampLast)`.
+- [ ] **Step 2: No commit — investigative only.**
 
 ### Task 4: Create `infra/megaeth-mainnet/` from testnet template
 
