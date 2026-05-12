@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
-// @greg/sdk is not available in this workspace — using local mirror instead.
-// See apps/frontend/apps/cowswap-frontend/src/greg/tiers.ts for details.
+// @ophis/sdk is not available in this workspace — using local mirror instead.
+// See apps/frontend/apps/cowswap-frontend/src/ophis/tiers.ts for details.
 import { assignTier, type Tier } from '../tiers'
 
 const REBATES_API = process.env.REACT_APP_REBATES_API ?? 'https://rebates.ophis.fi'

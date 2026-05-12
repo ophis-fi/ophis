@@ -8,12 +8,12 @@ const Wrapper = styled.div<{ $size: number }>`
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--greg-space-3, 12px);
+  gap: var(--ophis-space-3, 12px);
   width: ${({ $size }) => $size}px;
 `
 
 const Caption = styled.span`
-  font-family: var(--greg-font-body);
+  font-family: var(--ophis-font-body);
   font-size: 14px;
   font-weight: 500;
   letter-spacing: -0.005em;
@@ -31,7 +31,7 @@ export interface OphieSpinnerProps {
 }
 
 /**
- * Greg's branded loading state — Ophie rotating with an optional caption.
+ * Ophis's branded loading state — Ophie rotating with an optional caption.
  *
  * Use for full-page or section-level loads where the visual identity matters
  * (initial app boot, swap quote refresh on an empty surface, settings sheet

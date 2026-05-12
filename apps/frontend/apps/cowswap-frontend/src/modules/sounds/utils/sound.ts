@@ -1,4 +1,4 @@
-// Greg/Ophis: silence upstream audio cues.
+// Ophis: silence upstream audio cues.
 //
 // Ophis shipped a "moo" sound on order success and other branded
 // audio cues that are off-brand for Ophis. Rather than ship audio

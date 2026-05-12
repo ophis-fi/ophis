@@ -40,11 +40,11 @@ export const Wrapper = styled.span<{
   }};
   color: ${({ colorEnums }) => `var(${colorEnums.text})`};
   gap: 24px 10px;
-  // Greg/Nucleus: token-driven defaults (radius lg=16, padding space-4=16).
-  border-radius: ${({ borderRadius }) => borderRadius || 'var(--greg-radius-lg, 16px)'};
+  // Ophis/Nucleus: token-driven defaults (radius lg=16, padding space-4=16).
+  border-radius: ${({ borderRadius }) => borderRadius || 'var(--ophis-radius-lg, 16px)'};
   margin: ${({ margin = 'auto' }) => margin};
   padding: ${({ dismissable, padding }) =>
-    padding || (dismissable ? '16px 32px 16px 16px' : 'var(--greg-space-4, 16px)')};
+    padding || (dismissable ? '16px 32px 16px 16px' : 'var(--ophis-space-4, 16px)')};
   font-size: ${({ fontSize = 14 }) => fontSize}px;
   font-weight: 400;
   line-height: 1.2;

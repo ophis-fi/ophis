@@ -14,7 +14,7 @@ const SceneRoot = styled.div`
   align-items: center;
   justify-content: center;
   background: var(
-    --greg-gradient-sunset-radial,
+    --ophis-gradient-sunset-radial,
     radial-gradient(120% 80% at 20% 20%, #ff8a52 0%, #e66a55 40%, #c73d6c 75%, #5c1d14 100%)
   );
 
@@ -37,12 +37,12 @@ const Watermark = styled.div`
 `
 
 /**
- * Full-viewport Greg 404 scene — sunset radial gradient + low-opacity Ophie watermark.
+ * Full-viewport Ophis 404 scene — sunset radial gradient + low-opacity Ophie watermark.
  *
- * Used by the 404 page via `usePageBackground().setScene(<Greg404Scene />)`.
+ * Used by the 404 page via `usePageBackground().setScene(<Ophis404Scene />)`.
  * Renders behind the page content (z-index -1, pointer-events: none).
  */
-export function Greg404Scene(): ReactNode {
+export function Ophis404Scene(): ReactNode {
   return (
     <SceneRoot aria-hidden>
       <Watermark>

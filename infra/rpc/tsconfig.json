@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "paths": {
-      "@greg/rpc": ["./src/fallback.ts"]
+      "@ophis/rpc": ["./src/fallback.ts"]
     }
   },
   "include": ["src/**/*", "tests/**/*"]

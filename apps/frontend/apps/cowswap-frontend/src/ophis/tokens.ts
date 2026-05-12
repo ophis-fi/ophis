@@ -1,23 +1,23 @@
 /**
- * Greg design tokens — source of truth.
+ * Ophis design tokens — source of truth.
  *
  * Token *system* (scale, naming, ramp shape, spacing rhythm) lifted from
- * Nucleus UI Lite (Gumroad, Lite tier). Token *values* are Greg-specific:
+ * Nucleus UI Lite (Gumroad, Lite tier). Token *values* are Ophis-specific:
  * a warm "sunset" coral primary derived from the kit's gradient card studies
  * (`Auto Layout-2.svg`).
  *
  * Sunset rationale: every DEX aggregator (1inch, Velora, Jumper, Bungee,
- * Matcha) lives in the cool blue/purple/teal cluster. Warm tones make Greg
+ * Matcha) lives in the cool blue/purple/teal cluster. Warm tones make Ophis
  * visually unmistakable in a competitive screenshot — free brand recall.
  *
- * See docs/development/specs/2026-05-06-greg-brand-foundations.md for license
+ * See docs/development/specs/2026-05-06-ophis-brand-foundations.md for license
  * notes, decisions, and the semantic-token mapping.
  *
  * NOTE: Dark mode is derived (Nucleus Lite ships light only).
  */
 
 export const colors = {
-  // Greg's primary brand ramp — warm coral. Designed to match Nucleus's
+  // Ophis's primary brand ramp — warm coral. Designed to match Nucleus's
   // contrast curve (10 = pale tint near white, 60 = primary action,
   // 100 = deep near-black warm). Anchor `#E66A55` derived from the
   // sunset gradient's saturated peak.

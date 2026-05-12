@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "paths": {
-      "@greg/sdk": ["./src/index.ts"]
+      "@ophis/sdk": ["./src/index.ts"]
     }
   },
   "include": ["src/**/*", "tests/**/*"]
