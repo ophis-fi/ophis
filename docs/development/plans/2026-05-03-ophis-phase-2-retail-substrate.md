@@ -87,7 +87,7 @@ pnpm run start 2>&1 | tee /tmp/greg-dev.log &
 
 ### Step 2: Connect the Phase-0 test wallet on Sepolia
 
-- Wallet: `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (private key in macOS Keychain entry `greg-chiado-test`).
+- Wallet: `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (private key in macOS Keychain entry `ophis-chiado-test`).
 - Expected balance on Sepolia: ~0.0045 ETH + ~0.0005 WETH wrapped + GPv2VaultRelayer pre-approved unlimited (Phase 0/1.5 leftovers).
 - Verify before proceeding:
 ```bash
@@ -102,7 +102,7 @@ cast call --rpc-url "$SEP_RPC" "$WETH" "allowance(address,address)(uint256)" "$T
 ```
 If WETH balance < 0.0003e18, top up:
 ```bash
-TEST_PK=$(security find-generic-password -s greg-chiado-test -w)
+TEST_PK=$(security find-generic-password -s ophis-chiado-test -w)
 cast send --rpc-url "$SEP_RPC" --private-key "$TEST_PK" "$WETH" "deposit()" --value 0.0005ether
 ```
 

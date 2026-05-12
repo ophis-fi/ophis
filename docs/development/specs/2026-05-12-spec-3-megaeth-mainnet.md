@@ -111,7 +111,7 @@ After step 4 the on-chain side is done. Step 5+ is backend infra.
 
 Test parameters: 0.001 WETH → some target buy amount of a major Kumbaya-listed token. At execution time, query Kumbaya's deepest WETH-pair on-chain (or via the integrator-kit) and pick that. Likely candidates per the integrator kit: WETH/USDC, WETH/USDT — confirm at run-time.
 
-Pre-condition: a separate `greg-megaeth-test` Keychain entry with a funded test wallet (0.001 ETH + 0.001 WETH minimum). Wallet to be created during execution.
+Pre-condition: a separate `ophis-megaeth-test` Keychain entry with a funded test wallet (0.001 ETH + 0.001 WETH minimum). Wallet to be created during execution.
 
 ## Risk & rollback
 
@@ -177,6 +177,6 @@ Pre-condition: a separate `greg-megaeth-test` Keychain entry with a funded test 
 1. **Token choices for the bootstrap pool.** WETH + USDT0 from the deploy scripts, or swap USDT0 for something more liquid on MegaETH? Pending: research which stablecoin has the deepest market on MegaETH at deploy time.
 2. **Pool initial price.** Set by amounts seeded; need an explicit target. Currently script uses 80% of wallet balance. Should we cap at a USD value (e.g. exactly $1,500 of each side) instead?
 3. **Deployer wallet bridge route.** Cheapest path to get MEGA mainnet ETH into `0xb398…D020`? Stargate / Across / native MegaETH bridge.
-4. **Test-wallet funding source.** New Keychain entry `greg-megaeth-test` or reuse deployer? Reusing is simpler; conflicts if seed-pool tx and smoke-test tx race on the nonce. Recommend new wallet.
+4. **Test-wallet funding source.** New Keychain entry `ophis-megaeth-test` or reuse deployer? Reusing is simpler; conflicts if seed-pool tx and smoke-test tx race on the nonce. Recommend new wallet.
 
 The implementation plan should resolve 1-4 inline and then enumerate the per-step tasks from "fund wallets" → "smoke green".

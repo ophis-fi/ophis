@@ -8,7 +8,7 @@
 ## Recipient
 
 - **Phase 1.5 → Phase 2.5 (current):** Safe multisig `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` on Gnosis Chain (Safe v1.4.1, threshold 1-of-1 at deploy, owner `0x0494F503…d1A`). CREATE2-deterministic — same address resolves on all 10 CoW-supported chains. Lazy-deploy on each chain when payouts there warrant the gas. Phase 2.6 / pre-revenue task: upgrade threshold to ≥ 2-of-N.
-- **Phase 1.5 original (retired 2026-05-03):** single-sig EOA `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`, key in macOS Keychain entry `greg-partner-fee-recipient`. Was the partner-fee recipient until Phase 2.5 Task 6 swapped to Safe.
+- **Phase 1.5 original (retired 2026-05-03):** single-sig EOA `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`, key in macOS Keychain entry `ophis-partner-fee-recipient`. Was the partner-fee recipient until Phase 2.5 Task 6 swapped to Safe.
 
 ## Verification — three-tier proof
 
@@ -28,7 +28,7 @@ Recipient hex baked into the production bundle. The patched `injectedWidgetPartn
 Programmatic order submitted with `appData.metadata.partnerFee = {volumeBps: 5, recipient: 0xBA6Da6...76E}` matching the schema [`apps/cowswap-frontend/src/modules/volumeFee/state/volumeFeeAtom.ts`](https://github.com/cowprotocol/cowswap/blob/main/apps/cowswap-frontend/src/modules/volumeFee/state/volumeFeeAtom.ts) emits when our patched atom fires.
 
 - **Network:** Sepolia (chainId 11155111)
-- **Trader:** `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (Phase-0 reuse, Keychain `greg-chiado-test`)
+- **Trader:** `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (Phase-0 reuse, Keychain `ophis-chiado-test`)
 - **Pair:** WETH (`0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14`) → COW (`0x0625afb445c3b6b7b929342a04a22599fd5dbb59`)
 - **Amount in:** 0.0005 WETH (`500000000000000` wei before fee)
 - **appData JSON:** `{"version":"1.4.0","appCode":"greg","metadata":{"partnerFee":{"volumeBps":5,"recipient":"0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E"}}}`

@@ -19,9 +19,9 @@
 
 | # | Decision | Default if undecided |
 |---|---|---|
-| **D1** | Deployer EOA — fresh wallet vs reuse Phase-1 driver-submitter `0x00f98b…502F` | **Generate a fresh dedicated EOA** (`greg-megaeth-deployer` Keychain entry). Cleaner audit trail; deployer has admin rights on the auth contract until Phase 3.x transfers to a Safe. |
+| **D1** | Deployer EOA — fresh wallet vs reuse Phase-1 driver-submitter `0x00f98b…502F` | **Generate a fresh dedicated EOA** (`ophis-megaeth-deployer` Keychain entry). Cleaner audit trail; deployer has admin rights on the auth contract until Phase 3.x transfers to a Safe. |
 | **D2** | Settlement-contract authority (initial owner of `GPv2AllowListAuthentication`) | **Same EOA as D1** for Stage 1 testnet (low value, easy to manage). For mainnet, transfer ownership to the existing Phase-2.5 Gnosis Safe `0x858f0F5e…CeF8` after deploy. |
-| **D3** | Driver-submitter EOA on MegaETH (the EOA that signs settle() txs) | **Reuse Phase-1 driver-submitter** `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (Keychain `greg-driver-submitter`). Lazy-fund on MegaETH testnet, then mainnet. The auth contract's `addSolver(...)` call adds it to our allowlist. |
+| **D3** | Driver-submitter EOA on MegaETH (the EOA that signs settle() txs) | **Reuse Phase-1 driver-submitter** `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (Keychain `ophis-driver-submitter`). Lazy-fund on MegaETH testnet, then mainnet. The auth contract's `addSolver(...)` call adds it to our allowlist. |
 | **D4** | MegaETH foundation grant application | **DEFERRED** (Clement 2026-05-04) — only apply once production is fully live: real domain, real brand, app validated by real users, contracts deployed and stable. Task 11 keeps the **draft template** in the plan so we don't lose context, but submission moves to Phase 4+ once "production-ready" is true. |
 
 ---
@@ -80,17 +80,17 @@ Capture `Address:` and `Private key:` from stdout.
 DEPLOYER_PK=<paste private key from Step 1>
 DEPLOYER_ADDR=<paste address from Step 1>
 security add-generic-password \
-  -a "greg-megaeth-deployer" \
-  -s "greg-megaeth-deployer" \
+  -a "ophis-megaeth-deployer" \
+  -s "ophis-megaeth-deployer" \
   -w "$DEPLOYER_PK" -U
-security find-generic-password -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w | head -c 5
+security find-generic-password -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w | head -c 5
 ```
 Expected: prints `0x` + 3 hex chars (sanity check).
 
 ### Step 3: Verify deployer address derives from keychain readback
 
 ```bash
-RETRIEVED_PK=$(security find-generic-password -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
+RETRIEVED_PK=$(security find-generic-password -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w)
 DERIVED_ADDR=$(cast wallet address "$RETRIEVED_PK")
 echo "Derived: $DERIVED_ADDR"
 echo "Expected: $DEPLOYER_ADDR"
@@ -129,11 +129,11 @@ MEGAETH_MAINNET_CHAIN_ID=4326
 MEGAETH_MAINNET_EXPLORER=
 
 # --- Deployer EOA (Ophis) ---
-# Private key in macOS Keychain entry `greg-megaeth-deployer`.
+# Private key in macOS Keychain entry `ophis-megaeth-deployer`.
 OPHIS_MEGAETH_DEPLOYER_ADDRESS=<DEPLOYER_ADDR from Step 4>
 
 # --- Driver submitter (reuse Phase 1) ---
-# Private key in macOS Keychain entry `greg-driver-submitter`.
+# Private key in macOS Keychain entry `ophis-driver-submitter`.
 OPHIS_DRIVER_SUBMITTER_ADDRESS=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 
 # --- Ophis-deployed contract addresses (filled after Tasks 4-5) ---
@@ -354,7 +354,7 @@ set +a
 
 # Read deployer PK from Keychain into env (do NOT commit anywhere)
 export OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
-  -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
+  -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w)
 
 # Run hardhat deploy with our config
 cd /Users/scep/greg/contracts
@@ -434,7 +434,7 @@ Visit `https://megaexplorer.xyz/address/<settlement address>`. Expect: contract 
 ### Step 5: Add our driver-submitter to the allowlist
 
 ```bash
-DEPLOYER_PK=$(security find-generic-password -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
+DEPLOYER_PK=$(security find-generic-password -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w)
 RPC=https://carrot.megaeth.com/rpc
 AUTH=$(grep OPHIS_AUTH_TESTNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
@@ -565,7 +565,7 @@ Expected: orderbook responds; autopilot processes MegaETH testnet blocks (~10ms 
 
 ### Step 4: Fund test wallet on MegaETH testnet
 
-The Phase-0 test wallet `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (Keychain `greg-chiado-test`) — fund via the MegaETH testnet faucet with ~0.05 testnet ETH.
+The Phase-0 test wallet `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (Keychain `ophis-chiado-test`) — fund via the MegaETH testnet faucet with ~0.05 testnet ETH.
 
 ```bash
 TEST_ADDR=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
@@ -576,7 +576,7 @@ cast balance --rpc-url "$RPC" "$TEST_ADDR" --ether
 ### Step 5: Wrap testnet ETH → WETH, approve our VaultRelayer
 
 ```bash
-TEST_PK=$(security find-generic-password -s greg-chiado-test -w)
+TEST_PK=$(security find-generic-password -s ophis-chiado-test -w)
 WETH=<MegaETH testnet WETH address from Task 6 Step 2>
 RELAYER=$(grep OPHIS_VAULT_RELAYER_TESTNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 RPC=https://carrot.megaeth.com/rpc
@@ -693,7 +693,7 @@ OPHIS_VAULT_RELAYER_MAINNET=0x<address>
 ### Step 5: Add driver-submitter to mainnet auth allowlist
 
 ```bash
-DEPLOYER_PK=$(security find-generic-password -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
+DEPLOYER_PK=$(security find-generic-password -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w)
 RPC=$(grep MEGAETH_MAINNET_RPC /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 AUTH=$(grep OPHIS_AUTH_MAINNET /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
@@ -781,7 +781,7 @@ Expected: 6 services up.
 The test wallet `0x412cbCCe…294aB` needs ~0.005 mainnet ETH. Operator bridges from Ethereum or sends from an existing wallet.
 
 ```bash
-TEST_PK=$(security find-generic-password -s greg-chiado-test -w)
+TEST_PK=$(security find-generic-password -s ophis-chiado-test -w)
 TEST_ADDR=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
 RPC=$(grep MEGAETH_MAINNET_RPC /Users/scep/greg/infra/megaeth/.env | cut -d= -f2)
 WETH=<MegaETH mainnet WETH from Task 9 base-tokens>
@@ -977,7 +977,7 @@ Combine the temp Stage-1 + Stage-2 capture files:
 
 ## Operator decisions
 
-- D1 deployer EOA: `<address>` (Keychain `greg-megaeth-deployer`)
+- D1 deployer EOA: `<address>` (Keychain `ophis-megaeth-deployer`)
 - D2 settlement authority: same as D1 initially; transfer to Gnosis Safe `0x858f0F5e…CeF8` deferred to Phase 3.x
 - D3 driver-submitter: `0x00f98b…502F` (reused from Phase 1)
 - D4 grant: <applied / deferred>

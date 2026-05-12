@@ -478,7 +478,7 @@ git push
 ### Step 7: Memory + Keychain update
 
 - Update `<local notes>/project_greg.md` — replace the EOA address with the Safe address; note signer setup.
-- Optionally: keychain entry `greg-partner-fee-recipient` can be **deleted** since the EOA is no longer the recipient (Safe is signed via owner EOAs, which Clement holds elsewhere).
+- Optionally: keychain entry `ophis-partner-fee-recipient` can be **deleted** since the EOA is no longer the recipient (Safe is signed via owner EOAs, which Clement holds elsewhere).
 
 ## Task 7: Promote production Vercel deployment + SSO state
 

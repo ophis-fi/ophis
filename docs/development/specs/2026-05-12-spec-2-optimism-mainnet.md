@@ -134,7 +134,7 @@ The implementation plan must close on one branch before execution.
 
 ## On-chain deploy sequence (host-independent)
 
-1. **Fund Optimism mainnet deployer wallet.** Likely a new wallet (`greg-optimism-deployer` Keychain entry) since `0xb398…D020` is the MegaETH deployer and we don't want cross-chain nonce confusion. Funded with ~0.05 OP-mainnet ETH (~$1.50 at OP gas prices).
+1. **Fund Optimism mainnet deployer wallet.** Likely a new wallet (`ophis-optimism-deployer` Keychain entry) since `0xb398…D020` is the MegaETH deployer and we don't want cross-chain nonce confusion. Funded with ~0.05 OP-mainnet ETH (~$1.50 at OP gas prices).
 2. **Fund driver-submitter EOA on Optimism mainnet.** Same `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F`; needs ~0.05 OP-mainnet ETH for ongoing settlement gas.
 3. **Run `infra/optimism/deploy/deploy-mainnet-all.sh`** (to be written, mirrored from `infra/megaeth/deploy/deploy-mainnet-all.sh` Spec 3 pattern):
    - CoW core via hardhat-deploy with `hardhat-optimism.config.ts`
@@ -171,7 +171,7 @@ The implementation plan must close on one branch before execution.
 - Expects `executedBuyAmount ≈ 3.8 USDC` (matches ETH-USD spot)
 - Exits 0 only on `status: fulfilled` with a real `txHash`
 
-Pre-condition: a separate `greg-optimism-test` Keychain entry with ≥0.001 OP-mainnet ETH + ≥0.001 WETH.
+Pre-condition: a separate `ophis-optimism-test` Keychain entry with ≥0.001 OP-mainnet ETH + ≥0.001 WETH.
 
 ## Risk & rollback
 
@@ -233,7 +233,7 @@ Pre-condition: a separate `greg-optimism-test` Keychain entry with ≥0.001 OP-m
 2. **Uniswap V3 subgraph reliability + fallback strategy.** Verify The Graph hosted subgraph still serves the OP V3 subgraph; if not, self-host or list pools statically.
 3. **L1 RPC for op-node.** Pick a primary + 2-3 fallbacks. Configure round-robin.
 4. **Snapshot source for op-geth initial sync.** Use Optimism's official snapshot URL (TBD which one) or a third-party (Quicknode, dwellir).
-5. **Test wallet provisioning.** Generate `greg-optimism-test` Keychain entry; fund via the deployer.
+5. **Test wallet provisioning.** Generate `ophis-optimism-test` Keychain entry; fund via the deployer.
 6. **Network topology in Branch A.** Tailscale tailnet, Aleph private mesh, or CF Tunnel internal hostname? Pick before plan-write.
 
 The implementation plan should resolve 1-6 inline and then enumerate per-step tasks from "fund wallets" → "smoke green".

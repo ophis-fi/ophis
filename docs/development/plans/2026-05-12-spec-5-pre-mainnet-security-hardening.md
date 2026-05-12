@@ -217,7 +217,7 @@ manager: {
 Replace:
 
 ```bash
-DEPLOYER_PK=$(security find-generic-password -a greg-megaeth-deployer -s greg-megaeth-deployer -w)
+DEPLOYER_PK=$(security find-generic-password -a ophis-megaeth-deployer -s ophis-megaeth-deployer -w)
 ```
 
 with:

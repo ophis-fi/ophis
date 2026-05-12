@@ -32,7 +32,7 @@ brand work resumes.
 | `GPv2AllowListAuthentication` (impl) | `0xFAB54856B6731BC0C32904BE5297A627d9FDFA31` |
 
 **Owner / manager** (allowlist authority): `$OPHIS_MEGAETH_DEPLOYER_ADDRESS`
-(Keychain `greg-megaeth-deployer`). Stage-2 transfers ownership to the
+(Keychain `ophis-megaeth-deployer`). Stage-2 transfers ownership to the
 existing Phase-2.5 Gnosis Safe `0x858f0F5e…CeF8` after mainnet deploy.
 
 ## Stage-1 testnet deployments

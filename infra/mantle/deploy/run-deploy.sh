@@ -15,7 +15,7 @@ set -a
 source "$ENV_FILE"
 set +a
 
-OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password -a greg-megaeth-deployer -s greg-megaeth-deployer -w)
+OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password -a ophis-megaeth-deployer -s ophis-megaeth-deployer -w)
 export OPHIS_MEGAETH_DEPLOYER_PK OPHIS_MEGAETH_DEPLOYER_ADDRESS
 
 LOG_FILE="$REPO_ROOT/infra/mantle/deploy-log-${NETWORK}-$(date +%Y%m%d-%H%M%S).log"
