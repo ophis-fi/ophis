@@ -1,6 +1,8 @@
 # Spec 2 — Optimism mainnet backend
 
-> Sequel to Spec 1 + parallel to Spec 3. Spec 2 deploys Greg's first **production-grade** mainnet backend: Optimism mainnet (chain ID 10), routed through real Velodrome V2 liquidity (not a seeded test pool).
+> Sequel to Spec 1 + parallel to Spec 3. Spec 2 deploys Greg's first **production-grade** mainnet backend: Optimism mainnet (chain ID 10), routed through real Uniswap V3 liquidity.
+>
+> **BLOCKED by Spec 5** (Pre-mainnet security hardening). No mainnet contract deploys until Spec 5 ships hardware-wallet flow + Safe ownership of AllowListAuthentication.
 
 ## Summary
 

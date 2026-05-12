@@ -1,6 +1,8 @@
 # Spec 3 — MegaETH mainnet backend
 
 > Sequel to Spec 1 (testnet revival, shipped 2026-05-12). Spec 3 deploys the first **mainnet** Greg backend on MegaETH (chain ID 4326).
+>
+> **BLOCKED by Spec 5** (Pre-mainnet security hardening). No mainnet contract deploys until Spec 5 ships hardware-wallet flow + Safe ownership of AllowListAuthentication.
 
 ## Summary
 
