@@ -1,31 +1,51 @@
-# Optimism Mainnet Follower Node — `op-node` + `op-geth`
+# Optimism Mainnet Follower Node — `op-node` + `op-reth`
 
 Self-hosted Optimism mainnet (chain ID **10**) JSON-RPC endpoint. Two containers
 on a single Debian 12 host, no sequencer/batcher/proposer keys — read-only
-follower only. Exposes `eth_*`, `net_*`, `web3_*`, `debug_*`, and `engine_*`
-over HTTP `:8545` and WS `:8546`, bound to `127.0.0.1`.
+follower only. Exposes `eth_*`, `net_*`, `web3_*`, `debug_*`, `txpool_*` over
+HTTP `:8545` and WS `:8546`, bound to `127.0.0.1`. Engine API (`engine_*`)
+lives on the JWT-authenticated port `:8551`, internal to the compose network.
 
 Downstream consumer: the CoW Protocol services stack on a separate host
 (reaches this node over Tailscale).
 
 ---
 
+## Why op-reth and not op-geth
+
+OP Labs migrated their official snapshot distribution to **op-reth** in 2026 —
+op-geth snapshots are no longer published. Beyond that, op-reth is:
+
+- **More memory-efficient.** 10 GB container limit is comfortable where
+  op-geth wanted 12 GB.
+- **Faster on EVM execution.** revm + JIT optimisations beat geth on a
+  per-block basis.
+- **MDBX-backed** (single B+ tree) instead of LevelDB — fewer pathological
+  compaction stalls and a more compact on-disk footprint.
+- The flag set is intentionally **closer to geth than not**, but a handful of
+  things moved: no `--syncmode`, sync mode is `--full` (default = archive);
+  no `--http.vhosts` (geth-only); `--rollup.sequencer-http` (hyphenated, vs
+  geth's `--rollup.sequencerhttp`); `--metrics` takes a single `addr:port`
+  argument.
+
+---
+
 ## 1. Host requirements
 
-| Resource | Minimum | Notes |
+| Resource | This deployment | Notes |
 |---|---|---|
 | OS | Debian 12 | Anything modern with Docker Engine 24+ works |
-| CPU | 4 vCPU | Snap-sync is CPU-heavy for ~12 h |
-| RAM | 16 GB | `op-geth` configured for `cache=4096` + 12 GB limit |
-| Disk | 1 TB NVMe | Mainnet chain is ~700 GB and growing |
-| Network | 100 Mbit/s + | Snap snapshot pull + L1 follow |
+| CPU | 8 vCPU | Reth saturates ~4 cores during snapshot import |
+| RAM | 14 GB | `op-reth` capped at 10 GB, `op-node` at 2 GB |
+| Disk | 1.1 TB NVMe | Snapshot extracted ≈ 1.0 TB; ~100 GB headroom |
+| Network | 1 Gbit/s + | Snapshot is 617 GB compressed |
 | Docker | 24.0+ | `docker compose` v2 plugin |
 
 Install once:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg openssl
+sudo apt-get install -y ca-certificates curl gnupg openssl zstd
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg \
   | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -45,7 +65,7 @@ sudo usermod -aG docker "$USER"
 From this directory (`infra/optimism/node/`):
 
 ```sh
-# (a) Engine-API JWT secret — shared between op-node and op-geth.
+# (a) Engine-API JWT secret — shared between op-node and op-reth.
 #     Must be exactly 32 bytes (64 hex chars). Both containers mount it RO.
 openssl rand -hex 32 > jwt.hex
 chmod 640 jwt.hex
@@ -55,16 +75,17 @@ cp .env.example .env
 $EDITOR .env   # fill in OP_NODE_L1_ETH_RPC and OP_NODE_L1_BEACON
 
 # (c) Chain data dir (will be populated by snapshot in step 3)
-mkdir -p geth-data
+mkdir -p reth-data
 ```
 
 ### Where the JWT lives
 
 - File: `infra/optimism/node/jwt.hex` (this directory, host side).
-- Mount: both `op-geth` and `op-node` read it as `/jwt.hex` (read-only bind).
+- Mount: both `op-reth` and `op-node` read it as `/jwt.hex` (read-only bind).
 - Permissions: `640` is fine — the Docker daemon reads it as root.
 - **Never commit.** It is in `.gitignore`. If it leaks, regenerate it and
-  restart both containers (mismatched JWT → `op-node` can't talk to `op-geth`).
+  restart both containers (mismatched JWT → `op-node` can't talk to `op-reth`,
+  expect `engine_forkchoiceUpdated ... unauthorized` in the op-node logs).
 
 ### L1 RPC choice — be deliberate
 
@@ -76,48 +97,91 @@ mkdir -p geth-data
    sidecars, not calldata. **If you skip this, the node will silently stall
    the first time it hits an Ecotone block.** Many old tutorials omit it.
 
-Free public options are listed in `.env.example`. For production, point at
-a paid provider (Alchemy / Infura / dRPC paid) or your own self-hosted L1
-geth + lighthouse pair. A simple HAProxy / nginx in front, round-robining
-two free providers, gives reasonable redundancy without paying.
+The defaults in `.env.example` (`ethereum-rpc.publicnode.com` +
+`ethereum-beacon-api.publicnode.com`) worked reliably in production testing
+on 2026-05-12.
+
+Avoided: `eth.llamarpc.com` (Cloudflare-blocked our Aleph VM egress IP →
+503 on every request) and `www.lightclientdata.org` (intermittent 503s
+during initial sync). Both are listed in `.env.example` for completeness
+but are not the default.
+
+For production, point at a paid provider (Alchemy / Infura / dRPC paid)
+or your own self-hosted L1 geth + lighthouse pair if uptime matters more
+than cost.
 
 ---
 
-## 3. Snapshot bootstrap (strongly recommended)
+## 3. Snapshot bootstrap (mandatory)
 
-Syncing op-geth from genesis takes weeks. Optimism publishes regular
-snapshot archives — pull one and untar into `geth-data/` before first
-`docker compose up`.
+Syncing op-reth from genesis takes weeks. **You must** start from the
+official OP Labs snapshot.
 
-- Official snapshot index + instructions:
-  https://docs.optimism.io/operators/node-operators/management/snapshots
-- Alternative mirrors (community-maintained, check checksum):
-  https://kb.optimism.io/docs/operators/node-operators/configuration/base-config
+**Snapshot URL (pinned 2026-05-04 full node archive):**
 
-Expect: **~700 GB compressed**, **~12–24 h** to download + decompress +
-catch-up to head on a 1 TB NVMe / 100 Mbit link.
-
-Rough recipe (adjust URL / filename to whatever the snapshot index points
-at on the day):
-
-```sh
-cd infra/optimism/node/geth-data
-
-# Example — replace SNAPSHOT_URL with the current archive from the docs.
-SNAPSHOT_URL="https://datadirs.optimism.io/mainnet-bedrock.tar.zst"
-
-# Stream + decompress + extract in one pass (avoids 700 GB intermediate file).
-curl -fL "$SNAPSHOT_URL" \
-  | zstd -d \
-  | tar -xvf -
-
-# Sanity check — should contain a `geth/` subdir (chaindata, nodes, etc).
-ls -la
-du -sh geth
+```
+https://datadirs.optimism.io/mainnet-reth-full-2026-05-04.tar.zst
 ```
 
-If you're behind a flaky link, download to disk first and verify the
-checksum the index page publishes before extracting.
+**SHA-256:** `43cbdecc1cbb7b324e50dce8dd894a1a6d91ceb47e3a481f791815c025fe97b0`
+
+**Sizes:**
+
+- Compressed (download): **617 GB** (≈ 575 GiB)
+- Decompressed (on disk): **≈ 1.0 TB**
+
+On a 1.1 TB NVMe this leaves ~100 GB headroom. **Do not** download to disk
+then extract — you'll need 1.6 TB peak and run out of space. Stream-extract
+in one pass:
+
+```sh
+cd infra/optimism/node
+
+# (a) Pre-flight: confirm enough space, install zstd if needed.
+df -B1 . | awk 'NR==2 { if ($4 < 1.05e12) { print "FAIL: <1.05 TB free"; exit 1 } else print "OK: " $4/1e9 " GB free" }'
+sudo apt-get install -y zstd  # if not already present
+
+# (b) Download just the SHA file first, verify our pinned hash matches.
+curl -fsSL -O https://datadirs.optimism.io/mainnet-reth-full-2026-05-04.tar.zst.sha256sum
+grep -q '^43cbdecc1cbb7b324e50dce8dd894a1a6d91ceb47e3a481f791815c025fe97b0  ' \
+  mainnet-reth-full-2026-05-04.tar.zst.sha256sum \
+  || { echo 'FAIL: SHA file does not match pinned hash — snapshot may have been rotated'; exit 1; }
+
+# (c) Stream + verify + decompress + extract, all in one pass.
+#     Tee the compressed stream into sha256sum for online verification while
+#     piping the rest into zstd | tar. No intermediate 617 GB file on disk.
+SNAPSHOT_URL=https://datadirs.optimism.io/mainnet-reth-full-2026-05-04.tar.zst
+EXPECTED_SHA=43cbdecc1cbb7b324e50dce8dd894a1a6d91ceb47e3a481f791815c025fe97b0
+
+mkdir -p reth-data
+( curl -fL "$SNAPSHOT_URL" \
+    | tee >(sha256sum > /tmp/reth-snapshot.sha256) \
+    | zstd -d \
+    | tar -xvf - -C reth-data ) \
+  && grep -q "^$EXPECTED_SHA " /tmp/reth-snapshot.sha256 \
+  && echo "OK: snapshot extracted and SHA verified" \
+  || { echo "FAIL: download or SHA mismatch — wipe reth-data and retry"; exit 1; }
+
+# (d) Sanity check — the archive should drop db/ and static_files/ subdirs.
+ls -la reth-data
+du -sh reth-data
+```
+
+Expect **3–8 h** to download + decompress on a 1 Gbit/s link, CPU-bound
+on `zstd -d` (single-threaded; use `zstd -d -T0` if your zstd build
+supports parallel decompression — the v1.5+ Debian package does).
+
+If your link is flaky and you'd rather download once, verify, then extract:
+
+```sh
+curl -fL -O "$SNAPSHOT_URL"
+sha256sum -c mainnet-reth-full-2026-05-04.tar.zst.sha256sum
+zstd -d --stdout mainnet-reth-full-2026-05-04.tar.zst | tar -xvf - -C reth-data
+rm mainnet-reth-full-2026-05-04.tar.zst   # free the 617 GB before extract finishes filling 1 TB
+```
+
+…but you need 1.6 TB peak for that path. **Stream-extract is the
+recommended flow on this 1.1 TB host.**
 
 ---
 
@@ -126,15 +190,17 @@ checksum the index page publishes before extracting.
 ```sh
 docker compose up -d
 docker compose ps
-docker compose logs -f op-geth
+docker compose logs -f op-reth
 ```
 
 You're watching for these milestones in order:
 
-1. **op-geth starts** — `Started P2P networking ... chain_id=10`.
-2. **Snapshot import done** — `Imported new chain segment` lines, head
-   advancing toward current Optimism head.
-3. **Healthcheck passes** — `op-geth` flips to `(healthy)` in
+1. **op-reth starts** — `Starting reth ... chain=optimism`, then
+   `Opened database ... path=/data` and `Engine API server started`.
+2. **EL catch-up from snapshot tip** — `Imported block ... number=...` lines,
+   head advancing toward the current OP head. Snapshot was taken
+   2026-05-04, so expect a multi-day delta to fill on first boot.
+3. **Healthcheck passes** — `op-reth` flips to `(healthy)` in
    `docker compose ps`. This unblocks `op-node`.
 4. **op-node attaches** — in `docker compose logs -f op-node`, look for
    `Engine API ... connected` and `Derivation pipeline ... started`.
@@ -143,8 +209,8 @@ You're watching for these milestones in order:
 6. **Synced to head** — `eth_syncing` on `:8545` returns `false`, and the
    block number matches https://optimistic.etherscan.io head within ~2 s.
 
-Expect another **4–8 h** after snapshot import to fully catch up to head,
-depending on how stale the snapshot was.
+Expect **4–12 h** after snapshot import to fully catch up to head,
+depending on how stale the snapshot was at first boot.
 
 ---
 
@@ -185,7 +251,7 @@ docker compose logs -f --tail=200
 
 # Restart a single service
 docker compose restart op-node
-docker compose restart op-geth
+docker compose restart op-reth
 
 # Pull newer pinned image versions (edit docker-compose.yml first)
 docker compose pull
@@ -194,58 +260,45 @@ docker compose up -d
 # Stop the stack
 docker compose down
 
-# Stop + wipe chain data (DESTRUCTIVE — forces full resync)
+# Stop + wipe chain data (DESTRUCTIVE — forces re-snapshot)
 docker compose down
-sudo rm -rf geth-data
+sudo rm -rf reth-data
 ```
 
 ### Common failures
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| op-node logs `engine_forkchoiceUpdated ... unauthorized` | JWT mismatch | Regenerate `jwt.hex`, `docker compose down && up -d` |
-| op-node stalls at a fixed L2 block, no error | Missing / wrong `OP_NODE_L1_BEACON` post-Ecotone | Set a real beacon REST URL, restart op-node |
-| op-geth `database contains incompatible genesis` | Snapshot from a different network (sepolia, base) | Wipe `geth-data/`, re-pull the mainnet snapshot |
-| op-geth healthcheck never passes | Snap-sync still importing | Be patient — first import is 12–24 h |
-| `eth_syncing` returns object forever | L1 RPC is rate-limited or unreliable | Swap `OP_NODE_L1_ETH_RPC` to a different provider |
+| `FAIL: SHA file does not match pinned hash` during snapshot fetch | OP Labs rotated the snapshot URL; the 2026-05-04 archive no longer hosted | Check https://datadirs.optimism.io/ for the current `mainnet-reth-full-YYYY-MM-DD.tar.zst`, update the URL + SHA in this README, re-run |
+| `bind: address already in use` on `8545` | Another service (rpc forwarder, anvil, hardhat) is on the port | `sudo ss -tlnp \| grep :8545` to identify it; stop it or pick a different host port in the `ports:` mapping |
+| op-reth panics with `chain mismatch` or `invalid genesis` | Snapshot was for the wrong network (sepolia, base) or partial extraction | `docker compose down && sudo rm -rf reth-data && mkdir reth-data` and re-run the snapshot bootstrap |
+| op-node logs `engine_forkchoiceUpdated ... unauthorized` | JWT mismatch between containers | `docker compose down`, regenerate `jwt.hex` (step 2a), `docker compose up -d` |
+| op-node stalls / 503s from L1 follow-RPC | `OP_NODE_L1_ETH_RPC` or `OP_NODE_L1_BEACON` rate-limited or down | Swap to a different provider in `.env`, `docker compose restart op-node` |
+| op-reth: `mdbx: error: concurrent transactions` after a few minutes | Container PID namespace bug | The `pid: host` directive in `docker-compose.yml` fixes this; if you removed it, restore it |
 
 ### Resource monitoring
 
 Prometheus scrape endpoints (already exposed inside the compose network):
 
-- op-geth: `http://127.0.0.1:6060/debug/metrics/prometheus`
+- op-reth: `http://127.0.0.1:9001/` (reth serves Prometheus on the root path)
 - op-node: `http://127.0.0.1:7300/metrics`
 
 ---
 
-## 7. Exposing the RPC to the chain-stack host (vm4) via Tailscale
+## 7. Exposing the RPC to consumer hosts via Tailscale
 
 The compose file binds `8545` / `8546` / `9545` to `127.0.0.1` only. To let
-vm4 reach them, expose them on the Tailscale interface — **not** `0.0.0.0`.
+another tailnet host (e.g. the CoW services VM) reach them, expose them on
+the Tailscale interface via host `iptables` — **not** by changing the
+compose `ports:` to `0.0.0.0`.
 
-High-level (full Tailscale runbook is separate):
+This is its own runbook — see the separate Tailscale doc. Sketch:
 
-1. Install Tailscale on this host: `curl -fsSL https://tailscale.com/install.sh | sh`
-2. `sudo tailscale up --hostname=op-node-vm`
-3. Note the tailnet IP, e.g. `100.x.y.z`.
-4. Add an iptables rule that DNATs `100.x.y.z:8545 → 127.0.0.1:8545`:
-
-   ```sh
-   TS_IP=$(tailscale ip -4)
-   sudo iptables -t nat -A PREROUTING -d "$TS_IP" -p tcp --dport 8545 \
-     -j DNAT --to-destination 127.0.0.1:8545
-   sudo iptables -t nat -A PREROUTING -d "$TS_IP" -p tcp --dport 8546 \
-     -j DNAT --to-destination 127.0.0.1:8546
-   sudo iptables -A INPUT -i tailscale0 -p tcp \
-     --match multiport --dports 8545,8546 -j ACCEPT
-   sudo apt-get install -y iptables-persistent
-   sudo netfilter-persistent save
-   ```
-
-5. On vm4, point the chain stack at `http://100.x.y.z:8545`.
-6. Do **not** open 8545 on the public NIC. Verify with
-   `sudo ss -tlnp | grep 8545` — should show `127.0.0.1:8545` only (the
-   iptables DNAT happens before the bind check).
+1. `tailscale up` on this host, note the `100.x.y.z` IP.
+2. `iptables -t nat -A PREROUTING -d $TS_IP -p tcp --dport 8545 -j DNAT --to-destination 127.0.0.1:8545`
+3. Persist with `iptables-persistent`.
+4. Verify with `sudo ss -tlnp | grep 8545` — should still show
+   `127.0.0.1:8545` only (DNAT happens pre-bind).
 
 ---
 
@@ -256,18 +309,19 @@ infra/optimism/node/
 ├── docker-compose.yml    # two-service stack, pinned image tags
 ├── .env.example          # template — copy to .env
 ├── .env                  # local config, gitignored
-├── .gitignore            # ignores jwt.hex, .env, geth-data/
+├── .gitignore            # ignores jwt.hex, .env, reth-data/
 ├── jwt.hex               # shared engine-API secret, gitignored
-├── geth-data/            # op-geth chain data, gitignored
+├── reth-data/            # op-reth chain data, gitignored, ~1.0 TB
 └── README.md             # this file
 ```
 
-Pinned versions (verified against
-https://github.com/ethereum-optimism/optimism/releases and
-https://github.com/ethereum-optimism/op-geth/releases on 2026-05-12):
+Pinned versions (verified 2026-05-12):
 
-- `op-node`: `v1.18.0`
-- `op-geth`: `v1.101702.2`
+- `op-reth`: `v1.10.2` — `ghcr.io/paradigmxyz/op-reth:v1.10.2` (latest stable
+  non-rc tag; v1.10.x is the supported line as of this snapshot)
+- `op-node`: `v1.18.0` —
+  `us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.18.0`
 
-Bump both together when a new release lands; mismatched majors have caused
-derivation breaks in the past.
+Bump both together when a new release lands. op-node / op-reth majors are
+loosely coupled but a fork activation can require both to be bumped in
+lock-step — check the release notes.
