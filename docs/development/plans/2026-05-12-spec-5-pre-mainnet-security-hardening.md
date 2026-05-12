@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace 1-of-1 software-key authority over Greg's protocol contracts with a 2-of-3 Safe + hardware-wallet deploy flow + real-time allowlist event monitoring, before any mainnet contract deploy.
+**Goal:** Replace 1-of-1 software-key authority over Ophis's protocol contracts with a 2-of-3 Safe + hardware-wallet deploy flow + real-time allowlist event monitoring, before any mainnet contract deploy.
 
 **Architecture:** HW wallet `0xBeC5B03f…0199` signs CoW core mainnet deploys via `@nomicfoundation/hardhat-ledger` + `cast --ledger`. Same script transfers AllowListAuthentication ownership to a 2-of-3 Safe within seconds of proxy deploy. Partner-fee Safe at `0x858f…CeF8` upgrades from 1-of-1 to 2-of-3 with the same signer set. AllowList mutation events monitored continuously by the existing rebate-indexer alerter, with a 60s Telegram alert latency target.
 
@@ -32,7 +32,7 @@ To be created:
 | `docs/development/specs/2026-05-12-spec-5-pre-mainnet-security-hardening.md` | EXISTING — marked SHIPPED post-completion |
 
 External (no repo change):
-- Greg protocol Safe — deployed once per chain via Safe Wallet UI
+- Ophis protocol Safe — deployed once per chain via Safe Wallet UI
 - Partner-fee Safe — owners + threshold updated via Safe Wallet UI
 
 ---
@@ -72,7 +72,7 @@ RECOVERY = 0x???  # from Step 2
 
 No commit at this step — operator-side identity decisions.
 
-### Task 2: Deploy Greg protocol Safe on each mainnet target
+### Task 2: Deploy Ophis protocol Safe on each mainnet target
 
 **Files:** none (Safe Wallet UI flow)
 
@@ -246,7 +246,7 @@ Drop the hardhat-deploy command's `GREG_MEGAETH_DEPLOYER_PK=$DEPLOYER_PK` env ex
 Append after the existing `[3/3] Allowlisting driver-submitter` section:
 
 ```bash
-# --- 4. Transfer ownership of AllowListAuthentication to the Greg protocol Safe ---
+# --- 4. Transfer ownership of AllowListAuthentication to the Ophis protocol Safe ---
 echo ""
 echo "=== [4/4] Handing AllowListAuthentication to the protocol Safe ==="
 
@@ -402,7 +402,7 @@ At top of the spec file, add: `## Status: SHIPPED 2026-MM-DD`
 
 - [ ] **Step 2: Update runbook**
 
-Append a "Security model — Greg protocol Safe" section to `ophis-chain-backends.md`:
+Append a "Security model — Ophis protocol Safe" section to `ophis-chain-backends.md`:
 - 2-of-3 Safe addresses per chain
 - Signer set + custody plan
 - Where each Ledger lives + recovery seed location
@@ -425,7 +425,7 @@ gh pr create --title "feat: Spec 5 — pre-mainnet security hardening live"
 ## Done definition
 
 All Task 6 boxes checked PLUS:
-- Greg protocol Safe deployed on every Spec 2/3 target chain
+- Ophis protocol Safe deployed on every Spec 2/3 target chain
 - Partner-fee Safe at 2-of-3 on every chain it lives on
 - Deploy scripts dry-run-tested on a testnet
 - AllowList event monitor running and verified via Telegram fire-test

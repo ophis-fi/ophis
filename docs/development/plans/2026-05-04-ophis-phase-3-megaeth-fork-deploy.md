@@ -1,17 +1,17 @@
-# Greg Phase 3 — MegaETH Fork-Deploy Implementation Plan
+# Ophis Phase 3 — MegaETH Fork-Deploy Implementation Plan
 
 
-**Goal:** Deploy CoW Protocol's audited `GPv2Settlement` + `GPv2VaultRelayer` bytecode unchanged on MegaETH (chainId `4326`), under our own `GPv2AllowListAuthentication` we control. Wire the vendored `apps/backend/` Rust services (orderbook + autopilot + driver + baseline solver) as the production runtime against our own settlement contracts. Greg becomes the chain-native intent broker on a chain CoW has not deployed to. First swap on MegaETH settles end-to-end via Greg's stack.
+**Goal:** Deploy CoW Protocol's audited `GPv2Settlement` + `GPv2VaultRelayer` bytecode unchanged on MegaETH (chainId `4326`), under our own `GPv2AllowListAuthentication` we control. Wire the vendored `apps/backend/` Rust services (orderbook + autopilot + driver + baseline solver) as the production runtime against our own settlement contracts. Ophis becomes the chain-native intent broker on a chain CoW has not deployed to. First swap on MegaETH settles end-to-end via Ophis's stack.
 
 **Architecture:** **Two stages.** Stage 1 (Tasks 1-7) deploys + validates everything on MegaETH **testnet** (chainId `6342`, RPC `https://carrot.megaeth.com/rpc`) — zero-money risk. Stage 2 (Tasks 8-10) re-runs the same flow on MegaETH **mainnet** (chainId `4326`) once testnet is green. The settlement contracts are deployed unchanged from the cowprotocol/contracts source — we inherit Trail of Bits / Gnosis / G0 audit coverage. Our only customisation is the `GPv2AllowListAuthentication` deployment with our manager EOA in control of the solver allowlist (so our own driver-submitter is allowed to call `settle()`).
 
 **Tech Stack:** Solidity (cowprotocol/contracts source), Hardhat (their build system), Foundry `cast` for deployment + tx ops, the existing Rust services workspace at `apps/backend/`, Docker + Colima (existing Phase-1 pattern), MegaETH testnet + mainnet RPCs, MegaETH explorer (`https://megaexplorer.xyz` for testnet; mainnet explorer to be confirmed at deploy time).
 
-**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md).
+**Spec:** [`docs/development/specs/2026-05-02-ophis-design.md`](../specs/2026-05-02-ophis-design.md) + [`docs/development/specs/2026-05-03-ophis-design-amendment.md`](../specs/2026-05-03-ophis-design-amendment.md).
 
-**Predecessor plan:** [`docs/development/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md`](2026-05-02-greg-phase-1-local-self-hosted-stack.md) — the vendored `apps/backend/` services stack from Phase 1 is the production runtime here.
+**Predecessor plan:** [`docs/development/plans/2026-05-02-ophis-phase-1-local-self-hosted-stack.md`](2026-05-02-ophis-phase-1-local-self-hosted-stack.md) — the vendored `apps/backend/` services stack from Phase 1 is the production runtime here.
 
-**Phase gate (Stage 2 — the real one):** A small swap on MegaETH **mainnet** (chainId `4326`) using our test wallet settles via Greg's own deployed `GPv2Settlement`. Trade record visible on MegaETH's explorer. Validation log committed.
+**Phase gate (Stage 2 — the real one):** A small swap on MegaETH **mainnet** (chainId `4326`) using our test wallet settles via Ophis's own deployed `GPv2Settlement`. Trade record visible on MegaETH's explorer. Validation log committed.
 
 ---
 
@@ -35,7 +35,7 @@
 | `infra/megaeth/.env.example` | Create | RPC URLs + addresses + deployer keys (gitignored .env) |
 | `infra/megaeth/deploy/networks.ts` | Create | Hardhat network config for testnet (6342) + mainnet (4326) |
 | `infra/megaeth/deploy/run-deploy.sh` | Create | Operator runbook for deploying contracts on a target network |
-| `infra/megaeth/configs/orderbook.toml` | Create | Greg orderbook config for MegaETH |
+| `infra/megaeth/configs/orderbook.toml` | Create | Ophis orderbook config for MegaETH |
 | `infra/megaeth/configs/autopilot.toml` | Create | autopilot config — references our deployed Settlement + AllowListAuth + driver |
 | `infra/megaeth/configs/driver.toml` | Create | driver config — Settlement + VaultRelayer + DEX presets for MegaETH |
 | `infra/megaeth/configs/baseline.toml` | Create | baseline solver config — chain-id 4326/6342, MegaETH base tokens |
@@ -114,7 +114,7 @@ mkdir -p /Users/scep/greg/infra/megaeth
 Write `/Users/scep/greg/infra/megaeth/.env.example`:
 
 ```ini
-# infra/megaeth/.env — Greg Phase 3 MegaETH deploy environment
+# infra/megaeth/.env — Ophis Phase 3 MegaETH deploy environment
 # Copy to infra/megaeth/.env and fill in. NEVER commit infra/megaeth/.env.
 # ---------------------------------------------------------------
 
@@ -128,7 +128,7 @@ MEGAETH_MAINNET_RPC=
 MEGAETH_MAINNET_CHAIN_ID=4326
 MEGAETH_MAINNET_EXPLORER=
 
-# --- Deployer EOA (Greg) ---
+# --- Deployer EOA (Ophis) ---
 # Private key in macOS Keychain entry `greg-megaeth-deployer`.
 GREG_MEGAETH_DEPLOYER_ADDRESS=<DEPLOYER_ADDR from Step 4>
 
@@ -136,7 +136,7 @@ GREG_MEGAETH_DEPLOYER_ADDRESS=<DEPLOYER_ADDR from Step 4>
 # Private key in macOS Keychain entry `greg-driver-submitter`.
 GREG_DRIVER_SUBMITTER_ADDRESS=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 
-# --- Greg-deployed contract addresses (filled after Tasks 4-5) ---
+# --- Ophis-deployed contract addresses (filled after Tasks 4-5) ---
 GREG_AUTH_TESTNET=
 GREG_SETTLEMENT_TESTNET=
 GREG_VAULT_RELAYER_TESTNET=
@@ -301,7 +301,7 @@ The deploy script is typically at `deploy/<index>_<name>.ts`. Read it.
 
 ### Step 2: Choose between modifying upstream or layering our own config
 
-**Default: layer.** Modifying `hardhat.config.ts` directly creates a tracked-divergence on `git subtree pull`. Cleaner: create a Greg-specific config that imports + extends the upstream, lives in `infra/megaeth/deploy/`.
+**Default: layer.** Modifying `hardhat.config.ts` directly creates a tracked-divergence on `git subtree pull`. Cleaner: create a Ophis-specific config that imports + extends the upstream, lives in `infra/megaeth/deploy/`.
 
 Write `/Users/scep/greg/infra/megaeth/deploy/hardhat-megaeth.config.ts`:
 
@@ -489,7 +489,7 @@ cp infra/local/configs/baseline.toml  infra/megaeth/configs/baseline.toml
 ### Step 3: Edit `driver.toml`
 
 - `chain-id` → `"6342"`
-- Replace Greg's deployed Settlement address: any field referencing `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` → `$GREG_SETTLEMENT_TESTNET` (read from .env at runtime via env-var substitution; the upstream config supports `%VAR_NAME` placeholders for some fields).
+- Replace Ophis's deployed Settlement address: any field referencing `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` → `$GREG_SETTLEMENT_TESTNET` (read from .env at runtime via env-var substitution; the upstream config supports `%VAR_NAME` placeholders for some fields).
 - Replace VaultRelayer reference if present: `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` → `$GREG_VAULT_RELAYER_TESTNET`.
 - DEX presets: drop Honeyswap (Gnosis-only); add Uniswap V3 if deployed on MegaETH (factory deterministic address `0x1F98431c8aD98523631AE4a59f267346ea31F984` may or may not exist on MegaETH — verify with `cast code <factory>` against the testnet RPC). Add native MegaETH DEXes via inspection of `https://docs.megaeth.com` or `https://www.coingecko.com/en/exchanges/decentralized/megaeth`.
 
@@ -507,7 +507,7 @@ If NO DEX-with-liquidity is found on testnet, the swap won't have anything to ro
 
 - `[[drivers]]` block: ensure the driver address matches our driver-submitter `0x00f98b…502F` AND the driver URL points at our driver service.
 - chain-id → `"6342"`
-- Settlement contract → Greg's deployed `GREG_SETTLEMENT_TESTNET`.
+- Settlement contract → Ophis's deployed `GREG_SETTLEMENT_TESTNET`.
 
 ### Step 6: Commit
 
@@ -858,9 +858,9 @@ Check:
 Write `/Users/scep/greg/docs/development/megaeth-grant-application.md`:
 
 ```markdown
-# MegaETH Foundation Grant — Greg Application Draft
+# MegaETH Foundation Grant — Ophis Application Draft
 
-## Project: Greg
+## Project: Ophis
 
 DCA + TWAP intent-broker on MegaETH. CoW-Protocol-derived; we deployed
 unchanged audited bytecode and run our own solver / driver. First chain-native
@@ -886,10 +886,10 @@ Velora, KyberSwap haven't deployed.
 (Per MegaETH grant program requirements — fill in once requirements are known.)
 
 Most relevant categories:
-- Developer infrastructure grants — Greg ships routing infrastructure other
+- Developer infrastructure grants — Ophis ships routing infrastructure other
   apps can integrate.
 - Liquidity bootstrapping — for the early-days "thin solver coverage" period.
-- Marketing / co-launch — joint announcement when Greg's MegaETH deployment goes live.
+- Marketing / co-launch — joint announcement when Ophis's MegaETH deployment goes live.
 
 ## Founders
 
@@ -897,7 +897,7 @@ Clement (san-npm). Background: CMO Aleph Cloud, CEO COMMIT MEDIA Luxembourg.
 Three-month build cadence: spec → Phase 0 (foundation) → Phase 1 (vendored
 backend) → Phase 1.5 (partner-fee monetisation on CoW chains) → Phase 2 (UX
 substrate) → Phase 2.5 (public launch) → Phase 2.6 (Cloudflare migration) →
-**Phase 3 (this — MegaETH fork-deploy).** Full audit trail: github.com/san-npm/greg.
+**Phase 3 (this — MegaETH fork-deploy).** Full audit trail: github.com/ophis-fi/ophis.
 
 ## Ask
 
@@ -929,9 +929,9 @@ The actual submission is operator-driven; the plan only commits the draft so it'
 ### Step 1: Write `infra/megaeth/README.md` operator runbook
 
 ```markdown
-# Greg MegaETH Stack (Phase 3)
+# Ophis MegaETH Stack (Phase 3)
 
-This directory contains everything needed to operate Greg on MegaETH —
+This directory contains everything needed to operate Ophis on MegaETH —
 deployment scripts for our `GPv2Settlement` + `GPv2VaultRelayer` +
 `GPv2AllowListAuthentication`, configs for the orderbook + autopilot +
 driver + baseline solver, and docker-compose stacks for testnet (6342)
@@ -991,7 +991,7 @@ Combine the temp Stage-1 + Stage-2 capture files:
 | 3 | Hardhat config layered for MegaETH | `infra/megaeth/deploy/hardhat-megaeth.config.ts` defines testnet (6342) + mainnet (4326) | PASS |
 | 4 | Contracts deployed on MegaETH testnet | Settlement `<addr>`, VaultRelayer `<addr>`, Authentication `<addr>` | PASS |
 | 5 | Driver-submitter in testnet allowlist | `isSolver(0x00f98b…)` returns `true` on testnet auth | PASS |
-| 6 | Stage-1 e2e — testnet swap settled via Greg's stack | tx `<hash>` block `<n>` on `https://megaexplorer.xyz` | PASS |
+| 6 | Stage-1 e2e — testnet swap settled via Ophis's stack | tx `<hash>` block `<n>` on `https://megaexplorer.xyz` | PASS |
 | 7 | Contracts deployed on MegaETH mainnet | Settlement `<addr>`, VaultRelayer `<addr>`, Authentication `<addr>` | PASS |
 | 8 | Driver-submitter in mainnet allowlist | `isSolver(0x00f98b…)` returns `true` on mainnet auth | PASS |
 | 9 | **Stage-2 e2e — mainnet swap settled** | tx `<hash>` on mainnet explorer | **PASS — phase gate** |
@@ -1007,9 +1007,9 @@ Combine the temp Stage-1 + Stage-2 capture files:
 
 ## Phase 3 verdict: PASS
 
-Greg is the first intent-based aggregator on MegaETH. Our settlement contracts
+Ophis is the first intent-based aggregator on MegaETH. Our settlement contracts
 hold the allowlist; our solver is registered. End-to-end swap settles via
-Greg's own stack on real MegaETH mainnet.
+Ophis's own stack on real MegaETH mainnet.
 
 ## Next phase
 
@@ -1020,7 +1020,7 @@ Phase 3.5 — Treasury tier (T2 self-serve), or whatever Clement prioritises.
 - Transfer auth ownership to Safe multisig
 - Verify contract source on MegaETH explorer
 - Recruit additional external solvers
-- Set up monitoring on Greg's MegaETH stack (Grafana / Prometheus)
+- Set up monitoring on Ophis's MegaETH stack (Grafana / Prometheus)
 - Apply for MegaETH grant if not already submitted
 - Document operator runbooks for emergency response (auth misconfig, solver freeze, etc.)
 ```
@@ -1030,17 +1030,17 @@ Phase 3.5 — Treasury tier (T2 self-serve), or whatever Clement prioritises.
 ```bash
 cd /Users/scep/greg
 git add docs/development/phase-3-validation.md infra/megaeth/README.md
-git commit -m "docs(phase-3): close-out — Greg deployed on MegaETH mainnet, first sovereign settlement"
+git commit -m "docs(phase-3): close-out — Ophis deployed on MegaETH mainnet, first sovereign settlement"
 git push
 git tag -a v0.3-phase3 -m "Phase 3 — MegaETH Fork-Deploy PASS
 
 CoW Protocol's audited GPv2Settlement + GPv2VaultRelayer +
 GPv2AllowListAuthentication deployed unchanged on MegaETH mainnet
 (chainId 4326). Our deployer EOA owns the allowlist. Driver-submitter
-0x00f98b...502F is registered. First swap settled via Greg's own
+0x00f98b...502F is registered. First swap settled via Ophis's own
 stack.
 
-Greg is now the chain-native intent broker on MegaETH.
+Ophis is now the chain-native intent broker on MegaETH.
 
 Stage 1 testnet (6342): see phase-3-validation.md.
 Stage 2 mainnet (4326): see phase-3-validation.md."
@@ -1050,7 +1050,7 @@ git push --tags
 ### Step 4: Close issue #4
 
 ```bash
-gh issue close 4 --repo san-npm/greg --comment "Phase 3 complete and tagged \`v0.3-phase3\`. Greg deployed sovereign on MegaETH mainnet. Validation: \`docs/development/phase-3-validation.md\`."
+gh issue close 4 --repo ophis-fi/ophis --comment "Phase 3 complete and tagged \`v0.3-phase3\`. Ophis deployed sovereign on MegaETH mainnet. Validation: \`docs/development/phase-3-validation.md\`."
 ```
 
 ### Step 5: Update memory
@@ -1105,8 +1105,8 @@ A few `<placeholder>` markers in code blocks where runtime values must be substi
 
 ## Sources
 
-- [Greg spec amendment 2026-05-03](../specs/2026-05-03-greg-design-amendment.md)
-- [Phase 1 plan (services stack origin)](2026-05-02-greg-phase-1-local-self-hosted-stack.md)
+- [Ophis spec amendment 2026-05-03](../specs/2026-05-03-ophis-design-amendment.md)
+- [Phase 1 plan (services stack origin)](2026-05-02-ophis-phase-1-local-self-hosted-stack.md)
 - [`cowprotocol/contracts`](https://github.com/cowprotocol/contracts) — Solidity source for Settlement / VaultRelayer / Authentication
 - [`cowprotocol/services`](https://github.com/cowprotocol/services) — already vendored at `apps/backend/`
 - [MegaETH official site](https://www.megaeth.com/) — chain ecosystem

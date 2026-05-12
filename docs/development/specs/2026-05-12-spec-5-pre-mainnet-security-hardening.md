@@ -6,7 +6,7 @@
 
 Three hardening tracks, all required before any mainnet contract deploys:
 
-1. **Hardware wallet for deployer keys** — Greg deployer addresses must never have private keys in software past the funding step. Use Ledger Nano (or Trezor) for the deploy transactions on Spec 2 + Spec 3 + any future mainnet.
+1. **Hardware wallet for deployer keys** — Ophis deployer addresses must never have private keys in software past the funding step. Use Ledger Nano (or Trezor) for the deploy transactions on Spec 2 + Spec 3 + any future mainnet.
 2. **Transfer AuthListAuthentication ownership to a Safe immediately after deploy** — the deployer EOA's protocol-level power (addSolver, transferOwnership, upgrade) gets handed to a 2-of-3 Safe within minutes of the proxy being deployed.
 3. **Bump partner-fee Safe to 2-of-3** — the treasury Safe at `0x858f0F5e…CeF8` is currently 1-of-1. Add 2 co-signers + change threshold to 2.
 
@@ -56,11 +56,11 @@ The window between "deploy" and "transfer ownership to Safe" is the most dangero
               │
               │ IMMEDIATELY (same session, < 5 min)
               ▼
-       transferOwnership(grEg_Safe_2of3)
-       setManager(grEg_Safe_2of3)
+       transferOwnership(ophis_Safe_2of3)
+       setManager(ophis_Safe_2of3)
               │
               ▼
-       Greg Safe (2-of-3, all signers are hardware wallets)
+       Ophis Safe (2-of-3, all signers are hardware wallets)
        now controls:
          - solver allowlist
          - implementation upgrade
@@ -74,7 +74,7 @@ Same pattern executes for each chain (MegaETH mainnet, OP mainnet, and any futur
 
 ## Components
 
-### Component 1: Greg Multisig Safe (the protocol-control Safe)
+### Component 1: Ophis Multisig Safe (the protocol-control Safe)
 
 A **2-of-3 Safe**, distinct from the partner-fee Safe. Owners:
 1. **Clement primary HW wallet** — Ledger at `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` (configured 2026-05-12). This same address signs CoW core deploys on every chain.
@@ -151,7 +151,7 @@ if (events.length > 0) {
 }
 ```
 
-Run for every Greg-deployed AllowListAuthentication across every chain. Latency target: < 60s from event to Telegram.
+Run for every Ophis-deployed AllowListAuthentication across every chain. Latency target: < 60s from event to Telegram.
 
 ## Cost
 
@@ -183,9 +183,9 @@ Run for every Greg-deployed AllowListAuthentication across every chain. Latency 
 ## Open questions for implementation plan
 
 1. **Recovery co-signer identity.** Who's the third 2-of-3 owner? Pending Clement decision.
-2. **Same-address-across-chains for the Greg protocol Safe?** Use the same 3 owners + same initial config so the Safe CREATE2 address is identical on every Greg-target chain. Recommended.
+2. **Same-address-across-chains for the Ophis protocol Safe?** Use the same 3 owners + same initial config so the Safe CREATE2 address is identical on every Ophis-target chain. Recommended.
 3. **`hardhat-ledger` plugin version compatibility** with our hardhat 2.x + hardhat-deploy versions. Verify before plan-write.
-4. **Cast `--ledger` derivation path default.** Standard is `m/44'/60'/0'/0/0` for the first account. For the deployer specifically, do we use account 0 or a dedicated higher index (e.g. account 5 reserved for "Greg deployer")? Recommended: dedicated index for clarity in the device UI.
+4. **Cast `--ledger` derivation path default.** Standard is `m/44'/60'/0'/0/0` for the first account. For the deployer specifically, do we use account 0 or a dedicated higher index (e.g. account 5 reserved for "Ophis deployer")? Recommended: dedicated index for clarity in the device UI.
 5. **Existing partner-fee Safe upgrade path.** Bumping 1-of-1 → 2-of-3 requires you to sign a Safe tx that adds 2 owners and changes threshold. The execution is straightforward via Safe Web UI; document the exact button-click sequence.
 6. **Alerter chain coverage.** Run the AllowList monitor only on chains where we've deployed (testnet stacks too?), or just on mainnets? Recommended: only mainnets (testnet allowlists are throwaway).
 
@@ -200,13 +200,13 @@ The implementation plan should resolve 1-6 inline.
 - [ ] Test run: `cast send --ledger --rpc-url <Sepolia> ... transfer ...` succeeds end-to-end on a testnet
 
 ### Safes deployed
-- [ ] Greg protocol Safe (2-of-3) deployed on a test chain first (Sepolia) — verify address + behavior
+- [ ] Ophis protocol Safe (2-of-3) deployed on a test chain first (Sepolia) — verify address + behavior
 - [ ] Partner-fee Safe at `0x858f0F5e…CeF8` upgraded to 2-of-3 with the same signer set
 - [ ] Safe addresses confirmed CREATE2-identical across the chains we plan to deploy to next
 
 ### Deploy script integration
 - [ ] `deploy-mainnet-all.sh` (megaeth + optimism versions) updated with `--ledger` flag on all signing operations
-- [ ] Final step of each deploy script: `transferOwnership` + `setManager` to the Greg protocol Safe
+- [ ] Final step of each deploy script: `transferOwnership` + `setManager` to the Ophis protocol Safe
 - [ ] Dry-run on Sepolia: full deploy → ownership transfer → Safe controls AllowList → verified
 
 ### Monitor
