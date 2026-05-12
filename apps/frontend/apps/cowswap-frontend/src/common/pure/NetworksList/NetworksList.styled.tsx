@@ -32,7 +32,7 @@ export const NetworkLabel = styled.div`
   }
 `
 
-// Greg/Ophis: chain rows get a 12px radius (matches Ophis chip rhythm)
+// Ophis: chain rows get a 12px radius (matches Ophis chip rhythm)
 // and a saffron-tinted active background instead of the cowswap blue
 // `theme.bg2`. Active row uses COLOR_PRIMARY_OPACITY_10 so the
 // selected chain reads as "lit by the brand".
@@ -87,7 +87,7 @@ export const FlyoutRowActiveIndicator = styled.div<{ $active: boolean }>`
   transition: background-color 0.16s ease-in-out, box-shadow 0.16s ease-in-out;
 `
 
-// Greg/Ophis: active chain always at the top of the list (mobile and
+// Ophis: active chain always at the top of the list (mobile and
 // desktop) — users want to see what they're currently on, not hunt
 // through an alphabetical list to find it.
 export const ActiveRowWrapper = styled.div`

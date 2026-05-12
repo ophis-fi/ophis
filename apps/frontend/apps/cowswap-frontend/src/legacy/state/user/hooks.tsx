@@ -61,9 +61,9 @@ export function useIsDarkMode(): boolean {
     shallowEqual,
   )
 
-  // Greg/Ophis: default to dark on first load. The cosmic palette is
+  // Ophis: default to dark on first load. The cosmic palette is
   // designed dark-first; light remains a togglable fallback. Tracked
-  // in apps/frontend/.greg-divergences.md.
+  // in apps/frontend/.ophis-divergences.md.
   return userDarkMode === null ? true : userDarkMode
 }
 

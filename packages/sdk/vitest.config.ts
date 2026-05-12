@@ -4,7 +4,7 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@greg/sdk': path.resolve(__dirname, './src/index.ts'),
+      '@ophis/sdk': path.resolve(__dirname, './src/index.ts'),
     },
   },
   test: {

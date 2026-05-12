@@ -6,7 +6,7 @@ export enum ButtonSize {
   BIG,
 }
 
-// Greg/Nucleus button size scale — aligns with the Nucleus typography scale
+// Ophis/Nucleus button size scale — aligns with the Nucleus typography scale
 // (xl=24, md=16, xs=12) and Nucleus button heights (lg ~56, sm ~32).
 export const BUTTON_SIZES_STYLE = {
   [ButtonSize.BIG]: css`

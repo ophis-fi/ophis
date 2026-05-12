@@ -4,13 +4,13 @@
  * MIRROR of packages/sdk/src/tiers.ts (and apps/rebate-indexer/src/tiers.ts).
  *
  * The cowswap fork lives in its own pnpm workspace and cannot import from the
- * outer monorepo (@greg/sdk is not in this workspace's node_modules). We
+ * outer monorepo (@ophis/sdk is not in this workspace's node_modules). We
  * duplicate the constants here following the same pattern as partnerFeeDefault.ts.
  *
  * Any time TIERS or POOL_SPLIT_BPS changes, change ALL THREE places in the same PR:
  *   1. apps/rebate-indexer/src/tiers.ts  (source of truth)
  *   2. packages/sdk/src/tiers.ts         (SDK mirror, validated by anti-drift test)
- *   3. apps/frontend/.../greg/tiers.ts   (this file, frontend mirror)
+ *   3. apps/frontend/.../ophis/tiers.ts  (this file, frontend mirror)
  */
 
 export interface Tier {

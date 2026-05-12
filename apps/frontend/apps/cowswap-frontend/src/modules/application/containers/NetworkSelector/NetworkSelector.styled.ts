@@ -24,7 +24,7 @@ export const FlyoutHeader = styled.div`
   border-bottom: 1px solid var(${UI.COLOR_PAPER_DARKEST});
 `
 
-// Greg/Ophis: monospace eyebrow tag for the flyout header, in line
+// Ophis: monospace eyebrow tag for the flyout header, in line
 // with the brand's "JetBrains Mono labels next to data" treatment.
 export const FlyoutHeaderTitle = styled.div`
   flex: 1 1 auto;
@@ -94,7 +94,7 @@ export const FlyoutMenu = styled.div`
   }
 `
 
-// Greg/Ophis: chain-selector flyout reads as an Ophis-branded card,
+// Ophis: chain-selector flyout reads as an Ophis-branded card,
 // not a cowswap dropdown. 20px radius (matches input rows), saffron
 // hairline at the edge, and a deeper shadow so it lifts off the page.
 export const FlyoutMenuContents = styled.div.attrs(() => ({
