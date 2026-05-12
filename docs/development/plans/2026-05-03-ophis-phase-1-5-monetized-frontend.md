@@ -87,7 +87,7 @@ Expected: derived and expected match (case-insensitive). If mismatch, redo Step 
 Edit `/Users/scep/greg/infra/local/.env` (gitignored — do NOT commit) and add:
 
 ```ini
-GREG_PARTNER_FEE_RECIPIENT=<RECIPIENT_ADDR from Step 1>
+OPHIS_PARTNER_FEE_RECIPIENT=<RECIPIENT_ADDR from Step 1>
 ```
 
 This `.env` is for local reference only. The address will also be hardcoded in the cowswap patch (Task 4). The file does not need committing.
@@ -118,8 +118,8 @@ The recipient address is **not a secret** — only the private key is. Append to
 import { describe, it, expect } from 'vitest';
 import {
   gregDefaultPartnerFee,
-  GREG_PARTNER_FEE_RECIPIENT,
-  GREG_PARTNER_FEE_BPS,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_PARTNER_FEE_BPS,
 } from '@greg/sdk';
 
 describe('@greg/sdk partner fee defaults', () => {
@@ -128,16 +128,16 @@ describe('@greg/sdk partner fee defaults', () => {
     for (const chainId of chains) {
       const fee = gregDefaultPartnerFee(chainId);
       expect(fee.bps).toBe(5);
-      expect(fee.recipient).toBe(GREG_PARTNER_FEE_RECIPIENT);
+      expect(fee.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
     }
   });
 
   it('exposes the bps constant matching the spec default', () => {
-    expect(GREG_PARTNER_FEE_BPS).toBe(5);
+    expect(OPHIS_PARTNER_FEE_BPS).toBe(5);
   });
 
   it('returns a recipient that is a 0x-prefixed 40-hex-char address', () => {
-    expect(GREG_PARTNER_FEE_RECIPIENT).toMatch(/^0x[a-fA-F0-9]{40}$/);
+    expect(OPHIS_PARTNER_FEE_RECIPIENT).toMatch(/^0x[a-fA-F0-9]{40}$/);
   });
 
   it('returns undefined for an unsupported chainId', () => {
@@ -167,11 +167,11 @@ Expected: fails — `gregDefaultPartnerFee` is not exported.
 
 /** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`.
  *  REPLACE WITH THE TASK-1 ADDRESS BEFORE COMMITTING. */
-export const GREG_PARTNER_FEE_RECIPIENT =
+export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0xREPLACE_WITH_TASK_1_ADDRESS' as `0x${string}`;
 
 /** Default fee in basis points. 1 bps = 0.01%. CoW caps partner fees at 100 bps. */
-export const GREG_PARTNER_FEE_BPS = 5;
+export const OPHIS_PARTNER_FEE_BPS = 5;
 
 /** Chains where CoW Protocol is deployed (May 2026). Source: https://docs.cow.fi/cow-protocol/reference/contracts/core */
 export const COW_SUPPORTED_CHAIN_IDS = new Set<number>([
@@ -197,7 +197,7 @@ export interface GregPartnerFee {
 /** Returns Ophis's default partner-fee config for a given chain, or undefined for unsupported chains. */
 export const gregDefaultPartnerFee = (chainId: number): GregPartnerFee | undefined => {
   if (!COW_SUPPORTED_CHAIN_IDS.has(chainId)) return undefined;
-  return { bps: GREG_PARTNER_FEE_BPS, recipient: GREG_PARTNER_FEE_RECIPIENT };
+  return { bps: OPHIS_PARTNER_FEE_BPS, recipient: OPHIS_PARTNER_FEE_RECIPIENT };
 };
 ```
 
@@ -210,8 +210,8 @@ export const gregDefaultPartnerFee = (chainId: number): GregPartnerFee | undefin
 ```typescript
 export {
   gregDefaultPartnerFee,
-  GREG_PARTNER_FEE_RECIPIENT,
-  GREG_PARTNER_FEE_BPS,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_PARTNER_FEE_BPS,
   COW_SUPPORTED_CHAIN_IDS,
   type GregPartnerFee,
 } from './partner-fee.js';
@@ -264,15 +264,15 @@ The cowswap fork lives in its own pnpm workspace (`apps/frontend/`) which is **d
 import type { PartnerFee } from '@cowprotocol/widget-lib';
 
 /** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`. */
-const GREG_PARTNER_FEE_RECIPIENT = '0xREPLACE_WITH_TASK_1_ADDRESS' as const;
+const OPHIS_PARTNER_FEE_RECIPIENT = '0xREPLACE_WITH_TASK_1_ADDRESS' as const;
 
 /** Default fee in basis points. 1 bps = 0.01%. CoW caps partner fees at 100 bps. */
-const GREG_PARTNER_FEE_BPS = 5;
+const OPHIS_PARTNER_FEE_BPS = 5;
 
 /** Default partner-fee config applied to every order on this deployment when no widget partnerFee is provided. */
-export const GREG_DEFAULT_PARTNER_FEE: PartnerFee = {
-  bps: GREG_PARTNER_FEE_BPS,
-  recipient: GREG_PARTNER_FEE_RECIPIENT,
+export const OPHIS_DEFAULT_PARTNER_FEE: PartnerFee = {
+  bps: OPHIS_PARTNER_FEE_BPS,
+  recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 };
 ```
 
@@ -290,7 +290,7 @@ expect conflicts on these paths and re-apply the changes manually.
 ## Modified
 
 - `apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts`
-  Default `partnerFee` to `GREG_DEFAULT_PARTNER_FEE` when widget params do not
+  Default `partnerFee` to `OPHIS_DEFAULT_PARTNER_FEE` when widget params do not
   supply one. Phase 1.5, 2026-05-03.
 - `apps/cowswap-frontend/index.html` (browser title), `apps/cowswap-frontend/public/manifest.json`
   (PWA name), `libs/ui/src/pure/ProductLogo/index.tsx` (logo alt text) — minimal
@@ -352,11 +352,11 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => get(injectedWidgetPara
 Replace the `injectedWidgetPartnerFeeAtom` export so it falls back to Ophis's default. Keep all other exports unchanged.
 
 ```typescript
-import { GREG_DEFAULT_PARTNER_FEE } from 'greg/partnerFeeDefault'
+import { OPHIS_DEFAULT_PARTNER_FEE } from 'greg/partnerFeeDefault'
 
 export const injectedWidgetPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
-  return widgetFee ?? GREG_DEFAULT_PARTNER_FEE
+  return widgetFee ?? OPHIS_DEFAULT_PARTNER_FEE
 })
 ```
 
@@ -368,7 +368,7 @@ The import path `'greg/partnerFeeDefault'` assumes cowswap-frontend's TS config 
 cd /Users/scep/greg/apps/frontend
 pnpm run build:cowswap 2>&1 | tail -10
 ```
-Expected: build succeeds. If TypeScript errors on the import, fix the path. If type-mismatch on `GREG_DEFAULT_PARTNER_FEE` vs `PartnerFee` type, the fix is in `partnerFeeDefault.ts` — narrow the type or cast appropriately.
+Expected: build succeeds. If TypeScript errors on the import, fix the path. If type-mismatch on `OPHIS_DEFAULT_PARTNER_FEE` vs `PartnerFee` type, the fix is in `partnerFeeDefault.ts` — narrow the type or cast appropriately.
 
 - [ ] **Step 4: Commit**
 
@@ -706,7 +706,7 @@ Edit `project_greg.md` to add:
 - `0xREPLACE_WITH_TASK_1_ADDRESS` is the only placeholder, and it is **explicitly required to be replaced before commit** in both Task 2 and Task 3. The phase gate (Task 7) catches the issue if it survives — `metadata.partnerFee.recipient` would be the placeholder string and the verification would fail.
 
 **Type / name consistency**
-- `GREG_PARTNER_FEE_BPS` (5) and `GREG_PARTNER_FEE_RECIPIENT` are referenced with the same names across `packages/sdk/src/partner-fee.ts` and `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`. Keeping the duplicate in sync is documented in `apps/frontend/.greg-divergences.md`.
+- `OPHIS_PARTNER_FEE_BPS` (5) and `OPHIS_PARTNER_FEE_RECIPIENT` are referenced with the same names across `packages/sdk/src/partner-fee.ts` and `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`. Keeping the duplicate in sync is documented in `apps/frontend/.greg-divergences.md`.
 - `PartnerFee` type imported from `@cowprotocol/widget-lib` matches the type expected by `injectedWidgetPartnerFeeAtom`.
 
 **Risks the plan acknowledges**

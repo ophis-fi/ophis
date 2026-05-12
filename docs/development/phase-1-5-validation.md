@@ -66,7 +66,7 @@ The patched `injectedWidgetPartnerFeeAtom` produces the partner-fee `appData` we
 - **Vercel SSO state:** the verification preview was deployed while project-level `ssoProtection` was disabled. Project-level SSO re-enabled (`{"deploymentType":"preview"}`) after verification. Existing deployment URLs deployed before the re-enable retain their original open state (Vercel locks deployment-level SSO at build time). Future preview deploys triggered by pushes to `main` will be gated. The current open URL is hash-randomized (`fvnctfrq9`) and de-facto private.
 - **Vercel ↔ GitHub link** restored during this phase via `vercel git connect https://github.com/san-npm/greg`. Push-triggered auto-deploys now fire.
 - **Cowswap fork divergences** tracked in `apps/frontend/.greg-divergences.md`. Two new modifications relative to upstream: `injectedWidgetParamsAtom.ts` partner-fee fallback, and the new `apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` constants file.
-- **`@greg/sdk` v0.0.1** now exports `gregDefaultPartnerFee(chainId)`, `GREG_PARTNER_FEE_RECIPIENT`, `GREG_PARTNER_FEE_BPS`, `COW_SUPPORTED_CHAIN_IDS`. Mirror of constants in the cowswap fork; keep in sync.
+- **`@greg/sdk` v0.0.1** now exports `gregDefaultPartnerFee(chainId)`, `OPHIS_PARTNER_FEE_RECIPIENT`, `OPHIS_PARTNER_FEE_BPS`, `COW_SUPPORTED_CHAIN_IDS`. Mirror of constants in the cowswap fork; keep in sync.
 
 ## Open follow-ups
 

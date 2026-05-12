@@ -38,7 +38,7 @@ Existing files that the plan invokes but does not modify:
 - `infra/megaeth/v2-artifacts/UniswapV2Factory.json` + `UniswapV2Router02.json` (consumed by deploy-mainnet-all.sh)
 
 Existing files that the plan updates:
-- `infra/megaeth/.env` (deploy script appends GREG_*_MAINNET addresses)
+- `infra/megaeth/.env` (deploy script appends OPHIS_*_MAINNET addresses)
 - `infra/cloudflare/ophis-chain-backends.md` (extended with megaeth-mainnet row)
 - `apps/rebate-indexer/src/alerter.ts` or co-located alerter (extend to watch driver-submitter balance on MegaETH mainnet)
 
@@ -82,9 +82,9 @@ No commit at this step — funding is off-chain. **No pool-seed funding needed**
 - [ ] **Step 0 (pre-Step-1): Comment out V2 deploy in the script**
 
 In `infra/megaeth/deploy/deploy-mainnet-all.sh`:
-- Comment out the entire section `# --- 3. Uniswap V2 ---` through `echo "  V2 Router:   $GREG_V2_ROUTER_MAINNET"`
+- Comment out the entire section `# --- 3. Uniswap V2 ---` through `echo "  V2 Router:   $OPHIS_V2_ROUTER_MAINNET"`
 - Renumber sections (3 → no longer exists, 4 → 3 of 3)
-- Remove `GREG_V2_FACTORY_MAINNET` + `GREG_V2_ROUTER_MAINNET` from the address-append cat block at the bottom
+- Remove `OPHIS_V2_FACTORY_MAINNET` + `OPHIS_V2_ROUTER_MAINNET` from the address-append cat block at the bottom
 - Commit: `git commit -m "fix(megaeth): drop V2 deploy from mainnet bootstrap (Kumbaya is liquidity source)"`
 
 - [ ] **Step 1: Verify deployer funded + RPC reachable**
@@ -104,9 +104,9 @@ cd /Users/scep/greg/infra/megaeth/deploy
 Expected output: `=== Done. Next: seed-mainnet-pool.sh after acquiring WETH+USDT0 in deployer wallet.`
 
 Verifies:
-- `GREG_SETTLEMENT_MAINNET` printed and non-zero
-- `GREG_VAULT_RELAYER_MAINNET` printed
-- `GREG_V2_ROUTER_MAINNET` printed
+- `OPHIS_SETTLEMENT_MAINNET` printed and non-zero
+- `OPHIS_VAULT_RELAYER_MAINNET` printed
+- `OPHIS_V2_ROUTER_MAINNET` printed
 - `isSolver(driver): true` in final line
 
 - [ ] **Step 3: Sanity-check deployed contracts on chain**
@@ -114,12 +114,12 @@ Verifies:
 ```bash
 RPC=https://mainnet.megaeth.com/rpc
 source /Users/scep/greg/infra/megaeth/.env
-echo "Settlement code:" $(cast code --rpc-url $RPC $GREG_SETTLEMENT_MAINNET | head -c 20)
-echo "VaultRelayer():" $(cast call --rpc-url $RPC $GREG_SETTLEMENT_MAINNET "vaultRelayer()(address)")
-echo "AuthList isSolver(driver):" $(cast call --rpc-url $RPC $GREG_AUTH_MAINNET "isSolver(address)(bool)" 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F)
+echo "Settlement code:" $(cast code --rpc-url $RPC $OPHIS_SETTLEMENT_MAINNET | head -c 20)
+echo "VaultRelayer():" $(cast call --rpc-url $RPC $OPHIS_SETTLEMENT_MAINNET "vaultRelayer()(address)")
+echo "AuthList isSolver(driver):" $(cast call --rpc-url $RPC $OPHIS_AUTH_MAINNET "isSolver(address)(bool)" 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F)
 ```
 
-Expected: settlement has bytecode (not `0x`), vaultRelayer matches `GREG_VAULT_RELAYER_MAINNET`, isSolver returns `true`.
+Expected: settlement has bytecode (not `0x`), vaultRelayer matches `OPHIS_VAULT_RELAYER_MAINNET`, isSolver returns `true`.
 
 - [ ] **Step 4: Commit nothing — `.env` is gitignored, scripts emit only on-chain state**
 
@@ -190,14 +190,14 @@ No duplicates expected.
 - `node-url = "https://mainnet.megaeth.com/rpc"`
 - `simulation-node-url = "https://mainnet.megaeth.com/rpc"`
 - `[contracts]` / `[shared.contracts]`:
-  - `settlement = "<GREG_SETTLEMENT_MAINNET>"`
-  - `balances = "<GREG_BALANCES_MAINNET>"`
-  - `signatures = "<GREG_SIGNATURES_MAINNET>"`
+  - `settlement = "<OPHIS_SETTLEMENT_MAINNET>"`
+  - `balances = "<OPHIS_BALANCES_MAINNET>"`
+  - `signatures = "<OPHIS_SIGNATURES_MAINNET>"`
   - `native-token = "0x4200000000000000000000000000000000000006"` (MegaETH WETH; verify mainnet has same predeploy address)
-  - `hooks = "<GREG_HOOKS_TRAMPOLINE_MAINNET>"`
+  - `hooks = "<OPHIS_HOOKS_TRAMPOLINE_MAINNET>"`
 
 `driver.toml` also gets:
-- `[[liquidity.uniswap-v2]]` block with `router = "<GREG_V2_ROUTER_MAINNET>"`, `pool-code = "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"` (standard UniV2; our V2 fork uses standard hash, verified during Spec 1)
+- `[[liquidity.uniswap-v2]]` block with `router = "<OPHIS_V2_ROUTER_MAINNET>"`, `pool-code = "0x96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f"` (standard UniV2; our V2 fork uses standard hash, verified during Spec 1)
 
 - [ ] **Step 4: Write `infra/megaeth-mainnet/.env.example` with placeholder names**
 
@@ -355,7 +355,7 @@ security add-generic-password -U -a "$USER" -s greg-megaeth-test \
 
 Key differences from the optimism smoke test:
 - `OPTIMISM_SEPOLIA` → `MEGAETH_MAINNET` constant (chain id 4326, RPC `mainnet.megaeth.com/rpc`)
-- `GPV2_SETTLEMENT` → `GREG_SETTLEMENT_MAINNET` from env
+- `GPV2_SETTLEMENT` → `OPHIS_SETTLEMENT_MAINNET` from env
 - `ORDERBOOK_URL = 'https://megaeth.ophis.fi'`
 - `VAULT_RELAYER` → query at runtime via `cast call $SETTLEMENT vaultRelayer()`
 - Buy token: USDT0 instead of GTUSD

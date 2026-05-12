@@ -33,13 +33,13 @@ source "$ENV_FILE"
 set +a
 
 # Read deployer PK from Keychain (NEVER persisted to disk).
-GREG_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
+OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
   -a "greg-megaeth-deployer" -s "greg-megaeth-deployer" -w)
-export GREG_MEGAETH_DEPLOYER_PK
+export OPHIS_MEGAETH_DEPLOYER_PK
 
 # Sourced from .env above; export so the hardhat config sees it for the
 # namedAccounts override (owner + manager → Greg deployer EOA).
-export GREG_MEGAETH_DEPLOYER_ADDRESS
+export OPHIS_MEGAETH_DEPLOYER_ADDRESS
 
 # Sanity: mainnet RPC must be set if we're hitting mainnet.
 if [[ "$NETWORK" == "megaeth-mainnet" && -z "${MEGAETH_MAINNET_RPC:-}" ]]; then
@@ -53,7 +53,7 @@ LOG_FILE="$REPO_ROOT/infra/megaeth/deploy-log-${NETWORK}-$(date +%Y%m%d-%H%M%S).
 cd "$REPO_ROOT/contracts"
 
 echo "=== Greg MegaETH deploy: $NETWORK ==="
-echo "=== Deployer: ${GREG_MEGAETH_DEPLOYER_ADDRESS:?must be set in .env} ==="
+echo "=== Deployer: ${OPHIS_MEGAETH_DEPLOYER_ADDRESS:?must be set in .env} ==="
 echo "=== Log file: $LOG_FILE ==="
 echo ""
 
@@ -64,7 +64,7 @@ echo ""
 echo "=== capture deployed addresses from the log above and write to:"
 echo "      $ENV_FILE"
 if [[ "$NETWORK" == "megaeth-testnet" ]]; then
-  echo "    fields: GREG_AUTH_TESTNET, GREG_SETTLEMENT_TESTNET, GREG_VAULT_RELAYER_TESTNET"
+  echo "    fields: OPHIS_AUTH_TESTNET, OPHIS_SETTLEMENT_TESTNET, OPHIS_VAULT_RELAYER_TESTNET"
 else
-  echo "    fields: GREG_AUTH_MAINNET, GREG_SETTLEMENT_MAINNET, GREG_VAULT_RELAYER_MAINNET"
+  echo "    fields: OPHIS_AUTH_MAINNET, OPHIS_SETTLEMENT_MAINNET, OPHIS_VAULT_RELAYER_MAINNET"
 fi

@@ -17,7 +17,7 @@
 #     minimum OP_MAINNET_RPC set (defaults to https://mainnet.optimism.io but
 #     a paid endpoint is recommended for the deploy run to avoid 429s)
 #
-# Writes deployed addresses to infra/optimism/.env as GREG_*_OP_MAINNET keys.
+# Writes deployed addresses to infra/optimism/.env as OPHIS_*_OP_MAINNET keys.
 
 set -euo pipefail
 
@@ -66,10 +66,10 @@ echo "=== [1/3] Deploying CoW Settlement + VaultRelayer + Auth ==="
 cd "$REPO_ROOT/contracts"
 
 # hardhat-megaeth.config.ts (despite the name) covers all non-CoW chains including OP mainnet.
-# It overrides namedAccounts.owner and .manager to GREG_MEGAETH_DEPLOYER_ADDRESS — that env var
+# It overrides namedAccounts.owner and .manager to OPHIS_MEGAETH_DEPLOYER_ADDRESS — that env var
 # name is historical; we export it pointed at the OP deployer here for compatibility.
-export GREG_MEGAETH_DEPLOYER_PK="$DEPLOYER_PK"
-export GREG_MEGAETH_DEPLOYER_ADDRESS="$DEPLOYER_ADDR"
+export OPHIS_MEGAETH_DEPLOYER_PK="$DEPLOYER_PK"
+export OPHIS_MEGAETH_DEPLOYER_ADDRESS="$DEPLOYER_ADDR"
 export OP_MAINNET_RPC
 
 LOG="$REPO_ROOT/infra/optimism/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
@@ -77,16 +77,16 @@ HARDHAT_CONFIG=hardhat-megaeth.config.ts \
   pnpm exec hardhat deploy --network optimism-mainnet 2>&1 | tee "$LOG"
 
 DEPLOYMENTS_DIR="$REPO_ROOT/contracts/deployments/optimism-mainnet"
-GREG_AUTH_OP_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json'))['address'])")
-GREG_AUTH_IMPLEMENTATION_OP_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Implementation.json'))['address'])")
-GREG_SETTLEMENT_OP_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2Settlement.json'))['address'])")
-GREG_VAULT_RELAYER_OP_MAINNET=$(cast call --rpc-url "$RPC" "$GREG_SETTLEMENT_OP_MAINNET" "vaultRelayer()(address)")
+OPHIS_AUTH_OP_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json'))['address'])")
+OPHIS_AUTH_IMPLEMENTATION_OP_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Implementation.json'))['address'])")
+OPHIS_SETTLEMENT_OP_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2Settlement.json'))['address'])")
+OPHIS_VAULT_RELAYER_OP_MAINNET=$(cast call --rpc-url "$RPC" "$OPHIS_SETTLEMENT_OP_MAINNET" "vaultRelayer()(address)")
 
 echo ""
-echo "  Auth Proxy:           $GREG_AUTH_OP_MAINNET"
-echo "  Auth Implementation:  $GREG_AUTH_IMPLEMENTATION_OP_MAINNET"
-echo "  Settlement:           $GREG_SETTLEMENT_OP_MAINNET"
-echo "  VaultRelayer:         $GREG_VAULT_RELAYER_OP_MAINNET"
+echo "  Auth Proxy:           $OPHIS_AUTH_OP_MAINNET"
+echo "  Auth Implementation:  $OPHIS_AUTH_IMPLEMENTATION_OP_MAINNET"
+echo "  Settlement:           $OPHIS_SETTLEMENT_OP_MAINNET"
+echo "  VaultRelayer:         $OPHIS_VAULT_RELAYER_OP_MAINNET"
 
 # --- 2. CoW helpers via cast send --create ---
 echo ""
@@ -107,26 +107,26 @@ print(bc + '$extra_args')")
   echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('contractAddress'))"
 }
 
-GREG_BALANCES_OP_MAINNET=$(deploy_artifact_create Balances apps/backend/contracts/artifacts/Balances.json)
-GREG_SIGNATURES_OP_MAINNET=$(deploy_artifact_create Signatures apps/backend/contracts/artifacts/Signatures.json)
+OPHIS_BALANCES_OP_MAINNET=$(deploy_artifact_create Balances apps/backend/contracts/artifacts/Balances.json)
+OPHIS_SIGNATURES_OP_MAINNET=$(deploy_artifact_create Signatures apps/backend/contracts/artifacts/Signatures.json)
 
-SETTLEMENT_HEX=${GREG_SETTLEMENT_OP_MAINNET#0x}
+SETTLEMENT_HEX=${OPHIS_SETTLEMENT_OP_MAINNET#0x}
 PADDED=$(printf '%0*d' 24 0)$SETTLEMENT_HEX
-GREG_HOOKS_TRAMPOLINE_OP_MAINNET=$(deploy_artifact_create HooksTrampoline \
+OPHIS_HOOKS_TRAMPOLINE_OP_MAINNET=$(deploy_artifact_create HooksTrampoline \
     apps/backend/contracts/artifacts/HooksTrampoline.json \
     "$PADDED")
 
-echo "  Balances:        $GREG_BALANCES_OP_MAINNET"
-echo "  Signatures:      $GREG_SIGNATURES_OP_MAINNET"
-echo "  HooksTrampoline: $GREG_HOOKS_TRAMPOLINE_OP_MAINNET"
+echo "  Balances:        $OPHIS_BALANCES_OP_MAINNET"
+echo "  Signatures:      $OPHIS_SIGNATURES_OP_MAINNET"
+echo "  HooksTrampoline: $OPHIS_HOOKS_TRAMPOLINE_OP_MAINNET"
 
 # --- 3. Allowlist driver-submitter ---
 echo ""
 echo "=== [3/3] Allowlisting driver-submitter ==="
 DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" \
-  "$GREG_AUTH_OP_MAINNET" "addSolver(address)" "$DRIVER" >/dev/null
-IS_SOLVER=$(cast call --rpc-url "$RPC" "$GREG_AUTH_OP_MAINNET" "isSolver(address)(bool)" "$DRIVER")
+  "$OPHIS_AUTH_OP_MAINNET" "addSolver(address)" "$DRIVER" >/dev/null
+IS_SOLVER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_OP_MAINNET" "isSolver(address)(bool)" "$DRIVER")
 echo "  isSolver(driver): $IS_SOLVER"
 
 if [[ "$IS_SOLVER" != "true" ]]; then
@@ -140,20 +140,20 @@ echo "=== Writing addresses to .env ==="
 cat <<EOF >> "$ENV_FILE"
 
 # Spec 2 Optimism mainnet deploy ($(date +%Y-%m-%d))
-GREG_AUTH_OP_MAINNET=$GREG_AUTH_OP_MAINNET
-GREG_AUTH_IMPLEMENTATION_OP_MAINNET=$GREG_AUTH_IMPLEMENTATION_OP_MAINNET
-GREG_SETTLEMENT_OP_MAINNET=$GREG_SETTLEMENT_OP_MAINNET
-GREG_VAULT_RELAYER_OP_MAINNET=$GREG_VAULT_RELAYER_OP_MAINNET
-GREG_BALANCES_OP_MAINNET=$GREG_BALANCES_OP_MAINNET
-GREG_SIGNATURES_OP_MAINNET=$GREG_SIGNATURES_OP_MAINNET
-GREG_HOOKS_TRAMPOLINE_OP_MAINNET=$GREG_HOOKS_TRAMPOLINE_OP_MAINNET
+OPHIS_AUTH_OP_MAINNET=$OPHIS_AUTH_OP_MAINNET
+OPHIS_AUTH_IMPLEMENTATION_OP_MAINNET=$OPHIS_AUTH_IMPLEMENTATION_OP_MAINNET
+OPHIS_SETTLEMENT_OP_MAINNET=$OPHIS_SETTLEMENT_OP_MAINNET
+OPHIS_VAULT_RELAYER_OP_MAINNET=$OPHIS_VAULT_RELAYER_OP_MAINNET
+OPHIS_BALANCES_OP_MAINNET=$OPHIS_BALANCES_OP_MAINNET
+OPHIS_SIGNATURES_OP_MAINNET=$OPHIS_SIGNATURES_OP_MAINNET
+OPHIS_HOOKS_TRAMPOLINE_OP_MAINNET=$OPHIS_HOOKS_TRAMPOLINE_OP_MAINNET
 EOF
 
 echo ""
 echo "=== Done. ==="
 echo ""
 echo "Next: build infra/optimism-mainnet/ chain stack pointing at:"
-echo "  - settlement: $GREG_SETTLEMENT_OP_MAINNET"
+echo "  - settlement: $OPHIS_SETTLEMENT_OP_MAINNET"
 echo "  - liquidity: Uniswap V3 on Optimism (factory 0x1F98431c8aD98523631AE4a59f267346ea31F984)"
 echo ""
 echo "See docs/development/plans/2026-05-12-spec-2-optimism-mainnet.md once it's written."
