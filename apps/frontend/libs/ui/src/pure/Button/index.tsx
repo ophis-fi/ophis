@@ -47,16 +47,16 @@ function getButtonStatusStyles(status?: StatusColorVariant): ReturnType<typeof c
 export const ButtonPrimary = styled(ButtonPrimaryMod).withConfig({
   shouldForwardProp: (prop) => String(prop) !== 'status',
 })<{ status?: StatusColorVariant }>`
-  // Greg/Nucleus: pill-shape primary, bold weight.
+  // Ophis/Nucleus: pill-shape primary, bold weight.
   background: var(${UI.COLOR_PRIMARY});
   color: var(${UI.COLOR_BUTTON_TEXT});
-  font-family: var(--greg-font-body);
+  font-family: var(--ophis-font-body);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.01em;
   border: none;
   box-shadow: none;
-  border-radius: var(--greg-radius-full, 9999px);
+  border-radius: var(--ophis-radius-full, 9999px);
   position: relative;
   min-height: 56px;
   transition:
@@ -138,10 +138,10 @@ export const ButtonGray = styled(ButtonGrayMod)`
 `
 
 export const ButtonSecondary = styled(ButtonPrimary)`
-  // Greg/Nucleus: pill-shape secondary, smaller padding.
+  // Ophis/Nucleus: pill-shape secondary, smaller padding.
   min-height: 0;
   border: 0;
-  border-radius: ${({ $borderRadius }) => $borderRadius ?? 'var(--greg-radius-full, 9999px)'};
+  border-radius: ${({ $borderRadius }) => $borderRadius ?? 'var(--ophis-radius-full, 9999px)'};
   box-shadow: none;
   padding: ${({ padding }) => padding ?? '8px 16px'};
   font-size: 14px;

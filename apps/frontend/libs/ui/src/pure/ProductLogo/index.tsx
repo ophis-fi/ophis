@@ -53,38 +53,38 @@ const LOGOS: Record<ProductVariant, ThemedLogo> = {
     light: {
       default: {
         src: LOGO_COWSWAP,
-        alt: 'Greg',
+        alt: 'Ophis',
         color: '#004293',
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'Greg',
+        alt: 'Ophis',
         color: '#004293',
       },
     },
     dark: {
       default: {
         src: LOGO_COWSWAP,
-        alt: 'Greg',
+        alt: 'Ophis',
         color: Color.blue300Primary,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'Greg',
+        alt: 'Ophis',
         color: Color.blue300Primary,
       },
     },
     darkHalloween: {
       default: {
         src: LOGO_COWSWAP_HALLOWEEN,
-        alt: 'Greg',
+        alt: 'Ophis',
         preserveOriginalColors: true,
       },
     },
     darkChristmas: {
       default: {
         src: LOGO_COWSWAP_CHRISTMAS_DARK,
-        alt: 'Greg',
+        alt: 'Ophis',
         color: Color.blue300Primary,
         height: '56px',
         heightMobile: '50px',
@@ -94,7 +94,7 @@ const LOGOS: Record<ProductVariant, ThemedLogo> = {
     lightChristmas: {
       default: {
         src: LOGO_COWSWAP_CHRISTMAS,
-        alt: 'Greg',
+        alt: 'Ophis',
         color: '#004293',
         height: '56px',
         heightMobile: '50px',

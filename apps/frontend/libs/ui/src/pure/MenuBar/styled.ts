@@ -34,8 +34,8 @@ export const MenuBarWrapper = styled.div<{
       : bgDropdownColorLight || `var(${UI.COLOR_NEUTRAL_100})`};
   --color: ${({ theme, colorLight, colorDark }) =>
     theme.darkMode ? colorDark || `var(${UI.COLOR_NEUTRAL_98})` : colorLight || `var(${UI.COLOR_NEUTRAL_0})`};
-  // Greg/Nucleus: nav container radius xl (32) for the strong rounded shape.
-  --borderRadius: var(--greg-radius-xl, 32px);
+  // Ophis/Nucleus: nav container radius xl (32) for the strong rounded shape.
+  --borderRadius: var(--ophis-radius-xl, 32px);
   --blur: 16px;
 
   // Elements
@@ -166,7 +166,7 @@ export const MobileMenuTrigger = styled.div<{ theme: CowSwapTheme; mobileMode?: 
 
 export const NavItems = styled.ul<{ mobileMode?: boolean; theme: CowSwapTheme }>`
   --marginLeft: 20px;
-  --borderRadius: var(--greg-radius-xl, 32px);
+  --borderRadius: var(--ophis-radius-xl, 32px);
   --blur: 16px;
 
   display: flex;
@@ -193,7 +193,7 @@ export const NavItems = styled.ul<{ mobileMode?: boolean; theme: CowSwapTheme }>
       left: 10px;
       z-index: 1000;
       box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
-      border-radius: var(--greg-radius-xl, 32px);
+      border-radius: var(--ophis-radius-xl, 32px);
       background: var(--activeBackground);
       backdrop-filter: blur(var(--blur));
       border-radius: var(--borderRadius);
@@ -272,7 +272,7 @@ export const PortaledDropdownContent = styled.ul<DropdownContentProps & { top?: 
   margin: 0;
   width: 320px;
   height: auto;
-  border-radius: var(--greg-radius-xl, 32px);
+  border-radius: var(--ophis-radius-xl, 32px);
   position: fixed;
   top: ${({ top }) => (top ? `${top}px` : 'auto')};
   right: ${({ right }) => (right !== undefined ? `${right}px` : 'auto')};
@@ -307,7 +307,7 @@ export const DropdownContent = styled.ul<DropdownContentProps>`
   margin: 0;
   width: ${({ isThirdLevel }) => (isThirdLevel ? '100%' : '340px')};
   height: auto;
-  border-radius: var(--greg-radius-xl, 32px);
+  border-radius: var(--ophis-radius-xl, 32px);
   position: ${({ isThirdLevel }) => (isThirdLevel ? 'relative' : 'absolute')};
   top: ${({ isThirdLevel }) => (isThirdLevel ? 'initial' : 'calc(100% + var(--dropdownOffset))')};
   right: ${({ alignRight }) => (alignRight ? 0 : 'initial')};
@@ -369,7 +369,7 @@ export const MobileDropdownContainer = styled.div<{ mobileMode: boolean }>`
       left: 0;
       z-index: 1000;
       box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
-      border-radius: var(--greg-radius-xl, 32px);
+      border-radius: var(--ophis-radius-xl, 32px);
       background: var(--activeBackground);
       border-radius: var(--borderRadius);
       padding: 10px 10px 100px;
@@ -390,7 +390,7 @@ export const MobileDropdownContainer = styled.div<{ mobileMode: boolean }>`
         right: initial;
         padding: 0;
         margin: 0;
-        border-radius: var(--greg-radius-xl, 32px);
+        border-radius: var(--ophis-radius-xl, 32px);
       }
 
       &::-webkit-scrollbar {
@@ -399,7 +399,7 @@ export const MobileDropdownContainer = styled.div<{ mobileMode: boolean }>`
 
       &::-webkit-scrollbar-track {
         background: var(--scrollbarBackground);
-        border-radius: var(--greg-radius-xl, 32px);
+        border-radius: var(--ophis-radius-xl, 32px);
       }
 
       &::-webkit-scrollbar-thumb {

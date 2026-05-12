@@ -80,13 +80,13 @@ export const StyledDialogContent = styled(({ ...rest }) => <AnimatedDialogConten
 })`
   overflow-y: auto;
 
-  // Greg/Nucleus: radius xl (24px feels right for hero modals — half-step
+  // Ophis/Nucleus: radius xl (24px feels right for hero modals — half-step
   // between Nucleus lg=16 and xl=32), token-driven shadow.
   &[data-reach-dialog-content] {
     margin: 0 0 2rem 0;
     background: var(${UI.COLOR_PAPER});
     border: 1px solid var(${UI.COLOR_PAPER_DARKER});
-    box-shadow: var(--greg-shadow-high, 0 12px 24px rgba(0, 0, 0, 0.08), 0 24px 48px rgba(0, 0, 0, 0.12));
+    box-shadow: var(--ophis-shadow-high, 0 12px 24px rgba(0, 0, 0, 0.08), 0 24px 48px rgba(0, 0, 0, 0.12));
     padding: 0px;
     width: 50vw;
     overflow-y: auto;

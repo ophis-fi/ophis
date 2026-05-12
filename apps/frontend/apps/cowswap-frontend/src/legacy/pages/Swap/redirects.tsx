@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router'
 
-// Greg/Ophis: redirects use `replace` so they don't add stuck history
+// Ophis: redirects use `replace` so they don't add stuck history
 // entries between `/swap` and `/{chainId}/swap/{...}`. Without this,
 // browser-back from a fully-qualified swap URL returns to the bare
 // `/swap` path which immediately redirects forward again — trapping
