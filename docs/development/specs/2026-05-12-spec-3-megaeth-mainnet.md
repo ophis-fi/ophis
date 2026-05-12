@@ -88,7 +88,7 @@ The existing `infra/megaeth/deploy/deploy-mainnet-all.sh` (written 2026-05-04) *
    - CoW core: `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication` (via hardhat-deploy / `hardhat-megaeth.config.ts`)
    - CoW helpers: `Balances`, `Signatures`, `HooksTrampoline` (via `cast send --create`)
    - Allowlists driver-submitter as solver
-   - Appends addresses to `infra/megaeth/.env` under `GREG_*_MAINNET` keys.
+   - Appends addresses to `infra/megaeth/.env` under `OPHIS_*_MAINNET` keys.
 
 After step 4 the on-chain side is done. Step 5+ is backend infra.
 
@@ -104,7 +104,7 @@ After step 4 the on-chain side is done. Step 5+ is backend infra.
 ## Smoke test (the actual gate)
 
 `infra/megaeth-mainnet/scripts/smoke-test-e2e.ts` adapted from the Optimism Sepolia smoke test:
-- Sign EIP-712 manually with `verifyingContract = GREG_SETTLEMENT_MAINNET`, `chainId = 4326`
+- Sign EIP-712 manually with `verifyingContract = OPHIS_SETTLEMENT_MAINNET`, `chainId = 4326`
 - Submit via raw `fetch` to `https://megaeth.ophis.fi/api/v1/orders`
 - Poll `/api/v1/orders/$UID` and `/api/v1/trades?orderUid=$UID`
 - **Exit 0 only on `status: fulfilled` with a real `txHash`** — no winning-solver fallback. Mainnet RPC has headroom; broadcast must succeed.
@@ -157,7 +157,7 @@ Pre-condition: a separate `greg-megaeth-test` Keychain entry with a funded test 
 
 ### Repo state
 - [ ] `infra/megaeth-mainnet/` exists with docker-compose + configs + scripts
-- [ ] all mainnet addresses in `infra/megaeth/.env` under `GREG_*_MAINNET` keys (not committed; gitignored locally + on VM)
+- [ ] all mainnet addresses in `infra/megaeth/.env` under `OPHIS_*_MAINNET` keys (not committed; gitignored locally + on VM)
 - [ ] operator runbook `infra/cloudflare/ophis-chain-backends.md` extended with the third-chain table row + a "MegaETH mainnet specifics" section
 
 ### Documentation

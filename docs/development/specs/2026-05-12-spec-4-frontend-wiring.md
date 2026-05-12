@@ -85,7 +85,7 @@ declare module '@cowprotocol/cow-sdk' {
   }
 }
 
-export const GREG_CHAIN_IDS = [
+export const OPHIS_CHAIN_IDS = [
   11155420, 6343, 4326, 10,
 ] as const;
 ```

@@ -24,7 +24,7 @@ DEPLOYER_ADDR=$(cast wallet address "$DEPLOYER_PK")
 
 WETH=0x4200000000000000000000000000000000000006
 USDT0=0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb
-ROUTER="${GREG_V2_ROUTER_MAINNET:?must be set in .env from deploy-mainnet-all.sh}"
+ROUTER="${OPHIS_V2_ROUTER_MAINNET:?must be set in .env from deploy-mainnet-all.sh}"
 
 # Read balances
 WETH_BAL=$(cast call --rpc-url "$RPC" "$WETH" "balanceOf(address)(uint256)" "$DEPLOYER_ADDR" | awk '{print $1}')
@@ -72,17 +72,17 @@ TX=$(cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" --gas-limit 5000000
 echo "  tx: $TX"
 
 # Read pool address from factory
-GREG_V2_PAIR_WETH_USDT0_MAINNET=$(cast call --rpc-url "$RPC" \
-  "$GREG_V2_FACTORY_MAINNET" \
+OPHIS_V2_PAIR_WETH_USDT0_MAINNET=$(cast call --rpc-url "$RPC" \
+  "$OPHIS_V2_FACTORY_MAINNET" \
   "getPair(address,address)(address)" "$WETH" "$USDT0")
 
 echo ""
 echo "=== Pool created ==="
-echo "  Pair: $GREG_V2_PAIR_WETH_USDT0_MAINNET"
-echo "  reserves: $(cast call --rpc-url "$RPC" "$GREG_V2_PAIR_WETH_USDT0_MAINNET" "getReserves()(uint112,uint112,uint32)")"
+echo "  Pair: $OPHIS_V2_PAIR_WETH_USDT0_MAINNET"
+echo "  reserves: $(cast call --rpc-url "$RPC" "$OPHIS_V2_PAIR_WETH_USDT0_MAINNET" "getReserves()(uint112,uint112,uint32)")"
 
 cat <<EOF >> "$ENV_FILE"
 
 # Phase 3 Stage-2 pool seed ($(date +%Y-%m-%d))
-GREG_V2_PAIR_WETH_USDT0_MAINNET=$GREG_V2_PAIR_WETH_USDT0_MAINNET
+OPHIS_V2_PAIR_WETH_USDT0_MAINNET=$OPHIS_V2_PAIR_WETH_USDT0_MAINNET
 EOF

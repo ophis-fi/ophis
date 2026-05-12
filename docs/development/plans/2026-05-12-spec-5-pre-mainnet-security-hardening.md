@@ -106,8 +106,8 @@ Confirm the Safe deploys at the expected CREATE2 address on every chain (write i
 Append to `infra/optimism/.env` and `infra/megaeth/.env`:
 
 ```
-GREG_PROTOCOL_SAFE_OP_MAINNET=0x???
-GREG_PROTOCOL_SAFE_MEGAETH_MAINNET=0x???
+OPHIS_PROTOCOL_SAFE_OP_MAINNET=0x???
+OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET=0x???
 ```
 
 Append to `infra/cloudflare/ophis-chain-backends.md` "Useful constants" table.
@@ -197,7 +197,7 @@ In the `networks` block, add `ledgerAccounts` to each mainnet network:
 
 Keep `accounts: accounts` on the testnet entries (they still use the software-key Keychain pattern — fine for non-mainnet).
 
-In `namedAccounts.owner` and `namedAccounts.manager`, hardcode the HW wallet for the two mainnet networks (replace the `GREG_DEPLOYER_ADDRESS` env var pattern):
+In `namedAccounts.owner` and `namedAccounts.manager`, hardcode the HW wallet for the two mainnet networks (replace the `OPHIS_DEPLOYER_ADDRESS` env var pattern):
 
 ```typescript
 owner: {
@@ -239,7 +239,7 @@ cast send --rpc-url "$RPC" --ledger
 
 Remove every `--private-key "$DEPLOYER_PK"` argument from the script.
 
-Drop the hardhat-deploy command's `GREG_MEGAETH_DEPLOYER_PK=$DEPLOYER_PK` env export. The hardhat-ledger plugin reads from the connected Ledger automatically.
+Drop the hardhat-deploy command's `OPHIS_MEGAETH_DEPLOYER_PK=$DEPLOYER_PK` env export. The hardhat-ledger plugin reads from the connected Ledger automatically.
 
 - [ ] **Step 4: Add the ownership-transfer block to both scripts**
 
@@ -250,37 +250,37 @@ Append after the existing `[3/3] Allowlisting driver-submitter` section:
 echo ""
 echo "=== [4/4] Handing AllowListAuthentication to the protocol Safe ==="
 
-if [[ -z "${GREG_PROTOCOL_SAFE_MAINNET:-}" ]]; then
-  echo "ERROR: GREG_PROTOCOL_SAFE_MAINNET must be set in infra/<chain>/.env" >&2
+if [[ -z "${OPHIS_PROTOCOL_SAFE_MAINNET:-}" ]]; then
+  echo "ERROR: OPHIS_PROTOCOL_SAFE_MAINNET must be set in infra/<chain>/.env" >&2
   echo "       (the 2-of-3 Safe deployed in Spec 5 Task 2)" >&2
   exit 6
 fi
 
 # transferOwnership(safe) — atomic
-echo "  transferOwnership($GREG_PROTOCOL_SAFE_MAINNET)..."
+echo "  transferOwnership($OPHIS_PROTOCOL_SAFE_MAINNET)..."
 cast send --rpc-url "$RPC" --ledger \
-  "$GREG_AUTH_MAINNET" "transferOwnership(address)" "$GREG_PROTOCOL_SAFE_MAINNET"
+  "$OPHIS_AUTH_MAINNET" "transferOwnership(address)" "$OPHIS_PROTOCOL_SAFE_MAINNET"
 
 # setManager(safe) — same Safe holds the manager role
-echo "  setManager($GREG_PROTOCOL_SAFE_MAINNET)..."
+echo "  setManager($OPHIS_PROTOCOL_SAFE_MAINNET)..."
 cast send --rpc-url "$RPC" --ledger \
-  "$GREG_AUTH_MAINNET" "setManager(address)" "$GREG_PROTOCOL_SAFE_MAINNET"
+  "$OPHIS_AUTH_MAINNET" "setManager(address)" "$OPHIS_PROTOCOL_SAFE_MAINNET"
 
 # Verify
-NEW_OWNER=$(cast call --rpc-url "$RPC" "$GREG_AUTH_MAINNET" "owner()(address)")
-NEW_MANAGER=$(cast call --rpc-url "$RPC" "$GREG_AUTH_MAINNET" "manager()(address)")
-if [[ "${NEW_OWNER,,}" != "${GREG_PROTOCOL_SAFE_MAINNET,,}" ]]; then
-  echo "ERROR: owner is $NEW_OWNER, expected $GREG_PROTOCOL_SAFE_MAINNET" >&2
+NEW_OWNER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_MAINNET" "owner()(address)")
+NEW_MANAGER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_MAINNET" "manager()(address)")
+if [[ "${NEW_OWNER,,}" != "${OPHIS_PROTOCOL_SAFE_MAINNET,,}" ]]; then
+  echo "ERROR: owner is $NEW_OWNER, expected $OPHIS_PROTOCOL_SAFE_MAINNET" >&2
   exit 7
 fi
-if [[ "${NEW_MANAGER,,}" != "${GREG_PROTOCOL_SAFE_MAINNET,,}" ]]; then
-  echo "ERROR: manager is $NEW_MANAGER, expected $GREG_PROTOCOL_SAFE_MAINNET" >&2
+if [[ "${NEW_MANAGER,,}" != "${OPHIS_PROTOCOL_SAFE_MAINNET,,}" ]]; then
+  echo "ERROR: manager is $NEW_MANAGER, expected $OPHIS_PROTOCOL_SAFE_MAINNET" >&2
   exit 8
 fi
 echo "  ✓ ownership + manager fully handed to the Safe"
 ```
 
-Update the env-append cat block at the bottom of the script to reference the chain-specific Safe address (`GREG_PROTOCOL_SAFE_MAINNET` is the script-level alias; it sources from `GREG_PROTOCOL_SAFE_OP_MAINNET` or `GREG_PROTOCOL_SAFE_MEGAETH_MAINNET` per chain).
+Update the env-append cat block at the bottom of the script to reference the chain-specific Safe address (`OPHIS_PROTOCOL_SAFE_MAINNET` is the script-level alias; it sources from `OPHIS_PROTOCOL_SAFE_OP_MAINNET` or `OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET` per chain).
 
 - [ ] **Step 5: Dry-run on a testnet to verify the HW-wallet flow**
 
@@ -362,12 +362,12 @@ const ALLOWLIST_CHAINS = [
   {
     name: 'op-mainnet',
     rpc: 'https://ophis-op-node.tail565030.ts.net:8545', // tailnet
-    authListProxy: process.env.GREG_AUTH_OP_MAINNET!,
+    authListProxy: process.env.OPHIS_AUTH_OP_MAINNET!,
   },
   {
     name: 'megaeth-mainnet',
     rpc: 'https://mainnet.megaeth.com/rpc',
-    authListProxy: process.env.GREG_AUTH_MEGAETH_MAINNET!,
+    authListProxy: process.env.OPHIS_AUTH_MEGAETH_MAINNET!,
   },
 ];
 ```

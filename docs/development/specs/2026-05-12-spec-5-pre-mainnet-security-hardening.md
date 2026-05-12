@@ -116,10 +116,10 @@ Recommendation: **Path B for hardhat-deploy + Path A's `--ledger` flag for the r
 Add to `deploy-mainnet-all.sh` (both megaeth + optimism versions): after AllowListAuthentication is deployed, immediately:
 
 ```bash
-cast send --ledger --rpc-url "$RPC" "$GREG_AUTH_*" \
-  "transferOwnership(address)" "$GREG_PROTOCOL_SAFE_$CHAIN"
-cast send --ledger --rpc-url "$RPC" "$GREG_AUTH_*" \
-  "setManager(address)" "$GREG_PROTOCOL_SAFE_$CHAIN"
+cast send --ledger --rpc-url "$RPC" "$OPHIS_AUTH_*" \
+  "transferOwnership(address)" "$OPHIS_PROTOCOL_SAFE_$CHAIN"
+cast send --ledger --rpc-url "$RPC" "$OPHIS_AUTH_*" \
+  "setManager(address)" "$OPHIS_PROTOCOL_SAFE_$CHAIN"
 ```
 
 Both as one-shot commands signed on the device. Total time: ~30 seconds.
@@ -131,7 +131,7 @@ Extend `apps/rebate-indexer/src/alerter.ts` (or co-located alerter) with a new c
 ```typescript
 // Pseudocode
 const events = await provider.getLogs({
-  address: GREG_AUTH_CHAIN_X,
+  address: OPHIS_AUTH_CHAIN_X,
   topics: [
     // SolverAdded(address) | SolverRemoved(address)
     // | OwnershipTransferred(address, address) | Upgraded(address)
