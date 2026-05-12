@@ -5,6 +5,7 @@ services:
   db:
     image: postgres:16
     restart: always
+    mem_limit: 2g
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -39,6 +40,7 @@ services:
       dockerfile: Dockerfile
       target: orderbook
     restart: always
+    mem_limit: 2g
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
@@ -59,6 +61,7 @@ services:
       dockerfile: Dockerfile
       target: autopilot
     restart: always
+    mem_limit: 1g
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
@@ -78,6 +81,7 @@ services:
       dockerfile: Dockerfile
       target: driver
     restart: always
+    mem_limit: 2g
     depends_on:
       baseline: { condition: service_started }
     environment:
@@ -97,6 +101,7 @@ services:
       dockerfile: Dockerfile
       target: solvers
     restart: always
+    mem_limit: 1g
     environment:
       ADDR: 0.0.0.0:80
     volumes:
