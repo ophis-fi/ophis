@@ -1,0 +1,80 @@
+services:
+  op-geth:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101702.2
+    container_name: op-geth
+    restart: always
+    stop_grace_period: 5m
+    mem_limit: 12g
+    volumes:
+      - ./geth-data:/data
+      - ./jwt.hex:/jwt.hex:ro
+    ports:
+      - "127.0.0.1:8545:8545"
+      - "127.0.0.1:8546:8546"
+      - "127.0.0.1:6060:6060"
+    command:
+      - --datadir=/data
+      - --op-network=op-mainnet
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.vhosts=*
+      - --http.corsdomain=*
+      - --http.api=web3,debug,eth,net,engine
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.origins=*
+      - --ws.api=web3,debug,eth,net,engine
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.vhosts=*
+      - --authrpc.jwtsecret=/jwt.hex
+      - --syncmode=snap
+      - --maxpeers=100
+      - --cache=4096
+      - --rollup.sequencerhttp=https://mainnet-sequencer.optimism.io/
+      - --rollup.disabletxpoolgossip=true
+      - --metrics
+      - --metrics.addr=0.0.0.0
+      - --metrics.port=6060
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}' --header='Content-Type: application/json' http://127.0.0.1:8545 | grep -q '0xa'"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 2m
+
+  op-node:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.18.0
+    container_name: op-node
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      op-geth:
+        condition: service_healthy
+    volumes:
+      - ./jwt.hex:/jwt.hex:ro
+    ports:
+      - "127.0.0.1:9545:9545"
+      - "127.0.0.1:7300:7300"
+    command:
+      - op-node
+      - --l1=${OP_NODE_L1_ETH_RPC}
+      - --l1.beacon=${OP_NODE_L1_BEACON}
+      - --l1.trustrpc=${OP_NODE_L1_TRUST_RPC:-true}
+      - --l1.rpckind=basic
+      - --l2=http://op-geth:8551
+      - --l2.jwt-secret=/jwt.hex
+      - --network=op-mainnet
+      - --syncmode=execution-layer
+      - --rpc.addr=0.0.0.0
+      - --rpc.port=9545
+      - --rpc.enable-admin
+      - --p2p.listen.ip=0.0.0.0
+      - --p2p.listen.tcp=9003
+      - --p2p.listen.udp=9003
+      - --metrics.enabled
+      - --metrics.addr=0.0.0.0
+      - --metrics.port=7300
+      - --log.level=info
