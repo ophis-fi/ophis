@@ -1,4 +1,4 @@
-# Greg Phase 2.5 — Public Launch Implementation Plan
+# Ophis Phase 2.5 — Public Launch Implementation Plan
 
 
 **Goal:** Take the Phase-2 substrate to a public launch — finish the engineering polish (trade-data threading into receipts, SVG icon for Safe, top-level DCA CTA), make operational decisions (real brand + domain + multisig recipient), and ship the launch (production Vercel deploy + Safe-list submission + Show HN).
@@ -7,9 +7,9 @@
 
 **Tech Stack:** TypeScript, cow-sdk's `orderBookApi`, the vendored cowswap fork, Vercel custom domains + production target, Cloudflare DNS, Safe wallet (deployed via [app.safe.global](https://app.safe.global) for the multisig recipient), GitHub PR against [`safe-global/safe-apps-list`](https://github.com/safe-global/safe-apps-list).
 
-**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
+**Spec:** [`docs/development/specs/2026-05-02-ophis-design.md`](../specs/2026-05-02-ophis-design.md) + [`docs/development/specs/2026-05-03-ophis-design-amendment.md`](../specs/2026-05-03-ophis-design-amendment.md)
 
-**Predecessor plan:** [`docs/development/plans/2026-05-03-greg-phase-2-retail-substrate.md`](2026-05-03-greg-phase-2-retail-substrate.md) — Phase 2 PASS, tag `v0.2-phase2`.
+**Predecessor plan:** [`docs/development/plans/2026-05-03-ophis-phase-2-retail-substrate.md`](2026-05-03-ophis-phase-2-retail-substrate.md) — Phase 2 PASS, tag `v0.2-phase2`.
 
 ---
 
@@ -213,7 +213,7 @@ If **B**, the rename touches:
 - [ ] All `@greg/*` imports across the workspace
 - [ ] Root `package.json` — `name` field
 - [ ] `README.md`
-- [ ] GitHub repo rename (`san-npm/greg` → `san-npm/<newname>`) via `gh repo rename`
+- [ ] GitHub repo rename (`ophis-fi/ophis` → `san-npm/<newname>`) via `gh repo rename`
 - [ ] Vercel project rename via API/dashboard
 - [ ] Memory: `project_greg.md` rename (or just update content; file rename optional)
 
@@ -229,7 +229,7 @@ If undecided by the time Task 4 (manifest update for icon) starts, default to **
 
 Clement picks one of:
 - Keep using `greg-git-main-clementfrmds-projects.vercel.app` (free, automatic, hash-shaped). Plan default if undecided.
-- Use one of the existing `openletz.{com,fr,info,ai}` domains as a Greg subdomain (e.g., `greg.openletz.com`). Free; just DNS work.
+- Use one of the existing `openletz.{com,fr,info,ai}` domains as a Ophis subdomain (e.g., `greg.openletz.com`). Free; just DNS work.
 - Register a new domain — e.g., `greg.app`, `greg.fi`, `usegreg.app`, or whatever brand work picks.
 
 ### Step 2: Configure domain (only if not the default)
@@ -281,7 +281,7 @@ If keeping the Vercel branch alias as the launch URL, this task closes with no c
 - Create: `apps/frontend/apps/cowswap-frontend/public/greg-icon.svg`
 - Modify: `apps/frontend/apps/cowswap-frontend/public/manifest.json` (update `iconPath`)
 
-Safe app store prefers SVG icons (≥ 128×128 square). The current `iconPath` points at the 512px PNG inherited from cowswap upstream. A Greg-specific SVG is small to produce and improves Safe app presentation.
+Safe app store prefers SVG icons (≥ 128×128 square). The current `iconPath` points at the 512px PNG inherited from cowswap upstream. A Ophis-specific SVG is small to produce and improves Safe app presentation.
 
 ### Step 1: Create the SVG
 
@@ -550,7 +550,7 @@ gh repo fork safe-global/safe-apps-list --clone --remote
 cd safe-apps-list
 ```
 
-### Step 2: Add Greg's entry
+### Step 2: Add Ophis's entry
 
 Open the appropriate community list file (`apps.json`, `community-list.json`, or whatever the current convention is — read `CONTRIBUTING.md` first). Append a new entry:
 
@@ -568,10 +568,10 @@ Open the appropriate community list file (`apps.json`, `community-list.json`, or
 ```bash
 git checkout -b add-greg-app
 git add <the modified list file>
-git commit -m "Add Greg — DCA + TWAP for power users on top of CoW Protocol"
+git commit -m "Add Ophis — DCA + TWAP for power users on top of CoW Protocol"
 git push -u origin add-greg-app
 gh pr create --repo safe-global/safe-apps-list \
-  --title "Add Greg — DCA + TWAP for power users on top of CoW Protocol" \
+  --title "Add Ophis — DCA + TWAP for power users on top of CoW Protocol" \
   --body "$(cat <<'EOF'
 ## App URL
 
@@ -579,7 +579,7 @@ https://<production URL>
 
 ## Description
 
-Greg is a DCA / TWAP front-end built on top of CoW Protocol. MEV-protected, gasless, multi-chain. The deployment is a Safe app: it loads cleanly inside the Safe iframe and uses the upstream `@safe-global/safe-apps-sdk` integration to detect a Safe parent and prompt for connection.
+Ophis is a DCA / TWAP front-end built on top of CoW Protocol. MEV-protected, gasless, multi-chain. The deployment is a Safe app: it loads cleanly inside the Safe iframe and uses the upstream `@safe-global/safe-apps-sdk` integration to detect a Safe parent and prompt for connection.
 
 ## Networks
 
@@ -617,18 +617,18 @@ Write the post + comment thread plan. Engineering-light, content-heavy. Treat as
 `docs/development/show-hn-draft.md`:
 
 ```markdown
-# Show HN draft — Greg
+# Show HN draft — Ophis
 
 ## Title
 (60-80 characters; HN cap is around 80)
 
-> Show HN: Greg – DCA and TWAP on CoW Protocol with MEV-proof receipts
+> Show HN: Ophis – DCA and TWAP on CoW Protocol with MEV-proof receipts
 
 ## Body (≤ 200 words)
 
 Hi HN,
 
-Greg is a frontend over CoW Protocol focused on power-user retail: DCA, TWAP,
+Ophis is a frontend over CoW Protocol focused on power-user retail: DCA, TWAP,
 and MEV-proof execution receipts that DAO treasuries can hand to their
 auditors. We use CoW's settlement contracts and solver network — same MEV
 protection, same gasless UX as cow.fi — but we layer:
@@ -692,13 +692,13 @@ git push
 `docs/development/product-hunt-draft.md`:
 
 ```markdown
-# Product Hunt draft — Greg
+# Product Hunt draft — Ophis
 
 ## Tagline (≤ 60 chars)
 DCA and TWAP for power users — MEV-protected, gasless
 
 ## Description (≤ 260 chars)
-Greg lets you DCA into any token across 10 chains with MEV protection, gasless UX, and downloadable execution receipts your treasury auditor will actually accept. Built on CoW Protocol's solver network. Free for retail.
+Ophis lets you DCA into any token across 10 chains with MEV protection, gasless UX, and downloadable execution receipts your treasury auditor will actually accept. Built on CoW Protocol's solver network. Free for retail.
 
 ## Topics
 - Crypto
@@ -714,7 +714,7 @@ Greg lets you DCA into any token across 10 chains with MEV protection, gasless U
 - Screenshot: TWAP order in flight on Etherscan
 
 ## Maker comment (pinned)
-Greg captures partner-fee revenue from CoW Protocol's mechanism and
+Ophis captures partner-fee revenue from CoW Protocol's mechanism and
 re-invests it in shipping the features you'd actually pay for: DCA,
 treasury-friendly receipts, Safe-native flows. We're positioning this as
 "the trader's CoW" — same execution quality, vertical UX. Feedback wanted!
@@ -762,7 +762,7 @@ Open `apps/frontend/.greg-divergences.md`. Append:
 
 ## Operator decisions captured
 
-- D1 (brand): <Greg codename retained | renamed to <newname>>
+- D1 (brand): <Ophis codename retained | renamed to <newname>>
 - D2 (domain): <Vercel branch alias | <real domain>>
 - D3 (multisig): <Safe address — chain — signer setup>
 
@@ -780,7 +780,7 @@ Open `apps/frontend/.greg-divergences.md`. Append:
 
 ## Phase 2.5 verdict: PASS
 
-Greg is live to the public. Partner-fee meter runs on every swap. Safe-app
+Ophis is live to the public. Partner-fee meter runs on every swap. Safe-app
 listing pending review. Show HN / PH ready to fire on Clement's signal.
 
 ## Next phase
@@ -796,7 +796,7 @@ GPv2Settlement + GPv2VaultRelayer bytecode unchanged on MegaETH (chainId
 cd /Users/scep/greg
 git add apps/frontend/.greg-divergences.md docs/development/phase-2-5-validation.md
 git status
-git commit -m "docs(phase-2-5): close-out — Greg launched publicly"
+git commit -m "docs(phase-2-5): close-out — Ophis launched publicly"
 git push
 ```
 
@@ -813,7 +813,7 @@ Production Vercel target promoted; SSO preview-only.
 Safe-list submission PR open at <URL>.
 Show HN + Product Hunt drafts committed.
 
-Greg is publicly accessible. Partner-fee meter runs on every swap.
+Ophis is publicly accessible. Partner-fee meter runs on every swap.
 Phase 3 (MegaETH fork-deploy) is the next milestone."
 git push --tags
 ```
@@ -821,20 +821,20 @@ git push --tags
 ### Step 5: Close issue #5; verify Phase 3 issue (#4) still accurate
 
 ```bash
-gh issue close 5 --repo san-npm/greg --comment "Phase 2.5 complete and tagged \`v0.2.5-phase2-5\`. Validation: \`docs/development/phase-2-5-validation.md\`. Phase 3 (issue #4) is next."
+gh issue close 5 --repo ophis-fi/ophis --comment "Phase 2.5 complete and tagged \`v0.2.5-phase2-5\`. Validation: \`docs/development/phase-2-5-validation.md\`. Phase 3 (issue #4) is next."
 ```
 
 ### Step 6: Update memory
 
 - `<local notes>/project_greg.md` — append Phase 2.5 to gates section, add `v0.2.5-phase2-5` tag, update Next Step to reference Phase 3 (MegaETH).
-- `<local notes>/MEMORY.md` — update Greg one-liner.
+- `<local notes>/MEMORY.md` — update Ophis one-liner.
 
 ## Task 12: Operational follow-ups (non-blocking)
 
 These are not phase-gate items but should be tracked.
 
 - [ ] **Watch for first WETH disbursement.** CoW DAO disburses partner fees weekly when accrued ≥ 0.001 WETH. Monitor the recipient address (multisig from Task 6) and announce the first payout publicly (great social-proof content).
-- [ ] **Greg-styled receipt PDF** — current `exportPdf` uses plain monospace. Phase 2.6 task: add Greg logo + brand colours to the PDF template.
+- [ ] **Ophis-styled receipt PDF** — current `exportPdf` uses plain monospace. Phase 2.6 task: add Ophis logo + brand colours to the PDF template.
 - [ ] **Mobile PWA install verification** — once a real domain exists, run install on iOS Safari + Android Chrome.
 - [ ] **Embed widget productisation** — cowswap supports widget mode; Phase 2.6 or Phase 4 turns it into a public component for partners to drop into their pages.
 - [ ] **Trade-data 2nd pass** — Task 1 wires `orderBookApi.getTrades` for fulfilled orders. Open / partial orders still show `settlementTxHash: null`. That's correct behaviour, but the UI can hide the receipt-download button for non-fulfilled orders to reduce confusion.
@@ -866,7 +866,7 @@ These are not phase-gate items but should be tracked.
 
 - Power-user analytics dashboard — deferred.
 - Embed widget productisation — Phase 2.6 / Phase 4.
-- Greg-styled PDF receipt template — Phase 2.6.
+- Ophis-styled PDF receipt template — Phase 2.6.
 - Mobile PWA install (real-domain dependent) — Phase 2.6.
 - MegaETH fork-deploy — Phase 3.
 - Treasury tier (T2 self-serve) — Phase 3.5.
@@ -874,9 +874,9 @@ These are not phase-gate items but should be tracked.
 
 ## Sources
 
-- [Greg spec](../specs/2026-05-02-greg-design.md) and [Phase-1.5 amendment](../specs/2026-05-03-greg-design-amendment.md)
+- [Ophis spec](../specs/2026-05-02-ophis-design.md) and [Phase-1.5 amendment](../specs/2026-05-03-ophis-design-amendment.md)
 - [Phase 2 validation](../phase-2-validation.md)
-- [Phase 2 plan](2026-05-03-greg-phase-2-retail-substrate.md)
+- [Phase 2 plan](2026-05-03-ophis-phase-2-retail-substrate.md)
 - [CoW Protocol Partner Fee documentation](https://docs.cow.fi/governance/fees/partner-fee) — recipient + 75% net + weekly WETH disbursement
 - [`safe-global/safe-apps-list`](https://github.com/safe-global/safe-apps-list) — Safe-app submission PR target
 - [How to build a Safe App and get it listed (Safe help center)](https://help.safe.global/en/articles/145503-how-to-build-a-safe-app-and-get-it-listed-in-safe-wallet)

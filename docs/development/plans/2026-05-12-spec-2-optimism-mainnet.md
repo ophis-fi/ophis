@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deploy Greg's first production mainnet backend on Optimism (chain 10), settling a real WETH→USDC trade through Uniswap V3 liquidity.
+**Goal:** Deploy Ophis's first production mainnet backend on Optimism (chain 10), settling a real WETH→USDC trade through Uniswap V3 liquidity.
 
 **Architecture:** **Branch A locked** — Aleph Cloud for both the L2 RPC node and the chain stack. Clement is the CMO; Aleph compute is free for him. Single VM gets bigger to host op-node + op-geth + chain stack together, OR split across two Aleph VMs (decided at execution time based on Aleph's volume-attachment ergonomics).
 
@@ -268,7 +268,7 @@ In `docker-compose.mainnet.yml`, change ports to `8102/8103/9022/5435`.
 
 `autopilot.toml`, `driver.toml`, `orderbook.toml`:
 - `node-url` + `simulation-node-url` → `http://<vm-greg-op-mainnet-private-IP>:8545` (or `localhost:8545` if single-VM and chain stack is on same VM)
-- `[contracts]` / `[shared.contracts]` → mainnet-deployed Greg addresses
+- `[contracts]` / `[shared.contracts]` → mainnet-deployed Ophis addresses
 - chain ID env → `10`
 
 `driver.toml`:

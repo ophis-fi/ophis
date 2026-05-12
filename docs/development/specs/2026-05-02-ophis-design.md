@@ -1,6 +1,6 @@
-# Greg — Design Spec
+# Ophis — Design Spec
 
-> **Codename:** Greg (renameable before public launch)
+> **Codename:** Ophis (renameable before public launch)
 > **Date:** 2026-05-02
 > **Owner:** Clement (san-npm), CTO
 > **Source:** `~/Desktop/cowswap_fork_dev_brief.md` + brainstorming session 2026-05-02
@@ -9,7 +9,7 @@
 
 ## 1. Summary
 
-Greg is a **Stage-2 fork of CoW Protocol** targeting **DeFi power-user retail on Gnosis Chain**. We fork `cowprotocol/cowswap` (frontend) and `cowprotocol/services` (Rust orderbook + auction driver), self-host on Aleph Cloud + Vercel + Supabase, and ride CoW's existing Gnosis solver network for execution.
+Ophis is a **Stage-2 fork of CoW Protocol** targeting **DeFi power-user retail on Gnosis Chain**. We fork `cowprotocol/cowswap` (frontend) and `cowprotocol/services` (Rust orderbook + auction driver), self-host on Aleph Cloud + Vercel + Supabase, and ride CoW's existing Gnosis solver network for execution.
 
 We do **not** fork settlement contracts, do **not** run our own solver, and do **not** add custom Solidity in Phase 1 — which means no audit, no governance overhead, and no contract-level liability while we validate.
 
@@ -70,12 +70,12 @@ The retail-first sequence is deliberate: DAOs trust traction, not pitches. Phase
 | GPv2Settlement (CoW contracts) | Use as-is | — | Avoids audit cost |
 | CoW Gnosis solver network | Ride existing | — | We don't solve in Phase 1 |
 
-### Repo layout (`san-npm/greg`, private, GPL-3.0, pnpm monorepo)
+### Repo layout (`ophis-fi/ophis`, private, GPL-3.0, pnpm monorepo)
 
 ```
 greg/
 ├── apps/
-│   ├── frontend/          # forked cowswap, Greg UX, PWA
+│   ├── frontend/          # forked cowswap, Ophis UX, PWA
 │   └── backend/           # forked cowprotocol/services (Rust)
 ├── packages/
 │   ├── sdk/               # @greg/sdk — TS wrapper around cow-sdk
@@ -96,22 +96,22 @@ greg/
 
 ```
 User wallet
-  → Greg frontend (Vercel)
+  → Ophis frontend (Vercel)
   → user signs EIP-712 intent
-  → Greg orderbook API (Aleph, Rust)
+  → Ophis orderbook API (Aleph, Rust)
   → broadcast batch to CoW's Gnosis solver network
   → winning solution settles via GPv2Settlement on Gnosis
   → user receives tokens
-  → Greg partner fee deducted from surplus → Greg treasury wallet
+  → Ophis partner fee deducted from surplus → Ophis treasury wallet
 ```
 
 ### Data flow — composable order (Phase 2+, DCA example)
 
 ```
-User → Greg DCA builder UI
+User → Ophis DCA builder UI
      → user signs Safe transaction
      → ComposableCoW.create(conditionalOrder)
-     → on each interval, Greg orderbook surfaces the matured leaf to solvers
+     → on each interval, Ophis orderbook surfaces the matured leaf to solvers
      → settlement via GPv2Settlement
      → next leaf waits its trigger
 ```
@@ -135,26 +135,26 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 | Feature | Built on | Notes |
 |---|---|---|
 | Composable-order builder UI | `composable-cow` contracts | DCA, TWAP, conditional triggers — visual flow, not raw bytecode |
-| Safe-app integration | Safe React SDK + manifest | Install Greg as a Safe app, sign treasury swaps from multisig |
+| Safe-app integration | Safe React SDK + manifest | Install Ophis as a Safe app, sign treasury swaps from multisig |
 | MEV-proof receipts | CoW auction transparency API | Exportable PDF/JSON of solver competition per settlement |
-| Power-user analytics | Greg orderbook data + Dune | Solver win-rate per pair, surplus saved vs Uniswap reference, slippage histograms |
+| Power-user analytics | Ophis orderbook data + Dune | Solver win-rate per pair, surplus saved vs Uniswap reference, slippage histograms |
 | PWA | manifest.json + service worker | Installable, offline cache for non-trade screens |
 
 ## 7. Phased Roadmap
 
 ### Phase 0 — Foundation (weeks 1–3)
 - Monorepo scaffolded (pnpm + turbo), GPL-3.0, `agents/`, CI bones.
-- Fork `cowprotocol/cowswap` → `apps/frontend`, rebrand to Greg minimal, deploy to Vercel.
+- Fork `cowprotocol/cowswap` → `apps/frontend`, rebrand to Ophis minimal, deploy to Vercel.
 - Fork `cowprotocol/services` → `apps/backend`, build locally.
 - Frontend → CoW's official Gnosis API (no self-hosted backend yet).
-- **Phase gate:** real swap completes on Gnosis Chiado testnet via Greg frontend hitting CoW's APIs.
+- **Phase gate:** real swap completes on Gnosis Chiado testnet via Ophis frontend hitting CoW's APIs.
 
 ### Phase 1 — Self-hosted backend (weeks 3–8)
-- Greg orderbook API + auction driver running on Aleph (forked services).
+- Ophis orderbook API + auction driver running on Aleph (forked services).
 - Postgres on Supabase, RPC fallback stack live, Grafana monitoring.
-- Frontend repointed at Greg's orderbook.
+- Frontend repointed at Ophis's orderbook.
 - Settlements still ride CoW's existing Gnosis solver network.
-- **Phase gate:** end-to-end Gnosis mainnet swap via fully self-hosted Greg stack.
+- **Phase gate:** end-to-end Gnosis mainnet swap via fully self-hosted Ophis stack.
 
 ### Phase 2 — E features / retail launch (weeks 8–16)
 - Composable-order builder (DCA + TWAP) over `composable-cow`.
@@ -169,7 +169,7 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 - Treasury dashboard variant (multi-position, multi-sig batched).
 - Per-account fee tiers.
 - Outreach to one credible DAO client.
-- **Phase gate:** one DAO actively executing through Greg.
+- **Phase gate:** one DAO actively executing through Ophis.
 
 ### Phase 4 — B2B API + multi-chain (weeks 24+)
 - Public REST/SDK API, key management, rate limits, billing.
@@ -182,7 +182,7 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 | File | Role | Tools | Skills loaded | Forbidden |
 |---|---|---|---|---|
 | `pm.md` | Roadmap, GitHub issues, status reports, status sweeps. No code. | Read, Grep, Glob, Bash (read-only), TaskCreate, WebFetch | `the writing-plans methodology`, `the executing-plans methodology` | Edit, Write, destructive Bash |
-| `frontend.md` | React/TS/Next.js, cowswap fork patches, Greg UX, Safe app, Vercel deploy. | Read, Edit, Write, Bash, Grep, Glob | `vercel:*`, `frontend-design`, `web-design-guidelines`, `ethskills`,  | Touching `apps/backend/` |
+| `frontend.md` | React/TS/Next.js, cowswap fork patches, Ophis UX, Safe app, Vercel deploy. | Read, Edit, Write, Bash, Grep, Glob | `vercel:*`, `frontend-design`, `web-design-guidelines`, `ethskills`,  | Touching `apps/backend/` |
 | `backend.md` | Rust, cowprotocol/services fork, Postgres schema, Aleph deploy. | Read, Edit, Write, Bash, Grep, Glob | `ethskills`, `building-secure-contracts:*`, `testing-handbook-skills:*`, `dimensional-analysis:*` | Touching `apps/frontend/` |
 | `cto.md` | Documentation only — describes the operating mode for the main session (Clement + operator main). | — | All available | — |
 
@@ -213,8 +213,8 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 
 | Phase | Metric | Target |
 |---|---|---|
-| 0 | First testnet swap via Greg frontend | week 3 |
-| 1 | First mainnet swap via fully self-hosted Greg | week 8 |
+| 0 | First testnet swap via Ophis frontend | week 3 |
+| 1 | First mainnet swap via fully self-hosted Ophis | week 8 |
 | 2 | Active wallets (30d) | 100 |
 | 2 | Cumulative volume | $1M |
 | 3 | DAO clients executing | 1 |
@@ -222,8 +222,8 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 
 ## 12. Open Questions (to resolve before / during implementation planning)
 
-- Final project name (Greg is a codename; brand work happens before Phase 2 public launch).
-- Greg treasury wallet address (where partner fees route — multisig from day 1).
+- Final project name (Ophis is a codename; brand work happens before Phase 2 public launch).
+- Ophis treasury wallet address (where partner fees route — multisig from day 1).
 - Final domain (default candidates: `greg.xyz`, `greg.fi`, `usegreg.app`, or one of the openletz domains).
 - Partner-fee bp (default: 5bps, configurable).
 - Aleph region(s) for primary + failover.

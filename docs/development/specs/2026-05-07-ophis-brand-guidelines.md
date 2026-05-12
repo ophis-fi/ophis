@@ -1,38 +1,38 @@
-# Greg — Brand Guidelines
+# Ophis — Brand Guidelines
 
 > **Date:** 2026-05-07
 > **Owner:** Clement (san-npm)
 > **Implements:** `apps/frontend/apps/cowswap-frontend/public/greg-*.svg`,
 > `apps/frontend/apps/cowswap-frontend/src/greg/tokens.ts`,
 > `apps/frontend/apps/cowswap-frontend/src/greg/styles.css`
-> **Supersedes (in part):** `2026-05-06-greg-brand-foundations.md` §7 mascot decision
+> **Supersedes (in part):** `2026-05-06-ophis-brand-foundations.md` §7 mascot decision
 
 ---
 
 ## 1. Brand essence
 
-Greg is an **intent-based DEX aggregator**. Users express what they want; solvers compete to deliver it. The trade closes the loop: every sell finds its buyer in the same batch, MEV-protected by construction.
+Ophis is an **intent-based DEX aggregator**. Users express what they want; solvers compete to deliver it. The trade closes the loop: every sell finds its buyer in the same batch, MEV-protected by construction.
 
 The brand expresses three things at once:
 
 | Quality | How it shows up |
 |---|---|
 | **Cyclical** — settlement is a closed loop | The Ophie mark (ouroboros) |
-| **Warm** — Greg returns surplus to humans, not extracts it | The sunset palette (coral → magenta) |
+| **Warm** — Ophis returns surplus to humans, not extracts it | The sunset palette (coral → magenta) |
 | **Confident, dry, slightly literary** | Fraunces display + terse copy |
 
-Greg is **not** Web3-zany, not crypto-bro, not aggressive. The voice is closer to a senior trader who happens to like serifs.
+Ophis is **not** Web3-zany, not crypto-bro, not aggressive. The voice is closer to a senior trader who happens to like serifs.
 
 ---
 
 ## 2. Logo — "Ophie"
 
-The Greg mark is **an ouroboros** — a serpent eating its own tail — encircled by a beaded ring. We call it Ophie (from Greek *ophis*, serpent).
+The Ophis mark is **an ouroboros** — a serpent eating its own tail — encircled by a beaded ring. We call it Ophie (from Greek *ophis*, serpent).
 
 ### Why the ouroboros
 
 - **Closed loop**: a batch settlement matches sells against buys, returning the system to balance every round.
-- **Beaded ring**: the rhythm of orders, blocks, slots — Greg's chronology made visible.
+- **Beaded ring**: the rhythm of orders, blocks, slots — Ophis's chronology made visible.
 - **Visible eye**: the protocol watches for surplus and returns it to the user.
 - **Single line, symmetrical**: solver competition is symmetric — no arbitrage privilege.
 
@@ -47,8 +47,8 @@ All variants share the same path data, sourced from `ophies-logo.svg`. Each is a
 | `greg-icon-mono-dark.svg` | `#131214` | Print, low-fidelity contexts (favicons that must be solid black, sticker exports) |
 | `greg-icon-sunset.svg` | sunset gradient | Hero surfaces only — landing-page splash, MEV-proof receipt artwork, Ophie-as-illustration |
 | `greg-mark-app-icon.svg` | composite (coral tile + cream Ophie) | PWA maskable, Apple touch icon. The holes (eye, beads) show coral through the cream Ophie — this beadwork effect is intentional |
-| `greg-wordmark.svg` | coral, Fraunces 700 | Wordmark only, when "Greg" appears alone (header, footer line) |
-| `greg-lockup.svg` | composite | Ophie + Greg horizontal — the canonical lockup |
+| `greg-wordmark.svg` | coral, Fraunces 700 | Wordmark only, when "Ophis" appears alone (header, footer line) |
+| `greg-lockup.svg` | composite | Ophie + Ophis horizontal — the canonical lockup |
 | `og-image.png` | composite | OG/Twitter card 1200×630 — cream Ophie on sunset radial + Fraunces wordmark + Plus Jakarta tagline + JetBrains Mono domain |
 
 ### Clear space
@@ -70,7 +70,7 @@ Around any standalone Ophie or lockup, leave at least **0.25× the icon's height
 2. **Don't** strip the eye. The eye is half the personality.
 3. **Don't** strip the beads. Without them the ring reads as a generic circle and we lose the rhythm.
 4. **Don't** apply the sunset gradient to UI affordances (buttons, links). Gradient = hero only. Solid coral = interactive.
-5. **Don't** place the cream variant on a non-Greg-coral background — the holes/beads will show whatever's behind, which gets messy on patterned surfaces.
+5. **Don't** place the cream variant on a non-Ophis-coral background — the holes/beads will show whatever's behind, which gets messy on patterned surfaces.
 6. **Don't** add stroke. The mark is fill-only, single-path.
 
 ---
@@ -123,7 +123,7 @@ Use solid coral for buttons, links, focus rings, active tabs, anything clickable
 
 ### Neutrals
 
-Inherit from CoW Swap's `neutral` ramp (CoW values, not Greg-overridden). Scale runs `neutral0` (black) → `neutral100` (white) — note inverted from Greg's own `neutral/10..100` scale in `tokens.ts`. UI components should consume CoW neutrals via `--cow-color-neutral-*`; new Greg-specific components consume `--greg-neutral-*` (light-to-dark).
+Inherit from CoW Swap's `neutral` ramp (CoW values, not Ophis-overridden). Scale runs `neutral0` (black) → `neutral100` (white) — note inverted from Ophis's own `neutral/10..100` scale in `tokens.ts`. UI components should consume CoW neutrals via `--cow-color-neutral-*`; new Ophis-specific components consume `--greg-neutral-*` (light-to-dark).
 
 ---
 
@@ -133,7 +133,7 @@ Three families, all SIL Open Font License (free, commercial OK, no attribution).
 
 ### Display — Fraunces
 
-Variable serif with an `opsz` (optical size) and a `SOFT` axis. Greg uses `opsz: 144` and `SOFT: 50` — large display optical size with the SOFT axis dialed up gives Fraunces its warm, slightly humanist character. Pairs with the sunset palette by *temperature* — both lean warm.
+Variable serif with an `opsz` (optical size) and a `SOFT` axis. Ophis uses `opsz: 144` and `SOFT: 50` — large display optical size with the SOFT axis dialed up gives Fraunces its warm, slightly humanist character. Pairs with the sunset palette by *temperature* — both lean warm.
 
 Used for: Display 1, Display 2, Heading 1.
 
@@ -190,9 +190,9 @@ Line height: **120% display & heading**, **150% body**.
 
 ### Typographic don'ts
 
-- No all-caps display headings unless intentionally announcing. Mixed-case "Greg" reads warmer.
+- No all-caps display headings unless intentionally announcing. Mixed-case "Ophis" reads warmer.
 - No italic in body copy at default weight (Fraunces italic is *fine* in display).
-- No font-weight 900 — Fraunces 700 is already the heaviest weight Greg ships.
+- No font-weight 900 — Fraunces 700 is already the heaviest weight Ophis ships.
 
 ---
 
@@ -200,14 +200,14 @@ Line height: **120% display & heading**, **150% body**.
 
 | Trait | Example | Counter-example |
 |---|---|---|
-| **Direct** | "I just got an extra 0.42 ETH on Greg." | "Hey, I just earned an extra 0.42 ETH on @CoWSwap! 🐮💸" |
+| **Direct** | "I just got an extra 0.42 ETH on Ophis." | "Hey, I just earned an extra 0.42 ETH on @CoWSwap! 🐮💸" |
 | **Slightly literary** | "Settlement closes the loop." | "Lightning fast crypto swaps powered by AI" |
-| **Quietly confident** | "Greg returns surplus to you when solvers find a better price than quoted." | "Get the absolute BEST price on every swap, guaranteed!!!" |
+| **Quietly confident** | "Ophis returns surplus to you when solvers find a better price than quoted." | "Get the absolute BEST price on every swap, guaranteed!!!" |
 | **No emoji on UI surfaces** | Surplus reveal: "+ $3.42 over quote" | "Surplus! 🐮💸✨" |
 
 We are not playful for the sake of being playful. The mark already does that work. Copy stays grown-up.
 
-**Forbidden**: 🐮, "moo", "moooooo", "smoooooth", "MOO" — all CoW-lore. None of these belong on a Greg surface.
+**Forbidden**: 🐮, "moo", "moooooo", "smoooooth", "MOO" — all CoW-lore. None of these belong on a Ophis surface.
 
 **Encouraged**: short Latin-rooted words, em-dashes, plain numbers, no exclamation marks except in micro-celebrations.
 
@@ -239,11 +239,11 @@ Do not use beads as bullet points (too noisy at small sizes).
 
 ### Photography
 
-Greg is currently illustration-only. If photography is added later, criteria:
+Ophis is currently illustration-only. If photography is added later, criteria:
 
 - Warm, natural light — no fluorescent / blue-cast LED
 - Texture-rich — wood, paper, fabric — never glossy plastic
-- No people unless explicitly Greg team / story-driven
+- No people unless explicitly Ophis team / story-driven
 
 ---
 
@@ -274,15 +274,15 @@ Rules of thumb:
 ## 8. License & assets
 
 - **Fraunces, Plus Jakarta Sans, JetBrains Mono**: SIL Open Font License (OFL 1.1). Free for personal + commercial. No attribution required, but keep license files alongside if self-hosting the .woff2.
-- **Ophie mark**: original art commissioned for Greg (Clement, 2026-05-07). Greg-owned IP. Don't redistribute as a generic ouroboros template.
+- **Ophie mark**: original art commissioned for Ophis (Clement, 2026-05-07). Ophis-owned IP. Don't redistribute as a generic ouroboros template.
 - **Sunset gradient**: derived from Nucleus UI Lite gradient studies (`Auto Layout-2.svg`); the *concept* is generic, the specific stops are ours.
-- **Tokens & token system**: scale, naming, ramp shape adapted from Nucleus UI Lite (Lite tier, free for commercial use); token *values* are Greg-specific.
+- **Tokens & token system**: scale, naming, ramp shape adapted from Nucleus UI Lite (Lite tier, free for commercial use); token *values* are Ophis-specific.
 
 ---
 
 ## 9. Open questions / next iterations
 
-- **Animated favicon** — beads pulsing around the ring as a quote loads. Requires the existing `common/favicon/frames.ts` infrastructure to be repointed at Greg frames. Not blocking launch.
+- **Animated favicon** — beads pulsing around the ring as a quote loads. Requires the existing `common/favicon/frames.ts` infrastructure to be repointed at Ophis frames. Not blocking launch.
 - **Extended Ophie illustrations** — Ophie coiled differently for blog headers, illustrations of edge cases (Ophie sleeping = order pending, Ophie fed = order filled, etc.). Out of scope until launch is stable.
 - **Print collateral** — business cards, swag — defer until mainnet.
 - **Brand video / motion** — the beads rotating around the ring is the obvious motion lockup. Save for a launch teaser.
