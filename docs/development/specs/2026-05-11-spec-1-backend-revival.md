@@ -139,7 +139,7 @@ Per chain (× 2 chains: optimism-sepolia, megaeth-testnet):
 - Ophis's testnet `GPv2Settlement` at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (Optimism Sepolia + MegaETH testnet — bytecode verified)
 - Ophis's `GPv2VaultRelayer` at `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` (CREATE2-deterministic same address)
 - Ophis's Uniswap V2 fork + seeded WETH/GTUSD pools on each testnet (factory addresses captured in each `infra/<chain>/.env.example`)
-- Driver-submitter EOA `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (key in macOS Keychain `greg-driver-submitter`), already on Ophis's `AllowListAuthentication` allowlist on each chain
+- Driver-submitter EOA `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (key in macOS Keychain `ophis-driver-submitter`), already on Ophis's `AllowListAuthentication` allowlist on each chain
 
 ## Revival sequence
 

@@ -13,7 +13,7 @@
 2. **Uniswap V3 subgraph reliability:** Use `https://api.thegraph.com/subgraphs/name/ianlapham/optimism-post-regenesis` initially; self-host on the same VM as a fallback if it goes down.
 3. **L1 follow-RPC for op-node:** Round-robin `https://eth.llamarpc.com`, `https://cloudflare-eth.com`, `https://ethereum.publicnode.com`. op-node tolerates failures and retries.
 4. **op-geth snapshot source:** Optimism's official snapshot at `https://snapshots.optimism.io/mainnet-bedrock-latest.tar.zstd` (current 2026-05 link). Aim for the "Archive" if disk allows, else "Full". Confirm size before download.
-5. **Test wallet provisioning:** New Keychain `greg-optimism-test`. Fund 0.01 OP ETH + 0.001 WETH from `greg-optimism-deployer` post-deploy.
+5. **Test wallet provisioning:** New Keychain `ophis-optimism-test`. Fund 0.01 OP ETH + 0.001 WETH from `ophis-optimism-deployer` post-deploy.
 6. **Network topology in Branch A:** If single-VM hosts everything, no inter-VM networking needed. If split, **Tailscale tailnet** between the two Aleph VMs (Cloudflare Tunnel internal-only is overkill; Aleph private mesh is undocumented).
 
 ---
@@ -181,13 +181,13 @@ cast wallet new
 
 Save private key:
 ```bash
-security add-generic-password -U -a "$USER" -s greg-optimism-deployer \
+security add-generic-password -U -a "$USER" -s ophis-optimism-deployer \
   -w "<PRIVATE_KEY>"
 ```
 
 Verify:
 ```bash
-security find-generic-password -l greg-optimism-deployer -w | cast wallet address --private-key -
+security find-generic-password -l ophis-optimism-deployer -w | cast wallet address --private-key -
 ```
 
 - [ ] **Step 2: Bridge ~0.05 OP ETH to the deployer address**
@@ -202,7 +202,7 @@ Cheapest path on a low-cost bridge — Stargate / Across / native bridge. Operat
 
 ```bash
 RPC=http://<vm-greg-op-mainnet>:8545  # our op-geth, not public
-DEPLOYER=$(security find-generic-password -l greg-optimism-deployer -w | cast wallet address --private-key -)
+DEPLOYER=$(security find-generic-password -l ophis-optimism-deployer -w | cast wallet address --private-key -)
 cast balance --rpc-url $RPC $DEPLOYER --ether
 cast balance --rpc-url $RPC 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F --ether
 ```
@@ -326,7 +326,7 @@ Single-level subdomain `optimism.ophis.fi` (don't try `api.optimism.ophis.fi` pe
 
 - [ ] **Step 1: Generate test wallet**
 
-Same pattern as Spec 3 plan Task 7 Step 1, but for `greg-optimism-test`.
+Same pattern as Spec 3 plan Task 7 Step 1, but for `ophis-optimism-test`.
 
 - [ ] **Step 2: Mirror Spec 1's optimism-sepolia smoke + Spec 3's mainnet additions**
 
@@ -342,7 +342,7 @@ Key params:
 ```bash
 cd infra/optimism-mainnet/scripts && pnpm install --ignore-workspace
 OPTIMISM_MAINNET_USDC=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 \
-  OPTIMISM_MAINNET_TEST_WALLET_PK=$(security find-generic-password -l greg-optimism-test -w) \
+  OPTIMISM_MAINNET_TEST_WALLET_PK=$(security find-generic-password -l ophis-optimism-test -w) \
   pnpm smoke
 ```
 

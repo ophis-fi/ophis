@@ -56,7 +56,7 @@ When Spec 2/3 promote to mainnet (or a new chain), the same pattern repeats:
 
 ## Where the secrets live
 
-- **Driver-submitter EOA private key:** `/srv/ophis/.env.shared` on the VM (mode 600), key `DRIVER_SUBMITTER_PRIVATE_KEY`. Sourced from macOS Keychain entry `greg-driver-submitter` at deploy time. Same key is referenced by both chain stacks.
+- **Driver-submitter EOA private key:** `/srv/ophis/.env.shared` on the VM (mode 600), key `DRIVER_SUBMITTER_PRIVATE_KEY`. Sourced from macOS Keychain entry `ophis-driver-submitter` at deploy time. Same key is referenced by both chain stacks.
 - **Per-chain Postgres credentials and RPC URLs:** `/srv/ophis/infra/<chain>/.env`. These are operator-managed, gitignored.
 - **Cloudflare API token:** macOS Keychain entry `cloudflare-api-token` (also a repo-level GitHub secret `CLOUDFLARE_API_TOKEN` for CI). Has DNS:Edit on `ophis.fi` zone. Used for CNAME creation; **not** for tunnel-creation.
 - **Cloudflare tunnel cert.pem:** `/root/.cloudflared/cert.pem` on the VM. Created once during the rebate-indexer revival 2026-05-11; reused by all subsequent `cloudflared tunnel create` invocations on the same VM. Lacks DNS:Edit permission, which is why CNAMEs are created via the API token instead.
@@ -67,13 +67,13 @@ When Spec 2/3 promote to mainnet (or a new chain), the same pattern repeats:
 # Optimism Sepolia E2E
 cd /Users/scep/greg/infra/optimism/scripts
 export OPTIMISM_SEPOLIA_GTUSD=0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1
-export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l greg-chiado-test -w)
+export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l ophis-chiado-test -w)
 pnpm smoke
 
 # MegaETH testnet partial (should print "✓ simulated, sequencer-bug stop expected")
 cd /Users/scep/greg/infra/megaeth/scripts
 export MEGAETH_TESTNET_GTUSD=<from infra/megaeth/.env on the VM>
-export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l greg-megaeth-deployer -w)
+export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l ophis-megaeth-deployer -w)
 pnpm smoke
 ```
 
@@ -81,7 +81,7 @@ The Optimism Sepolia smoke test passes when the orderbook reports our order in a
 
 **Pre-conditions:**
 
-1. `greg-chiado-test` wallet (`0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB`) must have ≥ 0.001 ETH (gas) AND ≥ 0.001 WETH on Optimism Sepolia. Fund via [Optimism Sepolia faucet](https://docs.optimism.io/builders/tools/build/faucets); wrap to WETH at the predeploy `0x4200000000000000000000000000000000000006`.
+1. `ophis-chiado-test` wallet (`0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB`) must have ≥ 0.001 ETH (gas) AND ≥ 0.001 WETH on Optimism Sepolia. Fund via [Optimism Sepolia faucet](https://docs.optimism.io/builders/tools/build/faucets); wrap to WETH at the predeploy `0x4200000000000000000000000000000000000006`.
 2. The chain stack RPC (`/srv/ophis/infra/optimism/.env` → `OP_SEPOLIA_RPC`) must have headroom for the CoW driver's continuous loops. Empirically the driver idles at ~5-10 RPS just on block-stream/token-fetcher. **Free tiers don't cut it.** Verified working: Alchemy Growth ($49/mo, 660 CUPS) or self-hosted op-node. The on-chain settlement broadcast specifically needs RPC headroom because the driver re-simulates immediately before `eth_sendRawTransaction`; a single 429 in that window causes the driver to abandon the auction.
 
 ### Why the smoke test doesn't assert on the settlement tx
@@ -100,12 +100,12 @@ Order uid `0xe1f34360ad9eeec2febb38df225ad39392f1284e61fc60023262506089df7205412
 | RPC | https://sepolia.optimism.io | https://carrot.megaeth.com/rpc |
 | Explorer | https://sepolia-optimism.etherscan.io | https://megaexplorer.xyz |
 | WETH predeploy | `0x4200000000000000000000000000000000000006` | (chain-specific) |
-| Greg Settlement | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` |
-| Greg VaultRelayer | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` |
-| Greg V2 factory | `0x29fcdbbdffd12fa7724b863991355b82ba8380e2` | (see VM `.env`) |
+| Ophis Settlement | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` |
+| Ophis VaultRelayer | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` |
+| Ophis V2 factory | `0x29fcdbbdffd12fa7724b863991355b82ba8380e2` | (see VM `.env`) |
 | GTUSD test token | `0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1` | (see VM `.env`) |
 | Driver-submitter EOA | `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` | same |
-| Test wallet (greg-chiado-test) | `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` | n/a |
+| Test wallet (ophis-chiado-test) | `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` | n/a |
 
 ## External AMM integrations (for self-hosted backend solver config)
 
@@ -140,7 +140,7 @@ PR #21 commented out the `schedule:` trigger on `.github/workflows/rebate-indexe
    ```
    Save the printed private key into macOS Keychain:
    ```bash
-   security add-generic-password -U -a "$USER" -s greg-rebate-e2e-burner \
+   security add-generic-password -U -a "$USER" -s ophis-rebate-e2e-burner \
      -w "<PRIVATE_KEY>"
    ```
 

@@ -12,7 +12,7 @@
 1. **Liquidity source:** **Kumbaya UniV3** (not Ophis V2). No pool seeding needed. Custom init-code-hash `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7`. Factory `0x68b34591f662508076927803c567Cc8006988a09`.
 2. **Test pair:** At execution time, query Kumbaya's deepest WETH-quoted pool (likely WETH/USDC) and use that for the smoke test buy token.
 3. **Deployer wallet bridge route:** Operator-side; not part of code. Document only.
-4. **Test wallet:** New Keychain entry `greg-megaeth-test`. Fund from deployer with ~0.005 MEGA.
+4. **Test wallet:** New Keychain entry `ophis-megaeth-test`. Fund from deployer with ~0.005 MEGA.
 
 ---
 
@@ -346,7 +346,7 @@ Expected: 200, version JSON.
 # Generate a fresh wallet
 cast wallet new
 # Save to keychain
-security add-generic-password -U -a "$USER" -s greg-megaeth-test \
+security add-generic-password -U -a "$USER" -s ophis-megaeth-test \
   -w "<PRIVATE_KEY>"
 # Fund: send 0.01 MEGA to the wallet's address from the deployer
 ```
@@ -374,7 +374,7 @@ cd infra/megaeth-mainnet/scripts && pnpm install --ignore-workspace
 ```bash
 cd infra/megaeth-mainnet/scripts
 export MEGAETH_MAINNET_GTUSD=<the bootstrap pool's pair-buy-token; here USDT0 0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb>
-export MEGAETH_MAINNET_TEST_WALLET_PK=$(security find-generic-password -l greg-megaeth-test -w)
+export MEGAETH_MAINNET_TEST_WALLET_PK=$(security find-generic-password -l ophis-megaeth-test -w)
 pnpm smoke
 ```
 
