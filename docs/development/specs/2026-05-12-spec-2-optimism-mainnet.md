@@ -1,14 +1,14 @@
 # Spec 2 — Optimism mainnet backend
 
-> Sequel to Spec 1 + parallel to Spec 3. Spec 2 deploys Greg's first **production-grade** mainnet backend: Optimism mainnet (chain ID 10), routed through real Uniswap V3 liquidity.
+> Sequel to Spec 1 + parallel to Spec 3. Spec 2 deploys Ophis's first **production-grade** mainnet backend: Optimism mainnet (chain ID 10), routed through real Uniswap V3 liquidity.
 >
 > **BLOCKED by Spec 5** (Pre-mainnet security hardening). No mainnet contract deploys until Spec 5 ships hardware-wallet flow + Safe ownership of AllowListAuthentication.
 
 ## Summary
 
-1. Deploy the canonical CoW contracts on Optimism mainnet using Greg's deployer + salt (same CREATE2-deterministic address as testnet: `0x0864b65F…Bfce`).
+1. Deploy the canonical CoW contracts on Optimism mainnet using Ophis's deployer + salt (same CREATE2-deterministic address as testnet: `0x0864b65F…Bfce`).
 2. Deploy CoW supporting contracts (`Balances`, `Signatures`, `HooksTrampoline`).
-3. **Do NOT deploy a Greg V2 factory** — configure the CoW baseline solver to route liquidity through **Uniswap V3** on OP mainnet (canonical 0.05% WETH/USDC.e pool has deep liquidity). Velodrome V2 — OP's dominant DEX (~99% of OP V2-style TVL) — is *not* a candidate for this spec: our forked CoW solver supports `uniswap-v2`, `swapr`, `uniswap-v3`, `balancer-v2`, `0x` — but not Velodrome's Solidly-style pools. Adding that adapter is a ~1-2 day Rust task scoped to Spec 5.
+3. **Do NOT deploy a Ophis V2 factory** — configure the CoW baseline solver to route liquidity through **Uniswap V3** on OP mainnet (canonical 0.05% WETH/USDC.e pool has deep liquidity). Velodrome V2 — OP's dominant DEX (~99% of OP V2-style TVL) — is *not* a candidate for this spec: our forked CoW solver supports `uniswap-v2`, `swapr`, `uniswap-v3`, `balancer-v2`, `0x` — but not Velodrome's Solidly-style pools. Adding that adapter is a ~1-2 day Rust task scoped to Spec 5.
 4. Stand up the CoW services stack as a co-tenant on vm4 (or a new dedicated host, see Architecture Branch A/B/C below).
 5. Wire `optimism.ophis.fi` via a new Cloudflare tunnel.
 6. Smoke-test end-to-end with an actual WETH→USDC settlement against real Velodrome liquidity.
@@ -16,9 +16,9 @@
 ## Goals & non-goals
 
 ### Goals
-- Settle a real trade on Optimism mainnet through Greg's self-hosted backend with the partner-fee shape (CIP-75) live.
+- Settle a real trade on Optimism mainnet through Ophis's self-hosted backend with the partner-fee shape (CIP-75) live.
 - Resolve the RPC-hosting question raised by Spec 1 (free public RPCs can't handle CoW driver pressure).
-- Validate that the CoW stack routes correctly through external (Velodrome V2) liquidity, not just Greg-deployed test pools.
+- Validate that the CoW stack routes correctly through external (Velodrome V2) liquidity, not just Ophis-deployed test pools.
 - Document the operational delta between testnet (Spec 1) and mainnet — gas, RPC, real liquidity, alerting.
 
 ### Non-goals
@@ -26,14 +26,14 @@
 - Frontend wiring — Spec 4.
 - Integration with Optimism's other DEXs (Velodrome V3 / Aerodrome / Curve) for richer liquidity — bootstrap with Velodrome V2 only; expand in Spec 5.
 - Migration of existing testnet/Spec 1 stacks off vm4 — separate cleanup spec.
-- CoW Protocol coexistence concerns — Optimism is already on CoW's official orderbook. Greg's orderbook competes; both run in parallel without sharing state.
+- CoW Protocol coexistence concerns — Optimism is already on CoW's official orderbook. Ophis's orderbook competes; both run in parallel without sharing state.
 
 ## Why Optimism mainnet matters separately from MegaETH
 
 | | MegaETH mainnet (Spec 3) | Optimism mainnet (Spec 2) |
 |---|---|---|
 | CoW Protocol native support | None — unserved chain | Yes, full coverage |
-| Greg's positioning | First-mover on intent-based DEX agg | Differentiated alternative (better UX, partner-fee structure) |
+| Ophis's positioning | First-mover on intent-based DEX agg | Differentiated alternative (better UX, partner-fee structure) |
 | Real on-chain liquidity | Sparse, must bootstrap with our own pool | Deep, integrate Velodrome V2 |
 | RPC | Public RPC handles our workload | All free RPCs fail under CoW driver pressure |
 | Risk profile | Mostly contract-deploy risk | RPC operational risk + competing against incumbent |
@@ -140,7 +140,7 @@ The implementation plan must close on one branch before execution.
    - CoW core via hardhat-deploy with `hardhat-optimism.config.ts`
    - CoW helpers via `cast send --create`
    - Allowlists driver-submitter on the AuthList
-   - **No** Greg V2 deploy — Velodrome V2 is the liquidity source
+   - **No** Ophis V2 deploy — Velodrome V2 is the liquidity source
    - Appends `GREG_*_OP_MAINNET` keys to `infra/optimism/.env`
 4. **Verify Velodrome V2 access** — call `factory()` on the Velodrome V2 router; sanity-check it returns the expected Velodrome factory address.
 

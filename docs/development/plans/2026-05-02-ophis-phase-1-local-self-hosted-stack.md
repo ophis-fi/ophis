@@ -1,19 +1,19 @@
-# Greg Phase 1 — Local Self-Hosted Stack Implementation Plan
+# Ophis Phase 1 — Local Self-Hosted Stack Implementation Plan
 
 
-**Goal:** Stand up Greg's full self-hosted backend (orderbook + autopilot + driver + baseline solver + Postgres) on Clement's Mac mini, end-to-end-test it against a forked Gnosis mainnet, then point it at *real* Gnosis mainnet RPC and settle one tiny real-money swap (≤ €5).
+**Goal:** Stand up Ophis's full self-hosted backend (orderbook + autopilot + driver + baseline solver + Postgres) on Clement's Mac mini, end-to-end-test it against a forked Gnosis mainnet, then point it at *real* Gnosis mainnet RPC and settle one tiny real-money swap (≤ €5).
 
-**Architecture:** Reuse `cowprotocol/services`'s `playground/docker-compose.fork.yml` as the boot template — it ships a working multi-service compose for the entire CoW stack. Phase 1 specialises it for Greg by: (a) trimming the unneeded UI containers (cowswap, otterscan, sourcify, explorer, grafana, prometheus, tempo), (b) duplicating the compose for a non-forked "real Gnosis mainnet" mode, (c) committing the trimmed configs and a runbook into `infra/local/`. Settlement still rides CoW's audited `GPv2Settlement` contracts — we don't deploy any contracts.
+**Architecture:** Reuse `cowprotocol/services`'s `playground/docker-compose.fork.yml` as the boot template — it ships a working multi-service compose for the entire CoW stack. Phase 1 specialises it for Ophis by: (a) trimming the unneeded UI containers (cowswap, otterscan, sourcify, explorer, grafana, prometheus, tempo), (b) duplicating the compose for a non-forked "real Gnosis mainnet" mode, (c) committing the trimmed configs and a runbook into `infra/local/`. Settlement still rides CoW's audited `GPv2Settlement` contracts — we don't deploy any contracts.
 
 **Tech Stack:** Docker / docker-compose, Postgres 16, Rust (existing services workspace), Anvil (for Stage 1 fork validation), Foundry `cast`, Gnosis mainnet RPC (Alchemy free tier + PublicNode + Ankr fallback), `infra/rpc/fallback.ts` (TS helper for the FE).
 
-**Spec correction (callout):** The spec said "settlements still ride CoW's existing Gnosis solver network" in Phase 1. Engineering reality: CoW's solvers only watch CoW's own orderbook — they will not auto-discover a private Greg orderbook. Once we self-host the orderbook we must also run autopilot + driver + at least one solver. This plan does that with the upstream `baseline` solver. Spec to be amended in Phase 2 paperwork.
+**Spec correction (callout):** The spec said "settlements still ride CoW's existing Gnosis solver network" in Phase 1. Engineering reality: CoW's solvers only watch CoW's own orderbook — they will not auto-discover a private Ophis orderbook. Once we self-host the orderbook we must also run autopilot + driver + at least one solver. This plan does that with the upstream `baseline` solver. Spec to be amended in Phase 2 paperwork.
 
-**Phase gate:** A signed Gnosis-mainnet order from a Greg-funded test wallet, posted to **our** locally-running orderbook on `localhost:8080`, settles via Greg's autopilot + driver + baseline solver, with an on-chain `GPv2Settlement.settle()` tx visible on Gnosis explorer. Validation log committed to `docs/development/phase-1-validation.md`.
+**Phase gate:** A signed Gnosis-mainnet order from a Ophis-funded test wallet, posted to **our** locally-running orderbook on `localhost:8080`, settles via Ophis's autopilot + driver + baseline solver, with an on-chain `GPv2Settlement.settle()` tx visible on Gnosis explorer. Validation log committed to `docs/development/phase-1-validation.md`.
 
-**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md)
+**Spec:** [`docs/development/specs/2026-05-02-ophis-design.md`](../specs/2026-05-02-ophis-design.md)
 
-**Predecessor plan:** [`docs/development/plans/2026-05-02-greg-phase-0-foundation.md`](2026-05-02-greg-phase-0-foundation.md)
+**Predecessor plan:** [`docs/development/plans/2026-05-02-ophis-phase-0-foundation.md`](2026-05-02-ophis-phase-0-foundation.md)
 
 ---
 
@@ -24,9 +24,9 @@
 | `infra/local/.env.example` | Documented environment template (RPC URLs, DB creds, wallet placeholders) |
 | `infra/local/docker-compose.fork.yml` | Stripped-down compose for forked-Gnosis validation (Stage 1) |
 | `infra/local/docker-compose.gnosis.yml` | Compose for real Gnosis mainnet runs (no anvil) |
-| `infra/local/configs/orderbook.toml` | Greg orderbook config, Gnosis-targeted |
-| `infra/local/configs/autopilot.toml` | Greg autopilot config |
-| `infra/local/configs/driver.toml` | Greg driver config (with baseline solver) |
+| `infra/local/configs/orderbook.toml` | Ophis orderbook config, Gnosis-targeted |
+| `infra/local/configs/autopilot.toml` | Ophis autopilot config |
+| `infra/local/configs/driver.toml` | Ophis driver config (with baseline solver) |
 | `infra/local/configs/baseline.toml` | Baseline solver config |
 | `infra/local/README.md` | Operator runbook (boot order, smoke test, teardown) |
 | `infra/rpc/fallback.ts` | `viem` `fallback()` transport: Alchemy → PublicNode → Ankr (Gnosis) |
@@ -52,7 +52,7 @@ This plan has two milestones inside it. **Stage 1** (Tasks 1–6) proves the sta
 | 7 | 2 | Real-Gnosis compose + configs committed |
 | 8 | 2 | RPC fallback (`infra/rpc/fallback.ts`) implemented + tested |
 | 9 | 2 | Test wallet funded with xDAI on Gnosis mainnet (manual, ~€5) |
-| 10 | 2 | Real-Gnosis e2e: signed order via Greg orderbook → settled on Gnosis mainnet |
+| 10 | 2 | Real-Gnosis e2e: signed order via Ophis orderbook → settled on Gnosis mainnet |
 | 11 | 2 | Validation log + tag `v0.1-phase1` |
 
 ---
@@ -89,7 +89,7 @@ cd /Users/scep/greg
 - [ ] **Step 3: Write `infra/local/.env.example`**
 
 ```ini
-# infra/local/.env — Greg Phase 1 local stack environment
+# infra/local/.env — Ophis Phase 1 local stack environment
 # Copy to infra/local/.env and fill in. NEVER commit infra/local/.env.
 # ---------------------------------------------------------------
 # Postgres (matches docker-compose service)
@@ -109,7 +109,7 @@ GNOSIS_RPC_FALLBACK_1=https://rpc.ankr.com/gnosis
 GNOSIS_RPC_FALLBACK_2=https://rpc.gnosischain.com
 ETH_RPC_URL=$GNOSIS_RPC_URL                   # services historically reads ETH_RPC_URL
 
-# Greg test wallet (Phase 0 throwaway). Private key in macOS Keychain entry "greg-chiado-test".
+# Ophis test wallet (Phase 0 throwaway). Private key in macOS Keychain entry "greg-chiado-test".
 TEST_WALLET_ADDRESS=0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB
 
 # Driver submission account (the EOA that submits settlement txs).
@@ -133,9 +133,9 @@ volumes/
 - [ ] **Step 5: Write `infra/local/README.md` skeleton**
 
 ```markdown
-# Greg Local Self-Hosted Stack (Phase 1)
+# Ophis Local Self-Hosted Stack (Phase 1)
 
-This directory contains the operator runbook + configs for running Greg's
+This directory contains the operator runbook + configs for running Ophis's
 backend (orderbook + autopilot + driver + baseline solver + Postgres)
 locally on the Mac mini.
 
@@ -232,7 +232,7 @@ cp apps/backend/playground/configs/baseline.toml    infra/local/configs/baseline
 
 Read `apps/backend/playground/autopilot.toml` (the playground root variant — there are two copies in the upstream tree). Compare to `apps/backend/playground/configs/autopilot.toml`. The configs reference `%DB_WRITE_URL`, `%DB_READ_URL` placeholders that the docker-compose substitutes via env.
 
-For Greg, no edits needed at this stage — we keep the playground configs exactly so Stage-1 boots vanilla. We'll diverge in Task 7.
+For Ophis, no edits needed at this stage — we keep the playground configs exactly so Stage-1 boots vanilla. We'll diverge in Task 7.
 
 - [ ] **Step 3: Write `infra/local/docker-compose.fork.yml`**
 
@@ -245,7 +245,7 @@ Read `apps/backend/playground/docker-compose.fork.yml` first to identify the rel
 
 ```yaml
 # infra/local/docker-compose.fork.yml
-# Greg Stage-1 stack — anvil-forked Gnosis. No UIs, no observability containers.
+# Ophis Stage-1 stack — anvil-forked Gnosis. No UIs, no observability containers.
 # Boot: docker-compose -f infra/local/docker-compose.fork.yml --env-file infra/local/.env up
 
 services:
@@ -822,7 +822,7 @@ git push
 
 **Files:** none modified.
 
-This task is **manual**. The Greg test wallet `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` needs ~5–10 xDAI on Gnosis mainnet (chainId 100). The driver-submitter EOA from Task 7 needs ~0.5 xDAI for gas.
+This task is **manual**. The Ophis test wallet `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` needs ~5–10 xDAI on Gnosis mainnet (chainId 100). The driver-submitter EOA from Task 7 needs ~0.5 xDAI for gas.
 
 - [ ] **Step 1: Confirm balances are zero**
 
@@ -897,11 +897,11 @@ cast send --rpc-url "$RPC" --private-key "$TEST_PK" "$WXDAI" "approve(address,ui
   "$RELAYER" 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 ```
 
-- [ ] **Step 5: Quote, sign, submit (via Greg's local orderbook)**
+- [ ] **Step 5: Quote, sign, submit (via Ophis's local orderbook)**
 
 Identical to Task 6 Step 5 except:
 - `chainId` in EIP-712 domain = `100` (Gnosis mainnet)
-- POST URL is `http://localhost:8080/api/v1/orders` (Greg's local orderbook, NOT `api.cow.fi`)
+- POST URL is `http://localhost:8080/api/v1/orders` (Ophis's local orderbook, NOT `api.cow.fi`)
 - `verifyingContract` = `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (same as Stage 1)
 
 ```bash
@@ -965,7 +965,7 @@ Edit `docs/development/phase-1-validation.md`, add a Stage-2 section with: order
 
 ```bash
 git add docs/development/phase-1-validation.md
-git commit -m "docs(phase-1): stage-2 validation — real Gnosis-mainnet swap settled via Greg orderbook"
+git commit -m "docs(phase-1): stage-2 validation — real Gnosis-mainnet swap settled via Ophis orderbook"
 git push
 ```
 
@@ -989,11 +989,11 @@ Open `infra/local/README.md` and add sections that were placeholders in Task 1:
 - [ ] **Step 2: Open a Phase-2 tracking issue**
 
 ```bash
-gh issue create --repo san-npm/greg \
+gh issue create --repo ophis-fi/ophis \
   --title "Phase 2: cloud deploy + E features" \
   --body "Tracking issue for Phase 2: deploy the Phase-1 stack to Aleph + Supabase + Grafana, repoint frontend at the deployed orderbook URL, add CI jobs for FE and BE, and ship the E features (DCA / TWAP, Safe app, MEV-proof receipts, PWA polish).
 
-Predecessor plan: docs/development/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md
+Predecessor plan: docs/development/plans/2026-05-02-ophis-phase-1-local-self-hosted-stack.md
 Predecessor tag: v0.1-phase1
 "
 ```
@@ -1001,7 +1001,7 @@ Predecessor tag: v0.1-phase1
 - [ ] **Step 3: Tag**
 
 ```bash
-git tag -a v0.1-phase1 -m "Phase 1 local self-hosted stack complete — settled real Gnosis-mainnet swap via Greg orderbook"
+git tag -a v0.1-phase1 -m "Phase 1 local self-hosted stack complete — settled real Gnosis-mainnet swap via Ophis orderbook"
 git push --tags
 ```
 

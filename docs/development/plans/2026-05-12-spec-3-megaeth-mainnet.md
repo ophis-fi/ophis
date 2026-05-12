@@ -2,14 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deploy Greg's first mainnet backend on MegaETH (chain 4326), settling a real on-chain WETH→USDT0 trade through the self-hosted CoW stack.
+**Goal:** Deploy Ophis's first mainnet backend on MegaETH (chain 4326), settling a real on-chain WETH→USDT0 trade through the self-hosted CoW stack.
 
-**Architecture:** Co-tenant on existing vm4. New `infra/megaeth-mainnet/` from a copy of `infra/megaeth/`. Public RPC at `mainnet.megaeth.com/rpc` (verified handles our load). Greg-deployed CoW core only — liquidity routes through **Kumbaya** (MegaETH's dominant DEX, ~$53M TVL, UniV3 fork at factory `0x68b34591f662508076927803c567Cc8006988a09`). New Cloudflare tunnel `ophis-megaeth-mainnet` → `megaeth.ophis.fi`.
+**Architecture:** Co-tenant on existing vm4. New `infra/megaeth-mainnet/` from a copy of `infra/megaeth/`. Public RPC at `mainnet.megaeth.com/rpc` (verified handles our load). Ophis-deployed CoW core only — liquidity routes through **Kumbaya** (MegaETH's dominant DEX, ~$53M TVL, UniV3 fork at factory `0x68b34591f662508076927803c567Cc8006988a09`). New Cloudflare tunnel `ophis-megaeth-mainnet` → `megaeth.ophis.fi`.
 
 **Tech Stack:** Solidity 0.7.6 (CoW contracts) via hardhat-deploy, Rust services from cowprotocol/services vendored at `apps/backend/`, Docker Compose, postgres:16-alpine, Cloudflared, viem + cow-sdk for smoke test.
 
 **Open questions from spec — resolved here:**
-1. **Liquidity source:** **Kumbaya UniV3** (not Greg V2). No pool seeding needed. Custom init-code-hash `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7`. Factory `0x68b34591f662508076927803c567Cc8006988a09`.
+1. **Liquidity source:** **Kumbaya UniV3** (not Ophis V2). No pool seeding needed. Custom init-code-hash `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7`. Factory `0x68b34591f662508076927803c567Cc8006988a09`.
 2. **Test pair:** At execution time, query Kumbaya's deepest WETH-quoted pool (likely WETH/USDC) and use that for the smoke test buy token.
 3. **Deployer wallet bridge route:** Operator-side; not part of code. Document only.
 4. **Test wallet:** New Keychain entry `greg-megaeth-test`. Fund from deployer with ~0.005 MEGA.
@@ -25,7 +25,7 @@ To be created in this plan:
 | `infra/megaeth-mainnet/docker-compose.mainnet.yml` | CoW stack containers, port-remapped to 8104/8105/9003/5436 |
 | `infra/megaeth-mainnet/.env` (gitignored) | Postgres creds, OP_MEGAETH_RPC, mainnet contract addresses |
 | `infra/megaeth-mainnet/configs/autopilot.toml` | mainnet RPC + mainnet contracts |
-| `infra/megaeth-mainnet/configs/driver.toml` | mainnet RPC + driver-submitter PK env-injected + Greg V2 router liquidity source |
+| `infra/megaeth-mainnet/configs/driver.toml` | mainnet RPC + driver-submitter PK env-injected + Ophis V2 router liquidity source |
 | `infra/megaeth-mainnet/configs/orderbook.toml` | mainnet RPC + mainnet contracts |
 | `infra/megaeth-mainnet/configs/baseline.toml` | baseline solver config (copy from testnet) |
 | `infra/megaeth-mainnet/scripts/smoke-test-e2e.ts` | E2E smoke test (mirror of Spec 1 optimism with mainnet addresses + tx-hash assertion) |
@@ -399,8 +399,8 @@ git commit -m "feat(megaeth-mainnet): smoke test + scripts package"
 
 Add a megaeth-mainnet row to the "Useful constants" table; add a "MegaETH mainnet specifics" section noting:
 - Public RPC handles load (no paid sub needed)
-- Bootstrap pool is Greg-deployed V2 WETH/USDT0
-- Settlement contract at `0x0864b65F…Bfce` (CREATE2-deterministic across all Greg chains)
+- Bootstrap pool is Ophis-deployed V2 WETH/USDT0
+- Settlement contract at `0x0864b65F…Bfce` (CREATE2-deterministic across all Ophis chains)
 
 - [ ] **Step 2: Mark Spec 3 SHIPPED**
 

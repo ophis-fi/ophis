@@ -1,17 +1,17 @@
-# Greg Phase 1.5 — Monetised Frontend Implementation Plan
+# Ophis Phase 1.5 — Monetised Frontend Implementation Plan
 
 
-**Goal:** Inject a Greg-controlled partner fee into every order the deployed cowswap fork produces, so each swap routed through `https://greg-29v5viw8p-clementfrmds-projects.vercel.app` (and successor URLs) accrues a 5 bps `appData.metadata.partnerFee` payable to a Greg recipient. Settlement keeps happening through CoW's official orderbook + solver network on whichever of the [10 supported chains](https://docs.cow.fi/cow-protocol/reference/contracts/core) (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink, Gnosis) the user has connected.
+**Goal:** Inject a Ophis-controlled partner fee into every order the deployed cowswap fork produces, so each swap routed through `https://greg-29v5viw8p-clementfrmds-projects.vercel.app` (and successor URLs) accrues a 5 bps `appData.metadata.partnerFee` payable to a Ophis recipient. Settlement keeps happening through CoW's official orderbook + solver network on whichever of the [10 supported chains](https://docs.cow.fi/cow-protocol/reference/contracts/core) (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink, Gnosis) the user has connected.
 
-**Architecture:** The cowswap fork already has full partner-fee plumbing — `injectedWidgetPartnerFeeAtom` → `widgetPartnerFeeAtom` → `volumeFeeAtom` → `AppDataInfoUpdater` → signed order's `appData`. The plumbing only activates when the app runs in widget mode and the integrator passes `partnerFee` config. We ship a small patch that **defaults the atom to Greg's partner-fee config when widget params do not supply one**, so the same plumbing fires on every order our deployment produces. No new infrastructure: the frontend continues to talk directly to `api.cow.fi` for order submission. CoW DAO disburses our share of accrued partner fees weekly in WETH per the [partner-fee mechanism](https://docs.cow.fi/governance/fees/partner-fee) (CoW DAO keeps 25% as service fee, we keep 75% on the Net Partner Fee, paid weekly when accrued ≥ 0.001 WETH).
+**Architecture:** The cowswap fork already has full partner-fee plumbing — `injectedWidgetPartnerFeeAtom` → `widgetPartnerFeeAtom` → `volumeFeeAtom` → `AppDataInfoUpdater` → signed order's `appData`. The plumbing only activates when the app runs in widget mode and the integrator passes `partnerFee` config. We ship a small patch that **defaults the atom to Ophis's partner-fee config when widget params do not supply one**, so the same plumbing fires on every order our deployment produces. No new infrastructure: the frontend continues to talk directly to `api.cow.fi` for order submission. CoW DAO disburses our share of accrued partner fees weekly in WETH per the [partner-fee mechanism](https://docs.cow.fi/governance/fees/partner-fee) (CoW DAO keeps 25% as service fee, we keep 75% on the Net Partner Fee, paid weekly when accrued ≥ 0.001 WETH).
 
 **Tech Stack:** TypeScript, Jotai (cowswap's existing state library), the vendored `apps/frontend/` (cowswap fork pinned at `0174f35e7…`), Vercel for deploy, `@cowprotocol/cow-sdk` already in cowswap's dependency tree, Foundry `cast` for wallet operations, macOS Keychain for key storage.
 
-**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
+**Spec:** [`docs/development/specs/2026-05-02-ophis-design.md`](../specs/2026-05-02-ophis-design.md) + [`docs/development/specs/2026-05-03-ophis-design-amendment.md`](../specs/2026-05-03-ophis-design-amendment.md)
 
-**Predecessor plan:** [`docs/development/plans/2026-05-02-greg-phase-1-local-self-hosted-stack.md`](2026-05-02-greg-phase-1-local-self-hosted-stack.md)
+**Predecessor plan:** [`docs/development/plans/2026-05-02-ophis-phase-1-local-self-hosted-stack.md`](2026-05-02-ophis-phase-1-local-self-hosted-stack.md)
 
-**Phase gate:** A real swap submitted via the deployed Greg.app on Sepolia (or any CoW-supported chain) is recorded in `https://api.cow.fi/<chain>/api/v1/orders/<uid>` with `fullAppData` containing `metadata.partnerFee` set to `{ bps: 5, recipient: <Greg recipient address>, volumeBps: 5 }`. Validation log committed to `docs/development/phase-1-5-validation.md`.
+**Phase gate:** A real swap submitted via the deployed Ophis.app on Sepolia (or any CoW-supported chain) is recorded in `https://api.cow.fi/<chain>/api/v1/orders/<uid>` with `fullAppData` containing `metadata.partnerFee` set to `{ bps: 5, recipient: <Ophis recipient address>, volumeBps: 5 }`. Validation log committed to `docs/development/phase-1-5-validation.md`.
 
 ---
 
@@ -19,11 +19,11 @@
 
 | Path | Action | Purpose |
 |---|---|---|
-| `packages/sdk/src/partner-fee.ts` | create | Greg partner-fee constants + `gregDefaultPartnerFee(chainId)` helper |
+| `packages/sdk/src/partner-fee.ts` | create | Ophis partner-fee constants + `gregDefaultPartnerFee(chainId)` helper |
 | `packages/sdk/src/index.ts` | modify | export the new module |
 | `packages/sdk/tests/partner-fee.test.ts` | create | TDD coverage for the new module |
-| `apps/frontend/apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts` | modify | atom defaults to Greg's partner-fee config when widget params do not supply one |
-| `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | create | inline Greg constants for cowswap (mirrors `@greg/sdk` values; small file with explanatory comment about why we inline) |
+| `apps/frontend/apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts` | modify | atom defaults to Ophis's partner-fee config when widget params do not supply one |
+| `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | create | inline Ophis constants for cowswap (mirrors `@greg/sdk` values; small file with explanatory comment about why we inline) |
 | `apps/frontend/.greg-divergences.md` | create | tracking document for upstream-conflict-on-pull files |
 | `docs/development/phase-1-5-validation.md` | create | phase-gate evidence |
 
@@ -40,11 +40,11 @@
 
 ---
 
-## Task 1: Generate Greg partner-fee recipient EOA
+## Task 1: Generate Ophis partner-fee recipient EOA
 
 **Files:** none committed (key persists to Keychain only).
 
-This wallet will receive weekly WETH payouts of Greg's 75% share of accrued partner fees. For Phase 1.5 we use a single-sig EOA controlled by Clement; Phase 2.5 (public launch prep) upgrades to a Safe multisig before any meaningful balance accumulates.
+This wallet will receive weekly WETH payouts of Ophis's 75% share of accrued partner fees. For Phase 1.5 we use a single-sig EOA controlled by Clement; Phase 2.5 (public launch prep) upgrades to a Safe multisig before any meaningful balance accumulates.
 
 - [ ] **Step 1: Generate the keypair**
 
@@ -158,11 +158,11 @@ Expected: fails — `gregDefaultPartnerFee` is not exported.
 
 ```typescript
 /**
- * Greg's partner-fee configuration injected into every order routed through
- * Greg.app. Surfaced via cow-sdk's appData metadata.partnerFee, paid out by
+ * Ophis's partner-fee configuration injected into every order routed through
+ * Ophis.app. Surfaced via cow-sdk's appData metadata.partnerFee, paid out by
  * CoW DAO weekly in WETH. See:
  *   - https://docs.cow.fi/governance/fees/partner-fee
- *   - docs/development/specs/2026-05-03-greg-design-amendment.md
+ *   - docs/development/specs/2026-05-03-ophis-design-amendment.md
  */
 
 /** Recipient EOA — generated 2026-05-03, key in macOS Keychain entry `greg-partner-fee-recipient`.
@@ -194,7 +194,7 @@ export interface GregPartnerFee {
   readonly recipient: `0x${string}`;
 }
 
-/** Returns Greg's default partner-fee config for a given chain, or undefined for unsupported chains. */
+/** Returns Ophis's default partner-fee config for a given chain, or undefined for unsupported chains. */
 export const gregDefaultPartnerFee = (chainId: number): GregPartnerFee | undefined => {
   if (!COW_SUPPORTED_CHAIN_IDS.has(chainId)) return undefined;
   return { bps: GREG_PARTNER_FEE_BPS, recipient: GREG_PARTNER_FEE_RECIPIENT };
@@ -236,7 +236,7 @@ git commit -m "feat(sdk): export gregDefaultPartnerFee + chain support set"
 git push
 ```
 
-## Task 3: Inline Greg's partner-fee constants inside the cowswap fork
+## Task 3: Inline Ophis's partner-fee constants inside the cowswap fork
 
 **Files:**
 - Create: `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`
@@ -249,14 +249,14 @@ The cowswap fork lives in its own pnpm workspace (`apps/frontend/`) which is **d
 `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`:
 ```typescript
 /**
- * Greg partner-fee defaults — duplicated from `@greg/sdk` because the cowswap
+ * Ophis partner-fee defaults — duplicated from `@greg/sdk` because the cowswap
  * fork lives in its own pnpm workspace and cannot import from the outer
  * monorepo.
  *
  * Source of truth: `packages/sdk/src/partner-fee.ts`. Keep these values in
  * sync. Whenever `@greg/sdk` changes, mirror the change here in the same PR.
  *
- * See docs/development/specs/2026-05-03-greg-design-amendment.md for the
+ * See docs/development/specs/2026-05-03-ophis-design-amendment.md for the
  * partner-fee strategy. See https://docs.cow.fi/governance/fees/partner-fee
  * for the protocol-level mechanism.
  */
@@ -294,14 +294,14 @@ expect conflicts on these paths and re-apply the changes manually.
   supply one. Phase 1.5, 2026-05-03.
 - `apps/cowswap-frontend/index.html` (browser title), `apps/cowswap-frontend/public/manifest.json`
   (PWA name), `libs/ui/src/pure/ProductLogo/index.tsx` (logo alt text) — minimal
-  Greg rebrand. Phase 0 Task 7, 2026-05-02.
+  Ophis rebrand. Phase 0 Task 7, 2026-05-02.
 - `package.json` (root of `apps/frontend/`)
   Added `pnpm.onlyBuiltDependencies` for pnpm v10 compatibility. Phase 0 Task 6,
   2026-05-02.
 
-## Added (Greg-only)
+## Added (Ophis-only)
 
-- `apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` — Greg partner-fee
+- `apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` — Ophis partner-fee
   inline constants (mirror of `@greg/sdk`).
 - `.greg-upstream` — pinned upstream commit SHA.
 - `.greg-build-notes.md` — local build documentation.
@@ -311,7 +311,7 @@ expect conflicts on these paths and re-apply the changes manually.
 
 When `git subtree pull` produces conflicts on the **Modified** files above:
 1. Inspect the upstream change with `git log` on the conflicting file.
-2. Reapply Greg's intent on top of the upstream change, preserving both.
+2. Reapply Ophis's intent on top of the upstream change, preserving both.
 3. Update this file's `Phase X, YYYY-MM-DD` annotations.
 4. Re-run the local Phase 1 forked-Gnosis stack (`docker compose -f infra/local/docker-compose.fork.yml --env-file infra/local/.env up`) and the Phase 1.5 Sepolia smoke test (Task 4 of Phase 1.5 plan) to confirm the fork still settles and partner-fee still injects.
 ```
@@ -323,16 +323,16 @@ cd /Users/scep/greg
 git add apps/frontend/.greg-divergences.md \
         apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts
 git status
-git commit -m "feat(frontend): add Greg partner-fee constants inside cowswap fork"
+git commit -m "feat(frontend): add Ophis partner-fee constants inside cowswap fork"
 git push
 ```
 
-## Task 4: Patch `injectedWidgetParamsAtom` to default to Greg's partner fee
+## Task 4: Patch `injectedWidgetParamsAtom` to default to Ophis's partner fee
 
 **Files:**
 - Modify: `apps/frontend/apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts`
 
-This is the smallest viable patch: the atom that exposes widget partner-fee config is changed to fall back to Greg's default when widget params do not supply one. Every downstream consumer (`widgetPartnerFeeAtom`, `volumeFeeAtom`, `AppDataInfoUpdater`) sees a Greg-configured partner fee on every order.
+This is the smallest viable patch: the atom that exposes widget partner-fee config is changed to fall back to Ophis's default when widget params do not supply one. Every downstream consumer (`widgetPartnerFeeAtom`, `volumeFeeAtom`, `AppDataInfoUpdater`) sees a Ophis-configured partner fee on every order.
 
 - [ ] **Step 1: Read the current atom file**
 
@@ -349,7 +349,7 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => get(injectedWidgetPara
 
 - [ ] **Step 2: Modify the file**
 
-Replace the `injectedWidgetPartnerFeeAtom` export so it falls back to Greg's default. Keep all other exports unchanged.
+Replace the `injectedWidgetPartnerFeeAtom` export so it falls back to Ophis's default. Keep all other exports unchanged.
 
 ```typescript
 import { GREG_DEFAULT_PARTNER_FEE } from 'greg/partnerFeeDefault'
@@ -376,7 +376,7 @@ Expected: build succeeds. If TypeScript errors on the import, fix the path. If t
 cd /Users/scep/greg
 git add apps/frontend/apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts
 git status
-git commit -m "feat(frontend): default partnerFee to Greg's recipient when widget params absent"
+git commit -m "feat(frontend): default partnerFee to Ophis's recipient when widget params absent"
 git push
 ```
 
@@ -413,7 +413,7 @@ Open the network tab in DevTools and watch for the POST to `https://api.cow.fi/s
   "metadata": {
     "partnerFee": {
       "bps": 5,
-      "recipient": "<Greg recipient address from Task 1>"
+      "recipient": "<Ophis recipient address from Task 1>"
     }
   }
 }
@@ -516,7 +516,7 @@ Expected: prints
 ```json
 {
   "bps": 5,
-  "recipient": "<Greg recipient from Task 1>",
+  "recipient": "<Ophis recipient from Task 1>",
   "volumeBps": 5
 }
 ```
@@ -559,7 +559,7 @@ If the order settles (likely within 1-2 minutes), capture the `txHash`. Sepolia 
 
 ## Recipient
 
-- Address: `<Greg recipient address from Task 1>`
+- Address: `<Ophis recipient address from Task 1>`
 - Private key: macOS Keychain entry `greg-partner-fee-recipient`
 - Multisig upgrade: deferred to Phase 2.5 (public-launch prep)
 
@@ -582,7 +582,7 @@ If the order settles (likely within 1-2 minutes), capture the `txHash`. Sepolia 
 ## Phase-1.5 verdict: PASS
 
 Partner fee successfully injected into every order produced by the deployed
-Greg.app on Sepolia. Same patch works unchanged on every other CoW-supported
+Ophis.app on Sepolia. Same patch works unchanged on every other CoW-supported
 chain (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink,
 Gnosis) — chain-independent atom modification. CoW DAO weekly disbursements
 will accumulate at the recipient address; first payout expected once accrued
@@ -615,11 +615,11 @@ git push --tags
 - [ ] **Step 2: Open Phase 2 tracking issue**
 
 ```bash
-gh issue create --repo san-npm/greg \
+gh issue create --repo ophis-fi/ophis \
   --title "Phase 2: Retail UX wedge (DCA + Safe app + MEV-proof receipts + embed widget)" \
   --body "$(cat <<'EOF'
 ## Goal
-Build the differentiation that justifies users choosing Greg over CowSwap (we are price-equivalent on the same chains; differentiation must be UX).
+Build the differentiation that justifies users choosing Ophis over CowSwap (we are price-equivalent on the same chains; differentiation must be UX).
 
 ## Scope
 - [ ] Composable-order builder UI (DCA + TWAP) over `composable-cow`
@@ -639,7 +639,7 @@ Build the differentiation that justifies users choosing Greg over CowSwap (we ar
 May 11–24 (~2 weeks)
 
 ## Predecessor
-Phase 1.5 — `docs/development/plans/2026-05-03-greg-phase-1-5-monetized-frontend.md`
+Phase 1.5 — `docs/development/plans/2026-05-03-ophis-phase-1-5-monetized-frontend.md`
 Tag: `v0.1.5-phase1-5`
 EOF
 )"
@@ -648,7 +648,7 @@ EOF
 - [ ] **Step 3: Open Phase 3 tracking issue (forward-looking, no work yet)**
 
 ```bash
-gh issue create --repo san-npm/greg \
+gh issue create --repo ophis-fi/ophis \
   --title "Phase 3: MegaETH fork-deploy — own settlement, autopilot+driver+baseline solver" \
   --body "$(cat <<'EOF'
 ## Goal
@@ -663,7 +663,7 @@ Deploy CoW's audited \`GPv2Settlement\` and \`GPv2VaultRelayer\` bytecode unchan
 - [ ] Apply for MegaETH Foundation ecosystem grant
 
 ## Phase gate
-Real swap on MegaETH (chainId 4326) settled by Greg's own settlement contract via Greg's own driver.
+Real swap on MegaETH (chainId 4326) settled by Ophis's own settlement contract via Ophis's own driver.
 
 ## Calendar target
 Jun 1–21 (~3 weeks)

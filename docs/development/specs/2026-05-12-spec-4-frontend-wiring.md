@@ -1,16 +1,16 @@
-# Spec 4 — Frontend wiring: route Greg chains through Greg backends
+# Spec 4 — Frontend wiring: route Ophis chains through Ophis backends
 
-> Sequel to Spec 1/2/3. Spec 4 teaches `ophis.fi` (the cowswap fork) to route orders for chains where Greg has self-hosted a backend (`optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`, `megaeth.ophis.fi`, `optimism.ophis.fi`) instead of `api.cow.fi`.
+> Sequel to Spec 1/2/3. Spec 4 teaches `ophis.fi` (the cowswap fork) to route orders for chains where Ophis has self-hosted a backend (`optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`, `megaeth.ophis.fi`, `optimism.ophis.fi`) instead of `api.cow.fi`.
 
 ## Summary
 
 Today the frontend only knows the 10 CoW-supported chains (MAINNET, GNOSIS, SEPOLIA, ARBITRUM_ONE, BASE, POLYGON, AVALANCHE, BNB, LINEA, PLASMA, INK). Spec 4 adds:
 
-1. **Chain enum extension** for Greg-hosted chains: `OPTIMISM_SEPOLIA (11155420)`, `MEGAETH_TESTNET (6343)`, `MEGAETH_MAINNET (4326)`, `OPTIMISM (10)`.
+1. **Chain enum extension** for Ophis-hosted chains: `OPTIMISM_SEPOLIA (11155420)`, `MEGAETH_TESTNET (6343)`, `MEGAETH_MAINNET (4326)`, `OPTIMISM (10)`.
 2. **Per-chain orderbook URL override** via the existing `REACT_APP_ORDER_BOOK_URLS` env var (already plumbed in `cowSdk.ts:30`).
 3. **Chain metadata** (display name, icon, native token, block explorer URL, public RPC) for each new chain.
 4. **Network selector UI** lists the new chains visibly so users can pick them.
-5. **RPC provider configuration** so the frontend can read chain state (balances, allowances, etc.) on the Greg chains.
+5. **RPC provider configuration** so the frontend can read chain state (balances, allowances, etc.) on the Ophis chains.
 
 ## Goals & non-goals
 
@@ -30,11 +30,11 @@ Today the frontend only knows the 10 CoW-supported chains (MAINNET, GNOSIS, SEPO
 
 Spec 1-3 stand up the backends, but until Spec 4 ships, nobody but the smoke-test scripts can use them. Real user traffic flows through the frontend, which routes through `api.cow.fi` for every chain → traffic never hits our backends.
 
-After Spec 4: any user on `ophis.fi` switching to MegaETH or Optimism *automatically* routes through Greg's backend, gets the partner-fee shape applied, and we capture the price-improvement spread.
+After Spec 4: any user on `ophis.fi` switching to MegaETH or Optimism *automatically* routes through Ophis's backend, gets the partner-fee shape applied, and we capture the price-improvement spread.
 
 ## Architecture
 
-### Today (broken for Greg chains)
+### Today (broken for Ophis chains)
 ```
   user → ophis.fi → cowswap-frontend → @cowprotocol/cow-sdk OrderBookApi
                                             ↓
@@ -59,7 +59,7 @@ After Spec 4: any user on `ophis.fi` switching to MegaETH or Optimism *automatic
                               ...rest fall back to api.cow.fi for the 10 CoW chains
                             }
                                             ↓
-                                Greg backend (Spec 1/2/3)
+                                Ophis backend (Spec 1/2/3)
                                             ↓
                                 Settled on chain by driver
 ```
@@ -126,7 +126,7 @@ The cow-sdk's `OrderBookApi` constructor treats `baseUrls` as a partial override
 
 `apps/frontend/apps/cowswap-frontend/src/modules/networks/` (and similar) renders the chain switcher. After enum extension, the switcher auto-includes the new chains IF they're in the runtime constants. We need to add them to the displayed list explicitly.
 
-UX note: Use the official chain logos (MegaETH's blue M, Optimism's red O). Place Greg-hosted chains in a "BETA" or "EARLY ACCESS" group visually to set expectations.
+UX note: Use the official chain logos (MegaETH's blue M, Optimism's red O). Place Ophis-hosted chains in a "BETA" or "EARLY ACCESS" group visually to set expectations.
 
 ### 5. RPC provider config
 
@@ -146,7 +146,7 @@ Frontend RPC pressure is much lighter than the CoW driver's (no continuous block
 | User's wallet doesn't support the new chains | High initially | User must add network manually | Provide a one-click "add MegaETH to wallet" button via `wallet_addEthereumChain` RPC. | None — wallet support is third-party. |
 | Public RPC for OP/MegaETH degrades | Medium | Frontend can't read state | Frontend stays usable for the CoW chains; the new ones get a clear "RPC unavailable" toast. | Switch to a different public RPC. |
 | `api.cow.fi` returns a 404 for an unknown chainId that our override misses | Low | Order submission fails silently | Make sure the chainId guard in cow-sdk gives a clear error. | Add the chainId to our override map. |
-| Greg backend goes down → user trades blocked | Medium | Trading impossible on that chain | Subscribe to alerts; CoW Protocol staging server doesn't help (it's CoW's, not ours). | Manually disable the chain in the selector via env. |
+| Ophis backend goes down → user trades blocked | Medium | Trading impossible on that chain | Subscribe to alerts; CoW Protocol staging server doesn't help (it's CoW's, not ours). | Manually disable the chain in the selector via env. |
 | Chain switching mid-trade leaves UI in inconsistent state | Medium | Bad UX | Existing cowswap handles chain-switch already (resets quote, etc.). | None — bug fixes in implementation. |
 
 ## Cost
@@ -193,7 +193,7 @@ Frontend RPC pressure is much lighter than the CoW driver's (no continuous block
 3. **"BETA" badge.** UI design for the badge (color, position, copy: "BETA" vs "EARLY ACCESS" vs none). Talk to Clement for visual direction.
 4. **Public RPC choice.** For frontend reads we can use *any* free public RPC. Should we pick the cheapest/fastest, or align with backend's RPC for consistency? Recommendation: use backend's `node-url` so behavior is consistent.
 5. **Order discovery for the user's history.** The frontend asks the orderbook for past orders. With per-chain override, this just works — confirm in implementation.
-6. **Existing CoW-chain MEV receipt flow.** Should the Greg chains have MEV-proof receipts too? The MEV receipt module already exists; just needs to plumb through the Greg backend URLs. Optional in Spec 4 scope.
+6. **Existing CoW-chain MEV receipt flow.** Should the Ophis chains have MEV-proof receipts too? The MEV receipt module already exists; just needs to plumb through the Ophis backend URLs. Optional in Spec 4 scope.
 
 Implementation plan should resolve 1-6 inline.
 

@@ -1,15 +1,15 @@
-# Greg Phase 0 — Foundation Implementation Plan
+# Ophis Phase 0 — Foundation Implementation Plan
 
 
-**Goal:** Stand up the `san-npm/greg` monorepo, vendor `cowprotocol/cowswap` and `cowprotocol/services` as subtrees, deploy a minimally-rebranded frontend to Vercel, and complete one real swap on Gnosis Chiado testnet via the Greg frontend hitting CoW's official APIs.
+**Goal:** Stand up the `ophis-fi/ophis` monorepo, vendor `cowprotocol/cowswap` and `cowprotocol/services` as subtrees, deploy a minimally-rebranded frontend to Vercel, and complete one real swap on Gnosis Chiado testnet via the Ophis frontend hitting CoW's official APIs.
 
 **Architecture:** pnpm + turbo monorepo. `apps/frontend/` = subtree of `cowprotocol/cowswap` (kept on its native package manager — yarn or pnpm — to avoid breaking the upstream toolchain). `apps/backend/` = subtree of `cowprotocol/services` (Rust/cargo, builds independently). `packages/sdk/` = thin TS wrapper around `cow-sdk`. `agents/` defines `pm`, `frontend`, `backend`, `cto` roles. CI on GitHub Actions. Frontend deployed to Vercel; backend stays local in Phase 0 (Aleph deploy lands in Phase 1).
 
 **Tech Stack:** pnpm, turbo, TypeScript, GitHub Actions, gh CLI, git subtree, Vercel CLI, yarn/pnpm (whichever cowswap uses), cargo, cow-sdk (Apache-2.0), Gnosis Chiado testnet, Safe testnet faucet.
 
-**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md)
+**Spec:** [`docs/development/specs/2026-05-02-ophis-design.md`](../specs/2026-05-02-ophis-design.md)
 
-**Phase gate:** A test wallet completes a swap on Gnosis Chiado, signed via the Greg-branded frontend, settled by CoW's solver network on Chiado, and a one-page validation log is committed to `docs/development/phase-0-validation.md`.
+**Phase gate:** A test wallet completes a swap on Gnosis Chiado, signed via the Ophis-branded frontend, settled by CoW's solver network on Chiado, and a one-page validation log is committed to `docs/development/phase-0-validation.md`.
 
 ---
 
@@ -34,7 +34,7 @@
 | `apps/frontend/` | subtree | `cowprotocol/cowswap` vendored via `git subtree add` |
 | `apps/backend/` | subtree | `cowprotocol/services` vendored via `git subtree add` |
 | `packages/sdk/package.json` | new | `@greg/sdk` package metadata |
-| `packages/sdk/src/index.ts` | new | thin wrapper around `@cowprotocol/cow-sdk` exporting Greg defaults (chain, partner fee) |
+| `packages/sdk/src/index.ts` | new | thin wrapper around `@cowprotocol/cow-sdk` exporting Ophis defaults (chain, partner fee) |
 | `packages/sdk/tsconfig.json` | new | extends `tsconfig.base.json` |
 | `packages/sdk/tests/sdk.test.ts` | new | unit test verifying default config |
 | `infra/rpc/fallback.ts` | new | `viem` fallback transport config (Alchemy → PublicNode → Ankr) for Gnosis |
@@ -184,12 +184,12 @@ Expected: first line is `                    GNU GENERAL PUBLIC LICENSE`.
 - [ ] **Step 9: Write `README.md` skeleton**
 
 ```markdown
-# Greg
+# Ophis
 
 Stage-2 fork of [CoW Protocol](https://docs.cow.fi) on Gnosis Chain, targeting DeFi power-user retail.
 
-- Spec: [`docs/development/specs/2026-05-02-greg-design.md`](docs/development/specs/2026-05-02-greg-design.md)
-- Phase 0 plan: [`docs/development/plans/2026-05-02-greg-phase-0-foundation.md`](docs/development/plans/2026-05-02-greg-phase-0-foundation.md)
+- Spec: [`docs/development/specs/2026-05-02-ophis-design.md`](docs/development/specs/2026-05-02-ophis-design.md)
+- Phase 0 plan: [`docs/development/plans/2026-05-02-ophis-phase-0-foundation.md`](docs/development/plans/2026-05-02-ophis-phase-0-foundation.md)
 
 License: GPL-3.0. Codename `greg`; rebrand TBD before public launch.
 ```
@@ -262,16 +262,16 @@ main operator session driving the project.
 ````markdown
 ---
 name: pm
-description: Project manager for Greg. Tracks roadmap, grooms the backlog, writes status sweeps, opens/labels GitHub issues. Read-only on code.
+description: Project manager for Ophis. Tracks roadmap, grooms the backlog, writes status sweeps, opens/labels GitHub issues. Read-only on code.
 tools: Read, Grep, Glob, Bash, WebFetch, TaskCreate, TaskUpdate
 ---
 
-You are the project manager for **Greg**, a Stage-2 CoW Protocol fork. Your
+You are the project manager for **Ophis**, a Stage-2 CoW Protocol fork. Your
 job is to keep the roadmap visible and the backlog clean. You do **not**
 write code or modify files outside `docs/`.
 
 ## Authoritative documents
-- Spec: `docs/development/specs/2026-05-02-greg-design.md`
+- Spec: `docs/development/specs/2026-05-02-ophis-design.md`
 - Active plan(s): `docs/development/plans/`
 
 ## What you do
@@ -291,11 +291,11 @@ write code or modify files outside `docs/`.
 ````markdown
 ---
 name: frontend
-description: Frontend engineer for Greg. Owns apps/frontend (cowswap subtree), packages/sdk, and Vercel deploys. React/TypeScript/Next.js. Does not touch apps/backend.
+description: Frontend engineer for Ophis. Owns apps/frontend (cowswap subtree), packages/sdk, and Vercel deploys. React/TypeScript/Next.js. Does not touch apps/backend.
 tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch
 ---
 
-You are the senior frontend engineer for **Greg**. You own the cowswap fork,
+You are the senior frontend engineer for **Ophis**. You own the cowswap fork,
 the SDK wrapper, and Vercel deployments.
 
 ## Scope
@@ -318,7 +318,7 @@ the SDK wrapper, and Vercel deployments.
 - TDD where it makes sense. Vitest for units, Playwright for E2E.
 - Never bypass `git` hooks. Never `--force` push without a written reason.
 - Vendored code has its own conventions — match upstream cowswap style inside
-  `apps/frontend/`; match Greg style elsewhere.
+  `apps/frontend/`; match Ophis style elsewhere.
 - Use `git subtree pull --prefix=apps/frontend cowswap-upstream main --squash`
   to track upstream updates; never rewrite the subtree directory's git history.
 ````
@@ -328,11 +328,11 @@ the SDK wrapper, and Vercel deployments.
 ````markdown
 ---
 name: backend
-description: Backend engineer for Greg. Owns apps/backend (cowprotocol/services subtree, Rust). Postgres schemas, Aleph deploys (Phase 1+). Does not touch apps/frontend.
+description: Backend engineer for Ophis. Owns apps/backend (cowprotocol/services subtree, Rust). Postgres schemas, Aleph deploys (Phase 1+). Does not touch apps/frontend.
 tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch
 ---
 
-You are the senior backend engineer for **Greg**. You own the
+You are the senior backend engineer for **Ophis**. You own the
 `cowprotocol/services` fork — orderbook API, auction driver, solver
 integration — and (from Phase 1) the Aleph Cloud deployments.
 
@@ -445,7 +445,7 @@ Expected: `Logged in to github.com as san-npm` (or equivalent active account).
 - [ ] **Step 2: Create the private repo**
 
 ```bash
-gh repo create san-npm/greg \
+gh repo create ophis-fi/ophis \
   --private \
   --source=. \
   --remote=origin \
@@ -457,10 +457,10 @@ Expected: repo created and initial commit pushed.
 - [ ] **Step 3: Verify**
 
 ```bash
-gh repo view san-npm/greg --json name,visibility,defaultBranchRef
+gh repo view ophis-fi/ophis --json name,visibility,defaultBranchRef
 git remote -v
 ```
-Expected: `visibility: PRIVATE`, default branch `main`, `origin` set to `git@github.com:san-npm/greg.git` (or HTTPS).
+Expected: `visibility: PRIVATE`, default branch `main`, `origin` set to `git@github.com:ophis-fi/ophis.git` (or HTTPS).
 
 - [ ] **Step 4: Confirm CI runs**
 
@@ -576,7 +576,7 @@ git commit -m "build(frontend): document local build path for cowswap subtree" |
 
 ---
 
-## Task 7: Minimal Greg rebrand
+## Task 7: Minimal Ophis rebrand
 
 **Files:**
 - Modify: a small set of cowswap branding files (visible name, title, manifest). Exact paths are determined by inspection in Step 1 — do **not** rename source files, do **not** change CSS/visual design.
@@ -589,13 +589,13 @@ git commit -m "build(frontend): document local build path for cowswap subtree" |
 ```
 Make a short list of files to touch. Target: app title, HTML `<title>`, web manifest `name` and `short_name`, and the visible header brand text. **Do not** modify business logic, hooks, or contract addresses.
 
-- [ ] **Step 2: Patch the brand text to "Greg"**
+- [ ] **Step 2: Patch the brand text to "Ophis"**
 
 Use targeted edits, one file at a time. Examples (paths may differ in actual cowswap):
 
-- `apps/frontend/apps/cowswap-frontend/public/manifest.json` — set `"name": "Greg"`, `"short_name": "Greg"`.
-- `apps/frontend/apps/cowswap-frontend/index.html` — set `<title>Greg</title>`.
-- Any header component rendering "CoW Swap" → render "Greg".
+- `apps/frontend/apps/cowswap-frontend/public/manifest.json` — set `"name": "Ophis"`, `"short_name": "Ophis"`.
+- `apps/frontend/apps/cowswap-frontend/index.html` — set `<title>Ophis</title>`.
+- Any header component rendering "CoW Swap" → render "Ophis".
 
 For each file: open, change only the text, save.
 
@@ -603,16 +603,16 @@ For each file: open, change only the text, save.
 
 Run cowswap's dev command (whatever Step 3 of Task 6 surfaced — typically `yarn start` or `pnpm dev`) and open the local URL. Verify that:
 
-- The window title says "Greg".
-- The header brand text says "Greg".
-- The PWA manifest shows "Greg".
+- The window title says "Ophis".
+- The header brand text says "Ophis".
+- The PWA manifest shows "Ophis".
 - Nothing else changed (swap form, network selector, addresses still cowswap-vanilla).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add apps/frontend/
-git commit -m "feat(frontend): minimal text rebrand to Greg (no visual redesign)"
+git commit -m "feat(frontend): minimal text rebrand to Ophis (no visual redesign)"
 ```
 
 ---
@@ -664,7 +664,7 @@ Expected: empty or near-empty file. Keys come later (Phase 1) when backend env e
 ```bash
 ( cd apps/frontend && vercel )
 ```
-Expected: a preview URL is printed. Open it, verify it loads with Greg branding.
+Expected: a preview URL is printed. Open it, verify it loads with Ophis branding.
 
 - [ ] **Step 6: Commit `vercel.json` (only)**
 
@@ -929,7 +929,7 @@ Record:
 **Operator:** <name>
 
 ## Setup
-- Repo: san-npm/greg, commit `<sha>`
+- Repo: ophis-fi/ophis, commit `<sha>`
 - Vercel preview: <url>
 - Backend: CoW official Chiado/Gnosis API (no self-hosted backend in Phase 0)
 
@@ -947,8 +947,8 @@ Record:
 - Time-to-settle: <seconds>
 
 ## Branding sanity
-- Window title shows "Greg": yes/no
-- Manifest name "Greg": yes/no
+- Window title shows "Ophis": yes/no
+- Manifest name "Ophis": yes/no
 - No accidental cowswap.fi links in user-visible UI: yes/no
 
 ## Issues encountered
@@ -962,7 +962,7 @@ Record:
 
 ```bash
 git add docs/development/phase-0-validation.md
-git commit -m "docs: phase-0 validation log — first Greg swap on Chiado"
+git commit -m "docs: phase-0 validation log — first Ophis swap on Chiado"
 git push
 ```
 

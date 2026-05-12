@@ -1,15 +1,15 @@
-# Greg Phase 2 — Retail Engineering Substrate Implementation Plan
+# Ophis Phase 2 — Retail Engineering Substrate Implementation Plan
 
 
-**Goal:** Build the engineering substrate that Phase 2.5 (public launch) needs. Verify Greg's deployed cowswap fork drives the existing TWAP / DCA flow correctly with our Phase-1.5 partner-fee patch on every leg. Ship one new Greg-only feature — MEV-proof receipt download (JSON + PDF). Verify PWA installability and prepare Safe app submission package (manifest + iframe load-test).
+**Goal:** Build the engineering substrate that Phase 2.5 (public launch) needs. Verify Ophis's deployed cowswap fork drives the existing TWAP / DCA flow correctly with our Phase-1.5 partner-fee patch on every leg. Ship one new Ophis-only feature — MEV-proof receipt download (JSON + PDF). Verify PWA installability and prepare Safe app submission package (manifest + iframe load-test).
 
 **Architecture:** Phase 2 layers on top of Phase 1.5 — no changes to the partner-fee atom. The TWAP / DCA flow already exists in cowswap at `apps/cowswap-frontend/src/modules/twap/` and the `/advanced` route via `TwapFormWidget`. Composable-cow contract is deployed at `0xfdaFc9d1902f4e0b84f65F49f244b32b31013b74` on 9 chains (Ethereum, Gnosis, Arbitrum, Base, Avalanche, Polygon, BNB, Sepolia, Lens). New code lands in a new module `apps/cowswap-frontend/src/modules/mevReceipt/` for the receipt-download feature. Documentation files for Safe app submission and PWA verification land in `docs/development/`.
 
 **Tech Stack:** TypeScript, Jotai (cowswap's state), `vite-plugin-pwa` + workbox (already wired in cowswap), `jspdf` (lightweight PDF generation), the vendored `apps/frontend/` cowswap fork, Vercel for deploy, `@cowprotocol/cow-sdk` already in cowswap deps.
 
-**Spec:** [`docs/development/specs/2026-05-02-greg-design.md`](../specs/2026-05-02-greg-design.md) + [`docs/development/specs/2026-05-03-greg-design-amendment.md`](../specs/2026-05-03-greg-design-amendment.md)
+**Spec:** [`docs/development/specs/2026-05-02-ophis-design.md`](../specs/2026-05-02-ophis-design.md) + [`docs/development/specs/2026-05-03-ophis-design-amendment.md`](../specs/2026-05-03-ophis-design-amendment.md)
 
-**Predecessor plan:** [`docs/development/plans/2026-05-03-greg-phase-1-5-monetized-frontend.md`](2026-05-03-greg-phase-1-5-monetized-frontend.md) — Phase 1.5 PASS, recipient `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`.
+**Predecessor plan:** [`docs/development/plans/2026-05-03-ophis-phase-1-5-monetized-frontend.md`](2026-05-03-ophis-phase-1-5-monetized-frontend.md) — Phase 1.5 PASS, recipient `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E`.
 
 **Out of scope for Phase 2** (deferred to Phase 2.5 / Phase 4):
 - Brand work (real name, real domain, logo)
@@ -20,10 +20,10 @@
 
 **Phase gate:**
 
-1. A real TWAP order with ≥2 parts on Sepolia executes through the deployed Greg.app; **every child order** has `fullAppData.metadata.partnerFee = {volumeBps: 5, recipient: 0xBA6Da6…76E}`.
+1. A real TWAP order with ≥2 parts on Sepolia executes through the deployed Ophis.app; **every child order** has `fullAppData.metadata.partnerFee = {volumeBps: 5, recipient: 0xBA6Da6…76E}`.
 2. A user can download a valid JSON receipt + valid PDF receipt for any settled order via the deployed UI.
-3. The deployed Greg.app loads cleanly inside a Safe iframe (`app.safe.global/apps/open?appUrl=...`).
-4. The deployed Greg.app installs as a PWA on at least Chrome desktop and one mobile browser.
+3. The deployed Ophis.app loads cleanly inside a Safe iframe (`app.safe.global/apps/open?appUrl=...`).
+4. The deployed Ophis.app installs as a PWA on at least Chrome desktop and one mobile browser.
 
 Validation log committed to `docs/development/phase-2-validation.md`. Tag `v0.2-phase2`.
 
@@ -41,7 +41,7 @@ Validation log committed to `docs/development/phase-2-validation.md`. Tag `v0.2-
 | `apps/frontend/apps/cowswap-frontend/src/modules/mevReceipt/containers/DownloadReceiptButton.tsx` | create | UI button — JSON + PDF download |
 | `apps/frontend/apps/cowswap-frontend/src/modules/mevReceipt/index.ts` | create | barrel export |
 | `apps/frontend/apps/cowswap-frontend/src/pages/Account/Tokens/TokensOverview.tsx` (or similar) | modify | mount `<DownloadReceiptButton />` on the order-detail row |
-| `apps/frontend/apps/cowswap-frontend/public/manifest.json` | modify | replace `homepage_url` + `description` with Greg-specific values; add `iconPath` for Safe app compatibility |
+| `apps/frontend/apps/cowswap-frontend/public/manifest.json` | modify | replace `homepage_url` + `description` with Ophis-specific values; add `iconPath` for Safe app compatibility |
 | `apps/frontend/apps/cowswap-frontend/package.json` | modify | add `jspdf` dependency |
 | `apps/frontend/.greg-divergences.md` | modify | track new files + edits |
 | `docs/development/safe-app-submission.md` | create | Safe app submission instructions for Phase 2.5 |
@@ -150,7 +150,7 @@ print('✓ partner fee correctly inherited by TWAP child order')
 "
 ```
 
-Repeat for every child order that materialises during the validation window. Even if the order doesn't fully settle (Sepolia solver coverage is sparse), the partner-fee verification is the gate — if every child order has Greg's partnerFee in fullAppData, Phase 1.5's patch correctly applies to TWAP / DCA flows too.
+Repeat for every child order that materialises during the validation window. Even if the order doesn't fully settle (Sepolia solver coverage is sparse), the partner-fee verification is the gate — if every child order has Ophis's partnerFee in fullAppData, Phase 1.5's patch correctly applies to TWAP / DCA flows too.
 
 ### Step 6: Capture verification notes
 
@@ -171,7 +171,7 @@ Child orders observed:
 - UID: <hash>  status: <open|fulfilled>  partner fee in fullAppData: ✓/✗
 - UID: <hash>  status: <open|fulfilled>  partner fee in fullAppData: ✓/✗
 
-Verdict: PASS — every child order inherited Greg's partner fee
+Verdict: PASS — every child order inherited Ophis's partner fee
         | DONE_WITH_CONCERNS — <details>
 ```
 
@@ -311,7 +311,7 @@ export interface MevProofReceipt {
   readonly partnerFee: PartnerFeeInfo | null
   /** Fractional surplus over the quoted minimum buyAmount; null if not settled. (executed - quoted) / quoted */
   readonly surplusVsQuote: number | null
-  /** Greg's receipt schema version. */
+  /** Ophis's receipt schema version. */
   readonly receiptVersion: '1'
   /** ISO-8601 UTC timestamp of receipt creation. */
   readonly generatedAt: string
@@ -562,7 +562,7 @@ export const exportPdf = (receipt: MevProofReceipt): Blob => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
 
   doc.setFontSize(14)
-  doc.text('Greg — MEV-Proof Order Receipt', 40, 50)
+  doc.text('Ophis — MEV-Proof Order Receipt', 40, 50)
 
   doc.setFontSize(10)
   doc.setFont('courier', 'normal')
@@ -736,10 +736,10 @@ git push
 **Files:**
 - Modify: `apps/frontend/apps/cowswap-frontend/public/manifest.json`
 
-The cowswap manifest already has `name: "Greg"` and `short_name: "Greg"` from Phase 0 Task 7. Two values still point at upstream cowswap and need updating:
+The cowswap manifest already has `name: "Ophis"` and `short_name: "Ophis"` from Phase 0 Task 7. Two values still point at upstream cowswap and need updating:
 
-- `homepage_url` is `"https://swap.cow.fi"` → should reflect Greg's deployment URL.
-- `description` mentions "CoW Swap" → rewrite for Greg.
+- `homepage_url` is `"https://swap.cow.fi"` → should reflect Ophis's deployment URL.
+- `description` mentions "CoW Swap" → rewrite for Ophis.
 
 Safe app store also requires an `iconPath` field per [Safe app docs](https://help.safe.global/en/articles/145503-how-to-build-a-safe-app-and-get-it-listed-in-safe-wallet) — cowswap's manifest uses `icons[].src` (W3C web manifest spec) which Safe's newer parser also supports, but `iconPath` is the original, more-broadly-compatible field. Add it as a fallback.
 
@@ -756,7 +756,7 @@ Capture the existing JSON so you can diff intelligently.
 Apply these specific changes (do NOT rewrite the whole file):
 
 1. `homepage_url`: `"https://swap.cow.fi"` → `"https://greg-git-main-clementfrmds-projects.vercel.app"` (the stable branch alias from Phase 1.5)
-2. `description`: replace with `"Greg — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain."`  (≤200 chars per Safe spec)
+2. `description`: replace with `"Ophis — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain."`  (≤200 chars per Safe spec)
 3. Add `"iconPath": "/android-chrome-512x512.png"` — Safe's older parser uses this field; references the existing 512px PNG icon already in the build.
 
 ### Step 3: Verify the manifest is still valid JSON
@@ -781,7 +781,7 @@ Expected: built manifest has the new `homepage_url`, `description`, and `iconPat
 cd /Users/scep/greg
 git add apps/frontend/apps/cowswap-frontend/public/manifest.json
 git status
-git commit -m "feat(manifest): Greg-specific homepage_url + description + Safe iconPath"
+git commit -m "feat(manifest): Ophis-specific homepage_url + description + Safe iconPath"
 git push
 ```
 
@@ -848,7 +848,7 @@ echo "$SAFE_TEST_URL"
 
 Open this URL in a browser. Expected behaviour:
 - Safe Wallet loads
-- The Greg iframe appears (cowswap UI rendered inside Safe)
+- The Ophis iframe appears (cowswap UI rendered inside Safe)
 - The iframe-loaded UI can detect the Safe parent and offer a "Connect with Safe" option (cowswap's existing Safe SDK integration handles this automatically)
 
 If the iframe is blank or shows an X-Frame-Options error: there's a CSP / X-Frame-Options issue on the deployment. Vercel by default does not set `X-Frame-Options: DENY` so this should work. If a header is being set somewhere, find it and remove it.
@@ -859,7 +859,7 @@ If the iframe loads but the Safe SDK doesn't connect: check the cowswap Safe int
 
 Write `/Users/scep/greg/docs/development/safe-app-submission.md`:
 ```markdown
-# Greg — Safe app store submission package
+# Ophis — Safe app store submission package
 
 ## App URL
 - **Production-ish branch alias:** https://greg-git-main-clementfrmds-projects.vercel.app
@@ -871,9 +871,9 @@ Served at `/manifest.json` on the deployment. Key fields:
 
 ```json
 {
-  "name": "Greg",
-  "short_name": "Greg",
-  "description": "Greg — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain.",
+  "name": "Ophis",
+  "short_name": "Ophis",
+  "description": "Ophis — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain.",
   "homepage_url": "https://greg-git-main-clementfrmds-projects.vercel.app",
   "iconPath": "/android-chrome-512x512.png",
   "icons": [
@@ -887,11 +887,11 @@ CORS: `/manifest.json` returns `Access-Control-Allow-Origin: *` so Safe can fetc
 
 ## Iframe load test
 
-Verified <YYYY-MM-DD>: Greg loads cleanly inside `https://app.safe.global/apps/open?appUrl=<encoded URL>`. Cowswap's existing Safe SDK integration handles the connection.
+Verified <YYYY-MM-DD>: Ophis loads cleanly inside `https://app.safe.global/apps/open?appUrl=<encoded URL>`. Cowswap's existing Safe SDK integration handles the connection.
 
 ## Submission process (Phase 2.5)
 
-1. Replace the URL in this document with the real Greg domain once it exists.
+1. Replace the URL in this document with the real Ophis domain once it exists.
 2. Open a PR against [`safe-global/safe-apps-list`](https://github.com/safe-global/safe-apps-list) following the format in `community-list.json`. Sample entry:
    ```json
    {
@@ -950,14 +950,14 @@ Cowswap's `vite.config.mts` references `vite-plugin-pwa` with `filename: 'servic
 1. Open `https://greg-git-main-clementfrmds-projects.vercel.app` in Chrome on the Mac mini.
 2. URL bar should show an "install app" icon (small computer screen icon, right of the URL).
 3. Click it; choose "Install".
-4. Greg launches as a standalone app window. Title shows "Greg".
-5. Close the standalone window. Open Chrome's `chrome://apps`. Greg appears in the list.
+4. Ophis launches as a standalone app window. Title shows "Ophis".
+5. Close the standalone window. Open Chrome's `chrome://apps`. Ophis appears in the list.
 
 ### Step 4: Manual install check — Mac Safari
 
 1. Open the same URL in Safari.
 2. File → "Add to Dock" (Safari 17+) or right-click on the page → "Add to Dock".
-3. The macOS Dock now has a Greg icon launching the app standalone.
+3. The macOS Dock now has a Ophis icon launching the app standalone.
 
 ### Step 5: (Optional) iOS / Android check via QR
 
@@ -967,7 +967,7 @@ If a phone is available, open the URL in mobile Safari or Chrome and use "Add to
 
 Write `/Users/scep/greg/docs/development/pwa-verification.md`:
 ```markdown
-# Greg — PWA install verification
+# Ophis — PWA install verification
 
 **Date:** <YYYY-MM-DD>
 **Deployment URL:** https://greg-git-main-clementfrmds-projects.vercel.app
@@ -982,13 +982,13 @@ curl -sI https://greg-git-main-clementfrmds-projects.vercel.app/service-worker.j
 
 ## Manifest
 
-Linked from `<head>` via `<link rel="manifest" href="/manifest.json">`. After Phase 2 / Task 5 the manifest declares Greg-specific `name`, `short_name`, `description`, `homepage_url`, `iconPath`, and `icons`.
+Linked from `<head>` via `<link rel="manifest" href="/manifest.json">`. After Phase 2 / Task 5 the manifest declares Ophis-specific `name`, `short_name`, `description`, `homepage_url`, `iconPath`, and `icons`.
 
 ## Install verification
 
 | Browser | Result | Notes |
 |---|---|---|
-| Chrome (macOS) | ✓ installable | Title "Greg", standalone window, listed in chrome://apps |
+| Chrome (macOS) | ✓ installable | Title "Ophis", standalone window, listed in chrome://apps |
 | Safari (macOS) | ✓ installable | "Add to Dock", launches as a standalone app |
 | Mobile Safari (iOS) | <ran/skipped> | <details if ran> |
 | Mobile Chrome (Android) | <ran/skipped> | <details if ran> |
@@ -1021,13 +1021,13 @@ Read the file, then append under the existing sections:
 ```markdown
 ## Modified (Phase 2, 2026-05-XX)
 
-- `apps/cowswap-frontend/public/manifest.json` — Greg-specific `homepage_url`, `description`, `iconPath`. Phase 2 Task 5.
+- `apps/cowswap-frontend/public/manifest.json` — Ophis-specific `homepage_url`, `description`, `iconPath`. Phase 2 Task 5.
 - `apps/cowswap-frontend/package.json` — added `jspdf` dependency. Phase 2 Task 4.
 - `<page where DownloadReceiptButton was mounted>` — added receipt-download UI. Phase 2 Task 4 Step 8.
 
 ## Added (Phase 2)
 
-- `apps/cowswap-frontend/src/modules/mevReceipt/` — Greg-only feature. MEV-proof receipt JSON + PDF export. Phase 2 Tasks 2–4.
+- `apps/cowswap-frontend/src/modules/mevReceipt/` — Ophis-only feature. MEV-proof receipt JSON + PDF export. Phase 2 Tasks 2–4.
 ```
 
 ### Step 2: Write `docs/development/phase-2-validation.md`
@@ -1046,7 +1046,7 @@ Read the file, then append under the existing sections:
 | TWAP/DCA flow on Sepolia carries partner fee on every child order | Task 1 — `tmp/greg-task1-notes.md` (children listed with their UIDs + fullAppData partner-fee verification) | <PASS / DONE_WITH_CONCERNS> |
 | MEV-proof receipt downloadable as JSON | Task 3 — 5 vitest tests pass; UI button mounted at `<page>` | PASS |
 | MEV-proof receipt downloadable as PDF | Task 4 — 7 vitest tests pass; UI button supports `format="pdf"` | PASS |
-| Manifest Greg-specific + Safe-compatible | Task 5 — manifest.json delta committed; CORS allows Safe to fetch | PASS |
+| Manifest Ophis-specific + Safe-compatible | Task 5 — manifest.json delta committed; CORS allows Safe to fetch | PASS |
 | Deployment loads inside Safe iframe | Task 6 — verified at `app.safe.global/apps/open?appUrl=...` | PASS |
 | PWA installable on Chrome + Safari macOS | Task 7 — `docs/development/pwa-verification.md` | PASS |
 
@@ -1089,7 +1089,7 @@ cd /Users/scep/greg
 git tag -a v0.2-phase2 -m "Phase 2 — Retail Engineering Substrate PASS
 
 TWAP / DCA flow verified on Sepolia: every conditional-order child
-inherits Greg's partnerFee in fullAppData via the Phase-1.5 atom patch.
+inherits Ophis's partnerFee in fullAppData via the Phase-1.5 atom patch.
 MEV-proof receipts downloadable as JSON + PDF on every settled order.
 PWA installs on Chrome + Safari (macOS). Deployment loads cleanly
 inside Safe iframe; manifest is Safe-compatible and CORS-friendly.
@@ -1104,10 +1104,10 @@ git push --tags
 ### Step 5: Close Phase 2 issue + Open Phase 2.5 + Phase 3 issues (if not already)
 
 ```bash
-gh issue close 3 --repo san-npm/greg --comment "Phase 2 complete and tagged \`v0.2-phase2\`. Validation: \`docs/development/phase-2-validation.md\`. Phase 2.5 (public launch) and Phase 3 (MegaETH fork-deploy) are next."
+gh issue close 3 --repo ophis-fi/ophis --comment "Phase 2 complete and tagged \`v0.2-phase2\`. Validation: \`docs/development/phase-2-validation.md\`. Phase 2.5 (public launch) and Phase 3 (MegaETH fork-deploy) are next."
 
 # If Phase 2.5 doesn't have an issue yet, open it:
-gh issue create --repo san-npm/greg \
+gh issue create --repo ophis-fi/ophis \
   --title "Phase 2.5: Public launch — brand, real domain, DCA UX redesign, Safe app submission PR, Show HN/PH" \
   --body "Predecessor: Phase 2 (\`v0.2-phase2\`). Plan to be drafted via \`the writing-plans methodology\` when Clement says go.
 
@@ -1137,7 +1137,7 @@ May 25–31 (~1 week)"
 
 ### Step 2: Edit `MEMORY.md`
 
-Update the Greg one-liner with Phase 2 PASS and recipient note still relevant.
+Update the Ophis one-liner with Phase 2 PASS and recipient note still relevant.
 
 ### Step 3: No git operation — memory lives outside the repo.
 
@@ -1160,7 +1160,7 @@ Update the Greg one-liner with Phase 2 PASS and recipient note still relevant.
 
 **Risk acknowledged:**
 - The exact mount point for `DownloadReceiptButton` in cowswap's UI requires inspection (Task 4 Step 8). The plan documents a fallback (one-page mount is enough for the gate) and explicitly accepts DONE_WITH_CONCERNS if the wiring needs major refactoring.
-- TWAP requires Composable-CoW deployment on the chain. Of Greg's 10 supported chains, 9 have Composable-CoW (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Lens, Gnosis, Sepolia per the upstream deploy table; Linea, Plasma, Ink may not be on the list yet). On chains without Composable-CoW, the cowswap UI hides the TWAP option — already correct behaviour upstream.
+- TWAP requires Composable-CoW deployment on the chain. Of Ophis's 10 supported chains, 9 have Composable-CoW (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Lens, Gnosis, Sepolia per the upstream deploy table; Linea, Plasma, Ink may not be on the list yet). On chains without Composable-CoW, the cowswap UI hides the TWAP option — already correct behaviour upstream.
 - Safe iframe load requires the deployment URL to NOT have `X-Frame-Options: DENY`. Vercel's defaults don't set this header — should work out-of-box. If it doesn't, the plan documents the fallback (Vercel `headers` config in `vercel.json`).
 
 **Out of scope (to prevent drift)**
@@ -1177,9 +1177,9 @@ Update the Greg one-liner with Phase 2 PASS and recipient note still relevant.
 
 ## Sources
 
-- [Greg spec](../specs/2026-05-02-greg-design.md) and [Phase-1.5 spec amendment](../specs/2026-05-03-greg-design-amendment.md)
-- [Greg Phase-1.5 plan](2026-05-03-greg-phase-1-5-monetized-frontend.md) (predecessor)
-- [Greg Phase-1.5 validation log](../phase-1-5-validation.md) — partner-fee mechanism evidence
+- [Ophis spec](../specs/2026-05-02-ophis-design.md) and [Phase-1.5 spec amendment](../specs/2026-05-03-ophis-design-amendment.md)
+- [Ophis Phase-1.5 plan](2026-05-03-ophis-phase-1-5-monetized-frontend.md) (predecessor)
+- [Ophis Phase-1.5 validation log](../phase-1-5-validation.md) — partner-fee mechanism evidence
 - [CoW Protocol partner-fee documentation](https://docs.cow.fi/governance/fees/partner-fee)
 - [`cowprotocol/composable-cow`](https://github.com/cowprotocol/composable-cow) — TWAP / conditional order contracts
 - [`cowprotocol/cow-sdk`](https://github.com/cowprotocol/cow-sdk) — `@cowprotocol/app-data` partner-fee schema and `EnrichedOrder` type

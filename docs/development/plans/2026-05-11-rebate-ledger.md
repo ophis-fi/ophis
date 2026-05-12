@@ -3549,7 +3549,7 @@ Write `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.module.c
 
 ### Step 7: Document new module in `.greg-divergences.md`
 
-Append a new "Added (Greg-only)" entry to `apps/frontend/apps/cowswap-frontend/src/greg/.greg-divergences.md`:
+Append a new "Added (Ophis-only)" entry to `apps/frontend/apps/cowswap-frontend/src/greg/.greg-divergences.md`:
 
 ```markdown
 
