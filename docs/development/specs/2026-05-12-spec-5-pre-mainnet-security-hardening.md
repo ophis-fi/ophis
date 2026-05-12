@@ -77,9 +77,9 @@ Same pattern executes for each chain (MegaETH mainnet, OP mainnet, and any futur
 ### Component 1: Greg Multisig Safe (the protocol-control Safe)
 
 A **2-of-3 Safe**, distinct from the partner-fee Safe. Owners:
-1. **Clement primary** — Ledger Nano S Plus, daily-driver hardware wallet
-2. **Clement backup** — second Ledger (or Trezor), stored offsite (e.g. safe deposit box)
-3. **Recovery** — TBD. Options:
+1. **Clement primary HW wallet** — Ledger at `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` (configured 2026-05-12). This same address signs CoW core deploys on every chain.
+2. **Clement backup HW wallet** — TBD. Recommended: second Ledger stored offsite (safe deposit box). Same derivation as primary, different physical device.
+3. **Recovery co-signer** — TBD. Options:
    - A trusted co-signer (engineering peer, lawyer, or family member with a hardware wallet you've configured)
    - A timelock-protected EOA in a separate Keychain on a separate machine (less ideal — software key)
    - A Safe recovery service (gnosis-recoverer module, with N-day delay)
