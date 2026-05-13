@@ -18,8 +18,10 @@
 # UniV3 pools already exist with deep liquidity (canonical 0.05% WETH/USDC.e).
 #
 # Pre-conditions:
-#   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.05 OP ETH
-#   - Driver EOA 0x00f9…502F is funded with ≥ 0.05 OP ETH
+#   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.01 OP ETH
+#     (real deploy burn is ~0.002-0.003 ETH; floor leaves ~3x headroom)
+#   - Driver EOA 0x00f9…502F is funded with ≥ 0.02 OP ETH
+#     (ongoing settlement gas; 2-3 weeks runway, top up later as needed)
 #   - infra/optimism/.env exists with OPHIS_PROTOCOL_SAFE_OP_MAINNET set
 #   - Ledger Live is CLOSED (USB device contention with hardhat-ledger plugin)
 #   - Ledger is connected via USB and Ethereum app is open
@@ -74,8 +76,17 @@ BAL_ETH=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether)
 echo "=== Balance: $BAL_ETH ETH ==="
 echo ""
 
-if [[ "$BAL_WEI" -lt 50000000000000000 ]]; then  # 0.05 ETH
-  echo "ERROR: deployer balance < 0.05 ETH — fund $DEPLOYER_ADDR first" >&2
+# Floor sized to 2x the worst-case deploy cost on OP mainnet:
+#   - ~9.6M L2 gas total across 6 deploys + 3 admin txs (Settlement is the
+#     fattest at ~6M)
+#   - L2 cost is rounding-error at sub-gwei L2 base fee
+#   - L1 data fee dominates (~$4-7 today, ~$25 if L1 base fee spikes to 30 gwei)
+# 0.01 ETH covers a 30-gwei-L1 spike with margin. If you're seeing higher
+# L1 base fees, bridge more before retrying.
+if [[ "$BAL_WEI" -lt 10000000000000000 ]]; then  # 0.01 ETH
+  echo "ERROR: deployer balance < 0.01 ETH — fund $DEPLOYER_ADDR first" >&2
+  echo "       Realistic deploy burn at today's gas is ~0.002-0.003 ETH;" >&2
+  echo "       this floor leaves ~3x headroom against an L1 fee spike." >&2
   exit 4
 fi
 

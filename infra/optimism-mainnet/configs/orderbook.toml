@@ -1,0 +1,33 @@
+# Ophis — Optimism mainnet (chain 10) orderbook config.
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "https://optimism-rpc.publicnode.com"
+simulation-node-url = "https://optimism-rpc.publicnode.com"
+
+# Override every contract address — Optimism mainnet (chain 10) needs explicit
+# Ophis-deployed addresses since upstream's contracts registry doesn't include
+# our deployments here. From deploy-mainnet-all.sh on 2026-05-13.
+[shared.contracts]
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+balances = "0x78799f98276efba1edeed32eae03a3fd8cdfec3a"
+signatures = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+native-token = "0x4200000000000000000000000000000000000006"
+hooks = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
+# Balancer V2 Vault: canonical cross-chain address used as a flash-loan source
+# for solver simulation. The Vault is deployed on OP at the same address.
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
