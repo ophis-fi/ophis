@@ -1,0 +1,49 @@
+# Ophis — Optimism mainnet (chain 10) autopilot config.
+node-url = "https://optimism-rpc.publicnode.com"
+simulation-node-url = "https://optimism-rpc.publicnode.com"
+
+[contracts]
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+balances = "0x78799f98276efba1edeed32eae03a3fd8cdfec3a"
+signatures = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+native-token = "0x4200000000000000000000000000000000000006"
+hooks = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[logging]
+filter = "warn,autopilot=debug,shared=info,price_estimation=info"
+
+[current-block]
+poll-interval = "2s"  # OP block time
+
+[run-loop]
+solve-deadline = "20s"
+
+[[gas-estimators]]
+type = "Web3"
+
+[[gas-estimators]]
+type = "Alloy"
+
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F"
+
+[fee-policies]
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[order-quoting]
+price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"
+
+[native-price-estimation]
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[native-price-estimation.cache]
+max-age = "20m"
