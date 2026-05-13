@@ -117,7 +117,7 @@ services:
       # MUST be set in ./.env. Container refuses to start if blank.
       OPHIS_DRIVER_SUBMITTER_KEY: ${OPHIS_DRIVER_SUBMITTER_KEY:?driver private key must be set in infra/optimism-mainnet/.env}
     volumes:
-      - ./configs/driver.toml:/driver.toml:ro
+      - ./rendered/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]
     ports:
       - "127.0.0.1:8103:80"
