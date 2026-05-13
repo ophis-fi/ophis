@@ -5,6 +5,7 @@ use {
 };
 
 pub mod bitget;
+pub mod kyberswap;
 pub mod okx;
 pub mod simulator;
 
@@ -14,6 +15,7 @@ pub use self::simulator::Simulator;
 pub enum Dex {
     Bitget(bitget::Bitget),
     Okx(Box<okx::Okx>),
+    KyberSwap(Box<kyberswap::KyberSwap>),
 }
 
 impl Dex {
@@ -30,6 +32,7 @@ impl Dex {
         let swap = match self {
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
+            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage).await?,
         };
         Ok(swap)
     }
@@ -115,6 +118,17 @@ impl From<bitget::Error> for Error {
             bitget::Error::NotFound => Self::NotFound,
             bitget::Error::MissingDecimals | bitget::Error::BadRequest => Self::BadRequest,
             bitget::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<kyberswap::Error> for Error {
+    fn from(err: kyberswap::Error) -> Self {
+        match err {
+            kyberswap::Error::OrderNotSupported => Self::OrderNotSupported,
+            kyberswap::Error::NotFound | kyberswap::Error::BuildFailed => Self::NotFound,
+            kyberswap::Error::RateLimited => Self::RateLimited,
             _ => Self::Other(Box::new(err)),
         }
     }

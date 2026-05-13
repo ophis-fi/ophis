@@ -1,5 +1,6 @@
 pub mod bitget;
 pub mod file;
+pub mod kyberswap;
 pub mod okx;
 
 use {
