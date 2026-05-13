@@ -35,6 +35,17 @@ absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
 account = "%OPHIS_DRIVER_SUBMITTER_KEY"
 
+# KyberSwap aggregator — second competing solver. Covers the same UniV3 +
+# Velodrome + Curve + Balancer surface as OKX. Free public API, no key
+# required. Two competing aggregators give the per-batch auction real
+# price competition; whichever returns the better quote wins each order.
+[[solver]]
+name = "kyberswap"
+endpoint = "http://kyberswap-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "%OPHIS_DRIVER_SUBMITTER_KEY"
+
 [submission]
 # OP mainnet typical gas << 1 gwei. Cap at 1000 gwei is wildly above realistic
 # spike levels but protects against pathological RPC misreports.
