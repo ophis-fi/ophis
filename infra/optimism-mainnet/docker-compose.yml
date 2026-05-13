@@ -61,6 +61,17 @@ services:
     command: ["--config", "/orderbook.toml"]
     ports:
       - "127.0.0.1:8102:80"
+    healthcheck:
+      # CoW backend images are distroless-ish; no curl/wget. Bash /dev/tcp
+      # confirms port 80 is accepting TCP connections — enough to know the
+      # HTTP server is up. Liveness from inside the orderbook process is not
+      # exposed; if a deadlock kept the listener up but the worker stuck,
+      # this wouldn't catch it. Use Prometheus metrics for that (Spec TBD).
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
   autopilot:
     image: local-autopilot:latest
@@ -73,7 +84,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
-      orderbook: { condition: service_started }
+      orderbook: { condition: service_healthy }
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
@@ -81,6 +92,9 @@ services:
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
+    # autopilot is a worker (no HTTP listener), so only restart-on-failure
+    # via Docker's `restart: always` policy. Health is signalled via the
+    # Prometheus /metrics endpoint that the binary always exposes.
 
   driver:
     image: local-driver:latest
@@ -91,7 +105,8 @@ services:
     restart: always
     mem_limit: 2g
     depends_on:
-      baseline: { condition: service_started }
+      baseline: { condition: service_healthy }
+      okx-solver: { condition: service_healthy }
     environment:
       ETHRPC: ${OP_MAINNET_RPC}
       ADDR: 0.0.0.0:80
@@ -105,6 +120,12 @@ services:
     command: ["--config", "/driver.toml"]
     ports:
       - "127.0.0.1:8103:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
   baseline:
     image: local-baseline:latest
@@ -121,6 +142,12 @@ services:
     command: ["baseline", "--config", "/baseline.toml"]
     ports:
       - "127.0.0.1:9022:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   # OKX OnchainOS aggregator solver. Reads its API credentials from the
   # rendered TOML at rendered/okx.toml (gitignored; produced by
@@ -142,6 +169,12 @@ services:
     command: ["okx", "--config", "/okx.toml"]
     ports:
       - "127.0.0.1:9023:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
 volumes:
   postgres:
