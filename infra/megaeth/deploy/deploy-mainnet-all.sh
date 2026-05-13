@@ -150,9 +150,28 @@ fi
 # CRITICAL: this closes the dangerous window where the HW wallet still has
 # unilateral protocol-level power. After these two txs, only the 2-of-3
 # Safe can addSolver / removeSolver / transferOwnership / upgrade.
+#
+# Interrupt safety: if the operator Ctrl-C's between transferOwnership and
+# setManager (or either tx fails on chain), the AuthList enters a partially-
+# migrated state where the Safe owns it but the HW wallet retains manager
+# (can still addSolver/removeSolver). Codex's 2026-05-13 second-opinion
+# review flagged this as not-fail-closed.
+#
+# RECOVERY: non-stuck state. After Ctrl-C, the operator runs:
+#   cast send --rpc-url "$RPC" --ledger \
+#     "$OPHIS_AUTH_MAINNET" "setManager(address)" "$SAFE" --gas-limit 50000000
+# manually. Order is transferOwnership FIRST so an interrupted state leaves
+# the Safe with strictly MORE authority than the HW wallet — a stolen HW
+# wallet at this intermediate state could only addSolver (bounded blast
+# radius); the Safe can immediately removeSolver + setManager(Safe) to
+# recover.
 echo ""
 echo "=== [4/4] Transferring AuthList ownership to Ophis protocol Safe (Ledger) ==="
 echo "  Safe: $SAFE"
+echo "  ⚠️  If you Ctrl-C between the two txs below, the AuthList is left in"
+echo "      a partial state (Safe=owner, Ledger=manager). Resume manually:"
+echo "      cast send --rpc-url \"\$RPC\" --ledger \"\$OPHIS_AUTH_MAINNET\" \"setManager(address)\" \"\$SAFE\" --gas-limit 50000000"
+
 cast send --rpc-url "$RPC" --ledger \
   "$OPHIS_AUTH_MAINNET" "transferOwnership(address)" "$SAFE" \
   --gas-limit 50000000 >/dev/null
