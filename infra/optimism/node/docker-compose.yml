@@ -44,7 +44,11 @@ services:
       - --metrics=0.0.0.0:9001
       - --log.stdout.format=log-fmt
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}' --header='Content-Type: application/json' http://127.0.0.1:8545 | grep -q '0xa'"]
+      # The op-reth image has bash but no curl/wget/nc. Use bash's /dev/tcp
+      # to confirm the HTTP RPC port is open + accepting connections. Not as
+      # strong as a chain-id check, but op-node's engine-api connection to
+      # op-reth via authrpc:8551 retries on its own, so this is enough.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8545' 2>/dev/null"]
       interval: 15s
       timeout: 5s
       retries: 40
