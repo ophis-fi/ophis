@@ -6,6 +6,7 @@ import { runBatcher } from './batcher.js';
 import { sql } from './db/index.js';
 import { logger } from './logger.js';
 import { createPublicClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import { gnosis } from 'viem/chains';
 
 const log = logger.child({ module: 'cli' });
@@ -56,11 +57,15 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async ['rotate-proposer'](args) {
     const newKey = args.find((a) => a.startsWith('--new-key='))?.split('=')[1];
     if (!newKey) throw new Error('--new-key=0x... required');
+    // L-02 fix (audit 2026-05-13): derive + print the public address instead
+    // of leaking the first 40 bits of the private key. The whole point of
+    // this hint line is to let the operator confirm the address Safe expects.
+    const newAddress = privateKeyToAccount(newKey as `0x${string}`).address;
     console.log('To complete rotation:');
     console.log('1. Update SAFE_PROPOSER_PRIVATE_KEY in the Aleph VM env');
     console.log('2. Add new proposer in Safe UI: Settings → Transaction service → Add proposer');
     console.log('3. Remove old proposer from Safe Transaction Service');
-    console.log(`4. The new proposer address (derive from ${newKey.slice(0, 10)}…) must match the Safe-recorded proposer EOA`);
+    console.log(`4. The new proposer address ${newAddress} must match the Safe-recorded proposer EOA`);
   },
 };
 
