@@ -63,10 +63,47 @@ async fn sell() {
                     "recipient": "0x9008d19f58aabd9ed0d60971565aa8510560ab41",
                     "slippageTolerance": 100,
                     "enableGasEstimation": false,
+                    // Echo verbatim — codex 2026-05-13 review: the previous
+                    // approach excluded the entire routeSummary from the
+                    // assertion, which made the most KyberSwap-specific
+                    // invariant (echo correctness) untested. Now we assert
+                    // the full routeSummary structure round-trips. Values
+                    // mirror step-1's mocked response exactly.
+                    "routeSummary": {
+                        "tokenIn": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                        "amountIn": "1000000000000000000",
+                        "amountInUsd": "3315.55",
+                        "tokenOut": "0xe41d2489571d322189246dafa5ebde1f4699f498",
+                        "amountOut": "6556259156432631386442",
+                        "amountOutUsd": "3308.16",
+                        "gas": "200000",
+                        "gasPrice": "6756286873",
+                        "gasUsd": "0.45",
+                        "route": [
+                            [
+                                {
+                                    "pool": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                    "tokenIn": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                                    "tokenOut": "0xe41d2489571d322189246dafa5ebde1f4699f498",
+                                    "swapAmount": "1000000000000000000",
+                                    "amountOut": "6556259156432631386442",
+                                    "exchange": "uniswap-v3",
+                                    "poolType": "uni-v3",
+                                    "extra": null
+                                }
+                            ]
+                        ],
+                        "routeID": "abc-123",
+                    },
                 }),
-                // The routeSummary is echoed verbatim — its shape is verified by
-                // step-1's mock, no need to assert it again here.
-                vec!["routeSummary", "deadline"],
+                // Exclude only the fields the plan permits to vary in echo —
+                // timestamp moves between step-1 and step-2 calls, checksum
+                // is a hash that depends on KyberSwap's internal state.
+                vec![
+                    "routeSummary.timestamp",
+                    "routeSummary.checksum",
+                    "deadline",
+                ],
             ),
             res: json!({
                 "code": 0,
