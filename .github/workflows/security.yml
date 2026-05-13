@@ -1,0 +1,139 @@
+name: Security
+
+# Runs on every PR targeting main / docs/* / feat/* branches plus on
+# workflow_dispatch for ad-hoc runs.
+#
+# Three jobs run in parallel:
+#   - slither       — Solidity static analysis (Trail of Bits)
+#   - pnpm-audit    — JS/TS dep advisories
+#   - cargo-audit   — Rust dep advisories
+#
+# Each job blocks merge if it regresses against the 2026-05-13 audit baseline.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'docs/**'
+      - 'feat/**'
+  workflow_dispatch:
+
+# Default to read-only — fork PRs do not need write access. Audit
+# finding 2026-05-09 (matches ci.yml).
+permissions:
+  contents: read
+
+jobs:
+  slither:
+    name: Slither (Solidity)
+    runs-on: ubuntu-latest
+    steps:
+      # Action SHAs pinned per the security audit 2026-05-09 — tag refs are
+      # mutable and can be hijacked; SHAs are not.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install Slither
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install slither-analyzer==0.11.4
+
+      - name: Run Slither
+        run: |
+          cd contracts
+          slither --filter-paths "node_modules|src/contracts/test|src/contracts/reader|@openzeppelin" \
+            --json /tmp/slither.json \
+            src/contracts/ || true
+          # Slither exits non-zero whenever it finds anything, even INFO.
+          # We trust the JSON output rather than the exit code.
+
+      - name: Check against baseline (2026-05-13 audit)
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys
+          with open('/tmp/slither.json') as f:
+              d = json.load(f)
+          results = d.get('results', {}).get('detectors', [])
+          from collections import Counter
+          by_impact = Counter(r['impact'] for r in results)
+          print(f"Findings: {dict(by_impact)}")
+          # Baseline from audit-report-2026-05-13.md
+          BASELINE = {'High': 4, 'Medium': 15, 'Low': 7}
+          regression = False
+          for impact, limit in BASELINE.items():
+              count = by_impact.get(impact, 0)
+              if count > limit:
+                  print(f"REGRESSION: {count} {impact} (baseline {limit})")
+                  regression = True
+          if regression:
+              print()
+              print("New findings vs baseline. Investigate in audit/audit-report-YYYY-MM-DD.md")
+              sys.exit(1)
+          print()
+          print("OK -- no regression vs 2026-05-13 baseline.")
+          PYEOF
+
+      - name: Upload Slither JSON
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: slither-${{ github.sha }}.json
+          path: /tmp/slither.json
+          retention-days: 30
+
+  pnpm-audit:
+    name: pnpm audit (JS/TS deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run pnpm audit --prod
+        run: |
+          # --prod skips devDeps; we care about runtime CVEs.
+          # `|| true` because pnpm audit exits non-zero on ANY advisory.
+          pnpm audit --prod --json > /tmp/pnpm-audit.json || true
+          cat /tmp/pnpm-audit.json
+
+      - name: Block on HIGH or CRITICAL advisories
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys
+          with open('/tmp/pnpm-audit.json') as f:
+              d = json.load(f)
+          advisories = d.get('advisories', {})
+          blocking = []
+          for k, adv in advisories.items():
+              sev = adv.get('severity', '')
+              if sev in ('high', 'critical'):
+                  blocking.append(f"{adv.get('module_name','?')} (sev={sev}, advisory={k}): {adv.get('title','?')}")
+          if blocking:
+              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories")
+              for b in blocking:
+                  print(f"  - {b}")
+              sys.exit(1)
+          print(f"OK -- {len(advisories)} total advisories, none HIGH/CRITICAL")
+          PYEOF
+
+  cargo-audit:
+    name: cargo audit (Rust deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+
+      - name: Run cargo audit
+        run: |
+          cd apps/backend
+          cargo audit --deny warnings
+
+      - name: Show advisory database version
+        if: always()
+        run: cargo audit --version
