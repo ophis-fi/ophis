@@ -107,6 +107,7 @@ services:
     depends_on:
       baseline: { condition: service_healthy }
       okx-solver: { condition: service_healthy }
+      kyberswap-solver: { condition: service_healthy }
     environment:
       ETHRPC: ${OP_MAINNET_RPC}
       ADDR: 0.0.0.0:80
@@ -169,6 +170,31 @@ services:
     command: ["okx", "--config", "/okx.toml"]
     ports:
       - "127.0.0.1:9023:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # KyberSwap aggregator solver — second competing solver in the auction.
+  # Free public API, no key required; configs/kyberswap.toml is checked-in
+  # as-is (no template rendering needed).
+  kyberswap-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/kyberswap.toml:/kyberswap.toml:ro
+    command: ["kyberswap", "--config", "/kyberswap.toml"]
+    ports:
+      - "127.0.0.1:9024:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s
