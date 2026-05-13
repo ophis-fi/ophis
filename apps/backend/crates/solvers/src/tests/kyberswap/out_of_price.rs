@@ -1,0 +1,117 @@
+//! This test verifies that the KyberSwap solver does not generate solutions
+//! when the swap returned from the API does not satisfy an order's limit
+//! price. The framework filters via [`Swap::satisfies`].
+
+use {
+    crate::tests::{self, mock},
+    serde_json::json,
+};
+
+#[tokio::test]
+async fn sell() {
+    let api = mock::http::setup(vec![
+        mock::http::Expectation::Get {
+            path: mock::http::Path::exact(
+                "routes?tokenIn=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\
+                 &tokenOut=0xe41d2489571d322189246dafa5ebde1f4699f498\
+                 &amountIn=1000000000000000000\
+                 &saveGas=false\
+                 &gasInclude=true",
+            ),
+            res: json!({
+                "code": 0,
+                "message": "",
+                "data": {
+                    "routeSummary": {
+                        "tokenIn": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+                        "amountIn": "1000000000000000000",
+                        "amountInUsd": "3315.55",
+                        "tokenOut": "0xe41d2489571d322189246dafa5ebde1f4699f498",
+                        "amountOut": "6556259156432631386442",
+                        "amountOutUsd": "3308.16",
+                        "gas": "200000",
+                        "gasPrice": "6756286873",
+                        "gasUsd": "0.45",
+                        "route": [[]],
+                        "routeID": "abc-123",
+                        "checksum": "deadbeef",
+                        "timestamp": 1700000000
+                    },
+                    "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+                }
+            }),
+        },
+        mock::http::Expectation::Post {
+            path: mock::http::Path::exact("route/build"),
+            req: mock::http::RequestBody::Any,
+            res: json!({
+                "code": 0,
+                "message": "",
+                "data": {
+                    "amountIn": "1000000000000000000",
+                    "amountOut": "6556259156432631386442",
+                    "gas": "200000",
+                    "data": "0x0d5f0e3b00000000000000000001a0cf2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a0000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000015fdc8278903f7f31c10000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000014424eeecbff345b38187d0b8b749e56faa68539",
+                    "routerAddress": "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5"
+                }
+            }),
+        },
+    ])
+    .await;
+
+    let engine = tests::SolverEngine::new("kyberswap", super::config(&api.address)).await;
+
+    let solution = engine
+        .solve(json!({
+            "id": "1",
+            "tokens": {
+                "0xe41d2489571d322189246dafa5ebde1f4699f498": {
+                    "decimals": 18,
+                    "symbol": "ZRX",
+                    "referencePrice": "4327903683155778",
+                    "availableBalance": "1583034704488033979459",
+                    "trusted": true,
+                },
+                "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": {
+                    "decimals": 18,
+                    "symbol": "WETH",
+                    "referencePrice": "1000000000000000000",
+                    "availableBalance": "482725140468789680",
+                    "trusted": true,
+                },
+            },
+            "orders": [
+                {
+                    "uid": "0x2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a\
+                              2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a\
+                              2a2a2a2a",
+                    "sellToken": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+                    "buyToken": "0xe41d2489571d322189246dafa5ebde1f4699f498",
+                    "sellAmount": "1000000000000000000",
+                    // Way too much — order can never be filled at this rate.
+                    "buyAmount": "1000000000000000000000000000000000000",
+                    "fullSellAmount": "1000000000000000000",
+                    "fullBuyAmount": "1000000000000000000000000000000000000",
+                    "kind": "sell",
+                    "partiallyFillable": false,
+                    "class": "market",
+                    "sellTokenSource": "erc20",
+                    "buyTokenDestination": "erc20",
+                    "preInteractions": [],
+                    "postInteractions": [],
+                    "owner": "0x5b1e2c2762667331bc91648052f646d1b0d35984",
+                    "validTo": 0,
+                    "appData": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "signingScheme": "presign",
+                    "signature": "0x",
+                }
+            ],
+            "liquidity": [],
+            "effectiveGasPrice": "15000000000",
+            "deadline": "2106-01-01T00:00:00.000Z",
+            "surplusCapturingJitOrderOwners": []
+        }))
+        .await;
+
+    assert_eq!(solution, json!({ "solutions": [] }));
+}
