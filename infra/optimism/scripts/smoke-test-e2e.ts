@@ -27,11 +27,25 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { sepolia } from 'viem/chains';
 import chalk from 'chalk';
 
-// Greg's CoW settlement deployment — CREATE2-deterministic across all
-// Greg-deployed chains (Optimism Sepolia, MegaETH testnet, future mainnets).
-// Different from canonical CoW (0x9008…ab41) because Greg uses its own
-// deployer + salt.
-const GPV2_SETTLEMENT = '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce' as const;
+// Ophis's CoW settlement deployment address.
+//
+// IMPORTANT — historical context: 0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce
+// was the address on Optimism Sepolia + MegaETH testnet because those were
+// deployed with the legacy software-key deployer EOA. **Mainnet uses the HW
+// wallet** (0xBeC5…0199) as the namedAccounts owner+manager constructor
+// args, which changes the CREATE2 inputs and therefore changes the
+// AllowListAuthentication proxy + Settlement addresses.
+//
+// Source-of-truth for any chain is the hardhat-deploy artifact at
+// `contracts/deployments/<network>/GPv2Settlement.json`. Set the env var
+// OPHIS_SETTLEMENT (or rely on the fallback default below for OP Sepolia
+// testnet, where this script was originally written).
+//
+// Fail loudly if the env var is missing on non-Sepolia chains.
+const SEPOLIA_DEFAULT_SETTLEMENT =
+  '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce' as const;
+const GPV2_SETTLEMENT = (process.env.OPHIS_SETTLEMENT ??
+  SEPOLIA_DEFAULT_SETTLEMENT) as `0x${string}`;
 
 const OPTIMISM_SEPOLIA = {
   ...sepolia,
@@ -41,7 +55,13 @@ const OPTIMISM_SEPOLIA = {
 } as const;
 
 const ORDERBOOK_URL = 'https://optimism-sepolia.ophis.fi';
-const VAULT_RELAYER = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205' as const;
+// VaultRelayer is derived on chain from the Settlement (proxy initializer
+// computes its CREATE address from settlement's nonce). Default below is
+// the Sepolia value; OPHIS_VAULT_RELAYER env var overrides for other chains.
+const SEPOLIA_DEFAULT_VAULT_RELAYER =
+  '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205' as const;
+const VAULT_RELAYER = (process.env.OPHIS_VAULT_RELAYER ??
+  SEPOLIA_DEFAULT_VAULT_RELAYER) as `0x${string}`;
 const WETH =
   (process.env.OPTIMISM_SEPOLIA_WETH as `0x${string}` | undefined) ??
   '0x4200000000000000000000000000000000000006';
