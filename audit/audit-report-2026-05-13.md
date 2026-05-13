@@ -35,14 +35,14 @@ None.
 
 ### LOW (nice-to-have)
 
-**L-01 — `drizzle-orm@0.36.4` SQL-injection advisory (GHSA fixed in >=0.45.2)**
-- Surfaced by `pnpm audit`. Severity advisory: HIGH, but in this codebase the exploit path is **not present**: drizzle-orm's CVE is for *improperly escaped identifiers* (column/table names from user input). Every `db.select/insert/update` in `apps/rebate-indexer/src/` uses schema-defined columns; every `sql\`\`` template uses parametric substitution with literal identifiers. No user input crosses an identifier boundary.
-- Recommendation: bump to `^0.45.2` at next dependency-rotation pass. Not a launch blocker.
-- Files: `apps/rebate-indexer/package.json` (drizzle-orm pin), all `apps/rebate-indexer/src/db/` and `*.ts` query sites.
+**L-01 — `drizzle-orm@0.36.4` SQL-injection advisory (GHSA fixed in >=0.45.2)** — **PATCHED 2026-05-13**
+- Bumped `drizzle-orm` ^0.36.0 → ^0.45.2 + `drizzle-kit` ^0.28.0 → ^0.31.10 in `apps/rebate-indexer/package.json`. Typecheck clean; 41/41 unit tests pass.
+- The advisory (GHSA-gpj5-g38j-94v9) was a HIGH dialect-level identifier-escape bug, but the exploit path required user-controlled identifier names — never present in this codebase (all column/table names are schema-defined; every `sql\`\`` uses parametric substitution).
+- Files touched: `apps/rebate-indexer/package.json`, `pnpm-lock.yaml`.
 
-**L-02 — Partial private-key prefix logged in `rotate-proposer` CLI helper**
-- `apps/rebate-indexer/src/cli.ts:63` prints `${newKey.slice(0,10)}…` to stdout when an operator runs `cli.ts rotate-proposer --new-key=0x…`. That leaks 10 hex chars (5 bytes, 40 bits) of a 32-byte key, leaving 216 bits of entropy — not catastrophic, but log scrapers / shell history capture it.
-- Recommendation: change to derive + print the *address* via viem `privateKeyToAccount(newKey).address` instead of `slice(0,10)`. The whole point of that line is to help the operator confirm the address Safe expects.
+**L-02 — Partial private-key prefix logged in `rotate-proposer` CLI helper** — **PATCHED 2026-05-13**
+- `apps/rebate-indexer/src/cli.ts:63` now derives + prints the EOA address via `privateKeyToAccount(newKey).address` instead of `${newKey.slice(0,10)}…`. No private-key bytes leak to stdout/shell-history/log-scrapers.
+- Verified end-to-end: `cli.ts rotate-proposer --new-key=0x<random>` prints `The new proposer address 0xCFa544…0a80e5 must match the Safe-recorded proposer EOA`.
 
 ### INFO (no action needed, just noted)
 
