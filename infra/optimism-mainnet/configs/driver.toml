@@ -24,6 +24,17 @@ relative-slippage = "0.1"
 # config crate substitutes %VAR_NAME at load time.
 account = "%OPHIS_DRIVER_SUBMITTER_KEY"
 
+# OKX OnchainOS aggregator — covers UniV3 + Velodrome + Curve + Balancer + long
+# tail. Same driver-submitter EOA signs settlement (the auction picks whichever
+# solver returns the best quote per order). Quote requests cost OKX free-quota
+# credits ($100 Basic + $50 Premium per month, permanent).
+[[solver]]
+name = "okx"
+endpoint = "http://okx-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "%OPHIS_DRIVER_SUBMITTER_KEY"
+
 [submission]
 # OP mainnet typical gas << 1 gwei. Cap at 1000 gwei is wildly above realistic
 # spike levels but protects against pathological RPC misreports.
