@@ -1,8 +1,13 @@
 name: rebate-indexer CI
 
 on:
-  schedule:
-    - cron: '0 3 * * *'                                  # 03:00 UTC daily — runs after deploy and prod cron
+  # Nightly schedule disabled until the Sepolia test Safe (D5 from PR #8)
+  # is deployed and E2E_SAFE_ADDRESS + E2E_SAFE_BURNER_KEY + SEPOLIA_RPC_URL
+  # secrets are set. Re-enable by uncommenting the schedule block below once
+  # those are in place. Operator runbook: infra/cloudflare/ophis-chain-backends.md
+  # § "Deferred operator task: re-enable rebate-indexer nightly e2e".
+  # schedule:
+  #   - cron: '0 3 * * *'                                  # 03:00 UTC daily — runs after deploy and prod cron
   pull_request:
     paths:
       - "apps/rebate-indexer/**"
