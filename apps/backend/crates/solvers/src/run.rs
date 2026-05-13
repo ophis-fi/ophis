@@ -64,6 +64,16 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::KyberSwap { config: path } => {
+            let config = config::dex::kyberswap::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::KyberSwap(Box::new(
+                    dex::kyberswap::KyberSwap::try_new(config.kyberswap)
+                        .expect("invalid KyberSwap configuration"),
+                )),
+                config.base,
+            )))
+        }
     };
 
     crate::api::Api {
