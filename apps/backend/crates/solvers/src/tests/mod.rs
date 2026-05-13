@@ -12,6 +12,7 @@ use {
 
 mod bitget;
 mod cases;
+mod kyberswap;
 mod mock;
 mod okx;
 
