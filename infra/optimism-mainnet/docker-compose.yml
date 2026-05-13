@@ -122,5 +122,26 @@ services:
     ports:
       - "127.0.0.1:9022:80"
 
+  # OKX OnchainOS aggregator solver. Reads its API credentials from the
+  # rendered TOML at rendered/okx.toml (gitignored; produced by
+  # ./render-configs.sh which envsubst's configs/okx.toml.tmpl with .env).
+  # MUST run ./render-configs.sh before `docker compose up` so rendered/okx.toml
+  # exists with secrets substituted.
+  okx-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/okx.toml:/okx.toml:ro
+    command: ["okx", "--config", "/okx.toml"]
+    ports:
+      - "127.0.0.1:9023:80"
+
 volumes:
   postgres:
