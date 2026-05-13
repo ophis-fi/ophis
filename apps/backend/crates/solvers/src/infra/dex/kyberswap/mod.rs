@@ -119,6 +119,25 @@ impl KyberSwap {
                 });
             }
 
+            // Per codex review 2026-05-13 (HIGH): a compromised /route/build
+            // response could return amount_in > order.sell.amount and trigger
+            // a buffer-siphon attack if the Settlement contract holds spare
+            // balance of the sold token. The CoW Settlement contract caps the
+            // user-side transfer at order.sell.amount, but the router's
+            // transferFrom(settlement, ...) targets the larger build.amount_in
+            // and would pull from the settlement's own balance. Fail fast
+            // rather than trust the API's amount_in.
+            if build.amount_in != order.amount.get() {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "/route/build returned amount_in {:?}, expected {:?}",
+                        build.amount_in,
+                        order.amount.get()
+                    ),
+                });
+            }
+
             // Parse the gas estimate (decimal string) and pad by 50% to be
             // conservative, mirroring the OKX / Bitget conventions.
             let gas_estimate: u64 = build
