@@ -31,7 +31,7 @@ for tmpl in configs/*.toml.tmpl; do
   out="rendered/$name"
   # envsubst only substitutes the explicit list we pass (prevents accidental
   # substitution of values that happen to contain `$` chars like passphrases).
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out"
   echo "  rendered  $name"
 done
