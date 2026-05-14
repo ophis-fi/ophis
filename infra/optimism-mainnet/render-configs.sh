@@ -33,10 +33,19 @@ for tmpl in configs/*.toml.tmpl; do
   # substitution of values that happen to contain `$` chars like passphrases).
   envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out"
+  # Rendered files contain plaintext secrets (driver-submitter PK, OKX API
+  # keys). Lock to owner-only so anything reading our /Users/scep/greg
+  # tree at file-permission granularity is blocked. .env is also chmod 600
+  # — see the audit log of 2026-05-14 for the rationale.
+  chmod 600 "$out"
   echo "  rendered  $name"
 done
 
+# Same lock for .env — render-configs.sh runs at every deploy so this
+# enforces idempotently.
+[ -f .env ] && chmod 600 .env
+
 echo ""
-echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored."
+echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, mode 600."
 echo "Bring up the stack with:"
 echo "  docker compose -f $SCRIPT_DIR/docker-compose.yml up -d --build"
