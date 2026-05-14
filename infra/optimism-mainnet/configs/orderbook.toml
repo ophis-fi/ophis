@@ -24,10 +24,40 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
-estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+# CoinGecko answers the "how much ETH is 1 token X worth" question that
+# the orderbook needs for fee accounting. The solver auction (Driver
+# estimators below) still does the real swap pricing — CoinGecko only
+# anchors the ETH-equivalent denomination.
+#
+# Why not Driver estimators here: OKX V6 + KyberSwap are exactIn-only,
+# they can't answer the buy-direction ETH-anchor query. Baseline has
+# dead Sushi V2 liquidity on OP. Native-price-estimation requires
+# bidirectional pricing; only off-chain price feeds work.
+#
+# Free tier: no API key needed at our launch volume (~10 RPS limit).
+# Add an api-key under [native-price-estimation.coin-gecko] when we
+# scale past 10k calls/month — see https://www.coingecko.com/api/pricing
+estimators = [[{ type = "CoinGecko" }]]
 
 [order-quoting]
-price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+# Same fanout for quote estimation. Without OKX/KyberSwap here, a swap
+# of WETH/USDC returns "NoLiquidity" because baseline can only route
+# through SushiSwap V2 which has minimal liquidity on OP.
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "okx", url = "http://driver/okx" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+]
 
 [price-estimation]
 amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
+
+# CoinGecko config. The coin-gecko sub-block belongs under [price-estimation],
+# not [native-price-estimation], even though only the native estimator uses it.
+[price-estimation.coin-gecko]
+# CoinGecko Demo-tier key (free, signup at coingecko.com/api/pricing).
+# Read from container env via CoW's %VAR_NAME interpolation. The COW
+# code was patched to use x-cg-demo-api-key header for Demo keys (see
+# coingecko.rs constant AUTHORIZATION).
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
