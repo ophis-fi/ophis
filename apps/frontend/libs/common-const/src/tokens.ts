@@ -612,6 +612,8 @@ export const V_COW: Record<SupportedChainId, TokenWithLogo | null> = {
   [SupportedChainId.MAINNET]: V_COW_TOKEN_MAINNET,
   [SupportedChainId.GNOSIS_CHAIN]: V_COW_TOKEN_XDAI,
   [SupportedChainId.SEPOLIA]: V_COW_TOKEN_SEPOLIA,
+  // Ophis fork: vCOW not deployed on OP mainnet
+  [10 as unknown as SupportedChainId]: null,
 }
 
 /**
@@ -658,6 +660,8 @@ export const COW_TOKEN_TO_CHAIN: Record<SupportedChainId, TokenWithLogo | null> 
   [SupportedChainId.LINEA]: COW_TOKEN_LINEA,
   [SupportedChainId.PLASMA]: COW_TOKEN_PLASMA,
   [SupportedChainId.INK]: COW_TOKEN_INK,
+  // Ophis fork: COW token not deployed on OP mainnet
+  [10 as unknown as SupportedChainId]: null,
 }
 
 export const GNO: Record<SupportedChainId, TokenWithLogo | null> = {
@@ -666,6 +670,8 @@ export const GNO: Record<SupportedChainId, TokenWithLogo | null> = {
   [SupportedChainId.GNOSIS_CHAIN]: GNO_GNOSIS_CHAIN,
   [SupportedChainId.ARBITRUM_ONE]: GNO_ARBITRUM_ONE,
   [SupportedChainId.SEPOLIA]: GNO_SEPOLIA,
+  // Ophis fork: GNO not deployed on OP mainnet
+  [10 as unknown as SupportedChainId]: null,
 }
 
 const SDAI_GNOSIS_CHAIN_ADDRESS = '0xaf204776c7245bf4147c2612bf6e5972ee483701'
@@ -736,6 +742,14 @@ const INK_STABLECOINS = [USDC_INK.address, USDCE_INK.address, USDT_INK.address].
 
 const SEPOLIA_STABLECOINS = [USDC_SEPOLIA.address, USDT_SEPOLIA.address].map((t) => t.toLowerCase())
 
+// Ophis fork: OP mainnet stablecoins (USDC native, USDC.e bridged, USDT, DAI)
+const OPTIMISM_STABLECOINS = [
+  '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', // USDC (native)
+  '0x7F5c764cBc14f9669B88837ca1490cCa17c31607', // USDC.e (bridged)
+  '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', // USDT
+  '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', // DAI
+].map((t) => t.toLowerCase())
+
 export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [SupportedChainId.MAINNET]: new Set(MAINNET_STABLECOINS),
   [SupportedChainId.GNOSIS_CHAIN]: new Set(GNOSIS_CHAIN_STABLECOINS),
@@ -748,6 +762,8 @@ export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [SupportedChainId.LINEA]: new Set(LINEA_STABLECOINS),
   [SupportedChainId.PLASMA]: new Set(PLASMA_STABLECOINS),
   [SupportedChainId.INK]: new Set(INK_STABLECOINS),
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: new Set(OPTIMISM_STABLECOINS),
 }
 
 /**
@@ -759,10 +775,14 @@ export const MERKLE_DROP_CONTRACT_ADDRESSES: Record<SupportedChainId, string> = 
   ...mapSupportedNetworks(''),
   [SupportedChainId.MAINNET]: '0x64646f112FfD6F1B7533359CFaAF7998F23C8c40',
   [SupportedChainId.GNOSIS_CHAIN]: '0x48D8566887F8c7d99757CE29c2cD39962bfd9547',
+  // Ophis fork: no airdrop on OP mainnet
+  [10 as unknown as SupportedChainId]: '',
 }
 
 export const TOKEN_DISTRO_CONTRACT_ADDRESSES: Record<SupportedChainId, string> = {
   ...mapSupportedNetworks(''),
   [SupportedChainId.MAINNET]: '0x68FFAaC7A431f276fe73604C127Bd78E49070c92',
   [SupportedChainId.GNOSIS_CHAIN]: '0x3d610e917130f9D036e85A030596807f57e11093',
+  // Ophis fork: no token distro on OP mainnet
+  [10 as unknown as SupportedChainId]: '',
 }

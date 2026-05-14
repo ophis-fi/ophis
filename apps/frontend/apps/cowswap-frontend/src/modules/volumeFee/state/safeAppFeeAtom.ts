@@ -11,9 +11,11 @@ import { featureFlagsAtom } from 'common/state/featureFlagsState'
 
 import { VolumeFee } from '../types'
 
-const SAFE_FEE_RECIPIENT_PER_NETWORK: Record<SupportedChainId, string> = mapAddressToSupportedNetworks(
-  '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
-)
+const SAFE_FEE_RECIPIENT_PER_NETWORK: Record<SupportedChainId, string> = {
+  ...mapAddressToSupportedNetworks('0x8025BAcF968aa82BDfE51B513123b55BFb0060D3'),
+  // Ophis fork: OP mainnet (chain 10) — same Safe-app fee recipient
+  [10 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
+}
 
 const FEE_TIERS = {
   TIER_1: 100_000, // 0 - 100k
