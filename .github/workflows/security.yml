@@ -49,8 +49,16 @@ jobs:
       # forge-std but are not deployed — out of scope.
       - name: Run Slither (production contracts)
         run: |
+          # World-writable so the container's slither user can write JSON
+          # output into the bind mount. GitHub's Linux runners run the
+          # container as a different UID than the host runner, causing
+          # `PermissionError: '/out/settlement.json'` on every write
+          # otherwise. Verified locally on macOS (Docker Desktop handles
+          # UID translation transparently) but Linux runners need this.
           mkdir -p /tmp/slither-out
+          chmod 0777 /tmp/slither-out
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}/contracts/src/contracts:/work" \
             -v /tmp/slither-out:/out \
             -w /work \
