@@ -68,12 +68,23 @@ jobs:
         # CI to surface the error rather than silently produce no JSON.
         # Slither's own exit code: non-zero whenever it finds anything
         # (even INFO), so wrap with explicit 0/1/255 handling.
+        #
+        # Pre-compile only the production contracts via forge. The test
+        # files import @openzeppelin/contracts/* which works locally
+        # (Mac mini has OZ deps from previous installs) but fails in CI
+        # because pnpm's symlinked node_modules confuses forge's path
+        # resolver — even with --shamefully-hoist. Production contracts
+        # don't import OZ at all (verified via grep), so skipping
+        # src/contracts/test/** + src/contracts/reader/** at forge level
+        # cleanly avoids the resolution gap.
         run: |
           cd contracts
+          forge build --skip 'src/contracts/test/*' --skip 'src/contracts/reader/*' --build-info
           set +e
-          slither --filter-paths "node_modules|src/contracts/test|src/contracts/reader|@openzeppelin" \
+          slither --foundry-compile-all false \
+            --filter-paths "node_modules|src/contracts/test|src/contracts/reader|@openzeppelin" \
             --json /tmp/slither.json \
-            src/contracts/
+            .
           rc=$?
           set -e
           # Exit codes per slither --help:
