@@ -5,14 +5,20 @@ import { getWeb3ReactConnection } from './getWeb3ReactConnection'
 
 import { ConnectionType } from '../../api/types'
 
+// Ophis fork: include OP mainnet (chain 10) alongside SDK-supported chains.
+const OPHIS_ALL_SUPPORTED_CHAIN_IDS: SupportedChainId[] = [
+  ...ALL_SUPPORTED_CHAIN_IDS,
+  10 as unknown as SupportedChainId,
+]
+
 const allowedChainsByWallet: Record<ConnectionType, SupportedChainId[]> = {
-  [ConnectionType.INJECTED]: ALL_SUPPORTED_CHAIN_IDS,
-  [ConnectionType.METAMASK]: ALL_SUPPORTED_CHAIN_IDS,
-  [ConnectionType.COINBASE_WALLET]: ALL_SUPPORTED_CHAIN_IDS,
-  [ConnectionType.WALLET_CONNECT_V2]: ALL_SUPPORTED_CHAIN_IDS,
-  [ConnectionType.NETWORK]: ALL_SUPPORTED_CHAIN_IDS,
-  [ConnectionType.GNOSIS_SAFE]: ALL_SUPPORTED_CHAIN_IDS,
-  [ConnectionType.TREZOR]: ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.INJECTED]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.METAMASK]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.COINBASE_WALLET]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.WALLET_CONNECT_V2]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.NETWORK]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.GNOSIS_SAFE]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
+  [ConnectionType.TREZOR]: OPHIS_ALL_SUPPORTED_CHAIN_IDS,
 }
 
 export function isChainAllowed(connector: Connector, chainId: number): boolean {
