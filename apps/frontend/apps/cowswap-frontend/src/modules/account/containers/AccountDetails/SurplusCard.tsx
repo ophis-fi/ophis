@@ -30,6 +30,7 @@ const BNB_START_DATE = 'September 2025'
 const LINEA_START_DATE = 'November 2025'
 const PLASMA_START_DATE = 'January 2026'
 const INK_START_DATE = 'February 2026'
+const OPTIMISM_START_DATE = 'May 2026'
 
 const START_DATE: Record<SupportedChainId, string> = {
   [SupportedChainId.MAINNET]: DEFAULT_START_DATE,
@@ -43,6 +44,8 @@ const START_DATE: Record<SupportedChainId, string> = {
   [SupportedChainId.LINEA]: LINEA_START_DATE,
   [SupportedChainId.PLASMA]: PLASMA_START_DATE,
   [SupportedChainId.INK]: INK_START_DATE,
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: OPTIMISM_START_DATE,
 }
 
 const Wrapper = styled.div`

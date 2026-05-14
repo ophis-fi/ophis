@@ -135,6 +135,8 @@ const CHAIN_NAMES: Record<SupportedChainId, Chain | null> = {
   [SupportedChainId.LINEA]: null,
   [SupportedChainId.PLASMA]: null,
   [SupportedChainId.INK]: null,
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: 'OPTIMISM',
 }
 
 const CHAIN_IDS = Object.entries(CHAIN_NAMES).reduce(
