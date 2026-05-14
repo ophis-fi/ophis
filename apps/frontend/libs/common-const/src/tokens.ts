@@ -614,6 +614,8 @@ export const V_COW: Record<SupportedChainId, TokenWithLogo | null> = {
   [SupportedChainId.SEPOLIA]: V_COW_TOKEN_SEPOLIA,
   // Ophis fork: vCOW not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: vCOW not deployed on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 /**
@@ -662,6 +664,8 @@ export const COW_TOKEN_TO_CHAIN: Record<SupportedChainId, TokenWithLogo | null> 
   [SupportedChainId.INK]: COW_TOKEN_INK,
   // Ophis fork: COW token not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: COW token not deployed on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 export const GNO: Record<SupportedChainId, TokenWithLogo | null> = {
@@ -672,6 +676,8 @@ export const GNO: Record<SupportedChainId, TokenWithLogo | null> = {
   [SupportedChainId.SEPOLIA]: GNO_SEPOLIA,
   // Ophis fork: GNO not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: GNO not deployed on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 const SDAI_GNOSIS_CHAIN_ADDRESS = '0xaf204776c7245bf4147c2612bf6e5972ee483701'
@@ -750,6 +756,11 @@ const OPTIMISM_STABLECOINS = [
   '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', // DAI
 ].map((t) => t.toLowerCase())
 
+// Ophis fork: MegaETH mainnet stablecoins. At launch, the only stablecoin
+// expected on chain 4326 is USDT0 (Tether's omnichain canonical bridge).
+// Address is TBD post-deploy — leave empty until confirmed.
+const MEGAETH_STABLECOINS: string[] = []
+
 export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [SupportedChainId.MAINNET]: new Set(MAINNET_STABLECOINS),
   [SupportedChainId.GNOSIS_CHAIN]: new Set(GNOSIS_CHAIN_STABLECOINS),
@@ -764,6 +775,8 @@ export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [SupportedChainId.INK]: new Set(INK_STABLECOINS),
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: new Set(OPTIMISM_STABLECOINS),
+  // Ophis fork: MegaETH mainnet (chain 4326) — TBD post-deploy
+  [4326 as unknown as SupportedChainId]: new Set(MEGAETH_STABLECOINS),
 }
 
 /**
@@ -777,6 +790,8 @@ export const MERKLE_DROP_CONTRACT_ADDRESSES: Record<SupportedChainId, string> = 
   [SupportedChainId.GNOSIS_CHAIN]: '0x48D8566887F8c7d99757CE29c2cD39962bfd9547',
   // Ophis fork: no airdrop on OP mainnet
   [10 as unknown as SupportedChainId]: '',
+  // Ophis fork: no airdrop on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: '',
 }
 
 export const TOKEN_DISTRO_CONTRACT_ADDRESSES: Record<SupportedChainId, string> = {
@@ -785,4 +800,6 @@ export const TOKEN_DISTRO_CONTRACT_ADDRESSES: Record<SupportedChainId, string> =
   [SupportedChainId.GNOSIS_CHAIN]: '0x3d610e917130f9D036e85A030596807f57e11093',
   // Ophis fork: no token distro on OP mainnet
   [10 as unknown as SupportedChainId]: '',
+  // Ophis fork: no token distro on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: '',
 }
