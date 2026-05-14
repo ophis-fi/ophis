@@ -1,5 +1,5 @@
 import CowImage from '@cowprotocol/assets/cow-swap/cow_token.svg'
-import { ALL_SUPPORTED_CHAIN_IDS } from '@cowprotocol/cow-sdk'
+import { ALL_SUPPORTED_CHAIN_IDS, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type {
   Actions,
   AddEthereumChainParameter,
@@ -90,7 +90,9 @@ export class CoinbaseWallet extends Connector {
     await (this.eagerConnection = import('@coinbase/wallet-sdk').then((m) => {
       const sdk = m.createCoinbaseWalletSDK({
         appName: 'CoW Swap',
-        appChainIds: ALL_SUPPORTED_CHAIN_IDS,
+        // Ophis fork: include OP mainnet (chain 10) alongside SDK-supported chains so
+        // Coinbase Wallet recognises OP and does not refuse to switch.
+        appChainIds: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
         appLogoUrl: CowImage,
       })
 

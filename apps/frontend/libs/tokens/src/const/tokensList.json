@@ -218,7 +218,7 @@
     {
       "priority": 2,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/token-lists/CoinGecko.10.json"
+      "source": "https://tokens.coingecko.com/optimistic-ethereum/all.json"
     }
   ]
 }
