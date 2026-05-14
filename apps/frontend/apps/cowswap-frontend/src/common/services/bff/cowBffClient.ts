@@ -6,6 +6,10 @@ const EMPTY_SLIPPAGE_RESPONSE = { slippageBps: null }
 
 const log = console.debug
 
+// Ophis fork: chain 10 (OP Mainnet) is not served by CoW's BFF, so calls
+// always 400. Short-circuit to the empty response to avoid the network noise.
+const UNSUPPORTED_BFF_CHAINS = new Set<number>([10])
+
 export class CoWBFFClient {
   constructor(private readonly baseUrl: string) {}
 
@@ -21,6 +25,9 @@ export class CoWBFFClient {
     buyToken,
     chainId,
   }: SlippageToleranceRequest): Promise<SlippageToleranceResponse> {
+    if (UNSUPPORTED_BFF_CHAINS.has(chainId)) {
+      return EMPTY_SLIPPAGE_RESPONSE
+    }
     try {
       const url = `${this.baseUrl}/${chainId}/markets/${sellToken}-${buyToken}/slippageTolerance`
 

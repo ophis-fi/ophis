@@ -109,7 +109,8 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
   })
 
   const isTokenSelected = checkIsTokenSelected(token, selectedToken)
-  const isSupportedChain = token.chainId in SupportedChainId
+  // Ophis fork: OP (chain 10) is supported at the frontend layer.
+  const isSupportedChain = token.chainId in SupportedChainId || token.chainId === 10
   const shouldShowBalances = isWalletConnected && isSupportedChain
   const shouldFormatBalances = shouldShowBalances && hasIntersected
   const balanceAmount =
