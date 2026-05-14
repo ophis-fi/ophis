@@ -27,6 +27,11 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     [ChainId.LINEA]: `${baseUrl}/linea`,
     [ChainId.PLASMA]: `${baseUrl}/plasma`,
     [ChainId.INK]: `${baseUrl}/ink`,
+    // Ophis fork: OP mainnet. CoW doesn't operate an explorer on OP, so
+    // we point at the Optimism block-explorer for tx-level links. Order-
+    // level URLs won't exist there but at least the function returns a
+    // string instead of throwing and crashing the React tree.
+    [10 as unknown as ChainId]: 'https://optimistic.etherscan.io',
   }
 }
 
