@@ -94,13 +94,22 @@ export const MEDIA = {
 export const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 export const NATIVE_TOKEN_ADDRESS_NORMALIZED = getAddressKey(NATIVE_TOKEN_ADDRESS)
 
-export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = mapSupportedNetworks(
-  (chainId) => WRAPPED_NATIVE_CURRENCIES[chainId].address,
-)
+export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = {
+  ...mapSupportedNetworks((chainId) => WRAPPED_NATIVE_CURRENCIES[chainId].address),
+  // Ophis fork: WETH on OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
+}
 
-export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = mapSupportedNetworks(
-  (chainId) => ALL_SUPPORTED_CHAINS_MAP[chainId].nativeCurrency,
-)
+export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
+  ...mapSupportedNetworks((chainId) => ALL_SUPPORTED_CHAINS_MAP[chainId].nativeCurrency),
+  // Ophis fork: ETH on OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: {
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    name: 'Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  } as TokenErc20,
+}
 
 export const TENDERLY_API_URL = 'https://api.tenderly.co/api/v1/public-contract'
 export const DEFAULT_IPFS_READ_URI = process.env.REACT_APP_IPFS_READ_URI || 'https://ipfs.io/ipfs'

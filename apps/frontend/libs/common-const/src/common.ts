@@ -79,6 +79,8 @@ export const V_COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.MAINNET]: '0xd057b63f5e69cf1b929b356b579cba08d7688048',
   [SupportedChainId.GNOSIS_CHAIN]: '0xc20C9C13E853fc64d054b73fF21d3636B2d97eaB',
   [SupportedChainId.SEPOLIA]: '0x21d06a222bbb94ec1406a0a8ba86b4d761bc9864',
+  // Ophis fork: vCOW not deployed on OP mainnet
+  [10 as unknown as SupportedChainId]: null,
 }
 
 export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {

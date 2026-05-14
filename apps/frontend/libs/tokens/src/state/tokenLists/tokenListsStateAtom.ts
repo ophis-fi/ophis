@@ -29,6 +29,8 @@ const UNISWAP_TOKEN_LIST_URL: Record<SupportedChainId, string> = {
   [SupportedChainId.LINEA]: `${TOKEN_LIST_SRC}/Uniswap.59144.json`,
   [SupportedChainId.PLASMA]: `${TOKEN_LIST_SRC}/Uniswap.9745.json`,
   [SupportedChainId.INK]: `${TOKEN_LIST_SRC}/Uniswap.57073.json`,
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: `${TOKEN_LIST_SRC}/Uniswap.10.json`,
 }
 
 const curatedListSourceAtom = atom((get) => {

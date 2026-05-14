@@ -33,7 +33,11 @@ export const TWAP_ORDER_STRUCT =
   'tuple(address sellToken,address buyToken,address receiver,uint256 partSellAmount,uint256 minPartLimit,uint256 t0,uint256 n,uint256 t,uint256 span,bytes32 appData)'
 
 const twapHandlerAddress = '0x6cF1e9cA41f7611dEf408122793c358a3d11E5a5'
-export const TWAP_HANDLER_ADDRESS: Record<SupportedChainId, string> = mapAddressToSupportedNetworks(twapHandlerAddress)
+export const TWAP_HANDLER_ADDRESS: Record<SupportedChainId, string> = {
+  ...mapAddressToSupportedNetworks(twapHandlerAddress),
+  // Ophis fork: OP mainnet (chain 10) — TWAP handler address (same canonical contract)
+  [10 as unknown as SupportedChainId]: twapHandlerAddress,
+}
 
 export const TWAP_PENDING_STATUSES = [TwapOrderStatus.WaitSigning, TwapOrderStatus.Pending, TwapOrderStatus.Cancelling]
 
@@ -44,6 +48,8 @@ export const MINIMUM_PART_SELL_AMOUNT_FIAT: Record<SupportedChainId, CurrencyAmo
   [SupportedChainId.MAINNET]: CurrencyAmount.fromRawAmount(USDC[SupportedChainId.MAINNET], 1_000e6), // 1k for mainnet
   [SupportedChainId.SEPOLIA]: CurrencyAmount.fromRawAmount(USDC[SupportedChainId.SEPOLIA], 10e18), // 10 for sepolia
   [SupportedChainId.BNB]: CurrencyAmount.fromRawAmount(USDC[SupportedChainId.BNB], 1e18), // 1 for BNB, but it has 18 decimals!
+  // Ophis fork: OP mainnet (chain 10) — USDC on OP has 6 decimals
+  [10 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(USDC[10 as unknown as SupportedChainId], 1e6),
 }
 
 export const MINIMUM_PART_TIME = ms`5min` / 1000 // in seconds

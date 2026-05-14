@@ -13,12 +13,16 @@ const indexFiles: Record<SupportedChainId, string[]> = {
   ...mapSupportedNetworks(() => []), // no index for these chains
   [SupportedChainId.MAINNET]: mainnetIndex,
   [SupportedChainId.GNOSIS_CHAIN]: gnosisChainIndex,
+  // Ophis fork: no locked GNO airdrop on OP mainnet
+  [10 as unknown as SupportedChainId]: [],
 }
 
 const chainNames: Record<SupportedChainId, string | null> = {
   ...mapSupportedNetworks(() => null), // no claim for these chains
   [SupportedChainId.MAINNET]: 'mainnet',
   [SupportedChainId.GNOSIS_CHAIN]: 'gnosisChain',
+  // Ophis fork: no locked GNO airdrop on OP mainnet
+  [10 as unknown as SupportedChainId]: null,
 }
 
 const DISTRO_REPO_BRANCH_NAME = 'main'
