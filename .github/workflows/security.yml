@@ -53,7 +53,10 @@ jobs:
           cache-dependency-path: contracts/pnpm-lock.yaml
       - name: Install contracts/ node deps
         working-directory: contracts
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        # --shamefully-hoist flattens node_modules so forge/solc's import
+        # resolver can find @openzeppelin/contracts/* directly. pnpm's
+        # default symlink layout breaks forge's path resolver.
+        run: pnpm install --frozen-lockfile --ignore-scripts --shamefully-hoist
 
       - name: Install Slither
         run: |
