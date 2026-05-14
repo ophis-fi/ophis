@@ -36,6 +36,8 @@ const PRICE_IMPACT_LIMIT = 1 // 1%
 const AMOUNT_LIMIT: Record<SupportedChainId, number> = {
   ...mapSupportedNetworks(500), // $500 for most chains
   [SupportedChainId.MAINNET]: 50_000, // $50,000 for mainnet
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: 500,
 }
 
 export function TwapSuggestionBanner({

@@ -12,6 +12,8 @@ const chainIdToName: Record<SupportedChainId, string | null> = {
   [SupportedChainId.LINEA]: 'linea',
   [SupportedChainId.PLASMA]: 'plasma',
   [SupportedChainId.INK]: null, // As of now (2026/01/23), Ink is not on Trust Wallet assets repo
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: 'optimism',
 }
 
 /**
