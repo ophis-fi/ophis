@@ -37,13 +37,21 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [order-quoting]
-price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "okx", url = "http://driver/okx" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+]
 
 [price-estimation]
 amount-to-estimate-prices-with = "1000000000000000"
 
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
+
 [native-price-estimation]
-estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+estimators = [[{ type = "CoinGecko" }]]
 
 [native-price-estimation.cache]
 max-age = "20m"
