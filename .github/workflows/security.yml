@@ -32,24 +32,52 @@ jobs:
       # mutable and can be hijacked; SHAs are not.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
+      # contracts/ uses foundry.toml — Slither needs forge to compile
+      # before it can analyze. First CI run discovered this gap.
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@c7450ba673e1cae71b30b09712b13cb9bd6ef0aa  # v1.8.0
+        with:
+          version: nightly
+
       - name: Install Slither
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install slither-analyzer==0.11.4
 
       - name: Run Slither
+        # Don't swallow exit code — if Slither fails to compile, we want
+        # CI to surface the error rather than silently produce no JSON.
+        # Slither's own exit code: non-zero whenever it finds anything
+        # (even INFO), so wrap with explicit 0/1/255 handling.
         run: |
           cd contracts
+          set +e
           slither --filter-paths "node_modules|src/contracts/test|src/contracts/reader|@openzeppelin" \
             --json /tmp/slither.json \
-            src/contracts/ || true
-          # Slither exits non-zero whenever it finds anything, even INFO.
-          # We trust the JSON output rather than the exit code.
+            src/contracts/
+          rc=$?
+          set -e
+          # Exit codes per slither --help:
+          #   0 = no detector findings
+          #   255 = findings (informational and above)
+          # Anything else = real error (compilation failure, etc.)
+          if [ "$rc" != "0" ] && [ "$rc" != "255" ]; then
+            echo "Slither failed with exit code $rc (not a finding-related code)"
+            exit $rc
+          fi
+          if [ ! -f /tmp/slither.json ]; then
+            echo "Slither did not produce JSON output despite exit code $rc"
+            exit 2
+          fi
+          echo "Slither produced JSON ($(wc -c < /tmp/slither.json) bytes)"
 
       - name: Check against baseline (2026-05-13 audit)
         run: |
           python3 - <<'PYEOF'
-          import json, sys
+          import json, os, sys
+          if not os.path.exists('/tmp/slither.json'):
+              print('FAIL: /tmp/slither.json missing — see the previous step.')
+              sys.exit(2)
           with open('/tmp/slither.json') as f:
               d = json.load(f)
           results = d.get('results', {}).get('detectors', [])
