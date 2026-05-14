@@ -213,7 +213,9 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
     }
   }, [isMarketOrderWidget, toggleAccountModal])
 
-  const isOutputTokenUnsupported = !!buyToken && !(buyToken.chainId in SupportedChainId)
+  // Ophis fork: OP (chain 10) is supported at the frontend layer.
+  const isOutputTokenUnsupported =
+    !!buyToken && !(buyToken.chainId in SupportedChainId) && buyToken.chainId !== 10
 
   const { t } = useLingui()
 

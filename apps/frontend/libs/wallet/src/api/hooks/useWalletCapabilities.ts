@@ -86,7 +86,16 @@ export function useWalletCapabilities(): { data: WalletCapabilities | undefined;
             resolve(result[chainIdHex] || result[Object.keys(result)[0]])
           })
           .catch((error) => {
-            console.warn('useWalletCapabilities() error', error)
+            // Ophis fork: many wallets / RPCs (notably some OP-mainnet providers)
+            // do not implement `wallet_getCapabilities` and reject with -32601
+            // (Method not found) or -32603 (Internal error). Treat the call as
+            // unsupported instead of spamming the console.
+            const code = error?.code ?? error?.cause?.code
+            if (code === -32601 || code === -32603 || code === -32004) {
+              console.debug('useWalletCapabilities() unsupported by provider', code)
+            } else {
+              console.warn('useWalletCapabilities() error', error)
+            }
             clearTimeout(timeout)
             resolve(undefined)
           })
