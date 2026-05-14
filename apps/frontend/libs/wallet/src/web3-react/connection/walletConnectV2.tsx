@@ -34,7 +34,8 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
         options: {
           projectId: WC_PROJECT_ID,
           chains: [chainId],
-          optionalChains: ALL_SUPPORTED_CHAIN_IDS,
+          // Ophis fork: include OP mainnet (chain 10) in optional chains.
+          optionalChains: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
           rpcMap: RPC_URLS,
           showQrModal: true,
         },

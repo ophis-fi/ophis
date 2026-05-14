@@ -58,7 +58,7 @@ const deploySettlement: DeployFunction = async function ({
   }
 
   // Greg patch: chain-aware gas limit. See 001_authenticator.ts for context.
-  const overrideGas = process.env.GREG_SETTLEMENT_GAS_LIMIT;
+  const overrideGas = process.env.OPHIS_SETTLEMENT_GAS_LIMIT;
   const gasLimit = overrideGas
     ? Number(overrideGas)
     : (process.env.HARDHAT_NETWORK ?? "").startsWith("megaeth")

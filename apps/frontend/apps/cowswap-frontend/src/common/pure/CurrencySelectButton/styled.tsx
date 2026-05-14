@@ -55,7 +55,7 @@ export const StyledTokenSymbol = styled(TokenSymbol)<{ displayTokenName: boolean
   transition: color var(${UI.ANIMATION_DURATION}) ease-in-out;
 `
 
-// Greg/Ophis: empty-state token picker reads as an outlined affordance,
+// Ophis: empty-state token picker reads as an outlined affordance,
 // not a primary CTA. Solid coral on every input row was visually
 // dominating the swap card and competing with the actual primary
 // button at the bottom. Outlined coral chip → fills on hover.

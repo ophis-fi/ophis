@@ -1,0 +1,33 @@
+# Ophis — Optimism mainnet (chain 10) OKX aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# The CoW solver TOML parser does NOT interpolate $VARS at parse time, so we
+# pre-render this template into rendered/okx.toml (gitignored) before
+# mounting it into the okx-solver container.
+
+node-url = "${OP_MAINNET_RPC}"
+
+[dex]
+# Chain ID 10 = Optimism mainnet.
+chain-id = "10"
+
+# OKX V6 DEX Aggregator API endpoint (sell orders / exactIn).
+sell-orders-endpoint = "https://web3.okx.com/api/v6/dex/aggregator/"
+
+# Buy orders use a separate V5 endpoint. Leaving unset → buy orders are
+# ignored by this solver (CoW driver routes them elsewhere, e.g. baseline).
+# Uncomment if we want exactOut quotes:
+# buy-orders-endpoint = "https://www.okx.com/api/v5/dex/aggregator/"
+
+# OKX OnchainOS credentials. Rendered from .env at deploy time.
+api-project-id = "${OKX_PROJECT_ID}"
+api-key = "${OKX_API_KEY}"
+api-secret-key = "${OKX_SECRET_KEY}"
+api-passphrase = "${OKX_PASSPHRASE}"
+
+# Price-impact protection. 1.0 = disabled (we let CoW's solver-side
+# slippage handle this). OKX's default is 0.9 (90%); explicit 1.0 avoids
+# their server-side rejection at higher impact, since CoW does its own check.
+price-impact-protection-percent = 1.0

@@ -10,6 +10,7 @@ exports[`useTradeQuotePolling() When wallet is NOT connected Then the "receiver"
   "buyTokenDecimals": 18,
   "ethFlowContractOverride": {
     "1": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+    "10": "0x0000000000000000000000000000000000000000",
     "100": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
     "11155111": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
     "137": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
@@ -43,6 +44,7 @@ exports[`useTradeQuotePolling() When wallet is connected Then should put account
     "buyTokenDecimals": 18,
     "ethFlowContractOverride": {
       "1": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
+      "10": "0x0000000000000000000000000000000000000000",
       "100": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
       "11155111": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
       "137": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",

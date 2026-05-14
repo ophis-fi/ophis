@@ -1,0 +1,136 @@
+/*
+ * Ophis CSS custom properties + font-family overrides.
+ *
+ * Loaded after CoW's ThemedGlobalStyle (see main.tsx import order). Values
+ * mirror `src/ophis/tokens.ts`. New Ophis-specific components SHOULD consume
+ * `--ophis-*` variables. Existing CoW components continue reading
+ * `--cow-color-*` (which derive from theme keys we override in
+ * `theme/getCowswapTheme.ts`).
+ */
+
+:root {
+  /* Brand — coral sunset */
+  --ophis-brand-10: #FFF3EE;
+  --ophis-brand-20: #FFDFD3;
+  --ophis-brand-30: #FFBDA8;
+  --ophis-brand-40: #FF9579;
+  --ophis-brand-50: #FF7A60;
+  --ophis-brand-60: #E66A55;
+  --ophis-brand-70: #C2503D;
+  --ophis-brand-80: #993627;
+  --ophis-brand-90: #5C1D14;
+  --ophis-brand-100: #2A0B07;
+
+  /* Accent — magenta/rose */
+  --ophis-accent-10: #FFF0F6;
+  --ophis-accent-20: #FFD4E2;
+  --ophis-accent-30: #FFA9C2;
+  --ophis-accent-40: #F47AA0;
+  --ophis-accent-50: #E55A88;
+  --ophis-accent-60: #C73D6C;
+  --ophis-accent-70: #A02855;
+  --ophis-accent-80: #7A1A40;
+  --ophis-accent-90: #4A0E28;
+  --ophis-accent-100: #220612;
+
+  /* Neutral — Ophis-specific scale (light → dark) */
+  --ophis-neutral-10: #F4F6F7;
+  --ophis-neutral-20: #E8EBEB;
+  --ophis-neutral-30: #DADDDE;
+  --ophis-neutral-40: #C1C4C6;
+  --ophis-neutral-50: #898D8F;
+  --ophis-neutral-60: #6E7375;
+  --ophis-neutral-70: #53575A;
+  --ophis-neutral-80: #2F3133;
+  --ophis-neutral-90: #1F2224;
+  --ophis-neutral-100: #131214;
+
+  /* Functional */
+  --ophis-success: #23A15D;
+  --ophis-warning: #ED9B16;
+  --ophis-danger: #FF5226;
+  --ophis-info: #3084FF;
+
+  /* Spacing — 4px grid */
+  --ophis-space-1: 4px;
+  --ophis-space-2: 8px;
+  --ophis-space-3: 12px;
+  --ophis-space-4: 16px;
+  --ophis-space-5: 24px;
+  --ophis-space-6: 32px;
+  --ophis-space-7: 40px;
+  --ophis-space-8: 48px;
+  --ophis-space-9: 56px;
+  --ophis-space-10: 64px;
+  --ophis-space-11: 72px;
+  --ophis-space-12: 80px;
+
+  /* Radius */
+  --ophis-radius-none: 0;
+  --ophis-radius-sm: 4px;
+  --ophis-radius-md: 8px;
+  --ophis-radius-lg: 16px;
+  --ophis-radius-xl: 32px;
+  --ophis-radius-full: 9999px;
+
+  /* Stroke */
+  --ophis-stroke-sm: 1px;
+  --ophis-stroke-md: 2px;
+  --ophis-stroke-lg: 4px;
+  --ophis-stroke-xl: 8px;
+
+  /* Shadow */
+  --ophis-shadow-low: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --ophis-shadow-medium: 0 4px 6px rgba(0, 0, 0, 0.04), 0 8px 16px rgba(0, 0, 0, 0.06);
+  --ophis-shadow-high: 0 12px 24px rgba(0, 0, 0, 0.08), 0 24px 48px rgba(0, 0, 0, 0.12);
+  --ophis-shadow-focus: 0 0 0 3px var(--ophis-brand-40);
+
+  /* Sunset gradient — hero / receipt artwork ONLY (never click affordances) */
+  --ophis-gradient-sunset: linear-gradient(135deg, #FF8A52 0%, #FF6B5A 30%, #E55A88 65%, #A44E91 100%);
+  --ophis-gradient-sunset-soft: linear-gradient(135deg, #FFE0CE 0%, #FFCABE 35%, #F8B8CC 70%, #D5B6D8 100%);
+  --ophis-gradient-sunset-radial: radial-gradient(120% 80% at 20% 20%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%);
+
+  /* Type families */
+  --ophis-font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --ophis-font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ophis-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Override CoW's font-family CSS variables so existing components inherit Ophis fonts */
+  --cow-font-family-primary: var(--ophis-font-body);
+  --cow-font-family-mono: var(--ophis-font-mono);
+}
+
+/*
+ * Force body font onto the cow root that ThemedGlobalStyle sets via
+ * `font-family: 'Inter', sans-serif`. Without this, Plus Jakarta would only
+ * apply where components opt in via var(--cow-font-family-primary).
+ */
+html,
+input,
+textarea,
+button {
+  font-family: var(--ophis-font-body);
+}
+@supports (font-variation-settings: normal) {
+  html,
+  input,
+  textarea,
+  button {
+    font-family: var(--ophis-font-body);
+  }
+}
+
+/* Display face for hero/marketing surfaces. Components opt in via .ophis-display class. */
+.ophis-display,
+[data-ophis-display] {
+  font-family: var(--ophis-font-display);
+  font-feature-settings: 'ss01' on, 'ss02' on;
+  font-variation-settings: 'opsz' 144, 'SOFT' 50;
+}
+
+/* Mono for hashes, addresses, numeric data. Opt-in via .ophis-mono class. */
+.ophis-mono,
+[data-ophis-mono] {
+  font-family: var(--ophis-font-mono);
+  font-variant-numeric: tabular-nums;
+}

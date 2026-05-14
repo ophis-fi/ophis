@@ -56,7 +56,7 @@ When Spec 2/3 promote to mainnet (or a new chain), the same pattern repeats:
 
 ## Where the secrets live
 
-- **Driver-submitter EOA private key:** `/srv/ophis/.env.shared` on the VM (mode 600), key `DRIVER_SUBMITTER_PRIVATE_KEY`. Sourced from macOS Keychain entry `greg-driver-submitter` at deploy time. Same key is referenced by both chain stacks.
+- **Driver-submitter EOA private key:** `/srv/ophis/.env.shared` on the VM (mode 600), key `DRIVER_SUBMITTER_PRIVATE_KEY`. Sourced from macOS Keychain entry `ophis-driver-submitter` at deploy time. Same key is referenced by both chain stacks.
 - **Per-chain Postgres credentials and RPC URLs:** `/srv/ophis/infra/<chain>/.env`. These are operator-managed, gitignored.
 - **Cloudflare API token:** macOS Keychain entry `cloudflare-api-token` (also a repo-level GitHub secret `CLOUDFLARE_API_TOKEN` for CI). Has DNS:Edit on `ophis.fi` zone. Used for CNAME creation; **not** for tunnel-creation.
 - **Cloudflare tunnel cert.pem:** `/root/.cloudflared/cert.pem` on the VM. Created once during the rebate-indexer revival 2026-05-11; reused by all subsequent `cloudflared tunnel create` invocations on the same VM. Lacks DNS:Edit permission, which is why CNAMEs are created via the API token instead.
@@ -67,13 +67,13 @@ When Spec 2/3 promote to mainnet (or a new chain), the same pattern repeats:
 # Optimism Sepolia E2E
 cd /Users/scep/greg/infra/optimism/scripts
 export OPTIMISM_SEPOLIA_GTUSD=0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1
-export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l greg-chiado-test -w)
+export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l ophis-chiado-test -w)
 pnpm smoke
 
 # MegaETH testnet partial (should print "✓ simulated, sequencer-bug stop expected")
 cd /Users/scep/greg/infra/megaeth/scripts
 export MEGAETH_TESTNET_GTUSD=<from infra/megaeth/.env on the VM>
-export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l greg-megaeth-deployer -w)
+export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l ophis-megaeth-deployer -w)
 pnpm smoke
 ```
 
@@ -81,7 +81,7 @@ The Optimism Sepolia smoke test passes when the orderbook reports our order in a
 
 **Pre-conditions:**
 
-1. `greg-chiado-test` wallet (`0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB`) must have ≥ 0.001 ETH (gas) AND ≥ 0.001 WETH on Optimism Sepolia. Fund via [Optimism Sepolia faucet](https://docs.optimism.io/builders/tools/build/faucets); wrap to WETH at the predeploy `0x4200000000000000000000000000000000000006`.
+1. `ophis-chiado-test` wallet (`0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB`) must have ≥ 0.001 ETH (gas) AND ≥ 0.001 WETH on Optimism Sepolia. Fund via [Optimism Sepolia faucet](https://docs.optimism.io/builders/tools/build/faucets); wrap to WETH at the predeploy `0x4200000000000000000000000000000000000006`.
 2. The chain stack RPC (`/srv/ophis/infra/optimism/.env` → `OP_SEPOLIA_RPC`) must have headroom for the CoW driver's continuous loops. Empirically the driver idles at ~5-10 RPS just on block-stream/token-fetcher. **Free tiers don't cut it.** Verified working: Alchemy Growth ($49/mo, 660 CUPS) or self-hosted op-node. The on-chain settlement broadcast specifically needs RPC headroom because the driver re-simulates immediately before `eth_sendRawTransaction`; a single 429 in that window causes the driver to abandon the auction.
 
 ### Why the smoke test doesn't assert on the settlement tx
@@ -100,9 +100,78 @@ Order uid `0xe1f34360ad9eeec2febb38df225ad39392f1284e61fc60023262506089df7205412
 | RPC | https://sepolia.optimism.io | https://carrot.megaeth.com/rpc |
 | Explorer | https://sepolia-optimism.etherscan.io | https://megaexplorer.xyz |
 | WETH predeploy | `0x4200000000000000000000000000000000000006` | (chain-specific) |
-| Greg Settlement | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` |
-| Greg VaultRelayer | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` |
-| Greg V2 factory | `0x29fcdbbdffd12fa7724b863991355b82ba8380e2` | (see VM `.env`) |
+| Ophis Settlement | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` | `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` |
+| Ophis VaultRelayer | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` |
+| Ophis V2 factory | `0x29fcdbbdffd12fa7724b863991355b82ba8380e2` | (see VM `.env`) |
 | GTUSD test token | `0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1` | (see VM `.env`) |
 | Driver-submitter EOA | `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` | same |
-| Test wallet (greg-chiado-test) | `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` | n/a |
+| Test wallet (ophis-chiado-test) | `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` | n/a |
+
+## External AMM integrations (for self-hosted backend solver config)
+
+| Chain | AMM | Type | Factory | Init code hash | Solver crate |
+|---|---|---|---|---|---|
+| Optimism mainnet (chain 10) | Uniswap V3 | UniV3 | `0x1F98431c8aD98523631AE4a59f267346ea31F984` | (canonical) | `[[liquidity.uniswap-v3]]` |
+| MegaETH mainnet (chain 4326) | Kumbaya | UniV3 fork | `0x68b34591f662508076927803c567Cc8006988a09` | `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7` | `[[liquidity.uniswap-v3]]` with custom `pool-code` |
+| Optimism mainnet | Velodrome V2 | Solidly | `0x25CbdDb98b35ab1FF77413456B31EC81A6B6B746` | (Solidly-specific — different adapter needed) | **NOT YET SUPPORTED** — solver crate would need a new adapter. Scoped to Spec 5. |
+
+### Kumbaya integrator-kit reference
+
+Cloned at need: `gh repo clone Kumbaya-xyz/integrator-kit`. Mainnet addresses in `addresses/megaETH-mainnet.json`. Key contracts:
+
+| Role | Address |
+|---|---|
+| WETH9 | `0x4200000000000000000000000000000000000006` |
+| UniswapV3Factory | `0x68b34591f662508076927803c567Cc8006988a09` |
+| SwapRouter02 | `0xE5BbEF8De2DB447a7432A47EBa58924d94eE470e` |
+| UniversalRouter | `0xAAB1C664CeaD881AfBB58555e6A3a79523D3e4C0` |
+| QuoterV2 | `0x1F1a8dC7E138C34b503Ca080962aC10B75384a27` |
+| NonfungiblePositionManager | `0x2b781C57e6358f64864Ff8EC464a03Fdaf9974bA` |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
+| Pool init code hash | `0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7` |
+
+## Deferred operator task: re-enable rebate-indexer nightly e2e
+
+PR #21 commented out the `schedule:` trigger on `.github/workflows/rebate-indexer-ci.yml` because the e2e job's required secrets (Sepolia test Safe + burner key) were never set. To re-enable nightly runs:
+
+1. **Generate the burner wallet:**
+   ```bash
+   cast wallet new
+   ```
+   Save the printed private key into macOS Keychain:
+   ```bash
+   security add-generic-password -U -a "$USER" -s ophis-rebate-e2e-burner \
+     -w "<PRIVATE_KEY>"
+   ```
+
+2. **Fund the burner with Sepolia ETH.** Public faucets: [Alchemy](https://www.alchemy.com/faucets/ethereum-sepolia), [PoW faucet](https://sepolia-faucet.pk910.de/), [QuickNode](https://faucet.quicknode.com/ethereum/sepolia). Aim for ≥ 0.1 SEP ETH (Safe deploys cost ~0.005 ETH each).
+
+3. **Deploy a 1-of-1 Safe** owned by the burner on Sepolia. Two paths:
+   - **UI** (easiest): https://app.safe.global → switch network to Sepolia → "Create new Safe", paste the burner address, set threshold 1, deploy. Copy the resulting Safe address.
+   - **CLI** (scriptable): `npx @safe-global/safe-cli create --rpc https://rpc.sepolia.org --owners <burner> --threshold 1 --signer <burner-pk>`
+
+4. **Set GitHub Actions secrets** (Clement has admin scope):
+   ```bash
+   gh secret set E2E_SAFE_BURNER_KEY --repo ophis-fi/ophis -b "<burner-private-key>"
+   gh secret set SEPOLIA_RPC_URL --repo ophis-fi/ophis -b "https://rpc.sepolia.org"
+   ```
+   And the Safe address goes in repo Variables (public, not secret):
+   ```bash
+   gh variable set E2E_SAFE_ADDRESS --repo ophis-fi/ophis -b "<safe-address>"
+   ```
+
+5. **Re-enable the schedule** by uncommenting the `schedule:` block at the top of `.github/workflows/rebate-indexer-ci.yml`:
+   ```yaml
+   on:
+     schedule:
+       - cron: '0 3 * * *'  # 03:00 UTC daily
+     pull_request: ...
+   ```
+
+6. **Verify** by manually triggering the workflow once:
+   ```bash
+   gh workflow run rebate-indexer-ci.yml --repo ophis-fi/ophis
+   ```
+   Wait for the e2e job to succeed (~3-5 min). If it does, the nightly schedule is good to go.
+
+Estimated time: ~30 minutes total.

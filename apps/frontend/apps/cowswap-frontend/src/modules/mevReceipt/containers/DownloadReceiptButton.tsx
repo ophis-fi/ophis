@@ -32,11 +32,11 @@ export const DownloadReceiptButton: React.FC<DownloadReceiptButtonProps> = ({
     const shortUid = receipt.orderUid.slice(0, 10)
     if (format === 'pdf') {
       const blob = exportPdf(receipt)
-      triggerDownload(blob, `greg-receipt-${shortUid}.pdf`)
+      triggerDownload(blob, `ophis-receipt-${shortUid}.pdf`)
     } else {
       const json = exportJson(receipt)
       const blob = new Blob([json], { type: 'application/json' })
-      triggerDownload(blob, `greg-receipt-${shortUid}.json`)
+      triggerDownload(blob, `ophis-receipt-${shortUid}.json`)
     }
   }, [input, format])
 
