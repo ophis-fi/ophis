@@ -17,6 +17,15 @@ export function useTwapFormState(): TwapFormState | null {
   const { chainId } = useWalletInfo()
   const twapOrder = useTwapOrder()
 
+  // Ophis: TWAP requires ComposableCow + ExtensibleFallbackHandler, which
+  // aren't deployed on OP mainnet (Spec 2). Codex review 2026-05-14 flagged
+  // the broken-UI promise where the button is reachable but silent no-ops
+  // because the SDK's COMPOSABLE_COW_CONTRACT_ADDRESS[10] is undefined.
+  // Returning null here makes the TWAP tab clearly disabled instead.
+  // (chainId is typed as SupportedChainId; OP is AdditionalTargetChainId
+  // so the cast to number lets us compare against the local extension.)
+  if ((chainId as number) === 10) return null
+
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { sellAmount } = receiveAmountInfo?.beforeAllFees || {}
   const sellAmountPartFiat = useUsdAmount(sellAmount).value
