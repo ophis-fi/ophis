@@ -56,6 +56,7 @@ services:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
       ETH_RPC_URL: ${OP_MAINNET_RPC}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/optimism-mainnet/.env}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
@@ -89,6 +90,7 @@ services:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
       ETH_RPC_URL: ${OP_MAINNET_RPC}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/optimism-mainnet/.env}
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]

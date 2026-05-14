@@ -48,7 +48,12 @@ struct Denominator {
 
 impl CoinGecko {
     /// Authorization header for CoinGecko
-    const AUTHORIZATION: &'static str = "x-cg-pro-api-key";
+    // Ophis divergence (2026-05-14): use the Demo-tier header. CoW upstream
+    // uses `x-cg-pro-api-key` because they have Pro tier. Our deployment uses
+    // CoinGecko's free Demo tier (signup at coingecko.com/api/pricing) which
+    // accepts the `CG-...` key only via the Demo header. Tracked in
+    // apps/backend/.greg-divergences.md (TODO: create if missing).
+    const AUTHORIZATION: &'static str = "x-cg-demo-api-key";
 
     pub async fn new(
         client: Client,
