@@ -31,7 +31,9 @@ describe('useSupportedChains', () => {
 
     expect(result.current.length).toBeGreaterThan(0)
     result.current.forEach((chain) => {
-      expect(chain.id in SupportedChainId).toBe(true)
+      // Ophis fork: chain 10 (OP mainnet) is supported at frontend layer even though
+      // the SDK enum doesn't list it as a primary SupportedChainId.
+      expect(chain.id in SupportedChainId || chain.id === 10).toBe(true)
     })
   })
 

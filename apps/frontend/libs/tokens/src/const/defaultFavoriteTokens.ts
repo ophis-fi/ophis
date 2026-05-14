@@ -42,6 +42,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES,
   USDT_INK,
   USDC_INK,
+  USDC_OPTIMISM,
 } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -135,4 +136,9 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WETH_PLASMA,
   ]),
   [SupportedChainId.INK]: tokensListToMap([WRAPPED_NATIVE_CURRENCIES[SupportedChainId.INK], USDT_INK, USDC_INK]),
+  // Ophis fork: OP mainnet (chain 10) favorites — WETH + USDC
+  [10 as unknown as SupportedChainId]: tokensListToMap([
+    WRAPPED_NATIVE_CURRENCIES[10 as unknown as SupportedChainId],
+    USDC_OPTIMISM,
+  ]),
 }
