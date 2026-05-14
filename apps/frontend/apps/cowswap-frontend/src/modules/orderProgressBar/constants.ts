@@ -107,6 +107,8 @@ export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor
   [SupportedChainId.LINEA]: COW_SWAP_BENEFITS,
   [SupportedChainId.PLASMA]: COW_SWAP_BENEFITS,
   [SupportedChainId.INK]: COW_SWAP_BENEFITS,
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
 }
 
 export const SURPLUS_IMAGES = [

@@ -28,7 +28,7 @@
 ## Test wallet
 
 - **Address:** `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB`
-- **Private key:** macOS Keychain entry `greg-chiado-test` (account + service both `greg-chiado-test`). Retrieve with: `security find-generic-password -a greg-chiado-test -s greg-chiado-test -w`.
+- **Private key:** macOS Keychain entry `ophis-chiado-test` (account + service both `ophis-chiado-test`). Retrieve with: `security find-generic-password -a ophis-chiado-test -s ophis-chiado-test -w`.
 - **Funded via:** internal transfer of 0.01 Sepolia ETH from `eury-deployer` wallet (`0x3e6808a74c0B1f1efeeBFce192AD658F33885398`); no public faucet was needed.
 
 ## Swap

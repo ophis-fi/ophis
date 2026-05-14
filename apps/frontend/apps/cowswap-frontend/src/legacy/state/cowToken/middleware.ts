@@ -3,11 +3,11 @@ import { Middleware } from '@reduxjs/toolkit'
 import { AppState } from '../index'
 
 /**
- * vCOW → COW token-conversion middleware (no-op on Greg).
+ * vCOW → COW token-conversion middleware (no-op on Ophis).
  *
  * Upstream this middleware listened for finalized swapVCow / swapLockedGNOvCow
  * transactions and played a CoW success/error sound. vCOW is CoW DAO's locked
- * governance token — Greg does not surface that conversion route to users, so
+ * governance token — Ophis does not surface that conversion route to users, so
  * the middleware never has work to do here.
  *
  * Kept as a pass-through (rather than deleted) so the redux registration site

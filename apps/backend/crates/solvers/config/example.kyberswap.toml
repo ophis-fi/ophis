@@ -1,0 +1,18 @@
+node-url = "http://localhost:8545"
+
+[dex]
+# Chain ID. KyberSwap supports Ethereum (1), Optimism (10), BNB (56),
+# Polygon (137), Base (8453), Arbitrum (42161), Avalanche (43114), Linea (59144).
+chain-id = "10"
+
+# Optional: override the API endpoint (default derived from chain-id above):
+#   https://aggregator-api.kyberswap.com/{chain_slug}/api/v1/
+# endpoint = "https://aggregator-api.kyberswap.com/optimism/api/v1/"
+
+# Optional: x-client-id header sent with every request. Recommended to avoid
+# aggressive rate limiting. Any stable string works (no registration needed).
+# Defaults to "ophis-solver" when omitted.
+# client-id = "ophis-solver"
+
+# NOTE: KyberSwap's aggregator API is exactIn-only — buy (exactOut) orders are
+# returned as "no solution".

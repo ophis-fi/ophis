@@ -12,7 +12,7 @@
 
 ## Summary
 
-The Phase 3 Aleph VM that hosted Greg's Rust services (orderbook + autopilot + driver + baseline solver) for multi-chain testnet validation is dead — the IP at `REDACTED_ORIGIN_IP_OLD:24019` no longer accepts TCP connections. Phase 3's testnet contracts on Optimism Sepolia, MegaETH testnet, and Linea Sepolia are still on-chain (bytecode-verified at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce`), but the backend that served orderbook traffic against them is gone.
+The Phase 3 Aleph VM that hosted Ophis's Rust services (orderbook + autopilot + driver + baseline solver) for multi-chain testnet validation is dead — the IP at `REDACTED_ORIGIN_IP_OLD:24019` no longer accepts TCP connections. Phase 3's testnet contracts on Optimism Sepolia, MegaETH testnet, and Linea Sepolia are still on-chain (bytecode-verified at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce`), but the backend that served orderbook traffic against them is gone.
 
 Spec 1 revives the backend by co-tenanting the chain stacks onto the *existing* rebates VM (`vm4.alephvision.eu`, REDACTED_ORIGIN_IP:24014), drops `infra/linea/` since CoW Protocol serves Linea natively, and validates the revival end-to-end with a real settled order on Optimism Sepolia. **No new contracts. No new wallets. No real ETH spent.** The deliverable is a working backend template that Specs 2 and 3 promote to mainnet.
 
@@ -136,10 +136,10 @@ Per chain (× 2 chains: optimism-sepolia, megaeth-testnet):
 
 **Key existing artifacts being revived (no re-deploy):**
 
-- Greg's testnet `GPv2Settlement` at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (Optimism Sepolia + MegaETH testnet — bytecode verified)
-- Greg's `GPv2VaultRelayer` at `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` (CREATE2-deterministic same address)
-- Greg's Uniswap V2 fork + seeded WETH/GTUSD pools on each testnet (factory addresses captured in each `infra/<chain>/.env.example`)
-- Driver-submitter EOA `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (key in macOS Keychain `greg-driver-submitter`), already on Greg's `AllowListAuthentication` allowlist on each chain
+- Ophis's testnet `GPv2Settlement` at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (Optimism Sepolia + MegaETH testnet — bytecode verified)
+- Ophis's `GPv2VaultRelayer` at `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` (CREATE2-deterministic same address)
+- Ophis's Uniswap V2 fork + seeded WETH/GTUSD pools on each testnet (factory addresses captured in each `infra/<chain>/.env.example`)
+- Driver-submitter EOA `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (key in macOS Keychain `ophis-driver-submitter`), already on Ophis's `AllowListAuthentication` allowlist on each chain
 
 ## Revival sequence
 
