@@ -49,16 +49,17 @@ jobs:
       # forge-std but are not deployed — out of scope.
       - name: Run Slither (production contracts)
         run: |
-          # World-writable so the container's slither user can write JSON
-          # output into the bind mount. GitHub's Linux runners run the
-          # container as a different UID than the host runner, causing
-          # `PermissionError: '/out/settlement.json'` on every write
-          # otherwise. Verified locally on macOS (Docker Desktop handles
-          # UID translation transparently) but Linux runners need this.
+          # World-writable so the container's internal user can write
+          # JSON output into the bind mount. The Trail of Bits image
+          # ships solc-select / slither under a specific user; overriding
+          # --user $(id -u) (the first thing we tried) puts the container
+          # in a PATH where those binaries aren't installed (slither and
+          # solc-select both `command not found`). chmod 0777 lets the
+          # image's own user write through the bind without changing the
+          # PATH context.
           mkdir -p /tmp/slither-out
           chmod 0777 /tmp/slither-out
           docker run --rm \
-            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}/contracts/src/contracts:/work" \
             -v /tmp/slither-out:/out \
             -w /work \
