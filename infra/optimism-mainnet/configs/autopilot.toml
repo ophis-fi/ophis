@@ -2,6 +2,13 @@
 node-url = "https://optimism-rpc.publicnode.com"
 simulation-node-url = "https://optimism-rpc.publicnode.com"
 
+# Per-order wait while the run loop fetches a missing native (ETH-
+# denominated) token price. Defaults to 0ns, which makes the auction
+# filter any order whose token prices aren't already cached. The
+# CoinGecko simple/token_price endpoint typically answers in 200-500ms
+# so 5s is generous and covers a cold cache after restart.
+native-price-timeout = "5s"
+
 [contracts]
 settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
 balances = "0x78799f98276efba1edeed32eae03a3fd8cdfec3a"
@@ -28,6 +35,21 @@ type = "Alloy"
 [[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
+address = "0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F"
+
+# OKX V6 aggregator — paid API, exactIn-only. Wins most swaps where
+# baseline (Sushi V2 only) has thin liquidity on OP.
+[[drivers]]
+name = "okx"
+url = "http://driver/okx"
+address = "0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F"
+
+# KyberSwap free aggregator — exactIn-only. Frequent fallback when OKX
+# can't route a path; together they cover essentially all production
+# token pairs on OP.
+[[drivers]]
+name = "kyberswap"
+url = "http://driver/kyberswap"
 address = "0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F"
 
 [fee-policies]
