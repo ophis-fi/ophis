@@ -15,6 +15,8 @@ export const SAFE_TRANSACTION_SERVICE_URL: Record<SupportedChainId, HttpsString>
   [SupportedChainId.LINEA]: 'https://safe-transaction-linea.safe.global/api',
   [SupportedChainId.PLASMA]: 'https://safe-transaction-plasma.safe.global/api',
   [SupportedChainId.INK]: 'https://safe-transaction-ink.safe.global/api',
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: 'https://safe-transaction-optimism.safe.global/api',
 }
 
 const SAFE_BASE_URL = 'https://app.safe.global'
