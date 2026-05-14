@@ -13,9 +13,21 @@ import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
-export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> = mapSupportedNetworks(
-  getTokenWithLogoFromWrappedNativeCurrency,
-)
+// Ophis fork: OP mainnet (chain 10) WETH address
+const OPTIMISM_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
+
+export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> = {
+  ...mapSupportedNetworks(getTokenWithLogoFromWrappedNativeCurrency),
+  // Ophis fork: WETH on OP mainnet
+  [10 as unknown as SupportedChainId]: new TokenWithLogo(
+    undefined,
+    10 as unknown as SupportedChainId,
+    OPTIMISM_WETH_ADDRESS,
+    18,
+    'WETH',
+    'Wrapped Ether',
+  ),
+}
 
 export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = mapAllNetworks(
   getTokenWithLogoFromNativeCurrency,

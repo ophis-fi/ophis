@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160" fill="none">
   <style>
-    .greg-wordmark {
+    .ophis-wordmark {
       font-family: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
       font-weight: 700;
       font-size: 144px;
@@ -10,5 +10,5 @@
       fill: #F2A63E;
     }
   </style>
-  <text class="greg-wordmark" x="0" y="120">Greg</text>
+  <text class="ophis-wordmark" x="0" y="120">Ophis</text>
 </svg>

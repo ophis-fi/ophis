@@ -11,7 +11,7 @@
 Verified by code-trace (Task 1) — no on-chain test needed. The chain:
 
 ```
-injectedWidgetPartnerFeeAtom (defaults to GREG_DEFAULT_PARTNER_FEE — Phase 1.5 patch)
+injectedWidgetPartnerFeeAtom (defaults to OPHIS_DEFAULT_PARTNER_FEE — Phase 1.5 patch)
   ↓
 volumeFeeAtom — `get(injectedWidgetPartnerFeeAtom)` → {volumeBps, recipient}
   ↓
@@ -34,7 +34,7 @@ Source references (cowswap fork):
 - `apps/cowswap-frontend/src/modules/appData/hooks.ts:12` — `useAppData()` reads `appDataInfoAtom`.
 - `apps/cowswap-frontend/src/modules/appData/updater/AppDataInfoUpdater.ts` — sets `partnerFee: volumeFee` when constructing the appData.
 - `apps/cowswap-frontend/src/modules/volumeFee/state/volumeFeeAtom.ts` — consumes `injectedWidgetPartnerFeeAtom`.
-- `apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts` — Phase-1.5 patch defaults to `GREG_DEFAULT_PARTNER_FEE`.
+- `apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts` — Phase-1.5 patch defaults to `OPHIS_DEFAULT_PARTNER_FEE`.
 
 **Verdict:** TWAP/DCA partner fee propagation PASS by construction.
 

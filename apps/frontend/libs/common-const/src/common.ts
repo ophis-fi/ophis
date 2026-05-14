@@ -35,10 +35,10 @@ export const AVG_APPROVE_COST_GWEI = '50000'
 export const DEFAULT_APP_CODE = 'CoW Swap'
 export const SAFE_APP_CODE = `${DEFAULT_APP_CODE}-SafeApp`
 
-// Greg/Ophis: brand-replacement for the document <title> suffix shown
+// Ophis: brand-replacement for the document <title> suffix shown
 // across all routes. Plain string (no lingui i18n) — fine because the
 // brand name shouldn't be translated. Tracked in
-// apps/frontend/.greg-divergences.md.
+// apps/frontend/.ophis-divergences.md.
 export const APP_TITLE = 'Ophis — intent-based DEX aggregator'
 
 export const PAGE_TITLES = {
@@ -94,6 +94,8 @@ export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.LINEA]: null,
   [SupportedChainId.PLASMA]: null,
   [SupportedChainId.INK]: null,
+  // Ophis fork: COW token not deployed on OP mainnet
+  [10 as unknown as SupportedChainId]: null,
 }
 
 // Explorer (TODO: reuse the CowSwap msg`` strings below when the explorer is localized)
@@ -115,9 +117,11 @@ export const MINIMUM_ETH_FLOW_DEADLINE_SECONDS = 600 // 10 minutes in SECONDS
 
 export const MINIMUM_ETH_FLOW_SLIPPAGE_BPS = DEFAULT_SLIPPAGE_BPS
 
-export const ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD: Record<SupportedChainId, number> = mapSupportedNetworks(
-  200, // 2%
-)
+export const ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD: Record<SupportedChainId, number> = {
+  ...mapSupportedNetworks(200 as number), // 2%
+  // Ophis fork: OP mainnet
+  [10 as unknown as SupportedChainId]: 200,
+}
 
 export const MINIMUM_ETH_FLOW_SLIPPAGE = new Percent(DEFAULT_SLIPPAGE_BPS, 10_000)
 
@@ -152,6 +156,8 @@ export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
   [SupportedChainId.LINEA]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.LINEA}`,
   [SupportedChainId.PLASMA]: '', // TODO: currently (2025/10/20) unsupported by Blocknative nor blockscont
   [SupportedChainId.INK]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.INK}`,
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: `https://api.blocknative.com/gasprices/blockprices?chainid=10`,
 }
 export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.MAINNET]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
@@ -165,6 +171,8 @@ export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.LINEA]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
   [SupportedChainId.PLASMA]: null,
   [SupportedChainId.INK]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
 }
 
 export const UNSUPPORTED_TOKENS_FAQ_URL = 'https://docs.cow.fi/cow-protocol/reference/core/tokens'

@@ -1,19 +1,41 @@
 #!/usr/bin/env bash
-# Greg Phase 3 Stage-2 mainnet bootstrap
+# Ophis — MegaETH mainnet bootstrap (Spec 3).
 #
-# Runs end-to-end once the deployer is funded with mainnet ETH:
-#   1. CoW core: Settlement + VaultRelayer + AllowListAuth (via hardhat-deploy)
-#   2. CoW helpers: Balances + Signatures + HooksTrampoline (via cast send --create)
-#   3. Uniswap V2: Factory + Router02 (pre-built bytecode in v2-artifacts/)
-#   4. Driver-submitter added to allowlist
+# Hardware-wallet flow (Spec 5):
+#   - Ledger at 0xBeC5B03ffDcac50071693E87bFDb88bAa6710199 signs every tx
+#   - Ownership of AllowListAuthentication is auto-transferred to the
+#     Ophis protocol Safe at 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF
+#     within the same Ledger session (~30s window)
 #
-# Pool seeding (addLiquidity) is a separate step that requires WETH + USDT0
-# to be in the deployer's wallet. Run seed-mainnet-pool.sh after this.
+# Steps:
+#   1. CoW core (Settlement + VaultRelayer + AllowListAuth) via hardhat-deploy
+#      using @nomicfoundation/hardhat-ledger
+#   2. CoW helpers (Balances + Signatures + HooksTrampoline) via cast send --ledger
+#   3. Allowlist driver-submitter
+#   4. Transfer AuthList ownership + manager to Ophis protocol Safe
+#
+# Liquidity source is Kumbaya (MegaETH's dominant UniV3-fork DEX). No
+# bootstrap pool seeding — Kumbaya has ~$53M TVL already.
+#
+# Pre-conditions:
+#   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.05 MEGA on mainnet
+#   - Driver EOA 0x00f9…502F is funded with ≥ 0.05 MEGA
+#   - infra/megaeth/.env exists with OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET set
+#   - Ledger Live is CLOSED (USB device contention with hardhat-ledger plugin)
+#   - Ledger is connected via USB and Ethereum app is open
+#
+# Rationale documented in
+# docs/development/specs/2026-05-12-spec-3-megaeth-mainnet.md.
 
 set -euo pipefail
 
 REPO_ROOT="/Users/scep/greg"
 ENV_FILE="$REPO_ROOT/infra/megaeth/.env"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "ERROR: $ENV_FILE not found — copy from infra/megaeth/.env.example first" >&2
+  exit 2
+fi
 
 set -a
 # shellcheck disable=SC1090
@@ -25,19 +47,39 @@ if [[ -z "${MEGAETH_MAINNET_RPC:-}" ]]; then
 fi
 RPC="$MEGAETH_MAINNET_RPC"
 
-DEPLOYER_PK=$(security find-generic-password -a greg-megaeth-deployer -s greg-megaeth-deployer -w)
-DEPLOYER_ADDR=$(cast wallet address "$DEPLOYER_PK")
+DEPLOYER_ADDR=0xBeC5B03ffDcac50071693E87bFDb88bAa6710199
+DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
+SAFE="${OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET:-}"
 
-echo "=== Deployer: $DEPLOYER_ADDR ==="
+if [[ -z "$SAFE" ]]; then
+  echo "ERROR: OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET not set in $ENV_FILE" >&2
+  echo "       This is the 2-of-3 Safe that takes AllowListAuth ownership post-deploy." >&2
+  exit 3
+fi
+
+echo "⚠️  Hardware wallet flow. Make sure:"
+echo "    - Ledger Live is CLOSED"
+echo "    - Ledger device is connected via USB"
+echo "    - Ethereum app is open on the device"
+echo "    - ~6 tx prompts incoming (3 deploys + 1 allowlist + 2 ownership transfers)"
+read -p "Press ENTER when ready..."
+
+echo ""
+echo "=== Deployer (HW wallet): $DEPLOYER_ADDR ==="
 echo "=== Mainnet RPC: $RPC ==="
-echo "=== Balance: $(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether) ETH ==="
+BAL_WEI=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR")
+BAL_ETH=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether)
+echo "=== Balance: $BAL_ETH MEGA ==="
 echo ""
 
-# --- 1. CoW core via hardhat-deploy ---
-echo "=== [1/4] Deploying CoW Settlement + VaultRelayer + Auth ==="
+if [[ "$BAL_WEI" -lt 50000000000000000 ]]; then  # 0.05 MEGA
+  echo "ERROR: deployer balance < 0.05 MEGA — fund $DEPLOYER_ADDR first" >&2
+  exit 4
+fi
+
+# --- 1. CoW core via hardhat-deploy (Ledger-signed) ---
+echo "=== [1/4] Deploying CoW Settlement + VaultRelayer + Auth (Ledger) ==="
 cd "$REPO_ROOT/contracts"
-export GREG_MEGAETH_DEPLOYER_PK="$DEPLOYER_PK"
-export GREG_MEGAETH_DEPLOYER_ADDRESS="$DEPLOYER_ADDR"
 export MEGAETH_MAINNET_RPC
 
 LOG="$REPO_ROOT/infra/megaeth/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
@@ -46,20 +88,20 @@ HARDHAT_CONFIG=hardhat-megaeth.config.ts \
 
 # Extract addresses from hardhat-deploy artifacts
 DEPLOYMENTS_DIR="$REPO_ROOT/contracts/deployments/megaeth-mainnet"
-GREG_AUTH_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json'))['address'])")
-GREG_AUTH_IMPLEMENTATION_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Implementation.json'))['address'])")
-GREG_SETTLEMENT_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2Settlement.json'))['address'])")
-GREG_VAULT_RELAYER_MAINNET=$(cast call --rpc-url "$RPC" "$GREG_SETTLEMENT_MAINNET" "vaultRelayer()(address)")
+OPHIS_AUTH_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json'))['address'])")
+OPHIS_AUTH_IMPLEMENTATION_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Implementation.json'))['address'])")
+OPHIS_SETTLEMENT_MAINNET=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2Settlement.json'))['address'])")
+OPHIS_VAULT_RELAYER_MAINNET=$(cast call --rpc-url "$RPC" "$OPHIS_SETTLEMENT_MAINNET" "vaultRelayer()(address)")
 
 echo ""
-echo "  Auth Proxy:           $GREG_AUTH_MAINNET"
-echo "  Auth Implementation:  $GREG_AUTH_IMPLEMENTATION_MAINNET"
-echo "  Settlement:           $GREG_SETTLEMENT_MAINNET"
-echo "  VaultRelayer:         $GREG_VAULT_RELAYER_MAINNET"
+echo "  Auth Proxy:           $OPHIS_AUTH_MAINNET"
+echo "  Auth Implementation:  $OPHIS_AUTH_IMPLEMENTATION_MAINNET"
+echo "  Settlement:           $OPHIS_SETTLEMENT_MAINNET"
+echo "  VaultRelayer:         $OPHIS_VAULT_RELAYER_MAINNET"
 
-# --- 2. CoW helpers via cast send --create ---
+# --- 2. CoW helpers via cast send --create --ledger ---
 echo ""
-echo "=== [2/4] Deploying CoW helpers ==="
+echo "=== [2/4] Deploying CoW helpers (Ledger) ==="
 cd "$REPO_ROOT"
 
 deploy_artifact_create() {
@@ -71,73 +113,116 @@ bc=d['bytecode']
 if isinstance(bc, dict): bc=bc.get('object', bc.get('bytecode'))
 if not bc.startswith('0x'): bc='0x'+bc
 print(bc + '$extra_args')")
-  result=$(cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" \
+  result=$(cast send --rpc-url "$RPC" --ledger \
            --gas-limit 500000000 --create "$CODE" --json)
   echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('contractAddress'))"
 }
 
-GREG_BALANCES_MAINNET=$(deploy_artifact_create Balances apps/backend/contracts/artifacts/Balances.json)
-GREG_SIGNATURES_MAINNET=$(deploy_artifact_create Signatures apps/backend/contracts/artifacts/Signatures.json)
+OPHIS_BALANCES_MAINNET=$(deploy_artifact_create Balances apps/backend/contracts/artifacts/Balances.json)
+OPHIS_SIGNATURES_MAINNET=$(deploy_artifact_create Signatures apps/backend/contracts/artifacts/Signatures.json)
 
 # HooksTrampoline takes a Settlement address constructor arg
-SETTLEMENT_HEX=${GREG_SETTLEMENT_MAINNET#0x}
+SETTLEMENT_HEX=${OPHIS_SETTLEMENT_MAINNET#0x}
 PADDED=$(printf '%0*d' 24 0)$SETTLEMENT_HEX
-GREG_HOOKS_TRAMPOLINE_MAINNET=$(deploy_artifact_create HooksTrampoline \
+OPHIS_HOOKS_TRAMPOLINE_MAINNET=$(deploy_artifact_create HooksTrampoline \
     apps/backend/contracts/artifacts/HooksTrampoline.json \
     "$PADDED")
 
-echo "  Balances:        $GREG_BALANCES_MAINNET"
-echo "  Signatures:      $GREG_SIGNATURES_MAINNET"
-echo "  HooksTrampoline: $GREG_HOOKS_TRAMPOLINE_MAINNET"
+echo "  Balances:        $OPHIS_BALANCES_MAINNET"
+echo "  Signatures:      $OPHIS_SIGNATURES_MAINNET"
+echo "  HooksTrampoline: $OPHIS_HOOKS_TRAMPOLINE_MAINNET"
 
-# --- 3. Uniswap V2 ---
+# --- 3. Allowlist driver-submitter ---
 echo ""
-echo "=== [3/4] Deploying Uniswap V2 ==="
-WETH_MAINNET=0x4200000000000000000000000000000000000006
-
-# Factory takes a feeToSetter constructor arg (32-byte padded address)
-DEPLOYER_HEX=${DEPLOYER_ADDR#0x}
-DEPLOYER_PADDED=$(printf '%0*d' 24 0)$DEPLOYER_HEX
-GREG_V2_FACTORY_MAINNET=$(deploy_artifact_create UniswapV2Factory \
-    infra/megaeth/v2-artifacts/UniswapV2Factory.json \
-    "$DEPLOYER_PADDED")
-echo "  V2 Factory:  $GREG_V2_FACTORY_MAINNET"
-
-# Router02 takes (factory, WETH) constructor args
-FACTORY_HEX=${GREG_V2_FACTORY_MAINNET#0x}
-FACTORY_PADDED=$(printf '%0*d' 24 0)$FACTORY_HEX
-WETH_HEX=${WETH_MAINNET#0x}
-WETH_PADDED=$(printf '%0*d' 24 0)$WETH_HEX
-GREG_V2_ROUTER_MAINNET=$(deploy_artifact_create UniswapV2Router02 \
-    infra/megaeth/v2-artifacts/UniswapV2Router02.json \
-    "$FACTORY_PADDED$WETH_PADDED")
-echo "  V2 Router:   $GREG_V2_ROUTER_MAINNET"
-
-# --- 4. Allowlist driver-submitter ---
-echo ""
-echo "=== [4/4] Allowlisting driver-submitter ==="
-DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
-cast send --rpc-url "$RPC" --private-key "$DEPLOYER_PK" \
-  "$GREG_AUTH_MAINNET" "addSolver(address)" "$DRIVER" \
+echo "=== [3/4] Allowlisting driver-submitter (Ledger) ==="
+cast send --rpc-url "$RPC" --ledger \
+  "$OPHIS_AUTH_MAINNET" "addSolver(address)" "$DRIVER" \
   --gas-limit 50000000 >/dev/null
-echo "  isSolver(driver): $(cast call --rpc-url "$RPC" "$GREG_AUTH_MAINNET" "isSolver(address)(bool)" "$DRIVER")"
+IS_SOLVER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_MAINNET" "isSolver(address)(bool)" "$DRIVER")
+echo "  isSolver(driver): $IS_SOLVER"
+
+if [[ "$IS_SOLVER" != "true" ]]; then
+  echo "ERROR: driver-submitter not allowlisted after addSolver — investigate before proceeding" >&2
+  exit 5
+fi
+
+# --- 4. Transfer ownership + manager to the Ophis protocol Safe ---
+# CRITICAL: this closes the dangerous window where the HW wallet still has
+# unilateral protocol-level power. After these two txs, only the 2-of-3
+# Safe can addSolver / removeSolver / transferOwnership / upgrade.
+#
+# Interrupt safety: if the operator Ctrl-C's between transferOwnership and
+# setManager (or either tx fails on chain), the AuthList enters a partially-
+# migrated state where the Safe owns it but the HW wallet retains manager
+# (can still addSolver/removeSolver). Codex's 2026-05-13 second-opinion
+# review flagged this as not-fail-closed.
+#
+# RECOVERY: non-stuck state. After Ctrl-C, the operator runs:
+#   cast send --rpc-url "$RPC" --ledger \
+#     "$OPHIS_AUTH_MAINNET" "setManager(address)" "$SAFE" --gas-limit 50000000
+# manually. Order is transferOwnership FIRST so an interrupted state leaves
+# the Safe with strictly MORE authority than the HW wallet — a stolen HW
+# wallet at this intermediate state could only addSolver (bounded blast
+# radius); the Safe can immediately removeSolver + setManager(Safe) to
+# recover.
+echo ""
+echo "=== [4/4] Transferring AuthList ownership to Ophis protocol Safe (Ledger) ==="
+echo "  Safe: $SAFE"
+echo "  ⚠️  If you Ctrl-C between the two txs below, the AuthList is left in"
+echo "      a partial state (Safe=owner, Ledger=manager). Resume manually:"
+echo "      cast send --rpc-url \"\$RPC\" --ledger \"\$OPHIS_AUTH_MAINNET\" \"setManager(address)\" \"\$SAFE\" --gas-limit 50000000"
+
+cast send --rpc-url "$RPC" --ledger \
+  "$OPHIS_AUTH_MAINNET" "transferOwnership(address)" "$SAFE" \
+  --gas-limit 50000000 >/dev/null
+echo "  transferOwnership ✓"
+
+cast send --rpc-url "$RPC" --ledger \
+  "$OPHIS_AUTH_MAINNET" "setManager(address)" "$SAFE" \
+  --gas-limit 50000000 >/dev/null
+echo "  setManager ✓"
+
+NEW_OWNER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_MAINNET" "owner()(address)")
+NEW_MANAGER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH_MAINNET" "manager()(address)")
+echo ""
+echo "  Verified — owner:   $NEW_OWNER"
+echo "  Verified — manager: $NEW_MANAGER"
+
+# Lowercase compare (Solidity returns mixed-case)
+LOWER_SAFE=$(echo "$SAFE" | tr '[:upper:]' '[:lower:]')
+LOWER_OWNER=$(echo "$NEW_OWNER" | tr '[:upper:]' '[:lower:]')
+LOWER_MANAGER=$(echo "$NEW_MANAGER" | tr '[:upper:]' '[:lower:]')
+if [[ "$LOWER_OWNER" != "$LOWER_SAFE" ]]; then
+  echo "ERROR: owner is $NEW_OWNER, expected $SAFE" >&2
+  exit 6
+fi
+if [[ "$LOWER_MANAGER" != "$LOWER_SAFE" ]]; then
+  echo "ERROR: manager is $NEW_MANAGER, expected $SAFE" >&2
+  exit 7
+fi
+echo "  ✓ Protocol authority fully handed to the 2-of-3 Safe"
 
 # --- Persist all addresses ---
 echo ""
 echo "=== Writing addresses to .env ==="
 cat <<EOF >> "$ENV_FILE"
 
-# Phase 3 Stage-2 mainnet deploy ($(date +%Y-%m-%d))
-GREG_AUTH_MAINNET=$GREG_AUTH_MAINNET
-GREG_AUTH_IMPLEMENTATION_MAINNET=$GREG_AUTH_IMPLEMENTATION_MAINNET
-GREG_SETTLEMENT_MAINNET=$GREG_SETTLEMENT_MAINNET
-GREG_VAULT_RELAYER_MAINNET=$GREG_VAULT_RELAYER_MAINNET
-GREG_BALANCES_MAINNET=$GREG_BALANCES_MAINNET
-GREG_SIGNATURES_MAINNET=$GREG_SIGNATURES_MAINNET
-GREG_HOOKS_TRAMPOLINE_MAINNET=$GREG_HOOKS_TRAMPOLINE_MAINNET
-GREG_V2_FACTORY_MAINNET=$GREG_V2_FACTORY_MAINNET
-GREG_V2_ROUTER_MAINNET=$GREG_V2_ROUTER_MAINNET
+# Spec 3 MegaETH mainnet deploy ($(date +%Y-%m-%d))
+OPHIS_AUTH_MAINNET=$OPHIS_AUTH_MAINNET
+OPHIS_AUTH_IMPLEMENTATION_MAINNET=$OPHIS_AUTH_IMPLEMENTATION_MAINNET
+OPHIS_SETTLEMENT_MAINNET=$OPHIS_SETTLEMENT_MAINNET
+OPHIS_VAULT_RELAYER_MAINNET=$OPHIS_VAULT_RELAYER_MAINNET
+OPHIS_BALANCES_MAINNET=$OPHIS_BALANCES_MAINNET
+OPHIS_SIGNATURES_MAINNET=$OPHIS_SIGNATURES_MAINNET
+OPHIS_HOOKS_TRAMPOLINE_MAINNET=$OPHIS_HOOKS_TRAMPOLINE_MAINNET
 EOF
 
 echo ""
-echo "=== Done. Next: seed-mainnet-pool.sh after acquiring WETH+USDT0 in deployer wallet."
+echo "=== Done. ==="
+echo ""
+echo "Liquidity source: Kumbaya UniV3 fork"
+echo "  factory   0x68b34591f662508076927803c567Cc8006988a09"
+echo "  poolHash  0x851d77a45b8b9a205fb9f44cb829cceba85282714d2603d601840640628a3da7"
+echo "Configure the chain stack's driver.toml with these in [[liquidity.uniswap-v3]]."
+echo ""
+echo "Protocol authority: 2-of-3 Safe $SAFE"

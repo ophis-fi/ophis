@@ -1,0 +1,206 @@
+# infra/optimism-mainnet/docker-compose.yml — Ophis Optimism mainnet stack
+# (chain 10). Ports shifted +1 from testnet (5435/8102/8103/9022) to coexist
+# on the same host.
+#
+# Secret management:
+#   - Addresses come from ../optimism/.env (deployed by deploy-mainnet-all.sh)
+#   - Secrets (driver private key, DB password) come from ./.env in this dir
+#   - ./.env is gitignored — see ./.env.example for the template
+#
+# All HTTP/RPC ports bind to 127.0.0.1 only. External access is via
+# Cloudflare Tunnel, never direct port exposure.
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: backend-migrations:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+
+  orderbook:
+    image: local-orderbook:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${OP_MAINNET_RPC}
+    volumes:
+      - ./configs/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "127.0.0.1:8102:80"
+    healthcheck:
+      # CoW backend images are distroless-ish; no curl/wget. Bash /dev/tcp
+      # confirms port 80 is accepting TCP connections — enough to know the
+      # HTTP server is up. Liveness from inside the orderbook process is not
+      # exposed; if a deadlock kept the listener up but the worker stuck,
+      # this wouldn't catch it. Use Prometheus metrics for that (Spec TBD).
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  autopilot:
+    image: local-autopilot:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      orderbook: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${OP_MAINNET_RPC}
+    volumes:
+      - ./configs/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+    # autopilot is a worker (no HTTP listener), so only restart-on-failure
+    # via Docker's `restart: always` policy. Health is signalled via the
+    # Prometheus /metrics endpoint that the binary always exposes.
+
+  driver:
+    image: local-driver:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      baseline: { condition: service_healthy }
+      okx-solver: { condition: service_healthy }
+      kyberswap-solver: { condition: service_healthy }
+    environment:
+      ETHRPC: ${OP_MAINNET_RPC}
+      ADDR: 0.0.0.0:80
+      LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+      # Solver/driver-submitter private key — read by the CoW driver via the
+      # `%OPHIS_DRIVER_SUBMITTER_KEY` interpolation in configs/driver.toml.
+      # MUST be set in ./.env. Container refuses to start if blank.
+      OPHIS_DRIVER_SUBMITTER_KEY: ${OPHIS_DRIVER_SUBMITTER_KEY:?driver private key must be set in infra/optimism-mainnet/.env}
+    volumes:
+      - ./rendered/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "127.0.0.1:8103:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "127.0.0.1:9022:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # OKX OnchainOS aggregator solver. Reads its API credentials from the
+  # rendered TOML at rendered/okx.toml (gitignored; produced by
+  # ./render-configs.sh which envsubst's configs/okx.toml.tmpl with .env).
+  # MUST run ./render-configs.sh before `docker compose up` so rendered/okx.toml
+  # exists with secrets substituted.
+  okx-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/okx.toml:/okx.toml:ro
+    command: ["okx", "--config", "/okx.toml"]
+    ports:
+      - "127.0.0.1:9023:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # KyberSwap aggregator solver — second competing solver in the auction.
+  # Free public API, no key required; configs/kyberswap.toml is checked-in
+  # as-is (no template rendering needed).
+  kyberswap-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/kyberswap.toml:/kyberswap.toml:ro
+    command: ["kyberswap", "--config", "/kyberswap.toml"]
+    ports:
+      - "127.0.0.1:9024:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  postgres:

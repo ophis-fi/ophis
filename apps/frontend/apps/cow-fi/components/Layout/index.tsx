@@ -71,7 +71,7 @@ export function Layout({ children, bgColor, host, showCowSaucer, contentMinHeigh
         />
       </ThemeProvider>
       <Wrapper minHeight={contentMinHeight}>{children}</Wrapper>
-      {/* CowSaucerScene disabled for Greg — kept import to preserve API surface for callers that pass `showCowSaucer`. */}
+      {/* CowSaucerScene disabled for Ophis — kept import to preserve API surface for callers that pass `showCowSaucer`. */}
       {showCowSaucer ? null : null}
       {/* Override global light theme to force dark mode for Footer only */}
       <ThemeProvider theme={darkTheme}>

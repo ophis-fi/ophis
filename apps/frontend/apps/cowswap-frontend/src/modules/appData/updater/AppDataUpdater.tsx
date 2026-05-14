@@ -31,7 +31,7 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   const typedHooks = useAppDataHooks()
   const appCodeWithWidgetMetadata = useAppCodeWidgetAware(appCode)
   const volumeFee = useVolumeFee()
-  // Greg/Ophis: price-improvement partnerFee shape (CIP-75) takes
+  // Ophis: price-improvement partnerFee shape (CIP-75) takes
   // precedence over the volumeFee pipeline when set. The volumeFee
   // path stays for widget consumers that override partnerFee with
   // their own volumeBps shape via injectedWidgetParamsAtom.

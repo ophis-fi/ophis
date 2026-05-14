@@ -10,7 +10,7 @@ export const OuterWrapper = styled.div`
   flex-flow: column wrap;
 `
 
-// Greg/Ophis: brand-polish the currency-input rows.
+// Ophis: brand-polish the currency-input rows.
 // - Bumped radius from 16px → 20px so the rows echo the outer card's
 //   xl rhythm and don't feel like generic cowswap rectangles.
 // - Hairline border in COLOR_PAPER (1px) so the rows have a clear

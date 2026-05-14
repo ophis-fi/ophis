@@ -55,7 +55,7 @@ export function useTradeNavigate(): UseTradeNavigateCallback {
       // Don't navigate if we're already on this route
       if (location.pathname === route && location.search.slice(1) === search) return
 
-      // Greg/Ophis: when the navigate is filling in defaults (we're on a
+      // Ophis: when the navigate is filling in defaults (we're on a
       // bare path like `/swap` and target is a fully-qualified
       // `/{chainId}/swap/...`), use `replace` so the bare path doesn't
       // sit in history and trap the back button. Without this, browser

@@ -15,8 +15,8 @@ export const LoadingRows = styled.div`
       var(${UI.COLOR_PAPER}) 75%
     );
     background-size: 400%;
-    // Greg/Nucleus: skeleton radius aligned to the radius scale (md=8).
-    border-radius: var(--greg-radius-md, 8px);
+    // Ophis/Nucleus: skeleton radius aligned to the radius scale (md=8).
+    border-radius: var(--ophis-radius-md, 8px);
     height: 2.4em;
     will-change: background-position;
   }

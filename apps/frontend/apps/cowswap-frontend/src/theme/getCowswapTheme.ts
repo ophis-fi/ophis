@@ -4,7 +4,7 @@ import { baseTheme } from '@cowprotocol/ui'
 
 import { CoWSwapTheme } from 'styled-components'
 
-import { colors as gregColors } from '../greg/tokens'
+import { colors as ophisColors } from '../ophis/tokens'
 
 const isWidget = isInjectedWidget()
 const widgetMode = {
@@ -13,15 +13,15 @@ const widgetMode = {
 }
 
 /**
- * Greg theme overrides — applied on top of CoW's baseTheme().
+ * Ophis theme overrides — applied on top of CoW's baseTheme().
  *
  * Strategy: keep CoW's full theme structure (neutrals, blue aliases, etc.) and
- * override only the keys that drive Greg's brand identity. The CoW codebase
+ * override only the keys that drive Ophis's brand identity. The CoW codebase
  * reads colors via styled-components `theme.X` keys AND via CSS custom
  * properties emitted by ThemeColorVars from those same keys, so overriding the
  * theme keys cascades through both layers.
  *
- * See `src/greg/tokens.ts` for the source-of-truth values.
+ * See `src/ophis/tokens.ts` for the source-of-truth values.
  */
 // Cosmic-palette anchors for Ophis dark surfaces (sourced from the new
 // design mockup at /Users/scep/Desktop/website mockups/new-layout-website.svg).
@@ -42,20 +42,20 @@ function gregOverrides(darkMode: boolean): Record<string, string> {
   if (darkMode) {
     return {
       // Brand
-      primary: gregColors.brand[50],
-      buttonTextCustom: gregColors.neutral[100],
+      primary: ophisColors.brand[50],
+      buttonTextCustom: ophisColors.neutral[100],
       // State colors
-      success: gregColors.green[40],
-      successDark: gregColors.green[40],
-      successLight: gregColors.green[50],
-      warning: gregColors.yellow[30],
-      warningDark: gregColors.yellow[30],
-      alert: gregColors.yellow[30],
-      alertDark: gregColors.yellow[30],
-      danger: gregColors.red[40],
-      dangerDark: gregColors.red[40],
-      error: gregColors.red[40],
-      errorDark: gregColors.red[40],
+      success: ophisColors.green[40],
+      successDark: ophisColors.green[40],
+      successLight: ophisColors.green[50],
+      warning: ophisColors.yellow[30],
+      warningDark: ophisColors.yellow[30],
+      alert: ophisColors.yellow[30],
+      alertDark: ophisColors.yellow[30],
+      danger: ophisColors.red[40],
+      dangerDark: ophisColors.red[40],
+      error: ophisColors.red[40],
+      errorDark: ophisColors.red[40],
       // Info — cowswap uses blue here (drives DCA banner + hint
       // backgrounds). Override to cosmic indigo so the swap-form
       // banners stop looking like CoW.
@@ -90,20 +90,20 @@ function gregOverrides(darkMode: boolean): Record<string, string> {
   }
   return {
     // Brand
-    primary: gregColors.brand[60],
-    buttonTextCustom: gregColors.white,
+    primary: ophisColors.brand[60],
+    buttonTextCustom: ophisColors.white,
     // State colors
-    success: gregColors.green[50],
-    successDark: gregColors.green[40],
-    successLight: gregColors.green[50],
-    warning: gregColors.yellow[40],
-    warningLight: gregColors.yellow[40],
-    alert: gregColors.yellow[40],
-    alertLight: gregColors.yellow[40],
-    danger: gregColors.red[50],
-    error: gregColors.red[50],
-    info: gregColors.blue[50],
-    infoDark: gregColors.blue[60],
+    success: ophisColors.green[50],
+    successDark: ophisColors.green[40],
+    successLight: ophisColors.green[50],
+    warning: ophisColors.yellow[40],
+    warningLight: ophisColors.yellow[40],
+    alert: ophisColors.yellow[40],
+    alertLight: ophisColors.yellow[40],
+    danger: ophisColors.red[50],
+    error: ophisColors.red[50],
+    info: ophisColors.blue[50],
+    infoDark: ophisColors.blue[60],
   }
 }
 

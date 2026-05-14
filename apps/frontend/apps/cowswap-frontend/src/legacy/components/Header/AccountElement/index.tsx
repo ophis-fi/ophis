@@ -18,7 +18,7 @@ import { Web3Status } from 'modules/wallet'
 
 import { CowSwapAnalyticsCategory, toCowSwapGtmEvent } from 'common/analytics/types'
 
-import { TierChip } from 'greg/components/TierChip'
+import { TierChip } from 'ophis/components/TierChip'
 
 import { NotificationAlertPopover } from './NotificationAlertPopover'
 import { Wrapper } from './styled'
@@ -65,7 +65,7 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
 
   const portalTarget = typeof document !== 'undefined' ? document.body : null
 
-  // Greg/Ophis: hide the "Connect wallet" pill in the header when no
+  // Ophis: hide the "Connect wallet" pill in the header when no
   // wallet is connected — the swap form already has its own contextual
   // CTA at the bottom of the card, so showing both is a redundant
   // affordance. Once connected, the Web3Status shows the address pill

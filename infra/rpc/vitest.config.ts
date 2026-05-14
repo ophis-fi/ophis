@@ -4,7 +4,7 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@greg/rpc': path.resolve(__dirname, './src/fallback.ts'),
+      '@ophis/rpc': path.resolve(__dirname, './src/fallback.ts'),
     },
   },
   test: {

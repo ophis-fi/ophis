@@ -14,7 +14,7 @@ export interface ActiveRowLinksProps {
   targetChainId: SupportedChainId
 }
 
-// Greg/Ophis: dropped the hardcoded "CoW Protocol Explorer" row.
+// Ophis: dropped the hardcoded "CoW Protocol Explorer" row.
 // Block-explorer (Etherscan, Arbiscan, etc.) and bridge stay — those
 // are chain-native resources, not CoW branding.
 export function ActiveRowLinks({

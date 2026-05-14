@@ -2,4 +2,4 @@
 import './polyfills'
 import './cow-react'
 import './styles/fonts.css'
-import './greg/styles.css'
+import './ophis/styles.css'

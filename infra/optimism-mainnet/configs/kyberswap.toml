@@ -1,0 +1,17 @@
+# Ophis — Optimism mainnet (chain 10) KyberSwap aggregator solver config.
+#
+# Unlike OKX, KyberSwap requires NO API key for the free tier — its
+# aggregator-api.kyberswap.com endpoint is publicly accessible. So this
+# config doesn't need template-rendering; it's checked into the repo
+# as-is.
+
+node-url = "https://optimism-rpc.publicnode.com"
+
+[dex]
+chain-id = "10"
+
+# Use an explicit client-id so KyberSwap's per-client rate limit applies
+# to "ophis-op" specifically rather than the shared anonymous bucket.
+# This matters once we have non-trivial volume — anonymous traffic gets
+# tighter throttles.
+client-id = "ophis-op-mainnet"

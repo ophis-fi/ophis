@@ -1,0 +1,89 @@
+services:
+  op-reth:
+    image: ghcr.io/paradigmxyz/op-reth:v1.10.2
+    container_name: op-reth
+    restart: always
+    stop_grace_period: 5m
+    mem_limit: 10g
+    # MDBX (reth's database) trips a concurrent-access bug when the container
+    # has its own PID namespace. Sharing the host PID namespace is the upstream
+    # fix and is mandatory for op-reth in Docker.
+    # https://reth.rs/run/troubleshooting (Concurrent database access error)
+    pid: host
+    volumes:
+      - ./reth-data:/data
+      - ./jwt.hex:/jwt.hex:ro
+    ports:
+      - "127.0.0.1:8545:8545"
+      - "127.0.0.1:8546:8546"
+      - "127.0.0.1:9001:9001"
+      - "30303:30303/tcp"
+      - "30303:30303/udp"
+    command:
+      - node
+      - --chain=optimism
+      - --datadir=/data
+      - --full
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.corsdomain=*
+      - --http.api=eth,net,web3,debug,txpool,rpc
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.origins=*
+      - --ws.api=eth,net,web3,debug,txpool,rpc
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.jwtsecret=/jwt.hex
+      - --port=30303
+      - --discovery.port=30303
+      - --rollup.sequencer-http=https://mainnet-sequencer.optimism.io
+      - --rollup.disable-tx-pool-gossip
+      - --metrics=0.0.0.0:9001
+      - --log.stdout.format=log-fmt
+    healthcheck:
+      # The op-reth image has bash but no curl/wget/nc. Use bash's /dev/tcp
+      # to confirm the HTTP RPC port is open + accepting connections. Not as
+      # strong as a chain-id check, but op-node's engine-api connection to
+      # op-reth via authrpc:8551 retries on its own, so this is enough.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8545' 2>/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 5m
+
+  op-node:
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.18.0
+    container_name: op-node
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      op-reth:
+        condition: service_healthy
+    volumes:
+      - ./jwt.hex:/jwt.hex:ro
+    ports:
+      - "127.0.0.1:9545:9545"
+      - "127.0.0.1:7300:7300"
+    command:
+      - op-node
+      - --l1=${OP_NODE_L1_ETH_RPC}
+      - --l1.beacon=${OP_NODE_L1_BEACON}
+      - --l1.trustrpc=${OP_NODE_L1_TRUST_RPC:-true}
+      - --l1.rpckind=basic
+      - --l2=http://op-reth:8551
+      - --l2.jwt-secret=/jwt.hex
+      - --network=op-mainnet
+      - --syncmode=execution-layer
+      - --rpc.addr=0.0.0.0
+      - --rpc.port=9545
+      - --rpc.enable-admin
+      - --p2p.listen.ip=0.0.0.0
+      - --p2p.listen.tcp=9003
+      - --p2p.listen.udp=9003
+      - --metrics.enabled
+      - --metrics.addr=0.0.0.0
+      - --metrics.port=7300
+      - --log.level=info

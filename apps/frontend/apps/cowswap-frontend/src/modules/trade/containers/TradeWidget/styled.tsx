@@ -20,7 +20,7 @@ export const Container = styled.div<ContainerSizeProps>`
   position: relative;
 `
 
-// Greg/Nucleus: the swap-widget shell — radius xl (32) for the hero card,
+// Ophis/Nucleus: the swap-widget shell — radius xl (32) for the hero card,
 // generous space-3 padding (12). gap stays at 10 for tight stacking.
 export const ContainerBox = styled.div`
   display: flex;
@@ -30,9 +30,9 @@ export const ContainerBox = styled.div`
   background: var(${UI.COLOR_PAPER});
   color: var(${UI.COLOR_TEXT_PAPER});
   border: none;
-  border-radius: var(--greg-radius-xl, var(${UI.BORDER_RADIUS_NORMAL}));
+  border-radius: var(--ophis-radius-xl, var(${UI.BORDER_RADIUS_NORMAL}));
   box-shadow: ${({ theme }) => (theme.isWidget ? theme.boxShadow1 : 'none')};
-  padding: var(--greg-space-3, 12px);
+  padding: var(--ophis-space-3, 12px);
   position: relative;
 
   > div,
