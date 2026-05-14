@@ -77,12 +77,26 @@ jobs:
         # don't import OZ at all (verified via grep), so skipping
         # src/contracts/test/** + src/contracts/reader/** at forge level
         # cleanly avoids the resolution gap.
+        env:
+          # foundry.toml has `deny_warnings = true` which fails build on
+          # any warning. lib/forge-std + test/* trigger warnings about
+          # `error` becoming a keyword in future Solidity. We're auditing
+          # production contracts only, so disable the deny.
+          FOUNDRY_DENY_WARNINGS: "false"
         run: |
           cd contracts
-          forge build --skip 'src/contracts/test/*' --skip 'src/contracts/reader/*' --build-info
+          # Two test directories to skip:
+          # 1. src/contracts/test/* — vendored CoW test scaffolding (imports OZ)
+          # 2. test/* — Foundry test root (imports forge-std with warnings)
+          # Also skip src/contracts/reader/* (storage simulators, OZ deps).
+          forge build \
+            --skip 'src/contracts/test/*' \
+            --skip 'src/contracts/reader/*' \
+            --skip 'test/*' \
+            --build-info
           set +e
           slither --foundry-compile-all false \
-            --filter-paths "node_modules|src/contracts/test|src/contracts/reader|@openzeppelin" \
+            --filter-paths "node_modules|src/contracts/test|src/contracts/reader|@openzeppelin|forge-std|^test/" \
             --json /tmp/slither.json \
             .
           rc=$?
