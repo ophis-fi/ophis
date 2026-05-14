@@ -27,10 +27,24 @@ export interface Web3StatusInnerProps {
   connectionType: ConnectionType
   ensName?: string | null
   showUnfillableOrdersAlert?: boolean
+  /**
+   * When true, the pre-connection "Connect wallet" pill is not rendered.
+   * Used by hosts (e.g. the Ophis header) that already surface a contextual
+   * Connect CTA elsewhere and just want this slot to mount the WalletModal.
+   */
+  hideConnectButton?: boolean
 }
 
 export function Web3StatusInner(props: Web3StatusInnerProps): ReactNode {
-  const { account, pendingCount, ensName, connectionType, connectWallet, showUnfillableOrdersAlert } = props
+  const {
+    account,
+    pendingCount,
+    ensName,
+    connectionType,
+    connectWallet,
+    showUnfillableOrdersAlert,
+    hideConnectButton,
+  } = props
 
   const { connector } = useConnection()
   const hasPendingTransactions = !!pendingCount
@@ -73,6 +87,13 @@ export function Web3StatusInner(props: Web3StatusInnerProps): ReactNode {
         )}
       </Web3StatusConnected>
     )
+  }
+
+  // Ophis: callers can opt out of the visible pre-connection pill (e.g. the
+  // header already shows a contextual Connect CTA in the swap form). We still
+  // need <Web3Status /> to mount so the WalletModal portal renders.
+  if (hideConnectButton) {
+    return null
   }
 
   return (
