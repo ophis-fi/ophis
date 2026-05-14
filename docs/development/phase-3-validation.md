@@ -31,8 +31,8 @@ brand work resumes.
 | `GPv2AllowListAuthentication` (proxy) | `0x9eFDcC2770Af6837B285702d386D558BD1066BA8` |
 | `GPv2AllowListAuthentication` (impl) | `0xFAB54856B6731BC0C32904BE5297A627d9FDFA31` |
 
-**Owner / manager** (allowlist authority): `$GREG_MEGAETH_DEPLOYER_ADDRESS`
-(Keychain `greg-megaeth-deployer`). Stage-2 transfers ownership to the
+**Owner / manager** (allowlist authority): `$OPHIS_MEGAETH_DEPLOYER_ADDRESS`
+(Keychain `ophis-megaeth-deployer`). Stage-2 transfers ownership to the
 existing Phase-2.5 Gnosis Safe `0x858f0F5e…CeF8` after mainnet deploy.
 
 ## Stage-1 testnet deployments
@@ -80,7 +80,7 @@ existing Phase-2.5 Gnosis Safe `0x858f0F5e…CeF8` after mainnet deploy.
 - **Native token (surrogate):** GTETH `0x89bd2e1756ef0c73a425b0387f3a43b3b83bf755` — Linea has no canonical WETH9 predeploy on chain 59141; the in-stack bytecode-deploy attempt failed on truncated bytecode, so Greg uses GTETH (a deployed test ERC20) as the native-token surrogate. The pool is GTETH/GTUSD instead of WETH/GTUSD.
 - **DEX:** Greg-deployed Uniswap V2 fork
 - **e2e signal:** quote path green; pool seeded; settlement simulation green.
-- **Gas note:** Linea enforces a ~15M per-tx gas cap on Sepolia. Deploy tuned to `GREG_AUTH_PROXY_GAS_LIMIT=12000000` and `GREG_SETTLEMENT_GAS_LIMIT=14000000`. 20M was rejected; 15M accepted.
+- **Gas note:** Linea enforces a ~15M per-tx gas cap on Sepolia. Deploy tuned to `OPHIS_AUTH_PROXY_GAS_LIMIT=12000000` and `OPHIS_SETTLEMENT_GAS_LIMIT=14000000`. 20M was rejected; 15M accepted.
 
 ## Stage-2 (mainnet) — deferred
 

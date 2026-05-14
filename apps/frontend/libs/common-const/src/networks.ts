@@ -15,6 +15,8 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [SupportedChainId.INK]: (process.env['REACT_APP_NETWORK_URL_57073'] as HttpsString) || undefined,
   [SupportedChainId.LINEA]: (process.env['REACT_APP_NETWORK_URL_59144'] as HttpsString) || undefined,
   [SupportedChainId.SEPOLIA]: (process.env['REACT_APP_NETWORK_URL_11155111'] as HttpsString) || undefined,
+  // Ophis fork: OP mainnet (chain 10) added at frontend layer
+  [10 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_10'] as HttpsString) || undefined,
 }
 
 const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: boolean }> = {
@@ -29,12 +31,18 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.INK]: { url: `https://rpc-ten.inkonchain.com`, usesInfura: false },
   [SupportedChainId.LINEA]: { url: `https://rpc.linea.build`, usesInfura: false },
   [SupportedChainId.SEPOLIA]: { url: `https://sepolia.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
+  // Ophis fork: OP mainnet default public RPC
+  [10 as unknown as SupportedChainId]: { url: `https://optimism-rpc.publicnode.com`, usesInfura: false },
 }
 
 /**
  * These are the network URLs used by the interface when there is not another available source of chain data
  */
-export const RPC_URLS: Record<SupportedChainId, HttpsString> = mapSupportedNetworks(getRpcUrl)
+export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
+  ...mapSupportedNetworks(getRpcUrl),
+  // Ophis fork: include OP mainnet (chain 10) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
+  [10 as unknown as SupportedChainId]: getRpcUrl(10 as unknown as SupportedChainId),
+}
 
 function getRpcUrl(chainId: SupportedChainId): HttpsString {
   const envKey = `REACT_APP_NETWORK_URL_${chainId}`

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Revive the Phase 3 Greg backend (Rust services for orderbook / autopilot / driver / baseline solver) by co-tenanting Optimism Sepolia and MegaETH testnet chain stacks onto the existing rebates VM, drop Linea (CoW serves it natively), and validate end-to-end with a real settled order on Optimism Sepolia.
+**Goal:** Revive the Phase 3 Ophis backend (Rust services for orderbook / autopilot / driver / baseline solver) by co-tenanting Optimism Sepolia and MegaETH testnet chain stacks onto the existing rebates VM, drop Linea (CoW serves it natively), and validate end-to-end with a real settled order on Optimism Sepolia.
 
-**Architecture:** Two Docker Compose stacks (`infra/optimism/`, `infra/megaeth/`) sharing a single Aleph VM (`vm4.alephvision.eu` at `45.144.209.26:24014`) with the existing rebate-indexer. Each stack = 4 Rust services (orderbook + autopilot + driver + baseline) + Postgres, fronted by Caddy → cloudflared → public `<chain>-testnet.ophis.fi`. Reuses Phase 3's bytecode-verified testnet contracts at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (CREATE2-deterministic same address on every Greg-target chain). No new contracts, no new wallets, no real ETH spent.
+**Architecture:** Two Docker Compose stacks (`infra/optimism/`, `infra/megaeth/`) sharing a single Aleph VM (`vm4.alephvision.eu` at `45.144.209.26:24014`) with the existing rebate-indexer. Each stack = 4 Rust services (orderbook + autopilot + driver + baseline) + Postgres, fronted by Caddy → cloudflared → public `<chain>-testnet.ophis.fi`. Reuses Phase 3's bytecode-verified testnet contracts at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce` (CREATE2-deterministic same address on every Ophis-target chain). No new contracts, no new wallets, no real ETH spent.
 
 **Tech Stack:** Rust + Cargo (vendored `cowprotocol/services` subtree at `apps/backend/`), Postgres 16, Docker Compose, Caddy, Cloudflare Tunnel + DNS API, viem + cow-sdk for the smoke-test client, ssh + rsync for VM ops.
 
@@ -98,7 +98,7 @@ git commit -m "chore(infra): drop infra/linea/ — CoW Protocol serves Linea nat
 The Linea Sepolia testnet validation was Phase 3 'proof we can deploy
 to any chain' scaffolding. Now that CoW Protocol serves Linea via
 api.cow.fi/linea natively (chainId 59144 in COW_SUPPORTED_CHAIN_IDS),
-the Greg-deployed Linea Sepolia stack is dead code with no production
+the Ophis-deployed Linea Sepolia stack is dead code with no production
 path. Per Clement 2026-05-11."
 ```
 
@@ -323,7 +323,7 @@ Two changes since the original 2026-05-04 Phase 3 validation:
   instead of the rotating `*.trycloudflare.com` quick-tunnels Phase 3 used.
 
 - **Testnet contracts are unchanged.** CREATE2-deterministic deployment
-  means Greg's `GPv2Settlement` at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce`
+  means Ophis's `GPv2Settlement` at `0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce`
   still resolves on Optimism Sepolia and MegaETH testnet — verified
   via `cast code` 2026-05-11.
 
@@ -463,7 +463,7 @@ Expected: 5 images listed (orderbook, autopilot, driver, baseline, migrations).
 ### Step 1: Pull the driver-submitter PK from local Keychain + pipe into the VM (key value never appears in shell history or this output)
 
 ```bash
-DRIVER_PK=$(security find-generic-password -l greg-driver-submitter -w) ; \
+DRIVER_PK=$(security find-generic-password -l ophis-driver-submitter -w) ; \
   ssh -i ~/.ssh/aleph-greg -p 24014 root@45.144.209.26 \
     "umask 077 && cat > /srv/ophis/.env.shared <<EOF
 DRIVER_SUBMITTER_PRIVATE_KEY=${DRIVER_PK}
@@ -871,7 +871,7 @@ When Spec 2/3 promote to mainnet (or a new testnet) the same pattern repeats:
 
 ## Where the secrets live
 
-- Driver-submitter EOA private key: `/srv/ophis/.env.shared`, key `DRIVER_SUBMITTER_PRIVATE_KEY`. Mode 600. Sourced from macOS Keychain entry `greg-driver-submitter` at deploy time.
+- Driver-submitter EOA private key: `/srv/ophis/.env.shared`, key `DRIVER_SUBMITTER_PRIVATE_KEY`. Mode 600. Sourced from macOS Keychain entry `ophis-driver-submitter` at deploy time.
 - Cloudflare API token: GitHub secret `CLOUDFLARE_API_TOKEN`, macOS Keychain `cloudflare-api-token`. Same token as the rebate-indexer.
 - Cloudflare tunnel cert.pem: `/root/.cloudflared/cert.pem` on the VM. Created once during the rebate-indexer revival; reused by all subsequent tunnels.
 
@@ -1002,7 +1002,7 @@ const GTUSD = process.env.OPTIMISM_SEPOLIA_GTUSD as `0x${string}`;
 const TEST_PK = process.env.OPTIMISM_SEPOLIA_TEST_WALLET_PK as `0x${string}`;
 
 if (!GTUSD) {
-  console.error(chalk.red('Missing env OPTIMISM_SEPOLIA_GTUSD — set to the Greg-deployed GTUSD test-token address'));
+  console.error(chalk.red('Missing env OPTIMISM_SEPOLIA_GTUSD — set to the Ophis-deployed GTUSD test-token address'));
   process.exit(2);
 }
 if (!TEST_PK) {
@@ -1117,7 +1117,7 @@ main().catch((err) => {
 ```bash
 cd /Users/scep/greg/infra/optimism/scripts
 export OPTIMISM_SEPOLIA_GTUSD=<paste from infra/optimism/.env.example>
-export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l greg-chiado-test -w)
+export OPTIMISM_SEPOLIA_TEST_WALLET_PK=$(security find-generic-password -l ophis-chiado-test -w)
 pnpm smoke 2>&1 | tee /tmp/smoke-optimism.log
 ```
 
@@ -1177,7 +1177,7 @@ const GTUSD = process.env.MEGAETH_TESTNET_GTUSD as `0x${string}`;
 const TEST_PK = process.env.MEGAETH_TESTNET_TEST_WALLET_PK as `0x${string}`;
 
 if (!GTUSD) {
-  console.error(chalk.red('Missing env MEGAETH_TESTNET_GTUSD — set to the Greg-deployed GTUSD test-token address (see infra/megaeth/.env.example)'));
+  console.error(chalk.red('Missing env MEGAETH_TESTNET_GTUSD — set to the Ophis-deployed GTUSD test-token address (see infra/megaeth/.env.example)'));
   process.exit(2);
 }
 if (!TEST_PK) {
@@ -1304,7 +1304,7 @@ main().catch((err) => {
 ```bash
 cd /Users/scep/greg/infra/megaeth/scripts
 export MEGAETH_TESTNET_GTUSD=<paste from infra/megaeth/.env.example>
-export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l greg-megaeth-deployer -w)
+export MEGAETH_TESTNET_TEST_WALLET_PK=$(security find-generic-password -l ophis-megaeth-deployer -w)
 pnpm smoke 2>&1 | tee /tmp/smoke-megaeth.log
 ```
 
@@ -1340,7 +1340,7 @@ Replace the old VM-specific paragraphs with:
 ```markdown
 ## Phase 3.5 — Aleph VM hosting (updated 2026-05-11)
 
-Greg's multi-chain testnet stack now runs as a **co-tenant on the rebates VM**
+Ophis's multi-chain testnet stack now runs as a **co-tenant on the rebates VM**
 at `vm4.alephvision.eu` (`45.144.209.26:24014`) — same VM, same SSH key
 (`~/.ssh/aleph-greg`), same Cloudflare account. Replaces the deceased Phase 3
 VM at `149.86.227.106:24019` (instance presumed reclaimed by Aleph).
@@ -1358,7 +1358,7 @@ VM at `149.86.227.106:24019` (instance presumed reclaimed by Aleph).
   as its own systemd unit (`cloudflared-<chain>.service`). Stable URLs, no
   `*.trycloudflare.com` rotation.
 - **Driver-submitter PK** lives at `/srv/ophis/.env.shared` (mode 600).
-  Sourced from macOS Keychain `greg-driver-submitter`.
+  Sourced from macOS Keychain `ophis-driver-submitter`.
 - **Runbook:** `infra/cloudflare/ophis-chain-backends.md`.
 ```
 

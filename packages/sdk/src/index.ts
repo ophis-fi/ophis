@@ -1,16 +1,16 @@
 export {
-  gregDefaults,
-  GREG_CHAIN_IDS,
-  GREG_PARTNER_FEE_BPS,
-  GREG_PARTNER_RECIPIENT,
-  type GregDefaults,
+  ophisDefaults,
+  OPHIS_CHAIN_IDS,
+  OPHIS_PARTNER_FEE_BPS,
+  OPHIS_PARTNER_RECIPIENT,
+  type OphisDefaults,
 } from './config.js';
 
 export {
-  gregDefaultPartnerFee,
-  GREG_PARTNER_FEE_RECIPIENT,
+  ophisDefaultPartnerFee,
+  OPHIS_PARTNER_FEE_RECIPIENT,
   COW_SUPPORTED_CHAIN_IDS,
-  type GregPartnerFee,
+  type OphisPartnerFee,
 } from './partner-fee.js';
 
 export {

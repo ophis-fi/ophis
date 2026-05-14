@@ -180,10 +180,10 @@ export function SwapWidget({ topContent, bottomContent, allowSwapSameToken }: Sw
   const isNetworkUnsupported = useIsProviderNetworkUnsupported()
   const isNetworkDeprecated = useIsProviderNetworkDeprecated()
 
-  // Greg/Ophis: suppress the upstream CoW cross-chain unlock-promo
+  // Ophis: suppress the upstream CoW cross-chain unlock-promo
   // ("Cross-chain swaps are here / Mooove between any chain..."). It's
   // CoW-marketing copy that doesn't belong on Ophis. Tracked in
-  // apps/frontend/.greg-divergences.md.
+  // apps/frontend/.ophis-divergences.md.
   const shouldShowLockScreen = false
   void [isHydrated, isUnlocked, isNetworkUnsupported, isNetworkDeprecated, isConnected, isSmartContractWallet, isEagerConnectInProgress]
 

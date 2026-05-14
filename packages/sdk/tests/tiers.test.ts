@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TIERS, POOL_SPLIT_BPS, assignTier as sdkAssign } from '@greg/sdk';
+import { TIERS, POOL_SPLIT_BPS, assignTier as sdkAssign } from '@ophis/sdk';
 
 // The indexer ships its own TS source. We import it directly and compare exports.
 // If the workspace layout moves the indexer, this import path breaks and the test
@@ -10,7 +10,7 @@ import {
   assignTier as indexerAssign,
 } from '../../../apps/rebate-indexer/src/tiers.js';
 
-describe('@greg/sdk tiers mirror apps/rebate-indexer/src/tiers.ts', () => {
+describe('@ophis/sdk tiers mirror apps/rebate-indexer/src/tiers.ts', () => {
   it('TIERS array matches the indexer source exactly', () => {
     expect(TIERS).toEqual(INDEXER_TIERS);
   });
