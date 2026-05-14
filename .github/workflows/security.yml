@@ -72,19 +72,28 @@ jobs:
               # Anything else (compile failure, crash) -- bubble up as job failure.
               set +e
               slither GPv2Settlement.sol --compile-force-framework solc --json /out/settlement.json
-              s_rc=$?
+              rc_settlement=$?
               slither GPv2AllowListAuthentication.sol --compile-force-framework solc --json /out/auth.json
-              a_rc=$?
+              rc_auth=$?
+              slither GPv2VaultRelayer.sol --compile-force-framework solc --json /out/vault.json
+              rc_vault=$?
+              slither reader/AllowListStorageReader.sol --compile-force-framework solc --json /out/allowlist-reader.json
+              rc_allow_reader=$?
+              slither reader/SettlementStorageReader.sol --compile-force-framework solc --json /out/settlement-reader.json
+              rc_settle_reader=$?
               set -e
-              for rc in $s_rc $a_rc; do
+              for rc in $rc_settlement $rc_auth $rc_vault $rc_allow_reader $rc_settle_reader; do
                 if [ "$rc" != "0" ] && [ "$rc" != "255" ]; then
                   echo "Slither crashed with rc=$rc (not a findings code)"
                   exit $rc
                 fi
               done
             '
-          # Sanity: both JSONs must be non-empty
-          for f in /tmp/slither-out/settlement.json /tmp/slither-out/auth.json; do
+          # Sanity: all JSONs must be non-empty
+          for f in /tmp/slither-out/settlement.json /tmp/slither-out/auth.json \
+                   /tmp/slither-out/vault.json \
+                   /tmp/slither-out/allowlist-reader.json \
+                   /tmp/slither-out/settlement-reader.json; do
             if [ ! -s "$f" ]; then
               echo "FAIL: $f is missing or empty -- slither did not produce output"
               exit 2
@@ -98,7 +107,10 @@ jobs:
           python3 scripts/slither-baseline.py \
             --check audit/slither-baseline.json \
             /tmp/slither-out/settlement.json \
-            /tmp/slither-out/auth.json
+            /tmp/slither-out/auth.json \
+            /tmp/slither-out/vault.json \
+            /tmp/slither-out/allowlist-reader.json \
+            /tmp/slither-out/settlement-reader.json
 
       - name: Upload Slither JSON
         if: always()
