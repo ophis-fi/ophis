@@ -7,6 +7,12 @@
 
 node-url = "https://optimism-rpc.publicnode.com"
 
+# Ophis-fork settlement on Optimism. Same fix as OKX — without this
+# override the solver framework falls back to the canonical CoW
+# address, KyberSwap bakes the wrong `receiver` into its swap call,
+# and settle() reverts with "ERC20: transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
 [dex]
 chain-id = "10"
 

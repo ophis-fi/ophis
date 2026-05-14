@@ -9,6 +9,15 @@
 
 node-url = "${OP_MAINNET_RPC}"
 
+# Ophis-fork settlement contract on Optimism. Without this override the
+# solver framework falls back to GPv2Settlement::deployment_address(),
+# which is the canonical CoW address 0x9008d19f…ab41. The OKX call
+# would then bake that wrong `swapReceiverAddress` into its swap
+# calldata: settle() pulls WETH from OUR settlement, OKX deposits USDC
+# into the CoW canonical (empty) address, and the final user-payout
+# transfer reverts with "ERC20: transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
 [dex]
 # Chain ID 10 = Optimism mainnet.
 chain-id = "10"
