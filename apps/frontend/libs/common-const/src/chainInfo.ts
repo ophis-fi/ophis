@@ -174,6 +174,7 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.PLASMA, // TODO: decide where to place Plasma
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
+  AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
   SupportedChainId.SEPOLIA,
 ]
 
@@ -192,6 +193,7 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SupportedChainId.PLASMA, // TODO: decide where to place Plasma
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
+  AdditionalTargetChainId.OPTIMISM,
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
   SupportedChainId.SEPOLIA,
