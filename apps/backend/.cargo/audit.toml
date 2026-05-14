@@ -24,4 +24,9 @@ ignore = [
   # model crate - data race in Shared (RUSTSEC-2020-0140)
   # Internal crate issue (tracked in #3338)
   "RUSTSEC-2020-0140",
+
+  # rand - unsound interaction with a custom global logger (RUSTSEC-2026-0097)
+  # Inapplicable to Ophis: we use the `tracing` crate, never replace the
+  # `log` global logger. Re-evaluate if rand publishes a patched 0.9.x.
+  "RUSTSEC-2026-0097",
 ]
