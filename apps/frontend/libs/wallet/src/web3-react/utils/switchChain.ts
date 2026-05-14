@@ -7,6 +7,7 @@ import {
   gnosisChain,
   linea,
   mainnet,
+  optimism,
   plasma,
   polygon,
   sepolia,
@@ -40,6 +41,8 @@ const WALLET_RPC_SUGGESTION: Record<SupportedChainId, HttpsString | null> = {
   [SupportedChainId.LINEA]: linea.rpcUrls.default.http[0],
   [SupportedChainId.PLASMA]: plasma.rpcUrls.default.http[0],
   [SupportedChainId.INK]: ink.rpcUrls.default.http[0],
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: optimism.rpcUrls.default.http[0],
 }
 
 // TODO: Add proper return type annotation
