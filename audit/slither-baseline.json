@@ -1,0 +1,350 @@
+{
+  "findings": {
+    "16e243641f7ea8dc": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Signing.ecdsaRecover(bytes32,bytes) (mixins/GPv2Signing.sol#183-209) uses assembly",
+      "file": "GPv2Signing.sol",
+      "function": "ecdsaRecover",
+      "impact": "Informational"
+    },
+    "199c99e96665f89b": {
+      "check": "unindexed-event-address",
+      "contract": "",
+      "description": "Event GPv2AllowListAuthentication.SolverAdded(address) (GPv2AllowListAuthentication.sol#28) has address parameters but no indexed parameters",
+      "file": "GPv2AllowListAuthentication.sol",
+      "function": "",
+      "impact": "Informational"
+    },
+    "274375ccbb65485b": {
+      "check": "reentrancy-benign",
+      "contract": "",
+      "description": "Reentrancy in GPv2Settlement.swap(IVault.BatchSwapStep[],IERC20[],GPv2Trade.Data) (GPv2Settlement.sol#153-242):",
+      "file": "GPv2Settlement.sol",
+      "function": "swap",
+      "impact": "Low"
+    },
+    "27eca7170310e0f8": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2EIP1967.setAdmin(address) (libraries/GPv2EIP1967.sol#27-32) uses assembly",
+      "file": "GPv2EIP1967.sol",
+      "function": "setAdmin",
+      "impact": "Informational"
+    },
+    "2da58cbd001d9f0a": {
+      "check": "timestamp",
+      "contract": "",
+      "description": "GPv2Settlement.computeTradeExecution(GPv2Signing.RecoveredOrder,uint256,uint256,uint256,GPv2Transfer.Data,GPv2Transfer.Data) (GPv2Settlement.sol#337-442) uses timestamp for comparisons",
+      "file": "GPv2Settlement.sol",
+      "function": "computeTradeExecution",
+      "impact": "Low"
+    },
+    "2f8d7b14ce25f03f": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Order.packOrderUidParams(bytes,bytes32,address,uint32) (libraries/GPv2Order.sol#178-212) uses assembly",
+      "file": "GPv2Order.sol",
+      "function": "packOrderUidParams",
+      "impact": "Informational"
+    },
+    "3061d3a4a21cf977": {
+      "check": "low-level-calls",
+      "contract": "",
+      "description": "Low level call in StorageAccessible.simulateDelegatecall(address,bytes) (mixins/StorageAccessible.sol#60-78):",
+      "file": "StorageAccessible.sol",
+      "function": "simulateDelegatecall",
+      "impact": "Informational"
+    },
+    "33bb2f50bcb13df1": {
+      "check": "controlled-delegatecall",
+      "contract": "",
+      "description": "StorageAccessible.simulateDelegatecallInternal(address,bytes) (mixins/StorageAccessible.sol#87-95) uses delegatecall to a input-controlled function id",
+      "file": "StorageAccessible.sol",
+      "function": "simulateDelegatecallInternal",
+      "impact": "High"
+    },
+    "34920914c39f0880": {
+      "check": "unused-return",
+      "contract": "",
+      "description": "GPv2Settlement.freeOrderStorage(mapping(bytes => uint256),bytes[]) (GPv2Settlement.sol#474-487) ignores return value by (None,None,validTo) = orderUid.extractOrderUidParams() (GPv2Settlement.sol#481)",
+      "file": "GPv2Settlement.sol",
+      "function": "freeOrderStorage",
+      "impact": "Medium"
+    },
+    "3bd55226559e90f4": {
+      "check": "solc-version",
+      "contract": "",
+      "description": "Version constraint >=0.7.6<0.9.0 is too complex.",
+      "file": "GPv2Settlement.sol",
+      "function": "",
+      "impact": "Informational"
+    },
+    "3be9b44cd564f874": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Interaction.selector(GPv2Interaction.Data) (libraries/GPv2Interaction.sol#56-72) uses assembly",
+      "file": "GPv2Interaction.sol",
+      "function": "selector",
+      "impact": "Informational"
+    },
+    "4632b71d3d3ce1a8": {
+      "check": "calls-loop",
+      "contract": "",
+      "description": "GPv2Signing.recoverEip1271Signer(bytes32,bytes) (mixins/GPv2Signing.sol#281-303) has external calls inside a loop: require(bool,string)(EIP1271Verifier(owner).isValidSignature(orderDigest,signature) =",
+      "file": "GPv2Signing.sol",
+      "function": "recoverEip1271Signer",
+      "impact": "Low"
+    },
+    "5dfb7235210a7b2d": {
+      "check": "uninitialized-local",
+      "contract": "",
+      "description": "GPv2Settlement.swap(IVault.BatchSwapStep[],IERC20[],GPv2Trade.Data).feeTransfer (GPv2Settlement.sol#189) is a local variable never initialized",
+      "file": "GPv2Settlement.sol",
+      "function": "",
+      "impact": "Medium"
+    },
+    "63ac422985122c47": {
+      "check": "assembly",
+      "contract": "",
+      "description": "StorageAccessible.revertWith(bytes) (mixins/StorageAccessible.sol#97-102) uses assembly",
+      "file": "StorageAccessible.sol",
+      "function": "revertWith",
+      "impact": "Informational"
+    },
+    "6f85d598541ac46c": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Interaction.execute(GPv2Interaction.Data) (libraries/GPv2Interaction.sol#18-49) uses assembly",
+      "file": "GPv2Interaction.sol",
+      "function": "execute",
+      "impact": "Informational"
+    },
+    "71cc2597e228c2cb": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2SafeERC20.getLastTransferResult.asm_0.revertWithMessage() (libraries/GPv2SafeERC20.sol#93-99) uses assembly",
+      "file": "GPv2SafeERC20.sol",
+      "function": "revertWithMessage",
+      "impact": "Informational"
+    },
+    "7622936e98d18b17": {
+      "check": "divide-before-multiply",
+      "contract": "",
+      "description": "GPv2Settlement.computeTradeExecution(GPv2Signing.RecoveredOrder,uint256,uint256,uint256,GPv2Transfer.Data,GPv2Transfer.Data) (GPv2Settlement.sol#337-442) performs a multiplication on the result of a d",
+      "file": "GPv2Settlement.sol",
+      "function": "computeTradeExecution",
+      "impact": "Medium"
+    },
+    "7da583584700bdbe": {
+      "check": "unprotected-upgrade",
+      "contract": "GPv2AllowListAuthentication",
+      "description": "GPv2AllowListAuthentication (GPv2AllowListAuthentication.sol#11-108) is an upgradeable contract that does not protect its initialize functions: GPv2AllowListAuthentication.initializeManager(address) (",
+      "file": "GPv2AllowListAuthentication.sol",
+      "function": "initializeManager",
+      "impact": "High"
+    },
+    "7e4f6cb8c7503f3b": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Signing.recoverPreSigner(bytes32,bytes,uint32) (mixins/GPv2Signing.sol#313-334) uses assembly",
+      "file": "GPv2Signing.sol",
+      "function": "recoverPreSigner",
+      "impact": "Informational"
+    },
+    "81aff2a98f148292": {
+      "check": "low-level-calls",
+      "contract": "",
+      "description": "Low level call in StorageAccessible.simulateDelegatecallInternal(address,bytes) (mixins/StorageAccessible.sol#87-95):",
+      "file": "StorageAccessible.sol",
+      "function": "simulateDelegatecallInternal",
+      "impact": "Informational"
+    },
+    "838336c3e1c5e5d5": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2EIP1967.getAdmin() (libraries/GPv2EIP1967.sol#16-21) uses assembly",
+      "file": "GPv2EIP1967.sol",
+      "function": "getAdmin",
+      "impact": "Informational"
+    },
+    "843df09cae1079d3": {
+      "check": "assembly",
+      "contract": "",
+      "description": "StorageAccessible.getStorageAt(uint256,uint256) (mixins/StorageAccessible.sol#39-52) uses assembly",
+      "file": "StorageAccessible.sol",
+      "function": "getStorageAt",
+      "impact": "Informational"
+    },
+    "8ba075c7905089d3": {
+      "check": "assembly",
+      "contract": "",
+      "description": "StorageAccessible.setLength(bytes,uint256) (mixins/StorageAccessible.sol#104-109) uses assembly",
+      "file": "StorageAccessible.sol",
+      "function": "setLength",
+      "impact": "Informational"
+    },
+    "8c8f56af38faef54": {
+      "check": "solc-version",
+      "contract": "",
+      "description": "Version constraint >=0.7.6<0.9.0 is too complex.",
+      "file": "GPv2AllowListAuthentication.sol",
+      "function": "",
+      "impact": "Informational"
+    },
+    "8df7bda343fd53cf": {
+      "check": "missing-zero-check",
+      "contract": "",
+      "description": "StorageAccessible.simulateDelegatecallInternal(address,bytes).targetContract (mixins/StorageAccessible.sol#88) lacks a zero-check on :",
+      "file": "StorageAccessible.sol",
+      "function": "",
+      "impact": "Low"
+    },
+    "9651477585fc6ffe": {
+      "check": "assembly",
+      "contract": "",
+      "description": "Initializable._isConstructor() (mixins/Initializable.sol#58-65) uses assembly",
+      "file": "Initializable.sol",
+      "function": "_isConstructor",
+      "impact": "Informational"
+    },
+    "98795c233c719968": {
+      "check": "arbitrary-send-erc20",
+      "contract": "",
+      "description": "GPv2Transfer.transferFromAccounts(IVault,GPv2Transfer.Data[],address) (libraries/GPv2Transfer.sol#91-136) uses arbitrary from in transferFrom: transfer.token.safeTransferFrom(transfer.account,recipien",
+      "file": "GPv2Transfer.sol",
+      "function": "transferFromAccounts",
+      "impact": "High"
+    },
+    "9f20b9565fafd434": {
+      "check": "unused-return",
+      "contract": "",
+      "description": "GPv2Settlement.invalidateOrder(bytes) (GPv2Settlement.sol#250-255) ignores return value by (None,owner,None) = orderUid.extractOrderUidParams() (GPv2Settlement.sol#251)",
+      "file": "GPv2Settlement.sol",
+      "function": "invalidateOrder",
+      "impact": "Medium"
+    },
+    "a49da7ea15bc13fc": {
+      "check": "timestamp",
+      "contract": "",
+      "description": "GPv2Settlement.freeOrderStorage(mapping(bytes => uint256),bytes[]) (GPv2Settlement.sol#474-487) uses timestamp for comparisons",
+      "file": "GPv2Settlement.sol",
+      "function": "freeOrderStorage",
+      "impact": "Low"
+    },
+    "a59ac9dd02e7ab60": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Order.hash(GPv2Order.Data,bytes32) (libraries/GPv2Order.sol#133-165) uses assembly",
+      "file": "GPv2Order.sol",
+      "function": "hash",
+      "impact": "Informational"
+    },
+    "b91a6dfb9a37ea70": {
+      "check": "solc-version",
+      "contract": "",
+      "description": "solc-0.7.6 is an outdated solc version. Use a more recent version (at least 0.8.0), if possible.",
+      "file": "",
+      "function": "",
+      "impact": "Informational"
+    },
+    "bbb87d3a74a09e75": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Signing.recoverEip1271Signer(bytes32,bytes) (mixins/GPv2Signing.sol#281-303) uses assembly",
+      "file": "GPv2Signing.sol",
+      "function": "recoverEip1271Signer",
+      "impact": "Informational"
+    },
+    "bcab6414397d1190": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2SafeERC20.safeTransfer(IERC20,address,uint256) (libraries/GPv2SafeERC20.sol#12-32) uses assembly",
+      "file": "GPv2SafeERC20.sol",
+      "function": "safeTransfer",
+      "impact": "Informational"
+    },
+    "c83b604b97187754": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Signing.constructor() (mixins/GPv2Signing.sol#63-81) uses assembly",
+      "file": "GPv2Signing.sol",
+      "function": "constructor",
+      "impact": "Informational"
+    },
+    "c9ac93d28f0c2b3d": {
+      "check": "unused-return",
+      "contract": "",
+      "description": "GPv2Signing.setPreSignature(bytes,bool) (mixins/GPv2Signing.sol#88-97) ignores return value by (None,owner,None) = orderUid.extractOrderUidParams() (mixins/GPv2Signing.sol#89)",
+      "file": "GPv2Signing.sol",
+      "function": "setPreSignature",
+      "impact": "Medium"
+    },
+    "cc34c5fe336a5d52": {
+      "check": "missing-zero-check",
+      "contract": "",
+      "description": "GPv2AllowListAuthentication.setManager(address).manager_ (GPv2AllowListAuthentication.sol#74) lacks a zero-check on :",
+      "file": "GPv2AllowListAuthentication.sol",
+      "function": "",
+      "impact": "Low"
+    },
+    "d68145c587e9dbd8": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2SafeERC20.getLastTransferResult(IERC20) (libraries/GPv2SafeERC20.sol#70-130) uses assembly",
+      "file": "GPv2SafeERC20.sol",
+      "function": "getLastTransferResult",
+      "impact": "Informational"
+    },
+    "d8bc0c568b3a94b6": {
+      "check": "naming-convention",
+      "contract": "",
+      "description": "Parameter GPv2SafeERC20.getLastTransferResult.asm_0.revertWithMessage().length_getLastTransferResult_asm_0_revertWithMessage (libraries/GPv2SafeERC20.sol#93) is not in mixedCase",
+      "file": "GPv2SafeERC20.sol",
+      "function": "",
+      "impact": "Informational"
+    },
+    "e29ec462cc1fc86b": {
+      "check": "arbitrary-send-erc20",
+      "contract": "",
+      "description": "GPv2Transfer.fastTransferFromAccount(IVault,GPv2Transfer.Data,address) (libraries/GPv2Transfer.sol#46-77) uses arbitrary from in transferFrom: transfer.token.safeTransferFrom(transfer.account,recipien",
+      "file": "GPv2Transfer.sol",
+      "function": "fastTransferFromAccount",
+      "impact": "High"
+    },
+    "e8e4f4617ca5ea07": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2SafeERC20.safeTransferFrom(IERC20,address,address,uint256) (libraries/GPv2SafeERC20.sol#36-65) uses assembly",
+      "file": "GPv2SafeERC20.sol",
+      "function": "safeTransferFrom",
+      "impact": "Informational"
+    },
+    "ea6f2c9685eb4488": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Transfer.truncateBalanceOpsArray(IVault.UserBalanceOp[],uint256) (libraries/GPv2Transfer.sol#191-203) uses assembly",
+      "file": "GPv2Transfer.sol",
+      "function": "truncateBalanceOpsArray",
+      "impact": "Informational"
+    },
+    "edc86fe0475621e0": {
+      "check": "assembly",
+      "contract": "",
+      "description": "GPv2Order.extractOrderUidParams(bytes) (libraries/GPv2Order.sol#226-242) uses assembly",
+      "file": "GPv2Order.sol",
+      "function": "extractOrderUidParams",
+      "impact": "Informational"
+    }
+  },
+  "schema_version": 1,
+  "summary": {
+    "by_impact": {
+      "High": 4,
+      "Informational": 27,
+      "Low": 6,
+      "Medium": 5
+    },
+    "total": 42
+  }
+}
