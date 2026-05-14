@@ -36,7 +36,10 @@ function checkIsSupportedWallet(walletName?: string): boolean {
 
 function useWalletInfo(): WalletInfo {
   const { account, chainId, isActive: active } = useWeb3React()
-  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId)
+  // Ophis fork: chain 10 (OP Mainnet) is supported at the frontend layer even
+  // though the SDK enum doesn't include it. Without this, switching the wallet
+  // to OP is treated as "unsupported" and silently falls back to MAINNET.
+  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId) && chainId !== 10
 
   return useMemo(
     () => ({
