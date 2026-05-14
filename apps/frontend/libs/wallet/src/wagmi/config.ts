@@ -12,6 +12,7 @@ import {
   ink,
   linea,
   mainnet,
+  megaeth,
   optimism,
   plasma,
   polygon,
@@ -21,9 +22,10 @@ import { createConfig, Transport } from 'wagmi'
 
 const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof v === 'number')
 
-// Ophis fork: OP mainnet (chain 10) added at frontend layer.
+// Ophis fork: OP mainnet (chain 10) and MegaETH mainnet (chain 4326) added at frontend layer.
 const OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
-const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID]
+const MEGAETH_CHAIN_ID = 4326 as unknown as SupportedChainId
+const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID, MEGAETH_CHAIN_ID]
 
 const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.MAINNET]: mainnet,
@@ -38,6 +40,7 @@ const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.INK]: ink,
   [SupportedChainId.SEPOLIA]: sepolia,
   [OPTIMISM_CHAIN_ID]: optimism,
+  [MEGAETH_CHAIN_ID]: megaeth,
 }
 
 export const config = createConfig({

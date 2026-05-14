@@ -15,6 +15,8 @@ const indexFiles: Record<SupportedChainId, string[]> = {
   [SupportedChainId.GNOSIS_CHAIN]: gnosisChainIndex,
   // Ophis fork: no locked GNO airdrop on OP mainnet
   [10 as unknown as SupportedChainId]: [],
+  // Ophis fork: no locked GNO airdrop on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: [],
 }
 
 const chainNames: Record<SupportedChainId, string | null> = {
@@ -23,6 +25,8 @@ const chainNames: Record<SupportedChainId, string | null> = {
   [SupportedChainId.GNOSIS_CHAIN]: 'gnosisChain',
   // Ophis fork: no locked GNO airdrop on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: no locked GNO airdrop on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 const DISTRO_REPO_BRANCH_NAME = 'main'

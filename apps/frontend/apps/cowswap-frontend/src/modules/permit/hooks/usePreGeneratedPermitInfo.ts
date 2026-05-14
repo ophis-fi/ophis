@@ -16,7 +16,7 @@ import { PRE_GENERATED_PERMIT_URL } from '../const'
 // Ophis fork: chains where CoW CDN does not publish a pre-generated
 // PermitInfo.<chainId>.json file. Skipping the fetch avoids retrying 403s
 // indefinitely and polluting the console.
-const CHAINS_WITHOUT_PREGENERATED_PERMITS = new Set<number>([10])
+const CHAINS_WITHOUT_PREGENERATED_PERMITS = new Set<number>([10, 4326])
 
 export function usePreGeneratedPermitInfo(): {
   allPermitInfo: Record<string, PermitInfo>

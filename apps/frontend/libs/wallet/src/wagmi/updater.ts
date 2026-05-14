@@ -19,10 +19,12 @@ import { getWalletTypeLabel } from '../api/utils/getWalletTypeLabel'
 
 function useWalletInfo(): WalletInfo {
   const { address, chainId, isConnected } = useConnection()
-  // Ophis fork: chain 10 (OP Mainnet) is supported at the frontend layer even
-  // though the SDK enum doesn't include it. Without this, switching the wallet
-  // to OP is treated as "unsupported" and silently falls back to MAINNET.
-  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId) && chainId !== 10
+  // Ophis fork: chains 10 (OP Mainnet) and 4326 (MegaETH Mainnet) are
+  // supported at the frontend layer even though the SDK enum doesn't include
+  // them. Without this, switching the wallet to either chain is treated as
+  // "unsupported" and silently falls back to MAINNET.
+  const isChainIdUnsupported =
+    !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 4326
 
   return useMemo(
     () => ({

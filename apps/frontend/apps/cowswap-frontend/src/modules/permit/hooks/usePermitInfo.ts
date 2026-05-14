@@ -32,6 +32,8 @@ export const PERMIT_GAS_LIMIT_MIN: Record<SupportedChainId, number> = {
   ...mapSupportedNetworks(DEFAULT_MIN_GAS_LIMIT),
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: DEFAULT_MIN_GAS_LIMIT,
+  // Ophis fork: MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: DEFAULT_MIN_GAS_LIMIT,
 }
 
 /**

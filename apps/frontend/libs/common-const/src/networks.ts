@@ -17,6 +17,8 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [SupportedChainId.SEPOLIA]: (process.env['REACT_APP_NETWORK_URL_11155111'] as HttpsString) || undefined,
   // Ophis fork: OP mainnet (chain 10) added at frontend layer
   [10 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_10'] as HttpsString) || undefined,
+  // Ophis fork: MegaETH mainnet (chain 4326) added at frontend layer
+  [4326 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_4326'] as HttpsString) || undefined,
 }
 
 const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: boolean }> = {
@@ -33,6 +35,8 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.SEPOLIA]: { url: `https://sepolia.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
   // Ophis fork: OP mainnet default public RPC
   [10 as unknown as SupportedChainId]: { url: `https://optimism-rpc.publicnode.com`, usesInfura: false },
+  // Ophis fork: MegaETH mainnet default public RPC
+  [4326 as unknown as SupportedChainId]: { url: `https://mainnet.megaeth.com/rpc`, usesInfura: false },
 }
 
 /**
@@ -42,6 +46,8 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   ...mapSupportedNetworks(getRpcUrl),
   // Ophis fork: include OP mainnet (chain 10) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
   [10 as unknown as SupportedChainId]: getRpcUrl(10 as unknown as SupportedChainId),
+  // Ophis fork: include MegaETH mainnet (chain 4326) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
+  [4326 as unknown as SupportedChainId]: getRpcUrl(4326 as unknown as SupportedChainId),
 }
 
 function getRpcUrl(chainId: SupportedChainId): HttpsString {
