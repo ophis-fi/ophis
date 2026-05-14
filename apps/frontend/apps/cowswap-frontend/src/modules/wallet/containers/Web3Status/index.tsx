@@ -18,9 +18,20 @@ export interface Web3StatusProps {
   className?: string
   onClick?: () => void
   joinedLeft?: boolean
+  /**
+   * When true, the pre-connection "Connect wallet" pill is not rendered.
+   * The WalletModal and AccountSelectorModal still mount so external CTAs
+   * (e.g. the swap form's Connect Wallet button) can open the modal via Redux.
+   */
+  hideConnectButton?: boolean
 }
 
-export function Web3Status({ className, onClick, joinedLeft = false }: Web3StatusProps): ReactNode {
+export function Web3Status({
+  className,
+  onClick,
+  joinedLeft = false,
+  hideConnectButton = false,
+}: Web3StatusProps): ReactNode {
   const connectionType = useConnectionType()
   const { account } = useWalletInfo()
   const { ensName } = useWalletDetails()
@@ -39,6 +50,7 @@ export function Web3Status({ className, onClick, joinedLeft = false }: Web3Statu
         ensName={ensName}
         connectWallet={toggleWalletModal}
         connectionType={connectionType}
+        hideConnectButton={hideConnectButton}
       />
       <WalletModal />
       <AccountSelectorModal />
