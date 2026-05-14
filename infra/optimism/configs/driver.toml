@@ -13,7 +13,7 @@ name = "baseline"
 endpoint = "http://baseline"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "REMOVED_LEAKED_KEY_2026_05_14"
+account = "%OPHIS_DRIVER_SUBMITTER_KEY"
 
 [submission]
 gas-price-cap = "1000000000000"
