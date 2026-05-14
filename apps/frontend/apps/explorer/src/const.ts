@@ -98,12 +98,22 @@ export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = {
   ...mapSupportedNetworks((chainId) => WRAPPED_NATIVE_CURRENCIES[chainId].address),
   // Ophis fork: WETH on OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
+  // Ophis fork: WETH on MegaETH mainnet (chain 4326) — predeploy slot, TBD post-deploy.
+  [4326 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
 }
 
 export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
   ...mapSupportedNetworks((chainId) => ALL_SUPPORTED_CHAINS_MAP[chainId].nativeCurrency),
   // Ophis fork: ETH on OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: {
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    name: 'Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  } as TokenErc20,
+  // Ophis fork: ETH on MegaETH mainnet (chain 4326). The chain ticker is
+  // technically "MEGA" but it is bridged ETH from L1, so we expose it as ETH.
+  [4326 as unknown as SupportedChainId]: {
     address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
     name: 'Ether',
     symbol: 'ETH',

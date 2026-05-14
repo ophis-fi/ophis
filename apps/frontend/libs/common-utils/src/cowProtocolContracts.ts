@@ -20,6 +20,16 @@ const OPHIS_OP_VAULT_RELAYER: `0x${string}` = '0x83847EaB41ad9ea43809ce71569eB2e
 // ETH Flow is not deployed on OP for Ophis; empty disables EthFlow UI.
 const OPHIS_OP_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
 
+// Ophis fork: MegaETH mainnet (chain 4326) contract addresses
+// TBD post-deploy — Settlement + VaultRelayer have not been deployed yet.
+// Update these once contracts are live. The zero-address sentinel keeps the
+// frontend from crashing but will reject any swap attempt at signing time.
+const OPHIS_MEGAETH_CHAIN_ID = 4326 as unknown as SupportedChainId
+const OPHIS_MEGAETH_SETTLEMENT: `0x${string}` = '0x0000000000000000000000000000000000000000' // TBD post-deploy
+const OPHIS_MEGAETH_VAULT_RELAYER: `0x${string}` = '0x0000000000000000000000000000000000000000' // TBD post-deploy
+// ETH Flow not deployed on MegaETH for Ophis; sentinel zero address disables EthFlow UI.
+const OPHIS_MEGAETH_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
+
 // When in barn backend env, use staging contracts for MAINNET only; prod for all other chains.
 // TODO: the condition should be removed once all backend services migrated to the new contracts
 export const COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS: AddressPerChain = {
@@ -33,6 +43,7 @@ export const COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS: AddressPerChain = {
       } as AddressPerChain)
     : (COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS_PROD as AddressPerChain)),
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_SETTLEMENT,
+  [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_SETTLEMENT, // TBD post-deploy
 }
 
 // When in barn backend env, use the staging vault relayer for MAINNET only; prod for all other chains.
@@ -48,6 +59,7 @@ export const COW_PROTOCOL_VAULT_RELAYER_ADDRESS: AddressPerChain = {
       } as AddressPerChain)
     : (COW_PROTOCOL_VAULT_RELAYER_ADDRESS_PROD as AddressPerChain)),
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_VAULT_RELAYER,
+  [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_VAULT_RELAYER, // TBD post-deploy
 }
 
 // When in barn backend env, use the staging vault relayer for MAINNET only; prod for all other chains.
@@ -64,4 +76,6 @@ export const COW_PROTOCOL_ETH_FLOW_ADDRESS: AddressPerChain = {
     : (ETH_FLOW_ADDRESSES as AddressPerChain)),
   // ETH Flow not deployed on OP for Ophis; sentinel zero address disables EthFlow UI.
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_ETH_FLOW,
+  // ETH Flow not deployed on MegaETH for Ophis; sentinel zero disables EthFlow UI.
+  [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_ETH_FLOW,
 }

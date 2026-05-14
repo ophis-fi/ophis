@@ -16,6 +16,12 @@ export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEE
 // Ophis fork: OP mainnet (chain 10) WETH address
 const OPTIMISM_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
 
+// Ophis fork: MegaETH mainnet (chain 4326) WETH address — TBD post-deploy.
+// MegaETH is an OP-Stack rollup, so the predeploy slot 0x4200…0006 is the
+// expected WETH9 address. Confirm against the canonical deployment once
+// settlement contracts go live.
+const MEGAETH_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
+
 export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> = {
   ...mapSupportedNetworks(getTokenWithLogoFromWrappedNativeCurrency),
   // Ophis fork: WETH on OP mainnet
@@ -23,6 +29,15 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     undefined,
     10 as unknown as SupportedChainId,
     OPTIMISM_WETH_ADDRESS,
+    18,
+    'WETH',
+    'Wrapped Ether',
+  ),
+  // Ophis fork: WETH on MegaETH mainnet (chain 4326) — TBD post-deploy
+  [4326 as unknown as SupportedChainId]: new TokenWithLogo(
+    undefined,
+    4326 as unknown as SupportedChainId,
+    MEGAETH_WETH_ADDRESS,
     18,
     'WETH',
     'Wrapped Ether',

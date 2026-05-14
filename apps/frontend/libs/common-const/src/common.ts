@@ -81,6 +81,8 @@ export const V_COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.SEPOLIA]: '0x21d06a222bbb94ec1406a0a8ba86b4d761bc9864',
   // Ophis fork: vCOW not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: vCOW not deployed on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
@@ -98,6 +100,8 @@ export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: null,
   // Ophis fork: COW token not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: COW token not deployed on MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 // Explorer (TODO: reuse the CowSwap msg`` strings below when the explorer is localized)
@@ -123,6 +127,8 @@ export const ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD: Record<SupportedChainId, numbe
   ...mapSupportedNetworks(200 as number), // 2%
   // Ophis fork: OP mainnet
   [10 as unknown as SupportedChainId]: 200,
+  // Ophis fork: MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: 200,
 }
 
 export const MINIMUM_ETH_FLOW_SLIPPAGE = new Percent(DEFAULT_SLIPPAGE_BPS, 10_000)
@@ -160,6 +166,8 @@ export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
   [SupportedChainId.INK]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.INK}`,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: `https://api.blocknative.com/gasprices/blockprices?chainid=10`,
+  // Ophis fork: MegaETH mainnet (chain 4326) — Blocknative does not support MegaETH yet
+  [4326 as unknown as SupportedChainId]: '',
 }
 export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.MAINNET]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
@@ -175,6 +183,8 @@ export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // Ophis fork: MegaETH mainnet (chain 4326) — no Blocknative key needed (endpoint empty)
+  [4326 as unknown as SupportedChainId]: null,
 }
 
 export const UNSUPPORTED_TOKENS_FAQ_URL = 'https://docs.cow.fi/cow-protocol/reference/core/tokens'

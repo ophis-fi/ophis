@@ -24,6 +24,21 @@ import {
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import { TokenWithLogo } from './types'
 
+// Ophis fork: MegaETH mainnet (chain 4326). SDK does not ship a ChainInfo for
+// MegaETH yet, so we hand-roll one for the network selector / explorer / RPC
+// helpers. `nativeCurrency` is ETH (bridged from L1; on-chain ticker is MEGA
+// but it is functionally ETH). Settlement and VaultRelayer addresses are
+// configured separately in cowProtocolContracts.ts.
+const MEGAETH_CHAIN_ID = 4326 as unknown as SupportedChainId
+const MEGAETH_NATIVE_CURRENCY = new TokenWithLogo(
+  undefined,
+  MEGAETH_CHAIN_ID,
+  '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+  18,
+  'ETH',
+  'Ether',
+)
+
 export interface BaseChainInfo {
   readonly docs: HttpsString
   readonly bridge?: HttpsString
@@ -157,6 +172,25 @@ export const CHAIN_INFO: ChainInfoMap = {
     urlAlias: 'opt',
     nativeCurrency: NATIVE_CURRENCIES[AdditionalTargetChainId.OPTIMISM],
   },
+  // Ophis fork: MegaETH mainnet (chain 4326). Hand-rolled because the SDK
+  // does not (yet) ship a ChainInfo for MegaETH.
+  [MEGAETH_CHAIN_ID]: {
+    docs: 'https://docs.megaeth.com' as HttpsString,
+    explorer: 'https://megaeth.blockscout.com' as HttpsString,
+    infoLink: 'https://megaeth.com' as HttpsString,
+    logo: {
+      light: 'https://raw.githubusercontent.com/megaeth-labs/brand-assets/main/megaeth-logo.svg' as HttpsString,
+      dark: 'https://raw.githubusercontent.com/megaeth-labs/brand-assets/main/megaeth-logo.svg' as HttpsString,
+    },
+    name: 'megaeth',
+    addressPrefix: 'mega',
+    label: 'MegaETH',
+    eip155Label: 'MegaETH Mainnet',
+    urlAlias: 'mega',
+    explorerTitle: 'Blockscout',
+    color: '#00ff95',
+    nativeCurrency: MEGAETH_NATIVE_CURRENCY,
+  },
 }
 
 /**
@@ -175,6 +209,9 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
+  // Ophis fork: MegaETH mainnet (chain 4326) — placed near the end alongside
+  // other newer rollups. Reorder freely.
+  MEGAETH_CHAIN_ID,
   SupportedChainId.SEPOLIA,
 ]
 
@@ -194,6 +231,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM,
+  // Ophis fork: MegaETH mainnet (chain 4326)
+  MEGAETH_CHAIN_ID as unknown as TargetChainId,
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
   SupportedChainId.SEPOLIA,

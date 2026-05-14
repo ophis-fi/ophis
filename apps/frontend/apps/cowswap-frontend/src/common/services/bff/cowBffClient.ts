@@ -6,9 +6,10 @@ const EMPTY_SLIPPAGE_RESPONSE = { slippageBps: null }
 
 const log = console.debug
 
-// Ophis fork: chain 10 (OP Mainnet) is not served by CoW's BFF, so calls
-// always 400. Short-circuit to the empty response to avoid the network noise.
-const UNSUPPORTED_BFF_CHAINS = new Set<number>([10])
+// Ophis fork: chains not served by CoW's BFF — calls always 400.
+// Short-circuit to the empty response to avoid the network noise.
+// Chain 10 = OP Mainnet, chain 4326 = MegaETH Mainnet.
+const UNSUPPORTED_BFF_CHAINS = new Set<number>([10, 4326])
 
 export class CoWBFFClient {
   constructor(private readonly baseUrl: string) {}

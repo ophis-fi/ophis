@@ -220,5 +220,12 @@
       "enabledByDefault": true,
       "source": "https://tokens.coingecko.com/optimistic-ethereum/all.json"
     }
+  ],
+  "4326": [
+    {
+      "priority": 1,
+      "enabledByDefault": true,
+      "source": "https://ipfs.io/ipns/tokens.uniswap.org"
+    }
   ]
 }

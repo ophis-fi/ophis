@@ -141,4 +141,9 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WRAPPED_NATIVE_CURRENCIES[10 as unknown as SupportedChainId],
     USDC_OPTIMISM,
   ]),
+  // Ophis fork: MegaETH mainnet (chain 4326) favorites — WETH only at launch.
+  // USDT0 should be added once its canonical address is known (TBD post-deploy).
+  [4326 as unknown as SupportedChainId]: tokensListToMap([
+    WRAPPED_NATIVE_CURRENCIES[4326 as unknown as SupportedChainId],
+  ]),
 }
