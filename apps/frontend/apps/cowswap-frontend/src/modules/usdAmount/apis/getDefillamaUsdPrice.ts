@@ -28,6 +28,8 @@ export const DEFILLAMA_PLATFORMS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.LINEA]: 'linea',
   [SupportedChainId.PLASMA]: 'plasma',
   [SupportedChainId.INK]: 'ink',
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: 'optimism',
 }
 
 const BASE_URL = 'https://coins.llama.fi/prices/current'
