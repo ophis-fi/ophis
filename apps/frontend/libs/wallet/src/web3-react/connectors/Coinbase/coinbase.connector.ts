@@ -92,6 +92,11 @@ export class CoinbaseWallet extends Connector {
         appName: 'CoW Swap',
         // Ophis fork: include OP mainnet (chain 10) alongside SDK-supported chains so
         // Coinbase Wallet recognises OP and does not refuse to switch.
+        // MegaETH mainnet (chain 4326) is intentionally NOT included here: as of
+        // 2026-05-14 the Coinbase Wallet SDK's chain-proxy does not recognise MegaETH
+        // and rejects any switch attempt with a 400 (targetName=megaeth-mainnet
+        // unknown). Users on MegaETH should use MetaMask, WalletConnect, or another
+        // EIP-1193 wallet until Coinbase adds support. Re-evaluate periodically.
         appChainIds: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
         appLogoUrl: CowImage,
       })

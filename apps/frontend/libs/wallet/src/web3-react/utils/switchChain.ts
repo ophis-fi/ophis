@@ -17,6 +17,10 @@ import {
 } from '@cowprotocol/cow-sdk'
 import { Connector } from '@web3-react/types'
 
+// Ophis fork: MegaETH mainnet (chain 4326) — SDK has no chain info for it,
+// so we pull viem's definition for the RPC URL only.
+import { megaeth } from 'viem/chains'
+
 import { getWeb3ReactConnection } from './getWeb3ReactConnection'
 import { isChainAllowed } from './isChainAllowed'
 
@@ -43,6 +47,8 @@ const WALLET_RPC_SUGGESTION: Record<SupportedChainId, HttpsString | null> = {
   [SupportedChainId.INK]: ink.rpcUrls.default.http[0],
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: optimism.rpcUrls.default.http[0],
+  // Ophis fork: MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: megaeth.rpcUrls.default.http[0] as HttpsString,
 }
 
 // TODO: Add proper return type annotation

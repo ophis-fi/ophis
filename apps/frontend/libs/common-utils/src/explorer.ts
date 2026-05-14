@@ -32,6 +32,10 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     // level URLs won't exist there but at least the function returns a
     // string instead of throwing and crashing the React tree.
     [10 as unknown as ChainId]: 'https://optimistic.etherscan.io',
+    // Ophis fork: MegaETH mainnet (chain 4326). Same rationale — Blockscout
+    // has no /orders/ route, so order-level URLs fall back to the address
+    // page (see getExplorerOrderLink below).
+    [4326 as unknown as ChainId]: 'https://megaeth.blockscout.com',
   }
 }
 
@@ -63,7 +67,7 @@ export function getExplorerOrderLink(chainId: ChainId, orderId: UID): string {
   // see their swap arrive in their wallet. The CoW order UID encodes
   // the owner address in bytes 32..52, so we extract it from the
   // 110-char hex string (2 prefix + 64 hash + 40 owner + 8 validTo).
-  if ((chainId as number) === 10 && orderId.length === 114) {
+  if (((chainId as number) === 10 || (chainId as number) === 4326) && orderId.length === 114) {
     const owner = '0x' + orderId.slice(66, 106)
     return baseUrl + `/address/${owner}`
   }

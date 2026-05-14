@@ -1,4 +1,4 @@
-import { USDC } from '@cowprotocol/common-const'
+import { USDC, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { mapAddressToSupportedNetworks, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount, Percent } from '@cowprotocol/currency'
 
@@ -37,6 +37,8 @@ export const TWAP_HANDLER_ADDRESS: Record<SupportedChainId, string> = {
   ...mapAddressToSupportedNetworks(twapHandlerAddress),
   // Ophis fork: OP mainnet (chain 10) — TWAP handler address (same canonical contract)
   [10 as unknown as SupportedChainId]: twapHandlerAddress,
+  // Ophis fork: MegaETH mainnet (chain 4326) — TBD post-deploy
+  [4326 as unknown as SupportedChainId]: twapHandlerAddress,
 }
 
 export const TWAP_PENDING_STATUSES = [TwapOrderStatus.WaitSigning, TwapOrderStatus.Pending, TwapOrderStatus.Cancelling]
@@ -50,6 +52,12 @@ export const MINIMUM_PART_SELL_AMOUNT_FIAT: Record<SupportedChainId, CurrencyAmo
   [SupportedChainId.BNB]: CurrencyAmount.fromRawAmount(USDC[SupportedChainId.BNB], 1e18), // 1 for BNB, but it has 18 decimals!
   // Ophis fork: OP mainnet (chain 10) — USDC on OP has 6 decimals
   [10 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(USDC[10 as unknown as SupportedChainId], 1e6),
+  // Ophis fork: MegaETH mainnet (chain 4326) — no USDC at launch, denominate
+  // the TWAP minimum-part threshold in WETH instead. 0.001 ETH ≈ a few dollars.
+  [4326 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(
+    WRAPPED_NATIVE_CURRENCIES[4326 as unknown as SupportedChainId],
+    BigInt(1e15).toString(), // 0.001 WETH
+  ),
 }
 
 export const MINIMUM_PART_TIME = ms`5min` / 1000 // in seconds
