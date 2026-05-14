@@ -16,9 +16,9 @@ chain-id = "10"
 # OKX V6 DEX Aggregator API endpoint (sell orders / exactIn).
 sell-orders-endpoint = "https://web3.okx.com/api/v6/dex/aggregator/"
 
-# Buy orders use a separate V5 endpoint. Leaving unset → buy orders are
-# ignored by this solver (CoW driver routes them elsewhere, e.g. baseline).
-# Uncomment if we want exactOut quotes:
+# OKX V5 API is DEPRECATED (code 50050 "Please upgrade to V6"). V6 is
+# sell-only. We accept that OKX can't quote the buy-direction probe
+# anymore; orderbook quoting must work without it. Leaving disabled.
 # buy-orders-endpoint = "https://www.okx.com/api/v5/dex/aggregator/"
 
 # OKX OnchainOS credentials. Rendered from .env at deploy time.
