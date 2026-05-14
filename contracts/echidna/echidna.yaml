@@ -1,0 +1,21 @@
+# Echidna config for Ophis post-settlement invariants.
+# Run via the trailofbits/eth-security-toolbox docker image (which has
+# echidna preinstalled) — see contracts/echidna/run.sh.
+
+testMode: property
+testLimit: 50000
+seqLen: 100
+shrinkLimit: 5000
+codeSize: 0x6000
+balanceContract: 0
+balanceAddr: 0xffffffffffffffff
+# Echidna's default senders. Keep these in sync with E2EAllowList.sol's
+# `SENDER_A/B/C` so the invariant logic can assert "no manager-equal
+# sender touched the state".
+sender: ["0x10000", "0x20000", "0x30000"]
+# Force solc-direct compilation. Without this, crytic-compile detects
+# foundry.toml in the parent dir and tries to use forge, which then picks
+# up solc 0.8.35 and breaks the build (the production contracts pin to
+# 0.7.6). `--compile-force-framework solc` mirrors the CI Slither setup.
+cryticArgs: ["--compile-force-framework", "solc", "--solc-args", "--optimize --optimize-runs 200"]
+format: "text"
