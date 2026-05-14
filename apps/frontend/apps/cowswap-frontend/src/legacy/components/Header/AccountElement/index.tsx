@@ -65,21 +65,27 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
 
   const portalTarget = typeof document !== 'undefined' ? document.body : null
 
-  // Ophis: hide the "Connect wallet" pill in the header when no
+  // Ophis: hide the visible "Connect wallet" pill in the header when no
   // wallet is connected — the swap form already has its own contextual
   // CTA at the bottom of the card, so showing both is a redundant
   // affordance. Once connected, the Web3Status shows the address pill
-  // (wallet management — different purpose), so we render it then.
+  // (wallet management — different purpose).
+  //
+  // NB: <Web3Status /> must stay mounted in both states, because it is
+  // the single host of <WalletModal /> and <AccountSelectorModal />. If we
+  // unmount it pre-connection, the swap form's Connect Wallet button
+  // dispatches setOpenModal(WALLET) to Redux but no component is
+  // subscribed via useModalIsOpen(WALLET), so the modal never renders.
+  // We toggle visibility through `hideConnectButton` instead.
   return (
     <>
       <Wrapper className={className} active={!!account} ref={wrapperRef}>
         <AffiliateTraderHeaderButton />
-        {account && (
-          <Web3Status
-            joinedLeft={shouldShowAffiliateTraderHeaderButton}
-            onClick={() => toggleAccountModal()}
-          />
-        )}
+        <Web3Status
+          joinedLeft={shouldShowAffiliateTraderHeaderButton}
+          onClick={() => account && toggleAccountModal()}
+          hideConnectButton={!account}
+        />
         {account && <TierChip wallet={account as `0x${string}`} />}
         {account && (
           <NotificationAlertPopover
