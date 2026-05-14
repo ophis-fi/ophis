@@ -55,6 +55,8 @@ External dependencies:
 
 **Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50.
 
+**Public reachability**: `https://optimism-mainnet.ophis.fi` → Cloudflare Tunnel `ophis-optimism-mainnet` (id `56a68415-b1d9-4808-8218-850ec066b40b`) → `127.0.0.1:8102` on the Mac mini. Tunnel runs persistently via launchd at `~/Library/LaunchAgents/com.ophis.cloudflared.op-mainnet.plist`. Config at `~/.cloudflared/config-ophis-op-mainnet.yml`.
+
 ---
 
 ## Quick reference
@@ -213,6 +215,27 @@ docker compose logs okx-solver --tail 100 | grep -iE "401|403|429|quota"
 - Quota exhausted → wait until next month OR enable paid tier on OKX dashboard
 - Auth failure → rotate keys via OKX dashboard, update Keychain, re-render, restart `okx-solver`
 - Rate-limited → reduce `concurrent-requests` in the solver config (default: 5)
+
+### Cloudflare Tunnel down — `optimism-mainnet.ophis.fi` returns 502 or hangs
+
+**Diagnose**:
+```bash
+launchctl list | grep ophis.cloudflared.op-mainnet
+# Expect: <pid> <exitcode> com.ophis.cloudflared.op-mainnet
+# If pid is "-" or exitcode is non-zero, cloudflared has died.
+
+tail -50 ~/Library/Logs/cloudflared-op-mainnet.err.log
+```
+
+**Fix**:
+```bash
+launchctl unload ~/Library/LaunchAgents/com.ophis.cloudflared.op-mainnet.plist
+launchctl load -w ~/Library/LaunchAgents/com.ophis.cloudflared.op-mainnet.plist
+sleep 10
+curl -fs https://optimism-mainnet.ophis.fi/api/v1/auction | jq '.id'
+```
+
+If still failing, the backend orderbook may have stopped (`docker compose ps | grep orderbook`) or the tunnel credentials may have been invalidated upstream (regenerate via `cloudflared tunnel create`).
 
 ### Publicnode RPC starts returning 429 / 500s
 
