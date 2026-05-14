@@ -22,9 +22,11 @@ import { SPECIAL_ADDRESSES } from '../../explorer/const'
 export const ALIAS_TRADER_NAME = 'Trader'
 const COW_PROTOCOL_CONTRACT_NAME = 'GPv2Settlement'
 
-const API_BASE_URLs: Record<SupportedChainId, string | undefined> = mapSupportedNetworks(
-  (_networkId: SupportedChainId): string => `${TENDERLY_API_URL}/${_networkId}`,
-)
+const API_BASE_URLs: Record<SupportedChainId, string | undefined> = {
+  ...mapSupportedNetworks((_networkId: SupportedChainId): string => `${TENDERLY_API_URL}/${_networkId}`),
+  // Ophis fork: Tenderly API URL pattern works for OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: `${TENDERLY_API_URL}/10`,
+}
 
 function _getApiBaseUrl(networkId: SupportedChainId): string {
   const baseUrl = API_BASE_URLs[networkId]

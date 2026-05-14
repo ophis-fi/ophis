@@ -11,7 +11,11 @@ import { NATIVE_TOKEN_PER_NETWORK } from '../const'
 type TokenListByAddress = Record<string, TokenInfo>
 type TokenListPerNetwork = Record<SupportedChainId, TokenListByAddress>
 
-const INITIAL_TOKEN_LIST_PER_NETWORK: TokenListPerNetwork = mapSupportedNetworks({})
+const INITIAL_TOKEN_LIST_PER_NETWORK: TokenListPerNetwork = {
+  ...mapSupportedNetworks({}),
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: {},
+}
 
 const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.MAINNET]: 'ethereum',
@@ -25,6 +29,8 @@ const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.LINEA]: 'linea',
   [SupportedChainId.PLASMA]: 'plasma',
   [SupportedChainId.INK]: 'ink',
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: 'optimistic-ethereum',
 }
 
 const EMPTY_TOKENS: TokenListByAddress = {}

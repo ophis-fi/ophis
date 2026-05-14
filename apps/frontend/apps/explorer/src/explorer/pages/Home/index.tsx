@@ -64,6 +64,8 @@ const SummaryWrapper = styled.section`
 const SHOW_TOKENS_TABLE: Record<SupportedChainId, boolean> = {
   ...mapSupportedNetworks(false), // Default to false for all networks
   [SupportedChainId.MAINNET]: true, // Only show tokens table for mainnet
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: false,
 }
 
 export const Home: React.FC = () => {
