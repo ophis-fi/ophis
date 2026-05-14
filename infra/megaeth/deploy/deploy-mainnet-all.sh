@@ -18,8 +18,8 @@
 # bootstrap pool seeding — Kumbaya has ~$53M TVL already.
 #
 # Pre-conditions:
-#   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.05 MEGA on mainnet
-#   - Driver EOA 0x00f9…502F is funded with ≥ 0.05 MEGA
+#   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.001 ETH on mainnet
+#   - Driver EOA 0xFB30…1bB5a is funded with ≥ 0.001 ETH
 #   - infra/megaeth/.env exists with OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET set
 #   - Ledger Live is CLOSED (USB device contention with hardhat-ledger plugin)
 #   - Ledger is connected via USB and Ethereum app is open
@@ -48,7 +48,7 @@ fi
 RPC="$MEGAETH_MAINNET_RPC"
 
 DEPLOYER_ADDR=0xBeC5B03ffDcac50071693E87bFDb88bAa6710199
-DRIVER=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
+DRIVER=0xFB308397267878228f7761311DBD6Bc6FCa1bB5a
 SAFE="${OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET:-}"
 
 if [[ -z "$SAFE" ]]; then
@@ -69,11 +69,11 @@ echo "=== Deployer (HW wallet): $DEPLOYER_ADDR ==="
 echo "=== Mainnet RPC: $RPC ==="
 BAL_WEI=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR")
 BAL_ETH=$(cast balance --rpc-url "$RPC" "$DEPLOYER_ADDR" --ether)
-echo "=== Balance: $BAL_ETH MEGA ==="
+echo "=== Balance: $BAL_ETH ETH ==="
 echo ""
 
-if [[ "$BAL_WEI" -lt 50000000000000000 ]]; then  # 0.05 MEGA
-  echo "ERROR: deployer balance < 0.05 MEGA — fund $DEPLOYER_ADDR first" >&2
+if [[ "$BAL_WEI" -lt 1000000000000000 ]]; then  # 0.001 ETH
+  echo "ERROR: deployer balance < 0.001 ETH — fund $DEPLOYER_ADDR first" >&2
   exit 4
 fi
 
