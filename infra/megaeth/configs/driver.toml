@@ -13,7 +13,7 @@ name = "baseline"
 endpoint = "http://baseline"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "%OPHIS_DRIVER_SUBMITTER_KEY"  # driver-submitter EOA (0x00f98b...)
+account = "%OPHIS_DRIVER_SUBMITTER_KEY"  # driver-submitter EOA (0xFB308397...)
 
 [submission]
 gas-price-cap = "1000000000000"
