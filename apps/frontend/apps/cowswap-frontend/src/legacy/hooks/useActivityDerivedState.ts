@@ -4,6 +4,8 @@ import { getEtherscanLink, getExplorerOrderLink } from '@cowprotocol/common-util
 import { getSafeWebUrl } from '@cowprotocol/core'
 import { GnosisSafeInfo, useGnosisSafeInfo } from '@cowprotocol/wallet'
 
+import { useSettlementTxHash } from 'ophis/hooks/useSettlementTxHash'
+
 import { EnhancedTransactionDetails, HashType } from 'legacy/state/enhancedTransactions/reducer'
 import { Order, OrderStatus } from 'legacy/state/orders/actions'
 
@@ -22,6 +24,16 @@ export function useActivityDerivedState({
 }): ActivityDerivedState | null {
   const allTransactions = useAllTransactions()
   const gnosisSafeInfo = useGnosisSafeInfo()
+
+  // Ophis fork: when an order is fulfilled on a chain without an Ophis-branded
+  // explorer (currently OP mainnet), prefer the settlement-tx Etherscan link
+  // over the address-page fallback baked into `getExplorerOrderLink`. The hook
+  // is a no-op for other chains / non-order activities.
+  const orderForActivity = activity?.type === ActivityType.ORDER ? (activity.activity as Order) : undefined
+  const settlementTxHash = useSettlementTxHash(
+    chainId,
+    orderForActivity?.status === OrderStatus.FULFILLED ? activity?.id : undefined,
+  )
 
   const orderCreationTxInfo: OrderCreationTxInfo | undefined = useMemo(() => {
     if (!activity) {
@@ -52,8 +64,14 @@ export function useActivityDerivedState({
       return null
     }
 
-    return getActivityDerivedState({ chainId, activityData: activity, gnosisSafeInfo, orderCreationTxInfo })
-  }, [chainId, activity, gnosisSafeInfo, orderCreationTxInfo])
+    return getActivityDerivedState({
+      chainId,
+      activityData: activity,
+      gnosisSafeInfo,
+      orderCreationTxInfo,
+      settlementTxHash,
+    })
+  }, [chainId, activity, gnosisSafeInfo, orderCreationTxInfo, settlementTxHash])
 }
 
 // TODO: Reduce function complexity by extracting logic
@@ -63,8 +81,15 @@ export function getActivityDerivedState(props: {
   activityData: ActivityDescriptors | null
   gnosisSafeInfo?: GnosisSafeInfo
   orderCreationTxInfo?: OrderCreationTxInfo
+  /**
+   * On Ophis fork chains without a CoW-style explorer, this is the resolved
+   * settlement-tx hash (from the orderbook /trades endpoint) for fulfilled
+   * orders. When present, the activity link points at the Etherscan tx page
+   * instead of the address-page fallback used by `getExplorerOrderLink`.
+   */
+  settlementTxHash?: string | null
 }): ActivityDerivedState | null {
-  const { chainId, activityData, gnosisSafeInfo, orderCreationTxInfo } = props
+  const { chainId, activityData, gnosisSafeInfo, orderCreationTxInfo, settlementTxHash } = props
 
   if (!activityData || chainId === undefined) {
     return null
@@ -85,7 +110,7 @@ export function getActivityDerivedState(props: {
   const isPending = !isReplaced && !isEthOrderCreationCancelled && status === ActivityStatus.PENDING
   const isConfirmed = !isReplaced && !isEthOrderCreationCancelled && status === ActivityStatus.CONFIRMED
 
-  const activityLinkUrl = getActivityLinkUrl({ id, chainId, enhancedTransaction, order })
+  const activityLinkUrl = getActivityLinkUrl({ id, chainId, enhancedTransaction, order, settlementTxHash })
 
   return {
     id,
@@ -124,8 +149,10 @@ export function getActivityLinkUrl(params: {
   id: string
   enhancedTransaction?: EnhancedTransactionDetails
   order?: Order
+  /** Settlement tx hash resolved via the orderbook trades endpoint (Ophis fork). */
+  settlementTxHash?: string | null
 }): string | undefined {
-  const { chainId, id, enhancedTransaction, order } = params
+  const { chainId, id, enhancedTransaction, order, settlementTxHash } = params
 
   if (enhancedTransaction) {
     const { transactionHash, hash, safeTransaction, hashType } = enhancedTransaction
@@ -149,6 +176,10 @@ export function getActivityLinkUrl(params: {
     if (order.orderCreationHash && (order.status === OrderStatus.CREATING || order.status === OrderStatus.FAILED)) {
       // It's a EthFlow transaction: Etherscan link
       return getEtherscanLink(chainId, 'transaction', order.orderCreationHash)
+    } else if (settlementTxHash && order.status === OrderStatus.FULFILLED) {
+      // Ophis fork on OP mainnet: when the order has settled, link to the
+      // actual settlement tx on Etherscan instead of the address-page fallback.
+      return getEtherscanLink(chainId, 'transaction', settlementTxHash)
     } else {
       // It's an order: GP Explorer link
       return getExplorerOrderLink(chainId, id)
