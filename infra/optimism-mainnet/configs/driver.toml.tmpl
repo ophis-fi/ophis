@@ -8,6 +8,16 @@ app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"
 
+# Skip eth_createAccessList preflight before settlement simulation.
+# Public OP RPCs (publicnode, ankr, etc.) return `"storageKeys": null`
+# for empty entries on complex traces, which trips alloy's strict
+# deserializer in the driver and surfaces as a confusing Simulation
+# Revert error. Disabling unblocks simulation; on Optimism, access
+# lists give a tiny L2-gas savings that doesn't justify the extra
+# RPC round-trip anyway. The settle() tx still submits fine without
+# the AL.
+disable-access-list-simulation = true
+
 [contracts]
 gp-v2-settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
 weth = "0x4200000000000000000000000000000000000006"
