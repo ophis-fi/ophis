@@ -27,115 +27,85 @@ jobs:
   slither:
     name: Slither (Solidity)
     runs-on: ubuntu-latest
-    # Slither CI is informational-only for now. Rounds 1-7 of PR #23
-    # hit a wall on the foundry/pnpm/forge-std/solc-version stack — none
-    # of which represent a real risk to production. Local Slither runs
-    # work cleanly and are documented in audit/audit-report-2026-05-13.md.
-    # Follow-up: replace this with a slither.config.json-driven file
-    # list or a Docker-based slither runner with pinned solc/forge env.
-    continue-on-error: true
+    # Runs Trail of Bits' eth-security-toolbox container (digest-pinned
+    # for reproducibility). The container ships slither 0.11.4, foundry,
+    # and solc-select with 0.7.6 pre-installed. Earlier pip-only setups
+    # (PR #23 rounds 1-7, PR #26) silently failed in CI because slither
+    # auto-invokes `forge` for project detection — even in file-list
+    # mode — and the runner lacks foundry by default. The container
+    # bypasses that.
+    #
+    # Gating: per-finding fingerprint diff vs audit/slither-baseline.json
+    # (see scripts/slither-baseline.py). Net-new fingerprints fail the
+    # job; baseline-known findings stay green. Refresh the baseline by
+    # running `scripts/slither-baseline.py --generate ...` after audit.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      # Going file-list mode (not foundry/hardhat project mode). The
-      # production CoW Protocol contracts (Settlement, AllowListAuth,
-      # VaultRelayer + their mixins/libs/interfaces) use ONLY relative
-      # imports (`./libraries/GPv2Order.sol` etc) — no OpenZeppelin, no
-      # forge-std. solc resolves these from file paths, no project
-      # metadata needed. This sidesteps all the foundry/pnpm resolver
-      # quirks rounds 1-6 hit.
-      #
-      # The test files (src/contracts/test/*, ./test/*) DO use OZ +
-      # forge-std but they're not deployed — out of scope for the audit
-      # baseline anyway.
-      - name: Install Slither + solc 0.7.6
+      # File-list mode: production CoW Protocol contracts (Settlement,
+      # AllowListAuth + transitively-imported mixins/libs) use only
+      # relative imports, so solc resolves from file paths alone. Test
+      # files (src/contracts/test/*, ./test/*) use OpenZeppelin +
+      # forge-std but are not deployed — out of scope.
+      - name: Run Slither (production contracts)
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install slither-analyzer==0.11.4 solc-select
-          solc-select install 0.7.6
-          solc-select use 0.7.6
+          # World-writable so the container's internal user can write
+          # JSON output into the bind mount. The Trail of Bits image
+          # ships solc-select / slither under a specific user; overriding
+          # --user $(id -u) (the first thing we tried) puts the container
+          # in a PATH where those binaries aren't installed (slither and
+          # solc-select both `command not found`). chmod 0777 lets the
+          # image's own user write through the bind without changing the
+          # PATH context.
+          mkdir -p /tmp/slither-out
+          chmod 0777 /tmp/slither-out
+          docker run --rm \
+            -v "${{ github.workspace }}/contracts/src/contracts:/work" \
+            -v /tmp/slither-out:/out \
+            -w /work \
+            trailofbits/eth-security-toolbox@sha256:a60d69da3d7f3fb444be052f93caecac0b560085bf2ccf9c3dcb5386d7532fa9 \
+            bash -c '
+              solc-select use 0.7.6 >/dev/null
+              # Slither exit codes:
+              #   0   = no findings
+              #   255 = findings (informational+) -- expected, we baseline these
+              # Anything else (compile failure, crash) -- bubble up as job failure.
+              set +e
+              slither GPv2Settlement.sol --compile-force-framework solc --json /out/settlement.json
+              s_rc=$?
+              slither GPv2AllowListAuthentication.sol --compile-force-framework solc --json /out/auth.json
+              a_rc=$?
+              set -e
+              for rc in $s_rc $a_rc; do
+                if [ "$rc" != "0" ] && [ "$rc" != "255" ]; then
+                  echo "Slither crashed with rc=$rc (not a findings code)"
+                  exit $rc
+                fi
+              done
+            '
+          # Sanity: both JSONs must be non-empty
+          for f in /tmp/slither-out/settlement.json /tmp/slither-out/auth.json; do
+            if [ ! -s "$f" ]; then
+              echo "FAIL: $f is missing or empty -- slither did not produce output"
+              exit 2
+            fi
+            n=$(python3 -c "import json; print(len(json.load(open('$f'))['results']['detectors']))")
+            echo "$f: $n raw findings"
+          done
 
-      - name: Run Slither (single target)
-        # slither only accepts ONE target arg; passing multiple .sol
-        # files fails with "usage: slither target [flag]". Pointing at
-        # GPv2Settlement.sol (the largest contract; imports VaultRelayer
-        # transitively) — the other two get analyzed via their separate
-        # invocations below.
+      - name: Diff findings vs committed baseline
         run: |
-          cd contracts/src/contracts
-          set +e
-          slither GPv2Settlement.sol --json /tmp/slither-settlement.json
-          slither GPv2AllowListAuthentication.sol --json /tmp/slither-auth.json
-          # Merge the two reports
-          python3 - <<'PYEOF'
-          import json, os, sys
-          merged = {'results': {'detectors': []}}
-          for p in ['/tmp/slither-settlement.json', '/tmp/slither-auth.json']:
-              if os.path.exists(p):
-                  with open(p) as f:
-                      d = json.load(f)
-                  merged['results']['detectors'].extend(d.get('results', {}).get('detectors', []))
-          with open('/tmp/slither.json', 'w') as f:
-              json.dump(merged, f)
-          print(f"Merged {len(merged['results']['detectors'])} detector results")
-          PYEOF
-          rc=0  # tolerate slither exit codes — Settlement output may differ
-          set -e
-          # Exit codes per slither --help:
-          #   0 = no detector findings
-          #   255 = findings (informational and above)
-          # Anything else = real error (compilation failure, etc.)
-          if [ "$rc" != "0" ] && [ "$rc" != "255" ]; then
-            echo "Slither failed with exit code $rc (not a finding-related code)"
-            exit $rc
-          fi
-          if [ ! -f /tmp/slither.json ]; then
-            echo "Slither did not produce JSON output despite exit code $rc"
-            exit 2
-          fi
-          echo "Slither produced JSON ($(wc -c < /tmp/slither.json) bytes)"
-
-      - name: Check against baseline
-        # Baseline applies to production contracts only (file-list mode).
-        # The 2026-05-13 local audit included test files which inflated
-        # counts; file-list mode strips that noise. Generous thresholds
-        # so we catch real regressions but don't flake on minor reorgs.
-        run: |
-          python3 - <<'PYEOF'
-          import json, os, sys
-          if not os.path.exists('/tmp/slither.json'):
-              print('FAIL: /tmp/slither.json missing — see the previous step.')
-              sys.exit(2)
-          with open('/tmp/slither.json') as f:
-              d = json.load(f)
-          results = d.get('results', {}).get('detectors', [])
-          from collections import Counter
-          by_impact = Counter(r['impact'] for r in results)
-          print(f"Findings: {dict(by_impact)}")
-          # File-list-mode baseline. Production contracts only —
-          # arbitrary-send-erc20 (2 by-design), controlled-delegatecall
-          # (1 simulation-only), divide-before-multiply, etc.
-          BASELINE = {'High': 5, 'Medium': 20, 'Low': 10}
-          regression = False
-          for impact, limit in BASELINE.items():
-              count = by_impact.get(impact, 0)
-              if count > limit:
-                  print(f"REGRESSION: {count} {impact} (baseline {limit})")
-                  regression = True
-          if regression:
-              print()
-              print("New findings vs baseline. Investigate in audit/audit-report-YYYY-MM-DD.md")
-              sys.exit(1)
-          print()
-          print("OK -- no regression vs 2026-05-13 baseline.")
-          PYEOF
+          python3 scripts/slither-baseline.py \
+            --check audit/slither-baseline.json \
+            /tmp/slither-out/settlement.json \
+            /tmp/slither-out/auth.json
 
       - name: Upload Slither JSON
         if: always()
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
         with:
-          name: slither-${{ github.sha }}.json
-          path: /tmp/slither.json
+          name: slither-${{ github.sha }}
+          path: /tmp/slither-out/
           retention-days: 30
 
   pnpm-audit:
