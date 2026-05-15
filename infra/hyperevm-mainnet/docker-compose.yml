@@ -11,6 +11,29 @@
 # Cloudflare Tunnel, never direct port exposure.
 
 services:
+  # eRPC multi-provider proxy. All other services point ETHRPC at this
+  # container instead of hitting Alchemy / public RPC directly. Free providers
+  # rate-limit aggressively (Alchemy returns HTTP 429 under combined polling
+  # load); eRPC fans requests out to 6 upstream providers with automatic
+  # failover + retry + re-org-aware caching.
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:latest
+    restart: always
+    mem_limit: 512m
+    volumes:
+      # Default config path inside the erpc image is /erpc.yaml — mount the
+      # rendered config there and let the image's stock entrypoint pick it up
+      # (overriding command to pass --config breaks the entrypoint).
+      - ./rendered/erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/healthcheck 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
   db:
     image: postgres:16
     restart: always
@@ -55,7 +78,7 @@ services:
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
-      ETH_RPC_URL: ${HYPEREVM_MAINNET_RPC}
+      ETH_RPC_URL: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ALCHEMY_API_KEY: ${ALCHEMY_API_KEY:?ALCHEMY_API_KEY must be set in infra/hyperevm-mainnet/.env}
       # CoinGecko key is referenced by orderbook.toml's [price-estimation.coin-gecko]
       # block via %COINGECKO_API_KEY. CoinGecko doesn't list chain 999 (verified
@@ -94,7 +117,7 @@ services:
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
-      ETH_RPC_URL: ${HYPEREVM_MAINNET_RPC}
+      ETH_RPC_URL: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ALCHEMY_API_KEY: ${ALCHEMY_API_KEY:?ALCHEMY_API_KEY must be set in infra/hyperevm-mainnet/.env}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?COINGECKO_API_KEY must be set in infra/hyperevm-mainnet/.env}
     volumes:
@@ -116,7 +139,11 @@ services:
       baseline: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
     environment:
-      ETHRPC: ${HYPEREVM_MAINNET_RPC}
+      # Driver uses eRPC proxy for block-stream polling + eth_call workload.
+      # Transaction submission still routes directly to Alchemy via the
+      # [[submission.mempool]] block in driver.toml — that path needs a single
+      # reliable endpoint for nonce tracking, not a load-balanced fan-out.
+      ETHRPC: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
       # Solver/driver-submitter private key — read by the CoW driver via the

@@ -71,7 +71,13 @@ impl KyberSwap {
                 reqwest::header::HeaderValue::from_str(&client_id)?,
             );
 
+            // Cloudflare in front of aggregator-api.kyberswap.com blocks
+            // requests with no User-Agent (returns 403 "Just a moment..."
+            // bot-challenge HTML). reqwest's default builds with no UA, so
+            // every call from this solver was 100% failing. Set an explicit
+            // UA to pass the challenge.
             let client = reqwest::Client::builder()
+                .user_agent("ophis-solver/1.0")
                 .default_headers(headers)
                 .build()?;
             super::Client::new(client, config.block_stream)

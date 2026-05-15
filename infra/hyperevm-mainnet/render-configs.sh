@@ -26,12 +26,12 @@ set +a
 mkdir -p rendered
 shopt -s nullglob
 
-for tmpl in configs/*.toml.tmpl; do
+for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
   out="rendered/$name"
   # envsubst only substitutes the explicit list we pass (prevents accidental
   # substitution of values that happen to contain `$` chars like passphrases).
-  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out"
   # Rendered files contain plaintext secrets (driver-submitter PK, OKX API
   # keys). Lock to owner-only so anything reading our /Users/scep/greg
