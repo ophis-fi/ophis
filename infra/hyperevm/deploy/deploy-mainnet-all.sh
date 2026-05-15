@@ -55,12 +55,35 @@ DEPLOYER_ADDR="$OPHIS_MEGAETH_DEPLOYER_ADDRESS"
 DRIVER="${GREG_DRIVER_SUBMITTER_ADDRESS:?GREG_DRIVER_SUBMITTER_ADDRESS must be set in $ENV_FILE}"
 SAFE="${OPHIS_PROTOCOL_SAFE_HYPEREVM_MAINNET:?OPHIS_PROTOCOL_SAFE_HYPEREVM_MAINNET must be set in $ENV_FILE}"
 
+# Hard-fail if `bc` is missing — the balance comparison below uses it. macOS
+# ships bc by default but stripped CI images won't, and the previous
+# `|| echo "0"` fallback silently skipped the threshold check.
+command -v bc >/dev/null 2>&1 || { echo "ERROR: bc not installed" >&2; exit 9; }
+command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 not installed" >&2; exit 9; }
+
 # Pull PK from Keychain. `-s` matches the service name; the entry's `-a`
 # attribute is "scep" not "ophis-megaeth-deployer", so we MUST NOT pass -a
 # (would give exit 44 — entry not found).
+#
+# Security: PK is held in a local shell variable and re-exported into each
+# stage's child env explicitly. It is NOT global-exported to the script's
+# process env, so subshells / cast invocations that don't need it
+# (cast call / cast balance / cast code) never see it. The hardhat-deploy
+# stage needs the PK in env (config reads OPHIS_MEGAETH_DEPLOYER_PK) and
+# is launched with a per-invocation `OPHIS_MEGAETH_DEPLOYER_PK=$PK` prefix.
+# The cast send stages use ETH_PRIVATE_KEY (cast's standard env-var hook)
+# also per-invocation, NOT --private-key on argv — argv would expose the
+# PK to `ps auxe` / `/proc/<pid>/cmdline` / macOS Endpoint Security logs.
 OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
   -s "ophis-megaeth-deployer" -w)
-export OPHIS_MEGAETH_DEPLOYER_PK
+if [[ ! "$OPHIS_MEGAETH_DEPLOYER_PK" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
+  echo "ERROR: Keychain entry 'ophis-megaeth-deployer' did not yield a 32-byte hex PK" >&2
+  exit 8
+fi
+# The hardhat config (contracts/hardhat-megaeth.config.ts) reads this name
+# specifically. It is intentionally NOT marked readonly so we can clear at
+# script exit.
+trap 'unset OPHIS_MEGAETH_DEPLOYER_PK ETH_PRIVATE_KEY 2>/dev/null || true' EXIT
 
 # --- Sanity checks ---
 echo "=== Pre-flight ==="
@@ -107,20 +130,36 @@ echo "=== [1/4] Deploying CoW Settlement + VaultRelayer + Auth ==="
 cd "$REPO_ROOT/contracts"
 
 LOG="$REPO_ROOT/infra/hyperevm/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
+# Create + chmod 600 the log BEFORE any process writes to it. If hardhat or
+# tee ever prints `process.env` on an uncaught exception (we've seen this in
+# upstream debug paths) the PK would land in this file; chmod 600 keeps it
+# scoped to the operator.
+: > "$LOG" && chmod 600 "$LOG"
+
 # HARDHAT_NETWORK env var must be set explicitly — hardhat's CLI --network
 # flag doesn't propagate to process.env, so the chain-aware gasLimit logic
 # in contracts/src/deploy/001_authenticator.ts couldn't see chain 999 and
 # would fall through to the 25M default (which is fine for HL, but better
 # to be explicit so future edits don't accidentally route HL through the
 # MegaETH 100M default).
+# PK is passed via per-invocation env prefix (NOT global export) so cast
+# subshells in this script never see it.
 HARDHAT_CONFIG=hardhat-megaeth.config.ts \
 HARDHAT_NETWORK=hyperevm-mainnet \
+OPHIS_MEGAETH_DEPLOYER_PK="$OPHIS_MEGAETH_DEPLOYER_PK" \
+OPHIS_MEGAETH_DEPLOYER_ADDRESS="$OPHIS_MEGAETH_DEPLOYER_ADDRESS" \
   pnpm exec hardhat deploy --network hyperevm-mainnet 2>&1 | tee "$LOG"
 
 DEPLOYMENTS_DIR="$REPO_ROOT/contracts/deployments/hyperevm-mainnet"
-OPHIS_AUTH=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json'))['address'])")
-OPHIS_AUTH_IMPL=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Implementation.json'))['address'])")
-OPHIS_SETTLEMENT=$(python3 -c "import json; print(json.load(open('$DEPLOYMENTS_DIR/GPv2Settlement.json'))['address'])")
+# python3 invocation passes the JSON file path via argv (sys.argv[1]) instead
+# of string-interpolating into the python source — closes a code-injection
+# foot-shape if $DEPLOYMENTS_DIR ever contained a single-quote.
+read_artifact_address() {
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["address"])' "$1"
+}
+OPHIS_AUTH=$(read_artifact_address "$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json")
+OPHIS_AUTH_IMPL=$(read_artifact_address "$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Implementation.json")
+OPHIS_SETTLEMENT=$(read_artifact_address "$DEPLOYMENTS_DIR/GPv2Settlement.json")
 OPHIS_VAULT_RELAYER=$(cast call --rpc-url "$RPC" "$OPHIS_SETTLEMENT" "vaultRelayer()(address)")
 
 echo ""
@@ -136,19 +175,25 @@ cd "$REPO_ROOT"
 
 deploy_artifact_create() {
   local name="$1" path="$2" extra_args="${3:-}"
-  CODE=$(python3 -c "
-import json
-d=json.load(open('$path'))
-bc=d['bytecode']
-if isinstance(bc, dict): bc=bc.get('object', bc.get('bytecode'))
-if not bc.startswith('0x'): bc='0x'+bc
-print(bc + '$extra_args')")
+  # python3 with file path and suffix passed as argv — no string
+  # interpolation into the source, no injection surface.
+  CODE=$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+bc = d["bytecode"]
+if isinstance(bc, dict): bc = bc.get("object", bc.get("bytecode"))
+if not bc.startswith("0x"): bc = "0x" + bc
+print(bc + sys.argv[2])
+' "$path" "$extra_args")
   # HL big-block max is 30M gas. Balances/Signatures/HooksTrampoline are
   # all under 1M gas to deploy — 5M gives generous headroom without
   # tripping the big-block cap.
-  result=$(cast send --rpc-url "$RPC" --private-key "$OPHIS_MEGAETH_DEPLOYER_PK" \
-           --gas-limit 5000000 --create "$CODE" --json)
-  echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('contractAddress'))"
+  # ETH_PRIVATE_KEY (cast's standard hook) used instead of --private-key
+  # so the PK never appears in ps / /proc/<pid>/cmdline / strace logs.
+  local result
+  result=$(ETH_PRIVATE_KEY="$OPHIS_MEGAETH_DEPLOYER_PK" \
+    cast send --rpc-url "$RPC" --gas-limit 5000000 --create "$CODE" --json)
+  echo "$result" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("contractAddress"))'
 }
 
 OPHIS_BALANCES=$(deploy_artifact_create Balances apps/backend/contracts/artifacts/Balances.json)
@@ -167,7 +212,8 @@ echo "  HooksTrampoline: $OPHIS_HOOKS_TRAMPOLINE"
 # --- 3. Allowlist driver-submitter ---
 echo ""
 echo "=== [3/4] Allowlisting driver-submitter ==="
-cast send --rpc-url "$RPC" --private-key "$OPHIS_MEGAETH_DEPLOYER_PK" \
+ETH_PRIVATE_KEY="$OPHIS_MEGAETH_DEPLOYER_PK" \
+  cast send --rpc-url "$RPC" \
   "$OPHIS_AUTH" "addSolver(address)" "$DRIVER" \
   --gas-limit 200000 >/dev/null
 IS_SOLVER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH" "isSolver(address)(bool)" "$DRIVER")
@@ -191,14 +237,32 @@ fi
 echo ""
 echo "=== [4/4] Transferring AuthList ownership to Safe $SAFE ==="
 
-cast send --rpc-url "$RPC" --private-key "$OPHIS_MEGAETH_DEPLOYER_PK" \
+# M3: each stage-4 tx wrapped with explicit 60s timeout so a hung RPC
+# (eRPC stall, HL provider 429) doesn't leave the AuthList in a split-
+# authority state (Safe=owner, deployer=manager). If a tx hangs, the
+# operator sees `timeout` clearly and can re-run from the partial state.
+timeout 60 env ETH_PRIVATE_KEY="$OPHIS_MEGAETH_DEPLOYER_PK" \
+  cast send --rpc-url "$RPC" \
   "$OPHIS_AUTH" "transferOwnership(address)" "$SAFE" \
-  --gas-limit 200000 >/dev/null
+  --gas-limit 200000 >/dev/null || {
+    echo "ERROR: transferOwnership timed out or failed. AuthList state is unchanged." >&2
+    echo "       Verify with: cast call --rpc-url $RPC $OPHIS_AUTH 'owner()(address)'" >&2
+    echo "       If owner is still the deployer, re-run this script (idempotent)." >&2
+    exit 10
+  }
 echo "  transferOwnership ✓"
 
-cast send --rpc-url "$RPC" --private-key "$OPHIS_MEGAETH_DEPLOYER_PK" \
+timeout 60 env ETH_PRIVATE_KEY="$OPHIS_MEGAETH_DEPLOYER_PK" \
+  cast send --rpc-url "$RPC" \
   "$OPHIS_AUTH" "setManager(address)" "$SAFE" \
-  --gas-limit 200000 >/dev/null
+  --gas-limit 200000 >/dev/null || {
+    echo "ERROR: setManager timed out or failed. AuthList is in SPLIT AUTHORITY state:" >&2
+    echo "       owner = Safe ($SAFE) — corrects bounded-blast-radius" >&2
+    echo "       manager = deployer ($DEPLOYER_ADDR) — can still addSolver" >&2
+    echo "       RECOVERY: re-run manually:" >&2
+    echo "         ETH_PRIVATE_KEY=\$PK cast send --rpc-url $RPC $OPHIS_AUTH 'setManager(address)' $SAFE --gas-limit 200000" >&2
+    exit 11
+  }
 echo "  setManager ✓"
 
 NEW_OWNER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH" "owner()(address)")

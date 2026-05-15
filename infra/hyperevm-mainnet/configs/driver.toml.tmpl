@@ -67,21 +67,25 @@ relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [submission]
-# HyperEVM mainnet base fee is ~0.1 gwei (100x cheaper than OP). Cap at
-# 1000 gwei (= 10^12 wei) is wildly above realistic spike levels but
-# protects against pathological RPC misreports.
-gas-price-cap = "1000000000000"
+# HL base fee runs 0.1-10 gwei in practice. Cap at 10 gwei = 10^10 wei
+# (100× current baseline). The previous 1000 gwei cap was 10000× baseline
+# and exposed ~2.9 ETH-equivalent (>$8k in HYPE) wasted-fee surface per
+# settle if a hostile/glitched solver proposed a tx at the cap. 10 gwei
+# is still ample for HL spike days while keeping max single-settle fee
+# under $0.10 even at the 2.9M tx-gas-limit.
+gas-price-cap = "10000000000"
 
 [[submission.mempool]]
-# Submission goes through the eRPC proxy (same as block-stream). eRPC's
-# enforceHighestBlock + statePollerDebounce=1s keeps the routed upstream
-# at chain tip, which means nonce reads + tx broadcast see consistent
-# state. Previously this pointed at Alchemy direct, which broke once the
-# Alchemy free-tier monthly cap exhausted (2026-05-15) — every settle()
-# attempt failed with "failed to fetch nonce" because Alchemy 429'd the
-# nonce read. PurroofGroup + HL-official + HyperLend cover us with zero
-# cost.
-url = "${HYPEREVM_RPC_INTERNAL}"
+# Submission MUST go through a single upstream, NOT the eRPC fan-out.
+# Reason: eRPC.integrity.enforceHighestBlock only governs eth_call/getLogs
+# at a specified block; `eth_getTransactionCount(addr,"pending")` and
+# `eth_sendRawTransaction` have no block parameter, so the load-balancer
+# routes consecutive nonce-reads to different upstreams. Two settlements
+# in flight → both sign the same nonce → mempool replacement collision →
+# silent dropped settle(). Direct single-endpoint avoids the race.
+# PurroofGroup is the most reliable free HL provider (10/10 on isSolver
+# eth_call, 461 req/min sustained — see commit message in 5f707d09d).
+url = "https://rpc.purroofgroup.com"
 
 [liquidity]
 base-tokens = [

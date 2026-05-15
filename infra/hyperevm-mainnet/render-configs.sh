@@ -23,6 +23,22 @@ set -a
 source .env
 set +a
 
+# Fail FAST if any required secret is missing — otherwise envsubst silently
+# substitutes empty string and the driver/orderbook fails far downstream with
+# an opaque error. Each :? guard prints the named var + a hint.
+: "${ALCHEMY_API_KEY:?must be set in .env — see .env.example}"
+: "${HYPEREVM_MAINNET_RPC:?must be set in .env — see .env.example}"
+: "${HYPEREVM_RPC_INTERNAL:?must be set in .env — see .env.example}"
+: "${OPHIS_DRIVER_SUBMITTER_KEY:?must be set in .env — driver-submitter PK from Keychain ophis-driver-submitter-2026-05-14}"
+
+# Sanity-check the driver-submitter PK shape (0x + 64 hex chars). A typo or
+# accidental truncation lands as a soft-fail at driver startup; better to
+# refuse here than ship a malformed rendered config to the container.
+if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
+  echo "ERROR: OPHIS_DRIVER_SUBMITTER_KEY does not look like a 32-byte hex PK" >&2
+  exit 2
+fi
+
 mkdir -p rendered
 shopt -s nullglob
 

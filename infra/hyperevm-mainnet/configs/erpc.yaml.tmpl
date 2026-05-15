@@ -37,6 +37,47 @@ projects:
           integrity:
             enforceHighestBlock: true
             enforceNonNullTaggedBlocks: true
+        # Consensus failsafe: defeats fork-view-poisoning on state-reads.
+        # Each of our 3 free upstreams is unauthenticated HTTPS — a hostile
+        # provider (or MITM via CA compromise / DNS hijack) could otherwise
+        # serve a self-consistent fork that the autopilot signs settlements
+        # against. With 2-of-3 agreement on the methods that drive solver
+        # behavior, a single hostile upstream can't influence outcomes.
+        failsafe:
+          # Critical reads: state-dependent calls that gate solver behavior
+          # and settlement validity. Require 2-of-3 agreement OR fail.
+          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt"
+            timeout:
+              duration: 10s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              lowParticipantsBehavior: acceptMostCommonValidResult
+              preferNonEmpty: true
+              ignoreFields:
+                # `timestamp` is the obvious diverge field; some HL providers
+                # also report `mixHash`/`difficulty` as 0 vs absent.
+                eth_getBlockByNumber: ["timestamp"]
+                eth_getBlockByHash: ["timestamp"]
+              punishMisbehavior:
+                disputeThreshold: 5
+                disputeWindow: 10m
+                sitOutPenalty: 30m
+          # All other methods (block-stream poll, balance polls) go through
+          # the default upstream-level failsafe with retry — no consensus
+          # because they're either non-security-critical OR (for nonce reads
+          # + tx submission) handled by pinning to a single upstream in the
+          # driver config's [[submission.mempool]] block.
+          - matchMethod: "*"
+            timeout:
+              duration: 10s
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
 
     # Keep each upstream's tip-block tracking aligned with HL's block time
     # (1-2s for small blocks).
