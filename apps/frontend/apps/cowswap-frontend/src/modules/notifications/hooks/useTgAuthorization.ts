@@ -7,14 +7,21 @@ import { TelegramData } from '../types'
 
 const TG_SESSION_CHECK_INTERVAL = ms`3s`
 
+// Ophis fork: Telegram OAuth is only wired up when the deployment has its own
+// notifications bot configured via REACT_APP_TG_BOT_ID. Without one, calling
+// oauth.telegram.org from a non-cow.fi origin triggers a CORS error on every
+// page load (CoW's bot only allowlists cow.fi). When unset, the hooks below
+// short-circuit so no network call is ever made.
 const ENV_TG_BOT_ID = process.env.REACT_APP_TG_BOT_ID
-const TG_BOT_ID = ENV_TG_BOT_ID ? parseInt(ENV_TG_BOT_ID) : 7076584722 // cowNotificationsBot
+const TG_BOT_ID = ENV_TG_BOT_ID ? parseInt(ENV_TG_BOT_ID) : null
 
-const AUTH_OPTIONS = {
-  bot_id: TG_BOT_ID,
-  lang: 'en',
-  request_access: 'write',
-}
+const AUTH_OPTIONS = TG_BOT_ID
+  ? {
+      bot_id: TG_BOT_ID,
+      lang: 'en',
+      request_access: 'write',
+    }
+  : null
 
 export interface TgAuthorization {
   tgData: TelegramData | null
@@ -32,6 +39,11 @@ export function useTgAuthorization(): TgAuthorization {
 
   const authenticate = useCallback((): Promise<TelegramData | null> => {
     return new Promise((resolve) => {
+      if (!TG_BOT_ID) {
+        setIsAuthChecked(true)
+        resolve(null)
+        return
+      }
       getTelegramAuth(TG_BOT_ID, (response) => {
         const tgData = (response && response.user) || null
 
@@ -43,7 +55,7 @@ export function useTgAuthorization(): TgAuthorization {
   }, [])
 
   const authorize = useCallback(async (): Promise<TelegramData | null> => {
-    if (!window.Telegram) return null
+    if (!window.Telegram || !AUTH_OPTIONS) return null
 
     setIsLoginInProgress(true)
 

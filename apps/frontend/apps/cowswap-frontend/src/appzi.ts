@@ -19,15 +19,26 @@ const isOldChrome =
 const isFeedbackEnabled = process.env.REACT_APP_FEEDBACK_ENABLED_DEV === 'true' || process.env.NODE_ENV === 'production'
 const isImTokenIosBrowser = isImTokenBrowser && userAgent.os.name === 'iOS'
 const isCoinbaseWalletIos = isCoinbaseWalletBrowser && userAgent.os.name === 'iOS'
+
+// Ophis fork: Appzi is only enabled when an explicit token is configured.
+// Without REACT_APP_APPZI_TOKEN the script call/CSP-violating script tag never
+// fires, which silences the "Refused to load https://app.appzi.io/..." console
+// noise on forks that don't have an Appzi account.
+const APPZI_TOKEN = process.env.REACT_APP_APPZI_TOKEN
+const hasAppziToken = !!APPZI_TOKEN
+
 export const isAppziEnabled =
-  !isOldChrome && !isImTokenIosBrowser && !isCoinbaseWalletIos && isFeedbackEnabled && !isInjectedWidget()
+  hasAppziToken &&
+  !isOldChrome &&
+  !isImTokenIosBrowser &&
+  !isCoinbaseWalletIos &&
+  isFeedbackEnabled &&
+  !isInjectedWidget()
 
 const PROD_FEEDBACK_KEY = 'f7591eca-72f7-4888-b15f-e7ff5fcd60cd'
 const TEST_FEEDBACK_KEY = '6da8bf10-4904-4952-9a34-12db70e9194e'
 
 const FEEDBACK_KEY = process.env.REACT_APP_APPZI_FEEDBACK_KEY || (isProdLike ? PROD_FEEDBACK_KEY : TEST_FEEDBACK_KEY)
-
-const APPZI_TOKEN = process.env.REACT_APP_APPZI_TOKEN || '5ju0G'
 
 const PENDING_TOO_LONG_TIME_SWAP = ms`5 min`
 const PENDING_TOO_LONG_TIME_BRIDGE = ms`7 min`
@@ -73,7 +84,7 @@ type AppziSettings = {
 }
 
 function initialize(): void {
-  if (!isAppziEnabled || typeof window === 'undefined') return
+  if (!isAppziEnabled || !APPZI_TOKEN || typeof window === 'undefined') return
 
   window.appziSettings = window.appziSettings || {}
 
