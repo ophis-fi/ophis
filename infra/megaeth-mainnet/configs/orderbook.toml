@@ -1,0 +1,65 @@
+# Ophis — MegaETH mainnet (chain 4326) orderbook config.
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "https://mainnet.megaeth.com/rpc"
+simulation-node-url = "https://mainnet.megaeth.com/rpc"
+
+# Override every contract address — MegaETH mainnet (chain 4326) needs explicit
+# Ophis-deployed addresses since upstream's contracts registry doesn't include
+# our deployments here. From deploy-mainnet-all.sh on 2026-05-13.
+[shared.contracts]
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
+native-token = "0x4200000000000000000000000000000000000006"
+hooks = "0x68593257dfd7f392abfbb410b212be0b6242ac0e"
+# Balancer V2 Vault: canonical cross-chain address used as a flash-loan source
+# for solver simulation. The Vault is deployed on OP at the same address.
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+# CoinGecko does NOT yet support MegaETH (chain 4326) as of 2026-05-15.
+# Using `type = "CoinGecko"` here causes the orderbook to PANIC at boot
+# with `unsupported network MegaETH` from the CoinGecko adapter's
+# chain-validation gate.
+#
+# `type = "Driver"` (with our baseline driver as the target) bypasses
+# that init-time chain check. At runtime baseline cannot compute native
+# prices (no liquidity wired yet), so orders that require a native
+# price for fee accounting will be filtered — same effective outcome
+# as CoinGecko-unsupported, but the orderbook STAYS UP, accepts orders,
+# and unblocks UX work + frontend testing.
+#
+# Real fix: ship task #94 — on-chain UniV3 native-price reader against
+# Kumbaya pools — and switch back to `[[{ type = "CoinGecko" }]]` (or
+# rather a new `UniswapV3` variant) once it's a real estimator type.
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+# Baseline solver only. OKX V6 and KyberSwap aggregators don't support
+# chain 4326 yet (no MegaETH entry in OKX /api/v6/dex/aggregator/
+# supported/chain as of 2026-05-15). Until they add MegaETH or we ship
+# task #94 (UniV3 reader for Kumbaya), quotes will return "NoLiquidity"
+# for any token pair without baseline-routable pools.
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
+
+# CoinGecko config. The coin-gecko sub-block belongs under [price-estimation],
+# not [native-price-estimation], even though only the native estimator uses it.
+[price-estimation.coin-gecko]
+# CoinGecko Demo-tier key (free, signup at coingecko.com/api/pricing).
+# Read from container env via CoW's %VAR_NAME interpolation. The COW
+# code was patched to use x-cg-demo-api-key header for Demo keys (see
+# coingecko.rs constant AUTHORIZATION).
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
