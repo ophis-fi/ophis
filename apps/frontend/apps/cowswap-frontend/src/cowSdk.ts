@@ -26,6 +26,7 @@ const chainId = getCurrentChainIdFromUrl()
 const PROD_BASE_URL = 'https://api.cow.fi'
 const OPHIS_OP_ORDERBOOK_URL = 'https://optimism-mainnet.ophis.fi'
 const OPHIS_MEGAETH_ORDERBOOK_URL = 'https://megaeth.ophis.fi'
+const OPHIS_HYPEREVM_ORDERBOOK_URL = 'https://hyperevm.ophis.fi'
 
 const OPHIS_ORDERBOOK_BASE_URLS = {
   [SupportedChainId.MAINNET]: `${PROD_BASE_URL}/mainnet`,
@@ -44,6 +45,9 @@ const OPHIS_ORDERBOOK_BASE_URLS = {
   // Ophis MegaETH mainnet orderbook (TBD post-deploy — will be served by
   // the same autopilot/driver stack once contracts go live)
   [4326 as unknown as SupportedChainId]: OPHIS_MEGAETH_ORDERBOOK_URL,
+  // Ophis HyperEVM mainnet orderbook (DNS wire is a follow-up; placeholder
+  // constant matches the autopilot/driver stack naming convention)
+  [999 as unknown as SupportedChainId]: OPHIS_HYPEREVM_ORDERBOOK_URL,
 } as unknown as ApiBaseUrls
 
 const envBaseUrls = process.env.REACT_APP_ORDER_BOOK_URLS
