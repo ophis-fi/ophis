@@ -758,7 +758,7 @@ const OPTIMISM_STABLECOINS = [
 
 // Ophis fork: MegaETH mainnet stablecoins. At launch, the only stablecoin
 // expected on chain 4326 is USDT0 (Tether's omnichain canonical bridge).
-// Address is TBD post-deploy — leave empty until confirmed.
+// Address from 2026-05-15 deploy.
 const MEGAETH_STABLECOINS: string[] = []
 
 export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
@@ -775,7 +775,7 @@ export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [SupportedChainId.INK]: new Set(INK_STABLECOINS),
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: new Set(OPTIMISM_STABLECOINS),
-  // Ophis fork: MegaETH mainnet (chain 4326) — TBD post-deploy
+  // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: new Set(MEGAETH_STABLECOINS),
 }
 
