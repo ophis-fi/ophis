@@ -3,8 +3,8 @@ eip1271-skip-creation-validation = true
 bind-address = "0.0.0.0:80"
 
 [shared]
-node-url = "${HYPEREVM_MAINNET_RPC}"
-simulation-node-url = "${HYPEREVM_MAINNET_RPC}"
+node-url = "${HYPEREVM_RPC_INTERNAL}"
+simulation-node-url = "${HYPEREVM_RPC_INTERNAL}"
 
 # Override every contract address — HyperEVM mainnet (chain 999) needs explicit
 # Ophis-deployed addresses since upstream's contracts registry doesn't include
@@ -36,7 +36,17 @@ read-url = "%DB_READ_URL"
 # accounting are filtered. The stack still accepts orders, runs
 # auctions, and routes through KyberSwap for orders that don't need
 # native-price-anchored fees.
-estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+# KyberSwap aggregator can price WHYPE↔any token, and WHYPE IS the native
+# token on chain 999. So routing native-price queries through kyberswap
+# gives us real prices for non-native tokens (USD₮0 etc.) — the only path
+# that works on HL today (CoinGecko has no chain 999; HyperSwap V3 factory
+# address not yet verified). Baseline kept as a tier-2 fallback for the
+# moment WHYPE itself is queried (the orderbook short-circuits same-token
+# to 1.0 anyway, so this slot is rarely hit).
+estimators = [
+  [{ type = "Driver", name = "kyberswap", url = "http://driver/kyberswap" }],
+  [{ type = "Driver", name = "baseline", url = "http://driver/baseline" }],
+]
 
 [order-quoting]
 # KyberSwap is verified working on chain 999 — primary source for quote
