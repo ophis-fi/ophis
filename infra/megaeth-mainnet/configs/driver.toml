@@ -1,0 +1,61 @@
+# Ophis — MegaETH mainnet (chain 4326) driver config.
+#
+# Liquidity status: NONE WIRED YET. Baseline solver returns NoSolutions
+# until the Kumbaya V3 integration ships (task #94) or we deploy + seed
+# our own V2 fork. OKX and KyberSwap aggregators do not support chain
+# 4326 (verified against OKX /api/v6/dex/aggregator/supported/chain on
+# 2026-05-15); their solver mounts are removed from this config to
+# avoid spamming NoSolutions every auction.
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "300000000"
+
+# Skip eth_createAccessList preflight before settlement simulation.
+# Same rationale as the OP-mainnet config: public RPCs (including
+# MegaETH's) return `"storageKeys": null` for empty entries on complex
+# traces, which trips alloy's strict deserializer in the driver and
+# masks the real revert reason behind a confusing
+# Simulation(Revert(DeserError(...))). Disabling unblocks simulation;
+# the gas-optimization access list isn't worth the extra round-trip
+# anyway on a chain this cheap.
+disable-access-list-simulation = true
+
+[contracts]
+gp-v2-settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+weth = "0x4200000000000000000000000000000000000006"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+# Driver-submitter EOA 0xFB308397267878228f7761311DBD6Bc6FCa1bB5a — its
+# private key is injected from container env (set via .env in this
+# directory). The CoW config crate substitutes ${VAR_NAME} at load time.
+account = "%OPHIS_DRIVER_SUBMITTER_KEY"
+
+[submission]
+# MegaETH mainnet base fee is ~0.001 gwei = 10^6 wei. Cap at 1000 gwei
+# (1000 * 10^9 wei = 10^12) is 6 orders of magnitude above realistic spike
+# levels but protects against pathological RPC misreports.
+gas-price-cap = "1000000000000"
+
+[[submission.mempool]]
+url = "https://mainnet.megaeth.com/rpc"
+
+[liquidity]
+base-tokens = [
+  "0x4200000000000000000000000000000000000006",  # WETH (OP-Stack predeploy on MegaETH)
+]
+
+# NO UniV2-shaped liquidity exists on MegaETH mainnet yet. Until either
+# (a) we deploy + seed a UniV2 fork, OR (b) ship task #94 with Kumbaya V3
+# pool reading, the baseline solver has no routes and returns NoSolutions
+# for every order. The backend stack still runs; quoting still answers
+# (no-quote); orders accept; autopilot runs auctions; just no settle().
+#
+# When liquidity lands, add a [[liquidity.uniswap-v2]] block here pointing
+# at our V2 factory + pool init-code hash, or a [[liquidity.uniswap-v3]]
+# block pointing at Kumbaya's factory once V3 driver support exists.

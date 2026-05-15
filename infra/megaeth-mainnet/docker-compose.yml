@@ -1,0 +1,161 @@
+# infra/megaeth-mainnet/docker-compose.yml — Ophis MegaETH mainnet stack
+# (chain 4326). Ports shifted to 5437/8200/8201/9101 to coexist
+# on the same host.
+#
+# Secret management:
+#   - Addresses come from ../megaeth/.env (deployed by deploy-mainnet-all.sh)
+#   - Secrets (driver private key, DB password) come from ./.env in this dir
+#   - ./.env is gitignored — see ./.env.example for the template
+#
+# All HTTP/RPC ports bind to 127.0.0.1 only. External access is via
+# Cloudflare Tunnel, never direct port exposure.
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5437:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: backend-migrations:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+
+  orderbook:
+    image: local-orderbook:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${MEGAETH_MAINNET_RPC}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/megaeth-mainnet/.env}
+    volumes:
+      - ./configs/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "127.0.0.1:8200:80"
+    healthcheck:
+      # CoW backend images are distroless-ish; no curl/wget. Bash /dev/tcp
+      # confirms port 80 is accepting TCP connections — enough to know the
+      # HTTP server is up. Liveness from inside the orderbook process is not
+      # exposed; if a deadlock kept the listener up but the worker stuck,
+      # this wouldn't catch it. Use Prometheus metrics for that (Spec TBD).
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  autopilot:
+    image: local-autopilot:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      orderbook: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${MEGAETH_MAINNET_RPC}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/megaeth-mainnet/.env}
+    volumes:
+      - ./configs/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+    # autopilot is a worker (no HTTP listener), so only restart-on-failure
+    # via Docker's `restart: always` policy. Health is signalled via the
+    # Prometheus /metrics endpoint that the binary always exposes.
+
+  driver:
+    image: local-driver:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      baseline: { condition: service_healthy }
+    environment:
+      ETHRPC: ${MEGAETH_MAINNET_RPC}
+      ADDR: 0.0.0.0:80
+      LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+      # Solver/driver-submitter private key — read by the CoW driver via the
+      # `%OPHIS_DRIVER_SUBMITTER_KEY` interpolation in configs/driver.toml.
+      # MUST be set in ./.env. Container refuses to start if blank.
+      OPHIS_DRIVER_SUBMITTER_KEY: ${OPHIS_DRIVER_SUBMITTER_KEY:?driver private key must be set in infra/megaeth-mainnet/.env}
+    volumes:
+      - ./rendered/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "127.0.0.1:8201:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "127.0.0.1:9101:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # OKX + KyberSwap aggregator solvers are NOT deployed on MegaETH mainnet.
+  # Neither aggregator API currently supports chain 4326 (verified 2026-05-15).
+  # The stack runs with baseline only. When OKX or Kyber add MegaETH support,
+  # copy the okx-solver / kyberswap-solver service blocks from
+  # infra/megaeth-mainnet/docker-compose.yml and re-add the matching
+  # configs + the corresponding `depends_on` entry on the driver.
+
+volumes:
+  postgres:
