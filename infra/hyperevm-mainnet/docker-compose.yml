@@ -27,12 +27,14 @@ services:
       - ./rendered/erpc.yaml:/erpc.yaml:ro
     ports:
       - "127.0.0.1:4000:4000"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/healthcheck 2>/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 15s
+    # No HEALTHCHECK: the eRPC image is distroless (no /bin/sh, no wget/curl)
+    # so a CMD-SHELL probe can't work. Docker will report the container as
+    # "healthy" by default (= "running"), and no service depends_on this one
+    # with condition: service_healthy, so an in-band probe isn't required.
+    # If we ever need a stronger health signal, eRPC exposes
+    # GET /healthcheck (returns 200 + JSON status), and we can add an
+    # external sidecar (e.g. a 1MB busybox) that does the probe and reports
+    # via Prometheus.
 
   db:
     image: postgres:16
