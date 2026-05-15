@@ -1,0 +1,108 @@
+# Ophis — HyperEVM mainnet (chain 999) autopilot config.
+node-url = "${HYPEREVM_MAINNET_RPC}"
+simulation-node-url = "${HYPEREVM_MAINNET_RPC}"
+
+# Per-order wait while the run loop fetches a missing native (ETH-
+# denominated) token price. Defaults to 0ns, which makes the auction
+# filter any order whose token prices aren't already cached. The
+# CoinGecko simple/token_price endpoint typically answers in 200-500ms
+# so 5s is generous and covers a cold cache after restart.
+native-price-timeout = "5s"
+
+# HyperEVM Alchemy + public RPCs both reject block 0 lookups (Alchemy:
+# -32001 "Unable to complete request"; public: -32603 "invalid block height: 0").
+# Without skip-event-sync, the autopilot tries to backfill Settlement +
+# CoW AMM + EthFlow events from genesis every block, logs "failed to
+# fetch block 0" each time, and never marks essential maintenance done.
+# We have no historical events to backfill (Settlement deployed at block
+# 35173733, no prior CoW activity on HL), so starting from "latest" is
+# correct. autopilot::run.rs:391 routes `skip_event_sync_start` to all
+# three event indexers.
+[ethflow]
+skip-event-sync = true
+
+[contracts]
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+balances = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
+signatures = "0xe4137bd2ecfdfb96d80629ec254dadec71bc498c"
+native-token = "0x5555555555555555555555555555555555555555"
+hooks = "0x29fcdbbdffd12fa7724b863991355b82ba8380e2"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[logging]
+filter = "warn,autopilot=debug,shared=info,price_estimation=info"
+
+[current-block]
+poll-interval = "2s"  # OP block time
+
+[run-loop]
+solve-deadline = "20s"
+
+[[gas-estimators]]
+type = "Web3"
+
+[[gas-estimators]]
+type = "Alloy"
+
+# Baseline + KyberSwap solvers on HyperEVM:
+# - Baseline: needs UniV2-shape pools. HyperSwap V2 doc addresses don't have
+#   bytecode at the time of writing (verified 2026-05-15 — research report
+#   /tmp/hyperevm-research.md). Baseline returns NoSolutions until we
+#   verify V2 router addresses or wire HyperSwap V3 via the driver's V3
+#   liquidity path.
+# - KyberSwap: VERIFIED LIVE on chain 999 (slug `hyperevm`); returned a
+#   real WHYPE→USD₮0 route at research time. This is the primary day-one
+#   liquidity for HyperEVM swaps.
+# - OKX V6: does NOT support chain 999 (free-tier probe returned empty
+#   chain list). Removed entirely from this stack.
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
+
+[[drivers]]
+name = "kyberswap"
+url = "http://driver/kyberswap"
+address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
+
+[fee-policies]
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[order-quoting]
+# KyberSwap is the only verified-working route source on HyperEVM at
+# day-one. Baseline solver included so we capture the moment we wire V2
+# liquidity (or it stops returning NoSolutions). OKX dropped — not
+# available on chain 999.
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"
+
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+[native-price-estimation]
+# HyperEVM-specific: neither CoinGecko (no chain 999 in asset platforms,
+# per /tmp/hyperevm-research.md) nor Uniswap V3 (HyperSwap V3 factory +
+# init-code-hash addresses not yet verified) can compute native prices
+# today. Using the `Driver` shim — points at baseline — bypasses the
+# init-time chain-check that would otherwise panic the orderbook at
+# boot (same workaround we shipped for MegaETH). At runtime baseline
+# can't compute prices either, so orders requiring a native price for
+# fee accounting are filtered with missing_native_price.
+#
+# Follow-up: extend the UniswapV3 estimator from PR #43 with the
+# HyperSwap V3 factory + init-code-hash once we verify them on-chain
+# (research flagged these as "needs probe" — see hyperevm-research.md
+# §"Critical unknowns").
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[native-price-estimation.cache]
+max-age = "20m"
