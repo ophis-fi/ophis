@@ -40,6 +40,8 @@ const AMOUNT_LIMIT: Record<SupportedChainId, number> = {
   [10 as unknown as SupportedChainId]: 500,
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: 500,
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  [999 as unknown as SupportedChainId]: 500,
 }
 
 export function TwapSuggestionBanner({

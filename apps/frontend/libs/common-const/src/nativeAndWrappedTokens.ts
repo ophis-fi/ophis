@@ -19,8 +19,14 @@ const OPTIMISM_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
 // Ophis fork: MegaETH mainnet (chain 4326) WETH address.
 // MegaETH is an OP-Stack rollup, so the predeploy slot 0x4200…0006 is the
 // expected WETH9 address. Confirmed 2026-05-15 — code exists at slot.
-// 
+//
 const MEGAETH_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
+
+// Ophis fork: HyperEVM mainnet (chain 999) wrapped native (WHYPE).
+// HyperEVM is NOT an OP-Stack chain — it does NOT use the 0x4200…0006
+// predeploy slot. WHYPE is deployed at the all-5s vanity address, native
+// token symbol is HYPE (18 decimals, ETH-equivalent semantics).
+const HYPEREVM_WHYPE_ADDRESS = '0x5555555555555555555555555555555555555555'
 
 export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> = {
   ...mapSupportedNetworks(getTokenWithLogoFromWrappedNativeCurrency),
@@ -41,6 +47,18 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     18,
     'WETH',
     'Wrapped Ether',
+  ),
+  // Ophis fork: WHYPE on HyperEVM mainnet (chain 999). Native HYPE wraps to
+  // WHYPE (analogous to ETH/WETH) but is NOT compatible with WETH9 — the
+  // contract at 0x5555…5555 has a slightly different interface. Verify any
+  // wrap/unwrap code paths once they are exercised.
+  [999 as unknown as SupportedChainId]: new TokenWithLogo(
+    undefined,
+    999 as unknown as SupportedChainId,
+    HYPEREVM_WHYPE_ADDRESS,
+    18,
+    'WHYPE',
+    'Wrapped HYPE',
   ),
 }
 

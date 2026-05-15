@@ -21,6 +21,10 @@ export const SAFE_TRANSACTION_SERVICE_URL: Record<SupportedChainId, HttpsString>
   // deployed for MegaETH. Empty string disables Safe-app features (createSafeApiKitInstance
   // returns null on falsy URL, so multisig flows degrade gracefully).
   [4326 as unknown as SupportedChainId]: '' as HttpsString,
+  // Ophis fork: HyperEVM mainnet (chain 999) — Safe contracts are deployed but
+  // the official Safe transaction-service is not. Empty string disables Safe-app
+  // features (multisig flows degrade gracefully).
+  [999 as unknown as SupportedChainId]: '' as HttpsString,
 }
 
 const SAFE_BASE_URL = 'https://app.safe.global'

@@ -36,6 +36,10 @@ const UNISWAP_TOKEN_LIST_URL: Record<SupportedChainId, string> = {
   // yet; the multichain Uniswap list is the safest fallback (entries for chain
   // 4326 will simply be empty until a published list lands).
   [4326 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
+  // Ophis fork: HyperEVM mainnet (chain 999). No upstream curated Uniswap list
+  // is published for HyperEVM yet; the multichain Uniswap list is the safest
+  // fallback (entries for chain 999 will simply be empty until a list lands).
+  [999 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
 }
 
 const curatedListSourceAtom = atom((get) => {
