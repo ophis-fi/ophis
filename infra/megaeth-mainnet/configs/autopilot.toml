@@ -1,0 +1,82 @@
+# Ophis — MegaETH mainnet (chain 4326) autopilot config.
+node-url = "https://mainnet.megaeth.com/rpc"
+simulation-node-url = "https://mainnet.megaeth.com/rpc"
+
+# Per-order wait while the run loop fetches a missing native (ETH-
+# denominated) token price. Defaults to 0ns, which makes the auction
+# filter any order whose token prices aren't already cached. The
+# CoinGecko simple/token_price endpoint typically answers in 200-500ms
+# so 5s is generous and covers a cold cache after restart.
+native-price-timeout = "5s"
+
+[contracts]
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
+native-token = "0x4200000000000000000000000000000000000006"
+hooks = "0x68593257dfd7f392abfbb410b212be0b6242ac0e"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[logging]
+filter = "warn,autopilot=debug,shared=info,price_estimation=info"
+
+[current-block]
+poll-interval = "1s"  # MegaETH ~real-time, sub-second block time
+
+[run-loop]
+solve-deadline = "20s"
+
+[[gas-estimators]]
+type = "Web3"
+
+[[gas-estimators]]
+type = "Alloy"
+
+# Baseline solver only. OKX V6 and KyberSwap aggregator APIs do not yet
+# support MegaETH (chain 4326) — adding them would just spam NoSolutions
+# every auction. Re-enable here once OKX adds chain 4326 to /api/v6/dex/
+# aggregator/supported/chain (none as of 2026-05-15).
+#
+# Baseline by itself will return NoSolutions until liquidity wiring lands
+# (Kumbaya V3 integration OR our own V2 fork — see TODO at bottom of file).
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
+
+[fee-policies]
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[order-quoting]
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"
+
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+[native-price-estimation]
+# CoinGecko doesn't support chain 4326. Using `Driver` instead bypasses
+# the orderbook's CoinGecko init-time chain-validation panic. Baseline
+# can't compute native prices at runtime (no liquidity yet), so orders
+# requiring a native price will be filtered — same effective outcome
+# but the stack stays up. Replace with a real estimator once task #94
+# ships the on-chain UniV3 reader.
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[native-price-estimation.cache]
+max-age = "20m"
+
+# TODO(liquidity): MegaETH does not have an aggregator API (OKX/Kyber)
+# that knows about chain 4326. The only on-chain DEX with TVL is
+# Kumbaya (UniV3 fork, factory 0x68b34591f662508076927803c567Cc8006988a09).
+# The CoW V3 driver requires a subgraph that Kumbaya does not publish.
+# Until task #94 (UniV3 reader) ships, baseline solver returns NoSolutions
+# and no orders settle.
