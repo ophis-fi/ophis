@@ -1,0 +1,61 @@
+# Ophis — HyperEVM mainnet (chain 999) orderbook config.
+eip1271-skip-creation-validation = true
+bind-address = "0.0.0.0:80"
+
+[shared]
+node-url = "${HYPEREVM_MAINNET_RPC}"
+simulation-node-url = "${HYPEREVM_MAINNET_RPC}"
+
+# Override every contract address — HyperEVM mainnet (chain 999) needs explicit
+# Ophis-deployed addresses since upstream's contracts registry doesn't include
+# our deployments here. From deploy-mainnet-all.sh on 2026-05-15.
+[shared.contracts]
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+balances = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
+signatures = "0xe4137bd2ecfdfb96d80629ec254dadec71bc498c"
+native-token = "0x5555555555555555555555555555555555555555"
+hooks = "0x29fcdbbdffd12fa7724b863991355b82ba8380e2"
+# Balancer V2 Vault: canonical cross-chain address used as a flash-loan source
+# for solver simulation. The Vault is deployed on OP at the same address.
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+# HyperEVM has no working off-chain native-price source today:
+#   - CoinGecko does not list chain 999 (asset_platforms returns 404).
+#   - Uniswap V3 reader from PR #43 doesn't have a verified HyperSwap V3
+#     factory + init-code-hash yet (research flagged as "needs probe").
+#
+# Until either landing, use the Driver shim — points at baseline.
+# Bypasses the init-time chain-check that would otherwise panic the
+# orderbook at boot (same workaround as MegaETH mainnet). Returns no
+# prices at runtime, so orders requiring native-price for fee
+# accounting are filtered. The stack still accepts orders, runs
+# auctions, and routes through KyberSwap for orders that don't need
+# native-price-anchored fees.
+estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+
+[order-quoting]
+# KyberSwap is verified working on chain 999 — primary source for quote
+# estimation. Baseline included as a future-proof slot. OKX dropped
+# (no chain 999 support).
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
+
+# CoinGecko config. The coin-gecko sub-block belongs under [price-estimation],
+# not [native-price-estimation], even though only the native estimator uses it.
+[price-estimation.coin-gecko]
+# CoinGecko Demo-tier key (free, signup at coingecko.com/api/pricing).
+# Read from container env via CoW's %VAR_NAME interpolation. The COW
+# code was patched to use x-cg-demo-api-key header for Demo keys (see
+# coingecko.rs constant AUTHORIZATION).
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
