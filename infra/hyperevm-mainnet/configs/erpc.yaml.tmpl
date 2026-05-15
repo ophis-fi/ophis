@@ -71,10 +71,10 @@ projects:
             timeout:
               duration: 10s
 
-      # Hyperliquid public — last-resort fallback (100 req/min/IP cap).
-      - id: public-hl
-        endpoint: https://rpc.hyperliquid.xyz/evm
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 10s
+      # Hyperliquid public RPC (rpc.hyperliquid.xyz/evm) intentionally removed
+      # from the upstream pool 2026-05-15. It is the slowest to advance to chain
+      # tip (consistently lags 3-10 blocks) and returns -32603 "upstream does
+      # not have the requested block yet" for eth_call at "latest" block. That
+      # error trips up `solver gas simulation` and causes the kyberswap solver
+      # to return NoSolutions in /solve, breaking on-chain settlement of
+      # otherwise-valid quotes. Re-add only if every other provider is down.
