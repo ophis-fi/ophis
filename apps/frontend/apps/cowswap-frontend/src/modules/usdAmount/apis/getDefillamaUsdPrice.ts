@@ -34,6 +34,9 @@ export const DEFILLAMA_PLATFORMS: Record<SupportedChainId, string | null> = {
   // platform slug for MegaETH yet; null disables price lookups gracefully.
   // Re-evaluate post-launch.
   [4326 as unknown as SupportedChainId]: null,
+  // Ophis fork: HyperEVM mainnet (chain 999) — DefiLlama uses the
+  // 'hyperliquid' platform slug for HyperEVM tokens.
+  [999 as unknown as SupportedChainId]: 'hyperliquid',
 }
 
 const BASE_URL = 'https://coins.llama.fi/prices/current'

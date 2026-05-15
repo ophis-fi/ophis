@@ -39,6 +39,21 @@ const MEGAETH_NATIVE_CURRENCY = new TokenWithLogo(
   'Ether',
 )
 
+// Ophis fork: HyperEVM mainnet (chain 999) added at frontend layer. SDK does
+// not ship a ChainInfo. The native token on HyperEVM is HYPE (18 decimals).
+// The chain is commonly labeled "Hyperliquid" externally (CoinGecko, DefiLlama,
+// Debank), even though the EVM layer is called HyperEVM. Settlement and
+// VaultRelayer addresses are configured separately in cowProtocolContracts.ts.
+const HYPEREVM_CHAIN_ID = 999 as unknown as SupportedChainId
+const HYPEREVM_NATIVE_CURRENCY = new TokenWithLogo(
+  undefined,
+  HYPEREVM_CHAIN_ID,
+  '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+  18,
+  'HYPE',
+  'Hyperliquid',
+)
+
 export interface BaseChainInfo {
   readonly docs: HttpsString
   readonly bridge?: HttpsString
@@ -191,6 +206,27 @@ export const CHAIN_INFO: ChainInfoMap = {
     color: '#00ff95',
     nativeCurrency: MEGAETH_NATIVE_CURRENCY,
   },
+  // Ophis fork: HyperEVM mainnet (chain 999). Hand-rolled because the SDK
+  // does not (yet) ship a ChainInfo for HyperEVM. Industry-standard label is
+  // "Hyperliquid" — DefiLlama / CoinGecko / Debank all use that name even
+  // though the EVM layer is technically HyperEVM.
+  [HYPEREVM_CHAIN_ID]: {
+    docs: 'https://hyperliquid.gitbook.io/hyperliquid-docs' as HttpsString,
+    explorer: 'https://hyperevmscan.io' as HttpsString,
+    infoLink: 'https://hyperliquid.xyz' as HttpsString,
+    logo: {
+      light: 'https://app.hyperliquid.xyz/coins/HYPE_USDC.svg' as HttpsString,
+      dark: 'https://app.hyperliquid.xyz/coins/HYPE_USDC.svg' as HttpsString,
+    },
+    name: 'hyperevm',
+    addressPrefix: 'hl',
+    label: 'Hyperliquid',
+    eip155Label: 'Hyperliquid',
+    urlAlias: 'hl',
+    explorerTitle: 'HyperEVMScan',
+    color: '#97FBE4',
+    nativeCurrency: HYPEREVM_NATIVE_CURRENCY,
+  },
 }
 
 /**
@@ -212,6 +248,8 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   // Ophis fork: MegaETH mainnet (chain 4326) — placed near the end alongside
   // other newer rollups. Reorder freely.
   MEGAETH_CHAIN_ID,
+  // Ophis fork: HyperEVM mainnet (chain 999) — placed alongside MegaETH.
+  HYPEREVM_CHAIN_ID,
   SupportedChainId.SEPOLIA,
 ]
 
@@ -233,6 +271,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   AdditionalTargetChainId.OPTIMISM,
   // Ophis fork: MegaETH mainnet (chain 4326)
   MEGAETH_CHAIN_ID as unknown as TargetChainId,
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  HYPEREVM_CHAIN_ID as unknown as TargetChainId,
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
   SupportedChainId.SEPOLIA,

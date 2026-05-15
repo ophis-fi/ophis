@@ -97,6 +97,11 @@ export class CoinbaseWallet extends Connector {
         // and rejects any switch attempt with a 400 (targetName=megaeth-mainnet
         // unknown). Users on MegaETH should use MetaMask, WalletConnect, or another
         // EIP-1193 wallet until Coinbase adds support. Re-evaluate periodically.
+        // HyperEVM mainnet (chain 999) is intentionally NOT included here for the
+        // same reason: the Coinbase Wallet SDK's chain-proxy does not recognise
+        // HyperEVM as of 2026-05-15 and rejects switches. Users on HyperEVM should
+        // use MetaMask, WalletConnect, or another EIP-1193 wallet. Re-evaluate
+        // periodically.
         appChainIds: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
         appLogoUrl: CowImage,
       })

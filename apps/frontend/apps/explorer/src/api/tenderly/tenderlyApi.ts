@@ -29,6 +29,9 @@ const API_BASE_URLs: Record<SupportedChainId, string | undefined> = {
   // Ophis fork: MegaETH mainnet (chain 4326) — Tenderly does not index MegaETH;
   // undefined disables Tenderly lookups gracefully (see _getApiBaseUrl).
   [4326 as unknown as SupportedChainId]: undefined,
+  // Ophis fork: HyperEVM mainnet (chain 999) — Tenderly does not index HyperEVM;
+  // undefined disables Tenderly lookups gracefully.
+  [999 as unknown as SupportedChainId]: undefined,
 }
 
 function _getApiBaseUrl(networkId: SupportedChainId): string {

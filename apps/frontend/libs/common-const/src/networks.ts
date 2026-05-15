@@ -19,6 +19,8 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [10 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_10'] as HttpsString) || undefined,
   // Ophis fork: MegaETH mainnet (chain 4326) added at frontend layer
   [4326 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_4326'] as HttpsString) || undefined,
+  // Ophis fork: HyperEVM mainnet (chain 999) added at frontend layer
+  [999 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_999'] as HttpsString) || undefined,
 }
 
 const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: boolean }> = {
@@ -37,6 +39,9 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [10 as unknown as SupportedChainId]: { url: `https://optimism-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: MegaETH mainnet default public RPC
   [4326 as unknown as SupportedChainId]: { url: `https://mainnet.megaeth.com/rpc`, usesInfura: false },
+  // Ophis fork: HyperEVM mainnet default public RPC (100 req/min/IP cap — fine
+  // for casual browser use; users can override via REACT_APP_NETWORK_URL_999)
+  [999 as unknown as SupportedChainId]: { url: `https://rpc.hyperliquid.xyz/evm`, usesInfura: false },
 }
 
 /**
@@ -48,6 +53,8 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   [10 as unknown as SupportedChainId]: getRpcUrl(10 as unknown as SupportedChainId),
   // Ophis fork: include MegaETH mainnet (chain 4326) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
   [4326 as unknown as SupportedChainId]: getRpcUrl(4326 as unknown as SupportedChainId),
+  // Ophis fork: include HyperEVM mainnet (chain 999) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
+  [999 as unknown as SupportedChainId]: getRpcUrl(999 as unknown as SupportedChainId),
 }
 
 function getRpcUrl(chainId: SupportedChainId): HttpsString {
