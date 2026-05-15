@@ -24,20 +24,29 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
-# CoinGecko answers the "how much ETH is 1 token X worth" question that
-# the orderbook needs for fee accounting. The solver auction (Driver
-# estimators below) still does the real swap pricing — CoinGecko only
-# anchors the ETH-equivalent denomination.
+# Primary estimator: on-chain Uniswap V3 TWAP. Reads a 180-second TWAP
+# from the deepest WETH/<token> pool across fee tiers [500, 3000, 100,
+# 10000] via `IUniswapV3Pool.observe`. Deterministic, no API key, no
+# off-chain dependency. Replaces CoinGecko as the default — task #94.
 #
-# Why not Driver estimators here: OKX V6 + KyberSwap are exactIn-only,
-# they can't answer the buy-direction ETH-anchor query. Baseline has
-# dead Sushi V2 liquidity on OP. Native-price-estimation requires
-# bidirectional pricing; only off-chain price feeds work.
+# Fallback: CoinGecko Demo tier. Kicks in only when no V3 pool meets
+# the liquidity threshold on any fee tier (long-tail tokens without
+# direct WETH pairs, brand-new listings). Same config as before lives
+# under [price-estimation.coin-gecko] so we can drop back if the
+# on-chain reader misbehaves in production.
 #
-# Free tier: no API key needed at our launch volume (~10 RPS limit).
-# Add an api-key under [native-price-estimation.coin-gecko] when we
-# scale past 10k calls/month — see https://www.coingecko.com/api/pricing
-estimators = [[{ type = "CoinGecko" }]]
+# factory + init-code-hash are canonical Uniswap V3 (same address on
+# Ethereum / Optimism / Arbitrum / Polygon / Base / BNB — pools have
+# no constructor args so the init hash is constant across chains).
+# Sources:
+# https://developers.uniswap.org/contracts/v3/reference/deployments/optimism-deployments
+# https://github.com/Uniswap/v3-periphery/blob/main/contracts/libraries/PoolAddress.sol
+estimators = [
+  [
+    { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "CoinGecko" },
+  ],
+]
 
 [order-quoting]
 # Same fanout for quote estimation. Without OKX/KyberSwap here, a swap
