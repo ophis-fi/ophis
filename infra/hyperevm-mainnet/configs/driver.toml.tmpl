@@ -73,9 +73,15 @@ account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 gas-price-cap = "1000000000000"
 
 [[submission.mempool]]
-# Submitting via Alchemy. The public RPC (rpc.hyperliquid.xyz/evm) has
-# a 100 req/min/IP cap that the driver would blow through quickly.
-url = "https://hyperliquid-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+# Submission goes through the eRPC proxy (same as block-stream). eRPC's
+# enforceHighestBlock + statePollerDebounce=1s keeps the routed upstream
+# at chain tip, which means nonce reads + tx broadcast see consistent
+# state. Previously this pointed at Alchemy direct, which broke once the
+# Alchemy free-tier monthly cap exhausted (2026-05-15) — every settle()
+# attempt failed with "failed to fetch nonce" because Alchemy 429'd the
+# nonce read. PurroofGroup + HL-official + HyperLend cover us with zero
+# cost.
+url = "${HYPEREVM_RPC_INTERNAL}"
 
 [liquidity]
 base-tokens = [

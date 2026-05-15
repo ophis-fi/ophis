@@ -1,31 +1,66 @@
 # eRPC multi-provider proxy for HyperEVM mainnet (chain 999).
 #
-# Why: Alchemy free tier returns HTTP 429 under the driver+autopilot's
-# combined polling load (block_stream every 1s + per-quote fee_history +
-# per-tx eth_call). eRPC fans out requests across 5 free providers with
-# automatic failover, retry, and re-org aware caching so we stay under
-# each provider's rate limit.
+# Reliability map (probed 2026-05-16):
+#   PurroofGroup       10/10 on isSolver eth_call, 461 req/min throughput
+#   HL official        10/10 (rpc.hyperliquid.xyz/evm), 100 req/min/IP cap
+#   HyperLend          9/10 (occasional state-poller stutter)
+#   dRPC               11/20 = 55% (flake "intrinsic gas too high" intermittently)
+#   1RPC               0/10 currently broken on HL
+#   Alchemy free tier  monthly cap EXHAUSTED 2026-05-15
 #
-# Endpoint exposed to other services: http://rpc-proxy:4000/main/evm/999
-# (eRPC default port; project=`main`, chain=999 auto-detected).
+# Strategy:
+#  - PurroofGroup primary, HL-official + HyperLend as failover pool
+#  - integrity.enforceHighestBlock=true: only route eth_call to upstreams that
+#    have caught up to the requested block (fixes "upstream does not have
+#    requested block yet" the kyberswap solver gas-sim hits on HL's fast 1-2s
+#    block times)
+#  - statePollerDebounce=1s: keep per-upstream tip-block view fresh enough
+#    to match HL block production
+#  - Drop dRPC + 1RPC + Alchemy from the pool (see header above for why)
 #
-# Providers (all verified live 2026-05-15 returning chain_id 0x3e7):
-#   - Alchemy             (paid potential, currently 429-throttled)
-#   - dRPC                (free tier, multi-region)
-#   - 1RPC                (free tier, single endpoint)
-#   - PurroofGroup        (community HL public RPC)
-#   - HyperLend           (DeFi-app-operated public RPC)
-#   - Hyperliquid public  (rpc.hyperliquid.xyz/evm, 100 req/min/IP — last-resort)
+# Endpoint exposed: http://rpc-proxy:4000/main/evm/999
 
 logLevel: info
 
 projects:
   - id: main
+
+    # Network-level integrity: ensure eth_call+similar are routed to upstreams
+    # that have the requested block. Without this, fast-chain HL (1-2s blocks)
+    # surfaces "upstream does not have the requested block yet" errors when
+    # the simulator requests state at the autopilot's just-observed block but
+    # the routed upstream hasn't seen it yet.
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 999
+          integrity:
+            enforceHighestBlock: true
+            enforceNonNullTaggedBlocks: true
+
+    # Keep each upstream's tip-block tracking aligned with HL's block time
+    # (1-2s for small blocks).
+    upstreamDefaults:
+      evm:
+        statePollerInterval: 5s
+        statePollerDebounce: 1s
+
     upstreams:
-      # Alchemy first — best latency when not throttled. eRPC will mark it
-      # cordoned on repeated 429s and route around it automatically.
-      - id: alchemy-hl
-        endpoint: https://hyperliquid-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+      - id: purroof-hl
+        endpoint: https://rpc.purroofgroup.com
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: official-hl
+        endpoint: https://rpc.hyperliquid.xyz/evm
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -33,12 +68,9 @@ projects:
             retry:
               maxAttempts: 2
               delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
 
-      # dRPC — public HL endpoint, generous free tier.
-      - id: drpc-hl
-        endpoint: https://hyperliquid.drpc.org
+      - id: hyperlend-hl
+        endpoint: https://rpc.hyperlend.finance
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -46,35 +78,3 @@ projects:
             retry:
               maxAttempts: 2
               delay: 200ms
-
-      # 1RPC — privacy-focused free tier.
-      - id: onerpc-hl
-        endpoint: https://1rpc.io/hyperliquid
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 10s
-
-      # PurroofGroup community RPC.
-      - id: purroof-hl
-        endpoint: https://rpc.purroofgroup.com
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 10s
-
-      # HyperLend RPC (DeFi-app-operated).
-      - id: hyperlend-hl
-        endpoint: https://rpc.hyperlend.finance
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 10s
-
-      # Hyperliquid public RPC (rpc.hyperliquid.xyz/evm) intentionally removed
-      # from the upstream pool 2026-05-15. It is the slowest to advance to chain
-      # tip (consistently lags 3-10 blocks) and returns -32603 "upstream does
-      # not have the requested block yet" for eth_call at "latest" block. That
-      # error trips up `solver gas simulation` and causes the kyberswap solver
-      # to return NoSolutions in /solve, breaking on-chain settlement of
-      # otherwise-valid quotes. Re-add only if every other provider is down.
