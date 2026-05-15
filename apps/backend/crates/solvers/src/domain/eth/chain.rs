@@ -15,6 +15,12 @@ pub enum ChainId {
     Linea = 59144,
     Plasma = 9745,
     Ink = 57073,
+    // Ophis: Hyperliquid HyperEVM mainnet. The `chain` crate already had
+    // HyperEvmMainnet=999 but the solvers crate keeps its own duplicate
+    // enum (CoW upstream design quirk). Without this variant the kyberswap
+    // solver's chain_id TOML deserializer panics with "unsupported chain"
+    // at startup.
+    HyperEvm = 999,
 }
 
 impl ChainId {
@@ -32,6 +38,7 @@ impl ChainId {
             59144 => Ok(Self::Linea),
             9745 => Ok(Self::Plasma),
             57073 => Ok(Self::Ink),
+            999 => Ok(Self::HyperEvm),
             _ => Err(UnsupportedChain),
         }
     }
@@ -51,6 +58,7 @@ impl ChainId {
             ChainId::Linea => "59144",
             ChainId::Plasma => "9745",
             ChainId::Ink => "57073",
+            ChainId::HyperEvm => "999",
         }
     }
 }
