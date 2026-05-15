@@ -11,12 +11,23 @@
 app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 
-# HyperEVM has a dual-block model: small blocks (1-2s, ~3M gas limit) +
-# big blocks (60s, 30M gas limit). Settlement deploy + a typical settle()
-# tx exceeds the small-block limit, so the driver-submitter must be
-# opted into big blocks via infra/hyperevm/opt-in-big-blocks.py BEFORE
-# the first settle. Bumping tx-gas-limit to 30M to match.
-tx-gas-limit = "30000000"
+# HyperEVM has a dual-block model: small blocks (1-2s, 3M gas limit) +
+# big blocks (60s, 30M gas limit). The driver-submitter EOA IS opted into
+# big blocks (see infra/hyperevm/opt-in-big-blocks.py), which routes its
+# transactions to big-block slots regardless of tx-gas-limit.
+#
+# HOWEVER: the CoW autopilot's solver participation check eth_call is
+# evaluated by HL's geth pre-execution at the CURRENT block's gas limit,
+# which is small (3M) most of the time. With tx-gas-limit = 30M, geth
+# rejects every participation check with -32000 "intrinsic gas too high"
+# → solver gets SolverDenyListed → no settlements ever broadcast.
+#
+# A single CoW settlement is ~500k-1M gas (well under 3M). Cap
+# tx-gas-limit at 2.9M so the participation check passes against small
+# blocks. If we ever need 30M settle()s (multi-swap batches, big hooks)
+# we'd need to either bump tx-gas-limit AND wait for big-block frames in
+# autopilot, OR move that work behind a different solver-submitter.
+tx-gas-limit = "2900000"
 
 # Skip eth_createAccessList preflight before settlement simulation.
 # Verified 2026-05-15 (research): HyperEVM RPCs (both public and Alchemy)
