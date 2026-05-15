@@ -102,7 +102,16 @@ url = "https://api.coingecko.com/api/v3/simple/token_price"
 # HyperSwap V3 factory + init-code-hash once we verify them on-chain
 # (research flagged these as "needs probe" — see hyperevm-research.md
 # §"Critical unknowns").
-estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseline" }]]
+# KyberSwap aggregator first (can price WHYPE↔any token via SELL-direction
+# query after the kind=Sell fix in native_price/mod.rs), baseline as
+# fallback. Without kyberswap, the autopilot filters every order with
+# a non-native buy_token as missing_native_price, even though the
+# orderbook can serve a quote — because the autopilot uses its own
+# native-price estimator instance that wasn't wired to kyberswap.
+estimators = [
+  [{ type = "Driver", name = "kyberswap", url = "http://driver/kyberswap" }],
+  [{ type = "Driver", name = "baseline", url = "http://driver/baseline" }],
+]
 
 [native-price-estimation.cache]
 max-age = "20m"
