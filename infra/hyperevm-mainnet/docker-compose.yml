@@ -27,14 +27,33 @@ services:
       - ./rendered/erpc.yaml:/erpc.yaml:ro
     ports:
       - "127.0.0.1:4000:4000"
-    # No HEALTHCHECK: the eRPC image is distroless (no /bin/sh, no wget/curl)
-    # so a CMD-SHELL probe can't work. Docker will report the container as
-    # "healthy" by default (= "running"), and no service depends_on this one
-    # with condition: service_healthy, so an in-band probe isn't required.
-    # If we ever need a stronger health signal, eRPC exposes
-    # GET /healthcheck (returns 200 + JSON status), and we can add an
-    # external sidecar (e.g. a 1MB busybox) that does the probe and reports
-    # via Prometheus.
+    # eRPC image is distroless (no /bin/sh / wget / curl) so it cannot run
+    # an in-band CMD-SHELL healthcheck. The `rpc-proxy-health` sidecar below
+    # probes `GET /healthcheck` on this service and is what `depends_on:
+    # service_healthy` targets actually wait for.
+
+  # 1.4 MB busybox sidecar whose ONLY job is to publish "rpc-proxy is
+  # answering /healthcheck" as a docker health state. Driver/orderbook/
+  # autopilot depend_on this with condition: service_healthy so they don't
+  # try to talk to eRPC before it's serving (which would log connection-
+  # refused errors and trigger retry storms).
+  rpc-proxy-health:
+    image: busybox:stable-musl
+    restart: always
+    depends_on:
+      rpc-proxy: { condition: service_started }
+    # Loop forever — busybox stays running so `service_healthy` keeps
+    # reporting based on `healthcheck` below. Without `sleep infinity`
+    # the container exits and unhealthy cascades.
+    command: ["sh", "-c", "while true; do sleep 30; done"]
+    healthcheck:
+      # busybox wget supports -q/-O- and returns non-zero on HTTP error.
+      # /healthcheck on eRPC returns 200 + JSON when the network is ready.
+      test: ["CMD", "wget", "-q", "-O-", "http://rpc-proxy:4000/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   db:
     image: postgres:16
@@ -77,6 +96,10 @@ services:
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
+      # Wait for eRPC to actually be answering before booting — without this
+      # orderbook hits connection-refused on its first eth_chainId probe and
+      # panics at startup, then restart-loops until eRPC is up.
+      rpc-proxy-health: { condition: service_healthy }
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
@@ -116,6 +139,7 @@ services:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
       orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
@@ -140,6 +164,7 @@ services:
     depends_on:
       baseline: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
     environment:
       # Driver uses eRPC proxy for block-stream polling + eth_call workload.
       # Transaction submission still routes directly to Alchemy via the
