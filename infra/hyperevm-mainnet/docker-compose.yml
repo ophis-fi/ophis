@@ -148,11 +148,13 @@ services:
       ETHRPC: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
-      # Solver/driver-submitter private key — read by the CoW driver via the
-      # `${OPHIS_DRIVER_SUBMITTER_KEY}` interpolation in configs/driver.toml.tmpl,
-      # rendered to rendered/driver.toml by render-configs.sh before compose up.
-      # MUST be set in ./.env. Container refuses to start if blank.
-      OPHIS_DRIVER_SUBMITTER_KEY: ${OPHIS_DRIVER_SUBMITTER_KEY:?driver private key must be set in infra/hyperevm-mainnet/.env}
+      # NOTE — driver-submitter PK is NOT passed as an env var (it would be
+      # readable via `docker inspect ophis-driver-1`, /proc/<pid>/environ, and
+      # could leak via panic backtraces / log shippers). Instead it lives only
+      # in the chmod-600 rendered driver.toml that's bind-mounted read-only.
+      # render-configs.sh fails loudly if OPHIS_DRIVER_SUBMITTER_KEY is missing
+      # from .env at render time, so the absence check still happens before
+      # compose ever runs.
     volumes:
       - ./rendered/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]
