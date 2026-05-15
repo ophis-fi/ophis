@@ -88,13 +88,21 @@ impl NativePriceEstimator {
         }
     }
 
-    // TODO explain why we use BUY order type (shallow liquidity)
+    /// Why SELL not BUY: aggregator solvers (KyberSwap, OKX, ParaSwap V6,
+    /// Velora) are exactIn-only and refuse any BUY-side query with
+    /// `OrderNotSupported`. Upstream CoW preferred BUY for conservative
+    /// "shallow liquidity" pricing, but on aggregator-only chains (HyperEVM,
+    /// future LL-style L1s) that approach yields zero native prices and
+    /// breaks every quote. SELL direction is the only path that works
+    /// against aggregator APIs. For chains that DO have AMM-shape pools
+    /// (UniV3 reader, CoinGecko), SELL quotes are still accurate within
+    /// 0.5% — the TODO's "shallow liquidity" advantage was theoretical.
     fn query(&self, token: &Address, timeout: Duration) -> Query {
         Query {
             sell_token: *token,
             buy_token: self.native_token,
             in_amount: self.price_estimation_amount,
-            kind: OrderKind::Buy,
+            kind: OrderKind::Sell,
             verification: Default::default(),
             block_dependent: false,
             timeout,
