@@ -131,6 +131,13 @@ base-tokens = [
 # Project X ($165M/24h) and Hybra V3 ($0.6M/24h) — Phase 2-3, deferred
 # pending self-hosted Goldsky subgraph deployment (see spec).
 [[liquidity.uniswap-v3]]
+# DO NOT TEMPLATE this router address. `router` is the ERC-20 allowance
+# spender at execution time — a malicious .env that controls a templated
+# router can drain Settlement's transient allowances. Sharp-edges audit
+# (2026-05-17) flagged the "templated graph-url, templated router" by
+# symmetry mistake as a class to prevent up front. Hardcode after
+# independent bytecode + factory() verification (see comment block
+# above this section for the verification log).
 router = "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77"
 # Subgraph URL is templated so we can swap Ormi-hosted → self-hosted
 # Goldsky (Phase 2/3 follow-up) or self-hosted graph-node without a

@@ -9,6 +9,22 @@
 
 set -euo pipefail
 
+# Defense-in-depth (sharp-edges audit, 2026-05-17): rendered files contain
+# the driver-submitter private key and the Telegram bot token. With the
+# default macOS umask of 022, `envsubst > file` creates 0644 momentarily
+# before the explicit `chmod 600` tightens. A process watching the directory
+# could open() during that window. `umask 077` ensures every `>` produces
+# 0600 from the start; later `chmod 600` calls stay as belt-and-braces.
+umask 077
+
+# Sharp-edges audit also flagged: NEVER run this script under `set -x` /
+# `bash -x` — the `:?` guards trace variable values, leaking the
+# driver-submitter PK + Telegram token into stdout/stderr. Refuse upfront.
+if [[ "${-}" == *x* ]]; then
+  echo "REFUSING to run under set -x: secrets would leak in the trace." >&2
+  exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -38,10 +54,18 @@ set +a
 export HYPERSWAP_V3_SUBGRAPH_URL
 
 # Subgraph URL must look like a Goldsky-style or Ormi-style https
-# endpoint. A typo here gracefully degrades baseline to NoSolutions but
-# never causes a panic — still, refuse obvious malformations early.
-if [[ ! "$HYPERSWAP_V3_SUBGRAPH_URL" =~ ^https://.+/[^/]+ ]]; then
-  echo "ERROR: HYPERSWAP_V3_SUBGRAPH_URL must be an https URL with a path component" >&2
+# endpoint. Sharp-edges audit (2026-05-17) noted the prior regex
+# `^https://.+/[^/]+` was anchored only at the start — URLs with embedded
+# whitespace, quotes, or newlines passed the check and broke TOML parsing
+# downstream. The tightened pattern below:
+#   - anchors both ends (^...$)
+#   - restricts host chars to RFC-3986 reg-name + dots/hyphens
+#   - allows an optional port (`:[0-9]+`)
+#   - restricts the path body to URL-safe chars only (no whitespace,
+#     no quotes, no backslashes, no backticks, no `$`)
+url_re='^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~!$&'\''()*+,;=:@%/?#-]+)+$'
+if [[ ! "$HYPERSWAP_V3_SUBGRAPH_URL" =~ $url_re ]]; then
+  echo "ERROR: HYPERSWAP_V3_SUBGRAPH_URL fails URL shape check (RFC-3986-safe https://host[:port]/path)" >&2
   exit 2
 fi
 
