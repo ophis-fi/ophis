@@ -1,0 +1,30 @@
+# Ophis — HyperEVM mainnet (chain 999) baseline solver config.
+#
+# Re-introduced 2026-05-16 alongside [[liquidity.uniswap-v3]] for HyperSwap V3
+# in driver.toml.tmpl (Phase 1 of the V3 wiring spec at
+# docs/development/specs/2026-05-16-hl-uniswap-v3-liquidity.md). With real
+# V3 pools available, the baseline solver can produce real routes — unlike
+# the empty-result NoSolutions state that motivated PR #46 to remove it.
+#
+# Pass `weth` directly to bypass the chain-keyed for_chain lookup that
+# panics on chain 999 (no WHYPE entry in upstream contracts registry).
+weth = "0x5555555555555555555555555555555555555555"
+
+# Base tokens for path-finding. WHYPE is the wrapped native gas token and
+# USD₮0 (Tether on HL) is the dominant stable — these two anchor virtually
+# every relevant trading pair on the chain. Per the spec's pool-scan, the
+# top-TVL HyperSwap V3 pools are WHYPE/USD₮0, WHYPE/USDC, WHYPE/UBTC,
+# WHYPE/UETH, WHYPE/αHYPE — all reachable via these two anchors.
+base-tokens = [
+  "0x5555555555555555555555555555555555555555",  # WHYPE
+  "0xb8CE59FC3717ada4C02eaDF9682A9e934F625ebb",  # USD₮0
+]
+
+max-hops = 2
+max-partial-attempts = 5
+
+# Native-token price estimation amount: how much WHYPE to assume when
+# computing a token's price in native terms. 0.001 WHYPE (~$0.04 at
+# current price) is a small enough probe to land in the linear-price
+# region of any reasonable pool without burning gas/RPC quota.
+native-token-price-estimation-amount = "1000000000000000"  # 0.001 WHYPE

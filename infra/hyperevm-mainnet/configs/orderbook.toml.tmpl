@@ -24,35 +24,29 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
-# HyperEVM has no working off-chain native-price source today:
-#   - CoinGecko does not list chain 999 (asset_platforms returns 404).
-#   - Uniswap V3 reader from PR #43 doesn't have a verified HyperSwap V3
-#     factory + init-code-hash yet (research flagged as "needs probe").
+# HyperEVM native-price estimation (Phase 1 — 2026-05-16):
 #
-# Until either landing, use the Driver shim — points at baseline.
-# Bypasses the init-time chain-check that would otherwise panic the
-# orderbook at boot (same workaround as MegaETH mainnet). Returns no
-# prices at runtime, so orders requiring native-price for fee
-# accounting are filtered. The stack still accepts orders, runs
-# auctions, and routes through KyberSwap for orders that don't need
-# native-price-anchored fees.
-# KyberSwap aggregator can price WHYPE↔any token, and WHYPE IS the native
-# token on chain 999. So routing native-price queries through kyberswap
-# gives us real prices for non-native tokens (USD₮0 etc.) — the only path
-# that works on HL today (CoinGecko has no chain 999; HyperSwap V3 factory
-# address not yet verified). Baseline kept as a tier-2 fallback for the
-# moment WHYPE itself is queried (the orderbook short-circuits same-token
-# to 1.0 anyway, so this slot is rarely hit).
+# Tier 1: KyberSwap aggregator. Most reliable single source today —
+# routes WHYPE↔any token via SELL-direction queries.
+#
+# Tier 2: baseline solver via Driver shim. Backed by HyperSwap V3
+# liquidity (driver.toml.tmpl [[liquidity.uniswap-v3]] block — Ormi
+# subgraph, ~2610 indexed pools). Picks up tokens with deep V3 pool
+# depth that KyberSwap can't (or rate-limits).
+#
+# CoinGecko still unavailable (no chain 999 in asset_platforms).
+# Direct on-chain UniV3 TWAP estimator could land here as a Tier 3
+# follow-up once we verify HyperSwap V3's init-code-hash.
 estimators = [
   [{ type = "Driver", name = "kyberswap", url = "http://driver/kyberswap" }],
+  [{ type = "Driver", name = "baseline", url = "http://driver/baseline" }],
 ]
 
 [order-quoting]
-# KyberSwap is verified working on chain 999 — primary source for quote
-# estimation. Baseline driver entry dropped 2026-05-16 (baseline solver
-# itself was returning NoSolutions — removal tracked in task #117).
-# Velora (task #119) will be the second entry once landed.
+# Baseline (HyperSwap V3 direct) + KyberSwap (aggregator) — both used
+# for orderbook-side quote estimation. Auction picks the winner.
 price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
 ]
 

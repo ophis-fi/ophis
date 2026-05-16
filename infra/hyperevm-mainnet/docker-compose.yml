@@ -162,6 +162,7 @@ services:
     restart: always
     mem_limit: 2g
     depends_on:
+      baseline: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
@@ -191,14 +192,46 @@ services:
       retries: 6
       start_period: 60s
 
-  # baseline service REMOVED 2026-05-16 (audit-driven cleanup). Returned
-  # NoSolutions today (HyperSwap V2 published addresses returned 0x
-  # bytecode at last research). Re-add this block AND the matching
-  # [[solver]] entry in driver.toml.tmpl once we either:
-  #  - verify a working V2-shape DEX (Kittenswap AMM is the leftover
-  #    candidate but at $3.6k/24h volume it's not worth the slot), OR
-  #  - wire UniV3-style direct liquidity (task #120) which needs the
-  #    observability stack (#118) in place first.
+  # Baseline solver — RE-ADDED 2026-05-16 alongside the [[liquidity.uniswap-v3]]
+  # block for HyperSwap V3 in configs/driver.toml.tmpl (Phase 1 of the V3
+  # wiring spec). PR #46 removed it because it had no V2 liquidity to route
+  # through; now that V3 pools are wired the baseline solver returns real
+  # solutions instead of NoSolutions.
+  #
+  # IMPORTANT operational caveat (per Codex review of PR #50): "healthy"
+  # here means the HTTP listener is up + /healthz answers. The actual UniV3
+  # pool-state hydration happens asynchronously inside the *driver* (10-min
+  # background retry loop in driver::boundary::liquidity::uniswap::v3) and
+  # returns empty liquidity until init succeeds. So in a fresh deploy or
+  # after an Ormi blip, baseline can be "healthy" + driver can be "healthy"
+  # but routes can still come back NoSolutions for a window. Watch the
+  # driver log line "uniswap_v3 initial state" for the all-clear before
+  # declaring the stack ready.
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "127.0.0.1:9201:80"
+    healthcheck:
+      # TCP probe — matches kyberswap-solver. Confirms the HTTP listener
+      # is accepting; does NOT confirm the UniV3 pool source in the driver
+      # has hydrated (that happens asynchronously in the driver, not here).
+      # See the operator caveat comment above the service block.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   # OKX V6 NOT included on HyperEVM mainnet — chain 999 not in OKX
   # supported-chain list as of 2026-05-15. Re-add the okx-solver service
