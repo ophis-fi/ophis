@@ -1,0 +1,87 @@
+# Project X (UniswapV3 fork) — HyperEVM mainnet subgraph for Ophis baseline solver.
+#
+# Phase 2 of the V3 wiring spec (docs/development/specs/2026-05-16-hl-uniswap-v3-liquidity.md).
+# Project X has no public subgraph; this is our own indexer.
+#
+# What this subgraph indexes:
+#   - Factory:PoolCreated → creates Pool + Token entities, spawns a Pool template.
+#   - Pool:Initialize → records initial sqrtPrice + tick.
+#   - Pool:Swap → updates sqrtPrice, tick, liquidity.
+#   - Pool:Mint, Pool:Burn → updates Tick entities (liquidityNet).
+#
+# Deliberately MINIMAL: the CoW driver only queries
+#   `pools { id, token0 {symbol,id,decimals}, token1 {symbol,id,decimals},
+#            feeTier, liquidity, sqrtPrice, tick }`
+# plus tick data
+#   `ticks { id, tickIdx, liquidityNet, poolAddress }`
+# so we skip USD prices, day data, position tracking, fee accounting, and
+# every other field the canonical Uniswap subgraph maintains. ~10× faster to
+# index and ~5× cheaper to host than a full Uniswap-style subgraph.
+
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+
+description: Project X UniV3-fork pools on HyperEVM, minimal for CoW solver use.
+repository: https://github.com/ophis-fi/ophis
+
+features:
+  - nonFatalErrors
+
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    # Network identifier — must match the value passed to `goldsky subgraph deploy`
+    # or the network registered in the self-hosted graph-node. For Goldsky, "hyperevm"
+    # is the slug they use for HyperEVM mainnet (chain 999). For self-hosted, register
+    # the network in graph-node's ethereum.networks config with the same name.
+    network: hyperevm
+    source:
+      address: "0xff7b3e8c00e57ea31477c32a5b52a58eea47b072"
+      abi: Factory
+      # Factory deployed 2025-XX-XX. Block found via binary search against
+      # rpc.purroofgroup.com on 2026-05-16.
+      startBlock: 7876741
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/factory.ts
+      entities:
+        - Pool
+        - Token
+      abis:
+        - name: Factory
+          file: ./abis/Factory.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: PoolCreated(indexed address,indexed address,indexed uint24,int24,address)
+          handler: handlePoolCreated
+
+templates:
+  - kind: ethereum/contract
+    name: Pool
+    network: hyperevm
+    source:
+      abi: Pool
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/pool.ts
+      entities:
+        - Pool
+        - Tick
+      abis:
+        - name: Pool
+          file: ./abis/Pool.json
+      eventHandlers:
+        - event: Initialize(uint160,int24)
+          handler: handleInitialize
+        - event: Swap(indexed address,indexed address,int256,int256,uint160,uint128,int24)
+          handler: handleSwap
+        - event: Mint(address,indexed address,indexed int24,indexed int24,uint128,uint256,uint256)
+          handler: handleMint
+        - event: Burn(indexed address,indexed int24,indexed int24,uint128,uint256,uint256)
+          handler: handleBurn

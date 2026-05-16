@@ -1,0 +1,58 @@
+# GraphQL schema for the Project X subgraph.
+#
+# Minimal — matches exactly what the CoW driver queries
+# (apps/backend/crates/liquidity-sources/src/uniswap_v3/graph_api.rs):
+#
+#   pools { id, token0 {id, symbol, decimals}, token1 {...}, feeTier,
+#           liquidity, sqrtPrice, tick }
+#   ticks { id, tickIdx, liquidityNet, poolAddress }
+#
+# Pool fields the CoW driver does NOT use, omitted: createdAtTimestamp,
+# createdAtBlockNumber, totalValueLockedToken0/1, volumeUSD,
+# txCount, observationIndex, untrackedVolumeUSD, day data aggregates,
+# position tracking, fee accounting. ~80% reduction in entity size vs
+# the canonical Uniswap V3 subgraph.
+
+type Token @entity(immutable: true) {
+  "ERC-20 contract address (lowercased)"
+  id: ID!
+  symbol: String!
+  name: String!
+  decimals: BigInt!
+}
+
+type Pool @entity {
+  "Pool contract address (lowercased)"
+  id: ID!
+  token0: Token!
+  token1: Token!
+  "Fee tier in hundredths of a bip (100=0.01%, 500=0.05%, 3000=0.3%, 10000=1%)"
+  feeTier: BigInt!
+  "Tick spacing for this fee tier (1, 10, 60, or 200 — derived from feeTier at PoolCreated)"
+  tickSpacing: BigInt!
+  "Current pool liquidity at the active tick (slot0). Updated on each Swap/Mint/Burn."
+  liquidity: BigInt!
+  "Current sqrt(price) in Q64.96 fixed-point. Updated on each Swap (and at Initialize)."
+  sqrtPrice: BigInt!
+  "Current active tick. Updated on each Swap (and at Initialize). NULL until Initialize fires."
+  tick: BigInt
+  "Block where the pool was created — handy for backfill consistency checks."
+  createdAtBlock: BigInt!
+  "Reverse relation to the per-tick liquidityNet entries (only non-zero ticks are stored)."
+  ticks: [Tick!]! @derivedFrom(field: "pool")
+}
+
+type Tick @entity {
+  "Composite ID: poolAddress + '#' + tickIdx (lowercased pool address)"
+  id: ID!
+  "Pool this tick belongs to (full entity for nested-where queries)."
+  pool: Pool!
+  "Pool address as a plain field — the CoW driver queries `poolAddress` directly without traversing the Pool entity."
+  poolAddress: String!
+  "Signed integer tick index (e.g. -887272 to 887272 for the canonical range)."
+  tickIdx: BigInt!
+  "Signed liquidity delta when this tick is crossed L→R. Sum across active ticks."
+  liquidityNet: BigInt!
+  "Cumulative gross liquidity that uses this tick as a bound (unsigned)."
+  liquidityGross: BigInt!
+}

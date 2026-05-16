@@ -1,0 +1,9 @@
+# graph-cli build artifacts
+build/
+generated/
+node_modules/
+.graphclient/
+
+# Subgraph-local secrets if any (currently none — Goldsky token comes
+# from `goldsky login` in operator's shell, not from this dir)
+.env
