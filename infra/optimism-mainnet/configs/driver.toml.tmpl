@@ -56,6 +56,24 @@ absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
+# Velora (formerly ParaSwap) aggregator — third competing solver.
+# Augustus V6.2 deployed deterministically on OP at
+# 0x6a000f20005980200259b80c5102003040001068 (allowlisted in
+# dex::velora::VELORA_ROUTER_ALLOWLIST). With 3 aggregators competing
+# per batch we get real auction pressure on routing quality and
+# resilience against any single API outage.
+#
+# Velora's DEX coverage on OP partially overlaps OKX/Kyber (UniV3,
+# Velodrome, Curve, Balancer) plus a few private market makers. Where
+# they overlap, different routing algorithms (Kyber MDP vs. Velora MPA)
+# produce different splits — surplus tightens at the CIP-75 cut.
+[[solver]]
+name = "velora"
+endpoint = "http://velora-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
 [submission]
 # OP mainnet typical gas << 1 gwei. Cap at 1000 gwei is wildly above realistic
 # spike levels but protects against pathological RPC misreports.

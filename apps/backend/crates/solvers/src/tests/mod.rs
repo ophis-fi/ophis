@@ -15,6 +15,7 @@ mod cases;
 mod kyberswap;
 mod mock;
 mod okx;
+mod velora;
 
 /// A solver engine handle for E2E testing.
 pub struct SolverEngine {
