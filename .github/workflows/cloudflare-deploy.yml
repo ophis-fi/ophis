@@ -105,3 +105,29 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
           command: pages deploy apps/frontend/build/cowswap --project-name=greg --branch=main --commit-dirty=true
+
+      # ── Explorer (separate Pages project, separate hostname) ──────────
+      # Build with our self-hosted orderbook base URLs so the explorer
+      # reads from {optimism,megaeth,hyperevm}-mainnet.ophis.fi instead
+      # of the canonical CoW endpoints (which don't index our forks'
+      # orders). Deployed at https://explorer.ophis.fi via CF Pages
+      # project `ophis-explorer` (custom domain wired manually 2026-05-16).
+      - name: build explorer
+        working-directory: apps/frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          # Maps `SupportedChainId → orderbook host` for every chain the
+          # explorer should be able to surface orders for. The Ophis-fork
+          # chains (10, 4326, 999) point at our self-hosted CoW services.
+          # Canonical CoW chains (1, 100, 11155111) stay on api.cow.fi
+          # because we don't run our own orderbook there.
+          REACT_APP_ORDER_BOOK_URLS: '{"1":"https://api.cow.fi/mainnet","100":"https://api.cow.fi/xdai","11155111":"https://api.cow.fi/sepolia","10":"https://optimism-mainnet.ophis.fi","4326":"https://megaeth-mainnet.ophis.fi","999":"https://hyperevm.ophis.fi"}'
+        run: pnpx nx run explorer:build --skip-nx-cache
+
+      - name: deploy explorer to Cloudflare Pages
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd  # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          command: pages deploy apps/frontend/build/explorer --project-name=ophis-explorer --branch=main --commit-dirty=true
