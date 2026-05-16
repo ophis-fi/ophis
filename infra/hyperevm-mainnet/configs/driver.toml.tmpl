@@ -47,21 +47,17 @@ weth = "0x5555555555555555555555555555555555555555"
 balances = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
 signatures = "0xe4137bd2ecfdfb96d80629ec254dadec71bc498c"
 
-# Baseline solver REMOVED 2026-05-16 (Spec post-audit follow-up). On HL
-# baseline returned NoSolutions because the published HyperSwap V2
-# router+factory addresses returned `0x` bytecode at our 2026-05-15
-# research (likely stale docs — needs re-verification before re-adding).
-# A solver that always fills with empty solutions is dead weight in
-# logs/metrics and adds confusion to solver-competition analysis.
-#
-# Direct UniV3-style liquidity (Project X $165M/24h, HyperSwap V3 $13M/24h,
-# Hybra V3 $0.6M/24h) is tracked separately as task #120 and will land
-# behind the observability stack (#118) — never wire direct-liquidity
-# without alerts in place to catch pool-state regressions.
-#
-# Day-one HL liquidity now comes solely from the kyberswap aggregator
-# (which itself routes across Hybra-CL + custom HL AMMs). Velora
-# aggregator (#119) lands next to provide solver competition.
+# Baseline solver — Spec 2026-05-16 Phase 1: HyperSwap V3 drop-in.
+# PR #46 removed baseline because it had no V2 liquidity to route through.
+# This re-adds it with REAL liquidity via the [[liquidity.uniswap-v3]] block
+# below (HyperSwap V3 — $13M/24h, public Ormi subgraph verified live
+# 2026-05-16: 2610 indexed pools, block 35280771, no indexing errors).
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 HYPE in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 # KyberSwap aggregator on HyperEVM. Slug `hyperevm` in their API path;
 # verified live 2026-05-15 (real WHYPE→USD₮0 route returned).
@@ -99,9 +95,41 @@ base-tokens = [
   "0xb8CE59FC3717ada4C02eaDF9682A9e934F625ebb",  # USD₮0 (Tether on HL — dominant stable)
 ]
 
-# NO UniV2-shape liquidity wired yet. Research 2026-05-15 found that the
-# HyperSwap V2 router + factory addresses in the published docs return
-# `0x` from eth_getCode — either dead or the docs are stale. Until we
-# verify a working V2 router OR wire HyperSwap V3 via the driver's V3
-# liquidity path (separate Rust work), baseline returns NoSolutions.
-# KyberSwap aggregator is the working route source for now.
+# HyperSwap V3 — drop-in UniswapV3-style liquidity source for the baseline
+# solver. Phase 1 of the V3 wiring spec
+# (docs/development/specs/2026-05-16-hl-uniswap-v3-liquidity.md).
+#
+# Why drop-in: HyperSwap V3 is a vanilla Uniswap V3 fork. Factory ABI
+# (`getPool(t0, t1, fee)` + `feeAmountTickSpacing(fee)`), pool ABI
+# (`slot0`, `liquidity`, `swap`, `tickBitmap`) are all canonical. The
+# only thing we need that's HL-specific is the SwapRouter02 address
+# (different per chain, deterministic CREATE2 isn't used here) and the
+# subgraph endpoint.
+#
+# Router: SwapRouter02 (V2) at the address below — independently verified
+#   bytecode size 21792 (canonical for V2) and `factory()` resolves to
+#   `0xB1c0fa0B...02E3` (the HyperSwap V3 Factory).
+#
+# Subgraph: Ormi-hosted public endpoint. As of 2026-05-16 it reports
+#   2610 pools, indexed up to block 35280771 (current), no indexing
+#   errors. SPOF risk is bounded — if Ormi goes down we lose only this
+#   liquidity source; KyberSwap aggregator still routes through HL
+#   pools (including HyperSwap V3 itself, indirectly).
+#
+# `max-pools-to-initialize = 200` pre-loads the top 200 pools by TVL
+# at boot — enough to cover the WHYPE/USDT0/USDC/UBTC/UETH cluster
+# plus the top αHYPE/UETH liquid-staking tokens with room to spare.
+# Additional pools are lazily fetched per-order as needed.
+#
+# `reinit-interval = 1h` forces a full pool-list refresh hourly so
+# newly-created pools (HyperSwap had +1k pools in the last 7 days)
+# become routable without a service restart.
+#
+# Project X ($165M/24h) and Hybra V3 ($0.6M/24h) — Phase 2-3, deferred
+# pending self-hosted Goldsky subgraph deployment (see spec).
+[[liquidity.uniswap-v3]]
+router = "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77"
+graph-url = "https://api.subgraph.ormilabs.com/api/public/33c67399-d625-4929-b239-5709cd66e422/subgraphs/hyperswap-v3/v0.1.2/gn"
+max-pools-to-initialize = 200
+reinit-interval = "1h"
+max-pools-per-tick-query = 100
