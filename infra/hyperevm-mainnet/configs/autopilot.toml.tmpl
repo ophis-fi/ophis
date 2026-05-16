@@ -44,16 +44,19 @@ type = "Web3"
 [[gas-estimators]]
 type = "Alloy"
 
-# HyperEVM solver registry — 2026-05-16 audit-driven cleanup:
-# - Baseline REMOVED: returned NoSolutions on chain 999 (HyperSwap V2 doc
-#   addresses had no bytecode). Re-add when V2/V3 liquidity wiring (task
-#   #120) lands behind the observability stack (#118).
+# HyperEVM solver registry — 2026-05-16 Phase 1:
+# - Baseline RE-ADDED with HyperSwap V3 liquidity via
+#   driver's [[liquidity.uniswap-v3]] block (Ormi subgraph confirmed live
+#   with 2610 pools, current block, no indexing errors).
 # - KyberSwap: VERIFIED LIVE; routes WHYPE↔USD₮0/USDe via Hybra-CL +
-#   custom HL AMMs. Day-one primary liquidity source.
-# - Velora (task #119): scaffolding incoming; will be the second
-#   solver for real auction competition.
-# - OKX V6: does NOT support chain 999 (free-tier probe returned empty
-#   chain list). Removed.
+#   custom HL AMMs. Aggregator competition still primary.
+# - Velora: dropped after API probe confirmed no chain-999 support.
+# - OKX V6: does NOT support chain 999. Removed.
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
+
 [[drivers]]
 name = "kyberswap"
 url = "http://driver/kyberswap"
@@ -66,11 +69,10 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [order-quoting]
-# KyberSwap is the only verified-working route source on HyperEVM at
-# day-one. Baseline driver entry dropped 2026-05-16; will be replaced by
-# the Velora aggregator (task #119) once landed. OKX dropped — not
-# available on chain 999.
+# Baseline (HyperSwap V3 direct) + KyberSwap (aggregator). Both used for
+# quote estimation — driver auctions pick whichever returns better.
 price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
 ]
 
@@ -82,27 +84,25 @@ api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
 
 [native-price-estimation]
-# HyperEVM-specific: neither CoinGecko (no chain 999 in asset platforms,
-# per /tmp/hyperevm-research.md) nor Uniswap V3 (HyperSwap V3 factory +
-# init-code-hash addresses not yet verified) can compute native prices
-# today. Using the `Driver` shim — points at baseline — bypasses the
-# init-time chain-check that would otherwise panic the orderbook at
-# boot (same workaround we shipped for MegaETH). At runtime baseline
-# can't compute prices either, so orders requiring a native price for
-# fee accounting are filtered with missing_native_price.
+# HyperEVM native-price estimation (Phase 1 — 2026-05-16):
 #
-# Follow-up: extend the UniswapV3 estimator from PR #43 with the
-# HyperSwap V3 factory + init-code-hash once we verify them on-chain
-# (research flagged these as "needs probe" — see hyperevm-research.md
-# §"Critical unknowns").
-# KyberSwap aggregator first (can price WHYPE↔any token via SELL-direction
-# query after the kind=Sell fix in native_price/mod.rs), baseline as
-# fallback. Without kyberswap, the autopilot filters every order with
-# a non-native buy_token as missing_native_price, even though the
-# orderbook can serve a quote — because the autopilot uses its own
-# native-price estimator instance that wasn't wired to kyberswap.
+# Tier 1: KyberSwap aggregator. Can price WHYPE↔any token via SELL-direction
+# query after the kind=Sell fix in native_price/mod.rs. Most reliable
+# single source today.
+#
+# Tier 2: baseline solver via Driver shim. Now backed by HyperSwap V3
+# liquidity (driver.toml.tmpl [[liquidity.uniswap-v3]] block). Picks up
+# tokens that KyberSwap can't (or rate-limits) but that have direct
+# WHYPE/USD₮0 V3 pool depth. Two-tier fallback closes the gap that
+# previously filtered orders as missing_native_price.
+#
+# CoinGecko still unavailable (no chain 999 in asset_platforms).
+# Direct on-chain UniV3 TWAP estimator (apps/backend/crates/price-estimation/
+# src/native/uniswap_v3.rs) could be wired here once we verify HyperSwap
+# V3's init-code-hash on-chain — separate follow-up.
 estimators = [
   [{ type = "Driver", name = "kyberswap", url = "http://driver/kyberswap" }],
+  [{ type = "Driver", name = "baseline", url = "http://driver/baseline" }],
 ]
 
 [native-price-estimation.cache]
