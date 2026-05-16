@@ -31,6 +31,19 @@ set +a
 : "${HYPEREVM_RPC_INTERNAL:?must be set in .env — see .env.example}"
 : "${OPHIS_DRIVER_SUBMITTER_KEY:?must be set in .env — driver-submitter PK from Keychain ophis-driver-submitter-2026-05-14}"
 : "${TELEGRAM_BOT_TOKEN:?must be set in .env — Alertmanager → Telegram. Lookup via the path in .env.example.}"
+# Default to the verified-live Ormi-hosted HyperSwap V3 subgraph (Phase 1
+# of the V3 wiring spec). Operator can override to self-hosted Goldsky /
+# graph-node in .env when Phase 2/3 work lands.
+: "${HYPERSWAP_V3_SUBGRAPH_URL:=https://api.subgraph.ormilabs.com/api/public/33c67399-d625-4929-b239-5709cd66e422/subgraphs/hyperswap-v3/v0.1.2/gn}"
+export HYPERSWAP_V3_SUBGRAPH_URL
+
+# Subgraph URL must look like a Goldsky-style or Ormi-style https
+# endpoint. A typo here gracefully degrades baseline to NoSolutions but
+# never causes a panic — still, refuse obvious malformations early.
+if [[ ! "$HYPERSWAP_V3_SUBGRAPH_URL" =~ ^https://.+/[^/]+ ]]; then
+  echo "ERROR: HYPERSWAP_V3_SUBGRAPH_URL must be an https URL with a path component" >&2
+  exit 2
+fi
 
 # Sanity-check the driver-submitter PK shape (0x + 64 hex chars). A typo or
 # accidental truncation lands as a soft-fail at driver startup; better to
@@ -56,7 +69,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   out="rendered/$name"
   # envsubst only substitutes the explicit list we pass (prevents accidental
   # substitution of values that happen to contain `$` chars like passphrases).
-  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
     < "$tmpl" > "$out"
   # Rendered files contain plaintext secrets (driver-submitter PK, OKX API
   # keys). Lock to owner-only so anything reading our /Users/scep/greg
