@@ -128,8 +128,8 @@ base-tokens = [
 # newly-created pools (HyperSwap had +1k pools in the last 7 days)
 # become routable without a service restart.
 #
-# Project X ($165M/24h) and Hybra V3 ($0.6M/24h) — Phase 2-3, deferred
-# pending self-hosted Goldsky subgraph deployment (see spec).
+# Hybra V3 ($0.6M/24h) — Phase 3, deferred (same Goldsky free-tier
+# pattern as Project X; small TVL deprioritizes it).
 [[liquidity.uniswap-v3]]
 router = "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77"
 # Subgraph URL is templated so we can swap Ormi-hosted → self-hosted
@@ -137,6 +137,37 @@ router = "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77"
 # code commit. Defaults to the verified-live Ormi URL via .env, but
 # the operator can override per-deploy in infra/hyperevm-mainnet/.env.
 graph-url = "${HYPERSWAP_V3_SUBGRAPH_URL}"
+max-pools-to-initialize = 200
+reinit-interval = "1h"
+max-pools-per-tick-query = 100
+
+# Project X — $165M/24h HL DEX, biggest single-venue volume on chain 999.
+# Phase 2 of the V3 wiring spec — landed 2026-05-16.
+#
+# Why drop-in: same vanilla UniV3 fork story as HyperSwap V3 — factory
+# `0xff7b3e8c…b072` confirms canonical `feeAmountTickSpacing(uint24)` →
+# {100:1, 500:10, 3000:60, 10000:200}; `PoolCreated` topic hash matches
+# upstream UniV3. SwapRouter at `0x1EbDFC75…Af9B` confirmed bytecode
+# (12070 bytes, canonical UniV3 SwapRouter V1 footprint).
+#
+# Subgraph: self-deployed on Goldsky free tier (1.5M queries/mo, $0).
+# Goldsky-side identity: `project-x-hl/0.0.1` under project Ophis. Source
+# code at `infra/hyperevm-mainnet/subgraphs/project-x/`. Initial sync
+# ~46h for the 27.4M-block backlog; driver tolerates partial-index
+# gracefully (uninitialized pools surface as they get indexed).
+#
+# Why this matters: Project X holds ~12× the HL CL liquidity of
+# HyperSwap V3. Routing baseline solver through it directly (instead of
+# the indirect KyberSwap → Project X path) tightens surplus capture on
+# auctions where baseline can beat KyberSwap's quote — measurable margin
+# improvement at our future volume scale.
+#
+# Same sizing as HyperSwap V3 — max-pools-to-initialize=200 covers the
+# top ~12 token clusters; reinit-interval=1h picks up new pools without
+# service restart.
+[[liquidity.uniswap-v3]]
+router = "0x1EbDFC75FfE3ba3de61E7138a3E8706aC841Af9B"
+graph-url = "${PROJECT_X_SUBGRAPH_URL}"
 max-pools-to-initialize = 200
 reinit-interval = "1h"
 max-pools-per-tick-query = 100

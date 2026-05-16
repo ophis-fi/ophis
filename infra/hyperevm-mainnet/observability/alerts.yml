@@ -134,6 +134,23 @@ groups:
           summary: "HL p95 auction-preprocessing > 5s"
           description: "Auction preprocessing p95 above 5s for 10m. RPC reads (block fetch, balance reads) are slowing the auction loop. Likely RPC provider degradation — inspect eRPC proxy metrics for consensus failures."
 
+      # ─── Subgraph staleness — deliberately NOT alerted directly ────────
+      #
+      # Considered + rejected: an asymmetric "baseline drops while kyberswap
+      # doesn't" rule. Per Codex review on the wire-up PR (2026-05-16): when
+      # a subgraph stalls, the liquidity collector silently returns []
+      # (apps/backend/crates/solver/src/liquidity_collector.rs:38) — the
+      # solver then surfaces missing routes as `solutions{result="NoSolutions"}`
+      # or `result="Empty"`, NOT as `dropped_solutions`. A
+      # `dropped_solutions`-based alert would stay quiet during the actual
+      # failure it's meant to catch.
+      #
+      # The right direct fix is a blackbox_exporter probe of each subgraph's
+      # `_meta { block { number } }` endpoint vs the chain head — tracked as
+      # a separate follow-up. Until then, downstream symptoms (settlement
+      # failures, no-settlements-in-1h, audit latency) catch any subgraph
+      # regression that meaningfully degrades user outcomes.
+
       - alert: OphisHlSolveTimeBudgetExhausted
         expr: |
           histogram_quantile(0.99, rate(remaining_solve_time_bucket{kind="dispatched"}[10m])) < 1.0

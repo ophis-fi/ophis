@@ -37,13 +37,23 @@ set +a
 : "${HYPERSWAP_V3_SUBGRAPH_URL:=https://api.subgraph.ormilabs.com/api/public/33c67399-d625-4929-b239-5709cd66e422/subgraphs/hyperswap-v3/v0.1.2/gn}"
 export HYPERSWAP_V3_SUBGRAPH_URL
 
+# Default to the Ophis-deployed Goldsky subgraph for Project X (Phase 2 of
+# the V3 wiring spec, deployed 2026-05-16). Operator can override to a
+# different Goldsky deployment in .env (e.g. when upgrading subgraph
+# version 0.0.1 → 0.0.2 mid-sync to avoid an in-place re-index).
+: "${PROJECT_X_SUBGRAPH_URL:=https://api.goldsky.com/api/public/project_cmp8sq4cilegn01ws0ldh325r/subgraphs/project-x-hl/0.0.1/gn}"
+export PROJECT_X_SUBGRAPH_URL
+
 # Subgraph URL must look like a Goldsky-style or Ormi-style https
 # endpoint. A typo here gracefully degrades baseline to NoSolutions but
 # never causes a panic — still, refuse obvious malformations early.
-if [[ ! "$HYPERSWAP_V3_SUBGRAPH_URL" =~ ^https://.+/[^/]+ ]]; then
-  echo "ERROR: HYPERSWAP_V3_SUBGRAPH_URL must be an https URL with a path component" >&2
-  exit 2
-fi
+for var_name in HYPERSWAP_V3_SUBGRAPH_URL PROJECT_X_SUBGRAPH_URL; do
+  val="${!var_name}"
+  if [[ ! "$val" =~ ^https://.+/[^/]+ ]]; then
+    echo "ERROR: $var_name must be an https URL with a path component" >&2
+    exit 2
+  fi
+done
 
 # Sanity-check the driver-submitter PK shape (0x + 64 hex chars). A typo or
 # accidental truncation lands as a soft-fail at driver startup; better to
@@ -69,7 +79,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   out="rendered/$name"
   # envsubst only substitutes the explicit list we pass (prevents accidental
   # substitution of values that happen to contain `$` chars like passphrases).
-  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
+  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${HYPERSWAP_V3_SUBGRAPH_URL} ${PROJECT_X_SUBGRAPH_URL}' \
     < "$tmpl" > "$out"
   # Rendered files contain plaintext secrets (driver-submitter PK, OKX API
   # keys). Lock to owner-only so anything reading our /Users/scep/greg
