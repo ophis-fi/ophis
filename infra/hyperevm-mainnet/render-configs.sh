@@ -30,6 +30,7 @@ set +a
 : "${HYPEREVM_MAINNET_RPC:?must be set in .env — see .env.example}"
 : "${HYPEREVM_RPC_INTERNAL:?must be set in .env — see .env.example}"
 : "${OPHIS_DRIVER_SUBMITTER_KEY:?must be set in .env — driver-submitter PK from Keychain ophis-driver-submitter-2026-05-14}"
+: "${TELEGRAM_BOT_TOKEN:?must be set in .env — Alertmanager → Telegram. Lookup via the path in .env.example.}"
 
 # Sanity-check the driver-submitter PK shape (0x + 64 hex chars). A typo or
 # accidental truncation lands as a soft-fail at driver startup; better to
@@ -39,7 +40,15 @@ if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
   exit 2
 fi
 
-mkdir -p rendered
+# Telegram bot tokens are `{int}:{base64-ish-suffix}`. A typo here means
+# alerts silently disappear into a 404 — defeats the whole point of
+# observability. Refuse at render time.
+if [[ ! "$TELEGRAM_BOT_TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]; then
+  echo "ERROR: TELEGRAM_BOT_TOKEN doesn't look like a Telegram bot token ({int}:{base64-ish})" >&2
+  exit 2
+fi
+
+mkdir -p rendered observability-rendered
 shopt -s nullglob
 
 for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
@@ -56,6 +65,24 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   chmod 600 "$out"
   echo "  rendered  $name"
 done
+
+# Render observability templates (Alertmanager only — Prometheus config and
+# alert rules are static and mounted as-is by docker-compose).
+for tmpl in observability/*.yml.tmpl; do
+  name="$(basename "$tmpl" .tmpl)"
+  out="observability-rendered/$name"
+  envsubst '${TELEGRAM_BOT_TOKEN}' < "$tmpl" > "$out"
+  chmod 600 "$out"
+  echo "  rendered  observability/$name"
+done
+
+# Telegram bot token in a chmod-600 file (Alertmanager reads via
+# bot_token_file). Not env-var-injected — same hygiene as the
+# driver-submitter PK (avoids `docker inspect` env leak).
+TOKEN_FILE="observability-rendered/telegram-token"
+printf '%s' "$TELEGRAM_BOT_TOKEN" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE"
+echo "  rendered  observability/telegram-token (chmod 600, file-backed)"
 
 # Same lock for .env — render-configs.sh runs at every deploy so this
 # enforces idempotently.
