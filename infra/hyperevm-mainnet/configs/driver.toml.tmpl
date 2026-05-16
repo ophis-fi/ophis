@@ -29,14 +29,14 @@ orderbook-url = "http://orderbook"
 # autopilot, OR move that work behind a different solver-submitter.
 tx-gas-limit = "2900000"
 
-# Skip eth_createAccessList preflight before settlement simulation.
-# Verified 2026-05-15 (research): HyperEVM RPCs (both public and Alchemy)
-# return method-not-found for eth_createAccessList, which trips the
-# driver's preflight before main simulation can run. Disabling unblocks
-# simulation; the gas-optimization access list isn't worth the round-trip
-# on a chain this cheap (0.1 gwei base fee → access lists save < $0.01
-# per settle).
-disable-access-list-simulation = true
+# M4 (2026-05-16): re-enabled eth_createAccessList preflight. With the eRPC
+# multi-provider proxy in front, even though the HL official RPC doesn't
+# support eth_createAccessList, PurroofGroup + HyperLend do — eRPC routes
+# around the failing upstream automatically. The access-list preflight is
+# also a cheap reverts-early sanity check before full simulation, so
+# re-enabling it tightens the solver-grief DoS surface that the previous
+# `disable-access-list-simulation = true` opened on this fast-block chain.
+disable-access-list-simulation = false
 
 [contracts]
 gp-v2-settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
