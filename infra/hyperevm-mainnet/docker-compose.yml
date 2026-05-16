@@ -218,7 +218,11 @@ services:
     environment:
       ADDR: 0.0.0.0:80
     volumes:
-      - ./configs/baseline.toml:/baseline.toml:ro
+      # Mount the rendered (env-substituted) baseline.toml, NOT the .tmpl —
+      # baseline.toml.tmpl contains ${HYPEREVM_RPC_INTERNAL} which must be
+      # resolved before the binary loads it. render-configs.sh produces
+      # rendered/baseline.toml on each deploy.
+      - ./rendered/baseline.toml:/baseline.toml:ro
     command: ["baseline", "--config", "/baseline.toml"]
     ports:
       - "127.0.0.1:9201:80"
