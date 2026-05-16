@@ -1,13 +1,16 @@
 # Ophis — HyperEVM mainnet (chain 999) driver config.
 #
-# Day-one solver coverage: baseline (will return NoSolutions until we wire
-# HyperSwap V2 liquidity — research flagged published doc addresses as
-# returning 0x bytecode) + KyberSwap aggregator (verified live: real route
-# returned for WHYPE→USD₮0 at research time, slug `hyperevm`).
+# Solver coverage (Phase 1, 2026-05-16):
+#   - baseline: routes through HyperSwap V3 direct liquidity via the
+#     [[liquidity.uniswap-v3]] block below.
+#   - kyberswap: aggregator covering Hybra-CL + custom HL AMMs.
 #
 # OKX V6 NOT included — chain 999 isn't in OKX's supported-chain list as
 # of 2026-05-15. Re-add the [[solver]] block + okx-solver service if/when
 # they enable Hyperliquid.
+#
+# Velora NOT included — Velora's API explicitly rejects chain 999 (live
+# probe 2026-05-16). Re-add if/when they deploy Augustus V6.2 on HL.
 app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 
@@ -129,7 +132,11 @@ base-tokens = [
 # pending self-hosted Goldsky subgraph deployment (see spec).
 [[liquidity.uniswap-v3]]
 router = "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77"
-graph-url = "https://api.subgraph.ormilabs.com/api/public/33c67399-d625-4929-b239-5709cd66e422/subgraphs/hyperswap-v3/v0.1.2/gn"
+# Subgraph URL is templated so we can swap Ormi-hosted → self-hosted
+# Goldsky (Phase 2/3 follow-up) or self-hosted graph-node without a
+# code commit. Defaults to the verified-live Ormi URL via .env, but
+# the operator can override per-deploy in infra/hyperevm-mainnet/.env.
+graph-url = "${HYPERSWAP_V3_SUBGRAPH_URL}"
 max-pools-to-initialize = 200
 reinit-interval = "1h"
 max-pools-per-tick-query = 100
