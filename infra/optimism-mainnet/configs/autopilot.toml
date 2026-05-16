@@ -73,7 +73,19 @@ api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
 
 [native-price-estimation]
-estimators = [[{ type = "CoinGecko" }]]
+# On-chain Uniswap V3 TWAP first, CoinGecko fallback. See orderbook.toml
+# for the long-form rationale. Both estimators sit in the same stage so
+# they race in parallel and the autopilot keeps whichever returns first
+# (with `early_return = 1` from the price-estimation pipeline). In
+# practice the V3 read finishes in one RPC round-trip — much faster
+# than CoinGecko's REST call — so this is effectively "V3 first,
+# CoinGecko fills the long-tail".
+estimators = [
+  [
+    { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "CoinGecko" },
+  ],
+]
 
 [native-price-estimation.cache]
 max-age = "20m"
