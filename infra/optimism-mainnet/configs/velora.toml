@@ -1,0 +1,45 @@
+# Ophis — Optimism mainnet (chain 10) Velora aggregator solver config.
+#
+# Velora (formerly ParaSwap) supports chain 10 as part of its 10-chain
+# Augustus V6.2 deployment matrix. Chain support verified live 2026-05-16:
+#   curl https://api.paraswap.io/tokens/10 → 200 + token list (4 KB+)
+#   curl https://api.paraswap.io/tokens/999 → 400 "Invalid network..."
+#
+# Note: despite the rebrand from ParaSwap to Velora, the API host remains
+# api.paraswap.io. The SDK constant (VeloraDEX/sdk constants.ts:15) has
+# NOT been updated and there is no redirect from api.velora.xyz. Hardcoded
+# in apps/backend/crates/solvers/src/infra/config/dex/velora/file.rs.
+#
+# Augustus V6.2 router (allowance grantee): 0x6a000f20005980200259b80c5102003040001068
+# Same CREATE2-deterministic address on all 10 supported chains. The
+# allowlist in dex/velora/mod.rs is a single-entry constant.
+
+node-url = "https://optimism-rpc.publicnode.com"
+
+# Ophis-fork settlement on Optimism. Same divergence reason as KyberSwap
+# + OKX: without this override the solver framework falls back to the
+# canonical CoW address, Velora bakes the wrong `receiver` into the swap
+# call, and settle() reverts.
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
+[dex]
+chain-id = "10"
+
+# Partner identifier for analytics + future Pro API access. Velora's
+# free tier allows arbitrary partner IDs; once we apply for the Pro
+# API key this string is what the partnership team binds the key to.
+partner = "ophis"
+
+# Partner-fee block currently commented out. Velora's `partnerFeeBps`
+# is denominated against the OUTPUT TOKEN amount, NOT against measured
+# price improvement (unlike CoW's CIP-75 model the rest of the stack
+# uses). Enabling this would skim a flat 25 bps from every Velora-won
+# auction's output token, on TOP of the protocol-level partner fee
+# CoW already collects via CIP-75 — likely double-charging users.
+#
+# Re-enable only after deciding how to compose with CIP-75 (probably:
+# disable here, let CIP-75 handle all partner-fee math at the protocol
+# layer where surplus accounting already happens correctly).
+#
+# partner-address = "0x858f0F5e..."  # Safe — same as CIP-75 recipient
+# partner-fee-bps = 25

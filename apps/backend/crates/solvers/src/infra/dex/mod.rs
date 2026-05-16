@@ -8,6 +8,7 @@ pub mod bitget;
 pub mod kyberswap;
 pub mod okx;
 pub mod simulator;
+pub mod velora;
 
 pub use self::simulator::Simulator;
 
@@ -16,6 +17,7 @@ pub enum Dex {
     Bitget(bitget::Bitget),
     Okx(Box<okx::Okx>),
     KyberSwap(Box<kyberswap::KyberSwap>),
+    Velora(Box<velora::Velora>),
 }
 
 impl Dex {
@@ -33,6 +35,7 @@ impl Dex {
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
             Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage).await?,
+            Dex::Velora(velora) => velora.swap(order, slippage).await?,
         };
         Ok(swap)
     }
@@ -129,6 +132,19 @@ impl From<kyberswap::Error> for Error {
             kyberswap::Error::OrderNotSupported => Self::OrderNotSupported,
             kyberswap::Error::NotFound | kyberswap::Error::BuildFailed => Self::NotFound,
             kyberswap::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<velora::Error> for Error {
+    fn from(err: velora::Error) -> Self {
+        match err {
+            velora::Error::OrderNotSupported => Self::OrderNotSupported,
+            // RateChanged is a transient — the solver caller will retry on the
+            // next auction iteration when /prices returns a fresh route.
+            velora::Error::NotFound | velora::Error::RateChanged => Self::NotFound,
+            velora::Error::RateLimited => Self::RateLimited,
             _ => Self::Other(Box::new(err)),
         }
     }

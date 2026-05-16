@@ -2,6 +2,7 @@ pub mod bitget;
 pub mod file;
 pub mod kyberswap;
 pub mod okx;
+pub mod velora;
 
 use {
     crate::domain::{

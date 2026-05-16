@@ -74,6 +74,16 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Velora { config: path } => {
+            let config = config::dex::velora::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Velora(Box::new(
+                    dex::velora::Velora::try_new(config.velora)
+                        .expect("invalid Velora configuration"),
+                )),
+                config.base,
+            )))
+        }
     };
 
     crate::api::Api {
