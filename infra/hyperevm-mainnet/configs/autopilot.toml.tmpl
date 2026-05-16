@@ -44,22 +44,16 @@ type = "Web3"
 [[gas-estimators]]
 type = "Alloy"
 
-# Baseline + KyberSwap solvers on HyperEVM:
-# - Baseline: needs UniV2-shape pools. HyperSwap V2 doc addresses don't have
-#   bytecode at the time of writing (verified 2026-05-15 — research report
-#   /tmp/hyperevm-research.md). Baseline returns NoSolutions until we
-#   verify V2 router addresses or wire HyperSwap V3 via the driver's V3
-#   liquidity path.
-# - KyberSwap: VERIFIED LIVE on chain 999 (slug `hyperevm`); returned a
-#   real WHYPE→USD₮0 route at research time. This is the primary day-one
-#   liquidity for HyperEVM swaps.
+# HyperEVM solver registry — 2026-05-16 audit-driven cleanup:
+# - Baseline REMOVED: returned NoSolutions on chain 999 (HyperSwap V2 doc
+#   addresses had no bytecode). Re-add when V2/V3 liquidity wiring (task
+#   #120) lands behind the observability stack (#118).
+# - KyberSwap: VERIFIED LIVE; routes WHYPE↔USD₮0/USDe via Hybra-CL +
+#   custom HL AMMs. Day-one primary liquidity source.
+# - Velora (task #119): scaffolding incoming; will be the second
+#   solver for real auction competition.
 # - OKX V6: does NOT support chain 999 (free-tier probe returned empty
-#   chain list). Removed entirely from this stack.
-[[drivers]]
-name = "baseline"
-url = "http://driver/baseline"
-address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
-
+#   chain list). Removed.
 [[drivers]]
 name = "kyberswap"
 url = "http://driver/kyberswap"
@@ -73,11 +67,10 @@ read-url = "%DB_READ_URL"
 
 [order-quoting]
 # KyberSwap is the only verified-working route source on HyperEVM at
-# day-one. Baseline solver included so we capture the moment we wire V2
-# liquidity (or it stops returning NoSolutions). OKX dropped — not
+# day-one. Baseline driver entry dropped 2026-05-16; will be replaced by
+# the Velora aggregator (task #119) once landed. OKX dropped — not
 # available on chain 999.
 price-estimation-drivers = [
-  { name = "baseline", url = "http://driver/baseline" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
 ]
 
@@ -110,7 +103,6 @@ url = "https://api.coingecko.com/api/v3/simple/token_price"
 # native-price estimator instance that wasn't wired to kyberswap.
 estimators = [
   [{ type = "Driver", name = "kyberswap", url = "http://driver/kyberswap" }],
-  [{ type = "Driver", name = "baseline", url = "http://driver/baseline" }],
 ]
 
 [native-price-estimation.cache]
