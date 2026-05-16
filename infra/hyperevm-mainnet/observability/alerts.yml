@@ -73,7 +73,7 @@ groups:
           chain: hyperevm
         annotations:
           summary: "HL: 0 successful settlements in 1h despite active auctions"
-          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Solver may be stuck, RPC submission failing, or driver-submitter wallet out of funds. Check `solutions{result}` and `mempool_submission{result}` for the failure mode."
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) HyperSwap V3 subgraph stale — `curl ${HYPERSWAP_V3_SUBGRAPH_URL} -X POST -H 'Content-Type: application/json' -d '{\"query\":\"{ _meta { block { number } hasIndexingErrors } }\"}'` and compare to chain head; (2) solver stuck — check `solutions{result}` breakdown; (3) RPC submission failing — check `mempool_submission{result}` and PurroofGroup status; (4) driver-submitter wallet out of HYPE — `cast balance 0xFB308397267878228f7761311DBD6Bc6FCa1bB5a --rpc-url https://rpc.purroofgroup.com`."
 
       - alert: OphisHlSettlementFailureRateHigh
         expr: |

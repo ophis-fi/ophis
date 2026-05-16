@@ -337,6 +337,22 @@ fn build_module() -> Module {
             LINEA => "0x42bE4D6527829FeFA1493e1fb9F3676d2425C3C1",
             PLASMA => "0xaa52bB8110fE38D0d2d2AF0B85C3A3eE622CA455",
             INK => "0x96b572D2d880cf2Fa2563651BD23ADE6f5516652",
+            // Ophis divergence: HyperSwap V3 QuoterV2 on HyperEVM
+            // mainnet (chain 999). Without this, the baseline solver
+            // silently drops every Liquidity::Concentrated(pool) at
+            // `solvers/src/boundary/baseline.rs:233-236`.
+            // Verified live 2026-05-17:
+            //   factory() → 0xB1c0fa0B789320044A6F623cFe5eBda9562602E3
+            //     (HyperSwap V3 Factory),
+            //   WETH9() → 0x5555555555555555555555555555555555555555 (WHYPE),
+            //   quoteExactInputSingle selector 0xc6a5026a (canonical V2)
+            //     present in bytecode (V1 selector 0xf7729d43 absent).
+            //
+            // Project X's Quoter (0x239f11a7…5258) is V1, NOT V2 — not
+            // registered here. Adding V1 support to the driver is
+            // tracked separately; until then Project X is reachable
+            // only indirectly via KyberSwap aggregator.
+            HYPEREVM => "0x03a918028f22d9e1473b7959c927ad7425a45c7c",
         ]))
         .add_contract(
             Contract::new("UniswapV3SwapRouterV2").with_networks(networks![
@@ -351,6 +367,19 @@ fn build_module() -> Module {
                 LINEA => "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a",
                 PLASMA => "0x807F4E281B7A3B324825C64ca53c69F0b418dE40",
                 INK => "0x177778F19E89dD1012BdBe603F144088A95C4B53",
+                // Ophis divergence: HyperSwap V3 SwapRouter02 on HyperEVM
+                // mainnet (chain 999). Verified 2026-05-17:
+                //   bytecode 21792 bytes (canonical SwapRouter02 footprint;
+                //     SwapRouter V1 is ~12 KB),
+                //   factory() → 0xB1c0fa0B789320044A6F623cFe5eBda9562602E3,
+                //   exactOutputSingle selector 0x5023b4df (V2 7-tuple)
+                //     present in bytecode; V1 0xdb3e2198 absent.
+                //
+                // Project X's SwapRouter (0x1EbDFC75…Af9B) is V1 (12070
+                // bytes; only V1 selector in bytecode) — NOT registered
+                // here. The driver always encodes V2 calldata, so a V1
+                // router would revert every settlement at simulation.
+                HYPEREVM => "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77",
             ]),
         )
         .add_contract(Contract::new("IUniswapV3Factory").with_networks(networks![
@@ -366,6 +395,11 @@ fn build_module() -> Module {
             LINEA => "0x31FAfd4889FA1269F7a13A66eE0fB458f27D72A9",
             PLASMA => "0xcb2436774C3e191c85056d248EF4260ce5f27A9D",
             INK => "0x640887A9ba3A9C53Ed27D0F7e8246A4F933f3424",
+            // Ophis divergence: HyperSwap V3 Factory on HyperEVM mainnet.
+            // Registered for completeness alongside QuoterV2 + SwapRouter02
+            // — `factory()` on both of those resolves to this address,
+            // proving the trio is consistent.
+            HYPEREVM => "0xB1c0fa0B789320044A6F623cFe5eBda9562602E3",
         ]))
         .add_contract(Contract::new("HooksTrampoline").with_networks(networks![
             MAINNET => "0x60Bf78233f48eC42eE3F101b9a05eC7878728006",
