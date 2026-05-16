@@ -28,3 +28,21 @@ max-partial-attempts = 5
 # current price) is a small enough probe to land in the linear-price
 # region of any reasonable pool without burning gas/RPC quota.
 native-token-price-estimation-amount = "1000000000000000"  # 0.001 WHYPE
+
+# UniswapV3 QuoterV2 RPC endpoint. WITHOUT this set, the baseline solver
+# at `solvers/src/boundary/baseline.rs:233-236` silently DROPS every
+# `Liquidity::Concentrated(pool)` it receives — meaning the
+# [[liquidity.uniswap-v3]] block in driver.toml is dead plumbing.
+#
+# This was the audit catch on PR #50 (Phase 1, 2026-05-16): the subgraph
+# fed pools to the driver, the driver forwarded them as Concentrated
+# liquidity, but baseline dropped them at this boundary because
+# uni_v3_quoter_v2 was None (URL not set + chain 999 not in the contracts
+# crate's UniswapV3QuoterV2 network registry). Both gaps closed in the
+# 2026-05-17 fix PR. The quoter Instance is now resolvable on chain 999
+# at 0x03a918028f22d9e1473b7959c927ad7425a45c7c (HyperSwap V3 QuoterV2).
+#
+# The eRPC proxy is the right endpoint (2-of-3 consensus over PurroofGroup
+# + HL-official + HyperLend) — quoteExactInputSingle is read-only and
+# benefits from the consensus failsafe against fork-view poisoning.
+uni-v3-node-url = "${HYPEREVM_RPC_INTERNAL}"
