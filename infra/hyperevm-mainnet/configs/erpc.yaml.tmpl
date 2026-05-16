@@ -53,7 +53,17 @@ projects:
               maxParticipants: 3
               agreementThreshold: 2
               disputeBehavior: returnError
-              lowParticipantsBehavior: acceptMostCommonValidResult
+              # Codex review 2026-05-16 (H3 follow-up): the obvious default
+              # `acceptMostCommonValidResult` here SILENTLY collapses to
+              # single-upstream trust when 2/3 providers fail to answer —
+              # the surviving 1 provider can then poison critical reads
+              # because "most common" = "whatever the only respondent said".
+              # `returnError` is the only fail-closed behavior consistent
+              # with H3's threat model (defeats fork-view-poisoning even
+              # under high provider failure load). Trade-off: occasional
+              # transient failures during multi-provider outages bubble up
+              # to the autopilot/driver retry layer, which is correct.
+              lowParticipantsBehavior: returnError
               preferNonEmpty: true
               ignoreFields:
                 # `timestamp` is the obvious diverge field; some HL providers
