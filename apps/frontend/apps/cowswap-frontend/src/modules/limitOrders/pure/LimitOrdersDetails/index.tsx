@@ -124,7 +124,7 @@ export function LimitOrdersDetails(props: LimitOrdersDetailsProps): ReactNode {
           </p>
 
           <InfoTooltip
-            content={t`If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on CoW Swap!`}
+            content={t`If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on Ophis!`}
           />
         </RowFixed>
 
