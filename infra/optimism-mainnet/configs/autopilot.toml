@@ -52,6 +52,15 @@ name = "kyberswap"
 url = "http://driver/kyberswap"
 address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
 
+# Velora (formerly ParaSwap) — third aggregator, exactIn-only. Adds
+# independent DEX coverage + routing-algorithm diversity (MPA vs.
+# Kyber MDP vs. OKX). 3 aggregators competing per batch produces
+# genuine surplus.
+[[drivers]]
+name = "velora"
+url = "http://driver/velora"
+address = "0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
+
 [fee-policies]
 
 [database]
@@ -63,6 +72,7 @@ price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
   { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
+  { name = "velora", url = "http://driver/velora" },
 ]
 
 [price-estimation]
