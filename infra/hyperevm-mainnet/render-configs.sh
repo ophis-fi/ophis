@@ -61,8 +61,12 @@ export HYPERSWAP_V3_SUBGRAPH_URL
 #   - anchors both ends (^...$)
 #   - restricts host chars to RFC-3986 reg-name + dots/hyphens
 #   - allows an optional port (`:[0-9]+`)
-#   - restricts the path body to URL-safe chars only (no whitespace,
-#     no quotes, no backslashes, no backticks, no `$`)
+#   - restricts the path body to RFC-3986-safe chars (alphanumerics,
+#     unreserved punctuation, RFC sub-delims, and pct-encoding); the
+#     real win is rejecting whitespace, quotes, backslashes, backticks,
+#     control chars — sub-delim `$` is allowed because canonical URL
+#     schemes may include it (envsubst doesn't expand inside the
+#     resulting TOML string, so it's safe to pass through).
 url_re='^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~!$&'\''()*+,;=:@%/?#-]+)+$'
 if [[ ! "$HYPERSWAP_V3_SUBGRAPH_URL" =~ $url_re ]]; then
   echo "ERROR: HYPERSWAP_V3_SUBGRAPH_URL fails URL shape check (RFC-3986-safe https://host[:port]/path)" >&2
