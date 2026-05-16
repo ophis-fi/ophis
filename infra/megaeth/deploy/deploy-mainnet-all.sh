@@ -83,7 +83,14 @@ cd "$REPO_ROOT/contracts"
 export MEGAETH_MAINNET_RPC
 
 LOG="$REPO_ROOT/infra/megaeth/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
+# HARDHAT_NETWORK env var must be set explicitly — hardhat's CLI --network
+# flag doesn't propagate to process.env, so the chain-aware gasLimit logic
+# in contracts/src/deploy/001_authenticator.ts couldn't see we're on megaeth
+# and fell through to a 25M default that OOG'd. Setting it here makes the
+# 100M MegaETH path light up correctly.
 HARDHAT_CONFIG=hardhat-megaeth.config.ts \
+HARDHAT_NETWORK=megaeth-mainnet \
+OPHIS_AUTH_PROXY_GAS_LIMIT=150000000 \
   pnpm exec hardhat deploy --network megaeth-mainnet 2>&1 | tee "$LOG"
 
 # Extract addresses from hardhat-deploy artifacts

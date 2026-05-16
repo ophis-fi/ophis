@@ -111,6 +111,8 @@ export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor
   [10 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  [999 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
 }
 
 export const SURPLUS_IMAGES = [

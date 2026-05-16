@@ -1,0 +1,131 @@
+# eRPC multi-provider proxy for HyperEVM mainnet (chain 999).
+#
+# Reliability map (probed 2026-05-16):
+#   PurroofGroup       10/10 on isSolver eth_call, 461 req/min throughput
+#   HL official        10/10 (rpc.hyperliquid.xyz/evm), 100 req/min/IP cap
+#   HyperLend          9/10 (occasional state-poller stutter)
+#   dRPC               11/20 = 55% (flake "intrinsic gas too high" intermittently)
+#   1RPC               0/10 currently broken on HL
+#   Alchemy free tier  monthly cap EXHAUSTED 2026-05-15
+#
+# Strategy:
+#  - PurroofGroup primary, HL-official + HyperLend as failover pool
+#  - integrity.enforceHighestBlock=true: only route eth_call to upstreams that
+#    have caught up to the requested block (fixes "upstream does not have
+#    requested block yet" the kyberswap solver gas-sim hits on HL's fast 1-2s
+#    block times)
+#  - statePollerDebounce=1s: keep per-upstream tip-block view fresh enough
+#    to match HL block production
+#  - Drop dRPC + 1RPC + Alchemy from the pool (see header above for why)
+#
+# Endpoint exposed: http://rpc-proxy:4000/main/evm/999
+
+logLevel: info
+
+projects:
+  - id: main
+
+    # Network-level integrity: ensure eth_call+similar are routed to upstreams
+    # that have the requested block. Without this, fast-chain HL (1-2s blocks)
+    # surfaces "upstream does not have the requested block yet" errors when
+    # the simulator requests state at the autopilot's just-observed block but
+    # the routed upstream hasn't seen it yet.
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 999
+          integrity:
+            enforceHighestBlock: true
+            enforceNonNullTaggedBlocks: true
+        # Consensus failsafe: defeats fork-view-poisoning on state-reads.
+        # Each of our 3 free upstreams is unauthenticated HTTPS — a hostile
+        # provider (or MITM via CA compromise / DNS hijack) could otherwise
+        # serve a self-consistent fork that the autopilot signs settlements
+        # against. With 2-of-3 agreement on the methods that drive solver
+        # behavior, a single hostile upstream can't influence outcomes.
+        failsafe:
+          # Critical reads: state-dependent calls that gate solver behavior
+          # and settlement validity. Require 2-of-3 agreement OR fail.
+          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt"
+            timeout:
+              duration: 10s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              # Codex review 2026-05-16 (H3 follow-up): the obvious default
+              # `acceptMostCommonValidResult` here SILENTLY collapses to
+              # single-upstream trust when 2/3 providers fail to answer —
+              # the surviving 1 provider can then poison critical reads
+              # because "most common" = "whatever the only respondent said".
+              # `returnError` is the only fail-closed behavior consistent
+              # with H3's threat model (defeats fork-view-poisoning even
+              # under high provider failure load). Trade-off: occasional
+              # transient failures during multi-provider outages bubble up
+              # to the autopilot/driver retry layer, which is correct.
+              lowParticipantsBehavior: returnError
+              preferNonEmpty: true
+              ignoreFields:
+                # `timestamp` is the obvious diverge field; some HL providers
+                # also report `mixHash`/`difficulty` as 0 vs absent.
+                eth_getBlockByNumber: ["timestamp"]
+                eth_getBlockByHash: ["timestamp"]
+              punishMisbehavior:
+                disputeThreshold: 5
+                disputeWindow: 10m
+                sitOutPenalty: 30m
+          # All other methods (block-stream poll, balance polls) go through
+          # the default upstream-level failsafe with retry — no consensus
+          # because they're either non-security-critical OR (for nonce reads
+          # + tx submission) handled by pinning to a single upstream in the
+          # driver config's [[submission.mempool]] block.
+          - matchMethod: "*"
+            timeout:
+              duration: 10s
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+    # Keep each upstream's tip-block tracking aligned with HL's block time
+    # (1-2s for small blocks).
+    upstreamDefaults:
+      evm:
+        statePollerInterval: 5s
+        statePollerDebounce: 1s
+
+    upstreams:
+      - id: purroof-hl
+        endpoint: https://rpc.purroofgroup.com
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: official-hl
+        endpoint: https://rpc.hyperliquid.xyz/evm
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 2
+              delay: 200ms
+
+      - id: hyperlend-hl
+        endpoint: https://rpc.hyperlend.finance
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 10s
+            retry:
+              maxAttempts: 2
+              delay: 200ms

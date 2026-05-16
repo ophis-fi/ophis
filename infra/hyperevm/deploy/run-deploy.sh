@@ -32,7 +32,7 @@ source "$ENV_FILE"
 set +a
 
 OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
-  -a "ophis-megaeth-deployer" -s "ophis-megaeth-deployer" -w)
+  -s "ophis-megaeth-deployer" -w)
 export OPHIS_MEGAETH_DEPLOYER_PK OPHIS_MEGAETH_DEPLOYER_ADDRESS
 
 LOG_FILE="$REPO_ROOT/infra/hyperevm/deploy-log-${NETWORK}-$(date +%Y%m%d-%H%M%S).log"

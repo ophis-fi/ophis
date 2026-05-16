@@ -43,6 +43,7 @@ import {
   USDT_INK,
   USDC_INK,
   USDC_OPTIMISM,
+  USDT0_HYPEREVM,
 } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -145,5 +146,10 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
   // USDT0 should be added once its canonical address is known (TBD post-deploy).
   [4326 as unknown as SupportedChainId]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[4326 as unknown as SupportedChainId],
+  ]),
+  // Ophis fork: HyperEVM mainnet (chain 999) favorites — WHYPE + USD₮0.
+  [999 as unknown as SupportedChainId]: tokensListToMap([
+    WRAPPED_NATIVE_CURRENCIES[999 as unknown as SupportedChainId],
+    USDT0_HYPEREVM,
   ]),
 }

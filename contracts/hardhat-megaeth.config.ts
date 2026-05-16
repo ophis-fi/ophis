@@ -141,7 +141,14 @@ const config = {
       "megaeth-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "megaeth-mainnet": OPHIS_HW_WALLET,
       "hyperevm-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
-      "hyperevm-mainnet": OPHIS_HW_WALLET,
+      // HyperEVM mainnet uses the SOFTWARE deployer (Keychain `ophis-megaeth-deployer`)
+      // instead of the Ledger. Rationale: Hyperliquid's big-block opt-in
+      // requires the EOA to be a HyperCore user, which adds a bridge
+      // step we already did for the software EOA. Reusing Ledger would
+      // require funding + bridge + opt-in cycle for a second EOA. The
+      // software EOA's authority is handed to the Ophis 2-of-3 Safe
+      // within minutes via transferOwnership immediately post-deploy.
+      "hyperevm-mainnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-sepolia": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-mainnet": OPHIS_HW_WALLET,
       "katana-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
@@ -157,7 +164,14 @@ const config = {
       "megaeth-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "megaeth-mainnet": OPHIS_HW_WALLET,
       "hyperevm-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
-      "hyperevm-mainnet": OPHIS_HW_WALLET,
+      // HyperEVM mainnet uses the SOFTWARE deployer (Keychain `ophis-megaeth-deployer`)
+      // instead of the Ledger. Rationale: Hyperliquid's big-block opt-in
+      // requires the EOA to be a HyperCore user, which adds a bridge
+      // step we already did for the software EOA. Reusing Ledger would
+      // require funding + bridge + opt-in cycle for a second EOA. The
+      // software EOA's authority is handed to the Ophis 2-of-3 Safe
+      // within minutes via transferOwnership immediately post-deploy.
+      "hyperevm-mainnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-sepolia": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-mainnet": OPHIS_HW_WALLET,
       "katana-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
