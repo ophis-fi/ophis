@@ -47,15 +47,21 @@ weth = "0x5555555555555555555555555555555555555555"
 balances = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
 signatures = "0xe4137bd2ecfdfb96d80629ec254dadec71bc498c"
 
-[[solver]]
-name = "baseline"
-endpoint = "http://baseline"
-absolute-slippage = "40000000000000000"  # 0.04 HYPE in wei
-relative-slippage = "0.1"
-# Driver-submitter EOA 0xFB308397267878228f7761311DBD6Bc6FCa1bB5a — same
-# rotated EOA used on OP + MegaETH after the 2026-05-14 leaked-PK
-# rotation. PK in Keychain `ophis-driver-submitter-2026-05-14`.
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+# Baseline solver REMOVED 2026-05-16 (Spec post-audit follow-up). On HL
+# baseline returned NoSolutions because the published HyperSwap V2
+# router+factory addresses returned `0x` bytecode at our 2026-05-15
+# research (likely stale docs — needs re-verification before re-adding).
+# A solver that always fills with empty solutions is dead weight in
+# logs/metrics and adds confusion to solver-competition analysis.
+#
+# Direct UniV3-style liquidity (Project X $165M/24h, HyperSwap V3 $13M/24h,
+# Hybra V3 $0.6M/24h) is tracked separately as task #120 and will land
+# behind the observability stack (#118) — never wire direct-liquidity
+# without alerts in place to catch pool-state regressions.
+#
+# Day-one HL liquidity now comes solely from the kyberswap aggregator
+# (which itself routes across Hybra-CL + custom HL AMMs). Velora
+# aggregator (#119) lands next to provide solver competition.
 
 # KyberSwap aggregator on HyperEVM. Slug `hyperevm` in their API path;
 # verified live 2026-05-15 (real WHYPE→USD₮0 route returned).
