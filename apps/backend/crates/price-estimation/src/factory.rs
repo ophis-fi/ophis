@@ -237,6 +237,20 @@ impl<'a> PriceEstimatorFactory<'a> {
                     )),
                 ))
             }
+            NativePriceEstimatorSource::UniswapV3(uniswap_v3_config) => {
+                let name = "UniswapV3".to_string();
+                let estimator = native::UniswapV3::new(
+                    self.network.web3.clone(),
+                    self.network.native_token,
+                    self.components.tokens.clone(),
+                    uniswap_v3_config.clone(),
+                )
+                .await?;
+                Ok((
+                    name.clone(),
+                    Arc::new(InstrumentedPriceEstimator::new(estimator, name)),
+                ))
+            }
             NativePriceEstimatorSource::CoinGecko => {
                 let coin_gecko_config = self
                     .args

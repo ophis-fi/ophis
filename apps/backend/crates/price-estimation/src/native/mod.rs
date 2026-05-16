@@ -17,6 +17,7 @@ mod eip4626;
 pub mod fallback;
 mod forwarder;
 mod oneinch;
+mod uniswap_v3;
 
 pub use self::{
     coingecko::CoinGecko,
@@ -24,6 +25,7 @@ pub use self::{
     fallback::FallbackNativePriceEstimator,
     forwarder::Forwarder,
     oneinch::OneInch,
+    uniswap_v3::UniswapV3,
 };
 
 pub type NativePrice = f64;
