@@ -18,12 +18,12 @@ export function useTwapFormState(): TwapFormState | null {
   const twapOrder = useTwapOrder()
 
   // Ophis: TWAP requires ComposableCow + ExtensibleFallbackHandler, which
-  // aren't deployed on OP mainnet (Spec 2) or MegaETH mainnet (chain 4326).
-  // Codex review 2026-05-14 flagged the broken-UI promise where the button
-  // is reachable but silent no-ops because the SDK's
-  // COMPOSABLE_COW_CONTRACT_ADDRESS[10] / [4326] is undefined.
+  // aren't deployed on OP mainnet (Spec 2), MegaETH mainnet (chain 4326), or
+  // HyperEVM mainnet (chain 999). Codex review 2026-05-14 flagged the broken-UI
+  // promise where the button is reachable but silent no-ops because the SDK's
+  // COMPOSABLE_COW_CONTRACT_ADDRESS[10] / [4326] / [999] is undefined.
   // Returning null here makes the TWAP tab clearly disabled instead.
-  if ((chainId as number) === 10 || (chainId as number) === 4326) return null
+  if ((chainId as number) === 10 || (chainId as number) === 4326 || (chainId as number) === 999) return null
 
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { sellAmount } = receiveAmountInfo?.beforeAllFees || {}

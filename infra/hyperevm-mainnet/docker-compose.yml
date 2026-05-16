@@ -1,0 +1,248 @@
+# infra/hyperevm-mainnet/docker-compose.yml — Ophis HyperEVM mainnet stack
+# (chain 999). Ports shifted +1 from testnet (5435/8102/8103/9022) to coexist
+# on the same host.
+#
+# Secret management:
+#   - Addresses come from ../optimism/.env (deployed by deploy-mainnet-all.sh)
+#   - Secrets (driver private key, DB password) come from ./.env in this dir
+#   - ./.env is gitignored — see ./.env.example for the template
+#
+# All HTTP/RPC ports bind to 127.0.0.1 only. External access is via
+# Cloudflare Tunnel, never direct port exposure.
+
+services:
+  # eRPC multi-provider proxy. All other services point ETHRPC at this
+  # container instead of hitting Alchemy / public RPC directly. Free providers
+  # rate-limit aggressively (Alchemy returns HTTP 429 under combined polling
+  # load); eRPC fans requests out to 6 upstream providers with automatic
+  # failover + retry + re-org-aware caching.
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:latest
+    restart: always
+    mem_limit: 512m
+    volumes:
+      # Default config path inside the erpc image is /erpc.yaml — mount the
+      # rendered config there and let the image's stock entrypoint pick it up
+      # (overriding command to pass --config breaks the entrypoint).
+      - ./rendered/erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "127.0.0.1:4000:4000"
+    # eRPC image is distroless (no /bin/sh / wget / curl) so it cannot run
+    # an in-band CMD-SHELL healthcheck. The `rpc-proxy-health` sidecar below
+    # probes `GET /healthcheck` on this service and is what `depends_on:
+    # service_healthy` targets actually wait for.
+
+  # 1.4 MB busybox sidecar whose ONLY job is to publish "rpc-proxy is
+  # answering /healthcheck" as a docker health state. Driver/orderbook/
+  # autopilot depend_on this with condition: service_healthy so they don't
+  # try to talk to eRPC before it's serving (which would log connection-
+  # refused errors and trigger retry storms).
+  rpc-proxy-health:
+    image: busybox:stable-musl
+    restart: always
+    depends_on:
+      rpc-proxy: { condition: service_started }
+    # Loop forever — busybox stays running so `service_healthy` keeps
+    # reporting based on `healthcheck` below. Without `sleep infinity`
+    # the container exits and unhealthy cascades.
+    command: ["sh", "-c", "while true; do sleep 30; done"]
+    healthcheck:
+      # busybox wget supports -q/-O- and returns non-zero on HTTP error.
+      # /healthcheck on eRPC returns 200 + JSON when the network is ready.
+      test: ["CMD", "wget", "-q", "-O-", "http://rpc-proxy:4000/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16
+    restart: always
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5438:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: backend-migrations:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+
+  orderbook:
+    image: local-orderbook:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      # Wait for eRPC to actually be answering before booting — without this
+      # orderbook hits connection-refused on its first eth_chainId probe and
+      # panics at startup, then restart-loops until eRPC is up.
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
+      ALCHEMY_API_KEY: ${ALCHEMY_API_KEY:?ALCHEMY_API_KEY must be set in infra/hyperevm-mainnet/.env}
+      # CoinGecko key is referenced by orderbook.toml's [price-estimation.coin-gecko]
+      # block via %COINGECKO_API_KEY. CoinGecko doesn't list chain 999 (verified
+      # via asset_platforms), so the block is effectively unused on HL — but
+      # orderbook fails to parse the config if the env var is missing.
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?COINGECKO_API_KEY must be set in infra/hyperevm-mainnet/.env}
+    volumes:
+      - ./rendered/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "127.0.0.1:8300:80"
+    healthcheck:
+      # CoW backend images are distroless-ish; no curl/wget. Bash /dev/tcp
+      # confirms port 80 is accepting TCP connections — enough to know the
+      # HTTP server is up. Liveness from inside the orderbook process is not
+      # exposed; if a deadlock kept the listener up but the worker stuck,
+      # this wouldn't catch it. Use Prometheus metrics for that (Spec TBD).
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  autopilot:
+    image: local-autopilot:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
+      ALCHEMY_API_KEY: ${ALCHEMY_API_KEY:?ALCHEMY_API_KEY must be set in infra/hyperevm-mainnet/.env}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?COINGECKO_API_KEY must be set in infra/hyperevm-mainnet/.env}
+    volumes:
+      - ./rendered/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+    # autopilot is a worker (no HTTP listener), so only restart-on-failure
+    # via Docker's `restart: always` policy. Health is signalled via the
+    # Prometheus /metrics endpoint that the binary always exposes.
+
+  driver:
+    image: local-driver:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      baseline: { condition: service_healthy }
+      kyberswap-solver: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      # Driver uses eRPC proxy for block-stream polling + eth_call workload.
+      # Transaction submission still routes directly to Alchemy via the
+      # [[submission.mempool]] block in driver.toml — that path needs a single
+      # reliable endpoint for nonce tracking, not a load-balanced fan-out.
+      ETHRPC: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
+      ADDR: 0.0.0.0:80
+      LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+      # NOTE — driver-submitter PK is NOT passed as an env var (it would be
+      # readable via `docker inspect ophis-driver-1`, /proc/<pid>/environ, and
+      # could leak via panic backtraces / log shippers). Instead it lives only
+      # in the chmod-600 rendered driver.toml that's bind-mounted read-only.
+      # render-configs.sh fails loudly if OPHIS_DRIVER_SUBMITTER_KEY is missing
+      # from .env at render time, so the absence check still happens before
+      # compose ever runs.
+    volumes:
+      - ./rendered/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "127.0.0.1:8301:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "127.0.0.1:9201:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # OKX V6 NOT included on HyperEVM mainnet — chain 999 not in OKX
+  # supported-chain list as of 2026-05-15. Re-add the okx-solver service
+  # block from infra/optimism-mainnet/docker-compose.yml when OKX adds
+  # chain 999 support.
+
+  # KyberSwap aggregator solver — primary day-one solver on HyperEVM.
+  # Free public API, no key required; configs/kyberswap.toml uses env
+  # substitution for the Alchemy RPC URL.
+  kyberswap-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/kyberswap.toml:/kyberswap.toml:ro
+    command: ["kyberswap", "--config", "/kyberswap.toml"]
+    ports:
+      - "127.0.0.1:9203:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  postgres:

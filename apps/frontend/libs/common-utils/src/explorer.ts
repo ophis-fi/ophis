@@ -36,6 +36,9 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     // has no /orders/ route, so order-level URLs fall back to the address
     // page (see getExplorerOrderLink below).
     [4326 as unknown as ChainId]: 'https://megaeth.blockscout.com',
+    // Ophis fork: HyperEVM mainnet (chain 999). HyperEVMScan is Blockscout-
+    // flavored and likewise has no /orders/ route — same fallback applies.
+    [999 as unknown as ChainId]: 'https://hyperevmscan.io',
   }
 }
 
@@ -67,7 +70,10 @@ export function getExplorerOrderLink(chainId: ChainId, orderId: UID): string {
   // see their swap arrive in their wallet. The CoW order UID encodes
   // the owner address in bytes 32..52, so we extract it from the
   // 110-char hex string (2 prefix + 64 hash + 40 owner + 8 validTo).
-  if (((chainId as number) === 10 || (chainId as number) === 4326) && orderId.length === 114) {
+  if (
+    ((chainId as number) === 10 || (chainId as number) === 4326 || (chainId as number) === 999) &&
+    orderId.length === 114
+  ) {
     const owner = '0x' + orderId.slice(66, 106)
     return baseUrl + `/address/${owner}`
   }

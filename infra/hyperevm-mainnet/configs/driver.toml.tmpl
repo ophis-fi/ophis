@@ -1,0 +1,101 @@
+# Ophis — HyperEVM mainnet (chain 999) driver config.
+#
+# Day-one solver coverage: baseline (will return NoSolutions until we wire
+# HyperSwap V2 liquidity — research flagged published doc addresses as
+# returning 0x bytecode) + KyberSwap aggregator (verified live: real route
+# returned for WHYPE→USD₮0 at research time, slug `hyperevm`).
+#
+# OKX V6 NOT included — chain 999 isn't in OKX's supported-chain list as
+# of 2026-05-15. Re-add the [[solver]] block + okx-solver service if/when
+# they enable Hyperliquid.
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+
+# HyperEVM has a dual-block model: small blocks (1-2s, 3M gas limit) +
+# big blocks (60s, 30M gas limit). The driver-submitter EOA IS opted into
+# big blocks (see infra/hyperevm/opt-in-big-blocks.py), which routes its
+# transactions to big-block slots regardless of tx-gas-limit.
+#
+# HOWEVER: the CoW autopilot's solver participation check eth_call is
+# evaluated by HL's geth pre-execution at the CURRENT block's gas limit,
+# which is small (3M) most of the time. With tx-gas-limit = 30M, geth
+# rejects every participation check with -32000 "intrinsic gas too high"
+# → solver gets SolverDenyListed → no settlements ever broadcast.
+#
+# A single CoW settlement is ~500k-1M gas (well under 3M). Cap
+# tx-gas-limit at 2.9M so the participation check passes against small
+# blocks. If we ever need 30M settle()s (multi-swap batches, big hooks)
+# we'd need to either bump tx-gas-limit AND wait for big-block frames in
+# autopilot, OR move that work behind a different solver-submitter.
+tx-gas-limit = "2900000"
+
+# M4 (2026-05-16): re-enabled eth_createAccessList preflight. With the eRPC
+# multi-provider proxy in front, even though the HL official RPC doesn't
+# support eth_createAccessList, PurroofGroup + HyperLend do — eRPC routes
+# around the failing upstream automatically. The access-list preflight is
+# also a cheap reverts-early sanity check before full simulation, so
+# re-enabling it tightens the solver-grief DoS surface that the previous
+# `disable-access-list-simulation = true` opened on this fast-block chain.
+disable-access-list-simulation = false
+
+[contracts]
+gp-v2-settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+# WHYPE — Wrapped HYPE, the wrapped native gas token on HyperEVM.
+# Verified on-chain 2026-05-15: name "Wrapped HYPE", symbol "WHYPE",
+# decimals 18.
+weth = "0x5555555555555555555555555555555555555555"
+balances = "0x764fe4aa1ff493cf39931c7923c8ff5837596504"
+signatures = "0xe4137bd2ecfdfb96d80629ec254dadec71bc498c"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 HYPE in wei
+relative-slippage = "0.1"
+# Driver-submitter EOA 0xFB308397267878228f7761311DBD6Bc6FCa1bB5a — same
+# rotated EOA used on OP + MegaETH after the 2026-05-14 leaked-PK
+# rotation. PK in Keychain `ophis-driver-submitter-2026-05-14`.
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# KyberSwap aggregator on HyperEVM. Slug `hyperevm` in their API path;
+# verified live 2026-05-15 (real WHYPE→USD₮0 route returned).
+[[solver]]
+name = "kyberswap"
+endpoint = "http://kyberswap-solver"
+absolute-slippage = "40000000000000000"  # 0.04 HYPE in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[submission]
+# HL base fee runs 0.1-10 gwei in practice. Cap at 10 gwei = 10^10 wei
+# (100× current baseline). The previous 1000 gwei cap was 10000× baseline
+# and exposed ~2.9 ETH-equivalent (>$8k in HYPE) wasted-fee surface per
+# settle if a hostile/glitched solver proposed a tx at the cap. 10 gwei
+# is still ample for HL spike days while keeping max single-settle fee
+# under $0.10 even at the 2.9M tx-gas-limit.
+gas-price-cap = "10000000000"
+
+[[submission.mempool]]
+# Submission MUST go through a single upstream, NOT the eRPC fan-out.
+# Reason: eRPC.integrity.enforceHighestBlock only governs eth_call/getLogs
+# at a specified block; `eth_getTransactionCount(addr,"pending")` and
+# `eth_sendRawTransaction` have no block parameter, so the load-balancer
+# routes consecutive nonce-reads to different upstreams. Two settlements
+# in flight → both sign the same nonce → mempool replacement collision →
+# silent dropped settle(). Direct single-endpoint avoids the race.
+# PurroofGroup is the most reliable free HL provider (10/10 on isSolver
+# eth_call, 461 req/min sustained — see commit message in 5f707d09d).
+url = "https://rpc.purroofgroup.com"
+
+[liquidity]
+base-tokens = [
+  "0x5555555555555555555555555555555555555555",  # WHYPE (wrapped native gas token)
+  "0xb8CE59FC3717ada4C02eaDF9682A9e934F625ebb",  # USD₮0 (Tether on HL — dominant stable)
+]
+
+# NO UniV2-shape liquidity wired yet. Research 2026-05-15 found that the
+# HyperSwap V2 router + factory addresses in the published docs return
+# `0x` from eth_getCode — either dead or the docs are stale. Until we
+# verify a working V2 router OR wire HyperSwap V3 via the driver's V3
+# liquidity path (separate Rust work), baseline returns NoSolutions.
+# KyberSwap aggregator is the working route source for now.

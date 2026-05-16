@@ -1,0 +1,25 @@
+# Ophis — HyperEVM mainnet (chain 999) KyberSwap aggregator solver config.
+#
+# KyberSwap requires NO API key for the free tier. Slug for HyperEVM is
+# `hyperevm` (verified 2026-05-15: /hyperevm/api/v1/routes returns real
+# routes for WHYPE→USD₮0).
+#
+# node-url uses Alchemy via env-var substitution (template-rendered by
+# ./render-configs.sh before docker compose up).
+
+node-url = "${HYPEREVM_RPC_INTERNAL}"
+
+# Ophis-fork settlement contract on HyperEVM. Same CREATE2-deterministic
+# address as on OP and MegaETH. Without this override the solver
+# framework falls back to GPv2Settlement::deployment_address() which
+# returns the canonical CoW address (0x9008d19f…ab41) — that has no
+# bytecode on chain 999, so KyberSwap would bake a non-existent
+# `receiver` into its swap calldata and settle() would revert.
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
+
+[dex]
+chain-id = "999"
+
+# Per-client rate-limit bucket; keep distinct from OP-mainnet's
+# `ophis-op-mainnet` to avoid cross-chain quota interference.
+client-id = "ophis-hyperevm-mainnet"

@@ -227,5 +227,12 @@
       "enabledByDefault": true,
       "source": "https://ipfs.io/ipns/tokens.uniswap.org"
     }
+  ],
+  "999": [
+    {
+      "priority": 1,
+      "enabledByDefault": true,
+      "source": "https://ipfs.io/ipns/tokens.uniswap.org"
+    }
   ]
 }

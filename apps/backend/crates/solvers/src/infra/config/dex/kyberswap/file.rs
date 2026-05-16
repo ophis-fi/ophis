@@ -42,6 +42,10 @@ fn chain_slug(chain_id: eth::ChainId) -> &'static str {
         eth::ChainId::Bnb => "bsc",
         eth::ChainId::Avalanche => "avalanche",
         eth::ChainId::Linea => "linea",
+        // KyberSwap slug for Hyperliquid HyperEVM — verified live 2026-05-15:
+        // GET https://aggregator-api.kyberswap.com/hyperevm/api/v1/routes
+        // returns real routes for WHYPE→USD₮0.
+        eth::ChainId::HyperEvm => "hyperevm",
         // KyberSwap doesn't deploy on Gnosis / Goerli / Plasma / Ink in v1 —
         // panic clearly rather than silently picking a wrong slug.
         other => panic!("unsupported KyberSwap chain: {other:?}"),

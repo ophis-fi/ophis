@@ -14,6 +14,8 @@ const ENS_REGISTRAR_ADDRESSES: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: null,
   // Ophis fork: no ENS registrar on MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: null,
+  // Ophis fork: no ENS registrar on HyperEVM mainnet (chain 999)
+  [999 as unknown as SupportedChainId]: null,
   // TODO: use mainnet registrar for all chains https://docs.ens.domains/learn/deployments, which means being connected to mainnet additionally to the other chain
 }
 

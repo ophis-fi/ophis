@@ -17,6 +17,8 @@ const INITIAL_TOKEN_LIST_PER_NETWORK: TokenListPerNetwork = {
   [10 as unknown as SupportedChainId]: {},
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: {},
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  [999 as unknown as SupportedChainId]: {},
 }
 
 const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
@@ -36,6 +38,10 @@ const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
   // Ophis fork: MegaETH mainnet (chain 4326) — CoinGecko has no MegaETH platform
   // slug yet; null disables remote token-list fetches gracefully.
   [4326 as unknown as SupportedChainId]: null,
+  // Ophis fork: HyperEVM mainnet (chain 999) — CoinGecko has no HyperEVM
+  // platform slug in its asset_platforms list as of 2026-05-15; null disables
+  // remote token-list fetches gracefully.
+  [999 as unknown as SupportedChainId]: null,
 }
 
 const EMPTY_TOKENS: TokenListByAddress = {}
