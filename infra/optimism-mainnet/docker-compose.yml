@@ -110,6 +110,7 @@ services:
       baseline: { condition: service_healthy }
       okx-solver: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
+      velora-solver: { condition: service_healthy }
     environment:
       ETHRPC: ${OP_MAINNET_RPC}
       ADDR: 0.0.0.0:80
@@ -197,6 +198,33 @@ services:
     command: ["kyberswap", "--config", "/kyberswap.toml"]
     ports:
       - "127.0.0.1:9024:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Velora (formerly ParaSwap) aggregator solver — third competing solver.
+  # Task #121, 2026-05-16. Augustus V6.2 router on OP:
+  # 0x6a000f20005980200259b80c5102003040001068 (allowlisted in
+  # dex::velora::VELORA_ROUTER_ALLOWLIST). Free public tier; partner-id
+  # "ophis" routes our volume against any future Pro API key.
+  velora-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./configs/velora.toml:/velora.toml:ro
+    command: ["velora", "--config", "/velora.toml"]
+    ports:
+      - "127.0.0.1:9025:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s
