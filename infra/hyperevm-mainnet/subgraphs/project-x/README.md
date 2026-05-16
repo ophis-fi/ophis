@@ -138,9 +138,9 @@ npm run deploy:selfhost:deploy
 
 The endpoint will be `http://<aleph-vm-ip>:8000/subgraphs/name/project-x-hl/graphql`. Expose via Cloudflare Tunnel like the rest of the Ophis backend.
 
-**Caveat:** graph-node needs an archive node (for `eth_call` at historical blocks) for the first full sync. `rpc.purroofgroup.com` is full-node-only — sync will fail at `Mint`/`Burn`-driven token reads if it tries to `eth_call` at the event block. You'll either need:
-- A paid HL archive RPC, OR
-- Patch the mappings to skip historical token-info reads and lazy-load on first query.
+**Caveat:** graph-node needs an archive node for the first full sync. The ERC-20 metadata reads happen in `src/factory.ts` during each `PoolCreated` event (we call `symbol()`, `name()`, `decimals()` on the token contracts at the block where the pool was created). `rpc.purroofgroup.com` is full-node-only — these historical `eth_call`s will fail. You'll either need:
+- A paid HL archive RPC (Alchemy archive, QuickNode archive, etc.), OR
+- Patch `factory.ts` to defer the metadata read to `try_` against the *current* block (acceptable for tokens whose metadata is immutable, which is most of them).
 
 **Don't pick Path B unless you've decided Goldsky is unacceptable for reasons not yet documented.** Path A is plug-and-play for HL.
 

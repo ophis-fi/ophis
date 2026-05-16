@@ -48,13 +48,18 @@ export function handleMint(event: Mint): void {
   // If the mint touches the active tick range, bump the pool-level liquidity.
   // The CoW driver uses pool.liquidity for the active-tick depth; this keeps
   // it consistent between Swap-driven updates.
+  //
+  // AssemblyScript nullable property-access footgun (per Codex review on PR
+  // #50 follow-up): hoist `pool.tick` to a local so the compiler's
+  // null-narrowing covers the whole expression. Direct property access
+  // through `pool.tick !== null` guards compiles, but TheGraph's AS
+  // migration guide flags this pattern as runtime-fragile across
+  // graph-ts versions.
   let amount = event.params.amount;
-  if (
-    pool.tick !== null &&
-    BigInt.fromI32(event.params.tickLower).le(pool.tick as BigInt) &&
-    pool.tick !== null &&
-    (pool.tick as BigInt).lt(BigInt.fromI32(event.params.tickUpper))
-  ) {
+  let currentTick = pool.tick;
+  let lower = BigInt.fromI32(event.params.tickLower);
+  let upper = BigInt.fromI32(event.params.tickUpper);
+  if (currentTick !== null && lower.le(currentTick) && currentTick.lt(upper)) {
     pool.liquidity = pool.liquidity.plus(amount);
     pool.save();
   }
@@ -78,12 +83,10 @@ export function handleBurn(event: Burn): void {
   }
 
   let amount = event.params.amount;
-  if (
-    pool.tick !== null &&
-    BigInt.fromI32(event.params.tickLower).le(pool.tick as BigInt) &&
-    pool.tick !== null &&
-    (pool.tick as BigInt).lt(BigInt.fromI32(event.params.tickUpper))
-  ) {
+  let currentTick = pool.tick;
+  let lower = BigInt.fromI32(event.params.tickLower);
+  let upper = BigInt.fromI32(event.params.tickUpper);
+  if (currentTick !== null && lower.le(currentTick) && currentTick.lt(upper)) {
     pool.liquidity = pool.liquidity.minus(amount);
     pool.save();
   }
