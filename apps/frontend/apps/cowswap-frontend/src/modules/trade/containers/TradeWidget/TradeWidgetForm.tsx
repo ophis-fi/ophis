@@ -213,12 +213,14 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
     }
   }, [isMarketOrderWidget, toggleAccountModal])
 
-  // Ophis fork: OP (chain 10) and MegaETH (chain 4326) are supported at the frontend layer.
+  // Ophis fork: OP (chain 10), MegaETH (chain 4326), and HyperEVM (chain 999)
+  // are supported at the frontend layer.
   const isOutputTokenUnsupported =
     !!buyToken &&
     !(buyToken.chainId in SupportedChainId) &&
     buyToken.chainId !== 10 &&
-    buyToken.chainId !== 4326
+    buyToken.chainId !== 4326 &&
+    buyToken.chainId !== 999
 
   const { t } = useLingui()
 

@@ -84,8 +84,8 @@ export function RateImpactWarning({
         <div>
           <Trans>
             Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your{' '}
-            <TokenSymbol token={inputCurrency} /> at a loss (although CoW Swap will always try to give you the best
-            price regardless).
+            <TokenSymbol token={inputCurrency} /> at a loss (although Ophis will always try to give you the best price
+            regardless).
           </Trans>
           <ReadMoreLink target="_blank" href="https://www.investopedia.com/terms/l/limitorder.asp">
             <Trans>Read more about limit orders</Trans>

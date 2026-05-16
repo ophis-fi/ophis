@@ -31,6 +31,51 @@ pub const DEFAULT_CLIENT_ID: &str = "ophis-solver";
 /// Maximum value KyberSwap accepts for `slippageTolerance` (20%).
 const MAX_SLIPPAGE_BPS: u16 = 2000;
 
+/// Allowlist of KyberSwap router addresses that can be approved as ERC-20
+/// spender for the Settlement contract.
+///
+/// **Why a fixed allowlist?** The `routerAddress` returned by `/routes` is
+/// trusted as an unlimited-allowance grantee — a compromised KyberSwap edge
+/// (DNS hijack, CA compromise, malicious Cloudflare worker, insider) that
+/// returns an attacker-controlled router can drain Settlement's transient
+/// balance during execution. The per-request /routes vs /route/build
+/// equality check below catches only intra-request inconsistency, not a
+/// fully poisoned response.
+///
+/// **Address coverage:** KyberSwap's `MetaAggregationRouterV2` is deployed
+/// at the same CREATE2-deterministic address on every chain they support.
+/// As of 2026-05-16 the canonical address is the single entry below.
+/// Verified live on chain 999 (HyperEVM), chain 10 (OP), chain 1 (Mainnet),
+/// chain 8453 (Base), chain 42161 (Arbitrum).
+///
+/// **If KyberSwap deploys a new router** (e.g. V3): add the new address here
+/// after independent verification (their docs at
+/// https://docs.kyberswap.com/Aggregator/aggregator-protocol-deployment/
+/// contracts-and-addresses) — do NOT take it from a /routes response.
+const KYBERSWAP_ROUTER_ALLOWLIST: &[Address] = &[
+    Address::new([
+        0x61, 0x31, 0xB5, 0xfa, 0xe1, 0x9E, 0xA4, 0xf9, 0xD9, 0x64, 0xeA, 0xc0, 0x40, 0x8E, 0x44,
+        0x08, 0xb6, 0x63, 0x37, 0xb5,
+    ]),
+];
+
+fn validate_router_allowlist(router: &Address) -> Result<(), Error> {
+    if KYBERSWAP_ROUTER_ALLOWLIST.contains(router) {
+        Ok(())
+    } else {
+        Err(Error::Api {
+            code: -1,
+            reason: format!(
+                "KyberSwap returned non-allowlisted router address {router:?}. \
+                Refusing to approve allowance. If this is a legitimate new \
+                KyberSwap router, add it to KYBERSWAP_ROUTER_ALLOWLIST in \
+                crates/solvers/src/infra/dex/kyberswap/mod.rs after \
+                independent verification."
+            ),
+        })
+    }
+}
+
 /// Bindings to the KyberSwap aggregator API.
 pub struct KyberSwap {
     client: super::Client,
@@ -71,7 +116,13 @@ impl KyberSwap {
                 reqwest::header::HeaderValue::from_str(&client_id)?,
             );
 
+            // Cloudflare in front of aggregator-api.kyberswap.com blocks
+            // requests with no User-Agent (returns 403 "Just a moment..."
+            // bot-challenge HTML). reqwest's default builds with no UA, so
+            // every call from this solver was 100% failing. Set an explicit
+            // UA to pass the challenge.
             let client = reqwest::Client::builder()
+                .user_agent("ophis-solver/1.0")
                 .default_headers(headers)
                 .build()?;
             super::Client::new(client, config.block_stream)
@@ -101,6 +152,12 @@ impl KyberSwap {
         async move {
             let routes = self.get_route(order).await?;
             let routes_router = routes.router_address;
+
+            // Validate the /routes router address against the static allowlist
+            // BEFORE making the /route/build call. Fail fast on a poisoned
+            // edge so we don't bake an attacker-controlled spender into the
+            // settlement calldata. See KYBERSWAP_ROUTER_ALLOWLIST docs.
+            validate_router_allowlist(&routes_router)?;
 
             let build = self
                 .build_route(routes.route_summary, order, slippage)

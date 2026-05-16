@@ -16,6 +16,8 @@ const chainIdToName: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: 'optimism',
   // Ophis fork: MegaETH mainnet (chain 4326) — not on Trust Wallet assets repo
   [4326 as unknown as SupportedChainId]: null,
+  // Ophis fork: HyperEVM mainnet (chain 999) — not on Trust Wallet assets repo
+  [999 as unknown as SupportedChainId]: null,
 }
 
 /**
