@@ -90,7 +90,7 @@ export default function AnySwapAffectedUsers(): ReactNode {
       </Title>
       <Content>
         <Container>
-          <img src={cow404IMG} alt={t`CoW Swap 404 not found`} />
+          <img src={cow404IMG} alt={t`Ophis 404 not found`} />
           <h2>
             <Trans>Read how to prevent losing funds</Trans>
           </h2>
