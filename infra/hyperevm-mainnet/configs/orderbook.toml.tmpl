@@ -45,15 +45,14 @@ read-url = "%DB_READ_URL"
 # to 1.0 anyway, so this slot is rarely hit).
 estimators = [
   [{ type = "Driver", name = "kyberswap", url = "http://driver/kyberswap" }],
-  [{ type = "Driver", name = "baseline", url = "http://driver/baseline" }],
 ]
 
 [order-quoting]
 # KyberSwap is verified working on chain 999 — primary source for quote
-# estimation. Baseline included as a future-proof slot. OKX dropped
-# (no chain 999 support).
+# estimation. Baseline driver entry dropped 2026-05-16 (baseline solver
+# itself was returning NoSolutions — removal tracked in task #117).
+# Velora (task #119) will be the second entry once landed.
 price-estimation-drivers = [
-  { name = "baseline", url = "http://driver/baseline" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
 ]
 

@@ -162,7 +162,6 @@ services:
     restart: always
     mem_limit: 2g
     depends_on:
-      baseline: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
@@ -192,27 +191,14 @@ services:
       retries: 6
       start_period: 60s
 
-  baseline:
-    image: local-baseline:latest
-    build:
-      context: ../../apps/backend
-      dockerfile: Dockerfile
-      target: solvers
-    restart: always
-    mem_limit: 1g
-    environment:
-      ADDR: 0.0.0.0:80
-    volumes:
-      - ./configs/baseline.toml:/baseline.toml:ro
-    command: ["baseline", "--config", "/baseline.toml"]
-    ports:
-      - "127.0.0.1:9201:80"
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
+  # baseline service REMOVED 2026-05-16 (audit-driven cleanup). Returned
+  # NoSolutions today (HyperSwap V2 published addresses returned 0x
+  # bytecode at last research). Re-add this block AND the matching
+  # [[solver]] entry in driver.toml.tmpl once we either:
+  #  - verify a working V2-shape DEX (Kittenswap AMM is the leftover
+  #    candidate but at $3.6k/24h volume it's not worth the slot), OR
+  #  - wire UniV3-style direct liquidity (task #120) which needs the
+  #    observability stack (#118) in place first.
 
   # OKX V6 NOT included on HyperEVM mainnet — chain 999 not in OKX
   # supported-chain list as of 2026-05-15. Re-add the okx-solver service
