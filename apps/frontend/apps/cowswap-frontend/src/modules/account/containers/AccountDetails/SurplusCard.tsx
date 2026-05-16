@@ -197,7 +197,7 @@ export function SurplusCard() {
             <i>
               <Trans>Your total surplus</Trans>{' '}
               <HelpTooltip
-                text={t`The total surplus CoW Swap has generated for you in ${nativeSymbol} across all your trades since ${startDate}`}
+                text={t`The total surplus Ophis has generated for you in ${nativeSymbol} across all your trades since ${startDate}`}
               />
             </i>
           </span>
@@ -220,7 +220,7 @@ export function SurplusCard() {
         </div>
         <div>
           <ExternalLink href={'https://cow.fi/learn/announcing-cow-swap-surplus-notifications'}>
-            <Trans>Learn about surplus on CoW Swap</Trans> ↗
+            <Trans>Learn about surplus on Ophis</Trans> ↗
           </ExternalLink>
         </div>
       </InfoCard>
