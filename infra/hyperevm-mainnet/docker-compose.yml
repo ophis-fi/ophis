@@ -230,5 +230,77 @@ services:
       retries: 6
       start_period: 30s
 
+  # ───── Observability stack (task #118, 2026-05-16) ─────────────────
+  #
+  # Prometheus scrapes driver, autopilot, orderbook, rpc-proxy on the
+  # docker-compose internal network. Rules in observability/alerts.yml
+  # fire to Alertmanager, which pages Clement via the
+  # @clawdiusfranciscus_bot Telegram bot.
+  #
+  # Resource caps: Prometheus typically eats memory proportional to active
+  # series. On a 4-target HL stack we expect ~10-20k series → ~100 MB. Cap
+  # at 512 MB to surface runaway-cardinality regressions early.
+  #
+  # Ports bind to 127.0.0.1 only (consistent with the rest of the stack).
+  # Expose externally via Cloudflare Tunnel when we want a dashboards UI.
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    restart: always
+    mem_limit: 512m
+    user: "nobody"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.listen-address=0.0.0.0:9090"
+      # Restrict UI to read-only — no /reload, no /quit. We re-render
+      # config by `docker compose restart prometheus`, never via HTTP.
+      - "--web.enable-lifecycle=false"
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      # Wait for the scrape targets to be healthy at boot so the first
+      # few scrapes don't all fail and trigger an initial alert storm.
+      driver: { condition: service_healthy }
+      autopilot: { condition: service_started }
+      orderbook: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: always
+    mem_limit: 128m
+    user: "nobody"
+    volumes:
+      # Rendered config (with TELEGRAM_BOT_TOKEN passed via bot_token_file
+      # → the chmod-600 telegram-token file mounted alongside).
+      - ./observability-rendered/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./observability-rendered/telegram-token:/etc/alertmanager/telegram-token:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+    ports:
+      - "127.0.0.1:9093:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   postgres:
+  prometheus-data:
+  alertmanager-data:

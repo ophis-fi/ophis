@@ -1,0 +1,146 @@
+# Ophis HyperEVM mainnet — Prometheus alert rules.
+#
+# Severities:
+#   - critical: page Clement on Telegram immediately. Indicates the chain
+#     is not settling, RPC is down, or money/orders are at risk.
+#   - warning:  Telegram notify with no auto-page. Indicates degradation
+#     trending toward critical.
+#
+# Naming convention: `OphisHl<Component><Symptom>` so that the metric
+# label `alertname` is unambiguous when fanned out across chains
+# (OphisHl, OphisOp, OphisMega prefixes — same rule set per chain).
+
+groups:
+  - name: ophis-hl-availability
+    interval: 30s
+    rules:
+      - alert: OphisHlAutopilotDown
+        expr: up{job="autopilot"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL autopilot scrape failing for >5m"
+          description: "Prometheus cannot reach autopilot:9589/metrics. Auctions are not running. Check `docker compose ps autopilot` on the Mac mini."
+
+      - alert: OphisHlDriverDown
+        expr: up{job="driver"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL driver scrape failing for >5m"
+          description: "Prometheus cannot reach driver:80/metrics. Solver competition has stopped. Check `docker compose ps driver`."
+
+      - alert: OphisHlOrderbookDown
+        expr: up{job="orderbook"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL orderbook scrape failing for >5m"
+          description: "Prometheus cannot reach orderbook:9586/metrics. New orders may be failing to land. Check `docker compose ps orderbook` and confirm port 8300 accepts connections."
+
+      - alert: OphisHlERPCDown
+        expr: up{job="rpc-proxy"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL eRPC proxy scrape failing for >3m"
+          description: "Prometheus cannot reach rpc-proxy:4000/metrics. All upstream provider routing has stopped — everything downstream will start failing. Restart rpc-proxy container."
+
+  - name: ophis-hl-settlement-health
+    interval: 30s
+    rules:
+      - alert: OphisHlNoSettlements1h
+        # IntCounterVec `settlements{solver, result}` is monotonic. We want
+        # to alert when `result="success"` hasn't incremented in 1h despite
+        # auctions running (so we don't alert on quiet periods with no
+        # orders). Detect quiet vs. broken by checking that the auction
+        # loop IS ticking — autopilot exposes `auction_preprocessing` as a
+        # histogram that increments on every auction.
+        expr: |
+          increase(settlements{result="success"}[1h]) == 0
+          and on() increase(auction_preprocessing_count[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL: 0 successful settlements in 1h despite active auctions"
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Solver may be stuck, RPC submission failing, or driver-submitter wallet out of funds. Check `solutions{result}` and `mempool_submission{result}` for the failure mode."
+
+      - alert: OphisHlSettlementFailureRateHigh
+        expr: |
+          (
+            sum(rate(settlements{result!="success"}[15m]))
+            /
+            sum(rate(settlements[15m]))
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL settlement failure rate > 5% over 15m"
+          description: "More than 5% of HL settlement attempts are failing. Most likely causes: pool liquidity collapse, gas-price cap too tight, RPC provider issues. Inspect driver logs for revert reasons."
+
+      - alert: OphisHlMempoolSubmissionFailing
+        expr: |
+          (
+            sum(rate(mempool_submission{result!="success"}[15m]))
+            /
+            sum(rate(mempool_submission[15m]))
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL: >10% of mempool submissions failing over 15m"
+          description: "PurroofGroup mempool submission failing for >10% of attempts. Could be RPC provider degradation, nonce-race regression, or gas-price cap rejection. Trace via `driver::infra::submission` logs."
+
+      - alert: OphisHlSolverDropRateHigh
+        expr: |
+          (
+            sum by (solver) (rate(dropped_solutions[15m]))
+            /
+            sum by (solver) (rate(solutions[15m]) + rate(dropped_solutions[15m]))
+          ) > 0.50
+        for: 15m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL {{ $labels.solver }} dropping >50% of solutions over 15m"
+          description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on HL. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
+
+  - name: ophis-hl-latency
+    interval: 30s
+    rules:
+      - alert: OphisHlAuctionLatencyHigh
+        expr: |
+          histogram_quantile(0.95, rate(auction_preprocessing_bucket[10m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL p95 auction-preprocessing > 5s"
+          description: "Auction preprocessing p95 above 5s for 10m. RPC reads (block fetch, balance reads) are slowing the auction loop. Likely RPC provider degradation — inspect eRPC proxy metrics for consensus failures."
+
+      - alert: OphisHlSolveTimeBudgetExhausted
+        expr: |
+          histogram_quantile(0.99, rate(remaining_solve_time_bucket{kind="dispatched"}[10m])) < 1.0
+        for: 10m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL solvers receiving <1s of solve-time budget at p99"
+          description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
