@@ -31,12 +31,18 @@ const OPHIS_MEGAETH_VAULT_RELAYER: `0x${string}` = '0x83847EaB41ad9ea43809ce7156
 const OPHIS_MEGAETH_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
 
 // Ophis fork: HyperEVM mainnet (chain 999) contract addresses.
-// Deployed 2026-05-15 (task #107). EthFlow not deployed on HyperEVM.
+// Deployed 2026-05-15 (task #107). EthFlow deployed 2026-05-17.
 const OPHIS_HYPEREVM_CHAIN_ID = 999 as unknown as SupportedChainId
 const OPHIS_HYPEREVM_SETTLEMENT: `0x${string}` = '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce'
 const OPHIS_HYPEREVM_VAULT_RELAYER: `0x${string}` = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205'
-// ETH Flow not deployed on HyperEVM for Ophis; sentinel zero address disables EthFlow UI.
-const OPHIS_HYPEREVM_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
+// EthFlow contract for native HYPE → ERC-20 swaps. Deployed 2026-05-17 by
+// 0xb398C789…D020 (CREATE nonce 13) → 0xd031…b61B. Constructor verified
+// settlement + wrappedNativeToken (WHYPE 0x5555…5555). WHYPE→VaultRelayer
+// allowance is MAX_UINT256. tx 0x9ae599088605c7e2270feb8da914bb1252cd816…
+// Without this, the orderbook's /api/v1/quote rejects every native-HYPE
+// sell with `InvalidNativeSellToken` and users only see "Error loading
+// price" when they pick HYPE in the swap UI.
+const OPHIS_HYPEREVM_ETH_FLOW: `0x${string}` = '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B'
 
 // When in barn backend env, use staging contracts for MAINNET only; prod for all other chains.
 // TODO: the condition should be removed once all backend services migrated to the new contracts
@@ -88,6 +94,7 @@ export const COW_PROTOCOL_ETH_FLOW_ADDRESS: AddressPerChain = {
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_ETH_FLOW,
   // ETH Flow not deployed on MegaETH for Ophis; sentinel zero disables EthFlow UI.
   [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_ETH_FLOW,
-  // ETH Flow not deployed on HyperEVM for Ophis; sentinel zero disables EthFlow UI.
+  // EthFlow deployed on HyperEVM (2026-05-17): native HYPE sells go through
+  // 0xd031Ce1C…b61B. See OPHIS_HYPEREVM_ETH_FLOW comment above for context.
   [OPHIS_HYPEREVM_CHAIN_ID]: OPHIS_HYPEREVM_ETH_FLOW,
 }
