@@ -550,7 +550,7 @@ export const USDT0_HYPEREVM = new TokenWithLogo(
   USDT.logoURI,
   999 as unknown as SupportedChainId,
   // https://hyperevmscan.io/token/0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb
-  '0xb8CE59FC3717ada4C02eaDF9682A9e934F625ebb',
+  '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb',
   6,
   'USD₮0',
   'USD₮0',
