@@ -6,6 +6,7 @@ import { t } from '@lingui/core/macro'
 import { Order } from 'legacy/state/orders/actions'
 
 import { SurplusData } from 'common/hooks/useGetSurplusFiatValue'
+import { safeToSignificant } from 'common/utils/safeCurrencyAmount'
 
 export function truncateWithEllipsis(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str
@@ -23,11 +24,11 @@ export function getTwitterText(surplusAmount: string, surplusToken: string, orde
 }
 
 export function getTwitterShareUrl(surplusData: SurplusData | undefined, order: Order | undefined): string {
-  const surplusAmount = surplusData?.surplusAmount?.toSignificant() || '0'
-  // Defensive (2026-05-17): the `?.` only guarded `surplusAmount`; `.currency`
-  // could still be undefined on a hydrated-from-stale-atom amount. Extend the
-  // chain so the share-on-X button degrades to "Unknown token" rather than
-  // crashing the order-progress modal.
+  // Defensive: `.toSignificant()` also reads `.currency.decimals` internally
+  // and throws on a hydrated-from-stale-atom amount with undefined currency.
+  // `safeToSignificant` swallows the throw → fall back to '0'. The symbol
+  // path was already nullish-guarded.
+  const surplusAmount = safeToSignificant(surplusData?.surplusAmount)
   const surplusToken = surplusData?.surplusAmount?.currency?.symbol || t`Unknown token`
   const orderKind = order?.kind || OrderKind.SELL
 

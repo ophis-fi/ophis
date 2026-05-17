@@ -11,6 +11,8 @@ import { getOrderTypeReceiveAmounts } from 'modules/trade'
 import { useEstimatedBridgeBuyAmount } from 'modules/trade'
 import { ReceiveAmountInfo } from 'modules/trade'
 
+import { safeToExact } from 'common/utils/safeCurrencyAmount'
+
 import * as styledEl from './styled'
 
 import { BridgeReceiveAmountInfo } from '../BridgeReceiveAmountInfo'
@@ -31,12 +33,12 @@ export function ReceiveAmount(props: ReceiveAmountProps): ReactNode {
   const { amountAfterFees } = getOrderTypeReceiveAmounts(props.receiveAmountInfo)
 
   const minToReceiveAmount = bridgeEstimatedAmounts?.minToReceiveAmount ?? amountAfterFees
-  // Defensive: 2026-05-17 production incident — a CurrencyAmount instance
-  // hydrated from a stale persisted atom can have `.currency = undefined`,
-  // crashing the entire React tree with "Cannot read properties of undefined
-  // (reading 'symbol')". The title is purely a tooltip hover string — degrade
+  // Defensive: a CurrencyAmount instance hydrated from a stale persisted
+  // atom can have `.currency = undefined`. `safeToExact` swallows the
+  // throw inside `.toExact()` (which internally reads `.currency.decimals`);
+  // the symbol read is already guarded. Title is tooltip-only — degrade
   // gracefully rather than crashing the swap form.
-  const title = `${minToReceiveAmount?.toExact() ?? ''} ${minToReceiveAmount?.currency?.symbol ?? ''}`.trim()
+  const title = `${safeToExact(minToReceiveAmount)} ${minToReceiveAmount?.currency?.symbol ?? ''}`.trim()
 
   return (
     <styledEl.ReceiveAmountBox>
