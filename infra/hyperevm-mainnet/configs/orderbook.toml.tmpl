@@ -53,6 +53,25 @@ price-estimation-drivers = [
 [price-estimation]
 amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
 
+# 2026-05-17: balance-override config for WHYPE so the trade verifier
+# (`price_estimation::trade_verifier`) can use Spardose's balance-injection
+# trick during quote simulation. Without this, the verifier falls back to
+# the trader's REAL balance and the quote comes back `verified: false`.
+# Today's incident: native HYPE holders using the EthFlow path get
+# `verified: false` quotes that are still valid, but the orderbook's
+# negative-cache for unverified quotes interacts badly with KyberSwap's
+# rate-limited responses — over time, transient KyberSwap failures get
+# cached as "no liquidity" and the orderbook serves the cache instead of
+# retrying. Spardose-mocked balances let verification succeed cleanly,
+# avoiding the unverified-quote cache path entirely.
+#
+# WHYPE at 0x5555…5555 is a canonical WETH9 clone — verified on-chain
+# (balanceOf is at storage slot 3, the WETH9 standard).
+[price-estimation.balance-overrides.token-overrides.0x5555555555555555555555555555555555555555]
+type = "SolidityMapping"
+target_contract = "0x5555555555555555555555555555555555555555"
+map_slot = "0x3"
+
 # CoinGecko config. The coin-gecko sub-block belongs under [price-estimation],
 # not [native-price-estimation], even though only the native estimator uses it.
 [price-estimation.coin-gecko]
