@@ -24,7 +24,11 @@ export function getTwitterText(surplusAmount: string, surplusToken: string, orde
 
 export function getTwitterShareUrl(surplusData: SurplusData | undefined, order: Order | undefined): string {
   const surplusAmount = surplusData?.surplusAmount?.toSignificant() || '0'
-  const surplusToken = surplusData?.surplusAmount?.currency.symbol || t`Unknown token`
+  // Defensive (2026-05-17): the `?.` only guarded `surplusAmount`; `.currency`
+  // could still be undefined on a hydrated-from-stale-atom amount. Extend the
+  // chain so the share-on-X button degrades to "Unknown token" rather than
+  // crashing the order-progress modal.
+  const surplusToken = surplusData?.surplusAmount?.currency?.symbol || t`Unknown token`
   const orderKind = order?.kind || OrderKind.SELL
 
   const twitterText = getTwitterText(surplusAmount, surplusToken, orderKind)
