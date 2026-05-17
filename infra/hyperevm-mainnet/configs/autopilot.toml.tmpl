@@ -57,6 +57,17 @@ poll-interval = "2s"  # OP block time
 
 [run-loop]
 solve-deadline = "20s"
+# 2026-05-17: bump submission-deadline from upstream default 5 blocks → 60.
+# Default was tuned for mainnet (12s blocks, 5 = 60s window). HL has ~1s
+# blocks, so 5 = 5s — way too tight. Every settle tx expired before
+# inclusion, triggering a cancel-and-replace cycle that consumed ~30s per
+# auction. A 5-min user delay (autopilot logs from 16:59:21–17:04:01)
+# was traced to ~10 such retries before one finally landed.
+#
+# 60 blocks ≈ 60s on HL = matches mainnet effective behaviour. Safe upper
+# bound: well under the autopilot solve cadence so the auction queue
+# doesn't stall waiting for a single stuck settle.
+submission-deadline = 60
 
 [[gas-estimators]]
 type = "Web3"
