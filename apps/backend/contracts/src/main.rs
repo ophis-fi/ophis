@@ -379,7 +379,7 @@ fn build_module() -> Module {
                 // bytes; only V1 selector in bytecode) — NOT registered
                 // here. The driver always encodes V2 calldata, so a V1
                 // router would revert every settlement at simulation.
-                HYPEREVM => "0x6D99e7f6747af2cdbb5164b6dd50e40d4fde1e77",
+                HYPEREVM => "0x6D99e7f6747AF2cDbB5164b6DD50e40D4fDe1e77",
             ]),
         )
         .add_contract(Contract::new("IUniswapV3Factory").with_networks(networks![
