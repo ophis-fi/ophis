@@ -33,9 +33,14 @@ const AmountItem = styled.div`
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function CurrencyAmountItem({ amount }: { amount: CurrencyAmount<Currency> }) {
+  // Defensive (2026-05-17 incident): a CurrencyAmount hydrated from a stale
+  // persisted atom can have `.currency` undefined despite the static type.
+  // The title is a hover-tooltip — degrade to a blank when the currency is
+  // missing rather than crashing the entire orders table.
+  const title = `${amount?.toExact() ?? ''} ${amount?.currency?.symbol ?? ''}`.trim()
   return (
-    <AmountItem title={amount.toExact() + ' ' + amount.currency.symbol}>
-      <TokenAmount amount={amount} tokenSymbol={amount.currency} />
+    <AmountItem title={title}>
+      <TokenAmount amount={amount} tokenSymbol={amount?.currency} />
     </AmountItem>
   )
 }
