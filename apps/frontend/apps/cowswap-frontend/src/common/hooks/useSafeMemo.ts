@@ -51,14 +51,23 @@ function serializeCurrencyAmount(dep: CurrencyAmount<Currency>): string {
   const validity = currency ? '1' : '0'
   // `dep.toExact()` internally reads `this.currency.decimals` and itself
   // throws if currency is undefined. Wrap it so the memo-key derivation
-  // never crashes on hydration-corrupted instances.
-  let exact = ''
+  // never crashes on hydration-corrupted instances. For malformed amounts,
+  // fall back to `.quotient.toString()` (which doesn't depend on currency)
+  // so two distinct corrupted amounts still get distinct memo keys —
+  // otherwise every malformed instance collapses to a single memo cell
+  // and recomputes get suppressed across genuinely different inputs.
+  // (Codex review of fix/codex-flagged-gaps, 2026-05-17.)
+  let key = ''
   try {
-    exact = dep.toExact()
+    key = dep.toExact()
   } catch {
-    exact = '<bad>'
+    try {
+      key = `<bad>:${dep.quotient.toString()}`
+    } catch {
+      key = '<bad>'
+    }
   }
-  return `CA:${validity}:${exact}:${currency?.symbol ?? ''}:${currency?.chainId ?? ''}`
+  return `CA:${validity}:${key}:${currency?.symbol ?? ''}:${currency?.chainId ?? ''}`
 }
 
 function currencyKey(c: Currency | undefined): string {

@@ -11,6 +11,7 @@ import { Order } from 'legacy/state/orders/actions'
 import { useUsdAmount } from 'modules/usdAmount'
 
 import { useSafeMemo } from 'common/hooks/useSafeMemo'
+import { safeToExact, safeToFixed } from 'common/utils/safeCurrencyAmount'
 
 import { useGetExecutedBridgeSummary } from './useGetExecutedBridgeSummary'
 
@@ -39,7 +40,11 @@ export function useGetSurplusData(order: Order | undefined): SurplusData {
   }, [summaryData])
 
   const surplusFiatValue = useUsdAmount(surplusAmount).value
-  const showFiatValue = Number(surplusFiatValue?.toExact()) >= MIN_FIAT_SURPLUS_VALUE
+  // Defensive (2026-05-17 incident): `?.toExact()` short-circuits when the
+  // amount is null, but a hydrated-from-stale-atom CurrencyAmount can be
+  // defined with `.currency = undefined`, and `.toExact()` then throws on
+  // `currency.decimals`. `safeToExact` swallows the throw and returns ''.
+  const showFiatValue = Number(safeToExact(surplusFiatValue)) >= MIN_FIAT_SURPLUS_VALUE
 
   const showSurplus = shouldShowSurplus(surplusFiatValue, surplusAmount)
 
@@ -60,12 +65,16 @@ function shouldShowSurplus(
   fiatAmount: Nullish<CurrencyAmount<Currency>>,
   surplusAmount: Nullish<CurrencyAmount<Currency>>,
 ): boolean | null {
+  // Defensive (2026-05-17 incident): `.currency.decimals` reads on a
+  // hydrated-from-stale-atom amount can throw when `.currency` is undefined.
+  // `safeToFixed` reads the decimals safely and returns '0' on malformed
+  // instances, so the threshold check falls cleanly under the floor.
   if (fiatAmount) {
     // When there's a fiat amount, use that to decide whether to display the modal
-    return Number(fiatAmount.toFixed(fiatAmount.currency.decimals)) > MIN_FIAT_SURPLUS_VALUE_MODAL
+    return Number(safeToFixed(fiatAmount)) > MIN_FIAT_SURPLUS_VALUE_MODAL
   } else if (surplusAmount) {
     // If no fiat value, check whether surplus units are > MIN_SURPLUS_UNITS
-    return Number(surplusAmount.toFixed(surplusAmount.currency.decimals)) > MIN_SURPLUS_UNITS
+    return Number(safeToFixed(surplusAmount)) > MIN_SURPLUS_UNITS
   }
 
   // Otherwise, we don't know whether surplus should, return `null` to indicate that
