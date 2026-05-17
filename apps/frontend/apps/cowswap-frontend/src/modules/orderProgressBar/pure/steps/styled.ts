@@ -316,6 +316,53 @@ export const SolverRankings = styled.div`
   }
 `
 
+// 2026-05-17 — block shown under the solver rankings on the Finished step.
+// Lists each solver alongside the liquidity it aggregates and links to the
+// on-chain settlement transaction so the user can inspect the actual route.
+export const AggregationInfo = styled.div`
+  width: 100%;
+  margin: 18px auto 0;
+  padding: 14px 16px;
+  background: var(${UI.COLOR_PAPER_DARKER});
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(${UI.COLOR_TEXT_OPACITY_70});
+
+  > .headline {
+    color: var(${UI.COLOR_TEXT_PAPER});
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+
+  > ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  > ul > li {
+    margin: 4px 0;
+  }
+
+  > ul > li > b {
+    color: var(${UI.COLOR_TEXT_PAPER});
+  }
+
+  > .explorer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 10px;
+    color: var(${UI.COLOR_LINK});
+    text-decoration: none;
+    font-weight: 500;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`
+
 export const SolverTable = styled.table`
   width: 100%;
   border-collapse: separate;

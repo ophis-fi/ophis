@@ -115,6 +115,49 @@ export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor
   [999 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
 }
 
+/**
+ * Per-chain description of the liquidity sources the solvers aggregate over.
+ * Shown on the "Transaction completed" modal underneath the solver rankings
+ * so users understand which DEXes were searched, not just which solver won.
+ *
+ * Each entry is { headline, sources[] } — headline summarises the chain,
+ * sources lists each solver and what backend liquidity it covers.
+ *
+ * 2026-05-17 — added in response to user feedback "I don't know how many
+ * DEXes we aggregate neither the route that was taken".
+ */
+export type ChainAggregationInfo = {
+  headline: string
+  sources: { solver: string; covers: string }[]
+}
+
+export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggregationInfo>> = {
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  [999 as unknown as SupportedChainId]: {
+    headline: 'Ophis aggregates liquidity across HyperEVM via 2 solvers.',
+    sources: [
+      {
+        solver: 'Baseline',
+        covers: 'HyperSwap V3 pools directly (WHYPE/USD₮0, WHYPE/USDC, WHYPE/UBTC, WHYPE/UETH, αHYPE/UETH and others)',
+      },
+      { solver: 'KyberSwap', covers: 'aggregator covering Hybra-CL, Project X V3, and custom HL AMMs' },
+    ],
+  },
+  // Ophis fork: OP mainnet (chain 10)
+  [10 as unknown as SupportedChainId]: {
+    headline: 'Ophis aggregates liquidity across Optimism via 2 solvers.',
+    sources: [
+      { solver: 'OKX V6', covers: 'OnchainOS aggregator covering Velodrome, Uniswap V3, Curve and others' },
+      { solver: 'KyberSwap', covers: 'aggregator covering Velodrome, Uniswap V3, Beethoven X and OP-native pools' },
+    ],
+  },
+  // Ophis fork: MegaETH mainnet (chain 4326)
+  [4326 as unknown as SupportedChainId]: {
+    headline: 'Ophis aggregates liquidity across MegaETH.',
+    sources: [{ solver: 'KyberSwap', covers: 'aggregator covering MegaETH AMMs as they come online' }],
+  },
+}
+
 export const SURPLUS_IMAGES = [
   PROGRESSBAR_COW_SURPLUS_1,
   PROGRESSBAR_COW_SURPLUS_2,
