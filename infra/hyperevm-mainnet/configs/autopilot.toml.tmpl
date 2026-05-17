@@ -19,7 +19,20 @@ native-price-timeout = "5s"
 # correct. autopilot::run.rs:391 routes `skip_event_sync_start` to all
 # three event indexers.
 [ethflow]
-skip-event-sync = true
+# EthFlow contract for native HYPE → ERC-20 swaps. Deployed 2026-05-17 from
+# 0xb398C789…D020 (CREATE nonce 13). Constructor: (settlement, WHYPE).
+# Verified on-chain: WHYPE→VaultRelayer allowance is MAX_UINT256.
+contracts = ["0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B"]
+# Block NUMBER (not timestamp, despite the upstream doc comment — see
+# find_indexing_start_block in ethflow_events.rs:272-279 which passes this
+# straight to BlockNumberOrTag::Number()). Deploy block was 35347278; we
+# round down to 35347000 for safety. Without this, the OnchainOrderParser
+# would scan from the settlement deployment block (35173733 on HL) — also
+# fine, just slower on first start.
+indexing-start = 35347000
+# Don't skip-event-sync: we WANT the OnchainOrderParser to pick up the
+# CreatedOrder events emitted when users sign native-HYPE swaps.
+skip-event-sync = false
 
 [contracts]
 settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"
