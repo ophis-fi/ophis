@@ -29,7 +29,10 @@ export function TotalSurplusUpdater(): null {
     async ([, chainId, account]: [string, number, string, number]) => {
       const surplusData = await getSurplusData(chainId, account)
 
-      if (!surplusData?.totalSurplus) {
+      // 2026-05-17 hardening: useNativeCurrency() returns undefined for chains
+      // outside our TargetChainId set (user on Polygon/BSC/etc.). Don't build
+      // a malformed CurrencyAmount — surplus display gracefully shows nothing.
+      if (!surplusData?.totalSurplus || !nativeCurrency) {
         return null
       }
 

@@ -32,7 +32,7 @@ export function DeadlineTransactionSettings({ deadlineState }: DeadlineSettingsP
       label={t`Swap deadline`}
       tooltip={
         deadlineRangeParams.isEoaEthFlow
-          ? getNativeOrderDeadlineTooltip([nativeCurrency.symbol])
+          ? getNativeOrderDeadlineTooltip([nativeCurrency?.symbol ?? 'ETH'])
           : getNonNativeOrderDeadlineTooltip()
       }
       placeholder={(DEFAULT_DEADLINE_FROM_NOW / 60).toString()}

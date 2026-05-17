@@ -29,7 +29,14 @@ export function usePendingTransactionsContext(): CheckEthereumTransactions | nul
   const getReceipt = useGetReceipt(chainId)
   const getTxSafeInfo = useGetSafeTxInfo()
   const getTwapOrderById = useGetTwapOrderById()
-  const nativeCurrencySymbol = useNativeCurrency().symbol || 'ETH'
+  // Defensive: useNativeCurrency() returns undefined when the connected
+  // wallet's chainId is outside our TargetChainId set (e.g. MetaMask on
+  // Polygon, BSC, Avalanche, etc.). This updater mounts on EVERY page so
+  // an unguarded dereference crashes the entire app at load — the 2026-05-17
+  // root-cause site for the persistent "Cannot read properties of undefined
+  // (reading 'symbol')" crash. The label is decorative ("Approve in your
+  // wallet" tooltips); 'ETH' is a safe default for any unsupported chain.
+  const nativeCurrencySymbol = useNativeCurrency()?.symbol || 'ETH'
 
   return useAsyncMemo(
     async () => {

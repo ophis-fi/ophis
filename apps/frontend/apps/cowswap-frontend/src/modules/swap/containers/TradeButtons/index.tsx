@@ -115,7 +115,15 @@ export function TradeButtons({
   if (!tradeFormButtonContext) return null
 
   if (localFormValidation && isPrimaryValidationPassed) {
-    return swapTradeButtonsMap[localFormValidation](context, isDisabled)
+    // 2026-05-17 hardening: wrappedToken is undefined on unsupported wallet
+    // chains. The swap-flow button-map can't be entered without it; render
+    // the default trade-form path instead (which surfaces a "wrong network"
+    // primaryFormValidation error to the user).
+    if (!context.wrappedToken) return null
+    return swapTradeButtonsMap[localFormValidation](
+      { ...context, wrappedToken: context.wrappedToken },
+      isDisabled,
+    )
   }
 
   return (
