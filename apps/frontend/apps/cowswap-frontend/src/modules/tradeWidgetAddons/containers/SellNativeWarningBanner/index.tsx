@@ -33,8 +33,8 @@ export function SellNativeWarningBanner() {
       }
     : undefined
 
-  const nativeSymbol = native.symbol || t`native`
-  const wrappedNativeSymbol = wrapped.symbol || t`wrapped native`
+  const nativeSymbol = native?.symbol || t`native`
+  const wrappedNativeSymbol = wrapped?.symbol || t`wrapped native`
 
   if (!account) return null
 
@@ -47,11 +47,14 @@ export function SellNativeWarningBanner() {
         <Trans>Selling {nativeSymbol} is only supported on SWAP orders.</Trans>
       </p>
       <p>
-        <Button onClick={() => navigateOnCurrencySelection(Field.INPUT, wrapped)}>
+        {/* 2026-05-17: `wrapped` is undefined on unsupported chains —
+            coerce to null so `navigateOnCurrencySelection` accepts it,
+            which then no-ops the selection. */}
+        <Button onClick={() => navigateOnCurrencySelection(Field.INPUT, wrapped ?? null)}>
           <Trans>Switch to {wrappedNativeSymbol}</Trans>
         </Button>{' '}
         <Trans>or</Trans>{' '}
-        <Button onClick={() => navigateOnCurrencySelection(Field.OUTPUT, wrapped, undefined, queryParams)}>
+        <Button onClick={() => navigateOnCurrencySelection(Field.OUTPUT, wrapped ?? null, undefined, queryParams)}>
           <Trans>
             Wrap {nativeSymbol} to {wrappedNativeSymbol}
           </Trans>

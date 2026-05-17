@@ -51,7 +51,8 @@ export function EthFlowStepper(props: EthFlowStepperProps): ReactNode {
   const refundHash = order.refundHash || order.apiAdditionalInfo?.ethflowData?.refundTxHash || undefined
 
   const stepperProps: PureProps = {
-    nativeTokenSymbol: native.symbol as string,
+    // Defensive (2026-05-17): native is undefined on unsupported chains.
+    nativeTokenSymbol: (native?.symbol as string | undefined) ?? 'ETH',
     tokenLabel: formatSymbol(order.outputToken.symbol) || '',
     order: {
       orderId: order.id,

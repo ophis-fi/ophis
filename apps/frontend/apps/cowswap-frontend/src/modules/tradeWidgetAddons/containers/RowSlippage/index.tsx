@@ -42,7 +42,7 @@ export function RowSlippage({
   const props = useMemo(
     () => ({
       isEoaEthFlow,
-      symbols: [nativeCurrency.symbol],
+      symbols: [nativeCurrency?.symbol ?? 'ETH'],
       allowedSlippage,
       slippageLabel,
       slippageTooltip,
@@ -55,7 +55,7 @@ export function RowSlippage({
     }),
     [
       isEoaEthFlow,
-      nativeCurrency.symbol,
+      nativeCurrency?.symbol,
       allowedSlippage,
       slippageLabel,
       slippageTooltip,
