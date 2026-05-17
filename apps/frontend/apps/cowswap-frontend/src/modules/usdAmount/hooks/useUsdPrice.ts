@@ -39,7 +39,10 @@ export function useUsdPrice(currency: Nullish<Token>): UsdPriceState | null {
 
   const price = usdPrices[key]
 
-  if (!price || price.currency.chainId !== currency?.chainId) return null
+  // Defensive (2026-05-17): a UsdPriceState hydrated from a stale persisted
+  // atom can have `price.currency` undefined; guard the chainId compare with
+  // `?.` so we just treat it as a cache miss instead of crashing.
+  if (!price || price.currency?.chainId !== currency?.chainId) return null
 
   return price
 }
