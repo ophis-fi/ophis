@@ -9,6 +9,12 @@ import { useTradeState } from './useTradeState'
 
 function getIsWrappedNativeToken(chainId: SupportedChainId, tokenId: string): boolean {
   const nativeToken = WRAPPED_NATIVE_CURRENCIES[chainId]
+  // 2026-05-17 Codex-Cyber finding: WRAPPED_NATIVE_CURRENCIES[chainId] is
+  // undefined for any chain outside SupportedChainId (the user's wallet is
+  // on Polygon, BSC, etc.), and the downstream `doesTokenMatchSymbolOrAddress`
+  // dereferences `.address` unconditionally — would crash every trade route.
+  // No wrapped-native to match against on an unsupported chain → just false.
+  if (!nativeToken) return false
 
   return doesTokenMatchSymbolOrAddress(nativeToken, tokenId)
 }

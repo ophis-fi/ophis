@@ -11,7 +11,9 @@ import { useIsWrappedIn, useIsWrappedOut } from './useIsWrappedInOrOut'
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function useNativeTokenContext() {
   const native = useNativeCurrency()
-  const wrappedToken = getWrappedToken(native)
+  // 2026-05-17: native is undefined for unsupported wallet chains; downstream
+  // getWrappedToken would crash. Short-circuit wrapped to undefined too.
+  const wrappedToken = native ? getWrappedToken(native) : undefined
 
   const isNativeIn = useIsNativeIn()
   const isNativeOut = useIsNativeOut()

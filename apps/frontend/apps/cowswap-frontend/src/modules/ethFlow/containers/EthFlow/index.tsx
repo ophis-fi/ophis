@@ -48,6 +48,11 @@ export function EthFlowModal({
   const { chainId } = useWalletInfo()
   const native = useNativeCurrency()
   const wrapped = useWrappedToken()
+  // 2026-05-17 hardening: short-circuit out when wallet is on an unsupported
+  // chain (useNativeCurrency / useWrappedToken both return undefined). The
+  // ETH-flow modal is meaningless on a chain we don't list, and downstream
+  // calls (useCurrencyAmountBalance, EthFlowProps cast) need a real Currency.
+  const ethFlowReady = !!native && !!wrapped
 
   const wrappedAmount = useMemo(() => {
     if (!nativeInput) return null
@@ -85,8 +90,8 @@ export function EthFlowModal({
   const approveActivity = useSingleActivityDescriptor({ chainId, id: ethFlowContext.approve.txHash || undefined })
   const wrapActivity = useSingleActivityDescriptor({ chainId, id: ethFlowContext.wrap.txHash || undefined })
 
-  const nativeBalance = useCurrencyAmountBalance(native)
-  const wrappedBalance = useCurrencyAmountBalance(wrapped)
+  const nativeBalance = useCurrencyAmountBalance(native ?? undefined)
+  const wrappedBalance = useCurrencyAmountBalance(wrapped ?? undefined)
 
   // user safety checks to make sure any on-chain native currency operations are economically safe
   // shows user warning with remaining available TXs if a certain threshold is reached
@@ -98,14 +103,6 @@ export function EthFlowModal({
 
   const state = useMemo(() => getDerivedEthFlowState(ethFlowContext), [ethFlowContext])
 
-  const wrappingPreview: WrappingPreviewProps = {
-    native,
-    nativeBalance,
-    wrapped,
-    wrappedBalance,
-    amount: nativeInput,
-  }
-
   useSetupEthFlow({
     hasEnoughWrappedBalanceForSwap,
     approvalState,
@@ -113,6 +110,19 @@ export function EthFlowModal({
     wrapActivity,
     onDismiss,
   })
+
+  // Early-out for unsupported wallet chains (post-hooks to preserve hook
+  // call order). ETH-flow is wrap-and-swap on a native gas token; if the
+  // wallet's chain isn't in our TargetChainId set, none of this UI applies.
+  if (!ethFlowReady || !native || !wrapped) return null
+
+  const wrappingPreview: WrappingPreviewProps = {
+    native,
+    nativeBalance,
+    wrapped,
+    wrappedBalance,
+    amount: nativeInput,
+  }
 
   return (
     <EthFlowModalContent

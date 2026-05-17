@@ -17,12 +17,12 @@ export function RowDeadline({ deadline }: { deadline: number }) {
     const displayDeadline = Math.floor(deadline / 60) + ' minutes'
     return {
       userDeadline: deadline,
-      symbols: [nativeCurrency.symbol],
+      symbols: [nativeCurrency?.symbol ?? 'ETH'],
       displayDeadline,
       isEoaEthFlow,
       isWrapOrUnwrap,
     }
-  }, [isEoaEthFlow, isWrapOrUnwrap, nativeCurrency.symbol, deadline])
+  }, [isEoaEthFlow, isWrapOrUnwrap, nativeCurrency?.symbol, deadline])
 
   if (!isEoaEthFlow || isWrapOrUnwrap) {
     return null

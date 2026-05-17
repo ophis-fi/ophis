@@ -72,7 +72,12 @@ export function TransactionSlippageInput(): JSX.Element {
       tooltip={
         isEoaEthFlow
           ? getNativeSlippageTooltip(
-              [nativeCurrency.symbol, getWrappedToken(nativeCurrency).symbol],
+              // Defensive (2026-05-17): nativeCurrency is undefined on
+              // unsupported wallet chains; skip wrapped-token tooltip detail
+              // and degrade to a single-symbol label rather than crash.
+              nativeCurrency
+                ? [nativeCurrency.symbol ?? 'ETH', getWrappedToken(nativeCurrency).symbol ?? 'WETH']
+                : ['ETH', 'WETH'],
               slippageWarningParams,
             )
           : getNonNativeSlippageTooltip({
