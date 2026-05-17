@@ -69,6 +69,15 @@ solve-deadline = "20s"
 # doesn't stall waiting for a single stuck settle.
 submission-deadline = 60
 
+# Audit HIGH-4 (2026-05-17): max-settlement-transaction-wait MUST strictly
+# exceed submission-deadline × block-time, otherwise the autopilot stops
+# watching for a tx (at wait expiry) while the deadline still permits it
+# to land. Default is 1 min; with submission-deadline=60 at HL ~1s blocks
+# = 60s, that's a 0-margin race. Bumped to 120s to absorb big-block jitter
+# (HL's 60s big-block frame can push complex settles 30-60s late) and a
+# multi-block reorg cushion.
+max-settlement-transaction-wait = "120s"
+
 [[gas-estimators]]
 type = "Web3"
 

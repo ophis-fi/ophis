@@ -122,6 +122,23 @@ echo "  Safe owners:    $SAFE_OWNERS"
 echo "  Safe threshold: $SAFE_THRESHOLD"
 echo ""
 
+# Audit MEDIUM-4 (2026-05-17) — original proposal was to preflight HL block
+# gas-limit. Withdrawn after Codex Cyber review: HyperEVM big-block routing
+# is PER-ADDRESS, not global. `eth_getBlockByNumber("latest").gasLimit` is
+# the most recently-included block's limit; that block may be a 3M small
+# block even when our deployer EOA is fully opted-in for big blocks (and
+# vice versa). The check would both false-fail and false-pass.
+#
+# Correct preflight requires either (a) reading HyperCore opt-in state via
+# the off-chain HyperCore API, or (b) actually broadcasting a low-gas
+# probe tx and observing inclusion. Neither is cheap or precise enough to
+# add inline. Treating big-block opt-in as a Pre-conditions item (above):
+# OPERATOR MUST CONFIRM with `python3 opt-in-big-blocks.py status $DEPLOYER_ADDR`
+# before running this script. If forgotten, hardhat-deploy will fail
+# loudly with "intrinsic gas too high" mid-flow; recovery is to opt-in
+# and re-run (idempotent up to the AllowList deploy step).
+echo ""
+
 read -p "Press ENTER to deploy (or Ctrl-C to abort)..."
 
 # --- 1. CoW core via hardhat-deploy (software-EOA signed) ---
@@ -167,6 +184,33 @@ echo "  Auth Proxy:           $OPHIS_AUTH"
 echo "  Auth Implementation:  $OPHIS_AUTH_IMPL"
 echo "  Settlement:           $OPHIS_SETTLEMENT"
 echo "  VaultRelayer:         $OPHIS_VAULT_RELAYER"
+
+# Audit LOW-2 (2026-05-17): atomic deploy+init verification. Hardhat-deploy
+# bundles proxy deploy + initializeManager(deployer) but they're two
+# separate on-chain txs. If the init tx failed/dropped (RPC flake, gas
+# underpricing), an attacker watching the mempool could race-call
+# initializeManager(attackerAddr) and become manager of a deployed-but-
+# uninitialized AllowList proxy. Detect this by asserting manager() ==
+# DEPLOYER_ADDR BEFORE the script proceeds to setManager(Safe).
+INIT_MANAGER=$(cast call --rpc-url "$RPC" "$OPHIS_AUTH" "manager()(address)")
+LOWER_INIT_MANAGER=$(echo "$INIT_MANAGER" | tr '[:upper:]' '[:lower:]')
+LOWER_DEPLOYER=$(echo "$DEPLOYER_ADDR" | tr '[:upper:]' '[:lower:]')
+if [[ "$LOWER_INIT_MANAGER" != "$LOWER_DEPLOYER" ]]; then
+  # GPv2AllowListAuthentication.setManager is onlyManagerOrOwner — and the
+  # deployer at this point still holds the proxy owner role (handoff
+  # happens at step 4). So a raced initializeManager is RECOVERABLE: the
+  # deployer can call setManager(deployer) to retake the manager slot,
+  # then continue the script. Recovery is NOT a redeploy.
+  echo "ERROR: AllowList proxy initializeManager was raced." >&2
+  echo "       manager() = $INIT_MANAGER" >&2
+  echo "       expected  = $DEPLOYER_ADDR" >&2
+  echo "       Recovery: deployer still holds proxy owner role; reclaim manager via" >&2
+  echo "         ETH_PRIVATE_KEY=\$PK cast send --rpc-url $RPC $OPHIS_AUTH \\" >&2
+  echo "           'setManager(address)' $DEPLOYER_ADDR --gas-limit 200000" >&2
+  echo "       Then re-run this script (idempotent from step 2 onward)." >&2
+  exit 9
+fi
+echo "  ✓ proxy initialized atomically (manager == deployer pre-handoff)"
 
 # --- 2. CoW helpers via cast send --create ---
 echo ""
