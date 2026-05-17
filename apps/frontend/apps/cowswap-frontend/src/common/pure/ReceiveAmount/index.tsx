@@ -31,7 +31,12 @@ export function ReceiveAmount(props: ReceiveAmountProps): ReactNode {
   const { amountAfterFees } = getOrderTypeReceiveAmounts(props.receiveAmountInfo)
 
   const minToReceiveAmount = bridgeEstimatedAmounts?.minToReceiveAmount ?? amountAfterFees
-  const title = minToReceiveAmount.toExact() + ' ' + minToReceiveAmount.currency.symbol
+  // Defensive: 2026-05-17 production incident — a CurrencyAmount instance
+  // hydrated from a stale persisted atom can have `.currency = undefined`,
+  // crashing the entire React tree with "Cannot read properties of undefined
+  // (reading 'symbol')". The title is purely a tooltip hover string — degrade
+  // gracefully rather than crashing the swap form.
+  const title = `${minToReceiveAmount?.toExact() ?? ''} ${minToReceiveAmount?.currency?.symbol ?? ''}`.trim()
 
   return (
     <styledEl.ReceiveAmountBox>

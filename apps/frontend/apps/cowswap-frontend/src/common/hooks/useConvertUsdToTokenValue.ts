@@ -16,7 +16,11 @@ export function useConvertUsdToTokenValue(
 
   return useCallback(
     (typedValue: string, isUsdMode: boolean) => {
-      if (isUsdMode && currencyUsdcPrice?.price) {
+      // Defensive (2026-05-17): a UsdPriceState hydrated from a stale persisted
+      // atom can have `.currency` undefined despite the static type, which
+      // crashes the USD-mode input box on every keystroke. Treat it as
+      // "no conversion available" instead.
+      if (isUsdMode && currencyUsdcPrice?.price && currencyUsdcPrice.currency?.chainId != null) {
         const usdcToken = USDC[currencyUsdcPrice.currency.chainId as SupportedChainId]
         const usdAmount = tryParseCurrencyAmount(typedValue, usdcToken)
 

@@ -41,7 +41,11 @@ export function OrderFillabilityWarning({
 
   const isNotEnoughBalance = fillability?.hasEnoughBalance === false
   const showIsNotEnoughAllowance = !isNotEnoughBalance && fillability?.hasEnoughAllowance === false
-  const symbol = inputAmount.currency.symbol
+  // Defensive (2026-05-17 incident): `inputAmount.currency` can be undefined
+  // when an order is hydrated from a stale persisted atom; fall back to an
+  // empty symbol rather than crash the order-list render. The warning copy
+  // below ("top up {symbol} balance") still reads sensibly with a blank.
+  const symbol = inputAmount?.currency?.symbol ?? ''
 
   const NotEnoughBalanceDescription = (
     <Subtitle>
