@@ -28,7 +28,7 @@ import { getIsCustomRecipient } from 'utils/orderUtils/getIsCustomRecipient'
 
 import * as styledEl from './styled'
 
-import { CHAIN_SPECIFIC_BENEFITS, SURPLUS_IMAGES } from '../../constants'
+import { CHAIN_AGGREGATION_INFO, CHAIN_SPECIFIC_BENEFITS, SURPLUS_IMAGES } from '../../constants'
 import { getSurplusText, getTwitterShareUrl, getTwitterShareUrlForBenefit } from '../../helpers'
 import { useWithConfetti } from '../../hooks/useWithConfetti'
 import { OrderProgressBarStepName } from '../../types'
@@ -138,6 +138,8 @@ export function FinishedStep({
             isSell={isSell}
           />
         ) : null}
+
+        <AggregationAndRouteInfo chainId={chainId} order={order} />
 
         {solvers && solversLength > 0 && (
           <styledEl.SolverRankings>
@@ -332,6 +334,56 @@ function SolverRow({
         )}
       </styledEl.SolverTableCell>
     </styledEl.SolverTableRow>
+  )
+}
+
+/**
+ * 2026-05-17 — DEX coverage + route info shown under the solver rankings.
+ *
+ * Renders a chain-specific summary of which DEXes the solvers aggregate
+ * over (e.g. for HyperEVM: "Baseline → HyperSwap V3 direct, KyberSwap →
+ * Hybra-CL + Project X V3 + custom HL AMMs"), plus a link to the on-chain
+ * settlement transaction so users can inspect the exact pools the trade
+ * traversed. Sourced from CHAIN_AGGREGATION_INFO; chains without an entry
+ * render nothing — preserves the existing UX on chains we haven't added
+ * coverage data for yet.
+ *
+ * The explorer link uses the order's settlement hash where the orderbook
+ * exposes it (`apiAdditionalInfo.executedTxHash`); falls back to the order
+ * UID explorer link otherwise so the user always has somewhere to click.
+ */
+function AggregationAndRouteInfo({ chainId, order }: { chainId: SupportedChainId; order: Order }): ReactNode {
+  const info = CHAIN_AGGREGATION_INFO[chainId]
+  if (!info) return null
+
+  // Settlement tx hash isn't always populated immediately; fall back to the
+  // order UID page on the explorer, which the user can use to drill into the
+  // settlement tx from there.
+  const additionalInfo = order.apiAdditionalInfo as { executedTxHash?: string } | undefined
+  const settlementTxHash = additionalInfo?.executedTxHash
+  const explorerHref = settlementTxHash
+    ? getExplorerLink(chainId, settlementTxHash, ExplorerDataType.TRANSACTION)
+    : getExplorerLink(chainId, order.id, ExplorerDataType.TRANSACTION)
+  const explorerLabel = settlementTxHash ? (
+    <Trans>View settlement transaction →</Trans>
+  ) : (
+    <Trans>View on explorer →</Trans>
+  )
+
+  return (
+    <styledEl.AggregationInfo>
+      <p className="headline">{info.headline}</p>
+      <ul>
+        {info.sources.map(({ solver, covers }) => (
+          <li key={solver}>
+            <b>{solver}</b> — {covers}
+          </li>
+        ))}
+      </ul>
+      <a className="explorer-link" href={explorerHref} target="_blank" rel="noopener noreferrer">
+        {explorerLabel}
+      </a>
+    </styledEl.AggregationInfo>
   )
 }
 
