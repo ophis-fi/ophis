@@ -182,8 +182,9 @@ export function SurplusCard() {
   const showSurplusAmount = surplusAmount && surplusAmount.greaterThan(0)
   const surplusUsdAmount = useUsdAmount(showSurplusAmount ? surplusAmount : undefined).value
   const native = useNativeCurrency()
-  const nativeSymbol = native.symbol || 'ETH'
-  const startDate = new Date(START_DATE[native.chainId as SupportedChainId]).toLocaleDateString(i18n.locale, {
+  // Defensive (2026-05-17): native is undefined for unsupported chains.
+  const nativeSymbol = native?.symbol || 'ETH'
+  const startDate = new Date(START_DATE[native?.chainId as SupportedChainId]).toLocaleDateString(i18n.locale, {
     year: 'numeric',
     month: 'long',
   })

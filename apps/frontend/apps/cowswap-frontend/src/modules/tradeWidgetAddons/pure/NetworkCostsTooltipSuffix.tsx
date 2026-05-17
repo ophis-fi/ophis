@@ -15,7 +15,7 @@ export function NetworkCostsTooltipSuffix() {
   const native = useNativeCurrency()
 
   const isPresign = !isEoaEthFlow && !allowsOffchainSigning
-  const nativeSymbol = native.symbol || ''
+  const nativeSymbol = native?.symbol || ''
 
   const addons = [
     isPresign && t`Because you are using a smart contract wallet`,
