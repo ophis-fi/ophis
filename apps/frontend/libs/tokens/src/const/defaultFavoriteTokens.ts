@@ -44,6 +44,7 @@ import {
   USDC_INK,
   USDC_OPTIMISM,
   USDT0_HYPEREVM,
+  NATIVE_CURRENCIES,
 } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -142,13 +143,18 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WRAPPED_NATIVE_CURRENCIES[10 as unknown as SupportedChainId],
     USDC_OPTIMISM,
   ]),
-  // Ophis fork: MegaETH mainnet (chain 4326) favorites — WETH only at launch.
+  // Ophis fork: MegaETH mainnet (chain 4326) favorites — native ETH + WETH.
   // USDT0 should be added once its canonical address is known (TBD post-deploy).
   [4326 as unknown as SupportedChainId]: tokensListToMap([
+    NATIVE_CURRENCIES[4326 as unknown as SupportedChainId],
     WRAPPED_NATIVE_CURRENCIES[4326 as unknown as SupportedChainId],
   ]),
-  // Ophis fork: HyperEVM mainnet (chain 999) favorites — WHYPE + USD₮0.
+  // Ophis fork: HyperEVM mainnet (chain 999) favorites — native HYPE +
+  // WHYPE + USD₮0. Native HYPE is the gas token (decimals 18); without it
+  // pinned, users could only see WHYPE in the token selector and had no
+  // way to swap native HYPE without a manual wrap step first.
   [999 as unknown as SupportedChainId]: tokensListToMap([
+    NATIVE_CURRENCIES[999 as unknown as SupportedChainId],
     WRAPPED_NATIVE_CURRENCIES[999 as unknown as SupportedChainId],
     USDT0_HYPEREVM,
   ]),

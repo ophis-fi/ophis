@@ -62,9 +62,39 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
   ),
 }
 
-export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = mapAllNetworks(
-  getTokenWithLogoFromNativeCurrency,
-)
+// 2026-05-17: the SDK's AdditionalTargetChainId enum only contains OPTIMISM=10.
+// `mapAllNetworks` iterates only over chains the SDK knows — so without the
+// explicit overrides below, NATIVE_CURRENCIES[999] (HYPE) and [4326]
+// (MegaETH ETH) would be undefined. Result: native HYPE / native MegaETH
+// ETH never appear in the swap-form's token selector for those chains; users
+// can only see the wrapped forms (WHYPE, WETH). Mirror the manual approach
+// already used for WRAPPED_NATIVE_CURRENCIES above.
+export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
+  ...mapAllNetworks(getTokenWithLogoFromNativeCurrency),
+  // Native HYPE on HyperEVM mainnet (chain 999). The on-chain gas token;
+  // accessed via the EVM native-currency sentinel address. 18 decimals,
+  // ETH-equivalent transfer semantics. Wraps to WHYPE at 0x5555…5555
+  // (see WRAPPED_NATIVE_CURRENCIES above).
+  [999 as unknown as SupportedChainId]: new TokenWithLogo(
+    undefined,
+    999 as unknown as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'HYPE',
+    'Hyperliquid',
+  ),
+  // Native ETH on MegaETH mainnet (chain 4326). OP-stack-style native gas
+  // token. Same sentinel-address pattern as mainnet ETH; wraps to WETH at
+  // the OP-stack predeploy slot 0x4200…0006 (see WRAPPED_NATIVE_CURRENCIES).
+  [4326 as unknown as SupportedChainId]: new TokenWithLogo(
+    undefined,
+    4326 as unknown as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'ETH',
+    'Ether',
+  ),
+}
 
 export const WETH_MAINNET = WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET]
 export const WXDAI = WRAPPED_NATIVE_CURRENCIES[SupportedChainId.GNOSIS_CHAIN]
