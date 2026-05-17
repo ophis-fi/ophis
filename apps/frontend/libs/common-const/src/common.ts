@@ -62,7 +62,31 @@ export const OLD_BARN_ETH_FLOW_ADDRESS = '0x04501b9b1d52e67f6862d157e00d13419d2d
 
 export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 
+// Ophis fork: per-chain EthFlow overrides. The SDK's ETH_FLOW_ADDRESSES /
+// BARN_ETH_FLOW_ADDRESSES maps are Record<SupportedChainId,…> and don't
+// include OP (10), MegaETH (4326), or HyperEVM (999). Without this override,
+// useEthFlowContract resolved to undefined for our chains and the "Confirm
+// swap" signing step would call into an empty contract address. Quotes
+// would succeed (they use a different override map in cowProtocolContracts.ts)
+// but signing would silently fail.
+//
+// Sentinel zero on chains where EthFlow is NOT deployed disables the EthFlow
+// path — the SDK treats zero-address as "not configured" downstream. Deploys
+// happen in feat/ethflow-* PRs.
+const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
+  10: '0x0000000000000000000000000000000000000000',     // OP — not deployed
+  4326: '0x0000000000000000000000000000000000000000',   // MegaETH — not deployed
+  999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B',    // HyperEVM — PR #61, 2026-05-17
+}
+
 export function getEthFlowContractAddresses(env: CowEnv, chainId: SupportedChainId): string {
+  // Ophis-added chains: consult our override map first. Sentinel zero disables
+  // the EthFlow path; a real address activates it.
+  const ophisOverride = OPHIS_ETHFLOW_OVERRIDES[chainId as unknown as number]
+  if (ophisOverride !== undefined) {
+    return ophisOverride
+  }
+
   if (env === 'prod') {
     return ETH_FLOW_ADDRESSES[chainId]
   }
