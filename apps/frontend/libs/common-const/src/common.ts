@@ -73,10 +73,14 @@ export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 // Sentinel zero on chains where EthFlow is NOT deployed disables the EthFlow
 // path — the SDK treats zero-address as "not configured" downstream. Deploys
 // happen in feat/ethflow-* PRs.
+// EthFlow on chain 999 is DEPLOYED but TEMPORARILY DISABLED here pending a
+// pnpm patch of @cowprotocol/sdk-config. See cowProtocolContracts.ts for the
+// full rationale (SDK's internal WRAPPED_NATIVE_CURRENCIES has no chain-999
+// entry → trading SDK's adjustEthFlowOrderParams crashes pre-HTTP).
 const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
   10: '0x0000000000000000000000000000000000000000',     // OP — not deployed
   4326: '0x0000000000000000000000000000000000000000',   // MegaETH — not deployed
-  999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B',    // HyperEVM — PR #61, 2026-05-17
+  999: '0x0000000000000000000000000000000000000000',    // HyperEVM — deployed at 0xd031…b61B, disabled pending SDK patch
 }
 
 export function getEthFlowContractAddresses(env: CowEnv, chainId: SupportedChainId): string {
