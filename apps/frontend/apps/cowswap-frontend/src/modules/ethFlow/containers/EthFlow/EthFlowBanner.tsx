@@ -31,8 +31,10 @@ export function EthFlowBanner({ hasEnoughWrappedBalance, ...props }: EthFlowBann
     return setShowBanner((state) => !state)
   }
 
-  // dont render if it isn't a native token swap
-  if (!isNativeIn) return null
+  // dont render if it isn't a native token swap. `!native` also covers
+  // unsupported-chain wallets where useNativeCurrency() returns undefined
+  // — those can't be ETH-flow targets anyway.
+  if (!isNativeIn || !native || !wrapped) return null
 
   return (
     <EthFlowBannerContent

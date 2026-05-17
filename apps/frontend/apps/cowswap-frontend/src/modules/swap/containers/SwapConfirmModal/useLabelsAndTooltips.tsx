@@ -31,7 +31,7 @@ export function useLabelsAndTooltips() {
         ? t`Slippage tolerance` + ` ` + `(` + (isSmartSlippageApplied ? t`dynamic` : t`modified`) + `)`
         : undefined,
       slippageTooltip: isEoaEthFlow
-        ? getNativeSlippageTooltip([nativeCurrency.symbol])
+        ? getNativeSlippageTooltip([nativeCurrency?.symbol ?? 'ETH'])
         : getNonNativeSlippageTooltip({ isDynamic: isSmartSlippageApplied }),
       expectReceiveLabel: isSell ? t`Expected to receive` : t`Expected to sell`,
       minReceivedLabel: isSell ? t`Minimum receive` : t`Maximum sent`,
@@ -39,6 +39,6 @@ export function useLabelsAndTooltips() {
       networkCostsSuffix: shouldPayGas ? <NetworkCostsSuffix /> : null,
       networkCostsTooltipSuffix: <NetworkCostsTooltipSuffix />,
     }),
-    [slippage, nativeCurrency.symbol, isEoaEthFlow, isSell, shouldPayGas, isSmartSlippageApplied, t],
+    [slippage, nativeCurrency?.symbol, isEoaEthFlow, isSell, shouldPayGas, isSmartSlippageApplied, t],
   )
 }
