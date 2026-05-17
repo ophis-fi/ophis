@@ -28,7 +28,11 @@
       "web3",
       "web3-bzz",
       "web3-shh"
-    ]
+    ],
+    "patchedDependencies": {
+      "@cowprotocol/sdk-config@2.0.0": "patches/@cowprotocol__sdk-config@2.0.0.patch",
+      "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch"
+    }
   },
   "config": {
     "enabledApps": "cowswap-frontend cowswap-frontend-e2e abis ui ui-utils widget-lib widget-react"
