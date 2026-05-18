@@ -50,6 +50,24 @@ set +a
 # Default to the verified-live Ormi-hosted HyperSwap V3 subgraph (Phase 1
 # of the V3 wiring spec). Operator can override to self-hosted Goldsky /
 # graph-node in .env when Phase 2/3 work lands.
+#
+# Audit LOW-1 (2026-05-17): originally proposed an `__disabled__` sentinel
+# but Codex Cyber review caught that this just leaks an invalid URL into
+# the rendered driver.toml (driver's Url parser rejects it → driver fails
+# to load at all rather than disabling V3 routing). The real audit concern
+# was "operator sets `=` empty thinking they're disabling, gets default
+# silently re-injected". Fix that directly: distinguish "unset" (= use
+# default) from "set to empty" (= error). To actually disable V3 routing
+# the operator should comment out the [[liquidity.uniswap-v3]] block in
+# driver.toml.tmpl directly — it's a deliberate edit, not a runtime flag.
+if [[ -n "${HYPERSWAP_V3_SUBGRAPH_URL+x}" ]] && [[ -z "$HYPERSWAP_V3_SUBGRAPH_URL" ]]; then
+  echo "ERROR: HYPERSWAP_V3_SUBGRAPH_URL is set but empty." >&2
+  echo "  - To use the default (Ormi-hosted) subgraph: unset the var or remove the line in .env." >&2
+  echo "  - To use a custom subgraph: set HYPERSWAP_V3_SUBGRAPH_URL to its https URL." >&2
+  echo "  - To DISABLE HyperSwap V3 routing entirely: comment out the [[liquidity.uniswap-v3]]" >&2
+  echo "    block in infra/hyperevm-mainnet/configs/driver.toml.tmpl. Restart driver after." >&2
+  exit 2
+fi
 : "${HYPERSWAP_V3_SUBGRAPH_URL:=https://api.subgraph.ormilabs.com/api/public/33c67399-d625-4929-b239-5709cd66e422/subgraphs/hyperswap-v3/v0.1.2/gn}"
 export HYPERSWAP_V3_SUBGRAPH_URL
 
