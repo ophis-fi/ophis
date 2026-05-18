@@ -11,6 +11,7 @@ use {
         boundary::{self},
         domain,
     },
+    ::observe::metrics,
     alloy::primitives::{Address, U256},
     app_data::{MAX_PARTNER_FEE_BPS, MAX_PARTNER_VOLUME_BPS},
     chrono::{DateTime, Utc},
@@ -24,10 +25,27 @@ use {
         fee_factor::FeeFactor,
     },
     eth_domain_types as eth,
+    prometheus::IntCounterVec,
     rust_decimal::Decimal,
     shared::{arguments::TokenBucketFeeOverride, fee::VolumeFeePolicy},
     std::collections::HashSet,
 };
+
+#[derive(prometheus_metric_storage::MetricStorage)]
+struct Metrics {
+    /// Counts orders whose partner-fee policies were silently dropped before
+    /// fee computation. Each `reason` label indicates a distinct upstream
+    /// failure mode that bypassed CIP-75 partner-fee accounting; non-zero
+    /// values warrant operator investigation since revenue may be at stake.
+    #[metric(labels("reason"))]
+    partner_fee_dropped: IntCounterVec,
+}
+
+impl Metrics {
+    fn get() -> &'static Self {
+        Metrics::instance(metrics::get_storage_registry()).unwrap()
+    }
+}
 
 #[derive(Debug)]
 enum OrderClass {
@@ -174,14 +192,49 @@ impl ProtocolFees {
             fee_factor_from_bps(bps.min(MAX_PARTNER_FEE_BPS))
         }
 
-        let Ok(max_partner_fee) = Decimal::try_from(max_partner_fee) else {
-            return vec![];
+        let max_partner_fee = match Decimal::try_from(max_partner_fee) {
+            Ok(value) => value,
+            Err(err) => {
+                Metrics::get()
+                    .partner_fee_dropped
+                    .with_label_values(&["max_partner_fee_invalid"])
+                    .inc();
+                tracing::error!(
+                    order_uid = %order.metadata.uid,
+                    ?err,
+                    max_partner_fee,
+                    "partner fee policies dropped: operator-configured max_partner_fee \
+                     is not convertible to Decimal"
+                );
+                return vec![];
+            }
         };
+        // An absent `full_app_data` means the order legitimately has no app-data
+        // attached, which is the common case for orders without partner fees.
+        // No telemetry here on purpose — it would fire on every plain order.
         let Some(full_app_data) = order.metadata.full_app_data.as_ref() else {
             return vec![];
         };
-        let Ok(parsed_app_data) = app_data::parse(full_app_data.as_bytes()) else {
-            return vec![];
+        let parsed_app_data = match app_data::parse(full_app_data.as_bytes()) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                Metrics::get()
+                    .partner_fee_dropped
+                    .with_label_values(&["app_data_parse_error"])
+                    .inc();
+                // warn (not error) — the input is user-controlled, so a malformed
+                // app_data can be triggered at order-ingestion rate by an
+                // attacker. The metric is the load-bearing signal; alert on the
+                // rate, not on each log line. %err (Display) is used in place of
+                // ?err (Debug) so we don't accidentally echo raw user bytes if
+                // serde_json's Debug ever embeds them.
+                tracing::warn!(
+                    order_uid = %order.metadata.uid,
+                    %err,
+                    "partner fee policies dropped: app_data document failed to parse"
+                );
+                return vec![];
+            }
         };
 
         let mut accumulated = Decimal::ZERO;
@@ -763,7 +816,6 @@ mod test {
 
     #[test]
     fn cip75_surplus_bps_factor_below_cap_unchanged() {
-        // At the boundary (2500) and below, no clamping should occur.
         let expected = FeeFactor::try_from(0.25).unwrap();
         assert_eq!(surplus_factor(2500), expected);
         assert_eq!(surplus_factor(MAX_PARTNER_FEE_BPS), expected);
@@ -771,7 +823,6 @@ mod test {
 
     #[test]
     fn cip75_surplus_bps_factor_above_cap_clamped() {
-        // Anything above the CIP-75 cap must be clamped to 0.25 (= 2500 bps).
         let expected = FeeFactor::try_from(0.25).unwrap();
         assert_eq!(surplus_factor(2501), expected);
         assert_eq!(surplus_factor(9999), expected);
@@ -789,9 +840,6 @@ mod test {
 
     #[test]
     fn cip75_max_volume_bps_clamped_in_surplus_policy() {
-        // maxVolumeBps above the CIP-75 cap (50) must be clamped before the
-        // global max_partner_fee is applied. With max_partner_fee=1.0 (no global
-        // cap) the resulting max_volume_factor should equal 50/10000 = 0.005.
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(
@@ -824,8 +872,6 @@ mod test {
 
     #[test]
     fn cip75_max_volume_bps_clamped_in_price_improvement_policy() {
-        // Same clamp invariant as the surplus variant — re-asserted explicitly
-        // here so a future regression in the PI match arm cannot pass tests.
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(
@@ -854,5 +900,39 @@ mod test {
             }
             other => panic!("expected Policy::PriceImprovement, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn malformed_app_data_returns_empty_without_panic() {
+        // Audit C1 inverse: a malformed app_data document used to silently drop
+        // partner fees with no log or telemetry. The function must still return
+        // `vec![]` (preserving the legacy callsite contract) and now emits a
+        // `tracing::warn!` plus `partner_fee_dropped{reason="app_data_parse_error"}`
+        // counter increment. The metric is observable in production; this test
+        // only guards the no-panic / empty-return contract.
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some("this is not json".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01);
+        assert_eq!(result, vec![]);
+    }
+
+    #[test]
+    fn no_app_data_returns_empty_silently() {
+        // No `full_app_data` is a legitimate case (orders without app-data);
+        // no telemetry should fire on this path, only on parse failures.
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: None,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01);
+        assert_eq!(result, vec![]);
     }
 }
