@@ -72,13 +72,18 @@ relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [submission]
-# HL base fee runs 0.1-10 gwei in practice. Cap at 10 gwei = 10^10 wei
-# (100× current baseline). The previous 1000 gwei cap was 10000× baseline
-# and exposed ~2.9 ETH-equivalent (>$8k in HYPE) wasted-fee surface per
-# settle if a hostile/glitched solver proposed a tx at the cap. 10 gwei
-# is still ample for HL spike days while keeping max single-settle fee
-# under $0.10 even at the 2.9M tx-gas-limit.
-gas-price-cap = "10000000000"
+# Audit MEDIUM-5 (2026-05-17): raised from 10 → 100 gwei. HL base fee
+# observed range 0.1-10 gwei steady-state, but a sustained network spike
+# (mass airdrop claim, oracle bloat, big-block congestion) can push past
+# 10 gwei and silently brick every settle (cap rejects tx → auctions
+# stall → users see "transaction pending" forever). 100 gwei is 10× the
+# observed steady-state ceiling — still caps a single settle's wasted-fee
+# surface at ~$0.85 even at the 2.9M tx-gas-limit, well under the
+# settle's typical user-fee. Paired Prom alert OphisHlBasefeeApproachingCap
+# in alerts.yml pages at 30 gwei so we get a heads-up before the cap
+# matters. If basefee ever sustains > 30 gwei the right move is a deeper
+# investigation (HL fee-market regime change?), not just raising the cap.
+gas-price-cap = "100000000000"
 
 [[submission.mempool]]
 # Submission MUST go through a single upstream, NOT the eRPC fan-out.

@@ -144,3 +144,38 @@ groups:
         annotations:
           summary: "HL solvers receiving <1s of solve-time budget at p99"
           description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
+
+  - name: ophis-hl-chain-health
+    interval: 30s
+    rules:
+      # Audit MEDIUM-9 (2026-05-17): submission-deadline=60 in autopilot.toml
+      # was tuned for HL's current ~1s block time. If HL ever bumps to 2s
+      # (testnet has done this before) or drops to 500ms (rumored
+      # optimization), 60 blocks becomes either too long (stale-quote/MEV
+      # window) or too short (mass settle timeouts). Detect block-time
+      # drift via the rate of advance of `last_block_number` — the Gauge
+      # exported by apps/backend/crates/ethrpc/src/block_stream.rs:329.
+      # `rate()` on a monotonic Gauge yields blocks/sec (≈ 1.0 on HL today).
+      - alert: OphisHlBlockTimeDrift
+        expr: |
+          (
+            rate(last_block_number{job="autopilot"}[5m]) < 0.75
+            or
+            rate(last_block_number{job="autopilot"}[5m]) > 1.5
+          )
+        for: 15m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL effective block time drifted >25% from assumed 1s"
+          description: "HL block production rate is outside the 0.75-1.5 blocks/sec band for 15min. submission-deadline=60 in autopilot.toml is now mistuned (either too long → stale quote / MEV window, or too short → mass settle timeouts). Recompute 60 × actual-block-time and update config."
+
+      # Audit MEDIUM-5 paired alert (2026-05-17): gas-price-cap was raised
+      # 10 → 100 gwei. We WANT to alert if HL basefee approaches the new cap
+      # (30 gwei ≈ 30% of cap, ~3× steady-state). NOT IMPLEMENTED — Codex
+      # Cyber review caught that no `eth_basefee_gwei` metric exists in-tree.
+      # Wiring a basefee collector is task #142 (added 2026-05-17). Manual
+      # check until then: `cast basefee --rpc-url https://rpc.purroofgroup.com`
+      # via a cron probe → Pushgateway, OR add a node_exporter textfile
+      # collector. Placeholder removed to avoid false confidence.
