@@ -48,12 +48,53 @@ pub mod eip7702;
 /// The solver name. The user can configure this to be anything that they like.
 /// The name uniquely identifies each solver in case there's more than one of
 /// them.
-#[derive(Debug, Clone, From, Into)]
+///
+/// Audit Phase 2 sharp-edges MED-2 (PR #90 review): the name flows into log
+/// lines, Prometheus label values, and JSON response bodies. Operator-set
+/// names containing newlines, quotes, or `,` would break log-line parsers
+/// and alert regex. Names are now validated at config-load time via
+/// [`Name::try_new`] — accepted character class is `[A-Za-z0-9_-]+`, 1-64
+/// chars. The `From<String>` impl below preserves the legacy unchecked
+/// construction for tests but is `#[cfg(test)]`-gated in production builds.
+#[derive(Debug, Clone, Into)]
 pub struct Name(pub String);
+
+#[derive(Debug, thiserror::Error)]
+pub enum InvalidName {
+    #[error("solver name must be 1-64 characters")]
+    Length,
+    #[error(
+        "solver name {0:?} contains disallowed characters; accepted character \
+         class is [A-Za-z0-9_-]"
+    )]
+    Charset(String),
+}
 
 impl Name {
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Construct a [`Name`] with validation. Use this on every config-load
+    /// path; the unchecked `From<String>` is `#[cfg(test)]`-only.
+    pub fn try_new(s: String) -> Result<Self, InvalidName> {
+        if s.is_empty() || s.len() > 64 {
+            return Err(InvalidName::Length);
+        }
+        if !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return Err(InvalidName::Charset(s));
+        }
+        Ok(Self(s))
+    }
+}
+
+#[cfg(test)]
+impl From<String> for Name {
+    fn from(value: String) -> Self {
+        Self(value)
     }
 }
 

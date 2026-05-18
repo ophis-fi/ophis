@@ -39,6 +39,8 @@ pub struct Api {
     pub eth: Ethereum,
     pub mempools: Mempools,
     pub addr: SocketAddr,
+    /// Audit MED-1 toggle: see `cli::Args::healthz_verbose`.
+    pub healthz_verbose: bool,
     pub bad_token_detector: risk_detector::bad_tokens::Detector,
     /// If this channel is specified, the bound address will be sent to it. This
     /// allows the driver to bind to 0.0.0.0:0 during testing.
@@ -84,6 +86,7 @@ impl Api {
         let healthz_state = routes::HealthcheckState {
             eth: self.eth.clone(),
             solvers: Arc::new(self.solvers.clone()),
+            verbose: self.healthz_verbose,
         };
         app = app.merge(healthz_router.with_state(healthz_state));
 

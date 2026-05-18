@@ -55,7 +55,12 @@ pub async fn load(chain: Chain, path: &Path) -> infra::Config {
             let account = load_account(solver_config.account, config.chain_id).await;
             solver::Config {
                 endpoint: solver_config.endpoint,
-                name: solver_config.name.into(),
+                name: solver::Name::try_new(solver_config.name).unwrap_or_else(|err| {
+                    // Panic message includes the offending name via Display
+                    // impl (mod.rs:InvalidName), so operators don't have to
+                    // grep the TOML to find it.
+                    panic!("invalid solver name in config: {err}")
+                }),
                 slippage: solver::Slippage {
                     relative: big_decimal_to_big_rational(&solver_config.slippage.relative),
                     absolute: solver_config.slippage.absolute.map(eth::Ether),

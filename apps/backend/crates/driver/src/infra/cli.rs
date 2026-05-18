@@ -32,6 +32,15 @@ pub struct Args {
     #[clap(long, env, default_value = "false")]
     pub use_json_logs: bool,
 
+    /// Audit Phase 2 sharp-edges MED-1 (PR #90): emit per-solver address +
+    /// balance details in the /healthz JSON body. Defaults OFF so the
+    /// endpoint returns only `{ok: bool}` for external probes — the
+    /// detailed payload (which maps solver-name → submitter EOA) is
+    /// operator-private metadata. Set to true ONLY on deployments where
+    /// /healthz is gated behind operator auth (e.g. mTLS, internal LB).
+    #[clap(long, env, default_value = "false")]
+    pub healthz_verbose: bool,
+
     /// The node RPC API endpoint.
     #[clap(long, env)]
     pub ethrpc: Url,

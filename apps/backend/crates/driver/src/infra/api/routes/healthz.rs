@@ -64,6 +64,17 @@ fn min_balance_for(chain: Chain) -> u128 {
 pub(in crate::infra::api) struct HealthcheckState {
     pub eth: Ethereum,
     pub solvers: Arc<Vec<Solver>>,
+    /// Audit Phase 2 MED-1: when false, the response body is the bare
+    /// minimum `{ok: bool}` shape. When true, includes per-solver
+    /// `submitters` detail with addresses + balances + status. Default
+    /// off — only enable on deployments where /healthz is gated behind
+    /// operator auth (mTLS, internal LB).
+    pub verbose: bool,
+}
+
+#[derive(Serialize)]
+struct TerseHealth {
+    ok: bool,
 }
 
 #[derive(Serialize)]
@@ -101,27 +112,48 @@ pub(in crate::infra::api) fn healthz(
 }
 
 async fn route(state: axum::extract::State<HealthcheckState>) -> Response {
+    let verbose = state.0.verbose;
     // Outer probe budget: never let /healthz exceed HEALTHZ_BUDGET wall-clock.
-    // Per-RPC timeouts inside `run_probe` are belt-and-suspenders.
     match tokio::time::timeout(HEALTHZ_BUDGET, run_probe(state.0.clone())).await {
-        Ok(response) => response,
-        Err(_) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(HealthFailure {
-                ok: false,
-                failures: vec![format!(
-                    "healthz probe exceeded {budget}s budget",
-                    budget = HEALTHZ_BUDGET.as_secs()
-                )],
-                submitters: vec![],
-            }),
-        )
-            .into_response(),
+        Ok(response) => {
+            if verbose {
+                response
+            } else {
+                // Strip the detailed body — externally-visible probe should
+                // not leak solver-name → EOA mapping (MED-1). The status
+                // code is preserved (200 success, 503 failure).
+                let status = response.status();
+                (status, Json(TerseHealth { ok: status.is_success() })).into_response()
+            }
+        }
+        Err(_) => {
+            let body = TerseHealth { ok: false };
+            if verbose {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(HealthFailure {
+                        ok: false,
+                        failures: vec![format!(
+                            "healthz probe exceeded {budget}s budget",
+                            budget = HEALTHZ_BUDGET.as_secs()
+                        )],
+                        submitters: vec![],
+                    }),
+                )
+                    .into_response()
+            } else {
+                (StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response()
+            }
+        }
     }
 }
 
 async fn run_probe(state: HealthcheckState) -> Response {
-    let HealthcheckState { eth, solvers } = state;
+    let HealthcheckState {
+        eth,
+        solvers,
+        verbose: _,
+    } = state;
     let configured = eth.chain();
     let min_balance = min_balance_for(configured);
     let mut failures = Vec::new();
