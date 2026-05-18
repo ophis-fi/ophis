@@ -80,11 +80,7 @@ where
         match operation().await {
             Ok(value) => {
                 if attempt > 1 {
-                    tracing::info!(
-                        operation = name,
-                        attempt,
-                        "succeeded after retry"
-                    );
+                    tracing::info!(operation = name, attempt, "succeeded after retry");
                 }
                 return Ok(value);
             }
@@ -107,7 +103,6 @@ where
         }
     }
 
-    // Safe to unwrap: loop ran at least once and last_err was set on every Err path.
     Err(last_err.expect("with_backoff exhausted attempts without recording an error"))
 }
 
