@@ -39,7 +39,13 @@ DRIVER_USER="ophis-driver"
 DRIVER_UID=502
 DRIVER_GID=20  # macOS 'staff' group; safer than inventing a new group
 DRIVER_HOME="/Users/$DRIVER_USER"
-SYS_KEYCHAIN="/Library/Keychains/ophis-driver.keychain-db"
+# File-based PK storage. Filesystem ACL on $DRIVER_HOME (mode 0700) gives true
+# per-user isolation. The previous System Keychain approach didn't work because
+# `security -T /usr/bin/security` treats any user's `security` invocation as
+# authorized (the binary is the same), and macOS 26.x has a separate bug where
+# `set-keychain-settings` fails on freshly-created system keychains.
+PK_DIR="$DRIVER_HOME/.config"
+PK_FILE="$PK_DIR/submitter.key"
 
 # --- Step 1: Verify the PK is currently in scep's login keychain ---
 echo "=== Step 1: Confirm PK is present in user keychain ==="
@@ -69,28 +75,26 @@ else
   sudo mkdir -p $DRIVER_HOME
   sudo chown $DRIVER_USER:staff $DRIVER_HOME
   sudo chmod 700 $DRIVER_HOME
-  # Generate a random unguessable login password we'll never use (no shell anyway)
-  sudo dscl . -passwd /Users/$DRIVER_USER "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 64)"
+  # Generate a random unguessable login password we'll never use (no shell anyway).
+  # NOTE: invert the pipe (head -c reads finite bytes from /dev/urandom and exits;
+  # tr drains to EOF and exits 0). The reverse — `tr | head -c N` — triggers
+  # SIGPIPE on tr under `pipefail` and aborts the script silently.
+  _raw=$(head -c 1024 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9')
+  sudo dscl . -passwd /Users/$DRIVER_USER "${_raw:0:64}"
+  unset _raw
   echo "  ✓ User $DRIVER_USER created."
 fi
 
-# --- Step 3: Create a system keychain owned by ophis-driver and copy PK ---
+# --- Step 3: Copy PK into a file inside ophis-driver's home directory ---
 echo ""
-echo "=== Step 3: Create system keychain + copy PK ==="
-if [[ ! -f "$SYS_KEYCHAIN" ]]; then
-  # System keychain unlocked by a unique password (we store it sealed inside
-  # the keychain ACL itself via dummy entry; for Tier 1 simplicity we make
-  # it unlocked at boot via a launchd unlock hook below).
-  KEYCHAIN_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-  sudo security create-keychain -p "$KEYCHAIN_PASS" "$SYS_KEYCHAIN"
-  sudo security set-keychain-settings -lut 0 "$SYS_KEYCHAIN"  # don't auto-lock
-  # Stash the unlock password in /etc/ophis-driver-keychain.pass (readable only by root)
-  echo "$KEYCHAIN_PASS" | sudo tee /etc/ophis-driver-keychain.pass >/dev/null
-  sudo chmod 600 /etc/ophis-driver-keychain.pass
-  sudo chown root:wheel /etc/ophis-driver-keychain.pass
-  echo "  ✓ System keychain $SYS_KEYCHAIN created."
-else
-  echo "  ✓ System keychain $SYS_KEYCHAIN already exists."
+echo "=== Step 3: Copy PK to $PK_FILE ==="
+
+# Clean up any prior failed System Keychain attempt from earlier script revisions.
+if [[ -f /Library/Keychains/ophis-driver.keychain-db ]] || \
+   [[ -f /etc/ophis-driver-keychain.pass ]]; then
+  echo "  Cleaning up prior System Keychain artifacts (deprecated approach)..."
+  sudo rm -f /Library/Keychains/ophis-driver.keychain-db
+  sudo rm -f /etc/ophis-driver-keychain.pass
 fi
 
 # Read PK from scep's keychain (this is the LAST time we'll do this from scep).
@@ -103,38 +107,44 @@ if [[ ! "$PK_TMP" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
   exit 3
 fi
 
-# Unlock system keychain and add the PK
-KEYCHAIN_PASS=$(sudo cat /etc/ophis-driver-keychain.pass)
-sudo security unlock-keychain -p "$KEYCHAIN_PASS" "$SYS_KEYCHAIN"
-# Delete any old entry to allow re-running
-sudo security delete-generic-password -s "$KEYCHAIN_SVC" "$SYS_KEYCHAIN" 2>/dev/null || true
-sudo security add-generic-password \
-  -a "$DRIVER_USER" \
-  -s "$KEYCHAIN_SVC" \
-  -w "$PK_TMP" \
-  -T /usr/bin/security \
-  -U "$SYS_KEYCHAIN"
-echo "  ✓ PK copied into system keychain with ACL → $DRIVER_USER + /usr/bin/security."
-unset PK_TMP KEYCHAIN_PASS
+# Ensure $DRIVER_HOME/.config exists, owned by ophis-driver, mode 0700.
+sudo -u "$DRIVER_USER" mkdir -p "$PK_DIR" 2>/dev/null || sudo mkdir -p "$PK_DIR"
+sudo chown "$DRIVER_USER":staff "$PK_DIR"
+sudo chmod 700 "$PK_DIR"
 
-# --- Step 4: Verify scep CANNOT read the new keychain entry ---
+# Write PK to file as root, then chown to ophis-driver, then chmod 0600.
+# Can't use `install(1)` here — macOS BSD install rejects /dev/stdin as a source
+# (GNU install supports it). The tee/chmod/chown sequence is safe because the
+# parent dir $PK_DIR is already 0700 ophis-driver, so scep can't traverse into
+# it to see the file at any intermediate perm state.
+printf '%s\n' "$PK_TMP" | sudo tee "$PK_FILE" >/dev/null
+sudo chmod 600 "$PK_FILE"
+sudo chown "$DRIVER_USER":staff "$PK_FILE"
+unset PK_TMP
+
+# Double-check $DRIVER_HOME itself is 0700 (it should be from Step 2, but verify).
+sudo chmod 700 "$DRIVER_HOME"
+sudo chown "$DRIVER_USER":staff "$DRIVER_HOME"
+
+echo "  ✓ PK written to $PK_FILE (mode 0600, owner $DRIVER_USER)."
+echo "  ✓ Parent dirs $PK_DIR (0700) and $DRIVER_HOME (0700) owned by $DRIVER_USER."
+
+# --- Step 4: Verify scep CANNOT read, ophis-driver CAN read ---
 echo ""
 echo "=== Step 4: Verify isolation ==="
-if security find-generic-password -s "$KEYCHAIN_SVC" "$SYS_KEYCHAIN" -w >/dev/null 2>&1; then
-  echo "  WARNING: user scep can still read the system keychain entry."
-  echo "           ACLs may need additional tightening. Inspect:"
-  echo "           sudo security dump-keychain -d $SYS_KEYCHAIN"
+
+# As user scep: should fail because $DRIVER_HOME is 0700.
+if cat "$PK_FILE" >/dev/null 2>&1; then
+  echo "  ERROR: user scep can still read $PK_FILE. Filesystem ACL broken."
+  exit 4
 else
-  echo "  ✓ user scep CANNOT read the new keychain entry directly."
+  echo "  ✓ user scep CANNOT read $PK_FILE (filesystem ACL enforces isolation)."
 fi
 
-# Verify ophis-driver CAN read it (via su -)
-TEST_READ=$(sudo -u $DRIVER_USER \
-  security unlock-keychain -p "$(sudo cat /etc/ophis-driver-keychain.pass)" "$SYS_KEYCHAIN" && \
-  sudo -u $DRIVER_USER \
-  security find-generic-password -s "$KEYCHAIN_SVC" "$SYS_KEYCHAIN" -w 2>&1 | tr -d '\n\r' || echo FAILED)
+# As user ophis-driver: should succeed and return a valid 0x-prefixed 64-hex PK.
+TEST_READ=$(sudo -u "$DRIVER_USER" cat "$PK_FILE" 2>&1 | tr -d '\n\r' || echo FAILED)
 if [[ "$TEST_READ" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
-  echo "  ✓ user $DRIVER_USER CAN read PK via the system keychain."
+  echo "  ✓ user $DRIVER_USER CAN read PK via 'sudo -u $DRIVER_USER cat $PK_FILE'."
 else
   echo "  ERROR: user $DRIVER_USER cannot read PK. Result: ${TEST_READ:0:20}..."
   exit 4
@@ -150,15 +160,15 @@ echo "     File: ~/Library/LaunchAgents/ai.ophis.driver.plist (or wherever the"
 echo "     docker-compose-up launchd job lives). Add:"
 echo "       <key>UserName</key><string>$DRIVER_USER</string>"
 echo ""
-echo "  B. Patch render-configs.sh to read PK from the new system keychain"
-echo "     via: sudo -u $DRIVER_USER security find-generic-password ..."
+echo "  B. Patch render-configs.sh to read PK from the new file via:"
+echo "       sudo -u $DRIVER_USER cat $PK_FILE"
 echo "     Rendered files should land under $DRIVER_HOME/rendered/, chmod 600."
 echo ""
 echo "  C. Delete the plaintext OPHIS_DRIVER_SUBMITTER_KEY line from"
 echo "     ~/greg/infra/<chain>-mainnet/.env on each chain (HL, OP, MegaETH)."
 echo "     After: render-configs.sh will fail-loud if the line is set, since"
-echo "     render now sources from Keychain — env-var precedence would mask the"
-echo "     isolated keychain path."
+echo "     render now sources from $PK_FILE — env-var precedence would mask the"
+echo "     isolated file-based path."
 echo ""
 echo "  D. Drain the OLD scep keychain entry ONLY after (A)+(B)+(C) verified"
 echo "     working in a maintenance window. Last step:"
@@ -166,8 +176,9 @@ echo "       security delete-generic-password -s $KEYCHAIN_SVC"
 echo "     This is the point of no return — Tier 1 is complete after this."
 echo ""
 echo "=== Tier 1 Step 1-4 complete. ==="
-echo "    Status: PK now lives in /Library/Keychains/ophis-driver.keychain-db"
-echo "    with ACL pinned to user $DRIVER_USER."
+echo "    Status: PK now lives in $PK_FILE (mode 0600, owner $DRIVER_USER)."
+echo "    Isolation: filesystem ACL on $DRIVER_HOME (mode 0700) prevents user"
+echo "    scep from reading the file. Only $DRIVER_USER (and root) can read it."
 echo "    Old PK in scep's keychain is STILL THERE — kept for rollback safety."
 echo "    Run tier1-pk-isolation-rollback.sh to undo before draining old PK."
 echo ""
