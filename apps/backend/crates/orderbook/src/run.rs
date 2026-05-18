@@ -118,11 +118,18 @@ pub async fn run(config: Configuration) {
             .await
             .expect("load balances contract"),
     };
-    let vault_relayer = settlement_contract
-        .vaultRelayer()
-        .call()
-        .await
-        .expect("Couldn't get vault relayer address");
+    // Bootstrap RPC call: retry with backoff so transient eRPC consensus
+    // failures (ErrConsensusLowParticipants / ErrConsensusDispute) during
+    // HL stack restart bursts don't crash-loop the container. Mirrors the
+    // pattern used in autopilot — see crates/orderbook/src/retry.rs for
+    // rationale and the 2026-05-18 redeploy incident that motivated it.
+    let vault_relayer = crate::retry::with_backoff(
+        "settlement.vaultRelayer",
+        crate::retry::BackoffConfig::default(),
+        || async { settlement_contract.vaultRelayer().call().await },
+    )
+    .await
+    .expect("Couldn't get vault relayer address after retries");
     let signatures_contract = match config.shared.contracts.signatures {
         Some(address) => {
             contracts::support::Signatures::Instance::new(address, web3.provider.clone())

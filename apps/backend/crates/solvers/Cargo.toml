@@ -37,6 +37,7 @@ number = { workspace = true }
 price-estimation = { workspace = true }
 prometheus = { workspace = true }
 prometheus-metric-storage = { workspace = true }
+rand = { workspace = true }
 rate-limit = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
