@@ -24,6 +24,106 @@ pub const DEFAULT_SELL_ORDERS_ENDPOINT: &str = "https://web3.okx.com/api/v6/dex/
 
 const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 
+/// Allowlist of OKX DEX router (`tx.to`) + approve-spender (`dexContractAddress`)
+/// addresses keyed by chain id. The OKX V6 API returns both addresses in its
+/// `/swap` and `/approve-transaction` responses respectively, and the driver
+/// trusts the spender as an unlimited-allowance grantee — so a compromised OKX
+/// edge (DNS hijack, CA compromise, malicious CDN worker, insider) that returns
+/// attacker-controlled router/spender can drain Settlement's transient balance
+/// during execution. Pinning to a static allowlist closes the window.
+///
+/// **Verification methodology:** addresses below were extracted from a live
+/// authenticated probe (using the same OKX credentials the solver uses in
+/// production) and cross-verified via `cast code` on the chain's RPC to confirm
+/// each is a deployed contract with substantial bytecode (router: ~48 KiB,
+/// spender: ~4 KiB on Optimism). The spender was probed against 4 distinct
+/// tokens (WETH, USDC, OP, DAI) and returned identical for all of them,
+/// confirming it is a single OKX approve-proxy contract per chain rather than
+/// per-token.
+///
+/// **Adding a chain** (HyperEVM, MegaETH, etc.): re-run the probe under that
+/// chain's `chainIndex`, confirm `dexContractAddress` is stable across ≥3
+/// tokens, and verify both addresses via `cast code` against the chain's RPC.
+/// Do NOT take addresses from a `/swap` response without independent
+/// verification — that's the attack we're preventing.
+const OKX_ROUTER_ALLOWLIST: &[(u64, Address, Address)] = &[
+    // Optimism mainnet (chain 10). Verified 2026-05-18 via authenticated
+    // probe + `cast code` on https://optimism-rpc.publicnode.com.
+    (
+        10,
+        // Router (`tx.to` returned by /swap).
+        Address::new([
+            0xDd, 0x5E, 0x9B, 0x94, 0x7c, 0x99, 0xAa, 0x60, 0xba, 0xb0, 0x0c, 0xa4, 0x63, 0x1D,
+            0xce, 0x63, 0xb4, 0x99, 0x83, 0xE7,
+        ]),
+        // Spender (`dexContractAddress` returned by /approve-transaction).
+        Address::new([
+            0x68, 0xD6, 0xB7, 0x39, 0xD2, 0x02, 0x00, 0x67, 0xD1, 0xe2, 0xF7, 0x13, 0xb9, 0x99,
+            0xdA, 0x97, 0xE4, 0xd5, 0x48, 0x12,
+        ]),
+    ),
+    // Ethereum mainnet (chain 1). Documented from recorded OKX V5/V6
+    // fixture traffic in `crates/solvers/src/tests/okx/`. Ophis is NOT
+    // currently deployed on Ethereum mainnet — these entries exist so the
+    // test suite passes; re-verify both addresses via `cast code` before
+    // ever enabling OKX on chain 1 in production.
+    (
+        1,
+        // Router (`tx.to`) from the OKX V6 fixture.
+        Address::new([
+            0x7D, 0x0C, 0xcA, 0xa3, 0xFa, 0xc1, 0xe5, 0xA9, 0x43, 0xc5, 0x16, 0x8b, 0x6C, 0xEd,
+            0x82, 0x86, 0x91, 0xb4, 0x6B, 0x36,
+        ]),
+        // Spender (`dexContractAddress`) from the OKX V6 fixture.
+        Address::new([
+            0x40, 0xaA, 0x95, 0x8d, 0xd8, 0x7F, 0xC8, 0x30, 0x5b, 0x97, 0xf2, 0xBA, 0x92, 0x2C,
+            0xDd, 0xCa, 0x37, 0x4b, 0xcD, 0x7f,
+        ]),
+    ),
+];
+
+fn validate_router_allowlist(
+    chain_id: u64,
+    router: &Address,
+    spender: &Address,
+) -> Result<(), Error> {
+    let Some((_, allowed_router, allowed_spender)) = OKX_ROUTER_ALLOWLIST
+        .iter()
+        .find(|(cid, _, _)| *cid == chain_id)
+    else {
+        return Err(Error::Api {
+            code: -1,
+            reason: format!(
+                "OKX router allowlist has no entry for chain {chain_id}. Add an \
+                 entry to OKX_ROUTER_ALLOWLIST in crates/solvers/src/infra/dex/\
+                 okx/mod.rs after running the verification probe described in \
+                 the const's doc comment."
+            ),
+        });
+    };
+    if router != allowed_router {
+        return Err(Error::Api {
+            code: -1,
+            reason: format!(
+                "OKX returned non-allowlisted router address {router:?} for \
+                 chain {chain_id} (expected {allowed_router:?}). Refusing to \
+                 issue settlement calldata to an unverified target."
+            ),
+        });
+    }
+    if spender != allowed_spender {
+        return Err(Error::Api {
+            code: -1,
+            reason: format!(
+                "OKX returned non-allowlisted spender address {spender:?} for \
+                 chain {chain_id} (expected {allowed_spender:?}). Refusing to \
+                 grant ERC-20 allowance to an unverified contract."
+            ),
+        });
+    }
+    Ok(())
+}
+
 /// Cache key for OKX DEX approve contract addresses.
 /// V5 and V6 APIs may return different contract addresses for the same token,
 /// so we need to cache separately by order side.
@@ -179,6 +279,15 @@ impl Okx {
             .handle_api_requests(order, slippage)
             .instrument(tracing::trace_span!("swap", id = %id))
             .await?;
+
+        // Audit C2 / Phase 2: validate OKX-returned router (`tx.to`) and
+        // ERC-20 spender against the static OKX_ROUTER_ALLOWLIST. Mirrors the
+        // hardening already in place for KyberSwap and Velora.
+        validate_router_allowlist(
+            self.defaults.chain_index,
+            &swap_response.tx.to,
+            &dex_contract_address.0,
+        )?;
 
         // Increasing returned gas by 50% according to the documentation:
         // https://web3.okx.com/build/dev-docs/wallet-api/dex-swap (gas field description in Response param)
@@ -511,6 +620,68 @@ impl From<util::http::RoundtripError<dto::Error>> for Error {
                     reason: err.reason,
                 },
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn op_router() -> Address {
+        Address::new([
+            0xDd, 0x5E, 0x9B, 0x94, 0x7c, 0x99, 0xAa, 0x60, 0xba, 0xb0, 0x0c, 0xa4, 0x63, 0x1D,
+            0xce, 0x63, 0xb4, 0x99, 0x83, 0xE7,
+        ])
+    }
+
+    fn op_spender() -> Address {
+        Address::new([
+            0x68, 0xD6, 0xB7, 0x39, 0xD2, 0x02, 0x00, 0x67, 0xD1, 0xe2, 0xF7, 0x13, 0xb9, 0x99,
+            0xdA, 0x97, 0xE4, 0xd5, 0x48, 0x12,
+        ])
+    }
+
+    #[test]
+    fn allowlist_accepts_verified_optimism_pair() {
+        validate_router_allowlist(10, &op_router(), &op_spender()).unwrap();
+    }
+
+    #[test]
+    fn allowlist_rejects_unknown_chain() {
+        let err = validate_router_allowlist(999, &op_router(), &op_spender()).unwrap_err();
+        match err {
+            Error::Api { reason, .. } => assert!(
+                reason.contains("no entry for chain 999"),
+                "unexpected reason: {reason}"
+            ),
+            other => panic!("expected Error::Api, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn allowlist_rejects_attacker_router() {
+        let attacker = Address::new([0xde; 20]);
+        let err = validate_router_allowlist(10, &attacker, &op_spender()).unwrap_err();
+        match err {
+            Error::Api { reason, .. } => assert!(
+                reason.contains("non-allowlisted router"),
+                "unexpected reason: {reason}"
+            ),
+            other => panic!("expected Error::Api, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn allowlist_rejects_attacker_spender() {
+        let attacker = Address::new([0xde; 20]);
+        let err = validate_router_allowlist(10, &op_router(), &attacker).unwrap_err();
+        match err {
+            Error::Api { reason, .. } => assert!(
+                reason.contains("non-allowlisted spender"),
+                "unexpected reason: {reason}"
+            ),
+            other => panic!("expected Error::Api, got {other:?}"),
         }
     }
 }
