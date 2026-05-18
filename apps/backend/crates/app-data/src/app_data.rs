@@ -16,6 +16,17 @@ use {
 /// The minimum valid empty app data JSON string.
 pub const EMPTY: &str = "{}";
 
+/// CIP-75 hard cap on `surplusBps` and `priceImprovementBps` partner-fee fields.
+/// Values above this are a protocol-level violation and rejected at validation
+/// time. Mirror the value in `apps/backend/crates/autopilot/src/domain/fee/mod.rs`
+/// for defense-in-depth.
+pub const MAX_PARTNER_FEE_BPS: u64 = 2500;
+
+/// CIP-75 hard cap on `maxVolumeBps` for `Surplus` and `PriceImprovement`
+/// partner-fee policies. The operator-set global `max_partner_fee` provides an
+/// additional ceiling enforced downstream at fee computation time.
+pub const MAX_PARTNER_VOLUME_BPS: u64 = 50;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedAppData {
     pub hash: AppDataHash,
@@ -268,6 +279,7 @@ impl Validator {
     /// Valid app data is considered to be:
     /// 1. Below or equal to [`Validator::size_limit`] in size.
     /// 2. A valid JSON & app data object.
+    /// 3. CIP-75-compliant partner-fee fields (see [`validate_partner_fees`]).
     pub fn validate(&self, full_app_data: &[u8]) -> Result<ValidatedAppData> {
         if full_app_data.len() > self.size_limit {
             return Err(anyhow!(
@@ -279,6 +291,7 @@ impl Validator {
 
         let document = String::from_utf8(full_app_data.to_vec())?;
         let protocol = parse(full_app_data)?;
+        validate_partner_fees(&protocol.partner_fee)?;
 
         Ok(ValidatedAppData {
             hash: AppDataHash(hash_full_app_data(full_app_data)),
@@ -286,6 +299,37 @@ impl Validator {
             protocol,
         })
     }
+}
+
+/// Rejects partner-fee entries whose `Surplus` or `PriceImprovement` policies
+/// exceed CIP-75 bps caps. Volume policies are bounded downstream by the
+/// operator-set global `max_partner_fee`.
+fn validate_partner_fees(partner_fees: &PartnerFees) -> Result<()> {
+    for fee in partner_fees.iter() {
+        let (bps, max_volume_bps, kind) = match fee.policy {
+            FeePolicy::Surplus {
+                bps,
+                max_volume_bps,
+            } => (bps, max_volume_bps, "surplusBps"),
+            FeePolicy::PriceImprovement {
+                bps,
+                max_volume_bps,
+            } => (bps, max_volume_bps, "priceImprovementBps"),
+            FeePolicy::Volume { .. } => continue,
+        };
+        if bps > MAX_PARTNER_FEE_BPS {
+            return Err(anyhow!(
+                "partner fee {kind} {bps} exceeds CIP-75 cap of {MAX_PARTNER_FEE_BPS} bps"
+            ));
+        }
+        if max_volume_bps > MAX_PARTNER_VOLUME_BPS {
+            return Err(anyhow!(
+                "partner fee maxVolumeBps {max_volume_bps} exceeds CIP-75 cap of \
+                 {MAX_PARTNER_VOLUME_BPS} bps"
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub fn parse(full_app_data: &[u8]) -> Result<ProtocolAppData, serde_json::Error> {
@@ -714,12 +758,12 @@ mod tests {
                             },
                             {
                                 "surplusBps": 100,
-                                "maxVolumeBps": 100,
+                                "maxVolumeBps": 50,
                                 "recipient": "0x0101010101010101010101010101010101010101"
                             },
                             {
                                 "priceImprovementBps": 100,
-                                "maxVolumeBps": 100,
+                                "maxVolumeBps": 50,
                                 "recipient": "0x0101010101010101010101010101010101010101"
                             }
                         ]
@@ -742,14 +786,14 @@ mod tests {
                     PartnerFee {
                         policy: FeePolicy::Surplus {
                             bps: 100,
-                            max_volume_bps: 100
+                            max_volume_bps: 50
                         },
                         recipient: Address::from_slice(&[1; 20]),
                     },
                     PartnerFee {
                         policy: FeePolicy::PriceImprovement {
                             bps: 100,
-                            max_volume_bps: 100
+                            max_volume_bps: 50
                         },
                         recipient: Address::from_slice(&[1; 20]),
                     },
@@ -884,5 +928,103 @@ mod tests {
         let size_limit = r#"{"hello":"world"}"#.as_bytes();
         let err = validator.validate(size_limit).unwrap_err();
         dbg!(err);
+    }
+
+    fn partner_fee_json(policy: &str) -> String {
+        format!(
+            r#"{{
+                "metadata": {{
+                    "partnerFee": {policy}
+                }}
+            }}"#
+        )
+    }
+
+    #[test]
+    fn cip75_caps_accept_boundary_values() {
+        let validator = Validator::default();
+        let cases = [
+            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            // Volume policies are not capped by CIP-75 surplus/price-improvement caps.
+            r#"{ "volumeBps": 9999, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            // Lower-bound is also accepted.
+            r#"{ "surplusBps": 0, "maxVolumeBps": 0, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+        ];
+        for policy in cases {
+            let doc = partner_fee_json(policy);
+            validator.validate(doc.as_bytes()).unwrap_or_else(|err| {
+                panic!("CIP-75-compliant policy was rejected: {policy} ({err:?})");
+            });
+        }
+    }
+
+    #[test]
+    fn cip75_caps_reject_surplus_bps_above_cap() {
+        let validator = Validator::default();
+        let doc = partner_fee_json(
+            r#"{ "surplusBps": 2501, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("surplusBps 2501 exceeds CIP-75 cap of 2500"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn cip75_caps_reject_price_improvement_bps_above_cap() {
+        let validator = Validator::default();
+        let doc = partner_fee_json(
+            r#"{ "priceImprovementBps": 9999, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("priceImprovementBps 9999 exceeds CIP-75 cap of 2500"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn cip75_caps_reject_max_volume_bps_above_cap() {
+        let validator = Validator::default();
+        let surplus_doc = partner_fee_json(
+            r#"{ "surplusBps": 2500, "maxVolumeBps": 51, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+        );
+        let err = validator.validate(surplus_doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("maxVolumeBps 51 exceeds CIP-75 cap of 50"),
+            "unexpected error: {err}"
+        );
+
+        let pi_doc = partner_fee_json(
+            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 100, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+        );
+        let err = validator.validate(pi_doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("maxVolumeBps 100 exceeds CIP-75 cap of 50"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn cip75_caps_reject_any_violating_entry_in_array() {
+        let validator = Validator::default();
+        let doc = partner_fee_json(
+            r#"[
+                { "volumeBps": 100, "recipient": "0x0101010101010101010101010101010101010101" },
+                { "surplusBps": 100, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" },
+                { "priceImprovementBps": 5000, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }
+            ]"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("priceImprovementBps 5000 exceeds CIP-75 cap of 2500"),
+            "unexpected error: {err}"
+        );
     }
 }
