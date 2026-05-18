@@ -182,3 +182,29 @@ jobs:
       - name: Show advisory database version
         if: always()
         run: cargo audit --version
+
+  cargo-deny:
+    name: cargo deny (Rust supply chain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      # Pinned to a specific minor version for stable advisory-db fetch
+      # semantics + config schema. Bump intentionally.
+      - name: Install cargo-deny
+        run: cargo install --locked --version 0.19.6 cargo-deny
+
+      - name: Run cargo deny (advisories + sources, strict)
+        # Strict subset: advisories (CVEs) + sources (registry/git pins).
+        # Licenses + bans are informational only — see deny.toml.
+        run: |
+          cd apps/backend
+          cargo deny check advisories sources
+
+      - name: Run cargo deny (bans + licenses, informational)
+        # Non-gating; surfaces workspace-internal noise (path-dep
+        # wildcards, missing license fields on unpublished crates).
+        if: always()
+        run: |
+          cd apps/backend
+          cargo deny check bans licenses || echo "informational: bans/licenses report above is non-gating"
