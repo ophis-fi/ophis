@@ -123,6 +123,7 @@ async fn run_with(args: cli::Args, addr_sender: Option<oneshot::Sender<SocketAdd
         ),
         eth,
         addr: args.addr,
+        healthz_verbose: args.healthz_verbose,
         addr_sender,
     }
     .serve(
