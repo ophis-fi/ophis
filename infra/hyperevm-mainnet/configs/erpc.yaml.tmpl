@@ -87,11 +87,21 @@ projects:
               # to the autopilot/driver retry layer, which is correct.
               lowParticipantsBehavior: returnError
               preferNonEmpty: true
-              ignoreFields:
-                # `timestamp` is the obvious diverge field; some HL providers
-                # also report `mixHash`/`difficulty` as 0 vs absent.
-                eth_getBlockByNumber: ["timestamp"]
-                eth_getBlockByHash: ["timestamp"]
+              # ignoreFields REMOVED 2026-05-18 (Codex Cyber finding #1 HIGH).
+              #
+              # The prior `[timestamp]` ignore allowed a hostile upstream to
+              # forge timestamp while matching every other field — consensus
+              # passed because timestamp was excluded from equality. Forged
+              # timestamps reach downstream EIP-712 deadlines + block-time
+              # gating; strict compare closes the hole.
+              #
+              # Empirical 2026-05-18 (all 3 HL upstreams, same numbered block,
+              # 1000-back AND 10-back): identical timestamp + hash + mixHash +
+              # difficulty. Tip drift exists on "WHICH block is latest" but
+              # not on the contents of a numbered block; `enforceHighestBlock`
+              # handles the former. Availability cost of strict compare here
+              # is bounded (occasional disputes on `latest` queries), and
+              # `lowParticipantsBehavior: returnError` keeps that fail-closed.
               punishMisbehavior:
                 disputeThreshold: 5
                 disputeWindow: 10m
