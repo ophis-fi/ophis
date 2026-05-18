@@ -343,11 +343,14 @@ impl Competition {
         let (auction, balances, app_data) =
             tokio::join!(sort_orders_future, tasks.balances, tasks.app_data);
 
+        // Captured u64 (Copy) so the move-closure below can use it without
+        // borrowing self across the spawn_blocking boundary.
+        let chain_id = self.eth.chain().id();
         let auction = Self::run_blocking_with_timer("update_orders", move || {
             // Same as before with sort_orders, we use spawn_blocking() because a lot of CPU
             // bound computations are happening and we want to avoid blocking
             // the runtime.
-            Self::update_orders(auction, balances, app_data, cow_amm_orders)
+            Self::update_orders(auction, balances, app_data, cow_amm_orders, chain_id)
         })
         .await;
 
@@ -663,11 +666,13 @@ impl Competition {
         balances: Arc<Balances>,
         app_data: Arc<HashMap<order::app_data::AppDataHash, Arc<app_data::ValidatedAppData>>>,
         cow_amm_orders: Arc<Vec<Order>>,
+        chain_id: u64,
     ) -> Auction {
         // Clone balances since we only aggregate data once but each solver needs
         // to use and modify the data individually.
         let mut balances = balances.as_ref().clone();
         let cow_amms: HashSet<_> = cow_amm_orders.iter().map(|o| o.uid).collect();
+        let max_per_hook_gas = max_per_hook_gas_for_chain(chain_id);
 
         // The auction that we receive from the `autopilot` assumes that there
         // is sufficient balance to completely cover all the orders. **This is
@@ -690,6 +695,34 @@ impl Competition {
             // Update order app data if it was fetched.
             if let Some(fetched_app_data) = app_data.get(&order.app_data.hash()) {
                 order.app_data = fetched_app_data.clone().into();
+            }
+
+            // Audit MEDIUM-8 (2026-05-17 phase 1 HyperEVM audit): drop orders
+            // whose pre/post hooks declare a `gas_limit` above the chain-aware
+            // cap. On HL chain 999 the block gas budget is so tight that a
+            // single malicious hook with `gas_limit > gasleft()*63/64` can
+            // consume the settle's entire budget and revert the batch (EIP-150
+            // 63/64 rule). Driver-side filter is a defense-in-depth layer on
+            // top of the orderbook's aggregate `additional_gas` check.
+            if let Some(max_gas) = max_per_hook_gas
+                && let Some(hooks) = order.app_data.hooks()
+                && hooks
+                    .pre
+                    .iter()
+                    .chain(hooks.post.iter())
+                    .any(|hook| hook.gas_limit > max_gas)
+            {
+                tracing::warn!(
+                    order_uid = ?order.uid,
+                    chain_id,
+                    max_per_hook_gas = max_gas,
+                    "dropping order: hook gas_limit exceeds chain cap",
+                );
+                metrics::get()
+                    .dropped_orders_hook_gas_limit
+                    .with_label_values(&[&chain_id.to_string()])
+                    .inc();
+                return false;
             }
 
             // Flashloan orders get their sell tokens from the flashloan at
@@ -964,6 +997,43 @@ impl Competition {
 }
 
 const MAX_SOLUTIONS_TO_MERGE: usize = 10;
+
+/// Maximum gas a single user-declared pre/post hook is allowed to request
+/// on the given chain. Audit MEDIUM-8 (2026-05-17): on chains with tight
+/// block-gas budgets (HyperEVM chain 999, `tx-gas-limit = 2_900_000`), a
+/// malicious hook with `gas_limit > gasleft()*63/64` consumes the settle's
+/// entire gas budget via EIP-150 and forces a revert; the solver pays.
+/// Returns `None` for chains where the orderbook's aggregate
+/// `additional_gas` check already provides sufficient defense.
+fn max_per_hook_gas_for_chain(chain_id: u64) -> Option<u64> {
+    match chain_id {
+        // HyperEVM mainnet — `tx-gas-limit = 2_900_000`, leave ~400k headroom
+        // for the settle call itself.
+        999 => Some(2_500_000),
+        // Other supported chains (1 ETH / 10 OP / 100 Gnosis / 4326 MegaETH /
+        // 11155111 Sepolia) have block-gas-limits ≥ 30M; the orderbook's
+        // aggregate `additional_gas` check is sufficient there. Returning
+        // `None` makes this filter a no-op.
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod hook_gas_cap_tests {
+    use super::max_per_hook_gas_for_chain;
+
+    #[test]
+    fn hyperevm_chain_999_capped_at_2_500_000() {
+        assert_eq!(max_per_hook_gas_for_chain(999), Some(2_500_000));
+    }
+
+    #[test]
+    fn other_chains_uncapped() {
+        for chain_id in [1u64, 10, 100, 4326, 11155111, 42161] {
+            assert_eq!(max_per_hook_gas_for_chain(chain_id), None);
+        }
+    }
+}
 
 /// Creates a vector with all possible combinations of the given solutions.
 /// The result is sorted descending by score.
