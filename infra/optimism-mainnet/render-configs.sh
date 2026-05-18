@@ -45,33 +45,17 @@ if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
 fi
 export OPHIS_DRIVER_SUBMITTER_KEY
 
-OPHIS_RENDERED_DIR="/Users/ophis-driver/rendered/optimism-mainnet"
-if ! sudo test -d "$OPHIS_RENDERED_DIR"; then
-  echo "ERROR: $OPHIS_RENDERED_DIR missing. Run ./infra/tier1-pk-isolation-setup.sh." >&2
-  exit 6
-fi
-
 mkdir -p rendered
 shopt -s nullglob
 
 for tmpl in configs/*.toml.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
-
-  if [[ "$name" == "driver.toml" ]]; then
-    # PK-bearing TOML — render to ophis-driver's private dir.
-    TMP=$(mktemp); chmod 600 "$TMP"
-    envsubst '${OPHIS_DRIVER_SUBMITTER_KEY}' < "$tmpl" > "$TMP"
-    sudo install -m 600 -o ophis-driver -g staff "$TMP" "$OPHIS_RENDERED_DIR/driver.toml"
-    rm -f "$TMP"
-    echo "  rendered  $name → $OPHIS_RENDERED_DIR/driver.toml (owner ophis-driver)"
-  else
-    # Non-PK TOML — render to ./rendered/ as before (scep-owned, 0600).
-    out="rendered/$name"
-    envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE}' \
-      < "$tmpl" > "$out"
-    chmod 600 "$out"
-    echo "  rendered  $name"
-  fi
+  out="rendered/$name"
+  # envsubst only substitutes the explicit list we pass.
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+    < "$tmpl" > "$out"
+  chmod 600 "$out"
+  echo "  rendered  $name"
 done
 
 # Same lock for .env — render-configs.sh runs at every deploy so this
