@@ -41,6 +41,12 @@ struct EstimatorEntry {
 }
 
 /// Network options needed for creating price estimators.
+///
+/// Derives `Clone` so callers can retry `PriceEstimatorFactory::new` with the
+/// same inputs across attempts — useful for bootstrap-burst retry helpers in
+/// the autopilot (audit MEDIUM follow-up, 2026-05-18). All fields here are
+/// either `Copy` or already `Arc`/`Clone`-able, so cloning is cheap.
+#[derive(Clone)]
 pub struct Network {
     pub web3: Web3,
     pub simulation_web3: Option<Web3>,
@@ -52,6 +58,9 @@ pub struct Network {
 }
 
 /// The shared components needed for creating price estimators.
+///
+/// See `Network` doc-comment for the `Clone` rationale.
+#[derive(Clone)]
 pub struct Components {
     pub http_factory: HttpClientFactory,
     pub deny_listed_tokens: DenyListedTokens,
