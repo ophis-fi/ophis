@@ -271,14 +271,27 @@ groups:
           summary: "HL effective block time drifted >25% from assumed 1s"
           description: "HL block production rate is outside the 0.75-1.5 blocks/sec band for 15min. submission-deadline=60 in autopilot.toml is now mistuned (either too long → stale quote / MEV window, or too short → mass settle timeouts). Recompute 60 × actual-block-time and update config."
 
-      # Audit MEDIUM-5 paired alert (2026-05-17): gas-price-cap was raised
-      # 10 → 100 gwei. We WANT to alert if HL basefee approaches the new cap
-      # (30 gwei ≈ 30% of cap, ~3× steady-state). NOT IMPLEMENTED — Codex
-      # Cyber review caught that no `eth_basefee_gwei` metric exists in-tree.
-      # Wiring a basefee collector is task #142 (added 2026-05-17). Manual
-      # check until then: `cast basefee --rpc-url https://rpc.purroofgroup.com`
-      # via a cron probe → Pushgateway, OR add a node_exporter textfile
-      # collector. Placeholder removed to avoid false confidence.
+      # Audit MEDIUM-5 paired alert: gas-price-cap was raised 10 → 100 gwei.
+      # Alert if HL basefee approaches the cap. Metric source: roadmap 1.6 /
+      # task #142 — autopilot/src/maintenance.rs emits `eth_basefee_wei` per
+      # observed block (Prom name: autopilot_maintenance_eth_basefee_wei).
+      # Threshold: 30 gwei = 30 % of cap = ~3× HL steady-state (~10 gwei).
+      - alert: OphisHlBasefeeApproachingCap
+        # `chain="hyperevm"` selector is defense-in-depth against future
+        # federated Prom (or someone copy-pasting this rule into the OP/
+        # MegaETH alerts.yml). The chain label is set via prometheus.yml's
+        # `external_labels: chain: hyperevm` so each chain's Prom only
+        # emits its own series — but pinning here means the rule wouldn't
+        # misfire on cross-chain series if the tenancy ever changes.
+        expr: |
+          autopilot_maintenance_eth_basefee_wei{chain="hyperevm"} > 30000000000
+        for: 5m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL basefee at {{ $value | humanize }}wei sustained >5min — approaching 100 gwei gas_price_cap"
+          description: "HyperEVM basefee has exceeded 30 gwei for 5 consecutive minutes. The driver's gas_price_cap is 100 gwei (per MEDIUM-5 audit). At ~3× headroom remaining a sustained spike risks settlement-broadcast rejection. Inspect: `cast basefee --rpc-url https://rpc.purroofgroup.com`. Consider raising gas_price_cap or pausing solver if congestion sustained."
 
   - name: ophis-hl-ethflow
     interval: 30s
