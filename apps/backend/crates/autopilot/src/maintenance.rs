@@ -61,8 +61,18 @@ impl MaintenanceSync {
         let _timer = observe::metrics::metrics()
             .on_auction_overhead_start("autopilot", "wait_for_maintenance");
 
+        let start = Instant::now();
         if let Err(_timeout) = tokio::time::timeout(self.timeout, self.wait_inner(target)).await {
-            tracing::debug!("timed out waiting for maintenance");
+            // Audit H5: promoted from debug! to warn! because a sustained
+            // maintenance-wait timeout means the settlement indexer is stuck
+            // and autopilot is competing on stale state — operators need
+            // this in default-INFO production logs.
+            tracing::warn!(
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                timeout_ms = self.timeout.as_millis() as u64,
+                "timed out waiting for maintenance — settlement indexer may be stuck"
+            );
+            metrics().maintenance_wait_timeout.inc();
         }
     }
 
@@ -164,7 +174,16 @@ impl Maintenance {
         let start = Instant::now();
 
         if let Err(err) = self.run_essential_maintenance().await {
-            tracing::warn!(?err, "failed to run essential maintenance");
+            // Audit H5 follow-up (Codex pre-merge): essential maintenance
+            // failure means autopilot's view of settled-on-chain state will
+            // not advance past the previous block — drivers may try to
+            // re-settle already-filled orders. Promote warn→error and
+            // include the block context.
+            tracing::error!(
+                ?err,
+                block_number = block.number,
+                "failed to run essential maintenance — autopilot view will stall at previous block"
+            );
             metrics().updates.with_label_values(&["error"]).inc();
             return;
         }
@@ -308,6 +327,12 @@ struct Metrics {
         buckets(0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2.0, 2.5, 3, 3.5, 4)
     )]
     maintenance_stage_time: HistogramVec,
+
+    /// Autopilot maintenance-wait timeouts. Each tick means the settlement
+    /// indexer didn't advance to the target block within `timeout` — autopilot
+    /// will compete on stale state for that tick. Audit Phase 2 finding H5;
+    /// pre-this-metric these timeouts were debug-only logs.
+    maintenance_wait_timeout: prometheus::IntCounter,
 }
 
 fn metrics() -> &'static Metrics {
