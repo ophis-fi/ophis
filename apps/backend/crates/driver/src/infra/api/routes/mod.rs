@@ -9,7 +9,7 @@ pub mod solve;
 
 pub(super) use {
     gasprice::gasprice,
-    healthz::healthz,
+    healthz::{HealthcheckState, healthz},
     info::info,
     metrics::metrics,
     quote::{OrderError, quote},
