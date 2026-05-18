@@ -152,8 +152,17 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
                 let web3 = blockchain::rpc(&config.node_url);
                 let settlement =
                     ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
-                settlement.authenticator().call().await.unwrap_or_else(|e| {
-                    panic!("error reading authenticator contract address: {e:?}")
+                // Bootstrap RPC call: retry with backoff so transient eRPC
+                // consensus failures during HL stack restart bursts don't
+                // crash-loop the container. See crates/solvers/src/util/retry.rs.
+                crate::util::retry::with_backoff(
+                    "settlement.authenticator",
+                    crate::util::retry::BackoffConfig::default(),
+                    || async { settlement.authenticator().call().await },
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("error reading authenticator contract address after retries: {e:?}")
                 })
             };
         (settlement, authenticator)
