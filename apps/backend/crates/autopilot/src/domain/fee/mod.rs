@@ -12,6 +12,7 @@ use {
         domain,
     },
     alloy::primitives::{Address, U256},
+    app_data::{MAX_PARTNER_FEE_BPS, MAX_PARTNER_VOLUME_BPS},
     chrono::{DateTime, Utc},
     configs::{
         autopilot::fee_policy::{
@@ -165,6 +166,14 @@ impl ProtocolFees {
             FeeFactor::try_from(factor).expect("value was clamped to the required range")
         }
 
+        // CIP-75 caps surplus/priceImprovement bps at MAX_PARTNER_FEE_BPS. The
+        // orderbook validator rejects out-of-cap orders at ingress; we re-clamp
+        // here as defense-in-depth against any path that bypasses validation
+        // (pre-existing DB rows, future call sites, etc.).
+        fn fee_factor_from_cip75_bps(bps: u64) -> FeeFactor {
+            fee_factor_from_bps(bps.min(MAX_PARTNER_FEE_BPS))
+        }
+
         let Ok(max_partner_fee) = Decimal::try_from(max_partner_fee) else {
             return vec![];
         };
@@ -194,14 +203,15 @@ impl ProtocolFees {
                         bps,
                         max_volume_bps,
                     } => {
-                        // Convert bps to decimal percentage
+                        // Clamp max_volume_bps to CIP-75 cap before decimal conversion.
+                        let max_volume_bps = max_volume_bps.min(MAX_PARTNER_VOLUME_BPS);
                         let fee_decimal = Decimal::from(max_volume_bps) / Decimal::from(MAX_BPS);
 
                         // Compute max_volume_factor limited by the global volume cap.
                         let max_volume_factor =
                             fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
 
-                        let factor = fee_factor_from_bps(bps);
+                        let factor = fee_factor_from_cip75_bps(bps);
 
                         Policy::Surplus {
                             factor,
@@ -212,14 +222,15 @@ impl ProtocolFees {
                         bps,
                         max_volume_bps,
                     } => {
-                        // Convert bps to decimal percentage
+                        // Clamp max_volume_bps to CIP-75 cap before decimal conversion.
+                        let max_volume_bps = max_volume_bps.min(MAX_PARTNER_VOLUME_BPS);
                         let fee_decimal = Decimal::from(max_volume_bps) / Decimal::from(MAX_BPS);
 
                         // Compute max_volume_factor limited by the global volume cap.
                         let max_volume_factor =
                             fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
 
-                        let factor = fee_factor_from_bps(bps);
+                        let factor = fee_factor_from_cip75_bps(bps);
 
                         Policy::PriceImprovement {
                             factor,
@@ -698,5 +709,150 @@ mod test {
                 }
             ]
         );
+    }
+
+    fn surplus_factor(bps: u64) -> FeeFactor {
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(format!(
+                    r#"{{
+                        "metadata": {{
+                            "partnerFee": [{{
+                                "surplusBps": {bps},
+                                "maxVolumeBps": 50,
+                                "recipient": "0x0101010101010101010101010101010101010101"
+                            }}]
+                        }}
+                    }}"#
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
+        match policies.first().expect("expected at least one policy") {
+            Policy::Surplus { factor, .. } => *factor,
+            other => panic!("expected Policy::Surplus, got {other:?}"),
+        }
+    }
+
+    fn price_improvement_factor(bps: u64) -> FeeFactor {
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(format!(
+                    r#"{{
+                        "metadata": {{
+                            "partnerFee": [{{
+                                "priceImprovementBps": {bps},
+                                "maxVolumeBps": 50,
+                                "recipient": "0x0101010101010101010101010101010101010101"
+                            }}]
+                        }}
+                    }}"#
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
+        match policies.first().expect("expected at least one policy") {
+            Policy::PriceImprovement { factor, .. } => *factor,
+            other => panic!("expected Policy::PriceImprovement, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cip75_surplus_bps_factor_below_cap_unchanged() {
+        // At the boundary (2500) and below, no clamping should occur.
+        let expected = FeeFactor::try_from(0.25).unwrap();
+        assert_eq!(surplus_factor(2500), expected);
+        assert_eq!(surplus_factor(MAX_PARTNER_FEE_BPS), expected);
+    }
+
+    #[test]
+    fn cip75_surplus_bps_factor_above_cap_clamped() {
+        // Anything above the CIP-75 cap must be clamped to 0.25 (= 2500 bps).
+        let expected = FeeFactor::try_from(0.25).unwrap();
+        assert_eq!(surplus_factor(2501), expected);
+        assert_eq!(surplus_factor(9999), expected);
+        assert_eq!(surplus_factor(u64::MAX), expected);
+    }
+
+    #[test]
+    fn cip75_price_improvement_bps_factor_clamped() {
+        let expected = FeeFactor::try_from(0.25).unwrap();
+        assert_eq!(price_improvement_factor(2500), expected);
+        assert_eq!(price_improvement_factor(2501), expected);
+        assert_eq!(price_improvement_factor(9999), expected);
+        assert_eq!(price_improvement_factor(u64::MAX), expected);
+    }
+
+    #[test]
+    fn cip75_max_volume_bps_clamped_in_surplus_policy() {
+        // maxVolumeBps above the CIP-75 cap (50) must be clamped before the
+        // global max_partner_fee is applied. With max_partner_fee=1.0 (no global
+        // cap) the resulting max_volume_factor should equal 50/10000 = 0.005.
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(
+                    r#"{
+                        "metadata": {
+                            "partnerFee": [{
+                                "surplusBps": 2500,
+                                "maxVolumeBps": 999,
+                                "recipient": "0x0101010101010101010101010101010101010101"
+                            }]
+                        }
+                    }"#
+                    .to_string(),
+                ),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
+        match policies.first().expect("expected one policy") {
+            Policy::Surplus {
+                max_volume_factor, ..
+            } => {
+                let expected = FeeFactor::try_from(0.005).unwrap();
+                assert_eq!(*max_volume_factor, expected);
+            }
+            other => panic!("expected Policy::Surplus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cip75_max_volume_bps_clamped_in_price_improvement_policy() {
+        // Same clamp invariant as the surplus variant — re-asserted explicitly
+        // here so a future regression in the PI match arm cannot pass tests.
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(
+                    r#"{
+                        "metadata": {
+                            "partnerFee": [{
+                                "priceImprovementBps": 2500,
+                                "maxVolumeBps": 999,
+                                "recipient": "0x0101010101010101010101010101010101010101"
+                            }]
+                        }
+                    }"#
+                    .to_string(),
+                ),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
+        match policies.first().expect("expected one policy") {
+            Policy::PriceImprovement {
+                max_volume_factor, ..
+            } => {
+                let expected = FeeFactor::try_from(0.005).unwrap();
+                assert_eq!(*max_volume_factor, expected);
+            }
+            other => panic!("expected Policy::PriceImprovement, got {other:?}"),
+        }
     }
 }
