@@ -171,6 +171,9 @@ impl Maintenance {
         fully_processed_block: &watch::Sender<u64>,
     ) {
         metrics().last_seen_block.set(block.number);
+        // Roadmap 1.6: emit basefee per block for alerting. BlockInfo carries
+        // base_fee as u64 wei; gauge type is GenericGauge<AtomicU64>.
+        metrics().eth_basefee_wei.set(block.base_fee);
         let start = Instant::now();
 
         if let Err(err) = self.run_essential_maintenance().await {
@@ -333,6 +336,14 @@ struct Metrics {
     /// will compete on stale state for that tick. Audit Phase 2 finding H5;
     /// pre-this-metric these timeouts were debug-only logs.
     maintenance_wait_timeout: prometheus::IntCounter,
+
+    /// EIP-1559 base fee of the latest observed block, in wei. Allows
+    /// chain-aware alerting on basefee approaching the operator-set
+    /// gas-price-cap (e.g. HyperEVM where the cap is 100 gwei post-MEDIUM-5
+    /// and basefee historically ~10 gwei). Roadmap 1.6 / task #142;
+    /// previously absent — only a placeholder alert comment existed in
+    /// infra/hyperevm-mainnet/observability/alerts.yml.
+    eth_basefee_wei: GenericGauge<AtomicU64>,
 }
 
 fn metrics() -> &'static Metrics {
