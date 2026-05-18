@@ -84,7 +84,35 @@ struct SubmitterPool {
 #[derive(Debug)]
 struct DelegatedSlots {
     release: mpsc::Sender<Account>,
-    acquire: tokio::sync::Mutex<mpsc::Receiver<Account>>,
+    acquire: AcquireChannel,
+}
+
+/// Newtype wrapper around the EIP-7702 acquire receiver. Audit Phase 2
+/// finding M2: the inner `Mutex<Receiver<_>>` is held across `recv().await`,
+/// so adding a second locker would deadlock the entire settle path.
+///
+/// This newtype enforces single-acquire-API at the type level — there's no
+/// public way to call `.lock()` on the inner mutex. The only operation is
+/// [`AcquireChannel::take`], which is `pub(super)` and used only by
+/// `SubmitterPool::acquire`. Pre-this-newtype, the bare
+/// `Mutex<Receiver<Account>>` field exposed `.lock()` to anyone inside the
+/// crate and the deadlock invariant was doc-only.
+#[derive(Debug)]
+pub(super) struct AcquireChannel(tokio::sync::Mutex<mpsc::Receiver<Account>>);
+
+impl AcquireChannel {
+    fn new(rx: mpsc::Receiver<Account>) -> Self {
+        Self(tokio::sync::Mutex::new(rx))
+    }
+
+    /// Block until an `Account` is available, or return `None` if the
+    /// channel is closed. **DO NOT add other methods**; the safety of
+    /// holding the lock across `recv().await` depends on there being a
+    /// single linear caller. See the type-level doc-comment above.
+    async fn take(&self) -> Option<Account> {
+        let mut rx = self.0.lock().await;
+        rx.recv().await
+    }
 }
 
 impl SubmitterPool {
@@ -104,7 +132,7 @@ impl SubmitterPool {
             }
             Some(DelegatedSlots {
                 release: tx,
-                acquire: tokio::sync::Mutex::new(rx),
+                acquire: AcquireChannel::new(rx),
             })
         };
         let total_slots = 1 + num_delegated;
@@ -146,8 +174,11 @@ impl SubmitterPool {
             let Some(ref delegated) = self.delegated else {
                 return Err(anyhow::anyhow!("no EIP-7702 accounts configured"));
             };
-            let mut channel = delegated.acquire.lock().await;
-            let account = channel.recv().await.context("channel closed")?;
+            let account = delegated
+                .acquire
+                .take()
+                .await
+                .context("channel closed")?;
             tracing::debug!(submitter = ?account.address(), "using EIP-7702 submission account");
             Ok(GuardInner::Delegated {
                 account,
@@ -893,12 +924,57 @@ impl Competition {
         solution_id: u64,
         submission_deadline: BlockNo,
     ) -> Result<Settled, Error> {
+        // Audit Phase 2 finding M1: pre-PR, the settlement was
+        // `swap_remove_front`-ed BEFORE acquiring the submitter slot. If
+        // `acquire().await` ever returned `None` (channel closed, semaphore
+        // poisoned, panic) the settlement was permanently lost — autopilot
+        // had no way to retry it because the solution_id was gone from
+        // `self.settlements`. The mempool could still hold a pending nonce
+        // from a prior attempt.
+        //
+        // Fix: verify the settlement exists FIRST (without removing), then
+        // acquire the submitter slot, THEN actually remove. Race window
+        // exists if two callers settle the same solution_id — the cache
+        // lock at the final `swap_remove_front` is the atomicity boundary,
+        // one wins, the other returns SolutionNotAvailable harmlessly.
+        // Worst case is one wasted submitter slot until guard drop.
+        {
+            let lock = self.settlements.lock().unwrap();
+            if !lock
+                .iter()
+                .any(|s| s.solution().get() == solution_id && s.auction_id == auction_id)
+            {
+                return Err(Error::SolutionNotAvailable);
+            }
+        }
+
+        // Acquire a submission slot. The pool prefers the direct solver EOA
+        // (no forwarding overhead); falls back to a delegated EIP-7702
+        // submission account when the solver EOA is busy.
+        let guard = self
+            .submitter_pool
+            .acquire()
+            .await
+            .ok_or(Error::SubmissionError(SubmissionFailureKind::NoSubmitter))?;
+
+        // Now actually remove from cache. The lock blocks racing callers.
         let settlement = {
             let mut lock = self.settlements.lock().unwrap();
-            let index = lock
+            let Some(index) = lock
                 .iter()
                 .position(|s| s.solution().get() == solution_id && s.auction_id == auction_id)
-                .ok_or(Error::SolutionNotAvailable)?;
+            else {
+                // Benign race: another caller settled the same solution_id
+                // between our existence check and now. Log at info so this
+                // isn't misread as a state-machine bug in production logs
+                // (autopilot's POV: "someone already took it").
+                tracing::info!(
+                    auction_id = ?auction_id,
+                    solution_id,
+                    "settle raced — settlement already taken by concurrent caller"
+                );
+                return Err(Error::SolutionNotAvailable);
+            };
             // remove settlement to ensure we can't settle it twice by accident
             lock.swap_remove_front(index)
                 .ok_or(Error::SolutionNotAvailable)?
@@ -922,15 +998,6 @@ impl Competition {
         }
 
         notify::settlement_started(&self.solver, settlement.auction_id, settlement.solution());
-
-        // Acquire a submission slot. The pool prefers the direct solver EOA
-        // (no forwarding overhead); falls back to a delegated EIP-7702
-        // submission account when the solver EOA is busy.
-        let guard = self
-            .submitter_pool
-            .acquire()
-            .await
-            .ok_or(Error::SubmissionError(SubmissionFailureKind::NoSubmitter))?;
         let mode = guard.submission_mode();
 
         let executed = self
