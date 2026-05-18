@@ -229,10 +229,22 @@ pub async fn run(config: Configuration) {
     let deny_listed_tokens = DenyListedTokens::new(config.unsupported_tokens);
 
     let current_block_args = shared::current_block::Arguments::from(&config.shared.current_block);
-    let current_block_stream = current_block_args
-        .stream(config.shared.node_url.clone(), web3.provider.clone())
-        .await
-        .unwrap();
+    // Bootstrap RPC call: retry with backoff so transient eRPC consensus
+    // failures during HL stack restart bursts don't crash-loop the
+    // container. Mirrors the pattern at run.rs:127 for vault_relayer
+    // (added in PR #86); same eRPC-burst pathology motivates this site.
+    let current_block_stream = crate::retry::with_backoff(
+        "current_block_args.stream",
+        crate::retry::BackoffConfig::default(),
+        || {
+            let node_url = config.shared.node_url.clone();
+            let provider = web3.provider.clone();
+            let args = &current_block_args;
+            async move { args.stream(node_url, provider).await }
+        },
+    )
+    .await
+    .expect("failed to start current block stream after retries");
 
     let token_info_fetcher = Arc::new(CachedTokenInfoFetcher::new(Arc::new(TokenInfoFetcher {
         web3: web3.clone(),
@@ -249,11 +261,15 @@ pub async fn run(config: Configuration) {
             chain,
             settlement: *settlement_contract.address(),
             native_token: *native_token.address(),
-            authenticator: settlement_contract
-                .authenticator()
-                .call()
-                .await
-                .expect("failed to query solver authenticator address"),
+            // Bootstrap RPC call: retry with backoff (same rationale as the
+            // vault_relayer site at run.rs:127, added in PR #86).
+            authenticator: crate::retry::with_backoff(
+                "settlement.authenticator",
+                crate::retry::BackoffConfig::default(),
+                || async { settlement_contract.authenticator().call().await },
+            )
+            .await
+            .expect("failed to query solver authenticator address after retries"),
             block_stream: current_block_stream.clone(),
         },
         factory::Components {
