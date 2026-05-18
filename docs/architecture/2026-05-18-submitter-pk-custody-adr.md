@@ -53,7 +53,43 @@
 - **Cost**: $5k+/year minimum, custody contract.
 - Excluded — too slow and too expensive.
 
-## Recommendation: AWS KMS (B) with WebAuthn-gated SSO unlock
+## Excluded option: Ledger for solver-submitter signing
+
+A Ledger CANNOT be used for the solver submitter, despite Clement having 3 of them. Reason: every Ledger transaction requires a physical button press on the device for confirmation. This is intentional security design — the Ledger has no "auto-approve" or "blind-sign-headless" mode. A solver signing ~1Hz settlements would need ~86,400 button presses/day. Ledgers are correct for **cold** keys (Safe signers — which they already are), wrong for **hot** keys.
+
+Note: Ledgers ARE used today for the protocol Safe (`0xe049…01cF`) and the partner-fee Safe (`0x858f…CeF8`). Those are the right places for hardware-wallet security.
+
+## New option: Free tier — dedicated macOS user + Docker (uses tools Clement already has)
+
+Insertion before the AWS KMS recommendation: a $0 path that doesn't close the full threat model but addresses the actual audit-stated risk ("any process running as user `scep` can read the PK").
+
+**Architecture**:
+- Create dedicated macOS user `ophis-driver` with no shell (`UserShell /usr/bin/false`).
+- Move the driver-submitter Keychain entry to that user's Login Keychain (or a System Keychain with ACL pinned to `ophis-driver`).
+- Docker container runs as `ophis-driver` via launchd; reads PK once at container start via `security find-generic-password -w`; injects into container env; never writes PK to container filesystem.
+- File permissions: `chmod 700 /Users/ophis-driver` so `scep` can't traverse.
+
+**Threat model after free-tier**:
+
+| Threat | Today | After free-tier | After KMS |
+|---|---|---|---|
+| Malicious npm postinstall as `scep` | ❌ PK exposed | ✓ different user | ✓ KMS holds key |
+| Malicious browser extension as `scep` | ❌ PK exposed | ✓ different user | ✓ KMS holds key |
+| Compromised dev tool as `scep` | ❌ PK exposed | ✓ different user | ✓ KMS holds key |
+| Mac mini root compromise | ❌ PK exposed | ❌ PK in Keychain readable as root | ✓ KMS-side enforcement |
+| Mac mini stolen (no disk encryption) | ❌ PK exposed | ❌ PK on disk | ✓ KMS-side enforcement |
+| Mac mini stolen (FileVault on) | ✓ encrypted | ✓ encrypted | ✓ KMS-side enforcement |
+
+**Cost**: $0. ~30 min setup.
+
+**Limits**:
+- Doesn't defend against root compromise or physical theft (use FileVault for the latter).
+- All 3 chains still share one PK (same multi-chain exposure as today).
+- No audit trail equivalent to CloudTrail.
+
+**This is the recommended Tier 1**: ship before any KMS work. Even after KMS lands later, the dedicated-user pattern remains valuable.
+
+## Original recommendation: AWS KMS (B) with WebAuthn-gated SSO unlock — now Tier 2
 
 **Why**:
 1. Latency overhead (~150ms p95) fits the 60-second HL submission window with massive margin.
@@ -106,11 +142,35 @@ For each chain (HL, OP, MegaETH):
 | CloudTrail logging | Free up to 5GB | ~$0/month (low volume) |
 | **Total** | ~1 day eng + AWS sign-up | **~$140/year** |
 
-## Decision needed
+## Updated migration plan: Tier 1 (free, ship immediately) → optional Tier 2 (KMS, later)
 
-1. **Approve AWS KMS as the platform?** Or defer to YubiHSM2 / status quo?
-2. **AWS region?** Clement is in Europe; eu-central-1 (Frankfurt) or eu-west-3 (Paris) recommended for latency.
-3. **Use one KMS key for all 3 chains, or one per chain?** One-key is simpler but a compromise affects all chains; per-chain isolation costs $2/year more.
-4. **Timing**: Phase 2 (driver patch) is the substantive engineering effort. Can be sequenced any time before Phase 2 (audit backend stack).
+### Tier 1: dedicated macOS user + Docker (FREE, ~30 min)
 
-Until decision lands, current Keychain + chmod 600 setup remains. Risk is unchanged from audit baseline.
+Phase 1a (setup, no production change):
+1. `sudo dscl . -create /Users/ophis-driver` (UID 502, GroupID 1000, no shell, home `/Users/ophis-driver`).
+2. `sudo security add-generic-password -a ophis-driver -s ophis-driver-submitter-2026-05-14 -w <PK> /Users/ophis-driver/Library/Keychains/login.keychain-db` — copy the PK into a Keychain accessible only to the new user.
+3. `chmod 700 /Users/ophis-driver` so user `scep` can't read its files.
+4. Verify: `sudo -u scep cat /Users/ophis-driver/Library/Keychains/login.keychain-db` fails with permission denied.
+
+Phase 1b (driver migration):
+5. Update launchd plist (`~/Library/LaunchAgents/ai.ophis.driver.plist` or the docker-compose equivalent) to run the driver container as `ophis-driver`.
+6. Container start script reads PK via `security find-generic-password -s ophis-driver-submitter-2026-05-14 -w` and exports to driver env. PK never persists to host disk.
+7. Delete the existing plaintext `OPHIS_DRIVER_SUBMITTER_KEY` line from `~/greg/infra/<chain>-mainnet/.env`. The render-configs.sh expects this var; update it to fail-loudly if absent and source from Keychain at render time too.
+8. Verify on Sepolia first, then 1 settle per mainnet chain.
+
+This addresses the audit's actual stated threat at $0 cost. **Recommended**.
+
+### Tier 2: AWS KMS (Phase 2-5 from original ADR, OPTIONAL)
+
+Sequence once Tier 1 is shipped. Adds defense against Mac mini root compromise / theft. ~$140/year + ~1 week of intermittent work. Defer until either:
+- A specific incident raises the threat level
+- Phase 2 audit (backend) lands and you want stronger hot-key custody as a precondition for higher TVL
+- Or a security-conscious enterprise integrator asks for the SOC2/audit-trail story KMS gives
+
+## Decisions needed
+
+1. **Approve Tier 1 (dedicated user + Docker, FREE)?** Should ship this week.
+2. **Tier 2 timing**: defer entirely / sequence after Phase 2 audit / sequence before Phase 2 audit?
+3. **If Tier 2 someday**: AWS account exists already, or new sign-up? Region pref?
+
+Until Tier 1 lands, current Keychain + .env setup remains — risk is unchanged from audit baseline.
