@@ -120,6 +120,106 @@ groups:
           summary: "HL {{ $labels.solver }} dropping >50% of solutions over 15m"
           description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on HL. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
 
+  - name: ophis-hl-erpc-consensus
+    interval: 30s
+    rules:
+      # Codex Cyber post-merge recommendation (2026-05-18): track consensus
+      # error rate after removing `ignoreFields:[timestamp]` (PR #71). Catches
+      # any unexpected availability regression on the consensus-protected
+      # methods. Split by error type so an operator can distinguish "providers
+      # diverging on response value" (dispute) from "providers not responding"
+      # (low_participants) at a glance.
+      #
+      # Source metric: erpc_consensus_errors_total — labels:
+      #   - error: dispute | low_participants | consensus_on_error
+      #   - category: eth_call | eth_getBlockByNumber | eth_getBlockByHash |
+      #               eth_getLogs | eth_getTransactionReceipt | eth_getTransactionByHash
+      #   - finality: finalized | unfinalized | realtime | unknown
+      #   - network: evm:999
+      - alert: OphisHlErpcConsensusLowParticipantsHigh
+        expr: |
+          sum by (category) (
+            rate(erpc_consensus_errors_total{network="evm:999",error="low_participants"}[5m])
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL eRPC low-participants > 5/s on {{ $labels.category }} for 10m"
+          description: |
+            eRPC is failing consensus because fewer than 2 of 3 upstreams respond
+            within the retry budget for `{{ $labels.category }}` requests. Sustained
+            elevation indicates one or more HL upstream(s) (purroof / official /
+            hypurrscan) are slow or rate-limited.
+
+            Diagnose: `cast block-number --rpc-url <each upstream>` to find
+            which one is unresponsive. Check rpc-proxy logs:
+            `docker logs hyperevm-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
+
+            Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
+            (driver/orderbook poll ~5/s steady state).
+
+      - alert: OphisHlErpcConsensusDisputeHigh
+        expr: |
+          sum by (category) (
+            rate(erpc_consensus_errors_total{network="evm:999",error="dispute"}[5m])
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL eRPC dispute rate > 2/s on {{ $labels.category }} for 10m"
+          description: |
+            Upstream HL providers are returning DIFFERENT responses for the same
+            request — fork-view-poisoning suspect OR natural tip drift. 2-of-3
+            consensus is failing because responses don't match.
+
+            Sustained > 2/s is unusual: it means either (a) one of the 3
+            upstreams is on a fork / lagging behind the others, OR (b) a
+            specific request pattern is triggering deterministic disagreement
+            (e.g., a `latest`-tag query that resolves to different blocks).
+
+            On HL, expect occasional disputes on tip queries (PR #71 trade-off).
+            Sustained elevation = investigate which upstream is drifting:
+              cast block-number --rpc-url https://rpc.purroofgroup.com
+              cast block-number --rpc-url https://rpc.hyperliquid.xyz/evm
+              cast block-number --rpc-url https://rpc.hypurrscan.io
+            and compare. Provider > 5 blocks behind the median should be
+            sit-out-penalized by eRPC's punishMisbehavior — verify.
+
+      - alert: OphisHlErpcConsensusFailureCritical
+        expr: |
+          (
+            sum(rate(erpc_consensus_errors_total{network="evm:999"}[5m]))
+            /
+            sum(rate(erpc_consensus_total{network="evm:999"}[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL eRPC > 50% of consensus calls failing for 5m"
+          description: |
+            More than half of all consensus operations on the HL eRPC proxy are
+            failing. This is a real availability incident — driver / autopilot /
+            orderbook will stall, no new settlements can broadcast, in-flight
+            settlements will revert.
+
+            Likely cause: 2 of 3 upstream HL providers simultaneously degraded
+            (rate-limit, outage, or DNS). PR #71 (timestamp ignore removed) can
+            contribute extra disputes but should not push the overall failure
+            rate above 50%.
+
+            Immediate actions:
+              1. Identify which upstreams are down via direct probe
+              2. Consider emergency hot-swap to a known-healthy provider
+                 (see project_ophis_roadmap.md section 3 reliability map)
+              3. Worst case: temporarily lower agreementThreshold to 1 (NOT
+                 audit-compliant — revert as soon as providers recover)
+
   - name: ophis-hl-latency
     interval: 30s
     rules:
