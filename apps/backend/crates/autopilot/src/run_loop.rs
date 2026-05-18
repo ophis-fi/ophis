@@ -243,7 +243,19 @@ impl RunLoop {
             }
             Err(err) => {
                 self.solvable_orders_cache.track_auction_update("failure");
-                tracing::warn!(?err, "failed to update auction");
+                // Audit H3: promoted from warn! to error! because a persistent
+                // indexer/DB outage produces a green liveness probe (from the
+                // tick in next_auction / cut_auction below) and a steady
+                // stream of empty auctions while CIP-75 reference quotes run
+                // against stale prices. Operators need this in default-INFO
+                // production logs. Per-attempt; alerts should fire on rate
+                // (e.g. `solvable_orders_cache_auction_update_failure_total`)
+                // not on each log line.
+                tracing::error!(
+                    ?err,
+                    auction_block = auction_block.number,
+                    "failed to update auction — autopilot will compete on stale state"
+                );
             }
         }
         auction_block
@@ -271,7 +283,14 @@ impl RunLoop {
         }
 
         observe::log_auction_delta(&previous, &auction, &start_block);
-        self.probes.liveness.auction();
+        // Audit H3: don't tick liveness if the solvable-orders cache has
+        // failed too many consecutive updates — otherwise stale cached
+        // orders would keep the probe green during an indexer outage.
+        if !self.solvable_orders_cache.is_stale() {
+            self.probes.liveness.auction();
+        } else {
+            tracing::warn!("skipping liveness tick: solvable-orders cache is stale");
+        }
         Metrics::auction_ready(start_block.observed_at);
         Some(auction)
     }
@@ -294,8 +313,16 @@ impl RunLoop {
         self.persistence.upload_auction_to_s3(id, &auction);
 
         if auction.orders.is_empty() {
-            // Updating liveness probe to not report unhealthy due to this optimization
-            self.probes.liveness.auction();
+            // Updating liveness probe to not report unhealthy due to this optimization.
+            // Audit H3: but only if the cache is fresh — an indexer outage producing
+            // empty auctions would otherwise tick the probe green indefinitely.
+            if !self.solvable_orders_cache.is_stale() {
+                self.probes.liveness.auction();
+            } else {
+                tracing::warn!(
+                    "skipping liveness tick on empty auction: cache is stale"
+                );
+            }
             tracing::debug!("skipping empty auction");
             return None;
         }
