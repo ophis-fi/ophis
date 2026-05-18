@@ -112,12 +112,12 @@ services:
       ETHRPC: ${MEGAETH_MAINNET_RPC}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
-      # Solver/driver-submitter private key — read by the CoW driver via the
-      # `%OPHIS_DRIVER_SUBMITTER_KEY` interpolation in configs/driver.toml.
-      # MUST be set in ./.env. Container refuses to start if blank.
-      OPHIS_DRIVER_SUBMITTER_KEY: ${OPHIS_DRIVER_SUBMITTER_KEY:?driver private key must be set in infra/megaeth-mainnet/.env}
+      # Tier 1 PK isolation (2026-05-18): driver-submitter PK lives baked
+      # into the mounted /driver.toml (rendered under ophis-driver's home).
+      # The CoW driver deserializes account = "0x.." literally from TOML;
+      # no env-var substitution at runtime, so no env passthrough needed.
     volumes:
-      - ./rendered/driver.toml:/driver.toml:ro
+      - /Users/ophis-driver/rendered/megaeth-mainnet/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]
     ports:
       - "127.0.0.1:8201:80"
