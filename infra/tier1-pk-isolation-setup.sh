@@ -41,10 +41,12 @@ DRIVER_GID=20  # macOS 'staff' group; safer than inventing a new group
 DRIVER_HOME="/Users/$DRIVER_USER"
 SYS_KEYCHAIN="/Library/Keychains/ophis-driver.keychain-db"
 
-# --- Step 1: Verify the PK is currently in scep's keychain ---
+# --- Step 1: Verify the PK is currently in scep's login keychain ---
 echo "=== Step 1: Confirm PK is present in user keychain ==="
-if ! security find-generic-password -s "$KEYCHAIN_SVC" -a "scep" >/dev/null 2>&1; then
-  echo "ERROR: Keychain entry '$KEYCHAIN_SVC' not found for user scep." >&2
+# Don't filter by -a/acct — the entry was created with acct == svce, not "scep".
+# Filter by -s (service) only; security defaults to scep's login keychain.
+if ! security find-generic-password -s "$KEYCHAIN_SVC" >/dev/null 2>&1; then
+  echo "ERROR: Keychain entry '$KEYCHAIN_SVC' not found in scep's login keychain." >&2
   echo "       Maybe Tier 1 already applied, or PK was rotated. Inspect:" >&2
   echo "       security find-generic-password -s '$KEYCHAIN_SVC'" >&2
   exit 2
@@ -91,9 +93,10 @@ else
   echo "  ✓ System keychain $SYS_KEYCHAIN already exists."
 fi
 
-# Read PK from scep's keychain (this is the LAST time we'll do this from scep)
+# Read PK from scep's keychain (this is the LAST time we'll do this from scep).
+# Same fix as Step 1: -a/acct doesn't match "scep"; service-only lookup works.
 echo "  Reading PK from scep's keychain..."
-PK_TMP=$(security find-generic-password -s "$KEYCHAIN_SVC" -a "scep" -w 2>&1 | tr -d '\n\r')
+PK_TMP=$(security find-generic-password -s "$KEYCHAIN_SVC" -w 2>&1 | tr -d '\n\r')
 if [[ ! "$PK_TMP" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
   echo "ERROR: PK format invalid (expected 0x + 64 hex chars). Got length: ${#PK_TMP}" >&2
   unset PK_TMP
