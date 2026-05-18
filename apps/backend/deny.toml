@@ -1,0 +1,126 @@
+# cargo-deny configuration for the Ophis backend workspace.
+#
+# Supply-chain policy enforced by cargo-deny:
+#   1. Security advisories (RustSec)  — see `[advisories]`
+#   2. License compliance              — see `[licenses]`
+#   3. Source restriction              — see `[sources]`
+#   4. Crate bans                      — see `[bans]`
+#
+# Run locally:   cargo deny --manifest-path apps/backend/Cargo.toml check
+# Strict mode:   cargo deny --manifest-path apps/backend/Cargo.toml check -D warnings
+#
+# This file mirrors and extends the older `.cargo/audit.toml` ignore list
+# (which only covered the RustSec advisories side).
+
+[graph]
+all-features = false
+
+[output]
+feature-depth = 1
+
+# ---------------------------------------------------------------------------
+# Advisories
+# ---------------------------------------------------------------------------
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "warn"
+
+# Only advisories that currently match a crate in our dependency graph.
+# The original `.cargo/audit.toml` ignored 6 entries; cargo-deny revealed
+# that 4 of them no longer match anything in the workspace and were dropped:
+#   - RUSTSEC-2020-0140 (model crate data-race)
+#   - RUSTSEC-2023-0071 (rsa Marvin attack)
+#   - RUSTSEC-2024-0388 (derivative unmaintained)
+#   - RUSTSEC-2026-0097 (rand global-logger)
+# Re-add if a future upstream-merge or dep bump re-introduces them.
+ignore = [
+    # instant — unmaintained (use web-time). Tracked CoW#3338.
+    "RUSTSEC-2024-0384",
+    # paste — unmaintained / archived upstream. Tracked CoW#3338.
+    "RUSTSEC-2024-0436",
+]
+
+# ---------------------------------------------------------------------------
+# Licenses
+# ---------------------------------------------------------------------------
+[licenses]
+# Ophis is a fork of CoW Protocol services, GPL-3.0-or-later. The combined
+# work inherits GPL terms; we accept upstream-permissible licenses for deps.
+# `unused-allowed-license = "warn"` keeps the allow list informational rather
+# than blocking on each workspace member's missing license field.
+unused-allowed-license = "warn"
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "GPL-3.0",
+    "GPL-3.0-or-later",
+    "ISC",
+    "LGPL-3.0",
+    "LGPL-3.0-or-later",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "OpenSSL",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+# Workspace-internal crates inherit the workspace GPL-3.0-or-later license
+# even when their individual Cargo.toml omits the `license` field. Don't
+# fail the build for missing license fields on unpublished local crates.
+[licenses.private]
+ignore = true
+
+# Specific crates whose detected license can't be auto-confirmed.
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 },
+]
+
+# ---------------------------------------------------------------------------
+# Bans
+# ---------------------------------------------------------------------------
+[bans]
+# Strictness intentionally relaxed: this workspace is a non-published GPL
+# fork, so wildcard path-deps to workspace members are conventional and
+# don't represent a publication risk. Multi-version duplicates are warned
+# only because the workspace has many transitive duplicate deps that
+# upstream CoW has not yet deduplicated.
+multiple-versions = "warn"
+wildcards = "warn"
+allow-wildcard-paths = true
+highlight = "all"
+allow = []
+deny = [
+    # Place known-bad crates here as they are discovered.
+    # Example: { name = "openssl-sys", reason = "use rustls" }
+]
+skip = []
+skip-tree = []
+
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+[sources]
+unknown-registry = "deny"     # prevents typosquatting via unknown registries
+unknown-git = "deny"          # prevents unknown github accounts
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # CoW Protocol upstream — patched forks of services-adjacent crates.
+    "https://github.com/cowprotocol/services",
+    # Ophis-fi org — internal forks of upstream tooling.
+    "https://github.com/ophis-fi",
+]
+
+[sources.allow-org]
+github = ["cowprotocol", "ophis-fi"]
