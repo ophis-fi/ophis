@@ -73,14 +73,23 @@ impl Api {
         let order_sorting_strategies =
             Self::build_order_sorting_strategies(&order_priority_strategies);
 
-        // Add the metrics, healthz, and gasprice endpoints. Healthz and
-        // gasprice both share the Ethereum state and are merged together.
+        // Add the metrics, healthz, and gasprice endpoints. Healthz takes a
+        // HealthcheckState (Ethereum + solver list — needed for audit H4.2
+        // per-solver EOA balance check); gasprice keeps the plain Ethereum
+        // state. Two separate state-bound merges since the state types differ.
         app = routes::metrics(app);
 
-        let eth_routes = axum::Router::new();
-        let eth_routes = routes::healthz(eth_routes);
-        let eth_routes = routes::gasprice(eth_routes);
-        app = app.merge(eth_routes.with_state(self.eth.clone()));
+        let healthz_router = axum::Router::new();
+        let healthz_router = routes::healthz(healthz_router);
+        let healthz_state = routes::HealthcheckState {
+            eth: self.eth.clone(),
+            solvers: Arc::new(self.solvers.clone()),
+        };
+        app = app.merge(healthz_router.with_state(healthz_state));
+
+        let gasprice_router = axum::Router::new();
+        let gasprice_router = routes::gasprice(gasprice_router);
+        app = app.merge(gasprice_router.with_state(self.eth.clone()));
 
         // Multiplex each solver as part of the API. Multiple solvers are multiplexed
         // on the same driver so only one liquidity collector collects the liquidity
