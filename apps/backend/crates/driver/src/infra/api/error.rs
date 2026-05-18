@@ -142,7 +142,7 @@ impl From<competition::Error> for (axum::http::StatusCode, axum::Json<Error>) {
             competition::Error::SolutionNotAvailable => Kind::SolutionNotAvailable,
             competition::Error::DeadlineExceeded(_) => Kind::DeadlineExceeded,
             competition::Error::Solver(_) => Kind::SolverFailed,
-            competition::Error::SubmissionError => Kind::FailedToSubmit,
+            competition::Error::SubmissionError(_) => Kind::FailedToSubmit,
             competition::Error::TooManyPendingSettlements => Kind::TooManyPendingSettlements,
             competition::Error::NoValidOrdersFound => Kind::NoValidOrders,
             competition::Error::MalformedRequest => Kind::MalformedRequest,
