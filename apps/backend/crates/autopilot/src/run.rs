@@ -86,9 +86,13 @@ impl Liveness {
 /// Creates Web3 transport based on the given config.
 #[instrument(skip_all)]
 async fn ethrpc(url: &Url, ethrpc_args: &shared::web3::Arguments) -> infra::blockchain::Rpc {
-    infra::blockchain::Rpc::new(url, ethrpc_args)
-        .await
-        .expect("connect ethereum RPC")
+    crate::util::retry::with_backoff(
+        "ethrpc.connect",
+        crate::util::retry::BackoffConfig::default(),
+        || async { infra::blockchain::Rpc::new(url, ethrpc_args).await },
+    )
+    .await
+    .expect("connect ethereum RPC after retries")
 }
 
 /// Creates unbuffered Web3 transport.
@@ -197,12 +201,18 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         .as_ref()
         .map(|node_url| shared::web3::web3(&ethrpc_args, node_url, "simulation"));
 
-    let chain_id = web3
-        .provider
-        .get_chain_id()
-        .instrument(info_span!("chain_id"))
-        .await
-        .expect("Could not get chainId");
+    let chain_id = crate::util::retry::with_backoff(
+        "web3.get_chain_id",
+        crate::util::retry::BackoffConfig::default(),
+        || async {
+            web3.provider
+                .get_chain_id()
+                .instrument(info_span!("chain_id"))
+                .await
+        },
+    )
+    .await
+    .expect("Could not get chainId after retries");
     if let Some(expected_chain_id) = config.shared.chain_id {
         assert_eq!(
             chain_id, expected_chain_id,
@@ -301,6 +311,17 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
 
     let code_fetcher = Arc::new(CachedCodeFetcher::new(Arc::new(web3.clone())));
 
+    // Same retry pattern as `vault_relayer` (run.rs:236) — bootstrap eth_call
+    // through eRPC's strict-consensus proxy needs app-layer retry to ride out
+    // transient low-participants windows.
+    let solver_authenticator = crate::util::retry::with_backoff(
+        "settlement.authenticator",
+        crate::util::retry::BackoffConfig::default(),
+        || async { eth.contracts().settlement().authenticator().call().await },
+    )
+    .await
+    .expect("failed to query solver authenticator address after retries");
+
     let mut price_estimator_factory = PriceEstimatorFactory::new(
         &config.price_estimation,
         &config.native_price_estimation.shared,
@@ -310,13 +331,7 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
             chain,
             settlement: *eth.contracts().settlement().address(),
             native_token: *eth.contracts().weth().address(),
-            authenticator: eth
-                .contracts()
-                .settlement()
-                .authenticator()
-                .call()
-                .await
-                .expect("failed to query solver authenticator address"),
+            authenticator: solver_authenticator,
             block_stream: eth.current_block().clone(),
         },
         factory::Components {
@@ -394,9 +409,16 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
 
     let skip_event_sync_start = if config.ethflow.skip_event_sync {
         Some(
-            block_number_to_block_number_hash(&web3.provider, BlockNumberOrTag::Latest)
-                .await
-                .expect("Failed to fetch latest block"),
+            crate::util::retry::with_backoff(
+                "block_number_to_block_number_hash.latest",
+                crate::util::retry::BackoffConfig::default(),
+                || async {
+                    block_number_to_block_number_hash(&web3.provider, BlockNumberOrTag::Latest)
+                        .await
+                },
+            )
+            .await
+            .expect("Failed to fetch latest block after retries"),
         )
     } else {
         None
