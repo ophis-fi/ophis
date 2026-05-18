@@ -296,7 +296,8 @@ services:
       - "--web.listen-address=0.0.0.0:9090"
       # Restrict UI to read-only — no /reload, no /quit. We re-render
       # config by `docker compose restart prometheus`, never via HTTP.
-      - "--web.enable-lifecycle=false"
+      # Prom 3.x kingpin syntax: `--no-` prefix negates a boolean flag.
+      - "--no-web.enable-lifecycle"
     ports:
       - "127.0.0.1:9090:9090"
     depends_on:
