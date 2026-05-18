@@ -86,27 +86,16 @@ fn allowlist_entry_for(chain_id: u64) -> Result<&'static (u64, Address, Address)
     OKX_ROUTER_ALLOWLIST
         .iter()
         .find(|(cid, _, _)| *cid == chain_id)
-        .ok_or_else(|| Error::Api {
-            code: -1,
-            reason: format!(
-                "OKX router allowlist has no entry for chain {chain_id}. Add an \
-                 entry to OKX_ROUTER_ALLOWLIST in crates/solvers/src/infra/dex/\
-                 okx/mod.rs after running the verification probe described in \
-                 the const's doc comment."
-            ),
-        })
+        .ok_or(Error::ChainNotInAllowlist { chain_id })
 }
 
 fn validate_router_allowlist(chain_id: u64, router: &Address) -> Result<(), Error> {
     let (_, allowed_router, _) = allowlist_entry_for(chain_id)?;
     if router != allowed_router {
-        return Err(Error::Api {
-            code: -1,
-            reason: format!(
-                "OKX returned non-allowlisted router address {router:?} for \
-                 chain {chain_id} (expected {allowed_router:?}). Refusing to \
-                 issue settlement calldata to an unverified target."
-            ),
+        return Err(Error::RouterNotInAllowlist {
+            chain_id,
+            returned: *router,
+            expected: *allowed_router,
         });
     }
     Ok(())
@@ -115,13 +104,10 @@ fn validate_router_allowlist(chain_id: u64, router: &Address) -> Result<(), Erro
 fn validate_spender_allowlist(chain_id: u64, spender: &Address) -> Result<(), Error> {
     let (_, _, allowed_spender) = allowlist_entry_for(chain_id)?;
     if spender != allowed_spender {
-        return Err(Error::Api {
-            code: -1,
-            reason: format!(
-                "OKX returned non-allowlisted spender address {spender:?} for \
-                 chain {chain_id} (expected {allowed_spender:?}). Refusing to \
-                 grant ERC-20 allowance to an unverified contract."
-            ),
+        return Err(Error::SpenderNotInAllowlist {
+            chain_id,
+            returned: *spender,
+            expected: *allowed_spender,
         });
     }
     Ok(())
@@ -617,6 +603,35 @@ pub enum Error {
     ApproveTransactionRequestFailed(eth::TokenAddress),
     #[error("api error code {code}: {reason}")]
     Api { code: i64, reason: String },
+    /// Phase 2 audit retro-review (Codex+sharp-edges convergent MED on PR #83):
+    /// previously router/spender allowlist rejections rode the generic
+    /// `Error::Api { code: -1 }` channel, colliding with any real OKX error
+    /// that returns -1. These typed variants give alerting + log-grep stable
+    /// pattern matching, distinguishing protocol violation (refusing to act
+    /// on attacker-shaped responses) from upstream OKX errors.
+    #[error(
+        "OKX router allowlist has no entry for chain {chain_id} — populate \
+         OKX_ROUTER_ALLOWLIST after the verification probe"
+    )]
+    ChainNotInAllowlist { chain_id: u64 },
+    #[error(
+        "OKX returned non-allowlisted router {returned:?} for chain {chain_id} \
+         (expected {expected:?})"
+    )]
+    RouterNotInAllowlist {
+        chain_id: u64,
+        returned: Address,
+        expected: Address,
+    },
+    #[error(
+        "OKX returned non-allowlisted spender {returned:?} for chain {chain_id} \
+         (expected {expected:?})"
+    )]
+    SpenderNotInAllowlist {
+        chain_id: u64,
+        returned: Address,
+        expected: Address,
+    },
     #[error(transparent)]
     Http(util::http::Error),
 }
@@ -676,51 +691,39 @@ mod tests {
     #[test]
     fn router_allowlist_rejects_unknown_chain() {
         let err = validate_router_allowlist(999, &op_router()).unwrap_err();
-        match err {
-            Error::Api { reason, .. } => assert!(
-                reason.contains("no entry for chain 999"),
-                "unexpected reason: {reason}"
-            ),
-            other => panic!("expected Error::Api, got {other:?}"),
-        }
+        assert!(
+            matches!(err, Error::ChainNotInAllowlist { chain_id: 999 }),
+            "expected ChainNotInAllowlist, got {err:?}"
+        );
     }
 
     #[test]
     fn spender_allowlist_rejects_unknown_chain() {
         let err = validate_spender_allowlist(999, &op_spender()).unwrap_err();
-        match err {
-            Error::Api { reason, .. } => assert!(
-                reason.contains("no entry for chain 999"),
-                "unexpected reason: {reason}"
-            ),
-            other => panic!("expected Error::Api, got {other:?}"),
-        }
+        assert!(
+            matches!(err, Error::ChainNotInAllowlist { chain_id: 999 }),
+            "expected ChainNotInAllowlist, got {err:?}"
+        );
     }
 
     #[test]
     fn router_allowlist_rejects_attacker_router() {
         let attacker = Address::new([0xde; 20]);
         let err = validate_router_allowlist(10, &attacker).unwrap_err();
-        match err {
-            Error::Api { reason, .. } => assert!(
-                reason.contains("non-allowlisted router"),
-                "unexpected reason: {reason}"
-            ),
-            other => panic!("expected Error::Api, got {other:?}"),
-        }
+        assert!(
+            matches!(err, Error::RouterNotInAllowlist { chain_id: 10, .. }),
+            "expected RouterNotInAllowlist, got {err:?}"
+        );
     }
 
     #[test]
     fn spender_allowlist_rejects_attacker_spender() {
         let attacker = Address::new([0xde; 20]);
         let err = validate_spender_allowlist(10, &attacker).unwrap_err();
-        match err {
-            Error::Api { reason, .. } => assert!(
-                reason.contains("non-allowlisted spender"),
-                "unexpected reason: {reason}"
-            ),
-            other => panic!("expected Error::Api, got {other:?}"),
-        }
+        assert!(
+            matches!(err, Error::SpenderNotInAllowlist { chain_id: 10, .. }),
+            "expected SpenderNotInAllowlist, got {err:?}"
+        );
     }
 
     #[test]
