@@ -161,8 +161,17 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
                     || async { settlement.authenticator().call().await },
                 )
                 .await
-                .unwrap_or_else(|e| {
-                    panic!("error reading authenticator contract address after retries: {e:?}")
+                .unwrap_or_else(|_| {
+                    // Intentionally redacted: the alloy `TransportError` Debug
+                    // can echo the configured RPC URL, which on some providers
+                    // embeds an API key. The per-attempt error is already
+                    // tracing::warn!-logged by `with_backoff` with secrets
+                    // handled via tracing's redaction; the panic only needs
+                    // to surface that all retries exhausted.
+                    panic!(
+                        "settlement.authenticator() read exhausted retries; see preceding \
+                         tracing::warn! logs for per-attempt error detail"
+                    )
                 })
             };
         (settlement, authenticator)
