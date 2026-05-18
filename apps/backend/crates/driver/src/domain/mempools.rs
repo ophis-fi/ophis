@@ -231,9 +231,22 @@ impl Mempools {
                                 settle_tx_hash = ?hash,
                                 "exceeded submission deadline, cancelling"
                             );
-                            let _ = self
-                                .cancel(mempool, final_gas_price, signer, nonce)
-                                .await;
+                            if let Err(cancel_err) =
+                                self.cancel(mempool, final_gas_price, signer, nonce).await
+                            {
+                                let mempool_label = mempool.to_string();
+                                tracing::error!(
+                                    ?cancel_err,
+                                    ?signer,
+                                    ?nonce,
+                                    settle_tx_hash = ?hash,
+                                    "cancellation after deadline failure — signer nonce may be stuck"
+                                );
+                                observe::metrics::get()
+                                    .submitter_cancellation_failed
+                                    .with_label_values(&[&mempool_label, "deadline_exceeded"])
+                                    .inc();
+                            }
                             return Err(Error::Expired {
                                 tx_id: hash,
                                 submitted_at_block: submission_block,
@@ -248,9 +261,22 @@ impl Mempools {
                                     ?err,
                                     "tx started failing in mempool, cancelling"
                                 );
-                                let _ = self
-                                    .cancel(mempool, final_gas_price, signer, nonce)
-                                    .await;
+                                if let Err(cancel_err) =
+                                    self.cancel(mempool, final_gas_price, signer, nonce).await
+                                {
+                                    let mempool_label = mempool.to_string();
+                                    tracing::error!(
+                                        ?cancel_err,
+                                        ?signer,
+                                        ?nonce,
+                                        settle_tx_hash = ?hash,
+                                        "cancellation after sim-revert failure — signer nonce may be stuck"
+                                    );
+                                    observe::metrics::get()
+                                        .submitter_cancellation_failed
+                                        .with_label_values(&[&mempool_label, "sim_revert"])
+                                        .inc();
+                                }
                                 return Err(Error::SimulationRevert {
                                     submitted_at_block: submission_block,
                                     reverted_at_block: block.number.into(),

@@ -455,7 +455,7 @@ fn competition_error(err: &competition::Error) -> &'static str {
         competition::Error::Solver(solver::Error::Deserialize(_)) => "SolverDeserializeError",
         competition::Error::Solver(solver::Error::Dto(_)) => "SolverDtoError",
         competition::Error::Solver(solver::Error::CustomError(_)) => "SolverCustomError",
-        competition::Error::SubmissionError => "SubmissionError",
+        competition::Error::SubmissionError(kind) => kind.as_label(),
         competition::Error::TooManyPendingSettlements => "TooManyPendingSettlements",
         competition::Error::NoValidOrdersFound => "NoValidOrdersFound",
         competition::Error::MalformedRequest => "MalformedRequest",

@@ -2,7 +2,7 @@ use {
     self::solution::settlement,
     super::{
         Mempools,
-        mempools::SubmissionMode,
+        mempools::{self, SubmissionMode},
         time::{self, Remaining},
     },
     crate::{
@@ -236,7 +236,7 @@ impl std::future::Future for SettleTaskHandle {
         std::pin::Pin::new(&mut self.0).poll(cx).map(|join_result| {
             join_result.map_err(|err| {
                 tracing::error!(?err, "settle task panicked");
-                Error::SubmissionError
+                Error::SubmissionError(SubmissionFailureKind::Panicked)
             })?
         })
     }
@@ -930,7 +930,7 @@ impl Competition {
             .submitter_pool
             .acquire()
             .await
-            .ok_or(Error::SubmissionError)?;
+            .ok_or(Error::SubmissionError(SubmissionFailureKind::NoSubmitter))?;
         let mode = guard.submission_mode();
 
         let executed = self
@@ -946,7 +946,20 @@ impl Competition {
         );
 
         match executed {
-            Err(_) => Err(Error::SubmissionError),
+            Err(err) => {
+                let kind = SubmissionFailureKind::from(&err);
+                // warn (not error) because the SubmissionFailureKind::Disabled
+                // variant is an intentional strategy gate, not a true failure;
+                // alerting filters by the structured `kind` label instead of
+                // log level. Per Phase 2 audit pre-merge review.
+                tracing::warn!(
+                    ?err,
+                    kind = kind.as_label(),
+                    auction_id = ?settlement.auction_id,
+                    "settlement submission failed"
+                );
+                Err(Error::SubmissionError(kind))
+            }
             Ok(tx_hash) => Ok(Settled {
                 internalized_calldata: settlement
                     .transaction(settlement::Internalization::Enable)
@@ -1139,12 +1152,62 @@ pub enum Error {
     DeadlineExceeded(#[from] time::DeadlineExceeded),
     #[error("solver error: {0:?}")]
     Solver(#[from] solver::Error),
-    #[error("failed to submit the solution")]
-    SubmissionError,
+    #[error("failed to submit the solution: {0}")]
+    SubmissionError(#[from] SubmissionFailureKind),
     #[error("too many pending settlements for the same solver")]
     TooManyPendingSettlements,
     #[error("no valid orders found in the auction")]
     NoValidOrdersFound,
     #[error("could not parse the request")]
     MalformedRequest,
+}
+
+/// Categorical breakdown of submission failures so alerting can distinguish
+/// e.g. on-chain reverts (solver-side issue) from upstream RPC outages
+/// (operator-side issue) from a stuck submitter nonce (operator action
+/// required). Audit Phase 2 finding H1 — pre-this-PR all five collapsed
+/// to an opaque `SubmissionError`, making the alerting backbone blind.
+#[derive(Debug, Clone, Copy, thiserror::Error)]
+pub enum SubmissionFailureKind {
+    #[error("transaction reverted on-chain")]
+    Revert,
+    #[error("transaction simulation started reverting in mempool")]
+    SimulationRevert,
+    #[error("settlement did not get included within submission deadline")]
+    Expired,
+    #[error("submission strategy disabled for this transaction")]
+    Disabled,
+    #[error("settle task panicked")]
+    Panicked,
+    #[error("no submitter account available in pool")]
+    NoSubmitter,
+    #[error("other submission failure")]
+    Other,
+}
+
+impl SubmissionFailureKind {
+    /// Stable label for Prometheus / tracing.
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::Revert => "Revert",
+            Self::SimulationRevert => "SimulationRevert",
+            Self::Expired => "Expired",
+            Self::Disabled => "Disabled",
+            Self::Panicked => "Panicked",
+            Self::NoSubmitter => "NoSubmitter",
+            Self::Other => "Other",
+        }
+    }
+}
+
+impl From<&mempools::Error> for SubmissionFailureKind {
+    fn from(value: &mempools::Error) -> Self {
+        match value {
+            mempools::Error::Revert { .. } => Self::Revert,
+            mempools::Error::SimulationRevert { .. } => Self::SimulationRevert,
+            mempools::Error::Expired { .. } => Self::Expired,
+            mempools::Error::Disabled => Self::Disabled,
+            mempools::Error::Other(_) => Self::Other,
+        }
+    }
 }
