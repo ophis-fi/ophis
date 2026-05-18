@@ -22,6 +22,10 @@ use {
     std::{future::Future, time::Duration},
 };
 
+/// CODESYNC(retry-helper): also defined in
+/// `apps/backend/crates/autopilot/src/util/retry.rs` and
+/// `apps/backend/crates/solvers/src/util/retry.rs`. Keep all three copies
+/// in sync until a shared crate exists. CI grep checks file checksums.
 #[derive(Debug, Clone)]
 pub struct BackoffConfig {
     pub max_attempts: usize,
@@ -33,7 +37,10 @@ pub struct BackoffConfig {
 
 impl Default for BackoffConfig {
     fn default() -> Self {
-        // ~13s total worst-case (sum of geometric series 200ms ⋅ 2^k capped at 5s).
+        // Worst-case sleep total: delays 200+400+800+1600+3200+5000+5000+
+        // 5000+5000 = 26.2s across 9 inter-attempt gaps, + up to 9×50ms
+        // jitter = ~26.65s sleep-only. Add per-attempt RPC latency (eRPC
+        // consensus path can be 2-4s under burst) for true wall-clock.
         Self {
             max_attempts: 10,
             initial_delay: Duration::from_millis(200),
