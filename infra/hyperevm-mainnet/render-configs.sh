@@ -33,19 +33,41 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-# Load .env into this shell so envsubst sees the vars
+# Tier 1 PK isolation (2026-05-18): refuse if .env still has the PK line.
+if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=" .env; then
+  echo "ERROR: .env still contains OPHIS_DRIVER_SUBMITTER_KEY — delete that line." >&2
+  echo "       Tier 1 moved the PK source to /Users/ophis-driver/.config/submitter.key." >&2
+  exit 4
+fi
+
+# Load .env into this shell so envsubst sees the non-PK vars.
 set -a
 # shellcheck disable=SC1091
 source .env
 set +a
 
-# Fail FAST if any required secret is missing — otherwise envsubst silently
-# substitutes empty string and the driver/orderbook fails far downstream with
-# an opaque error. Each :? guard prints the named var + a hint.
+# Tier 1: read PK from ophis-driver-owned file via sudo (need root to bypass
+# 0700 home dir). Sourced AFTER `source .env` to avoid accidental override.
+OPHIS_DRIVER_SUBMITTER_KEY=$(sudo cat /Users/ophis-driver/.config/submitter.key 2>/dev/null | tr -d '\n\r')
+if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
+  echo "ERROR: PK from /Users/ophis-driver/.config/submitter.key not a 32-byte hex." >&2
+  echo "       Run ./infra/tier1-pk-isolation-setup.sh first." >&2
+  exit 5
+fi
+export OPHIS_DRIVER_SUBMITTER_KEY
+
+OPHIS_RENDERED_DIR="/Users/ophis-driver/rendered/hyperevm-mainnet"
+if ! sudo test -d "$OPHIS_RENDERED_DIR"; then
+  echo "ERROR: $OPHIS_RENDERED_DIR missing. Run ./infra/tier1-pk-isolation-setup.sh." >&2
+  exit 6
+fi
+
+# Fail FAST if any required NON-PK secret is missing — otherwise envsubst
+# silently substitutes empty string and the driver/orderbook fails far
+# downstream with an opaque error. Each :? guard prints the named var + hint.
 : "${ALCHEMY_API_KEY:?must be set in .env — see .env.example}"
 : "${HYPEREVM_MAINNET_RPC:?must be set in .env — see .env.example}"
 : "${HYPEREVM_RPC_INTERNAL:?must be set in .env — see .env.example}"
-: "${OPHIS_DRIVER_SUBMITTER_KEY:?must be set in .env — driver-submitter PK from Keychain ophis-driver-submitter-2026-05-14}"
 : "${TELEGRAM_BOT_TOKEN:?must be set in .env — Alertmanager → Telegram. Lookup via the path in .env.example.}"
 # Default to the verified-live Ormi-hosted HyperSwap V3 subgraph (Phase 1
 # of the V3 wiring spec). Operator can override to self-hosted Goldsky /
@@ -112,17 +134,22 @@ shopt -s nullglob
 
 for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
-  out="rendered/$name"
-  # envsubst only substitutes the explicit list we pass (prevents accidental
-  # substitution of values that happen to contain `$` chars like passphrases).
-  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
-    < "$tmpl" > "$out"
-  # Rendered files contain plaintext secrets (driver-submitter PK, OKX API
-  # keys). Lock to owner-only so anything reading our /Users/scep/greg
-  # tree at file-permission granularity is blocked. .env is also chmod 600
-  # — see the audit log of 2026-05-14 for the rationale.
-  chmod 600 "$out"
-  echo "  rendered  $name"
+
+  if [[ "$name" == "driver.toml" ]]; then
+    # PK-bearing TOML — render to ophis-driver's private dir (Tier 1).
+    TMP=$(mktemp); chmod 600 "$TMP"
+    envsubst '${OPHIS_DRIVER_SUBMITTER_KEY}' < "$tmpl" > "$TMP"
+    sudo install -m 600 -o ophis-driver -g staff "$TMP" "$OPHIS_RENDERED_DIR/driver.toml"
+    rm -f "$TMP"
+    echo "  rendered  $name → $OPHIS_RENDERED_DIR/driver.toml (owner ophis-driver)"
+  else
+    # Non-PK templates — render to ./rendered/ (scep-owned, 0600).
+    out="rendered/$name"
+    envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
+      < "$tmpl" > "$out"
+    chmod 600 "$out"
+    echo "  rendered  $name"
+  fi
 done
 
 # Render observability templates (Alertmanager only — Prometheus config and
