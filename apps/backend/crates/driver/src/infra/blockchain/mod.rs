@@ -112,9 +112,18 @@ impl Ethereum {
             .await
             .expect("couldn't initialize current block stream");
 
-        let contracts = Contracts::new(&web3, chain, addresses)
-            .await
-            .expect("could not initialize important smart contracts");
+        // Bootstrap RPC call: retry with backoff so transient eRPC consensus
+        // failures (ErrConsensusLowParticipants / ErrConsensusDispute) during
+        // HL stack restart bursts don't crash-loop the container. Mirrors
+        // the pattern used in autopilot, orderbook, and solvers; sustained
+        // failures still surface as panic after the backoff exhausts.
+        let contracts = crate::retry::with_backoff(
+            "Contracts::new",
+            crate::retry::BackoffConfig::default(),
+            || async { Contracts::new(&web3, chain, addresses.clone()).await },
+        )
+        .await
+        .expect("could not initialize important smart contracts after retries");
         let balance_overrider = Arc::new(BalanceOverrides::new(web3.clone()));
         let balance_simulator = BalanceSimulator::new(
             contracts.settlement().clone(),
