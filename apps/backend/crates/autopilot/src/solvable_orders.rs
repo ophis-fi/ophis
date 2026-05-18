@@ -143,7 +143,18 @@ pub struct SolvableOrdersCache {
     settlement_contract: Address,
     disable_order_balance_filter: bool,
     wrapper_cache: app_data::WrapperCache,
+    /// Audit H3: counts consecutive `update()` failures. Reset to 0 on
+    /// success. Used by callers to gate liveness probe ticks so an indexer
+    /// outage producing stale-but-non-empty auctions cannot tick liveness
+    /// indefinitely.
+    consecutive_update_failures: std::sync::atomic::AtomicUsize,
 }
+
+/// Maximum tolerated consecutive `update()` failures before the cache is
+/// considered stale for liveness purposes. Three failures × ~12s auction
+/// loop = ~36s of stale state before the probe goes red. Tunable if HL's
+/// faster ~1s blocks make this too aggressive.
+pub const CACHE_STALE_FAILURE_THRESHOLD: usize = 3;
 
 type Balances = HashMap<Query, U256>;
 
@@ -182,6 +193,7 @@ impl SolvableOrdersCache {
             native_price_timeout,
             settlement_contract,
             disable_order_balance_filter,
+            consecutive_update_failures: std::sync::atomic::AtomicUsize::new(0),
             wrapper_cache: app_data::WrapperCache::new(20_000),
         })
     }
@@ -488,6 +500,29 @@ impl SolvableOrdersCache {
             .auction_update
             .with_label_values(&[result])
             .inc();
+        // Audit H3: maintain the consecutive-failure counter that gates
+        // liveness probe ticks in run_loop. Caller-side counter pattern so
+        // the cache itself doesn't depend on the probe.
+        match result {
+            "success" => self
+                .consecutive_update_failures
+                .store(0, std::sync::atomic::Ordering::Relaxed),
+            "failure" => {
+                self.consecutive_update_failures
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    /// Audit H3: true if the cache has failed to update `CACHE_STALE_FAILURE_THRESHOLD`
+    /// or more times in a row without an intervening success. Liveness probe
+    /// callers MUST gate `liveness.auction()` ticks on `!is_stale()` so an
+    /// indexer outage producing stale auctions can't keep the probe green.
+    pub fn is_stale(&self) -> bool {
+        self.consecutive_update_failures
+            .load(std::sync::atomic::Ordering::Relaxed)
+            >= CACHE_STALE_FAILURE_THRESHOLD
     }
 
     /// Runs the future and collects runtime metrics.
