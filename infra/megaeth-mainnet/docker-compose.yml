@@ -112,10 +112,12 @@ services:
       ETHRPC: ${MEGAETH_MAINNET_RPC}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
-      # Solver/driver-submitter private key — read by the CoW driver via the
-      # `%OPHIS_DRIVER_SUBMITTER_KEY` interpolation in configs/driver.toml.
-      # MUST be set in ./.env. Container refuses to start if blank.
-      OPHIS_DRIVER_SUBMITTER_KEY: ${OPHIS_DRIVER_SUBMITTER_KEY:?driver private key must be set in infra/megaeth-mainnet/.env}
+      # Tier 1 PK isolation (2026-05-18): PK *source* is now
+      # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).
+      # The rendered driver.toml stays here in ./rendered/ because colima's
+      # virtiofs runs the host-side daemon as scep and can't access paths
+      # outside scep's perm scope — so any bind-mount source MUST be
+      # scep-readable. Stricter isolation requires Tier 2 (AWS KMS).
     volumes:
       - ./rendered/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]

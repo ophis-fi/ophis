@@ -173,13 +173,12 @@ services:
       ETHRPC: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
-      # NOTE — driver-submitter PK is NOT passed as an env var (it would be
-      # readable via `docker inspect ophis-driver-1`, /proc/<pid>/environ, and
-      # could leak via panic backtraces / log shippers). Instead it lives only
-      # in the chmod-600 rendered driver.toml that's bind-mounted read-only.
-      # render-configs.sh fails loudly if OPHIS_DRIVER_SUBMITTER_KEY is missing
-      # from .env at render time, so the absence check still happens before
-      # compose ever runs.
+      # Tier 1 PK isolation (2026-05-18): PK *source* is now
+      # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).
+      # The rendered driver.toml stays here in ./rendered/ because colima's
+      # virtiofs runs the host-side daemon as scep and can't access paths
+      # outside scep's perm scope — so any bind-mount source MUST be
+      # scep-readable. Stricter isolation requires Tier 2 (AWS KMS).
     volumes:
       - ./rendered/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]

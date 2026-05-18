@@ -179,3 +179,31 @@ groups:
       # check until then: `cast basefee --rpc-url https://rpc.purroofgroup.com`
       # via a cron probe → Pushgateway, OR add a node_exporter textfile
       # collector. Placeholder removed to avoid false confidence.
+
+  - name: ophis-hl-ethflow
+    interval: 30s
+    rules:
+      # Audit HIGH-2 defense-in-depth (2026-05-18): WHYPE WETH9 parity
+      # confirmed empirically (see docs/audits/2026-05-18-whype-weth9-parity.md)
+      # — every EthFlow assumption holds today. This alert is the canary for
+      # any future divergence: if the EthFlow contract ever emits
+      # EthTransferFailed (the explicit revert in _invalidateOrder L243-245
+      # when `payable(orderData.owner).call{value: refundAmount}` returns
+      # false), something downstream is broken — could be (a) a WHYPE upgrade
+      # changing withdraw semantics, (b) a malicious recipient with a
+      # gas-heavy fallback, (c) gas-griefing on a contract receiver.
+      #
+      # The metric expects the event to be exported as a counter — wire via
+      # a subgraph alerter, or have the rebate-indexer (which already
+      # listens for cow-fi events) tail EthFlow logs.
+      # TODO once metric producer lands: re-evaluate threshold.
+      - alert: OphisHlEthFlowTransferFailed
+        expr: |
+          increase(ethflow_eth_transfer_failed_total{chain="hyperevm"}[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          chain: hyperevm
+        annotations:
+          summary: "HL EthFlow refund/transfer failed — investigate WHYPE or recipient state"
+          description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WHYPE.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WHYPE codehash changed via `cast keccak (cast code 0x5555…)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."

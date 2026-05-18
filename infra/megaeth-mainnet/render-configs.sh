@@ -2,10 +2,12 @@
 # Ophis MegaETH mainnet — render *.toml.tmpl into rendered/*.toml.
 #
 # The CoW solver TOML parser doesn't substitute env vars at parse time, so
-# we pre-render TOML templates that need secrets (OKX, future KyberSwap).
-# Rendered TOMLs go to ./rendered/ which is gitignored.
+# we pre-render TOML templates that need secrets (driver-submitter PK).
 #
-# Reads secrets from ./.env (also gitignored). Run before `docker compose up`.
+# Tier 1 PK isolation (2026-05-18): driver.toml is rendered into
+# /Users/ophis-driver/rendered/megaeth-mainnet/ owned by ophis-driver (0700
+# parent + 0600 file). Other TOMLs render to ./rendered/. PK source is
+# /Users/ophis-driver/.config/submitter.key, NOT .env. Sudo required.
 
 set -euo pipefail
 
@@ -17,11 +19,27 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-# Load .env into this shell so envsubst sees the vars
+# Tier 1: refuse to render if .env still has the PK line.
+if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=" .env; then
+  echo "ERROR: .env still contains OPHIS_DRIVER_SUBMITTER_KEY — delete that line." >&2
+  echo "       Tier 1 moved the PK source to /Users/ophis-driver/.config/submitter.key." >&2
+  exit 4
+fi
+
+# Load .env into this shell so envsubst sees the non-PK vars.
 set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+
+# Tier 1: read PK from ophis-driver-owned file via sudo.
+OPHIS_DRIVER_SUBMITTER_KEY=$(sudo cat /Users/ophis-driver/.config/submitter.key 2>/dev/null | tr -d '\n\r')
+if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
+  echo "ERROR: PK from /Users/ophis-driver/.config/submitter.key not a 32-byte hex." >&2
+  echo "       Run ./infra/tier1-pk-isolation-setup.sh first." >&2
+  exit 5
+fi
+export OPHIS_DRIVER_SUBMITTER_KEY
 
 mkdir -p rendered
 shopt -s nullglob
@@ -29,14 +47,8 @@ shopt -s nullglob
 for tmpl in configs/*.toml.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
   out="rendered/$name"
-  # envsubst only substitutes the explicit list we pass (prevents accidental
-  # substitution of values that happen to contain `$` chars like passphrases).
   envsubst '${MEGAETH_MAINNET_RPC} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out"
-  # Rendered files contain plaintext secrets (driver-submitter PK, OKX API
-  # keys). Lock to owner-only so anything reading our /Users/scep/greg
-  # tree at file-permission granularity is blocked. .env is also chmod 600
-  # — see the audit log of 2026-05-14 for the rationale.
   chmod 600 "$out"
   echo "  rendered  $name"
 done
