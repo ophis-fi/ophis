@@ -137,6 +137,15 @@ impl AppData {
             Self::Full(data) => &data.protocol.wrappers,
         }
     }
+
+    /// User-specified pre/post hooks. Empty for orders whose app_data hasn't
+    /// been fetched yet (Self::Hash variant).
+    pub fn hooks(&self) -> Option<&app_data::Hooks> {
+        match self {
+            Self::Hash(_) => None,
+            Self::Full(data) => Some(&data.protocol.hooks),
+        }
+    }
 }
 
 impl From<[u8; APP_DATA_LEN]> for AppData {

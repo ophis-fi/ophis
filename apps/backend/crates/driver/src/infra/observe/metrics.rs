@@ -28,6 +28,11 @@ pub struct Metrics {
     /// How many orders detected by specific solver and strategy.
     #[metric(labels("solver"))]
     pub bad_orders_detected: prometheus::IntCounterVec,
+    /// Orders dropped because their app_data hooks declare `gas_limit` above
+    /// the chain-aware per-hook cap. Audit MEDIUM-8 mitigation; primarily
+    /// fires on HyperEVM (chain 999) where the block gas budget is tight.
+    #[metric(labels("chain_id"))]
+    pub dropped_orders_hook_gas_limit: prometheus::IntCounterVec,
     /// How many tokens detected by specific solver and strategy.
     pub bad_tokens_detected: prometheus::IntCounter,
     /// Time spent in the auction preprocessing stage.
