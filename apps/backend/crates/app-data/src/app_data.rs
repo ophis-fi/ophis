@@ -27,6 +27,30 @@ pub const MAX_PARTNER_FEE_BPS: u64 = 2500;
 /// additional ceiling enforced downstream at fee computation time.
 pub const MAX_PARTNER_VOLUME_BPS: u64 = 50;
 
+/// Allowlist of partner-fee recipient addresses that orders are permitted to
+/// route fees to. Closes audit Phase 2 finding C3 / adversarial F6: the
+/// `recipient` field on `partnerFee` is fully user-controlled in app-data, so
+/// without an allowlist anyone can craft app-data naming themselves as
+/// recipient and harvest fees on orders that reference that document.
+///
+/// **Entries:**
+/// - `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` — Ophis partner-fee Safe
+///   (3/3 multisig across ETH/OP/MegaETH; CIP-75 partner-fee receiver for the
+///   "CoW Swap" appCode integration).
+///
+/// **Adding entries:** new partners must be onboarded through this constant
+/// after the partner-fee Safe address is independently verified (multisig
+/// owners, deployment proof, signed agreement). Do NOT take recipient
+/// addresses from app-data documents — that's the attack we're preventing.
+pub const PARTNER_FEE_RECIPIENT_ALLOWLIST: &[Address] = &[
+    // Ophis partner-fee Safe (verified EIP-55 checksum; cross-referenced
+    // against memory/project_ophis.md and used by CIP-75 integrators).
+    Address::new([
+        0x85, 0x8f, 0x0F, 0x5e, 0xE9, 0x54, 0x84, 0x6D, 0x47, 0x15, 0x5F, 0x52, 0x03, 0xc0, 0x4a,
+        0xF1, 0x81, 0x9e, 0xCe, 0xF8,
+    ]),
+];
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedAppData {
     pub hash: AppDataHash,
@@ -302,10 +326,22 @@ impl Validator {
 }
 
 /// Rejects partner-fee entries whose `Surplus` or `PriceImprovement` policies
-/// exceed CIP-75 bps caps. Volume policies are bounded downstream by the
-/// operator-set global `max_partner_fee`.
+/// exceed CIP-75 bps caps, AND whose `recipient` is not registered in
+/// [`PARTNER_FEE_RECIPIENT_ALLOWLIST`]. Volume-policy bps are bounded
+/// downstream by the operator-set global `max_partner_fee`; the recipient
+/// check applies uniformly to all policy variants.
 fn validate_partner_fees(partner_fees: &PartnerFees) -> Result<()> {
     for fee in partner_fees.iter() {
+        if !PARTNER_FEE_RECIPIENT_ALLOWLIST.contains(&fee.recipient) {
+            return Err(anyhow!(
+                "partner fee recipient {recipient:?} is not on the registered \
+                 partner-fee recipient allowlist. If this is a legitimate new \
+                 partner, add the address to PARTNER_FEE_RECIPIENT_ALLOWLIST in \
+                 crates/app-data/src/app_data.rs after independent verification \
+                 of the recipient multisig.",
+                recipient = fee.recipient,
+            ));
+        }
         let (bps, max_volume_bps, kind) = match fee.policy {
             FeePolicy::Surplus {
                 bps,
@@ -720,7 +756,7 @@ mod tests {
                         },
                         "partnerFee": {
                             "bps": 100,
-                            "recipient": "0x0202020202020202020202020202020202020202"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         }
                     },
                     "version": "0.9.0"
@@ -729,7 +765,7 @@ mod tests {
             ProtocolAppData {
                 partner_fee: PartnerFees(vec![PartnerFee {
                     policy: FeePolicy::Volume { bps: 100 },
-                    recipient: Address::from_slice(&[2; 20]),
+                    recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                 }]),
                 ..Default::default()
             },
@@ -750,21 +786,21 @@ mod tests {
                         "partnerFee": [
                             {
                                 "bps": 100,
-                                "recipient": "0x0202020202020202020202020202020202020202"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             },
                             {
                                 "volumeBps": 1000,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             },
                             {
                                 "surplusBps": 100,
                                 "maxVolumeBps": 50,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             },
                             {
                                 "priceImprovementBps": 100,
                                 "maxVolumeBps": 50,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }
                         ]
                     },
@@ -776,26 +812,26 @@ mod tests {
                     // this one was parsed from the old format for volume fees
                     PartnerFee {
                         policy: FeePolicy::Volume { bps: 100 },
-                        recipient: Address::from_slice(&[2; 20]),
+                        recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                     },
                     // this one is using the new format
                     PartnerFee {
                         policy: FeePolicy::Volume { bps: 1000 },
-                        recipient: Address::from_slice(&[1; 20]),
+                        recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                     },
                     PartnerFee {
                         policy: FeePolicy::Surplus {
                             bps: 100,
                             max_volume_bps: 50
                         },
-                        recipient: Address::from_slice(&[1; 20]),
+                        recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                     },
                     PartnerFee {
                         policy: FeePolicy::PriceImprovement {
                             bps: 100,
                             max_volume_bps: 50
                         },
-                        recipient: Address::from_slice(&[1; 20]),
+                        recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                     },
                 ]),
                 ..Default::default()
@@ -944,12 +980,12 @@ mod tests {
     fn cip75_caps_accept_boundary_values() {
         let validator = Validator::default();
         let cases = [
-            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
-            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
             // Volume policies are not capped by CIP-75 surplus/price-improvement caps.
-            r#"{ "volumeBps": 9999, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "volumeBps": 9999, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
             // Lower-bound is also accepted.
-            r#"{ "surplusBps": 0, "maxVolumeBps": 0, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "surplusBps": 0, "maxVolumeBps": 0, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
         ];
         for policy in cases {
             let doc = partner_fee_json(policy);
@@ -963,7 +999,7 @@ mod tests {
     fn cip75_caps_reject_surplus_bps_above_cap() {
         let validator = Validator::default();
         let doc = partner_fee_json(
-            r#"{ "surplusBps": 2501, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "surplusBps": 2501, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
         );
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
@@ -976,7 +1012,7 @@ mod tests {
     fn cip75_caps_reject_price_improvement_bps_above_cap() {
         let validator = Validator::default();
         let doc = partner_fee_json(
-            r#"{ "priceImprovementBps": 9999, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "priceImprovementBps": 9999, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
         );
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
@@ -990,7 +1026,7 @@ mod tests {
     fn cip75_caps_reject_max_volume_bps_above_cap() {
         let validator = Validator::default();
         let surplus_doc = partner_fee_json(
-            r#"{ "surplusBps": 2500, "maxVolumeBps": 51, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "surplusBps": 2500, "maxVolumeBps": 51, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
         );
         let err = validator.validate(surplus_doc.as_bytes()).unwrap_err();
         assert!(
@@ -1000,7 +1036,7 @@ mod tests {
         );
 
         let pi_doc = partner_fee_json(
-            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 100, "recipient": "0x0101010101010101010101010101010101010101" }"#,
+            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
         );
         let err = validator.validate(pi_doc.as_bytes()).unwrap_err();
         assert!(
@@ -1015,15 +1051,83 @@ mod tests {
         let validator = Validator::default();
         let doc = partner_fee_json(
             r#"[
-                { "volumeBps": 100, "recipient": "0x0101010101010101010101010101010101010101" },
-                { "surplusBps": 100, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" },
-                { "priceImprovementBps": 5000, "maxVolumeBps": 50, "recipient": "0x0101010101010101010101010101010101010101" }
+                { "volumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" },
+                { "surplusBps": 100, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" },
+                { "priceImprovementBps": 5000, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }
             ]"#,
         );
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
             err.to_string()
                 .contains("priceImprovementBps 5000 exceeds CIP-75 cap of 2500"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn recipient_allowlist_accepts_registered_safe() {
+        // The CIP-75 partner-fee Safe is the only registered recipient today;
+        // every cap-conformant policy variant with that recipient must pass.
+        let validator = Validator::default();
+        for policy in [
+            r#"{ "volumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+        ] {
+            let doc = partner_fee_json(policy);
+            validator.validate(doc.as_bytes()).unwrap_or_else(|err| {
+                panic!("allowlisted recipient was rejected: {policy} ({err:?})");
+            });
+        }
+    }
+
+    #[test]
+    fn recipient_allowlist_rejects_arbitrary_address() {
+        // The exact recipient an attacker would inject in app-data.
+        let validator = Validator::default();
+        let doc = partner_fee_json(
+            r#"{ "volumeBps": 100, "recipient": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("is not on the registered partner-fee recipient allowlist"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn recipient_allowlist_rejects_zero_address() {
+        // 0x0 is not a fee-burn convention; reject it explicitly so misconfigured
+        // partner integrations fail loud.
+        let validator = Validator::default();
+        let doc = partner_fee_json(
+            r#"{ "volumeBps": 100, "recipient": "0x0000000000000000000000000000000000000000" }"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("is not on the registered partner-fee recipient allowlist"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn recipient_allowlist_rejects_any_violating_entry_in_array() {
+        // Mixed array: one entry has an arbitrary recipient. Validator must
+        // reject the whole document on the first violation, regardless of
+        // other entries being well-formed.
+        let validator = Validator::default();
+        let doc = partner_fee_json(
+            r#"[
+                { "volumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" },
+                { "volumeBps": 100, "recipient": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }
+            ]"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("is not on the registered partner-fee recipient allowlist"),
             "unexpected error: {err}"
         );
     }
