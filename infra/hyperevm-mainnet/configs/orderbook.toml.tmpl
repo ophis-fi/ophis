@@ -1,5 +1,14 @@
 # Ophis — HyperEVM mainnet (chain 999) orderbook config.
-eip1271-skip-creation-validation = true
+# Audit MEDIUM-6 (2026-05-17): flipped from `true` → `false`. The `true`
+# default skipped EIP-1271 validation against the SCW's *current* state at
+# order-creation time. Combined with EthFlow's isValidSignature (which
+# returns MAGICVALUE based purely on storage state), a malicious SCW could
+# race between createOrder and settle: orderbook surfaces an "approved"
+# quote that may not be settleable, leading to wasted auction cycles. CoW
+# upstream production uses `false` everywhere — we now match. Trade-off:
+# extra ~50-100ms latency per SCW order creation; worth it for the
+# correctness guarantee.
+eip1271-skip-creation-validation = false
 bind-address = "0.0.0.0:80"
 
 [shared]

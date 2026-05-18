@@ -1,5 +1,9 @@
 # Ophis — Optimism mainnet (chain 10) orderbook config.
-eip1271-skip-creation-validation = true
+# Audit MEDIUM-6 (2026-05-17) — mirror of HL fix. The `true` default skips
+# EIP-1271 SCW state validation at order-creation time, allowing a malicious
+# SCW to race between createOrder and settle (wasted auction cycles). CoW
+# upstream production uses `false` everywhere — we now match.
+eip1271-skip-creation-validation = false
 bind-address = "0.0.0.0:80"
 
 [shared]

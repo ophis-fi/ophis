@@ -71,6 +71,23 @@ export async function ethFlow({
   tradeConfirmActions.onSign(tradeAmounts)
 
   try {
+    // Audit MEDIUM-3 (2026-05-17): early-fail guard. On Ophis chains where
+    // EthFlow is not yet deployed (OP=10, MegaETH=4326) getEthFlowContractAddresses
+    // returns the sentinel zero address. Without this guard, the user reached
+    // the existing match-check at "STEP 3: sign order" and saw a confusing
+    // "contract address doesn't match" error AFTER the wallet popup already
+    // opened. Throw inside the try block so existing error handling
+    // (normalizeError, captureError, tradeConfirmActions.onError) fires.
+    const ethFlowAddrForChain = getEthFlowContractAddresses(ethFlowEnv, chainId)
+    if (
+      !ethFlowAddrForChain ||
+      ethFlowAddrForChain === '0x0000000000000000000000000000000000000000'
+    ) {
+      throw new Error(
+        t`Native-token swaps are not yet supported on this chain (${chainId}). Wrap your native token to the ERC-20 form first, then swap.`,
+      )
+    }
+
     // Do not proceed if fee is expired
     if (isQuoteExpired(tradeQuoteState)) {
       reportPlaceOrderWithExpiredQuote({
