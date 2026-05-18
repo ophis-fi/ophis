@@ -208,3 +208,37 @@ jobs:
         run: |
           cd apps/backend
           cargo deny check bans licenses || echo "informational: bans/licenses report above is non-gating"
+
+  retry-helper-drift:
+    name: retry-helper drift check (CODESYNC)
+    runs-on: ubuntu-latest
+    # CODESYNC(retry-helper): autopilot, orderbook, and solvers each carry a
+    # local copy of `with_backoff` in their respective `retry.rs` files until
+    # a shared crate is carved (tracked as a follow-up). This job fails the
+    # build if the three copies diverge — the `with_backoff` function bodies
+    # are extracted (between `pub async fn with_backoff` and the close-brace
+    # before `#[cfg(test)]`) and SHA-256 hashed. Drift between copies means
+    # one site got a bug fix the others didn't.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Hash extracted with_backoff bodies
+        run: |
+          set -euo pipefail
+          extract_fn() {
+            awk '
+              /^pub async fn with_backoff/ { capture = 1 }
+              capture && /^#\[cfg\(test\)\]/ { exit }
+              capture { print }
+            ' "$1"
+          }
+          h_autopilot=$(extract_fn apps/backend/crates/autopilot/src/util/retry.rs | sha256sum | awk '{print $1}')
+          h_orderbook=$(extract_fn apps/backend/crates/orderbook/src/retry.rs | sha256sum | awk '{print $1}')
+          h_solvers=$(extract_fn apps/backend/crates/solvers/src/util/retry.rs | sha256sum | awk '{print $1}')
+          echo "autopilot retry hash:  $h_autopilot"
+          echo "orderbook retry hash:  $h_orderbook"
+          echo "solvers   retry hash:  $h_solvers"
+          if [ "$h_autopilot" != "$h_orderbook" ] || [ "$h_orderbook" != "$h_solvers" ]; then
+            echo "::error::retry.rs copies have drifted; update all three before merge"
+            exit 1
+          fi
+          echo "all three retry-helper copies are byte-identical"
