@@ -33,6 +33,12 @@ pub struct Metrics {
     /// fires on HyperEVM (chain 999) where the block gas budget is tight.
     #[metric(labels("chain_id"))]
     pub dropped_orders_hook_gas_limit: prometheus::IntCounterVec,
+    /// Mempool cancellation failures. Each event indicates the submitter
+    /// nonce may now be stuck — operator intervention required. Audit
+    /// Phase 2 finding H2; pre-this-metric these failures were `let _ =`
+    /// discarded.
+    #[metric(labels("mempool", "reason"))]
+    pub submitter_cancellation_failed: prometheus::IntCounterVec,
     /// How many tokens detected by specific solver and strategy.
     pub bad_tokens_detected: prometheus::IntCounter,
     /// Time spent in the auction preprocessing stage.
