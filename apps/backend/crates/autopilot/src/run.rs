@@ -233,13 +233,17 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
     )
     .await;
 
-    let vault_relayer = eth
-        .contracts()
-        .settlement()
-        .vaultRelayer()
-        .call()
-        .await
-        .expect("Couldn't get vault relayer address");
+    // Bootstrap RPC call: retry with backoff so transient ErrConsensusLowParticipants
+    // events from the eRPC proxy don't crash-loop the container. See util::retry
+    // for rationale (audit-required strict consensus + naturally-bursty startup
+    // load on free-tier HL upstreams).
+    let vault_relayer = crate::util::retry::with_backoff(
+        "settlement.vaultRelayer",
+        crate::util::retry::BackoffConfig::default(),
+        || async { eth.contracts().settlement().vaultRelayer().call().await },
+    )
+    .await
+    .expect("Couldn't get vault relayer address after retries");
 
     let vault_address = config.shared.contracts.balancer_v2_vault.or_else(|| {
         let chain_id = chain.id();
