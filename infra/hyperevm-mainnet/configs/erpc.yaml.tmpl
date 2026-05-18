@@ -1,22 +1,39 @@
 # eRPC multi-provider proxy for HyperEVM mainnet (chain 999).
 #
-# Reliability map (probed 2026-05-16):
+# Reliability map (probed 2026-05-16, re-probed 2026-05-18):
 #   PurroofGroup       10/10 on isSolver eth_call, 461 req/min throughput
 #   HL official        10/10 (rpc.hyperliquid.xyz/evm), 100 req/min/IP cap
-#   HyperLend          9/10 (occasional state-poller stutter)
-#   dRPC               11/20 = 55% (flake "intrinsic gas too high" intermittently)
-#   1RPC               0/10 currently broken on HL
-#   Alchemy free tier  monthly cap EXHAUSTED 2026-05-15
+#   Hypurrscan         10/10 chain-id + eth_call clean (AWS Tokyo, HL-native)
+#   HyperLend          DROPPED 2026-05-18 — chronic ErrEndpointCapacityExceeded
+#                      under steady-state load. Recovery is provider-side; revisit
+#                      after they raise public-tier limits.
+#   dRPC               11/20 = 55% (flake "intrinsic gas too high"). EXCLUDED.
+#   1RPC               finalized-tag silently stuck (drift +26 blocks). EXCLUDED.
+#   Alchemy free tier  monthly cap EXHAUSTED 2026-05-15. EXCLUDED.
+#   Bloxroute/Thirdweb MEV-adjacent commercial RPC; solver eth_call leaks
+#                      trade intent. EXCLUDED — Bloxroute standard applied uniformly.
+#   Pocket Network     "decentralized P2P" misleading — Ophis's free-tier app
+#                      currently maps to a SINGLE Hetzner canary node, not a
+#                      multi-node pool. EXCLUDED until app pins a known relay set.
+#   OnFinality         429 rate-limited on public tier; empty eth_call. EXCLUDED.
 #
-# Strategy:
-#  - PurroofGroup primary, HL-official + HyperLend as failover pool
+# Strategy (replace-not-expand; sharp-edges + adversarial review 2026-05-18):
+#  - Keep N=3 upstreams for the 2-of-3 consensus failsafe. The audit-required
+#    fork-view-poisoning guarantee is "attacker needs to compromise ≥2-of-N
+#    upstreams"; expanding N to 8 silently weakens that to "attacker needs
+#    ≥2-of-8" because eRPC's `maxParticipants: 3` does RANDOM sampling. Sybil-2
+#    attacker → 10.7% per-request poison rate with N=8 (was 0% with N=3).
+#  - Hypurrscan replaces HyperLend as the 3rd upstream. AWS-Tokyo backbone
+#    (distinct failure domain from purroof/Vultr and official/AWS-CloudFront),
+#    HL-native operator, no MEV-searcher overlap.
 #  - integrity.enforceHighestBlock=true: only route eth_call to upstreams that
 #    have caught up to the requested block (fixes "upstream does not have
 #    requested block yet" the kyberswap solver gas-sim hits on HL's fast 1-2s
-#    block times)
-#  - statePollerDebounce=1s: keep per-upstream tip-block view fresh enough
-#    to match HL block production
-#  - Drop dRPC + 1RPC + Alchemy from the pool (see header above for why)
+#    block times).
+#  - statePollerDebounce=1s: keep per-upstream tip-block view fresh.
+#  - NO cache layer. ttl:0 on "finalized" methods would bypass the consensus
+#    invariant, and HL "finalized" empirically drifts by up to 26 blocks across
+#    providers — a single bad consensus round would persist forever in cache.
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/999
 
@@ -116,16 +133,28 @@ projects:
           - matchMethod: "*"
             timeout:
               duration: 8s
+            # Retry budget matched to purroof-hl (2026-05-18 review finding):
+            # asymmetric budgets caused autopilot bootstrap-burst exhaustion on
+            # the slower two upstreams while purroof's 3-attempt budget held.
+            # Backoff + jitter prevent synchronized retry storms across the
+            # autopilot + driver + orderbook consumers of this proxy.
             retry:
-              maxAttempts: 2
+              maxAttempts: 3
               delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
 
-      - id: hyperlend-hl
-        endpoint: https://rpc.hyperlend.finance
+      - id: hypurrscan-hl
+        endpoint: https://rpc.hypurrscan.io
         failsafe:
           - matchMethod: "*"
             timeout:
-              duration: 10s
+              duration: 8s
+            # See official-hl comment — budgets aligned across all 3 upstreams.
             retry:
-              maxAttempts: 2
+              maxAttempts: 3
               delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
