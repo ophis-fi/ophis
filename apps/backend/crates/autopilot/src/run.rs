@@ -322,9 +322,12 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
     .await
     .expect("failed to query solver authenticator address after retries");
 
-    let mut price_estimator_factory = PriceEstimatorFactory::new(
-        &config.price_estimation,
-        &config.native_price_estimation.shared,
+    // Bootstrap factory construction: idempotency analyzed 2026-05-18 — the
+    // only async RPC call inside is `SwapSimulator::new`'s `domainSeparator()`
+    // eth_call. All other allocations are Arc'd / Copy. A failed attempt drops
+    // its partial state on the error path, ready to retry cleanly. Network +
+    // Components derive Clone, so we can hand fresh copies to each retry.
+    let price_estimator_factory_inputs = (
         factory::Network {
             web3: web3.clone(),
             simulation_web3,
@@ -342,10 +345,24 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
             tokens: token_info_fetcher.clone(),
             code_fetcher: code_fetcher.clone(),
         },
+    );
+    let mut price_estimator_factory = crate::util::retry::with_backoff(
+        "PriceEstimatorFactory::new",
+        crate::util::retry::BackoffConfig::default(),
+        || async {
+            let (network, components) = price_estimator_factory_inputs.clone();
+            PriceEstimatorFactory::new(
+                &config.price_estimation,
+                &config.native_price_estimation.shared,
+                network,
+                components,
+            )
+            .instrument(info_span!("price_estimator_factory"))
+            .await
+        },
     )
-    .instrument(info_span!("price_estimator_factory"))
     .await
-    .expect("failed to initialize price estimator factory");
+    .expect("failed to initialize price estimator factory after retries");
 
     let weth = eth.contracts().weth().clone();
     let prices = db_write.fetch_latest_prices().await.unwrap();
