@@ -63,7 +63,12 @@ projects:
         failsafe:
           # Critical reads: state-dependent calls that gate solver behavior
           # and settlement validity. Require 2-of-3 agreement OR fail.
-          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt"
+          # Consensus-protected methods. eth_getTransactionByHash added 2026-05-18
+          # per Codex Cyber + silent-failure-hunter review — response includes
+          # forkable fields (blockHash, blockNumber); a hostile upstream could
+          # otherwise mislead the autopilot's max-settlement-transaction-wait
+          # watcher via the non-consensus "*" fallback path.
+          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash"
             timeout:
               duration: 10s
             consensus:
