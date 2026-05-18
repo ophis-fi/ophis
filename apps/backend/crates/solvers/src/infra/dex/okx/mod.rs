@@ -82,16 +82,11 @@ const OKX_ROUTER_ALLOWLIST: &[(u64, Address, Address)] = &[
     ),
 ];
 
-fn validate_router_allowlist(
-    chain_id: u64,
-    router: &Address,
-    spender: &Address,
-) -> Result<(), Error> {
-    let Some((_, allowed_router, allowed_spender)) = OKX_ROUTER_ALLOWLIST
+fn allowlist_entry_for(chain_id: u64) -> Result<&'static (u64, Address, Address), Error> {
+    OKX_ROUTER_ALLOWLIST
         .iter()
         .find(|(cid, _, _)| *cid == chain_id)
-    else {
-        return Err(Error::Api {
+        .ok_or_else(|| Error::Api {
             code: -1,
             reason: format!(
                 "OKX router allowlist has no entry for chain {chain_id}. Add an \
@@ -99,8 +94,11 @@ fn validate_router_allowlist(
                  okx/mod.rs after running the verification probe described in \
                  the const's doc comment."
             ),
-        });
-    };
+        })
+}
+
+fn validate_router_allowlist(chain_id: u64, router: &Address) -> Result<(), Error> {
+    let (_, allowed_router, _) = allowlist_entry_for(chain_id)?;
     if router != allowed_router {
         return Err(Error::Api {
             code: -1,
@@ -111,6 +109,11 @@ fn validate_router_allowlist(
             ),
         });
     }
+    Ok(())
+}
+
+fn validate_spender_allowlist(chain_id: u64, spender: &Address) -> Result<(), Error> {
+    let (_, _, allowed_spender) = allowlist_entry_for(chain_id)?;
     if spender != allowed_spender {
         return Err(Error::Api {
             code: -1,
@@ -280,13 +283,15 @@ impl Okx {
             .instrument(tracing::trace_span!("swap", id = %id))
             .await?;
 
-        // Audit C2 / Phase 2: validate OKX-returned router (`tx.to`) and
-        // ERC-20 spender against the static OKX_ROUTER_ALLOWLIST. Mirrors the
-        // hardening already in place for KyberSwap and Velora.
+        // Audit C2 / Phase 2: validate OKX-returned router (`tx.to`) against
+        // the static OKX_ROUTER_ALLOWLIST. The spender (`dexContractAddress`)
+        // is validated INSIDE the cache-populating future in handle_sell_order /
+        // handle_buy_order so that a poisoned response never persists in the
+        // moka cache (retro-audit follow-up: prevents sticky DoS on
+        // (token, side) keys if the allowlist itself is ever wrong).
         validate_router_allowlist(
             self.defaults.chain_index,
             &swap_response.tx.to,
-            &dex_contract_address.0,
         )?;
 
         // Increasing returned gas by 50% according to the documentation:
@@ -389,6 +394,14 @@ impl Okx {
                 )
                 .await?;
 
+            // Validate spender BEFORE returning so the cache never stores
+            // a poisoned address. If validation fails, try_get_with sees
+            // Err and skips the cache write — failure stays transient.
+            validate_spender_allowlist(
+                self.defaults.chain_index,
+                &approve_tx.dex_contract_address,
+            )?;
+
             Ok(eth::ContractAddress(approve_tx.dex_contract_address))
         };
 
@@ -440,6 +453,14 @@ impl Okx {
                     &approve_request_v5,
                 )
                 .await?;
+
+            // Validate spender BEFORE returning so the cache never stores
+            // a poisoned address. See validate-before-cache rationale on
+            // the parallel sell-order path above.
+            validate_spender_allowlist(
+                self.defaults.chain_index,
+                &approve_tx.dex_contract_address,
+            )?;
 
             Ok(eth::ContractAddress(approve_tx.dex_contract_address))
         };
@@ -643,13 +664,18 @@ mod tests {
     }
 
     #[test]
-    fn allowlist_accepts_verified_optimism_pair() {
-        validate_router_allowlist(10, &op_router(), &op_spender()).unwrap();
+    fn router_allowlist_accepts_verified_optimism() {
+        validate_router_allowlist(10, &op_router()).unwrap();
     }
 
     #[test]
-    fn allowlist_rejects_unknown_chain() {
-        let err = validate_router_allowlist(999, &op_router(), &op_spender()).unwrap_err();
+    fn spender_allowlist_accepts_verified_optimism() {
+        validate_spender_allowlist(10, &op_spender()).unwrap();
+    }
+
+    #[test]
+    fn router_allowlist_rejects_unknown_chain() {
+        let err = validate_router_allowlist(999, &op_router()).unwrap_err();
         match err {
             Error::Api { reason, .. } => assert!(
                 reason.contains("no entry for chain 999"),
@@ -660,9 +686,21 @@ mod tests {
     }
 
     #[test]
-    fn allowlist_rejects_attacker_router() {
+    fn spender_allowlist_rejects_unknown_chain() {
+        let err = validate_spender_allowlist(999, &op_spender()).unwrap_err();
+        match err {
+            Error::Api { reason, .. } => assert!(
+                reason.contains("no entry for chain 999"),
+                "unexpected reason: {reason}"
+            ),
+            other => panic!("expected Error::Api, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn router_allowlist_rejects_attacker_router() {
         let attacker = Address::new([0xde; 20]);
-        let err = validate_router_allowlist(10, &attacker, &op_spender()).unwrap_err();
+        let err = validate_router_allowlist(10, &attacker).unwrap_err();
         match err {
             Error::Api { reason, .. } => assert!(
                 reason.contains("non-allowlisted router"),
@@ -673,9 +711,9 @@ mod tests {
     }
 
     #[test]
-    fn allowlist_rejects_attacker_spender() {
+    fn spender_allowlist_rejects_attacker_spender() {
         let attacker = Address::new([0xde; 20]);
-        let err = validate_router_allowlist(10, &op_router(), &attacker).unwrap_err();
+        let err = validate_spender_allowlist(10, &attacker).unwrap_err();
         match err {
             Error::Api { reason, .. } => assert!(
                 reason.contains("non-allowlisted spender"),
@@ -683,5 +721,14 @@ mod tests {
             ),
             other => panic!("expected Error::Api, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn router_and_spender_validate_independently() {
+        // Cross-chain confusion test (sharp-edges suggestion): chain 1 with OP
+        // addresses must fail the router check since the chain-1 router is a
+        // different bytecode.
+        assert!(validate_router_allowlist(1, &op_router()).is_err());
+        assert!(validate_spender_allowlist(1, &op_spender()).is_err());
     }
 }
