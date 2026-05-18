@@ -73,12 +73,14 @@ impl Api {
         let order_sorting_strategies =
             Self::build_order_sorting_strategies(&order_priority_strategies);
 
-        // Add the metrics, healthz, and gasprice endpoints.
+        // Add the metrics, healthz, and gasprice endpoints. Healthz and
+        // gasprice both share the Ethereum state and are merged together.
         app = routes::metrics(app);
-        app = routes::healthz(app);
 
-        let eth = axum::Router::new();
-        app = app.merge(routes::gasprice(eth).with_state(self.eth.clone()));
+        let eth_routes = axum::Router::new();
+        let eth_routes = routes::healthz(eth_routes);
+        let eth_routes = routes::gasprice(eth_routes);
+        app = app.merge(eth_routes.with_state(self.eth.clone()));
 
         // Multiplex each solver as part of the API. Multiple solvers are multiplexed
         // on the same driver so only one liquidity collector collects the liquidity
