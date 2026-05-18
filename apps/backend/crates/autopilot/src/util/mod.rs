@@ -1,3 +1,5 @@
+pub mod retry;
+
 use url::Url;
 
 /// Joins a path with a URL, ensuring that there is only one slash between them.
