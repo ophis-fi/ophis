@@ -56,12 +56,6 @@ if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
 fi
 export OPHIS_DRIVER_SUBMITTER_KEY
 
-OPHIS_RENDERED_DIR="/Users/ophis-driver/rendered/hyperevm-mainnet"
-if ! sudo test -d "$OPHIS_RENDERED_DIR"; then
-  echo "ERROR: $OPHIS_RENDERED_DIR missing. Run ./infra/tier1-pk-isolation-setup.sh." >&2
-  exit 6
-fi
-
 # Fail FAST if any required NON-PK secret is missing — otherwise envsubst
 # silently substitutes empty string and the driver/orderbook fails far
 # downstream with an opaque error. Each :? guard prints the named var + hint.
@@ -134,22 +128,12 @@ shopt -s nullglob
 
 for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
-
-  if [[ "$name" == "driver.toml" ]]; then
-    # PK-bearing TOML — render to ophis-driver's private dir (Tier 1).
-    TMP=$(mktemp); chmod 600 "$TMP"
-    envsubst '${OPHIS_DRIVER_SUBMITTER_KEY}' < "$tmpl" > "$TMP"
-    sudo install -m 600 -o ophis-driver -g staff "$TMP" "$OPHIS_RENDERED_DIR/driver.toml"
-    rm -f "$TMP"
-    echo "  rendered  $name → $OPHIS_RENDERED_DIR/driver.toml (owner ophis-driver)"
-  else
-    # Non-PK templates — render to ./rendered/ (scep-owned, 0600).
-    out="rendered/$name"
-    envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
-      < "$tmpl" > "$out"
-    chmod 600 "$out"
-    echo "  rendered  $name"
-  fi
+  out="rendered/$name"
+  # envsubst only substitutes the explicit list we pass.
+  envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
+    < "$tmpl" > "$out"
+  chmod 600 "$out"
+  echo "  rendered  $name"
 done
 
 # Render observability templates (Alertmanager only — Prometheus config and

@@ -112,12 +112,14 @@ services:
       ETHRPC: ${MEGAETH_MAINNET_RPC}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
-      # Tier 1 PK isolation (2026-05-18): driver-submitter PK lives baked
-      # into the mounted /driver.toml (rendered under ophis-driver's home).
-      # The CoW driver deserializes account = "0x.." literally from TOML;
-      # no env-var substitution at runtime, so no env passthrough needed.
+      # Tier 1 PK isolation (2026-05-18): PK *source* is now
+      # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).
+      # The rendered driver.toml stays here in ./rendered/ because colima's
+      # virtiofs runs the host-side daemon as scep and can't access paths
+      # outside scep's perm scope — so any bind-mount source MUST be
+      # scep-readable. Stricter isolation requires Tier 2 (AWS KMS).
     volumes:
-      - /Users/ophis-driver/rendered/megaeth-mainnet/driver.toml:/driver.toml:ro
+      - ./rendered/driver.toml:/driver.toml:ro
     command: ["--config", "/driver.toml"]
     ports:
       - "127.0.0.1:8201:80"

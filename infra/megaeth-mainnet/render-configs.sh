@@ -41,30 +41,16 @@ if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
 fi
 export OPHIS_DRIVER_SUBMITTER_KEY
 
-OPHIS_RENDERED_DIR="/Users/ophis-driver/rendered/megaeth-mainnet"
-if ! sudo test -d "$OPHIS_RENDERED_DIR"; then
-  echo "ERROR: $OPHIS_RENDERED_DIR missing. Run ./infra/tier1-pk-isolation-setup.sh." >&2
-  exit 6
-fi
-
 mkdir -p rendered
 shopt -s nullglob
 
 for tmpl in configs/*.toml.tmpl; do
   name="$(basename "$tmpl" .tmpl)"
-
-  if [[ "$name" == "driver.toml" ]]; then
-    TMP=$(mktemp); chmod 600 "$TMP"
-    envsubst '${OPHIS_DRIVER_SUBMITTER_KEY}' < "$tmpl" > "$TMP"
-    sudo install -m 600 -o ophis-driver -g staff "$TMP" "$OPHIS_RENDERED_DIR/driver.toml"
-    rm -f "$TMP"
-    echo "  rendered  $name → $OPHIS_RENDERED_DIR/driver.toml (owner ophis-driver)"
-  else
-    out="rendered/$name"
-    envsubst '${MEGAETH_MAINNET_RPC}' < "$tmpl" > "$out"
-    chmod 600 "$out"
-    echo "  rendered  $name"
-  fi
+  out="rendered/$name"
+  envsubst '${MEGAETH_MAINNET_RPC} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+    < "$tmpl" > "$out"
+  chmod 600 "$out"
+  echo "  rendered  $name"
 done
 
 # Same lock for .env — render-configs.sh runs at every deploy so this
