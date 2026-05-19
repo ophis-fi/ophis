@@ -251,6 +251,12 @@ impl Settlement {
                     ?err,
                     "access list estimation failed, falling back to empty list"
                 );
+                observe::metrics::get()
+                    .access_list_fallback
+                    .with_label_values(&[
+                        observe::metrics::access_list_fallback_kind::TRANSPORT_OR_DECODE,
+                    ])
+                    .inc();
                 eth::AccessList::default()
             }
             Err(err) => return Err(err.into()),

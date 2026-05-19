@@ -2,7 +2,7 @@ use {
     super::competition::solution::{GasFeeOverride, settlement},
     crate::{
         domain::{blockchain::TxStatus, competition::solution::Settlement},
-        infra::{self, Ethereum, observe},
+        infra::{self, Ethereum, blockchain, observe},
     },
     alloy::{consensus::Transaction, eips::eip1559::Eip1559Estimation, sol_types::SolCall},
     anyhow::Context,
@@ -283,6 +283,19 @@ impl Mempools {
                                 });
                             } else {
                                 tracing::warn!(?hash, ?err, "couldn't re-simulate tx");
+                                let kind = match &err {
+                                    blockchain::Error::Rpc(_) => {
+                                        observe::metrics::resim_kind::TRANSPORT
+                                    }
+                                    blockchain::Error::GasPrice(_) => {
+                                        observe::metrics::resim_kind::GAS_PRICE
+                                    }
+                                    _ => observe::metrics::resim_kind::OTHER,
+                                };
+                                observe::metrics::get()
+                                    .resimulation_transport_error
+                                    .with_label_values(&[&mempool.to_string(), kind])
+                                    .inc();
                             }
                         }
                     }
