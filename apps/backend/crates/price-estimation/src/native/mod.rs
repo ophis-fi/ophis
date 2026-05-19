@@ -180,7 +180,12 @@ mod tests {
         let result = native_price_estimator
             .estimate_native_price(Address::with_last_byte(3), HEALTHY_PRICE_ESTIMATION_TIME)
             .await;
-        assert_eq!(result.unwrap(), 1. / 0.123456789);
+        // sell_amount = 10^18 token-units, out_amount = 1.23456789 × 10^17
+        // → price_in_buy_token = out / in = 0.123456789. Pre-BUY→SELL refactor
+        // the impl returned the inverse (≈ 8.1); the assertion was carried
+        // over from that version and was wrong relative to the current SELL
+        // direction.
+        assert_eq!(result.unwrap(), 0.123456789);
     }
 
     #[tokio::test]
