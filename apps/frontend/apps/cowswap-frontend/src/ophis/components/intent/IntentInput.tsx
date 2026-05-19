@@ -17,7 +17,7 @@
  * createTextNode) — never via innerHTML — so user input cannot inject
  * markup.
  */
-import { ClipboardEvent, ForwardedRef, forwardRef, KeyboardEvent, ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import { ClipboardEvent, DragEvent, ForwardedRef, forwardRef, KeyboardEvent, ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 
 import styled from 'styled-components/macro'
 
@@ -473,6 +473,62 @@ export const IntentInput = forwardRef(function IntentInput(
     if (next !== value) onChange(next)
   }, [onChange, value])
 
+  // Phase 3 audit M (2026-05-19): onDrop sibling to onPaste.
+  //
+  // Without an explicit onDrop handler, the browser falls back to its
+  // default contenteditable drop behavior, which inserts the
+  // dragged payload AS HTML (images become <img>, links become <a>,
+  // styled spans keep their markup) — the same self-XSS / chip-spoof
+  // surface that onPaste already closes. Users can drag a link from
+  // another tab, an image from their desktop, or selected styled text
+  // straight into the input.
+  //
+  // Behavior: extract text/plain from the DataTransfer. If absent, fall
+  // back to text/uri-list (browser drops of links). If neither is text,
+  // ignore the drop (don't try to handle image/* — that would surprise
+  // users; we want pure text). Insert at the caret in the same shape
+  // as paste; we deliberately don't try to insert at the drop point
+  // because contenteditable's drop-position resolution is browser-
+  // specific and would lose this handler's plain-text guarantee.
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const dt = e.dataTransfer
+    const plain = dt.getData('text/plain') || dt.getData('text/uri-list')
+    const text = plain.replace(/[\r\n]+/g, ' ').trim()
+    if (!text) return
+    const el = editorRef.current
+    if (!el) return
+    // Use a caret position consistent with where the user clicked LAST
+    // (focus position), not the drop coordinates — simpler and safer.
+    // If the editor doesn't have focus, append at the end.
+    const sel = window.getSelection()
+    let range: Range
+    if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).endContainer)) {
+      range = sel.getRangeAt(0)
+    } else {
+      range = document.createRange()
+      range.selectNodeContents(el)
+      range.collapse(false)
+    }
+    range.deleteContents()
+    range.insertNode(document.createTextNode(text))
+    range.collapse(false)
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+    const next = readPlainTextValue(el).replace(/\n+/g, ' ')
+    if (next !== value) onChange(next)
+  }, [onChange, value])
+
+  // Suppress the dragover/dragenter default so the drop event fires
+  // reliably across browsers (Firefox in particular needs preventDefault
+  // on dragover, not just on drop).
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+  }, [])
+
   return (
     <Wrap>
       <ChipStyles>
@@ -488,6 +544,8 @@ export const IntentInput = forwardRef(function IntentInput(
           onInput={handleInput}
           onKeyDown={handleKey}
           onPaste={handlePaste}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
         />
       </ChipStyles>
       {pending && <Spinner />}
