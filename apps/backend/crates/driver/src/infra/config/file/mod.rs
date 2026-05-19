@@ -360,7 +360,17 @@ pub struct S3 {
 enum Account {
     /// A private key is used to sign transactions. Expects a 32-byte hex
     /// encoded string.
+    ///
+    /// SECURITY: prefer `PrivateKeyFile` for production — inline keys in
+    /// TOML end up in backups, version control, and log dumps.
     PrivateKey(eth::B256),
+    /// Path to a file containing a 32-byte hex-encoded private key
+    /// (with or without `0x` prefix, trailing whitespace trimmed).
+    /// On Unix, the file must not be group- or world-readable (mode &
+    /// 0o077 == 0); the driver refuses to start otherwise.
+    PrivateKeyFile {
+        path: std::path::PathBuf,
+    },
     /// AWS KMS is used to sign transactions. Expects the key identifier.
     Kms(#[serde_as(as = "serde_with::DisplayFromStr")] Arn),
     /// Used to start the driver in the dry-run mode. This account type is

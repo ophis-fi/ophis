@@ -379,6 +379,14 @@ async fn load_account(account: file::Account, chain_id: Option<u64>) -> Account 
         file::Account::PrivateKey(pk) => PrivateKeySigner::from_bytes(&pk)
             .expect("invalid private key")
             .into(),
+        file::Account::PrivateKeyFile { path } => {
+            let bytes = load_private_key_file(&path)
+                .await
+                .unwrap_or_else(|e| panic!("failed to load private key from {path:?}: {e:#}"));
+            PrivateKeySigner::from_bytes(&bytes)
+                .unwrap_or_else(|e| panic!("invalid private key in {path:?}: {e}"))
+                .into()
+        }
         file::Account::Kms(arn) => {
             let sdk_config = alloy::signers::aws::aws_config::load_from_env().await;
             let client = alloy::signers::aws::aws_sdk_kms::Client::new(&sdk_config);
@@ -388,5 +396,108 @@ async fn load_account(account: file::Account, chain_id: Option<u64>) -> Account 
                 .into()
         }
         file::Account::Address(address) => Account::Address(address),
+    }
+}
+
+/// Read a 32-byte hex-encoded private key from disk.
+///
+/// Rejects files that grant group/world read permission on Unix to avoid
+/// the classic "PK on a shared host" leak. Accepts `0x`-prefixed or raw
+/// hex, trims surrounding whitespace (so `echo > key` works), and enforces
+/// exactly 32 decoded bytes.
+async fn load_private_key_file(path: &Path) -> anyhow::Result<eth_domain_types::B256> {
+    use anyhow::Context;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = tokio::fs::metadata(path)
+            .await
+            .with_context(|| format!("stat {path:?}"))?;
+        let mode = meta.permissions().mode() & 0o777;
+        anyhow::ensure!(
+            mode & 0o077 == 0,
+            "private key file {path:?} has insecure permissions {mode:o}; \
+             must not be group- or world-readable (try `chmod 600`)"
+        );
+    }
+
+    let contents = tokio::fs::read_to_string(path)
+        .await
+        .with_context(|| format!("read {path:?}"))?;
+    let hex = contents
+        .trim()
+        .trim_start_matches("0x")
+        .trim_start_matches("0X");
+    let bytes = const_hex::decode(hex).with_context(|| format!("decode hex in {path:?}"))?;
+    anyhow::ensure!(
+        bytes.len() == 32,
+        "private key file {path:?} must decode to 32 bytes, got {}",
+        bytes.len()
+    );
+    Ok(eth_domain_types::B256::from_slice(&bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VALID_HEX: &str =
+        "0101010101010101010101010101010101010101010101010101010101010101";
+
+    async fn write_key(contents: &str, mode: u32) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("key");
+        tokio::fs::write(&path, contents).await.unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = tokio::fs::metadata(&path).await.unwrap().permissions();
+            perm.set_mode(mode);
+            tokio::fs::set_permissions(&path, perm).await.unwrap();
+        }
+        let _ = mode;
+        (dir, path)
+    }
+
+    #[tokio::test]
+    async fn loads_with_0x_prefix() {
+        let (_d, path) = write_key(&format!("0x{VALID_HEX}\n"), 0o600).await;
+        let key = load_private_key_file(&path).await.unwrap();
+        assert_eq!(key.as_slice(), &[1u8; 32]);
+    }
+
+    #[tokio::test]
+    async fn loads_raw_hex() {
+        let (_d, path) = write_key(VALID_HEX, 0o600).await;
+        load_private_key_file(&path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rejects_short() {
+        let (_d, path) = write_key("0xdeadbeef", 0o600).await;
+        let err = load_private_key_file(&path).await.unwrap_err();
+        assert!(format!("{err:#}").contains("32 bytes"));
+    }
+
+    #[tokio::test]
+    async fn rejects_non_hex() {
+        let (_d, path) = write_key("not hex at all xyz", 0o600).await;
+        load_private_key_file(&path).await.unwrap_err();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rejects_world_readable() {
+        let (_d, path) = write_key(VALID_HEX, 0o644).await;
+        let err = load_private_key_file(&path).await.unwrap_err();
+        assert!(format!("{err:#}").contains("insecure permissions"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rejects_group_readable() {
+        let (_d, path) = write_key(VALID_HEX, 0o640).await;
+        load_private_key_file(&path).await.unwrap_err();
     }
 }
