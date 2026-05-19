@@ -86,9 +86,9 @@ impl Liveness {
 /// Creates Web3 transport based on the given config.
 #[instrument(skip_all)]
 async fn ethrpc(url: &Url, ethrpc_args: &shared::web3::Arguments) -> infra::blockchain::Rpc {
-    crate::util::retry::with_backoff(
+    retry_helper::with_backoff(
         "ethrpc.connect",
-        crate::util::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || async { infra::blockchain::Rpc::new(url, ethrpc_args).await },
     )
     .await
@@ -201,9 +201,9 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         .as_ref()
         .map(|node_url| shared::web3::web3(&ethrpc_args, node_url, "simulation"));
 
-    let chain_id = crate::util::retry::with_backoff(
+    let chain_id = retry_helper::with_backoff(
         "web3.get_chain_id",
-        crate::util::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || async {
             web3.provider
                 .get_chain_id()
@@ -244,12 +244,12 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
     .await;
 
     // Bootstrap RPC call: retry with backoff so transient ErrConsensusLowParticipants
-    // events from the eRPC proxy don't crash-loop the container. See util::retry
-    // for rationale (audit-required strict consensus + naturally-bursty startup
-    // load on free-tier HL upstreams).
-    let vault_relayer = crate::util::retry::with_backoff(
+    // events from the eRPC proxy don't crash-loop the container. See the
+    // `retry-helper` crate for rationale (audit-required strict consensus +
+    // naturally-bursty startup load on free-tier HL upstreams).
+    let vault_relayer = retry_helper::with_backoff(
         "settlement.vaultRelayer",
-        crate::util::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || async { eth.contracts().settlement().vaultRelayer().call().await },
     )
     .await
@@ -314,9 +314,9 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
     // Same retry pattern as `vault_relayer` (run.rs:236) — bootstrap eth_call
     // through eRPC's strict-consensus proxy needs app-layer retry to ride out
     // transient low-participants windows.
-    let solver_authenticator = crate::util::retry::with_backoff(
+    let solver_authenticator = retry_helper::with_backoff(
         "settlement.authenticator",
-        crate::util::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || async { eth.contracts().settlement().authenticator().call().await },
     )
     .await
@@ -346,9 +346,9 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
             code_fetcher: code_fetcher.clone(),
         },
     );
-    let mut price_estimator_factory = crate::util::retry::with_backoff(
+    let mut price_estimator_factory = retry_helper::with_backoff(
         "PriceEstimatorFactory::new",
-        crate::util::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || async {
             let (network, components) = price_estimator_factory_inputs.clone();
             PriceEstimatorFactory::new(
@@ -426,9 +426,9 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
 
     let skip_event_sync_start = if config.ethflow.skip_event_sync {
         Some(
-            crate::util::retry::with_backoff(
+            retry_helper::with_backoff(
                 "block_number_to_block_number_hash.latest",
-                crate::util::retry::BackoffConfig::default(),
+                retry_helper::BackoffConfig::default(),
                 || async {
                     block_number_to_block_number_hash(&web3.provider, BlockNumberOrTag::Latest)
                         .await

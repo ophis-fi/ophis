@@ -121,11 +121,11 @@ pub async fn run(config: Configuration) {
     // Bootstrap RPC call: retry with backoff so transient eRPC consensus
     // failures (ErrConsensusLowParticipants / ErrConsensusDispute) during
     // HL stack restart bursts don't crash-loop the container. Mirrors the
-    // pattern used in autopilot — see crates/orderbook/src/retry.rs for
-    // rationale and the 2026-05-18 redeploy incident that motivated it.
-    let vault_relayer = crate::retry::with_backoff(
+    // pattern used in autopilot — see the `retry-helper` crate for rationale
+    // and the 2026-05-18 redeploy incident that motivated it.
+    let vault_relayer = retry_helper::with_backoff(
         "settlement.vaultRelayer",
-        crate::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || async { settlement_contract.vaultRelayer().call().await },
     )
     .await
@@ -233,9 +233,9 @@ pub async fn run(config: Configuration) {
     // failures during HL stack restart bursts don't crash-loop the
     // container. Mirrors the pattern at run.rs:127 for vault_relayer
     // (added in PR #86); same eRPC-burst pathology motivates this site.
-    let current_block_stream = crate::retry::with_backoff(
+    let current_block_stream = retry_helper::with_backoff(
         "current_block_args.stream",
-        crate::retry::BackoffConfig::default(),
+        retry_helper::BackoffConfig::default(),
         || {
             let node_url = config.shared.node_url.clone();
             let provider = web3.provider.clone();
@@ -263,9 +263,9 @@ pub async fn run(config: Configuration) {
             native_token: *native_token.address(),
             // Bootstrap RPC call: retry with backoff (same rationale as the
             // vault_relayer site at run.rs:127, added in PR #86).
-            authenticator: crate::retry::with_backoff(
+            authenticator: retry_helper::with_backoff(
                 "settlement.authenticator",
-                crate::retry::BackoffConfig::default(),
+                retry_helper::BackoffConfig::default(),
                 || async { settlement_contract.authenticator().call().await },
             )
             .await
