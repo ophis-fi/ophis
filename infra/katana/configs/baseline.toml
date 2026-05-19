@@ -1,8 +1,0 @@
-# Katana Bokuto testnet (737373).
-weth = "0x4200000000000000000000000000000000000006"
-base-tokens = [
-  "0x4200000000000000000000000000000000000006",
-]
-max-hops = 2
-max-partial-attempts = 5
-native-token-price-estimation-amount = "1000000000000000"
