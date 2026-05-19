@@ -1,31 +1,22 @@
-//! Bounded-retry helper for driver bootstrap-time RPC calls.
+//! Bounded-retry helper for bootstrap-time RPC calls across the
+//! Ophis backend workspace (autopilot, driver, solvers, orderbook).
 //!
-//! Mirrors the autopilot version at
-//! `apps/backend/crates/autopilot/src/util/retry.rs`. Duplicated here to
-//! avoid a cross-crate refactor for what is otherwise a hotfix; future PR
-//! should consolidate both copies into a shared crate.
+//! Pre-this-with_backoff the function existed as 4 byte-identical copies
+//! gated by a SHA-256 CODESYNC CI check (PR #84). Consolidating into
+//! one with_backoff eliminates the drift surface entirely.
 //!
-//! Same rationale as autopilot: the orderbook's startup performs a few
-//! `eth_call` queries against the eRPC proxy. The proxy enforces strict
-//! 2-of-3 consensus over HL upstreams; under bootstrap burst, transient
-//! `ErrConsensusLowParticipants` / `ErrConsensusDispute` events occur. The
-//! right response is to retry at the application layer with backoff, not
-//! to weaken the consensus invariant.
-//!
-//! Pre-this-module, the unretrywrapped `.expect()` at `run.rs:125`
-//! (vault relayer read) caused the orderbook container to crash-loop
-//! every HL stack rebuild — see 2026-05-18 redeploy incident in
-//! `project_ophis_roadmap.md`.
+//! Default `BackoffConfig` (`max_attempts: 10, initial_delay: 200ms,
+//! max_delay: 5s, backoff_factor: 2.0, jitter_ms: 50`) is tuned for
+//! eRPC consensus path latency under bootstrap burst (purroof/
+//! hypurrscan/official-hl on HL chain 999, plus Alchemy/op-reth on OP).
+//! Worst-case sleep total ≈ 26.65s across 9 retry gaps; add per-attempt
+//! RPC latency (2-4s under burst) for true wall-clock.
 
 use {
     rand::Rng as _,
     std::{future::Future, time::Duration},
 };
 
-/// CODESYNC(retry-helper): also defined in
-/// `apps/backend/crates/autopilot/src/util/retry.rs` and
-/// `apps/backend/crates/solvers/src/util/retry.rs`. Keep all three copies
-/// in sync until a shared crate exists. CI grep checks file checksums.
 #[derive(Debug, Clone)]
 pub struct BackoffConfig {
     pub max_attempts: usize,
@@ -37,10 +28,6 @@ pub struct BackoffConfig {
 
 impl Default for BackoffConfig {
     fn default() -> Self {
-        // Worst-case sleep total: delays 200+400+800+1600+3200+5000+5000+
-        // 5000+5000 = 26.2s across 9 inter-attempt gaps, + up to 9×50ms
-        // jitter = ~26.65s sleep-only. Add per-attempt RPC latency (eRPC
-        // consensus path can be 2-4s under burst) for true wall-clock.
         Self {
             max_attempts: 10,
             initial_delay: Duration::from_millis(200),
@@ -52,11 +39,6 @@ impl Default for BackoffConfig {
 }
 
 /// Retry an async fallible operation with exponential backoff + jitter.
-///
-/// On each failure logs a `warn` with the operation name, attempt number and
-/// error display. On final exhaustion returns the last error verbatim — the
-/// caller is responsible for the surrounding `.expect()` or `?` if a panic /
-/// propagation is appropriate.
 pub async fn with_backoff<T, E, F, Fut>(
     name: &str,
     config: BackoffConfig,

@@ -6,7 +6,6 @@
 pub mod boundary;
 pub mod domain;
 pub mod infra;
-mod retry;
 mod run;
 pub mod util;
 

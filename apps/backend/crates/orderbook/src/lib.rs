@@ -8,7 +8,6 @@ mod ipfs_app_data;
 pub mod order_simulator;
 pub mod orderbook;
 mod quoter;
-mod retry;
 pub mod run;
 pub mod solver_competition;
 

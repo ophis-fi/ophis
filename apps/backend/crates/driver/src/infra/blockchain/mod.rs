@@ -117,9 +117,9 @@ impl Ethereum {
         // HL stack restart bursts don't crash-loop the container. Mirrors
         // the pattern used in autopilot, orderbook, and solvers; sustained
         // failures still surface as panic after the backoff exhausts.
-        let contracts = crate::retry::with_backoff(
+        let contracts = retry_helper::with_backoff(
             "Contracts::new",
-            crate::retry::BackoffConfig::default(),
+            retry_helper::BackoffConfig::default(),
             || async { Contracts::new(&web3, chain, addresses.clone()).await },
         )
         .await
