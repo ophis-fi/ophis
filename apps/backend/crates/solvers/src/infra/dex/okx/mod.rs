@@ -535,19 +535,21 @@ impl Okx {
                 reqwest::Method::GET,
                 base_url
                     .join(endpoint)
-                    .map_err(|_| Error::RequestBuildFailed)?,
+                    .map_err(|e| Error::RequestBuildFailed(format!("base URL join: {e}")))?,
             )
             .query(query);
 
         let request = request_builder
             .try_clone()
-            .ok_or(Error::RequestBuildFailed)?
+            .ok_or_else(|| {
+                Error::RequestBuildFailed("request builder not cloneable".to_string())
+            })?
             .build()
-            .map_err(|_| Error::RequestBuildFailed)?;
+            .map_err(|e| Error::RequestBuildFailed(format!("build: {e}")))?;
 
         let signature_url = signature_base_url
             .join(endpoint)
-            .map_err(|_| Error::RequestBuildFailed)?;
+            .map_err(|e| Error::RequestBuildFailed(format!("signature URL join: {e}")))?;
 
         let timestamp = &chrono::Utc::now()
             .to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -557,11 +559,12 @@ impl Okx {
         request_builder = request_builder.header(
             "OK-ACCESS-TIMESTAMP",
             reqwest::header::HeaderValue::from_str(timestamp)
-                .map_err(|_| Error::RequestBuildFailed)?,
+                .map_err(|e| Error::RequestBuildFailed(format!("timestamp header: {e}")))?,
         );
         request_builder = request_builder.header(
             "OK-ACCESS-SIGN",
-            HeaderValue::from_str(&signature).map_err(|_| Error::RequestBuildFailed)?,
+            HeaderValue::from_str(&signature)
+                .map_err(|e| Error::RequestBuildFailed(format!("sign header: {e}")))?,
         );
 
         let response = util::http::roundtrip!(
@@ -587,8 +590,14 @@ pub enum CreationError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("failed to build the request")]
-    RequestBuildFailed,
+    /// Audit Phase 2 finding M11: pre-PR this was a unit variant; the five
+    /// distinct upstream causes (URL join, header value parse, request
+    /// clone, request build, signature URL join) all collapsed to the
+    /// same string. Operators saw "RequestBuildFailed" with no debug
+    /// breadcrumb. Now carries the source so logs preserve the
+    /// underlying error type via Display.
+    #[error("failed to build the request: {0}")]
+    RequestBuildFailed(String),
     #[error("failed to sign the request")]
     SignRequestFailed,
     #[error("calculating output gas failed")]

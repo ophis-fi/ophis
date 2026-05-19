@@ -318,6 +318,9 @@ pub fn quoted(solver: &solver::Name, order: &quote::Order, result: &Result<Quote
                         }
                         quote::Error::Solver(solver::Error::Dto(_)) => "SolverDtoError",
                         quote::Error::Solver(solver::Error::CustomError(_)) => "SolverCustomError",
+                        quote::Error::Solver(solver::Error::DeadlineExceededBeforeRequest) => {
+                            "SolverDeadlineExceededBeforeRequest"
+                        }
                         quote::Error::Boundary(_) => "Unknown",
                         quote::Error::Encoding(_) => "Encoding",
                     },
@@ -455,6 +458,9 @@ fn competition_error(err: &competition::Error) -> &'static str {
         competition::Error::Solver(solver::Error::Deserialize(_)) => "SolverDeserializeError",
         competition::Error::Solver(solver::Error::Dto(_)) => "SolverDtoError",
         competition::Error::Solver(solver::Error::CustomError(_)) => "SolverCustomError",
+        competition::Error::Solver(solver::Error::DeadlineExceededBeforeRequest) => {
+            "SolverDeadlineExceededBeforeRequest"
+        }
         competition::Error::SubmissionError(kind) => kind.as_label(),
         competition::Error::TooManyPendingSettlements => "TooManyPendingSettlements",
         competition::Error::NoValidOrdersFound => "NoValidOrdersFound",

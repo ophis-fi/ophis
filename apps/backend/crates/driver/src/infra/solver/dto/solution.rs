@@ -365,7 +365,20 @@ impl JitOrder {
             // signature bytes. This leads to the owner being encoded twice in
             // the final settlement calldata unless we remove that from the raw
             // data.
-            signature.data = Bytes::copy_from_slice(&self.0.signature[20..]);
+            //
+            // Audit Phase 2 finding M4: explicit length check before slicing.
+            // Pre-PR `&self.0.signature[20..]` panicked on a malformed EIP-1271
+            // signature shorter than 20 bytes (single-solver-induced auction
+            // abort, sustained → DoS). Now returns a typed Err that the
+            // caller maps to a solver-specific failure metric.
+            let sig = self.0.signature.get(20..).ok_or_else(|| {
+                super::Error(format!(
+                    "EIP-1271 signature too short to strip prepended signer: got {} bytes, \
+                     need >= 20",
+                    self.0.signature.len()
+                ))
+            })?;
+            signature.data = Bytes::copy_from_slice(sig);
         }
 
         signature.signer = signer;
