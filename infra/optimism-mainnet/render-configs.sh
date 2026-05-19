@@ -111,6 +111,22 @@ export OPHIS_DRIVER_SUBMITTER_KEY
 mkdir -p rendered
 shopt -s nullglob
 
+# sharp-edges H1 (2026-05-19): if OP_RPC_INTERNAL is set, ALL chain-reading
+# services bypass the eRPC proxy and route through whatever URL the operator
+# pasted. That's a legitimate failure-domain-test knob but it silently
+# downgrades the stack to the pre-PR single-provider posture (no consensus,
+# no fail-closed read protection). Loud warning so a forgotten override
+# can't quietly sit in .env for days.
+if [[ -n "${OP_RPC_INTERNAL:-}" ]]; then
+  echo "" >&2
+  echo "*** WARNING: OP_RPC_INTERNAL is set in .env ***" >&2
+  echo "    Value: ${OP_RPC_INTERNAL}" >&2
+  echo "    The eRPC proxy + 2-of-3 consensus path is BYPASSED." >&2
+  echo "    All chain reads will route through this single URL." >&2
+  echo "    Unset OP_RPC_INTERNAL in .env to restore proxy mode." >&2
+  echo "" >&2
+fi
+
 for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # `shopt -s nullglob` (set above) makes the globs return nothing when
   # there are no matches, so this loop is safe even if only one extension

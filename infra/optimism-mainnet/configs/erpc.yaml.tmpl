@@ -7,13 +7,24 @@
 # eRPC fan-out + consensus failsafe gives us the same fork-view-poisoning
 # defense the HL stack already relies on.
 #
-# Free providers selected for distinct failure domains:
+# Free providers selected for distinct failure domains. Reviewer feedback
+# (adversarial-modeler + sharp-edges, 2026-05-19) caught that the initial
+# pick of llamarpc-op shared *Cloudflare DNS* with official-op — a single
+# Cloudflare control-plane compromise would hijack 2-of-3 simultaneously,
+# meeting the consensus threshold. Swapped llamarpc → ankr to close that.
+#
 #   official-op      mainnet.optimism.io           OP Foundation / Conduit
-#                                                  (Cloudflare-fronted)
+#                                                  (DNS: Cloudflare; CA: Cloudflare/Google)
 #   publicnode-op    optimism-rpc.publicnode.com   Allnodes multi-cloud
-#                                                  (was the prior sole provider;
-#                                                  proven 4+ days at steady-state)
-#   llamarpc-op      optimism.llamarpc.com         LlamaNodes (Hetzner + OVH)
+#                                                  (DNS: Route53; CA: Let's Encrypt;
+#                                                   was the prior sole provider;
+#                                                   proven 4+ days at steady-state)
+#   ankr-op          rpc.ankr.com/optimism         Ankr Public
+#                                                  (DNS: Ankr-operated; CA: ZeroSSL/Sectigo;
+#                                                   different DNS provider from official-op
+#                                                   so a Cloudflare-only incident can take
+#                                                   at most 1-of-3, fail-closing eRPC rather
+#                                                   than poisoning consensus)
 #
 # Rationale (replace-not-expand; mirroring the HL audit reasoning):
 #  - N=3 keeps the 2-of-3 consensus invariant defensible. Expanding N to >3 with
@@ -123,8 +134,8 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: llamarpc-op
-        endpoint: https://optimism.llamarpc.com
+      - id: ankr-op
+        endpoint: https://rpc.ankr.com/optimism
         failsafe:
           - matchMethod: "*"
             timeout:
