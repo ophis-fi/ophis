@@ -1,5 +1,29 @@
 use prometheus::HistogramTimer;
 
+/// Label values for `resimulation_transport_error{kind=…}`. Centralized
+/// here so callers can't typo-create new series (a Prometheus footgun
+/// flagged by sharp-edges review of M7+M12).
+pub mod resim_kind {
+    /// `alloy::transports::RpcError` that is *not* `is_error_resp()` —
+    /// the node didn't reply with a structured error, so this is local
+    /// network / remote node unreachable / fallback exhausted.
+    pub const TRANSPORT: &str = "transport";
+    /// `GasPrice(_)` — the gas-price boundary itself failed (rare; usually
+    /// a misconfigured fee oracle or a chain that returned nonsense).
+    pub const GAS_PRICE: &str = "gas_price";
+    /// Anything else that didn't match the dedicated buckets.
+    pub const OTHER: &str = "other";
+}
+
+/// Label values for `access_list_fallback{kind=…}`.
+pub mod access_list_fallback_kind {
+    /// `simulator::Error::Other` covers both transport and decode; left
+    /// single-bucket because M7's fallback is benign and the volume is
+    /// low. Operators alert on the *rate*, not the *cause* — and the
+    /// cause is in the accompanying `tracing::warn!`.
+    pub const TRANSPORT_OR_DECODE: &str = "transport_or_decode";
+}
+
 /// Metrics for the driver.
 #[derive(Debug, Clone, prometheus_metric_storage::MetricStorage)]
 pub struct Metrics {
@@ -41,6 +65,23 @@ pub struct Metrics {
     pub submitter_cancellation_failed: prometheus::IntCounterVec,
     /// How many tokens detected by specific solver and strategy.
     pub bad_tokens_detected: prometheus::IntCounter,
+    /// Access-list estimation failures that fell back to an empty access list.
+    /// Phase 2 audit MED M7: the fallback itself is intentional (the tx
+    /// would still succeed on-chain without the access list) but operators
+    /// need visibility into when/how often it fires — a sustained spike
+    /// implies a degraded simulator/RPC, not just a transient blip.
+    /// Pre-this-metric, the only signal was a `tracing::warn!`.
+    #[metric(labels("kind"))]
+    pub access_list_fallback: prometheus::IntCounterVec,
+    /// In-flight tx re-simulation transport errors (non-revert).
+    /// Phase 2 audit MED M12: an RPC outage during in-flight tracking
+    /// causes `estimate_gas` to fail-non-revert, which previously was a
+    /// silent `tracing::warn!` and continued holding the tx. With this
+    /// metric, ops can alert when re-sim transport errors per signer
+    /// exceed a threshold (signals either RPC degradation or an exhausted
+    /// fallback chain) and intervene before the deadline.
+    #[metric(labels("mempool", "kind"))]
+    pub resimulation_transport_error: prometheus::IntCounterVec,
     /// Time spent in the auction preprocessing stage.
     #[metric(
         labels("stage"),
