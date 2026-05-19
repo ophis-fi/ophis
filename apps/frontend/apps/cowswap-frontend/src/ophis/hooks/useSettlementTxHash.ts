@@ -1,5 +1,6 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
+import * as Sentry from '@sentry/react'
 import useSWR from 'swr'
 
 import { orderBookApi } from 'cowSdk'
@@ -44,8 +45,37 @@ export function useSettlementTxHash(chainId: number | undefined, orderUid: strin
           if (tx) return tx
         }
         return null
-      } catch {
+      } catch (err) {
         // Network/API error — fall through to the address-page fallback.
+        // Phase 3 audit M (silent-failure): the old behavior swallowed
+        // every error silently, so a regressed orderbook OR a real bug
+        // (e.g. malformed orderUid making it past the length-114 guard,
+        // chainId/orderUid type confusion, CORS misconfig after a CF
+        // tunnel change) presented to users as "no settlement link" —
+        // visually indistinguishable from a pending order. That mode of
+        // failure could persist for days without anyone noticing.
+        //
+        // Log path: console.warn for local dev visibility + Sentry
+        // breadcrumb (NOT captureException) because the catch IS the
+        // expected fallback — capturing every miss would blow our error
+        // budget. Breadcrumbs attach to the next real captured error so
+        // we still get the context if something else trips.
+        // eslint-disable-next-line no-console
+        console.warn('[useSettlementTxHash] orderbook getTrades failed', {
+          chainId: _chainId,
+          orderUid: _orderUid,
+          error: err,
+        })
+        Sentry.addBreadcrumb({
+          category: 'ophis.settlement',
+          level: 'warning',
+          message: 'useSettlementTxHash: orderbook getTrades failed',
+          data: {
+            chainId: _chainId,
+            orderUid: _orderUid,
+            errorMessage: err instanceof Error ? err.message : String(err),
+          },
+        })
         return null
       }
     },
