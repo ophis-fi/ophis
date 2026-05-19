@@ -154,10 +154,10 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
                     ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
                 // Bootstrap RPC call: retry with backoff so transient eRPC
                 // consensus failures during HL stack restart bursts don't
-                // crash-loop the container. See crates/solvers/src/util/retry.rs.
-                crate::util::retry::with_backoff(
+                // crash-loop the container. See the `retry-helper` crate.
+                retry_helper::with_backoff(
                     "settlement.authenticator",
-                    crate::util::retry::BackoffConfig::default(),
+                    retry_helper::BackoffConfig::default(),
                     || async { settlement.authenticator().call().await },
                 )
                 .await

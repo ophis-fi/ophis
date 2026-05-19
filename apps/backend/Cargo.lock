@@ -1250,6 +1250,7 @@ dependencies = [
  "prometheus-metric-storage",
  "rand 0.9.4",
  "reqwest 0.13.2",
+ "retry-helper",
  "rust_decimal",
  "s3",
  "serde",
@@ -3950,6 +3951,7 @@ dependencies = [
  "rand 0.9.4",
  "request-sharing",
  "reqwest 0.13.2",
+ "retry-helper",
  "s3",
  "serde",
  "serde-ext",
@@ -6080,6 +6082,7 @@ dependencies = [
  "prometheus-metric-storage",
  "rand 0.9.4",
  "reqwest 0.13.2",
+ "retry-helper",
  "serde",
  "serde_json",
  "serde_with",
@@ -7024,6 +7027,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "retry-helper"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.4",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rfc6979"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7919,6 +7931,7 @@ dependencies = [
  "rand 0.9.4",
  "rate-limit",
  "reqwest 0.13.2",
+ "retry-helper",
  "serde",
  "serde_json",
  "serde_with",
