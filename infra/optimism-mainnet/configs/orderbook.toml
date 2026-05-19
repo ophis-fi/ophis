@@ -7,8 +7,8 @@ eip1271-skip-creation-validation = false
 bind-address = "0.0.0.0:80"
 
 [shared]
-node-url = "https://optimism-rpc.publicnode.com"
-simulation-node-url = "https://optimism-rpc.publicnode.com"
+node-url = "http://rpc-proxy:4000/main/evm/10"
+simulation-node-url = "http://rpc-proxy:4000/main/evm/10"
 
 # Override every contract address — Optimism mainnet (chain 10) needs explicit
 # Ophis-deployed addresses since upstream's contracts registry doesn't include
