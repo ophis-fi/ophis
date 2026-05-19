@@ -121,8 +121,8 @@ pub async fn run(config: Configuration) {
     // Bootstrap RPC call: retry with backoff so transient eRPC consensus
     // failures (ErrConsensusLowParticipants / ErrConsensusDispute) during
     // HL stack restart bursts don't crash-loop the container. Mirrors the
-    // pattern used in autopilot — see crates/orderbook/src/retry.rs for
-    // rationale and the 2026-05-18 redeploy incident that motivated it.
+    // pattern used in autopilot — see the `retry-helper` crate for rationale
+    // and the 2026-05-18 redeploy incident that motivated it.
     let vault_relayer = retry_helper::with_backoff(
         "settlement.vaultRelayer",
         retry_helper::BackoffConfig::default(),

@@ -244,9 +244,9 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
     .await;
 
     // Bootstrap RPC call: retry with backoff so transient ErrConsensusLowParticipants
-    // events from the eRPC proxy don't crash-loop the container. See util::retry
-    // for rationale (audit-required strict consensus + naturally-bursty startup
-    // load on free-tier HL upstreams).
+    // events from the eRPC proxy don't crash-loop the container. See the
+    // `retry-helper` crate for rationale (audit-required strict consensus +
+    // naturally-bursty startup load on free-tier HL upstreams).
     let vault_relayer = retry_helper::with_backoff(
         "settlement.vaultRelayer",
         retry_helper::BackoffConfig::default(),
