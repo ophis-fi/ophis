@@ -1,5 +1,8 @@
 use {
-    crate::{api::AppState, orderbook::OrderCancellationError},
+    crate::{
+        api::{AppState, error},
+        orderbook::OrderCancellationError,
+    },
     anyhow::anyhow,
     axum::{
         Json,
@@ -9,7 +12,6 @@ use {
         response::{IntoResponse, Response},
     },
     model::order::{ORDER_UID_LIMIT, SignedOrderCancellations},
-    serde_json::json,
     std::sync::Arc,
 };
 
@@ -32,12 +34,11 @@ pub async fn cancel_orders_handler(
             );
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "errorType": "InvalidRequestBody",
-                    "description": "could not deserialize SignedOrderCancellations \
-                                    (expected JSON with `data.order_uids` and \
-                                    `signature` fields)",
-                })),
+                error(
+                    "InvalidRequestBody",
+                    "could not deserialize SignedOrderCancellations (expected JSON \
+                     with `data.order_uids` and `signature` fields)",
+                ),
             )
                 .into_response();
         }
