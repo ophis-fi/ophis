@@ -71,8 +71,24 @@ alert() {
 }
 
 normalize_addresses() {
-  # Convert ABI-encoded array output to space-separated lowercase addresses, sorted
-  echo "$1" \
+  # Convert `cast call ... 'getOwners()(address[])'` output to
+  # space-separated lowercase addresses, sorted.
+  #
+  # Codex MED (PR #117): the prior implementation matched ANY
+  # `0x[a-fA-F0-9]{40}` token in the input — including ones that
+  # appear in error messages. If `cast` ever printed
+  # "Error: revert at 0xdeadbeef..." (40+ hex chars), the addresses
+  # would be silently included in the comparison set, producing
+  # misleading drift.
+  #
+  # Fix: require the input to start with `[` (cast's array format).
+  # Anything else fails the regex check at caller's site.
+  local input="$1"
+  if [[ "$input" != "["* ]]; then
+    echo ""  # caller's regex/length check will trip
+    return
+  fi
+  echo "$input" \
     | grep -oE '0x[0-9a-fA-F]{40}' \
     | tr '[:upper:]' '[:lower:]' \
     | sort -u \
@@ -94,6 +110,10 @@ check_chain() {
   }
   local proto_owners_norm
   proto_owners_norm="$(normalize_addresses "$proto_owners")"
+  if [[ -z "$proto_owners_norm" ]]; then
+    alert "Protocol Safe getOwners() on $name returned unparseable output (expected ABI array): $proto_owners"
+    return
+  fi
   local expected_proto_norm
   expected_proto_norm="$(echo "$EXPECTED_PROTOCOL_OWNERS_SORTED" | tr '[:upper:]' '[:lower:]' | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')"
   if [[ "$proto_owners_norm" != "$expected_proto_norm" ]]; then
@@ -101,8 +121,24 @@ check_chain() {
   fi
 
   # --- Protocol Safe threshold ---
+  # All cast calls below use the same try-or-alert pattern getOwners
+  # uses above. Pre-PR, threshold/manager/isSolver lacked the explicit
+  # error-handling guard — under `set -euo pipefail` a failing cast
+  # could abort the whole run, or worse, error output could parse as
+  # a plausible-but-wrong value (Codex MED, PR #117 review).
+  local proto_thr_raw
+  proto_thr_raw="$(cast call --rpc-url "$rpc" "$protocol_safe" 'getThreshold()(uint256)' 2>&1)" || {
+    alert "Protocol Safe getThreshold() failed on $name: $proto_thr_raw"
+    return
+  }
   local proto_thr
-  proto_thr="$(cast call --rpc-url "$rpc" "$protocol_safe" 'getThreshold()(uint256)' 2>&1 | head -1 | awk '{print $1}')"
+  proto_thr="$(echo "$proto_thr_raw" | head -1 | awk '{print $1}')"
+  # Strict numeric check — guards against MED-2 (40-hex contamination
+  # of error output that would otherwise parse as a number).
+  if [[ ! "$proto_thr" =~ ^[0-9]+$ ]]; then
+    alert "Protocol Safe getThreshold() on $name returned non-numeric: $proto_thr_raw"
+    return
+  fi
   if [[ "$proto_thr" != "$EXPECTED_PROTOCOL_THRESHOLD" ]]; then
     alert "Protocol Safe threshold drift on <b>$name</b>%0Aexpected ${EXPECTED_PROTOCOL_THRESHOLD}, actual ${proto_thr}"
   fi
@@ -115,6 +151,10 @@ check_chain() {
   }
   local partner_owners_norm
   partner_owners_norm="$(normalize_addresses "$partner_owners")"
+  if [[ -z "$partner_owners_norm" ]]; then
+    alert "Partner-fee Safe getOwners() on $name returned unparseable output: $partner_owners"
+    return
+  fi
   local expected_partner_norm
   expected_partner_norm="$(echo "$EXPECTED_PARTNER_OWNERS_SORTED" | tr '[:upper:]' '[:lower:]' | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')"
   if [[ "$partner_owners_norm" != "$expected_partner_norm" ]]; then
@@ -122,8 +162,17 @@ check_chain() {
   fi
 
   # --- AllowList manager points at protocol Safe ---
+  local manager_raw
+  manager_raw="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'manager()(address)' 2>&1)" || {
+    alert "AllowList manager() call failed on $name: $manager_raw"
+    return
+  }
   local manager
-  manager="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'manager()(address)' 2>&1 | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+  manager="$(echo "$manager_raw" | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+  if [[ ! "$manager" =~ ^0x[0-9a-f]{40}$ ]]; then
+    alert "AllowList manager() on $name returned non-address: $manager_raw"
+    return
+  fi
   local proto_lower
   proto_lower="$(echo "$protocol_safe" | tr '[:upper:]' '[:lower:]')"
   if [[ "$manager" != "$proto_lower" ]]; then
@@ -131,8 +180,17 @@ check_chain() {
   fi
 
   # --- Expected submitter is allowlisted ---
+  local is_allowed_raw
+  is_allowed_raw="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'isSolver(address)(bool)' "$expected_submitter" 2>&1)" || {
+    alert "isSolver() call failed on $name: $is_allowed_raw"
+    return
+  }
   local is_allowed
-  is_allowed="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'isSolver(address)(bool)' "$expected_submitter" 2>&1 | head -1)"
+  is_allowed="$(echo "$is_allowed_raw" | head -1)"
+  if [[ "$is_allowed" != "true" ]] && [[ "$is_allowed" != "false" ]]; then
+    alert "isSolver() on $name returned non-bool: $is_allowed_raw"
+    return
+  fi
   if [[ "$is_allowed" != "true" ]]; then
     alert "Submitter EOA <code>${expected_submitter}</code> NOT allowlisted on <b>$name</b> (isSolver returned: ${is_allowed})"
   fi
