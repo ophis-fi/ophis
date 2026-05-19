@@ -2,9 +2,13 @@
 # (chain 10). Ports shifted +1 from testnet (5435/8102/8103/9022) to coexist
 # on the same host.
 
-# Explicit project name to keep `docker compose -p ophis` from collapsing
-# OP + HL volume namespaces (sharp-edges HIGH-3, 2026-05-20).
-name: ophis-optimism-mainnet
+# Explicit project name (sharp-edges HIGH-3, 2026-05-20). Matches the
+# directory-derived default so existing containers / volumes / network
+# aren't orphaned by the rename — but the *explicit* name still blocks
+# `docker compose -p ophis ...` from accidentally collapsing OP + HL
+# stacks into one project (which would silently overwrite TSDB / db
+# volumes).
+name: optimism-mainnet
 
 #
 # Secret management:
