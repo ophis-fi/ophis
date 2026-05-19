@@ -712,7 +712,29 @@ async fn insert_order_hooks(
             continue;
         };
         let Ok(parsed) = app_data::parse(&appdata_json) else {
-            tracing::debug!(appdata = %String::from_utf8_lossy(&appdata_json), "could not parse appdata");
+            // Phase 2 audit MED M16: pre-this-PR this was a `tracing::debug!`
+            // → silent drop of any `hooks.pre`/`hooks.post` declared in
+            // app_data. An on-chain order with malformed app_data executes
+            // *without* its declared hooks, an economic mismatch vs the
+            // order's signed intent. Raise to `warn!` + metric.
+            //
+            // Log discipline (sharp-edges-flagged):
+            //   - app_data bytes are user-supplied. NEVER log the raw
+            //     content — it can carry ANSI escapes (terminal injection
+            //     in journalctl), forge log structure, or balloon to MBs
+            //     (journald rate-limit pressure). Log the hash and length
+            //     instead; a 64-char escape-default'd prefix is enough to
+            //     classify common parse failures without trusting bytes.
+            let prefix_len = appdata_json.len().min(64);
+            tracing::warn!(
+                order = ?order.uid,
+                appdata_hash = ?order.app_data,
+                appdata_len = appdata_json.len(),
+                appdata_prefix = %String::from_utf8_lossy(&appdata_json[..prefix_len])
+                    .escape_default(),
+                "could not parse onchain order appdata — declared hooks will not be scheduled"
+            );
+            Metrics::get().inc_onchain_order_errors("appdata_parse_failure");
             continue;
         };
         if parsed.hooks.pre.is_empty() && parsed.hooks.post.is_empty() {
