@@ -98,8 +98,8 @@ opentelemetry_sdk = "0.31"
 order-validation = { path = "crates/order-validation" }
 orderbook = { path = "crates/orderbook" }
 paste = "1.0"
-poison-recovery = { path = "crates/poison-recovery" }
 pin-project-lite = "0.2.14"
+poison-recovery = { path = "crates/poison-recovery" }
 prettyplease = "0.2.37"
 price-estimation = { path = "crates/price-estimation" }
 proc-macro2 = "1.0.103"
