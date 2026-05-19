@@ -1,0 +1,17 @@
+[package]
+name = "retry-helper"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+doctest = false
+name = "retry_helper"
+path = "src/lib.rs"
+
+[dependencies]
+rand = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
