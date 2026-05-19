@@ -183,8 +183,25 @@ services:
     command: ["--config", "/driver.toml"]
     ports:
       - "127.0.0.1:8103:80"
+    # Phase 4 audit M-5 (2026-05-19): real /healthz probe instead of bare
+    # TCP-port check. The driver has a real /healthz endpoint
+    # (apps/backend/crates/driver/src/infra/api/routes/healthz.rs) that
+    # returns 200 + `{ok:true}` when min-balance is met and submitters
+    # are responsive, OR 503 otherwise. Probing it catches the deadlock
+    # case where the listener is up but no work is being done — the
+    # /dev/tcp check would say "healthy" indefinitely in that mode.
+    #
+    # No curl/wget in the distroless-ish image, so the probe is
+    # hand-crafted HTTP/1.0 via bash's /dev/tcp. Greps the response line
+    # for "200" — accepts only 200 OK as healthy. Anything else (503,
+    # connection refused, timeout) is unhealthy.
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      test:
+        - "CMD-SHELL"
+        - |
+          exec 3<>/dev/tcp/127.0.0.1/80 || exit 1
+          printf 'GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
+          head -n 1 <&3 | grep -q ' 200 '
       interval: 10s
       timeout: 5s
       retries: 6
