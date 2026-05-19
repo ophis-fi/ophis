@@ -253,7 +253,9 @@ impl Settlement {
                 );
                 observe::metrics::get()
                     .access_list_fallback
-                    .with_label_values(&["transport_or_decode"])
+                    .with_label_values(&[
+                        observe::metrics::access_list_fallback_kind::TRANSPORT_OR_DECODE,
+                    ])
                     .inc();
                 eth::AccessList::default()
             }
