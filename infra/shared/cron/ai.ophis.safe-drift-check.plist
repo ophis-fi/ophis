@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.ophis.safe-drift-check</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/scep/greg/infra/shared/cron/safe-drift-check.sh</string>
+  </array>
+
+  <!-- Weekly: Monday 09:00 local. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Stdout / stderr captured for ad-hoc debugging. The script also
+       maintains its own log file at ~/Library/Logs/ophis-safe-drift-check.log. -->
+  <key>StandardOutPath</key>
+  <string>/Users/scep/Library/Logs/ophis-safe-drift-check.launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/scep/Library/Logs/ophis-safe-drift-check.launchd.err</string>
+
+  <!-- foundry's cast lives here when installed via foundryup. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/scep/.foundry/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Sandboxing: the script reads its own dir + writes its own logs +
+       reads the Telegram token file. No outbound network gating
+       (launchd doesn't sandbox by default; relies on filesystem perms). -->
+</dict>
+</plist>
