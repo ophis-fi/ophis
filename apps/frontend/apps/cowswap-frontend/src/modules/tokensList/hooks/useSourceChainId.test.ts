@@ -87,11 +87,16 @@ describe('useSourceChainId', () => {
   })
 
   it('ignores unsupported chains and falls back to wallet', () => {
+    // Pre-2026-05-19 this test used chainId 999 as a stand-in for
+    // "unsupported." But 999 is HyperEVM mainnet — an Ophis-supported
+    // chain (paused operationally but still wired at FE layer). Using
+    // it here failed the test for the wrong reason. Switched to 11,
+    // an actually-unsupported chain (Optimism Kovan, deprecated).
     mockUseSelectTokenWidgetState.mockReturnValue(
       createWidgetState({
         open: true,
         field: Field.INPUT,
-        selectedTargetChainId: 999,
+        selectedTargetChainId: 11 as SupportedChainId,
       }),
     )
 
