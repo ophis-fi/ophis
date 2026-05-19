@@ -424,8 +424,12 @@ impl Solver {
         let timeout = match auction.deadline(self.timeouts()).solvers().remaining() {
             Ok(timeout) => timeout,
             Err(_) => {
+                // Audit M14: return a distinct typed error rather than
+                // Ok(Default::default()) so the run-loop pacing problem
+                // surfaces in observability (callers map to a dedicated
+                // metric label).
                 tracing::warn!("auction deadline exceeded before sending request to solver");
-                return Ok(Default::default());
+                return Err(Error::DeadlineExceededBeforeRequest);
             }
         };
         let mut req = self
@@ -580,6 +584,12 @@ pub enum Error {
     Dto(#[from] dto::Error),
     #[error("solver returned custom error: {0:?}")]
     CustomError(solvers_dto::solution::SolverError),
+    /// Audit Phase 2 finding M14: pre-PR the auction-deadline-exceeded path
+    /// returned `Ok(Default::default())` — an empty solution set
+    /// indistinguishable from a solver that legitimately found nothing.
+    /// Operators couldn't see the run-loop pacing problem in metrics.
+    #[error("auction deadline exceeded before sending request to solver")]
+    DeadlineExceededBeforeRequest,
 }
 
 impl Error {
