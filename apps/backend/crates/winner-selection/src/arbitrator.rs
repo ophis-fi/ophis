@@ -642,20 +642,91 @@ impl Arbitrator {
 }
 
 /// Let's call a solution that only trades 1 directed token pair a baseline
-/// solution. Returns the best baseline solution (highest score) for
-/// each token pair if one exists.
+/// solution. Returns the *second-best* baseline score per token pair
+/// across at least two distinct non-zero-scoring solvers.
+///
+/// # Phase 2 audit M6 — what this defends against
+///
+/// **The naive implementation** (pre-PR) took the max single-pair score
+/// across ALL solvers. A single attacker-controlled solver could submit
+/// a pathologically inflated single-pair score for token pair X; every
+/// honest multi-pair solution covering X then got filtered out as
+/// "unfair" because none could match the inflated baseline. The attacker
+/// doesn't need to win — they just need the baseline to exclude
+/// legitimate competitors.
+///
+/// **Defenses applied here:**
+///
+///   1. **Drop zero-score contributors.** A solver could otherwise
+///      register as a "distinct contributor" with score=0 purely to
+///      *lower* the second-best baseline (inverse poisoning) and waive
+///      fairness for their own unfair multi-pair solution. Zero-score
+///      single-pair solutions are informationally void anyway.
+///
+///   2. **Distinct-solver gate.** A pair with single-pair contributions
+///      from < 2 distinct (non-zero) solvers produces NO baseline. The
+///      caller's `is_none_or` treats absence as "no fairness constraint
+///      for this leg." A lone contributor cannot poison a baseline they
+///      are the only producer of.
+///
+///   3. **Second-best score.** With ≥ 2 distinct contributors, the
+///      baseline is the *second-highest* score across them. Lifting the
+///      baseline now requires ≥ 2 allow-listed solver identities to
+///      inflate simultaneously.
+///
+/// # Honest tradeoffs
+///
+/// **On pairs with < 2 distinct single-pair contributors, fairness for
+/// that leg is NOT enforced.** Long-tail pairs (most pairs in most
+/// auctions) typically have ≤ 1 baseline solver, so this is a real
+/// surplus-protection loss vs the naive max baseline — accepted as the
+/// price of griefing resistance per the audit recommendation.
+///
+/// **2-address residual.** CoW Protocol solver gating is governance
+/// allow-listing (`GPv2AllowListAuthentication`), not an economic stake.
+/// An adversary already allow-listed under one address can request a
+/// second (e.g. "staging fallback") at zero marginal capital cost. This
+/// fix raises the *operational and reputational* bar to ≥ 2 identities
+/// in the allow-list — not the *capital* bar. The full economic-stake
+/// defense is Phase 2 roadmap item 2.3 (out of scope here).
 fn compute_baseline_scores(scores_by_solution: &ScoresBySolution) -> ScoreByDirection {
-    let mut baseline_scores = HashMap::default();
-
-    for scores in scores_by_solution.values() {
+    // Group (solver, score) tuples by pair, keeping the BEST score each
+    // solver produced for that pair. Zero-score single-pair solutions are
+    // dropped — they don't reflect real competition for the pair, and
+    // counting them as "distinct contributors" enables an inverse-
+    // poisoning vector where a second address lowers the second-best to
+    // 0 and waives fairness.
+    let mut best_per_pair_solver: HashMap<DirectedTokenPair, HashMap<Address, U256>> =
+        HashMap::default();
+    for (key, scores) in scores_by_solution {
         let Ok((token_pair, score)) = scores.iter().exactly_one() else {
             continue;
         };
-
-        let current_best = baseline_scores.entry(token_pair.clone()).or_default();
-        if score > current_best {
-            *current_best = *score;
+        if score.is_zero() {
+            continue;
         }
+        let solvers = best_per_pair_solver
+            .entry(token_pair.clone())
+            .or_default();
+        let entry = solvers.entry(key.solver).or_default();
+        if score > entry {
+            *entry = *score;
+        }
+    }
+
+    let mut baseline_scores = HashMap::default();
+    for (pair, solvers) in best_per_pair_solver {
+        if solvers.len() < 2 {
+            // Single-solver baseline is poisonable — no fairness constraint.
+            continue;
+        }
+        // Second-best across distinct solvers. HashMap iteration order is
+        // irrelevant because only the scalar score enters fairness
+        // comparisons downstream; equal-score ties produce the same
+        // `sorted[1]` regardless of iteration order.
+        let mut sorted: Vec<U256> = solvers.into_values().collect();
+        sorted.sort_by(|a, b| b.cmp(a));
+        baseline_scores.insert(pair, sorted[1]);
     }
 
     baseline_scores
@@ -739,4 +810,185 @@ enum MathError {
     DivisionByZero,
     #[error("negative")]
     Negative,
+}
+
+#[cfg(test)]
+mod baseline_poisoning_tests {
+    use super::*;
+
+    fn pair(a: u8, b: u8) -> DirectedTokenPair {
+        DirectedTokenPair {
+            sell: Address::repeat_byte(a),
+            buy: Address::repeat_byte(b),
+        }
+    }
+
+    fn solver(byte: u8) -> Address {
+        Address::repeat_byte(byte)
+    }
+
+    fn make(scores: Vec<(Address, u64, Vec<(DirectedTokenPair, U256)>)>) -> ScoresBySolution {
+        scores
+            .into_iter()
+            .map(|(solver, id, pair_scores)| {
+                (
+                    SolutionKey {
+                        solver,
+                        solution_id: id,
+                    },
+                    pair_scores.into_iter().collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn single_solver_single_pair_produces_no_baseline() {
+        // Attacker submits exactly one inflated single-pair solution.
+        // Pre-PR this set baseline to u64::MAX, filtering out every
+        // honest multi-pair solution covering this pair.
+        let attacker = solver(0x42);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![(
+            attacker,
+            1,
+            vec![(pair_x.clone(), U256::from(u64::MAX))],
+        )]);
+        let baseline = compute_baseline_scores(&scores);
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn single_solver_multiple_solutions_same_pair_still_no_baseline() {
+        // Attacker controls one address, submits N inflated single-pair
+        // solutions. Still counts as 1 distinct solver — no baseline.
+        let attacker = solver(0x42);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (attacker, 1, vec![(pair_x.clone(), U256::from(1_000u64))]),
+            (attacker, 2, vec![(pair_x.clone(), U256::from(u64::MAX))]),
+            (attacker, 3, vec![(pair_x.clone(), U256::from(500u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn two_solvers_takes_second_best_not_max() {
+        // Even with the distinct-solver gate passed, baseline = SECOND-best
+        // score. This bounds attacker influence even when they control
+        // 2 addresses.
+        let attacker = solver(0x42);
+        let honest = solver(0x01);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (attacker, 1, vec![(pair_x.clone(), U256::from(u64::MAX))]),
+            (honest, 2, vec![(pair_x.clone(), U256::from(1_000u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(1_000u64)));
+    }
+
+    #[test]
+    fn three_solvers_takes_second_best() {
+        let s1 = solver(0x01);
+        let s2 = solver(0x02);
+        let s3 = solver(0x03);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (s1, 1, vec![(pair_x.clone(), U256::from(100u64))]),
+            (s2, 1, vec![(pair_x.clone(), U256::from(300u64))]),
+            (s3, 1, vec![(pair_x.clone(), U256::from(200u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(200u64)));
+    }
+
+    #[test]
+    fn multi_pair_solutions_dont_count_as_baseline_contributors() {
+        // A solution touching > 1 pair is not a "baseline" candidate at
+        // all — pre-PR behavior preserved.
+        let s1 = solver(0x01);
+        let s2 = solver(0x02);
+        let pair_x = pair(1, 2);
+        let pair_y = pair(3, 4);
+        let scores = make(vec![
+            (s1, 1, vec![(pair_x.clone(), U256::from(100u64))]),
+            (
+                s2,
+                1,
+                vec![
+                    (pair_x.clone(), U256::from(200u64)),
+                    (pair_y.clone(), U256::from(50u64)),
+                ],
+            ),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        // Only s1 contributed a single-pair solution covering pair_x.
+        // s2's solution touches two pairs, so it's NOT a baseline
+        // contributor. Without a second distinct single-pair contributor,
+        // no baseline.
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn zero_score_solver_does_not_count_as_distinct_contributor() {
+        // Inverse poisoning: attacker submits a score=0 single-pair
+        // solution from a SECOND allow-listed address to lower the
+        // second-best baseline (or to satisfy the distinct-solver gate
+        // and let their own unfair multi-pair through). Without the
+        // is_zero() filter, this would set baseline = 0 (waiving
+        // fairness on the pair).
+        let honest = solver(0x01);
+        let attacker = solver(0x42);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (honest, 1, vec![(pair_x.clone(), U256::from(1_000u64))]),
+            (attacker, 2, vec![(pair_x.clone(), U256::ZERO)]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        // Attacker's zero is dropped → only honest remains → < 2 distinct
+        // → no baseline → no fairness constraint for the pair. The
+        // honest single-pair solver still loses the per-leg guarantee
+        // (acceptable per the audit tradeoff), but the *unfair*
+        // multi-pair solution that an attacker would try to push through
+        // doesn't get its baseline-lowered green light either.
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn zero_score_does_not_lower_second_best() {
+        // With 2 honest solvers AND a zero-score attacker, the attacker's
+        // zero must not become the "second best".
+        let honest1 = solver(0x01);
+        let honest2 = solver(0x02);
+        let attacker = solver(0x42);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (honest1, 1, vec![(pair_x.clone(), U256::from(1_000u64))]),
+            (honest2, 1, vec![(pair_x.clone(), U256::from(900u64))]),
+            (attacker, 1, vec![(pair_x.clone(), U256::ZERO)]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        // Second-best = 900 (honest2), not 0 (attacker dropped).
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(900u64)));
+    }
+
+    #[test]
+    fn per_solver_best_is_used_for_ranking() {
+        // If a solver submits multiple single-pair solutions for the
+        // same pair, only their BEST counts for the second-best
+        // computation.
+        let s1 = solver(0x01);
+        let s2 = solver(0x02);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (s1, 1, vec![(pair_x.clone(), U256::from(100u64))]),
+            (s1, 2, vec![(pair_x.clone(), U256::from(150u64))]),
+            (s2, 1, vec![(pair_x.clone(), U256::from(200u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        // s1 best = 150, s2 best = 200. Second-best = 150.
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(150u64)));
+    }
 }
