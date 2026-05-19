@@ -164,23 +164,29 @@ mount_ram_disk() {
   #   /dev/diskN on /Users/scep/... (hfs, local, mounted by scep, nobrowse)
   if mount | grep -Fq " on ${RAM_PK_MOUNT} ("; then
     # Already mounted — verify it's actually OUR RAM-disk, not some
-    # other volume that happens to be at this mountpoint. diskutil info
-    # for a ram://-backed device returns "Disk Size:" and "Device /
-    # Media Name:" containing "RAM" (or "Apple_HFS Untitled" on older
-    # macOS — we check by Volume Name which we set to ophis-ram-pk).
-    local existing_dev
-    existing_dev=$(mount | grep -F " on ${RAM_PK_MOUNT} (" | awk '{print $1}')
-    if [[ ! "$existing_dev" =~ ^/dev/disk[0-9]+ ]]; then
-      echo "ERROR: $RAM_PK_MOUNT is mounted but device '$existing_dev' isn't a disk node" >&2
-      return 1
-    fi
-    # Verify volume name matches what we set during newfs_hfs.
+    # other volume that happens to be at this mountpoint.
+    #
+    # 2026-05-20 footgun fix: query diskutil by MOUNT POINT, not by the
+    # device that `mount` reports. On macOS, `mount` shows the whole-disk
+    # device for HFS+ ram-disks (e.g. /dev/disk4), but `diskutil info
+    # /dev/disk4` returns whole-disk info ("Volume Name: Not applicable
+    # (no file system)") because the volume lives in slice s1. Querying
+    # `diskutil info <mount-point>` resolves to the actual volume
+    # regardless of how it's mounted.
     local existing_volname
-    existing_volname=$(diskutil info "$existing_dev" 2>/dev/null | awk -F': +' '/^ *Volume Name:/ {print $2; exit}')
+    existing_volname=$(diskutil info "$RAM_PK_MOUNT" 2>/dev/null | awk -F': +' '/^ *Volume Name:/ {print $2; exit}')
     if [[ "$existing_volname" != "$RAM_PK_VOLNAME" ]]; then
       echo "ERROR: $RAM_PK_MOUNT is mounted, but volume name is '$existing_volname', expected '$RAM_PK_VOLNAME'" >&2
       echo "       Some other volume is sitting at our mountpoint. Refusing to write PK." >&2
       echo "       Investigate: diskutil unmount '$RAM_PK_MOUNT' then re-run." >&2
+      return 1
+    fi
+    # Belt-and-braces: also verify the mounted device IS a /dev/disk*
+    # node (defends against ProcFS/overlayfs/etc. mounted at the path).
+    local existing_dev
+    existing_dev=$(mount | grep -F " on ${RAM_PK_MOUNT} (" | awk '{print $1}')
+    if [[ ! "$existing_dev" =~ ^/dev/disk[0-9]+ ]]; then
+      echo "ERROR: $RAM_PK_MOUNT has correct volname but device '$existing_dev' isn't /dev/disk*" >&2
       return 1
     fi
     return 0  # confirmed: our RAM-disk
