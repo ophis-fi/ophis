@@ -103,26 +103,29 @@ impl Postgres {
 }
 
 #[derive(prometheus_metric_storage::MetricStorage)]
-pub struct Metrics {
+struct Metrics {
     /// Timing of db queries.
     #[metric(name = "orderbook_database_queries", labels("type"))]
     database_queries: prometheus::HistogramVec,
-    /// Executed protocol fees seen on-chain with no matching `fee_policies`
-    /// row in the orderbook DB. Phase 2 audit MED M8: pre-this-metric the
-    /// only signal was a `tracing::warn!` reading "possibly a JIT order?".
-    /// In practice the cause is either:
-    ///   - a legitimate JIT order (no DB policy), or
-    ///   - a misaligned fee_policies write/read (orderbook drift).
-    /// Ops alerts on the *rate* per auction to catch the second case
-    /// before revenue accounting drifts. The fee itself is excluded from
-    /// the returned map (behavior unchanged — the fee is invisible to the
-    /// caller).
-    #[metric(name = "orderbook_protocol_fee_orphans")]
-    pub protocol_fee_orphans: prometheus::IntCounter,
+    /// **Encounter** counter (not distinct-orphan counter) for executed
+    /// protocol fees with no matching `fee_policies` row in the orderbook
+    /// DB. Increments once per (auction_id, order_uid) per call to
+    /// `executed_protocol_fees`, which is called per /solver_competition
+    /// query — i.e. the same orphan re-counts on every request.
+    ///
+    /// Phase 2 audit MED M8: pre-this-metric the only signal was a
+    /// `tracing::warn!` reading "possibly a JIT order?". The two real
+    /// causes (legitimate JIT vs misaligned fee_policies write/read)
+    /// can't be cheaply distinguished here, so this records the
+    /// encounter rate. A sudden spike per /solver_competition is the
+    /// alertable signal — distinct-orphan counting belongs in a SQL
+    /// query, not a counter.
+    #[metric(name = "orderbook_protocol_fee_orphan_encounters")]
+    protocol_fee_orphan_encounters: prometheus::IntCounter,
 }
 
 impl Metrics {
-    pub fn get() -> &'static Self {
+    fn get() -> &'static Self {
         Metrics::instance(observe::metrics::get_storage_registry()).unwrap()
     }
 }
