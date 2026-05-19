@@ -17,7 +17,7 @@ use {
 };
 
 /// Logged-once gate for the partial-fill cache poison-recovery path
-/// — see [`lock_amounts`].
+/// — see [`lock_fill_amounts`].
 static AMOUNTS_POISON_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Acquire the partial-fill amounts cache mutex, recovering from poison.
@@ -30,7 +30,7 @@ static AMOUNTS_POISON_LOGGED: AtomicBool = AtomicBool::new(false);
 /// Same pattern as `driver::competition::lock_settlements` (PR-V): log
 /// once per process, clear the poison via `clear_poison()`, return the
 /// recovered guard.
-fn lock_amounts(
+fn lock_fill_amounts(
     m: &Mutex<HashMap<order::Uid, CacheEntry>>,
 ) -> MutexGuard<'_, HashMap<order::Uid, CacheEntry>> {
     m.lock().unwrap_or_else(|e| {
@@ -94,7 +94,7 @@ impl Fills {
 
         let now = Instant::now();
 
-        let amount = match lock_amounts(&self.amounts).entry(order.uid) {
+        let amount = match lock_fill_amounts(&self.amounts).entry(order.uid) {
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(CacheEntry {
                     next_amount: total_amount,
@@ -172,7 +172,7 @@ impl Fills {
     /// Adjusts the next fill amount that should be tried. Always halves the
     /// last tried amount.
     pub fn reduce_next_try(&self, uid: order::Uid) {
-        lock_amounts(&self.amounts).entry(uid).and_modify(|entry| {
+        lock_fill_amounts(&self.amounts).entry(uid).and_modify(|entry| {
             entry.next_amount /= U256::from(2);
             tracing::trace!(next_try =? entry.next_amount, "reduced next fill amount");
         });
@@ -182,7 +182,7 @@ impl Fills {
     /// try. This is useful in case the onchain liquidity changed and now
     /// allows for bigger fills.
     pub fn increase_next_try(&self, uid: order::Uid) {
-        lock_amounts(&self.amounts).entry(uid).and_modify(|entry| {
+        lock_fill_amounts(&self.amounts).entry(uid).and_modify(|entry| {
             entry.next_amount = entry
                 .next_amount
                 .checked_mul(U256::from(2))
@@ -199,7 +199,7 @@ impl Fills {
         const MAX_AGE: Duration = Duration::from_secs(60 * 10);
         let now = Instant::now();
 
-        lock_amounts(&self.amounts)
+        lock_fill_amounts(&self.amounts)
             .retain(|_, entry| now.duration_since(entry.last_requested) < MAX_AGE)
     }
 }
@@ -216,11 +216,11 @@ mod poison_recovery_tests {
             panic!("simulated panic with lock held");
         }));
         assert!(m.is_poisoned());
-        let guard = lock_amounts(&m);
+        let guard = lock_fill_amounts(&m);
         assert!(guard.is_empty());
         drop(guard);
-        assert!(!m.is_poisoned(), "lock_amounts must clear poison");
-        let _again = lock_amounts(&m);
+        assert!(!m.is_poisoned(), "lock_fill_amounts must clear poison");
+        let _again = lock_fill_amounts(&m);
     }
 }
 

@@ -31,9 +31,21 @@ fn note_cache_poison() {
     }
 }
 
-/// Read-acquire the token metadata cache, recovering from poison. Same
-/// rationale as `driver::competition::lock_settlements` (PR-V).
-fn read_cache(
+/// Read-acquire the token metadata cache, recovering from poison.
+///
+/// A panicking read does NOT poison `RwLock` (read guards are shared
+/// and can't violate invariants); only a panicking write does. So this
+/// helper exists primarily to make recovery uniform with `write_token_cache`.
+/// If we DO encounter a poisoned lock here (write-side panic happened
+/// in a sibling task), we observe the recovered guard as-is. Sharp-edges
+/// flagged that the recovered guard may contain a half-mutated cache
+/// from `update_balances` (mixed pre-trade/post-trade balances) — that's
+/// addressed by `write_token_cache` which clears the map on recovery,
+/// so the FIRST write after poison resets the cache. Reads in between
+/// see the half-mutated state; this is documented degradation and
+/// downstream callers (`get` at the bottom of the file) tolerate
+/// missing entries by triggering a re-fetch.
+fn read_token_cache(
     rw: &RwLock<HashMap<eth::TokenAddress, Metadata>>,
 ) -> RwLockReadGuard<'_, HashMap<eth::TokenAddress, Metadata>> {
     rw.read().unwrap_or_else(|e| {
@@ -44,13 +56,24 @@ fn read_cache(
 }
 
 /// Write-acquire the token metadata cache, recovering from poison.
-fn write_cache(
+///
+/// **Cache-clearing on recovery** (sharp-edges HIGH): `update_balances`
+/// iterates the cache and mutates `entry.balance` in place. If that
+/// loop panics partway through (e.g. Vec::push OOM in
+/// `keys_without_balances`), the cache is left with some entries on
+/// post-trade balances and others on pre-trade — the quoter would
+/// then over-allocate against stale higher balances. Clearing the map
+/// on the first write-side recovery converts that dangerous mixed state
+/// to a clean empty cache; the quoter then re-fetches on next read.
+fn write_token_cache(
     rw: &RwLock<HashMap<eth::TokenAddress, Metadata>>,
 ) -> RwLockWriteGuard<'_, HashMap<eth::TokenAddress, Metadata>> {
     rw.write().unwrap_or_else(|e| {
         note_cache_poison();
         rw.clear_poison();
-        e.into_inner()
+        let mut guard = e.into_inner();
+        guard.clear();
+        guard
     })
 }
 
@@ -111,7 +134,7 @@ async fn update_task(blocks: CurrentBlockWatcher, inner: std::sync::Weak<Inner>)
 /// Updates the settlement contract's balance for every cached token.
 #[cfg(test)]
 mod poison_recovery_tests {
-    use {super::*, std::panic::AssertUnwindSafe};
+    use {super::*, alloy::primitives::U256, std::panic::AssertUnwindSafe};
 
     #[test]
     fn read_write_cache_recover_after_poison() {
@@ -124,11 +147,11 @@ mod poison_recovery_tests {
         }));
         assert!(rw.is_poisoned());
 
-        // read_cache recovers.
-        let r = read_cache(&rw);
+        // read_token_cache recovers.
+        let r = read_token_cache(&rw);
         assert!(r.is_empty());
         drop(r);
-        assert!(!rw.is_poisoned(), "read_cache must clear poison");
+        assert!(!rw.is_poisoned(), "read_token_cache must clear poison");
 
         // Re-poison via panicking read (rare but possible).
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -139,22 +162,38 @@ mod poison_recovery_tests {
         // shared, no exclusive invariant). So is_poisoned should be false.
         assert!(!rw.is_poisoned(), "read-side panic should not poison RwLock");
 
-        // write_cache after a poisoning write also recovers.
+        // write_token_cache after a poisoning write also recovers AND
+        // clears the cache (HIGH-2 guard: pre-clear, the map could
+        // contain half-mutated entries from update_balances).
+        let addr: eth::TokenAddress = eth::Address::repeat_byte(0x42).into();
+        let stale = Metadata {
+            decimals: Some(18),
+            symbol: Some("STALE".into()),
+            balance: U256::from(1_000_000u64).into(),
+        };
+        rw.write().unwrap().insert(addr, stale);
+        assert_eq!(rw.read().unwrap().len(), 1);
+
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let _g = rw.write().unwrap();
             panic!("simulated panic with write lock held (round 2)");
         }));
         assert!(rw.is_poisoned());
-        let w = write_cache(&rw);
+        let w = write_token_cache(&rw);
+        assert!(
+            w.is_empty(),
+            "write_token_cache must CLEAR the cache on poison recovery — \
+             otherwise stale half-mutated balances flow to the quoter"
+        );
         drop(w);
-        assert!(!rw.is_poisoned(), "write_cache must clear poison");
+        assert!(!rw.is_poisoned(), "write_token_cache must clear poison");
     }
 }
 
 async fn update_balances(inner: Arc<Inner>) -> Result<(), blockchain::Error> {
     let settlement = *inner.eth.contracts().settlement().address();
     let futures = {
-        let cache = read_cache(&inner.cache);
+        let cache = read_token_cache(&inner.cache);
         let tokens = cache.keys().cloned().collect::<Vec<_>>();
         tokens.into_iter().map(|token| {
             let erc20 = inner.eth.erc20(token);
@@ -182,7 +221,7 @@ async fn update_balances(inner: Arc<Inner>) -> Result<(), blockchain::Error> {
 
     let mut keys_without_balances = vec![];
     {
-        let mut cache = write_cache(&inner.cache);
+        let mut cache = write_token_cache(&inner.cache);
         for (key, entry) in cache.iter_mut() {
             if let Some(balance) = balances.remove(key) {
                 entry.balance = balance;
@@ -255,7 +294,7 @@ impl Inner {
 
         let fetched = self.fetch_token_infos(tokens).await;
         {
-            let cache = read_cache(&self.cache);
+            let cache = read_token_cache(&self.cache);
             if tokens.iter().all(|token| cache.contains_key(token)) {
                 // Often multiple callers are racing to fetch the same Metadata.
                 // If somebody else already cached the data we don't want to take an
@@ -263,12 +302,12 @@ impl Inner {
                 return;
             }
         }
-        write_cache(&self.cache).extend(fetched.into_iter().flatten());
+        write_token_cache(&self.cache).extend(fetched.into_iter().flatten());
     }
 
     async fn get(&self, addresses: &[eth::TokenAddress]) -> HashMap<eth::TokenAddress, Metadata> {
         let to_fetch: Vec<_> = {
-            let cache = read_cache(&self.cache);
+            let cache = read_token_cache(&self.cache);
 
             // Compute set of requested addresses that are not in cache.
             addresses
@@ -283,7 +322,7 @@ impl Inner {
 
         self.cache_missing_tokens(&to_fetch).await;
 
-        let cache = read_cache(&self.cache);
+        let cache = read_token_cache(&self.cache);
         // Return token infos from the cache.
         addresses
             .iter()
