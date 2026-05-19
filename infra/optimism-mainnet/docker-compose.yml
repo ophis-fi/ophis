@@ -11,6 +11,41 @@
 # Cloudflare Tunnel, never direct port exposure.
 
 services:
+  # Jaeger all-in-one — OTLP/gRPC collector + UI + in-memory storage in
+  # a single distroless image (~120 MB). Phase 4 audit M-6 (Sprint 6).
+  #
+  # The CoW backend already wires opentelemetry-otlp + tonic gRPC export
+  # (apps/backend/crates/observe/src/tracing/init.rs:103-108); all that
+  # was missing was a collector. Jaeger 1.6+ ships an embedded OTLP
+  # receiver so we don't need a separate otelcol container.
+  #
+  # Ports:
+  #   16686 (host)  → 16686 (container)  Jaeger UI (local-only)
+  #   4317  (host)  → 4317  (container)  OTLP/gRPC ingest (loopback)
+  # Note: HL's eventual tracing service would use 4318/16687 to coexist.
+  #
+  # Storage is in-memory (default): traces vanish on restart. Acceptable
+  # for current "debug a specific incident" use; if we need long-term
+  # trace retention later, swap to badger-backed (~/.local/state/...).
+  jaeger:
+    image: jaegertracing/all-in-one:1.65
+    restart: always
+    mem_limit: 512m
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"  # UI: http://127.0.0.1:16686
+      - "127.0.0.1:4317:4317"    # OTLP/gRPC (used internally by services)
+    healthcheck:
+      # all-in-one runs /usr/bin/dumb-init then jaeger; ships wget in
+      # the image. /health is on port 14269 (admin endpoint, separate
+      # from the OTLP receiver).
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   # eRPC multi-provider proxy for OP mainnet (chain 10). All chain-reading
   # services point ETHRPC at this container instead of hitting any single
   # public RPC directly. Free providers rate-limit or rate-degrade
@@ -105,6 +140,10 @@ services:
       # to validate consensus behavior).
       ETH_RPC_URL: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/optimism-mainnet/.env}
+      # Distributed tracing (Phase 4 audit M-6). Empty default keeps tracing
+      # off; set TRACING_COLLECTOR_ENDPOINT=http://jaeger:4317 in .env to
+      # enable. Routed via OTLP/gRPC.
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
@@ -143,6 +182,10 @@ services:
       # to validate consensus behavior).
       ETH_RPC_URL: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/optimism-mainnet/.env}
+      # Distributed tracing (Phase 4 audit M-6). Empty default keeps tracing
+      # off; set TRACING_COLLECTOR_ENDPOINT=http://jaeger:4317 in .env to
+      # enable. Routed via OTLP/gRPC.
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -171,6 +214,8 @@ services:
       # needs a single nonce-coherent endpoint, not a load-balanced fan-out.
       ETHRPC: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
       ADDR: 0.0.0.0:80
+      # Distributed tracing (Phase 4 audit M-6). See orderbook block.
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
       # Tier 1 PK isolation (2026-05-18): PK *source* is now
       # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).
