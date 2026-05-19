@@ -21,6 +21,11 @@ tokio = { workspace = true, features = [] }
 tracing = { workspace = true }
 
 [dev-dependencies]
+# `configs::rate_limit::Strategy` cfg-gates its `Serialize` derive on
+# `cfg(test)` of the configs crate + `feature = "test-util"`. When
+# rate-limit's tests build, configs isn't built with cfg(test), so
+# `serde_roundtrip` couldn't compile without this dev-dep.
+configs = { workspace = true, features = ["test-util"] }
 serde_json = { workspace = true }
 
 [features]
