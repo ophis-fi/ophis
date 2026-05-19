@@ -944,10 +944,7 @@ impl Competition {
         solution_id: u64,
         auction_id: auction::Id,
     ) -> Result<Revealed, Error> {
-        let settlement = self
-            .settlements
-            .lock()
-            .unwrap()
+        let settlement = lock_settlements(&self.settlements)
             .iter()
             .find(|s| s.solution().get() == solution_id && s.auction_id == auction_id)
             .cloned()

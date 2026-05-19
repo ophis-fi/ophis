@@ -1,6 +1,16 @@
 disallowed-methods = [
   { path = "alloy::rpc::client::RpcClient::new_batch", reason = "There is no need to manually send batched requests because the alloy transport layer batches requests automatically under the hood." },
   { path = "alloy::rpc::client::BatchRequest::new", reason = "There is no need to manually send batched requests because the alloy transport layer batches requests automatically under the hood." },
+  # Poison-recovery sweep (PR-Y): every std::sync lock acquisition with `.unwrap()` is a
+  # crash-loop bug waiting to happen. Use the helpers in the `poison-recovery` crate:
+  #   poison_recovery::lock_or_recover[_clear]
+  #   poison_recovery::{read,write}_or_recover[_clear]
+  # The `_clear` variants reset the inner on poison — use them when partial mutation is
+  # dangerous downstream (balance/price caches, in-flight registries). Plain variants
+  # preserve the recovered state — fine for best-effort caches whose entries self-evict.
+  # See PR-X sharp-edges HIGH-2 for the canonical decision rationale.
+  #
+  # Tests are exempt — panicking under lock is part of the test setup.
 ]
 await-holding-invalid-types = [
   "tracing::span::Entered",

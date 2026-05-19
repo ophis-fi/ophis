@@ -72,7 +72,10 @@ impl AutoUpdatingTokenList {
                                 .token_list_updates
                                 .with_label_values(&["success"])
                                 .inc();
-                            let mut w = tokens.write().unwrap();
+                            let mut w = poison_recovery::write_or_recover(
+                                &tokens,
+                                "shared::token_list::tokens",
+                            );
                             *w = new_tokens;
                         }
                         Err(err) => {
@@ -98,11 +101,12 @@ impl AutoUpdatingTokenList {
     }
 
     pub fn contains(&self, address: &Address) -> bool {
-        self.tokens.read().unwrap().contains(address)
+        poison_recovery::read_or_recover(&self.tokens, "shared::token_list::tokens")
+            .contains(address)
     }
 
     pub fn all(&self) -> HashSet<Address> {
-        self.tokens.read().unwrap().clone()
+        poison_recovery::read_or_recover(&self.tokens, "shared::token_list::tokens").clone()
     }
 }
 

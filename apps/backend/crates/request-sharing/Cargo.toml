@@ -8,6 +8,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 futures = { workspace = true }
 observe = { workspace = true }
+poison-recovery = { workspace = true }
 prometheus = { workspace = true }
 prometheus-metric-storage = { workspace = true }
 tokio = { workspace = true }

@@ -78,7 +78,7 @@ impl OneInch {
                 match current_prices {
                     Ok(current_prices) => {
                         tracing::debug!("OneInch spot prices updated");
-                        *prices.lock().unwrap() = current_prices;
+                        *poison_recovery::lock_or_recover_clear(&prices, "price_estimation::native::oneinch::prices") = current_prices;
                     }
                     Err(err) => {
                         tracing::warn!(?err, "OneInch spot price update failed");
@@ -98,7 +98,7 @@ impl NativePriceEstimating for OneInch {
         _timeout: Duration, // ignored since cache lookup take ms anyway
     ) -> BoxFuture<'_, NativePriceEstimateResult> {
         async move {
-            let prices = self.prices.lock().unwrap();
+            let prices = poison_recovery::lock_or_recover(&self.prices, "price_estimation::native::oneinch::prices");
             prices
                 .get(&token)
                 .cloned()
