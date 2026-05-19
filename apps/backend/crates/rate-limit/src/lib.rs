@@ -105,7 +105,7 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     fn strategy(&self) -> MutexGuard<'_, Strategy> {
-        poison_recovery::lock_or_recover_clear(&self.strategy, "rate_limit::strategy")
+        poison_recovery::lock_or_recover(&self.strategy, "rate_limit::strategy")
     }
 
     pub fn from_strategy(strategy: Strategy, name: String) -> Self {
@@ -195,7 +195,7 @@ impl RateLimiter {
     }
 
     fn get_back_off_duration_if_limited(&self) -> Option<Duration> {
-        let strategy = poison_recovery::lock_or_recover_clear(&self.strategy, "rate_limit::strategy");
+        let strategy = poison_recovery::lock_or_recover(&self.strategy, "rate_limit::strategy");
         let now = Instant::now();
 
         if strategy.drop_requests_until > now {

@@ -35,16 +35,52 @@
 //! poison event produces exactly one `tracing::error!` — no log-once
 //! gate needed.
 
-use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{
+    Mutex, MutexGuard, OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    atomic::{AtomicBool, Ordering},
+};
+
+/// Per-label log-once gate. Sharp-edges M1 (PR-Y pre-merge): under a
+/// contended lock, a cohort of N waiting threads ALL see `PoisonError`
+/// when the panic-holder drops, before any of them runs `clear_poison()`.
+/// Without dedup, each would emit `tracing::error!` and drown the
+/// originating panic backtrace.
+///
+/// Indexed by `&'static str` label so concurrent recoveries on the SAME
+/// lock dedup, but different locks' first-recovery still each log once.
+fn poison_logged(label: &'static str) -> &'static AtomicBool {
+    use std::sync::RwLock as StdRwLock;
+    static REGISTRY: OnceLock<StdRwLock<std::collections::HashMap<&'static str, &'static AtomicBool>>> =
+        OnceLock::new();
+    let reg = REGISTRY.get_or_init(|| StdRwLock::new(std::collections::HashMap::new()));
+    if let Some(b) = reg.read().expect("registry RwLock").get(label) {
+        return b;
+    }
+    let mut w = reg.write().expect("registry RwLock");
+    *w.entry(label).or_insert_with(|| {
+        // Box::leak: one tiny &'static AtomicBool per distinct label. Total
+        // is bounded by the static set of labels in code — a few dozen at
+        // most. Not a meaningful leak.
+        Box::leak(Box::new(AtomicBool::new(false)))
+    })
+}
+
+fn note_poison(label: &'static str, kind: &str) {
+    if !poison_logged(label).swap(true, Ordering::Relaxed) {
+        tracing::error!(
+            label,
+            kind,
+            "lock was poisoned — recovering with possibly inconsistent state. \
+             Investigate the originating panic in journald. \
+             (this message logs once per label per process; clearing poison)"
+        );
+    }
+}
 
 /// Acquire a `Mutex` lock, recovering from poison with a logged error.
 pub fn lock_or_recover<'a, T>(m: &'a Mutex<T>, label: &'static str) -> MutexGuard<'a, T> {
     m.lock().unwrap_or_else(|e| {
-        tracing::error!(
-            label,
-            "Mutex was poisoned — recovering with possibly inconsistent state. \
-             Investigate the originating panic in journald."
-        );
+        note_poison(label, "mutex");
         m.clear_poison();
         e.into_inner()
     })
@@ -58,11 +94,7 @@ pub fn lock_or_recover<'a, T>(m: &'a Mutex<T>, label: &'static str) -> MutexGuar
 /// where a sibling task poisoned via a write before this reader arrived.
 pub fn read_or_recover<'a, T>(rw: &'a RwLock<T>, label: &'static str) -> RwLockReadGuard<'a, T> {
     rw.read().unwrap_or_else(|e| {
-        tracing::error!(
-            label,
-            "RwLock was poisoned (writer panicked) — recovering with possibly \
-             inconsistent state for read. Investigate the originating panic in journald."
-        );
+        note_poison(label, "rwlock_read");
         rw.clear_poison();
         e.into_inner()
     })
@@ -71,11 +103,7 @@ pub fn read_or_recover<'a, T>(rw: &'a RwLock<T>, label: &'static str) -> RwLockR
 /// Acquire a `RwLock` write guard, recovering from poison with a logged error.
 pub fn write_or_recover<'a, T>(rw: &'a RwLock<T>, label: &'static str) -> RwLockWriteGuard<'a, T> {
     rw.write().unwrap_or_else(|e| {
-        tracing::error!(
-            label,
-            "RwLock was poisoned — recovering with possibly inconsistent state \
-             for write. Investigate the originating panic in journald."
-        );
+        note_poison(label, "rwlock_write");
         rw.clear_poison();
         e.into_inner()
     })
@@ -89,11 +117,7 @@ pub fn lock_or_recover_clear<'a, T: Default>(
     label: &'static str,
 ) -> MutexGuard<'a, T> {
     m.lock().unwrap_or_else(|e| {
-        tracing::error!(
-            label,
-            "Mutex was poisoned — clearing inner (mid-mutation state may be \
-             dangerous downstream) and recovering."
-        );
+        note_poison(label, "mutex_clear");
         m.clear_poison();
         let mut guard = e.into_inner();
         *guard = T::default();
@@ -107,11 +131,7 @@ pub fn write_or_recover_clear<'a, T: Default>(
     label: &'static str,
 ) -> RwLockWriteGuard<'a, T> {
     rw.write().unwrap_or_else(|e| {
-        tracing::error!(
-            label,
-            "RwLock was poisoned — clearing inner (mid-mutation state may be \
-             dangerous downstream) and recovering."
-        );
+        note_poison(label, "rwlock_write_clear");
         rw.clear_poison();
         let mut guard = e.into_inner();
         *guard = T::default();

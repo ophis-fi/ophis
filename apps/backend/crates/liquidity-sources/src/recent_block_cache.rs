@@ -225,12 +225,12 @@ where
     F: CacheFetching<K, V>,
 {
     async fn update_cache_at_block(&self, new_block: u64) -> Result<()> {
-        let keys = self
-            .mutexed
-            .lock()
-            .unwrap()
-            .keys_of_recently_used_entries()
-            .collect::<HashSet<_>>();
+        let keys = poison_recovery::lock_or_recover(
+            &self.mutexed,
+            "liquidity_sources::recent_block_cache::mutexed",
+        )
+        .keys_of_recently_used_entries()
+        .collect::<HashSet<_>>();
         tracing::debug!("automatically updating {} entries", keys.len());
         let found_values = self
             .fetch_inner_many(keys.clone(), Block::Number(new_block))
