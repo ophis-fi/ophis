@@ -164,13 +164,13 @@ groups:
         expr: |
           sum by (category) (
             rate(erpc_consensus_errors_total{network="evm:999",error="dispute"}[5m])
-          ) > 2
-        for: 10m
+          ) > 5
+        for: 15m
         labels:
           severity: warning
           chain: hyperevm
         annotations:
-          summary: "HL eRPC dispute rate > 2/s on {{ $labels.category }} for 10m"
+          summary: "HL eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
           description: |
             Upstream HL providers are returning DIFFERENT responses for the same
             request — fork-view-poisoning suspect OR natural tip drift. 2-of-3
@@ -195,13 +195,13 @@ groups:
             sum(rate(erpc_consensus_errors_total{network="evm:999"}[5m]))
             /
             sum(rate(erpc_consensus_total{network="evm:999"}[5m]))
-          ) > 0.5
-        for: 5m
+          ) > 0.7
+        for: 15m
         labels:
           severity: critical
           chain: hyperevm
         annotations:
-          summary: "HL eRPC > 50% of consensus calls failing for 5m"
+          summary: "HL eRPC > 70% of consensus calls failing for 15m"
           description: |
             More than half of all consensus operations on the HL eRPC proxy are
             failing. This is a real availability incident — driver / autopilot /
