@@ -689,12 +689,30 @@ mod tests {
                             "buy_amount": amount(1_150)
                         }
                     }
+                },
+                // score = 140 — second distinct single-pair solver on the
+                // same pair. Required by the Phase 2 audit M6 hardening:
+                // a single baseline contributor can't filter multi-pair
+                // competitors out (poisonable). With ≥ 2 distinct
+                // contributors, the second-best score (140) becomes the
+                // baseline.
+                "Filtering batch 2": {
+                    "solver": "Filtering batch solver 2",
+                    "trades": {
+                        "Order 1": {
+                            "sell_amount": amount(1_000),
+                            "buy_amount": amount(1_140)
+                        }
+                    }
                 }
             },
-            "expected_fair_solutions": ["Filtering batch"],
+            "expected_fair_solutions": ["Filtering batch", "Filtering batch 2"],
             "expected_winners": ["Filtering batch"],
             "expected_reference_scores": {
-                "Filtering batch solver": "0",
+                // Reference score = best alternative if the winning solver
+                // were absent. With "Filtering batch" removed, the next
+                // best is "Filtering batch 2" at 140.
+                "Filtering batch solver": "140",
             },
         });
         TestCase::from_json(case).validate().await;

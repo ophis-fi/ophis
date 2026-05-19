@@ -642,20 +642,69 @@ impl Arbitrator {
 }
 
 /// Let's call a solution that only trades 1 directed token pair a baseline
-/// solution. Returns the best baseline solution (highest score) for
-/// each token pair if one exists.
+/// solution. Returns the *second-best* baseline solution per token pair
+/// across at least two distinct solver addresses.
+///
+/// **Anti-poisoning rationale (Phase 2 audit M6):**
+///
+/// The naive implementation took the max single-pair score per pair across
+/// all solvers. A single attacker solver could submit a pathologically
+/// inflated single-pair score for token pair X, and every honest
+/// multi-pair solution covering X would be filtered out as "unfair"
+/// because none of them could match the attacker's inflated baseline.
+/// The attacker doesn't need to win the auction — they only need the
+/// baseline to be high enough to exclude legitimate competitors.
+///
+/// The hardened version applies two defenses:
+///
+///   1. **Distinct-solver gate:** a pair with single-pair contributions
+///      from < 2 distinct solver addresses produces NO baseline (caller's
+///      `is_none_or` treats that as "no fairness constraint" for the
+///      pair). A lone solver cannot poison a baseline they're the only
+///      contributor to.
+///
+///   2. **Second-best score:** with ≥ 2 distinct solvers, the baseline
+///      is the *second-highest* score across distinct solvers (not the
+///      max). This bounds an attacker's influence even when they control
+///      multiple solver addresses — they must inflate scores from ≥ 2
+///      addresses simultaneously to move the baseline, doubling the
+///      stake/submission cost of the grief.
+///
+/// The relaxation (second-best vs max) is intentional: trading off some
+/// fairness strictness for griefing resistance is the explicit recommend-
+/// ation in the audit. Honest baseline solutions tend to cluster within
+/// a narrow band per pair (same token, same liquidity); the second-best
+/// is usually close to the max in practice.
 fn compute_baseline_scores(scores_by_solution: &ScoresBySolution) -> ScoreByDirection {
-    let mut baseline_scores = HashMap::default();
-
-    for scores in scores_by_solution.values() {
+    // Group (solver, score) tuples by pair, keeping the BEST score each
+    // solver produced for that pair (a single solver may submit multiple
+    // single-pair solutions covering the same pair; we treat them as one
+    // contribution).
+    let mut best_per_pair_solver: HashMap<DirectedTokenPair, HashMap<Address, U256>> =
+        HashMap::default();
+    for (key, scores) in scores_by_solution {
         let Ok((token_pair, score)) = scores.iter().exactly_one() else {
             continue;
         };
-
-        let current_best = baseline_scores.entry(token_pair.clone()).or_default();
-        if score > current_best {
-            *current_best = *score;
+        let solvers = best_per_pair_solver
+            .entry(token_pair.clone())
+            .or_default();
+        let entry = solvers.entry(key.solver).or_default();
+        if score > entry {
+            *entry = *score;
         }
+    }
+
+    let mut baseline_scores = HashMap::default();
+    for (pair, solvers) in best_per_pair_solver {
+        if solvers.len() < 2 {
+            // Single-solver baseline is poisonable — no fairness constraint.
+            continue;
+        }
+        // Second-best across distinct solvers.
+        let mut sorted: Vec<U256> = solvers.into_values().collect();
+        sorted.sort_by(|a, b| b.cmp(a));
+        baseline_scores.insert(pair, sorted[1]);
     }
 
     baseline_scores
@@ -739,4 +788,142 @@ enum MathError {
     DivisionByZero,
     #[error("negative")]
     Negative,
+}
+
+#[cfg(test)]
+mod baseline_poisoning_tests {
+    use super::*;
+
+    fn pair(a: u8, b: u8) -> DirectedTokenPair {
+        DirectedTokenPair {
+            sell: Address::repeat_byte(a),
+            buy: Address::repeat_byte(b),
+        }
+    }
+
+    fn solver(byte: u8) -> Address {
+        Address::repeat_byte(byte)
+    }
+
+    fn make(scores: Vec<(Address, u64, Vec<(DirectedTokenPair, U256)>)>) -> ScoresBySolution {
+        scores
+            .into_iter()
+            .map(|(solver, id, pair_scores)| {
+                (
+                    SolutionKey {
+                        solver,
+                        solution_id: id,
+                    },
+                    pair_scores.into_iter().collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn single_solver_single_pair_produces_no_baseline() {
+        // Attacker submits exactly one inflated single-pair solution.
+        // Pre-PR this set baseline to u64::MAX, filtering out every
+        // honest multi-pair solution covering this pair.
+        let attacker = solver(0x42);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![(
+            attacker,
+            1,
+            vec![(pair_x.clone(), U256::from(u64::MAX))],
+        )]);
+        let baseline = compute_baseline_scores(&scores);
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn single_solver_multiple_solutions_same_pair_still_no_baseline() {
+        // Attacker controls one address, submits N inflated single-pair
+        // solutions. Still counts as 1 distinct solver — no baseline.
+        let attacker = solver(0x42);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (attacker, 1, vec![(pair_x.clone(), U256::from(1_000u64))]),
+            (attacker, 2, vec![(pair_x.clone(), U256::from(u64::MAX))]),
+            (attacker, 3, vec![(pair_x.clone(), U256::from(500u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn two_solvers_takes_second_best_not_max() {
+        // Even with the distinct-solver gate passed, baseline = SECOND-best
+        // score. This bounds attacker influence even when they control
+        // 2 addresses.
+        let attacker = solver(0x42);
+        let honest = solver(0x01);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (attacker, 1, vec![(pair_x.clone(), U256::from(u64::MAX))]),
+            (honest, 2, vec![(pair_x.clone(), U256::from(1_000u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(1_000u64)));
+    }
+
+    #[test]
+    fn three_solvers_takes_second_best() {
+        let s1 = solver(0x01);
+        let s2 = solver(0x02);
+        let s3 = solver(0x03);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (s1, 1, vec![(pair_x.clone(), U256::from(100u64))]),
+            (s2, 1, vec![(pair_x.clone(), U256::from(300u64))]),
+            (s3, 1, vec![(pair_x.clone(), U256::from(200u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(200u64)));
+    }
+
+    #[test]
+    fn multi_pair_solutions_dont_count_as_baseline_contributors() {
+        // A solution touching > 1 pair is not a "baseline" candidate at
+        // all — pre-PR behavior preserved.
+        let s1 = solver(0x01);
+        let s2 = solver(0x02);
+        let pair_x = pair(1, 2);
+        let pair_y = pair(3, 4);
+        let scores = make(vec![
+            (s1, 1, vec![(pair_x.clone(), U256::from(100u64))]),
+            (
+                s2,
+                1,
+                vec![
+                    (pair_x.clone(), U256::from(200u64)),
+                    (pair_y.clone(), U256::from(50u64)),
+                ],
+            ),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        // Only s1 contributed a single-pair solution covering pair_x.
+        // s2's solution touches two pairs, so it's NOT a baseline
+        // contributor. Without a second distinct single-pair contributor,
+        // no baseline.
+        assert!(baseline.is_empty());
+    }
+
+    #[test]
+    fn per_solver_best_is_used_for_ranking() {
+        // If a solver submits multiple single-pair solutions for the
+        // same pair, only their BEST counts for the second-best
+        // computation.
+        let s1 = solver(0x01);
+        let s2 = solver(0x02);
+        let pair_x = pair(1, 2);
+        let scores = make(vec![
+            (s1, 1, vec![(pair_x.clone(), U256::from(100u64))]),
+            (s1, 2, vec![(pair_x.clone(), U256::from(150u64))]),
+            (s2, 1, vec![(pair_x.clone(), U256::from(200u64))]),
+        ]);
+        let baseline = compute_baseline_scores(&scores);
+        // s1 best = 150, s2 best = 200. Second-best = 150.
+        assert_eq!(baseline.get(&pair_x), Some(&U256::from(150u64)));
+    }
 }
