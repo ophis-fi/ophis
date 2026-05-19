@@ -73,13 +73,29 @@ mod poison_recovery_tests {
 
         // The recovery helper must return a guard without panicking.
         let guard = lock_settlements(&m);
-        // The recovered state is still a valid (empty) VecDeque.
-        assert!(guard.is_empty());
-        // Subsequent calls also work.
+        assert!(guard.is_empty(), "recovered state is a valid (empty) VecDeque");
         drop(guard);
+
+        // After recovery the poison is CLEARED — parking_lot-style semantics.
+        // Note: this is a process-wide check; if other tests in this file
+        // poisoned the SAME static AtomicBool, the log-once gate flips false
+        // on first run only. The poison-clear assertion below is the real
+        // contract.
+        assert!(
+            !m.is_poisoned(),
+            "lock_settlements must clear poison so subsequent observers don't see stale state"
+        );
+
+        // Subsequent calls take the normal happy path.
         let _guard_again = lock_settlements(&m);
     }
 }
+
+/// Set on the first observation that the settlements mutex was poisoned.
+/// Used to gate the `tracing::error!` so a hot post-poison path doesn't
+/// drown the original panic backtrace in repetition.
+static SETTLEMENTS_POISON_LOGGED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Acquire the [`Competition::settlements`] mutex, recovering from poison
 /// instead of propagating the panic.
@@ -90,18 +106,25 @@ mod poison_recovery_tests {
 /// the settlements cache is best-effort recovery state; a stale/partially-
 /// mutated VecDeque is preferable to a fail-shut driver.
 ///
-/// Strategy: log loudly so ops can find the original panic site in
-/// journald, then continue with the recovered guard via `into_inner`.
-/// Behavior matches `parking_lot::Mutex` semantics.
+/// Strategy: emit the recovery-error log once (gated by an AtomicBool —
+/// sharp-edges/Codex feedback: ~100s of settle acquisitions/min would
+/// otherwise flood journald and drown the originating panic backtrace).
+/// Then clear the poison via `clear_poison()` (stable in 1.74+) so
+/// `is_poisoned()` returns false on subsequent observers, matching the
+/// non-poisoning semantics of `parking_lot::Mutex`.
 fn lock_settlements(
     m: &Mutex<VecDeque<Settlement>>,
 ) -> std::sync::MutexGuard<'_, VecDeque<Settlement>> {
     m.lock().unwrap_or_else(|e| {
-        tracing::error!(
-            "settlements mutex was poisoned — a prior settle task panicked while \
-             holding the lock. Recovering with potentially-inconsistent state. \
-             Investigate the originating panic in journald."
-        );
+        if !SETTLEMENTS_POISON_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            tracing::error!(
+                "settlements mutex was poisoned — a prior settle task panicked while \
+                 holding the lock. Recovering with potentially-inconsistent state. \
+                 Investigate the originating panic in journald. \
+                 (this message logs once per process; clearing poison)"
+            );
+        }
+        m.clear_poison();
         e.into_inner()
     })
 }
@@ -645,7 +668,15 @@ impl Competition {
             scored.into_iter().take(max_to_propose).collect();
 
         // Cache all settlements so they can be revealed/settled later. Keep
-        // solutions from previous overlapping auctions around long enough
+        // solutions from previous overlapping auctions around long enough.
+        //
+        // Poison surface (sharp-edges note): the `Settlement::clone()` call
+        // below is the path most likely to poison `self.settlements` — a
+        // panic in Clone (OOM during inner allocation, or an inner Drop
+        // panic propagated up) would leave the mutex poisoned. The
+        // `lock_settlements` helper recovers; the originating panic shows
+        // up as a single ERROR log in journald.
+        // The other overlapping auctions stay around long enough
         // for their /settle to complete.
         {
             let mut lock = lock_settlements(&self.settlements);
