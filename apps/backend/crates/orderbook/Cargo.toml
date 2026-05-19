@@ -52,8 +52,8 @@ price-estimation = { workspace = true }
 prometheus = { workspace = true }
 prometheus-metric-storage = { workspace = true }
 rand = { workspace = true }
-reqwest = { workspace = true, features = ["json"] }
 poison-recovery = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 retry-helper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

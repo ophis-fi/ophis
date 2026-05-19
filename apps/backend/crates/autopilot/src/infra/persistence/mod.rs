@@ -41,7 +41,7 @@ use {
         sync::Arc,
         time::Duration,
     },
-    tokio::sync::mpsc,
+    tokio::sync::watch,
     tracing::{Instrument, instrument},
 };
 
@@ -51,9 +51,16 @@ pub mod dto;
 pub struct Persistence {
     s3: Option<s3::Uploader>,
     postgres: Arc<Postgres>,
-    /// Writing into this channel will cause the auction to be written to the
-    /// DB in an orderly manner (FIFO).
-    upload_queue: mpsc::UnboundedSender<AuctionUpload>,
+    /// `tokio::sync::watch` slot into the DB-writer task. Always-latest
+    /// semantic: every `send_replace` overwrites the prior value if the
+    /// receiver hasn't drained it yet. This matches the documented
+    /// "last-write-wins" contract — under DB lag we discard stale
+    /// auctions and the writer always picks up the most recent one.
+    /// Audit Phase 2 findings M3 (unbounded mpsc) + M9 (.expect-on-send).
+    /// Pre-merge both Codex + sharp-edges converged that bounded-mpsc
+    /// with drop-newest contradicted the last-write-wins contract; watch
+    /// is the structurally correct primitive.
+    upload_queue: watch::Sender<Option<Arc<AuctionUpload>>>,
 }
 
 struct AuctionUpload {
@@ -76,21 +83,43 @@ impl Persistence {
         }
     }
 
-    /// Spawns a task that writes the most recent auction to the DB. Uploads
-    /// happen on a FIFO basis so the last write will always be the most
-    /// recent auction.
-    fn spawn_db_upload_task(db: Arc<Postgres>) -> mpsc::UnboundedSender<AuctionUpload> {
-        let (sender, mut receiver) = mpsc::unbounded_channel::<AuctionUpload>();
+    /// Spawns a task that writes the most recent auction to the DB. Uses
+    /// `watch` always-latest semantics: every notification snapshots the
+    /// current value and processes it. If multiple sends happen between
+    /// `changed()` cycles, only the latest is processed — intermediate
+    /// writes are correctly discarded (audit M3).
+    fn spawn_db_upload_task(
+        db: Arc<Postgres>,
+    ) -> watch::Sender<Option<Arc<AuctionUpload>>> {
+        let (sender, mut receiver) = watch::channel(None);
         tokio::task::spawn(async move {
-            while let Some(upload) = receiver.recv().await {
-                if let Err(err) = db
-                    .replace_current_auction(upload.auction_id, upload.auction_data)
-                    .await
-                {
-                    tracing::error!(?err, "failed to replace auction in DB");
+            // Mark initial `None` as seen so we don't process it.
+            let _ = receiver.borrow_and_update();
+            loop {
+                if receiver.changed().await.is_err() {
+                    tracing::error!(
+                        "auction upload task: all senders dropped — exiting"
+                    );
+                    break;
+                }
+                // Snapshot + mark seen in one go. The Arc clone is cheap;
+                // we release the watch's internal RwLock immediately so a
+                // concurrent send_replace isn't blocked while the DB call
+                // is in flight.
+                let snapshot: Option<Arc<AuctionUpload>> =
+                    receiver.borrow_and_update().clone();
+                if let Some(upload) = snapshot {
+                    if let Err(err) = db
+                        .replace_current_auction(
+                            upload.auction_id,
+                            upload.auction_data.clone(),
+                        )
+                        .await
+                    {
+                        tracing::error!(?err, "failed to replace auction in DB");
+                    }
                 }
             }
-            tracing::error!("auction upload task terminated unexpectedly");
         });
         sender
     }
@@ -158,12 +187,29 @@ impl Persistence {
         new_auction_id: domain::auction::Id,
         new_auction_data: &domain::RawAuctionData,
     ) {
-        self.upload_queue
-            .send(AuctionUpload {
-                auction_id: new_auction_id,
-                auction_data: dto::auction::from_domain(new_auction_data.clone()),
-            })
-            .expect("upload queue should be alive at all times");
+        // Audit M9: pre-PR was .expect("alive at all times") — a shutdown
+        // race between the receiver task and the run-loop sender panicked
+        // the autopilot. Now we degrade gracefully: if the writer task is
+        // dead, log + metric the drop and let the run-loop continue.
+        let upload = Arc::new(AuctionUpload {
+            auction_id: new_auction_id,
+            auction_data: dto::auction::from_domain(new_auction_data.clone()),
+        });
+        if self.upload_queue.is_closed() {
+            tracing::error!(
+                auction_id = ?new_auction_id,
+                "auction upload channel closed (writer task dead) — auction not persisted"
+            );
+            Metrics::get()
+                .auction_upload_dropped
+                .with_label_values(&["channel_closed"])
+                .inc();
+            return;
+        }
+        // watch::send_replace always succeeds at the slot level — the
+        // returned value is the prior slot contents (which we discard).
+        // Receiver wakes on `changed()` and reads the latest value.
+        let _prior = self.upload_queue.send_replace(Some(upload));
     }
 
     /// Spawns a background task that uploads the auction to S3.
@@ -1042,6 +1088,14 @@ struct Metrics {
     /// Timing of db queries.
     #[metric(name = "persistence_database_queries", labels("type"))]
     database_queries: prometheus::HistogramVec,
+
+    /// Auction uploads dropped because the writer task is dead. Audit M9.
+    /// The watch-channel slot itself never "overflows" — intermediate
+    /// writes overwrite by design. This counter is for the
+    /// receiver-task-died case only; non-zero means autopilot's
+    /// persistence is permanently degraded until process restart.
+    #[metric(name = "persistence_auction_upload_dropped", labels("reason"))]
+    auction_upload_dropped: prometheus::IntCounterVec,
 }
 
 impl Metrics {

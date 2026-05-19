@@ -59,8 +59,8 @@ prometheus = { workspace = true }
 prometheus-metric-storage = { workspace = true }
 rand = { workspace = true }
 request-sharing = { workspace = true }
-reqwest = { workspace = true, features = ["query"] }
 poison-recovery = { workspace = true }
+reqwest = { workspace = true, features = ["query"] }
 retry-helper = { workspace = true }
 s3 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
