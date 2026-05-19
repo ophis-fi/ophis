@@ -109,7 +109,7 @@ pub async fn run(args: arguments::Arguments) {
         match refunder.try_to_refund_all_eligible_orders().await {
             Ok(_) => {
                 track_refunding_loop_result("success");
-                *liveness.last_successful_loop.write().unwrap() = Instant::now()
+                *poison_recovery::write_or_recover(&liveness.last_successful_loop, "refunder::liveness::last_successful_loop") = Instant::now()
             }
             Err(err) => {
                 track_refunding_loop_result("error");
@@ -127,7 +127,7 @@ struct Liveness {
 #[async_trait::async_trait]
 impl LivenessChecking for Liveness {
     async fn is_alive(&self) -> bool {
-        Instant::now().duration_since(*self.last_successful_loop.read().unwrap())
+        Instant::now().duration_since(*poison_recovery::read_or_recover(&self.last_successful_loop, "refunder::liveness::last_successful_loop"))
             < DELAY_FROM_LAST_LOOP_BEFORE_UNHEALTHY
     }
 }

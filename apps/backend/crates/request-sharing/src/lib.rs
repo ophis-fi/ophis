@@ -79,7 +79,7 @@ where
     }
 
     fn collect_garbage(cache: &Cache<Request, Fut>, label: &str) {
-        let mut cache = cache.lock().unwrap();
+        let mut cache = poison_recovery::lock_or_recover(cache, "request_sharing::in_flight");
         cache.retain(|_request, weak| weak.upgrade().is_some());
         Metrics::get()
             .request_sharing_cached_items
@@ -128,7 +128,8 @@ where
     where
         F: FnOnce(&Request) -> Fut,
     {
-        let mut in_flight = self.in_flight.lock().unwrap();
+        let mut in_flight =
+            poison_recovery::lock_or_recover(&self.in_flight, "request_sharing::in_flight");
 
         let existing = in_flight.get(&request).and_then(WeakShared::upgrade);
 

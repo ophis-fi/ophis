@@ -204,7 +204,7 @@ impl PoolsCheckpointHandler {
 
         match pool_ids.peek() {
             Some(_) => {
-                let mut pools_checkpoint = self.pools_checkpoint.lock().unwrap();
+                let mut pools_checkpoint = poison_recovery::lock_or_recover_clear(&self.pools_checkpoint, "liquidity_sources::uniswap_v3::pools_checkpoint");
                 let mut existing_pools = HashMap::<Address, Arc<PoolInfo>>::default();
                 let missing_pools = pool_ids
                     .filter(|pool_id| match pools_checkpoint.pools.get(*pool_id) {
@@ -232,7 +232,7 @@ impl PoolsCheckpointHandler {
     /// `missing_pools` to `pools`
     async fn update_missing_pools(&self) -> Result<()> {
         let (missing_pools, block_number) = {
-            let checkpoint = self.pools_checkpoint.lock().unwrap();
+            let checkpoint = poison_recovery::lock_or_recover_clear(&self.pools_checkpoint, "liquidity_sources::uniswap_v3::pools_checkpoint");
             if checkpoint.missing_pools.is_empty() {
                 return Ok(());
             }
@@ -253,7 +253,7 @@ impl PoolsCheckpointHandler {
             "fetched pool ticks"
         );
 
-        let mut checkpoint = self.pools_checkpoint.lock().unwrap();
+        let mut checkpoint = poison_recovery::lock_or_recover_clear(&self.pools_checkpoint, "liquidity_sources::uniswap_v3::pools_checkpoint");
         for pool in pools? {
             checkpoint.missing_pools.remove(&pool.id);
             checkpoint.pools.insert(pool.id, Arc::new(pool.try_into()?));
@@ -298,7 +298,7 @@ impl UniswapV3PoolFetcher {
         )
         .await?;
 
-        let init_block = checkpoint.pools_checkpoint.lock().unwrap().block_number;
+        let init_block = poison_recovery::lock_or_recover_clear(&checkpoint.pools_checkpoint, "liquidity_sources::uniswap_v3::pools_checkpoint").block_number;
         let init_block = block_retriever.block(init_block).await?;
 
         let events = tokio::sync::Mutex::new(EventHandler::new(
@@ -330,7 +330,7 @@ impl UniswapV3PoolFetcher {
                 let block_range =
                     RangeInclusive::try_new(old_checkpoint_block + 1, new_checkpoint_block)?;
                 let events = self.events.lock().await.store().get_events(block_range);
-                let mut checkpoint = self.checkpoint.pools_checkpoint.lock().unwrap();
+                let mut checkpoint = poison_recovery::lock_or_recover_clear(&self.checkpoint.pools_checkpoint, "liquidity_sources::uniswap_v3::pools_checkpoint");
                 append_events(&mut checkpoint.pools, events);
                 checkpoint.block_number = new_checkpoint_block;
                 tracing::debug!(

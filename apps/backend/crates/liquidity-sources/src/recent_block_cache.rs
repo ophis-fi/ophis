@@ -236,7 +236,7 @@ where
             .fetch_inner_many(keys.clone(), Block::Number(new_block))
             .await?;
 
-        let mut mutexed = self.mutexed.lock().unwrap();
+        let mut mutexed = poison_recovery::lock_or_recover(&self.mutexed, "liquidity_sources::recent_block_cache::mutexed");
         mutexed.insert(new_block, keys, found_values);
         let oldest_to_keep = new_block.saturating_sub(self.number_of_blocks_to_cache.get() - 1);
         mutexed.remove_cached_blocks_older_than(oldest_to_keep);
@@ -294,7 +294,7 @@ where
         let mut cache_misses = HashSet::new();
         let last_update_block;
         {
-            let mut mutexed = self.mutexed.lock().unwrap();
+            let mut mutexed = poison_recovery::lock_or_recover(&self.mutexed, "liquidity_sources::recent_block_cache::mutexed");
             for key in keys {
                 match mutexed.get(key.clone(), block) {
                     Some(values) => {
@@ -334,7 +334,7 @@ where
             let found_keys = fetched.iter().map(K::for_value).unique().collect_vec();
             cache_hits.extend_from_slice(&fetched);
 
-            let mut mutexed = self.mutexed.lock().unwrap();
+            let mut mutexed = poison_recovery::lock_or_recover(&self.mutexed, "liquidity_sources::recent_block_cache::mutexed");
             mutexed.insert(cache_miss_block, chunk.iter().cloned(), fetched);
             if block.is_some() {
                 // Only if a block number was specified the caller actually cared about the most

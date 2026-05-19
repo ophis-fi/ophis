@@ -20,6 +20,7 @@ dependencies = [
  "itertools 0.14.0",
  "mockall",
  "model",
+ "poison-recovery",
  "tokio",
  "tracing",
 ]
@@ -1245,6 +1246,7 @@ dependencies = [
  "number",
  "observe",
  "order-validation",
+ "poison-recovery",
  "price-estimation",
  "prometheus",
  "prometheus-metric-storage",
@@ -1879,6 +1881,7 @@ dependencies = [
  "contracts",
  "ethrpc",
  "maplit",
+ "poison-recovery",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -5391,6 +5394,7 @@ dependencies = [
  "num",
  "number",
  "observe",
+ "poison-recovery",
  "prometheus",
  "prometheus-metric-storage",
  "regex",
@@ -6278,6 +6282,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "poison-recovery"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6394,6 +6405,7 @@ dependencies = [
  "num",
  "number",
  "observe",
+ "poison-recovery",
  "prometheus",
  "prometheus-metric-storage",
  "rand 0.9.4",
@@ -6813,6 +6825,7 @@ dependencies = [
  "futures",
  "humantime-serde",
  "observe",
+ "poison-recovery",
  "prometheus",
  "prometheus-metric-storage",
  "reqwest 0.13.2",
@@ -6881,6 +6894,7 @@ dependencies = [
  "mockall",
  "number",
  "observe",
+ "poison-recovery",
  "prometheus",
  "prometheus-metric-storage",
  "rand 0.9.4",
@@ -6940,6 +6954,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "observe",
+ "poison-recovery",
  "prometheus",
  "prometheus-metric-storage",
  "tokio",
@@ -7704,6 +7719,7 @@ dependencies = [
  "number",
  "observe",
  "order-validation",
+ "poison-recovery",
  "price-estimation",
  "prometheus",
  "prometheus-metric-storage",
@@ -8537,6 +8553,7 @@ dependencies = [
  "maplit",
  "mockall",
  "model",
+ "poison-recovery",
  "tokio",
  "tracing",
 ]

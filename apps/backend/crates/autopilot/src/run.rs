@@ -64,7 +64,7 @@ pub struct Liveness {
 #[async_trait::async_trait]
 impl LivenessChecking for Liveness {
     async fn is_alive(&self) -> bool {
-        let last_auction_time = self.last_auction_time.read().unwrap();
+        let last_auction_time = poison_recovery::read_or_recover(&self.last_auction_time, "autopilot::liveness::last_auction_time");
         let auction_age = last_auction_time.elapsed();
         auction_age <= self.max_auction_age
     }
@@ -79,7 +79,7 @@ impl Liveness {
     }
 
     pub fn auction(&self) {
-        *self.last_auction_time.write().unwrap() = Instant::now();
+        *poison_recovery::write_or_recover(&self.last_auction_time, "autopilot::liveness::last_auction_time") = Instant::now();
     }
 }
 
