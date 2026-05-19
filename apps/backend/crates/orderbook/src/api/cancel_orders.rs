@@ -9,6 +9,7 @@ use {
         response::{IntoResponse, Response},
     },
     model::order::{ORDER_UID_LIMIT, SignedOrderCancellations},
+    serde_json::json,
     std::sync::Arc,
 };
 
@@ -16,10 +17,30 @@ pub async fn cancel_orders_handler(
     State(state): State<Arc<AppState>>,
     body: body::Bytes,
 ) -> Response {
-    // TODO: remove after all downstream callers have been notified of the status
-    // code changes
-    let Ok(cancellations) = serde_json::from_slice::<SignedOrderCancellations>(&body) else {
-        return StatusCode::BAD_REQUEST.into_response();
+    // Phase 2 audit MED M15: pre-this-PR a deserialization failure
+    // returned a bare 400 with no body and no log — clients had no hint
+    // what was wrong, ops had no signal. Now we log at warn (sanitized:
+    // body bytes are user-controlled — never echo them to journald) and
+    // return a small structured error body the client can parse.
+    let cancellations = match serde_json::from_slice::<SignedOrderCancellations>(&body) {
+        Ok(c) => c,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                body_len = body.len(),
+                "cancel_orders: failed to deserialize request body"
+            );
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "errorType": "InvalidRequestBody",
+                    "description": "could not deserialize SignedOrderCancellations \
+                                    (expected JSON with `data.order_uids` and \
+                                    `signature` fields)",
+                })),
+            )
+                .into_response();
+        }
     };
 
     // Explicitly limit the number of orders cancelled in a batch as the request

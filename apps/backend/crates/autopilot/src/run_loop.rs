@@ -895,12 +895,24 @@ impl RunLoop {
                 Ok(Some(transaction)) => return Ok(transaction),
                 Ok(None) => {}
                 Err(err) => {
+                    // Phase 2 audit MED M13: pre-this-metric a DB outage
+                    // during settlement-wait was a silent `tracing::warn!`,
+                    // the loop continued, and we eventually hit
+                    // `SettleError::Timeout`. Ops saw "solver timed out",
+                    // not "DB was down". Now both the log AND the
+                    // existing `db_metric_error{error_type}` counter
+                    // fire — ops can alert on DB outage independent of
+                    // solver-timeout alerts.
                     tracing::warn!(
                         ?err,
                         ?auction_id,
                         ?solver,
                         "failed to find settlement transaction"
                     );
+                    Metrics::get()
+                        .db_metric_error
+                        .with_label_values(&["settlement_lookup"])
+                        .inc();
                 }
             }
             if block.number >= submission_deadline_latest_block {
