@@ -70,10 +70,49 @@ pub fn request_sent() {
     get().solve_requests.inc();
 }
 
-/// Record a DEX-side slippage clamp. `dex` is a stable identifier
-/// ("kyberswap", "velora", …) — keep the label cardinality bounded.
-pub fn dex_slippage_clamped(dex: &str) {
-    get().dex_slippage_clamped.with_label_values(&[dex]).inc();
+/// Typed identifier for a DEX integration. Used both as the
+/// `dex_slippage_clamped{dex}` label value and as a compile-time gate:
+/// `clamp_slippage_bps` only accepts a `Dex`, so a typo / new
+/// integration cannot silently spawn a new Prometheus series.
+#[derive(Debug, Clone, Copy)]
+pub enum Dex {
+    KyberSwap,
+    Velora,
+}
+
+impl Dex {
+    fn as_label(self) -> &'static str {
+        match self {
+            Dex::KyberSwap => "kyberswap",
+            Dex::Velora => "velora",
+        }
+    }
+}
+
+/// Clamp the solver's requested slippage to the DEX's hard cap,
+/// recording the clamp as a metric when it fires.
+///
+/// Phase 2 audit MED M10 chokepoint: keeping clamp + metric in the same
+/// function guarantees a new DEX integration cannot reintroduce the
+/// "silent clamp + tracing::warn! only" pattern. Pattern-matched
+/// `Dex` argument also prevents the typo-creates-new-series footgun
+/// (sharp-edges-flagged in pre-merge review).
+pub fn clamp_slippage_bps(dex: Dex, requested_bps: u16, max_bps: u16) -> u16 {
+    if requested_bps > max_bps {
+        tracing::warn!(
+            dex = dex.as_label(),
+            requested = requested_bps,
+            clamp = max_bps,
+            "slippage exceeds DEX maximum, clamping",
+        );
+        get()
+            .dex_slippage_clamped
+            .with_label_values(&[dex.as_label()])
+            .inc();
+        max_bps
+    } else {
+        requested_bps
+    }
 }
 
 /// Get the metrics instance.

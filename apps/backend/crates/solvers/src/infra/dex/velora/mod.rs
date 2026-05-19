@@ -371,17 +371,11 @@ impl Velora {
         slippage: &dex::Slippage,
     ) -> Result<dto::TransactionResponse, Error> {
         let slippage_bps = slippage.as_bps().ok_or(Error::InvalidSlippage)?;
-        let slippage_clamped = if slippage_bps > MAX_SLIPPAGE_BPS {
-            tracing::warn!(
-                requested = slippage_bps,
-                clamp = MAX_SLIPPAGE_BPS,
-                "slippage exceeds Velora maximum, clamping",
-            );
-            crate::infra::metrics::dex_slippage_clamped("velora");
-            MAX_SLIPPAGE_BPS
-        } else {
-            slippage_bps
-        };
+        let slippage_clamped = crate::infra::metrics::clamp_slippage_bps(
+            crate::infra::metrics::Dex::Velora,
+            slippage_bps,
+            MAX_SLIPPAGE_BPS,
+        );
 
         let body = dto::TransactionRequest {
             src_token: order.sell.0,

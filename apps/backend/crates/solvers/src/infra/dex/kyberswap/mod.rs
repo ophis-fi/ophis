@@ -262,17 +262,11 @@ impl KyberSwap {
         slippage: &dex::Slippage,
     ) -> Result<dto::BuildData, Error> {
         let slippage_bps = slippage.as_bps().ok_or(Error::InvalidSlippage)?;
-        let slippage_tolerance = if slippage_bps > MAX_SLIPPAGE_BPS {
-            tracing::warn!(
-                requested = slippage_bps,
-                clamp = MAX_SLIPPAGE_BPS,
-                "slippage exceeds KyberSwap maximum, clamping",
-            );
-            crate::infra::metrics::dex_slippage_clamped("kyberswap");
-            MAX_SLIPPAGE_BPS
-        } else {
-            slippage_bps
-        };
+        let slippage_tolerance = crate::infra::metrics::clamp_slippage_bps(
+            crate::infra::metrics::Dex::KyberSwap,
+            slippage_bps,
+            MAX_SLIPPAGE_BPS,
+        );
 
         let body = dto::BuildRequest {
             route_summary,
