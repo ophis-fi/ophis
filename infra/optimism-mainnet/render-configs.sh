@@ -111,10 +111,15 @@ export OPHIS_DRIVER_SUBMITTER_KEY
 mkdir -p rendered
 shopt -s nullglob
 
-for tmpl in configs/*.toml.tmpl; do
+for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
+  # `shopt -s nullglob` (set above) makes the globs return nothing when
+  # there are no matches, so this loop is safe even if only one extension
+  # is present.
   name="$(basename "$tmpl" .tmpl)"
   out="rendered/$name"
-  # envsubst only substitutes the explicit list we pass.
+  # envsubst only substitutes the explicit list we pass — keeps unknown
+  # ${VARS} in eRPC's YAML syntax (none today, but defensive against
+  # future eRPC config additions like ${ALCHEMY_API_KEY}).
   envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out"
   # Redundant under `umask 077` set at script top, but kept as defense-
