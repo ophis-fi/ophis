@@ -12,6 +12,7 @@ import { useVolumeFee } from 'modules/volumeFee'
 
 import { AppDataHooksUpdater } from './AppDataHooksUpdater'
 import { AppDataInfoUpdater, UseAppDataParams } from './AppDataInfoUpdater'
+import { shouldEmitOphisPartnerFee } from './shouldEmitOphisPartnerFee'
 
 import { useAppCode, useAppDataHooks } from '../hooks'
 import { useRwaConsentForAppData } from '../hooks/useRwaConsentForAppData'
@@ -35,7 +36,12 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // precedence over the volumeFee pipeline when set. The volumeFee
   // path stays for widget consumers that override partnerFee with
   // their own volumeBps shape via injectedWidgetParamsAtom.
-  const ophisAppDataPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
+  //
+  // Chain-gate (Phase 3 audit H3): only emit the Ophis partner-fee
+  // metadata on chains where Ophis actually operates a settlement
+  // stack — driven by `DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK`.
+  const ophisAppDataPartnerFeeRaw = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
+  const ophisAppDataPartnerFee = shouldEmitOphisPartnerFee(chainId) ? ophisAppDataPartnerFeeRaw : undefined
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
