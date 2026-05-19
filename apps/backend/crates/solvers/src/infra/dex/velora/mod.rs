@@ -377,6 +377,7 @@ impl Velora {
                 clamp = MAX_SLIPPAGE_BPS,
                 "slippage exceeds Velora maximum, clamping",
             );
+            crate::infra::metrics::dex_slippage_clamped("velora");
             MAX_SLIPPAGE_BPS
         } else {
             slippage_bps

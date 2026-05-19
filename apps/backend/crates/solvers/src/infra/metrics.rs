@@ -21,6 +21,23 @@ struct Metrics {
 
     /// The number of solutions that were found.
     solutions: prometheus::IntCounter,
+
+    /// DEX-side slippage tolerance clamps. Phase 2 audit MED M10: the
+    /// solver asks the DEX for slippage `requested_bps`; the DEX caps
+    /// it at its own `max_bps` (KyberSwap, Velora, ...) and executes
+    /// the route with the tighter tolerance. Pre-this-metric the only
+    /// signal was a `tracing::warn!` per request — not alertable.
+    ///
+    /// The clamp is a *user-facing economic divergence*: the on-chain
+    /// transaction is now sensitive to a smaller slippage band than the
+    /// user signed for, so a real-world price move that the user would
+    /// have tolerated now reverts as a "slippage exceeded" failure.
+    /// Operators alert on the rate per dex to catch either:
+    ///   - chain volatility pushing through our default slippage band
+    ///     (action: widen the band), or
+    ///   - a DEX silently lowering its max_bps (action: re-tune).
+    #[metric(labels("dex"))]
+    dex_slippage_clamped: prometheus::IntCounterVec,
 }
 
 /// Setup the metrics registry.
@@ -51,6 +68,12 @@ pub fn solve_error(reason: &str) {
 
 pub fn request_sent() {
     get().solve_requests.inc();
+}
+
+/// Record a DEX-side slippage clamp. `dex` is a stable identifier
+/// ("kyberswap", "velora", …) — keep the label cardinality bounded.
+pub fn dex_slippage_clamped(dex: &str) {
+    get().dex_slippage_clamped.with_label_values(&[dex]).inc();
 }
 
 /// Get the metrics instance.

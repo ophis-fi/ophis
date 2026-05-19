@@ -268,6 +268,7 @@ impl KyberSwap {
                 clamp = MAX_SLIPPAGE_BPS,
                 "slippage exceeds KyberSwap maximum, clamping",
             );
+            crate::infra::metrics::dex_slippage_clamped("kyberswap");
             MAX_SLIPPAGE_BPS
         } else {
             slippage_bps
