@@ -214,6 +214,16 @@ mount_ram_disk() {
   echo "  mounted RAM-disk at $RAM_PK_MOUNT (device $dev, 1 MB, HFS+, volname=$RAM_PK_VOLNAME)"
 }
 
+# Validate TELEGRAM_BOT_TOKEN if observability is wired up. Shape match:
+# `{int}:{base64-ish-suffix}` per Telegram bot token convention. A typo
+# means alerts silently disappear into a 404 → defeats observability.
+if [[ -d observability && -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  if [[ ! "$TELEGRAM_BOT_TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]; then
+    echo "ERROR: TELEGRAM_BOT_TOKEN doesn't look like a Telegram bot token ({int}:{base64-ish})" >&2
+    exit 2
+  fi
+fi
+
 if ! mount_ram_disk; then
   echo "FATAL: could not mount RAM-disk for PK-bearing config. Refusing to" >&2
   echo "       fall through to disk-write of driver.toml. Investigate:" >&2
@@ -332,6 +342,45 @@ if (( ${#violating_files[@]} > 0 )); then
   echo "    b) Stop substituting the PK in that template." >&2
   echo "  Scrub the listed file(s) — they contain the live PK." >&2
   exit 7
+fi
+
+# ── Render observability/alertmanager (Telegram token) ────────────────────
+# Mirrors HL stack pattern (infra/hyperevm-mainnet/render-configs.sh:140+).
+# Alertmanager reads its bot token from a chmod-600 file (bot_token_file
+# in YAML) rather than env-var-injected, to avoid `docker inspect` env leak.
+if [[ -d observability ]]; then
+  mkdir -p observability-rendered
+  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+    # Render alertmanager.yml.tmpl → observability-rendered/alertmanager.yml
+    for tmpl in observability/*.yml.tmpl; do
+      name="$(basename "$tmpl" .tmpl)"
+      out_tmp="observability-rendered/${name}.tmp.$$"
+      envsubst '${TELEGRAM_BOT_TOKEN}' < "$tmpl" > "$out_tmp"
+      chmod 600 "$out_tmp"
+      mv -f "$out_tmp" "observability-rendered/${name}"
+      echo "  rendered  observability/$name"
+    done
+    # Token in a chmod-600 file on the RAM-disk (sharp-edges HIGH-4
+    # follow-up: same persistent-storage threat model as the PK — Time
+    # Machine / APFS local snapshots / Spotlight could otherwise retain
+    # the bot token across rotations). A leaked bot token lets an
+    # attacker DM Clement as the alert bot → phishing primitive against
+    # the very operator who'd act on alerts.
+    TOKEN_RAM_FILE="${RAM_PK_MOUNT}/telegram-token"
+    TOKEN_TMP="${TOKEN_RAM_FILE}.tmp.$$"
+    printf '%s' "$TELEGRAM_BOT_TOKEN" > "$TOKEN_TMP"
+    chmod 600 "$TOKEN_TMP"
+    mv -f "$TOKEN_TMP" "$TOKEN_RAM_FILE"
+    # Symlink from observability-rendered/ so docker-compose's existing
+    # bind-mount path (./observability-rendered/telegram-token) keeps working.
+    rm -f "observability-rendered/telegram-token"
+    ln -sf "$TOKEN_RAM_FILE" "observability-rendered/telegram-token"
+    echo "  rendered  observability/telegram-token  → RAM-disk (chmod 600)"
+  else
+    echo "  skip      observability/* — TELEGRAM_BOT_TOKEN not set in .env"
+    echo "            (prometheus + alertmanager containers will fail to start;"
+    echo "             that's intentional fail-closed behavior)"
+  fi
 fi
 
 echo ""

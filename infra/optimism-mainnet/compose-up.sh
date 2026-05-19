@@ -38,8 +38,21 @@ fi
 echo "  ok: rendered/driver.toml -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
 
 echo ""
-echo "==> docker compose up -d --build $*"
-docker compose up -d --build "$@"
+# Sharp-edges HIGH-2 (2026-05-20): the observability profile (prometheus +
+# alertmanager) is only enabled when TELEGRAM_BOT_TOKEN is set + a rendered
+# alertmanager.yml exists. Profile gating means a missing token doesn't
+# cascade-restart-loop the alerting containers.
+PROFILES_ARG=""
+if [[ -f observability-rendered/alertmanager.yml ]]; then
+  echo "==> enabling observability profile (rendered alertmanager.yml found)"
+  PROFILES_ARG="--profile observability"
+else
+  echo "==> observability profile DISABLED (no rendered alertmanager.yml — set TELEGRAM_BOT_TOKEN to enable)"
+fi
+
+echo ""
+echo "==> docker compose $PROFILES_ARG up -d --build $*"
+docker compose $PROFILES_ARG up -d --build "$@"
 
 echo ""
 echo "Stack startup initiated. Verify with:"
