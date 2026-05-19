@@ -174,3 +174,25 @@ Sequence once Tier 1 is shipped. Adds defense against Mac mini root compromise /
 3. **If Tier 2 someday**: AWS account exists already, or new sign-up? Region pref?
 
 Until Tier 1 lands, current Keychain + .env setup remains — risk is unchanged from audit baseline.
+
+---
+
+## Postmortem appendix (2026-05-19, post Phase 4 infra audit)
+
+**What Tier 1 actually delivered:** PK source-of-truth moved from `.env` (read at render-time via `source .env`) to a file at `/Users/ophis-driver/.config/submitter.key` (mode 0600, owner `ophis-driver`, parent dir 0700). Read requires `sudo`.
+
+**What Tier 1 did NOT deliver** (Phase 4 audit M H1, 2026-05-19): the rendered driver.toml file STILL lives at `./rendered/driver.toml` under user `scep`. Any process running as scep can read it.
+
+**Why the gap couldn't be closed in Tier 1:** colima's virtiofs daemon runs as scep and can only bind-mount paths scep can read. Moving rendered/driver.toml under `/Users/ophis-driver/...` would break the docker bind mount (`./rendered/driver.toml:/driver.toml:ro` in `docker-compose.yml`).
+
+**Tier 1.5 — RAM-disk render** (next step, FREE, ~half-day):
+Render driver.toml to a `hdiutil`-managed in-memory volume bind-mounted into the container. PK never touches persistent storage. Lifecycle:
+1. `hdiutil attach -nomount ram://2048` → /dev/diskN
+2. `diskutil eraseVolume HFS+ "ophis-rendered" /dev/diskN`
+3. `/Volumes/ophis-rendered/driver.toml` is the render target.
+4. docker-compose mounts `/Volumes/ophis-rendered/driver.toml:/driver.toml:ro`.
+5. Tear down on shutdown via `diskutil unmountDisk force /dev/diskN` + `hdiutil detach`.
+
+Threat reduces from "any scep-process can read on-disk" to "any scep-process can read from RAM during the driver's lifetime"; the file is gone the moment the driver stops, never hits backups / Time Machine / .Trash.
+
+**Tier 2 — AWS KMS:** unchanged. Recommended once a partner asks for HSM-grade custody or TVL crosses a threshold where $140/yr is trivial.
