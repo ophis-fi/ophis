@@ -11,6 +11,46 @@
 # Cloudflare Tunnel, never direct port exposure.
 
 services:
+  # eRPC multi-provider proxy for OP mainnet (chain 10). All chain-reading
+  # services point ETHRPC at this container instead of hitting any single
+  # public RPC directly. Free providers rate-limit or rate-degrade
+  # asymmetrically; eRPC fans requests across 3 upstreams with consensus
+  # on critical reads (defeats fork-view-poisoning — see
+  # configs/erpc.yaml.tmpl for the audit reasoning).
+  #
+  # Cloned from infra/hyperevm-mainnet (Phase 4 audit M-2, 2026-05-19).
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:latest
+    restart: always
+    mem_limit: 512m
+    volumes:
+      # Default config path inside the erpc image is /erpc.yaml — mount the
+      # rendered config there and let the image's stock entrypoint pick it up
+      # (overriding command to pass --config breaks the entrypoint).
+      - ./rendered/erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "127.0.0.1:4001:4000"  # +1 vs HL stack (4000) to coexist on same host
+    # eRPC image is distroless — no /bin/sh / wget / curl. The
+    # `rpc-proxy-health` sidecar below probes /healthcheck and is what
+    # `depends_on: service_healthy` actually targets.
+
+  # 1.4 MB busybox sidecar — only job is to publish "rpc-proxy is answering
+  # /healthcheck" as a docker health state. orderbook/autopilot/driver
+  # depend_on this so they don't try to talk to eRPC before it's serving
+  # (which would log connection-refused errors and trigger retry storms).
+  rpc-proxy-health:
+    image: busybox:stable-musl
+    restart: always
+    depends_on:
+      rpc-proxy: { condition: service_started }
+    command: ["sh", "-c", "while true; do sleep 30; done"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://rpc-proxy:4000/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   db:
     image: postgres:16
     restart: always
@@ -52,10 +92,18 @@ services:
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
+      # Wait for eRPC to actually be answering before booting — without this
+      # orderbook hits connection-refused on its first eth_chainId probe and
+      # panics at startup, then restart-loops until eRPC is up (matches
+      # systemic bootstrap-RPC pathology fix from PRs #88-#97).
+      rpc-proxy-health: { condition: service_healthy }
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
-      ETH_RPC_URL: ${OP_MAINNET_RPC}
+      # eRPC proxy (Phase 4 audit M-2). Override via OP_RPC_INTERNAL in .env
+      # for local dev / failure-domain tests (e.g. point at a single upstream
+      # to validate consensus behavior).
+      ETH_RPC_URL: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/optimism-mainnet/.env}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
@@ -86,10 +134,14 @@ services:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
       orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
     environment:
       DB_WRITE_URL: ${DB_WRITE_URL}
       DB_READ_URL: ${DB_READ_URL}
-      ETH_RPC_URL: ${OP_MAINNET_RPC}
+      # eRPC proxy (Phase 4 audit M-2). Override via OP_RPC_INTERNAL in .env
+      # for local dev / failure-domain tests (e.g. point at a single upstream
+      # to validate consensus behavior).
+      ETH_RPC_URL: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/optimism-mainnet/.env}
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
@@ -111,8 +163,13 @@ services:
       okx-solver: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
       velora-solver: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
     environment:
-      ETHRPC: ${OP_MAINNET_RPC}
+      # Driver uses eRPC proxy for block-stream polling + eth_call workload.
+      # Transaction submission still routes directly to the chosen mempool
+      # via the [[submission.mempool]] block in driver.toml — that path
+      # needs a single nonce-coherent endpoint, not a load-balanced fan-out.
+      ETHRPC: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
       # Tier 1 PK isolation (2026-05-18): PK *source* is now

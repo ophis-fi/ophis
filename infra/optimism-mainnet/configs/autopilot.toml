@@ -1,6 +1,6 @@
 # Ophis — Optimism mainnet (chain 10) autopilot config.
-node-url = "https://optimism-rpc.publicnode.com"
-simulation-node-url = "https://optimism-rpc.publicnode.com"
+node-url = "http://rpc-proxy:4000/main/evm/10"
+simulation-node-url = "http://rpc-proxy:4000/main/evm/10"
 
 # Per-order wait while the run loop fetches a missing native (ETH-
 # denominated) token price. Defaults to 0ns, which makes the auction

@@ -1,0 +1,148 @@
+# eRPC multi-provider proxy for Optimism mainnet (chain 10).
+#
+# Cloned from infra/hyperevm-mainnet/configs/erpc.yaml.tmpl (Phase 4 audit M-2,
+# 2026-05-19) — "highest leverage" item on the OP roadmap: the OP stack
+# previously routed every chain read through a single public RPC
+# (publicnode), so any single-provider outage took the entire OP stack down.
+# eRPC fan-out + consensus failsafe gives us the same fork-view-poisoning
+# defense the HL stack already relies on.
+#
+# Free providers selected for distinct failure domains. Reviewer feedback
+# (adversarial-modeler + sharp-edges, 2026-05-19) caught that the initial
+# pick of llamarpc-op shared *Cloudflare DNS* with official-op — a single
+# Cloudflare control-plane compromise would hijack 2-of-3 simultaneously,
+# meeting the consensus threshold. Swapped llamarpc → ankr to close that.
+#
+#   official-op      mainnet.optimism.io           OP Foundation / Conduit
+#                                                  (DNS: Cloudflare; CA: Cloudflare/Google)
+#   publicnode-op    optimism-rpc.publicnode.com   Allnodes multi-cloud
+#                                                  (DNS: Route53; CA: Let's Encrypt;
+#                                                   was the prior sole provider;
+#                                                   proven 4+ days at steady-state)
+#   ankr-op          rpc.ankr.com/optimism         Ankr Public
+#                                                  (DNS: Ankr-operated; CA: ZeroSSL/Sectigo;
+#                                                   different DNS provider from official-op
+#                                                   so a Cloudflare-only incident can take
+#                                                   at most 1-of-3, fail-closing eRPC rather
+#                                                   than poisoning consensus)
+#
+# Rationale (replace-not-expand; mirroring the HL audit reasoning):
+#  - N=3 keeps the 2-of-3 consensus invariant defensible. Expanding N to >3 with
+#    eRPC's random sampling (maxParticipants:3) silently weakens the threat
+#    model to "attacker needs ≥2 of N" — see HL config for the math.
+#  - All 3 are uniformly unauthenticated HTTPS / public-tier. No MEV-searcher
+#    overlap (Bloxroute / Blocknative / Flashbots-style providers excluded —
+#    same uniform policy as HL eRPC).
+#  - Per-block consensus equality is sound on OP: post-Bedrock, the L2's
+#    block contents are deterministic per L2 block number; only tip drift on
+#    "which block is latest" varies, which `enforceHighestBlock` handles.
+#
+# Endpoint exposed: http://rpc-proxy:4000/main/evm/10
+
+logLevel: info
+
+projects:
+  - id: main
+
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 10
+          integrity:
+            enforceHighestBlock: true
+            enforceNonNullTaggedBlocks: true
+        # Consensus failsafe: defeats fork-view-poisoning on state-reads.
+        # Each free provider is unauthenticated HTTPS — a hostile provider
+        # (or MITM via CA compromise / DNS hijack) could otherwise serve a
+        # self-consistent fork that the autopilot signs settlements against.
+        # 2-of-3 agreement on the methods that drive solver behavior closes
+        # that hole.
+        failsafe:
+          # Critical reads: state-dependent calls that gate solver behavior
+          # and settlement validity. eth_getTransactionByHash is included
+          # because the response carries forkable fields (blockHash,
+          # blockNumber); a hostile upstream on the non-consensus "*" path
+          # could otherwise mislead the autopilot's settlement-watcher.
+          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash"
+            timeout:
+              duration: 10s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              # Mirroring HL audit decision (Codex Cyber H3): the obvious
+              # default `acceptMostCommonValidResult` collapses to
+              # single-upstream trust when 2/3 providers fail to answer.
+              # `returnError` is the only fail-closed behavior consistent
+              # with the threat model.
+              lowParticipantsBehavior: returnError
+              preferNonEmpty: true
+              # No `ignoreFields` here — see HL eRPC Codex Cyber finding #1.
+              # Allowing field-level skip lets a hostile upstream forge the
+              # skipped field while matching every other field; consensus
+              # passes spuriously. OP block contents are deterministic per
+              # numbered block, so strict compare costs nothing on the
+              # availability axis here.
+              punishMisbehavior:
+                disputeThreshold: 5
+                disputeWindow: 10m
+                sitOutPenalty: 30m
+          # All other methods go through the default upstream-level failsafe
+          # with retry — no consensus needed for block-stream polling +
+          # balance reads. Tx submission still routes via driver's pinned
+          # [[submission.mempool]] block (single endpoint, nonce-coherent).
+          - matchMethod: "*"
+            timeout:
+              duration: 10s
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+    # OP block time is ~2s post-Bedrock; align tip-block tracking.
+    upstreamDefaults:
+      evm:
+        statePollerInterval: 5s
+        statePollerDebounce: 1s
+
+    upstreams:
+      - id: official-op
+        endpoint: https://mainnet.optimism.io
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: publicnode-op
+        endpoint: https://optimism-rpc.publicnode.com
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: ankr-op
+        endpoint: https://rpc.ankr.com/optimism
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
