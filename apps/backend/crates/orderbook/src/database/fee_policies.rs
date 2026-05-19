@@ -83,6 +83,7 @@ impl super::Postgres {
                     order = ?model::order::OrderUid(key.1.0),
                     "missing fee policies for executed protocol fee, possibly a JIT order?",
                 );
+                super::Metrics::get().protocol_fee_orphans.inc();
             }
         }
         Ok(result)

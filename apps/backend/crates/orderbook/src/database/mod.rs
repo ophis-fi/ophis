@@ -103,14 +103,26 @@ impl Postgres {
 }
 
 #[derive(prometheus_metric_storage::MetricStorage)]
-struct Metrics {
+pub struct Metrics {
     /// Timing of db queries.
     #[metric(name = "orderbook_database_queries", labels("type"))]
     database_queries: prometheus::HistogramVec,
+    /// Executed protocol fees seen on-chain with no matching `fee_policies`
+    /// row in the orderbook DB. Phase 2 audit MED M8: pre-this-metric the
+    /// only signal was a `tracing::warn!` reading "possibly a JIT order?".
+    /// In practice the cause is either:
+    ///   - a legitimate JIT order (no DB policy), or
+    ///   - a misaligned fee_policies write/read (orderbook drift).
+    /// Ops alerts on the *rate* per auction to catch the second case
+    /// before revenue accounting drifts. The fee itself is excluded from
+    /// the returned map (behavior unchanged — the fee is invisible to the
+    /// caller).
+    #[metric(name = "orderbook_protocol_fee_orphans")]
+    pub protocol_fee_orphans: prometheus::IntCounter,
 }
 
 impl Metrics {
-    fn get() -> &'static Self {
+    pub fn get() -> &'static Self {
         Metrics::instance(observe::metrics::get_storage_registry()).unwrap()
     }
 }

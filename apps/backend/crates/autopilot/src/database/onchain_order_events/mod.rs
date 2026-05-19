@@ -712,7 +712,19 @@ async fn insert_order_hooks(
             continue;
         };
         let Ok(parsed) = app_data::parse(&appdata_json) else {
-            tracing::debug!(appdata = %String::from_utf8_lossy(&appdata_json), "could not parse appdata");
+            // Phase 2 audit MED M16: pre-this-PR this was a `tracing::debug!`
+            // → silent drop of any `hooks.pre`/`hooks.post` declared in
+            // app_data. An on-chain order with a malformed app_data would
+            // execute *without* its declared hooks, which is a real
+            // economic mismatch vs the order's signed intent. Raise to
+            // `warn!` and increment a metric so ops can alert on the
+            // rate.
+            tracing::warn!(
+                order = ?order.uid,
+                appdata = %String::from_utf8_lossy(&appdata_json),
+                "could not parse onchain order appdata — declared hooks will not be scheduled"
+            );
+            Metrics::get().inc_onchain_order_errors("appdata_parse_failure");
             continue;
         };
         if parsed.hooks.pre.is_empty() && parsed.hooks.post.is_empty() {
