@@ -28,7 +28,7 @@ services:
   # for current "debug a specific incident" use; if we need long-term
   # trace retention later, swap to badger-backed (~/.local/state/...).
   jaeger:
-    image: jaegertracing/all-in-one:1.65
+    image: jaegertracing/all-in-one:1.76.0
     restart: always
     mem_limit: 512m
     environment:
