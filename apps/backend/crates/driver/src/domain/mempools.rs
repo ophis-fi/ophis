@@ -283,6 +283,12 @@ impl Mempools {
                                 });
                             } else {
                                 tracing::warn!(?hash, ?err, "couldn't re-simulate tx");
+                                observe::metrics::get()
+                                    .resimulation_transport_error
+                                    .with_label_values(
+                                        &[&mempool.to_string(), "transport_or_decode"],
+                                    )
+                                    .inc();
                             }
                         }
                     }

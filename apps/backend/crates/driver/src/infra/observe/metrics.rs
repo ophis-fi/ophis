@@ -41,6 +41,23 @@ pub struct Metrics {
     pub submitter_cancellation_failed: prometheus::IntCounterVec,
     /// How many tokens detected by specific solver and strategy.
     pub bad_tokens_detected: prometheus::IntCounter,
+    /// Access-list estimation failures that fell back to an empty access list.
+    /// Phase 2 audit MED M7: the fallback itself is intentional (the tx
+    /// would still succeed on-chain without the access list) but operators
+    /// need visibility into when/how often it fires — a sustained spike
+    /// implies a degraded simulator/RPC, not just a transient blip.
+    /// Pre-this-metric, the only signal was a `tracing::warn!`.
+    #[metric(labels("kind"))]
+    pub access_list_fallback: prometheus::IntCounterVec,
+    /// In-flight tx re-simulation transport errors (non-revert).
+    /// Phase 2 audit MED M12: an RPC outage during in-flight tracking
+    /// causes `estimate_gas` to fail-non-revert, which previously was a
+    /// silent `tracing::warn!` and continued holding the tx. With this
+    /// metric, ops can alert when re-sim transport errors per signer
+    /// exceed a threshold (signals either RPC degradation or an exhausted
+    /// fallback chain) and intervene before the deadline.
+    #[metric(labels("mempool", "kind"))]
+    pub resimulation_transport_error: prometheus::IntCounterVec,
     /// Time spent in the auction preprocessing stage.
     #[metric(
         labels("stage"),
