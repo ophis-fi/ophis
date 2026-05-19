@@ -8,7 +8,8 @@
 #   - driver:    port 80   /metrics (same port as the main API)
 #   - autopilot: port 9589 /metrics (default_metrics_address)
 #   - orderbook: port 9586 /metrics (DEFAULT_METRICS_PORT)
-#   - rpc-proxy: port 4000 /metrics (eRPC built-in)
+#   - rpc-proxy: port 4001 /metrics (eRPC built-in; port 4000 is the
+#     JSON-RPC endpoint, 4001 is the Prom metrics endpoint, 6060 is pprof)
 #
 # kyberswap-solver does NOT expose Prometheus metrics today (it's a thin
 # solver-shim built from the same crate as `baseline`). Its health is
@@ -54,7 +55,9 @@ scrape_configs:
 
   - job_name: rpc-proxy
     static_configs:
-      - targets: [rpc-proxy:4000]
+      # eRPC exposes JSON-RPC on 4000 and Prom metrics on 4001 (separate
+      # listener). Scraping 4000 returns 404 because that's the RPC port.
+      - targets: [rpc-proxy:4001]
     metrics_path: /metrics
     scrape_interval: 30s
 
