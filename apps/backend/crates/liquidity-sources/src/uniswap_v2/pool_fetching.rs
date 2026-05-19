@@ -220,7 +220,7 @@ where
     async fn fetch(&self, token_pairs: HashSet<TokenPair>, at_block: Block) -> Result<Vec<Pool>> {
         let mut token_pairs: Vec<_> = token_pairs.into_iter().collect();
         {
-            let mut non_existent_pools = self.non_existent_pools.write().unwrap();
+            let mut non_existent_pools = poison_recovery::write_or_recover(&self.non_existent_pools, "liquidity_sources::uniswap_v2::non_existent_pools");
             token_pairs.retain(|pair| non_existent_pools.cache_get(pair).is_none());
         }
         let futures = token_pairs
@@ -240,7 +240,7 @@ where
         }
         if !new_missing_pairs.is_empty() {
             tracing::debug!(token_pairs = ?new_missing_pairs, "stop indexing liquidity");
-            let mut non_existent_pools = self.non_existent_pools.write().unwrap();
+            let mut non_existent_pools = poison_recovery::write_or_recover(&self.non_existent_pools, "liquidity_sources::uniswap_v2::non_existent_pools");
             for pair in new_missing_pairs {
                 non_existent_pools.cache_set(pair, ());
             }

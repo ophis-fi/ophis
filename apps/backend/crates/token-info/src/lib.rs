@@ -117,7 +117,7 @@ impl CachedTokenInfoFetcher {
 impl CachedTokenInfoFetcher {
     async fn fetch_token(&self, address: Address) -> Result<TokenInfo, Error> {
         let fetch = {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = poison_recovery::lock_or_recover(&self.cache, "token_info::cache");
             cache
                 .entry(address)
                 .or_insert({
@@ -131,7 +131,7 @@ impl CachedTokenInfoFetcher {
 
         let info = fetch.await;
         if info.is_err() {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = poison_recovery::lock_or_recover(&self.cache, "token_info::cache");
             if let Some(Err(_)) = cache.get(&address).and_then(|fetch| fetch.peek()) {
                 cache.remove(&address);
             }

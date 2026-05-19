@@ -184,7 +184,7 @@ impl BalanceOverrides {
         tracing::trace!(?token, "attempting to auto-detect");
 
         {
-            let mut cache = cache.lock().unwrap();
+            let mut cache = poison_recovery::lock_or_recover(&cache, "balance_overrides::cache");
             if let Some(strategy) = cache.cache_get(&(token, None)) {
                 tracing::trace!(?token, "cache hit (strategy valid for all holders)");
                 return strategy.clone();
@@ -213,7 +213,7 @@ impl BalanceOverrides {
                     .cache_set(cache_key, Some(strategy.clone()));
             } else {
                 // strategy is Err(DetectionError::NotFound)
-                cache.lock().unwrap().cache_set((token, Some(holder)), None);
+                poison_recovery::lock_or_recover(&cache, "balance_overrides::cache").cache_set((token, Some(holder)), None);
             }
         } else {
             tracing::warn!(

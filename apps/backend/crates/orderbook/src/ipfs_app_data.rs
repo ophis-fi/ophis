@@ -88,12 +88,10 @@ impl IpfsAppData {
         let outcome = |data: &Option<String>| if data.is_some() { "found" } else { "missing" };
 
         let metric = &self.metrics.app_data;
-        if let Some(cached) = self
-            .cache
-            .lock()
-            .unwrap()
-            .cache_get(contract_app_data)
-            .cloned()
+        if let Some(cached) =
+            poison_recovery::lock_or_recover(&self.cache, "orderbook::ipfs_app_data::cache")
+                .cache_get(contract_app_data)
+                .cloned()
         {
             metric.with_label_values(&[outcome(&cached), "cache"]).inc();
             return Ok(cached);
@@ -111,9 +109,7 @@ impl IpfsAppData {
             }
         };
 
-        self.cache
-            .lock()
-            .unwrap()
+        poison_recovery::lock_or_recover(&self.cache, "orderbook::ipfs_app_data::cache")
             .cache_set(*contract_app_data, result.clone());
         metric.with_label_values(&[outcome(&result), "node"]).inc();
         Ok(result)

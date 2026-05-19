@@ -16,6 +16,7 @@ async-trait = { workspace = true }
 balance-overrides = { workspace = true }
 contracts = { workspace = true }
 ethrpc = { workspace = true }
+poison-recovery = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 mockall = { workspace = true, optional = true }

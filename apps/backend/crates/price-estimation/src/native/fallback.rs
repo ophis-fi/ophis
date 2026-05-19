@@ -102,7 +102,7 @@ impl FallbackNativePriceEstimator {
         let Err(PriceEstimationError::ProtocolInternal(err)) = result else {
             if let State::Primary {
                 consecutive_errors, ..
-            } = &mut *self.state.lock().unwrap()
+            } = &mut *poison_recovery::lock_or_recover(&self.state, "price_estimation::native::fallback::state")
             {
                 *consecutive_errors = 0;
             }
@@ -110,7 +110,7 @@ impl FallbackNativePriceEstimator {
         };
 
         let (use_fallback, consecutive_errors) = {
-            let mut state = self.state.lock().unwrap();
+            let mut state = poison_recovery::lock_or_recover(&self.state, "price_estimation::native::fallback::state");
             let State::Primary {
                 consecutive_errors, ..
             } = &mut *state
@@ -146,7 +146,7 @@ impl FallbackNativePriceEstimator {
     }
 
     fn next_action(&self) -> Action {
-        let mut state = self.state.lock().unwrap();
+        let mut state = poison_recovery::lock_or_recover(&self.state, "price_estimation::native::fallback::state");
         match &mut *state {
             State::Primary { .. } => Action::Primary,
             State::Fallback { last_probe } if last_probe.elapsed() >= PROBE_INTERVAL => {
@@ -187,7 +187,7 @@ impl FallbackNativePriceEstimator {
             Err(PriceEstimationError::ProtocolInternal(_))
         ) {
             {
-                let mut state = self.state.lock().unwrap();
+                let mut state = poison_recovery::lock_or_recover(&self.state, "price_estimation::native::fallback::state");
                 *state = State::Fallback {
                     last_probe: Instant::now(),
                 };
@@ -196,7 +196,7 @@ impl FallbackNativePriceEstimator {
             fallback_result
         } else {
             {
-                let mut state = self.state.lock().unwrap();
+                let mut state = poison_recovery::lock_or_recover(&self.state, "price_estimation::native::fallback::state");
                 *state = State::Primary {
                     consecutive_errors: 0,
                 };

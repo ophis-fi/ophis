@@ -1,0 +1,12 @@
+[package]
+name = "poison-recovery"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+doctest = false
+name = "poison_recovery"
+path = "src/lib.rs"
+
+[dependencies]
+tracing = { workspace = true }
