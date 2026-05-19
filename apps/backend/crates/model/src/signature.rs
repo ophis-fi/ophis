@@ -175,8 +175,24 @@ impl Signature {
                     .context("unreachable?")?;
                 Ok(recovered.signer)
             }
-            Self::Eip1271(_) => Ok(Address::from_slice(&signature[..20])),
-            Self::PreSign => Ok(Address::from_slice(signature)),
+            Self::Eip1271(_) => {
+                anyhow::ensure!(
+                    signature.len() >= 20,
+                    "EIP-1271 signature too short to extract prepended signer: \
+                     got {} bytes, need >= 20",
+                    signature.len()
+                );
+                Ok(Address::from_slice(&signature[..20]))
+            }
+            Self::PreSign => {
+                anyhow::ensure!(
+                    signature.len() == 20,
+                    "PreSign signature must be exactly 20 bytes (signer address); \
+                     got {} bytes",
+                    signature.len()
+                );
+                Ok(Address::from_slice(signature))
+            }
         }
     }
 }
