@@ -22,7 +22,7 @@ would hijack 2-of-3 simultaneously, meeting the consensus threshold
 and forging reads). Failure-domain rationale lives in
 `infra/optimism-mainnet/configs/erpc.yaml.tmpl` header.
 
-**Consensus policy:** `maxParticipants=3`, `agreementThreshold=2`,
+**Consensus policy:** `maxParticipants=2`, `agreementThreshold=2`,
 `disputeBehavior=returnError`, `lowParticipantsBehavior=returnError`.
 Audit-required to defeat fork-view-poisoning (any 1 hostile upstream
 cannot influence outcomes).
@@ -172,7 +172,7 @@ before live use):
    sharp-edges) because the threat model on consensus picks is
    security-relevant.
 
-## Critical incident: 2-of-3 upstreams down
+## Critical incident: 2-of-2 upstreams down
 
 If two upstreams are down simultaneously, every consensus call fails.
 Driver/orderbook/autopilot stall on every block-tip read. Settlements
