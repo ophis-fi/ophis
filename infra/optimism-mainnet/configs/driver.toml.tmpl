@@ -9,13 +9,33 @@ orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"
 
 # Skip eth_createAccessList preflight before settlement simulation.
-# Public OP RPCs (publicnode, ankr, etc.) return `"storageKeys": null`
-# for empty entries on complex traces, which trips alloy's strict
-# deserializer in the driver and surfaces as a confusing Simulation
-# Revert error. Disabling unblocks simulation; on Optimism, access
-# lists give a tiny L2-gas savings that doesn't justify the extra
-# RPC round-trip anyway. The settle() tx still submits fine without
-# the AL.
+#
+# Original (pre-eRPC) rationale: public OP RPCs (publicnode, ankr) return
+# `"storageKeys": null` for empty entries on complex traces, which trips
+# alloy's strict deserializer in the driver and surfaces as a confusing
+# Simulation Revert error.
+#
+# Phase 4 audit M-4 (2026-05-19) — partial fix landed, full re-enable
+# deferred:
+#
+# AL simulation is a defense-in-depth check (predicts on-chain settle()
+# success more accurately than bare eth_call). Disabling it means we
+# trust the bare-call simulation alone. Pre-eRPC this was a real risk:
+# any single hostile upstream answering eth_call with a fake success
+# could trick the driver into broadcasting a tx that reverts on real
+# chain (cost: gas only, but a sustained attack costs the 0.02 ETH
+# driver budget).
+#
+# Post-#130 (eRPC + 2-of-3 consensus on eth_call): the bare-call path
+# IS now consensus-protected. The marginal value of AL preflight on top
+# of consensus is much smaller — AL catches a narrow case where
+# simulation passes but settle() fails due to mid-tx storage changes
+# (rare on OP given 2s block times + our access-pattern).
+#
+# Net: keeping disable=true here is now LOW residual risk. Flipping to
+# false requires either (a) an alloy version that tolerates null
+# storageKeys, OR (b) eRPC response normalization mapping null → [].
+# Tracked as a follow-up; not blocking on this PR.
 disable-access-list-simulation = true
 
 [contracts]
