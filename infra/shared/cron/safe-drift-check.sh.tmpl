@@ -21,14 +21,31 @@ declare -a CHAINS=(
   "optimism|10|https://mainnet.optimism.io|0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF|0x858f0F5eE954846D47155F5203c04aF1819eCeF8|0x9eFDcC273430a7d61BE3E2Ee0d2Be4F76C66BA8|0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
 )
 
-# Expected protocol Safe owners (sorted lowercase). Updated when signers
-# rotate via Safe vote. Out-of-band update procedure: edit this script,
+# Expected protocol Safe owners (lowercase 40-hex, space-separated).
+# Updated when signers rotate via Safe vote — edit this script,
 # git commit, push.
+#
+# Pre-flight guard below asserts every entry is a valid 40-hex address
+# at startup. Placeholder strings (`0x...ledger2`) cause an immediate
+# exit-1 — by design, so a half-configured script can't silently fire
+# drift alerts on every check.
 EXPECTED_PROTOCOL_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x...ledger2 0x...ledger3'
 EXPECTED_PROTOCOL_THRESHOLD=2
 
 EXPECTED_PARTNER_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a'
 EXPECTED_PARTNER_THRESHOLD=1
+
+# Pre-flight: refuse to run with placeholder addresses (sharp-edges M-1).
+for expected_var in EXPECTED_PROTOCOL_OWNERS_SORTED EXPECTED_PARTNER_OWNERS_SORTED; do
+  for addr in ${!expected_var}; do
+    if [[ ! "$addr" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+      echo "ERROR: ${expected_var} contains non-address token: '$addr'" >&2
+      echo "  Edit safe-drift-check.sh.tmpl and replace placeholders" >&2
+      echo "  (e.g. '0x...ledger2') with real 40-hex addresses." >&2
+      exit 1
+    fi
+  done
+done
 
 TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/hyperevm-mainnet/observability-rendered/telegram-token}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
