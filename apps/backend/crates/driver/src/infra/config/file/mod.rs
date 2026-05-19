@@ -365,9 +365,16 @@ enum Account {
     /// TOML end up in backups, version control, and log dumps.
     PrivateKey(eth::B256),
     /// Path to a file containing a 32-byte hex-encoded private key
-    /// (with or without `0x` prefix, trailing whitespace trimmed).
-    /// On Unix, the file must not be group- or world-readable (mode &
-    /// 0o077 == 0); the driver refuses to start otherwise.
+    /// (with or without `0x` / `0X` prefix, trailing whitespace trimmed).
+    ///
+    /// On Unix, the file:
+    ///   - Must not be a symlink (refused on startup).
+    ///   - Must not be group- or world-readable (`mode & 0o077 == 0`);
+    ///     driver refuses to start otherwise.
+    ///
+    /// This enforces *filesystem-level* secrecy only. Processes running
+    /// under the same UID (e.g. shared `systemd User=` accounts) can still
+    /// read the file. For true key isolation use `Kms`.
     PrivateKeyFile {
         path: std::path::PathBuf,
     },

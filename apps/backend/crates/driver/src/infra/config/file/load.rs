@@ -401,38 +401,82 @@ async fn load_account(account: file::Account, chain_id: Option<u64>) -> Account 
 
 /// Read a 32-byte hex-encoded private key from disk.
 ///
-/// Rejects files that grant group/world read permission on Unix to avoid
-/// the classic "PK on a shared host" leak. Accepts `0x`-prefixed or raw
-/// hex, trims surrounding whitespace (so `echo > key` works), and enforces
-/// exactly 32 decoded bytes.
+/// On Unix this:
+///   1. Rejects symlinks via `symlink_metadata` (avoids "swap the symlink
+///      target after permission check" attacks),
+///   2. Opens the file once and validates the permission mode against the
+///      open file descriptor (closes the TOCTOU window between stat and
+///      read), refusing group/world-readable files (`mode & 0o077 != 0`),
+///   3. Reads from the same FD.
+///
+/// On Windows the symlink + permission checks are skipped — operator must
+/// rely on NTFS ACLs.
+///
+/// The key encoding accepts `0x` / `0X` prefix or raw hex, trims surrounding
+/// whitespace (so `echo $KEY > file` works without `tr -d '\n'`), and
+/// enforces exactly 32 decoded bytes.
+///
+/// **Security note:** this enforces *filesystem-level* secrecy only. If
+/// other processes run under the same UID (e.g. a shared `systemd User=`
+/// account), they can read the key freely. For true key isolation use
+/// `account.kms`.
 async fn load_private_key_file(path: &Path) -> anyhow::Result<eth_domain_types::B256> {
     use anyhow::Context;
+    use tokio::io::AsyncReadExt;
+
+    #[cfg(unix)]
+    {
+        // Reject symlinks *before* opening — fstat-on-FD can't tell us this.
+        let symlink_meta = tokio::fs::symlink_metadata(path)
+            .await
+            .with_context(|| format!("stat {}", path.display()))?;
+        anyhow::ensure!(
+            !symlink_meta.file_type().is_symlink(),
+            "private key file {} is a symlink; refusing to follow (point the \
+             config at the real file)",
+            path.display()
+        );
+    }
+
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .with_context(|| format!("open {}", path.display()))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let meta = tokio::fs::metadata(path)
+        // metadata() on the open File uses fstat against the FD — no
+        // path-based re-resolution, so a concurrent rename/replace can't
+        // make us read a different file than we validated.
+        let fd_meta = file
+            .metadata()
             .await
-            .with_context(|| format!("stat {path:?}"))?;
-        let mode = meta.permissions().mode() & 0o777;
+            .with_context(|| format!("fstat {}", path.display()))?;
+        let mode = fd_meta.permissions().mode() & 0o777;
         anyhow::ensure!(
             mode & 0o077 == 0,
-            "private key file {path:?} has insecure permissions {mode:o}; \
-             must not be group- or world-readable (try `chmod 600`)"
+            "private key file {} has insecure permissions {:o}; must not be \
+             group- or world-readable (try `chmod 600`)",
+            path.display(),
+            mode
         );
     }
 
-    let contents = tokio::fs::read_to_string(path)
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
         .await
-        .with_context(|| format!("read {path:?}"))?;
-    let hex = contents
-        .trim()
-        .trim_start_matches("0x")
-        .trim_start_matches("0X");
-    let bytes = const_hex::decode(hex).with_context(|| format!("decode hex in {path:?}"))?;
+        .with_context(|| format!("read {}", path.display()))?;
+    let trimmed = contents.trim();
+    let hex = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    let bytes =
+        const_hex::decode(hex).with_context(|| format!("decode hex in {}", path.display()))?;
     anyhow::ensure!(
         bytes.len() == 32,
-        "private key file {path:?} must decode to 32 bytes, got {}",
+        "private key file {} must decode to 32 bytes, got {}",
+        path.display(),
         bytes.len()
     );
     Ok(eth_domain_types::B256::from_slice(&bytes))
@@ -500,4 +544,16 @@ mod tests {
         let (_d, path) = write_key(VALID_HEX, 0o640).await;
         load_private_key_file(&path).await.unwrap_err();
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rejects_symlink() {
+        let (_d, real) = write_key(VALID_HEX, 0o600).await;
+        let link_dir = tempfile::tempdir().unwrap();
+        let link = link_dir.path().join("key-link");
+        tokio::fs::symlink(&real, &link).await.unwrap();
+        let err = load_private_key_file(&link).await.unwrap_err();
+        assert!(format!("{err:#}").contains("symlink"));
+    }
+
 }
