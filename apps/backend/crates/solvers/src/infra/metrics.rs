@@ -21,6 +21,23 @@ struct Metrics {
 
     /// The number of solutions that were found.
     solutions: prometheus::IntCounter,
+
+    /// DEX-side slippage tolerance clamps. Phase 2 audit MED M10: the
+    /// solver asks the DEX for slippage `requested_bps`; the DEX caps
+    /// it at its own `max_bps` (KyberSwap, Velora, ...) and executes
+    /// the route with the tighter tolerance. Pre-this-metric the only
+    /// signal was a `tracing::warn!` per request — not alertable.
+    ///
+    /// The clamp is a *user-facing economic divergence*: the on-chain
+    /// transaction is now sensitive to a smaller slippage band than the
+    /// user signed for, so a real-world price move that the user would
+    /// have tolerated now reverts as a "slippage exceeded" failure.
+    /// Operators alert on the rate per dex to catch either:
+    ///   - chain volatility pushing through our default slippage band
+    ///     (action: widen the band), or
+    ///   - a DEX silently lowering its max_bps (action: re-tune).
+    #[metric(labels("dex"))]
+    dex_slippage_clamped: prometheus::IntCounterVec,
 }
 
 /// Setup the metrics registry.
@@ -51,6 +68,51 @@ pub fn solve_error(reason: &str) {
 
 pub fn request_sent() {
     get().solve_requests.inc();
+}
+
+/// Typed identifier for a DEX integration. Used both as the
+/// `dex_slippage_clamped{dex}` label value and as a compile-time gate:
+/// `clamp_slippage_bps` only accepts a `Dex`, so a typo / new
+/// integration cannot silently spawn a new Prometheus series.
+#[derive(Debug, Clone, Copy)]
+pub enum Dex {
+    KyberSwap,
+    Velora,
+}
+
+impl Dex {
+    fn as_label(self) -> &'static str {
+        match self {
+            Dex::KyberSwap => "kyberswap",
+            Dex::Velora => "velora",
+        }
+    }
+}
+
+/// Clamp the solver's requested slippage to the DEX's hard cap,
+/// recording the clamp as a metric when it fires.
+///
+/// Phase 2 audit MED M10 chokepoint: keeping clamp + metric in the same
+/// function guarantees a new DEX integration cannot reintroduce the
+/// "silent clamp + tracing::warn! only" pattern. Pattern-matched
+/// `Dex` argument also prevents the typo-creates-new-series footgun
+/// (sharp-edges-flagged in pre-merge review).
+pub fn clamp_slippage_bps(dex: Dex, requested_bps: u16, max_bps: u16) -> u16 {
+    if requested_bps > max_bps {
+        tracing::warn!(
+            dex = dex.as_label(),
+            requested = requested_bps,
+            clamp = max_bps,
+            "slippage exceeds DEX maximum, clamping",
+        );
+        get()
+            .dex_slippage_clamped
+            .with_label_values(&[dex.as_label()])
+            .inc();
+        max_bps
+    } else {
+        requested_bps
+    }
 }
 
 /// Get the metrics instance.
