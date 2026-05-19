@@ -53,6 +53,59 @@ pub use {auction::Auction, order::Order, pre_processing::DataAggregator, solutio
 type BalanceGroup = (order::Trader, eth::TokenAddress, order::SellTokenBalance);
 type Balances = HashMap<BalanceGroup, order::SellAmount>;
 
+#[cfg(test)]
+mod poison_recovery_tests {
+    use {
+        super::*,
+        std::{panic::AssertUnwindSafe, sync::Mutex},
+    };
+
+    #[test]
+    fn lock_settlements_recovers_after_poison() {
+        let m: Mutex<VecDeque<Settlement>> = Mutex::new(VecDeque::new());
+
+        // Poison the mutex by panicking while holding the lock.
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let _g = m.lock().unwrap();
+            panic!("simulated panic with lock held");
+        }));
+        assert!(m.is_poisoned(), "test prerequisite — mutex should be poisoned");
+
+        // The recovery helper must return a guard without panicking.
+        let guard = lock_settlements(&m);
+        // The recovered state is still a valid (empty) VecDeque.
+        assert!(guard.is_empty());
+        // Subsequent calls also work.
+        drop(guard);
+        let _guard_again = lock_settlements(&m);
+    }
+}
+
+/// Acquire the [`Competition::settlements`] mutex, recovering from poison
+/// instead of propagating the panic.
+///
+/// `std::sync::Mutex` poisons when the panic-set is dropped while the
+/// guard is held. After poison every `.lock().unwrap()` panics, which
+/// permanently disables the driver's settle path. We don't want that —
+/// the settlements cache is best-effort recovery state; a stale/partially-
+/// mutated VecDeque is preferable to a fail-shut driver.
+///
+/// Strategy: log loudly so ops can find the original panic site in
+/// journald, then continue with the recovered guard via `into_inner`.
+/// Behavior matches `parking_lot::Mutex` semantics.
+fn lock_settlements(
+    m: &Mutex<VecDeque<Settlement>>,
+) -> std::sync::MutexGuard<'_, VecDeque<Settlement>> {
+    m.lock().unwrap_or_else(|e| {
+        tracing::error!(
+            "settlements mutex was poisoned — a prior settle task panicked while \
+             holding the lock. Recovering with potentially-inconsistent state. \
+             Investigate the originating panic in journald."
+        );
+        e.into_inner()
+    })
+}
+
 /// How many concurrent auction generations we size the settlement cache for.
 /// Each auction can propose up to `max_solutions_to_propose` settlements;
 /// keeping this many generations around lets a stale /settle for a previous
@@ -294,6 +347,13 @@ pub struct Competition {
     pub simulator: Simulator,
     pub mempools: Mempools,
     /// Cached solutions with the most recent solutions at the front.
+    ///
+    /// **Poison handling**: lock with [`lock_settlements`] — never
+    /// `.unwrap()` directly. A panic while holding this lock poisons it,
+    /// and every future settle would panic on the next lock acquisition,
+    /// permanently disabling the driver. The helper recovers via
+    /// `e.into_inner()` and emits a `tracing::error!` so ops can see
+    /// the original panic site in journald.
     pub settlements: Mutex<VecDeque<Settlement>>,
     /// bad token and orders detector
     pub risk_detector: Arc<risk_detector::Detector>,
@@ -588,7 +648,7 @@ impl Competition {
         // solutions from previous overlapping auctions around long enough
         // for their /settle to complete.
         {
-            let mut lock = self.settlements.lock().unwrap();
+            let mut lock = lock_settlements(&self.settlements);
             for (_, settlement) in &scored {
                 lock.push_front(settlement.clone());
             }
@@ -939,7 +999,7 @@ impl Competition {
         // one wins, the other returns SolutionNotAvailable harmlessly.
         // Worst case is one wasted submitter slot until guard drop.
         {
-            let lock = self.settlements.lock().unwrap();
+            let lock = lock_settlements(&self.settlements);
             if !lock
                 .iter()
                 .any(|s| s.solution().get() == solution_id && s.auction_id == auction_id)
@@ -959,7 +1019,7 @@ impl Competition {
 
         // Now actually remove from cache. The lock blocks racing callers.
         let settlement = {
-            let mut lock = self.settlements.lock().unwrap();
+            let mut lock = lock_settlements(&self.settlements);
             let Some(index) = lock
                 .iter()
                 .position(|s| s.solution().get() == solution_id && s.auction_id == auction_id)
@@ -1043,9 +1103,7 @@ impl Competition {
 
     /// The ID of the auction being competed on.
     pub fn auction_id(&self, solution_id: u64) -> Option<auction::Id> {
-        self.settlements
-            .lock()
-            .unwrap()
+        lock_settlements(&self.settlements)
             .iter()
             .find(|s| s.solution().get() == solution_id)
             .map(|s| s.auction_id)
