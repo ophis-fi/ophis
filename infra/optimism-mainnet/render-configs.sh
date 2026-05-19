@@ -1,17 +1,75 @@
 #!/usr/bin/env bash
-# Ophis OP mainnet — render *.toml.tmpl into rendered/*.toml.
+# Ophis OP mainnet — render *.toml.tmpl into ./rendered/*.toml.
 #
 # The CoW solver TOML parser doesn't substitute env vars at parse time, so
 # we pre-render TOML templates that need secrets (OKX, driver-submitter PK).
 #
-# Tier 1 PK isolation (2026-05-18): driver.toml is rendered into
-# /Users/ophis-driver/rendered/optimism-mainnet/ owned by ophis-driver (0700
-# parent + 0600 file). All other TOMLs render to ./rendered/ as before.
-# The PK source is /Users/ophis-driver/.config/submitter.key, NOT .env.
-# Requires sudo for the cross-user PK read and the install-as-ophis-driver
-# step. Run before `docker compose up`.
+# ## Tier 1 PK isolation (2026-05-18, scope-honest 2026-05-19)
+#
+# **What Tier 1 actually achieves today:**
+#   - PK source-of-truth is the file at /Users/ophis-driver/.config/submitter.key
+#     (mode 0600, owner ophis-driver), NOT a .env entry that other processes
+#     running as scep could read.
+#   - The script refuses to run if .env still contains the legacy
+#     OPHIS_DRIVER_SUBMITTER_KEY line.
+#   - Read requires sudo, which is YubiKey-gated when MFA is configured.
+#
+# **What Tier 1 DOES NOT achieve (Phase 4 audit H1, 2026-05-19):**
+#   - The rendered driver.toml STILL lives at ./rendered/driver.toml under
+#     scep's home directory (mode 0600 owner=scep). Any process running as
+#     scep can read it. This is NOT "isolation from scep"; it's "isolation
+#     from random other-user processes" (of which the Mac mini has none in
+#     practice).
+#
+# **Why we can't fix this in Tier 1:**
+#   - colima's virtiofs daemon runs as scep and can ONLY bind-mount paths
+#     scep can read. Moving the rendered driver.toml to
+#     /Users/ophis-driver/rendered/... would break the docker bind mount
+#     (verified: docker-compose.yml driver volume mount is
+#     ./rendered/driver.toml:/driver.toml:ro).
+#
+# **Upgrade paths from here:**
+#   1. Tier 1.5 (in-RAM): render driver.toml to a hdiutil-managed RAM disk
+#      that's bind-mounted into the container. Avoids on-disk PK exposure.
+#      ~Half-day of work; tracked as a follow-up.
+#   2. Tier 2 (KMS, $140/yr AWS): the driver's Account::Kms code path
+#      already exists. Eliminates local PK exposure entirely. Tracked as
+#      roadmap task 1.9.
+#   3. Switch off colima (Rancher Desktop / Docker Desktop) to enable
+#      cross-user bind mounts. ~1-2h migration; risks breaking other dev
+#      workflows.
+#
+# Run before `docker compose up`. Run from this directory.
+#
+# ## Caveats not enforced by this script
+#
+#   - If `/etc/sudoers` has `Defaults log_input`, the PK is written to
+#     `/var/log/sudo-io/` when sudo prompts on TTY. Check + remove that
+#     directive before relying on Tier 1 (sharp-edges note).
+#   - Tier 1 protects against random scep-process exfiltration. Same-UID
+#     processes (e.g. shared systemd User= accounts) bypass it; the Mac
+#     mini doesn't have any such today.
+#
+# ## Exit codes
+#   1 — .env missing
+#   2 — running under set -x (PK would leak in trace)
+#   4 — .env still has legacy OPHIS_DRIVER_SUBMITTER_KEY line
+#   5 — PK file at /Users/ophis-driver/.config/submitter.key is malformed
 
 set -euo pipefail
+# Defense-in-depth (Phase 4 audit H2): tighten umask BEFORE any file
+# operations so the brief window between `envsubst > out` and `chmod 600`
+# can't be opened by another process. Without this, the default macOS
+# umask (022) leaves a microsecond-scale 0644 window per template.
+umask 077
+
+# Refuse to run under `set -x` / `bash -x` (sharp-edges audit pattern,
+# mirroring HL render-configs.sh:18-25): the sudo cat below traces the
+# PK if -x is set.
+if [[ "${-}" == *x* ]]; then
+  echo "REFUSING to run under set -x: the PK would leak in the trace." >&2
+  exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -28,6 +86,11 @@ if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=" .env; then
   echo "       Tier 1 moved the PK source to /Users/ophis-driver/.config/submitter.key." >&2
   exit 4
 fi
+
+# Tighten .env perms BEFORE reading it (sharp-edges MED-3, pre-PR
+# review): chmod 600 after `source` would leave the file world-readable
+# during the read window. Idempotent — chmod is a no-op if already 600.
+chmod 600 .env
 
 # Load .env into this shell so envsubst sees the non-PK vars (OP_MAINNET_RPC,
 # OKX_*). After Tier 1, .env has NO PK and source can't re-introduce it.
@@ -54,13 +117,11 @@ for tmpl in configs/*.toml.tmpl; do
   # envsubst only substitutes the explicit list we pass.
   envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out"
+  # Redundant under `umask 077` set at script top, but kept as defense-
+  # in-depth against a future edit that hoists or removes the umask.
   chmod 600 "$out"
   echo "  rendered  $name"
 done
-
-# Same lock for .env — render-configs.sh runs at every deploy so this
-# enforces idempotently.
-[ -f .env ] && chmod 600 .env
 
 echo ""
 echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, mode 600."
