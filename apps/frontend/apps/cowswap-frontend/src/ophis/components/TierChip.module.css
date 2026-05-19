@@ -41,3 +41,20 @@
 .silver   { color: #9aa3b2; border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
 .gold     { color: #d4af37; border-color: rgba(212,175,55,0.5);  background: rgba(212,175,55,0.06); }
 .platinum { color: #b9f2ff; border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }
+
+/* Opt-in CTA — neutral ghost styling so it doesn't compete visually with
+   the colored tier states. Reads as "discoverable but optional." */
+.optIn {
+  color: rgba(245, 239, 230, 0.65);
+  border-color: rgba(245, 239, 230, 0.20);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  /* Native <button> resets to look like the <a> variants above. */
+}
+.optIn:hover {
+  color: rgba(245, 239, 230, 0.92);
+  border-color: rgba(245, 239, 230, 0.45);
+}
