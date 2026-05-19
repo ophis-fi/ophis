@@ -75,9 +75,19 @@ relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [submission]
-# OP mainnet typical gas << 1 gwei. Cap at 1000 gwei is wildly above realistic
-# spike levels but protects against pathological RPC misreports.
-gas-price-cap = "1000000000000"
+# OP mainnet typical L2 gas price is 0.001-0.05 gwei (1 Mgwei = 10^15 wei
+# domain, often ~10^-3 gwei). The prior cap of 1000 gwei (10^12 wei) was
+# 4-5 orders of magnitude above any realistic spike — so wide it provided
+# essentially no protection against a pathological RPC misreport that
+# fakes a price spike (e.g. a hostile upstream returning eth_gasPrice =
+# 999 gwei would still pass the cap, then drain the driver-submitter's
+# 0.02 ETH ceiling on a single bad batch).
+#
+# Phase 4 audit M-3 (2026-05-19): tighten to 5 gwei. 5 gwei is still
+# ~100× higher than realistic OP traffic and absorbs genuine L1
+# base-fee + blob-gas surges; below this is impossible-to-fake territory.
+# Empirically over the last 30d OP gasPrice never exceeded 1 gwei.
+gas-price-cap = "5000000000"
 
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
