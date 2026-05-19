@@ -8,10 +8,44 @@ use {
     number::conversions::{big_decimal_to_u256, u256_to_big_decimal},
     std::{
         collections::HashMap,
-        sync::Mutex,
+        sync::{
+            Mutex, MutexGuard,
+            atomic::{AtomicBool, Ordering},
+        },
         time::{Duration, Instant},
     },
 };
+
+/// Logged-once gate for the partial-fill cache poison-recovery path
+/// — see [`lock_fill_amounts`].
+static AMOUNTS_POISON_LOGGED: AtomicBool = AtomicBool::new(false);
+
+/// Acquire the partial-fill amounts cache mutex, recovering from poison.
+///
+/// `std::sync::Mutex` poisons when the lock-holding task panics. After
+/// poison every `.lock().unwrap()` panics, permanently breaking partial-
+/// fill quoting for the solver. The cache is best-effort state — a stale
+/// entry is preferable to a fail-shut solver.
+///
+/// Same pattern as `driver::competition::lock_settlements` (PR-V): log
+/// once per process, clear the poison via `clear_poison()`, return the
+/// recovered guard.
+fn lock_fill_amounts(
+    m: &Mutex<HashMap<order::Uid, CacheEntry>>,
+) -> MutexGuard<'_, HashMap<order::Uid, CacheEntry>> {
+    m.lock().unwrap_or_else(|e| {
+        if !AMOUNTS_POISON_LOGGED.swap(true, Ordering::Relaxed) {
+            tracing::error!(
+                "Fills::amounts mutex was poisoned — a prior task panicked while \
+                 holding the lock. Recovering with potentially-inconsistent cache. \
+                 Investigate the originating panic in journald. \
+                 (this message logs once per process; clearing poison)"
+            );
+        }
+        m.clear_poison();
+        e.into_inner()
+    })
+}
 
 /// Manages the search for a fillable amount for all order types but
 /// specifically for partially fillable orders.
@@ -60,7 +94,7 @@ impl Fills {
 
         let now = Instant::now();
 
-        let amount = match self.amounts.lock().unwrap().entry(order.uid) {
+        let amount = match lock_fill_amounts(&self.amounts).entry(order.uid) {
             std::collections::hash_map::Entry::Vacant(entry) => {
                 entry.insert(CacheEntry {
                     next_amount: total_amount,
@@ -138,7 +172,7 @@ impl Fills {
     /// Adjusts the next fill amount that should be tried. Always halves the
     /// last tried amount.
     pub fn reduce_next_try(&self, uid: order::Uid) {
-        self.amounts.lock().unwrap().entry(uid).and_modify(|entry| {
+        lock_fill_amounts(&self.amounts).entry(uid).and_modify(|entry| {
             entry.next_amount /= U256::from(2);
             tracing::trace!(next_try =? entry.next_amount, "reduced next fill amount");
         });
@@ -148,7 +182,7 @@ impl Fills {
     /// try. This is useful in case the onchain liquidity changed and now
     /// allows for bigger fills.
     pub fn increase_next_try(&self, uid: order::Uid) {
-        self.amounts.lock().unwrap().entry(uid).and_modify(|entry| {
+        lock_fill_amounts(&self.amounts).entry(uid).and_modify(|entry| {
             entry.next_amount = entry
                 .next_amount
                 .checked_mul(U256::from(2))
@@ -165,10 +199,28 @@ impl Fills {
         const MAX_AGE: Duration = Duration::from_secs(60 * 10);
         let now = Instant::now();
 
-        self.amounts
-            .lock()
-            .unwrap()
+        lock_fill_amounts(&self.amounts)
             .retain(|_, entry| now.duration_since(entry.last_requested) < MAX_AGE)
+    }
+}
+
+#[cfg(test)]
+mod poison_recovery_tests {
+    use {super::*, std::panic::AssertUnwindSafe};
+
+    #[test]
+    fn lock_amounts_recovers_after_poison() {
+        let m: Mutex<HashMap<order::Uid, CacheEntry>> = Mutex::new(HashMap::new());
+        let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let _g = m.lock().unwrap();
+            panic!("simulated panic with lock held");
+        }));
+        assert!(m.is_poisoned());
+        let guard = lock_fill_amounts(&m);
+        assert!(guard.is_empty());
+        drop(guard);
+        assert!(!m.is_poisoned(), "lock_fill_amounts must clear poison");
+        let _again = lock_fill_amounts(&m);
     }
 }
 
