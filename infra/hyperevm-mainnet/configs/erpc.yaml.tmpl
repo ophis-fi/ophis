@@ -39,6 +39,19 @@
 
 logLevel: info
 
+# Client-side rate-limiter attempted 2026-05-19 (90/min budget on
+# official-hl) and immediately rolled back: eRPC's consensus mode
+# fans out to ALL participants in parallel (not round-robin), so the
+# 100 req/min IP cap applies to ALL consensus traffic, not 1/3 of it.
+# A 90/min cap on a single upstream is identical to a 90/min cap on
+# the whole consensus path → ErrUpstreamRateLimitRuleExceeded floods.
+#
+# Decision: tolerate the upstream's own 429s. eRPC's retry budget +
+# punishMisbehavior already absorbs them; the alert threshold has been
+# raised to 70%/15m (was 50%/5m) to ignore transient rate-limit blips.
+# Sustained 70% failure for 15m is a real outage; transient bursts
+# are not.
+
 projects:
   - id: main
 
