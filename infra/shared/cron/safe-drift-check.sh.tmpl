@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Weekly Safe-owners + AllowList drift detector.
+#
+# Snapshots on-chain ownership of the protocol Safe + AllowList manager
+# on every active chain. Compares to expected, sends Telegram on drift.
+#
+# **Render with `render-safe-drift-check.sh`** to inject the Telegram
+# bot token without committing it.
+#
+# Run cadence: weekly, via launchd plist `ai.ophis.safe-drift-check`.
+
+set -euo pipefail
+umask 077
+
+# ----------------------------------------------------------------------
+# Per-chain configuration. Add a stanza to enable a chain.
+# Each chain expects: $name $chain_id $rpc $protocol_safe $partner_safe $allowlist_proxy $expected_submitter
+# ----------------------------------------------------------------------
+declare -a CHAINS=(
+  # name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter
+  "optimism|10|https://mainnet.optimism.io|0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF|0x858f0F5eE954846D47155F5203c04aF1819eCeF8|0x9eFDcC273430a7d61BE3E2Ee0d2Be4F76C66BA8|0xFB308397267878228f7761311DBD6Bc6FCa1bB5a"
+)
+
+# Expected protocol Safe owners (sorted lowercase). Updated when signers
+# rotate via Safe vote. Out-of-band update procedure: edit this script,
+# git commit, push.
+EXPECTED_PROTOCOL_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x...ledger2 0x...ledger3'
+EXPECTED_PROTOCOL_THRESHOLD=2
+
+EXPECTED_PARTNER_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a'
+EXPECTED_PARTNER_THRESHOLD=1
+
+TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/hyperevm-mainnet/observability-rendered/telegram-token}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
+LOGFILE="${LOGFILE:-${HOME}/Library/Logs/ophis-safe-drift-check.log}"
+
+# ----------------------------------------------------------------------
+
+log() {
+  printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOGFILE"
+}
+
+alert() {
+  local msg="$1"
+  log "ALERT: $msg"
+  local token
+  token="$(< "$TELEGRAM_BOT_TOKEN_FILE")"
+  curl -sm 10 -X POST \
+    "https://api.telegram.org/bot${token}/sendMessage" \
+    -d "chat_id=${TELEGRAM_CHAT_ID}" \
+    -d "parse_mode=HTML" \
+    --data-urlencode "text=<b>🚨 Ophis Safe drift</b>%0A${msg}" \
+    >/dev/null 2>&1 || log "WARN: telegram send failed"
+}
+
+normalize_addresses() {
+  # Convert ABI-encoded array output to space-separated lowercase addresses, sorted
+  echo "$1" \
+    | grep -oE '0x[0-9a-fA-F]{40}' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sort -u \
+    | tr '\n' ' ' \
+    | sed 's/ *$//'
+}
+
+check_chain() {
+  local stanza="$1"
+  IFS='|' read -r name chain_id rpc protocol_safe partner_safe allowlist_proxy expected_submitter <<< "$stanza"
+
+  log "checking chain=$name (chain_id=$chain_id)"
+
+  # --- Protocol Safe owners ---
+  local proto_owners
+  proto_owners="$(cast call --rpc-url "$rpc" "$protocol_safe" 'getOwners()(address[])' 2>&1)" || {
+    alert "Protocol Safe getOwners() failed on $name: $proto_owners"
+    return
+  }
+  local proto_owners_norm
+  proto_owners_norm="$(normalize_addresses "$proto_owners")"
+  local expected_proto_norm
+  expected_proto_norm="$(echo "$EXPECTED_PROTOCOL_OWNERS_SORTED" | tr '[:upper:]' '[:lower:]' | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')"
+  if [[ "$proto_owners_norm" != "$expected_proto_norm" ]]; then
+    alert "Protocol Safe owners drift on <b>$name</b>%0Aexpected: <code>${expected_proto_norm}</code>%0Aactual:   <code>${proto_owners_norm}</code>"
+  fi
+
+  # --- Protocol Safe threshold ---
+  local proto_thr
+  proto_thr="$(cast call --rpc-url "$rpc" "$protocol_safe" 'getThreshold()(uint256)' 2>&1 | head -1 | awk '{print $1}')"
+  if [[ "$proto_thr" != "$EXPECTED_PROTOCOL_THRESHOLD" ]]; then
+    alert "Protocol Safe threshold drift on <b>$name</b>%0Aexpected ${EXPECTED_PROTOCOL_THRESHOLD}, actual ${proto_thr}"
+  fi
+
+  # --- Partner-fee Safe owners ---
+  local partner_owners
+  partner_owners="$(cast call --rpc-url "$rpc" "$partner_safe" 'getOwners()(address[])' 2>&1)" || {
+    log "WARN: partner Safe not deployed yet on $name (CREATE2 lazy) — skipping"
+    return
+  }
+  local partner_owners_norm
+  partner_owners_norm="$(normalize_addresses "$partner_owners")"
+  local expected_partner_norm
+  expected_partner_norm="$(echo "$EXPECTED_PARTNER_OWNERS_SORTED" | tr '[:upper:]' '[:lower:]' | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/ *$//')"
+  if [[ "$partner_owners_norm" != "$expected_partner_norm" ]]; then
+    alert "Partner-fee Safe owners drift on <b>$name</b>%0Aexpected: <code>${expected_partner_norm}</code>%0Aactual:   <code>${partner_owners_norm}</code>"
+  fi
+
+  # --- AllowList manager points at protocol Safe ---
+  local manager
+  manager="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'manager()(address)' 2>&1 | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+  local proto_lower
+  proto_lower="$(echo "$protocol_safe" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$manager" != "$proto_lower" ]]; then
+    alert "AllowList manager drift on <b>$name</b>%0Aexpected: <code>${proto_lower}</code>%0Aactual:   <code>${manager}</code>"
+  fi
+
+  # --- Expected submitter is allowlisted ---
+  local is_allowed
+  is_allowed="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'isSolver(address)(bool)' "$expected_submitter" 2>&1 | head -1)"
+  if [[ "$is_allowed" != "true" ]]; then
+    alert "Submitter EOA <code>${expected_submitter}</code> NOT allowlisted on <b>$name</b> (isSolver returned: ${is_allowed})"
+  fi
+
+  log "chain=$name passed all checks"
+}
+
+mkdir -p "$(dirname "$LOGFILE")"
+log "=== Safe drift check starting ==="
+
+for stanza in "${CHAINS[@]}"; do
+  check_chain "$stanza"
+done
+
+log "=== Safe drift check complete ==="
