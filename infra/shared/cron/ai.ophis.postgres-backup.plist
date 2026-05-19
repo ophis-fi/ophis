@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.ophis.postgres-backup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/scep/greg/infra/shared/cron/postgres-backup.sh</string>
+  </array>
+
+  <!-- Daily: 03:30 local. Off-hours; OP block production is unaffected
+       by the dump (Postgres handles concurrent reads). -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <!-- Stdout / stderr captured for ad-hoc debugging. The script also
+       maintains its own log file at ~/Library/Logs/ophis-postgres-backup.log. -->
+  <key>StandardOutPath</key>
+  <string>/Users/scep/Library/Logs/ophis-postgres-backup.launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/scep/Library/Logs/ophis-postgres-backup.launchd.err</string>
+
+  <!-- docker CLI lives in /usr/local/bin (Docker Desktop) or
+       /opt/homebrew/bin (colima); include both. /usr/bin for find/date/etc. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <!--
+      Operator: to enable remote backups, copy this plist to
+      ~/Library/LaunchAgents/, then add an OPHIS_PG_REMOTE_BACKUP_CMD
+      entry in this dict. Examples:
+
+      <key>OPHIS_PG_REMOTE_BACKUP_CMD</key>
+      <string>b2 upload-file --noProgress ophis-backups -</string>
+
+      OR
+
+      <key>OPHIS_PG_REMOTE_BACKUP_CMD</key>
+      <string>aws s3 cp - s3://ophis-backups/op/dump-$(date +%F).pgdump</string>
+
+      Do NOT commit the populated plist if the cloud CLI authenticates
+      via env vars in this file.
+    -->
+  </dict>
+
+  <!-- Run with low priority so the dump doesn't compete with the
+       running stack for CPU/IO. Postgres -Fc is CPU-bound for compression. -->
+  <key>Nice</key>
+  <integer>10</integer>
+</dict>
+</plist>
