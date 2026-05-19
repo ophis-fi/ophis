@@ -233,19 +233,32 @@ if ! mount_ram_disk; then
   exit 6
 fi
 
-# sharp-edges H1 (2026-05-19): if OP_RPC_INTERNAL is set, ALL chain-reading
-# services bypass the eRPC proxy and route through whatever URL the operator
-# pasted. That's a legitimate failure-domain-test knob but it silently
-# downgrades the stack to the pre-PR single-provider posture (no consensus,
-# no fail-closed read protection). Loud warning so a forgotten override
-# can't quietly sit in .env for days.
+# Codex retro-audit (2026-05-20, MED-2): OP_RPC_INTERNAL is a one-env-var
+# downgrade from 3-of-3 consensus to single-provider — a forged answer
+# from a single upstream becomes settlement-authoritative. Sharp-edges
+# previously asked for a warning; that's not enough because
+# `docker compose up` skips render-configs.sh entirely. Now we require
+# an explicit ACK env var so a forgotten dev value can't silently
+# downgrade production.
 if [[ -n "${OP_RPC_INTERNAL:-}" ]]; then
+  if [[ "${ALLOW_RPC_BYPASS:-}" != "1" ]]; then
+    echo "" >&2
+    echo "*** REFUSING: OP_RPC_INTERNAL is set in .env ***" >&2
+    echo "    Value: ${OP_RPC_INTERNAL}" >&2
+    echo "    This BYPASSES the eRPC 3-of-3 consensus path and downgrades" >&2
+    echo "    the stack to single-provider posture. A single hostile" >&2
+    echo "    upstream can poison reads under this configuration." >&2
+    echo "" >&2
+    echo "    If this is intentional (failure-domain test / emergency):" >&2
+    echo "      ALLOW_RPC_BYPASS=1 ./render-configs.sh" >&2
+    echo "" >&2
+    echo "    Otherwise: remove the OP_RPC_INTERNAL line from .env." >&2
+    exit 12
+  fi
   echo "" >&2
-  echo "*** WARNING: OP_RPC_INTERNAL is set in .env ***" >&2
+  echo "*** WARNING: OP_RPC_INTERNAL is set + ALLOW_RPC_BYPASS=1 ***" >&2
+  echo "    Operating in single-provider bypass mode. Consensus disabled." >&2
   echo "    Value: ${OP_RPC_INTERNAL}" >&2
-  echo "    The eRPC proxy + 2-of-3 consensus path is BYPASSED." >&2
-  echo "    All chain reads will route through this single URL." >&2
-  echo "    Unset OP_RPC_INTERNAL in .env to restore proxy mode." >&2
   echo "" >&2
 fi
 

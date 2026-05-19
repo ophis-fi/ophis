@@ -32,24 +32,32 @@
 #   blastapi.io    → unreachable
 #   omniatech.io   → CF 521 (origin down)
 #
-# **Threat-model concession (documented, not silently accepted):**
-# Two of the three upstreams share Cloudflare DNS. A Cloudflare DNS
-# control-plane compromise (nation-state class) could simultaneously
-# redirect both to a hostile IP. **The system fails closed in that
-# case**: `lowParticipantsBehavior: returnError` +
-# `disputeBehavior: returnError` mean the driver stops signing
-# settlements rather than signing against forged state. So the residual
-# risk is **denial-of-service** under a CF compromise, NOT
-# fork-view-poisoning.
+# **Threat-model — 3-of-3 consensus is required because of CF correlation.**
 #
-# Broader threat (sharp-edges follow-up review): CF terminates TLS for
-# publicnode + 1rpc, so a CF *Workers/edge* compromise (not just DNS)
-# can also hit 2-of-3 simultaneously — same fail-closed posture
-# applies, same DoS-not-poisoning conclusion.
+# Codex retro-audit (2026-05-20) caught the bug in my prior 2-of-3
+# framing: `agreementThreshold: 2` + `disputeBehavior: returnError` only
+# fails closed when participants DISAGREE. If a Cloudflare compromise
+# (DNS or Workers/edge) makes BOTH `publicnode-op` AND `1rpc-op` return
+# the SAME forged view, they SATISFY quorum 2-of-3 → eRPC returns the
+# poisoned result. The non-CF anchor `tenderly-op` would return the
+# real answer, get out-voted, and get `punishMisbehavior`-cordoned for
+# "lying" — exactly the wrong outcome.
 #
-# Closing the residual requires either (a) a paid non-CF provider as
-# the 3rd upstream, or (b) running our own op-node (paid VPS, separate
-# task on the roadmap).
+# **Fix: agreementThreshold: 3.** Every upstream must agree on every
+# consensus-protected read. The non-CF tenderly anchor now BLOCKS
+# poisoning attempts (a 2-CF-collusion attack produces 2 forged + 1
+# honest answers → dispute → returnError → fail-closed → driver stops,
+# does NOT settle against forged state).
+#
+# Availability cost: any single-upstream blip (rate-limit, latency) on
+# any of the 3 fails the consensus call. The driver tolerates this via
+# bootstrap-retry + the autopilot retry budget. Empirically the cost is
+# elevated log volume; functionally the system tolerates ~30% transient
+# upstream failure with no settlement impact. If observed availability
+# drops below 95% per-7d we revisit.
+#
+# Trade-off accepted: "we'd rather not settle than settle against
+# forged state." Standard posture for any DEX moving real money.
 #
 # Final picks (deploy 2026-05-19):
 #   publicnode-op  optimism-rpc.publicnode.com   (CF DNS, fast)    Allnodes
@@ -98,12 +106,25 @@ projects:
           # upstream-level timeout (1rpc-op at 10s) — sharp-edges follow-up
           # #6. Without this, 1rpc retries internally collide with the
           # network-level cancellation and burn quota.
-          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash"
+          #
+          # Method list expanded (Codex retro-audit, 2026-05-20):
+          # - `eth_getBalance`: driver-balance probe; a hostile single
+          #   upstream lying low could trigger spurious "submitter dry"
+          #   alerts or, worse, mask an actually-dry submitter.
+          # - `eth_estimateGas`: a forged-low estimate yields txs that
+          #   revert (gas-only loss bounded by the 5 gwei cap from #131,
+          #   but still budget-wasteful).
+          # - `eth_feeHistory`: feeds into EIP-1559 fee predictions;
+          #   manipulation lets a hostile upstream steer submission gas.
+          - matchMethod: "eth_call|eth_getBlockByNumber|eth_getBlockByHash|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_getBalance|eth_estimateGas|eth_feeHistory"
             timeout:
               duration: 12s
             consensus:
               maxParticipants: 3
-              agreementThreshold: 2
+              # 3-of-3 (was 2-of-3 pre-Codex-retro-audit-2026-05-20).
+              # 2-of-3 was exploitable under CF collusion — see header
+              # comment for the attack chain.
+              agreementThreshold: 3
               disputeBehavior: returnError
               # Mirroring HL audit decision (Codex Cyber H3): the obvious
               # default `acceptMostCommonValidResult` collapses to
