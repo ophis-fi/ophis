@@ -67,8 +67,29 @@ pub fn tracing_config(args: &TracingArguments, service_name: String) -> Option<T
         return None;
     };
 
+    // Treat empty / whitespace as "tracing disabled" — docker-compose
+    // env_file substitution of unset variables expands to `""` (a SET
+    // empty string), which clap reads as `Some("")`. Without this check
+    // the opentelemetry exporter activates with an empty endpoint and
+    // silently falls back to its hardcoded `127.0.0.1:4317` default,
+    // flooding logs with `tcp connect error` because there's nothing
+    // there. Treat empty as None instead.
+    //
+    // Sharp-edges review #7: log the disable so a fat-fingered
+    // `TRACING_COLLECTOR_ENDPOINT=" "` is visible rather than silent.
+    let endpoint = endpoint.trim();
+    if endpoint.is_empty() {
+        tracing::warn!(
+            service = %service_name,
+            "tracing_collector_endpoint is set but empty/whitespace — \
+             tracing exporter disabled. Set the env var to a non-empty \
+             URL (e.g. http://jaeger:4317) or unset it entirely.",
+        );
+        return None;
+    }
+
     Some(TracingConfig::new(
-        endpoint.clone(),
+        endpoint.to_string(),
         service_name,
         args.tracing_exporter_timeout,
         args.tracing_level,
