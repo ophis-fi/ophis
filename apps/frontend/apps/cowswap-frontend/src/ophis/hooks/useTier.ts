@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 // See apps/frontend/apps/cowswap-frontend/src/ophis/tiers.ts for details.
 import { assignTier, type Tier } from '../tiers'
 
+import { useRebatesOptIn } from './useRebatesOptIn'
+
 const REBATES_API = process.env.REACT_APP_REBATES_API ?? 'https://rebates.ophis.fi'
 
 export interface TierStatus {
@@ -15,18 +17,32 @@ export interface TierStatus {
   usd_to_next_tier: number
 }
 
-export function useTier(wallet: `0x${string}` | undefined): {
+export interface UseTierResult {
   data: TierStatus | null
   loading: boolean
   error: Error | null
-} {
+  // Reflects the localStorage opt-in. False ⇒ no network call is made
+  // and `data` is null. UI surfaces this with an opt-in CTA.
+  optedIn: boolean
+}
+
+// Phase 3 audit M (2026-05-19): tier fetch is now gated behind an explicit
+// localStorage opt-in (see useRebatesOptIn.ts). When `optedIn === false`,
+// this hook MUST NOT issue any network request — TierChip will render its
+// opt-in placeholder instead. Verified by useTier.test.ts.
+export function useTier(wallet: `0x${string}` | undefined): UseTierResult {
   const [data, setData] = useState<TierStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const optedIn = useRebatesOptIn()
 
   useEffect(() => {
-    if (!wallet) {
+    if (!wallet || !optedIn) {
+      // Clear any stale data from a previous opted-in session so the chip
+      // doesn't keep showing a tier after the user revoked consent.
       setData(null)
+      setError(null)
+      setLoading(false)
       return
     }
     let cancelled = false
@@ -57,7 +73,7 @@ export function useTier(wallet: `0x${string}` | undefined): {
     return () => {
       cancelled = true
     }
-  }, [wallet])
+  }, [wallet, optedIn])
 
-  return { data, loading, error }
+  return { data, loading, error, optedIn }
 }
