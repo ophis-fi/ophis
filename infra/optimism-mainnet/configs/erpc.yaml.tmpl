@@ -1,69 +1,55 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# Cloned from infra/hyperevm-mainnet/configs/erpc.yaml.tmpl (Phase 4 audit M-2,
-# 2026-05-19) — "highest leverage" item on the OP roadmap: the OP stack
-# previously routed every chain read through a single public RPC
-# (publicnode), so any single-provider outage took the entire OP stack down.
-# eRPC fan-out + consensus failsafe gives us the same fork-view-poisoning
-# defense the HL stack already relies on.
+# **Current shape: 2-of-2 consensus on distinct DNS providers.**
 #
-# Free providers selected for OP mainnet. **Deploy-time probing
-# (2026-05-19) eliminated my pre-deploy picks**:
+# Iteration history:
+#  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
+#    (mainnet.optimism.io) → HTTP 429 from Mac mini IP. ankr-op needs
+#    paid API key. Dropped both, swapped in tenderly + 1rpc.
+#  - #138 deploy: publicnode + tenderly + 1rpc (2-of-3, threshold=2).
+#  - #144 deploy: bumped to 3-of-3 after Codex retro-audit caught the
+#    CF-collusion poisoning attack (2 CF-fronted upstreams returning
+#    the same forged view satisfy quorum 2-of-3 → poison authoritative).
+#  - **2026-05-20 (this PR)**: dropped 1rpc-op entirely. eRPC's URL
+#    parser strips the `/op` path segment from `https://1rpc.io/op`,
+#    sending requests to 1rpc's landing page instead of the OP RPC.
+#    Confirmed via the parsed-config dump:
+#      "endpoint":"https://1rpc.io#redacted=..." (no path)
+#    1rpc consistently failed → `n/a = ErrUpstreamsExhausted` on every
+#    consensus call → 3-of-3 was unsatisfiable → driver couldn't boot.
 #
-#   - `mainnet.optimism.io` returns HTTP 429 (IP rate-limited) from the
-#     Mac mini and would burn through the consensus quorum on every
-#     bootstrap. Dropped.
-#   - `rpc.ankr.com/optimism` requires an API key on the `/optimism`
-#     path — public-tier returns 200 with body
-#     `"error": "Unauthorized: You must..."` which eRPC interprets as
-#     `ErrUpstreamsExhausted`. Dropped.
-#   - I had also previously documented `publicnode-op` as Route53/non-CF;
-#     `dig +short NS publicnode.com` confirms Cloudflare. **My prior
-#     "distinct failure domain" claim was incomplete here too.**
+# **Final config: 2 upstreams, agreementThreshold=2.**
 #
-# **DNS-provider reality on OP free RPCs:** most operators use
-# Cloudflare DNS. Finding 2-of-3 with distinct authoritative-DNS
-# providers is operationally difficult on the free tier. Probed:
+#   publicnode-op  optimism-rpc.publicnode.com   Allnodes multi-cloud
+#                                                DNS: Cloudflare
+#                                                CA: Let's Encrypt
+#   tenderly-op    optimism.gateway.tenderly.co  Tenderly
+#                                                DNS: Google Cloud
+#                                                CA: ZeroSSL/Sectigo
 #
-#   publicnode.com → NS: cloudflare
-#   1rpc.io        → NS: cloudflare
-#   tenderly.co    → NS: google
-#   ankr.com       → (paid path)
-#   blastapi.io    → unreachable
-#   omniatech.io   → CF 521 (origin down)
+# **Threat-model: 2-of-2 with distinct-DNS upstreams is STRICTLY STRONGER
+# than 2-of-3 with 2 CF-correlated upstreams.**
 #
-# **Threat-model — 3-of-3 consensus is required because of CF correlation.**
+#  - Cloudflare DNS compromise → only publicnode is hijacked. tenderly
+#    on Google DNS returns the real answer → dispute → returnError →
+#    driver stops, does NOT settle against forged state.
+#  - Google DNS compromise → only tenderly is hijacked. publicnode on
+#    CF DNS returns the real answer → dispute → returnError → safe.
+#  - Both DNS providers compromised simultaneously: requires nation-
+#    state class control over both CF AND Google DNS infrastructure.
+#    Out of scope of the threat model.
+#  - Both upstreams happen to return the same answer: that IS the
+#    canonical chain state (publicnode and tenderly are independent
+#    operators; both seeing identical block data is the correct case).
 #
-# Codex retro-audit (2026-05-20) caught the bug in my prior 2-of-3
-# framing: `agreementThreshold: 2` + `disputeBehavior: returnError` only
-# fails closed when participants DISAGREE. If a Cloudflare compromise
-# (DNS or Workers/edge) makes BOTH `publicnode-op` AND `1rpc-op` return
-# the SAME forged view, they SATISFY quorum 2-of-3 → eRPC returns the
-# poisoned result. The non-CF anchor `tenderly-op` would return the
-# real answer, get out-voted, and get `punishMisbehavior`-cordoned for
-# "lying" — exactly the wrong outcome.
-#
-# **Fix: agreementThreshold: 3.** Every upstream must agree on every
-# consensus-protected read. The non-CF tenderly anchor now BLOCKS
-# poisoning attempts (a 2-CF-collusion attack produces 2 forged + 1
-# honest answers → dispute → returnError → fail-closed → driver stops,
-# does NOT settle against forged state).
-#
-# Availability cost: any single-upstream blip (rate-limit, latency) on
-# any of the 3 fails the consensus call. The driver tolerates this via
-# bootstrap-retry + the autopilot retry budget. Empirically the cost is
-# elevated log volume; functionally the system tolerates ~30% transient
-# upstream failure with no settlement impact. If observed availability
-# drops below 95% per-7d we revisit.
+# Availability cost: any single-upstream blip = fail. Same posture as
+# the broken 3-of-3 we replaced; no regression. Driver tolerates via
+# bootstrap-retry + autopilot retry budget. If a 3rd non-CF upstream
+# becomes available we can add it (and bump back to 3-of-3 if 2 of 3
+# are still distinct-DNS).
 #
 # Trade-off accepted: "we'd rather not settle than settle against
 # forged state." Standard posture for any DEX moving real money.
-#
-# Final picks (deploy 2026-05-19):
-#   publicnode-op  optimism-rpc.publicnode.com   (CF DNS, fast)    Allnodes
-#   tenderly-op    optimism.gateway.tenderly.co  (Google DNS)      Tenderly
-#                                                                  ← the non-CF anchor
-#   1rpc-op        1rpc.io/op                    (CF DNS, slower)  Automata
 #
 # Rationale (replace-not-expand; mirroring the HL audit reasoning):
 #  - N=3 keeps the 2-of-3 consensus invariant defensible. Expanding N to >3 with
@@ -120,11 +106,15 @@ projects:
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              # 3-of-3 (was 2-of-3 pre-Codex-retro-audit-2026-05-20).
-              # 2-of-3 was exploitable under CF collusion — see header
-              # comment for the attack chain.
-              agreementThreshold: 3
+              maxParticipants: 2
+              # 2-of-2 over distinct-DNS upstreams (publicnode on CF DNS,
+              # tenderly on Google DNS). Strictly stronger than the prior
+              # 2-of-3 (which had 2 CF-correlated upstreams and was
+              # vulnerable to CF-collusion poisoning per Codex retro-audit).
+              # 3-of-3 was the post-audit fix but operationally broken
+              # because 1rpc-op's `/op` path got stripped by eRPC's URL
+              # parser (see header comment for full attack/recovery).
+              agreementThreshold: 2
               disputeBehavior: returnError
               # Mirroring HL audit decision (Codex Cyber H3): the obvious
               # default `acceptMostCommonValidResult` collapses to
@@ -201,18 +191,3 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: 1rpc-op
-        # Automata's 1RPC. Public, no API key. Slower than the other
-        # two (~665ms first-byte) but it's a genuinely-independent
-        # operator and serves as the 3rd quorum participant.
-        endpoint: https://1rpc.io/op
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 10s   # +2s vs siblings — slower upstream
-            retry:
-              maxAttempts: 3
-              delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
-              jitter: 50ms
