@@ -5,10 +5,11 @@ exclude = ["contracts/"]
 
 [workspace.package]
 # `Mutex::clear_poison()` and `RwLock::clear_poison()` are stable since
-# 1.74 (Nov 2023). The poison-recovery helpers in
-# driver/competition/mod.rs, driver/infra/tokens.rs, and
-# solvers/domain/solver/dex/fills.rs use them. A future downgrade would
-# silently break those helpers; declare the floor here so cargo refuses.
+# 1.74 (Nov 2023). Used by the `poison-recovery` shared crate
+# (`apps/backend/crates/poison-recovery/`) and the three predecessor
+# helpers in driver/competition/mod.rs, driver/infra/tokens.rs,
+# solvers/domain/solver/dex/fills.rs. A future downgrade would silently
+# break those helpers; declare the floor here so cargo refuses.
 rust-version = "1.74"
 
 [workspace.dependencies]
@@ -97,6 +98,7 @@ opentelemetry_sdk = "0.31"
 order-validation = { path = "crates/order-validation" }
 orderbook = { path = "crates/orderbook" }
 paste = "1.0"
+poison-recovery = { path = "crates/poison-recovery" }
 pin-project-lite = "0.2.14"
 prettyplease = "0.2.37"
 price-estimation = { path = "crates/price-estimation" }

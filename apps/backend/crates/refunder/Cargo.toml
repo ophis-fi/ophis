@@ -21,6 +21,7 @@ humantime = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 number = { workspace = true }
 observe = { workspace = true }
+poison-recovery = { workspace = true }
 prometheus = { workspace = true }
 prometheus-metric-storage = { workspace = true }
 shared = { workspace = true }

@@ -95,7 +95,13 @@ struct CacheResponse {
 
 impl Balances {
     fn get_cached_balances(&self, queries: &[Query]) -> CacheResponse {
-        let mut cache = self.balance_cache.lock().unwrap();
+        // Read path: tolerate stale entries on poison — they'll be evicted on
+        // the next block update. Worst case until then: a few queries are
+        // served with values from before the writer panicked.
+        let mut cache = poison_recovery::lock_or_recover(
+            &self.balance_cache,
+            "account_balances::cached::balance_cache",
+        );
         let (cached, missing) = queries
             .iter()
             .enumerate()
@@ -119,7 +125,14 @@ impl Balances {
         let task = async move {
             while let Some(block) = stream.next().await {
                 let balances_to_update = {
-                    let mut cache = cache.lock().unwrap();
+                    // Background update path: clear on poison. A
+                    // half-mutated cache would feed stale balances to the
+                    // quoter and cause over-allocation; clearing forces a
+                    // re-fetch from chain.
+                    let mut cache = poison_recovery::lock_or_recover_clear(
+                        &cache,
+                        "account_balances::cached::balance_cache",
+                    );
                     cache.last_seen_block = block.number;
                     cache
                         .data
@@ -135,7 +148,10 @@ impl Balances {
 
                 let results = inner.get_balances(&balances_to_update).await;
 
-                let mut cache = cache.lock().unwrap();
+                let mut cache = poison_recovery::lock_or_recover_clear(
+                    &cache,
+                    "account_balances::cached::balance_cache",
+                );
                 balances_to_update
                     .into_iter()
                     .zip(results)
@@ -173,7 +189,12 @@ impl BalanceFetching for Balances {
         let new_balances = self.inner.get_balances(&missing_queries).await;
 
         {
-            let mut cache = self.balance_cache.lock().unwrap();
+            // Cache-insert path: clear on poison (same reasoning as the
+            // background update path).
+            let mut cache = poison_recovery::lock_or_recover_clear(
+                &self.balance_cache,
+                "account_balances::cached::balance_cache",
+            );
             for (query, result) in missing_queries.into_iter().zip(new_balances.iter()) {
                 if let Ok(balance) = result {
                     cache.insert_balance(query, *balance, requested_at)

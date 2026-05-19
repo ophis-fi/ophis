@@ -56,7 +56,7 @@ impl CachedCodeFetcher {
         F: FnOnce(&Bytes) -> T,
     {
         {
-            let mut cache = self.cache.lock().unwrap();
+            let mut cache = poison_recovery::lock_or_recover(&self.cache, "price_estimation::trade_verifier::code_fetching::cache");
             if let Some(code) = cache.cache_get(&address) {
                 return Ok(handle(code));
             }
@@ -64,7 +64,7 @@ impl CachedCodeFetcher {
 
         let code = self.inner.code(address).await?;
         let result = handle(&code);
-        self.cache.lock().unwrap().cache_set(address, code);
+        poison_recovery::lock_or_recover(&self.cache, "price_estimation::trade_verifier::code_fetching::cache").cache_set(address, code);
         Ok(result)
     }
 }
