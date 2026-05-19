@@ -9,6 +9,12 @@ use {
     tracing::Instrument,
 };
 
+/// Default per-statement Postgres timeout. A slow query stalls the
+/// run-loop indefinitely otherwise (sharp-edges follow-up: an outage
+/// in the DB writes-path masquerades as a solver timeout from ops'
+/// perspective). 30s matches the orderbook crate's default.
+const STATEMENT_TIMEOUT_DEFAULT: Duration = Duration::from_secs(30);
+
 mod auction;
 pub mod auction_prices;
 pub mod competition;
@@ -25,6 +31,16 @@ pub const INSERT_BATCH_SIZE_DEFAULT: NonZeroUsize = NonZeroUsize::new(500).unwra
 pub struct Config {
     pub insert_batch_size: NonZeroUsize,
     pub max_pool_size: NonZeroU32,
+    /// Maps directly to Postgres' `statement_timeout` GUC, applied as
+    /// `SET statement_timeout = <ms>` on every connection acquired from
+    /// the pool. Sharp-edges follow-up: pre-this-timeout an unbounded
+    /// query (DB lock contention, network partition, replica lag)
+    /// blocked the run-loop until the autopilot eventually surfaced
+    /// `SettleError::Timeout`, masking the actual DB outage in ops
+    /// alerts. With a 30s server-side timeout, slow queries fail
+    /// loudly with `57014 query_canceled` and the existing
+    /// `runloop_db_metric_error` counter fires immediately.
+    pub statement_timeout: Duration,
 }
 
 impl Default for Config {
@@ -32,6 +48,7 @@ impl Default for Config {
         Self {
             insert_batch_size: INSERT_BATCH_SIZE_DEFAULT,
             max_pool_size: DB_MAX_CONNECTIONS_DEFAULT,
+            statement_timeout: STATEMENT_TIMEOUT_DEFAULT,
         }
     }
 }
@@ -44,8 +61,18 @@ pub struct Postgres {
 
 impl Postgres {
     pub async fn new(url: &str, config: Config) -> sqlx::Result<Self> {
+        let statement_timeout_ms = config.statement_timeout.as_millis();
         let pool = PgPoolOptions::new()
             .max_connections(config.max_pool_size.get())
+            .after_connect(move |conn, _meta| {
+                Box::pin(async move {
+                    conn.execute(
+                        format!("SET statement_timeout = {statement_timeout_ms}").as_str(),
+                    )
+                    .await?;
+                    Ok(())
+                })
+            })
             .connect(url)
             .await?;
 
@@ -200,5 +227,31 @@ mod tests {
             .unwrap();
         let count = count_rows_in_table(&mut ex, "orders").await.unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn postgres_statement_timeout_cancels_slow_query() {
+        // Mirror of `orderbook::database::tests::postgres_statement_timeout_cancels_slow_query`.
+        // Verifies the per-connection `SET statement_timeout` is applied via
+        // `after_connect` and triggers `57014 query_canceled` for queries that
+        // exceed the budget.
+        let config = Config {
+            statement_timeout: Duration::from_millis(100),
+            ..Default::default()
+        };
+        let db = Postgres::new("postgresql://", config).await.unwrap();
+        let mut conn = db.pool.acquire().await.unwrap();
+
+        // Fast query — succeeds.
+        conn.execute("SELECT 1").await.unwrap();
+
+        // Slow query — should fail with query_canceled.
+        let err = conn
+            .execute("SELECT pg_sleep(5)")
+            .await
+            .expect_err("should have timed out");
+        let db_err = err.as_database_error().expect("should be a database error");
+        assert_eq!(db_err.code().as_deref(), Some("57014")); // query_canceled
     }
 }
