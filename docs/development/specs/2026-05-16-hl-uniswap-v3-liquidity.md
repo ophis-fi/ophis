@@ -1,3 +1,11 @@
+> ⚠️ **DEPRECATED 2026-05-19** — this document refers to a chain
+> deployment that has been paused indefinitely (HL paused per the
+> 2026-05-19 strategic pivot; MegaETH paused 2026-05-18). The repo
+> retains it as historical record of design + implementation work.
+> Do NOT rely on it for current operational truth. Source of truth
+> for current state: `project_ophis_next_session_guide.md` +
+> `project_ophis_roadmap.md`.
+
 # HL UniswapV3 liquidity wiring — design spec
 
 **Status**: Draft — addresses verified, implementation deferred to next session.
