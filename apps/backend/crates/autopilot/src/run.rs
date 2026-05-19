@@ -183,7 +183,7 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         crate::database::Config {
             insert_batch_size: config.database.insert_batch_size,
             max_pool_size: config.database.max_connections,
-            ..Default::default()
+            statement_timeout: config.database.statement_timeout,
         },
     )
     .await

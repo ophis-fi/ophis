@@ -61,15 +61,40 @@ pub struct Postgres {
 
 impl Postgres {
     pub async fn new(url: &str, config: Config) -> sqlx::Result<Self> {
-        let statement_timeout_ms = config.statement_timeout.as_millis();
+        // Pre-merge review hardening:
+        //
+        //   HIGH-2: `Duration::ZERO` would emit `SET statement_timeout = 0`,
+        //           which Postgres interprets as "no limit" — silently
+        //           reverting to pre-PR unbounded behavior. Floor to 1ms
+        //           with a warn log so the misconfig is visible.
+        //
+        //   MED-4 (pgBouncer-safe): `SET statement_timeout = ...` is a
+        //           session-level GUC. pgBouncer in transaction pooling
+        //           mode rejects session SET. Swallow the error with a
+        //           warn rather than crash the pool — autopilot in front
+        //           of pgBouncer is a realistic deployment.
+        let mut statement_timeout_ms =
+            u64::try_from(config.statement_timeout.as_millis()).unwrap_or(u64::MAX);
+        if statement_timeout_ms == 0 {
+            tracing::warn!(
+                "Config.statement_timeout was Duration::ZERO — Postgres would interpret \
+                 SET statement_timeout = 0 as unlimited. Flooring to 1ms; fix your config."
+            );
+            statement_timeout_ms = 1;
+        }
         let pool = PgPoolOptions::new()
             .max_connections(config.max_pool_size.get())
             .after_connect(move |conn, _meta| {
                 Box::pin(async move {
-                    conn.execute(
-                        format!("SET statement_timeout = {statement_timeout_ms}").as_str(),
-                    )
-                    .await?;
+                    let stmt = format!("SET statement_timeout = {statement_timeout_ms}");
+                    if let Err(e) = conn.execute(stmt.as_str()).await {
+                        tracing::warn!(
+                            error = %e,
+                            "could not apply SET statement_timeout — connection will run \
+                             unbounded. Possible causes: pgBouncer in transaction pooling \
+                             mode, or a Postgres role without SET permission."
+                        );
+                    }
                     Ok(())
                 })
             })
@@ -79,6 +104,24 @@ impl Postgres {
         Self::start_db_metrics_job(pool.clone());
 
         Ok(Self { pool, config })
+    }
+
+    /// Acquire a connection without the global `statement_timeout` —
+    /// for maintenance paths that legitimately exceed 30s (ANALYZE on
+    /// multi-GB tables, batch DELETE on long-tail event tables).
+    /// Issues `SET LOCAL statement_timeout = 0` inside a transaction
+    /// the caller MUST commit/rollback; the LOCAL scope confines the
+    /// override to that one transaction, so other handlers acquiring
+    /// the same connection later (via pool recycling) keep the
+    /// session-level guard.
+    pub async fn begin_maintenance_tx(
+        &self,
+    ) -> sqlx::Result<sqlx::Transaction<'_, sqlx::Postgres>> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET LOCAL statement_timeout = 0")
+            .execute(&mut *tx)
+            .await?;
+        Ok(tx)
     }
 
     fn start_db_metrics_job(pool: PgPool) {
@@ -124,11 +167,17 @@ impl Postgres {
     }
 
     pub async fn update_large_tables_stats(&self) -> sqlx::Result<()> {
-        let mut ex = self.pool.acquire().await?;
+        // ANALYZE on multi-GB tables routinely exceeds the 30s
+        // session-level statement_timeout. Use the maintenance-tx
+        // helper to scope a `SET LOCAL statement_timeout = 0` to
+        // this work — other concurrent queries on the pool keep
+        // the guard.
+        let mut tx = self.begin_maintenance_tx().await?;
         for &table in database::LARGE_TABLES {
-            analyze_table(&mut ex, table).await?;
+            let query = format!("ANALYZE {table};");
+            sqlx::query(&query).execute(&mut *tx).await?;
         }
-
+        tx.commit().await?;
         Ok(())
     }
 }
@@ -141,11 +190,6 @@ async fn count_rows_in_table(ex: &mut PgConnection, table: &str) -> sqlx::Result
 async fn estimate_rows_in_table(ex: &mut PgConnection, table: &str) -> sqlx::Result<i64> {
     let query = format!("SELECT reltuples::bigint FROM pg_class WHERE relname='{table}';");
     sqlx::query_scalar(&query).fetch_one(ex).await
-}
-
-async fn analyze_table(ex: &mut PgConnection, table: &str) -> sqlx::Result<()> {
-    let query = format!("ANALYZE {table};");
-    ex.execute(sqlx::query(&query)).await.map(|_| ())
 }
 
 #[derive(prometheus_metric_storage::MetricStorage)]
@@ -227,6 +271,27 @@ mod tests {
             .unwrap();
         let count = count_rows_in_table(&mut ex, "orders").await.unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn postgres_statement_timeout_zero_is_floored_to_1ms() {
+        // Regression for sharp-edges HIGH-2: Duration::ZERO must NOT
+        // emit `SET statement_timeout = 0` (Postgres unlimited). The
+        // floor + warn log ensures a misconfigured zero still cancels
+        // slow queries.
+        let config = Config {
+            statement_timeout: Duration::ZERO,
+            ..Default::default()
+        };
+        let db = Postgres::new("postgresql://", config).await.unwrap();
+        let mut conn = db.pool.acquire().await.unwrap();
+        let err = conn
+            .execute("SELECT pg_sleep(1)")
+            .await
+            .expect_err("ZERO floor should still cancel slow queries");
+        let db_err = err.as_database_error().expect("should be a database error");
+        assert_eq!(db_err.code().as_deref(), Some("57014"));
     }
 
     #[tokio::test]
