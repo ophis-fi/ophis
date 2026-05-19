@@ -1,9 +1,0 @@
-# Secrets — engine-API shared JWT, never commit
-jwt.hex
-
-# Local environment overrides
-.env
-.env.local
-
-# op-reth chain data (hundreds of GB on mainnet)
-reth-data/
