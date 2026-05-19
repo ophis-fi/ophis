@@ -1,3 +1,11 @@
+> ⚠️ **DEPRECATED 2026-05-19** — this document refers to a chain
+> deployment that has been paused indefinitely (HL paused per the
+> 2026-05-19 strategic pivot; MegaETH paused 2026-05-18). The repo
+> retains it as historical record of design + implementation work.
+> Do NOT rely on it for current operational truth. Source of truth
+> for current state: `project_ophis_next_session_guide.md` +
+> `project_ophis_roadmap.md`.
+
 # Spec 3 — MegaETH mainnet backend
 
 > Sequel to Spec 1 (testnet revival, shipped 2026-05-12). Spec 3 deploys the first **mainnet** Ophis backend on MegaETH (chain ID 4326).
