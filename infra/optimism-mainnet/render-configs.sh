@@ -111,6 +111,118 @@ export OPHIS_DRIVER_SUBMITTER_KEY
 mkdir -p rendered
 shopt -s nullglob
 
+# ── Tier 1.5 RAM-disk PK render (Phase 4 audit H1 follow-up, 2026-05-20) ──
+#
+# The rendered driver.toml has the submitter PK substituted in-line. Pre-
+# Tier-1.5 that file lived at ./rendered/driver.toml under scep's home —
+# meaning any process running as scep could read it (defeats Tier 1
+# isolation), AND the file persisted on the FileVault-encrypted SSD where
+# Time Machine could back it up, Spotlight could index it, APFS journal
+# could retain copy-on-write snapshots.
+#
+# Tier 1.5 writes driver.toml to a hdiutil-managed RAM-backed HFS+ volume
+# at $HOME/.local/state/ophis/ram-pk/. ./rendered/driver.toml becomes a
+# symlink pointing into the RAM-disk. docker-compose's bind-mount
+# (./rendered/driver.toml:/driver.toml:ro) follows the symlink through
+# colima's virtiofs.
+#
+# What this closes:
+#   - No persistent SSD trace (RAM-disk wipes on reboot/poweroff)
+#   - No Time Machine inclusion (TM ignores /dev/disk* ramdisks)
+#   - No Spotlight index (volumes under $HOME without user-content are skipped)
+#   - Forensic recovery after `rm` impossible (RAM, not APFS journal)
+#
+# What this does NOT close:
+#   - Same-UID exfiltration. Any process as `scep` can still `cat` the file.
+#     Closing that requires Tier 2 KMS (no local PK at all).
+#   - Process-tracing of render-configs.sh during the envsubst window
+#     (handled by the `set -x` refuse at the script top).
+#   - The OPERATOR running `cat`/`grep` on the rendered file. Don't do that.
+#     See [[feedback-never-grep-pk-from-rendered-configs]].
+#
+# Cold-start dependency: RAM-disk dies on reboot. ./render-configs.sh
+# re-mounts it idempotently. If render-configs.sh has NOT been run since
+# boot, the symlink dangles and docker compose up fails on bind-mount.
+# Docs/runbook captures this in operational guidance.
+
+RAM_PK_MOUNT="$HOME/.local/state/ophis/ram-pk"
+RAM_PK_VOLNAME="ophis-ram-pk"
+RAM_PK_SIZE_SECTORS=2048   # 2048 * 512B = 1 MB
+
+# Idempotent mount. Exits non-zero on failure — we WANT this to hard-fail
+# rather than fall through to writing the PK on disk.
+#
+# Pre-merge audit (sharp-edges BLOCKER-1 + Codex HIGH): the prior version
+# trusted "anything mounted at $RAM_PK_MOUNT" as the RAM-disk. If the
+# operator (or a malicious local actor) pre-mounted some other volume
+# at that path, the script would happily write the PK to it. The new
+# version verifies the mounted volume is RAM-backed via `diskutil info`,
+# and aborts if not.
+mount_ram_disk() {
+  # Use grep -F (fixed string) + explicit terminating " (" to avoid
+  # partial-path matches (sharp-edges HIGH-2). `mount` output format:
+  #   /dev/diskN on /Users/scep/... (hfs, local, mounted by scep, nobrowse)
+  if mount | grep -Fq " on ${RAM_PK_MOUNT} ("; then
+    # Already mounted — verify it's actually OUR RAM-disk, not some
+    # other volume that happens to be at this mountpoint. diskutil info
+    # for a ram://-backed device returns "Disk Size:" and "Device /
+    # Media Name:" containing "RAM" (or "Apple_HFS Untitled" on older
+    # macOS — we check by Volume Name which we set to ophis-ram-pk).
+    local existing_dev
+    existing_dev=$(mount | grep -F " on ${RAM_PK_MOUNT} (" | awk '{print $1}')
+    if [[ ! "$existing_dev" =~ ^/dev/disk[0-9]+ ]]; then
+      echo "ERROR: $RAM_PK_MOUNT is mounted but device '$existing_dev' isn't a disk node" >&2
+      return 1
+    fi
+    # Verify volume name matches what we set during newfs_hfs.
+    local existing_volname
+    existing_volname=$(diskutil info "$existing_dev" 2>/dev/null | awk -F': +' '/^ *Volume Name:/ {print $2; exit}')
+    if [[ "$existing_volname" != "$RAM_PK_VOLNAME" ]]; then
+      echo "ERROR: $RAM_PK_MOUNT is mounted, but volume name is '$existing_volname', expected '$RAM_PK_VOLNAME'" >&2
+      echo "       Some other volume is sitting at our mountpoint. Refusing to write PK." >&2
+      echo "       Investigate: diskutil unmount '$RAM_PK_MOUNT' then re-run." >&2
+      return 1
+    fi
+    return 0  # confirmed: our RAM-disk
+  fi
+  mkdir -p "$RAM_PK_MOUNT"
+
+  # hdiutil attach -nomount: create the /dev/disk* device but don't auto-mount.
+  # Sharp-edges BLOCKER-1 + Codex HIGH: parse with awk and DON'T merge stderr
+  # into the captured stdout (the prior `2>&1 | tr -d` was fragile against
+  # warnings + slice notation `/dev/diskNsM`).
+  local dev
+  dev=$(hdiutil attach -nomount "ram://${RAM_PK_SIZE_SECTORS}" | awk 'NR==1 {print $1}')
+  if [[ ! "$dev" =~ ^/dev/disk[0-9]+$ ]]; then
+    echo "ERROR: hdiutil attach returned unexpected first-line device: '$dev'" >&2
+    return 1
+  fi
+
+  # Format HFS+ with our volume name (used by the existing-mount check above).
+  if ! newfs_hfs -v "$RAM_PK_VOLNAME" "$dev" >/dev/null 2>&1; then
+    echo "ERROR: newfs_hfs failed on $dev" >&2
+    hdiutil detach "$dev" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! mount -t hfs "$dev" "$RAM_PK_MOUNT"; then
+    echo "ERROR: mount -t hfs $dev $RAM_PK_MOUNT failed" >&2
+    hdiutil detach "$dev" >/dev/null 2>&1 || true
+    return 1
+  fi
+  chmod 700 "$RAM_PK_MOUNT"
+  echo "  mounted RAM-disk at $RAM_PK_MOUNT (device $dev, 1 MB, HFS+, volname=$RAM_PK_VOLNAME)"
+}
+
+if ! mount_ram_disk; then
+  echo "FATAL: could not mount RAM-disk for PK-bearing config. Refusing to" >&2
+  echo "       fall through to disk-write of driver.toml. Investigate:" >&2
+  echo "       - hdiutil + diskutil available?" >&2
+  echo "       - \$HOME/.local/state/ophis/ram-pk writable?" >&2
+  echo "       - existing stale mount? (mount | grep ophis-ram-pk; diskutil unmount ...)" >&2
+  exit 6
+fi
+
 # sharp-edges H1 (2026-05-19): if OP_RPC_INTERNAL is set, ALL chain-reading
 # services bypass the eRPC proxy and route through whatever URL the operator
 # pasted. That's a legitimate failure-domain-test knob but it silently
@@ -127,24 +239,128 @@ if [[ -n "${OP_RPC_INTERNAL:-}" ]]; then
   echo "" >&2
 fi
 
+# Templates that contain the substituted PK (after envsubst) MUST land
+# on the RAM-disk; everything else stays in ./rendered/ on disk. The
+# canonical list:
+PK_BEARING_NAMES=(driver.toml)
+
+is_pk_bearing() {
+  local n="$1"
+  local p
+  for p in "${PK_BEARING_NAMES[@]}"; do
+    if [[ "$n" == "$p" ]]; then return 0; fi
+  done
+  return 1
+}
+
 for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # `shopt -s nullglob` (set above) makes the globs return nothing when
   # there are no matches, so this loop is safe even if only one extension
   # is present.
   name="$(basename "$tmpl" .tmpl)"
-  out="rendered/$name"
+
+  if is_pk_bearing "$name"; then
+    # PK-bearing → write to RAM-disk, symlink ./rendered/$name → RAM-disk path.
+    # The symlink keeps docker-compose's existing bind-mount source
+    # (./rendered/driver.toml) working unchanged.
+    out="${RAM_PK_MOUNT}/${name}"
+    out_tmp="${out}.tmp.$$"
+    rm -f "rendered/${name}"  # clear any prior on-disk render (Tier 1 → 1.5 migration)
+    ln -sf "$out" "rendered/${name}"
+  else
+    out="rendered/$name"
+    out_tmp="${out}.tmp.$$"
+  fi
+
+  # Atomic-write (Codex Low): render to a temp file in the same dir, chmod,
+  # then `mv` (rename within the same filesystem is atomic on macOS HFS+
+  # and APFS). Without this, a concurrent `docker compose up` could read
+  # an empty/partial config during the envsubst write window.
+  #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
   envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
-    < "$tmpl" > "$out"
+    < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
-  chmod 600 "$out"
-  echo "  rendered  $name"
+  chmod 600 "$out_tmp"
+  mv -f "$out_tmp" "$out"
+
+  if is_pk_bearing "$name"; then
+    echo "  rendered  $name  → RAM-disk ($RAM_PK_MOUNT)"
+  else
+    echo "  rendered  $name"
+  fi
 done
+
+# Sanity: if Tier 1.5 left a stale on-disk driver.toml from a prior
+# Tier-1-only render, scrub it now. We already removed it BEFORE envsubst
+# above, but the rendered/.../driver.toml.BAK pattern from older operator
+# scripts is worth a defense-in-depth pass.
+find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
+find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
+
+# Post-render PK-leak assertion (sharp-edges MED-1 + Codex Medium):
+# If a future template-edit introduces ${OPHIS_DRIVER_SUBMITTER_KEY}
+# into a file NOT in PK_BEARING_NAMES, the prior loop would silently
+# write the PK to disk. Scan all NON-symlink files in rendered/ for a
+# 64-hex `account = "0x..."` literal; if found in anything that isn't
+# already a symlink to the RAM-disk, that's a PK leak. Fail closed.
+#
+# We grep for the `0x` + 64-hex pattern, not the PK value itself, so the
+# assertion check doesn't itself surface the PK in error messages.
+violating_files=()
+while IFS= read -r f; do
+  if [[ -n "$f" && ! -L "$f" ]]; then
+    if grep -qE '"0x[a-fA-F0-9]{64}"' "$f" 2>/dev/null; then
+      violating_files+=("$f")
+    fi
+  fi
+done < <(find rendered -maxdepth 1 -type f -name "*.toml" -o -type f -name "*.yaml")
+
+if (( ${#violating_files[@]} > 0 )); then
+  echo "" >&2
+  echo "FATAL: PK literal found in non-RAM-disk rendered files:" >&2
+  for f in "${violating_files[@]}"; do
+    echo "  - $f" >&2
+  done
+  echo "" >&2
+  echo "  A template now substitutes \${OPHIS_DRIVER_SUBMITTER_KEY} into a file" >&2
+  echo "  that isn't in PK_BEARING_NAMES. Either:" >&2
+  echo "    a) Add the name to PK_BEARING_NAMES so it lands on RAM-disk, OR" >&2
+  echo "    b) Stop substituting the PK in that template." >&2
+  echo "  Scrub the listed file(s) — they contain the live PK." >&2
+  exit 7
+fi
 
 echo ""
 echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, mode 600."
-echo "Bring up the stack with:"
+echo "PK-bearing driver.toml lives on RAM-disk ($RAM_PK_MOUNT) — wipes on reboot."
+echo ""
+
+# Warn if APFS local-snapshots may contain a prior Tier-1 on-disk render
+# of driver.toml. Tier 1.5 prevents NEW on-disk PK exposure; it does NOT
+# scrub historical snapshots / Time Machine backups. EOA rotation is the
+# only complete remediation for prior exposure.
+if command -v tmutil >/dev/null 2>&1; then
+  snap_count=$(tmutil listlocalsnapshots / 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$snap_count" -gt 0 ]]; then
+    echo "NOTE: $snap_count APFS local snapshot(s) exist. If a prior Tier-1 render"
+    echo "      of driver.toml was made BEFORE this script's Tier-1.5 upgrade,"
+    echo "      the snapshots may still contain the old PK literal. Tier-1.5 does"
+    echo "      not scrub them retroactively — that requires either:"
+    echo "        (a) Rotating the submitter EOA (see founder-bus-factor.md §4.2)"
+    echo "        (b) sudo tmutil deletelocalsnapshots / (wipes ALL APFS snapshots)"
+    echo "      Plus checking Time Machine retention if enabled."
+    echo ""
+  fi
+fi
+
+echo "Bring up the stack with the wrapper:"
+echo "  ./compose-up.sh                  # re-renders + brings up (recommended)"
+echo "OR directly (only if you JUST ran render-configs.sh):"
 echo "  docker compose -f $SCRIPT_DIR/docker-compose.yml up -d --build"
+echo ""
+echo "After reboot, the RAM-disk is gone. compose-up.sh handles this automatically;"
+echo "raw 'docker compose up' will fail with a dangling driver.toml symlink."
