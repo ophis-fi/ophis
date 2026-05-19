@@ -1,6 +1,11 @@
 # infra/optimism-mainnet/docker-compose.yml — Ophis Optimism mainnet stack
 # (chain 10). Ports shifted +1 from testnet (5435/8102/8103/9022) to coexist
 # on the same host.
+
+# Explicit project name to keep `docker compose -p ophis` from collapsing
+# OP + HL volume namespaces (sharp-edges HIGH-3, 2026-05-20).
+name: ophis-optimism-mainnet
+
 #
 # Secret management:
 #   - Addresses come from ../optimism/.env (deployed by deploy-mainnet-all.sh)
@@ -353,5 +358,81 @@ services:
       retries: 6
       start_period: 30s
 
+  # Prometheus — scrape orderbook/driver/autopilot/rpc-proxy /metrics
+  # endpoints and evaluate alert rules. Host port 9091 (HL stack uses 9090
+  # to allow coexistence even though HL is paused).
+  #
+  # Sharp-edges HIGH-2 fix: gated behind `observability` compose profile.
+  # If TELEGRAM_BOT_TOKEN is unset in .env, render-configs.sh skips the
+  # alertmanager.yml render → bringing prometheus + alertmanager up would
+  # error on the missing bind-mount source. Profile gating makes this
+  # explicit: operator must set the token AND run `COMPOSE_PROFILES=observability
+  # docker compose up` (handled by compose-up.sh wrapper) to enable
+  # the alerts stack.
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.0.1
+    restart: always
+    mem_limit: 512m
+    user: "nobody"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.listen-address=0.0.0.0:9090"
+      # Restrict UI to read-only — no /reload, no /quit. Re-render via
+      # `docker compose restart prometheus`, never via HTTP.
+      - "--no-web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9091:9090"  # +1 vs HL stack
+    # Sharp-edges HIGH-1 fix: depends_on relaxed to `service_started`
+    # (not _healthy) so the observability stack comes up even when the
+    # driver / orderbook are unhealthy — that's *exactly* when alerts
+    # are most needed. Prometheus tolerates targets being down (the
+    # `up{job=}` metric is literally how the down-alerts work).
+    depends_on:
+      driver: { condition: service_started }
+      autopilot: { condition: service_started }
+      orderbook: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Alertmanager — route Prometheus alerts to Telegram. The rendered
+  # alertmanager.yml + chmod-600 telegram-token file are produced by
+  # render-configs.sh. Host port 9094 (HL stack uses 9093). Profile-
+  # gated like prometheus (sharp-edges HIGH-2).
+  alertmanager:
+    profiles: ["observability"]
+    image: prom/alertmanager:v0.27.0
+    restart: always
+    mem_limit: 128m
+    user: "nobody"
+    volumes:
+      - ./observability-rendered/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./observability-rendered/telegram-token:/etc/alertmanager/telegram-token:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+    ports:
+      - "127.0.0.1:9094:9093"  # +1 vs HL stack
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   postgres:
+  prometheus-data:
+  alertmanager-data:
