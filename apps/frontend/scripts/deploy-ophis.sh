@@ -102,6 +102,12 @@ if (( local_maps > 0 )); then
 fi
 
 # Place functions/ at deploy root (CF Pages auto-detects).
+# Defensive cleanup (2026-05-20): if the rsync from $FE_BUILD brought
+# in a stale `functions/` (e.g. an earlier debugging session left one
+# inside build/cowswap/), `cp -r` would NEST it as
+# `$STAGE/functions/functions/` and CF Pages would see the stale
+# top-level one. Delete first, then copy fresh.
+rm -rf "$STAGE/functions"
 cp -r "$FUNCTIONS_SRC" "$STAGE/functions"
 
 # Write _routes.json so /api/* is explicitly handled by functions (the
