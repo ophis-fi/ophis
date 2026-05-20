@@ -523,25 +523,41 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // INVALID_JSON, TIMEOUT) are NEVER cached so a transient LibertAI
   // hiccup doesn't persist "no LibertAI" for 5 minutes to every user.
   //
-  // `context.waitUntil()` keeps the isolate alive until the KV put
-  // settles, even after the response has been returned to the client.
-  // Fire-and-forget without it (initial attempt 2026-05-20) was being
-  // dropped — 8 identical requests over 16s all missed cache because
-  // the puts didn't complete before isolate teardown. See PR commit
-  // 68d848bb1.
+  // Awaited synchronously (vs `context.waitUntil` fire-and-forget)
+  // because the latter wasn't actually persisting writes in
+  // production — 90s wait between identical requests still missed
+  // cache. KV.put typically takes <100ms, so the FIRST request that
+  // populates the cache pays ~+100ms, but every subsequent identical
+  // request skips the ~2s LibertAI roundtrip entirely. Net win.
+  //
+  // X-Ophis-Cache-Write header surfaces the put outcome for
+  // observability (set on the response so it shows up in CF logs and
+  // browser devtools). Removed in a future iteration once we trust
+  // the write path.
+  let cacheWriteStatus = 'skip'
   if (env.OPHIS_RATELIMIT) {
     try {
-      context.waitUntil(
-        env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
-          expirationTtl: CACHE_TTL_SECONDS,
-        }),
-      )
-    } catch {
-      // ignore — degraded path is no-cache.
+      await env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
+        expirationTtl: CACHE_TTL_SECONDS,
+      })
+      cacheWriteStatus = 'ok'
+    } catch (err) {
+      cacheWriteStatus = err instanceof Error ? `err:${err.message.slice(0, 40)}` : 'err'
     }
   }
 
-  return json(successBody)
+  // Return success — embed cache-write status as a header for diagnosis.
+  return new Response(JSON.stringify(successBody), {
+    status: 200,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'DENY',
+      'referrer-policy': 'no-referrer',
+      'x-ophis-cache-write': cacheWriteStatus,
+    },
+  })
 }
 
 // Reject anything else.
