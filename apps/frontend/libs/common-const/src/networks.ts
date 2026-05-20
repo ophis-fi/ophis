@@ -51,13 +51,12 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.PLASMA]: { url: `https://rpc.plasma.to`, usesInfura: false },
   [SupportedChainId.ARBITRUM_ONE]: { url: `https://arbitrum-one-rpc.publicnode.com`, usesInfura: false },
   [SupportedChainId.AVALANCHE]: { url: `https://avalanche-c-chain-rpc.publicnode.com`, usesInfura: false },
-  // Ink: kept upstream's `rpc-ten.inkonchain.com` (Kraken's TEN sequencer
-  // — no archive, eth_getLogs caps at ~128 blocks). Sharp-edges audit M2
-  // (2026-05-20) flagged the archive gap: token-balance history + order
-  // history filters truncate silently on Ink. Mitigation deferred —
-  // publicnode doesn't serve Ink, and the alternatives (Quicknode/
-  // Alchemy) require an API key we don't have set up. Ink traffic is
-  // negligible today; revisit when we expand.
+  // Ink: kept upstream's `rpc-ten.inkonchain.com`. Sharp-edges audit M2
+  // (2026-05-20) claimed this was non-archive but empirical testing
+  // contradicted: returns 2009 logs over last 100 blocks, 1191 logs
+  // over a 100-block window 10k blocks back, and serves block 100
+  // (deep historical). Archive depth is adequate for our use case.
+  // No change.
   [SupportedChainId.INK]: { url: `https://rpc-ten.inkonchain.com`, usesInfura: false },
   [SupportedChainId.LINEA]: { url: `https://rpc.linea.build`, usesInfura: false },
   [SupportedChainId.SEPOLIA]: { url: `https://ethereum-sepolia-rpc.publicnode.com`, usesInfura: false },
