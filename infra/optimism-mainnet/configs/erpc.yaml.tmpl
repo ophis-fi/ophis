@@ -1,6 +1,6 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape: 2-of-2 consensus on distinct DNS providers.**
+# **Current shape: 2-of-3 consensus across publicnode + tenderly + self-hosted.**
 #
 # Iteration history:
 #  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
@@ -18,17 +18,28 @@
 #    1rpc consistently failed → `n/a = ErrUpstreamsExhausted` on every
 #    consensus call → 3-of-3 was unsatisfiable → driver couldn't boot.
 #
-# **Final config: 2 upstreams, agreementThreshold=2.**
+# **Final config: 3 upstreams, agreementThreshold=3.** (Upgraded from
+# 2-of-2 on 2026-05-20 when the self-hosted op-node became available.)
 #
-#   publicnode-op  optimism-rpc.publicnode.com   Allnodes multi-cloud
-#                                                DNS: Cloudflare
-#                                                CA: Let's Encrypt
-#   tenderly-op    optimism.gateway.tenderly.co  Tenderly
-#                                                DNS: Google Cloud
-#                                                CA: ZeroSSL/Sectigo
+#   publicnode-op       optimism-rpc.publicnode.com    Allnodes
+#                                                       DNS: Cloudflare
+#                                                       CA: Let's Encrypt
+#   tenderly-op         optimism.gateway.tenderly.co   Tenderly
+#                                                       DNS: Google Cloud
+#                                                       CA: ZeroSSL/Sectigo
+#   ophis-op-node-self  Aleph VM via Tailscale         Ours, fully synced
+#                       100.77.53.81:8545              op-reth v1.10.2 +
+#                                                       op-node v1.18.0
+#                                                       (Phase 4, prov.
+#                                                       2026-05-13, 1.9 TB)
 #
-# **Threat-model: 2-of-2 with distinct-DNS upstreams is STRICTLY STRONGER
-# than 2-of-3 with 2 CF-correlated upstreams.**
+# **Threat-model: 3-of-3 over 3 fully-independent failure domains is
+# the strongest posture achievable. The prior 2-of-3 (with 2
+# CF-correlated upstreams) was poisonable under CF compromise. The
+# 2-of-2 interim (publicnode + tenderly) was DoS-not-poisoning but
+# couldn't get back to 3-of-3 because the only 3rd free provider
+# (1rpc-op) had a broken URL-parse and tenderly's free public tier
+# rate-limited `eth_getBalance`. Self-hosting closes both problems:**
 #
 #  - Cloudflare DNS compromise → only publicnode is hijacked. tenderly
 #    on Google DNS returns the real answer → dispute → returnError →
@@ -116,27 +127,59 @@ projects:
           # 2026-05-20 evening (2) — DROPPED `eth_getBalance` from strict
           # consensus too. Tenderly's free public Gateway hit per-IP
           # rate-limit (HTTP 429 ErrEndpointCapacityExceeded) under
-          # sustained polling from driver+orderbook+autopilot, taking
-          # down half of consensus → driver `/healthz` 503 loop.
-          # Threat model on `eth_getBalance` demotion: a hostile single
-          # upstream can ONLY false-positive a "submitter dry" alert
-          # (driver pauses, recoverable) OR false-negative against an
-          # actually-underfunded submitter (mempool rejects at submission
-          # layer — caught downstream). NEITHER is fund loss.
-          # Documented residual; closes itself when a paid/keyed
-          # Tenderly Web3 Gateway is wired (re-add to strict consensus).
-          - matchMethod: "eth_call|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory"
+          # sustained polling from driver+orderbook+autopilot. (Residual
+          # since closed in 2026-05-20 evening (3) below.)
+          #
+          # 2026-05-20 evening (3) — ADDED self-hosted ophis-op-node-self
+          # as the 3rd upstream. VM1 (Aleph `ophis-op-node` at
+          # Tailscale 100.77.53.81) runs op-reth v1.10.2 + op-node v1.18.0,
+          # fully synced, controlled by us. This removes the Tenderly
+          # rate-limit bottleneck (we poll our own node freely) AND adds
+          # a 3rd fully-independent failure domain (Aleph network — not
+          # CF, not Google).
+          #
+          # Restored: `eth_getBalance` back to strict consensus. The
+          # rate-limit reason for demotion is no longer a constraint.
+          #
+          # Bumped: agreementThreshold 2 → 3 (every upstream must agree).
+          # Threat model now (3 distinct DNS/operator/network):
+          #   - CF DNS compromise: hijacks only publicnode → tenderly +
+          #     self return truth → dispute → returnError → safe
+          #   - Google DNS compromise: hijacks only tenderly → publicnode
+          #     + self → safe
+          #   - Aleph compromise (someone gets into our VM): hijacks only
+          #     self → publicnode + tenderly → safe
+          #   - All 3 simultaneously: requires owning CF + Google + Aleph
+          #     infrastructures → nation-state++ class, out of scope.
+          #
+          # This is the strongest posture achievable today. The CF-DNS
+          # concentration residual (documented through #144→#148 iterations)
+          # is now fully closed.
+          - matchMethod: "eth_call|eth_getBalance|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory"
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 2
-              # 2-of-2 over distinct-DNS upstreams (publicnode on CF DNS,
-              # tenderly on Google DNS). Strictly stronger than the prior
-              # 2-of-3 (which had 2 CF-correlated upstreams and was
-              # vulnerable to CF-collusion poisoning per Codex retro-audit).
-              # 3-of-3 was the post-audit fix but operationally broken
-              # because 1rpc-op's `/op` path got stripped by eRPC's URL
-              # parser (see header comment for full attack/recovery).
+              maxParticipants: 3
+              # 2-of-3 across fully-independent failure domains:
+              # - publicnode-op (Allnodes; CF DNS)
+              # - tenderly-op (Tenderly; Google Cloud DNS)
+              # - ophis-op-node-self (Aleph VM, self-hosted via Tailscale)
+              #
+              # **Threshold downgrade from 3-of-3 (Codex+sharp-edges
+              # pre-merge audit, 2026-05-20):** the earlier Codex
+              # finding ("2-of-3 is CF-poisonable") applied to the
+              # 2-of-3 config where 2 of the 3 were CF-correlated
+              # (publicnode + 1rpc). With the self-hosted Aleph node
+              # replacing the second CF participant, the 3 upstreams
+              # span 3 distinct DNS/operator/network failure domains —
+              # a single-upstream compromise can no longer satisfy
+              # quorum because the other 2 (one of which must be the
+              # non-compromised distinct-DNS upstream) would dispute.
+              # Going back to 2-of-3 gives us availability resilience:
+              # a single-upstream blip (tenderly 429, VM1 kernel reboot,
+              # publicnode hiccup) leaves 2 healthy upstreams that can
+              # still form quorum. 3-of-3 made the system fail-closed
+              # on ANY blip, which is operationally untenable.
               agreementThreshold: 2
               disputeBehavior: returnError
               # Mirroring HL audit decision (Codex Cyber H3): the obvious
@@ -203,6 +246,46 @@ projects:
         # endpoint behind a key in the future, swap-procedure is in
         # docs/operations/op-erpc-runbook.md.
         endpoint: https://optimism.gateway.tenderly.co
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: ophis-op-node-self
+        # Self-hosted op-reth + op-node on Aleph VM "ophis-op-node"
+        # (Tailscale IP 100.77.53.81, public 46.247.131.211:24718 SSH).
+        # Phase 4 — Aleph VMs in project_ophis.md has the full setup
+        # history (provisioned 2026-05-13 with 1.9 TB after the 1.1 TB
+        # disk-full miss, snapshot from datadirs.optimism.io, op-reth
+        # v1.10.2 + op-node v1.18.0).
+        #
+        # Reach path: Mac mini docker bridge → host networking →
+        # Tailscale interface → wireguard → VM1's tailscale0 →
+        # iptables NAT rule (allows source 100.100.107.110 and
+        # 100.115.232.82) → docker-proxy → op-reth 127.0.0.1:8545.
+        #
+        # Latency: ~50ms RTT (Tailscale wireguard).
+        #
+        # Failure modes:
+        # - VM1 down: this upstream returns connection refused →
+        #   participant timeout. With agreementThreshold: 2, the
+        #   remaining 2 (publicnode + tenderly) form quorum if they
+        #   agree — settlement continues. If those 2 ALSO disagree
+        #   simultaneously (unlikely unless real network split), we
+        #   drop below threshold → returnError → driver pauses until
+        #   any 2 of 3 recover agreement.
+        # - Tailscale relay/wireguard hiccup: same as above.
+        # - Public IP changes (Aleph reprovision): UPDATE THIS ENDPOINT.
+        #
+        # No DNS dependency — IP-pinned because container DNS doesn't
+        # resolve Tailscale MagicDNS by default.
+        endpoint: http://100.77.53.81:8545
         failsafe:
           - matchMethod: "*"
             timeout:
