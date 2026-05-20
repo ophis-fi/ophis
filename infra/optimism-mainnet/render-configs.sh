@@ -99,11 +99,29 @@ set -a
 source .env
 set +a
 
+# Resolve PK file path.
+#
+# G1 portability (2026-05-20 DR drill findings): on macOS the canonical
+# location is /Users/ophis-driver/.config/submitter.key (legacy Mac
+# home convention). On Linux DR target, the equivalent is
+# /home/ophis-driver/.config/submitter.key. Both are honored; operator
+# can override explicitly via OPHIS_SUBMITTER_KEY_PATH if the user
+# layout differs.
+if [[ -z "${OPHIS_SUBMITTER_KEY_PATH:-}" ]]; then
+  case "$(uname -s)" in
+    Darwin) OPHIS_SUBMITTER_KEY_PATH="/Users/ophis-driver/.config/submitter.key" ;;
+    Linux)  OPHIS_SUBMITTER_KEY_PATH="/home/ophis-driver/.config/submitter.key" ;;
+    *)      echo "ERROR: unsupported platform $(uname -s). Set OPHIS_SUBMITTER_KEY_PATH explicitly." >&2; exit 5 ;;
+  esac
+fi
+
 # Read PK from ophis-driver-owned file via sudo (need root to bypass 0700 home).
-OPHIS_DRIVER_SUBMITTER_KEY=$(sudo cat /Users/ophis-driver/.config/submitter.key 2>/dev/null | tr -d '\n\r')
+OPHIS_DRIVER_SUBMITTER_KEY=$(sudo cat "$OPHIS_SUBMITTER_KEY_PATH" 2>/dev/null | tr -d '\n\r')
 if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
-  echo "ERROR: PK from /Users/ophis-driver/.config/submitter.key not a 32-byte hex." >&2
-  echo "       Run ./infra/tier1-pk-isolation-setup.sh first." >&2
+  echo "ERROR: PK from $OPHIS_SUBMITTER_KEY_PATH not a 32-byte hex." >&2
+  echo "       Run ./infra/tier1-pk-isolation-setup.sh first," >&2
+  echo "       OR if this is a DR-target machine, set up the ophis-driver" >&2
+  echo "       user and PK file per docs/operations/disaster-recovery-runbook.md." >&2
   exit 5
 fi
 export OPHIS_DRIVER_SUBMITTER_KEY
@@ -159,49 +177,63 @@ RAM_PK_SIZE_SECTORS=2048   # 2048 * 512B = 1 MB
 # version verifies the mounted volume is RAM-backed via `diskutil info`,
 # and aborts if not.
 mount_ram_disk() {
-  # Use grep -F (fixed string) + explicit terminating " (" to avoid
-  # partial-path matches (sharp-edges HIGH-2). `mount` output format:
-  #   /dev/diskN on /Users/scep/... (hfs, local, mounted by scep, nobrowse)
-  # Existing-mount check (2026-05-20 v3): use a marker file inside the
-  # volume rather than diskutil's volume name. Reason: `newfs_hfs -v
-  # ophis-ram-pk` sets the HFS+ volume label in the filesystem header,
-  # but `diskutil info` does NOT read raw HFS+ volume labels for
-  # ram-disks created via hdiutil+newfs_hfs (only volumes formatted
-  # through diskutil's own API show up). The volume label is invisible
-  # to diskutil even though `mount` correctly reports the FS as hfs.
-  #
-  # Marker file approach: at format time we write a known-content file
-  # into the volume. The existing-mount check reads that file and
-  # confirms our cookie is there.
+  case "$(uname -s)" in
+    Darwin) _mount_ram_disk_macos ;;
+    Linux)  _mount_ram_disk_linux ;;
+    *)      echo "ERROR: unsupported platform $(uname -s) for RAM-disk mount" >&2; return 1 ;;
+  esac
+}
+
+# Linux variant — uses tmpfs (kernel-resident pages, no disk).
+# G2 portability fix (2026-05-20 DR drill findings).
+_mount_ram_disk_linux() {
+  if mount | grep -qE " ${RAM_PK_MOUNT} type tmpfs"; then
+    # Existing tmpfs mount — verify marker file presence.
+    local marker="${RAM_PK_MOUNT}/.ophis-ram-pk-marker"
+    if [[ ! -f "$marker" ]] || ! grep -qFx "$RAM_PK_VOLNAME" "$marker" 2>/dev/null; then
+      echo "ERROR: $RAM_PK_MOUNT mounted but marker file missing/wrong." >&2
+      echo "       To recover: sudo umount $RAM_PK_MOUNT && re-run." >&2
+      return 1
+    fi
+    return 0  # confirmed: our tmpfs
+  fi
+  mkdir -p "$RAM_PK_MOUNT"
+  # 1 MB tmpfs, mode 0700, mounted by current user (uid/gid via -o).
+  if ! sudo mount -t tmpfs tmpfs "$RAM_PK_MOUNT" \
+       -o "size=1M,mode=0700,uid=$(id -u),gid=$(id -g)"; then
+    echo "ERROR: tmpfs mount at $RAM_PK_MOUNT failed (need passwordless sudo for `mount`)" >&2
+    return 1
+  fi
+  # Write marker file (now writable since we own the mount).
+  local marker="${RAM_PK_MOUNT}/.ophis-ram-pk-marker"
+  printf '%s\n' "$RAM_PK_VOLNAME" > "$marker"
+  chmod 600 "$marker"
+  echo "  mounted RAM-disk at $RAM_PK_MOUNT (tmpfs, 1 MB, marker=$RAM_PK_VOLNAME)"
+}
+
+# macOS variant — uses hdiutil + newfs_hfs (RAM-backed HFS+ volume).
+# Existing-mount check uses a marker file inside the volume rather
+# than diskutil's volume name (newfs_hfs labels are invisible to
+# diskutil for ram-disks). See sharp-edges audit history in PR #147.
+_mount_ram_disk_macos() {
   if mount | grep -Fq " on ${RAM_PK_MOUNT} ("; then
-    # Verify the mounted device is a /dev/disk* node (defends against
-    # ProcFS/overlayfs/etc. mounted at the path).
     local existing_dev
     existing_dev=$(mount | grep -F " on ${RAM_PK_MOUNT} (" | awk '{print $1}')
     if [[ ! "$existing_dev" =~ ^/dev/disk[0-9]+ ]]; then
       echo "ERROR: $RAM_PK_MOUNT mounted but device '$existing_dev' isn't /dev/disk*" >&2
       return 1
     fi
-    # Read the marker file. Content must match our $RAM_PK_VOLNAME.
     local marker="${RAM_PK_MOUNT}/.ophis-ram-pk-marker"
     if [[ ! -f "$marker" ]] || ! grep -qFx "$RAM_PK_VOLNAME" "$marker" 2>/dev/null; then
       echo "ERROR: $RAM_PK_MOUNT mounted but marker file missing/wrong." >&2
-      echo "       Expected ${marker} to contain '$RAM_PK_VOLNAME'." >&2
-      echo "       Either some other volume is sitting at our mountpoint, OR" >&2
-      echo "       a previous RAM-disk lost its marker (sleep/wake corruption?)." >&2
       echo "       To recover: stop the driver container, then:" >&2
-      echo "         hdiutil detach ${existing_dev}" >&2
-      echo "       Then re-run ./compose-up.sh — a fresh RAM-disk will be created." >&2
+      echo "         sudo umount -f $RAM_PK_MOUNT && hdiutil detach ${existing_dev} -force" >&2
       return 1
     fi
-    return 0  # confirmed: our RAM-disk via marker file
+    return 0  # confirmed: our RAM-disk
   fi
   mkdir -p "$RAM_PK_MOUNT"
 
-  # hdiutil attach -nomount: create the /dev/disk* device but don't auto-mount.
-  # Sharp-edges BLOCKER-1 + Codex HIGH: parse with awk and DON'T merge stderr
-  # into the captured stdout (the prior `2>&1 | tr -d` was fragile against
-  # warnings + slice notation `/dev/diskNsM`).
   local dev
   dev=$(hdiutil attach -nomount "ram://${RAM_PK_SIZE_SECTORS}" | awk 'NR==1 {print $1}')
   if [[ ! "$dev" =~ ^/dev/disk[0-9]+$ ]]; then
@@ -209,7 +241,6 @@ mount_ram_disk() {
     return 1
   fi
 
-  # Format HFS+ with our volume name (used by the existing-mount check above).
   if ! newfs_hfs -v "$RAM_PK_VOLNAME" "$dev" >/dev/null 2>&1; then
     echo "ERROR: newfs_hfs failed on $dev" >&2
     hdiutil detach "$dev" >/dev/null 2>&1 || true
@@ -223,10 +254,6 @@ mount_ram_disk() {
   fi
   chmod 700 "$RAM_PK_MOUNT"
 
-  # Write the marker file. The existing-mount check on subsequent runs
-  # reads this to confirm "yes, this is the RAM-disk we created" without
-  # depending on diskutil's volume-label tracking (which is unreliable
-  # for newfs_hfs-formatted volumes — see existing-mount check comments).
   local marker="${RAM_PK_MOUNT}/.ophis-ram-pk-marker"
   printf '%s\n' "$RAM_PK_VOLNAME" > "$marker"
   chmod 600 "$marker"
