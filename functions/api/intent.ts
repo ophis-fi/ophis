@@ -46,6 +46,31 @@ const LIBERTAI_MODEL = 'qwen3.5-122b-a10b'
 const TIMEOUT_MS = 5000
 const MAX_TEXT_LEN = 280
 
+// Edge cache for identical (normalized) text inputs. Catches the
+// "user clicks the same chip preset 50 times" and "bot replays the
+// same input" cases without burning a LibertAI token round-trip per
+// hit. Cache hit = no LibertAI call at all.
+//
+// TTL: 5 minutes. Intents are semantically stable (the LLM is
+// temperature:0 and SYSTEM_PROMPT pinned, so identical input ⇒
+// identical output until we deploy a new prompt). 5min is conservative
+// — could be 1h+ in steady state. Keep short to limit blast radius
+// if a bad cached response ever lands.
+//
+// Storage: Cloudflare's edge Cache API. Keyed by SHA-256 of the
+// normalized text (trim + lowercase). Synthesized GET URL so the
+// Cache API accepts it. Per-POP cache — not strictly global, but
+// each region's POP only takes the first hit then serves the rest.
+const CACHE_TTL_SECONDS = 300
+const CACHE_KEY_BASE = 'https://intent-cache.ophis.internal/v1/'
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 // Rate limit (per IP, sliding window). Primary path: a KV-backed
 // counter (`env.OPHIS_RATELIMIT`) with N distinct strongly-consistent
 // reads — works across all CF isolates and edge POPs. Fallback path:
@@ -376,6 +401,40 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: `text exceeds ${MAX_TEXT_LEN} chars` } }, 400)
   }
 
+  // Edge cache lookup (Phase 3.8 / 2026-05-20). Normalized text →
+  // SHA-256 → synthetic cache key. Hit = serve cached LibertAI
+  // response without burning a token round-trip. The cache is
+  // per-POP, not global, but each POP only takes the first hit then
+  // serves the rest from cache for CACHE_TTL_SECONDS.
+  //
+  // We deliberately CHECK the cache AFTER rate-limit + auth/input
+  // validation so cache hits still respect the per-IP cap (don't
+  // let an attacker drain the cache by serving identical inputs
+  // unbounded). The rate limit increments before the cache check.
+  const normalizedText = text.trim().toLowerCase()
+  const cacheKeyHash = await sha256Hex(normalizedText)
+  const cacheKey = CACHE_KEY_BASE + cacheKeyHash
+  const cacheKeyRequest = new Request(cacheKey, { method: 'GET' })
+
+  const cached = await caches.default.match(cacheKeyRequest)
+  if (cached) {
+    // Re-emit with our standard response headers (including no-store
+    // for the BROWSER — the edge cache is separate from any client
+    // cache). The body is already a valid IntentResponse JSON string.
+    const body = await cached.text()
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+        'x-frame-options': 'DENY',
+        'referrer-policy': 'no-referrer',
+        'x-ophis-cache': 'hit',
+      },
+    })
+  }
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
@@ -448,7 +507,36 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
   }
 
-  return json({ ok: true, data: filtered })
+  const successBody: IntentResponse = { ok: true, data: filtered }
+  const successJson = JSON.stringify(successBody)
+
+  // Store in edge cache for subsequent identical inputs. We cache the
+  // raw JSON body and serve it via caches.default.match() on later
+  // requests. The cached Response is internal-only — never seen by
+  // browser; the next request reconstitutes a fresh Response with our
+  // standard headers. `s-maxage` directs CF's edge cache TTL.
+  //
+  // Only cache successful 200s. Errors (UPSTREAM, INVALID_JSON, TIMEOUT)
+  // are NOT cached — we want a transient LibertAI hiccup to retry,
+  // not persist a "no LibertAI" answer for 5 minutes to every user.
+  try {
+    const cacheableResponse = new Response(successJson, {
+      status: 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': `public, s-maxage=${CACHE_TTL_SECONDS}`,
+      },
+    })
+    // ctx.waitUntil isn't available in our PagesFunction signature here;
+    // fire-and-forget the cache write. The Promise unhandled is fine —
+    // if cache.put fails, next request re-fetches LibertAI (degrades to
+    // current behavior).
+    void caches.default.put(cacheKeyRequest, cacheableResponse)
+  } catch {
+    // ignore — degraded path is no-cache.
+  }
+
+  return json(successBody)
 }
 
 // Reject anything else.
