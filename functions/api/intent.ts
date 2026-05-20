@@ -530,34 +530,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // populates the cache pays ~+100ms, but every subsequent identical
   // request skips the ~2s LibertAI roundtrip entirely. Net win.
   //
-  // X-Ophis-Cache-Write header surfaces the put outcome for
-  // observability (set on the response so it shows up in CF logs and
-  // browser devtools). Removed in a future iteration once we trust
-  // the write path.
-  let cacheWriteStatus = 'skip'
+  // Errors are swallowed silently: client gets the LibertAI response
+  // regardless, and the next request retries the cache write. No
+  // diagnostic header — Codex pre-deploy audit (2026-05-20) flagged
+  // the prior `x-ophis-cache-write: err:<msg>` shape as an oracle
+  // for internal KV state.
   if (env.OPHIS_RATELIMIT) {
     try {
       await env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
         expirationTtl: CACHE_TTL_SECONDS,
       })
-      cacheWriteStatus = 'ok'
-    } catch (err) {
-      cacheWriteStatus = err instanceof Error ? `err:${err.message.slice(0, 40)}` : 'err'
+    } catch {
+      // Silent — degraded path is no-cache (next request retries).
     }
   }
 
-  // Return success — embed cache-write status as a header for diagnosis.
-  return new Response(JSON.stringify(successBody), {
-    status: 200,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-      'x-frame-options': 'DENY',
-      'referrer-policy': 'no-referrer',
-      'x-ophis-cache-write': cacheWriteStatus,
-    },
-  })
+  return json(successBody)
 }
 
 // Reject anything else.

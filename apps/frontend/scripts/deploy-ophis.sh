@@ -48,10 +48,16 @@ if [[ -n "${OPHIS_DEPLOY_STAGE:-}" ]]; then
       exit 1
       ;;
   esac
+  # Allow ONLY paths matching /tmp/ophis-* or /var/folders/.../ophis-*.
+  # Codex pre-deploy audit (2026-05-20) flagged the prior `/tmp/*` /
+  # `/var/folders/*` permissive globs: STAGE=/tmp/ (bare, no subdir)
+  # would have made `rm -rf $STAGE` = `rm -rf /tmp/`. Now we require a
+  # non-empty `ophis-`-prefixed subdir.
   case "$STAGE" in
-    /tmp/*|/var/folders/*) ;;
+    /tmp/ophis-*|/var/folders/*/ophis-*) ;;
     *)
-      echo "ERROR: \$OPHIS_DEPLOY_STAGE must be under /tmp or /var/folders, got '$STAGE'" >&2
+      echo "ERROR: \$OPHIS_DEPLOY_STAGE must match /tmp/ophis-* or /var/folders/.../ophis-*" >&2
+      echo "       got: '$STAGE'" >&2
       exit 1
       ;;
   esac
