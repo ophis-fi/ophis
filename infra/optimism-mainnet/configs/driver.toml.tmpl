@@ -109,31 +109,29 @@ account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 # Empirically over the last 30d OP gasPrice never exceeded 1 gwei.
 gas-price-cap = "5000000000"
 
-# Submission mempools — RACED in parallel (Phase 1.4, 2026-05-20).
+# Submission mempools — RACED in parallel.
+# Phase 1.4 (2026-05-20 AM): added 3-way race over 3rd-party relays.
+# Self-hosted update (2026-05-20 PM): prepended ophis-op-node-self as
+# the primary submission path. Signed calldata is observed FIRST by
+# our own Aleph VM (Tailscale RTT ~50ms vs 100-200ms for public).
+# Third-party relays kept as fallbacks for availability — if VM1 goes
+# down, settlements still broadcast.
 #
-# On OP mainnet there is a single sequencer (Optimism Foundation),
-# so "private mempool" in the L1 sense doesn't exist. The MEV residual
-# is the brief signing→inclusion window where an attacker on the
-# submission RPC could observe signed calldata and front-run by
-# submitting their own tx via a different relay.
+# Threat model on submission front-running:
+# - Pre-this-PR: hostile single 3rd-party relay could observe + race
+#   ahead. Mitigated by 3-way race over distinct operators.
+# - Post-this-PR: self-hosted entry wins the race ~always due to
+#   network proximity. A hostile 3rd-party relay seeing the calldata
+#   has already lost the race. To leak now, an attacker needs to be
+#   on the Aleph VM itself — a much smaller surface.
 #
-# Mitigation: submit through MULTIPLE independent relays. The driver
-# races all entries; first to accept wins, others get dropped. A
-# hostile single relay can no longer reliably front-run because the
-# sequencer may see one of the other entries' submissions first.
-#
-# 3 independent relays:
-#   1. publicnode (Allnodes; DNS: Cloudflare)
-#   2. mainnet.optimism.io (Optimism Foundation; Conduit/CF-fronted —
-#      same DNS provider as publicnode but DIFFERENT operator)
-#   3. Tenderly public gateway (Tenderly; DNS: Google Cloud — distinct
-#      DNS provider entirely)
-#
-# All three eventually deliver to the same sequencer. Trust model:
-# at least one of the three must be honest for an attacker NOT to
-# successfully front-run. With 3 independent operators across 2 DNS
-# providers, single-operator + single-DNS-incident scenarios are
-# defended against.
+# 4 relays, ordered (#1 wins by latency under normal conditions):
+[[submission.mempool]]
+# OUR OWN node on Aleph VM, reached via Tailscale. Primary path.
+# If VM1 goes down: this entry returns connection refused; driver
+# falls through to the 3 fallbacks below — settlements still land.
+url = "http://100.77.53.81:8545"
+
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
 
