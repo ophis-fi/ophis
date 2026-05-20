@@ -92,9 +92,6 @@ projects:
           # upstream-level timeout (~10s) — sharp-edges follow-up #6.
           #
           # Method list (Codex retro-audit, 2026-05-20):
-          # - `eth_getBalance`: driver-balance probe; a hostile single
-          #   upstream lying low could trigger spurious "submitter dry"
-          #   alerts or, worse, mask an actually-dry submitter.
           # - `eth_estimateGas`: a forged-low estimate yields txs that
           #   revert (gas-only loss bounded by the 5 gwei cap from #131,
           #   but still budget-wasteful).
@@ -115,7 +112,20 @@ projects:
           # true` at the network level above. Settlement-integrity
           # methods (`eth_call`, `eth_getLogs`, `eth_getTransactionReceipt`,
           # `eth_getTransactionByHash`) keep 2-of-2 consensus.
-          - matchMethod: "eth_call|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_getBalance|eth_estimateGas|eth_feeHistory"
+          #
+          # 2026-05-20 evening (2) — DROPPED `eth_getBalance` from strict
+          # consensus too. Tenderly's free public Gateway hit per-IP
+          # rate-limit (HTTP 429 ErrEndpointCapacityExceeded) under
+          # sustained polling from driver+orderbook+autopilot, taking
+          # down half of consensus → driver `/healthz` 503 loop.
+          # Threat model on `eth_getBalance` demotion: a hostile single
+          # upstream can ONLY false-positive a "submitter dry" alert
+          # (driver pauses, recoverable) OR false-negative against an
+          # actually-underfunded submitter (mempool rejects at submission
+          # layer — caught downstream). NEITHER is fund loss.
+          # Documented residual; closes itself when a paid/keyed
+          # Tenderly Web3 Gateway is wired (re-add to strict consensus).
+          - matchMethod: "eth_call|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory"
             timeout:
               duration: 12s
             consensus:
