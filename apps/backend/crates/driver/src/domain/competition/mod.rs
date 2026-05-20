@@ -747,7 +747,33 @@ impl Competition {
     ) -> Option<u64> {
         let err = match self.simulate_settlement(settlement).await {
             Err(simulator::Error::Revert(err)) => err,
-            _ => return None,
+            Err(simulator::Error::Other(err)) => {
+                // Simulator infrastructure error (RPC failure, timeout,
+                // simulator down). Pre-2026-05-20, this fell through to
+                // `_ => return None`, which is indistinguishable from
+                // "simulation passed" — meaning a transient simulator
+                // outage left every winning solution in the candidate
+                // set, only to fail at on-chain broadcast. Now: log loud
+                // + emit a metric so ops can detect simulator
+                // degradation. The return remains `None` (conservative:
+                // we don't have evidence the solution would revert) but
+                // the metric makes the difference observable.
+                tracing::error!(
+                    solver = %self.solver.name(),
+                    auction_id = ?auction.id(),
+                    block_no = ?block.number,
+                    error = ?err,
+                    "winner re-simulation failed with non-revert error \
+                     (simulator infrastructure issue); treating as \
+                     did-not-revert pending operator review"
+                );
+                metrics::get()
+                    .winner_resim_non_revert_error
+                    .with_label_values(&[self.solver.name().0.as_str()])
+                    .inc();
+                return None;
+            }
+            Ok(()) => return None,
         };
         let has_haircut = settlement.has_haircut();
         observe::winner_voided(self.solver.name(), block, &err, has_haircut);

@@ -84,10 +84,19 @@ impl Onchain {
                                 },
                             )),
                             Err(err) => {
-                                tracing::warn!(
+                                // Compliance-relevant: a sanctions-oracle outage
+                                // would silently let sanctioned addresses
+                                // through if we treated this as a soft-warn.
+                                // Promote to error so monitoring catches
+                                // it. Behavior is still fail-open (address
+                                // not added to ban set, cache not updated)
+                                // — operators must decide on the compliance
+                                // posture (fail-closed) per chain.
+                                tracing::error!(
                                     address = ?*address,
                                     ?err,
-                                    "unable to determine banned status in the background task"
+                                    "sanctions-oracle background fetch failed \
+                                     — address NOT added to ban set this cycle"
                                 );
                                 None
                             }
@@ -212,7 +221,16 @@ impl Users {
                     is_banned.then(|| banned.insert(address));
                 }
                 Err(err) => {
-                    tracing::warn!(?err, ?address, "failed to fetch banned status");
+                    // Same compliance-relevant fail-open as the background
+                    // task path — promote to error so operators detect
+                    // sustained sanctions-oracle outages. See `update_cache`
+                    // for the matching error path.
+                    tracing::error!(
+                        ?err,
+                        ?address,
+                        "sanctions-oracle fetch failed — address NOT added \
+                         to ban set; investigate Chainalysis oracle health"
+                    );
                 }
             }
         }
