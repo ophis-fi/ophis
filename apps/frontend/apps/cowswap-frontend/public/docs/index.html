@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Docs — Ophis · natural-language DEX aggregator on CoW Protocol</title>
+<title>Docs — Ophis · natural-language DEX aggregator</title>
 <meta name="description" content="Ophis is an intent-based DEX aggregator. Describe a swap in plain English; a solver network competes to fill it MEV-protected. 0% fees on ordinary trades — we only earn when execution beats your quote.">
 <link rel="canonical" href="https://ophis.fi/docs">
 
@@ -67,7 +67,7 @@
           "name": "What is Ophis?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Ophis is an intent-based DEX aggregator. You describe a swap in plain English (e.g. 'swap 100 USDC for ETH on Base'), and a network of solvers competes to fill the order at the best price. The trade settles on-chain via CoW Protocol with built-in MEV protection."
+            "text": "Ophis is an intent-based DEX aggregator. You describe a swap in plain English (e.g. 'swap 100 USDC for ETH on Base'), and a network of solvers competes to fill the order at the best price. The trade settles on-chain with built-in MEV protection."
           }
         },
         {
@@ -91,7 +91,7 @@
           "name": "Is my trade protected from MEV?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. Ophis settles via CoW Protocol, which uses batch auctions: every order in a batch clears at the same uniform price, eliminating front-running, back-running, and sandwich attacks."
+            "text": "Yes. Ophis uses batch auctions: every order in a batch clears at the same uniform price, eliminating front-running, back-running, and sandwich attacks."
           }
         },
         {
@@ -99,7 +99,7 @@
           "name": "Do I need to connect a wallet?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes — you sign your swap order with your own wallet. Ophis never holds your funds. The signed order is broadcast to CoW Protocol's solver network for execution."
+            "text": "Yes — you sign your swap order with your own wallet. Ophis never holds your funds. The signed order is broadcast to the solver network for execution."
           }
         },
         {
@@ -115,7 +115,7 @@
           "name": "Is Ophis open source?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. The full source code is published at github.com/ophis-fi/ophis. Ophis is a fork of the open-source CoW Swap frontend with an added natural-language intent parsing layer."
+            "text": "Yes. The full source code is published at github.com/ophis-fi/ophis. Ophis is an open-source DEX aggregator frontend with an added natural-language intent parsing layer."
           }
         }
       ]
@@ -374,7 +374,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
       Ophis is a natural-language DEX aggregator. Tell it what you want —
       <span style="font-family: var(--font-mono); color: var(--saffron);">swap 100 USDC for ETH on Base</span> —
       and a network of solvers competes to fill your order at the best price,
-      with MEV protection built in via CoW Protocol's batch auctions.
+      with MEV protection built in via batch auctions.
     </p>
     <div class="hero-ctas">
       <a class="btn-primary" href="/">Open the app →</a>
@@ -396,7 +396,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
       <div class="card">
         <p class="num">02 · Auction</p>
         <h3>Solver competition</h3>
-        <p>The signed order is broadcast to CoW Protocol's batch auction. Solvers race to find the best path — DEX, CoW-of-Wants match, or cross-chain bridge — and bid for the right to settle.</p>
+        <p>The signed order is broadcast to the batch auction. Solvers race to find the best path — DEX, peer-to-peer match, or cross-chain bridge — and bid for the right to settle.</p>
       </div>
       <div class="card">
         <p class="num">03 · Settle</p>
@@ -426,10 +426,10 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
         <li><strong>0% fee</strong> on every trade that fills at the quoted rate.</li>
         <li><strong>25% of improvement</strong> when execution beats the quote.</li>
         <li><strong>Hard cap at 0.5%</strong> of nominal trade volume — protects whales on chunky positive slippage.</li>
-        <li>CoW DAO retains a 25% service fee on the partner share; Ophis nets ~18.75% of price improvement after that.</li>
+        <li>A 25% service fee is retained by the underlying protocol on the partner share; Ophis nets ~18.75% of price improvement after that.</li>
       </ul>
       <p class="muted" style="margin: 16px 0 0; font-size: 13px;">
-        Implemented via CoW Protocol's CIP-75 partner-fee model
+        Implemented via the CIP-75 standard for partner-fee model
         (<code style="font-family: var(--font-mono); font-size: 12px;">priceImprovementBps</code>). See the
         <a href="https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253" rel="noreferrer">governance proposal</a>
         for the full protocol details.
@@ -463,7 +463,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     <div class="trust-grid trust">
       <div class="card">
         <h3>Non-custodial</h3>
-        <p>Ophis never holds your funds. You sign each order with your own wallet; the signed intent is executed by a solver from CoW Protocol's permissionless solver set.</p>
+        <p>Ophis never holds your funds. You sign each order with your own wallet; the signed intent is executed by a solver from the permissionless solver set.</p>
       </div>
       <div class="card">
         <h3>MEV-protected by design</h3>
@@ -484,11 +484,11 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     <h2>FAQ</h2>
     <details>
       <summary>How is Ophis different from 1inch or Matcha?</summary>
-      <p>Ophis runs on top of CoW Protocol, which uses batch auctions and a solver competition to settle every order at the best on-chain price — with MEV-protection by construction. The natural-language input lets you skip the token-pickers entirely. And our fee model is price-improvement-only: 0% on ordinary trades, 25% of any positive slippage above quote, capped at 0.5% of volume.</p>
+      <p>Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price — with MEV-protection by construction. The natural-language input lets you skip the token-pickers entirely. And our fee model is price-improvement-only: 0% on ordinary trades, 25% of any positive slippage above quote, capped at 0.5% of volume.</p>
     </details>
     <details>
       <summary>Do I need to connect a wallet?</summary>
-      <p>Yes — you sign your swap order with your own wallet. Ophis is non-custodial; the signed order is broadcast to CoW Protocol's solver network for execution and your funds move only when a solver settles the batch.</p>
+      <p>Yes — you sign your swap order with your own wallet. Ophis is non-custodial; the signed order is broadcast to the solver network for execution and your funds move only when a solver settles the batch.</p>
     </details>
     <details>
       <summary>Which networks are supported?</summary>
@@ -496,7 +496,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     </details>
     <details>
       <summary>Is my trade protected from MEV?</summary>
-      <p>Yes. CoW Protocol's batch auction settles every order in a batch at the same uniform clearing price. Front-running and sandwich attacks are eliminated by construction — there's no priority-gas auction to win because the protocol does not reorder transactions for value.</p>
+      <p>Yes. the batch auction settles every order in a batch at the same uniform clearing price. Front-running and sandwich attacks are eliminated by construction — there's no priority-gas auction to win because the protocol does not reorder transactions for value.</p>
     </details>
     <details>
       <summary>What happens if no solver matches my intent?</summary>
@@ -504,11 +504,11 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     </details>
     <details>
       <summary>How are partner fees collected?</summary>
-      <p>Via CoW Protocol's CIP-75 <code>priceImprovementBps</code> field in the order's appData. The fee is taken from the trade output at settlement and routed to the Ophis Safe weekly via CoW DAO's data script. CoW DAO retains a 25% service fee on the partner share by default.</p>
+      <p>Via the CIP-75 standard for <code>priceImprovementBps</code> field in the order's appData. The fee is taken from the trade output at settlement and routed to the Ophis Safe weekly via the partner-fee data script. A 25% service fee is retained by the underlying protocol on the partner share by default.</p>
     </details>
     <details>
       <summary>Is Ophis open source?</summary>
-      <p>Yes — full source at <a href="https://github.com/ophis-fi/ophis" rel="noreferrer">github.com/ophis-fi/ophis</a>. Ophis is a fork of the open-source CoW Swap frontend with an added natural-language intent-parsing layer.</p>
+      <p>Yes — full source at <a href="https://github.com/ophis-fi/ophis" rel="noreferrer">github.com/ophis-fi/ophis</a>. Ophis is an open-source DEX aggregator frontend with an added natural-language intent-parsing layer.</p>
     </details>
     <details>
       <summary>Can I use Ophis's intent parser in my own app?</summary>

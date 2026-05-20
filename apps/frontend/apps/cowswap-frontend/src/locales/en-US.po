@@ -3877,10 +3877,6 @@ msgstr "User rejected approval transaction"
 msgid "Swap on"
 msgstr "Swap on"
 
-#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenSearchContent/GuideBanner.tsx
-msgid "Can't find your token on the list? <0>Read our guide</0> on how to add custom tokens."
-msgstr "Can't find your token on the list? <0>Read our guide</0> on how to add custom tokens."
-
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 msgid "Transaction"
@@ -4209,6 +4205,10 @@ msgstr "Version"
 #: apps/cowswap-frontend/src/pages/Account/Tokens/TokensOverview.tsx
 msgid "All tokens"
 msgstr "All tokens"
+
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenSearchContent/GuideBanner.tsx
+msgid "Can't find your token on the list? Paste its contract address into the search box to add it as a custom token."
+msgstr "Can't find your token on the list? Paste its contract address into the search box to add it as a custom token."
 
 #: apps/cowswap-frontend/src/common/utils/tradeSettingsTooltips.tsx
 msgid "When selling {aNativeCurrency}, the minimum slippage tolerance is set to {minimumETHFlowSlippage}% or higher{amountRange} to ensure a high likelihood of order matching, even in volatile market conditions."

@@ -35,7 +35,7 @@ export function useWalletMetaData(standaloneMode?: boolean): WalletMetaData {
   if (connector.type === ConnectorType.INJECTED) {
     if (standaloneMode === false) {
       return {
-        walletName: 'CoW Swap widget',
+        walletName: 'Ophis widget',
         icon: 'Identicon',
       }
     }
