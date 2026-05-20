@@ -195,8 +195,60 @@ CF Tunnel runs as a launchd agent on the Mac mini today; the equivalent on Linux
 Real audit-level prod readiness asks for:
 
 1. **Live secondary host** (warm or hot) — currently NONE. Single Mac mini.
-2. **Automated daily restore test** — currently NONE. Backups are not periodically validated end-to-end.
+2. **Automated daily restore test** — partial. `docs/operations/postgres-backup-setup.md` documents the verification procedure but it's not yet a recurring task.
 3. **Documented RPO** (recovery point objective) — currently ad-hoc; daily Postgres dump = up to 24h of orderbook state loss in worst case.
-4. **PagerDuty / Telegram alerting on healthcheck-fail** — Telegram exists for HL eRPC alerts (paused stack); OP equivalent is in `project_ophis_roadmap.md`.
+4. **PagerDuty / Telegram alerting on healthcheck-fail** — Telegram exists for HL eRPC alerts (paused stack); OP equivalent shipped in PR #142 + #154.
 
 Each of these is a separate roadmap item. Recovery without them is possible (this runbook IS the recovery) but takes longer than it should.
+
+## DR drill 2026-05-20 — findings
+
+First end-to-end drill (Phase 2.1) executed on Aleph VM `ophis-rebates-vm`
+(`45.144.209.26:24014`) using the Mac mini's nightly Postgres dump
+shipped via Tailscale. Outcome:
+
+**Passed:**
+
+- `rsync` of dump file over Tailscale: 65572 bytes in <1s
+- `git clone` of repo into a fresh dir
+- Scratch `postgres:16` container spun up
+- `pg_restore` of dump into scratch container: clean exit, no errors
+- Schema verification: **31 tables** restored in public schema
+  (auctions, auction_orders, fee_policies, ethflow_orders,
+  last_indexed_blocks, order_events, etc.). All expected CoW tables
+  present.
+
+**Gaps discovered (must fix before a full DR-on-Linux drill works):**
+
+### G1 — render-configs.sh hardcodes macOS path `/Users/ophis-driver/.config/submitter.key`
+
+A Linux DR target uses `/home/ophis-driver/.config/...` (not `/Users/`).
+The script's `sudo cat /Users/ophis-driver/...` would fail on a fresh
+Linux box. Fix: thread the path through `${OPHIS_SUBMITTER_KEY_PATH:-...}`
+with a Mac default; document the Linux override in this runbook.
+
+### G2 — Tier 1.5 RAM-disk uses macOS `hdiutil`
+
+`render-configs.sh:mount_ram_disk()` calls `hdiutil attach ram://...`
++ `newfs_hfs` — both macOS-only. On Linux DR target, the equivalent
+is `mount -t tmpfs tmpfs $RAM_PK_MOUNT -o size=1M,mode=0700`. The script
+should detect platform and branch (or have a Linux-specific variant
+in the runbook).
+
+### G3 — no `ophis-driver` user automation
+
+The runbook describes creating the `ophis-driver` user manually
+(`dscl` on macOS, `useradd` on Linux). Recovery would benefit from
+an idempotent setup script (`scripts/setup-ophis-driver-user.sh`)
+that handles both platforms.
+
+### G4 — `compose-up.sh` wrapper assumes Mac toolchain
+
+Uses bash arrays + macOS `sed -i ''` semantics. Linux `sed -i` (no
+empty arg) would need the alternate form. Currently fine because
+the Mac mini is the only deploy target, but a Linux drill would
+trip these.
+
+**Status:** Phase 2.1 (Postgres restore drill) is ✅ proven. Phase 2.2
+(full DR drill on alternate host) is **blocked on G1+G2+G4**. Tracked
+in task #102.
