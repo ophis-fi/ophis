@@ -42,7 +42,14 @@ type IntentResponse =
   | { ok: false; error: { code: ErrorCode; message: string } }
 
 const LIBERTAI_URL = 'https://api.libertai.io/v1/chat/completions'
-const LIBERTAI_MODEL = 'qwen3.5-122b-a10b'
+// Switched 2026-05-20 from `qwen3.5-122b-a10b` to `qwen3.6-27b` after
+// observing 504 timeouts under sustained traffic. The 122B model is
+// overkill for structured intent extraction — Libertai's own docs-
+// assistant reference impl (github.com/Libertai/docs-assistant) uses
+// the 27B as their default. Our task (parse "swap 100 USDC for ETH")
+// is much simpler than tool-call agent flows the 27B handles well.
+// Expected: lower latency, fewer timeouts, comparable accuracy.
+const LIBERTAI_MODEL = 'qwen3.6-27b'
 const TIMEOUT_MS = 5000
 const MAX_TEXT_LEN = 280
 
@@ -357,7 +364,8 @@ function stripFences(s: string): string {
   return m ? m[1].trim() : trimmed
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const { request, env } = context
   // Origin allow-list: block calls from non-Ophis pages and most
   // non-browser callers (curl/scripts typically omit Origin entirely).
   // Not a security boundary against motivated attackers — Origin can
@@ -515,18 +523,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // INVALID_JSON, TIMEOUT) are NEVER cached so a transient LibertAI
   // hiccup doesn't persist "no LibertAI" for 5 minutes to every user.
   //
-  // Fire-and-forget. If KV.put fails (rare), next request re-fetches
-  // LibertAI — degraded to current behavior, not an error path.
+  // `context.waitUntil()` keeps the isolate alive until the KV put
+  // settles, even after the response has been returned to the client.
+  // Fire-and-forget without it (initial attempt 2026-05-20) was being
+  // dropped — 8 identical requests over 16s all missed cache because
+  // the puts didn't complete before isolate teardown. See PR commit
+  // 68d848bb1.
   if (env.OPHIS_RATELIMIT) {
     try {
-      // KV.put returns a Promise — letting it run async; we don't await
-      // because the function exits and returns the response. CF Pages'
-      // KV implementation buffers the write through the runtime so
-      // even fire-and-forget completes after function return (verified
-      // by Cloudflare docs for KV vs. caches.default).
-      void env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
-        expirationTtl: CACHE_TTL_SECONDS,
-      })
+      context.waitUntil(
+        env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
+          expirationTtl: CACHE_TTL_SECONDS,
+        }),
+      )
     } catch {
       // ignore — degraded path is no-cache.
     }
