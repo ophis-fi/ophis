@@ -64,6 +64,34 @@ This Safe is the `manager()` of the AllowList authenticator on every
 chain. Any change to allowlisted solvers requires 2-of-3 Ledger
 signatures.
 
+**Per-chain AllowListAuthentication addresses** (the contract that
+`addSolver` / `removeSolver` is called on — these are NOT in the
+chain's tomls because the CoW configs only list `signatures`, which is
+a different contract / signature validator):
+
+| Chain | AllowListAuthentication address |
+|---|---|
+| Optimism mainnet (10) | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` |
+| HyperEVM mainnet (999) — paused | check `Settlement.authenticator()` on chain |
+| MegaETH mainnet (4326) — paused | check `Settlement.authenticator()` on chain |
+
+To look up the AllowList address for any chain (canonical reference,
+in case the per-chain table above goes stale):
+
+```bash
+cast call --rpc-url <RPC> <SETTLEMENT_ADDRESS> "authenticator()(address)"
+```
+
+**For the rotation procedure (§4.2), the Safe Transaction Builder
+target is the AllowListAuthentication contract** (above), NOT the
+Settlement contract and NOT the signatures validator
+(`0x5f315a204e7971fc29a66fef3a5773f6b0202fac` on OP — common point of
+confusion, that's the EIP-1271 signature validator listed as
+`signatures` in the CoW config). 2026-05-20 incident: rotation
+simulation reverted because the batch targeted the signatures
+validator instead of the AllowList — see
+[[feedback-allowlist-not-signatures]].
+
 ### 2.3 Partner-fee Safe (cold)
 
 ```
