@@ -38,6 +38,19 @@ jobs:
       - name: Check 3 source-of-truth files match canonical Safe address
         run: ./scripts/check-partner-fee-invariant.sh
 
+  erpc-id-collisions:
+    name: eRPC upstream-ID cross-stack collision lint
+    runs-on: ubuntu-latest
+    # Phase 2.6 (2026-05-20). Catches the cross-stack ID-naming
+    # collision class. eRPC exports per-upstream Prometheus metrics
+    # labeled by `id:`. If two stacks share an upstream id, the same
+    # metric label gets two different sources and dashboards mis-
+    # attribute load.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Assert each chain's eRPC upstream IDs are suffixed and unique
+        run: ./scripts/check-erpc-id-collisions.sh
+
   slither:
     name: Slither (Solidity)
     runs-on: ubuntu-latest
