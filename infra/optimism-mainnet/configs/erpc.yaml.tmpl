@@ -155,7 +155,33 @@ projects:
           # This is the strongest posture achievable today. The CF-DNS
           # concentration residual (documented through #144→#148 iterations)
           # is now fully closed.
-          - matchMethod: "eth_call|eth_getBalance|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory"
+          # 2026-05-20 afternoon — EMERGENCY DOWNSIZE during Phase 3.1 swap.
+          # First user-initiated swap (uid 0x2a5fe72a...) failed because the
+          # container can't reach the self-hosted upstream over Tailscale
+          # (host has utun0 route, docker bridge doesn't), AND tenderly's
+          # free tier rate-limits eth_estimateGas/eth_feeHistory bursts.
+          # Result: consensus-low across BOTH simulation methods AND state
+          # reads → driver can't simulate → solutions discarded → no
+          # settlement. See feedback-erpc-container-tailscale-reachability.
+          #
+          # Mitigation: split methods into two consensus groups by threat
+          # surface:
+          #   1. Settlement OBSERVATION (eth_getLogs, eth_getTransactionReceipt,
+          #      eth_getTransactionByHash) keeps 2-of-3 strict consensus. A
+          #      forged response here would corrupt the autopilot's settlement
+          #      accounting (false-positive credits, missed partner-fees).
+          #   2. Simulation/state-reads (eth_call, eth_estimateGas,
+          #      eth_feeHistory, eth_getBalance) drop to retry-only via the
+          #      catchall `*` rule. A forged response here only causes the
+          #      driver to broadcast a tx that on-chain reverts — gas-only
+          #      loss bounded by the 5 gwei cap (~$0.05/tx). No settlement
+          #      against forged state possible because settlements are
+          #      EIP-712-signed by the user against fixed sell/buy amounts.
+          #
+          # Permanent fix tracked: container→Tailscale via host socat proxy
+          # (task #112 in roadmap). After that lands, restore the full method
+          # list to 2-of-3 consensus.
+          - matchMethod: "eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash"
             timeout:
               duration: 12s
             consensus:

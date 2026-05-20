@@ -9,6 +9,8 @@ import { useOrder } from 'legacy/state/orders/hooks'
 
 import { ExternalLinkCustom } from './styled'
 
+const OPHIS_FORK_CHAINS: ReadonlyArray<number> = [10 /* Optimism mainnet */]
+
 type DisplayLinkProps = {
   id: string | undefined
   chainId: number
@@ -30,6 +32,21 @@ export function DisplayLink({ id, chainId, leadToBridgeTab }: DisplayLinkProps):
     orderCreationHash && (status === OrderStatus.CREATING || status === OrderStatus.FAILED)
       ? orderCreationHash
       : undefined
+
+  // Ophis fork (Finding B, 2026-05-20): on chains where we don't ship a
+  // CoW-style explorer, the legacy fallback `getEtherscanLink('transaction',
+  // orderUid)` produces a misleading URL — CoW order UIDs are 56 bytes with
+  // the owner address embedded in bytes 32-52, so Etherscan silently
+  // redirects the malformed "tx hash" to the embedded owner's address page.
+  // Result: a fulfilled swap whose post-processor hasn't yet populated the
+  // trade row links to the *user's* address instead of the settlement tx.
+  // Suppress the link entirely on Ophis chains until the real tx hash is
+  // available — `useSettlementTxHash` polls at 8s so the link appears
+  // within one tick of post-processing.
+  if (!ethFlowHash && !settlementTxHash && OPHIS_FORK_CHAINS.includes(chainId)) {
+    return null
+  }
+
   const linkTarget = ethFlowHash ?? settlementTxHash ?? id
   const href = ethFlowHash
     ? getBlockExplorerUrl(chainId, 'transaction', ethFlowHash)
