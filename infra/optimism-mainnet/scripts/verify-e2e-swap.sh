@@ -66,6 +66,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -z "$OWNER" ]] && usage
+# Validate arg shapes (audit 2026-05-20: codex + sharp-edges flagged
+# unvalidated args producing silent false-negatives on malformed input).
+[[ "$OWNER" =~ ^0x[0-9a-fA-F]{40}$ ]] || { echo "ERROR: --owner must be 0x + 40 hex chars" >&2; exit 3; }
+[[ -z "$FROM_BLOCK" || "$FROM_BLOCK" =~ ^[0-9]+$ ]] || { echo "ERROR: --from-block must be a positive integer" >&2; exit 3; }
+[[ "$TIMEOUT_SEC" =~ ^[0-9]+$ ]] || { echo "ERROR: --timeout must be a positive integer (seconds)" >&2; exit 3; }
+[[ "$RPC" =~ ^https?:// ]] || { echo "ERROR: \$OPHIS_RPC must be http(s):// URL" >&2; exit 3; }
 command -v cast >/dev/null 2>&1 || { echo "ERROR: cast (foundry) not in PATH" >&2; exit 3; }
 command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq not in PATH" >&2; exit 3; }
 
