@@ -225,7 +225,21 @@ impl Persistence {
             let auction_dto = dto::auction::from_domain(auction);
             match s3.upload(id.to_string(), auction_dto).await {
                 Ok(key) => tracing::info!(?key, "uploaded auction to s3"),
-                Err(err) => tracing::warn!(?err, "failed to upload auction to s3"),
+                Err(err) => {
+                    // Silent-failure-hunter H7: S3 upload failures lose
+                    // the competition-replay / dispute-resolution audit
+                    // trail. The autopilot already increments
+                    // `auction_upload_dropped` on the channel-closed
+                    // branch (see spawn_db_upload_task below); the
+                    // actual-upload-failed branch was a silent warn.
+                    // Mirror that counter here so the metric is uniform
+                    // across both upload failure modes.
+                    Metrics::get()
+                        .auction_upload_dropped
+                        .with_label_values(&["s3_upload_failed"])
+                        .inc();
+                    tracing::error!(?err, "failed to upload auction to s3 — audit-trail loss");
+                }
             }
         });
     }
