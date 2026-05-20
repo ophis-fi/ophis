@@ -24,6 +24,20 @@ permissions:
   contents: read
 
 jobs:
+  partner-fee-invariant:
+    name: Partner-fee cross-workspace invariant
+    runs-on: ubuntu-latest
+    # Phase 2.3 (2026-05-20). The Ophis partner-fee recipient is declared
+    # as OPHIS_PARTNER_FEE_RECIPIENT in 3 source-of-truth files in
+    # DIFFERENT pnpm workspaces (no shared-import option). PR #120 fixed
+    # a drift that had shipped to mainnet for 4 days; this job prevents
+    # the class entirely by failing CI if any of the 3 literals diverges
+    # from the canonical Safe address.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check 3 source-of-truth files match canonical Safe address
+        run: ./scripts/check-partner-fee-invariant.sh
+
   slither:
     name: Slither (Solidity)
     runs-on: ubuntu-latest
