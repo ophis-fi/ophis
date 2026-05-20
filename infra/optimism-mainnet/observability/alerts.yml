@@ -120,6 +120,44 @@ groups:
           summary: "OP {{ $labels.solver }} dropping >50% of solutions over 15m"
           description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on OP. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
 
+      # Codex audit follow-up (2026-05-20, task #116): simulation-revert
+      # spike detection. The residual risk after restoring eth_call to
+      # consensus (task #115) is that a real attacker could still poison
+      # individual reads for the period before the misbehavior threshold
+      # kicks in. This alert catches the downstream effect: simulations
+      # that passed in eRPC but reverted on-chain (or that revert during
+      # sim).
+      - alert: OphisOpSimulationRevertSpike
+        # SimulationRevert: solution dropped because simulation reverted.
+        # Sustained >0.5/s = 30 in 60s = unusual under normal traffic
+        # (testnet baseline was <1/min from KyberSwap occasional misroutes).
+        # Threshold tuned to catch poisoning, not real-but-failing orders.
+        expr: |
+          sum(rate(dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP: simulation-revert rate >0.5/s sustained over 10m"
+          description: "Driver is dropping >30 solutions/min due to simulation reverts. Most-likely causes (priority order): (1) hostile eRPC upstream feeding forged-pass sims that revert at broadcast — check `rpc_upstream_responses_total{result=\"misbehavior\"}` for anomalies and consider sit-out tightening; (2) solver bug introducing impossible routes — bisect by `solver` label; (3) chain congestion making gas estimates stale — check `eth_feeHistory` upstream latency. Driver logs filter: `grep 'SimulationRevert' on driver-1`."
+
+      - alert: OphisOpMatchedUnsettledGrowth
+        # gp_v2_autopilot_runloop_matched_unsettled: orders matched in
+        # the auction but never observed on-chain. Codex finding: detects
+        # sustained-pass-sim → on-chain-revert pipeline failures where
+        # the driver thinks it broadcast a tx but it never landed
+        # (mempool ate it, gas-too-low, nonce race, hostile upstream).
+        expr: |
+          increase(gp_v2_autopilot_runloop_matched_unsettled[15m]) > 5
+        for: 15m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP: >5 matched orders unsettled in 15m"
+          description: "Autopilot matched >5 orders that were never observed settling on-chain. Possible: driver broadcasts being silently dropped by mempool, or post-processor failing to observe successful settlements. Check `cast nonce 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1` vs orderbook trade-table for the missing UIDs."
+
   - name: ophis-op-erpc-consensus
     interval: 30s
     rules:
