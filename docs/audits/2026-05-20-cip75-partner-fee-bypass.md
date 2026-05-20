@@ -162,3 +162,54 @@ one. Suggested:
   Transfer is absent
 - Alert (PagerDuty/Telegram) when `feeRealized / feeIntended < 0.5` over
   any 10-settlement window
+
+## Monitoring tool (2026-05-20)
+
+`infra/optimism-mainnet/scripts/check-settlement-buffer.sh` polls the
+Settlement contract's USDC/WETH/USDCe/DAI/WBTC balance and emits JSON
+suitable for Prometheus pushgateway. Wire into the observability stack
+to track buffer growth over time. When buffer crosses a meaningful
+threshold (e.g. $100 worth), proceed with the sweep implementation
+decision below.
+
+Current snapshot:
+- Settlement USDC: 794 base units (~$0.000794)
+- Settlement WETH: 101,155,961,830 wei (~$0.0003 @ $3500/ETH)
+
+Pre-launch, the buffer is operationally irrelevant. Post-launch with
+any meaningful TVL, this script becomes the "is the fee mechanism
+working" canary.
+
+## Sweep mechanism — DEFERRED design decision
+
+Three options on the table:
+
+**(a) Solver-side atomic post-interactions (cleanest, hardest to ship)**
+- Modify each solver (KyberSwap, Velora, OKX) to encode a post-Settlement
+  interaction that transfers the calculated CIP-75 fee from Settlement
+  to the partner-fee recipient atomically with each settlement
+- Existing config flags in Velora (`partner_fee_recipient`,
+  `partner_fee_bps`) suggest the upstream CoW codebase supports this
+- Estimated effort: 1-2 weeks. Needs solver-by-solver patching + audit.
+
+**(b) Periodic phantom-settlement sweep (operationally pragmatic)**
+- Off-chain bot constructs a "phantom" `settle()` call with no trades
+  (or a self-trade) but with interactions transferring Settlement's
+  accumulated balance to the Safe
+- Requires the driver-submitter EOA as caller (already allowlisted)
+- Estimated effort: 1-2 days. Mostly calldata construction + safety
+  guards (don't sweep below buffer reserves for in-flight trades).
+
+**(c) Accept the buffer-funded-trader-surplus design**
+- This is what CoW Protocol Foundation does — fees stay in Settlement,
+  surplus comes back to traders as price improvement
+- For Ophis to capture revenue, would need a separate mechanism (token,
+  subscription, MEV-share, etc.)
+- Zero effort. Defers the "how does Ophis make money" question.
+
+**Recommendation:** (c) for the pre-launch / no-TVL phase. (a) becomes
+worthwhile once TVL volume warrants the engineering investment. (b) is
+a stopgap if TVL grows faster than we can patch the solvers.
+
+The monitoring tool above tells us when option (c) → (b)/(a) transition
+becomes operationally necessary.
