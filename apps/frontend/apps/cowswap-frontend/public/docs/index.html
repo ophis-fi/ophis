@@ -429,7 +429,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
         <li>A 25% service fee is retained by the underlying protocol on the partner share; Ophis nets ~18.75% of price improvement after that.</li>
       </ul>
       <p class="muted" style="margin: 16px 0 0; font-size: 13px;">
-        Implemented via the CIP-75 standard for partner-fee model
+        Implemented via the CIP-75 partner-fee model
         (<code style="font-family: var(--font-mono); font-size: 12px;">priceImprovementBps</code>). See the
         <a href="https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253" rel="noreferrer">governance proposal</a>
         for the full protocol details.
@@ -496,7 +496,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     </details>
     <details>
       <summary>Is my trade protected from MEV?</summary>
-      <p>Yes. the batch auction settles every order in a batch at the same uniform clearing price. Front-running and sandwich attacks are eliminated by construction — there's no priority-gas auction to win because the protocol does not reorder transactions for value.</p>
+      <p>Yes. The batch auction settles every order in a batch at the same uniform clearing price. Front-running and sandwich attacks are eliminated by construction — there's no priority-gas auction to win because the protocol does not reorder transactions for value.</p>
     </details>
     <details>
       <summary>What happens if no solver matches my intent?</summary>
@@ -504,7 +504,7 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
     </details>
     <details>
       <summary>How are partner fees collected?</summary>
-      <p>Via the CIP-75 standard for <code>priceImprovementBps</code> field in the order's appData. The fee is taken from the trade output at settlement and routed to the Ophis Safe weekly via the partner-fee data script. A 25% service fee is retained by the underlying protocol on the partner share by default.</p>
+      <p>Via the CIP-75 <code>priceImprovementBps</code> field in the order's appData. The fee is taken from the trade output at settlement and routed to the Ophis Safe weekly via the partner-fee data script. A 25% service fee is retained by the underlying protocol on the partner share by default.</p>
     </details>
     <details>
       <summary>Is Ophis open source?</summary>

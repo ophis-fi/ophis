@@ -55,7 +55,7 @@ export const hookDappsRegistry = {
   COW_AMM_WITHDRAW: {
     name: `AMM Withdraw Liquidity`,
     type: 'IFRAME',
-    descriptionShort: `Remove liquidity from a AMM pool before the swap`,
+    descriptionShort: `Remove liquidity from an AMM pool before the swap`,
     description: `Reduce or withdraw liquidity from a pool before a token swap integrating the process directly into the transaction flow. By adjusting your liquidity ahead of time, you gain more control over your assets without any extra steps. Optimize your position in a pool, all in one seamless action — no need for multiple transactions or added complexity.`,
     version: '0.0.1',
     website: 'https://balancer.fi/pools/cow',
