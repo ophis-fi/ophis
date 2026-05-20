@@ -133,6 +133,11 @@ export const NumericalInput = styled(Input)<{ $loading: boolean }>`
 
   ${Media.upToSmall()} {
     font-size: 26px;
+    /* F2 (Phase 3.3, 2026-05-20): touch-target minimum on mobile —
+     * upstream cowswap renders this at ~35px which is below Apple HIG
+     * (44pt) and Material (48dp). 44px keeps thumbs from missing the
+     * input on small viewports. Visual font stays at 26px. */
+    min-height: 44px;
   }
 
   ${loadingOpacityMixin}

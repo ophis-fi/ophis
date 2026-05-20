@@ -48,8 +48,8 @@ msgid "years"
 msgstr "years"
 
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
-msgid "Learn about surplus on CoW Swap"
-msgstr "Learn about surplus on CoW Swap"
+#~ msgid "Learn about surplus on CoW Swap"
+#~ msgstr "Learn about surplus on CoW Swap"
 
 #: libs/hook-dapp-lib/src/hookDappsRegistry.ts
 #~ msgid "Retrieve COW tokens before or after a swap."
@@ -480,14 +480,14 @@ msgid "30 Minutes"
 msgstr "30 Minutes"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-msgid ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Greg — https://greg-etm.pages.dev"
-msgstr ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Greg — https://greg-etm.pages.dev"
+#~ msgid ""
+#~ "Did you know? {benefit}\n"
+#~ "\n"
+#~ "Start swapping on Greg — https://greg-etm.pages.dev"
+#~ msgstr ""
+#~ "Did you know? {benefit}\n"
+#~ "\n"
+#~ "Start swapping on Greg — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "amount per"
@@ -605,9 +605,9 @@ msgstr "Free"
 #~ msgid "Blocked Address"
 #~ msgstr "Blocked Address"
 
-#: apps/ophis-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
-#~ msgid "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
-#~ msgstr "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
+#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
+msgid "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
+msgstr "The total surplus Ophis has generated for you in {nativeSymbol} across all your trades since {startDate}"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/index.tsx
 msgid "This percentage only applies to dips; if prices are better than this percentage, Ophis will still execute your order."
@@ -712,6 +712,10 @@ msgstr "h"
 #~ msgid "If you believe this is an error, please send an email including your address to "
 #~ msgstr "If you believe this is an error, please send an email including your address to "
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid "Ophis returns surplus to you when solvers find a better price than quoted."
+msgstr "Ophis returns surplus to you when solvers find a better price than quoted."
+
 #: apps/cowswap-frontend/src/modules/ethFlow/services/ethFlow/index.ts
 msgid "EthFlow contract ({actualContractAddress}) address don't match the expected address for chain {chainId} ({expectedContractAddress}). Please refresh the page and try again."
 msgstr "EthFlow contract ({actualContractAddress}) address don't match the expected address for chain {chainId} ({expectedContractAddress}). Please refresh the page and try again."
@@ -744,8 +748,8 @@ msgid "Please contact Ophis support!"
 msgstr "Please contact Ophis support!"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/LimitOrdersDetails/index.tsx
-msgid "If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on CoW Swap!"
-msgstr "If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on CoW Swap!"
+#~ msgid "If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on CoW Swap!"
+#~ msgstr "If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on CoW Swap!"
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/ProxyAccountBanner/index.tsx
 msgid "Only proceed if you trust this provider."
@@ -1140,8 +1144,8 @@ msgid "APR"
 msgstr "APR"
 
 #: apps/cowswap-frontend/src/common/pure/NetworksList/ActiveRowLinks/ActiveRowLinks.pure.tsx
-msgid "CoW Protocol Explorer"
-msgstr "CoW Protocol Explorer"
+#~ msgid "CoW Protocol Explorer"
+#~ msgstr "CoW Protocol Explorer"
 
 #: apps/cowswap-frontend/src/modules/notifications/pure/NotificationSettingsPopover.tsx
 msgid "Got it"
@@ -1325,14 +1329,14 @@ msgstr "Custom"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid ""
-"I just {actionWord} an extra {surplus} on Greg.\n"
-"\n"
-"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
-msgstr ""
-"I just {actionWord} an extra {surplus} on Greg.\n"
-"\n"
-"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+#~ msgid ""
+#~ "I just {actionWord} an extra {surplus} on Greg.\n"
+#~ "\n"
+#~ "Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+#~ msgstr ""
+#~ "I just {actionWord} an extra {surplus} on Greg.\n"
+#~ "\n"
+#~ "Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "Est. partial fill price"
@@ -1595,6 +1599,10 @@ msgstr "and got an extra "
 msgid "s"
 msgstr "s"
 
+#: apps/cowswap-frontend/src/modules/ethFlow/services/ethFlow/index.ts
+msgid "Native-token swaps are not yet supported on this chain ({chainId}). Wrap your native token to the ERC-20 form first, then swap."
+msgstr "Native-token swaps are not yet supported on this chain ({chainId}). Wrap your native token to the ERC-20 form first, then swap."
+
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step2.tsx
 msgid "Order Cancelled"
@@ -1846,8 +1854,8 @@ msgid "Closed"
 msgstr "Closed"
 
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
-msgid "CoW Swap 404 not found"
-msgstr "CoW Swap 404 not found"
+#~ msgid "CoW Swap 404 not found"
+#~ msgstr "CoW Swap 404 not found"
 
 #: apps/cowswap-frontend/src/modules/twap/pure/CustomDeadlineSelector/index.tsx
 msgid "Apply"
@@ -1879,8 +1887,8 @@ msgid "Recoverable balance"
 msgstr "Recoverable balance"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/RateImpactWarning/index.tsx
-msgid "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although CoW Swap will always try to give you the best price regardless)."
-msgstr "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although CoW Swap will always try to give you the best price regardless)."
+#~ msgid "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although CoW Swap will always try to give you the best price regardless)."
+#~ msgstr "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although CoW Swap will always try to give you the best price regardless)."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/constants.tsx
 msgid "Invalid hook dapp ID format. The ID must be a 64-character hexadecimal string."
@@ -2132,6 +2140,10 @@ msgstr "You have already claimed this airdrop"
 msgid "Cancel multiple orders: {ordersCount}"
 msgstr "Cancel multiple orders: {ordersCount}"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
+msgid "View on explorer →"
+msgstr "View on explorer →"
+
 #. js-lingui-explicit-id
 #: apps/ophis-frontend/src/modules/ordersTable/containers/OrdersTableWidget/index.tsx
 #~ msgid "Failed orders"
@@ -2169,6 +2181,7 @@ msgstr "Volume left to next {rewardAmountLabel}"
 msgid "This is an"
 msgstr "This is an"
 
+#: apps/cowswap-frontend/src/modules/limitOrders/pure/LimitOrdersDetails/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on Ophis!"
 msgstr "If your order has not been filled by this date & time, it will expire. Don't worry - expirations and order placement are free on Ophis!"
@@ -2374,9 +2387,9 @@ msgstr "MEV Slicer"
 msgid "From (incl. fees)"
 msgstr "From (incl. fees)"
 
-#: apps/ophis-frontend/src/modules/limitOrders/pure/RateImpactWarning/index.tsx
-#~ msgid "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although Ophis will always try to give you the best price regardless)."
-#~ msgstr "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although Ophis will always try to give you the best price regardless)."
+#: apps/cowswap-frontend/src/modules/limitOrders/pure/RateImpactWarning/index.tsx
+msgid "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although Ophis will always try to give you the best price regardless)."
+msgstr "Your limit price is {absoluteRateImpact}% lower than current market price. You could be selling your <0/> at a loss (although Ophis will always try to give you the best price regardless)."
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliateTraderModalCodeInfo.tsx
 msgid "View rewards"
@@ -2619,9 +2632,9 @@ msgstr "At current gas prices, your remaining {nativeSymbol} balance after confi
 msgid "The price of this pool is outside of your selected range. Your position is not currently earning fees."
 msgstr "The price of this pool is outside of your selected range. Your position is not currently earning fees."
 
-#: apps/ophis-frontend/src/pages/error/NotFound/index.tsx
-#~ msgid "Ophis 404 not found"
-#~ msgstr "Ophis 404 not found"
+#: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
+msgid "Ophis 404 not found"
+msgstr "Ophis 404 not found"
 
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/ApproveButton/index.tsx
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/LegacyApproveButton/index.tsx
@@ -3490,6 +3503,16 @@ msgstr "Reduce your slippage by breaking big orders into smaller ones"
 #: apps/ophis-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 #~ msgid " out of {totalSolvers}"
 #~ msgstr " out of {totalSolvers}"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+msgid ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis — https://greg-etm.pages.dev"
+msgstr ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/RowQuoteId.container.tsx
 msgid "Copied!"
@@ -4368,6 +4391,17 @@ msgstr "My orders <0/>"
 #: apps/cowswap-frontend/src/modules/notifications/pure/NotificationSettingsPopover.tsx
 msgid "Trade alert settings info"
 msgstr "Trade alert settings info"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
+msgstr ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/twap/pure/CustomDeadlineSelector/index.tsx
 msgid "Define custom total time"
@@ -5357,6 +5391,10 @@ msgstr "Edit"
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/AffiliateTradeCodeForm.tsx
 msgid "The code must be at least {REF_CODE_MIN_LENGTH} characters long."
 msgstr "The code must be at least {REF_CODE_MIN_LENGTH} characters long."
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
+msgid "View settlement transaction →"
+msgstr "View settlement transaction →"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderEstimatedExecutionPrice/OrderEstimatedExecutionPrice.pure.tsx
 msgid "The order remains open. Execution requires adequate allowance. Approve the token to proceed."
@@ -6410,8 +6448,8 @@ msgid "Wallet chainId differs from app chainId. Wallet: {networkString}, App: {c
 msgstr "Wallet chainId differs from app chainId. Wallet: {networkString}, App: {chainId}. Action: {description}"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid "Greg returns surplus to you when solvers find a better price than quoted."
-msgstr "Greg returns surplus to you when solvers find a better price than quoted."
+#~ msgid "Greg returns surplus to you when solvers find a better price than quoted."
+#~ msgstr "Greg returns surplus to you when solvers find a better price than quoted."
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerQrModal.tsx
 msgid "Download referral QR code"
@@ -6446,8 +6484,8 @@ msgid "Information"
 msgstr "Information"
 
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
-msgid "The total surplus CoW Swap has generated for you in {nativeSymbol} across all your trades since {startDate}"
-msgstr "The total surplus CoW Swap has generated for you in {nativeSymbol} across all your trades since {startDate}"
+#~ msgid "The total surplus CoW Swap has generated for you in {nativeSymbol} across all your trades since {startDate}"
+#~ msgstr "The total surplus CoW Swap has generated for you in {nativeSymbol} across all your trades since {startDate}"
 
 #: apps/ophis-frontend/src/pages/Account/Affiliate.tsx
 #~ msgid "Type or generate a code (subject to availability). Saving locks this code to your wallet and can't be changed. Links/codes don't reveal your wallet."
@@ -6881,9 +6919,9 @@ msgstr "There was an error trying to load claimable tokens"
 msgid "Learn"
 msgstr "Learn"
 
-#: apps/ophis-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
-#~ msgid "Learn about surplus on Ophis"
-#~ msgstr "Learn about surplus on Ophis"
+#: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
+msgid "Learn about surplus on Ophis"
+msgstr "Learn about surplus on Ophis"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/RateImpactIndicator/index.tsx
 msgid "This price is {displayedPercent}% lower than current market price. You could be selling your <0/> at a loss! Click on \"Market price\" to set your limit price to the current market price."
