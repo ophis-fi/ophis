@@ -89,7 +89,7 @@ export class CoinbaseWallet extends Connector {
 
     await (this.eagerConnection = import('@coinbase/wallet-sdk').then((m) => {
       const sdk = m.createCoinbaseWalletSDK({
-        appName: 'CoW Swap',
+        appName: 'Ophis',
         // Ophis fork: include OP mainnet (chain 10) alongside SDK-supported chains so
         // Coinbase Wallet recognises OP and does not refuse to switch.
         // MegaETH mainnet (chain 4326) is intentionally NOT included here: as of

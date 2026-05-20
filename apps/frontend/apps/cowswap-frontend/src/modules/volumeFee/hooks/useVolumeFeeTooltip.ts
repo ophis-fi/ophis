@@ -19,7 +19,7 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
   return useMemo(() => {
     if (safeAppFee)
       return {
-        content: t`The Safe App License Fee incurred here is charged by the Safe Foundation for the display of the app within their Safe Store. The fee is automatically calculated in this quote. Part of the fees will contribute to the CoW DAO treasury that supports the CoW Community.`,
+        content: t`The Safe App License Fee incurred here is charged by the Safe Foundation for the display of the app within their Safe Store. The fee is automatically calculated in this quote. Part of the fees will contribute to the Ophis treasury that supports the community.`,
         label: t`Safe App License Fee`,
       }
 
