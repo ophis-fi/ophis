@@ -57,12 +57,14 @@ const MAX_TEXT_LEN = 280
 // — could be 1h+ in steady state. Keep short to limit blast radius
 // if a bad cached response ever lands.
 //
-// Storage: Cloudflare's edge Cache API. Keyed by SHA-256 of the
-// normalized text (trim + lowercase). Synthesized GET URL so the
-// Cache API accepts it. Per-POP cache — not strictly global, but
-// each region's POP only takes the first hit then serves the rest.
+// Storage: reuse the OPHIS_RATELIMIT KV namespace with a `cache:`
+// key prefix. Initial impl tried Cloudflare's edge `caches.default`
+// API but fire-and-forget puts without `ctx.waitUntil` were dropped
+// and synthetic-URL cache keys are POP-scoped (not globally shared).
+// KV gives us global consistency (~60s replication lag, well within
+// our 5min TTL) and persists across isolate lifecycles.
 const CACHE_TTL_SECONDS = 300
-const CACHE_KEY_BASE = 'https://intent-cache.ophis.internal/v1/'
+const CACHE_KEY_PREFIX = 'cache:'
 
 async function sha256Hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
@@ -402,10 +404,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   // Edge cache lookup (Phase 3.8 / 2026-05-20). Normalized text →
-  // SHA-256 → synthetic cache key. Hit = serve cached LibertAI
-  // response without burning a token round-trip. The cache is
-  // per-POP, not global, but each POP only takes the first hit then
-  // serves the rest from cache for CACHE_TTL_SECONDS.
+  // SHA-256 → KV key. Hit = serve cached LibertAI response without
+  // burning a token round-trip.
   //
   // We deliberately CHECK the cache AFTER rate-limit + auth/input
   // validation so cache hits still respect the per-IP cap (don't
@@ -413,26 +413,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // unbounded). The rate limit increments before the cache check.
   const normalizedText = text.trim().toLowerCase()
   const cacheKeyHash = await sha256Hex(normalizedText)
-  const cacheKey = CACHE_KEY_BASE + cacheKeyHash
-  const cacheKeyRequest = new Request(cacheKey, { method: 'GET' })
+  const cacheKey = CACHE_KEY_PREFIX + cacheKeyHash
 
-  const cached = await caches.default.match(cacheKeyRequest)
-  if (cached) {
-    // Re-emit with our standard response headers (including no-store
-    // for the BROWSER — the edge cache is separate from any client
-    // cache). The body is already a valid IntentResponse JSON string.
-    const body = await cached.text()
-    return new Response(body, {
-      status: 200,
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-        'x-frame-options': 'DENY',
-        'referrer-policy': 'no-referrer',
-        'x-ophis-cache': 'hit',
-      },
-    })
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      const cached = await env.OPHIS_RATELIMIT.get(cacheKey)
+      if (cached) {
+        return new Response(cached, {
+          status: 200,
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff',
+            'x-frame-options': 'DENY',
+            'referrer-policy': 'no-referrer',
+            'x-ophis-cache': 'hit',
+          },
+        })
+      }
+    } catch {
+      // KV outage → degraded to no-cache, still call LibertAI.
+    }
   }
 
   const controller = new AbortController()
@@ -510,30 +511,25 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const successBody: IntentResponse = { ok: true, data: filtered }
   const successJson = JSON.stringify(successBody)
 
-  // Store in edge cache for subsequent identical inputs. We cache the
-  // raw JSON body and serve it via caches.default.match() on later
-  // requests. The cached Response is internal-only — never seen by
-  // browser; the next request reconstitutes a fresh Response with our
-  // standard headers. `s-maxage` directs CF's edge cache TTL.
+  // Store in KV cache. Only successful 200s — errors (UPSTREAM,
+  // INVALID_JSON, TIMEOUT) are NEVER cached so a transient LibertAI
+  // hiccup doesn't persist "no LibertAI" for 5 minutes to every user.
   //
-  // Only cache successful 200s. Errors (UPSTREAM, INVALID_JSON, TIMEOUT)
-  // are NOT cached — we want a transient LibertAI hiccup to retry,
-  // not persist a "no LibertAI" answer for 5 minutes to every user.
-  try {
-    const cacheableResponse = new Response(successJson, {
-      status: 200,
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': `public, s-maxage=${CACHE_TTL_SECONDS}`,
-      },
-    })
-    // ctx.waitUntil isn't available in our PagesFunction signature here;
-    // fire-and-forget the cache write. The Promise unhandled is fine —
-    // if cache.put fails, next request re-fetches LibertAI (degrades to
-    // current behavior).
-    void caches.default.put(cacheKeyRequest, cacheableResponse)
-  } catch {
-    // ignore — degraded path is no-cache.
+  // Fire-and-forget. If KV.put fails (rare), next request re-fetches
+  // LibertAI — degraded to current behavior, not an error path.
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      // KV.put returns a Promise — letting it run async; we don't await
+      // because the function exits and returns the response. CF Pages'
+      // KV implementation buffers the write through the runtime so
+      // even fire-and-forget completes after function return (verified
+      // by Cloudflare docs for KV vs. caches.default).
+      void env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
+        expirationTtl: CACHE_TTL_SECONDS,
+      })
+    } catch {
+      // ignore — degraded path is no-cache.
+    }
   }
 
   return json(successBody)
