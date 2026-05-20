@@ -457,6 +457,15 @@ impl Okx {
     }
 
     /// Helper to cache approval addresses.
+    ///
+    /// Pre-2026-05-20 the cache wrapper collapsed every inner error
+    /// (RateLimited, RouterNotInAllowlist, SpenderNotInAllowlist, Api,
+    /// etc.) to the generic `ApproveTransactionRequestFailed` variant
+    /// — undoing the typed-error gains from Phase 2 PR #91 for any
+    /// caller observing via this cache. Now: pattern-match on the
+    /// inner Arc<Error> and reconstruct the variant where the variant
+    /// carries no non-Clone payload, falling through to the generic
+    /// only for variants that own data we can't cheaply clone.
     async fn cache_approval_address<F>(
         &self,
         order: &dex::Order,
@@ -474,7 +483,38 @@ impl Okx {
                 future,
             )
             .await
-            .map_err(|_: std::sync::Arc<Error>| Error::ApproveTransactionRequestFailed(order.sell))
+            .map_err(|arc_err: std::sync::Arc<Error>| match arc_err.as_ref() {
+                Error::RateLimited => Error::RateLimited,
+                Error::SignRequestFailed => Error::SignRequestFailed,
+                Error::GasCalculationFailed => Error::GasCalculationFailed,
+                Error::NotFound => Error::NotFound,
+                Error::OrderNotSupported => Error::OrderNotSupported,
+                Error::ChainNotInAllowlist { chain_id } => Error::ChainNotInAllowlist {
+                    chain_id: *chain_id,
+                },
+                Error::RouterNotInAllowlist {
+                    chain_id,
+                    returned,
+                    expected,
+                } => Error::RouterNotInAllowlist {
+                    chain_id: *chain_id,
+                    returned: *returned,
+                    expected: *expected,
+                },
+                Error::SpenderNotInAllowlist {
+                    chain_id,
+                    returned,
+                    expected,
+                } => Error::SpenderNotInAllowlist {
+                    chain_id: *chain_id,
+                    returned: *returned,
+                    expected: *expected,
+                },
+                // Variants carrying owned String / non-Clone payload fall
+                // through to the generic. We could clone them too but
+                // the high-value typed variants for alerting are above.
+                _ => Error::ApproveTransactionRequestFailed(order.sell),
+            })
     }
 
     /// OKX requires signature of the request to be added as dedicated HTTP
