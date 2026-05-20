@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-18
 **Status:** Proposed (pending Clement decision on platform)
-**Audit context:** Phase 1 audit HIGH-3 — current setup has the driver-submitter PK in plaintext at `~/greg/infra/<chain>-mainnet/rendered/driver.toml` (chmod 600) and in `.env` (chmod 600). Both readable by any process running as user `scep`. Submitter EOA `0xFB308397267878228f7761311DBD6Bc6FCa1bB5a` is the SOLE allowlisted solver-submitter across HL/OP/MegaETH. Compromise = arbitrary settle dispatch, drains every outstanding VaultRelayer approval.
+**Audit context:** Phase 1 audit HIGH-3 — current setup has the driver-submitter PK in plaintext at `~/greg/infra/<chain>-mainnet/rendered/driver.toml` (chmod 600) and in `.env` (chmod 600). Both readable by any process running as user `scep`. Submitter EOA `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1` is the SOLE allowlisted solver-submitter across HL/OP/MegaETH. Compromise = arbitrary settle dispatch, drains every outstanding VaultRelayer approval.
 
 ## Constraints
 
@@ -122,7 +122,7 @@ For each chain (HL, OP, MegaETH):
 10. Update `infra/<chain>-mainnet/configs/driver.toml.tmpl` to point at `signer.type = "kms"` and the new key-id.
 11. Restart driver. Verify metrics: `solutions{result="success"}` continues, no `mempool_submission{result="failure"}` spike.
 12. Watch ≥1 settle land successfully.
-13. From Safe: `removeSolver(0xFB308397…1bB5a)`.
+13. From Safe: `removeSolver(0x92B9bE5e…1A1B1)`.
 14. Rotate Keychain entry `ophis-driver-submitter-2026-05-14` to an inert value (or delete).
 
 ### Phase 4: Hardening (1 week)

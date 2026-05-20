@@ -31,7 +31,7 @@ end-to-end before assuming anything.
 ### 2.1 Submitter EOA (the hot key)
 
 ```
-0xFB308397267878228f7761311DBD6Bc6FCa1bB5a
+0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1
 ```
 
 Single EOA, same address across all chains. Signs every settlement tx.
@@ -191,7 +191,7 @@ You need this when:
 3. **Update AllowList via Safe** — protocol Safe (`0xe049…01cF`, 2-of-3 Ledgers):
    - Open Safe webapp on the chain you're rotating: `https://app.safe.global/transactions/queue?safe=oeth:0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`
    - Queue 2 transactions:
-     - `removeSolver(address oldSubmitter)` — current `0xFB30…1bB5a`
+     - `removeSolver(address oldSubmitter)` — current `0x92B9…1A1B1`
      - `addSolver(address newSubmitter)` — your new address from step 1
    - Sign with 2 of the 3 Ledger devices.
    - Execute. Wait for confirmation.
@@ -228,7 +228,7 @@ cd ~/greg/infra/hyperevm-mainnet
 docker compose up -d --build
 ```
 
-Then add `0xFB30…1bB5a` to chain 999's `AllowList.addSolver(...)` if it
+Then add `0x92B9…1A1B1` to chain 999's `AllowList.addSolver(...)` if it
 was removed (likely still there — we only stopped containers, didn't
 touch on-chain state).
 
