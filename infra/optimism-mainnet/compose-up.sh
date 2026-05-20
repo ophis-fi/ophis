@@ -51,6 +51,35 @@ else
 fi
 
 echo ""
+# Force-recreate config-mounted services BEFORE running `up`. Docker
+# Compose's change-detection only looks at the image+env+volume-spec
+# tuple; if the CONTENT of a bind-mounted file changes (e.g.
+# render-configs.sh rewrote rendered/erpc.yaml after an eRPC config
+# bump), Compose treats the service as already-up-to-date and leaves
+# the container running with the STALE config. Without this step, a
+# `compose-up.sh` after an eRPC change silently fails to apply.
+#
+# 2026-05-20 incident: PR #148 dropped 1rpc-op + bumped to 2-of-2, but
+# the subsequent compose-up.sh left rpc-proxy on the OLD 3-of-3 config
+# → orderbook bootstrap failed → autopilot wouldn't start. Force-
+# recreating these services unconditionally is cheap (~2s each) and
+# eliminates the footgun.
+#
+# driver also reads rendered/driver.toml (symlinked to RAM-disk), but
+# its image gets rebuilt on every `--build` so a fresh container always
+# spawns. Listed here for completeness in case `--build` ever gets
+# stripped from the invocation.
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver)
+if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
+  echo "==> force-recreating config-mounted services to pick up rendered/* changes"
+  echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
+  # --no-deps so we don't restart upstream dependencies we're not
+  # touching. The subsequent `up -d` brings everything else into the
+  # desired state.
+  docker compose up -d --no-deps --force-recreate "${CONFIG_BOUND_SERVICES[@]}" || true
+fi
+
+echo ""
 echo "==> docker compose $PROFILES_ARG up -d --build $*"
 docker compose $PROFILES_ARG up -d --build "$@"
 
