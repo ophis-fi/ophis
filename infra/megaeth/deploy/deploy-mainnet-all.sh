@@ -19,7 +19,7 @@
 #
 # Pre-conditions:
 #   - HW wallet at 0xBeC5…0199 is funded with ≥ 0.001 ETH on mainnet
-#   - Driver EOA 0xFB30…1bB5a is funded with ≥ 0.001 ETH
+#   - Driver EOA 0x92B9…1A1B1 is funded with ≥ 0.001 ETH
 #   - infra/megaeth/.env exists with OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET set
 #   - Ledger Live is CLOSED (USB device contention with hardhat-ledger plugin)
 #   - Ledger is connected via USB and Ethereum app is open
@@ -48,7 +48,7 @@ fi
 RPC="$MEGAETH_MAINNET_RPC"
 
 DEPLOYER_ADDR=0xBeC5B03ffDcac50071693E87bFDb88bAa6710199
-DRIVER=0xFB308397267878228f7761311DBD6Bc6FCa1bB5a
+DRIVER=0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1
 SAFE="${OPHIS_PROTOCOL_SAFE_MEGAETH_MAINNET:-}"
 
 if [[ -z "$SAFE" ]]; then

@@ -73,7 +73,7 @@ groups:
           chain: optimism
         annotations:
           summary: "OP: 0 successful settlements in 1h despite active auctions"
-          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and publicnode status; (3) driver-submitter wallet out of ETH — `cast balance 0xFB308397267878228f7761311DBD6Bc6FCa1bB5a --rpc-url https://optimism-rpc.publicnode.com`."
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and publicnode status; (3) driver-submitter wallet out of ETH — `cast balance 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 --rpc-url https://optimism-rpc.publicnode.com`."
 
       - alert: OphisOpSettlementFailureRateHigh
         expr: |

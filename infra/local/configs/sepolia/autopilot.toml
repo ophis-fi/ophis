@@ -19,7 +19,7 @@ type = "Alloy"
 [[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
-address = "0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
 
 [fee-policies]
 
