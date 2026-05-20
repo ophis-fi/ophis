@@ -71,12 +71,41 @@ echo ""
 # stripped from the invocation.
 CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
-  echo "==> force-recreating config-mounted services to pick up rendered/* changes"
+  echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
-  # --no-deps so we don't restart upstream dependencies we're not
-  # touching. The subsequent `up -d` brings everything else into the
-  # desired state.
-  docker compose up -d --no-deps --force-recreate "${CONFIG_BOUND_SERVICES[@]}" || true
+  # 2026-05-20 audit follow-up: the prior shape was
+  #   `docker compose up -d --no-deps --force-recreate ${ALL_SERVICES[@]}`
+  # which restarts every service in PARALLEL. Window of ~2-5s where
+  # rpc-proxy is starting fresh with NEW eRPC config while driver/
+  # orderbook/autopilot are still up and querying it. New consensus
+  # rules (stricter agreementThreshold, tighter disputeThreshold)
+  # cause in-flight `eth_call`s during the recreate window to fall
+  # through to the catch-all retry — exactly the trust-model invariant
+  # the strict-consensus block is supposed to enforce.
+  #
+  # Fix: stop the downstream consumers first, force-recreate rpc-proxy,
+  # wait for healthcheck, then start the consumers. Adds ~10s to deploy
+  # but preserves "driver always operates against 2-of-3 consensus"
+  # across deploy windows.
+  #
+  # Trailing `|| true` removed: if a service fails to stop/start, we
+  # want compose-up.sh to exit non-zero so operator sees the failure
+  # before declaring deploy complete.
+  DOWNSTREAM=(driver orderbook autopilot okx-solver)
+  docker compose stop "${DOWNSTREAM[@]}"
+  docker compose up -d --no-deps --force-recreate rpc-proxy
+  # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.
+  # docker-compose's depends_on: service_healthy will gate downstream
+  # starts on this automatically once they come up, but we wait here
+  # explicitly so the log message ordering reflects reality.
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    health="$(docker inspect optimism-mainnet-rpc-proxy-health-1 \
+      --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)"
+    if [[ "$health" == "healthy" ]]; then break; fi
+    sleep 1
+  done
+  echo "    rpc-proxy-health: $health"
+  docker compose up -d --no-deps "${DOWNSTREAM[@]}"
 fi
 
 echo ""
