@@ -109,8 +109,39 @@ account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 # Empirically over the last 30d OP gasPrice never exceeded 1 gwei.
 gas-price-cap = "5000000000"
 
+# Submission mempools — RACED in parallel (Phase 1.4, 2026-05-20).
+#
+# On OP mainnet there is a single sequencer (Optimism Foundation),
+# so "private mempool" in the L1 sense doesn't exist. The MEV residual
+# is the brief signing→inclusion window where an attacker on the
+# submission RPC could observe signed calldata and front-run by
+# submitting their own tx via a different relay.
+#
+# Mitigation: submit through MULTIPLE independent relays. The driver
+# races all entries; first to accept wins, others get dropped. A
+# hostile single relay can no longer reliably front-run because the
+# sequencer may see one of the other entries' submissions first.
+#
+# 3 independent relays:
+#   1. publicnode (Allnodes; DNS: Cloudflare)
+#   2. mainnet.optimism.io (Optimism Foundation; Conduit/CF-fronted —
+#      same DNS provider as publicnode but DIFFERENT operator)
+#   3. Tenderly public gateway (Tenderly; DNS: Google Cloud — distinct
+#      DNS provider entirely)
+#
+# All three eventually deliver to the same sequencer. Trust model:
+# at least one of the three must be honest for an attacker NOT to
+# successfully front-run. With 3 independent operators across 2 DNS
+# providers, single-operator + single-DNS-incident scenarios are
+# defended against.
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
+
+[[submission.mempool]]
+url = "https://mainnet.optimism.io"
+
+[[submission.mempool]]
+url = "https://optimism.gateway.tenderly.co"
 
 [liquidity]
 base-tokens = [
