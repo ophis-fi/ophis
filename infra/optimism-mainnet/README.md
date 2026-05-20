@@ -73,7 +73,7 @@ External dependencies:
 | HooksTrampoline | `0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810` |
 | Protocol Safe | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
 | Partner-fee Safe | `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` |
-| Driver-submitter EOA | `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` |
+| Driver-submitter EOA | `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1` |
 | HW deployer | `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` |
 
 ### Host ports (all 127.0.0.1-bound)
@@ -91,7 +91,7 @@ External dependencies:
 
 | Name | Purpose |
 |---|---|
-| `ophis-driver-submitter` | PK for 0x00f9…502F (settles on-chain) |
+| `ophis-driver-submitter` | PK for 0x92B9…A1B1 (settles on-chain) |
 | `okx-api-key` | OKX OnchainOS auth |
 | `okx-secret-key` | OKX HMAC signing |
 | `okx-project-id` | OKX project identifier |
@@ -176,12 +176,12 @@ docker compose up -d okx-solver
 
 ### Driver logs show `RpcError: insufficient funds for gas`
 
-**Cause**: Driver-submitter EOA at `0x00f9…502F` ran out of OP ETH. Settlements have been failing.
+**Cause**: Driver-submitter EOA at `0x92B9…A1B1` ran out of OP ETH. Settlements have been failing.
 
-**Fix**: Bridge more ETH. The submitter needs ~0.005 ETH per ~50-100 settlements at current gas. Address: `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F`. Bridge via Across (~3min) or Hop. Top up to 0.05 ETH for ~weeks of runway.
+**Fix**: Bridge more ETH. The submitter needs ~0.005 ETH per ~50-100 settlements at current gas. Address: `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1`. Bridge via Across (~3min) or Hop. Top up to 0.05 ETH for ~weeks of runway.
 
 ```bash
-cast balance --rpc-url https://optimism-rpc.publicnode.com 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F --ether
+cast balance --rpc-url https://optimism-rpc.publicnode.com 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 --ether
 ```
 
 ### Orderbook responds 503 / connection refused
@@ -330,7 +330,7 @@ Setting these up is its own workstream (not yet wired).
 
 ```bash
 # Submitter balance
-cast balance --rpc-url https://optimism-rpc.publicnode.com 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F --ether
+cast balance --rpc-url https://optimism-rpc.publicnode.com 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 --ether
 
 # Latest auction
 curl -s http://127.0.0.1:8102/api/v1/auction | jq '{id, orders: (.orders | length)}'
@@ -422,8 +422,8 @@ DB volume can be lost without affecting protocol state — orders are signed off
 
 If the PK leaked:
 
-1. **Immediately**: via the protocol Safe, call `AuthList.removeSolver(0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F)`. This stops the compromised address from settling.
-2. Withdraw remaining ETH from `0x00f9…502F` to a cold wallet.
+1. **Immediately**: via the protocol Safe, call `AuthList.removeSolver(0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1)`. This stops the compromised address from settling.
+2. Withdraw remaining ETH from `0x92B9…A1B1` to a cold wallet.
 3. Generate a new EOA, fund it, allowlist via Safe, update infra (see "Driver-submitter PK" under Secret Rotation).
 
 Worst-case loss: trades that the attacker could have submitted as fake solver before we revoke. Bounded by:
@@ -456,7 +456,7 @@ cast call --rpc-url https://optimism-rpc.publicnode.com \
 # Confirm driver-submitter is still allowlisted
 cast call --rpc-url https://optimism-rpc.publicnode.com \
   0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70 \
-  "isSolver(address)(bool)" 0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
+  "isSolver(address)(bool)" 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1
 
 # Most-recent settlement
 cast logs --rpc-url https://optimism-rpc.publicnode.com \

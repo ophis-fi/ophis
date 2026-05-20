@@ -104,7 +104,7 @@ Order uid `0xe1f34360ad9eeec2febb38df225ad39392f1284e61fc60023262506089df7205412
 | Ophis VaultRelayer | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` | `0x842F655C9310C32e5932A0eBFa80c4Cd358c0205` |
 | Ophis V2 factory | `0x29fcdbbdffd12fa7724b863991355b82ba8380e2` | (see VM `.env`) |
 | GTUSD test token | `0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1` | (see VM `.env`) |
-| Driver-submitter EOA | `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` | same |
+| Driver-submitter EOA | `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1` | same |
 | Test wallet (ophis-chiado-test) | `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` | n/a |
 
 ## External AMM integrations (for self-hosted backend solver config)
