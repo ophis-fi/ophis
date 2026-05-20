@@ -249,13 +249,22 @@ services:
     # hand-crafted HTTP/1.0 via bash's /dev/tcp. Greps the response line
     # for "200" — accepts only 200 OK as healthy. Anything else (503,
     # connection refused, timeout) is unhealthy.
+    # 2026-05-20 fix: was running in /bin/sh (dash) which DOESN'T support
+    # /dev/tcp/ (it's a bash builtin). Dash treated `/dev/tcp/127.0.0.1/80`
+    # as a literal filesystem path → "Directory nonexistent" → exit 2 →
+    # docker marked driver unhealthy even though the actual /healthz
+    # endpoint returns 200. Wrap explicitly in bash -c so the magic-path
+    # is interpreted correctly. The CoW backend image ships bash (verified
+    # by other healthchecks in this file that use bash -c successfully).
     healthcheck:
       test:
         - "CMD-SHELL"
         - |
-          exec 3<>/dev/tcp/127.0.0.1/80 || exit 1
-          printf 'GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
-          head -n 1 <&3 | grep -q ' 200 '
+          bash -c '
+            exec 3<>/dev/tcp/127.0.0.1/80 || exit 1
+            printf "GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3
+            head -n 1 <&3 | grep -q " 200 "
+          '
       interval: 10s
       timeout: 5s
       retries: 6
