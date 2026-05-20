@@ -75,3 +75,6 @@ CLAUDE.md
 
 # Github
 /.npmrc
+
+# Build output: functions/ is staged at deploy time from repo-root functions/
+build/cowswap/functions

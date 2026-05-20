@@ -120,6 +120,43 @@ groups:
           summary: "OP {{ $labels.solver }} dropping >50% of solutions over 15m"
           description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on OP. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
 
+      # Codex audit follow-up (2026-05-20, task #116): simulation-revert
+      # spike detection. The residual risk after restoring eth_call to
+      # consensus (task #115) is that a real attacker could still poison
+      # individual reads for the period before the misbehavior threshold
+      # kicks in. This alert catches the downstream effect: simulations
+      # that passed in eRPC but reverted on-chain (or that revert during
+      # sim).
+      - alert: OphisOpSimulationRevertSpike
+        # SimulationRevert: solution dropped because simulation reverted.
+        # Sustained >0.5/s = 30 in 60s = unusual under normal traffic
+        # (testnet baseline was <1/min from KyberSwap occasional misroutes).
+        # Threshold tuned to catch poisoning, not real-but-failing orders.
+        #
+        # Process-uptime gate (sharp-edges audit 2026-05-20 N3): driver
+        # hot-reloads cause a sim-replay burst against potentially-stale
+        # balance snapshots. Don't alert until the driver has been up
+        # for 5m to swallow that transient. Otherwise back-to-back
+        # restarts during a config roll would false-page Clement.
+        expr: |
+          sum(rate(dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
+          and on(instance) (time() - process_start_time_seconds{job="driver"}) > 300
+        for: 15m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP: simulation-revert rate >0.5/s sustained over 15m"
+          description: "Driver is dropping >30 solutions/min due to simulation reverts. Most-likely causes (priority order): (1) hostile eRPC upstream feeding forged-pass sims that revert at broadcast — check `rpc_upstream_responses_total{result=\"misbehavior\"}` for anomalies and consider sit-out tightening; (2) solver bug introducing impossible routes — bisect by `solver` label; (3) chain congestion making gas estimates stale — check `eth_feeHistory` upstream latency. Driver logs filter: `grep 'SimulationRevert' on driver-1`."
+
+      # Codex audit follow-up (2026-05-20 N3): the `OphisOpMatchedUnsettledGrowth`
+      # alert previously here used `gp_v2_autopilot_runloop_matched_unsettled`
+      # which increments for ranked NON-WINNING solution orders, not
+      # "broadcast but never landed". That's normal competition noise
+      # under healthy traffic — would alert constantly on launch.
+      # REMOVED. Proper alert needs a metric tied to submitted-and-winning
+      # settlements not observed on-chain; left as a roadmap item.
+
   - name: ophis-op-erpc-consensus
     interval: 30s
     rules:

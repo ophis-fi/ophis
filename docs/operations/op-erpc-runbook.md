@@ -232,6 +232,45 @@ number).
 - ✅ For `eth_call`, default to passing the current block number
   explicitly rather than letting it default to "latest"
 
+## `eth_getLogs` tip-lag (operational gotcha)
+
+Documented 2026-05-20 during Phase 3.1 E2E verification work
+(`docs/operations/e2e-swap-verification.md`).
+
+**Symptom:** `eth_getLogs` queries within ~5 blocks of tip frequently fail
+with `ErrConsensusLowParticipants`, returning errors like:
+
+```
+ErrUpstreamBlockUnavailable (tenderly-op)
+ErrUpstreamsExhausted      (ophis-op-node-self)
+e3b0c44... = keccak(empty) (publicnode-op)
+```
+
+**Root cause:** RPC providers serve `eth_blockNumber` from the consensus
+head immediately, but `eth_getLogs` requires the block to be ingested into
+the log index, which lags by 2–10 seconds depending on provider. With
+2-of-3 strict consensus, all three indexes need to be caught up — the
+slowest one bounds you. publicnode-op tends to index fastest; the
+self-hosted op-node's log index is currently the slowest.
+
+**Production impact:** None on settlement. The driver uses `eth_call` +
+`eth_sendRawTransaction` (submission bypasses eRPC anyway), neither of
+which hits the log index. Only retrospective audit/indexing paths are
+affected.
+
+**Workaround for callers:**
+
+- Scan with `toBlock = currentBlock - 5` (or `- 10` for safety margin)
+- For the `verify-e2e-swap.sh` harness this is `TIP_LAG_BLOCKS=5`
+- For long-running indexers, use `safe` block tag if the provider supports
+  it (publicnode does; tenderly is hit-and-miss)
+
+**When to investigate vs. just wait:**
+
+- If lag clears within ~30s of block production: normal, no action
+- If lag persists for >5 minutes on the same block: one upstream's
+  indexer is stuck — follow §"Step 3 — escalation tree" above
+
 ## Submission path (NOT consensus-protected)
 
 The driver submits transactions via `[[submission.mempool]]` in

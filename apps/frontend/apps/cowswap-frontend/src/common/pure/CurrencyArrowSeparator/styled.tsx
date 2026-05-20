@@ -63,6 +63,17 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
   justify-content: center;
   pointer-events: auto;
 
+  /* F2 (Phase 3.3 mobile UX, 2026-05-20): visual disc stays at 32px but
+   * tap area extends to 44px on mobile to meet Apple HIG / Material
+   * touch-target minimums. The ::before invisible expander adds 6px on
+   * each side without affecting layout. */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    z-index: -1;
+  }
+
   &:disabled {
     cursor: not-allowed;
     opacity: 0.6;

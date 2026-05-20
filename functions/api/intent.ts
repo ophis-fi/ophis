@@ -42,9 +42,43 @@ type IntentResponse =
   | { ok: false; error: { code: ErrorCode; message: string } }
 
 const LIBERTAI_URL = 'https://api.libertai.io/v1/chat/completions'
-const LIBERTAI_MODEL = 'qwen3.5-122b-a10b'
+// Switched 2026-05-20 from `qwen3.5-122b-a10b` to `qwen3.6-27b` after
+// observing 504 timeouts under sustained traffic. The 122B model is
+// overkill for structured intent extraction — Libertai's own docs-
+// assistant reference impl (github.com/Libertai/docs-assistant) uses
+// the 27B as their default. Our task (parse "swap 100 USDC for ETH")
+// is much simpler than tool-call agent flows the 27B handles well.
+// Expected: lower latency, fewer timeouts, comparable accuracy.
+const LIBERTAI_MODEL = 'qwen3.6-27b'
 const TIMEOUT_MS = 5000
 const MAX_TEXT_LEN = 280
+
+// Edge cache for identical (normalized) text inputs. Catches the
+// "user clicks the same chip preset 50 times" and "bot replays the
+// same input" cases without burning a LibertAI token round-trip per
+// hit. Cache hit = no LibertAI call at all.
+//
+// TTL: 5 minutes. Intents are semantically stable (the LLM is
+// temperature:0 and SYSTEM_PROMPT pinned, so identical input ⇒
+// identical output until we deploy a new prompt). 5min is conservative
+// — could be 1h+ in steady state. Keep short to limit blast radius
+// if a bad cached response ever lands.
+//
+// Storage: reuse the OPHIS_RATELIMIT KV namespace with a `cache:`
+// key prefix. Initial impl tried Cloudflare's edge `caches.default`
+// API but fire-and-forget puts without `ctx.waitUntil` were dropped
+// and synthetic-URL cache keys are POP-scoped (not globally shared).
+// KV gives us global consistency (~60s replication lag, well within
+// our 5min TTL) and persists across isolate lifecycles.
+const CACHE_TTL_SECONDS = 300
+const CACHE_KEY_PREFIX = 'cache:'
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 // Rate limit (per IP, sliding window). Primary path: a KV-backed
 // counter (`env.OPHIS_RATELIMIT`) with N distinct strongly-consistent
@@ -330,7 +364,8 @@ function stripFences(s: string): string {
   return m ? m[1].trim() : trimmed
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const { request, env } = context
   // Origin allow-list: block calls from non-Ophis pages and most
   // non-browser callers (curl/scripts typically omit Origin entirely).
   // Not a security boundary against motivated attackers — Origin can
@@ -374,6 +409,39 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   if (text.length > MAX_TEXT_LEN) {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: `text exceeds ${MAX_TEXT_LEN} chars` } }, 400)
+  }
+
+  // Edge cache lookup (Phase 3.8 / 2026-05-20). Normalized text →
+  // SHA-256 → KV key. Hit = serve cached LibertAI response without
+  // burning a token round-trip.
+  //
+  // We deliberately CHECK the cache AFTER rate-limit + auth/input
+  // validation so cache hits still respect the per-IP cap (don't
+  // let an attacker drain the cache by serving identical inputs
+  // unbounded). The rate limit increments before the cache check.
+  const normalizedText = text.trim().toLowerCase()
+  const cacheKeyHash = await sha256Hex(normalizedText)
+  const cacheKey = CACHE_KEY_PREFIX + cacheKeyHash
+
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      const cached = await env.OPHIS_RATELIMIT.get(cacheKey)
+      if (cached) {
+        return new Response(cached, {
+          status: 200,
+          headers: {
+            'content-type': 'application/json; charset=utf-8',
+            'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff',
+            'x-frame-options': 'DENY',
+            'referrer-policy': 'no-referrer',
+            'x-ophis-cache': 'hit',
+          },
+        })
+      }
+    } catch {
+      // KV outage → degraded to no-cache, still call LibertAI.
+    }
   }
 
   const controller = new AbortController()
@@ -448,7 +516,36 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
   }
 
-  return json({ ok: true, data: filtered })
+  const successBody: IntentResponse = { ok: true, data: filtered }
+  const successJson = JSON.stringify(successBody)
+
+  // Store in KV cache. Only successful 200s — errors (UPSTREAM,
+  // INVALID_JSON, TIMEOUT) are NEVER cached so a transient LibertAI
+  // hiccup doesn't persist "no LibertAI" for 5 minutes to every user.
+  //
+  // Awaited synchronously (vs `context.waitUntil` fire-and-forget)
+  // because the latter wasn't actually persisting writes in
+  // production — 90s wait between identical requests still missed
+  // cache. KV.put typically takes <100ms, so the FIRST request that
+  // populates the cache pays ~+100ms, but every subsequent identical
+  // request skips the ~2s LibertAI roundtrip entirely. Net win.
+  //
+  // Errors are swallowed silently: client gets the LibertAI response
+  // regardless, and the next request retries the cache write. No
+  // diagnostic header — Codex pre-deploy audit (2026-05-20) flagged
+  // the prior `x-ophis-cache-write: err:<msg>` shape as an oracle
+  // for internal KV state.
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      await env.OPHIS_RATELIMIT.put(cacheKey, successJson, {
+        expirationTtl: CACHE_TTL_SECONDS,
+      })
+    } catch {
+      // Silent — degraded path is no-cache (next request retries).
+    }
+  }
+
+  return json(successBody)
 }
 
 // Reject anything else.

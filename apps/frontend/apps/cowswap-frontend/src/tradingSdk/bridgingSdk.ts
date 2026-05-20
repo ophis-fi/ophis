@@ -33,8 +33,26 @@ export const bridgingSdk = new BridgingSdk({
   orderBookApi,
 })
 
-// Enable only Bungee by default
-bridgingSdk.setAvailableProviders([bungeeBridgeProvider.info.dappId])
+// Ophis fork (Path A, 2026-05-20): enable all three bridge providers by
+// default. Bungee + Across for EVM↔EVM, NEAR Intents for EVM↔Solana
+// (and Bitcoin, plus all major EVM chains).
+//
+// Per cow-sdk v4.0.2 `NearIntentsBridgeProvider`:
+// `NEAR_INTENTS_SUPPORTED_NETWORKS` includes: mainnet, optimism, base,
+// arbitrumOne, polygon, avalanche, bnb, gnosisChain, plasma, bitcoin,
+// solana. CoW DAO integrated NEAR Intents as their primary cross-chain
+// provider in November 2025 per https://x.com/NEARProtocol/status/1995888195343425855
+//
+// Upstream cowswap gates Near + Across behind LaunchDarkly feature flags
+// in `BridgeProvidersUpdater`. We don't run LaunchDarkly — the flags
+// stay undefined → the updater's early-return preserves whatever's set
+// here. To keep the contract simple, all three providers are advertised
+// to the bridging SDK from boot.
+bridgingSdk.setAvailableProviders([
+  bungeeBridgeProvider.info.dappId,
+  acrossBridgeProvider.info.dappId,
+  nearIntentsBridgeProvider.info.dappId,
+])
 
 function getBungeeApiBase(): string | undefined {
   if (isProd || isDev || isStaging || isBarn) {
