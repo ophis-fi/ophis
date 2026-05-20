@@ -9,11 +9,9 @@ import {
   base,
   bsc,
   gnosis,
-  hyperEvm,
   ink,
   linea,
   mainnet,
-  megaeth,
   optimism,
   plasma,
   polygon,
@@ -48,8 +46,6 @@ const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.INK]: ink,
   [SupportedChainId.SEPOLIA]: sepolia,
   [OPTIMISM_CHAIN_ID]: optimism,
-  [MEGAETH_CHAIN_ID]: megaeth,
-  [HYPEREVM_CHAIN_ID]: hyperEvm,
 }
 
 export const config = createConfig({
