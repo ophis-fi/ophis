@@ -1,20 +1,42 @@
-# CIP-75 partner-fee bypass when OKX wins — finding
+# CIP-75 partner-fee: accumulates in Settlement, doesn't reach Safe
 
 **Date:** 2026-05-20 (discovered during Phase 3.1 first-real-swap)
-**Severity:** HIGH (revenue-critical; affects every OKX-won settlement)
+**Severity:** MEDIUM (architectural; not material until volume scales)
 **Status:** Confirmed, mitigation TBD
 **Filed by:** Phase 3.1 E2E verification
 
+## Update 2026-05-20 — original "OKX bypass" framing was wrong
+
+Settlement contract `0x310784c7…` has a balance of 794 USDC base units —
+the fees ARE accumulating there. The `0xfa00a9ed…` transfer in the
+settlement tx is **OKX's OWN aggregator margin** (their commission paid
+out of the swap proceeds), not our CIP-75 fee. The original finding
+mis-attributed the on-chain transfer.
+
+What's actually happening:
+
+1. CIP-75 calculates a `priceImprovement` fee (e.g. 311 USDC base units)
+   correctly per the order's app-data.
+2. The fee is collected by REDUCING the user's buyAmount: user receives
+   `executedBuy - fee` (here, 2,119,924 against a quoted 2,120,260).
+3. The fee REMAINS IN THE SETTLEMENT CONTRACT — there's no on-chain
+   transfer to the Safe.
+4. CoW Settlement has no admin "withdraw" function — accumulated
+   tokens can only leave via the `settle()` calldata's interactions.
+
+Net effect: fees are silently accumulating in Settlement. The Safe
+balance stays at 0. Material loss is bounded by volume but the design
+is broken — there's no path from "fee collected" to "Safe enriched"
+without additional code.
+
 ## Summary
 
-When the OKX solver wins a CoW auction on Ophis OP mainnet, the on-chain
-settlement transfers the price-improvement fee to an OKX-controlled EOA
-(`0xfa00a9ed787f3793db668bff3e6e6e7db0f92a1b`) instead of the configured
-CIP-75 partner-fee recipient Safe (`0x858f0F5eE954846D47155F5203c04aF1819eCeF8`).
-
-The orderbook DB records the fee as if it were collected correctly. Any
-dashboard sourced from `executedProtocolFees.amount` will overstate
-realized revenue by 100%.
+CIP-75 partner-fee accumulates in the Settlement contract on Ophis OP
+mainnet. The configured recipient Safe
+(`0x858f0F5eE954846D47155F5203c04aF1819eCeF8`) never receives the
+fees. The orderbook records the *intended* fee, not the *realized
+transfer*, so any dashboard sourced from `executedProtocolFees.amount`
+overstates realized Safe revenue by 100%.
 
 ## Evidence
 
