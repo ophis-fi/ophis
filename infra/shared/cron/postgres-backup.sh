@@ -137,14 +137,25 @@ log "wrote $OUT ($size bytes)"
 # binary dump if the container exits mid-stream. The size-check above
 # catches "completely empty"; pg_restore --list catches "valid header
 # but truncated TOC". Cheap deterministic check.
-if ! docker exec "$DB_CONTAINER" pg_restore --list "/dev/stdin" < "$OUT" >/dev/null 2>&1; then
+#
+# 2026-05-20 fix: prior version used `docker exec ... < $OUT`. Without
+# `-i`, docker doesn't pipe stdin → pg_restore reads empty → false
+# "corrupt" verdict on every dump. Switched to docker cp + container-
+# side path → pg_restore on actual file. Reliable across docker
+# versions + binary-safe.
+VALIDATION_PATH="/tmp/.pg-validate.${$}.pgdump"
+docker cp "$OUT" "${DB_CONTAINER}:${VALIDATION_PATH}" >/dev/null
+if ! docker exec "$DB_CONTAINER" pg_restore --list "$VALIDATION_PATH" >/dev/null 2>&1; then
   log "ERROR: pg_restore --list rejected the dump — file is corrupt/truncated. Aborting."
-  # Don't delete the corrupt file — operator may want to inspect.
-  # Just rename so the next run doesn't trip over a "latest" symlink.
+  docker exec "$DB_CONTAINER" rm -f "$VALIDATION_PATH" >/dev/null 2>&1 || true
+  # Don't delete the dump — operator may want to inspect.
+  # Just rename so subsequent restore commands don't accidentally pick
+  # a known-bad file.
   mv "$OUT" "${OUT}.CORRUPT"
   log "  renamed to ${OUT}.CORRUPT for forensics"
   exit 11
 fi
+docker exec "$DB_CONTAINER" rm -f "$VALIDATION_PATH" >/dev/null 2>&1 || true
 log "dump validated via pg_restore --list"
 
 # Optional remote upload. Set OPHIS_PG_REMOTE_BACKUP_CMD in the operator's
