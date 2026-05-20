@@ -1,7 +1,21 @@
 import { mapSupportedNetworks, SupportedChainId, HttpsString } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
-const INFURA_KEY = process.env['REACT_APP_INFURA_KEY'] || '2af29cd5ac554ae3b8d991afe1ba4b7d' // Default rate-limited infura key (should be overridden, not reliable to use)
+// Ophis fork (Phase 3.3 F1, 2026-05-20): the upstream cowswap default
+// fell through to `https://<chain>.infura.io/v3/<public-key>` with a
+// shared rate-limited key. Every visitor of ophis.fi hit Infura 13+
+// times on landing — Infura saw every IP + intended-swap query string.
+// That contradicts the "sovereign-infra" narrative AND adds a single
+// point of failure on someone else's API key.
+//
+// Fix: switch the defaults to publicnode (Allnodes' public endpoint —
+// no key required, generous free tier, multi-cloud DNS). The
+// `REACT_APP_NETWORK_URL_<chainId>` env vars still take precedence
+// for any deployer that wants to point at their own infrastructure.
+//
+// Infura key path is preserved as a fallback for backwards-compat with
+// deployers who set REACT_APP_INFURA_KEY explicitly.
+const INFURA_KEY = process.env['REACT_APP_INFURA_KEY'] || ''
 
 const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [SupportedChainId.MAINNET]: (process.env['REACT_APP_NETWORK_URL_1'] as HttpsString) || undefined,
@@ -23,18 +37,23 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [999 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_999'] as HttpsString) || undefined,
 }
 
+// Ophis fork (F1, 2026-05-20): defaults switched from Infura (which
+// tracked every visitor's IP + swap intent) to publicnode endpoints.
+// If REACT_APP_INFURA_KEY is set at deploy time, Infura is still
+// attempted first for compatibility — see usesInfura branch in
+// getRpcUrl(). publicnode is a non-tracking fallback that needs no key.
 const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: boolean }> = {
-  [SupportedChainId.MAINNET]: { url: `https://mainnet.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
-  [SupportedChainId.BNB]: { url: `https://bsc-mainnet.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
+  [SupportedChainId.MAINNET]: { url: `https://ethereum-rpc.publicnode.com`, usesInfura: false },
+  [SupportedChainId.BNB]: { url: `https://bsc-rpc.publicnode.com`, usesInfura: false },
   [SupportedChainId.GNOSIS_CHAIN]: { url: `https://rpc.gnosis.gateway.fm`, usesInfura: false },
-  [SupportedChainId.POLYGON]: { url: `https://polygon-mainnet.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
-  [SupportedChainId.BASE]: { url: `https://base-mainnet.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
+  [SupportedChainId.POLYGON]: { url: `https://polygon-bor-rpc.publicnode.com`, usesInfura: false },
+  [SupportedChainId.BASE]: { url: `https://base-rpc.publicnode.com`, usesInfura: false },
   [SupportedChainId.PLASMA]: { url: `https://rpc.plasma.to`, usesInfura: false },
-  [SupportedChainId.ARBITRUM_ONE]: { url: `https://arbitrum-mainnet.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
-  [SupportedChainId.AVALANCHE]: { url: `https://avalanche-mainnet.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
+  [SupportedChainId.ARBITRUM_ONE]: { url: `https://arbitrum-one-rpc.publicnode.com`, usesInfura: false },
+  [SupportedChainId.AVALANCHE]: { url: `https://avalanche-c-chain-rpc.publicnode.com`, usesInfura: false },
   [SupportedChainId.INK]: { url: `https://rpc-ten.inkonchain.com`, usesInfura: false },
   [SupportedChainId.LINEA]: { url: `https://rpc.linea.build`, usesInfura: false },
-  [SupportedChainId.SEPOLIA]: { url: `https://sepolia.infura.io/v3/${INFURA_KEY}`, usesInfura: true },
+  [SupportedChainId.SEPOLIA]: { url: `https://ethereum-sepolia-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: OP mainnet default public RPC
   [10 as unknown as SupportedChainId]: { url: `https://optimism-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: MegaETH mainnet default public RPC
