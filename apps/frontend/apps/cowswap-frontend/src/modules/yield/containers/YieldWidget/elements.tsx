@@ -45,7 +45,7 @@ export const CoWAmmInlineBanner = ({ token, apyDiff }: { token: LpToken | undefi
           <Trans>Swap</Trans>
         )}{' '}
         <Trans>any token into AMM pools to start benefiting from attractive APRs.</Trans>{' '}
-        <ExternalLink href="https://cow.fi/cow-amm">
+        <ExternalLink href="https://github.com/ophis-fi/ophis">
           <Trans>Learn more</Trans>
         </ExternalLink>
       </span>

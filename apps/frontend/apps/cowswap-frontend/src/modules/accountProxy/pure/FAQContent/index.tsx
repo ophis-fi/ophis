@@ -24,7 +24,7 @@ const Answer1: FC = () => {
         {accountProxyLabelString}
       </ExternalLink>{' '}
       <Trans>is a helper contract that improves the user experience within Ophis for features like</Trans>{' '}
-      <ExternalLink href="https://docs.cow.fi/cow-protocol/reference/core/intents/hooks">
+      <ExternalLink href="https://github.com/ophis-fi/ophis">
         <Trans>Hooks</Trans>
       </ExternalLink>
       .

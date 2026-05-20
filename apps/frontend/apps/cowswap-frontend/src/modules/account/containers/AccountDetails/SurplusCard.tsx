@@ -220,7 +220,7 @@ export function SurplusCard() {
           <small>{surplusUsdAmount && <FiatAmount amount={surplusUsdAmount} accurate={false} />}</small>
         </div>
         <div>
-          <ExternalLink href={'https://cow.fi/learn/announcing-cow-swap-surplus-notifications'}>
+          <ExternalLink href={'https://github.com/ophis-fi/ophis'}>
             <Trans>Learn about surplus on Ophis</Trans> ↗
           </ExternalLink>
         </div>

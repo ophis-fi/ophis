@@ -284,10 +284,6 @@ msgstr "Unwrapping {amountStr} {wrapped} to {native}"
 msgid "{symbolName} orders require a minimum transaction expiration time threshold of {minutes} minutes to ensure the best swapping experience."
 msgstr "{symbolName} orders require a minimum transaction expiration time threshold of {minutes} minutes to ensure the best swapping experience."
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
-msgid "Liquidity pools on AMM pools grow faster than on other AMMs because they don't lose money to arbitrage bots."
-msgstr "Liquidity pools on AMM pools grow faster than on other AMMs because they don't lose money to arbitrage bots."
-
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
 msgid "From network"
 msgstr "From network"
@@ -321,10 +317,6 @@ msgstr "Tokens from inactive lists. Import specific tokens below or click Manage
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/fields/OrderTypeField.tsx
 msgid "sell"
 msgstr "sell"
-
-#: apps/cowswap-frontend/src/modules/wallet/pure/WalletModal/index.tsx
-msgid "By connecting a wallet, you acknowledge that you have read, understood and agree to the interface’s <0>Terms & Conditions</0>."
-msgstr "By connecting a wallet, you acknowledge that you have read, understood and agree to the interface’s <0>Terms & Conditions</0>."
 
 #: apps/cowswap-frontend/src/common/pure/ReceiveAmountInfo/index.tsx
 #: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
@@ -819,6 +811,10 @@ msgstr "Your wallet is eligible for rewards. After your first trade, the referra
 #: apps/cowswap-frontend/src/modules/wallet/containers/AccountSelectorModal/index.tsx
 msgid "Select {walletName} Account"
 msgstr "Select {walletName} Account"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/ExpiredStep.tsx
+msgid "If your orders often expire, consider increasing your slippage."
+msgstr "If your orders often expire, consider increasing your slippage."
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/TransactionSlippageInput/TransactionSlippageInput.container.tsx
 msgid "With low slippage, your transaction may expire."
@@ -1753,10 +1749,6 @@ msgstr "Time to create a new one!"
 msgid "View on bridge explorer"
 msgstr "View on bridge explorer"
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/ExpiredStep.tsx
-msgid "or send us an email at"
-msgstr "or send us an email at"
-
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 msgid "The minimum possible outcome after swap, including costs and slippage."
 msgstr "The minimum possible outcome after swap, including costs and slippage."
@@ -1954,10 +1946,6 @@ msgstr "Waiting for confirmation."
 msgid "COW token"
 msgstr "COW token"
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/ExpiredStep.tsx
-msgid "so we can investigate the problem."
-msgstr "so we can investigate the problem."
-
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
 msgid "(via WalletConnect)"
 msgstr "(via WalletConnect)"
@@ -2124,6 +2112,10 @@ msgstr "No open orders found in your last {limit} orders"
 #: apps/cowswap-frontend/src/modules/twap/hooks/useCancelTwapOrder.ts
 msgid "Context is not full to cancel TWAP order"
 msgstr "Context is not full to cancel TWAP order"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
+msgid "Ophis matches peer-to-peer swaps to save on settlement costs."
+msgstr "Ophis matches peer-to-peer swaps to save on settlement costs."
 
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step1.tsx
 msgid "Sent {nativeTokenSymbol}"
@@ -3335,6 +3327,10 @@ msgstr "Price change"
 #: apps/cowswap-frontend/src/utils/orderUtils/getUiOrderType.ts
 msgid "Yield"
 msgstr "Yield"
+
+#: apps/cowswap-frontend/src/modules/wallet/pure/WalletModal/index.tsx
+msgid "By connecting a wallet, you acknowledge that you have read, understood and agree to the interface’s terms of use."
+msgstr "By connecting a wallet, you acknowledge that you have read, understood and agree to the interface’s terms of use."
 
 #: apps/cowswap-frontend/src/modules/tokensList/containers/ManageLists/index.tsx
 msgid "Error importing token list"
@@ -4620,6 +4616,10 @@ msgstr "Please sign order"
 msgid "Order unlikely to execute"
 msgstr "Order unlikely to execute"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
+msgid "Ophis pools grow faster than other AMM pools because they don't lose money to arbitrage bots."
+msgstr "Ophis pools grow faster than other AMM pools because they don't lose money to arbitrage bots."
+
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/Settings/LimitOrdersSettings.pure.tsx
 msgid "Choose where to display the limit price input."
 msgstr "Choose where to display the limit price input."
@@ -4731,10 +4731,6 @@ msgstr "on {chainLabel}"
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Invalid price. Try increasing input/output amount."
 msgstr "Invalid price. Try increasing input/output amount."
-
-#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
-msgid "Ophis is the only exchange that matches peer-to-peer order matching: peer-to-peer swaps that save on settlement costs."
-msgstr "Ophis is the only exchange that matches peer-to-peer order matching: peer-to-peer swaps that save on settlement costs."
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliatePartnerStats.tsx
 msgid "Volume referred"
@@ -5207,10 +5203,6 @@ msgstr "Confirm order"
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 msgid "Pending pre-signature"
 msgstr "Pending pre-signature"
-
-#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/ExpiredStep.tsx
-msgid "If your orders often expire, consider increasing your slippage or contact us on"
-msgstr "If your orders often expire, consider increasing your slippage or contact us on"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/ExpiredStep.tsx
 msgid "The good news"

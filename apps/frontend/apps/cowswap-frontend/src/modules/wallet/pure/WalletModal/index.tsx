@@ -86,13 +86,7 @@ export function WalletModal(props: Readonly<WalletModalProps>) {
 function CustomTerms() {
   return (
     <TermsWrapper>
-      <Trans>
-        By connecting a wallet, you acknowledge that you have read, understood and agree to the interface’s{' '}
-        <a href="https://cow.fi/legal/cowswap-terms" target="_blank" rel="noopener noreferrer">
-          Terms &amp; Conditions
-        </a>
-        .
-      </Trans>
+      <Trans>By connecting a wallet, you acknowledge that you have read, understood and agree to the interface’s terms of use.</Trans>
     </TermsWrapper>
   )
 }
