@@ -155,33 +155,26 @@ projects:
           # This is the strongest posture achievable today. The CF-DNS
           # concentration residual (documented through #144→#148 iterations)
           # is now fully closed.
-          # 2026-05-20 afternoon — EMERGENCY DOWNSIZE during Phase 3.1 swap.
-          # First user-initiated swap (uid 0x2a5fe72a...) failed because the
-          # container can't reach the self-hosted upstream over Tailscale
-          # (host has utun0 route, docker bridge doesn't), AND tenderly's
-          # free tier rate-limits eth_estimateGas/eth_feeHistory bursts.
-          # Result: consensus-low across BOTH simulation methods AND state
-          # reads → driver can't simulate → solutions discarded → no
-          # settlement. See feedback-erpc-container-tailscale-reachability.
+          # 2026-05-20 — root-cause REVISED during task #112 investigation.
+          # The Phase 3.1 swap failure was NOT a container→Tailscale
+          # reachability issue (a one-shot alpine container on the same
+          # docker network successfully called 100.77.53.81:8545). The
+          # actual cause: eRPC's punishMisbehavior policy was kicking the
+          # self-hosted upstream into a 5-min sit-out every time it had
+          # minor tip-drift (5 disputes in 10min → punishment). With OP's
+          # 2s block time, tip-drift between independently-operated
+          # indexers is the natural state — disputeThreshold:5 punishes
+          # normal operation.
           #
-          # Mitigation: split methods into two consensus groups by threat
-          # surface:
-          #   1. Settlement OBSERVATION (eth_getLogs, eth_getTransactionReceipt,
-          #      eth_getTransactionByHash) keeps 2-of-3 strict consensus. A
-          #      forged response here would corrupt the autopilot's settlement
-          #      accounting (false-positive credits, missed partner-fees).
-          #   2. Simulation/state-reads (eth_call, eth_estimateGas,
-          #      eth_feeHistory, eth_getBalance) drop to retry-only via the
-          #      catchall `*` rule. A forged response here only causes the
-          #      driver to broadcast a tx that on-chain reverts — gas-only
-          #      loss bounded by the 5 gwei cap (~$0.05/tx). No settlement
-          #      against forged state possible because settlements are
-          #      EIP-712-signed by the user against fixed sell/buy amounts.
+          # Fix: bumped disputeThreshold to 30 (below). This gives
+          # self-hosted enough drift-tolerance to remain participating
+          # while still catching genuinely hostile/malformed answers
+          # (which would consistently disagree, not occasionally).
           #
-          # Permanent fix tracked: container→Tailscale via host socat proxy
-          # (task #112 in roadmap). After that lands, restore the full method
-          # list to 2-of-3 consensus.
-          - matchMethod: "eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash"
+          # With self-hosted reliably available again, restore the full
+          # consensus method list — covers eth_call (solver winner-
+          # selection per Codex+sharp-edges audit 2026-05-20 F6).
+          - matchMethod: "eth_call|eth_getBalance|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory"
             timeout:
               duration: 12s
             consensus:
@@ -222,12 +215,35 @@ projects:
               # numbered block, so strict compare costs nothing on the
               # availability axis here.
               punishMisbehavior:
-                disputeThreshold: 5
+                # 2026-05-20 — raised from 5 → 30 during task #112 root
+                # cause investigation. OP's 2s block time + 3 independently-
+                # operated indexers means tip-drift disagreements happen
+                # multiple times per minute as a NATURAL outcome of upstream
+                # state propagation. With threshold:5 + window:10m, even a
+                # fully-synced healthy upstream gets ejected within seconds
+                # of startup (verified: ophis-op-node-self had ZERO
+                # successful requests in 60s of polling despite being
+                # directly reachable from the same docker network).
+                #
+                # Threshold:100 trades a small security degradation (a real
+                # hostile upstream gets to answer 100 vs 5 disputed reads
+                # before sit-out kicks in) for major operational
+                # availability. Each forged dispute still causes consensus-
+                # failure → returnError → driver fails-closed; the
+                # disputeThreshold only controls when we STOP TRYING that
+                # upstream entirely. So the 100 forged answers don't poison
+                # settlement, they just slow it.
+                #
+                # Empirically (2026-05-20 post-restart): threshold:30 still
+                # ejected self-hosted within seconds during a post-restart
+                # catch-up burst. 100 absorbs that. At steady state, drift-
+                # induced disputes are ~1/min on eth_getTransactionReceipt
+                # for just-landed Settlement txs (indexing lag), so 100 in
+                # 10min gives ~10× headroom over baseline.
+                disputeThreshold: 100
                 disputeWindow: 10m
                 # Sharp-edges follow-up #3: 30m sit-out is too long while
-                # we're tuning a fresh upstream set — a 10-minute correlated
-                # blip on Tenderly (cache propagation lag at tip resolution)
-                # would otherwise cascade into 30m+ outages. 5m is recoverable
+                # we're tuning a fresh upstream set. 5m is recoverable
                 # within a single docker-compose `restart driver`. Tighten
                 # back to 30m once we have ≥7 days of clean operation.
                 sitOutPenalty: 5m

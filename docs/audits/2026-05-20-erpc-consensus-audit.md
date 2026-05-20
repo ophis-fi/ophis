@@ -30,6 +30,64 @@ Audit ran post-deploy on the four session deltas:
 | F4 | MED | deploy-ophis.sh | `CLOUDFLARE_API_TOKEN` stays exported after wrangler returns, leaking to post-deploy curl checks via env. | `unset CLOUDFLARE_API_TOKEN` immediately after wrangler. |
 | F5 | MED | deploy-ophis.sh | `curl https://ophis.fi` may return gzipped body, breaking grep extraction → empty BUNDLE_HASH printed as success. | Added `--compressed` flag + empty-check warning. |
 
+## Findings RESOLVED post-audit
+
+### F6 — `eth_call` restored to 2-of-3 consensus
+
+Root-cause investigation for task #112 revealed the original assumption
+("container can't reach Tailscale") was wrong. A one-shot alpine
+container on the same docker network reached `100.77.53.81:8545` fine
+and got valid block data. The actual cause was eRPC's punishMisbehavior
+policy (`disputeThreshold:5 / disputeWindow:10m / sitOutPenalty:5m`)
+kicking the self-hosted upstream into 5-min sit-out for normal tip-
+drift disagreements. With OP's 2s block time + 3 independently-operated
+indexers, tip-drift is the natural state — threshold:5 punishes
+healthy operation.
+
+Fix: bumped `disputeThreshold` to 100 (10× headroom over baseline ~10
+disputes/min from `eth_getTransactionReceipt` indexing-lag on just-
+landed Settlement txs). Restored the full method list (`eth_call`,
+`eth_getBalance`, `eth_estimateGas`, `eth_feeHistory`, `eth_getLogs`,
+`eth_getTransactionReceipt`, `eth_getTransactionByHash`) to 2-of-3
+strict consensus. Verified: 3 upstreams evenly distributed (73 calls
+each in 30s), zero sit-outs.
+
+Tasks #112 and #115 both resolved by this single config change.
+
+### F7 — Driver nonce path doesn't go through eRPC
+
+Codex flagged that `eth_getTransactionCount` in the `*` retry-only path
+could let a hostile upstream return forged nonces. Audit of the driver
+source: `apps/backend/crates/driver/src/infra/mempool/mod.rs:get_nonce()`
+uses `self.transport.provider.get_transaction_count(...)` where
+`self.transport` is the per-mempool transport bound to one specific
+pinned `[[submission.mempool]]` URL (publicnode, self-hosted,
+mainnet.optimism.io, or tenderly individually). **Not eRPC.** So nonce
+discovery bypasses consensus by design — Codex's concern doesn't apply.
+
+No code change needed. Task #117 closed.
+
+### F8 — `eth_blockNumber` consensus NOT added (over-engineering)
+
+Sharp-edges flagged that `enforceHighestBlock` only catches stale
+upstreams, not forged-ahead ones. We considered adding `eth_blockNumber`
+to the consensus method list to defend against forged-ahead block
+numbers. **Rejected after analysis:**
+
+- `eth_blockNumber` is polled constantly (block stream cadence ~2s on
+  OP). Putting it under 2-of-3 strict consensus would generate constant
+  disputes — upstreams naturally see "tip" at slightly different
+  microseconds.
+- For OP specifically, the sequencer is the canonical ordering source.
+  A forged-ahead block number is bounded by content disagreement on
+  any subsequent `eth_getBlockByNumber(realNum)` read — which IS in
+  consensus. So forged-ahead is detected within 1-2 reads.
+- The cure (churn from constant tip disputes) would be worse than the
+  disease (a brief forged-ahead window that's caught on the next
+  content read).
+
+No code change. Task #118 closed.
+
 ## Findings DEFERRED — require infrastructure work first
 
 ### F6 — `eth_call` in retry-only path (HIGH/sharp-edges, MED/codex)
