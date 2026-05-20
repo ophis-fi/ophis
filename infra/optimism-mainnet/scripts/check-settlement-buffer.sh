@@ -34,14 +34,30 @@ TOKENS=(
 
 command -v cast >/dev/null 2>&1 || { echo "ERROR: cast (foundry) required" >&2; exit 3; }
 command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq required" >&2; exit 3; }
+command -v bc   >/dev/null 2>&1 || { echo "ERROR: bc required" >&2; exit 3; }
 
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 RESULTS_JSON='[]'
+PROBE_FAILURES=0
 
 for entry in "${TOKENS[@]}"; do
   IFS=: read -r token sym dec <<< "$entry"
-  bal=$(cast call --rpc-url "$RPC" "$token" "balanceOf(address)(uint256)" "$SETTLEMENT" 2>/dev/null | awk '{print $1}')
-  [[ -z "$bal" ]] && bal=0
+
+  # Audit (codex + sharp-edges 2026-05-20): never silently substitute 0
+  # when the RPC fails. A monitoring tool that reports "$0 in buffer"
+  # while the RPC is unreachable is worse than no monitoring — it
+  # falsely reassures during exactly the incident where you need
+  # accurate state. Capture cast's exit code; surface "error" status
+  # in JSON so downstream alerts can branch on probe staleness.
+  if cast_output=$(cast call --rpc-url "$RPC" "$token" "balanceOf(address)(uint256)" "$SETTLEMENT" 2>&1); then
+    bal=$(echo "$cast_output" | awk '{print $1}')
+    [[ -z "$bal" ]] && bal=0
+    status="ok"
+  else
+    bal=0
+    status="error"
+    PROBE_FAILURES=$((PROBE_FAILURES + 1))
+  fi
 
   if [[ "$bal" == "0" ]]; then
     bal_hr="0"
@@ -50,8 +66,8 @@ for entry in "${TOKENS[@]}"; do
   fi
 
   RESULTS_JSON=$(echo "$RESULTS_JSON" | jq \
-    --arg sym "$sym" --arg token "$token" --arg raw "$bal" --arg hr "$bal_hr" \
-    '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr}]')
+    --arg sym "$sym" --arg token "$token" --arg raw "$bal" --arg hr "$bal_hr" --arg status "$status" \
+    '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
 done
 
 cat <<EOF
@@ -59,6 +75,7 @@ cat <<EOF
   "ts": "$TS",
   "settlement": "$SETTLEMENT",
   "safe": "$SAFE",
+  "probe_failures": $PROBE_FAILURES,
   "balances": $RESULTS_JSON
 }
 EOF
@@ -68,7 +85,15 @@ if [[ -n "${PUSHGATEWAY_URL:-}" ]]; then
   for row in $(echo "$RESULTS_JSON" | jq -c '.[]'); do
     sym=$(echo "$row" | jq -r '.symbol')
     raw=$(echo "$row" | jq -r '.raw')
-    curl -s --data "ophis_settlement_buffer_raw{symbol=\"$sym\",chain=\"optimism\"} $raw" \
-      "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+    status=$(echo "$row" | jq -r '.status')
+    # Only push successful probes as the buffer-raw metric; emit a
+    # separate failures counter so Prometheus can alert on probe
+    # staleness (audit follow-up 2026-05-20).
+    if [[ "$status" == "ok" ]]; then
+      curl -s --data "ophis_settlement_buffer_raw{symbol=\"$sym\",chain=\"optimism\"} $raw" \
+        "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+    fi
   done
+  curl -s --data "ophis_settlement_buffer_probe_failures{chain=\"optimism\"} $PROBE_FAILURES" \
+    "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
 fi
