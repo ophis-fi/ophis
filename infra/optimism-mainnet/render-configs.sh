@@ -234,12 +234,37 @@ mount_ram_disk() {
   echo "  mounted RAM-disk at $RAM_PK_MOUNT (device $dev, 1 MB, HFS+, volname=$RAM_PK_VOLNAME)"
 }
 
-# Validate TELEGRAM_BOT_TOKEN if observability is wired up. Shape match:
-# `{int}:{base64-ish-suffix}` per Telegram bot token convention. A typo
-# means alerts silently disappear into a 404 → defeats observability.
+# Resolve TELEGRAM_BOT_TOKEN — preferred source is macOS Keychain
+# (Phase 1.5, 2026-05-20). Keeps the token out of .env cleartext and
+# off Time Machine / Spotlight / casual `cat .env` exposure.
+#
+# Lookup order (first match wins):
+#   1. env var TELEGRAM_BOT_TOKEN (set explicitly in the shell, or in
+#      .env — supported for backwards-compat, but discouraged)
+#   2. macOS Keychain entry:
+#        service=ophis-telegram-bot, account=$USER, kind=generic-password
+#
+# Setup (one-time):
+#   security add-generic-password -a "$USER" -s ophis-telegram-bot \
+#     -w '<bot-token>' -U
+#
+# The -U flag updates if the entry already exists (idempotent).
+# Once added, the token persists across .env regenerations + reboots.
+if [[ -d observability && -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
+  if security find-generic-password -a "$USER" -s ophis-telegram-bot -w >/dev/null 2>&1; then
+    TELEGRAM_BOT_TOKEN=$(security find-generic-password -a "$USER" -s ophis-telegram-bot -w 2>/dev/null)
+    export TELEGRAM_BOT_TOKEN
+    echo "  resolved TELEGRAM_BOT_TOKEN from Keychain (service=ophis-telegram-bot)"
+  fi
+fi
+
+# Validate TELEGRAM_BOT_TOKEN shape. Match: `{int}:{base64-ish-suffix}`
+# per Telegram bot token convention. A typo means alerts silently
+# disappear into a 404 → defeats observability.
 if [[ -d observability && -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
   if [[ ! "$TELEGRAM_BOT_TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]; then
     echo "ERROR: TELEGRAM_BOT_TOKEN doesn't look like a Telegram bot token ({int}:{base64-ish})" >&2
+    echo "       Source: $([ -n "${TELEGRAM_BOT_TOKEN_FROM_KEYCHAIN:-}" ] && echo Keychain || echo env-var)" >&2
     exit 2
   fi
 fi
