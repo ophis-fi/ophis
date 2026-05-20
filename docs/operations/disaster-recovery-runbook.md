@@ -235,20 +235,37 @@ is `mount -t tmpfs tmpfs $RAM_PK_MOUNT -o size=1M,mode=0700`. The script
 should detect platform and branch (or have a Linux-specific variant
 in the runbook).
 
-### G3 — no `ophis-driver` user automation
+### G3 — ✅ FIXED (PR #164): `scripts/setup-ophis-driver-user.sh`
 
-The runbook describes creating the `ophis-driver` user manually
-(`dscl` on macOS, `useradd` on Linux). Recovery would benefit from
-an idempotent setup script (`scripts/setup-ophis-driver-user.sh`)
-that handles both platforms.
+Idempotent dual-platform script. Branches on `uname -s`. macOS uses
+`dscl` to create the user; Linux uses `useradd --system --no-create-home
+--shell /usr/sbin/nologin`. Both create the home dir + .config subdir
+at chmod 700. After running it, install the PK file via:
 
-### G4 — `compose-up.sh` wrapper assumes Mac toolchain
+```bash
+echo '0x<64-hex-pk>' | sudo install -m 600 -o ophis-driver -g <group> \
+  /dev/stdin /<homedir>/ophis-driver/.config/submitter.key
+```
 
-Uses bash arrays + macOS `sed -i ''` semantics. Linux `sed -i` (no
-empty arg) would need the alternate form. Currently fine because
-the Mac mini is the only deploy target, but a Linux drill would
-trip these.
+### G4 — ✅ FIXED (PR #163 verification)
 
-**Status:** Phase 2.1 (Postgres restore drill) is ✅ proven. Phase 2.2
-(full DR drill on alternate host) is **blocked on G1+G2+G4**. Tracked
-in task #102.
+`compose-up.sh` had no macOS-specific bits on review. The `sed -i`
+concern was inside `render-configs.sh`, which now branches on
+platform for the RAM-disk + PK path. No further fixes needed.
+
+**Status:** Phase 2.1 (Postgres restore drill) ✅. G1+G2+G3+G4 all
+fixed. Phase 2.2 (full DR drill on Linux) is now unblocked — when
+ready, run the drill on Aleph VM2:
+
+1. `git clone https://github.com/ophis-fi/ophis /srv/ophis-dr/` on VM2
+2. `./infra/optimism-mainnet/scripts/setup-ophis-driver-user.sh` on VM2
+3. Install backup PK at `/home/ophis-driver/.config/submitter.key`
+   (chmod 600 owner ophis-driver) — for a true drill this is a
+   non-allowlisted dummy EOA; for actual failover it's the real PK
+   restored from offsite USB
+4. Restore the latest Postgres dump (Phase 2.1 procedure)
+5. Set `TENDERLY_API_KEY`, `OKX_*`, `COINGECKO_API_KEY` in `.env`
+6. Set `OPHIS_SUBMITTER_KEY_PATH=/home/ophis-driver/.config/submitter.key`
+   in `.env` (G1 portability)
+7. `./compose-up.sh` — picks up Linux tmpfs RAM-disk + Linux PK path
+8. Verify health, document any new gaps
