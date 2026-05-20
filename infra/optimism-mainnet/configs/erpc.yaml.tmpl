@@ -302,7 +302,28 @@ projects:
                 # eth_getTransactionReceipt has the highest baseline
                 # (~119 disputes / 47k requests = 0.25%) driven by
                 # just-landed Settlement-tx propagation lag.
-                disputeThreshold: 100
+                #
+                # 2026-05-20 (post-deploy follow-up): bumped 100 → 200
+                # after OphisOpErpcUpstreamCordoned fired within 30min
+                # of the initial deploy. Root cause: ophis-op-node-self
+                # accumulated 112 `response_type="empty"` disputes on
+                # eth_getTransactionReceipt (per `erpc_consensus_misbehavior_detected_total`).
+                # The cause is op-reth's receipt-indexing lag for just-
+                # landed txs vs publicnode/tenderly's hosted indexers —
+                # during Settlement broadcast bursts the driver polls
+                # the receipt aggressively, and self-hosted's
+                # not-yet-indexed `null` answer is the lone dissenter
+                # while the other two agree on the populated receipt.
+                # This is propagation lag, not misbehavior; block_head_lag=0,
+                # eth_syncing=false, identical responses on historical blocks.
+                # Bumped threshold absorbs Settlement-burst windows
+                # (~20 fresh-receipt polls per Settlement event × ~5
+                # events per 10min = ~100 baseline; 200 gives 2× headroom
+                # over that and ~5× over the steady-state 0.25% rate).
+                # Receipts security still protected by 2-of-3 consensus
+                # at request time; threshold only controls when we stop
+                # asking the chronically-lagging upstream.
+                disputeThreshold: 200
                 disputeWindow: 10m
                 sitOutPenalty: 5m
 
