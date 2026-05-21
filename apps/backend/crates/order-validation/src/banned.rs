@@ -57,6 +57,19 @@ impl Metrics {
         Metrics::instance(observe::metrics::get_storage_registry())
             .expect("Metrics instance")
     }
+
+    /// Eagerly register the `stage` label combinations so the metric series
+    /// appears in `/metrics` with value 0 from process start — without this,
+    /// `IntCounterVec` only emits series after first `.inc()`, which means
+    /// operator dashboards can't confirm "F6 wired correctly" until something
+    /// fails. Mirrors the pattern at `apps/backend/crates/orderbook/src/
+    /// ipfs_app_data.rs:30-34`.
+    pub fn eager_init() {
+        let metrics = Self::get();
+        for stage in &["background_refresh", "on_demand"] {
+            metrics.oracle_fetch_failed.with_label_values(&[stage]);
+        }
+    }
 }
 
 /// A list of banned users and an optional registry that can be checked onchain.
@@ -81,6 +94,12 @@ struct Onchain {
 
 impl Onchain {
     pub fn new(contract: ChainalysisOracle::Instance, cache_max_size: u64) -> Arc<Self> {
+        // Eagerly register the F6 metric label combinations so the series
+        // emit at process-start with value 0. Without this, operators
+        // cannot confirm "is the metric wired" until a Chainalysis error
+        // happens — see Metrics::eager_init() for full rationale.
+        Metrics::eager_init();
+
         let onchain = Arc::new(Self {
             contract,
             cache: Cache::builder().max_capacity(cache_max_size).build(),
