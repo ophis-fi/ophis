@@ -243,10 +243,18 @@ impl Mempools {
                                 submission_deadline = submission_deadline.0,
                                 current_block = block.number,
                                 settle_tx_hash = ?hash,
-                                "exceeded submission deadline, cancelling"
+                                "exceeded submission deadline, cancelling across all mempools"
                             );
+                            // Phase 4 audit F4 (2026-05-21): broadcast the
+                            // cancel to ALL configured mempools, not just
+                            // this one. The original settle was broadcast
+                            // via select_ok to every mempool in execute();
+                            // a single-mempool cancel would leave other
+                            // mempools' views of the network with the
+                            // original settle pending. See cancel_all
+                            // docstring for full rationale.
                             if let Err(cancel_err) =
-                                self.cancel(mempool, final_gas_price, signer, nonce).await
+                                self.cancel_all(final_gas_price, signer, nonce, "deadline_exceeded").await
                             {
                                 let mempool_label = mempool.to_string();
                                 tracing::error!(
@@ -254,7 +262,8 @@ impl Mempools {
                                     ?signer,
                                     ?nonce,
                                     settle_tx_hash = ?hash,
-                                    "cancellation after deadline failure — signer nonce may be stuck"
+                                    "cancel_all after deadline returned Err on every mempool — \
+                                     signer nonce may be stuck across the entire stack"
                                 );
                                 observe::metrics::get()
                                     .submitter_cancellation_failed
@@ -273,10 +282,13 @@ impl Mempools {
                                 tracing::info!(
                                     settle_tx_hash = ?hash,
                                     ?err,
-                                    "tx started failing in mempool, cancelling"
+                                    "tx started failing in mempool, cancelling across all mempools"
                                 );
+                                // Phase 4 audit F4 (2026-05-21): same
+                                // cross-mempool cancel rationale as the
+                                // deadline branch — see cancel_all docstring.
                                 if let Err(cancel_err) =
-                                    self.cancel(mempool, final_gas_price, signer, nonce).await
+                                    self.cancel_all(final_gas_price, signer, nonce, "sim_revert").await
                                 {
                                     let mempool_label = mempool.to_string();
                                     tracing::error!(
@@ -284,7 +296,8 @@ impl Mempools {
                                         ?signer,
                                         ?nonce,
                                         settle_tx_hash = ?hash,
-                                        "cancellation after sim-revert failure — signer nonce may be stuck"
+                                        "cancel_all after sim-revert returned Err on every mempool — \
+                                         signer nonce may be stuck across the entire stack"
                                     );
                                     observe::metrics::get()
                                         .submitter_cancellation_failed
@@ -340,6 +353,103 @@ impl Mempools {
             }
         }
         result
+    }
+
+    /// Broadcast a cancellation transaction concurrently to ALL configured
+    /// mempools.
+    ///
+    /// **Why this exists (Phase 4 audit F4, 2026-05-21):** `execute()` uses
+    /// `select_ok` to broadcast the original settlement tx to every mempool
+    /// in parallel. When one mempool's `submit()` loop later hits a cancel
+    /// trigger (submission deadline exceeded or simulation reverted), the
+    /// previous per-mempool `cancel()` only sent the cancellation to ONE
+    /// mempool. The OTHER mempools' RPCs still had the original settle in
+    /// their view of the pending pool. If a node downstream of those other
+    /// RPCs processed the original settle BEFORE the single-mempool cancel
+    /// propagated, the settlement could mine despite the operator intent
+    /// to cancel — a race where the cancel "wins" only on one network
+    /// view while the settle "wins" on another, and chain consensus picks
+    /// whichever lands first.
+    ///
+    /// Broadcasting the cancel to ALL configured mempools concurrently
+    /// maximizes the chance that every node's view receives a cancel
+    /// before any node mines the original settle. Cancel and settle share
+    /// the same nonce, so chain-level only one can land; the more mempool
+    /// channels carry the cancel, the more likely it wins the race.
+    ///
+    /// **Behavior:**
+    ///   - Per-mempool cancel calls run via `join_all` so all broadcasts
+    ///     happen in parallel.
+    ///   - Returns `Ok(tx_id)` with the first successful mempool's tx_id
+    ///     as long as at least ONE mempool accepted the cancel.
+    ///   - Returns `Err(last_failure)` only if ALL mempools rejected.
+    ///   - Per-mempool failures increment `submitter_cancel_broadcast_failed`
+    ///     so ops can alert on sustained partial-broadcast degradation.
+    ///
+    /// **Concurrent invocation:** if multiple per-mempool `submit()` loops
+    /// inside `execute()`'s `select_ok` independently hit cancel triggers,
+    /// they may call `cancel_all` concurrently. The broadcasts are
+    /// idempotent at the network level: a duplicate cancel at the same
+    /// nonce either RBFs (if fee bumped) or is rejected by the RPC as
+    /// already-known. Both outcomes are harmless.
+    #[tracing::instrument(skip(self), fields(num_mempools = self.mempools.len()))]
+    async fn cancel_all(
+        &self,
+        original_tx_gas_price: Eip1559Estimation,
+        signer: eth::Address,
+        nonce: u64,
+        cancel_reason: &'static str,
+    ) -> Result<TxId, Error> {
+        use futures::future::join_all;
+
+        let futures = self.mempools.iter().map(|mempool| async move {
+            let mempool_label = mempool.to_string();
+            let result = self.cancel(mempool, original_tx_gas_price, signer, nonce).await;
+            if let Err(ref err) = result {
+                tracing::warn!(
+                    ?err,
+                    mempool = %mempool_label,
+                    ?signer,
+                    nonce,
+                    reason = cancel_reason,
+                    "cancel_all: per-mempool broadcast failed; \
+                     other mempools may still succeed"
+                );
+                observe::metrics::get()
+                    .submitter_cancel_broadcast_failed
+                    .with_label_values(&[&mempool_label, cancel_reason])
+                    .inc();
+            }
+            result
+        });
+
+        let results: Vec<Result<TxId, Error>> = join_all(futures).await;
+        let total = results.len();
+        let succeeded = results.iter().filter(|r| r.is_ok()).count();
+
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        match &aggregate {
+            Ok(tx_id) => tracing::info!(
+                ?tx_id,
+                succeeded,
+                total,
+                ?signer,
+                nonce,
+                reason = cancel_reason,
+                "cancel_all: at least one mempool accepted the cancel; \
+                 F4 race window minimized"
+            ),
+            Err(_) => tracing::error!(
+                succeeded,
+                total,
+                ?signer,
+                nonce,
+                reason = cancel_reason,
+                "cancel_all: ALL mempools rejected the cancel — \
+                 signer nonce may be stuck across the entire stack"
+            ),
+        }
+        aggregate
     }
 
     /// Cancel a pending settlement by sending a transaction to self with a
@@ -535,6 +645,37 @@ fn observe_cancel_cap_violation(estimate: Eip1559Estimation, mempool: &infra::Me
     }
 }
 
+/// Pure helper isolating the cancel-broadcast aggregation logic so it
+/// can be unit-tested without constructing real `infra::Mempool`
+/// instances. Returns `Ok(first_tx_id)` if at least one mempool's cancel
+/// broadcast succeeded, `Err(last_failure)` if ALL mempools rejected.
+///
+/// **Semantics rationale (F4, 2026-05-21):** `cancel_all` succeeds as
+/// long as the cancel reaches AT LEAST ONE mempool's network view —
+/// because settle and cancel share the same nonce, chain consensus will
+/// only mine one. Maximizing the channels carrying the cancel
+/// maximizes the chance it wins the race. Per-mempool failures are
+/// observable via `submitter_cancel_broadcast_failed` for sustained-
+/// degradation alerting, but a single failure does NOT make cancel_all
+/// fail. Only "every mempool rejected" indicates an operationally-stuck
+/// state where the operator must intervene.
+fn aggregate_cancel_broadcast_results(
+    results: Vec<Result<TxId, Error>>,
+) -> Result<TxId, Error> {
+    if let Some(tx_id) = results.iter().find_map(|r| r.as_ref().ok().copied()) {
+        return Ok(tx_id);
+    }
+    Err(results
+        .into_iter()
+        .filter_map(Result::err)
+        .last()
+        .unwrap_or_else(|| {
+            Error::Other(anyhow::anyhow!(
+                "cancel_all: no mempools configured (Mempools::try_new should have rejected)"
+            ))
+        }))
+}
+
 /// Pure helper isolating the cap-comparison logic so it can be unit-tested
 /// without constructing a full `infra::Mempool` (which requires a real
 /// Web3 transport). Returns `Some((computed, cap))` if the estimate is
@@ -630,6 +771,98 @@ mod tests {
             max_priority_fee_per_gas: 4_500_000_000,
         };
         assert_eq!(check_cap(both_under, cap), None);
+    }
+
+    // ── F4 cross-mempool cancel aggregator tests (2026-05-21) ──────────────
+
+    fn tx(byte: u8) -> TxId {
+        TxId(alloy::primitives::B256::repeat_byte(byte))
+    }
+
+    fn rpc_err(msg: &'static str) -> Error {
+        Error::Other(anyhow::anyhow!(msg))
+    }
+
+    /// Single-mempool config (N=1): aggregator behavior must be identical to
+    /// the pre-F4 single-mempool cancel — Ok in → Ok out, Err in → Err out.
+    #[test]
+    fn aggregate_n1_passes_through_ok() {
+        let result = aggregate_cancel_broadcast_results(vec![Ok(tx(0x42))]);
+        assert!(matches!(&result, Ok(t) if t.0 == tx(0x42).0));
+    }
+
+    #[test]
+    fn aggregate_n1_passes_through_err() {
+        let result = aggregate_cancel_broadcast_results(vec![Err(rpc_err("nonce too low"))]);
+        assert!(matches!(result, Err(Error::Other(_))));
+    }
+
+    /// Multi-mempool happy path: every cancel broadcast succeeded.
+    /// Aggregator returns the first OK tx_id.
+    #[test]
+    fn aggregate_all_ok_returns_first_tx_id() {
+        let results = vec![Ok(tx(0xAA)), Ok(tx(0xBB)), Ok(tx(0xCC))];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(matches!(&aggregate, Ok(t) if t.0 == tx(0xAA).0));
+    }
+
+    /// Mixed outcomes: at least one mempool accepted the cancel. F4 race
+    /// is closed — aggregator returns the first OK, ignoring earlier Errs.
+    #[test]
+    fn aggregate_mixed_returns_first_ok_skipping_errs() {
+        let results = vec![
+            Err(rpc_err("mempool A rejected")),
+            Ok(tx(0xBB)),
+            Err(rpc_err("mempool C rejected")),
+        ];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(
+            matches!(&aggregate, Ok(t) if t.0 == tx(0xBB).0),
+            "aggregator must return the first successful broadcast even when \
+             earlier mempools rejected (F4 race-closing semantics)"
+        );
+    }
+
+    /// All-fail catastrophic case: every mempool rejected. Aggregator
+    /// surfaces the LAST error so caller can log a representative failure
+    /// (the alerting metric increments per-mempool independently, so the
+    /// specific error returned matters only for the operator's tracing line).
+    #[test]
+    fn aggregate_all_err_returns_last_err() {
+        let results = vec![
+            Err(rpc_err("first failure")),
+            Err(rpc_err("second failure")),
+            Err(rpc_err("last failure")),
+        ];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(matches!(&aggregate, Err(Error::Other(e)) if e.to_string() == "last failure"));
+    }
+
+    /// Empty results (N=0): defensive — `Mempools::try_new` rejects empty
+    /// configs, so this path should be unreachable. Aggregator must NOT
+    /// panic; returns a sentinel Other error so the caller can log it.
+    #[test]
+    fn aggregate_empty_returns_sentinel_err() {
+        let results: Vec<Result<TxId, Error>> = vec![];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(matches!(&aggregate, Err(Error::Other(e)) if e.to_string().contains("no mempools configured")));
+    }
+
+    /// F4 race-window proof: aggregator returns Ok even when the FIRST
+    /// mempool failed. The pre-F4 code structurally couldn't have returned
+    /// Ok in this scenario because it only sent the cancel to one mempool.
+    #[test]
+    fn aggregate_f4_first_mempool_fails_others_succeed() {
+        let results = vec![
+            Err(rpc_err("primary mempool A: nonce already consumed by settle race")),
+            Ok(tx(0x42)), // peer mempool B's cancel landed first
+        ];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(
+            matches!(&aggregate, Ok(t) if t.0 == tx(0x42).0),
+            "F4 fix: when primary mempool's cancel races and loses, the cross-\
+             broadcast to peers must still be reported as a successful cancel"
+        );
     }
 }
 
