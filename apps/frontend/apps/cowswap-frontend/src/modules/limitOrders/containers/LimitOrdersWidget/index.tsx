@@ -137,7 +137,9 @@ const UNLOCK_SCREEN = {
   subtitle: msg`Get started!`,
   orderType: msg`partially fillable`,
   buttonText: msg`Get started with limit orders`,
-  buttonLink: 'https://cow.fi/learn/cow-swap-improves-the-limit-order-experience-with-partially-fillable-limit-orders',
+  // F9 rebrand sweep: was cow.fi/learn/cow-swap-improves-... ; repointed
+  // to Ophis homepage as placeholder until Ophis-side docs land.
+  buttonLink: 'https://ophis.fi',
 }
 
 // TODO: Break down this large function into smaller functions

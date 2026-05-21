@@ -26,12 +26,17 @@ export enum Routes {
   APPDATA = '/appdata',
 }
 
+// F9 rebrand sweep (2026-05-21): CODE/RAW_CODE point at the canonical
+// upstream cowprotocol/explorer repo because that IS the source code
+// home (Ophis fork lives at ophis-fi/ophis but the explorer crate
+// reuses upstream). DOCS/PROTOCOL/COWSWAP repointed to Ophis homepage
+// as placeholder — when Ophis has equivalent doc pages, refine each.
 const GITHUB_REPOSITORY = 'cowprotocol/explorer'
 export const CODE_LINK = 'https://github.com/' + GITHUB_REPOSITORY
 export const RAW_CODE_LINK = 'https://raw.githubusercontent.com/' + GITHUB_REPOSITORY
-export const DOCS_LINK = 'https://docs.cow.fi'
-export const PROTOCOL_LINK = 'https://cow.fi/cow-protocol'
-export const COWSWAP_LINK = 'https://swap.cow.fi'
+export const DOCS_LINK = 'https://ophis.fi'
+export const PROTOCOL_LINK = 'https://ophis.fi'
+export const COWSWAP_LINK = 'https://ophis.fi'
 export const CONTRACTS_CODE_LINK = 'https://github.com/cowprotocol/contracts'
 export const DISCORD_LINK = 'https://discord.gg/cowprotocol'
 export const DUNE_DASHBOARD_LINK = 'https://dune.com/cowprotocol/cowswap'

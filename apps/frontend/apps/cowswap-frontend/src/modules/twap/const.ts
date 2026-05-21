@@ -79,7 +79,13 @@ export const DEFAULT_TWAP_EXECUTION_INFO: TwapOrderExecutionInfo = {
 
 export const DEFAULT_TWAP_EXECUTION = { confirmedPartsCount: 0, info: DEFAULT_TWAP_EXECUTION_INFO }
 
-export const UNSUPPORTED_SAFE_LINK =
-  'https://cow.fi/learn/all-you-need-to-know-about-cow-swap-new-safe-fallback-handler'
-export const UNSUPPORTED_WALLET_LINK = 'https://cow.fi/learn/how-to-use-cow-swap-twap-orders-via-safe-wallet'
-export const TWAP_LEARN_MORE_LINK = 'https://cow.fi/learn/cow-swap-launches-twap-orders'
+// F9 rebrand sweep (2026-05-21): prior values were cow.fi/learn/* URLs.
+// Ophis does not maintain equivalent docs for the user-flow articles
+// (TWAP launch, fallback-handler explainer, wallet usage). For now
+// repoint all three to the Ophis homepage — links work + no CoW
+// brand leak + no 404. When Ophis-side docs land, refine each URL
+// to its specific article path (e.g. ophis.fi/docs/twap-orders).
+const OPHIS_DOCS_PLACEHOLDER = 'https://ophis.fi'
+export const UNSUPPORTED_SAFE_LINK = OPHIS_DOCS_PLACEHOLDER
+export const UNSUPPORTED_WALLET_LINK = OPHIS_DOCS_PLACEHOLDER
+export const TWAP_LEARN_MORE_LINK = OPHIS_DOCS_PLACEHOLDER

@@ -1,7 +1,12 @@
 'use client'
 
+// F9 rebrand sweep (2026-05-21): SAFE_COW_APP_LINK kept as-is because
+// the Safe-app-store registration is keyed to swap.cow.fi — that link
+// is functional infrastructure (Safe wallet app deep-link), not
+// brand-marketing. LINK_GUIDE_ADD_CUSTOM_TOKEN was a cow.fi/learn/
+// article; repointed to Ophis homepage as placeholder.
 export const SAFE_COW_APP_LINK = 'https://app.safe.global/share/safe-app?appUrl=https%3A%2F%2Fswap.cow.fi&chain=eth'
-export const LINK_GUIDE_ADD_CUSTOM_TOKEN = 'https://cow.fi/learn/how-to-add-custom-tokens-on-cow-swap'
+export const LINK_GUIDE_ADD_CUSTOM_TOKEN = 'https://ophis.fi'
 export const MY_ORDERS_ID = 'my-orders'
 
 export const MEDIA_WIDTHS = {
