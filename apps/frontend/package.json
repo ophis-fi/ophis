@@ -80,7 +80,11 @@
       "@sentry/browser": "7.80.0",
       "@sentry/react": "7.80.0",
       "@sentry/types": "7.80.0",
-      "@sentry/tracing": "7.80.0"
+      "@sentry/tracing": "7.80.0",
+      "webpack": "^5.104.1",
+      "min-document": "^2.19.1",
+      "cookie": "^0.7.0",
+      "es5-ext": "^0.10.63"
     }
   },
   "config": {
