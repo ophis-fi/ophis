@@ -19,6 +19,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# F7 (2026-05-21 whole-repo audit, HIGH H2): source inter-service auth
+# token from the macOS Keychain if not already in the environment. This
+# is what makes F7 persistent across host reboots — without it, the
+# stack would silently come back up in pre-F7 mode after a reboot
+# (since the docker-compose.yml passthrough reads from shell env).
+#
+# Keychain is the source of truth (operator's one-time setup is
+# documented in .env.example). On Linux DR target hosts, the operator
+# is expected to set OPHIS_INTER_SERVICE_AUTH_TOKEN via a shell rc
+# file or systemd EnvironmentFile that reads from `pass` or similar.
+if [[ -z "${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+  if security find-generic-password -a "$USER" -s ophis-inter-service-auth-token -w >/dev/null 2>&1; then
+    OPHIS_INTER_SERVICE_AUTH_TOKEN=$(security find-generic-password -a "$USER" -s ophis-inter-service-auth-token -w 2>/dev/null)
+    export OPHIS_INTER_SERVICE_AUTH_TOKEN
+    echo "==> F7 inter-service auth token sourced from Keychain"
+  else
+    echo "==> F7 inter-service auth token NOT set + not in Keychain — driver will run un-authenticated" >&2
+    echo "    To enable: openssl rand -hex 32 | xargs -I{} security add-generic-password \\"  >&2
+    echo "      -a \"\$USER\" -s ophis-inter-service-auth-token -w {} -U" >&2
+  fi
+fi
+
 # Defense-in-depth: enforce OP_RPC_INTERNAL bypass-ACK BEFORE rendering.
 # render-configs.sh has the same check at render time, but operators can
 # edit .env between renders (e.g. for ad-hoc debug) and then run
