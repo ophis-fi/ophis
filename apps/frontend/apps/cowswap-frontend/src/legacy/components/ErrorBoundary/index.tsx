@@ -116,11 +116,18 @@ export default class ErrorBoundary extends React.Component<ErrorBoundaryProps, E
           // `ErrorWithStackTrace` component (which expects an `Error`)
           // still has a defined object to render — better than crashing
           // the error boundary's own fallback path.
+          //
+          // Codex Cyber LOW (PR #202): only stringify primitives; for
+          // arbitrary objects use a fixed message because String(obj)
+          // invokes attacker-controlled toString/valueOf, which can
+          // crash or re-enter side effects in the fallback path itself.
           const rawError = localError || sentryError
           const error: Error =
             rawError instanceof Error
               ? rawError
-              : new Error(rawError ? String(rawError) : 'Unknown error (no exception captured)')
+              : typeof rawError === 'string' || typeof rawError === 'number' || typeof rawError === 'boolean'
+                ? new Error(String(rawError))
+                : new Error('Non-Error throwable (no message available)')
 
           const isChunkLoadError =
             error.name === 'ChunkLoadError' || error.message.includes('Failed to fetch dynamically imported module')

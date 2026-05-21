@@ -11,14 +11,22 @@ import { NO_DEDUP_EVENTS } from './events'
 import pkg from '../../../package.json'
 
 // Sentry v8 (2026-05-21): `@sentry/types` was deprecated and rolled into
-// `@sentry/core`. `Event`/`EventHint`/`Breadcrumb` re-export through
-// `@sentry/react`; `Integration` is NOT re-exported (lives at
-// `@sentry/core/types-hoist`). We avoid needing the `Integration` type
-// here by returning the inferred shape of `Sentry.dedupeIntegration()` —
-// TypeScript structurally validates the result against the integration
-// API surface where it's used as a `defaultIntegrations[]` element.
-// Sharp-edges audit (PR #197 follow-up) flagged the v7→v8 import surface
-// as a runtime-init blocker if missed.
+// `@sentry/core`. `Event`/`EventHint`/`Breadcrumb`/`ErrorEvent` re-export
+// through `@sentry/react`; `Integration` AND `Client` are NOT re-exported
+// (they live at `@sentry/core/types-hoist` and aren't surfaced through
+// browser/react's public type API).
+//
+// We avoid needing the `Integration` type by returning the inferred
+// shape of `Sentry.dedupeIntegration()`. We avoid needing `Client` by
+// typing the dedupe wrapper's `client` param as `unknown` and casting
+// to `never` when forwarding to base — the underlying v8 dedupe
+// implementation only reads `currentEvent`, ignoring extra args at
+// runtime. Sharp-edges audit LOW-1 (PR #202) acknowledged this as
+// benign; importing Client from `@sentry/core` directly would add a
+// transitive-dep import that's fragile across Sentry minor bumps.
+//
+// Sharp-edges audit (PR #197 follow-up) flagged the v7→v8 import
+// surface as a runtime-init blocker if missed.
 import type { Event, EventHint } from '@sentry/react'
 
 const SENTRY_DSN = process.env.REACT_APP_SENTRY_DSN
@@ -44,11 +52,11 @@ const GIT_COMMIT_DATE = process.env.REACT_APP_GIT_COMMIT_DATE
  * — sharp-edges audit Finding 6 (2026-05-21) flagged this as a
  * dedupe-skip miss for exception-typed events. Fixed here.
  */
-// v8: return-type intentionally inferred from `Sentry.dedupeIntegration()`
-// shape — see import-block comment above. `client` is typed `unknown`
-// because we don't introspect it; v8's Integration.processEvent signature
-// has `client: Client` from @sentry/core, but `unknown` satisfies
-// contravariant param position.
+// v8: return-type inferred from `Sentry.dedupeIntegration()` shape —
+// see import-block comment above. `client` is `unknown` (since `Client`
+// isn't re-exported through @sentry/react) + `as never` on forward —
+// per LOW-1 audit note, benign because v8's dedupe ignores the param
+// at runtime.
 function dedupeWithExceptionsIntegration() {
   const base = Sentry.dedupeIntegration()
   return {
@@ -104,6 +112,12 @@ if (SENTRY_DSN) {
       dedupeWithExceptionsIntegration(),
       Sentry.httpContextIntegration(),
       Sentry.browserTracingIntegration(),
+      // Sharp-edges MED-1 (PR #202): v8's getDefaultIntegrations adds
+      // browserSessionIntegration when autoSessionTracking !== false
+      // (default). Replacing the full defaults array would drop it, and
+      // Sentry's "Crash-Free Sessions" / "Crash-Free Users" release-
+      // health metrics would silently go dark. Re-add it explicitly.
+      Sentry.browserSessionIntegration(),
     ],
     release,
     environment: environmentName,
