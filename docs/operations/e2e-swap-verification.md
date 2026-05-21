@@ -13,7 +13,7 @@ End-to-end pipeline integrity:
 | 2. Order accepted by orderbook | autopilot log: `created auction` |
 | 3. Solvers bid | driver log: `received N solutions` (N≥1) |
 | 4. Driver picks winner + simulates | driver log: `winner solver=...`, `simulation passed` |
-| 5. Driver broadcasts to 4 mempools | driver log: `submission accepted by ...` |
+| 5. Driver broadcasts to 3 mempools (raced) | driver log: `submission accepted by ...` |
 | 6. Settlement(driver_EOA) lands on-chain | `verify-e2e-swap.sh` reports `SETTLEMENT EVENT DETECTED` |
 | 7. Trade event with `owner = user_wallet` | `verify-e2e-swap.sh` reports `Trade events for owner: 1` |
 | 8. Partner-fee transfers to Safe (if applicable) | `verify-e2e-swap.sh` reports `Transfer→partner-fee: N` |
@@ -108,7 +108,7 @@ Bridge confirmation:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `verify-e2e-swap.sh` TIMEOUT, no Settlement | Driver out of gas, or all 4 mempools rejected | Check driver logs for `submission failed`. Top up driver EOA. |
+| `verify-e2e-swap.sh` TIMEOUT, no Settlement | Driver out of gas, or all 3 mempools rejected | Check driver logs for `submission failed` + the per-mempool `mempool_submission{result!="success"}` series. Top up driver EOA if balance is low. |
 | Settlement landed, `Trade events for owner: 0` | Your order was matched but another user's was in the same batch instead | Re-submit — the auction will retry. |
 | Frontend can't get a quote | NLP / `/api/intent` 5xx | Check `pnpm logs` for the frontend; LibertAI rate limit (429) is the usual cause. |
 | MetaMask shows "wrong network" | App is on wrong chain | The frontend should request a switch — if not, manually switch in MM. |

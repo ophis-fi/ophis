@@ -90,20 +90,29 @@ groups:
           summary: "OP settlement failure rate > 5% over 15m"
           description: "More than 5% of OP settlement attempts are failing. Most likely causes: pool liquidity collapse, gas-price cap too tight, RPC provider issues. Inspect driver logs for revert reasons."
 
+      # Sharp-edges audit F3+F7 (2026-05-21): post-A1 mitigation the driver
+      # races 3 distinct mempools in parallel via select_ok (PublicNode +
+      # OP Foundation gateway + Tenderly). A single provider going down
+      # drives the per-attempt failure ratio to ~33% (1 of 3) while
+      # end-to-end submission still succeeds — that should NOT page.
+      # Threshold bumped 10% → 35% to ignore single-provider outages;
+      # genuine multi-provider degradation (2 of 3 down or sustained
+      # cap-rejection across all 3) still trips. To attribute the failure
+      # to a specific provider, drill down via `mempool_submission{mempool=...}`.
       - alert: OphisOpMempoolSubmissionFailing
         expr: |
           (
             sum(rate(mempool_submission{result!="success"}[15m]))
             /
             sum(rate(mempool_submission[15m]))
-          ) > 0.10
+          ) > 0.35
         for: 5m
         labels:
           severity: warning
           chain: optimism
         annotations:
-          summary: "OP: >10% of mempool submissions failing over 15m"
-          description: "publicnode mempool submission failing for >10% of attempts. Could be RPC provider degradation, nonce-race regression, or gas-price cap rejection. Trace via `driver::infra::submission` logs."
+          summary: "OP: >35% of mempool submissions failing over 15m"
+          description: "Aggregate mempool submission failure rate exceeds 35% across the 3 raced mempools (PublicNode, OP Foundation gateway, Tenderly). One single-provider outage typically pushes this to ~33% and select_ok still succeeds — this alert fires when ≥2 providers are degraded, which IS a genuine submission risk. Inspect `mempool_submission{mempool=...,result=...}` per-provider series to identify the failing operator(s). Causes: RPC provider degradation, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
 
       - alert: OphisOpSolverDropRateHigh
         expr: |

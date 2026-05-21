@@ -250,8 +250,13 @@ e3b0c44... = keccak(empty) (publicnode-op)
 head immediately, but `eth_getLogs` requires the block to be ingested into
 the log index, which lags by 2–10 seconds depending on provider. With
 2-of-3 strict consensus, all three indexes need to be caught up — the
-slowest one bounds you. publicnode-op tends to index fastest; the
-self-hosted op-node's log index is currently the slowest.
+slowest one bounds you.
+
+Indexer lag varies per-upstream over time (initial-2026-05-13 snapshot
+of self-hosted op-node took ~2s longer than public providers; that
+delta has since narrowed as the node's pruning settled). Don't assume
+any single upstream is "always the laggard." Consult the live picture
+in `erpc_upstream_block_head_lag{network="evm:10"}` before diagnosing.
 
 **Production impact:** None on settlement. The driver uses `eth_call` +
 `eth_sendRawTransaction` (submission bypasses eRPC anyway), neither of
