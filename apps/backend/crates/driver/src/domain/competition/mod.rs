@@ -687,11 +687,25 @@ impl Competition {
         }
 
         if let Ok(remaining) = deadline.remaining() {
-            let _ = tokio::time::timeout(
-                remaining,
-                self.resimulate_until_revert(&mut scored, auction),
-            )
-            .await;
+            // Silent-failure-hunter H12: pre-2026-05-21 `let _ = timeout(...)`
+            // discarded BOTH the timeout `Elapsed` and the inner
+            // `anyhow::Result<()>`. Inner errors include mutex-poisoned +
+            // block-stream-finished (real bug signals worth logging).
+            // Now bind and log the inner Err distinctly.
+            match tokio::time::timeout(remaining, self.resimulate_until_revert(&mut scored, auction)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    metrics::get().resim_until_revert_inner_error.inc();
+                    tracing::error!(
+                        auction_id = ?auction.id(),
+                        ?err,
+                        "resimulate_until_revert returned non-timeout error"
+                    );
+                }
+                Err(_elapsed) => {
+                    // Timeout is expected on busy auctions; don't error-log.
+                }
+            }
         }
 
         Ok(scored.into_iter().map(|(solved, _)| solved).collect())
@@ -1240,9 +1254,29 @@ fn merge(
     for solution in solutions.take(MAX_SOLUTIONS_TO_MERGE) {
         let mut extension = vec![];
         for already_merged in merged.iter() {
-            if let Ok(merged) = solution.merge(already_merged, max_orders_per_merged_solution) {
-                observe::merged(&solution, already_merged, &merged);
-                extension.push(merged);
+            // Silent-failure-hunter H6: pre-2026-05-21 the `if let Ok`
+            // collapsed every Err variant. Benign variants (Incompatible,
+            // MoreOrdersThanAllowed, DuplicateTrade, IncongruentPrices)
+            // should keep falling through silently. The `Math` overflow
+            // variant signals an arithmetic-overflow during price scaling
+            // — a real bug worth logging + counting.
+            match solution.merge(already_merged, max_orders_per_merged_solution) {
+                Ok(merged) => {
+                    observe::merged(&solution, already_merged, &merged);
+                    extension.push(merged);
+                }
+                Err(solution::error::Merge::Math(e)) => {
+                    metrics::get().solution_merge_math_overflow.inc();
+                    tracing::error!(
+                        ?e,
+                        "solution.merge produced arithmetic-overflow Math error"
+                    );
+                }
+                Err(_) => {
+                    // Benign incompatibility (Incompatible / DuplicateTrade /
+                    // MoreOrdersThanAllowed / IncongruentPrices) — expected
+                    // path, silent by design.
+                }
             }
         }
 
