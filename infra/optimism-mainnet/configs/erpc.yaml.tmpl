@@ -288,7 +288,39 @@ projects:
                 sitOutPenalty: 5m
 
           # === Block B: Tip-lag-sensitive observation methods (HIGH threshold) ===
-          - matchMethod: "eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+          #
+          # 2026-05-21 follow-up: REMOVED eth_getTransactionReceipt from
+          # the Block B consensus regex. The 200-threshold bump on 2026-05-20
+          # was not enough — `OphisOpErpcUpstreamCordoned` fired 3 more
+          # times within hours of the deploy, each time accumulating
+          # ~12,000 `response_type="empty"` misbehavior events on
+          # ophis-op-node-self before the eviction. Root cause is
+          # structural: op-reth's receipt indexing is materially slower
+          # than publicnode + tenderly's hosted indexers (likely they
+          # serve from a denormalized receipt cache rather than
+          # re-traversing the trie). During Settlement-broadcast bursts
+          # the driver polls fresh receipts every block tick; self-hosted
+          # returns empty for a few seconds longer than the others, ends
+          # up the lone dissenter on every poll, and the dispute counter
+          # accumulates faster than ANY threshold we could tune around
+          # without effectively disabling the policy.
+          #
+          # Trade-off accepted: eth_getTransactionReceipt now falls
+          # through to Block C (catch-all retry, no consensus). The
+          # protection we lose is "a hostile upstream forging
+          # receipt-exists/receipt-missing to mislead the autopilot
+          # settlement-watcher". The watcher cross-checks via eth_call
+          # against the on-chain Settlement contract (which IS still
+          # under Block A consensus at threshold:60), so a forged
+          # receipt alone cannot cause settlement-state divergence —
+          # only the eth_call against Settlement's `filledAmount` is
+          # authoritative. Receipt confirmation is best-effort UX, not
+          # a security primitive.
+          #
+          # If a future version of op-reth speeds up receipt indexing
+          # (or we switch to op-erigon / op-geth on the VM), re-add
+          # eth_getTransactionReceipt to this regex and bump back.
+          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
             timeout:
               duration: 12s
             consensus:
@@ -298,32 +330,14 @@ projects:
               lowParticipantsBehavior: returnError
               preferNonEmpty: true
               punishMisbehavior:
-                # HIGH threshold absorbs natural indexer drift near tip.
-                # eth_getTransactionReceipt has the highest baseline
-                # (~119 disputes / 47k requests = 0.25%) driven by
-                # just-landed Settlement-tx propagation lag.
-                #
-                # 2026-05-20 (post-deploy follow-up): bumped 100 → 200
-                # after OphisOpErpcUpstreamCordoned fired within 30min
-                # of the initial deploy. Root cause: ophis-op-node-self
-                # accumulated 112 `response_type="empty"` disputes on
-                # eth_getTransactionReceipt (per `erpc_consensus_misbehavior_detected_total`).
-                # The cause is op-reth's receipt-indexing lag for just-
-                # landed txs vs publicnode/tenderly's hosted indexers —
-                # during Settlement broadcast bursts the driver polls
-                # the receipt aggressively, and self-hosted's
-                # not-yet-indexed `null` answer is the lone dissenter
-                # while the other two agree on the populated receipt.
-                # This is propagation lag, not misbehavior; block_head_lag=0,
-                # eth_syncing=false, identical responses on historical blocks.
-                # Bumped threshold absorbs Settlement-burst windows
-                # (~20 fresh-receipt polls per Settlement event × ~5
-                # events per 10min = ~100 baseline; 200 gives 2× headroom
-                # over that and ~5× over the steady-state 0.25% rate).
-                # Receipts security still protected by 2-of-3 consensus
-                # at request time; threshold only controls when we stop
-                # asking the chronically-lagging upstream.
-                disputeThreshold: 200
+                # 200 was sized to absorb the receipt burst — without
+                # that method here, the remaining members have much
+                # lower dispute floors, but we keep 100 (the original
+                # value) as a defensive cap. Drift between publicnode +
+                # tenderly + self on `eth_getLogs` near tip is ~10
+                # disputes / 10min historically; threshold:100 gives 10×
+                # headroom.
+                disputeThreshold: 100
                 disputeWindow: 10m
                 sitOutPenalty: 5m
 
