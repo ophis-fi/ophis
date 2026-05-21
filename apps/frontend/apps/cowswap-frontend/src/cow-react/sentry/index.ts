@@ -10,7 +10,16 @@ import { NO_DEDUP_EVENTS } from './events'
 
 import pkg from '../../../package.json'
 
-import type { Event, EventHint, Integration } from '@sentry/types'
+// Sentry v8 (2026-05-21): `@sentry/types` was deprecated and rolled into
+// `@sentry/core`. `Event`/`EventHint`/`Breadcrumb` re-export through
+// `@sentry/react`; `Integration` is NOT re-exported (lives at
+// `@sentry/core/types-hoist`). We avoid needing the `Integration` type
+// here by returning the inferred shape of `Sentry.dedupeIntegration()` —
+// TypeScript structurally validates the result against the integration
+// API surface where it's used as a `defaultIntegrations[]` element.
+// Sharp-edges audit (PR #197 follow-up) flagged the v7→v8 import surface
+// as a runtime-init blocker if missed.
+import type { Event, EventHint } from '@sentry/react'
 
 const SENTRY_DSN = process.env.REACT_APP_SENTRY_DSN
 const SENTRY_TRACES_SAMPLE_RATE = process.env.REACT_APP_SENTRY_TRACES_SAMPLE_RATE
@@ -35,12 +44,17 @@ const GIT_COMMIT_DATE = process.env.REACT_APP_GIT_COMMIT_DATE
  * — sharp-edges audit Finding 6 (2026-05-21) flagged this as a
  * dedupe-skip miss for exception-typed events. Fixed here.
  */
-function dedupeWithExceptionsIntegration(): Integration {
+// v8: return-type intentionally inferred from `Sentry.dedupeIntegration()`
+// shape — see import-block comment above. `client` is typed `unknown`
+// because we don't introspect it; v8's Integration.processEvent signature
+// has `client: Client` from @sentry/core, but `unknown` satisfies
+// contravariant param position.
+function dedupeWithExceptionsIntegration() {
   const base = Sentry.dedupeIntegration()
   return {
     ...base,
     name: 'DedupeWithExceptions',
-    processEvent(event: Event, hint: EventHint, client) {
+    processEvent(event: Event, hint: EventHint, client: unknown) {
       const exceptionMessage = event.exception?.values?.[0]?.value
       const skip =
         (event.message && NO_DEDUP_EVENTS.includes(event.message)) ||
@@ -51,7 +65,7 @@ function dedupeWithExceptionsIntegration(): Integration {
       // Preserve `null` returns — base.processEvent returns null when it
       // decides to drop a duplicate event. Using `?? event` here would
       // silently convert that null to the event, defeating dedup.
-      return base.processEvent ? base.processEvent(event, hint, client) : event
+      return base.processEvent ? base.processEvent(event, hint, client as never) : event
     },
   }
 }
@@ -67,33 +81,28 @@ if (SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.REACT_APP_SENTRY_DSN,
     /**
-     * @sentry/browser@7.x: the functional integration constructors
-     * for built-in BROWSER integrations (InboundFilters, TryCatch,
-     * Breadcrumbs, GlobalHandlers, LinkedErrors, HttpContext,
-     * FunctionToString) do NOT exist yet — only `dedupeIntegration()`
-     * and `browserTracingIntegration()` were converted in v7.x. The
-     * full functional-only API lands in @sentry/browser@8.x (separate
-     * migration tracked).
-     *
-     * For the 7 built-ins below we keep the class form — but we
-     * INSTANTIATE only (no subclassing). The TS-compatibility break
-     * in 7.85+ was specifically on subclasses overriding `processEvent`
-     * (method → property type change); plain instantiation continues
-     * to typecheck and run correctly.
-     *
-     * The dedupe replacement uses the functional API because that's
-     * what closed the original subclass-incompatibility AND the
-     * underlying CVE (closer-to-current-line code in 7.119+).
+     * @sentry/browser@8.x (2026-05-21 migration from v7.119+):
+     *   - All 7 built-in browser integrations are now functional
+     *     factories (`xxxIntegration()`), no longer
+     *     `new Sentry.Integrations.X()` classes.
+     *   - `Sentry.Integrations.TryCatch` was RENAMED to
+     *     `browserApiErrorsIntegration` in v8 — keep an eye on this on
+     *     future bumps.
+     *   - `defaultIntegrations: [...]` still accepts a custom array;
+     *     omitting an integration removes it from the default set.
+     *   - The custom `dedupeWithExceptionsIntegration()` wrapper still
+     *     wraps `Sentry.dedupeIntegration()` — same functional API
+     *     surface across v7→v8 for that one specifically.
      */
     defaultIntegrations: [
-      new Sentry.Integrations.InboundFilters(),
-      new Sentry.Integrations.FunctionToString(),
-      new Sentry.Integrations.TryCatch(),
-      new Sentry.Integrations.Breadcrumbs(),
-      new Sentry.Integrations.GlobalHandlers(),
-      new Sentry.Integrations.LinkedErrors(),
+      Sentry.inboundFiltersIntegration(),
+      Sentry.functionToStringIntegration(),
+      Sentry.browserApiErrorsIntegration(),
+      Sentry.breadcrumbsIntegration(),
+      Sentry.globalHandlersIntegration(),
+      Sentry.linkedErrorsIntegration(),
       dedupeWithExceptionsIntegration(),
-      new Sentry.Integrations.HttpContext(),
+      Sentry.httpContextIntegration(),
       Sentry.browserTracingIntegration(),
     ],
     release,
