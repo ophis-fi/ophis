@@ -21,8 +21,38 @@ contract GPv2AllowListAuthentication is
     /// in this mapping.
     mapping(address => bool) private solvers;
 
+    /// @dev MED-1 (2026-05-22 ToB-suite audit hardening): the proposed next
+    /// manager from a two-step transfer initiated via `proposeManager`. The
+    /// proposed manager must call `acceptManagership` to complete the
+    /// transfer; until then `manager` remains unchanged. Cleared on
+    /// acceptance or cancellation. Default `address(0)` = no pending
+    /// transfer.
+    ///
+    /// Storage layout invariant (verified via the live deployment artifact
+    /// at `deployments/optimism-mainnet/GPv2AllowListAuthentication_Implementation.json`
+    /// — Codex Cyber PR #224 review):
+    ///   slot 0, offset 0: `_initialized` (uint8 from Initializable)
+    ///   slot 0, offset 1: `_initializing` (bool from Initializable)
+    ///   slot 0, offset 2: `manager` (address, 20 bytes — packs into slot 0)
+    ///   slot 1: `solvers` mapping seed
+    ///   slot 2: `pendingManager` (NEW, appended at next-available slot)
+    /// Existing live storage at slots 0-1 is byte-identical post-upgrade;
+    /// slot 2 reads as `address(0)` until the first `proposeManager` call.
+    address public pendingManager;
+
     /// @dev Event emitted when the manager changes.
     event ManagerChanged(address newManager, address oldManager);
+
+    /// @dev MED-1: event emitted when a two-step manager transfer is
+    /// PROPOSED via `proposeManager`. The proposed manager must call
+    /// `acceptManagership` to complete the transfer. `ManagerChanged`
+    /// fires on acceptance.
+    event ManagerTransferProposed(address pendingManager, address currentManager);
+
+    /// @dev MED-1: event emitted when a two-step manager transfer is
+    /// CANCELLED via `cancelManagerTransfer`. The cancelled address is
+    /// emitted for indexer convenience.
+    event ManagerTransferCancelled(address cancelledPendingManager);
 
     /// @dev Event emitted when a solver gets added.
     event SolverAdded(address solver);
@@ -70,11 +100,71 @@ contract GPv2AllowListAuthentication is
     /// reliquish the role and give it to another address) or the contract
     /// owner (i.e. the proxy admin).
     ///
+    /// **WARNING — single-step transfer (typo-risk)**: this function changes
+    /// the manager INSTANTLY. A typo in `manager_` permanently locks
+    /// solver-allowlist control. For typo-resistant transfers, prefer
+    /// `proposeManager` + `acceptManagership` (MED-1, two-step pattern).
+    /// `setManager` is retained for backwards compatibility + the
+    /// emergency-rescue path when the proxy admin needs to override a
+    /// non-responsive manager without waiting for acceptance.
+    ///
     /// @param manager_ The new contract manager address.
     function setManager(address manager_) external onlyManagerOrOwner {
         address oldManager = manager;
         manager = manager_;
+        // Defense-in-depth: clear any pending two-step transfer when an
+        // immediate setManager fires. Avoids the confusing state where
+        // setManager was used to rescue but `pendingManager` still
+        // dangles from an earlier `proposeManager` call.
+        if (pendingManager != address(0)) {
+            address cancelled = pendingManager;
+            delete pendingManager;
+            emit ManagerTransferCancelled(cancelled);
+        }
         emit ManagerChanged(manager_, oldManager);
+    }
+
+    /// @dev MED-1 (2026-05-22 ToB-suite audit): two-step manager transfer —
+    /// step 1 of 2. Propose a new manager. The proposed address must call
+    /// `acceptManagership` to complete the transfer. Until then, `manager`
+    /// is unchanged.
+    ///
+    /// Typo-resistant: if `manager_` is a typo (no one controls that
+    /// address), the proposal cannot be accepted and the current manager
+    /// remains in control. The proposal can be cancelled or overwritten by
+    /// the current manager (or proxy admin) via `cancelManagerTransfer` or
+    /// by calling `proposeManager` again with a different address.
+    ///
+    /// @param manager_ The address proposed as the next manager.
+    function proposeManager(address manager_) external onlyManagerOrOwner {
+        pendingManager = manager_;
+        emit ManagerTransferProposed(manager_, manager);
+    }
+
+    /// @dev MED-1: two-step manager transfer — step 2 of 2. Accept the
+    /// pending manager role. Only callable by the address previously
+    /// proposed via `proposeManager`.
+    ///
+    /// On success: `manager` is updated, `pendingManager` is cleared, and
+    /// `ManagerChanged` fires (matching the same event the single-step
+    /// `setManager` emits). The caller is now the manager.
+    function acceptManagership() external {
+        require(pendingManager != address(0), "GPv2: no pending manager");
+        require(msg.sender == pendingManager, "GPv2: caller not pending manager");
+        address oldManager = manager;
+        manager = pendingManager;
+        delete pendingManager;
+        emit ManagerChanged(manager, oldManager);
+    }
+
+    /// @dev MED-1: cancel a pending two-step manager transfer. Callable by
+    /// the current manager or the proxy admin. No-op if no pending
+    /// transfer exists (but still emits the event with `address(0)` for
+    /// log-symmetry).
+    function cancelManagerTransfer() external onlyManagerOrOwner {
+        address cancelled = pendingManager;
+        delete pendingManager;
+        emit ManagerTransferCancelled(cancelled);
     }
 
     /// @dev Add an address to the set of allowed solvers. This method can only
