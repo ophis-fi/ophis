@@ -50,6 +50,36 @@ contract TwoStepManager is Helper {
         authenticator.proposeManager(newManager);
     }
 
+    function test_storage_layout_pendingManager_at_slot_2() public {
+        // Sharp-edges re-audit MED (PR #224): the storage-layout invariant
+        // documented at GPv2AllowListAuthentication.sol:32-41 is comment-
+        // only — no test asserts the actual slot index. If a future
+        // refactor inserts a field above `pendingManager` (e.g. into
+        // Initializable or StorageAccessible), the proxy upgrade would
+        // silently alias `pendingManager` over an existing field. This
+        // test reads slot 2 directly and asserts it matches the live
+        // `pendingManager()` getter.
+        vm.prank(manager);
+        address probe = makeAddr("layout-probe-manager");
+        authenticator.proposeManager(probe);
+
+        // Slot 2 should hold the pendingManager address.
+        bytes32 slot2 = vm.load(address(authenticator), bytes32(uint256(2)));
+        assertEq(address(uint160(uint256(slot2))), probe, "pendingManager not at slot 2");
+
+        // Slot 0 should hold {_initialized + _initializing + manager}
+        // (Initializable packing — manager is offset 2, 20 bytes).
+        bytes32 slot0 = vm.load(address(authenticator), bytes32(uint256(0)));
+        address slot0Manager = address(uint160(uint256(slot0) >> 16));
+        assertEq(slot0Manager, manager, "manager not at slot 0 offset 2 (Initializable packing)");
+
+        // Slot 1 = solvers mapping seed. Not directly readable but
+        // mapping(address=>bool)[address] lives at keccak256(addr . slot1)
+        // — confirmed by adding a solver and probing the derived slot.
+        // We don't assert this here because the upstream Initializable +
+        // mapping seed conventions are stable across Solidity 0.7-0.9.
+    }
+
     function test_proposeManager_zero_address_is_treated_as_no_pending() public {
         // Codex LOW re-audit (PR #224): explicitly cover the proposeManager(0)
         // edge case. The function ACCEPTS the call (stores 0 + emits
