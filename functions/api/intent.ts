@@ -411,16 +411,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: `text exceeds ${MAX_TEXT_LEN} chars` } }, 400)
   }
 
-  // Edge cache lookup (Phase 3.8 / 2026-05-20). Normalized text →
-  // SHA-256 → KV key. Hit = serve cached LibertAI response without
-  // burning a token round-trip.
+  // Edge cache lookup (Phase 3.8 / 2026-05-20). Normalized text +
+  // origin bucket → SHA-256 → KV key. Hit = serve cached LibertAI
+  // response without burning a token round-trip.
   //
   // We deliberately CHECK the cache AFTER rate-limit + auth/input
   // validation so cache hits still respect the per-IP cap (don't
   // let an attacker drain the cache by serving identical inputs
   // unbounded). The rate limit increments before the cache check.
+  //
+  // Origin bucketing (2026-05-20 audit): the cache key includes the
+  // origin (or a sentinel for null-origin callers) so a non-browser
+  // caller without an `Origin` header can't seed a cache entry that
+  // a legitimate ophis.fi browser request then consumes. The pairs
+  // are effectively two distinct caches — one per allowlisted origin
+  // (which all coalesce to a single "browser" bucket), and one for
+  // null-origin (curl/scripts). Cross-contamination eliminated.
+  const originBucket = origin ?? 'no-origin'
   const normalizedText = text.trim().toLowerCase()
-  const cacheKeyHash = await sha256Hex(normalizedText)
+  const cacheKeyHash = await sha256Hex(`${normalizedText}\x00${originBucket}`)
   const cacheKey = CACHE_KEY_PREFIX + cacheKeyHash
 
   if (env.OPHIS_RATELIMIT) {
