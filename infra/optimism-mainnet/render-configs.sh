@@ -258,6 +258,15 @@ _mount_ram_disk_macos() {
   printf '%s\n' "$RAM_PK_VOLNAME" > "$marker"
   chmod 600 "$marker"
 
+  # Adversarial-modeler A8 (2026-05-20): disable Spotlight indexing on
+  # the RAM-disk. By default macOS may attempt to index files under
+  # any HFS+ volume; even though our mount is under $HOME without
+  # user-content metadata, `mdfind` could surface the rendered PK via
+  # the Spotlight cache. `mdutil -i off` disables indexing for this
+  # specific volume. Best-effort (|| true) — older macOS versions
+  # ignore the call cleanly.
+  mdutil -i off "$RAM_PK_MOUNT" >/dev/null 2>&1 || true
+
   echo "  mounted RAM-disk at $RAM_PK_MOUNT (device $dev, 1 MB, HFS+, volname=$RAM_PK_VOLNAME)"
 }
 

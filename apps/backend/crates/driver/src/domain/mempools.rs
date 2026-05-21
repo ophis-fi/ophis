@@ -397,10 +397,34 @@ impl Mempools {
             // attempt after a restart) we try to inspect the nodes transaction mempool.
             // This is only done as a backup since it can incur significant latency and
             // is generally not very widely supported.
+            //
+            // Silent-failure-hunter F9 (2026-05-21): pre-this-comment the
+            // `debug!` swallowed every txpool_content failure mode
+            // indistinguishably — provider-rejection ("method not
+            // available"), transient timeout, malformed response.
+            // Providers like Alchemy / public CF endpoints reject the
+            // Geth-only txpool_content_from outright; under those, the
+            // function returns Ok(None) every time and the
+            // minimum_replacement_gas_price lookup quietly degrades to
+            // "no replacement floor known". On a driver restart, this
+            // means we lose the chance to detect stuck pending txs
+            // until manual operator intervention.
+            //
+            // Counter (`mempool_txpool_inspect_error`) is increment-
+            // when-failing so ops can alert on sustained provider
+            // un-support per mempool — the first occurrence indicates a
+            // provider that doesn't speak `txpool_content_from`,
+            // sustained occurrences flag transient degradation.
             let pending_tx = mempool
                 .find_pending_tx_in_mempool(signer, next_nonce)
                 .await
-                .inspect_err(|err| tracing::debug!(?err, "could not inspect tx mempool"))
+                .inspect_err(|err| {
+                    observe::metrics::get()
+                        .mempool_txpool_inspect_error
+                        .with_label_values(&[&mempool.to_string()])
+                        .inc();
+                    tracing::debug!(?err, "could not inspect tx mempool")
+                })
                 .ok()??;
 
             let pending_tx_gas_price = Eip1559Estimation {
