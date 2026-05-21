@@ -10,7 +10,9 @@ import {
 import { CHAIN_INFO_ARRAY } from '@cowprotocol/common-const'
 
 import * as Sentry from '@sentry/react'
-import { Integrations } from '@sentry/tracing'
+// Sentry v8 (2026-05-21): `@sentry/tracing` was merged into `@sentry/browser`.
+// `BrowserTracing` is now exposed as the functional
+// `Sentry.browserTracingIntegration()` factory from `@sentry/react`.
 import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 
 import { WithLDProvider } from './components/common/WithLDProvider'
@@ -38,7 +40,7 @@ const SENTRY_TRACES_SAMPLE_RATE = process.env.REACT_APP_SENTRY_TRACES_SAMPLE_RAT
 if (SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
-    integrations: [new Integrations.BrowserTracing()],
+    integrations: [Sentry.browserTracingIntegration()],
     release: 'gp-explorer@v' + version,
     environment: environmentName,
 
