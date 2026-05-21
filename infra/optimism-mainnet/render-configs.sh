@@ -343,10 +343,15 @@ if [[ -n "${OP_RPC_INTERNAL:-}" ]]; then
   echo "" >&2
 fi
 
-# Templates that contain the substituted PK (after envsubst) MUST land
+# Templates that contain substituted SECRETS (after envsubst) MUST land
 # on the RAM-disk; everything else stays in ./rendered/ on disk. The
-# canonical list:
-PK_BEARING_NAMES=(driver.toml)
+# canonical list — covers both the submitter PK and the OKX
+# credentials (api-key + secret-key + passphrase). The post-render
+# assertion below scans all non-PK_BEARING files for both PK and
+# OKX-shaped secret literals, so a future template-edit that adds a
+# secret-substitution to a non-listed file will fail-closed before the
+# stack starts.
+PK_BEARING_NAMES=(driver.toml okx.toml)
 
 is_pk_bearing() {
   local n="$1"
@@ -405,36 +410,51 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
-# Post-render PK-leak assertion (sharp-edges MED-1 + Codex Medium):
-# If a future template-edit introduces ${OPHIS_DRIVER_SUBMITTER_KEY}
-# into a file NOT in PK_BEARING_NAMES, the prior loop would silently
-# write the PK to disk. Scan all NON-symlink files in rendered/ for a
-# 64-hex `account = "0x..."` literal; if found in anything that isn't
-# already a symlink to the RAM-disk, that's a PK leak. Fail closed.
+# Post-render secret-leak assertion (sharp-edges MED-1 + Codex Medium):
+# If a future template-edit introduces a secret-substitution into a
+# file NOT in PK_BEARING_NAMES, the prior loop would silently write the
+# secret to disk. Scan all NON-symlink files in rendered/ for both the
+# 64-hex PK literal AND OKX-shaped secret literals (uuid-format api-key,
+# 32-hex secret-key). Fail closed on any match.
 #
-# We grep for the `0x` + 64-hex pattern, not the PK value itself, so the
-# assertion check doesn't itself surface the PK in error messages.
+# We grep for the patterns, not the values themselves, so the
+# assertion check doesn't itself surface the secret in error messages.
+# The find expression is parenthesized — without parens, BSD find +
+# Linux find diverge on whether -maxdepth applies to both -name arms.
 violating_files=()
 while IFS= read -r f; do
   if [[ -n "$f" && ! -L "$f" ]]; then
+    # 64-hex `"0x..."` — submitter PK pattern.
     if grep -qE '"0x[a-fA-F0-9]{64}"' "$f" 2>/dev/null; then
-      violating_files+=("$f")
+      violating_files+=("$f (PK literal)")
+      continue
+    fi
+    # OKX api-key: `[uuid-shaped]` (8-4-4-4-12 hex with dashes).
+    if grep -qE 'api-key = "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"' "$f" 2>/dev/null; then
+      violating_files+=("$f (OKX api-key)")
+      continue
+    fi
+    # OKX secret-key: 32-char hex.
+    if grep -qE 'api-secret-key = "[A-Fa-f0-9]{32}"' "$f" 2>/dev/null; then
+      violating_files+=("$f (OKX api-secret-key)")
+      continue
     fi
   fi
-done < <(find rendered -maxdepth 1 -type f -name "*.toml" -o -type f -name "*.yaml")
+done < <(find rendered -maxdepth 1 -type f \( -name "*.toml" -o -name "*.yaml" \))
 
 if (( ${#violating_files[@]} > 0 )); then
   echo "" >&2
-  echo "FATAL: PK literal found in non-RAM-disk rendered files:" >&2
+  echo "FATAL: secret literal found in non-RAM-disk rendered files:" >&2
   for f in "${violating_files[@]}"; do
     echo "  - $f" >&2
   done
   echo "" >&2
-  echo "  A template now substitutes \${OPHIS_DRIVER_SUBMITTER_KEY} into a file" >&2
-  echo "  that isn't in PK_BEARING_NAMES. Either:" >&2
+  echo "  A template now substitutes a secret (\${OPHIS_DRIVER_SUBMITTER_KEY}," >&2
+  echo "  \${OKX_API_KEY}, \${OKX_SECRET_KEY}, etc.) into a file that isn't in" >&2
+  echo "  PK_BEARING_NAMES. Either:" >&2
   echo "    a) Add the name to PK_BEARING_NAMES so it lands on RAM-disk, OR" >&2
-  echo "    b) Stop substituting the PK in that template." >&2
-  echo "  Scrub the listed file(s) — they contain the live PK." >&2
+  echo "    b) Stop substituting the secret in that template." >&2
+  echo "  Scrub the listed file(s) — they contain live secrets." >&2
   exit 7
 fi
 
