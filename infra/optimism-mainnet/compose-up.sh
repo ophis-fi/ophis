@@ -19,6 +19,39 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Defense-in-depth: enforce OP_RPC_INTERNAL bypass-ACK BEFORE rendering.
+# render-configs.sh has the same check at render time, but operators can
+# edit .env between renders (e.g. for ad-hoc debug) and then run
+# `docker compose up` directly — which reads OP_RPC_INTERNAL from .env
+# via docker-compose.yml's `${OP_RPC_INTERNAL:-...}` defaults and silently
+# downgrades the stack to single-provider posture. Checking here on every
+# stack-up (whether via this wrapper or via direct `docker compose up`
+# that happens to source `.env`) catches the after-render edit. A6
+# whole-repo audit L3 (2026-05-21).
+if [[ -f .env ]]; then
+  # Subshell so `source .env` doesn't pollute compose-up.sh's environment.
+  # `set -euo pipefail` at the top propagates the subshell's `exit 12` to
+  # this script (verified locally; bash semantics).
+  # shellcheck disable=SC1091
+  (
+    source .env
+    if [[ -n "${OP_RPC_INTERNAL:-}" ]] && [[ "${ALLOW_RPC_BYPASS:-}" != "1" ]]; then
+      echo "" >&2
+      echo "*** REFUSING: OP_RPC_INTERNAL is set in .env ***" >&2
+      echo "    This BYPASSES the eRPC 3-of-3 consensus path and downgrades" >&2
+      echo "    the stack to single-provider posture. compose-up.sh blocks" >&2
+      echo "    this independently of render-configs.sh so an after-render" >&2
+      echo "    edit of .env doesn't slip through." >&2
+      echo "" >&2
+      echo "    If this is intentional (failure-domain test / emergency):" >&2
+      echo "      ALLOW_RPC_BYPASS=1 ./compose-up.sh" >&2
+      echo "" >&2
+      echo "    Otherwise: remove the OP_RPC_INTERNAL line from .env." >&2
+      exit 12
+    fi
+  )
+fi
+
 echo "==> render-configs.sh"
 ./render-configs.sh
 
@@ -106,6 +139,23 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   done
   echo "    rpc-proxy-health: $health"
   docker compose up -d --no-deps "${DOWNSTREAM[@]}"
+fi
+
+# Alertmanager's bot_token_file is read ONCE at process start (not lazily
+# per-notification). After a token rotation lands a new value at the RAM-
+# disk symlink target, the running container still holds the old token
+# in memory. Force-recreate it so the new token takes effect.
+#
+# Sharp-edges audit HIGH-1 (2026-05-21 whole-repo pass): same finding
+# already closed on the HL stack via PR #200's Codex Cyber HIGH; the OP
+# stack had been missing the symmetric fix. Conditional on the rendered
+# config existing AND the service being up (skipped on first-deploy
+# where the service isn't running yet — the final
+# `docker compose up -d --build` below brings it up fresh).
+if [[ -f observability-rendered/alertmanager.yml ]] && \
+   docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
+  echo "==> force-recreating alertmanager to pick up rendered Telegram token"
+  docker compose up -d --no-deps --force-recreate alertmanager
 fi
 
 echo ""

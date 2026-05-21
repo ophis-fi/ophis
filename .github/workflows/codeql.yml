@@ -35,14 +35,18 @@ jobs:
           - language: actions
             build-mode: none
     steps:
+      # SHA-pin every action per repo policy (see security.yml). Mutable
+      # @v4/@v3 tags were a regression from PR #181 (agentic-actions audit
+      # MED-2, 2026-05-21 whole-repo pass). No new run: commands or
+      # event-context interpolation introduced.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           submodules: false
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@fbed2d2d53d0343436c1d6332dae0b38394d3917  # v3.30.7
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -54,6 +58,6 @@ jobs:
           config-file: ./.github/codeql/codeql-config.yml
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@fbed2d2d53d0343436c1d6332dae0b38394d3917  # v3.30.7
         with:
           category: '/language:${{ matrix.language }}'
