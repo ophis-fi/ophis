@@ -157,6 +157,16 @@ async fn run_with(args: cli::Args, addr_sender: Option<oneshot::Sender<SocketAdd
         eth,
         addr: args.addr,
         healthz_verbose: args.healthz_verbose,
+        // F7 (2026-05-21 whole-repo audit, HIGH H2): inter-service auth.
+        // Read the optional Bearer token from env. When set, the api
+        // module enforces `Authorization: Bearer <token>` on every
+        // per-solver route. When unset, the api startup logs a warning
+        // and routes are unauthenticated — preserves pre-F7 behavior
+        // for transitional rollout.
+        inter_service_auth_token: std::env::var("OPHIS_INTER_SERVICE_AUTH_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(std::sync::Arc::new),
         addr_sender,
     }
     .serve(

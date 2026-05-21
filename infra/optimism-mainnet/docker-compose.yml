@@ -195,6 +195,14 @@ services:
       # off; set TRACING_COLLECTOR_ENDPOINT=http://jaeger:4317 in .env to
       # enable. Routed via OTLP/gRPC.
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      # F7 (2026-05-21 whole-repo audit, HIGH H2): inter-service auth on
+      # driver /solve /reveal /settle /quote routes. When set, autopilot
+      # injects Authorization: Bearer <token> on outgoing requests. When
+      # unset, no header is sent — preserves pre-F7 behavior. Driver
+      # MUST be configured with the SAME token via its own env. Generate
+      # via `openssl rand -hex 32` and store in macOS Keychain
+      # (service=ophis-inter-service-auth-token, account=$USER).
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -225,6 +233,11 @@ services:
       ADDR: 0.0.0.0:80
       # Distributed tracing (Phase 4 audit M-6). See orderbook block.
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      # F7 (2026-05-21 whole-repo audit, HIGH H2): inter-service auth.
+      # When set, driver enforces Authorization: Bearer <token> on all
+      # per-solver routes. Autopilot MUST use the SAME token to make
+      # successful requests. See autopilot block above for setup.
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
       # Tier 1 PK isolation (2026-05-18): PK *source* is now
       # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).

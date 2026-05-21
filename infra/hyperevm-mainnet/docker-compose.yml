@@ -146,6 +146,10 @@ services:
       ETH_RPC_URL: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ALCHEMY_API_KEY: ${ALCHEMY_API_KEY:?ALCHEMY_API_KEY must be set in infra/hyperevm-mainnet/.env}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?COINGECKO_API_KEY must be set in infra/hyperevm-mainnet/.env}
+      # F7 (2026-05-21 whole-repo audit, HIGH H2): inter-service auth.
+      # Mirror of OP setup — see infra/optimism-mainnet/docker-compose.yml
+      # autopilot block for full rationale.
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./rendered/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -173,6 +177,9 @@ services:
       ETHRPC: ${HYPEREVM_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/999}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+      # F7 (2026-05-21 whole-repo audit, HIGH H2): inter-service auth.
+      # See OP docker-compose.yml driver block for rationale.
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
       # Tier 1 PK isolation (2026-05-18): PK *source* is now
       # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).
       # The rendered driver.toml stays here in ./rendered/ because colima's

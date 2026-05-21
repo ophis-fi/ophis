@@ -27,6 +27,7 @@ use {
     tokio::sync::oneshot,
 };
 
+mod auth;
 mod error;
 mod extract;
 pub mod routes;
@@ -42,6 +43,13 @@ pub struct Api {
     /// Audit MED-1 toggle: see `cli::Args::healthz_verbose`.
     pub healthz_verbose: bool,
     pub bad_token_detector: risk_detector::bad_tokens::Detector,
+    /// F7 (2026-05-21 whole-repo audit, HIGH H2): optional inter-service
+    /// auth token. When `Some`, all per-solver routes (/solve /reveal
+    /// /settle /quote and the per-solver info root) require
+    /// `Authorization: Bearer <token>`. When `None`, no auth is applied
+    /// and a warning logs at startup. Caller (run.rs) reads
+    /// `OPHIS_INTER_SERVICE_AUTH_TOKEN` from env.
+    pub inter_service_auth_token: Option<Arc<String>>,
     /// If this channel is specified, the bound address will be sent to it. This
     /// allows the driver to bind to 0.0.0.0:0 during testing.
     pub addr_sender: Option<oneshot::Sender<SocketAddr>>,
@@ -94,6 +102,24 @@ impl Api {
         let gasprice_router = routes::gasprice(gasprice_router);
         app = app.merge(gasprice_router.with_state(self.eth.clone()));
 
+        // F7: log whether inter-service auth is enforced. We log here
+        // (not at struct construction) so the message appears in the
+        // server's startup log next to "serving driver" — operators
+        // grepping for the running mode see both lines together.
+        let auth_token = self.inter_service_auth_token.clone();
+        match &auth_token {
+            Some(_) => tracing::info!(
+                "F7 inter-service auth ENFORCED on per-solver routes \
+                 (/solve /reveal /settle /quote / )"
+            ),
+            None => tracing::warn!(
+                "F7 inter-service auth DISABLED — OPHIS_INTER_SERVICE_AUTH_TOKEN \
+                 not set. Per-solver routes are reachable by anything on the \
+                 docker network. Acceptable in single-tenant deployments; \
+                 set the env var before Spec 8 or any multi-tenant expansion."
+            ),
+        }
+
         // Multiplex each solver as part of the API. Multiple solvers are multiplexed
         // on the same driver so only one liquidity collector collects the liquidity
         // for all of them. This is important because liquidity collection is
@@ -143,6 +169,21 @@ impl Api {
                 liquidity: self.liquidity.clone(),
                 tokens: tokens.clone(),
             })));
+            // F7: wrap the per-solver router with the auth middleware IF
+            // the token was provided. Done before `nest()` so the middleware
+            // applies to every route in the per-solver namespace (info,
+            // quote, solve, reveal, settle). Global routes (/metrics,
+            // /healthz, /gasprice) stay unauthenticated — Docker
+            // healthchecks + Prometheus scrape don't carry the header.
+            let router = if let Some(token) = &auth_token {
+                router.layer(axum::middleware::from_fn_with_state(
+                    token.clone(),
+                    auth::require_inter_service_auth,
+                ))
+            } else {
+                router
+            };
+
             let path = format!("/{name}");
             infra::observe::mounting_solver(&name, &path);
             app = app.nest(&path, router);
