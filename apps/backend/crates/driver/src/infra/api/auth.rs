@@ -115,9 +115,15 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_non_bearer() {
+        // GitHub secret-scanning false-positive 2026-05-21: a previous
+        // version of this test used `Basic dXNlcjpwYXNz` (base64 of
+        // literal "user:pass") as the non-Bearer fixture. Generic secret
+        // scanners flag any base64-looking string in an Authorization
+        // header. Switched to an obviously-fake string so future scans
+        // don't re-trigger.
         let req = Request::builder()
             .uri("/protected")
-            .header("Authorization", "Basic dXNlcjpwYXNz")
+            .header("Authorization", "Basic NOT-A-REAL-CREDENTIAL-test-fixture")
             .body(Body::empty())
             .unwrap();
         assert_eq!(status_for(req, "secret-token").await, StatusCode::UNAUTHORIZED);
