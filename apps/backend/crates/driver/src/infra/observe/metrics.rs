@@ -73,6 +73,16 @@ pub struct Metrics {
     /// Pre-this-metric, the only signal was a `tracing::warn!`.
     #[metric(labels("kind"))]
     pub access_list_fallback: prometheus::IntCounterVec,
+    /// Mempool inspection (txpool_content_from) failed. Function-
+    /// analyzer F9 (2026-05-21): `txpool_content_from` is a Geth-only
+    /// debug method that many public providers reject. The driver
+    /// silently degrades (loses pending-tx visibility) when this is
+    /// unavailable. Counter lets ops detect provider-unsupport per
+    /// mempool — sustained non-zero on a mempool flags either a
+    /// provider that doesn't implement the method or transient
+    /// degradation worth investigating.
+    #[metric(labels("mempool"))]
+    pub mempool_txpool_inspect_error: prometheus::IntCounterVec,
     /// In-flight tx re-simulation transport errors (non-revert).
     /// Phase 2 audit MED M12: an RPC outage during in-flight tracking
     /// causes `estimate_gas` to fail-non-revert, which previously was a
