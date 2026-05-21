@@ -339,6 +339,33 @@ groups:
           summary: "OP basefee at {{ $value | humanize }}wei sustained >5min — approaching 5 gwei gas_price_cap"
           description: "Optimism basefee has exceeded 1.5 gwei for 5 consecutive minutes. The driver's gas_price_cap is 5 gwei (per #131). At ~3× headroom remaining a sustained spike risks settlement-broadcast rejection. Inspect: `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. Consider raising gas_price_cap or pausing solver if congestion sustained."
 
+      # Phase 4 audit F2 + sharp-edges audit F3 (2026-05-21): the driver
+      # re-checks gas_price_cap on both submit and cancel paths AFTER RBF
+      # bump + solver-override. Behaviour differs by context:
+      #
+      #   context="submit_settlement"  → driver ABORTS the broadcast (fail-closed).
+      #                                  Settle tx is 200-400k gas; drain is
+      #                                  significant; safer to fail loud.
+      #   context="cancel_settlement"  → driver LOGS + BROADCASTS ANYWAY.
+      #                                  Cancellation is 21k gas (bounded
+      #                                  ~$0.05 drain even at 1000 gwei) and
+      #                                  aborting would leave the original
+      #                                  settle tx stuck in-flight, blocking
+      #                                  the submitter EOA nonce for hours.
+      #
+      # Either way this counter increments and the alert fires — operator
+      # must investigate. Non-zero rate is anomalous regardless of context.
+      - alert: OphisOpGasPriceCapExceeded
+        expr: |
+          increase(driver_gas_price_cap_exceeded{chain="optimism"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP driver gas_price_cap policy violated (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
+          description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override. If context='submit_settlement' the broadcast was ABORTED (settle tx is not on-chain); if context='cancel_settlement' the broadcast PROCEEDED anyway to avoid nonce-stuck (cancellation is 21k gas — bounded drain). Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine OP fee surge while a solver-override pushed past the cap; (3) repeated RBF bumps cascading above policy. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
+
   - name: ophis-op-ethflow
     interval: 30s
     rules:
