@@ -56,8 +56,24 @@ export const updateTwapOrdersSettingsAtom = atom(null, (get, set, nextState: Par
 export const twapOrderSlippageAtom = atom<Percent>((get) => {
   const { slippageValue } = get(twapOrdersSettingsAtom)
 
-  return slippageValue != null
-    ? // Multiplying on 100 to allow decimals values (e.g 0.05)
-      new Percent(Math.round(slippageValue * 100), 10000)
-    : DEFAULT_TWAP_SLIPPAGE
+  // Persisted-state trust boundary (audit 2026-05-21). TypeScript
+  // says `slippageValue: number | null`, but the hydrated runtime
+  // value comes from localStorage — a malicious browser extension
+  // or shared-machine tamperer can write a string/boolean/NaN.
+  // `!= null` lets all of those through. `Math.round("abc" * 100)`
+  // → NaN; `new Percent(NaN, 10000)` constructs a Percent whose
+  // numerator is NaN; `percentToBps` then poisons the EIP-712
+  // AppData hash the user signs. Defense: require a finite
+  // non-negative number with a sane upper bound (≤50% — anything
+  // higher is misconfiguration).
+  if (
+    typeof slippageValue === 'number' &&
+    Number.isFinite(slippageValue) &&
+    slippageValue >= 0 &&
+    slippageValue <= 50
+  ) {
+    // Multiplying on 100 to allow decimals values (e.g 0.05)
+    return new Percent(Math.round(slippageValue * 100), 10000)
+  }
+  return DEFAULT_TWAP_SLIPPAGE
 })
