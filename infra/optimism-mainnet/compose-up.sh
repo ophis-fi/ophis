@@ -155,7 +155,11 @@ fi
 if [[ -f observability-rendered/alertmanager.yml ]] && \
    docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
   echo "==> force-recreating alertmanager to pick up rendered Telegram token"
-  docker compose up -d --no-deps --force-recreate alertmanager
+  # `--profile observability` is technically redundant on compose v2.20+
+  # (auto-activates profiles when a service is named explicitly), but
+  # explicit-is-better-than-implicit and keeps the line portable if
+  # someone ever downgrades. Sharp-edges PR #203 review MED-2.
+  docker compose --profile observability up -d --no-deps --force-recreate alertmanager
 fi
 
 echo ""
