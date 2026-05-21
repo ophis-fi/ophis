@@ -11,6 +11,9 @@ alloy-primitives = { workspace = true }
 contracts = { workspace = true }
 futures = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
+observe = { workspace = true }
+prometheus = { workspace = true }
+prometheus-metric-storage = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 

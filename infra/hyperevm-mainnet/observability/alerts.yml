@@ -320,3 +320,21 @@ groups:
         annotations:
           summary: "HL EthFlow refund/transfer failed — investigate WHYPE or recipient state"
           description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WHYPE.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WHYPE codehash changed via `cast keccak (cast code 0x5555…)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
+
+  - name: ophis-hl-sanctions-oracle
+    interval: 30s
+    rules:
+      # F6 mirror of OP alert (2026-05-21 whole-repo audit, Codex
+      # Cyber HIGH). Same fail-open posture + visibility-layer rationale.
+      # See infra/optimism-mainnet/observability/alerts.yml :
+      # ophis-op-sanctions-oracle for full context.
+      - alert: OphisHlSanctionsOracleFetchFailing
+        expr: |
+          increase(sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          chain: hyperevm
+        annotations:
+          summary: "HL sanctions oracle (Chainalysis) sustained fetch failures — fail-open active"
+          description: "More than 5 Chainalysis fetch failures in 10m (stage={{ $labels.stage }}). The orderbook is currently in fail-open posture: sanctioned addresses MAY be passing validation. Same playbook as OP — investigate Chainalysis health, consider failover, OR shift to fail-closed via banned.rs edit + rebuild. Cross-reference: F6 in memory/2026-05-21-whole-repo-audit-pass.md."
