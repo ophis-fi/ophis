@@ -63,6 +63,22 @@ pub struct Metrics {
     /// discarded.
     #[metric(labels("mempool", "reason"))]
     pub submitter_cancellation_failed: prometheus::IntCounterVec,
+    /// Per-mempool failures of the CROSS-mempool cancel broadcast (F4,
+    /// 2026-05-21). When `Mempools::cancel_all` broadcasts a cancel to
+    /// every configured mempool to close the F4 race (settle in mempool
+    /// A, cancel only on A, B's view still has pending settle), each
+    /// individual mempool's cancel may fail (signer has no pending tx
+    /// at that nonce, RPC rejects nonce-too-low, etc.). cancel_all
+    /// succeeds as long as AT LEAST ONE mempool accepts the cancel —
+    /// so partial failures here are NOT operational alerts on their
+    /// own. Use this counter to detect SUSTAINED per-mempool broadcast
+    /// degradation (e.g. one of N RPCs is silently rejecting all
+    /// cancel broadcasts), which would shrink the F4 race window back
+    /// toward the pre-fix posture. The `reason` label distinguishes
+    /// the cancel-trigger ("deadline_exceeded" / "sim_revert") so
+    /// alerting can correlate with the user-visible failure mode.
+    #[metric(labels("mempool", "reason"))]
+    pub submitter_cancel_broadcast_failed: prometheus::IntCounterVec,
     /// How many tokens detected by specific solver and strategy.
     pub bad_tokens_detected: prometheus::IntCounter,
     /// Access-list estimation failures that fell back to an empty access list.
