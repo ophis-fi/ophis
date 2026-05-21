@@ -441,19 +441,22 @@ if [[ -d observability ]]; then
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
     # Render alertmanager.yml.tmpl → observability-rendered/alertmanager.yml
     #
-    # Defensive: pass an EMPTY allowlist to envsubst (no vars substituted).
-    # The current alertmanager.yml.tmpl uses bot_token_file (no direct
-    # ${TELEGRAM_BOT_TOKEN} substitution), so this is a no-op today. The
-    # empty allowlist prevents a future template-edit from accidentally
-    # enabling token substitution to SSD (Codex MED-1, PR #200 review).
-    # Any `${TELEGRAM_BOT_TOKEN}` literal in a future template would pass
-    # through unchanged and the post-render assertion above would catch
-    # the {int}:{base64-ish} shape on a different code path if a real
-    # token were substituted.
+    # Defensive: pass a single nonexistent sentinel var to envsubst (no real
+    # vars substituted). The current alertmanager.yml.tmpl uses bot_token_file
+    # (no direct ${TELEGRAM_BOT_TOKEN} substitution), so this is a no-op today.
+    # Prevents a future template-edit from accidentally enabling token
+    # substitution to SSD (Codex MED-1, PR #200 review).
+    #
+    # Sharp-edges sign-off M1: using a sentinel rather than `envsubst ''`
+    # because the Go-port envsubst (a8m/envsubst, occasionally aliased in
+    # dev shells) treats empty allowlist as "substitute everything", which
+    # would silently leak ${TELEGRAM_BOT_TOKEN} to SSD if it ever shadows
+    # GNU envsubst in PATH. GNU and Go-port both honor a SHELL-FORMAT
+    # listing a nonexistent var as "substitute nothing".
     for tmpl in observability/*.yml.tmpl; do
       name="$(basename "$tmpl" .tmpl)"
       out_tmp="observability-rendered/${name}.tmp.$$"
-      envsubst '' < "$tmpl" > "$out_tmp"
+      envsubst '${__OPHIS_NO_SUBST_SENTINEL__}' < "$tmpl" > "$out_tmp"
       chmod 600 "$out_tmp"
       mv -f "$out_tmp" "observability-rendered/${name}"
       echo "  rendered  observability/$name"
