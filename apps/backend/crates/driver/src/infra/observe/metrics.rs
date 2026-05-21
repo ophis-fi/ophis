@@ -106,6 +106,15 @@ pub struct Metrics {
     ///   - "cancel_settlement" — cancellation/RBF path
     #[metric(labels("mempool", "context"))]
     pub gas_price_cap_exceeded: prometheus::IntCounterVec,
+    /// Winner re-simulation produced a non-revert error (RPC failure,
+    /// simulator outage, etc.). Pre-this-metric, these errors were
+    /// indistinguishable from "simulation passed" — winning solutions
+    /// stayed in the candidate set on simulator outages, producing
+    /// settlements that could revert on-chain. The error path still
+    /// returns the winner (conservative — we don't know it would
+    /// revert), but the metric lets ops alert on simulator degradation.
+    #[metric(labels("solver"))]
+    pub winner_resim_non_revert_error: prometheus::IntCounterVec,
     /// Time spent in the auction preprocessing stage.
     #[metric(
         labels("stage"),
