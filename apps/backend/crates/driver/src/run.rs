@@ -12,7 +12,7 @@ use {
             config,
             liquidity,
             notify,
-            solver::Solver,
+            solver::{self, Solver},
         },
     },
     clap::Parser,
@@ -60,7 +60,40 @@ async fn run_with(args: cli::Args, addr_sender: Option<oneshot::Sender<SocketAdd
 
     let commit_hash = option_env!("VERGEN_GIT_SHA").unwrap_or("COMMIT_INFO_NOT_FOUND");
 
-    tracing::info!(%commit_hash, "running driver with {config:#?}");
+    // Explicit redacted summary instead of `{config:#?}`. The full Debug
+    // expansion of `infra::Config` traverses every `solver::Config`
+    // including its `Account::PrivateKey(PrivateKeySigner)` variant —
+    // we trust alloy's PrivateKeySigner to redact its own Debug, but
+    // that's a transitive promise. One bad alloy bump, or one new
+    // `derive(Debug)` field anywhere under `infra::Config` that holds a
+    // raw `eth::B256` private key, and the PK would land in journald +
+    // Loki + every operator's terminal scrollback. Log only the fields
+    // we explicitly intend to log; everything else is omitted.
+    let solver_summary: Vec<_> = config
+        .solvers
+        .iter()
+        .map(|s| {
+            let signer_kind = match &s.account {
+                solver::Account::PrivateKey(_) => "private_key",
+                solver::Account::Kms(_) => "kms",
+                solver::Account::Address(_) => "address",
+            };
+            // Solver display address comes from the Account::address()
+            // accessor — public address only, no key material.
+            let signer_addr = <solver::Account as alloy::network::TxSigner<
+                alloy::signers::Signature,
+            >>::address(&s.account);
+            format!("name={} signer_kind={} signer_addr={:?}", s.name, signer_kind, signer_addr)
+        })
+        .collect();
+    tracing::info!(
+        %commit_hash,
+        chain_id = ?ethrpc.chain(),
+        solver_count = config.solvers.len(),
+        ?solver_summary,
+        tx_gas_limit = ?config.tx_gas_limit,
+        "driver starting"
+    );
 
     let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel();
     let eth = ethereum(&config, ethrpc.clone(), &args.current_block).await;

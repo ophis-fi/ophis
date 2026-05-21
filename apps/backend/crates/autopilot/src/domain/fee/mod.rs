@@ -13,7 +13,7 @@ use {
     },
     ::observe::metrics,
     alloy::primitives::{Address, U256},
-    app_data::{MAX_PARTNER_FEE_BPS, MAX_PARTNER_VOLUME_BPS},
+    app_data::{MAX_PARTNER_FEE_BPS, MAX_PARTNER_VOLUME_BPS, PARTNER_FEE_RECIPIENT_ALLOWLIST},
     chrono::{DateTime, Utc},
     configs::{
         autopilot::fee_policy::{
@@ -242,6 +242,31 @@ impl ProtocolFees {
         parsed_app_data
             .partner_fee
             .iter()
+            .filter(|partner_fee| {
+                // Defense-in-depth against the orderbook validator: the same
+                // allowlist check fires at order ingest, but pre-existing DB
+                // rows or any future direct-DB-write path would bypass it.
+                // Filter the partner_fee list here too — a non-allowlisted
+                // recipient is dropped silently (with a metric so ops can
+                // detect attempts), the order itself continues without the
+                // fee policy.
+                let allowed = PARTNER_FEE_RECIPIENT_ALLOWLIST.contains(&partner_fee.recipient);
+                if !allowed {
+                    Metrics::get()
+                        .partner_fee_dropped
+                        .with_label_values(&["recipient_not_in_allowlist"])
+                        .inc();
+                    tracing::warn!(
+                        order_uid = %order.metadata.uid,
+                        recipient = ?partner_fee.recipient,
+                        "partner fee policy dropped: recipient not in allowlist \
+                         (defense-in-depth — orderbook validator should have \
+                         rejected at ingest; this fires on stale DB rows or \
+                         bypass paths)"
+                    );
+                }
+                allowed
+            })
             .map(move |partner_fee| {
                 match partner_fee.policy {
                     app_data::FeePolicy::Volume { bps } => {
@@ -457,11 +482,11 @@ mod test {
                         "partnerFee": [
                             {
                                 "bps": 500,
-                                "recipient": "0x0202020202020202020202020202020202020202"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             },
                             {
                                 "bps": 2000,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }
                         ]
                     },
@@ -537,7 +562,7 @@ mod test {
                     "partnerFee": [
                         {
                             "bps": 0,
-                            "recipient": "0x0202020202020202020202020202020202020202"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         }
                     ]
                 },
@@ -564,6 +589,89 @@ mod test {
     }
 
     #[test]
+    fn test_get_partner_fee_recipient_not_in_allowlist_dropped() {
+        // Defense-in-depth: orderbook validator should reject at ingress,
+        // but pre-existing DB rows or any bypass path could carry a fee
+        // entry with a non-allowlisted recipient. Verify the fee module
+        // drops it silently rather than minting policy for a non-Ophis
+        // recipient.
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(
+                    r#"
+            {
+                "appCode": "CoW Swap",
+                "environment": "production",
+                "metadata": {
+                    "partnerFee": [
+                        {
+                            "bps": 1000,
+                            "recipient": "0x0202020202020202020202020202020202020202"
+                        }
+                    ]
+                },
+                "version": "0.9.0"
+            }
+        "#
+                    .to_string(),
+                ),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let max_partner_fee = 0.3;
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        assert_eq!(
+            result,
+            vec![],
+            "non-allowlisted recipient must produce empty policy vector",
+        );
+    }
+
+    #[test]
+    fn test_get_partner_fee_mixed_allowlist_keeps_only_allowed() {
+        // Two fees in the same app-data, one allowlisted + one not.
+        // Expect the allowed one to keep its policy; the other dropped.
+        let order = boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(
+                    r#"
+            {
+                "appCode": "CoW Swap",
+                "environment": "production",
+                "metadata": {
+                    "partnerFee": [
+                        {
+                            "bps": 1000,
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
+                        },
+                        {
+                            "bps": 500,
+                            "recipient": "0x0303030303030303030303030303030303030303"
+                        }
+                    ]
+                },
+                "version": "0.9.0"
+            }
+        "#
+                    .to_string(),
+                ),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let max_partner_fee = 0.3;
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        assert_eq!(
+            result.len(),
+            1,
+            "exactly one policy expected (the allowlisted recipient's)"
+        );
+    }
+
+    #[test]
     fn test_get_partner_fee_zero_cap() {
         // Scenario: Partner fees with zero cap
         let order = boundary::Order {
@@ -577,11 +685,11 @@ mod test {
                     "partnerFee": [
                         {
                             "bps": 1000,
-                            "recipient": "0x0202020202020202020202020202020202020202"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         },
                         {
                             "bps": 2000,
-                            "recipient": "0x0101010101010101010101010101010101010101"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         }
                     ]
                 },
@@ -626,7 +734,7 @@ mod test {
                     "partnerFee": [
                         {
                             "bps": 5000,
-                            "recipient": "0x0202020202020202020202020202020202020202"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         }
                     ]
                 },
@@ -666,11 +774,11 @@ mod test {
                     "partnerFee": [
                         {
                             "bps": 1000,
-                            "recipient": "0x0202020202020202020202020202020202020202"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         },
                         {
                             "bps": 2500,
-                            "recipient": "0x0101010101010101010101010101010101010101"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         }
                     ]
                 },
@@ -718,15 +826,15 @@ mod test {
                     "partnerFee": [
                         {
                             "bps": 1000,
-                            "recipient": "0x0202020202020202020202020202020202020202"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         },
                         {
                             "bps": 2000,
-                            "recipient": "0x0101010101010101010101010101010101010101"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         },
                         {
                             "bps": 1500,
-                            "recipient": "0x0303030303030303030303030303030303030303"
+                            "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                         }
                     ]
                 },
@@ -773,7 +881,7 @@ mod test {
                             "partnerFee": [{{
                                 "surplusBps": {bps},
                                 "maxVolumeBps": 50,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }}]
                         }}
                     }}"#
@@ -798,7 +906,7 @@ mod test {
                             "partnerFee": [{{
                                 "priceImprovementBps": {bps},
                                 "maxVolumeBps": 50,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }}]
                         }}
                     }}"#
@@ -848,7 +956,7 @@ mod test {
                             "partnerFee": [{
                                 "surplusBps": 2500,
                                 "maxVolumeBps": 999,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }]
                         }
                     }"#
@@ -880,7 +988,7 @@ mod test {
                             "partnerFee": [{
                                 "priceImprovementBps": 2500,
                                 "maxVolumeBps": 999,
-                                "recipient": "0x0101010101010101010101010101010101010101"
+                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }]
                         }
                     }"#
