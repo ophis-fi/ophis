@@ -50,6 +50,29 @@ contract TwoStepManager is Helper {
         authenticator.proposeManager(newManager);
     }
 
+    function test_proposeManager_zero_address_is_treated_as_no_pending() public {
+        // Codex LOW re-audit (PR #224): explicitly cover the proposeManager(0)
+        // edge case. The function ACCEPTS the call (stores 0 + emits
+        // event), but acceptManagership() then rejects with "no pending
+        // manager" because pendingManager == address(0). Functionally
+        // equivalent to "no pending transfer exists".
+        vm.prank(manager);
+        vm.expectEmit();
+        emit GPv2AllowListAuthentication.ManagerTransferProposed(address(0), manager);
+        authenticator.proposeManager(address(0));
+
+        assertEq(authenticator.pendingManager(), address(0));
+        // manager unchanged
+        assertEq(authenticator.manager(), manager);
+
+        // acceptManagership reverts because pendingManager == address(0).
+        // The "no pending manager" branch fires BEFORE the "caller not
+        // pending manager" branch.
+        vm.prank(address(0));
+        vm.expectRevert("GPv2: no pending manager");
+        authenticator.acceptManagership();
+    }
+
     function test_proposeManager_overwrites_prior_proposal() public {
         address firstProposal = makeAddr("first proposal");
         vm.prank(manager);
