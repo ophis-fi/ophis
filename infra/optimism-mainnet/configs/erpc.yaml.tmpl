@@ -32,7 +32,7 @@
 #   tenderly-op         optimism.gateway.tenderly.co   Tenderly
 #                                                       DNS: Google Cloud
 #                                                       CA: ZeroSSL/Sectigo
-#   ophis-op-node-self  Aleph VM via Tailscale         Ours, fully synced
+#   ophis-self-op  Aleph VM via Tailscale         Ours, fully synced
 #                       100.77.53.81:8545              op-reth v1.10.2 +
 #                                                       op-node v1.18.0
 #                                                       (Phase 4, prov.
@@ -135,7 +135,7 @@ projects:
           # sustained polling from driver+orderbook+autopilot. (Residual
           # since closed in 2026-05-20 evening (3) below.)
           #
-          # 2026-05-20 evening (3) — ADDED self-hosted ophis-op-node-self
+          # 2026-05-20 evening (3) — ADDED self-hosted ophis-self-op
           # as the 3rd upstream. VM1 (Aleph `ophis-op-node` at
           # Tailscale 100.77.53.81) runs op-reth v1.10.2 + op-node v1.18.0,
           # fully synced, controlled by us. This removes the Tenderly
@@ -208,7 +208,7 @@ projects:
           # threshold:60 catches hostile sustained divergence ~1.7× faster
           # than the previous threshold:100 while preserving 3× headroom
           # over the live ~20 disputes/10min baseline (driven primarily
-          # by ophis-op-node-self tip-drift on "latest" tags). Sharp-
+          # by ophis-self-op tip-drift on "latest" tags). Sharp-
           # edges finding 1 (2026-05-20): the 1.5× headroom of threshold:30
           # was insufficient for bootstrap-burst + OP-sequencer-hiccup
           # scenarios where all 3 upstreams snap back to consensus at
@@ -264,7 +264,7 @@ projects:
               # 2-of-3 across fully-independent failure domains:
               # - publicnode-op (Allnodes; CF DNS)
               # - tenderly-op (Tenderly; Google Cloud DNS)
-              # - ophis-op-node-self (Aleph VM, self-hosted via Tailscale)
+              # - ophis-self-op (Aleph VM, self-hosted via Tailscale)
               agreementThreshold: 2
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
@@ -294,7 +294,7 @@ projects:
           # was not enough — `OphisOpErpcUpstreamCordoned` fired 3 more
           # times within hours of the deploy, each time accumulating
           # ~12,000 `response_type="empty"` misbehavior events on
-          # ophis-op-node-self before the eviction. Root cause is
+          # ophis-self-op before the eviction. Root cause is
           # structural: op-reth's receipt indexing is materially slower
           # than publicnode + tenderly's hosted indexers (likely they
           # serve from a denormalized receipt cache rather than
@@ -393,7 +393,7 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: ophis-op-node-self
+      - id: ophis-self-op
         # Self-hosted op-reth + op-node on Aleph VM "ophis-op-node"
         # (Tailscale IP 100.77.53.81, public 46.247.131.211:24718 SSH).
         # Phase 4 — Aleph VMs in project_ophis.md has the full setup
