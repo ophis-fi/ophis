@@ -104,12 +104,32 @@ contract SweepSettlementBuffer is Script {
         // That gates against operator error (broadcasting a sweep that
         // costs more in gas than it captures). Hard-abort unless override
         // is explicitly set.
-        uint256 wethBalance = _getBalanceForToken(params.settlement, params.tokens, DEFAULT_WETH_OP);
+        //
+        // 2026-05-20 audit follow-up: the prior check inspected ONLY the
+        // WETH balance, which meant a sweep targeting USDC (or any other
+        // configured token) was blocked even when that token had a
+        // substantial accumulated balance. Now: compute the MAX balance
+        // across the configured token list and gate on that. The
+        // semantic is "if no configured token has balance >= threshold,
+        // the sweep isn't worth the gas". Imperfect across mixed
+        // decimals (1e18 WETH-wei vs 1e6 USDC-base) but a pragmatic
+        // improvement over the WETH-only check; operator sets the
+        // threshold knowing the bucket they're targeting.
+        uint256 maxBalance = 0;
+        address maxBalanceToken = address(0);
+        for (uint256 i = 0; i < params.tokens.length; i++) {
+            uint256 b = params.tokens[i].balanceOf(address(params.settlement));
+            if (b > maxBalance) {
+                maxBalance = b;
+                maxBalanceToken = address(params.tokens[i]);
+            }
+        }
         bool forceBelowThreshold = vm.envOr("FORCE_SWEEP_BELOW_THRESHOLD", false);
-        if (wethBalance < params.minTotalWei && !forceBelowThreshold) {
-            console.log("ABORT: WETH balance below threshold.");
-            console.log("  WETH balance:", wethBalance);
-            console.log("  threshold:   ", params.minTotalWei);
+        if (maxBalance < params.minTotalWei && !forceBelowThreshold) {
+            console.log("ABORT: no configured token has balance >= threshold.");
+            console.log("  max balance:    ", maxBalance);
+            console.log("  max balance token:", maxBalanceToken);
+            console.log("  threshold:      ", params.minTotalWei);
             console.log("Set FORCE_SWEEP_BELOW_THRESHOLD=1 to override.");
             revert("BelowThreshold");
         }
@@ -137,28 +157,40 @@ contract SweepSettlementBuffer is Script {
         address safe,
         IERC20[] memory tokens
     ) internal view returns (GPv2Interaction.Data[] memory) {
-        // First pass: count tokens with non-zero balance.
+        // 2026-05-20 audit follow-up: the prior implementation called
+        // `tokens[i].balanceOf(settlement)` TWICE per token (once to
+        // count, once to encode the transfer). Between the two calls,
+        // a concurrent fill on the settlement contract could change
+        // balances; worse, if a token's balance dropped to zero
+        // between passes, `count` would over-allocate and leave
+        // uninitialized (target=0x0, value=0, callData=0x) entries in
+        // the result array — the final `settlement.settle(...)` would
+        // then attempt to call 0x0 and revert the entire sweep.
+        //
+        // Fix: snapshot all balances into a memory array once, then
+        // build the interactions from the snapshot. Single source of
+        // truth, no TOCTOU window.
+        uint256[] memory balances = new uint256[](tokens.length);
         uint256 count = 0;
         for (uint256 i = 0; i < tokens.length; i++) {
-            uint256 bal = tokens[i].balanceOf(address(settlement));
-            if (bal > 0) {
+            balances[i] = tokens[i].balanceOf(address(settlement));
+            if (balances[i] > 0) {
                 count++;
-                console.log("  token", address(tokens[i]), "balance:", bal);
+                console.log("  token", address(tokens[i]), "balance:", balances[i]);
             } else {
                 console.log("  token", address(tokens[i]), "balance: 0 (skip)");
             }
         }
 
-        // Second pass: build the interactions array.
+        // Build the interactions array from the snapshot.
         GPv2Interaction.Data[] memory result = new GPv2Interaction.Data[](count);
         uint256 idx = 0;
         for (uint256 i = 0; i < tokens.length; i++) {
-            uint256 bal = tokens[i].balanceOf(address(settlement));
-            if (bal == 0) continue;
+            if (balances[i] == 0) continue;
             result[idx] = GPv2Interaction.Data({
                 target: address(tokens[i]),
                 value: 0,
-                callData: abi.encodeWithSelector(IERC20.transfer.selector, safe, bal)
+                callData: abi.encodeWithSelector(IERC20.transfer.selector, safe, balances[i])
             });
             idx++;
         }
