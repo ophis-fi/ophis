@@ -330,10 +330,11 @@ groups:
       # ophis-op-sanctions-oracle for full context.
       - alert: OphisHlSanctionsOracleFetchFailing
         # See OP alert for the namespace-prefix rationale (Codex Cyber
-        # PR #204 review HIGH). Full metric name:
-        # gp_v2_api_sanctions_oracle_fetch_failed_total
+        # PR #204 review HIGH + F6 stress-verify 2026-05-21).
+        # Full metric name: gp_v2_api_sanctions_oracle_fetch_failed
+        # (NO `_total` suffix — Rust prometheus crate does not auto-append).
         expr: |
-          increase(gp_v2_api_sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
+          increase(gp_v2_api_sanctions_oracle_fetch_failed{job="orderbook"}[10m]) > 5
         for: 5m
         labels:
           severity: warning
