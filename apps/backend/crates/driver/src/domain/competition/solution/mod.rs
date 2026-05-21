@@ -372,6 +372,19 @@ impl Solution {
             return Err(error::Merge::MoreOrdersThanAllowed);
         }
 
+        // Codex Cyber MED (2026-05-21 whole-repo audit): the encoder rejects
+        // any settlement that has BOTH flashloans AND wrappers (see
+        // encoding.rs `FlashloanWrappersIncompatible`). If one solution
+        // brings flashloans and the other brings wrappers, the merged
+        // solution would encode-fail. Fail fast here instead — clearer
+        // failure mode than a downstream encoding error, and it preserves
+        // both solutions' candidacy for individual submission.
+        let combined_has_flashloans = !self.flashloans.is_empty() || !other.flashloans.is_empty();
+        let combined_has_wrappers = !self.wrappers.is_empty() || !other.wrappers.is_empty();
+        if combined_has_flashloans && combined_has_wrappers {
+            return Err(error::Merge::Incompatible("flashloans and wrappers"));
+        }
+
         // Solutions should not settle the same order twice
         let uids: HashSet<_> = self.user_trades().map(|t| t.order().uid).collect();
         let other_uids: HashSet<_> = other.user_trades().map(|t| t.order().uid).collect();
@@ -442,7 +455,15 @@ impl Solution {
             // Gas fee overrides are per-solution; no meaningful way to merge them.
             gas_fee_override: None,
             flashloans,
-            wrappers: self.wrappers.clone(),
+            // Codex Cyber MED (2026-05-21 whole-repo audit): pre-fix this was
+            // `self.wrappers.clone()` — silently dropping `other.wrappers`
+            // while every other field above is full-concat. If `other`
+            // brought wrappers (e.g. WETH-wrap before its trades) they
+            // would have been omitted from the merged settlement,
+            // executing other's trades WITHOUT their funding wrappers.
+            // The early-return guard above ensures flashloans+wrappers
+            // never coexist in a merged solution.
+            wrappers: [self.wrappers.clone(), other.wrappers.clone()].concat(),
         })
     }
 

@@ -82,6 +82,33 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Preflight: stale-config detection (mirrors OP render-configs.sh).
+# A6 whole-repo audit H1 (2026-05-21): the Tier-1→1.5 migration on the
+# OP side left `configs/driver.toml` git-tracked next to its .tmpl.
+# Same risk applies symmetrically on HL — keep the stacks aligned by
+# enforcing the same invariant here. Reject any non-tmpl config that
+# contains placeholder syntax (%X or ${X}) — they should either be
+# canonical (no placeholders) or rendered (to ./rendered/), never both.
+stale_with_placeholder=()
+shopt -s nullglob
+for cfg in configs/*.toml configs/*.yaml; do
+  [[ ! -f "${cfg}.tmpl" ]] && continue
+  if grep -qE '%[A-Z_][A-Z0-9_]*|\$\{[A-Z_][A-Z0-9_]*\}' "$cfg" 2>/dev/null; then
+    stale_with_placeholder+=("$cfg")
+  fi
+done
+shopt -u nullglob
+if (( ${#stale_with_placeholder[@]} > 0 )); then
+  echo "" >&2
+  echo "ERROR: stale config(s) with placeholder syntax detected next to .tmpl files:" >&2
+  for f in "${stale_with_placeholder[@]}"; do echo "  - $f" >&2; done
+  echo "" >&2
+  echo "  These look like leftover rendered output. Decide whether the file" >&2
+  echo "  is canonical (keep, delete .tmpl) or rendered (delete, keep .tmpl)" >&2
+  echo "  and re-run." >&2
+  exit 13
+fi
+
 if [[ ! -f .env ]]; then
   echo "ERROR: .env not found in $SCRIPT_DIR — copy from .env.example first" >&2
   exit 1

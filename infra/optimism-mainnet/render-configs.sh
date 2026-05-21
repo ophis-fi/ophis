@@ -74,6 +74,43 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Preflight: scan configs/*.toml (non-tmpl) for placeholder syntax. A6
+# whole-repo audit H1 (2026-05-21): the Tier-1→1.5 migration left
+# `configs/driver.toml` (pre-Tier-1 rendered output with literal
+# %OPHIS_DRIVER_SUBMITTER_KEY placeholders) git-tracked next to its
+# .tmpl. If docker-compose's bind-mount path ever drifts back to that
+# location, the driver would start with a placeholder-laden config.
+# Fail-closed here on any non-tmpl config that contains placeholder
+# syntax — they should either be canonical (no placeholders) or
+# rendered (to ./rendered/), never both.
+#
+# Only `${var}` style placeholders are checked. The legacy `%var` style
+# (from CoW's earlier substitution format) is also rejected.
+stale_with_placeholder=()
+shopt -s nullglob
+for cfg in configs/*.toml configs/*.yaml; do
+  # Skip if a .tmpl version doesn't exist — then this `cfg` is the
+  # canonical hand-edited config (e.g. autopilot.toml has no .tmpl
+  # because it has no secrets to substitute).
+  [[ ! -f "${cfg}.tmpl" ]] && continue
+  if grep -qE '%[A-Z_][A-Z0-9_]*|\$\{[A-Z_][A-Z0-9_]*\}' "$cfg" 2>/dev/null; then
+    stale_with_placeholder+=("$cfg")
+  fi
+done
+shopt -u nullglob
+if (( ${#stale_with_placeholder[@]} > 0 )); then
+  echo "" >&2
+  echo "ERROR: stale config(s) with placeholder syntax detected next to .tmpl files:" >&2
+  for f in "${stale_with_placeholder[@]}"; do echo "  - $f" >&2; done
+  echo "" >&2
+  echo "  These look like leftover rendered output from a prior render-configs.sh" >&2
+  echo "  run that didn't clean up. The canonical path is:" >&2
+  echo "    - secret-bearing render → ./rendered/$cfg (NOT configs/)" >&2
+  echo "    - non-secret canonical  → keep ONLY configs/<name>.toml, delete .tmpl" >&2
+  echo "  Decide which, delete the wrong one, and re-run." >&2
+  exit 13
+fi
+
 if [[ ! -f .env ]]; then
   echo "ERROR: .env not found in $SCRIPT_DIR — copy from .env.example first" >&2
   exit 1
