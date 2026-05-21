@@ -32,11 +32,8 @@
 #   tenderly-op         optimism.gateway.tenderly.co   Tenderly
 #                                                       DNS: Google Cloud
 #                                                       CA: ZeroSSL/Sectigo
-#   ophis-self-op  Aleph VM via Tailscale         Ours, fully synced
-#                       100.77.53.81:8545              op-reth v1.10.2 +
-#                                                       op-node v1.18.0
-#                                                       (Phase 4, prov.
-#                                                       2026-05-13, 1.9 TB)
+#   ophis-self-op       Self-hosted, Tailscale-reachable
+#                                                       (operational details in private ops notes)
 #
 # **Threat-model: 3-of-3 over 3 fully-independent failure domains is
 # the strongest posture achievable. The prior 2-of-3 (with 2
@@ -136,12 +133,11 @@ projects:
           # since closed in 2026-05-20 evening (3) below.)
           #
           # 2026-05-20 evening (3) — ADDED self-hosted ophis-self-op
-          # as the 3rd upstream. VM1 (Aleph `ophis-op-node` at
-          # Tailscale 100.77.53.81) runs op-reth v1.10.2 + op-node v1.18.0,
-          # fully synced, controlled by us. This removes the Tenderly
-          # rate-limit bottleneck (we poll our own node freely) AND adds
-          # a 3rd fully-independent failure domain (Aleph network — not
-          # CF, not Google).
+          # as the 3rd upstream. A self-hosted full node reached via
+          # Tailscale, fully synced, controlled by us. This removes the
+          # Tenderly rate-limit bottleneck (we poll our own node freely)
+          # AND adds a 3rd fully-independent failure domain (separate
+          # network operator — not CF, not Google).
           #
           # Restored: `eth_getBalance` back to strict consensus. The
           # rate-limit reason for demotion is no longer a constraint.
@@ -163,7 +159,7 @@ projects:
           # 2026-05-20 — root-cause REVISED during task #112 investigation.
           # The Phase 3.1 swap failure was NOT a container→Tailscale
           # reachability issue (a one-shot alpine container on the same
-          # docker network successfully called 100.77.53.81:8545). The
+          # docker network successfully called the self-hosted endpoint). The
           # actual cause: eRPC's punishMisbehavior policy was kicking the
           # self-hosted upstream into a 5-min sit-out every time it had
           # minor tip-drift (5 disputes in 10min → punishment). With OP's
@@ -394,33 +390,28 @@ projects:
               jitter: 50ms
 
       - id: ophis-self-op
-        # Self-hosted op-reth + op-node on Aleph VM "ophis-op-node"
-        # (Tailscale IP 100.77.53.81, public 46.247.131.211:24718 SSH).
-        # Phase 4 — Aleph VMs in project_ophis.md has the full setup
-        # history (provisioned 2026-05-13 with 1.9 TB after the 1.1 TB
-        # disk-full miss, snapshot from datadirs.optimism.io, op-reth
-        # v1.10.2 + op-node v1.18.0).
+        # Self-hosted full node reached via Tailscale (private overlay).
+        # Operational details (provisioning history, host inventory,
+        # NAT/iptables config, software version pins, public SSH endpoint)
+        # are kept in private ops notes — see
+        # docs/operations/op-erpc-self-hosted-runbook.md (gitignored).
         #
-        # Reach path: Mac mini docker bridge → host networking →
-        # Tailscale interface → wireguard → VM1's tailscale0 →
-        # iptables NAT rule (allows source 100.100.107.110 and
-        # 100.115.232.82) → docker-proxy → op-reth 127.0.0.1:8545.
+        # Provenance + restoration procedures live in that runbook; this
+        # public template only carries the live endpoint pointer the
+        # eRPC daemon needs at runtime.
         #
-        # Latency: ~50ms RTT (Tailscale wireguard).
+        # No DNS dependency — IP-pinned because the container DNS
+        # resolver doesn't see the Tailscale overlay's MagicDNS.
         #
-        # Failure modes:
-        # - VM1 down: this upstream returns connection refused →
-        #   participant timeout. With agreementThreshold: 2, the
-        #   remaining 2 (publicnode + tenderly) form quorum if they
-        #   agree — settlement continues. If those 2 ALSO disagree
-        #   simultaneously (unlikely unless real network split), we
-        #   drop below threshold → returnError → driver pauses until
-        #   any 2 of 3 recover agreement.
-        # - Tailscale relay/wireguard hiccup: same as above.
-        # - Public IP changes (Aleph reprovision): UPDATE THIS ENDPOINT.
-        #
-        # No DNS dependency — IP-pinned because container DNS doesn't
-        # resolve Tailscale MagicDNS by default.
+        # Failure modes (operational, not security):
+        # - upstream unreachable: returns connection refused →
+        #   participant timeout. With agreementThreshold: 2 the other
+        #   two upstreams form quorum if they agree → settlement
+        #   continues. If they ALSO disagree simultaneously, we drop
+        #   below threshold → returnError → driver pauses until any
+        #   2 of 3 recover agreement.
+        # - endpoint IP rotation (host reprovision):
+        #   UPDATE THIS ENDPOINT + re-render configs.
         endpoint: http://100.77.53.81:8545
         failsafe:
           - matchMethod: "*"
