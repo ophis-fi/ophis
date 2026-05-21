@@ -9,7 +9,7 @@ export const LP_PROVIDER_NAMES: Record<LpTokenProvider, string> = {
   [LpTokenProvider.SUSHI]: 'Sushi',
   [LpTokenProvider.PANCAKE]: 'PancakeSwap',
   [LpTokenProvider.CURVE]: 'Curve',
-  [LpTokenProvider.COW_AMM]: 'CoW AMM',
+  [LpTokenProvider.COW_AMM]: 'AMM',
   [LpTokenProvider.BALANCERV2]: 'Balancer',
 }
 

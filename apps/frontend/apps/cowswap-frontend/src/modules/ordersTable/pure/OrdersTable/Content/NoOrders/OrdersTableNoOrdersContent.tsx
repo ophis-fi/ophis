@@ -93,7 +93,7 @@ export function OrdersTableNoOrdersContent({
         {emptyOrdersImage ? (
           <img src={emptyOrdersImage} alt={t`There are no orders`} />
         ) : animationData ? (
-          <styledEl.NoOrdersLottieFrame aria-label={t`Animated cow reacts to empty order list`}>
+          <styledEl.NoOrdersLottieFrame aria-label={t`Empty order list animation`}>
             {/* TODO: what fallback should be used here? */}
             <Suspense fallback={null}>
               <Lottie animationData={animationData} loop autoplay />

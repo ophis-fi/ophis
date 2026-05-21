@@ -21,17 +21,17 @@ const Answer1: FC = () => {
   return (
     <>
       <ExternalLink href="https://github.com/cowdao-grants/cow-shed">
-        {accountProxyLabelString} <Trans>(also known as CoW Shed)</Trans>
+        {accountProxyLabelString}
       </ExternalLink>{' '}
       <Trans>is a helper contract that improves the user experience within Ophis for features like</Trans>{' '}
-      <ExternalLink href="https://docs.cow.fi/cow-protocol/reference/core/intents/hooks">
-        <Trans>CoW Hooks</Trans>
+      <ExternalLink href="https://github.com/ophis-fi/ophis">
+        <Trans>Hooks</Trans>
       </ExternalLink>
       .
       <br />
       <br />
       <Trans>
-        This contract is deployed per account, with that account becoming the single owner. CoW Shed acts as an
+        This contract is deployed per account, with that account becoming the single owner. It acts as an
         intermediary account that handles trading on your behalf.
       </Trans>
       <br />
@@ -72,7 +72,7 @@ const Answer2: FC<{ recoverRouteLink: string }> = ({ recoverRouteLink }) => {
         <li>
           <Trans>
             <Link to={recoverRouteLink}>Select an {accountProxyLabelString}</Link> and then select a token you want to
-            recover from CoW Shed.
+            recover from your smart account.
           </Trans>
         </li>
         <li>

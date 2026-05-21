@@ -33,7 +33,7 @@ export function useCancelTwapOrder(): (twapOrderId: string, order: Order) => Pro
       }
 
       if (composableCowChainId !== settlementChainId) {
-        throw new Error(t`Composable Cow and Settlement contracts are not on the same chain`)
+        throw new Error(t`Smart order and Settlement contracts are not on the same chain`)
       }
 
       const partOrder = twapPartOrders[twapOrderId]?.sort((a, b) => a.order.validTo - b.order.validTo)[0]

@@ -108,24 +108,24 @@ const LOGOS: Record<ProductVariant, ThemedLogo> = {
     light: {
       default: {
         src: LOGO_COWEXPLORER,
-        alt: 'CoW Explorer',
+        alt: 'Block explorer',
         color: Color.neutral0,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW Explorer',
+        alt: 'Block explorer',
         color: Color.neutral0,
       },
     },
     dark: {
       default: {
         src: LOGO_COWEXPLORER,
-        alt: 'CoW Explorer',
+        alt: 'Block explorer',
         color: Color.neutral100,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW Explorer',
+        alt: 'Block explorer',
         color: Color.neutral100,
       },
     },
@@ -136,24 +136,24 @@ const LOGOS: Record<ProductVariant, ThemedLogo> = {
     light: {
       default: {
         src: LOGO_COWDAO,
-        alt: 'CoW DAO',
+        alt: 'Ophis governance',
         color: Color.neutral0,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW DAO',
+        alt: 'Ophis governance',
         color: Color.neutral0,
       },
     },
     dark: {
       default: {
         src: LOGO_COWDAO,
-        alt: 'CoW DAO',
+        alt: 'Ophis governance',
         color: Color.neutral100,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW DAO',
+        alt: 'Ophis governance',
         color: Color.neutral100,
       },
     },
@@ -164,24 +164,24 @@ const LOGOS: Record<ProductVariant, ThemedLogo> = {
     light: {
       default: {
         src: LOGO_COWPROTOCOL,
-        alt: 'CoW Protocol',
+        alt: 'Ophis',
         color: Color.neutral0,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW Protocol',
+        alt: 'Ophis',
         color: Color.neutral0,
       },
     },
     dark: {
       default: {
         src: LOGO_COWPROTOCOL,
-        alt: 'CoW Protocol',
+        alt: 'Ophis',
         color: Color.neutral100,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW Protocol',
+        alt: 'Ophis',
         color: Color.neutral100,
       },
     },
@@ -220,24 +220,24 @@ const LOGOS: Record<ProductVariant, ThemedLogo> = {
     light: {
       default: {
         src: LOGO_COWAMM,
-        alt: 'CoW AMM',
+        alt: 'AMM',
         color: Color.blue900Primary,
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW AMM',
+        alt: 'AMM',
         color: Color.blue900Primary,
       },
     },
     dark: {
       default: {
         src: LOGO_COWAMM,
-        alt: 'CoW AMM',
+        alt: 'AMM',
         color: '#007CDB',
       },
       logoIconOnly: {
         src: LOGO_ICON_COW,
-        alt: 'CoW AMM',
+        alt: 'AMM',
         color: '#007CDB',
       },
     },

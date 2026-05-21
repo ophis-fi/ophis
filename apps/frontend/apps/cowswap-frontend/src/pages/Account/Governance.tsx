@@ -10,7 +10,7 @@ export default function Governance() {
     <BannerCard>
       <BannerCardContent fontSize="14px">
         <BannerCardTitle fontSize={24}>
-          <Trans>CoW DAO Governance</Trans>
+          <Trans>Governance</Trans>
         </BannerCardTitle>
         <small>
           <Trans>Use your (v)COW balance to vote on important proposals or participate in forum discussions.</Trans>
@@ -20,7 +20,7 @@ export default function Governance() {
             <Trans>View proposals</Trans> ↗
           </ExtLink>
           <ExtLink href={'https://forum.cow.fi/'}>
-            <Trans>CoW forum</Trans> ↗
+            <Trans>Forum</Trans> ↗
           </ExtLink>
           <ExtLink href={DELEGATE_URL}>
             <Trans>Delegate (v)COW</Trans> ↗

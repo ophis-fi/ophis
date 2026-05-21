@@ -37,15 +37,15 @@ export const CoWAmmInlineBanner = ({ token, apyDiff }: { token: LpToken | undefi
         {token && apyDiff && apyDiff > 0 ? (
           <>
             <Trans>
-              Convert your <TokenSymbol token={token} /> LP tokens into CoW AMM pools and earn up to{' '}
+              Convert your <TokenSymbol token={token} /> LP tokens into AMM pools and earn up to{' '}
               <strong>+{apyDiffFormatted}%</strong> more yield compared to <TokenSymbol token={token} />. Or, swap
             </Trans>
           </>
         ) : (
           <Trans>Swap</Trans>
         )}{' '}
-        <Trans>any token into CoW AMM pools to start benefiting from attractive APRs.</Trans>{' '}
-        <ExternalLink href="https://cow.fi/cow-amm">
+        <Trans>any token into AMM pools to start benefiting from attractive APRs.</Trans>{' '}
+        <ExternalLink href="https://github.com/ophis-fi/ophis">
           <Trans>Learn more</Trans>
         </ExternalLink>
       </span>

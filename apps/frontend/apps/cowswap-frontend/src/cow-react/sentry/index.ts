@@ -30,7 +30,7 @@ class SentryDedupeLocal extends Sentry.Dedupe {
   }
 }
 
-const release = 'CowSwap@v' + pkg.version
+const release = 'Ophis@v' + pkg.version
 registerOnWindow({
   release,
   gitCommitHash: GIT_COMMIT_HASH,

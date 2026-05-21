@@ -54,7 +54,7 @@ export default function MevSlicer(): ReactNode {
     <Wrapper>
       <PageTitle title={i18n._(PAGE_TITLES.MEV_SLICER)} />
       <p>
-        <Trans>This CoW doesn&apos;t run away any more! Not from MEV!</Trans>
+        <Trans>This order doesn&apos;t run away any more! Not from MEV!</Trans>
       </p>
       <p>
         <Trans>Now is the time to take some action!</Trans> -{' '}
@@ -67,7 +67,7 @@ export default function MevSlicer(): ReactNode {
         </strong>
       </p>
       <p>
-        <img src={ninjaCowImg} alt={t`Ninja Cow`} />
+        <img src={ninjaCowImg} alt={t`Ninja Order`} />
       </p>
 
       <ButtonPrimary
