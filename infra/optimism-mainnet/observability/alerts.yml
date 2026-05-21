@@ -197,7 +197,7 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more OP upstream(s) (publicnode / tenderly /
-            1rpc) are slow or rate-limited.
+            ophis-op-node-self) are slow or rate-limited.
 
             Diagnose: `cast block-number --rpc-url <each upstream>` to find
             which one is unresponsive. Check rpc-proxy logs:
@@ -231,7 +231,7 @@ groups:
             Sustained elevation = investigate which upstream is drifting:
               cast block-number --rpc-url https://optimism-rpc.publicnode.com
               cast block-number --rpc-url https://optimism.gateway.tenderly.co
-              cast block-number --rpc-url https://1rpc.io/op
+              cast block-number --rpc-url http://100.77.53.81:8545
             and compare. Provider > 5 blocks behind the median should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
 
@@ -265,6 +265,112 @@ groups:
                  (see project_ophis_roadmap.md section 3 reliability map)
               3. Worst case: temporarily lower agreementThreshold to 1 (NOT
                  audit-compliant — revert as soon as providers recover)
+
+      # ============================================================
+      # Per-upstream cordon / staleness — pairs with task #119
+      # (split disputeThreshold by method, configs/erpc.yaml.tmpl).
+      # The split lowered the critical-path threshold to 60 (Block A);
+      # these alerts surface false-ejections so we can tune up to 100
+      # if needed.
+      # ============================================================
+
+      # `OphisOpErpcUpstreamCordoned` fires as soon as eRPC's punish-
+      # Misbehavior policy sits an upstream out. With sitOutPenalty:5m,
+      # `for: 3m` ensures we page on a single sustained cordon (3m of
+      # the 5m sitOut elapsed) — NOT only on chronic re-cordon, which
+      # would be the case at `for: 10m` > sitOutPenalty:5m. The
+      # `reason="misbehaving in consensus"` label value was verified
+      # live against the running eRPC (2026-05-20). Absent-metric
+      # guard below catches future metric renames.
+      - alert: OphisOpErpcUpstreamCordoned
+        expr: erpc_upstream_cordoned{network="evm:10", reason="misbehaving in consensus"} == 1
+        for: 3m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP eRPC upstream {{ $labels.upstream }} cordoned for misbehavior"
+          description: |
+            The {{ $labels.upstream }} upstream has been cordoned by eRPC's
+            punishMisbehavior policy for sustained consensus disagreement.
+            The remaining 2 upstreams continue serving requests, but quorum
+            posture has degraded from 2-of-3 to effectively 2-of-2.
+
+            Possible causes:
+              1. Genuine misbehavior — hostile or buggy upstream returning
+                 forged answers. Compare via direct probe:
+                   cast call --rpc-url https://optimism-rpc.publicnode.com   ...
+                   cast call --rpc-url https://optimism.gateway.tenderly.co  ...
+                   cast call --rpc-url http://100.77.53.81:8545              ...
+              2. Chronic tip-lag — check OphisOpErpcUpstreamBlockHeadLagging
+                 (sibling alert below). >5 blocks behind = sync trouble.
+              3. Network partition — for ophis-op-node-self, verify
+                 Tailscale connectivity (`tailscale status` on the Mac mini).
+
+            Auto-recovery: sitOutPenalty is 5m. If the upstream re-cordons
+            within minutes of release, treat as chronic. If task #119's
+            lowered threshold (60) is causing false ejections on a healthy
+            upstream, raise the disputeThreshold for Block A in
+            configs/erpc.yaml.tmpl and redeploy (next step: 100).
+
+      # `OphisOpErpcUpstreamBlockHeadLagging` — chronic-lag root-cause
+      # detector. Pairs with the Cordoned alert: if Cordoned fires AND
+      # this fires for the same upstream, root cause is sync (not
+      # misbehavior) and the operator should fix the upstream rather
+      # than raising the threshold. The block_head_lag gauge is simpler
+      # than the stale_latest_block_total counter (which is a per-
+      # category rate and harder to interpret). Threshold of 5 blocks
+      # = ~10 seconds of OP block time = real lag, not microsecond drift.
+      - alert: OphisOpErpcUpstreamBlockHeadLagging
+        expr: erpc_upstream_block_head_lag{network="evm:10"} > 5
+        for: 15m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP eRPC upstream {{ $labels.upstream }} >5 blocks behind for 15m"
+          description: |
+            The {{ $labels.upstream }} upstream has been more than 5 blocks
+            behind the median for 15 minutes. This is the dominant root
+            cause of dispute churn on Block A consensus methods (eth_call,
+            eth_getBalance) — the chronically-lagging upstream returns
+            stale state, gets disputed, eventually gets cordoned by
+            punishMisbehavior.
+
+            For ophis-op-node-self: SSH check op-node + op-reth sync.
+              ssh root@100.77.53.81 \
+                'curl -s -H content-type:application/json \
+                  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
+                  http://localhost:8545'
+            Expected `false` for healthy. If `{result: {...}}`, op-node
+            is still bootstrapping.
+
+            For publicnode-op / tenderly-op: provider-side regression.
+            Consider hot-swap if sustained > 1h.
+
+      # `OphisOpErpcCordonMetricAbsent` — defense against metric renames.
+      # If eRPC removes / renames the cordoned gauge in a future version,
+      # the OphisOpErpcUpstreamCordoned alert silently stops firing. This
+      # absent() check warns us after 1h of zero series presence.
+      - alert: OphisOpErpcCordonMetricAbsent
+        expr: absent(erpc_upstream_cordoned{network="evm:10"})
+        for: 1h
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP eRPC `erpc_upstream_cordoned` metric absent for 1h"
+          description: |
+            The `erpc_upstream_cordoned` gauge has not been seen by
+            Prometheus for an hour. Either eRPC is not exporting it
+            (version change?) or the rpc-proxy container is unhealthy.
+
+            Without this metric, the OphisOpErpcUpstreamCordoned alert
+            cannot fire — we'd be deploying with a silent monitoring
+            gap on per-upstream consensus health.
+
+            Verify: `docker exec optimism-mainnet-rpc-proxy-1 wget -qO- \
+              http://localhost:4001/metrics | grep cordoned`.
 
   - name: ophis-op-latency
     interval: 30s

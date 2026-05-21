@@ -18,8 +18,13 @@
 #    1rpc consistently failed → `n/a = ErrUpstreamsExhausted` on every
 #    consensus call → 3-of-3 was unsatisfiable → driver couldn't boot.
 #
-# **Final config: 3 upstreams, agreementThreshold=3.** (Upgraded from
-# 2-of-2 on 2026-05-20 when the self-hosted op-node became available.)
+# **Final config: 3 upstreams, agreementThreshold=2 (2-of-3 quorum).**
+# Considered 3-of-3 strict during the self-hosted onboarding window
+# (header comment iteration 144 below); reverted to 2-of-3 because
+# 3-of-3 was unsatisfiable under self-hosted's normal tip-drift. The
+# threat-model exposition below (lines 145-153) describes 2-of-3
+# quorum: a single hostile upstream cannot satisfy quorum because the
+# remaining 2 (across 2 distinct DNS providers) would dispute.
 #
 #   publicnode-op       optimism-rpc.publicnode.com    Allnodes
 #                                                       DNS: Cloudflare
@@ -122,7 +127,7 @@ projects:
           # via `enforceHighestBlock: true` + `enforceNonNullTaggedBlocks:
           # true` at the network level above. Settlement-integrity
           # methods (`eth_call`, `eth_getLogs`, `eth_getTransactionReceipt`,
-          # `eth_getTransactionByHash`) keep 2-of-2 consensus.
+          # `eth_getTransactionByHash`) keep 2-of-3 consensus.
           #
           # 2026-05-20 evening (2) — DROPPED `eth_getBalance` from strict
           # consensus too. Tenderly's free public Gateway hit per-IP
@@ -166,15 +171,92 @@ projects:
           # indexers is the natural state — disputeThreshold:5 punishes
           # normal operation.
           #
-          # Fix: bumped disputeThreshold to 30 (below). This gives
-          # self-hosted enough drift-tolerance to remain participating
-          # while still catching genuinely hostile/malformed answers
-          # (which would consistently disagree, not occasionally).
+          # ============================================================
+          # 2026-05-20 (task #119) — SPLIT disputeThreshold BY METHOD.
+          # ============================================================
           #
-          # With self-hosted reliably available again, restore the full
-          # consensus method list — covers eth_call (solver winner-
-          # selection per Codex+sharp-edges audit 2026-05-20 F6).
-          - matchMethod: "eth_call|eth_getBalance|eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory"
+          # Why the single-bucket threshold:100 was unsafe to keep:
+          # a single global threshold of 100 means a hostile upstream
+          # can return up to 99 forged answers per 10-min window on the
+          # most security-critical methods (eth_call, eth_getBalance)
+          # before catching a 5-min sit-out — sustained ~95% DoS duty
+          # cycle on the path that gates settlement. Phase 4 audit N1
+          # (Codex + sharp-edges, 2026-05-20) flagged this as
+          # defense-in-depth-required pre-meaningful-TVL.
+          #
+          # Split into two consensus blocks by threat surface:
+          #
+          # **Block A — deterministic-state methods (LOW threshold)**:
+          # eth_call, eth_getBalance, eth_getCode, eth_getStorageAt.
+          # These are pure state lookups at a specified block tag.
+          #
+          # `enforceHighestBlock: true` (set at the network level above)
+          # gates routing to only-fully-caught-up upstreams — it does
+          # NOT coordinate the participants to query a specific block
+          # number. Two upstreams 1 block apart on "latest" will still
+          # return two state snapshots; only the behind-tip one gets
+          # routed-around. Drift IS real on this bucket.
+          # `eth_getTransactionCount` is deliberately NOT in Block A:
+          # the `pending` block tag is mempool-dependent, and the
+          # driver's submission mempool is pinned to publicnode-op
+          # alone — the self-hosted op-node will not see pending txs
+          # before the sequencer gossips them back, so EIP-7702
+          # delegation-setup ceremonies (90s of pending-tag polling)
+          # would cordon self-hosted within seconds of every boot.
+          # Moved to Block B where threshold:100 absorbs that burst.
+          #
+          # threshold:60 catches hostile sustained divergence ~1.7× faster
+          # than the previous threshold:100 while preserving 3× headroom
+          # over the live ~20 disputes/10min baseline (driven primarily
+          # by ophis-op-node-self tip-drift on "latest" tags). Sharp-
+          # edges finding 1 (2026-05-20): the 1.5× headroom of threshold:30
+          # was insufficient for bootstrap-burst + OP-sequencer-hiccup
+          # scenarios where all 3 upstreams snap back to consensus at
+          # different microseconds. Threshold:60 is the floor; raise to
+          # 100 (and accept the DoS-window cost) only if false-ejection
+          # alerts fire repeatedly on a healthy upstream over a 24h
+          # window.
+          #
+          # **Block B — tip-lag-tolerant observation methods (HIGH
+          # threshold)**: eth_getLogs, eth_getTransactionReceipt,
+          # eth_getTransactionByHash, eth_estimateGas, eth_feeHistory,
+          # eth_getTransactionCount.
+          # These have natural disagreement floors driven by indexer
+          # propagation lag near the chain tip (e.g. just-landed
+          # Settlement txs may not be indexed by all upstreams
+          # simultaneously; estimateGas has provider-implementation
+          # variance; feeHistory percentiles differ slightly between
+          # providers; getTransactionCount with `pending` tag is
+          # mempool-dependent and only the publicnode-op mempool is
+          # authoritative for our submission path). threshold:100
+          # absorbs this baseline drift while still catching sustained
+          # malicious answers — each forged dispute still triggers
+          # consensus failure → returnError → driver fails closed at
+          # request time. The threshold only controls whether we keep
+          # retrying that upstream over time.
+          #
+          # **Block C** is the existing catch-all retry (no consensus).
+          #
+          # Empirical baseline (live OP mainnet eRPC, ~1h window
+          # 2026-05-20 evening):
+          #   eth_call:                      2.09% dispute rate
+          #   eth_feeHistory:                1.64% dispute rate
+          #   eth_getTransactionReceipt:     0.25% dispute rate
+          #   eth_getLogs:                   0.12% dispute rate
+          # The Block A threshold of 60 leaves 3× headroom for eth_call
+          # (the most-disputed method in that bucket). Operational reality
+          # test: redeploy → monitor erpc_upstream_cordoned for false
+          # ejections in the first hour. If false-ejection fires more
+          # than once per 30 minutes on a healthy upstream, raise to 100
+          # (matching Block B) and accept the DoS-window cost.
+          #
+          # **Pairs with new Prometheus alerts** (observability/alerts.yml):
+          # - OphisOpErpcUpstreamCordoned (per-upstream sat-out detection)
+          # - OphisOpErpcUpstreamBlockHeadLagging (chronic-lag root cause)
+          # - OphisOpErpcCordonMetricAbsent (silent-monitoring-gap guard)
+
+          # === Block A: Deterministic-state methods (LOW threshold) ===
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt"
             timeout:
               duration: 12s
             consensus:
@@ -183,74 +265,72 @@ projects:
               # - publicnode-op (Allnodes; CF DNS)
               # - tenderly-op (Tenderly; Google Cloud DNS)
               # - ophis-op-node-self (Aleph VM, self-hosted via Tailscale)
-              #
-              # **Threshold downgrade from 3-of-3 (Codex+sharp-edges
-              # pre-merge audit, 2026-05-20):** the earlier Codex
-              # finding ("2-of-3 is CF-poisonable") applied to the
-              # 2-of-3 config where 2 of the 3 were CF-correlated
-              # (publicnode + 1rpc). With the self-hosted Aleph node
-              # replacing the second CF participant, the 3 upstreams
-              # span 3 distinct DNS/operator/network failure domains —
-              # a single-upstream compromise can no longer satisfy
-              # quorum because the other 2 (one of which must be the
-              # non-compromised distinct-DNS upstream) would dispute.
-              # Going back to 2-of-3 gives us availability resilience:
-              # a single-upstream blip (tenderly 429, VM1 kernel reboot,
-              # publicnode hiccup) leaves 2 healthy upstreams that can
-              # still form quorum. 3-of-3 made the system fail-closed
-              # on ANY blip, which is operationally untenable.
               agreementThreshold: 2
               disputeBehavior: returnError
-              # Mirroring HL audit decision (Codex Cyber H3): the obvious
-              # default `acceptMostCommonValidResult` collapses to
-              # single-upstream trust when 2/3 providers fail to answer.
-              # `returnError` is the only fail-closed behavior consistent
-              # with the threat model.
               lowParticipantsBehavior: returnError
               preferNonEmpty: true
               # No `ignoreFields` here — see HL eRPC Codex Cyber finding #1.
               # Allowing field-level skip lets a hostile upstream forge the
               # skipped field while matching every other field; consensus
-              # passes spuriously. OP block contents are deterministic per
-              # numbered block, so strict compare costs nothing on the
-              # availability axis here.
+              # passes spuriously.
               punishMisbehavior:
-                # 2026-05-20 — raised from 5 → 30 during task #112 root
-                # cause investigation. OP's 2s block time + 3 independently-
-                # operated indexers means tip-drift disagreements happen
-                # multiple times per minute as a NATURAL outcome of upstream
-                # state propagation. With threshold:5 + window:10m, even a
-                # fully-synced healthy upstream gets ejected within seconds
-                # of startup (verified: ophis-op-node-self had ZERO
-                # successful requests in 60s of polling despite being
-                # directly reachable from the same docker network).
-                #
-                # Threshold:100 trades a small security degradation (a real
-                # hostile upstream gets to answer 100 vs 5 disputed reads
-                # before sit-out kicks in) for major operational
-                # availability. Each forged dispute still causes consensus-
-                # failure → returnError → driver fails-closed; the
-                # disputeThreshold only controls when we STOP TRYING that
-                # upstream entirely. So the 100 forged answers don't poison
-                # settlement, they just slow it.
-                #
-                # Empirically (2026-05-20 post-restart): threshold:30 still
-                # ejected self-hosted within seconds during a post-restart
-                # catch-up burst. 100 absorbs that. At steady state, drift-
-                # induced disputes are ~1/min on eth_getTransactionReceipt
-                # for just-landed Settlement txs (indexing lag), so 100 in
-                # 10min gives ~10× headroom over baseline.
-                disputeThreshold: 100
+                # TIGHT threshold for security-critical state lookups.
+                # 3× headroom over the empirical 20 disputes/10min
+                # baseline on eth_call. A hostile upstream catches a 5-min
+                # sit-out after 60 forged answers (vs 100 in the old
+                # single-bucket config) — 1.7× DoS-window reduction on
+                # the settlement-gating path. Sharp-edges (2026-05-20)
+                # bumped this from 30 → 60 to absorb bootstrap-burst
+                # scenarios where 3 upstreams snap back to consensus at
+                # different microseconds during driver redeploy.
+                disputeThreshold: 60
                 disputeWindow: 10m
-                # Sharp-edges follow-up #3: 30m sit-out is too long while
-                # we're tuning a fresh upstream set. 5m is recoverable
-                # within a single docker-compose `restart driver`. Tighten
-                # back to 30m once we have ≥7 days of clean operation.
                 sitOutPenalty: 5m
-          # All other methods go through the default upstream-level failsafe
-          # with retry — no consensus needed for block-stream polling +
-          # balance reads. Tx submission still routes via driver's pinned
-          # [[submission.mempool]] block (single endpoint, nonce-coherent).
+
+          # === Block B: Tip-lag-sensitive observation methods (HIGH threshold) ===
+          - matchMethod: "eth_getLogs|eth_getTransactionReceipt|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+              preferNonEmpty: true
+              punishMisbehavior:
+                # HIGH threshold absorbs natural indexer drift near tip.
+                # eth_getTransactionReceipt has the highest baseline
+                # (~119 disputes / 47k requests = 0.25%) driven by
+                # just-landed Settlement-tx propagation lag.
+                #
+                # 2026-05-20 (post-deploy follow-up): bumped 100 → 200
+                # after OphisOpErpcUpstreamCordoned fired within 30min
+                # of the initial deploy. Root cause: ophis-op-node-self
+                # accumulated 112 `response_type="empty"` disputes on
+                # eth_getTransactionReceipt (per `erpc_consensus_misbehavior_detected_total`).
+                # The cause is op-reth's receipt-indexing lag for just-
+                # landed txs vs publicnode/tenderly's hosted indexers —
+                # during Settlement broadcast bursts the driver polls
+                # the receipt aggressively, and self-hosted's
+                # not-yet-indexed `null` answer is the lone dissenter
+                # while the other two agree on the populated receipt.
+                # This is propagation lag, not misbehavior; block_head_lag=0,
+                # eth_syncing=false, identical responses on historical blocks.
+                # Bumped threshold absorbs Settlement-burst windows
+                # (~20 fresh-receipt polls per Settlement event × ~5
+                # events per 10min = ~100 baseline; 200 gives 2× headroom
+                # over that and ~5× over the steady-state 0.25% rate).
+                # Receipts security still protected by 2-of-3 consensus
+                # at request time; threshold only controls when we stop
+                # asking the chronically-lagging upstream.
+                disputeThreshold: 200
+                disputeWindow: 10m
+                sitOutPenalty: 5m
+
+          # === Block C: Catch-all retry (no consensus) ===
+          # Block-stream polling, balance reads on non-consensus paths.
+          # Tx submission routes via driver's pinned [[submission.mempool]]
+          # block (single endpoint, nonce-coherent).
           - matchMethod: "*"
             timeout:
               duration: 12s
