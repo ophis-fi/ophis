@@ -620,13 +620,25 @@ impl RunLoop {
             let submission_address = bid.driver().submission_address;
             let is_solution_from_driver = bid.solution().solver() == submission_address;
 
-            // Filter out solutions that don't come from their corresponding submission
-            // address
+            // Trust-boundary check: the driver is supposed to sign solutions
+            // with its declared submission address. A mismatch means either
+            // (a) the driver is impersonating another driver's address, or
+            // (b) it has a bug producing solutions under a wrong key.
+            // Either case is a security signal — log at `error!` so it
+            // surfaces in alerting, AND increment a counter so an
+            // alerting rule can pin on sustained occurrences without
+            // tailing logs.
             if !is_solution_from_driver {
-                tracing::warn!(
+                Metrics::get()
+                    .solver_submission_mismatch
+                    .with_label_values(&[&bid.driver().name])
+                    .inc();
+                tracing::error!(
                     driver = bid.driver().name,
                     ?submission_address,
-                    "the solution received is not from the driver submission address"
+                    solution_solver = ?bid.solution().solver(),
+                    "trust-boundary violation: solution solver field does not match \
+                     the driver's declared submission address (possible impersonation)"
                 );
                 return false;
             }
@@ -1013,6 +1025,15 @@ struct Metrics {
         1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 2_000_000, 3_000_000, 4_000_000
     ))]
     solve_request_body_size: prometheus::Histogram,
+
+    /// Trust-boundary signal: a driver returned a solution whose
+    /// `solver` field doesn't match its own declared submission address.
+    /// Pre-this-metric the only signal was a `tracing::warn!` per
+    /// dropped solution — meaning a real impersonation attempt could
+    /// scroll past in logs without raising the auditable counter that
+    /// alerting rules can pin.
+    #[metric(labels("driver"))]
+    solver_submission_mismatch: prometheus::IntCounterVec,
 }
 
 impl Metrics {
