@@ -491,11 +491,13 @@ groups:
         # Metric is scraped from orderbook, which sets namespace `gp_v2_api`
         # at observe::metrics::setup_registry(...). Combined with subsystem
         # `sanctions` and field `oracle_fetch_failed`, the full name is
-        # `gp_v2_api_sanctions_oracle_fetch_failed_total`. Codex Cyber
-        # caught the original alert was querying the un-prefixed name and
-        # would never have fired.
+        # `gp_v2_api_sanctions_oracle_fetch_failed` — NO `_total` suffix.
+        # The Rust `prometheus` crate does NOT auto-append `_total`
+        # (unlike Prometheus convention). Caught during F6 stress-verify
+        # 2026-05-21 — previous expression queried `..._total` and would
+        # never have matched the actual scraped metric series.
         expr: |
-          increase(gp_v2_api_sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
+          increase(gp_v2_api_sanctions_oracle_fetch_failed{job="orderbook"}[10m]) > 5
         for: 5m
         labels:
           severity: warning
