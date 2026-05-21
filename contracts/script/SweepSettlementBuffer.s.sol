@@ -113,8 +113,10 @@ contract SweepSettlementBuffer is Script {
         params.minEthWei = vm.envOr("MIN_ETH_WEI", DEFAULT_MIN_ETH_WEI);
 
         // TOKENS is a comma-separated list — fall back to defaults (USDC + WETH).
+        bool tokensFromEnv = false;
         try vm.envString("TOKENS") returns (string memory tokensStr) {
             params.tokens = _parseTokenList(tokensStr);
+            tokensFromEnv = true;
         } catch {
             params.tokens = new IERC20[](2);
             params.tokens[0] = IERC20(DEFAULT_USDC_OP);
@@ -122,9 +124,16 @@ contract SweepSettlementBuffer is Script {
         }
 
         // HIGH-1: per-token thresholds. MIN_BASE_UNITS is a comma-separated
-        // list aligned 1:1 with TOKENS. When unset, fall back to the
-        // known-defaults table by address; for unknown addresses use the
-        // conservative legacy threshold.
+        // list aligned 1:1 with TOKENS.
+        //
+        // Codex MED re-audit (2026-05-22 post-PR-#223 review): when TOKENS
+        // is overridden but MIN_BASE_UNITS is left unset, the unknown-token
+        // fallback `DEFAULT_MIN_UNKNOWN_BASE_UNITS = 1e15` re-creates the
+        // HIGH-1 bug for any 6-decimal token (1e15 base units = $1B for a
+        // 1:1 USD stablecoin). USDT, USDC.e, FDUSD, etc. are all 6-decimal.
+        // To prevent silent re-introduction, require MIN_BASE_UNITS to be
+        // explicit whenever TOKENS is overridden — the operator MUST think
+        // about thresholds for any non-default token mix.
         try vm.envString("MIN_BASE_UNITS") returns (string memory minStr) {
             params.minBaseUnits = _parseUintList(minStr);
             require(
@@ -132,6 +141,11 @@ contract SweepSettlementBuffer is Script {
                 "SweepScript: MIN_BASE_UNITS length mismatch with TOKENS"
             );
         } catch {
+            require(
+                !tokensFromEnv,
+                "SweepScript: MIN_BASE_UNITS must be set when TOKENS is overridden (Codex re-audit MED, PR #223)"
+            );
+            // Default TOKENS path → use the known-defaults table (USDC+WETH).
             params.minBaseUnits = new uint256[](params.tokens.length);
             for (uint256 i = 0; i < params.tokens.length; i++) {
                 params.minBaseUnits[i] = _defaultThresholdFor(address(params.tokens[i]));
