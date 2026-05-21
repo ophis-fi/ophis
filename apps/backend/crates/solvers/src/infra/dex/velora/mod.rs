@@ -295,6 +295,28 @@ impl Velora {
                 .checked_add(gas_u256 / U256::from(2))
                 .ok_or(Error::GasCalculationFailed)?;
 
+            // Buffer-siphon defense (audit 2026-05-21, mirrors the
+            // KyberSwap check at infra/dex/kyberswap/mod.rs:187-196).
+            // The `prices.src_amount` we received from Velora's /prices
+            // endpoint is fully API-controlled. If a compromised or
+            // misbehaving edge returned `src_amount > order.amount.get()`,
+            // we'd grant Augustus an inflated allowance AND feed an
+            // over-sized input asset into the solution. With Settlement
+            // holding buffer balance from a concurrent settle (CIP-75
+            // partner fee accumulation, MEV-receipt, etc.), Augustus's
+            // `transferFrom(settlement, ...)` could pull from that
+            // buffer beyond the actual order amount. Fail fast rather
+            // than trust the API's `src_amount`.
+            if prices.src_amount != order.amount.get() {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "/prices returned src_amount {:?}, expected {:?}",
+                        prices.src_amount,
+                        order.amount.get()
+                    ),
+                });
+            }
             Ok(dex::Swap {
                 calls: vec![dex::Call {
                     to: prices_router,
