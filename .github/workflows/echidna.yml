@@ -1,0 +1,66 @@
+name: Echidna fuzz
+
+# Runs the Trail of Bits Echidna property-based fuzzer against the
+# AllowList authentication harness at contracts/echidna/E2EAllowList.sol.
+#
+# Two triggers:
+#   - workflow_dispatch (operator-triggered with a custom test budget)
+#   - schedule weekly Monday 03:00 UTC (background regression check)
+#
+# Echidna failures surface as job failures + an artifact upload (the
+# call-sequence shrunk counterexample) for triage. Any counterexample
+# is a real bug — no baseline of expected failures.
+#
+# SECURITY: this workflow only uses ${{ github.workspace }} and
+# ${{ github.sha }} — both system-controlled, not user-tainted. The
+# manual `test_limit` input is numeric-only and never reaches a shell
+# context (used only in a future enhancement; currently echidna.yaml
+# determines the limit).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  echidna:
+    name: Echidna — E2EAllowListEchidna
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Run Echidna in TOB toolbox
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          mkdir -p /tmp/echidna-out
+          chmod 0777 /tmp/echidna-out
+          # Same digest-pinned TOB image as security.yml's Slither job.
+          docker run --rm \
+            -v "${WORKSPACE}/contracts:/work" \
+            -v /tmp/echidna-out:/out \
+            -w /work \
+            trailofbits/eth-security-toolbox@sha256:a60d69da3d7f3fb444be052f93caecac0b560085bf2ccf9c3dcb5386d7532fa9 \
+            bash -c '
+              set -e
+              solc-select use 0.7.6 >/dev/null 2>&1
+              cd echidna
+              echidna E2EAllowList.sol \
+                --contract E2EAllowListEchidna \
+                --config echidna.yaml \
+                --corpus-dir /out/corpus \
+                --format text \
+                2>&1 | tee /out/echidna.log
+            '
+
+      - name: Upload Echidna corpus + log
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: echidna-${{ github.sha }}
+          path: /tmp/echidna-out/
+          retention-days: 90
