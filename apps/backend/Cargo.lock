@@ -6040,6 +6040,9 @@ dependencies = [
  "contracts",
  "futures",
  "moka",
+ "observe",
+ "prometheus",
+ "prometheus-metric-storage",
  "tokio",
  "tracing",
 ]
