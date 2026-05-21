@@ -185,8 +185,12 @@ impl Mempools {
         // check — without this guard, a pathological RPC misreport of
         // `eth_gasPrice` could push the bumped/overridden estimate above the
         // configured cap and drain the submitter EOA on a single broadcast.
-        let final_gas_price =
-            enforce_gas_price_cap(final_gas_price, mempool, "submit_settlement")?;
+        //
+        // Submit-path is FAIL-CLOSED: the settle tx is 200-400k gas, so the
+        // drain on a bad broadcast is significant. Aborting is correct; the
+        // operator pages on the new `OphisOpGasPriceCapExceeded` alert and
+        // intervenes. (See sharp-edges audit F3 for why cancel-path differs.)
+        let final_gas_price = enforce_gas_price_cap_on_submit(final_gas_price, mempool)?;
 
         tracing::debug!(
             ?submission_block,
@@ -360,14 +364,18 @@ impl Mempools {
             _ => fallback_gas_price,
         };
 
-        // Phase 4 audit F2: re-enforce gas_price_cap on the cancellation path.
-        // Cancellation bumps the original tx's gas price by GAS_PRICE_BUMP_PCT
-        // without consulting the cap; if the original was already near-cap, a
-        // bumped cancellation would broadcast above-policy. We treat a
-        // cap-exceeding cancellation as a hard error — the operator must
-        // intervene (manual cancel from a higher-fee account, or wait for the
-        // tx to time out naturally) rather than silently exceeding the cap.
-        let final_gas_price = enforce_gas_price_cap(final_gas_price, mempool, "cancel_settlement")?;
+        // Phase 4 audit F2 + sharp-edges F3 (2026-05-21): observe-but-don't-abort
+        // on the cancel path. The original settle tx is ALREADY broadcast at
+        // this point — aborting the cancel here would leave the submitter EOA's
+        // nonce blocked by the in-flight settle tx until either it mines or
+        // gets evicted from the OP mempool (≥3h on default txpool.lifetime).
+        // That nonce-stuck outcome is strictly worse than a cancel broadcast
+        // exceeding the cap, because cancellation is 21000 gas (bounded $0.05
+        // fee drain even at 1000 gwei) while a stuck nonce blocks all future
+        // settlements from that signer. We page the operator via the same
+        // alert/counter so the violation is investigated, but broadcast the
+        // cancellation regardless.
+        observe_cancel_cap_violation(final_gas_price, mempool);
 
         let cancellation = eth::Tx {
             from: signer,
@@ -443,40 +451,84 @@ impl Mempools {
 /// push the final estimate above the configured cap. This function is the
 /// last line of defense before `mempool.submit()` actually broadcasts.
 ///
-/// Behaviour on cap-exceedance: return `Error::GasPriceCapExceeded` so the
-/// driver aborts the broadcast and surfaces a Prometheus counter
-/// (`gas_price_cap_exceeded{mempool, context}`). The alternative — silently
-/// clamping to the cap — would broadcast a tx that the node may reject for
-/// not bumping the replacement enough, leaving the submitter EOA's nonce
-/// stuck. Failing loud is the conservative choice; operator intervention is
-/// preferable to a footgun.
-fn enforce_gas_price_cap(
+/// **Submit-path semantics:** on cap-exceedance, returns
+/// `Error::GasPriceCapExceeded`; the broadcast is aborted. The settlement
+/// tx is gas-heavy (~200-400k gas) so the dollar drain on a bad broadcast
+/// is significant — failing closed is correct.
+fn enforce_gas_price_cap_on_submit(
     estimate: Eip1559Estimation,
     mempool: &infra::Mempool,
-    context: &'static str,
 ) -> Result<Eip1559Estimation, Error> {
     let cap = mempool.config().gas_price_cap;
     if let Some((computed, cap)) = check_cap(estimate, cap) {
         observe::metrics::get()
             .gas_price_cap_exceeded
-            .with_label_values(&[&mempool.to_string(), context])
+            .with_label_values(&[&mempool.to_string(), "submit_settlement"])
             .inc();
         return Err(Error::GasPriceCapExceeded {
             computed,
             cap,
-            context,
+            context: "submit_settlement",
         });
     }
     Ok(estimate)
+}
+
+/// Same policy check as the submit path BUT on the cancel path we deliberately
+/// **do NOT** abort the broadcast. Rationale (sharp-edges audit F3, 2026-05-21):
+///
+/// The cancel path is invoked when the original settle tx is already in-flight
+/// and we've hit the submission deadline. Aborting the cancel here would:
+///   1. Leave the original settle tx broadcast and pending in the OP mempool.
+///   2. Block the submitter EOA's nonce until the original mines or the
+///      mempool evicts it (≥ `txpool.lifetime`, typically 3h on OP).
+///   3. Provide no recovery path — the operator must manually unstick from a
+///      different EOA.
+///
+/// That nonce-stuck outcome is strictly worse than broadcasting a cancel that
+/// exceeds the cap: a cancellation is 21000 gas, so even at 1000 gwei the
+/// absolute drain is bounded (21000 × ~1000 gwei × ETH/gwei ≈ $0.05). The
+/// fee-drain dollar amount is far smaller than the operational cost of a
+/// stuck submitter EOA.
+///
+/// So on the cancel path: emit the same Prometheus counter + page the
+/// operator (the alert fires), but PROCEED with the broadcast. The operator
+/// sees the alert and investigates — either way the original tx is no
+/// longer blocking the nonce.
+fn observe_cancel_cap_violation(estimate: Eip1559Estimation, mempool: &infra::Mempool) {
+    let cap = mempool.config().gas_price_cap;
+    if let Some((computed, _)) = check_cap(estimate, cap) {
+        observe::metrics::get()
+            .gas_price_cap_exceeded
+            .with_label_values(&[&mempool.to_string(), "cancel_settlement"])
+            .inc();
+        tracing::warn!(
+            ?computed,
+            ?cap,
+            "cancel-path gas price exceeds configured cap; broadcasting anyway to avoid \
+             nonce-stuck (audit F3) — operator alert fired"
+        );
+    }
 }
 
 /// Pure helper isolating the cap-comparison logic so it can be unit-tested
 /// without constructing a full `infra::Mempool` (which requires a real
 /// Web3 transport). Returns `Some((computed, cap))` if the estimate is
 /// above-policy, `None` otherwise.
+///
+/// **Compares `max(max_fee_per_gas, max_priority_fee_per_gas)` against the
+/// cap.** Mirrors the invariant enforced in `gas.rs::estimate()` at line
+/// 121-122 (`suggested_max_fee_per_gas = max(suggested, max_priority)`).
+/// Without this, a solver-override that sets `max_priority_fee_per_gas`
+/// arbitrarily high while keeping `max_fee_per_gas ≤ cap` would pass the
+/// check, then be rejected by the node for violating `max_priority ≤
+/// max_fee` (EIP-1559) — leaving the submitter EOA nonce-stuck silently
+/// (no counter increments, no alert). Sharp-edges audit F1 (2026-05-21).
 fn check_cap(estimate: Eip1559Estimation, cap: eth::U256) -> Option<(eth::U256, eth::U256)> {
-    let computed = eth::U256::from(estimate.max_fee_per_gas);
-    (computed > cap).then_some((computed, cap))
+    let max_fee = eth::U256::from(estimate.max_fee_per_gas);
+    let max_priority = eth::U256::from(estimate.max_priority_fee_per_gas);
+    let effective = std::cmp::max(max_fee, max_priority);
+    (effective > cap).then_some((effective, cap))
 }
 
 #[cfg(test)]
@@ -523,6 +575,37 @@ mod tests {
         let computed = 1_130_000_000_000u128; // ~1130 gwei
         let result = check_cap(estimate(computed), cap);
         assert_eq!(result, Some((eth::U256::from(computed), cap)));
+    }
+
+    /// Sharp-edges audit F1 (2026-05-21): without checking
+    /// `max_priority_fee_per_gas` against the cap, a solver-override that
+    /// sets `max_priority` arbitrarily high while keeping `max_fee` under
+    /// cap would pass the check, then be rejected by the node for violating
+    /// EIP-1559 (`max_priority ≤ max_fee`) — silent nonce-stuck.
+    #[test]
+    fn check_cap_rejects_when_priority_fee_exceeds_cap() {
+        let cap = eth::U256::from(5_000_000_000u128);
+        let priority_above_cap = Eip1559Estimation {
+            max_fee_per_gas: 1_000_000_000,    // 1 gwei — under cap
+            max_priority_fee_per_gas: 6_000_000_000, // 6 gwei — over cap
+        };
+        let result = check_cap(priority_above_cap, cap);
+        assert_eq!(
+            result,
+            Some((eth::U256::from(6_000_000_000u128), cap)),
+            "max_priority_fee > cap must be rejected even when max_fee ≤ cap"
+        );
+    }
+
+    #[test]
+    fn check_cap_uses_max_of_fee_and_priority() {
+        // When both fields are under cap, allow it.
+        let cap = eth::U256::from(5_000_000_000u128);
+        let both_under = Eip1559Estimation {
+            max_fee_per_gas: 4_000_000_000,
+            max_priority_fee_per_gas: 4_500_000_000,
+        };
+        assert_eq!(check_cap(both_under, cap), None);
     }
 }
 
