@@ -466,3 +466,40 @@ groups:
         annotations:
           summary: "OP EthFlow refund/transfer failed — investigate WETH or recipient state"
           description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x5555…)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
+
+  - name: ophis-op-sanctions-oracle
+    interval: 30s
+    rules:
+      # F6 (2026-05-21 whole-repo audit, Codex Cyber HIGH closed):
+      # the sanctions-oracle (Chainalysis) fail-open behavior is
+      # INTENTIONAL — the alternative (block all orders on outage)
+      # is operationally worse. The pre-F6 posture promoted these
+      # errors from warn to error, but there was no Prometheus
+      # signal. This alert is the visibility layer.
+      #
+      # `stage` distinguishes:
+      #   - background_refresh: 60s-interval cache-expiry refresh task
+      #   - on_demand:          per-request fetch on cache miss
+      #
+      # Alert threshold: more than 5 failures in 10m. Single Chainalysis
+      # hiccups are benign; sustained non-zero indicates a genuine outage
+      # where the operator must decide whether to (a) shift to fail-closed
+      # via code change + rebuild, (b) page Chainalysis support, or (c)
+      # escalate to a manual block-list. Counter only — current code has
+      # no kill switch for runtime fail-closed; manual intervention req.
+      - alert: OphisOpSanctionsOracleFetchFailing
+        # Metric is scraped from orderbook, which sets namespace `gp_v2_api`
+        # at observe::metrics::setup_registry(...). Combined with subsystem
+        # `sanctions` and field `oracle_fetch_failed`, the full name is
+        # `gp_v2_api_sanctions_oracle_fetch_failed_total`. Codex Cyber
+        # caught the original alert was querying the un-prefixed name and
+        # would never have fired.
+        expr: |
+          increase(gp_v2_api_sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP sanctions oracle (Chainalysis) sustained fetch failures — fail-open active"
+          description: "More than 5 Chainalysis fetch failures in 10m (stage={{ $labels.stage }}). The driver/orderbook is currently in fail-open posture: sanctioned addresses MAY be passing validation. Investigate Chainalysis oracle health (status.chainalysis.com), consider manually rotating to a backup oracle, OR shift to fail-closed by editing apps/backend/crates/order-validation/src/banned.rs to return Err on this path (requires rebuild + redeploy). Cross-reference: F6 in memory/2026-05-21-whole-repo-audit-pass.md."
