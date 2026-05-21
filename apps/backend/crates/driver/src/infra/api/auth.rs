@@ -48,7 +48,9 @@ pub async fn require_inter_service_auth(
         .and_then(|h| h.strip_prefix("Bearer "));
     let Some(provided) = provided else {
         tracing::warn!(
-            uri = %request.uri(),
+            // Log only the path, not the full URI, to avoid leaking query
+            // strings on GET routes (Codex Cyber LOW, PR #206 review).
+            uri_path = %request.uri().path(),
             "F7 inter-service auth: missing or malformed Authorization header"
         );
         return (
@@ -63,7 +65,9 @@ pub async fn require_inter_service_auth(
         && expected_bytes.ct_eq(provided_bytes).unwrap_u8() == 1;
     if !valid {
         tracing::warn!(
-            uri = %request.uri(),
+            // Log only the path, not the full URI, to avoid leaking query
+            // strings on GET routes (Codex Cyber LOW, PR #206 review).
+            uri_path = %request.uri().path(),
             "F7 inter-service auth: token mismatch"
         );
         return (
