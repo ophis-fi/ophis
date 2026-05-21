@@ -28,9 +28,16 @@ contract GPv2AllowListAuthentication is
     /// acceptance or cancellation. Default `address(0)` = no pending
     /// transfer.
     ///
-    /// Storage layout invariant: this field is appended AFTER the original
-    /// `manager` (slot 1) + `solvers` mapping seed (slot 2), so existing
-    /// proxy storage layout is preserved. New slot 3.
+    /// Storage layout invariant (verified via the live deployment artifact
+    /// at `deployments/optimism-mainnet/GPv2AllowListAuthentication_Implementation.json`
+    /// — Codex Cyber PR #224 review):
+    ///   slot 0, offset 0: `_initialized` (uint8 from Initializable)
+    ///   slot 0, offset 1: `_initializing` (bool from Initializable)
+    ///   slot 0, offset 2: `manager` (address, 20 bytes — packs into slot 0)
+    ///   slot 1: `solvers` mapping seed
+    ///   slot 2: `pendingManager` (NEW, appended at next-available slot)
+    /// Existing live storage at slots 0-1 is byte-identical post-upgrade;
+    /// slot 2 reads as `address(0)` until the first `proposeManager` call.
     address public pendingManager;
 
     /// @dev Event emitted when the manager changes.
