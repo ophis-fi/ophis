@@ -250,8 +250,13 @@ e3b0c44... = keccak(empty) (publicnode-op)
 head immediately, but `eth_getLogs` requires the block to be ingested into
 the log index, which lags by 2–10 seconds depending on provider. With
 2-of-3 strict consensus, all three indexes need to be caught up — the
-slowest one bounds you. publicnode-op tends to index fastest; the
-self-hosted op-node's log index is currently the slowest.
+slowest one bounds you.
+
+Indexer lag varies per-upstream over time (initial-2026-05-13 snapshot
+of self-hosted op-node took ~2s longer than public providers; that
+delta has since narrowed as the node's pruning settled). Don't assume
+any single upstream is "always the laggard." Consult the live picture
+in `erpc_upstream_block_head_lag{network="evm:10"}` before diagnosing.
 
 **Production impact:** None on settlement. The driver uses `eth_call` +
 `eth_sendRawTransaction` (submission bypasses eRPC anyway), neither of
@@ -273,27 +278,48 @@ affected.
 
 ## Submission path (NOT consensus-protected)
 
-The driver submits transactions via `[[submission.mempool]]` in
-`driver.toml.tmpl` which points at `https://optimism-rpc.publicnode.com`
-**directly**, bypassing eRPC. This is intentional: tx submission needs
-a single nonce-coherent endpoint, not a load-balanced fan-out.
+The driver races settlement broadcast in parallel via 3
+`[[submission.mempool]]` entries in `driver.toml.tmpl`:
 
-If publicnode.com goes down as a *submission* endpoint, the driver
-stops broadcasting (but pending settlements aren't lost — they
-re-broadcast on next driver bootstrap with corrected mempool URL).
-Edit `[[submission.mempool]] url = …` in `driver.toml.tmpl`, re-render,
-restart driver.
+- `https://optimism-rpc.publicnode.com`     (PublicNode / Allnodes)
+- `https://mainnet.optimism.io`             (OP Foundation gateway)
+- `https://optimism.gateway.tenderly.co`    (Tenderly)
+
+This is intentional: tx submission needs nonce-coherent endpoints, not a
+load-balanced fan-out (so all 3 see the same nonce-N tx). `select_ok` in
+`crates/driver/src/domain/mempools.rs` keeps the first acknowledgement
+and lets the others run to completion (any tx broadcast to the OP
+sequencer eventually lands; nonce-conflict re-broadcasts are no-ops).
+
+If one mempool goes down, the other two still broadcast → settlements
+land. If two go down, the third still works → degraded but functional.
+Edit `[[submission.mempool]]` in `driver.toml.tmpl`, re-render, restart
+driver.
 
 **Receipt-poisoning protection:** receipts read via `eth_getTransactionReceipt`
-go through the eRPC consensus path (verified at config — receipt
-method is included in the consensus matchMethod regex). So a hostile
-submission RPC lying about inclusion is caught: autopilot sees the
-tx never landed via consensus-protected reads, retries.
+go through the eRPC consensus path (the method is included in the
+consensus `matchMethod` regex). So a hostile submission RPC lying about
+inclusion is caught: autopilot sees the tx never landed via
+consensus-protected reads, retries.
 
-**MEV leakage residual:** a hostile submission RPC can leak signed
-calldata to a private searcher before propagation. Bounded but real;
-roadmap item to add a 2nd submission mempool (Conduit sequencer-direct
-or OP private mempool) for race-based submission.
+**Why self-hosted is NOT in this list (audit A1, 2026-05-21):** The
+Aleph VM at `100.77.53.81:8545` was previously the 4th (and primary)
+submission endpoint, prepended on the grounds that it would win the
+include-race by latency. But any process with root on that VM could
+observe our signed settlement calldata in real time — a single point of
+MEV-leak failure. We dropped it from submission (keeping it in eRPC
+consensus reads, which leak nothing). An attacker now needs to
+compromise ≥2 of the 3 distinct corporate operators above to reliably
+front-run our settlements. The latency edge we lose is empirically
+not load-bearing — the next-block inclusion rate stayed ≥99% in
+Phase 2 telemetry.
+
+**MEV leakage residual:** a hostile submission RPC can still leak signed
+calldata to a private searcher before propagation. The 3-way race over
+distinct operators forces the attacker to be on (or have suborned)
+≥2-of-3 of them to race us reliably. Roadmap item: add a private/dark
+mempool (Conduit sequencer-direct, OP private pool, or Flashbots-style
+relay) to reduce calldata observability to zero on the dominant path.
 
 ## Related references
 
