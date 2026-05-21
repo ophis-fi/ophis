@@ -38,6 +38,23 @@ jobs:
       - name: Check 3 source-of-truth files match canonical Safe address
         run: ./scripts/check-partner-fee-invariant.sh
 
+  tier-invariant:
+    name: Tier table cross-workspace invariant
+    runs-on: ubuntu-latest
+    # 2026-05-21 follow-up to the rebate-indexer audit. TIERS + POOL_SPLIT_BPS
+    # are mirrored across apps/rebate-indexer/src/tiers.ts (drives the
+    # batcher's actual WETH allocation per wallet) and packages/sdk/src/tiers.ts
+    # (drives the swap-page chip showing users their projected rebate %).
+    # Pre-this-job the mirror was enforced only by a JSDoc comment; drift
+    # would silently misallocate real WETH while the UI promised a
+    # different number. Hard CI gate via a Python-based canonicalizer
+    # that strips comments + whitespace and compares the TIERS array
+    # literal + POOL_SPLIT_BPS value byte-for-byte.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check tiers.ts mirror across rebate-indexer + packages/sdk
+        run: ./scripts/check-tier-invariant.sh
+
   erpc-id-collisions:
     name: eRPC upstream-ID cross-stack collision lint
     runs-on: ubuntu-latest
