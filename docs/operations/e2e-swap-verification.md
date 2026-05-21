@@ -67,7 +67,7 @@ You should see, in approximate order:
 [velora-solver]  solving auction 12345
 [driver]      winner: okx-solver, surplus: 0.0001 ETH
 [driver]      simulation passed
-[driver]      submission accepted by self-hosted-op
+[driver]      submission accepted by publicnode-op (or mainnet-op-foundation / tenderly-op)
 [driver]      tx 0x... included in block 151840xxx
 ...
 ════════════════════════════════════════════
