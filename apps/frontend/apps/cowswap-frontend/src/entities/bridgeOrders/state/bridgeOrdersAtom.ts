@@ -23,9 +23,14 @@ export const bridgeOrdersStoreAtom = atomWithStorage<BridgeOrdersStateSerialized
 
 function deserializeState(state: BridgeOrdersStateSerialized): BridgeOrdersState {
   return bridgeOrdersStateSerializer(state, (order) => {
+    // Drop orders whose quoteAmounts can't be deserialized — see
+    // bridgeOrdersStateSerializer.ts for the threat-model comment.
+    // A null return tells the serializer to skip this entry.
+    const quoteAmounts = deserializeQuoteAmounts(order.quoteAmounts)
+    if (quoteAmounts === null) return null
     return {
       ...order,
-      quoteAmounts: deserializeQuoteAmounts(order.quoteAmounts),
+      quoteAmounts,
     }
   })
 }

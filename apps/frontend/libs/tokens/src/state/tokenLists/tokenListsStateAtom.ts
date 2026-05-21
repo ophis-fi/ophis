@@ -76,6 +76,20 @@ export const allListsSourcesAtom = atom((get) => {
 // Migrating from localStorage to indexedDB
 localStorage.removeItem('allTokenListsInfoAtom:v5')
 
+// Persisted-state trust boundary: schema drift or browser-extension corruption
+// can leave non-object / array-shaped data in the per-chain slots — downstream
+// code calls `Object.keys(state[chainId])` and assumes string-keyed objects.
+// Phase 4 audit DoS-class finding. Guard is intentionally shallow: each chain
+// slot must be undefined OR a plain object (not an array, primitive, or null).
+function isValidTokenListsByChainState(value: unknown): value is TokenListsByChainState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  for (const v of Object.values(value as Record<string, unknown>)) {
+    if (v === undefined || v === null) continue
+    if (typeof v !== 'object' || Array.isArray(v)) return false
+  }
+  return true
+}
+
 /**
  * Lists states (user preferences)
  * Note: v6 -> v7 migration is handled by migrateTokenListsFromGithubCdn()
@@ -85,6 +99,7 @@ localStorage.removeItem('allTokenListsInfoAtom:v5')
 export const listsStatesByChainAtom = atomWithIdbStorage<TokenListsByChainState>(
   'allTokenListsInfoAtom:v7',
   mapSupportedNetworks({}),
+  isValidTokenListsByChainState,
 )
 
 export const tokenListsUpdatingAtom = atom<boolean>(false)
