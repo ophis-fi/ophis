@@ -397,6 +397,7 @@ pub fn mempool_executed(
         Ok(_) => "Success",
         Err(mempools::Error::Revert { .. } | mempools::Error::SimulationRevert { .. }) => "Revert",
         Err(mempools::Error::Expired { .. }) => "Expired",
+        Err(mempools::Error::GasPriceCapExceeded { .. }) => "GasPriceCapExceeded",
         Err(mempools::Error::Other(_)) => "Other",
         Err(mempools::Error::Disabled) => "Disabled",
     };
@@ -427,6 +428,7 @@ pub fn mempool_executed(
             submitted_at_block,
             submission_deadline,
         }) => Some(("Expired", submitted_at_block, submission_deadline)),
+        Err(mempools::Error::GasPriceCapExceeded { .. }) => None,
         Err(mempools::Error::Other(_)) => None,
         Err(mempools::Error::Disabled) => None,
     };
