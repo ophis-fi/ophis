@@ -24,6 +24,13 @@ pub struct Driver {
     pub url: Url,
     pub submission_address: eth::Address,
     client: Client,
+    /// F7 (2026-05-21 whole-repo audit, HIGH H2): optional inter-service
+    /// auth token. When `Some`, injected as `Authorization: Bearer <token>`
+    /// on every outgoing request to the driver. Read from
+    /// `OPHIS_INTER_SERVICE_AUTH_TOKEN` env at construction time. When
+    /// `None`, no header is sent — preserves pre-F7 behavior for
+    /// transitional rollout.
+    inter_service_auth_token: Option<std::sync::Arc<String>>,
 }
 
 #[derive(Error, Debug)]
@@ -57,6 +64,29 @@ impl Driver {
         };
         tracing::info!(?name, ?url, ?submission_address, "Creating solver");
 
+        // F7: pick up the inter-service auth token at construction. We
+        // log once per Driver to surface the running mode — if the env
+        // var is missing AND the driver enforces auth, every request
+        // will 401 with a clear message; the operator will see this
+        // log line at startup and the 401 logs side-by-side.
+        let inter_service_auth_token = std::env::var("OPHIS_INTER_SERVICE_AUTH_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(std::sync::Arc::new);
+        if inter_service_auth_token.is_some() {
+            tracing::info!(
+                ?name,
+                "F7 inter-service auth token loaded — autopilot will sign requests to driver"
+            );
+        } else {
+            tracing::warn!(
+                ?name,
+                "F7 OPHIS_INTER_SERVICE_AUTH_TOKEN unset — autopilot calls to driver \
+                 are un-authenticated (acceptable in single-tenant; required before \
+                 multi-tenant expansion)"
+            );
+        }
+
         Ok(Self {
             name,
             url,
@@ -66,7 +96,17 @@ impl Driver {
                 .build()
                 .map_err(Error::FailedToBuildClient)?,
             submission_address,
+            inter_service_auth_token,
         })
+    }
+
+    /// F7 helper: apply the inter-service auth header to an outgoing
+    /// request when the token is configured. No-op when unset.
+    fn inject_inter_service_auth(&self, request: RequestBuilder) -> RequestBuilder {
+        match &self.inter_service_auth_token {
+            Some(token) => request.bearer_auth(token.as_str()),
+            None => request,
+        }
     }
 
     pub async fn solve(&self, request: solve::Request) -> Result<solve::Response> {
@@ -90,12 +130,14 @@ impl Driver {
         );
 
         let response = self
-            .client
-            .post(url)
-            .json(request)
-            .timeout(timeout)
-            .header("X-REQUEST-ID", request.auction_id.to_string())
-            .headers(tracing_headers())
+            .inject_inter_service_auth(
+                self.client
+                    .post(url)
+                    .json(request)
+                    .timeout(timeout)
+                    .header("X-REQUEST-ID", request.auction_id.to_string())
+                    .headers(tracing_headers()),
+            )
             .send()
             .await
             .context("send")?;
@@ -128,6 +170,7 @@ impl Driver {
         );
 
         let request = self.client.post(url.clone()).headers(tracing_headers());
+        let request = self.inject_inter_service_auth(request);
         let mut request = payload.inject(request);
 
         if let Some(request_id) = observe::tracing::distributed::request_id::from_current_span() {
