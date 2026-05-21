@@ -178,6 +178,16 @@ impl Mempools {
             replacement_gas_price.as_ref(),
         );
 
+        // Phase 4 audit F2: re-enforce gas_price_cap AFTER replacement bumping
+        // and solver-override application. `gas.rs::estimate()` enforces the
+        // cap on the first-submit path, but RBF (`minimum_replacement_gas_price`
+        // scales by GAS_PRICE_BUMP_PCT) and solver overrides happen after that
+        // check — without this guard, a pathological RPC misreport of
+        // `eth_gasPrice` could push the bumped/overridden estimate above the
+        // configured cap and drain the submitter EOA on a single broadcast.
+        let final_gas_price =
+            enforce_gas_price_cap(final_gas_price, mempool, "submit_settlement")?;
+
         tracing::debug!(
             ?submission_block,
             ?blocks_until_deadline,
@@ -350,6 +360,15 @@ impl Mempools {
             _ => fallback_gas_price,
         };
 
+        // Phase 4 audit F2: re-enforce gas_price_cap on the cancellation path.
+        // Cancellation bumps the original tx's gas price by GAS_PRICE_BUMP_PCT
+        // without consulting the cap; if the original was already near-cap, a
+        // bumped cancellation would broadcast above-policy. We treat a
+        // cap-exceeding cancellation as a hard error — the operator must
+        // intervene (manual cancel from a higher-fee account, or wait for the
+        // tx to time out naturally) rather than silently exceeding the cap.
+        let final_gas_price = enforce_gas_price_cap(final_gas_price, mempool, "cancel_settlement")?;
+
         let cancellation = eth::Tx {
             from: signer,
             to: signer,
@@ -413,6 +432,97 @@ impl Mempools {
 
             Some(pending_tx_gas_price.scaled_by_pct(GAS_PRICE_BUMP_PCT))
         }
+    }
+}
+
+/// Re-enforce the per-mempool `gas_price_cap` AFTER all bumps and overrides
+/// have been applied. `gas.rs::estimate()` enforces the cap on the first
+/// estimate, but every code path that touches the gas price downstream of
+/// that — `minimum_replacement_gas_price` (×1.13 RBF bump), the
+/// `apply_gas_fee_override` solver override, the cancellation bump — can
+/// push the final estimate above the configured cap. This function is the
+/// last line of defense before `mempool.submit()` actually broadcasts.
+///
+/// Behaviour on cap-exceedance: return `Error::GasPriceCapExceeded` so the
+/// driver aborts the broadcast and surfaces a Prometheus counter
+/// (`gas_price_cap_exceeded{mempool, context}`). The alternative — silently
+/// clamping to the cap — would broadcast a tx that the node may reject for
+/// not bumping the replacement enough, leaving the submitter EOA's nonce
+/// stuck. Failing loud is the conservative choice; operator intervention is
+/// preferable to a footgun.
+fn enforce_gas_price_cap(
+    estimate: Eip1559Estimation,
+    mempool: &infra::Mempool,
+    context: &'static str,
+) -> Result<Eip1559Estimation, Error> {
+    let cap = mempool.config().gas_price_cap;
+    if let Some((computed, cap)) = check_cap(estimate, cap) {
+        observe::metrics::get()
+            .gas_price_cap_exceeded
+            .with_label_values(&[&mempool.to_string(), context])
+            .inc();
+        return Err(Error::GasPriceCapExceeded {
+            computed,
+            cap,
+            context,
+        });
+    }
+    Ok(estimate)
+}
+
+/// Pure helper isolating the cap-comparison logic so it can be unit-tested
+/// without constructing a full `infra::Mempool` (which requires a real
+/// Web3 transport). Returns `Some((computed, cap))` if the estimate is
+/// above-policy, `None` otherwise.
+fn check_cap(estimate: Eip1559Estimation, cap: eth::U256) -> Option<(eth::U256, eth::U256)> {
+    let computed = eth::U256::from(estimate.max_fee_per_gas);
+    (computed > cap).then_some((computed, cap))
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, alloy::eips::eip1559::Eip1559Estimation};
+
+    fn estimate(max_fee_per_gas: u128) -> Eip1559Estimation {
+        Eip1559Estimation {
+            max_fee_per_gas,
+            max_priority_fee_per_gas: 0,
+        }
+    }
+
+    #[test]
+    fn check_cap_allows_below_cap() {
+        let cap = eth::U256::from(5_000_000_000u128); // 5 gwei
+        assert_eq!(check_cap(estimate(4_999_999_999), cap), None);
+    }
+
+    #[test]
+    fn check_cap_allows_exactly_at_cap() {
+        let cap = eth::U256::from(5_000_000_000u128);
+        // At-cap submission is allowed — the cap is inclusive on the
+        // upper bound (the legacy gas.rs check uses `>`, not `>=`).
+        assert_eq!(check_cap(estimate(5_000_000_000), cap), None);
+    }
+
+    #[test]
+    fn check_cap_rejects_above_cap() {
+        let cap = eth::U256::from(5_000_000_000u128);
+        let result = check_cap(estimate(5_000_000_001), cap);
+        assert_eq!(
+            result,
+            Some((eth::U256::from(5_000_000_001u128), cap)),
+        );
+    }
+
+    #[test]
+    fn check_cap_rejects_far_above_cap() {
+        // Simulates a hostile RPC reporting eth_gasPrice = 1000 gwei
+        // and a subsequent RBF bump that pushes the final estimate to
+        // ~1130 gwei, well above the 5 gwei policy cap.
+        let cap = eth::U256::from(5_000_000_000u128);
+        let computed = 1_130_000_000_000u128; // ~1130 gwei
+        let result = check_cap(estimate(computed), cap);
+        assert_eq!(result, Some((eth::U256::from(computed), cap)));
     }
 }
 
@@ -525,6 +635,19 @@ pub enum Error {
     },
     #[error("Strategy disabled for this tx")]
     Disabled,
+    /// The post-bump/post-override gas price exceeds the configured cap.
+    /// Aborting the broadcast prevents fee-drain when an upstream RPC
+    /// misreports `eth_gasPrice` or when an over-aggressive solver override
+    /// pushes the replacement bump above policy. Phase 4 audit F2.
+    #[error(
+        "gas price {computed:?} wei/gas exceeds configured cap {cap:?} wei/gas ({context}); \
+         aborting broadcast to prevent fee drain"
+    )]
+    GasPriceCapExceeded {
+        computed: eth::U256,
+        cap: eth::U256,
+        context: &'static str,
+    },
     #[error("Failed to submit: {0:?}")]
     Other(#[from] anyhow::Error),
 }

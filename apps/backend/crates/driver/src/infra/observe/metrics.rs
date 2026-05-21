@@ -82,6 +82,20 @@ pub struct Metrics {
     /// fallback chain) and intervene before the deadline.
     #[metric(labels("mempool", "kind"))]
     pub resimulation_transport_error: prometheus::IntCounterVec,
+    /// Final gas price (post-replacement-bump, post-solver-override) exceeded
+    /// the configured per-mempool `gas_price_cap`. Phase 4 audit F2 — the
+    /// initial estimate is cap-enforced in `gas.rs::estimate()`, but RBF and
+    /// solver overrides happen downstream of that check. A non-zero rate on
+    /// this counter indicates either a pathological upstream RPC misreport
+    /// of `eth_gasPrice` (cap-bypass attempt) OR an over-aggressive solver
+    /// override hitting the cap legitimately. Either way: operator
+    /// intervention required. Page on rate > 0 for 5m.
+    ///
+    /// `context` label values:
+    ///   - "submit_settlement" — main settle() broadcast path
+    ///   - "cancel_settlement" — cancellation/RBF path
+    #[metric(labels("mempool", "context"))]
+    pub gas_price_cap_exceeded: prometheus::IntCounterVec,
     /// Time spent in the auction preprocessing stage.
     #[metric(
         labels("stage"),

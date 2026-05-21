@@ -330,6 +330,23 @@ groups:
           summary: "OP basefee at {{ $value | humanize }}wei sustained >5min — approaching 5 gwei gas_price_cap"
           description: "Optimism basefee has exceeded 1.5 gwei for 5 consecutive minutes. The driver's gas_price_cap is 5 gwei (per #131). At ~3× headroom remaining a sustained spike risks settlement-broadcast rejection. Inspect: `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. Consider raising gas_price_cap or pausing solver if congestion sustained."
 
+      # Phase 4 audit F2 (2026-05-21): the driver re-checks gas_price_cap on
+      # the submit + cancel paths AFTER RBF bump + solver-override. This
+      # counter increments whenever the computed estimate exceeds the cap.
+      # Any non-zero rate is anomalous — either an upstream RPC is misreporting
+      # eth_gasPrice (cap-bypass attempt) OR a solver-override is requesting
+      # an above-policy fee. The driver aborts the broadcast in either case.
+      - alert: OphisOpGasPriceCapExceeded
+        expr: |
+          increase(driver_gas_price_cap_exceeded{chain="optimism"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP driver aborted a broadcast because computed gas price exceeded gas_price_cap (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
+          description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override and refused to broadcast. Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine OP fee surge while a solver-override pushed past the cap; (3) a stuck submitter nonce forcing repeated bumps. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
+
   - name: ophis-op-ethflow
     interval: 30s
     rules:
