@@ -79,7 +79,21 @@ where
         }
     }
 
-    Err(last_err.expect("with_backoff exhausted attempts without recording an error"))
+    // Exhaustion path: every previous attempt logged at `warn!` ("will
+    // retry") — the FINAL exhaustion is a different operational signal
+    // (caller has given up; whatever depended on this RPC is now
+    // failing). Log at `error!` so it surfaces in error-level alerts
+    // distinctly from the per-attempt warns. Caller may also log; we
+    // log here unconditionally because the centralized helper can't
+    // assume callers will.
+    let err = last_err.expect("with_backoff exhausted attempts without recording an error");
+    tracing::error!(
+        operation = name,
+        attempts = config.max_attempts,
+        error = %err,
+        "retry budget exhausted; caller will see Err"
+    );
+    Err(err)
 }
 
 #[cfg(test)]

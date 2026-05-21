@@ -73,7 +73,15 @@ impl Persistence {
                         tracing::debug!(?key, "uploaded auction with liquidity to s3");
                     }
                     Err(err) => {
-                        tracing::warn!(?err, "failed to upload auction to s3");
+                        // Silent-failure-hunter H7: pre-2026-05-21 the only
+                        // signal was tracing::warn — sustained S3 outage
+                        // silently lost the audit-trail used for replay /
+                        // dispute resolution. Promote to error + counter.
+                        crate::infra::observe::metrics::get()
+                            .s3_auction_upload_failed
+                            .with_label_values(&["driver"])
+                            .inc();
+                        tracing::error!(?err, "failed to upload auction to s3 — audit-trail loss");
                     }
                 }
             }

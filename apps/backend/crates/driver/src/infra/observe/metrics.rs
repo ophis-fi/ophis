@@ -115,6 +115,25 @@ pub struct Metrics {
     /// revert), but the metric lets ops alert on simulator degradation.
     #[metric(labels("solver"))]
     pub winner_resim_non_revert_error: prometheus::IntCounterVec,
+    /// Solution merge produced an arithmetic-overflow `Math` error in the
+    /// hot path. Silent-failure-hunter H6: previously the
+    /// `if let Ok(merged) = solution.merge(...)` discard collapsed both
+    /// benign (Incompatible / DuplicateTrade / MoreOrdersThanAllowed)
+    /// and serious (Math overflow during price scaling) errors. Now
+    /// `Math` is explicitly logged + counted; benign variants still
+    /// fall through silently.
+    pub solution_merge_math_overflow: prometheus::IntCounter,
+    /// S3 auction-archive upload failures. Silent-failure-hunter H7:
+    /// sustained S3 outage previously dropped the competition-replay
+    /// audit trail silently (tracing::warn only). Counter alerts ops.
+    #[metric(labels("kind"))]
+    pub s3_auction_upload_failed: prometheus::IntCounterVec,
+    /// Resimulation-until-revert timeout swallowed real inner errors.
+    /// Silent-failure-hunter H12: `let _ = tokio::time::timeout(...)`
+    /// discarded both timeout `Elapsed` and the inner `anyhow::Result`.
+    /// Inner errors include mutex-poisoned + block-stream-finished
+    /// (real bug signals). Now bound and logged.
+    pub resim_until_revert_inner_error: prometheus::IntCounter,
     /// Time spent in the auction preprocessing stage.
     #[metric(
         labels("stage"),
