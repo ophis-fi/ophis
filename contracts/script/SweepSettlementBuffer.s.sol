@@ -184,12 +184,28 @@ contract SweepSettlementBuffer is Script {
         // `vm.startBroadcast(broadcaster)` below (not the bare overload),
         // so the on-chain settle() tx is signed by the same address we
         // just checked the allowlist for. Mismatch is now impossible.
+        //
+        // Sharp-edges re-audit (post-PR-#223) caught two HIGH gaps in the
+        // broadcaster derivation:
+        //   - H1: a missing PRIVATE_KEY + missing --sender combo can
+        //     resolve `msg.sender` to `address(0)` or forge's DefaultSender.
+        //     Now: explicit `require(broadcaster != address(0))` rejects
+        //     the unresolved-broadcaster path before the allowlist call.
+        //   - H2: try/catch around envUint catches malformed strings but
+        //     does NOT reject `PRIVATE_KEY=0` (parses as uint 0) — vm.addr(0)
+        //     returns a deterministic but useless address. Now: explicit
+        //     `require(pk != 0)` inside the try block rejects this path.
         address broadcaster;
         try vm.envUint("PRIVATE_KEY") returns (uint256 pk) {
+            require(pk != 0, "SweepScript: PRIVATE_KEY env is zero (set to a real key or unset to fall back to --sender)");
             broadcaster = vm.addr(pk);
         } catch {
             broadcaster = msg.sender;
         }
+        require(
+            broadcaster != address(0),
+            "SweepScript: broadcaster unresolved (set --sender or PRIVATE_KEY)"
+        );
         GPv2Authentication auth = params.settlement.authenticator();
         require(
             auth.isSolver(broadcaster),
@@ -314,6 +330,12 @@ contract SweepSettlementBuffer is Script {
         // Comma-separated 0x-prefixed addresses. Defensive but minimal: this
         // is operator-controlled input so we don't need to harden against
         // adversarial parsing.
+        //
+        // Sharp-edges re-audit MED (PR #223): empty chunks (trailing
+        // comma, double comma) would silently parse to address(0) on
+        // some forge versions, producing a zero-address token entry
+        // that would cascade into a bogus interaction list. Add an
+        // explicit non-empty check per chunk.
         bytes memory b = bytes(s);
         if (b.length == 0) return new IERC20[](0);
         uint256 n = 1;
@@ -325,6 +347,7 @@ contract SweepSettlementBuffer is Script {
         uint256 k = 0;
         for (uint256 i = 0; i <= b.length; i++) {
             if (i == b.length || b[i] == ",") {
+                require(i > start, "SweepScript: empty chunk in TOKENS (trailing/double comma?)");
                 bytes memory chunk = new bytes(i - start);
                 for (uint256 j = 0; j < chunk.length; j++) chunk[j] = b[start + j];
                 out[k] = IERC20(vm.parseAddress(string(chunk)));
@@ -337,6 +360,10 @@ contract SweepSettlementBuffer is Script {
 
     /// @dev Same comma-separated parser as `_parseTokenList` but for uint256
     /// base-unit values (HIGH-1: per-token threshold list).
+    ///
+    /// Sharp-edges re-audit MED (PR #223): empty chunks would parse to
+    /// 0 on some forge versions, producing a zero-threshold entry that
+    /// re-introduces HIGH-1 (sweep any dust). Reject empty chunks.
     function _parseUintList(string memory s) internal pure returns (uint256[] memory) {
         bytes memory b = bytes(s);
         if (b.length == 0) return new uint256[](0);
@@ -349,6 +376,7 @@ contract SweepSettlementBuffer is Script {
         uint256 k = 0;
         for (uint256 i = 0; i <= b.length; i++) {
             if (i == b.length || b[i] == ",") {
+                require(i > start, "SweepScript: empty chunk in MIN_BASE_UNITS (trailing/double comma?)");
                 bytes memory chunk = new bytes(i - start);
                 for (uint256 j = 0; j < chunk.length; j++) chunk[j] = b[start + j];
                 out[k] = vm.parseUint(string(chunk));
