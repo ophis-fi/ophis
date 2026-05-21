@@ -35,7 +35,7 @@ This stack runs the Ophis Protocol deployment on **Optimism mainnet (chain 10)**
                     ┌──────────────────────────────────────┐
                     │  driver (HTTP :8103)                 │
                     │   signs settle() with submitter EOA  │
-                    │   0x00f98b...502F                    │
+                    │   0x92B9bE5e...A1B1                  │
                     └────────────┬─────────────────────────┘
                                  │
                                  ↓ JSON-RPC
