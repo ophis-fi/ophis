@@ -110,7 +110,7 @@
     "jotai-tanstack-query": "^0.11.0",
     "jsbi": "^3.1.4",
     "json-stringify-deterministic": "^1.0.12",
-    "jspdf": "^2.5.2",
+    "jspdf": "^4.2.1",
     "launchdarkly-react-client-sdk": "^3.0.4",
     "limiter": "^3.0.0",
     "lottie-react": "^2.4.0",
