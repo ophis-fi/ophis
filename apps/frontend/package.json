@@ -58,7 +58,13 @@
       "jspdf": "^4.2.1",
       "swiper": "^12.1.2",
       "systeminformation": "^5.31.6",
-      "react-router": "^7.12.0"
+      "react-router": "^7.12.0",
+      "undici": "^6.24.0",
+      "h3": "^1.15.6",
+      "defu": "^6.1.5",
+      "picomatch": "^2.3.2",
+      "serialize-javascript": "^7.0.3",
+      "glob": "^11.1.0"
     }
   },
   "config": {
