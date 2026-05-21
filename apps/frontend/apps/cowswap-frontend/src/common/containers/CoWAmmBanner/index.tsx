@@ -82,7 +82,7 @@ export function CoWAmmBanner({ isTokenSelectorView }: BannerProps) {
         <CoWAmmBannerContent
           id={bannerId}
           isDarkMode={isDarkMode}
-          title={t`CoW AMM`}
+          title={t`AMM`}
           ctaText={isSmartContractWallet ? t`Booooost APR!` : t`Booooost APR gas-free!`}
           isTokenSelectorView={!!isTokenSelectorView}
           vampireAttackContext={vampireAttackContext}

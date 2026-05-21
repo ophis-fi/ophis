@@ -1,5 +1,4 @@
-import { COW_PROTOCOL_LINK } from '@cowprotocol/common-const'
-import { ExternalLink, UI, ProductLogo, ProductVariant } from '@cowprotocol/ui'
+import { ExternalLink, UI } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 import styled from 'styled-components/macro'
@@ -44,9 +43,8 @@ const StyledExternalLink = styled(ExternalLink)`
 export function PoweredFooter() {
   return (
     <Wrapper>
-      <StyledExternalLink href={COW_PROTOCOL_LINK}>
-        <ProductLogo variant={ProductVariant.CowExplorer} height={11} logoIconOnly />
-        <Trans>Powered by</Trans> CoW Protocol
+      <StyledExternalLink href="https://ophis.fi">
+        <Trans>Powered by Ophis</Trans>
       </StyledExternalLink>
     </Wrapper>
   )

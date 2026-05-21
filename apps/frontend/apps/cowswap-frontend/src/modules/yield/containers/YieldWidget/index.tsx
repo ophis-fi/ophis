@@ -43,7 +43,7 @@ import { YieldConfirmModal } from '../YieldConfirmModal'
 
 const YIELD_BULLET_LIST_CONTENT_MSG: Array<{ content: MessageDescriptor }> = [
   { content: msg`Maximize your yield on existing LP positions` },
-  { content: msg`Seamlessly swap your tokens into CoW AMM pools` },
+  { content: msg`Seamlessly swap your tokens into AMM pools` },
   { content: msg`Earn higher returns with reduced impermanent loss` },
   { content: msg`Leverage advanced strategies for optimal growth` },
 ]
@@ -57,7 +57,7 @@ const YIELD_UNLOCK_SCREEN: {
 } = {
   id: `yield-widget`,
   title: msg`Unlock Enhanced Yield Features`,
-  subtitle: msg`Boooost your current LP positions with CoW AMM’s pools.`,
+  subtitle: msg`Boooost your current LP positions with AMM pools.`,
   orderType: msg`yield`,
   buttonText: msg`Start boooosting your yield!`,
 }

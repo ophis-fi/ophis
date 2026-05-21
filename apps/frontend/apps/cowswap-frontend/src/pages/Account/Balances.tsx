@@ -303,7 +303,7 @@ export default function Profile() {
           {cowContractAddress && (
             <Card>
               <BalanceDisplay titleSize={26}>
-                <img src={CowImage} alt={t`Cow Balance`} height="80" width="80" />
+                <img src={CowImage} alt={t`Token balance`} height="80" width="80" />
                 <span>
                   <i>
                     <Trans>Available COW balance</Trans>

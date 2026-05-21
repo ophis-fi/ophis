@@ -66,7 +66,7 @@ export default function CowSubsidyModal({
     <CowModal isOpen={isOpen} onDismiss={onDismiss} maxHeight={90} maxWidth={500} padding={'12px 0 18px'}>
       <LegacyConfirmationModalContent
         {...restProps}
-        title={t`CoWmunity fees discount`}
+        title={t`Community fees discount`}
         titleSize={21}
         styles={{ textAlign: 'center', width: '100%' }}
         onDismiss={onDismiss}

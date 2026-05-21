@@ -43,7 +43,7 @@ const getTabs = (): { id: string; title: string | ReactNode; value: null | Token
           theme="dark"
           logoIconOnly
         />{' '}
-        <Trans>CoW AMM only</Trans>
+        <Trans>AMM only</Trans>
       </>
     ),
     value: LP_TOKEN_LIST_COW_AMM_ONLY,

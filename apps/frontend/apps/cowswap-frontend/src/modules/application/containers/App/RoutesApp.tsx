@@ -1,14 +1,5 @@
-import { lazy, ReactNode, Suspense, useEffect } from 'react'
+import { lazy, ReactNode, Suspense } from 'react'
 
-import {
-  COWDAO_COWSWAP_ABOUT_LINK,
-  COWDAO_KNOWLEDGE_BASE_LINK,
-  COWDAO_LEGAL_LINK,
-  DISCORD_LINK,
-  DOCS_LINK,
-  DUNE_DASHBOARD_LINK,
-  TWITTER_LINK,
-} from '@cowprotocol/common-const'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { Navigate, Route, Routes } from 'react-router'
@@ -39,11 +30,7 @@ import YieldPage from 'pages/Yield'
 
 // Async routes
 const NotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
-const CowRunner = lazy(() => import(/* webpackChunkName: "cow_runner" */ 'pages/games/CowRunner'))
 const MevSlicer = lazy(() => import(/* webpackChunkName: "mev_slicer" */ 'pages/games/MevSlicer'))
-
-// External routes
-const LegalExternal = <ExternalRedirect url={COWDAO_LEGAL_LINK} />
 
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
@@ -53,36 +40,21 @@ const AccountAffiliateTrader = lazy(
 )
 const AccountNotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
 
-function ExternalRedirect({ url }: { url: string }): null {
-  useEffect(() => {
-    window.location.replace(url)
-  }, [url])
-
-  return null
-}
-
 type LazyRouteProps = { route: RoutesValues; element: ReactNode; key?: number }
 
 function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
   return <Route key={key} path={route} element={<Suspense fallback={<Loading />}>{element}</Suspense>} />
 }
 
+// Ophis: routes that previously externally-redirected to cow.fi/* (ABOUT,
+// FAQ_*, PRIVACY_POLICY, COOKIE_POLICY, TERMS_CONDITIONS, PLAY_COWRUNNER)
+// removed in the 2026-05-20 rebrand. They now fall through to the `*`
+// NotFound catch-all below. Restore once Ophis has its own equivalents.
 const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.YIELD, element: <YieldPage /> },
   { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
   { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },
-  { route: RoutesEnum.ABOUT, element: <ExternalRedirect url={COWDAO_COWSWAP_ABOUT_LINK} /> },
-  { route: RoutesEnum.FAQ, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
-  { route: RoutesEnum.FAQ_PROTOCOL, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
-  { route: RoutesEnum.FAQ_TOKEN, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
-  { route: RoutesEnum.FAQ_TRADING, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
-  { route: RoutesEnum.FAQ_LIMIT_ORDERS, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
-  { route: RoutesEnum.FAQ_ETH_FLOW, element: <ExternalRedirect url={COWDAO_KNOWLEDGE_BASE_LINK} /> },
-  { route: RoutesEnum.PLAY_COWRUNNER, element: <CowRunner /> },
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
-  { route: RoutesEnum.PRIVACY_POLICY, element: LegalExternal },
-  { route: RoutesEnum.COOKIE_POLICY, element: LegalExternal },
-  { route: RoutesEnum.TERMS_CONDITIONS, element: LegalExternal },
 ]
 
 export function RoutesApp(): ReactNode {
@@ -122,10 +94,6 @@ export function RoutesApp(): ReactNode {
       {lazyRoutes.map((item, key) => LazyRoute({ ...item, key }))}
 
       <Route path={RoutesEnum.ANYSWAP_AFFECTED} element={<AnySwapAffectedUsers />} />
-      <Route path={RoutesEnum.CHAT} element={<ExternalRedirect url={DISCORD_LINK} />} />
-      <Route path={RoutesEnum.DOCS} element={<ExternalRedirect url={DOCS_LINK} />} />
-      <Route path={RoutesEnum.STATS} element={<ExternalRedirect url={DUNE_DASHBOARD_LINK} />} />
-      <Route path={RoutesEnum.TWITTER} element={<ExternalRedirect url={TWITTER_LINK} />} />
 
       {/* Ophis: `/` shows the intent landing instead of redirecting to /swap. */}
       <Route path={RoutesEnum.HOME} element={<IntentLanding />} />

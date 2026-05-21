@@ -73,19 +73,7 @@ export function ExpiredStep({ children, navigateToNewOrder }: ExpiredStepProps) 
       </styledEl.CardWrapper>
 
       <Description center margin="10px 0">
-        <Trans>If your orders often expire, consider increasing your slippage or contact us on</Trans>{' '}
-        <styledEl.Link
-          href="https://discord.com/invite/cowprotocol"
-          target="_blank"
-          data-click-event={handleAnalytics('Click Discord Link')}
-        >
-          Discord
-        </styledEl.Link>{' '}
-        <Trans>or send us an email at</Trans>{' '}
-        <styledEl.Link href="mailto:help@cow.fi" target="_blank" data-click-event={handleAnalytics('Click Email Link')}>
-          help@cow.fi
-        </styledEl.Link>{' '}
-        <Trans>so we can investigate the problem.</Trans>
+        <Trans>If your orders often expire, consider increasing your slippage.</Trans>
       </Description>
     </styledEl.ProgressContainer>
   )

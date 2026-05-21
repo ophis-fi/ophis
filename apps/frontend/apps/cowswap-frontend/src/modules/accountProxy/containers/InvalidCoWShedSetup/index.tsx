@@ -37,7 +37,7 @@ export function InvalidCoWShedSetup(): ReactNode {
       <InlineBanner bannerType={StatusColorVariant.Danger}>
         <div>
           <div>
-            <Trans>CoW Shed setup is invalid!</Trans>
+            <Trans>Smart account setup is invalid!</Trans>
           </div>
           <div>
             <ExternalLink href={DISCORD_LINK}>

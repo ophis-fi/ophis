@@ -88,7 +88,7 @@ export const MENU_ITEMS: I18nIMenuItem[] = [
 export const HOOKS_STORE_MENU_ITEM: I18nIMenuItem = {
   route: Routes.HOOKS,
   label: msg`Hooks`,
-  description: msg`Powerful tool to generate pre/post interaction for CoW Protocol`,
+  description: msg`Powerful tool to generate pre/post interaction with Ophis`,
   badgeImage: EXPERIMENT_ICON,
   badgeType: BadgeTypes.INFORMATION,
 }

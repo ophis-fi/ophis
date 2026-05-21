@@ -64,39 +64,18 @@ const LEARN_ITEM = {
   label: msg`Learn`,
   children: [
     {
-      href: 'https://cow.fi/cow-swap',
+      href: 'https://github.com/ophis-fi/ophis',
       label: msg`About Ophis`,
       external: true,
     },
     {
-      href: 'https://cow.fi/learn',
+      href: 'https://github.com/ophis-fi/ophis#faq',
       label: msg`FAQs`,
       external: true,
     },
     {
-      href: 'https://docs.cow.fi/',
+      href: 'https://ophis.fi/docs/',
       label: msg`Docs`,
-      external: true,
-    },
-  ],
-}
-
-const LEARN_ITEM_SUBMENU = {
-  label: msg`Legal`,
-  children: [
-    {
-      href: 'https://cow.fi/legal/cowswap-privacy-policy',
-      label: msg`Privacy Policy`,
-      external: true,
-    },
-    {
-      href: 'https://cow.fi/legal/cowswap-cookie-policy',
-      label: msg`Cookie Policy`,
-      external: true,
-    },
-    {
-      href: 'https://cow.fi/legal/cowswap-terms',
-      label: msg`Terms and Conditions`,
       external: true,
     },
   ],
@@ -105,21 +84,6 @@ const LEARN_ITEM_SUBMENU = {
 const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
   label: msg`More`,
   children: [
-    {
-      href: 'https://cow.fi/cow-protocol',
-      label: msg`CoW Protocol`,
-      external: true,
-    },
-    {
-      href: 'https://cow.fi/cow-amm',
-      label: msg`CoW AMM`,
-      external: true,
-    },
-    {
-      href: 'https://cow.fi/careers',
-      label: msg`Careers`,
-      external: true,
-    },
     ...(isSolversEnabled
       ? [
           {
@@ -130,14 +94,8 @@ const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
         ]
       : []),
     {
-      href: Routes.PLAY_COWRUNNER,
-      label: msg`CoW Runner`,
-      // icon: IMG_ICON_COW_RUNNER,
-    },
-    {
       href: Routes.PLAY_MEVSLICER,
       label: msg`MEV Slicer`,
-      // icon: IMG_ICON_COW_SLICER,
     },
   ],
 })
@@ -160,21 +118,11 @@ export const NAV_ITEMS = (
 
   const learnItem: MenuItem = {
     label: i18n._(LEARN_ITEM.label),
-    children: [
-      ...LEARN_ITEM.children.map(({ href, label, external }) => ({
-        href,
-        label: i18n._(label),
-        external,
-      })),
-      {
-        label: i18n._(LEARN_ITEM_SUBMENU.label),
-        children: LEARN_ITEM_SUBMENU.children.map(({ href, label, external }) => ({
-          href,
-          label: i18n._(label),
-          external,
-        })),
-      },
-    ],
+    children: LEARN_ITEM.children.map(({ href, label, external }) => ({
+      href,
+      label: i18n._(label),
+      external,
+    })),
   }
 
   const moreItemConfig = MORE_ITEM(isSolversEnabled)

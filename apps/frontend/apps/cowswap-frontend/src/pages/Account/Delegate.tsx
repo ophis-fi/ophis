@@ -39,7 +39,7 @@ export default function Delegate({ dismissable = false, rowOnMobile }: DelegateP
           </BannerCardTitle>
           <small>
             <Trans>Delegate your</Trans>
-            <img src={CowImage} alt={t`Cow Balance`} height="16" width="16" /> (v)COW
+            <img src={CowImage} alt={t`Token balance`} height="16" width="16" /> (v)COW
           </small>
           <ButtonPrimary as="a" href={DELEGATE_URL} target="_blank" rel="noopener nofollow">
             <Trans>Delegate Now</Trans> ↗

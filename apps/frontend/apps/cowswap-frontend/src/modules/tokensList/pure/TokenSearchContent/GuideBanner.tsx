@@ -1,12 +1,6 @@
 import { ReactNode } from 'react'
 
-import {
-  BannerOrientation,
-  ExternalLink,
-  InlineBanner,
-  LINK_GUIDE_ADD_CUSTOM_TOKEN,
-  StatusColorVariant,
-} from '@cowprotocol/ui'
+import { BannerOrientation, InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 
@@ -20,8 +14,8 @@ export function GuideBanner(): ReactNode {
     >
       <p>
         <Trans>
-          Can't find your token on the list?{' '}
-          <ExternalLink href={LINK_GUIDE_ADD_CUSTOM_TOKEN}>Read our guide</ExternalLink> on how to add custom tokens.
+          Can't find your token on the list? Paste its contract address into the search box to add it as a custom
+          token.
         </Trans>
       </p>
     </InlineBanner>

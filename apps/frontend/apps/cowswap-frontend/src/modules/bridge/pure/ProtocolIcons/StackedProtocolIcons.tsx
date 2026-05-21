@@ -147,7 +147,7 @@ export function StackedProtocolIcons({
     <ProtocolIconsContainer iconSize={currentDisplaySize} overlapRatio={STACKED_ICON_OVERLAP_RATIO}>
       <ProtocolIcon
         key="first"
-        title={t`CoW Protocol`}
+        title={t`Ophis`}
         bgColor={cowProtocolBgColor}
         style={{ zIndex: firstIconZIndex }}
         maskConfig={firstMaskConfig}
