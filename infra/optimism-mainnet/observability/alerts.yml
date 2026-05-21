@@ -197,7 +197,7 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more OP upstream(s) (publicnode / tenderly /
-            ophis-op-node-self) are slow or rate-limited.
+            ophis-self-op) are slow or rate-limited.
 
             Diagnose: `cast block-number --rpc-url <each upstream>` to find
             which one is unresponsive. Check rpc-proxy logs:
@@ -328,7 +328,7 @@ groups:
             stale state, gets disputed, eventually gets cordoned by
             punishMisbehavior.
 
-            For ophis-op-node-self: SSH check op-node + op-reth sync.
+            For ophis-self-op: SSH check op-node + op-reth sync.
               ssh root@100.77.53.81 \
                 'curl -s -H content-type:application/json \
                   -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
