@@ -109,29 +109,42 @@ account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 # Empirically over the last 30d OP gasPrice never exceeded 1 gwei.
 gas-price-cap = "5000000000"
 
-# Submission mempools — RACED in parallel.
-# Phase 1.4 (2026-05-20 AM): added 3-way race over 3rd-party relays.
-# Self-hosted update (2026-05-20 PM): prepended ophis-op-node-self as
-# the primary submission path. Signed calldata is observed FIRST by
-# our own Aleph VM (Tailscale RTT ~50ms vs 100-200ms for public).
-# Third-party relays kept as fallbacks for availability — if VM1 goes
-# down, settlements still broadcast.
+# Submission mempools — RACED in parallel via select_ok.
 #
-# Threat model on submission front-running:
-# - Pre-this-PR: hostile single 3rd-party relay could observe + race
-#   ahead. Mitigated by 3-way race over distinct operators.
-# - Post-this-PR: self-hosted entry wins the race ~always due to
-#   network proximity. A hostile 3rd-party relay seeing the calldata
-#   has already lost the race. To leak now, an attacker needs to be
-#   on the Aleph VM itself — a much smaller surface.
+# History:
+#   Phase 1.4 (2026-05-20 AM): added 3-way race over 3rd-party relays.
+#   Self-hosted prepend (2026-05-20 PM): added Aleph VM self-hosted op-node
+#     as primary submission path to win the include race by latency.
+#   A1 mitigation     (2026-05-21):     REMOVED self-hosted from submission.
+#     Kept self-hosted ONLY in eRPC consensus (read path).
 #
-# 4 relays, ordered (#1 wins by latency under normal conditions):
-[[submission.mempool]]
-# OUR OWN node on Aleph VM, reached via Tailscale. Primary path.
-# If VM1 goes down: this entry returns connection refused; driver
-# falls through to the 3 fallbacks below — settlements still land.
-url = "http://100.77.53.81:8545"
-
+# Why self-hosted is NOT in this list anymore (audit finding A1):
+#   When the driver submits a settlement, the FULL signed calldata crosses
+#   every relay configured here. If a relay (or an attacker who has root
+#   on the host running a relay) observes that calldata before inclusion,
+#   they can race a sandwich/front-run tx ahead of ours in the same block.
+#
+#   Self-hosted at 100.77.53.81:8545 is a single Aleph VM. Root compromise
+#   of that VM = the attacker sees 100% of our signed settlement bytes in
+#   real time. That made the Aleph VM a single point of MEV-leak failure,
+#   asymmetric to the read path (reads don't carry our unsigned txs, so
+#   keeping self-hosted in eRPC consensus leaks nothing).
+#
+#   With self-hosted removed from submission, an attacker must compromise
+#   ≥2 of the 3 distinct corporate operators below (PublicNode, OP
+#   Foundation gateway, Tenderly) to reliably win the front-run race on a
+#   given tx. That is the canonical CoW threat-model floor — anything
+#   below it is gravy.
+#
+# What we lose: the ~50-100 ms latency head-start that self-hosted gave us.
+# Empirically (audit Phase 2 telemetry) the third-party race already lands
+# settlements on the next OP block ≥99 % of the time — block period is 2 s
+# and our submission completes well inside that window through any single
+# relay. The latency edge was nice-to-have, not load-bearing.
+#
+# If self-hosted ever needs to be re-added here (e.g. emergency fallback
+# during a multi-relay outage), revisit the audit memo: this omission is
+# a deliberate trust-surface choice, not a config drop.
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
 
