@@ -28,11 +28,17 @@ use {
 /// stream to detect a sustained outage.
 ///
 /// F6 closes that observability gap. This counter increments on every
-/// Chainalysis fetch failure. Operators alert when its 5-minute rate
-/// is non-zero (per-stack alert in observability/alerts.yml). The
-/// behavior remains fail-open by design; this metric is the visibility
-/// layer that lets the operator decide when to manually shift to
-/// fail-closed via the kill-switch (a separate roadmap item).
+/// Chainalysis fetch failure. Operators alert when more than 5 failures
+/// occur in a 10-minute window sustained for 5 minutes (per-stack alert
+/// in observability/alerts.yml). The behavior remains fail-open by
+/// design; this metric is the visibility layer that lets the operator
+/// decide when to manually shift to fail-closed via the kill-switch
+/// (a separate roadmap item).
+///
+/// When the orderbook scrapes this metric, the namespace prefix
+/// `gp_v2_api` is prepended automatically (see orderbook/src/run.rs:79).
+/// The full Prometheus metric name is
+/// `gp_v2_api_sanctions_oracle_fetch_failed_total`.
 #[derive(prometheus_metric_storage::MetricStorage, Clone, Debug)]
 #[metric(subsystem = "sanctions")]
 struct Metrics {

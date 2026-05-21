@@ -488,8 +488,14 @@ groups:
       # escalate to a manual block-list. Counter only — current code has
       # no kill switch for runtime fail-closed; manual intervention req.
       - alert: OphisOpSanctionsOracleFetchFailing
+        # Metric is scraped from orderbook, which sets namespace `gp_v2_api`
+        # at observe::metrics::setup_registry(...). Combined with subsystem
+        # `sanctions` and field `oracle_fetch_failed`, the full name is
+        # `gp_v2_api_sanctions_oracle_fetch_failed_total`. Codex Cyber
+        # caught the original alert was querying the un-prefixed name and
+        # would never have fired.
         expr: |
-          increase(sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
+          increase(gp_v2_api_sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
         for: 5m
         labels:
           severity: warning

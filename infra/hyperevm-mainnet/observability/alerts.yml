@@ -329,8 +329,11 @@ groups:
       # See infra/optimism-mainnet/observability/alerts.yml :
       # ophis-op-sanctions-oracle for full context.
       - alert: OphisHlSanctionsOracleFetchFailing
+        # See OP alert for the namespace-prefix rationale (Codex Cyber
+        # PR #204 review HIGH). Full metric name:
+        # gp_v2_api_sanctions_oracle_fetch_failed_total
         expr: |
-          increase(sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
+          increase(gp_v2_api_sanctions_oracle_fetch_failed_total{job="orderbook"}[10m]) > 5
         for: 5m
         labels:
           severity: warning
