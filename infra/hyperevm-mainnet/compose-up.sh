@@ -29,6 +29,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# F7 inter-service auth token from Keychain (see OP compose-up.sh + .env.example).
+# Same shared token across OP and HL stacks — single Keychain entry.
+if [[ -z "${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+  if security find-generic-password -a "$USER" -s ophis-inter-service-auth-token -w >/dev/null 2>&1; then
+    OPHIS_INTER_SERVICE_AUTH_TOKEN=$(security find-generic-password -a "$USER" -s ophis-inter-service-auth-token -w 2>/dev/null)
+    export OPHIS_INTER_SERVICE_AUTH_TOKEN
+    echo "==> F7 inter-service auth token sourced from Keychain"
+  else
+    echo "==> F7 inter-service auth token NOT set + not in Keychain — driver will run un-authenticated" >&2
+  fi
+fi
+
 echo "==> render-configs.sh"
 ./render-configs.sh
 
