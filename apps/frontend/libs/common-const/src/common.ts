@@ -48,7 +48,7 @@ export const PAGE_TITLES = {
   ADVANCED: msg`TWAP`,
   ACCOUNT_OVERVIEW: msg`Account Overview`,
   TOKENS_OVERVIEW: msg`Tokens Overview`,
-  COW_RUNNER: msg`CoW Runner`,
+  COW_RUNNER: msg`Order Runner`,
   MEV_SLICER: msg`Mev Slicer`,
   HOOKS: msg`Hooks`,
   AFFILIATE: msg`Rewards hub - Affiliate`,

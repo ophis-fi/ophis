@@ -21,7 +21,7 @@ const WEB_VERSION = pkg.version
 // Set Cache name
 //  See https://dev.to/atonchev/flawless-and-silent-upgrade-of-the-service-worker-2o95
 setCacheNameDetails({
-  prefix: 'CowSwap',
+  prefix: 'Ophis',
   suffix: WEB_VERSION,
 })
 

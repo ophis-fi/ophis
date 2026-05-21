@@ -35,7 +35,7 @@ export function ApproveConfirmation({
           </span>
           <HelpTooltip>
             <Trans>
-              You must give the CoW Protocol smart contracts permission to use your {tokenSymbol}. If you approve the
+              You must give the Ophis smart contracts permission to use your {tokenSymbol}. If you approve the
               default amount, you will only have to do this once per token.
             </Trans>
           </HelpTooltip>

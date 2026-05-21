@@ -4,7 +4,7 @@ import { CowSwapWidgetParams, TradeType } from './types'
 
 const EMPTY_TOKEN = '_'
 
-const INVALID_BASE_URL_PREFIX = 'CoW Swap widget: invalid baseUrl.'
+const INVALID_BASE_URL_PREFIX = 'Ophis widget: invalid baseUrl.'
 
 /**
  * When `true`, invalid `baseUrl` values throw and stop widget creation.

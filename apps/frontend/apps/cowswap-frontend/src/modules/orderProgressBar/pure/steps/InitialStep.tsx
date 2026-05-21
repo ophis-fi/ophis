@@ -29,7 +29,7 @@ export function InitialStep({ children, isBridgingTrade }: InitialStepProps) {
           <Description>
             <Trans>On Ophis, orders placed at the same time are</Trans>{' '}
             <styledEl.Link
-              href="https://cow.fi/learn/understanding-batch-auctions"
+              href="https://github.com/ophis-fi/ophis"
               target="_blank"
               data-click-event={toCowSwapGtmEvent({
                 category: CowSwapAnalyticsCategory.PROGRESS_BAR,

@@ -15,7 +15,6 @@ export const CHAIN_SLUG_TO_ID: Record<string, number> = {
   gnosis: 100,
   linea: 59144,
   bnb: 56,
-  megaeth: 4326,
 }
 
 export function chainSlugToId(slug: string): number | undefined {

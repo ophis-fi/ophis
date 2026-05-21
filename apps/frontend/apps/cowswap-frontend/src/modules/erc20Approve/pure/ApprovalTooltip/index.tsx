@@ -17,7 +17,7 @@ export function ApprovalTooltip({ currency, isLegacyApproval = false }: Approval
 
   const baseText = (
     <Trans>
-      You must give the CoW Protocol smart contracts permission to use your <TokenSymbol token={currency} />.
+      You must give the Ophis smart contracts permission to use your <TokenSymbol token={currency} />.
     </Trans>
   )
 

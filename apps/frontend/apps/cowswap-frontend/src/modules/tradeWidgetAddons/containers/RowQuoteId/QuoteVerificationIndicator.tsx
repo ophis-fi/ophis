@@ -60,9 +60,9 @@ const CompactIconWrapper = styled.span`
 
 function getVerificationTooltipText(isVerified: boolean): ReactNode {
   return isVerified ? (
-    <Trans>Quote verified by CoW Protocol simulation</Trans>
+    <Trans>Quote verified by Ophis simulation</Trans>
   ) : (
-    <Trans>Quote not yet verified by CoW Protocol simulation</Trans>
+    <Trans>Quote not yet verified by Ophis simulation</Trans>
   )
 }
 

@@ -1,8 +1,8 @@
 import { AnalyticsCategory, GtmEvent, toGtmEvent } from '@cowprotocol/analytics'
 
 /**
- * CowSwap-specific analytics categories
- * Extends the base Category enum with CowSwap-specific values
+ * Ophis-specific analytics categories
+ * Extends the base Category enum with Ophis-specific values
  */
 export enum CowSwapAnalyticsCategory {
   // Trade Categories
@@ -15,7 +15,7 @@ export enum CowSwapAnalyticsCategory {
   CLAIM_COW_FOR_LOCKED_GNO = 'Claim COW for Locked GNO',
   TWAP = 'TWAP',
   SURPLUS_MODAL = 'Surplus Modal',
-  COWSWAP = 'CoWSwap',
+  COWSWAP = 'Ophis',
   LIMIT_ORDER_SETTINGS = 'Limit Order Settings',
 
   // UI Categories
@@ -23,7 +23,7 @@ export enum CowSwapAnalyticsCategory {
   NOTIFICATIONS = 'Notifications',
   PROGRESS_BAR = 'Progress Bar',
   GAMES = 'Games',
-  COW_FORTUNE = 'CoWFortune',
+  COW_FORTUNE = 'OphisFortune',
 }
 
 /**
