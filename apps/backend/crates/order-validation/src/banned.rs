@@ -38,7 +38,14 @@ use {
 /// When the orderbook scrapes this metric, the namespace prefix
 /// `gp_v2_api` is prepended automatically (see orderbook/src/run.rs:79).
 /// The full Prometheus metric name is
-/// `gp_v2_api_sanctions_oracle_fetch_failed_total`.
+/// `gp_v2_api_sanctions_oracle_fetch_failed` — NO `_total` suffix.
+/// The Rust `prometheus` crate does not auto-append `_total` (unlike
+/// Prometheus's official naming convention); the field identifier
+/// is the exposition name verbatim. Caught during F6 stress-verify
+/// 2026-05-21 — the original alert rules queried `..._total` and
+/// would never have matched. Renaming the Rust field to include
+/// `_total` would be cleaner long-term but is a wider migration
+/// (dashboards + ad-hoc queries already use the current name).
 #[derive(prometheus_metric_storage::MetricStorage, Clone, Debug)]
 #[metric(subsystem = "sanctions")]
 struct Metrics {
