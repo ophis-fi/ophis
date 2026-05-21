@@ -4,6 +4,7 @@ pragma solidity ^0.8;
 import {Script, console} from "forge-std/Script.sol";
 
 import {GPv2Settlement} from "../src/contracts/GPv2Settlement.sol";
+import {GPv2Authentication} from "../src/contracts/interfaces/GPv2Authentication.sol";
 import {GPv2Interaction} from "../src/contracts/libraries/GPv2Interaction.sol";
 import {GPv2Trade} from "../src/contracts/libraries/GPv2Trade.sol";
 import {IERC20} from "../src/contracts/interfaces/IERC20.sol";
@@ -11,52 +12,94 @@ import {IERC20} from "../src/contracts/interfaces/IERC20.sol";
 /// @title Sweep Settlement Buffer to Recipient Safe
 ///
 /// Calls `Settlement.settle()` with empty trades and a single batch of post-
-/// interactions that transfer the Settlement contract's accumulated ERC20
-/// balance (CIP-75 partner-fee buffer) to a designated recipient.
+/// interactions that transfer the Settlement contract's accumulated balances
+/// (CIP-75 partner-fee buffer) to a designated recipient.
 ///
-/// On our Ophis OP fork at `0x310784c7…`, the CIP-75 partner-fee mechanism
-/// reduces the user's executed buy amount by the calculated fee, but does
-/// NOT atomically transfer to `partnerFee.recipient`. The fee accumulates
-/// in Settlement. Without this sweep, the buffer is recycled into future-
-/// trader price improvement (CoW's default behavior), which is functionally
-/// equivalent to ZERO Ophis revenue.
+/// On the Ophis OP fork at `0x310784c7…`, CIP-75 partner-fee reduces the
+/// user's executed buy amount by the calculated fee, but does NOT atomically
+/// transfer to `partnerFee.recipient`. The fee accumulates in Settlement.
+/// Without this sweep, the buffer is recycled into future-trader price
+/// improvement (CoW's default behavior), which is functionally equivalent
+/// to ZERO Ophis revenue.
 ///
 /// This is option B1 from `docs/audits/2026-05-20-cip75-partner-fee-bypass.md`.
-/// Per the CoW Settlement design, settle() accepts empty trades and any
-/// solver-allowlisted caller can submit arbitrary post-interactions. Our
-/// driver-submitter EOA `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1` is
-/// allowlisted (added via Safe vote 2026-05-20).
+///
+/// ## 2026-05-22 ToB-suite audit hardening (HIGH-1, HIGH-2, HIGH-3)
+///
+/// **HIGH-1** — the previous single `MIN_TOTAL_WEI` threshold was
+/// decimals-blind across mixed-decimal tokens. With `MIN_TOTAL_WEI=1e15`,
+/// USDC (6 decimals) needed 10^9 base units = $1B before the sweep would
+/// fire, while WETH (18 decimals) triggered at 0.001 ETH. USDC partner-fees
+/// could accumulate indefinitely without ever crossing the threshold —
+/// a silent revenue bug. Replaced with PER-TOKEN base-unit thresholds plus
+/// a separate ETH threshold; defaults map to ~$10 each on OP at the time
+/// of writing.
+///
+/// **HIGH-2** — the previous script did NOT pre-verify that the broadcaster
+/// EOA is currently allowlisted in the AllowListAuthentication proxy. If
+/// the Safe revoked the solver registration between the AllowList vote
+/// and the sweep run, `settle()` would revert with "GPv2: not a solver"
+/// AFTER the broadcast — wasting gas AND leaking sweep intent into the
+/// public mempool (front-runnable). Now we read
+/// `Settlement.authenticator().isSolver(broadcaster)` BEFORE the broadcast
+/// and revert locally if the answer is false.
+///
+/// **HIGH-3** — the previous script swept ONLY ERC20 balances, not native
+/// ETH. Settlement has an open `receive()` and accumulates ETH from
+/// sequencer-fee refunds and direct-buy 0xEee…EeE order refunds. That ETH
+/// stayed locked indefinitely. Now we also detect `Settlement.balance > 0`
+/// and append a value-bearing interaction that transfers the ETH to the
+/// Safe (Settlement forwards `value` to the target via
+/// `target.call{value: interaction.value}(callData)`).
 ///
 /// Inputs (env vars):
 ///   SETTLEMENT          Settlement contract address (default: Ophis OP)
 ///   SAFE                Recipient Safe (default: 0x858f0F5e…CeF8)
 ///   TOKENS              Comma-separated ERC20 addresses to sweep
-///   MIN_TOTAL_WEI       Skip if sum-of-balances-as-wei is below this
-///                       (default: 1e15 = 0.001 ETH equivalent, per CoW's
-///                       partner-fee payout threshold)
+///   MIN_BASE_UNITS      Comma-separated per-token base-unit thresholds
+///                       (same length as TOKENS, both default to USDC+WETH
+///                       with $10-equivalent thresholds on OP)
+///   MIN_ETH_WEI         Native-ETH threshold in wei (default: 3e15 ≈ $10
+///                       at $3500/ETH)
 ///
 /// Usage:
-///   # Dry-run (simulates the tx, prints calldata, does NOT broadcast):
 ///   forge script SweepSettlementBuffer --rpc-url $RPC --sender $EOA
 ///
-///   # Live broadcast:
 ///   PRIVATE_KEY=... forge script SweepSettlementBuffer \
 ///     --rpc-url $RPC --broadcast
 contract SweepSettlementBuffer is Script {
     // Ophis OP defaults
     address constant DEFAULT_SETTLEMENT = 0x310784c7FCE12d578dA6f53460777bAc9718B859;
     address constant DEFAULT_SAFE = 0x858f0F5eE954846D47155F5203c04aF1819eCeF8;
-    uint256 constant DEFAULT_MIN_TOTAL_WEI = 1e15; // 0.001 ETH equivalent
 
     // Native USDC, WETH on Optimism (defaults)
     address constant DEFAULT_USDC_OP = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85;
     address constant DEFAULT_WETH_OP = 0x4200000000000000000000000000000000000006;
 
+    // Per-token default thresholds, denominated in each token's base units.
+    // Picked to be roughly equivalent to $10 each on OP at the time of writing.
+    // - USDC is 6 decimals, $1 per token → $10 = 10 * 1e6 = 1e7 base units.
+    // - WETH is 18 decimals; at $3500/ETH → $10 ≈ 0.00286 ETH = 2.86e15 wei.
+    //   We round up to 3e15 for a conservative ~$10.50 threshold.
+    // Operator override via env (MIN_BASE_UNITS) when token mix differs.
+    uint256 constant DEFAULT_MIN_USDC_BASE_UNITS = 1e7;
+    uint256 constant DEFAULT_MIN_WETH_BASE_UNITS = 3e15;
+    // HIGH-3: native-ETH threshold (same magnitude as WETH default).
+    uint256 constant DEFAULT_MIN_ETH_WEI = 3e15;
+    // Fallback per-token threshold for tokens not in the known-defaults
+    // table (operator did not provide MIN_BASE_UNITS). Conservative: equals
+    // the legacy MIN_TOTAL_WEI default. Operators are expected to override
+    // when sweeping non-USDC/WETH balances.
+    uint256 constant DEFAULT_MIN_UNKNOWN_BASE_UNITS = 1e15;
+
     struct ScriptParams {
         GPv2Settlement settlement;
         address safe;
         IERC20[] tokens;
-        uint256 minTotalWei;
+        // HIGH-1: per-token threshold in base units. Same length as tokens.
+        uint256[] minBaseUnits;
+        // HIGH-3: native-ETH threshold in wei.
+        uint256 minEthWei;
     }
 
     function run() public {
@@ -67,7 +110,7 @@ contract SweepSettlementBuffer is Script {
     function paramsFromEnv() internal view returns (ScriptParams memory params) {
         params.settlement = GPv2Settlement(payable(vm.envOr("SETTLEMENT", DEFAULT_SETTLEMENT)));
         params.safe = vm.envOr("SAFE", DEFAULT_SAFE);
-        params.minTotalWei = vm.envOr("MIN_TOTAL_WEI", DEFAULT_MIN_TOTAL_WEI);
+        params.minEthWei = vm.envOr("MIN_ETH_WEI", DEFAULT_MIN_ETH_WEI);
 
         // TOKENS is a comma-separated list — fall back to defaults (USDC + WETH).
         try vm.envString("TOKENS") returns (string memory tokensStr) {
@@ -77,6 +120,29 @@ contract SweepSettlementBuffer is Script {
             params.tokens[0] = IERC20(DEFAULT_USDC_OP);
             params.tokens[1] = IERC20(DEFAULT_WETH_OP);
         }
+
+        // HIGH-1: per-token thresholds. MIN_BASE_UNITS is a comma-separated
+        // list aligned 1:1 with TOKENS. When unset, fall back to the
+        // known-defaults table by address; for unknown addresses use the
+        // conservative legacy threshold.
+        try vm.envString("MIN_BASE_UNITS") returns (string memory minStr) {
+            params.minBaseUnits = _parseUintList(minStr);
+            require(
+                params.minBaseUnits.length == params.tokens.length,
+                "SweepScript: MIN_BASE_UNITS length mismatch with TOKENS"
+            );
+        } catch {
+            params.minBaseUnits = new uint256[](params.tokens.length);
+            for (uint256 i = 0; i < params.tokens.length; i++) {
+                params.minBaseUnits[i] = _defaultThresholdFor(address(params.tokens[i]));
+            }
+        }
+    }
+
+    function _defaultThresholdFor(address token) internal pure returns (uint256) {
+        if (token == DEFAULT_USDC_OP) return DEFAULT_MIN_USDC_BASE_UNITS;
+        if (token == DEFAULT_WETH_OP) return DEFAULT_MIN_WETH_BASE_UNITS;
+        return DEFAULT_MIN_UNKNOWN_BASE_UNITS;
     }
 
     function runWith(ScriptParams memory params) public {
@@ -85,53 +151,54 @@ contract SweepSettlementBuffer is Script {
         console.log("Safe:      ", params.safe);
         console.log("Tokens:    ", params.tokens.length);
 
+        // Codex MED (PR #223 review): when `runWith()` is called directly
+        // (not via `run()` + paramsFromEnv()), no length-mismatch check
+        // ran upstream. Defensive re-check here so direct callers can't
+        // crash the script with an out-of-bounds panic inside the build
+        // loop.
+        require(
+            params.minBaseUnits.length == params.tokens.length,
+            "SweepScript: minBaseUnits length mismatch with tokens"
+        );
+
+        // HIGH-2 fix: pre-broadcast allowlist check.
+        // PRIVATE_KEY env (if set) overrides via vm.addr. Otherwise we use
+        // msg.sender — which forge populates from --sender. Codex HIGH
+        // (PR #223 review) flagged that `--private-key` CLI form (vs the
+        // env-var form) doesn't always set msg.sender to the key's address.
+        // Mitigation: derive broadcaster explicitly + pass it to
+        // `vm.startBroadcast(broadcaster)` below (not the bare overload),
+        // so the on-chain settle() tx is signed by the same address we
+        // just checked the allowlist for. Mismatch is now impossible.
+        address broadcaster;
+        try vm.envUint("PRIVATE_KEY") returns (uint256 pk) {
+            broadcaster = vm.addr(pk);
+        } catch {
+            broadcaster = msg.sender;
+        }
+        GPv2Authentication auth = params.settlement.authenticator();
+        require(
+            auth.isSolver(broadcaster),
+            "SweepScript: broadcaster not in solver allowlist (run with --sender or PRIVATE_KEY of allowlisted EOA)"
+        );
+        console.log("Broadcaster:", broadcaster, "(allowlisted)");
+
         // Compute balances and assemble post-interactions for non-zero ones.
         // GPv2Settlement.settle() takes interactions as Data[][3]; we use only
         // the post-interactions slot (index 2). pre and intra are empty arrays.
         GPv2Interaction.Data[] memory postInteractions = _buildSweepInteractions(
             params.settlement,
             params.safe,
-            params.tokens
+            params.tokens,
+            params.minBaseUnits,
+            params.minEthWei
         );
 
         if (postInteractions.length == 0) {
-            console.log("No tokens with balance > 0. Skipping.");
+            console.log(
+                "No tokens with balance >= threshold and no ETH > MIN_ETH_WEI. Skipping."
+            );
             return;
-        }
-
-        // Audit MED-2 (codex + sharp-edges 2026-05-20): the previous shape
-        // logged a warning but still broadcast even when below threshold.
-        // That gates against operator error (broadcasting a sweep that
-        // costs more in gas than it captures). Hard-abort unless override
-        // is explicitly set.
-        //
-        // 2026-05-20 audit follow-up: the prior check inspected ONLY the
-        // WETH balance, which meant a sweep targeting USDC (or any other
-        // configured token) was blocked even when that token had a
-        // substantial accumulated balance. Now: compute the MAX balance
-        // across the configured token list and gate on that. The
-        // semantic is "if no configured token has balance >= threshold,
-        // the sweep isn't worth the gas". Imperfect across mixed
-        // decimals (1e18 WETH-wei vs 1e6 USDC-base) but a pragmatic
-        // improvement over the WETH-only check; operator sets the
-        // threshold knowing the bucket they're targeting.
-        uint256 maxBalance = 0;
-        address maxBalanceToken = address(0);
-        for (uint256 i = 0; i < params.tokens.length; i++) {
-            uint256 b = params.tokens[i].balanceOf(address(params.settlement));
-            if (b > maxBalance) {
-                maxBalance = b;
-                maxBalanceToken = address(params.tokens[i]);
-            }
-        }
-        bool forceBelowThreshold = vm.envOr("FORCE_SWEEP_BELOW_THRESHOLD", false);
-        if (maxBalance < params.minTotalWei && !forceBelowThreshold) {
-            console.log("ABORT: no configured token has balance >= threshold.");
-            console.log("  max balance:    ", maxBalance);
-            console.log("  max balance token:", maxBalanceToken);
-            console.log("  threshold:      ", params.minTotalWei);
-            console.log("Set FORCE_SWEEP_BELOW_THRESHOLD=1 to override.");
-            revert("BelowThreshold");
         }
 
         // Build empty trade arrays
@@ -146,47 +213,66 @@ contract SweepSettlementBuffer is Script {
         interactions[2] = postInteractions;
 
         console.log("Broadcasting sweep with", postInteractions.length, "transfer interaction(s)...");
-        vm.startBroadcast();
+        // Use the address-pinned `vm.startBroadcast(broadcaster)` overload
+        // (Codex HIGH review on PR #223). Matches the address we already
+        // verified is in the solver allowlist — eliminates any drift
+        // between the pre-check and the actual broadcaster identity.
+        vm.startBroadcast(broadcaster);
         params.settlement.settle(emptyTokens, emptyPrices, emptyTrades, interactions);
         vm.stopBroadcast();
         console.log("Sweep tx submitted.");
     }
 
+    /// @dev Build the sweep interaction list — one entry per token whose
+    /// balance meets its configured threshold, plus an optional ETH-transfer
+    /// entry if the Settlement's native-ETH balance meets `minEthWei`.
+    ///
+    /// Snapshot pattern (2026-05-20 audit follow-up): we read every balance
+    /// ONCE into a memory array, then build interactions from that snapshot.
+    /// Avoids the TOCTOU window where a concurrent fill could change the
+    /// balance between two `balanceOf(settlement)` reads in the original
+    /// implementation.
     function _buildSweepInteractions(
         GPv2Settlement settlement,
         address safe,
-        IERC20[] memory tokens
+        IERC20[] memory tokens,
+        uint256[] memory minBaseUnits,
+        uint256 minEthWei
     ) internal view returns (GPv2Interaction.Data[] memory) {
-        // 2026-05-20 audit follow-up: the prior implementation called
-        // `tokens[i].balanceOf(settlement)` TWICE per token (once to
-        // count, once to encode the transfer). Between the two calls,
-        // a concurrent fill on the settlement contract could change
-        // balances; worse, if a token's balance dropped to zero
-        // between passes, `count` would over-allocate and leave
-        // uninitialized (target=0x0, value=0, callData=0x) entries in
-        // the result array — the final `settlement.settle(...)` would
-        // then attempt to call 0x0 and revert the entire sweep.
-        //
-        // Fix: snapshot all balances into a memory array once, then
-        // build the interactions from the snapshot. Single source of
-        // truth, no TOCTOU window.
+        // Snapshot ERC20 balances.
         uint256[] memory balances = new uint256[](tokens.length);
-        uint256 count = 0;
+        uint256 erc20Count = 0;
         for (uint256 i = 0; i < tokens.length; i++) {
             balances[i] = tokens[i].balanceOf(address(settlement));
-            if (balances[i] > 0) {
-                count++;
+            if (balances[i] >= minBaseUnits[i]) {
+                erc20Count++;
                 console.log("  token", address(tokens[i]), "balance:", balances[i]);
+            } else if (balances[i] > 0) {
+                console.log(
+                    "  token",
+                    address(tokens[i]),
+                    "balance below threshold (skip):",
+                    balances[i]
+                );
             } else {
                 console.log("  token", address(tokens[i]), "balance: 0 (skip)");
             }
         }
 
-        // Build the interactions array from the snapshot.
-        GPv2Interaction.Data[] memory result = new GPv2Interaction.Data[](count);
+        // HIGH-3 fix: snapshot native ETH balance + check threshold.
+        uint256 ethBalance = address(settlement).balance;
+        uint256 ethCount = 0;
+        if (ethBalance >= minEthWei) {
+            ethCount = 1;
+            console.log("  native ETH balance:", ethBalance, "(will sweep)");
+        } else if (ethBalance > 0) {
+            console.log("  native ETH balance below threshold (skip):", ethBalance);
+        }
+
+        GPv2Interaction.Data[] memory result = new GPv2Interaction.Data[](erc20Count + ethCount);
         uint256 idx = 0;
         for (uint256 i = 0; i < tokens.length; i++) {
-            if (balances[i] == 0) continue;
+            if (balances[i] < minBaseUnits[i]) continue;
             result[idx] = GPv2Interaction.Data({
                 target: address(tokens[i]),
                 value: 0,
@@ -194,20 +280,20 @@ contract SweepSettlementBuffer is Script {
             });
             idx++;
         }
-        return result;
-    }
-
-    function _getBalanceForToken(
-        GPv2Settlement settlement,
-        IERC20[] memory tokens,
-        address target
-    ) internal view returns (uint256) {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (address(tokens[i]) == target) {
-                return tokens[i].balanceOf(address(settlement));
-            }
+        if (ethCount == 1) {
+            // HIGH-3 fix: native ETH sweep via value-bearing call to Safe.
+            // GPv2Interaction.execute uses `target.call{value: value}(callData)`,
+            // so an empty callData with `value: ethBalance` performs a plain
+            // ETH transfer. Settlement is `payable` and holds the ETH; the
+            // call forwards it to `safe`.
+            result[idx] = GPv2Interaction.Data({
+                target: safe,
+                value: ethBalance,
+                callData: ""
+            });
+            idx++;
         }
-        return 0;
+        return result;
     }
 
     function _parseTokenList(string memory s) internal pure returns (IERC20[] memory) {
@@ -215,7 +301,7 @@ contract SweepSettlementBuffer is Script {
         // is operator-controlled input so we don't need to harden against
         // adversarial parsing.
         bytes memory b = bytes(s);
-        // Count commas + 1 = number of tokens.
+        if (b.length == 0) return new IERC20[](0);
         uint256 n = 1;
         for (uint256 i = 0; i < b.length; i++) {
             if (b[i] == ",") n++;
@@ -227,7 +313,7 @@ contract SweepSettlementBuffer is Script {
             if (i == b.length || b[i] == ",") {
                 bytes memory chunk = new bytes(i - start);
                 for (uint256 j = 0; j < chunk.length; j++) chunk[j] = b[start + j];
-                out[k] = IERC20(_parseAddress(string(chunk)));
+                out[k] = IERC20(vm.parseAddress(string(chunk)));
                 k++;
                 start = i + 1;
             }
@@ -235,10 +321,27 @@ contract SweepSettlementBuffer is Script {
         return out;
     }
 
-    function _parseAddress(string memory s) internal pure returns (address) {
-        // vm.parseAddress is the cleanest path but we keep this dependency-
-        // light. The script is operator-internal; address parsing here is
-        // unguarded and intentional.
-        return vm.parseAddress(s);
+    /// @dev Same comma-separated parser as `_parseTokenList` but for uint256
+    /// base-unit values (HIGH-1: per-token threshold list).
+    function _parseUintList(string memory s) internal pure returns (uint256[] memory) {
+        bytes memory b = bytes(s);
+        if (b.length == 0) return new uint256[](0);
+        uint256 n = 1;
+        for (uint256 i = 0; i < b.length; i++) {
+            if (b[i] == ",") n++;
+        }
+        uint256[] memory out = new uint256[](n);
+        uint256 start = 0;
+        uint256 k = 0;
+        for (uint256 i = 0; i <= b.length; i++) {
+            if (i == b.length || b[i] == ",") {
+                bytes memory chunk = new bytes(i - start);
+                for (uint256 j = 0; j < chunk.length; j++) chunk[j] = b[start + j];
+                out[k] = vm.parseUint(string(chunk));
+                k++;
+                start = i + 1;
+            }
+        }
+        return out;
     }
 }
