@@ -7,8 +7,12 @@ import { Trans } from '@lingui/react/macro'
 import { BANNER_IDS } from 'common/constants/banners'
 
 const BANNER_ID = BANNER_IDS.LIMIT_ORDERS_PROTOCOL_FEE
+// F9 rebrand sweep (2026-05-21): CIP_74_URL is a canonical reference to a
+// specific governance proposal — KEPT as-is (no Ophis equivalent; it's
+// the source of truth for the fee policy this banner describes).
+// VOLUME_FEE_DOC_URL repointed to Ophis homepage placeholder.
 const CIP_74_URL = 'https://vote.cow.fi/#/proposal/0x0c70c8cd92accee872b52614b4fa10e3e3214f45c5b6857f7e88e910607a3c1d'
-const VOLUME_FEE_DOC_URL = 'https://docs.cow.fi/governance/fees#volume-fee'
+const VOLUME_FEE_DOC_URL = 'https://ophis.fi'
 const PROTOCOL_FEE_START_DATETIME_UTC = 'November 26, 2025 at 00:00 (UTC)'
 
 export interface ProtocolFeeInfoBannerProps {

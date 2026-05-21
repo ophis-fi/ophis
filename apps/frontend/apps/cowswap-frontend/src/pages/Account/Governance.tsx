@@ -19,9 +19,13 @@ export default function Governance() {
           <ExtLink href={'https://snapshot.org/#/cow.eth'}>
             <Trans>View proposals</Trans> ↗
           </ExtLink>
-          <ExtLink href={'https://forum.cow.fi/'}>
-            <Trans>Forum</Trans> ↗
-          </ExtLink>
+          {/*
+            F9 rebrand sweep (2026-05-21): removed Forum link to
+            https://forum.cow.fi/ — Ophis has no equivalent community
+            forum. The surrounding Governance page is itself
+            CoW-DAO-specific (vCOW + Snapshot space cow.eth) and is a
+            candidate for future removal.
+          */}
           <ExtLink href={DELEGATE_URL}>
             <Trans>Delegate (v)COW</Trans> ↗
           </ExtLink>

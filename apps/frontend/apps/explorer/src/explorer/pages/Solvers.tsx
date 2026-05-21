@@ -26,7 +26,12 @@ import { NETWORK_PREFIXES } from '../../state/network/const'
 import { APP_TITLE } from '../const'
 
 const SOLVERS_DUNE_EMBED_URL = 'https://dune.com/embeds/5931238/9574995?darkMode=true'
-const SOLVERS_CANONICAL_URL = 'https://explorer.cow.fi/solvers'
+// F9 rebrand sweep (2026-05-21): was explorer.cow.fi/solvers — used as the
+// canonical URL for the solvers page so search engines see one source.
+// Repointed to explorer.ophis.fi/solvers — verify the Ophis explorer
+// deployment actually lives there before merging; otherwise the canonical
+// hint sends bots to a 404.
+const SOLVERS_CANONICAL_URL = 'https://explorer.ophis.fi/solvers'
 const SOLVER_DEEPLINK_QUERY_PARAM = 'solver'
 const SNAPSHOT_PREFLIGHT_TIMEOUT_MS = 4000
 

@@ -29,8 +29,14 @@ export const AFFILIATE_SUPPORTED_NETWORK_NAMES = AFFILIATE_SUPPORTED_CHAIN_IDS.m
   (chainId) => CHAIN_INFO[chainId].label,
 )
 
-export const AFFILIATE_HOW_IT_WORKS_URL = 'https://cow.fi/affiliate-program'
-export const AFFILIATE_TERMS_URL = 'https://cow.fi/legal/affiliate-program-terms'
+// F9 rebrand sweep: were cow.fi/affiliate-program + cow.fi/legal/...
+// Ophis does not currently run an affiliate program — repointed to
+// Ophis homepage as placeholder. The affiliate UI module is still
+// present in the build but unreached unless feature-flagged on; if
+// Ophis launches a real affiliate program, update these URLs to
+// point at the proper Ophis-side documentation.
+export const AFFILIATE_HOW_IT_WORKS_URL = 'https://ophis.fi'
+export const AFFILIATE_TERMS_URL = 'https://ophis.fi'
 
 export const AFFILIATE_REWARDS_CURRENCY = 'USDC'
 export const AFFILIATE_REWARDS_UPDATE_INTERVAL_HOURS = 24
