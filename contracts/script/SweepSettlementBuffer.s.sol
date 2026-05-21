@@ -151,12 +151,25 @@ contract SweepSettlementBuffer is Script {
         console.log("Safe:      ", params.safe);
         console.log("Tokens:    ", params.tokens.length);
 
+        // Codex MED (PR #223 review): when `runWith()` is called directly
+        // (not via `run()` + paramsFromEnv()), no length-mismatch check
+        // ran upstream. Defensive re-check here so direct callers can't
+        // crash the script with an out-of-bounds panic inside the build
+        // loop.
+        require(
+            params.minBaseUnits.length == params.tokens.length,
+            "SweepScript: minBaseUnits length mismatch with tokens"
+        );
+
         // HIGH-2 fix: pre-broadcast allowlist check.
-        // forge passes --sender as msg.sender during script execution;
-        // PRIVATE_KEY env (if set) overrides via vm.addr. Determine the
-        // broadcaster address, then assert it's currently allowlisted by
-        // the Settlement's on-chain authenticator. Reverting here costs
-        // zero gas + does NOT leak intent into the public mempool.
+        // PRIVATE_KEY env (if set) overrides via vm.addr. Otherwise we use
+        // msg.sender — which forge populates from --sender. Codex HIGH
+        // (PR #223 review) flagged that `--private-key` CLI form (vs the
+        // env-var form) doesn't always set msg.sender to the key's address.
+        // Mitigation: derive broadcaster explicitly + pass it to
+        // `vm.startBroadcast(broadcaster)` below (not the bare overload),
+        // so the on-chain settle() tx is signed by the same address we
+        // just checked the allowlist for. Mismatch is now impossible.
         address broadcaster;
         try vm.envUint("PRIVATE_KEY") returns (uint256 pk) {
             broadcaster = vm.addr(pk);
@@ -200,7 +213,11 @@ contract SweepSettlementBuffer is Script {
         interactions[2] = postInteractions;
 
         console.log("Broadcasting sweep with", postInteractions.length, "transfer interaction(s)...");
-        vm.startBroadcast();
+        // Use the address-pinned `vm.startBroadcast(broadcaster)` overload
+        // (Codex HIGH review on PR #223). Matches the address we already
+        // verified is in the solver allowlist — eliminates any drift
+        // between the pre-check and the actual broadcaster identity.
+        vm.startBroadcast(broadcaster);
         params.settlement.settle(emptyTokens, emptyPrices, emptyTrades, interactions);
         vm.stopBroadcast();
         console.log("Sweep tx submitted.");
