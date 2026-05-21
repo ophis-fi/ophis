@@ -89,8 +89,12 @@ fi
 
 # Tier 1 PK isolation: refuse to render if .env still has the PK line.
 # (Env-var precedence from `source .env` would mask the ophis-driver file.)
-if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=[^[:space:]]" .env; then
-  echo "ERROR: .env still contains a populated OPHIS_DRIVER_SUBMITTER_KEY — delete that line." >&2
+# Matches even an empty `OPHIS_DRIVER_SUBMITTER_KEY=` form — mirrors OP
+# render-configs.sh:84. Forces operators to delete the line during initial
+# setup so the .env.example guidance ("delete this line") is enforced
+# (sharp-edges H1, PR #200 review).
+if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=" .env; then
+  echo "ERROR: .env still contains OPHIS_DRIVER_SUBMITTER_KEY — delete that line." >&2
   echo "       Tier 1 moved the PK source to /Users/ophis-driver/.config/submitter.key." >&2
   exit 4
 fi
@@ -292,12 +296,6 @@ _mount_ram_disk_macos() {
   printf '%s\n' "$RAM_PK_VOLNAME" > "$marker"
   chmod 600 "$marker"
 
-  # Mirrors OP adversarial-modeler A8 (PR #184): disable Spotlight indexing
-  # on the RAM-disk so `mdfind` can't surface the rendered PK via the
-  # Spotlight cache. Best-effort (|| true) — older macOS versions ignore
-  # the call cleanly.
-  mdutil -i off "$RAM_PK_MOUNT" >/dev/null 2>&1 || true
-
   echo "  mounted RAM-disk at $RAM_PK_MOUNT (device $dev, 1 MB, HFS+, volname=$RAM_PK_VOLNAME)"
 }
 
@@ -308,6 +306,16 @@ if ! mount_ram_disk; then
   echo "       - \$HOME/.local/state/ophis/ram-pk-hl writable?" >&2
   echo "       - existing stale mount? (mount | grep ophis-ram-pk-hl; diskutil unmount ...)" >&2
   exit 6
+fi
+
+# Disable Spotlight indexing on the RAM-disk on EVERY render (sharp-edges M3,
+# PR #200 review). Previously only ran on fresh-mount path inside
+# _mount_ram_disk_macos — meaning a reboot-loop where the operator manually
+# re-mounted would re-enable indexing on the existing-mount path. Now
+# applied unconditionally post-mount. Best-effort (|| true) on Linux (no
+# mdutil) and older macOS versions.
+if [[ "$(uname -s)" == "Darwin" ]] && command -v mdutil >/dev/null 2>&1; then
+  mdutil -i off "$RAM_PK_MOUNT" >/dev/null 2>&1 || true
 fi
 
 # Templates that contain substituted SECRETS (after envsubst) MUST land on
@@ -369,13 +377,25 @@ find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
 # Post-render secret-leak assertion: if a future template-edit introduces
-# a secret-substitution into a file NOT in PK_BEARING_NAMES, the prior
-# loop would silently write the secret to disk. Scan all NON-symlink
-# files in rendered/ for the 64-hex PK literal. Fail closed on any match.
+# a secret-substitution into a file NOT in PK_BEARING_NAMES (or NOT a
+# RAM-disk symlink target), the prior loop would silently write the secret
+# to disk. Scan all NON-symlink files in rendered/ AND observability-
+# rendered/ for both the PK literal AND the Telegram bot-token pattern.
+# Fail closed on any match.
+#
+# Sharp-edges H3 + Codex MED-1 (PR #200 review): the prior scan only
+# covered rendered/ for PK literals. A future template-edit that adds
+# ${TELEGRAM_BOT_TOKEN} substitution to a non-observability template, or
+# adds a PK substitution to alertmanager.yml.tmpl, would slip through.
+# Now both directories + both patterns are covered.
 #
 # We grep for the patterns, not the values themselves, so the assertion
 # check doesn't itself surface the secret in error messages.
 violating_files=()
+scan_dirs=(rendered)
+if [[ -d observability-rendered ]]; then
+  scan_dirs+=(observability-rendered)
+fi
 while IFS= read -r f; do
   if [[ -n "$f" && ! -L "$f" ]]; then
     # 64-hex `"0x..."` — submitter PK pattern.
@@ -383,8 +403,14 @@ while IFS= read -r f; do
       violating_files+=("$f (PK literal)")
       continue
     fi
+    # Telegram bot-token shape: `{int}:{base64-ish 20+ chars}`. Matches
+    # whether the token is in a TOML string, YAML scalar, or bare key=val.
+    if grep -qE '[0-9]+:[A-Za-z0-9_-]{20,}' "$f" 2>/dev/null; then
+      violating_files+=("$f (Telegram token literal)")
+      continue
+    fi
   fi
-done < <(find rendered -maxdepth 1 -type f \( -name "*.toml" -o -name "*.yaml" \))
+done < <(find "${scan_dirs[@]}" -maxdepth 1 -type f \( -name "*.toml" -o -name "*.yaml" -o -name "*.yml" \))
 
 if (( ${#violating_files[@]} > 0 )); then
   echo "" >&2
@@ -393,10 +419,12 @@ if (( ${#violating_files[@]} > 0 )); then
     echo "  - $f" >&2
   done
   echo "" >&2
-  echo "  A template now substitutes a secret (\${OPHIS_DRIVER_SUBMITTER_KEY})" >&2
-  echo "  into a file that isn't in PK_BEARING_NAMES. Either:" >&2
+  echo "  A template now substitutes a secret (\${OPHIS_DRIVER_SUBMITTER_KEY}" >&2
+  echo "  or \${TELEGRAM_BOT_TOKEN}) into a file that isn't a RAM-disk symlink." >&2
+  echo "  Either:" >&2
   echo "    a) Add the name to PK_BEARING_NAMES so it lands on RAM-disk, OR" >&2
-  echo "    b) Stop substituting the secret in that template." >&2
+  echo "    b) Stop substituting the secret in that template (use bot_token_file" >&2
+  echo "       pattern for Alertmanager — see observability/alertmanager.yml.tmpl)." >&2
   echo "  Scrub the listed file(s) — they contain live secrets." >&2
   exit 7
 fi
@@ -412,10 +440,20 @@ if [[ -d observability ]]; then
   mkdir -p observability-rendered
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
     # Render alertmanager.yml.tmpl → observability-rendered/alertmanager.yml
+    #
+    # Defensive: pass an EMPTY allowlist to envsubst (no vars substituted).
+    # The current alertmanager.yml.tmpl uses bot_token_file (no direct
+    # ${TELEGRAM_BOT_TOKEN} substitution), so this is a no-op today. The
+    # empty allowlist prevents a future template-edit from accidentally
+    # enabling token substitution to SSD (Codex MED-1, PR #200 review).
+    # Any `${TELEGRAM_BOT_TOKEN}` literal in a future template would pass
+    # through unchanged and the post-render assertion above would catch
+    # the {int}:{base64-ish} shape on a different code path if a real
+    # token were substituted.
     for tmpl in observability/*.yml.tmpl; do
       name="$(basename "$tmpl" .tmpl)"
       out_tmp="observability-rendered/${name}.tmp.$$"
-      envsubst '${TELEGRAM_BOT_TOKEN}' < "$tmpl" > "$out_tmp"
+      envsubst '' < "$tmpl" > "$out_tmp"
       chmod 600 "$out_tmp"
       mv -f "$out_tmp" "observability-rendered/${name}"
       echo "  rendered  observability/$name"

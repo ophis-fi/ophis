@@ -74,6 +74,22 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   docker compose up -d --no-deps "${DOWNSTREAM[@]}"
 fi
 
+# Alertmanager's bot_token_file is read ONCE at process start (not lazily
+# per-notification). After a token rotation lands a new value at the RAM-
+# disk symlink target, the running container still holds the old token
+# in memory. Force-recreate it so the new token takes effect.
+#
+# Codex Cyber HIGH (PR #200 review). Conditional on the rendered config
+# existing (observability profile is wired in HL's compose unconditionally,
+# so this triggers whenever the wrapper is run with a token set). Skipped
+# on first-deploy where the service isn't running yet — the final
+# `docker compose up -d --build` below brings it up fresh.
+if [[ -f observability-rendered/alertmanager.yml ]] && \
+   docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
+  echo "==> force-recreating alertmanager to pick up rendered Telegram token"
+  docker compose up -d --no-deps --force-recreate alertmanager
+fi
+
 echo ""
 echo "==> docker compose up -d --build $*"
 docker compose up -d --build "$@"
