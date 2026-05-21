@@ -79,6 +79,14 @@ pub struct Metrics {
 
     /// Auction filtered market orders due to missing native token price.
     auction_market_order_missing_price: IntGauge,
+
+    /// Silent auction-contraction signals: counts per-token failures that
+    /// previously dropped orders out of the auction without operator
+    /// visibility. Each is keyed by source so ops can attribute the
+    /// degradation (DB outage vs balance-fetch RPC issue vs native-price
+    /// estimator failure).
+    #[metric(labels("source"))]
+    auction_contraction: IntCounterVec,
 }
 
 impl Metrics {
@@ -385,7 +393,20 @@ impl SolvableOrdersCache {
         self.persistence
             .fetch_in_flight_orders(block)
             .await
-            .inspect_err(|err| tracing::warn!(?err, "failed to fetch in-flight orders"))
+            .inspect_err(|err| {
+                // Silent-failure-hunter H9: a DB outage causes us to treat
+                // the in-flight set as empty, so drivers can re-attempt
+                // already-broadcast settlements. Promote to error + counter.
+                Metrics::get()
+                    .auction_contraction
+                    .with_label_values(&["in_flight_db"])
+                    .inc();
+                tracing::error!(
+                    ?err,
+                    "failed to fetch in-flight orders — auction will treat \
+                     the set as empty; drivers may re-attempt in-flight settlements"
+                );
+            })
             .unwrap_or_default()
             .into_iter()
             .map(|uid| OrderUid(uid.0))
@@ -410,12 +431,19 @@ impl SolvableOrdersCache {
             .filter_map(|(query, balance)| match balance {
                 Ok(balance) => Some((query, balance)),
                 Err(err) => {
+                    // Silent-failure-hunter H10: per-(owner, token) balance
+                    // failures drop orders out of the auction silently. The
+                    // counter lets ops alert on sustained failures.
+                    Metrics::get()
+                        .auction_contraction
+                        .with_label_values(&["balance_rpc"])
+                        .inc();
                     tracing::warn!(
                         owner = ?query.owner,
                         token = ?query.token,
                         source = ?query.source,
                         error = ?err,
-                        "failed to get balance"
+                        "failed to get balance — order will drop from auction"
                     );
                     None
                 }
@@ -585,7 +613,26 @@ async fn get_native_prices(
         .await
         .into_iter()
         .flat_map(|(token, result)| {
-            let price = to_normalized_price(result.ok()?)?;
+            // Silent-failure-hunter H8: per-token native-price errors
+            // previously dropped tokens (and any orders needing them)
+            // without observability. Counter lets ops alert on sustained
+            // native-price estimator degradation.
+            let price = match result {
+                Ok(p) => p,
+                Err(err) => {
+                    Metrics::get()
+                        .auction_contraction
+                        .with_label_values(&["native_price"])
+                        .inc();
+                    tracing::debug!(
+                        ?token,
+                        ?err,
+                        "native-price estimator failed; token dropped from auction"
+                    );
+                    return None;
+                }
+            };
+            let price = to_normalized_price(price)?;
             Some((token, price))
         })
         .collect()

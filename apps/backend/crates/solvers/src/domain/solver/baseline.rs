@@ -77,6 +77,16 @@ struct Inner {
 impl Solver {
     /// Creates a new baseline solver for the specified configuration.
     pub async fn new(config: Config) -> Self {
+        // Silent-failure-hunter H4: pre-2026-05-21 if the V3 quoter
+        // failed to load at startup, the solver ran forever with
+        // `uni_v3_quoter_v2: None`, logged once at warn, no metric, no
+        // liveness signal. Operators couldn't observe the degraded
+        // state. Promote the boot-time failure to `error!` so it
+        // surfaces in alert pipelines and the operator knows to either
+        // re-deploy with a working `uni_v3_node_url` or accept the
+        // degraded mode explicitly. Return value still `None` (don't
+        // fail-fast — the solver remains functional on V2 routes; just
+        // V3 quoting is unavailable).
         let uni_v3_quoter_v2 = match config.uni_v3_node_url {
             Some(url) => {
                 let web3 = ethrpc::web3(Default::default(), &url, Some("baseline"));
@@ -84,7 +94,13 @@ impl Solver {
                     .await
                     .map(Arc::new)
                     .inspect_err(|err| {
-                        tracing::warn!(?err, "Failed to load UniswapV3QuoterV2 contract");
+                        tracing::error!(
+                            ?err,
+                            "Failed to load UniswapV3QuoterV2 contract at startup — \
+                             baseline solver will run in V2-only degraded mode for \
+                             the remainder of the process. Restart with a working \
+                             uni_v3_node_url to restore V3 routing."
+                        );
                     })
                     .ok()
             }
