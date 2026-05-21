@@ -1360,6 +1360,7 @@ impl From<&mempools::Error> for SubmissionFailureKind {
             mempools::Error::SimulationRevert { .. } => Self::SimulationRevert,
             mempools::Error::Expired { .. } => Self::Expired,
             mempools::Error::Disabled => Self::Disabled,
+            mempools::Error::GasPriceCapExceeded { .. } => Self::Other,
             mempools::Error::Other(_) => Self::Other,
         }
     }
