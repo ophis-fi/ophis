@@ -242,7 +242,7 @@ with `ErrConsensusLowParticipants`, returning errors like:
 
 ```
 ErrUpstreamBlockUnavailable (tenderly-op)
-ErrUpstreamsExhausted      (ophis-op-node-self)
+ErrUpstreamsExhausted      (ophis-self-op)
 e3b0c44... = keccak(empty) (publicnode-op)
 ```
 
