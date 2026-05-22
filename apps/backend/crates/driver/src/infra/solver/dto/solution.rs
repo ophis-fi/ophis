@@ -19,6 +19,44 @@ use {
     std::{collections::HashMap, str::FromStr},
 };
 
+/// Validate a solver-supplied raw `Call`-style interaction (used for
+/// `pre_interactions` and `post_interactions`) against the driver-level
+/// allowlist + value cap. Emits the `custom_interaction_rejected` metric
+/// + structured warn on rejection, and returns a deserialization-style
+/// error so the caller propagates it via the standard `?` chain.
+///
+/// Phase 2 audit C2 layer-2 / PR-E Codex HIGH closure (2026-05-22):
+/// without this check, a solver could route arbitrary calls through
+/// pre/post slots and bypass the `Custom` allowlist entirely.
+fn validate_raw_interaction(
+    target: alloy::primitives::Address,
+    value: alloy::primitives::U256,
+    solver: &crate::infra::Solver,
+    kind: &'static str,
+) -> Result<(), super::Error> {
+    let chain_id = solver.eth.chain().id();
+    let validate = competition::solution::custom_allowlist::validate_target(target, chain_id)
+        .and_then(|()| competition::solution::custom_allowlist::validate_value(value));
+    if let Err(err) = validate {
+        crate::infra::observe::metrics::get()
+            .custom_interaction_rejected
+            .with_label_values(&[solver.name().as_str(), &chain_id.to_string(), err.metric_reason()])
+            .inc();
+        tracing::warn!(
+            solver = %solver.name(),
+            chain_id,
+            kind,
+            reason = err.metric_reason(),
+            error = %err,
+            "rejecting solver raw interaction"
+        );
+        return Err(super::Error(format!(
+            "Solver {kind} rejected by driver allowlist: {err}"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(derive_more::From)]
 pub struct Solutions(Vec<solvers_dto::solution::Solution>);
 
@@ -149,12 +187,26 @@ impl Solutions {
                     solution
                         .pre_interactions
                         .into_iter()
-                        .map(|interaction| domain::Interaction {
-                            target: interaction.target,
-                            value: interaction.value.into(),
-                            call_data: Bytes::from(interaction.calldata),
+                        .map(|interaction| {
+                            // C2 layer-2 fix (PR E Codex re-audit HIGH):
+                            // Solver pre_interactions go straight into
+                            // settlement calldata via encoding.rs and
+                            // would otherwise bypass the Custom allowlist
+                            // entirely. Apply the same target + value
+                            // checks here.
+                            validate_raw_interaction(
+                                interaction.target,
+                                interaction.value,
+                                &solver,
+                                "pre_interaction",
+                            )?;
+                            Ok::<_, super::Error>(domain::Interaction {
+                                target: interaction.target,
+                                value: interaction.value.into(),
+                                call_data: Bytes::from(interaction.calldata),
+                            })
                         })
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                     solution
                         .interactions
                         .into_iter()
@@ -258,12 +310,20 @@ impl Solutions {
                     solution
                         .post_interactions
                         .into_iter()
-                        .map(|interaction| domain::Interaction {
-                            target: interaction.target,
-                            value: interaction.value.into(),
-                            call_data: interaction.calldata.into(),
+                        .map(|interaction| {
+                            validate_raw_interaction(
+                                interaction.target,
+                                interaction.value,
+                                &solver,
+                                "post_interaction",
+                            )?;
+                            Ok::<_, super::Error>(domain::Interaction {
+                                target: interaction.target,
+                                value: interaction.value.into(),
+                                call_data: interaction.calldata.into(),
+                            })
                         })
-                        .collect(),
+                        .collect::<Result<Vec<_>, _>>()?,
                     solver.clone(),
                     weth,
                     solution.gas.map(eth::Gas::from),

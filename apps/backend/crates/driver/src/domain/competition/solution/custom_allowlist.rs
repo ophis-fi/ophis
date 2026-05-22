@@ -93,11 +93,12 @@ const HYPEREVM_MAINNET: &[Address] = &[
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 
-/// Validation error from [`validate`].
+/// Validation error from [`validate`] / [`validate_target`] /
+/// [`validate_value`].
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
     #[error(
-        "Custom.target {target:?} not on driver allowlist for chain {chain_id} — refusing \
+        "interaction target {target:?} not on driver allowlist for chain {chain_id} — refusing \
          interaction. If this is a legitimate new router, add it to ALLOWLIST in \
          driver/src/domain/competition/solution/custom_allowlist.rs after independent \
          verification."
@@ -118,6 +119,13 @@ pub enum Error {
     AmountTooLarge { amount: U256 },
 
     #[error(
+        "interaction native-ETH value {value} exceeds MAX_INTERACTION_VALUE (2^200). Solvers \
+         must not request unbounded native-token transfers — value must be scoped to settlement \
+         ETH balance."
+    )]
+    ValueTooLarge { value: U256 },
+
+    #[error(
         "Driver allowlist not configured for chain {chain_id}. Custom interactions on \
          unconfigured chains are rejected fail-secure. Add a per-chain entry to ALLOWLIST in \
          custom_allowlist.rs."
@@ -133,6 +141,7 @@ impl Error {
             Error::TargetNotAllowed { .. } => "target_not_allowed",
             Error::SpenderNotAllowed { .. } => "spender_not_allowed",
             Error::AmountTooLarge { .. } => "amount_too_large",
+            Error::ValueTooLarge { .. } => "value_too_large",
             Error::ChainNotConfigured { .. } => "chain_not_configured",
         }
     }
@@ -153,7 +162,17 @@ pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error
         return Err(Error::TargetNotAllowed { target, chain_id });
     }
 
-    // (2) + (3) — each allowance
+    // (2) — native ETH value cap (closes a residual sharp edge flagged by
+    // the 2026-05-22 sharp-edges PR-E audit: solver can request arbitrary
+    // ETH transfer with the call, and allowlisted aggregators accept
+    // ETH-in swaps — bounding `value` prevents settlement-balance drain
+    // via a single Custom interaction).
+    let value: U256 = custom.value.0;
+    if value > MAX_INTERACTION_VALUE {
+        return Err(Error::ValueTooLarge { value });
+    }
+
+    // (3) + (4) — each allowance
     for required in &custom.allowances {
         let allowance = required.0;
         if !allowlist.contains(&allowance.spender) {
@@ -169,6 +188,39 @@ pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error
         }
     }
 
+    Ok(())
+}
+
+/// Cap on the native-ETH `value` field of any solver-supplied interaction
+/// (Custom + raw pre/post). Identical numeric to [`MAX_CUSTOM_ALLOWANCE`]
+/// (`2^200`); kept as a distinct alias so future tuning of one doesn't
+/// silently affect the other.
+pub const MAX_INTERACTION_VALUE: U256 = MAX_CUSTOM_ALLOWANCE;
+
+/// Validate a bare interaction target against the per-chain allowlist.
+///
+/// Used for solver-supplied `pre_interactions` and `post_interactions`
+/// (`Call` DTOs at `solver/dto/solution.rs:150,259`) which bypass the
+/// `Custom` wrapper entirely but ultimately land in the settlement
+/// calldata via `encoding.rs:217`. Without this check, a malicious solver
+/// could route arbitrary calls through pre/post slots and avoid the
+/// `Custom` allowlist completely. Closes the HIGH from the 2026-05-22
+/// Codex Cyber PR-E audit.
+pub fn validate_target(target: Address, chain_id: u64) -> Result<(), Error> {
+    let allowlist = chain_allowlist(chain_id)?;
+    if !allowlist.contains(&target) {
+        return Err(Error::TargetNotAllowed { target, chain_id });
+    }
+    Ok(())
+}
+
+/// Validate a bare interaction native-ETH value against
+/// [`MAX_INTERACTION_VALUE`]. Used alongside [`validate_target`] for
+/// pre/post interactions.
+pub fn validate_value(value: U256) -> Result<(), Error> {
+    if value > MAX_INTERACTION_VALUE {
+        return Err(Error::ValueTooLarge { value });
+    }
     Ok(())
 }
 
@@ -358,6 +410,69 @@ mod tests {
         // No allowances at all = no value flow. Target check still applies.
         let c = make_custom(KYBER, vec![]);
         assert_eq!(validate(&c, 10), Ok(()));
+    }
+
+    #[test]
+    fn validate_target_helper_accepts_kyber_on_op() {
+        assert_eq!(validate_target(KYBER, 10), Ok(()));
+    }
+
+    #[test]
+    fn validate_target_helper_rejects_attacker() {
+        match validate_target(ATTACKER, 10) {
+            Err(Error::TargetNotAllowed {
+                target,
+                chain_id: 10,
+            }) if target == ATTACKER => {}
+            other => panic!("expected TargetNotAllowed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_target_helper_unknown_chain_fail_secure() {
+        assert!(matches!(
+            validate_target(KYBER, 4326),
+            Err(Error::ChainNotConfigured { chain_id: 4326 })
+        ));
+    }
+
+    #[test]
+    fn validate_value_under_cap_ok() {
+        // Realistic order ETH value: 10 ETH = 1e19 wei.
+        assert_eq!(validate_value(U256::from(10u64).pow(U256::from(19u64))), Ok(()));
+    }
+
+    #[test]
+    fn validate_value_at_cap_ok() {
+        assert_eq!(validate_value(MAX_INTERACTION_VALUE), Ok(()));
+    }
+
+    #[test]
+    fn validate_value_u256_max_rejected() {
+        assert!(matches!(
+            validate_value(U256::MAX),
+            Err(Error::ValueTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn validate_value_above_cap_rejected() {
+        let above_cap = MAX_INTERACTION_VALUE.saturating_mul(U256::from(2u64));
+        assert!(matches!(
+            validate_value(above_cap),
+            Err(Error::ValueTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn validate_custom_value_rejected_when_above_cap() {
+        // Custom validation now also caps `value`. A KyberSwap-target
+        // Custom with attacker-controlled native ETH transfer of
+        // U256::MAX must be rejected even though target + spender are
+        // allowlisted.
+        let mut c = make_custom(KYBER, vec![(KYBER, U256::from(1000u64))]);
+        c.value = eth::Ether(U256::MAX);
+        assert!(matches!(validate(&c, 10), Err(Error::ValueTooLarge { .. })));
     }
 
     #[test]
