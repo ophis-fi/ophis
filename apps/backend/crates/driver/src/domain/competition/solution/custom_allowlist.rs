@@ -41,17 +41,46 @@ use {
 /// - Power-of-two so the const can be expressed as `from_limbs` without
 ///   a runtime helper. Bit 200 lives in the 4th `u64` limb at offset
 ///   `200 - 192 = 8`.
+///
+/// **KNOWN INCOMPATIBILITY — OKX buy-mode (Codex PR-227 P1 `r3287846607`).**
+/// OKX's exact-out / buy-order endpoint emits `U256::MAX` allowances when
+/// `buy_orders_endpoint` is configured (see
+/// `crates/solvers/src/infra/dex/okx/mod.rs`). This driver cap rejects
+/// such allowances with `AmountTooLarge` — by design — because
+/// `U256::MAX` from a solver is the exact structural anti-pattern this
+/// gate prevents. **Production status (2026-05-22):** the rendered OKX
+/// config on OP mainnet (`infra/optimism-mainnet/rendered/okx.toml`)
+/// keeps `buy_orders_endpoint` unset; the example config at
+/// `crates/solvers/config/example.okx.toml` ships with that line
+/// commented out. Re-enabling OKX buy-mode requires a solver-side
+/// rewrite of the buy-mode allowance to emit per-trade amounts scoped
+/// to the actual order size — DO NOT just bump this cap.
 pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 
 /// Per-chain allowlist of contract addresses approved as `Custom.target`
 /// or as `allowance.spender`.
 ///
+/// **DESIGN — fail-secure for unconfigured chains.** Codex PR-227 review
+/// P1 (`r3287846601`) flagged that solvers like KyberSwap/Velora support
+/// chains beyond `[10, 999]` (e.g. Ethereum mainnet, Base, Arbitrum,
+/// Polygon, BSC). The driver allowlist *intentionally* only covers chains
+/// where Ophis ACTUALLY DEPLOYS WITH CUSTOM-INTERACTION SOLVERS — chains
+/// 10 (OP) and 999 (HL) as of 2026-05-22. Per `project_ophis.md`, Ophis
+/// has no mainnet deployments on chains 1/8453/137/42161/etc. and no
+/// near-term plan to add them.
+///
+/// If a driver instance gets deployed on a new chain (e.g. Base mainnet
+/// expansion), the operator MUST add a chain entry here in the SAME PR
+/// as the new-chain deployment. The fail-secure default (`ChainNotConfigured`
+/// error) ensures any unreviewed chain expansion fails at parse time
+/// rather than silently routing Custom interactions through an
+/// unvetted address set.
+///
 /// Adding a new chain: extend `ALLOWLIST` with `(chain_id, &CHAIN_NAME)`
-/// and define `CHAIN_NAME: &[Address]` with verified addresses.
-/// Adding a new contract on an existing chain: extend the relevant
-/// per-chain slice. In both cases, verify against the upstream's
-/// canonical docs — never take the address from a `/swap` or `/routes`
-/// response.
+/// and define `CHAIN_NAME: &[Address]` with verified addresses. Adding a
+/// new contract on an existing chain: extend the relevant per-chain
+/// slice. In both cases, verify against the upstream's canonical docs —
+/// never take the address from a `/swap` or `/routes` response.
 const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
     (999, HYPEREVM_MAINNET),
