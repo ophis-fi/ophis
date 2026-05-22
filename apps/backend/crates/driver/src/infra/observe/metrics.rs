@@ -178,6 +178,20 @@ pub struct Metrics {
         )
     )]
     pub used_solve_time: prometheus::HistogramVec,
+
+    /// Rejection counter for the driver-level `Custom` interaction
+    /// allowlist (Phase 2 audit C2 layer 2 — "PR E"). Each increment
+    /// represents one solver-submitted Custom interaction blocked at
+    /// the driver before reaching on-chain execution. `reason` is one
+    /// of `target_not_allowed` / `spender_not_allowed` /
+    /// `amount_too_large` / `chain_not_configured` (see
+    /// [`crate::domain::competition::solution::custom_allowlist::Error::metric_reason`]).
+    /// Sustained increments on `target_not_allowed` /
+    /// `spender_not_allowed` for a non-zero `solver` strongly suggest
+    /// upstream compromise (DNS hijack, malicious worker, key exfil)
+    /// of that solver's data source — alert + investigate.
+    #[metric(labels("solver", "chain_id", "reason"))]
+    pub custom_interaction_rejected: prometheus::IntCounterVec,
 }
 
 impl Metrics {
