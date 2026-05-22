@@ -234,16 +234,23 @@ fn default_mines_reverting_txs() -> bool {
 /// `tx-gas-limit = 21000` mistaking it for the intrinsic.
 pub const MIN_TX_GAS_LIMIT: u64 = 1_000_000;
 
-/// Upper bound on `tx_gas_limit`. 30M = Ethereum mainnet block gas
-/// limit. Anything above this cannot fit in a block on Ethereum,
-/// Optimism, Arbitrum, or any EVM L1/L2 we currently support. The
-/// PR-228 Codex audit tightened this from a generous 200M ceiling
-/// to the actual physical block-gas ceiling on mainnet — caps that
-/// operators wouldn't realistically want anyway. Chains with higher
-/// per-block gas (Polygon's variable cap, Sui, etc.) are not in our
-/// supported set; if added, this constant becomes a chain-aware
-/// runtime check via `block_gas_limit()`.
-pub const MAX_TX_GAS_LIMIT: u64 = 30_000_000;
+/// Upper bound on `tx_gas_limit`. 60M = Ethereum Fusaka mainnet block
+/// gas limit (raised 2025-Oct from 30M).
+///
+/// Note: Fusaka also introduced a per-transaction gas cap of 16,777,216
+/// (~16.77M) — so a 60M config value would be valid at the config layer
+/// but rejected by the node at submission time on Fusaka mainnet. That
+/// per-chain enforcement is a runtime concern handled by
+/// `block_gas_limit()` checks at the simulator + submitter, not at
+/// config load. This ceiling exists only to catch obvious operator
+/// mistakes like `u64::MAX` — chains with different per-block gas
+/// (60M Fusaka, 30M pre-Fusaka, 30M Optimism, etc.) all fit comfortably
+/// under this single chain-agnostic config-time ceiling.
+///
+/// PR-228 audit-response Codex re-MED (2026-05-22): raised from 30M
+/// after Codex pointed out current operator configs use 45M
+/// (example.toml + playground/driver.toml).
+const MAX_TX_GAS_LIMIT: u64 = 60_000_000;
 
 /// Upper bound on `haircut_bps`. Basis points cap at 10000 = 100%.
 /// Configs above this would scale solver-reported surplus into
@@ -252,7 +259,7 @@ pub const MAX_HAIRCUT_BPS: u32 = 10_000;
 
 /// Cap on `additional_tip_percentage` and `metrics_strategy_failure_ratio`.
 /// Both are documented [0.0, 1.0] but neither was enforced. Sharp-edges
-/// PR-228 audit MED (2026-05-22): same vulnerability class as L1.
+/// Sharp-edges PR-228 audit MED (2026-05-22): same vulnerability class as L1.
 const FRACTION_RANGE: std::ops::RangeInclusive<f64> = 0.0..=1.0;
 
 /// Cap on `reward_percentile`. Percentile values are in [0.0, 100.0];
@@ -1231,8 +1238,17 @@ mod tests {
 
     #[test]
     fn tx_gas_limit_accepts_block_fit_ceiling() {
-        // 30M = Ethereum mainnet block gas. Right at the boundary.
+        // 60M = Ethereum Fusaka mainnet block gas. Right at the boundary.
         assert!(validate_tx_gas_limit(eth::U256::from(MAX_TX_GAS_LIMIT)).is_ok());
+    }
+
+    #[test]
+    fn tx_gas_limit_accepts_legacy_45m_config() {
+        // example.toml + playground/driver.toml ship `tx-gas-limit = "45000000"`.
+        // 45M is between pre-Fusaka block gas (30M) and post-Fusaka (60M).
+        // Must remain accepted post-tightening or every running config
+        // breaks on next driver restart.
+        assert!(validate_tx_gas_limit(eth::U256::from(45_000_000u64)).is_ok());
     }
 
     #[test]
@@ -1351,6 +1367,59 @@ mod tests {
         assert!(validate_metrics_strategy_failure_ratio(0.0).is_ok());
         assert!(validate_metrics_strategy_failure_ratio(0.5).is_ok());
         assert!(validate_metrics_strategy_failure_ratio(1.0).is_ok());
+    }
+
+    /// Closes Codex PR-228 LOW: lock the "iterates ALL solvers" wiring
+    /// invariant against future refactors. Uses example.toml as the
+    /// base config + appends a second [[solver]] block whose haircut_bps
+    /// is invalid. Asserts the validator FAILS with an error naming the
+    /// second solver. If a future refactor accidentally drops the
+    /// per-solver loop (or only validates `solvers[0]`), this test breaks.
+    #[test]
+    fn validate_config_for_load_iterates_all_solvers() {
+        let base = include_str!("../../../../example.toml");
+        let bad_solver = r#"
+
+[[solver]]
+name = "bad-canary-solver"
+endpoint = "http://example.invalid"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "0x0000000000000000000000000000000000000000000000000000000000000002"
+haircut-bps = 99999  # INVALID: must be <= 10000
+"#;
+        let toml_str = format!("{base}{bad_solver}");
+        let config: Config = toml::from_str(&toml_str)
+            .expect("base example.toml + extra solver block should parse cleanly");
+        assert_eq!(
+            config.solvers.len(),
+            2,
+            "test fixture should produce 2 solvers (1 from example.toml + 1 appended bad one)"
+        );
+
+        let err = validate_config_for_load(&config).expect_err(
+            "validator must fail because the 2nd solver has haircut_bps = 99999",
+        );
+        assert!(
+            err.contains("bad-canary-solver"),
+            "error must name the offending solver so operators can find it: {err}"
+        );
+        assert!(
+            err.contains("haircut_bps") && err.contains("99999"),
+            "error must name the field + value: {err}"
+        );
+    }
+
+    /// Companion test to the one above: prove example.toml itself
+    /// validates cleanly as-is. If a future change to example.toml
+    /// makes it invalid (e.g. tightens a default), the test breaks
+    /// loudly — easier to find than discovering it via the [ignore]
+    /// async example_config integration test.
+    #[test]
+    fn validate_config_for_load_passes_on_example_toml() {
+        let base = include_str!("../../../../example.toml");
+        let config: Config = toml::from_str(base).expect("example.toml must parse");
+        validate_config_for_load(&config).expect("example.toml must validate as-is");
     }
 
     #[test]
