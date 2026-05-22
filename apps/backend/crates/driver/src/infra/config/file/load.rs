@@ -50,6 +50,20 @@ pub async fn load(chain: Chain, path: &Path) -> infra::Config {
         chain,
         "The configured chain ID does not match the connected Ethereum node"
     );
+
+    // Phase 2 audit C4 sub-pieces + L1 + sharp-edges PR-228 MED
+    // (2026-05-22): config-time range validation on six previously-
+    // unchecked numeric fields:
+    //   - tx_gas_limit, haircut_bps (C4)
+    //   - solving_share_of_deadline (L1)
+    //   - additional_tip_percentage, reward_percentile,
+    //     metrics_strategy_failure_ratio (sharp-edges MED, same class)
+    // Each validator returns a structured error message naming the
+    // field + bad value + accepted range. Aggregated under
+    // `validate_config_for_load`.
+    if let Err(e) = super::validate_config_for_load(&config) {
+        panic!("config: {e}");
+    }
     infra::Config {
         solvers: join_all(config.solvers.into_iter().map(|solver_config| async move {
             let account = load_account(solver_config.account, config.chain_id).await;
