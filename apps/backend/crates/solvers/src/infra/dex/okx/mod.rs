@@ -291,6 +291,23 @@ impl Okx {
         // For buy orders (ExactOut mode), the slippage is on the input token,
         // so we need to use U256::MAX allowance to cover the maximum possible
         // input.
+        //
+        // **WARNING — driver allowlist incompatibility (Codex PR-227 P1
+        // r3287846607, 2026-05-22):**
+        // The driver-level `custom_allowlist::MAX_CUSTOM_ALLOWANCE = 2^200`
+        // rejects U256::MAX. If `buy_orders_endpoint` is configured AND
+        // a buy-side order arrives, the solver will emit U256::MAX here,
+        // and the driver will REJECT the resulting `Custom` interaction
+        // with `AmountTooLarge` at parse time. As of 2026-05-22 the
+        // rendered production OKX config keeps `buy_orders_endpoint`
+        // unset (sell-only), so this is a latent failure mode, not an
+        // active bug. Re-enabling OKX buy-mode requires:
+        //   1. Replace `U256::MAX` here with a per-trade upper bound
+        //      derived from `swap_response.router_result.from_token_amount *
+        //      (1 + slippage_bps / 10000)` (or similar).
+        //   2. Drop the driver allowlist exemption — the structural
+        //      anti-pattern (solver emitting unbounded allowance) is
+        //      intentionally rejected.
         let allowance_amount =
             if self.buy_orders_endpoint.is_some() && order.side == order::Side::Buy {
                 eth::U256::MAX
