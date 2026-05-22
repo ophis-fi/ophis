@@ -28,6 +28,15 @@ use {
 /// Phase 2 audit C2 layer-2 / PR-E Codex HIGH closure (2026-05-22):
 /// without this check, a solver could route arbitrary calls through
 /// pre/post slots and bypass the `Custom` allowlist entirely.
+///
+/// WIRING INVARIANT — DO NOT REMOVE WITHOUT REPLACEMENT:
+/// Every solver-supplied `Call` mapping in this file must call this
+/// function. The two known sites are tagged on their first line with
+/// a curly-brace token (intentionally unusual so it cannot appear in
+/// prose by accident). A unit test in `custom_allowlist::tests::
+/// wiring_markers_present_*` asserts exactly 2 such tags exist; if you
+/// remove or split a wiring site, update both the tag count and that
+/// test in lockstep.
 fn validate_raw_interaction(
     target: alloy::primitives::Address,
     value: alloy::primitives::U256,
@@ -35,6 +44,11 @@ fn validate_raw_interaction(
     kind: &'static str,
 ) -> Result<(), super::Error> {
     let chain_id = solver.eth.chain().id();
+    // Precedence: target check first (broader gate), then value cap.
+    // Intentional — mirrors the ordering in `custom_allowlist::validate()`
+    // for Custom interactions. On combined failure the metric labels the
+    // broader violation (`target_not_allowed`), matching the principle of
+    // surfacing the structural mistake rather than the numeric one.
     let validate = competition::solution::custom_allowlist::validate_target(target, chain_id)
         .and_then(|()| competition::solution::custom_allowlist::validate_value(value));
     if let Err(err) = validate {
@@ -188,12 +202,10 @@ impl Solutions {
                         .pre_interactions
                         .into_iter()
                         .map(|interaction| {
-                            // C2 layer-2 fix (PR E Codex re-audit HIGH):
+                            // {PR-E-WIRING-CALL}
                             // Solver pre_interactions go straight into
                             // settlement calldata via encoding.rs and
-                            // would otherwise bypass the Custom allowlist
-                            // entirely. Apply the same target + value
-                            // checks here.
+                            // would otherwise bypass the Custom allowlist.
                             validate_raw_interaction(
                                 interaction.target,
                                 interaction.value,
@@ -311,6 +323,7 @@ impl Solutions {
                         .post_interactions
                         .into_iter()
                         .map(|interaction| {
+                            // {PR-E-WIRING-CALL}
                             validate_raw_interaction(
                                 interaction.target,
                                 interaction.value,

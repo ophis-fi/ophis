@@ -488,6 +488,28 @@ mod tests {
     }
 
     #[test]
+    fn wiring_markers_present_at_pre_and_post_sites() {
+        // PR-E C2-layer-2 closure invariant: every solver-supplied raw
+        // `Call` mapping path in dto/solution.rs MUST be guarded by
+        // `validate_raw_interaction`. The two known wiring sites are
+        // tagged with the curly-brace token below — the brace form is
+        // intentionally unusual so it cannot appear in documentation
+        // prose by accident.
+        //
+        // Pragmatic substitute for an end-to-end integration test
+        // (Codex + sharp-edges PR-E re-audit LOW). If a future refactor
+        // removes a wiring call without adding an equivalent guard,
+        // this test fails loudly.
+        let src = include_str!("../../../infra/solver/dto/solution.rs");
+        let count = src.matches("{PR-E-WIRING-CALL}").count();
+        assert_eq!(
+            count, 2,
+            "Expected exactly 2 [PR-E-WIRING] tags in driver dto/solution.rs (pre + post); \
+             found {count}. Did a refactor drop a validate_raw_interaction call?"
+        );
+    }
+
+    #[test]
     fn max_custom_allowance_is_2_pow_200() {
         assert_eq!(
             MAX_CUSTOM_ALLOWANCE,
