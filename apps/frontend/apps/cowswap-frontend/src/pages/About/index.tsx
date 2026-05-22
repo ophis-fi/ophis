@@ -125,6 +125,18 @@ export default function AboutPage(): ReactNode {
         </Section>
 
         <Section>
+          <H2>Cross-chain via NEAR Intents</H2>
+          <p>
+            Trade from any EVM chain to <strong>Solana</strong> or <strong>Bitcoin</strong>{' '}
+            without a second wallet. NEAR Intents brokers the bridge step off-chain: you sign with
+            your EVM wallet, paste a destination address (base58 for Solana, native for Bitcoin),
+            and the solver network handles the rest. Currently destination-only — Solana and
+            Bitcoin can be receive addresses but not source chains, since Ophis runs on EVM
+            wallet infrastructure.
+          </p>
+        </Section>
+
+        <Section>
           <H2>Open source</H2>
           <p>
             Ophis is open source under the GNU LGPL v3.0 (frontend) and CoW Protocol&#39;s upstream
