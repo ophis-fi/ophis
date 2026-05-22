@@ -226,6 +226,83 @@ fn default_mines_reverting_txs() -> bool {
     true
 }
 
+/// Lower bound on `tx_gas_limit`. 21000 is the minimum gas any
+/// transaction must declare (EIP-1559 base intrinsic). Anything lower
+/// is a config mistake — settlement txs need at least ~150k typically.
+pub const MIN_TX_GAS_LIMIT: u64 = 21_000;
+
+/// Upper bound on `tx_gas_limit`. 200M is ~6.7× Ethereum mainnet block
+/// gas (30M) and comfortably above Optimism's effective batch size.
+/// Chain-specific runtime checks elsewhere (block_gas_limit()) catch
+/// per-chain overshoot. This cap exists to reject obvious config
+/// mistakes (e.g. accidental `u64::MAX`) at startup. Phase 2 audit
+/// finding C4 sub-piece (2026-05-22 consolidation).
+pub const MAX_TX_GAS_LIMIT: u64 = 200_000_000;
+
+/// Upper bound on `haircut_bps`. Basis points cap at 10000 = 100%.
+/// Configs above this would scale solver-reported surplus into
+/// negative territory — a config mistake, not a feature.
+pub const MAX_HAIRCUT_BPS: u32 = 10_000;
+
+/// Validate `tx_gas_limit` is within the supported range.
+///
+/// Closes Phase 2 audit finding C4 (sub-piece): config-time `tx_gas_limit`
+/// previously accepted any `U256` (including 0 and `U256::MAX`). Now
+/// asserted at config load. Tests in [`tests::tx_gas_limit_*`].
+pub fn validate_tx_gas_limit(v: eth::U256) -> Result<(), String> {
+    let min = eth::U256::from(MIN_TX_GAS_LIMIT);
+    let max = eth::U256::from(MAX_TX_GAS_LIMIT);
+    if v < min {
+        return Err(format!(
+            "tx_gas_limit = {v} is below the {MIN_TX_GAS_LIMIT}-gas intrinsic minimum; \
+             settlement txs require well above this floor"
+        ));
+    }
+    if v > max {
+        return Err(format!(
+            "tx_gas_limit = {v} exceeds the {MAX_TX_GAS_LIMIT}-gas safety ceiling; this is \
+             far above any real chain's block gas limit and almost certainly a config mistake"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate `haircut_bps` is within `[0, MAX_HAIRCUT_BPS]`.
+///
+/// Closes Phase 2 audit finding C4 (sub-piece): the docstring at the
+/// field declared the 0-10000 range but no code enforced it. Now
+/// asserted at config load.
+pub fn validate_haircut_bps(v: u32) -> Result<(), String> {
+    if v > MAX_HAIRCUT_BPS {
+        return Err(format!(
+            "haircut_bps = {v} exceeds MAX_HAIRCUT_BPS ({MAX_HAIRCUT_BPS} = 100%). Basis \
+             points must be in [0, 10000]; values above 10000 would invert solver economics"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate `solving_share_of_deadline` is a finite real number in
+/// `[0.0, 1.0]`. Closes Phase 2 audit finding L1 (NaN/∞/negative
+/// previously accepted; downstream `Percent::try_from(f64)` would
+/// then `unwrap()` panic at config load with `OutOfRangeError` — this
+/// validator surfaces the bad value AND the field name).
+pub fn validate_solving_share_of_deadline(v: f64) -> Result<(), String> {
+    if !v.is_finite() {
+        return Err(format!(
+            "solving_share_of_deadline = {v} is not a finite number (NaN/Inf rejected); \
+             expected a value in [0.0, 1.0]"
+        ));
+    }
+    if !(0.0..=1.0).contains(&v) {
+        return Err(format!(
+            "solving_share_of_deadline = {v} is outside [0.0, 1.0]; the solver's share of \
+             the auction deadline must be a fraction (0 = no solving time, 1 = full deadline)"
+        ));
+    }
+    Ok(())
+}
+
 pub fn default_http_time_buffer() -> Duration {
     Duration::from_millis(500)
 }
@@ -987,6 +1064,133 @@ enum AtBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ────────────────────────────────────────────────────────────────────
+    // Phase 2 audit C4 sub-pieces + L1 — config-time range validators
+    // ────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn tx_gas_limit_accepts_typical_settlement_budget() {
+        // ~600k gas is a normal settlement tx ceiling.
+        assert!(validate_tx_gas_limit(eth::U256::from(600_000u64)).is_ok());
+        // ~5M gas — large multi-fill batch.
+        assert!(validate_tx_gas_limit(eth::U256::from(5_000_000u64)).is_ok());
+    }
+
+    #[test]
+    fn tx_gas_limit_rejects_zero_and_below_intrinsic() {
+        assert!(validate_tx_gas_limit(eth::U256::ZERO).is_err());
+        assert!(validate_tx_gas_limit(eth::U256::from(20_999u64)).is_err());
+    }
+
+    #[test]
+    fn tx_gas_limit_accepts_intrinsic_floor() {
+        assert!(validate_tx_gas_limit(eth::U256::from(21_000u64)).is_ok());
+    }
+
+    #[test]
+    fn tx_gas_limit_rejects_u256_max() {
+        assert!(validate_tx_gas_limit(eth::U256::MAX).is_err());
+    }
+
+    #[test]
+    fn tx_gas_limit_accepts_safety_ceiling() {
+        assert!(validate_tx_gas_limit(eth::U256::from(MAX_TX_GAS_LIMIT)).is_ok());
+    }
+
+    #[test]
+    fn tx_gas_limit_rejects_above_safety_ceiling() {
+        assert!(validate_tx_gas_limit(eth::U256::from(MAX_TX_GAS_LIMIT + 1)).is_err());
+    }
+
+    #[test]
+    fn tx_gas_limit_error_names_the_field_and_value() {
+        let err = validate_tx_gas_limit(eth::U256::ZERO).unwrap_err();
+        assert!(
+            err.contains("tx_gas_limit") && err.contains('0'),
+            "error message should mention the field name + value: {err}"
+        );
+    }
+
+    #[test]
+    fn haircut_bps_accepts_zero_default() {
+        assert!(validate_haircut_bps(0).is_ok());
+    }
+
+    #[test]
+    fn haircut_bps_accepts_full_range_to_ten_thousand() {
+        assert!(validate_haircut_bps(1).is_ok());
+        assert!(validate_haircut_bps(2500).is_ok());
+        assert!(validate_haircut_bps(MAX_HAIRCUT_BPS).is_ok());
+    }
+
+    #[test]
+    fn haircut_bps_rejects_above_ten_thousand() {
+        assert!(validate_haircut_bps(MAX_HAIRCUT_BPS + 1).is_err());
+        assert!(validate_haircut_bps(u32::MAX).is_err());
+    }
+
+    #[test]
+    fn haircut_bps_error_names_field_and_value() {
+        let err = validate_haircut_bps(99_999).unwrap_err();
+        assert!(
+            err.contains("haircut_bps") && err.contains("99999"),
+            "error message should mention the field name + value: {err}"
+        );
+    }
+
+    #[test]
+    fn solving_share_of_deadline_accepts_default_and_range() {
+        assert!(validate_solving_share_of_deadline(default_solving_share_of_deadline()).is_ok());
+        assert!(validate_solving_share_of_deadline(0.0).is_ok());
+        assert!(validate_solving_share_of_deadline(0.5).is_ok());
+        assert!(validate_solving_share_of_deadline(1.0).is_ok());
+    }
+
+    #[test]
+    fn solving_share_of_deadline_rejects_nan_and_inf() {
+        assert!(validate_solving_share_of_deadline(f64::NAN).is_err());
+        assert!(validate_solving_share_of_deadline(f64::INFINITY).is_err());
+        assert!(validate_solving_share_of_deadline(f64::NEG_INFINITY).is_err());
+    }
+
+    #[test]
+    fn solving_share_of_deadline_rejects_negative() {
+        assert!(validate_solving_share_of_deadline(-0.01).is_err());
+        assert!(validate_solving_share_of_deadline(-1.0).is_err());
+    }
+
+    #[test]
+    fn solving_share_of_deadline_rejects_above_one() {
+        assert!(validate_solving_share_of_deadline(1.0001).is_err());
+        assert!(validate_solving_share_of_deadline(2.0).is_err());
+    }
+
+    #[test]
+    fn solving_share_of_deadline_rejects_negative_zero_correctly() {
+        // -0.0 == 0.0 in IEEE 754, so this should be accepted (not a bug).
+        assert!(validate_solving_share_of_deadline(-0.0).is_ok());
+    }
+
+    #[test]
+    fn solving_share_of_deadline_error_distinguishes_nan_from_range() {
+        let nan_err = validate_solving_share_of_deadline(f64::NAN).unwrap_err();
+        let range_err = validate_solving_share_of_deadline(2.0).unwrap_err();
+        // NaN error must clearly call out the finite-ness violation
+        // (regardless of whether it also mentions the range).
+        assert!(
+            nan_err.contains("finite"),
+            "NaN should be reported as non-finite: {nan_err}"
+        );
+        // Out-of-range error must NOT mention finite-ness (we got past that check).
+        assert!(
+            !range_err.contains("finite") && range_err.contains("[0.0, 1.0]"),
+            "Out-of-range value should be reported with range bounds (and not as a \
+             finite-ness violation): {range_err}"
+        );
+    }
+
+    // ────────────────────────────────────────────────────────────────────
 
     #[test]
     fn gas_estimator_alloy_defaults() {
