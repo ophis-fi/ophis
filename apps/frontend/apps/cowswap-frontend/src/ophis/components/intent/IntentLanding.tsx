@@ -266,10 +266,12 @@ export function IntentLanding(): ReactNode {
   return (
     <Page>
       <OphisHeader transparent>
-        <Logo src="/ophis-lockup.svg" alt="Ophis" />
-        <HeaderRight>
-          <OpenSwapButton to="/1/swap/_/_">Open Trade →</OpenSwapButton>
-        </HeaderRight>
+        {/* PR #245 (2026-05-23): removed the inline `<Logo src="/ophis-lockup.svg">`
+            from the hero header — OphisHeader already renders the "ophis."
+            wordmark on its left side, so the lockup was a redundant
+            second-logo Clement flagged. Keep only the secondary CTA on
+            the right. */}
+        <OpenSwapButton to="/1/swap/_/_">Open Trade →</OpenSwapButton>
       </OphisHeader>
 
       <Hero>
