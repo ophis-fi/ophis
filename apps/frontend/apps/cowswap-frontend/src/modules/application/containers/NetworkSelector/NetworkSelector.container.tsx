@@ -2,6 +2,7 @@ import { ReactNode, useRef, type MouseEvent } from 'react'
 
 import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableChains, useBodyScrollbarLocker, useMediaQuery, useOnClickOutside } from '@cowprotocol/common-hooks'
+import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 import { Media } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -114,10 +115,52 @@ export function NetworkSelector(): ReactNode {
                   availableChains={availableChains}
                 />
               </styledEl.FlayoutMenuList>
+
+              {/* Ophis bridge destinations (2026-05-22). Solana + Bitcoin
+                  are NEAR-Intents bridge destinations only — no wallet
+                  connect possible. Surfacing here for discoverability;
+                  actual selection happens in the buy-side token picker. */}
+              <BridgeDestinationsFooter />
             </styledEl.FlyoutMenuScrollable>
           </styledEl.FlyoutMenuContents>
         </styledEl.FlyoutMenu>
       )}
     </styledEl.SelectorWrapper>
+  )
+}
+
+/**
+ * Footer section in the network-selector dropdown that lists Solana +
+ * Bitcoin as NEAR-Intents bridge destinations. Pure visual + nav — does
+ * not call `eth_switchNetwork` (Solana/Bitcoin aren't EVM, no wallet
+ * adapter). Clicking a row deep-links to the swap form so the user can
+ * pick a buy-side token on that chain.
+ */
+function BridgeDestinationsFooter(): ReactNode {
+  const isDarkMode = useIsDarkMode()
+  const bridgeChainIds = [AdditionalTargetChainId.SOLANA, AdditionalTargetChainId.BITCOIN] as const
+
+  return (
+    <styledEl.BridgeDestinationsSection>
+      <styledEl.BridgeDestinationsHeader>
+        <span>Cross-chain destinations</span>
+        <styledEl.BridgeDestinationsBadge>via NEAR Intents</styledEl.BridgeDestinationsBadge>
+      </styledEl.BridgeDestinationsHeader>
+      <styledEl.BridgeDestinationsList>
+        {bridgeChainIds.map((id) => {
+          const info = getChainInfo(id)
+          const logoUrl = isDarkMode ? info.logo.dark : info.logo.light
+          return (
+            <styledEl.BridgeDestinationRow key={id} href="/1/swap/_/_" rel="nofollow">
+              <img src={logoUrl} alt="" />
+              <span>{info.label}</span>
+            </styledEl.BridgeDestinationRow>
+          )
+        })}
+      </styledEl.BridgeDestinationsList>
+      <styledEl.BridgeDestinationHint>
+        Destination-only. Select in the token picker after opening a trade.
+      </styledEl.BridgeDestinationHint>
+    </styledEl.BridgeDestinationsSection>
   )
 }
