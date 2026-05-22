@@ -22,7 +22,7 @@ use {
 /// Validate a solver-supplied raw `Call`-style interaction (used for
 /// `pre_interactions` and `post_interactions`) against the driver-level
 /// allowlist + value cap. Emits the `custom_interaction_rejected` metric
-/// + structured warn on rejection, and returns a deserialization-style
+/// plus structured warn on rejection, and returns a deserialization-style
 /// error so the caller propagates it via the standard `?` chain.
 ///
 /// Phase 2 audit C2 layer-2 / PR-E Codex HIGH closure (2026-05-22):
