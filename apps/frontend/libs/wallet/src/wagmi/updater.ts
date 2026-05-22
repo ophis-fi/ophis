@@ -19,12 +19,14 @@ import { getWalletTypeLabel } from '../api/utils/getWalletTypeLabel'
 
 function useWalletInfo(): WalletInfo {
   const { address, chainId, isConnected } = useConnection()
-  // Ophis fork: chains 10 (OP Mainnet), 4326 (MegaETH Mainnet), and 999
-  // (HyperEVM Mainnet) are supported at the frontend layer even though the SDK
-  // enum doesn't include them. Without this, switching the wallet to any of
-  // these chains is treated as "unsupported" and silently falls back to MAINNET.
-  const isChainIdUnsupported =
-    !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 4326 && chainId !== 999
+  // Ophis fork: chain 10 (OP Mainnet) is supported at the frontend layer
+  // even though the SDK enum doesn't include it. Without this, switching
+  // the wallet to OP is treated as "unsupported" and silently falls back
+  // to MAINNET. Chains 4326 (MegaETH) and 999 (HyperEVM) were removed
+  // from the FE list in PR #167 (2026-05-21); leaving them in this
+  // whitelist would let wagmi attempt to route to chains that aren't in
+  // SUPPORTED_CHAINS and re-trigger the P0 crash (see wagmi/config.ts).
+  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId) && chainId !== 10
 
   return useMemo(
     () => ({
