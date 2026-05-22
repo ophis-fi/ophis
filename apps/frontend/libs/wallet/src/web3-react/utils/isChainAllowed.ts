@@ -5,13 +5,13 @@ import { getWeb3ReactConnection } from './getWeb3ReactConnection'
 
 import { ConnectionType } from '../../api/types'
 
-// Ophis fork: include OP mainnet (chain 10), MegaETH mainnet (chain 4326),
-// and HyperEVM mainnet (chain 999) alongside SDK-supported chains.
+// Ophis fork: include OP mainnet (chain 10) alongside SDK-supported chains.
+// MegaETH (4326) + HyperEVM (999) dropped in PR #233 follow-up to P0
+// hotfix — `true` for chains absent from CHAIN_INFO leaks into
+// downstream getChainInfo() callers that crash on undefined.
 const OPHIS_ALL_SUPPORTED_CHAIN_IDS: SupportedChainId[] = [
   ...ALL_SUPPORTED_CHAIN_IDS,
   10 as unknown as SupportedChainId,
-  4326 as unknown as SupportedChainId,
-  999 as unknown as SupportedChainId,
 ]
 
 const allowedChainsByWallet: Record<ConnectionType, SupportedChainId[]> = {
