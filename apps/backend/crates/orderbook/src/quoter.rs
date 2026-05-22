@@ -93,8 +93,28 @@ impl QuoteHandler {
     ) -> Result<OrderQuoteResponse, OrderQuoteError> {
         tracing::debug!(?request, "calculating quote");
 
+        // Phase 2 audit L9 (silent-failure F3, 2026-05-22): `find()` errors
+        // were previously swallowed via `unwrap_or(None)` — during an IPFS
+        // outage every Hash-mode quote would silently miss its app-data
+        // context and price as if the order had none. Now log the error
+        // at warn (transient IPFS issues are operationally visible) while
+        // preserving the fallback to None (quote still succeeds best-effort,
+        // matching prior behavior).
         let full_app_data_override = match request.app_data {
-            OrderCreationAppData::Hash { hash } => self.app_data.find(&hash).await.unwrap_or(None),
+            OrderCreationAppData::Hash { hash } => self
+                .app_data
+                .find(&hash)
+                .await
+                .inspect_err(|err| {
+                    tracing::warn!(
+                        ?hash,
+                        %err,
+                        "app_data.find failed during quote — falling back to None; \
+                         quote price may diverge from expected if app-data carried \
+                         partner-fee or signing-scheme overrides"
+                    );
+                })
+                .unwrap_or(None),
             _ => None,
         };
 
