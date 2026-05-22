@@ -60,7 +60,11 @@ out
 # Next.js sitemap
 apps/cow-fi/public/robots.txt
 apps/cow-fi/public/sitemap*
-apps/cowswap-frontend/public/robots.txt
+# Ophis fork: robots.txt was previously gitignored (probably to allow
+# environment-specific overrides in upstream cow-fi setup). For our
+# single-environment Vite build at ophis.fi we need this file tracked
+# in source so the Host directive matches the production domain.
+# apps/cowswap-frontend/public/robots.txt
 
 # Claude context files (local only)
 CLAUDE.md
