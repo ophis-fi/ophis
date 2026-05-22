@@ -30,6 +30,7 @@ use {
     thiserror::Error,
 };
 
+pub mod custom_allowlist;
 pub mod encoding;
 pub mod fee;
 pub mod interaction;
