@@ -40,12 +40,18 @@ const Intro = styled.p`
   line-height: 1.6;
 `
 
+/**
+ * Body — scoped to DIRECT child paragraphs only. Codex PR #246 audit
+ * caught that `& p` (descendant) would leak into FeatureCard,
+ * MetricCard, Callout, table cells, etc. once those primitives are
+ * used inside Sections. `& > p` keeps the prose styling local.
+ */
 const Body = styled.div`
   display: flex;
   flex-direction: column;
   gap: 16px;
 
-  & p {
+  & > p {
     margin: 0;
     color: rgba(245, 239, 230, 0.78);
     line-height: 1.7;

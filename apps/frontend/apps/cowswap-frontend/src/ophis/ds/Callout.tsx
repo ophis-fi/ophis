@@ -76,9 +76,28 @@ const Body = styled.div`
   }
 `
 
-export function Callout({ tone = 'info', title, children }: CalloutProps): ReactNode {
+interface CalloutPropsWithRole extends CalloutProps {
+  /**
+   * Override the ARIA role. Default is none (static content). Set to
+   * `'alert'` only for REAL runtime alerts that need screen-reader
+   * interruption (e.g. a live "transaction failed" notice). For static
+   * legal/status content leave unset.
+   *
+   * Codex PR #246 audit: role="alert" on static warning callouts was too
+   * aggressive — screen readers would interrupt the user for static page
+   * content. Now opt-in.
+   */
+  role?: 'alert' | 'status' | 'note'
+}
+
+export function Callout({
+  tone = 'info',
+  title,
+  children,
+  role,
+}: CalloutPropsWithRole): ReactNode {
   return (
-    <Outer $tone={tone} role={tone === 'danger' || tone === 'warning' ? 'alert' : 'note'}>
+    <Outer $tone={tone} role={role}>
       {title && <Title>{title}</Title>}
       <Body>{children}</Body>
     </Outer>

@@ -31,3 +31,10 @@ export type { BadgeTone } from './Badge'
 
 export { Callout } from './Callout'
 export type { CalloutTone } from './Callout'
+
+export { TextLink } from './TextLink'
+
+export { InlineCode } from './InlineCode'
+
+export { KeyValueList } from './KeyValueList'
+export type { KeyValueRow } from './KeyValueList'
