@@ -42,10 +42,32 @@ impl Ipfs {
         let body = response.bytes().await.context("body")?;
         match status {
             StatusCode::OK => Ok(Some(body.into())),
+            // Phase 2 audit L5 (silent-failure F17, 2026-05-22): the prior
+            // implementation logged at `trace!` level, which is suppressed
+            // in production. That hid the distinction between "the CID
+            // genuinely isn't pinned" (404) and "the gateway is degraded"
+            // (5xx, 524, 504), and both cases collapsed to `Ok(None)` with
+            // no operational signal. Now: 4xx logged at debug (likely
+            // genuinely missing), 5xx + non-4xx logged at warn (gateway
+            // health degraded — investigate). Return type unchanged for
+            // compatibility with existing callers that already treat IPFS
+            // misses as best-effort.
+            StatusCode::NOT_FOUND => {
+                tracing::debug!(%status, "IPFS not found (likely unpinned CID)");
+                Ok(None)
+            }
+            s if s.is_client_error() => {
+                tracing::debug!(%status, "IPFS client error");
+                Ok(None)
+            }
             _ => {
                 let body = String::from_utf8_lossy(&body);
                 let body: &str = &body;
-                tracing::trace!(%status, %body, "IPFS not found");
+                tracing::warn!(
+                    %status,
+                    %body,
+                    "IPFS gateway returned unexpected status — gateway health may be degraded"
+                );
                 Ok(None)
             }
         }
