@@ -51,25 +51,18 @@ pub async fn load(chain: Chain, path: &Path) -> infra::Config {
         "The configured chain ID does not match the connected Ethereum node"
     );
 
-    // Phase 2 audit C4 sub-pieces + L1 (2026-05-22): config-time range
-    // validation on three previously-unchecked numeric fields. Each
-    // validator returns a structured error message naming the field +
-    // bad value + accepted range, replacing what was previously either
-    // (a) no check at all (tx_gas_limit, haircut_bps), or (b) a
-    // downstream `.unwrap()` panic with a non-descriptive `OutOfRangeError`
-    // (solving_share_of_deadline).
-    if let Err(e) = file::validate_tx_gas_limit(config.tx_gas_limit) {
+    // Phase 2 audit C4 sub-pieces + L1 + sharp-edges PR-228 MED
+    // (2026-05-22): config-time range validation on six previously-
+    // unchecked numeric fields:
+    //   - tx_gas_limit, haircut_bps (C4)
+    //   - solving_share_of_deadline (L1)
+    //   - additional_tip_percentage, reward_percentile,
+    //     metrics_strategy_failure_ratio (sharp-edges MED, same class)
+    // Each validator returns a structured error message naming the
+    // field + bad value + accepted range. Aggregated under
+    // `validate_config_for_load`.
+    if let Err(e) = super::validate_config_for_load(&config) {
         panic!("config: {e}");
-    }
-    for solver_config in &config.solvers {
-        if let Err(e) = file::validate_haircut_bps(solver_config.haircut_bps) {
-            panic!("config: solver '{}': {e}", solver_config.name);
-        }
-        if let Err(e) = file::validate_solving_share_of_deadline(
-            solver_config.timeouts.solving_share_of_deadline,
-        ) {
-            panic!("config: solver '{}': {e}", solver_config.name);
-        }
     }
     infra::Config {
         solvers: join_all(config.solvers.into_iter().map(|solver_config| async move {

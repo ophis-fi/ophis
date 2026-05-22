@@ -226,42 +226,60 @@ fn default_mines_reverting_txs() -> bool {
     true
 }
 
-/// Lower bound on `tx_gas_limit`. 21000 is the minimum gas any
-/// transaction must declare (EIP-1559 base intrinsic). Anything lower
-/// is a config mistake — settlement txs need at least ~150k typically.
-pub const MIN_TX_GAS_LIMIT: u64 = 21_000;
+/// Lower bound on `tx_gas_limit`. 1M gas — below this, a settlement
+/// tx cannot fit even a trivial single-fill (settle() overhead alone
+/// is ~150k; a real fill is 300-900k). The PR-228 Codex audit
+/// (2026-05-22) tightened this from the EIP-1559 intrinsic 21k to a
+/// settlement-realistic floor that catches operator typos like
+/// `tx-gas-limit = 21000` mistaking it for the intrinsic.
+pub const MIN_TX_GAS_LIMIT: u64 = 1_000_000;
 
-/// Upper bound on `tx_gas_limit`. 200M is ~6.7× Ethereum mainnet block
-/// gas (30M) and comfortably above Optimism's effective batch size.
-/// Chain-specific runtime checks elsewhere (block_gas_limit()) catch
-/// per-chain overshoot. This cap exists to reject obvious config
-/// mistakes (e.g. accidental `u64::MAX`) at startup. Phase 2 audit
-/// finding C4 sub-piece (2026-05-22 consolidation).
-pub const MAX_TX_GAS_LIMIT: u64 = 200_000_000;
+/// Upper bound on `tx_gas_limit`. 30M = Ethereum mainnet block gas
+/// limit. Anything above this cannot fit in a block on Ethereum,
+/// Optimism, Arbitrum, or any EVM L1/L2 we currently support. The
+/// PR-228 Codex audit tightened this from a generous 200M ceiling
+/// to the actual physical block-gas ceiling on mainnet — caps that
+/// operators wouldn't realistically want anyway. Chains with higher
+/// per-block gas (Polygon's variable cap, Sui, etc.) are not in our
+/// supported set; if added, this constant becomes a chain-aware
+/// runtime check via `block_gas_limit()`.
+pub const MAX_TX_GAS_LIMIT: u64 = 30_000_000;
 
 /// Upper bound on `haircut_bps`. Basis points cap at 10000 = 100%.
 /// Configs above this would scale solver-reported surplus into
 /// negative territory — a config mistake, not a feature.
 pub const MAX_HAIRCUT_BPS: u32 = 10_000;
 
+/// Cap on `additional_tip_percentage` and `metrics_strategy_failure_ratio`.
+/// Both are documented [0.0, 1.0] but neither was enforced. Sharp-edges
+/// PR-228 audit MED (2026-05-22): same vulnerability class as L1.
+const FRACTION_RANGE: std::ops::RangeInclusive<f64> = 0.0..=1.0;
+
+/// Cap on `reward_percentile`. Percentile values are in [0.0, 100.0];
+/// alloy's `eth_feeHistory` silently saturates or errors at runtime if
+/// passed values outside this range. Sharp-edges PR-228 audit MED.
+const PERCENTILE_RANGE: std::ops::RangeInclusive<f64> = 0.0..=100.0;
+
 /// Validate `tx_gas_limit` is within the supported range.
 ///
 /// Closes Phase 2 audit finding C4 (sub-piece): config-time `tx_gas_limit`
 /// previously accepted any `U256` (including 0 and `U256::MAX`). Now
-/// asserted at config load. Tests in [`tests::tx_gas_limit_*`].
-pub fn validate_tx_gas_limit(v: eth::U256) -> Result<(), String> {
+/// asserted at config load against `[MIN_TX_GAS_LIMIT, MAX_TX_GAS_LIMIT]`.
+/// Tests in [`tests::tx_gas_limit_*`].
+fn validate_tx_gas_limit(v: eth::U256) -> Result<(), String> {
     let min = eth::U256::from(MIN_TX_GAS_LIMIT);
     let max = eth::U256::from(MAX_TX_GAS_LIMIT);
     if v < min {
         return Err(format!(
-            "tx_gas_limit = {v} is below the {MIN_TX_GAS_LIMIT}-gas intrinsic minimum; \
-             settlement txs require well above this floor"
+            "tx_gas_limit = {v} is below the {MIN_TX_GAS_LIMIT}-gas settlement floor; real \
+             settlement txs need at least ~1M gas (settle() overhead ~150k + fills 300-900k)"
         ));
     }
     if v > max {
         return Err(format!(
-            "tx_gas_limit = {v} exceeds the {MAX_TX_GAS_LIMIT}-gas safety ceiling; this is \
-             far above any real chain's block gas limit and almost certainly a config mistake"
+            "tx_gas_limit = {v} exceeds the {MAX_TX_GAS_LIMIT}-gas block-fit ceiling; this is \
+             above the Ethereum/Optimism mainnet block gas limit and cannot fit in a single \
+             block — almost certainly a config mistake"
         ));
     }
     Ok(())
@@ -272,7 +290,7 @@ pub fn validate_tx_gas_limit(v: eth::U256) -> Result<(), String> {
 /// Closes Phase 2 audit finding C4 (sub-piece): the docstring at the
 /// field declared the 0-10000 range but no code enforced it. Now
 /// asserted at config load.
-pub fn validate_haircut_bps(v: u32) -> Result<(), String> {
+fn validate_haircut_bps(v: u32) -> Result<(), String> {
     if v > MAX_HAIRCUT_BPS {
         return Err(format!(
             "haircut_bps = {v} exceeds MAX_HAIRCUT_BPS ({MAX_HAIRCUT_BPS} = 100%). Basis \
@@ -287,7 +305,7 @@ pub fn validate_haircut_bps(v: u32) -> Result<(), String> {
 /// previously accepted; downstream `Percent::try_from(f64)` would
 /// then `unwrap()` panic at config load with `OutOfRangeError` — this
 /// validator surfaces the bad value AND the field name).
-pub fn validate_solving_share_of_deadline(v: f64) -> Result<(), String> {
+fn validate_solving_share_of_deadline(v: f64) -> Result<(), String> {
     if !v.is_finite() {
         return Err(format!(
             "solving_share_of_deadline = {v} is not a finite number (NaN/Inf rejected); \
@@ -298,6 +316,120 @@ pub fn validate_solving_share_of_deadline(v: f64) -> Result<(), String> {
         return Err(format!(
             "solving_share_of_deadline = {v} is outside [0.0, 1.0]; the solver's share of \
              the auction deadline must be a fraction (0 = no solving time, 1 = full deadline)"
+        ));
+    }
+    Ok(())
+}
+
+/// Aggregate validator invoked by `load::load()` after TOML
+/// deserialization. Runs all per-field range checks across the top-level
+/// `Config` and every `SolverConfig`. Returns the first violation found
+/// with a structured error message (field name + offending value +
+/// solver name where applicable).
+///
+/// Locking this into a single function lets us cover the "iterates ALL
+/// solvers, not just the first" wiring invariant with a unit test
+/// against a TOML fixture, without needing the heavier `load::load()`
+/// async-file-IO path. Closes Codex PR-228 LOW.
+///
+/// Visibility: default (file-module-private). Called from `super::load`
+/// via `super::validate_config_for_load`. The `Config` type is private
+/// to this module, so any `pub`/`pub(super)`/`pub(crate)` visibility on
+/// this function would emit a "more private than the item" warning.
+fn validate_config_for_load(config: &Config) -> Result<(), String> {
+    validate_tx_gas_limit(config.tx_gas_limit)?;
+
+    // Top-level submission mempools — each can override
+    // additional_tip_percentage.
+    for (i, mempool) in config.submission.mempools.iter().enumerate() {
+        if let Err(e) = validate_additional_tip_percentage(mempool.additional_tip_percentage) {
+            let label = mempool.name.as_deref().unwrap_or("<unnamed>");
+            return Err(format!("mempool #{i} '{label}': {e}"));
+        }
+    }
+
+    // Top-level gas_estimator.reward_percentile lives inside the
+    // Alloy variant (only configured variant).
+    if let GasEstimatorType::Alloy {
+        reward_percentile, ..
+    } = &config.gas_estimator
+    {
+        validate_reward_percentile(*reward_percentile)
+            .map_err(|e| format!("gas_estimator: {e}"))?;
+    }
+
+    for solver_config in &config.solvers {
+        if let Err(e) = validate_haircut_bps(solver_config.haircut_bps) {
+            return Err(format!("solver '{}': {e}", solver_config.name));
+        }
+        if let Err(e) = validate_solving_share_of_deadline(
+            solver_config.timeouts.solving_share_of_deadline,
+        ) {
+            return Err(format!("solver '{}': {e}", solver_config.name));
+        }
+        if let Err(e) = validate_metrics_strategy_failure_ratio(
+            solver_config.bad_order_detection.metrics_strategy_failure_ratio,
+        ) {
+            return Err(format!("solver '{}': {e}", solver_config.name));
+        }
+    }
+    Ok(())
+}
+
+/// Validate `additional_tip_percentage` is a finite real number in
+/// [0.0, 1.0]. Same class as L1 — sharp-edges PR-228 audit MED.
+/// Used as a multiplier on `max_fee_per_gas` in `gas.rs:57`; NaN
+/// would poison downstream f64*U256 conversions, negative would
+/// invert tips, >1 would blow gas caps.
+fn validate_additional_tip_percentage(v: f64) -> Result<(), String> {
+    if !v.is_finite() {
+        return Err(format!(
+            "additional_tip_percentage = {v} is not a finite number (NaN/Inf rejected); \
+             expected a value in [0.0, 1.0]"
+        ));
+    }
+    if !FRACTION_RANGE.contains(&v) {
+        return Err(format!(
+            "additional_tip_percentage = {v} is outside [0.0, 1.0]"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate `reward_percentile` is a finite real number in [0.0, 100.0].
+/// Sharp-edges PR-228 audit MED. Passed to alloy's
+/// `eth_feeHistory` percentile parameter — values outside [0, 100]
+/// silently saturate or trigger opaque RPC errors.
+fn validate_reward_percentile(v: f64) -> Result<(), String> {
+    if !v.is_finite() {
+        return Err(format!(
+            "reward_percentile = {v} is not a finite number (NaN/Inf rejected); expected \
+             a value in [0.0, 100.0]"
+        ));
+    }
+    if !PERCENTILE_RANGE.contains(&v) {
+        return Err(format!(
+            "reward_percentile = {v} is outside [0.0, 100.0]"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate `metrics_strategy_failure_ratio` is a finite real number in
+/// [0.0, 1.0]. Sharp-edges PR-228 audit MED. Used as a comparison
+/// threshold for the metrics-bad-order-detection strategy — NaN makes
+/// EVERY comparison false (silently breaks the strategy), negative
+/// or >1 makes the threshold pathological.
+fn validate_metrics_strategy_failure_ratio(v: f64) -> Result<(), String> {
+    if !v.is_finite() {
+        return Err(format!(
+            "metrics_strategy_failure_ratio = {v} is not a finite number (NaN/Inf rejected); \
+             expected a value in [0.0, 1.0]"
+        ));
+    }
+    if !FRACTION_RANGE.contains(&v) {
+        return Err(format!(
+            "metrics_strategy_failure_ratio = {v} is outside [0.0, 1.0]"
         ));
     }
     Ok(())
@@ -1071,21 +1203,25 @@ mod tests {
 
     #[test]
     fn tx_gas_limit_accepts_typical_settlement_budget() {
-        // ~600k gas is a normal settlement tx ceiling.
-        assert!(validate_tx_gas_limit(eth::U256::from(600_000u64)).is_ok());
-        // ~5M gas — large multi-fill batch.
-        assert!(validate_tx_gas_limit(eth::U256::from(5_000_000u64)).is_ok());
+        // ~3M gas — typical multi-fill settlement.
+        assert!(validate_tx_gas_limit(eth::U256::from(3_000_000u64)).is_ok());
+        // ~10M gas — large multi-fill batch.
+        assert!(validate_tx_gas_limit(eth::U256::from(10_000_000u64)).is_ok());
     }
 
     #[test]
-    fn tx_gas_limit_rejects_zero_and_below_intrinsic() {
+    fn tx_gas_limit_rejects_zero_and_below_settlement_floor() {
         assert!(validate_tx_gas_limit(eth::U256::ZERO).is_err());
-        assert!(validate_tx_gas_limit(eth::U256::from(20_999u64)).is_err());
+        // EIP-1559 intrinsic (21k) is correctly rejected — it's nowhere
+        // near what a settlement tx actually needs.
+        assert!(validate_tx_gas_limit(eth::U256::from(21_000u64)).is_err());
+        // Just below the 1M floor.
+        assert!(validate_tx_gas_limit(eth::U256::from(MIN_TX_GAS_LIMIT - 1)).is_err());
     }
 
     #[test]
-    fn tx_gas_limit_accepts_intrinsic_floor() {
-        assert!(validate_tx_gas_limit(eth::U256::from(21_000u64)).is_ok());
+    fn tx_gas_limit_accepts_settlement_floor() {
+        assert!(validate_tx_gas_limit(eth::U256::from(MIN_TX_GAS_LIMIT)).is_ok());
     }
 
     #[test]
@@ -1094,13 +1230,17 @@ mod tests {
     }
 
     #[test]
-    fn tx_gas_limit_accepts_safety_ceiling() {
+    fn tx_gas_limit_accepts_block_fit_ceiling() {
+        // 30M = Ethereum mainnet block gas. Right at the boundary.
         assert!(validate_tx_gas_limit(eth::U256::from(MAX_TX_GAS_LIMIT)).is_ok());
     }
 
     #[test]
-    fn tx_gas_limit_rejects_above_safety_ceiling() {
+    fn tx_gas_limit_rejects_above_block_fit_ceiling() {
         assert!(validate_tx_gas_limit(eth::U256::from(MAX_TX_GAS_LIMIT + 1)).is_err());
+        // 200M (old ceiling) now rejected — physically can't fit in a
+        // block on any EVM chain we support.
+        assert!(validate_tx_gas_limit(eth::U256::from(200_000_000u64)).is_err());
     }
 
     #[test]
@@ -1170,6 +1310,58 @@ mod tests {
     fn solving_share_of_deadline_rejects_negative_zero_correctly() {
         // -0.0 == 0.0 in IEEE 754, so this should be accepted (not a bug).
         assert!(validate_solving_share_of_deadline(-0.0).is_ok());
+    }
+
+    #[test]
+    fn additional_tip_percentage_accepts_default_and_range() {
+        assert!(validate_additional_tip_percentage(default_additional_tip_percentage()).is_ok());
+        assert!(validate_additional_tip_percentage(0.0).is_ok());
+        assert!(validate_additional_tip_percentage(0.5).is_ok());
+        assert!(validate_additional_tip_percentage(1.0).is_ok());
+    }
+
+    #[test]
+    fn additional_tip_percentage_rejects_nan_inf_negative_above_one() {
+        assert!(validate_additional_tip_percentage(f64::NAN).is_err());
+        assert!(validate_additional_tip_percentage(f64::INFINITY).is_err());
+        assert!(validate_additional_tip_percentage(f64::NEG_INFINITY).is_err());
+        assert!(validate_additional_tip_percentage(-0.01).is_err());
+        assert!(validate_additional_tip_percentage(1.5).is_err());
+    }
+
+    #[test]
+    fn reward_percentile_accepts_0_to_100() {
+        assert!(validate_reward_percentile(0.0).is_ok());
+        assert!(validate_reward_percentile(20.0).is_ok()); // Metamask default
+        assert!(validate_reward_percentile(99.99).is_ok());
+        assert!(validate_reward_percentile(100.0).is_ok());
+    }
+
+    #[test]
+    fn reward_percentile_rejects_nan_inf_negative_above_hundred() {
+        assert!(validate_reward_percentile(f64::NAN).is_err());
+        assert!(validate_reward_percentile(f64::INFINITY).is_err());
+        assert!(validate_reward_percentile(-0.01).is_err());
+        assert!(validate_reward_percentile(100.0001).is_err());
+        assert!(validate_reward_percentile(1000.0).is_err());
+    }
+
+    #[test]
+    fn metrics_strategy_failure_ratio_accepts_default_and_range() {
+        assert!(validate_metrics_strategy_failure_ratio(0.0).is_ok());
+        assert!(validate_metrics_strategy_failure_ratio(0.5).is_ok());
+        assert!(validate_metrics_strategy_failure_ratio(1.0).is_ok());
+    }
+
+    #[test]
+    fn metrics_strategy_failure_ratio_rejects_nan_inf_negative_above_one() {
+        // NaN is the most dangerous case here — all comparisons against
+        // NaN return false, so a NaN threshold silently breaks the
+        // bad-order detection strategy without any error.
+        assert!(validate_metrics_strategy_failure_ratio(f64::NAN).is_err());
+        assert!(validate_metrics_strategy_failure_ratio(f64::INFINITY).is_err());
+        assert!(validate_metrics_strategy_failure_ratio(-0.5).is_err());
+        assert!(validate_metrics_strategy_failure_ratio(2.0).is_err());
     }
 
     #[test]
