@@ -1,3 +1,4 @@
 User-agent: *
 Allow: /
-Host: https://swap.cow.fi
+Host: https://ophis.fi
+Sitemap: https://ophis.fi/sitemap.xml
