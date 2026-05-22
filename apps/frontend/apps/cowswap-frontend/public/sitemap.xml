@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Ophis sitemap. Includes the 5 static / SEO-relevant routes:
+   - /         (landing — intent input)
+   - /docs     (pre-rendered HTML docs page)
+   - /about    (operator + mission)
+   - /legal    (terms + privacy + entity)
+   - /brand    (brand kit)
+  Trading routes (/:chainId/swap/*) are excluded because they're
+  user-state-dependent and not useful to index.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://ophis.fi/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://ophis.fi/docs</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://ophis.fi/about</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://ophis.fi/legal</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://ophis.fi/brand</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+</urlset>

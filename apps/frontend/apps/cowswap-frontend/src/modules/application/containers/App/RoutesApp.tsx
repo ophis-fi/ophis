@@ -32,6 +32,12 @@ import YieldPage from 'pages/Yield'
 const NotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
 const MevSlicer = lazy(() => import(/* webpackChunkName: "mev_slicer" */ 'pages/games/MevSlicer'))
 
+// Ophis static brand surfaces (PR #234, 2026-05-22). Each is a static
+// single-page component; lazy-loaded so the landing-page bundle stays lean.
+const LegalPage = lazy(() => import(/* webpackChunkName: "ophis_legal" */ 'pages/Legal'))
+const AboutPage = lazy(() => import(/* webpackChunkName: "ophis_about" */ 'pages/About'))
+const BrandPage = lazy(() => import(/* webpackChunkName: "ophis_brand" */ 'pages/Brand'))
+
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
 const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
@@ -46,15 +52,21 @@ function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
   return <Route key={key} path={route} element={<Suspense fallback={<Loading />}>{element}</Suspense>} />
 }
 
-// Ophis: routes that previously externally-redirected to cow.fi/* (ABOUT,
-// FAQ_*, PRIVACY_POLICY, COOKIE_POLICY, TERMS_CONDITIONS, PLAY_COWRUNNER)
-// removed in the 2026-05-20 rebrand. They now fall through to the `*`
-// NotFound catch-all below. Restore once Ophis has its own equivalents.
+// Ophis: routes that previously externally-redirected to cow.fi/* (FAQ_*,
+// PRIVACY_POLICY, COOKIE_POLICY, TERMS_CONDITIONS, PLAY_COWRUNNER) removed
+// in the 2026-05-20 rebrand. They now fall through to the `*` NotFound
+// catch-all below. Restore once Ophis has its own equivalents.
+//
+// ABOUT, LEGAL, and BRAND wired below in PR #234 (2026-05-22) to closed
+// Ophis-native static pages.
 const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.YIELD, element: <YieldPage /> },
   { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
   { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
+  { route: RoutesEnum.ABOUT, element: <AboutPage /> },
+  { route: RoutesEnum.LEGAL, element: <LegalPage /> },
+  { route: RoutesEnum.BRAND, element: <BrandPage /> },
 ]
 
 export function RoutesApp(): ReactNode {
