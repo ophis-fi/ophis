@@ -60,11 +60,13 @@ out
 # Next.js sitemap
 apps/cow-fi/public/robots.txt
 apps/cow-fi/public/sitemap*
-# Ophis fork: robots.txt was previously gitignored (probably to allow
-# environment-specific overrides in upstream cow-fi setup). For our
-# single-environment Vite build at ophis.fi we need this file tracked
-# in source so the Host directive matches the production domain.
-# apps/cowswap-frontend/public/robots.txt
+# Ophis fork: `public/robots.txt` is a build artifact produced by the
+# Vite `robotsPlugin` (tools/vite-plugins/robotsPlugin.ts) which copies
+# from `apps/cowswap-frontend/robots/.robots.${mode}.txt` at build time.
+# The source-of-truth file is `apps/cowswap-frontend/robots/.robots.production.txt`,
+# NOT this artifact. Keep it gitignored so checked-in copies don't
+# accumulate.
+apps/cowswap-frontend/public/robots.txt
 
 # Claude context files (local only)
 CLAUDE.md
