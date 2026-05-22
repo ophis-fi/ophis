@@ -19,6 +19,43 @@ import {
 } from 'viem/chains'
 import { createConfig, Transport } from 'wagmi'
 
+// One-shot scrub of stale wagmi/web3-react persisted state from pre-PR
+// #167 sessions. PR #232 fixed the config-time crash, but persisted
+// localStorage still hydrates wagmi's `connections` Map with stale
+// `chainId: 4326|999` entries. wagmi's `getClient` then calls
+// `chains.find(c => c.id === chainId)` on those, finds undefined (because
+// PR #167 + PR #232 correctly removed those chains from the runtime list),
+// and crashes with "Cannot read properties of undefined (reading 'id')"
+// at the `.id` deref a few lines later.
+//
+// The scrub purges any persisted state referencing 4326 or 999. Cost:
+// affected users get re-prompted to connect their wallet ONCE on next
+// load. Benefit: the SPA boots. Wallet reconnection re-populates the
+// persisted state with a valid chainId.
+//
+// Idempotent: runs once per cold page load; no-op if storage already
+// clean. Wrapped in try/catch because SSR/private-browsing/quota-exceeded
+// scenarios shouldn't prevent the SPA from booting at all.
+if (typeof window !== 'undefined') {
+  try {
+    const STORAGE_KEYS = ['wagmi.store', 'wagmi.cache', 'redux_localstorage_simple_user']
+    const stalePattern = /"chainId":\s*(?:4326|999)\b/
+    for (const key of STORAGE_KEYS) {
+      const raw = window.localStorage.getItem(key)
+      if (raw && stalePattern.test(raw)) {
+        window.localStorage.removeItem(key)
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[ophis] purged stale persisted state at localStorage["${key}"] containing chainId 4326 or 999`,
+        )
+      }
+    }
+  } catch {
+    // localStorage unavailable (SSR, private browsing, quota) — no-op;
+    // the user will hit a fresh state anyway since persistence is unavailable.
+  }
+}
+
 const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof v === 'number')
 
 // Ophis fork: OP mainnet (chain 10) added at frontend layer.
