@@ -925,6 +925,32 @@ impl Persistence {
                     .map(|event| (event.order_uid, (event.block, event.log_index)))
                     .collect::<HashMap<_, (_, _)>>();
 
+                // Phase 2 audit L4 (silent-failure F16, 2026-05-22):
+                // count + warn on JIT orders that lack a trade event.
+                // Previously these were silently dropped by the
+                // `filter_map` below — no operational visibility, no
+                // way to tell "indexer lag" from "competition recorded
+                // a JIT that never settled".
+                let missing_trade_event_count = jit_orders
+                    .iter()
+                    .filter(|jit_order| {
+                        !trade_events.contains_key(&jit_order.uid.into())
+                    })
+                    .count();
+                if missing_trade_event_count > 0 {
+                    Metrics::get()
+                        .jit_order_dropped_no_trade_event
+                        .inc_by(missing_trade_event_count as u64);
+                    tracing::warn!(
+                        missing_trade_event_count,
+                        total_jit_orders = jit_orders.len(),
+                        ?event,
+                        "JIT orders in solver_competition lack corresponding trade \
+                         events — likely indexer lag, but possible real silent drop. \
+                         Dropped from /solver_competition response."
+                    );
+                }
+
                 database::jit_orders::insert(
                     &mut ex,
                     &jit_orders
@@ -1110,6 +1136,21 @@ struct Metrics {
     /// persistence is permanently degraded until process restart.
     #[metric(name = "persistence_auction_upload_dropped", labels("reason"))]
     auction_upload_dropped: prometheus::IntCounterVec,
+
+    /// JIT orders that were present in a solver_competition result but
+    /// did NOT have a corresponding on-chain trade event when persistence
+    /// reconciled them. Phase 2 audit L4 (silent-failure F16, 2026-05-22):
+    /// previously these were silently dropped via `filter_map` in
+    /// `store_settlement`, leaving operators with no visibility into
+    /// "competition recorded a JIT that never settled" cases. Each
+    /// drop now increments this counter + emits a structured warn log.
+    ///
+    /// Steady-state: zero. Sustained non-zero almost always means
+    /// either (a) the autopilot is reading stale solver_competition
+    /// data ahead of the chain indexer catching up, or (b) a real bug
+    /// in the JIT order pipeline.
+    #[metric(name = "persistence_jit_order_dropped_no_trade_event")]
+    jit_order_dropped_no_trade_event: prometheus::IntCounter,
 }
 
 impl Metrics {
