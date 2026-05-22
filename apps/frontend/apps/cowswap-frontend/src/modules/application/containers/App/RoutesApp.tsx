@@ -1,4 +1,4 @@
-import { lazy, ReactNode, Suspense } from 'react'
+import { lazy, ReactNode, Suspense, useEffect } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
@@ -52,6 +52,23 @@ const AccountAffiliateTrader = lazy(
 )
 const AccountNotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
 
+/**
+ * /faq deep-links to the static /docs page's #faq section. /docs is
+ * served from `public/docs/index.html` — NOT a React route — so a
+ * client-side `<Navigate to="/docs#faq" />` would land on the SPA's
+ * `*` NotFound catch-all. This component forces a full document
+ * navigation via `window.location.assign` on mount, which the browser
+ * resolves to the static asset + scrolls to the hash. Renders nothing.
+ *
+ * Codex PR #243 audit P1 closure (2026-05-22).
+ */
+function FaqRedirect(): null {
+  useEffect(() => {
+    window.location.assign('/docs#faq')
+  }, [])
+  return null
+}
+
 type LazyRouteProps = { route: RoutesValues; element: ReactNode; key?: number }
 
 function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
@@ -75,7 +92,10 @@ const lazyRoutes: LazyRouteProps[] = [
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser
   // refresh-on-/faq.
-  { route: RoutesEnum.FAQ, element: <Navigate to="/docs#faq" replace /> },
+  // /faq → full-document redirect to /docs#faq. /docs is a static asset,
+  // NOT a React route, so client-side Navigate would land on NotFound.
+  // FaqRedirect calls window.location.assign on mount.
+  { route: RoutesEnum.FAQ, element: <FaqRedirect /> },
   { route: RoutesEnum.ABOUT, element: <AboutPage /> },
   { route: RoutesEnum.LEGAL, element: <LegalPage /> },
   { route: RoutesEnum.BRAND, element: <BrandPage /> },

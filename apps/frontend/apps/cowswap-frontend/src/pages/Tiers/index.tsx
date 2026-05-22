@@ -195,10 +195,24 @@ export default function TiersPage(): ReactNode {
       <OphisHeader />
       <Container>
         <Title>Tiers</Title>
-        <Lede>Recognition for traders who route serious volume through Ophis.</Lede>
+        <Lede>
+          Planned recognition framework for traders who route serious volume through Ophis.
+        </Lede>
+        <Note
+          style={{
+            margin: '0 0 32px',
+            background: 'rgba(242, 166, 62, 0.08)',
+            borderColor: 'rgba(242, 166, 62, 0.3)',
+          }}
+        >
+          <strong>Status: planned, not yet live.</strong> Tier infrastructure is targeted for Q3
+          2026. Volume thresholds, fee discounts, perk lists, and unlock semantics shown below are
+          <em> indicative draft values, subject to change</em> before launch. Nothing on this page
+          is a binding commitment.
+        </Note>
 
         <Section>
-          <H2>The ladder</H2>
+          <H2>The ladder (draft)</H2>
           <TierGrid>
             {TIERS.map((tier) => (
               <TierCard key={tier.name} $accent={tier.accent}>
@@ -215,24 +229,24 @@ export default function TiersPage(): ReactNode {
         </Section>
 
         <Section>
-          <H2>How it works</H2>
+          <H2>How it&#39;s expected to work</H2>
           <p>
-            Cumulative volume is measured across all trades signed by your wallet address on
-            Ophis-supported chains. Tier upgrades unlock automatically; downgrades are not
-            retroactive — once you reach a tier, it persists for the calendar year.
+            At launch, cumulative volume is expected to be measured across trades signed by your
+            wallet address on Ophis-supported chains. The current draft has tier upgrades unlocking
+            automatically with no within-year downgrades, but final semantics depend on the
+            on-chain implementation choice (subgraph indexer vs. direct event log) and may change.
           </p>
           <p>
-            The ladder is a <strong>recognition framework</strong>, not a yield program. Higher
-            tiers unlock features (lower fees, higher API quotas, direct team access) rather than
-            direct token payouts. The fee discounts apply automatically at the order layer; no
-            on-chain claim flow.
+            The ladder is framed as a <strong>recognition framework</strong>, not a yield program.
+            Higher tiers are expected to unlock features (lower fees, higher API quotas, direct
+            team access) rather than direct token payouts. Final fee-discount mechanics, claim
+            flow, and on-chain reward distribution (if any) are TBD.
           </p>
         </Section>
 
         <Note>
-          <strong>Status:</strong> the tier infrastructure is planned for Q3 2026. Wallets meeting
-          the volume thresholds today will be retroactively credited at launch. To register early
-          interest as an OTC desk or large trader, reach out via the{' '}
+          To register early interest as an OTC desk or large trader (so we can track you for
+          potential retroactive eligibility at launch), reach out via the{' '}
           <a href="/institutional" style={{ color: '#f2a63e' }}>
             institutional page
           </a>

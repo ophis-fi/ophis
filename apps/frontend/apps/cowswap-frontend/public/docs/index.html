@@ -401,10 +401,12 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
 .docs-toc-foot a { color: var(--ink-dim); text-decoration: none; }
 .docs-toc-foot a:hover { color: var(--saffron); }
 
-@media (max-width: 1180px) {
-  /* Collapse the sidebar to a hidden state on narrower screens —
-     small viewports use the section anchors via the page hash directly
-     after a layout shift. */
+@media (max-width: 1368px) {
+  /* Collapse the sidebar at the breakpoint where the fixed 200px-wide
+     TOC at left:24px would otherwise overlap the centered main content
+     (max-width 920px). Codex PR #243 audit P2 closure (2026-05-22):
+     the original 1180px breakpoint left a ~190px overlap zone between
+     1181 and 1367px viewport widths. */
   .docs-toc { display: none; }
 }
 
