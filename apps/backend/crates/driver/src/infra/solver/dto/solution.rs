@@ -160,42 +160,74 @@ impl Solutions {
                         .into_iter()
                         .map(|interaction| match interaction {
                             solvers_dto::solution::Interaction::Custom(interaction) => {
-                                Ok(competition::solution::Interaction::Custom(
-                                    competition::solution::interaction::Custom {
-                                        target: interaction.target.into(),
-                                        value: interaction.value.into(),
-                                        call_data: interaction.calldata.into(),
-                                        allowances: interaction
-                                            .allowances
-                                            .into_iter()
-                                            .map(|allowance| {
-                                                eth::Allowance {
-                                                    token: allowance.token.into(),
-                                                    spender: allowance.spender,
-                                                    amount: allowance.amount,
-                                                }
-                                                .into()
-                                            })
-                                            .collect(),
-                                        inputs: interaction
-                                            .inputs
-                                            .into_iter()
-                                            .map(|input| eth::Asset {
-                                                amount: input.amount.into(),
-                                                token: input.token.into(),
-                                            })
-                                            .collect(),
-                                        outputs: interaction
-                                            .outputs
-                                            .into_iter()
-                                            .map(|input| eth::Asset {
-                                                amount: input.amount.into(),
-                                                token: input.token.into(),
-                                            })
-                                            .collect(),
-                                        internalize: interaction.internalize,
-                                    },
-                                ))
+                                let custom = competition::solution::interaction::Custom {
+                                    target: interaction.target.into(),
+                                    value: interaction.value.into(),
+                                    call_data: interaction.calldata.into(),
+                                    allowances: interaction
+                                        .allowances
+                                        .into_iter()
+                                        .map(|allowance| {
+                                            eth::Allowance {
+                                                token: allowance.token.into(),
+                                                spender: allowance.spender,
+                                                amount: allowance.amount,
+                                            }
+                                            .into()
+                                        })
+                                        .collect(),
+                                    inputs: interaction
+                                        .inputs
+                                        .into_iter()
+                                        .map(|input| eth::Asset {
+                                            amount: input.amount.into(),
+                                            token: input.token.into(),
+                                        })
+                                        .collect(),
+                                    outputs: interaction
+                                        .outputs
+                                        .into_iter()
+                                        .map(|input| eth::Asset {
+                                            amount: input.amount.into(),
+                                            token: input.token.into(),
+                                        })
+                                        .collect(),
+                                    internalize: interaction.internalize,
+                                };
+
+                                // C2 layer 2 — driver-level allowlist for
+                                // `Custom` interactions. Rejects target /
+                                // spender addresses not on the per-chain
+                                // allowlist + caps allowance amounts.
+                                // Defense-in-depth on top of per-solver
+                                // ALLOWLISTs in solvers/src/infra/dex/*.
+                                let chain_id = solver.eth.chain().id();
+                                if let Err(err) =
+                                    competition::solution::custom_allowlist::validate(
+                                        &custom, chain_id,
+                                    )
+                                {
+                                    crate::infra::observe::metrics::get()
+                                        .custom_interaction_rejected
+                                        .with_label_values(&[
+                                            solver.name().as_str(),
+                                            &chain_id.to_string(),
+                                            err.metric_reason(),
+                                        ])
+                                        .inc();
+                                    tracing::warn!(
+                                        solver = %solver.name(),
+                                        chain_id,
+                                        reason = err.metric_reason(),
+                                        error = %err,
+                                        "rejecting Custom interaction from solver"
+                                    );
+                                    return Err(super::Error(format!(
+                                        "Custom interaction rejected by driver allowlist: {err}"
+                                    )));
+                                }
+
+                                Ok(competition::solution::Interaction::Custom(custom))
                             }
                             solvers_dto::solution::Interaction::Liquidity(interaction) => {
                                 let liquidity_id = usize::from_str(&interaction.id).map_err(|_| super::Error("invalid liquidity ID format".to_owned()))?;
