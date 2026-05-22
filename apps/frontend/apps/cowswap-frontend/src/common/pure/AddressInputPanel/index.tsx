@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactNode, useCallback, useEffect, useState } from 'react'
+import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getChainInfo } from '@cowprotocol/common-const'
 import {
@@ -6,7 +6,12 @@ import {
   isPrefixedAddress,
   parsePrefixedAddress,
 } from '@cowprotocol/common-utils'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import {
+  AdditionalTargetChainId,
+  isBtcAddress,
+  isSolanaAddress,
+  SupportedChainId,
+} from '@cowprotocol/cow-sdk'
 import { useENS } from '@cowprotocol/ens'
 import { ExternalLink, RowBetween, UI } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -112,7 +117,33 @@ export function AddressInputPanel({
   const chainId = targetChainId ?? walletChainId
   const chainInfo = getChainInfo(chainId)
   const addressPrefix = chainInfo?.addressPrefix
-  const { address, loading, name } = useENS(value)
+
+  // Ophis fix (2026-05-22, PR follow-up to NEAR Intents wiring audit):
+  // when the target chain is Solana or Bitcoin (NEAR Intents bridge
+  // destinations), the recipient input must accept base58 (Solana) or
+  // native (Bitcoin) addresses — NOT EVM checksummed addresses. Upstream
+  // CoW's `useENS` chain ends in `ethers.getAddress` which rejects any
+  // non-EVM input as invalid, breaking the bridge recipient UX. This is
+  // an upstream-inherited bug surfaced by the 2026-05-22 audit
+  // (`docs/development/specs/2026-05-22-near-intents-solana-epic.md`,
+  // gap #7); fix is to branch validation on the non-EVM target.
+  const isSolanaTarget = chainId === (AdditionalTargetChainId.SOLANA as unknown as SupportedChainId)
+  const isBitcoinTarget = chainId === (AdditionalTargetChainId.BITCOIN as unknown as SupportedChainId)
+  const isNonEvmTarget = isSolanaTarget || isBitcoinTarget
+
+  // Skip ENS lookup when target is non-EVM — base58 / native input never
+  // resolves via ENS and would always show the loading spinner forever.
+  const { address: evmAddress, loading, name } = useENS(isNonEvmTarget ? null : value)
+
+  const nonEvmAddress = useMemo<string | null>(() => {
+    if (!value || !isNonEvmTarget) return null
+    if (isSolanaTarget && isSolanaAddress(value)) return value
+    if (isBitcoinTarget && isBtcAddress(value)) return value
+    return null
+  }, [value, isNonEvmTarget, isSolanaTarget, isBitcoinTarget])
+
+  const address = isNonEvmTarget ? nonEvmAddress : evmAddress
+
   const [chainPrefixWarning, setChainPrefixWarning] = useState('')
   const isDarkMode = useIsDarkMode()
 
@@ -122,7 +153,10 @@ export function AddressInputPanel({
       setChainPrefixWarning('')
       let value = input.replace(/\s+/g, '')
 
-      if (isPrefixedAddress(value)) {
+      // Skip EIP-3770 chain-prefix parsing on non-EVM targets — Solana
+      // base58 + Bitcoin native addresses don't use chain prefixes, and
+      // the parser would mis-fire on values containing ':'.
+      if (!isNonEvmTarget && isPrefixedAddress(value)) {
         const { prefix, address } = parsePrefixedAddress(value)
 
         if (prefix && addressPrefix !== prefix) {
@@ -136,7 +170,7 @@ export function AddressInputPanel({
 
       onChange(value)
     },
-    [onChange, addressPrefix],
+    [onChange, addressPrefix, isNonEvmTarget],
   )
 
   //clear warning if target chainId changes and we are now on the right network
