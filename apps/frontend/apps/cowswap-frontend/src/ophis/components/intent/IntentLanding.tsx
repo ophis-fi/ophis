@@ -279,7 +279,8 @@ export function IntentLanding(): ReactNode {
         </Tagline>
         <Sub>
           Describe your trade in plain English. Ophis identifies the tokens, the chain, and the amount,
-          then takes you to a pre-filled trade.
+          then takes you to a pre-filled trade. Cross-chain to <em>Solana</em> and{' '}
+          <em>Bitcoin</em> via NEAR Intents.
         </Sub>
 
         <InputBlock>

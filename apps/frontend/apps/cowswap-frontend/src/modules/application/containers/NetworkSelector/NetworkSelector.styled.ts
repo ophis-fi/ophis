@@ -8,6 +8,80 @@ import { TAP_DESKTOP, TAP_MOBILE } from 'common/pure/NetworksList/NetworksList.c
 
 const CLOSE_ICON_SIZE = '24px'
 
+// Ophis (2026-05-22): "Cross-chain destinations" footer in the network
+// selector dropdown. Solana + Bitcoin are NEAR-Intents bridge destinations
+// only — no wallet connect possible. Surfacing here for discoverability;
+// actual selection happens in the buy-side token picker. Closes the
+// "Solana not in list of networks" UX gap Clement flagged.
+export const BridgeDestinationsSection = styled.section`
+  border-top: 1px solid var(${UI.COLOR_PAPER_DARKEST});
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`
+
+export const BridgeDestinationsHeader = styled.div`
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(${UI.COLOR_TEXT_OPACITY_60});
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+`
+
+export const BridgeDestinationsBadge = styled.span`
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #f2a63e;
+  border: 1px solid rgba(242, 166, 62, 0.5);
+  border-radius: 4px;
+  padding: 2px 6px;
+`
+
+export const BridgeDestinationsList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`
+
+export const BridgeDestinationRow = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(${UI.COLOR_TEXT});
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+
+  &:hover {
+    background-color: var(${UI.COLOR_PAPER_DARKER});
+  }
+
+  & img {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+  }
+`
+
+export const BridgeDestinationHint = styled.p`
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(${UI.COLOR_TEXT_OPACITY_60});
+`
+
 export const FlyoutHeader = styled.div`
   position: sticky;
   top: 0;
