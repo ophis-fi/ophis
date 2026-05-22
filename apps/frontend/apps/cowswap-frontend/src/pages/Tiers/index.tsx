@@ -15,16 +15,11 @@ import { ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
 
-import { OphisFooter } from 'ophis/components/OphisFooter'
-import { OphisHeader } from 'ophis/components/OphisHeader'
-
+// PR #245 (2026-05-23): OphisHeader + OphisFooter come from AppContainer.
 const Page = styled.main`
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  min-height: 100vh;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  background-color: #02000d;
   color: #f5efe6;
   font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
 `
@@ -192,7 +187,6 @@ const TIERS: Tier[] = [
 export default function TiersPage(): ReactNode {
   return (
     <Page>
-      <OphisHeader />
       <Container>
         <Title>Tiers</Title>
         <Lede>
@@ -253,7 +247,6 @@ export default function TiersPage(): ReactNode {
           .
         </Note>
       </Container>
-      <OphisFooter />
     </Page>
   )
 }

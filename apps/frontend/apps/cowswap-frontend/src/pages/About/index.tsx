@@ -9,16 +9,11 @@ import { ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
 
-import { OphisFooter } from 'ophis/components/OphisFooter'
-import { OphisHeader } from 'ophis/components/OphisHeader'
-
+// PR #245 (2026-05-23): OphisHeader + OphisFooter come from AppContainer.
 const Page = styled.main`
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  min-height: 100vh;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  background-color: #02000d;
   color: #f5efe6;
   font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
 `
@@ -77,7 +72,6 @@ const A = styled.a`
 export default function AboutPage(): ReactNode {
   return (
     <Page>
-      <OphisHeader />
       <Container>
         <Title>About Ophis</Title>
         <Lede>Tell us what to trade. We pre-fill the form. You sign.</Lede>
@@ -158,7 +152,6 @@ export default function AboutPage(): ReactNode {
           </p>
         </Section>
       </Container>
-      <OphisFooter />
     </Page>
   )
 }
