@@ -17,10 +17,12 @@ import {
 } from '@cowprotocol/cow-sdk'
 import { Connector } from '@web3-react/types'
 
-// Ophis fork: MegaETH mainnet (chain 4326) and HyperEVM mainnet (chain 999) —
-// SDK has no chain info for them, so we pull viem's definitions for the RPC
-// URL only.
-import { hyperEvm, megaeth } from 'viem/chains'
+// Ophis fork: MegaETH (4326) + HyperEVM (999) chain entries were removed
+// from the FE list in PR #167 (2026-05-21). The viem imports + RPC entries
+// for them were removed in P0 hotfix follow-up #233 because leaving the
+// switchChain entries would let any wallet call `switchChain(4326|999)` →
+// getChainInfo() returns undefined (chains absent from CHAIN_INFO) →
+// `info.eip155Label` throws. Same incomplete-sweep class as the P0 crash.
 
 import { getWeb3ReactConnection } from './getWeb3ReactConnection'
 import { isChainAllowed } from './isChainAllowed'
@@ -48,10 +50,6 @@ const WALLET_RPC_SUGGESTION: Record<SupportedChainId, HttpsString | null> = {
   [SupportedChainId.INK]: ink.rpcUrls.default.http[0],
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: optimism.rpcUrls.default.http[0],
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: megaeth.rpcUrls.default.http[0] as HttpsString,
-  // Ophis fork: HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: hyperEvm.rpcUrls.default.http[0] as HttpsString,
 }
 
 // TODO: Add proper return type annotation

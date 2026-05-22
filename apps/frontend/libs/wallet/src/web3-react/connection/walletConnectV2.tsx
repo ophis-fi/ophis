@@ -34,14 +34,10 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
         options: {
           projectId: WC_PROJECT_ID,
           chains: [chainId],
-          // Ophis fork: include OP mainnet (chain 10), MegaETH mainnet (chain 4326),
-          // and HyperEVM mainnet (chain 999) in optional chains.
-          optionalChains: [
-            ...ALL_SUPPORTED_CHAIN_IDS,
-            10 as unknown as SupportedChainId,
-            4326 as unknown as SupportedChainId,
-            999 as unknown as SupportedChainId,
-          ],
+          // Ophis fork: include OP mainnet (chain 10) in optional chains.
+          // MegaETH (4326) + HyperEVM (999) dropped in PR #233 follow-up
+          // to P0 hotfix.
+          optionalChains: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
           rpcMap: RPC_URLS,
           showQrModal: true,
         },
