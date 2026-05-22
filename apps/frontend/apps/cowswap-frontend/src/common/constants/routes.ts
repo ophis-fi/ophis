@@ -37,6 +37,10 @@ export const Routes = {
   // Ophis: '/brand' = brand kit page (logo variants, color tokens,
   // typography spec).
   BRAND: '/brand',
+  // Ophis: '/institutional' = pitch page for OTC desks, funds, treasuries.
+  INSTITUTIONAL: '/institutional',
+  // Ophis: '/tiers' = trader ladder / volume-based recognition tiers.
+  TIERS: '/tiers',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',
