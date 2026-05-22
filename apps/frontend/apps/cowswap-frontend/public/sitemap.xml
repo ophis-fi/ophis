@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Ophis sitemap. Includes the 5 static / SEO-relevant routes:
-   - /         (landing — intent input)
-   - /docs     (pre-rendered HTML docs page)
-   - /about    (operator + mission)
-   - /legal    (terms + privacy + entity)
-   - /brand    (brand kit)
+  Ophis sitemap. SEO-relevant routes:
+   - /              (landing — intent input)
+   - /docs          (pre-rendered HTML docs page with sidebar TOC)
+   - /about         (operator + mission + NEAR Intents)
+   - /institutional (pitch for OTC desks, funds, treasuries)
+   - /tiers         (trader ladder / volume-based recognition)
+   - /legal         (terms + privacy + entity)
+   - /brand         (brand kit)
+  /faq redirects to /docs#faq and is not duplicated here.
   Trading routes (/:chainId/swap/*) are excluded because they're
   user-state-dependent and not useful to index.
 -->
@@ -24,6 +27,16 @@
     <loc>https://ophis.fi/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://ophis.fi/institutional</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://ophis.fi/tiers</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://ophis.fi/legal</loc>

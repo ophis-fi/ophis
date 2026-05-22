@@ -38,6 +38,12 @@ const LegalPage = lazy(() => import(/* webpackChunkName: "ophis_legal" */ 'pages
 const AboutPage = lazy(() => import(/* webpackChunkName: "ophis_about" */ 'pages/About'))
 const BrandPage = lazy(() => import(/* webpackChunkName: "ophis_brand" */ 'pages/Brand'))
 
+// PR #240 (2026-05-22 backlog batch): institutional pitch + trader ladder.
+const InstitutionalPage = lazy(
+  () => import(/* webpackChunkName: "ophis_institutional" */ 'pages/Institutional'),
+)
+const TiersPage = lazy(() => import(/* webpackChunkName: "ophis_tiers" */ 'pages/Tiers'))
+
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
 const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
@@ -64,6 +70,12 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
   { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
+  { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalPage /> },
+  { route: RoutesEnum.TIERS, element: <TiersPage /> },
+  // /faq deep-links to the FAQ section already in /docs (single source
+  // of truth; avoids content duplication). `Navigate` preserves browser
+  // refresh-on-/faq.
+  { route: RoutesEnum.FAQ, element: <Navigate to="/docs#faq" replace /> },
   { route: RoutesEnum.ABOUT, element: <AboutPage /> },
   { route: RoutesEnum.LEGAL, element: <LegalPage /> },
   { route: RoutesEnum.BRAND, element: <BrandPage /> },

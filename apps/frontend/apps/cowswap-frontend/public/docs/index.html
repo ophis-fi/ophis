@@ -344,6 +344,70 @@ footer.bar a { color: var(--ink-dim); }
 footer.bar a:hover { color: var(--ink); }
 footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
 
+/* Ophis docs sidebar TOC (PR #240, 2026-05-22). Sticky on desktop;
+   collapses to a small inline list on mobile. Anchor-only — no JS
+   scroll-spy. Closes Clement's brand task #3 (multi-page docs site)
+   as a quick sidebar nav; full multi-page tree is a separate sprint. */
+.docs-toc {
+  position: fixed;
+  top: 90px;
+  left: 24px;
+  width: 200px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  z-index: 5;
+  background: rgba(2, 0, 13, 0.78);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  backdrop-filter: blur(6px);
+}
+.docs-toc-label {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.docs-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.docs-toc ol a {
+  color: var(--ink);
+  text-decoration: none;
+  display: block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 120ms ease-out;
+}
+.docs-toc ol a:hover {
+  background: rgba(245, 239, 230, 0.06);
+  color: var(--saffron);
+}
+.docs-toc-foot {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+  color: var(--ink-dim);
+  line-height: 1.55;
+}
+.docs-toc-foot a { color: var(--ink-dim); text-decoration: none; }
+.docs-toc-foot a:hover { color: var(--saffron); }
+
+@media (max-width: 1180px) {
+  /* Collapse the sidebar to a hidden state on narrower screens —
+     small viewports use the section anchors via the page hash directly
+     after a layout shift. */
+  .docs-toc { display: none; }
+}
+
 @media (max-width: 720px) {
   header.bar, footer.bar { padding-left: 20px; padding-right: 20px; }
   main { padding: 48px 20px 72px; }
@@ -367,6 +431,21 @@ footer .links { display: inline-flex; gap: 18px; flex-wrap: wrap; }
 </header>
 
 <main>
+  <nav class="docs-toc" aria-label="Documentation sections">
+    <p class="docs-toc-label">On this page</p>
+    <ol>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#fees">Fees</a></li>
+      <li><a href="#networks">Supported networks</a></li>
+      <li><a href="#trust">Trust &amp; security</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ol>
+    <p class="docs-toc-foot">
+      Need more? <a href="/about">About</a> · <a href="/institutional">Institutional</a> ·
+      <a href="/brand">Brand</a> · <a href="/legal">Legal</a>
+    </p>
+  </nav>
+
   <section class="hero">
     <p class="eyebrow">Docs · intent-based DEX aggregator</p>
     <h1>Describe a swap. <em>We find the path.</em></h1>
