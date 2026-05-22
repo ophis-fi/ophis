@@ -1,142 +1,122 @@
-# NEAR Intents → Solana destination support (epic)
+# NEAR Intents → Solana destination support
 
-**Status:** scoped only, not implemented
+**Status:** ✅ ALREADY LIVE on production (verified empirically 2026-05-22)
+⚠️ UX gap: Solana is **not discoverable** from the header network
+selector — only from the buy-side token picker's "Select network"
+panel. Clement flagged this as a brand task.
 **Owner:** Clement
 **Created:** 2026-05-22
 **Linked task:** Clement's brand task #14 (Missing Solana in chain list per CoW's NEAR Intents integration)
 
-## Goal
+---
 
-Allow Ophis users to trade **from any EVM source chain → Solana** as a
-destination, using the NEAR Intents bridge layer already wired into
-`@cowprotocol/cow-sdk` 4.0.2. Solana destination tokens appear in the
-output-side token list; recipient address is a Solana base58 address
-(separate from the EVM sender wallet); settlement is brokered by NEAR
-Intents off-chain solver network with no Ophis-side liquidity exposure.
+## ⚠️ HISTORICAL NOTE
 
-## Current state (post-2026-05-22 audit)
+This spec was originally drafted on 2026-05-22 morning as a multi-day
+epic estimating ~3-5 dev-days of FE work to wire NEAR Intents +
+Solana. That estimate was **wrong** — the survey it was based on was
+stale relative to current main. CoW Protocol's upstream
+`@cowprotocol/cow-sdk` 4.0.2 (already pinned in this repo) ships
+NEAR Intents support, and the Ophis fork inherited it without explicit
+work. The retracted "epic" content is preserved below for historical
+context; the actual present-day work is the much smaller UX
+discoverability gap documented in the new "What's actually needed"
+section.
 
-What's already done:
-- `apps/cowswap-frontend/src/tradingSdk/bridgingSdk.ts:27` instantiates
-  `NearIntentsBridgeProvider` and adds it to `BridgingSdk.providers`.
-- `apps/cowswap-frontend/src/entities/bridgeProvider/BridgeProvidersUpdater.ts`
-  has the enable logic gated on a LaunchDarkly flag
-  (`isNearIntentsBridgeProviderEnabled`). Ophis doesn't run LD →
-  early-return preserves the SDK provider — effectively enabled at boot.
-- `recentTokensStorage.ts:2` imports `isSolanaAddress` from `cow-sdk`
-  for token-key disambiguation. So FE already recognizes Solana as a
-  type.
+---
 
-What's missing:
-- `libs/common-const/src/chainInfo.ts:82` `CHAIN_INFO` map has no Solana
-  entry — Solana chainId would need to be added as an
-  `AdditionalTargetChainId`.
-- `InvalidBridgeOutputUpdater.test.ts:118-141` explicitly tests
-  **CLEARING** cross-chain state when target is non-EVM (e.g. Solana).
-  This logic needs to invert: allow non-EVM target when bridge supports
-  it.
-- No Solana wallet adapter on the FE — wagmi/walletconnect is EVM-only.
-  For recipient-address resolution + native-balance reads on Solana,
-  need a Solana wallet adapter (Phantom / Solflare).
-- Token list: SPL tokens absent from output-side token search.
-- Address parsing: `useBridgeQuoteRecipient.ts` needs to accept base58.
-- Order-progress UI: `OrderProgressBar` assumes EVM tx hashes for the
-  bridge step.
+## What's actually working today (verified live)
 
-## Subsystem touch points
+Empirically confirmed on https://ophis.fi 2026-05-22 via Playwright
+inspection:
 
-Ten distinct areas need changes (estimate: ~3-5 dev-days for someone
-familiar with the codebase, or ~2 weeks for someone new):
+| Surface | Behavior |
+|---|---|
+| `bridgingSdk.ts:27` | `NearIntentsBridgeProvider({apiKey: process.env.REACT_APP_NEAR_API_KEY})` instantiated, added to `BridgingSdk.providers` |
+| `chainInfo.ts` | `CHAIN_INFO[AdditionalTargetChainId.SOLANA]` populated from viem's `solana` chain metadata |
+| Buy-side token picker → "Select network" panel | **Solana + Bitcoin both visible**, alongside EVM chains |
+| Selecting Solana | Populates SPL tokens: **SOL, USDC (Solana), sUSDC** |
+| `useAvailableTargetChains` hook | Skips Solana/Bitcoin only if `isSolBridgeEnabled` / `isBtcBridgeEnabled` feature-flags are false. In Ophis (no LaunchDarkly) the flags evidently default-enabled, so both appear. |
 
-1. **Chain registry** — add Solana to `chainInfo.ts` as
-   `AdditionalTargetChainId`. Branch out non-EVM `isEvmChainInfo`
-   callers across the FE.
+## What's NOT in place — the actual gap
 
-2. **`isEvmChainInfo` audit** — every caller needs an explicit
-   non-EVM branch. This is the highest-risk piece because any missed
-   caller produces the same incomplete-sweep class that caused the
-   2026-05-22 P0 crash (PR #232).
+| Surface | Current state |
+|---|---|
+| Header chain switcher (top-right) | EVM-only — Solana absent. |
+| Landing page "Supported networks" advertising | No mention of Solana. |
+| `/docs` Supported Networks card | EVM-only list (was 14 chains pre-cleanup, now 13). |
+| `robots.txt` / `sitemap.xml` / JSON-LD | No SEO claim that Solana is supported. |
 
-3. **Wallet adapter** — wagmi/walletconnect handles EVM only. Solana
-   support requires `@solana/wallet-adapter-react` + Phantom/Solflare
-   connectors. This is a NEW peer dep; not currently in the bundle.
+The semantic reason Solana is destination-only is correct (NEAR
+Intents is a one-way EVM→Solana bridge), but the UX hides it: a user
+who looks at the header chain list sees "10 EVM chains" and assumes
+that's the full network list. The Solana option is buried two clicks
+deep behind the buy-token picker.
 
-4. **Address parsing** — `useBridgeQuoteRecipient.ts` must accept
-   base58 recipient input. `isSolanaAddress` import already exists;
-   the gap is the input-validation UX.
+## What's actually needed (the real "epic")
 
-5. **Token list ingestion** — Solana SPL tokens need to appear in
-   the output-side token search (cross-chain-only context).
+Much smaller than the original 10-subsystem estimate. Three
+discoverability changes:
 
-6. **`InvalidBridgeOutputUpdater`** — invert the current clear-on-Solana
-   logic at lines 118-141; allow non-EVM target when the bridge
-   provider's `bridgeSupportedNetworks` advertises it.
+1. **Header network selector** — add a separate "Cross-chain
+   destinations" section listing Solana + Bitcoin with a "destination
+   only" badge. Selecting them should open the buy-side token picker
+   pre-filtered to that chain. Estimate: ~half day.
 
-7. **Quote / gas estimation** — NEAR Intents handles cross-chain
-   routing on its own (no Ophis-side gas estimation required). UI
-   should render a "no EVM gas on Solana destination" notice.
+2. **Landing/About copy** — mention NEAR Intents bridge support
+   explicitly. E.g., on `/about`: "Trade from any EVM chain to Solana
+   or Bitcoin via NEAR Intents — no extra wallet required." Estimate:
+   ~30 min.
 
-8. **Order progress / explorer** — `targetChainName` rendering (see
-   `OrderProgressBar/index.cosmos.tsx`); bridge step UI assumes EVM
-   tx hashes — need a Solana-tx-signature branch (base58, not hex).
+3. **`/docs` Supported Networks** — add a "Bridge destinations" card
+   listing Solana + Bitcoin with the NEAR Intents reference. Update
+   JSON-LD FAQ to mention them. Estimate: ~1h.
 
-9. **RPC config** — none needed for routing (NEAR Intents API handles
-   it). But output-side native-balance reads on Solana need an HTTP
-   Solana RPC endpoint configured (use a public one initially:
-   `solana-rpc.publicnode.com` or similar).
+Total: ~1 dev-day, not 3-5.
 
-10. **Settlement broadcast** — out of FE scope, but worth confirming
-    CoW driver/orderbook routes accept Solana-destination orders.
-    Likely needs a CoW orderbook config check upstream.
+## What's NOT changing
 
-## Acceptance criteria
+- The header chain switcher should remain EVM-only for SOURCE chains
+  (where the wallet is connected). Solana destinations are output-only.
+- No Solana wallet adapter (Phantom/Solflare) is needed — recipient
+  address is just a base58 string the user pastes.
+- No new RPC config required — NEAR Intents API does the routing.
+- No new gas estimator — bridge fees flow through the existing quote
+  pipeline.
 
-- A user on chain 10 (OP) can select USDC on Solana as the output
-  token and a base58 recipient address.
-- The Trade form previews the quote correctly (input EVM amount,
-  bridge fee in $, output Solana amount).
-- After signing, the order is broadcast and the OrderProgressBar
-  shows: source-chain settle tx (EVM) → NEAR Intents bridge fill →
-  destination Solana signature.
-- No regression on EVM-to-EVM trades.
-- No regression on EVM-source-only (single-chain) trades.
+## Architectural facts confirmed
+
+- `NearIntentsBridgeProvider` is wired with `process.env.REACT_APP_NEAR_API_KEY`.
+  In production this env var is **commented out** in `apps/cowswap-frontend/.env`
+  — meaning the provider likely runs against a public-good NEAR Intents
+  endpoint or anonymous-mode. If you ever see rate-limit issues, that's
+  the lever to pull (acquire an API key, set in CF Pages env config).
+- `isSolanaAddress` is imported in `legacyAddressUtils.ts:6` and used
+  in the bridge recipient validation path. Address parsing works.
+- Bitcoin support is symmetric to Solana — also live, also buried in
+  the same picker, also worth surfacing.
+
+## Acceptance criteria (REVISED — UX discoverability only)
+
+- A user landing on ophis.fi can identify "this site lets me trade
+  to Solana" from the header / landing copy / supported networks
+  page without having to drill into the buy-side picker.
+- A first-time visitor with no prior CoW Protocol context can find
+  the NEAR Intents capability in under 30 seconds.
 
 ## Out of scope
 
-- Solana → EVM (reverse direction).
-- Solana → Solana (within-chain).
-- Solana wallet connect for users who hold ONLY Solana.
-- Real-time price quotes from non-NEAR-Intents Solana DEXs.
-
-## Risks
-
-- **Wallet UX complexity**: users have an EVM wallet AND need to
-  provide a Solana recipient address. Probably want a "use my EVM
-  address derived via Phantom" shortcut after the Solana adapter is
-  in.
-- **Bridge fee transparency**: NEAR Intents quotes a fee in the
-  destination token. The UI must surface this clearly so users don't
-  feel mispriced.
-- **Sweep risk**: chains list expansion is exactly what caused the
-  2026-05-22 P0. Any new non-EVM chain must be added to
-  `isSupportedChainId` + `isEvmChainInfo` callers + persisted-state
-  scrub in lockstep.
-
-## Implementation order (recommended)
-
-1. Add Solana to `chainInfo.ts` as `AdditionalTargetChainId` + minimal
-   `isEvmChainInfo` branches. Behind a feature flag.
-2. Wire `InvalidBridgeOutputUpdater` to allow non-EVM target.
-3. Token list ingestion: SPL tokens.
-4. Recipient input: base58 address validation.
-5. Order progress UI: Solana signature branch.
-6. Wallet adapter (last — biggest blast radius).
+- Solana → EVM (reverse direction). NEAR Intents one-way only.
+- Solana → Solana within-chain. Not a thing in this bridge.
+- Solana-native wallet connect. Out of scope; users sign EVM-side.
 
 ## References
 
-- `apps/frontend/apps/cowswap-frontend/src/tradingSdk/bridgingSdk.ts`
-- `apps/frontend/apps/cowswap-frontend/src/entities/bridgeProvider/BridgeProvidersUpdater.ts`
-- `apps/frontend/apps/cowswap-frontend/src/modules/swap/updaters/InvalidBridgeOutputUpdater.test.ts:118-141`
-- `apps/frontend/libs/common-const/src/chainInfo.ts:82`
-- CoW Protocol NEAR Intents docs: <https://docs.cow.fi/cow-protocol/concepts/cross-chain/near-intents>
-- `cow-sdk` v4.0.2 `NearIntentsBridgeProvider` source
+- `apps/frontend/apps/cowswap-frontend/src/tradingSdk/bridgingSdk.ts:27`
+- `apps/frontend/libs/common-const/src/chainInfo.ts` (search "SOLANA")
+- `apps/frontend/libs/common-hooks/src/useAvailableTargetChains.ts`
+- `apps/frontend/libs/common-utils/src/legacyAddressUtils.ts:6` (isSolanaAddress)
+- Empirical verification: `/Users/scep/ophis-solana-tokens.png`,
+  `/Users/scep/ophis-network-dropdown.png` (Playwright snapshots
+  2026-05-22)
+- CoW Protocol upstream docs: <https://docs.cow.fi/cow-protocol/concepts/cross-chain/near-intents>
