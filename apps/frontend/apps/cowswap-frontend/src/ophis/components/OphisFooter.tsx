@@ -65,8 +65,11 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
       <Left>© Ophis 2026</Left>
       <Right>
         <InternalLink to="/">Home</InternalLink>
-        <InternalLink to="/1/swap/_/_">Swap</InternalLink>
+        <InternalLink to="/1/swap/_/_">Trade</InternalLink>
         <ExternalLink href="/docs">Docs</ExternalLink>
+        <InternalLink to="/about">About</InternalLink>
+        <InternalLink to="/brand">Brand</InternalLink>
+        <InternalLink to="/legal">Legal</InternalLink>
         <ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
           GitHub
         </ExternalLink>

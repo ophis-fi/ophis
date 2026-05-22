@@ -28,6 +28,15 @@ export const Routes = {
   ACCOUNT_AFFILIATE_PARTNER: '/account/affiliate',
   ACCOUNT_AFFILIATE_TRADER: '/account/my-rewards',
   ABOUT: '/about',
+  // Ophis: '/legal' is the single consolidated legal route (Terms + Privacy
+  // + Entity disclosure). The upstream PRIVACY_POLICY / COOKIE_POLICY /
+  // TERMS_CONDITIONS enums are retained for compatibility with upstream
+  // header/footer/sitemap code that may still reference them, but no
+  // Ophis-side Route element wires them — they fall through to NotFound.
+  LEGAL: '/legal',
+  // Ophis: '/brand' = brand kit page (logo variants, color tokens,
+  // typography spec).
+  BRAND: '/brand',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',
@@ -69,7 +78,7 @@ export interface I18nIMenuItem extends Omit<IMenuItem, 'label' | 'fullLabel' | '
 export const MENU_ITEMS: I18nIMenuItem[] = [
   {
     route: Routes.SWAP,
-    label: msg`Swap`,
+    label: msg`Trade`,
     description: msg`Trade tokens`,
   },
   {

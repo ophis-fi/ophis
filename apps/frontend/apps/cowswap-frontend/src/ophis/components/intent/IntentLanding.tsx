@@ -57,18 +57,27 @@ const Page = styled.main`
   }
 `
 
-const NavLink = styled(Link)`
-  color: rgba(245, 239, 230, 0.78);
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
-  font-size: 14px;
-  font-weight: 500;
-  text-decoration: none;
-  &:hover {
-    color: #ffffff;
-  }
+// Ophis brand logo on the landing hero header. Sized so the lockup fits
+// cleanly in the chrome bar without dominating. PR #234 task #1 + #4
+// follow-up: removed `NavLink` ("Manual swap") and `SkipLink` ("Skip to
+// manual swap") because the 3-CTA pile-up flagged by Clement read as
+// duplicate noise — left ONLY the primary "Continue →" inline + the
+// secondary "Open Trade →" header button. Single primary, single
+// secondary, no redundant "Skip" footer link.
+const Logo = styled.img`
+  height: 28px;
+  width: auto;
+  display: block;
   @media (max-width: 600px) {
-    display: none;
+    height: 22px;
   }
+`
+
+const HeaderRight = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 `
 
 const OpenSwapButton = styled(Link)`
@@ -196,18 +205,9 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   }
 `
 
-const SkipLink = styled(Link)`
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
-  font-size: 13px;
-  color: rgba(245, 239, 230, 0.55);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  padding-bottom: 1px;
-  &:hover {
-    color: rgba(245, 239, 230, 0.9);
-    border-bottom-color: currentColor;
-  }
-`
+// `SkipLink` ("Skip to manual swap") removed in PR #234 task #4 CTA dedup
+// follow-up — see Logo styled-component above for rationale. Keeping
+// the import-free Link unused triggers @typescript-eslint/no-unused-vars.
 
 function isReadyToSubmit(parsed: ParsedIntent | null): boolean {
   if (!parsed || parsed.intent !== 'swap') return false
@@ -266,18 +266,20 @@ export function IntentLanding(): ReactNode {
   return (
     <Page>
       <OphisHeader transparent>
-        <NavLink to="/1/swap/_/_">Manual swap</NavLink>
-        <OpenSwapButton to="/1/swap/_/_">Open Swap →</OpenSwapButton>
+        <Logo src="/ophis-lockup.svg" alt="Ophis" />
+        <HeaderRight>
+          <OpenSwapButton to="/1/swap/_/_">Open Trade →</OpenSwapButton>
+        </HeaderRight>
       </OphisHeader>
 
       <Hero>
         <Eyebrow>Intent-based DEX aggregator</Eyebrow>
         <Tagline>
-          Tell us what to <em>swap.</em>
+          Tell us what to <em>trade.</em>
         </Tagline>
         <Sub>
           Describe your trade in plain English. Ophis identifies the tokens, the chain, and the amount,
-          then takes you to a pre-filled swap.
+          then takes you to a pre-filled trade.
         </Sub>
 
         <InputBlock>
@@ -287,7 +289,7 @@ export function IntentLanding(): ReactNode {
             onSubmit={handleSubmit}
             entities={entities}
             pending={parseState.status === 'pending'}
-            placeholder="e.g. swap 100 USDC for ETH on Base"
+            placeholder="e.g. trade 100 USDC for ETH on Optimism"
           />
           <Helper $variant={helper.variant}>{helper.message || ' '}</Helper>
         </InputBlock>
@@ -297,8 +299,6 @@ export function IntentLanding(): ReactNode {
         <ContinueButton type="button" onClick={handleSubmit} disabled={!ready} $active={ready}>
           Continue →
         </ContinueButton>
-
-        <SkipLink to="/1/swap/_/_">Skip to manual swap</SkipLink>
       </Hero>
 
       <OphisFooter borderless />
