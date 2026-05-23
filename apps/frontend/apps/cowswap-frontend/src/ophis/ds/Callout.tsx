@@ -60,7 +60,7 @@ const Outer = styled.aside<{ $tone: CalloutTone }>`
 `
 
 const Title = styled.div`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
   font-size: 16px;
   color: var(--callout-accent);

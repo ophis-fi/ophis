@@ -20,7 +20,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..700,0..100&family=Plus+Jakarta+Sans:wght@300..700&family=JetBrains+Mono:wght@400..600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap">
 
 <style>
 :root {
@@ -52,7 +52,7 @@ body {
   margin: 0;
   background: var(--cosmic);
   color: var(--cream);
-  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-size: 16px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -60,8 +60,8 @@ body {
 }
 a { color: var(--sunset); text-decoration: none; }
 a:hover, a:focus-visible { color: #ffc88a; }
-h1, h2, h3, h4 { font-family: 'Fraunces', ui-serif, Georgia, serif; font-weight: 500; letter-spacing: -0.01em; margin: 0; }
-.mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; letter-spacing: 0.04em; }
+h1, h2, h3, h4 { font-family: 'Geist', ui-serif, Georgia, serif; font-weight: 500; letter-spacing: -0.01em; margin: 0; }
+.mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace; letter-spacing: 0.04em; }
 
 /* ───── NAV ───── */
 header.bar {
@@ -72,7 +72,7 @@ header.bar {
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--hairline);
 }
-.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cream); text-decoration: none; font-family: 'Fraunces'; font-weight: 600; font-size: 22px; }
+.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cream); text-decoration: none; font-family: 'Geist'; font-weight: 600; font-size: 22px; }
 .bar .brand img { width: 28px; height: 28px; }
 .bar .brand span { color: var(--sunset); }
 .bar nav { display: inline-flex; align-items: center; gap: 22px; }
@@ -88,7 +88,7 @@ header.bar {
 /* ───── COMMON ───── */
 section { padding: 96px 24px; }
 .wrap { max-width: 1140px; margin: 0 auto; }
-.eyebrow { font-family: 'JetBrains Mono'; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 14px; }
+.eyebrow { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 14px; }
 h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin-bottom: 18px; }
 .lede { max-width: 720px; font-size: 17px; line-height: 1.6; color: var(--muted); }
 .divider { width: 100%; border-top: 1px solid var(--hairline); }
@@ -118,8 +118,8 @@ h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin-bottom: 18px; 
 .btn.ghost:hover { background: rgba(245, 239, 230, 0.04); color: var(--cream); transform: translateY(-1px); }
 .stats { display: inline-flex; gap: 36px; flex-wrap: wrap; padding: 18px 24px; border: 1px solid var(--hairline); border-radius: 16px; background: rgba(245, 239, 230, 0.02); }
 .stats .stat { display: flex; flex-direction: column; gap: 4px; }
-.stats .num { font-family: 'Fraunces'; font-size: 28px; line-height: 1; color: var(--cream); }
-.stats .lab { font-family: 'JetBrains Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); }
+.stats .num { font-family: 'Geist'; font-size: 28px; line-height: 1; color: var(--cream); }
+.stats .lab { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); }
 
 /* ───── GRIDS ───── */
 .grid { display: grid; gap: 18px; }
@@ -144,8 +144,8 @@ h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin-bottom: 18px; 
 .card:hover { border-color: var(--hairline-strong); }
 .card h3 { font-size: 19px; color: var(--sunset); margin: 0 0 4px; }
 .card p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(245, 239, 230, 0.78); }
-.card .foot { margin-top: auto; padding-top: 8px; font-family: 'JetBrains Mono'; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2); }
-.badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; border: 1px solid; font-family: 'JetBrains Mono'; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
+.card .foot { margin-top: auto; padding-top: 8px; font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2); }
+.badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; border: 1px solid; font-family: 'Geist Mono'; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
 .badge.live { border-color: rgba(109, 207, 161, 0.4); color: #6dcfa1; background: rgba(109, 207, 161, 0.06); }
 .badge.planned { border-color: rgba(242, 166, 62, 0.4); color: #f2a63e; background: rgba(242, 166, 62, 0.08); }
 .badge.partner { border-color: rgba(180, 138, 255, 0.45); color: #b48aff; background: rgba(180, 138, 255, 0.06); }
@@ -165,14 +165,14 @@ h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin-bottom: 18px; 
   font-size: 14px;
 }
 .chip .name { color: var(--cream); }
-.chip .via { margin-left: auto; font-family: 'JetBrains Mono'; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted-2); }
+.chip .via { margin-left: auto; font-family: 'Geist Mono'; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted-2); }
 .chip img { width: 22px; height: 22px; border-radius: 50%; background: rgba(245, 239, 230, 0.08); }
 
 /* ───── TABLE ───── */
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--hairline); }
-th { font-family: 'JetBrains Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); font-weight: 500; }
-td code { font-family: 'JetBrains Mono'; font-size: 13px; background: rgba(245, 239, 230, 0.06); padding: 2px 6px; border-radius: 4px; color: var(--cream); }
+th { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); font-weight: 500; }
+td code { font-family: 'Geist Mono'; font-size: 13px; background: rgba(245, 239, 230, 0.06); padding: 2px 6px; border-radius: 4px; color: var(--cream); }
 .table-wrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 14px; background: rgba(245, 239, 230, 0.02); }
 
 /* ───── FAQ ───── */
@@ -187,7 +187,7 @@ details summary {
   cursor: pointer;
   padding: 16px 20px;
   list-style: none;
-  font-family: 'Fraunces';
+  font-family: 'Geist';
   font-size: 17px;
   color: var(--cream);
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
@@ -225,7 +225,7 @@ footer.site {
 }
 @media (max-width: 900px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 540px) { .foot-grid { grid-template-columns: 1fr; } }
-.foot-grid h4 { font-family: 'JetBrains Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 14px; font-weight: 500; }
+.foot-grid h4 { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 14px; font-weight: 500; }
 .foot-grid ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .foot-grid a { color: rgba(245, 239, 230, 0.7); font-size: 14px; }
 .foot-grid a:hover { color: var(--cream); }
@@ -433,7 +433,7 @@ footer.site {
         <h3>Direct use</h3>
         <p>
           Your desk operators trade via the standard web UI at
-          <code style="font-family:'JetBrains Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">ophis.fi</code>.
+          <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">ophis.fi</code>.
           Wallet connect via MetaMask, WalletConnect v2, Coinbase Wallet, Safe, or any
           EIP-1193 provider. No code required.
         </p>
@@ -442,7 +442,7 @@ footer.site {
       <div class="card">
         <h3>Intent API</h3>
         <p>
-          Hit <code style="font-family:'JetBrains Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">POST /api/intent</code>
+          Hit <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">POST /api/intent</code>
           from your bot or agent — Ophis returns a structured order ready to sign. Settle
           on-chain via the underlying CoW Protocol orderbook. Public rate limit:
           30 req/min/IP. Partner-tier higher quotas available by agreement.
@@ -454,7 +454,7 @@ footer.site {
         <p>
           The upstream CoW Widget embeds the swap form in your app. Inherits the same
           MEV-protected routing + chain coverage. Available via
-          <code style="font-family:'JetBrains Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">@cowprotocol/widget-react</code>.
+          <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">@cowprotocol/widget-react</code>.
           Ophis-branded widget variant is not yet available; reach out if you need it.
         </p>
         <div class="foot"><span class="badge partner">Upstream-supported</span></div>
@@ -647,7 +647,7 @@ footer.site {
           <p>
             Three paths (more detail above): (1) point your operators at
             <a href="https://ophis.fi">ophis.fi</a> for direct use, (2) call
-            <code style="font-family:'JetBrains Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">POST /api/intent</code>
+            <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">POST /api/intent</code>
             from your bot/agent, or (3) embed the upstream CoW Widget. Documentation at
             <a href="https://docs.ophis.fi">ophis.fi/docs</a>.
           </p>
@@ -703,7 +703,7 @@ footer.site {
 <footer class="site">
   <div class="foot-grid">
     <div>
-      <a class="brand" href="https://ophis.fi" style="display:inline-flex;align-items:center;gap:10px;color:var(--cream);text-decoration:none;font-family:'Fraunces';font-weight:600;font-size:22px;margin-bottom:12px;">
+      <a class="brand" href="https://ophis.fi" style="display:inline-flex;align-items:center;gap:10px;color:var(--cream);text-decoration:none;font-family:'Geist';font-weight:600;font-size:22px;margin-bottom:12px;">
         <img src="https://ophis.fi/ophis-icon.svg" alt="" aria-hidden="true" style="width:28px;height:28px;">
         ophis<span style="color:var(--sunset);">.</span>
       </a>
