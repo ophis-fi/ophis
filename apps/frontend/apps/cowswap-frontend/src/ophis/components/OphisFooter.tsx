@@ -57,7 +57,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
           <styledEl.ColTitle>Resources</styledEl.ColTitle>
           <styledEl.ColList>
             <li>
-              <styledEl.ExternalLink href="/docs">Docs</styledEl.ExternalLink>
+              <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
             </li>
             <li>
               <styledEl.InternalLink to="/learn">Learn</styledEl.InternalLink>
