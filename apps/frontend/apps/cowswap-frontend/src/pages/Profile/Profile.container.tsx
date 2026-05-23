@@ -15,16 +15,27 @@
  *
  * Real backend (volume indexer, tier auto-progression, partner perks,
  * Missions/Earn integration) is targeted for Q3 2026 per the /tiers page.
+ *
+ * AGENTS.md compliance (post-Codex GitHub bot audit):
+ *   - Named export (no default).
+ *   - Page implementation in *.container.tsx, not index.tsx.
+ *   - Explorer URL built via getExplorerLink helper (respects
+ *     REACT_APP_BLOCK_EXPLORER_URL override for local Otterscan / custom
+ *     explorer deployments).
+ *   - Wallet support copy genericized (no hardcoded enumeration that can
+ *     drift from the real connector set).
+ *   - "What you can do today" grid extracted to ProfileActions.pure.tsx
+ *     to keep this file under the 250-LOC cap.
  */
 import { ReactNode } from 'react'
 
 import { CHAIN_INFO } from '@cowprotocol/common-const'
+import { ExplorerDataType, getExplorerLink } from '@cowprotocol/common-utils'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import {
   Badge,
   Callout,
-  FeatureCard,
   FeatureGrid,
   InlineCode,
   KeyValueList,
@@ -34,15 +45,17 @@ import {
   TextLink,
 } from 'ophis/ds'
 
+import { ProfileActions } from './ProfileActions.pure'
+
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-export default function ProfilePage(): ReactNode {
+export function ProfilePage(): ReactNode {
   const { account, chainId } = useWalletInfo()
   const { ensName, walletName } = useWalletDetails()
   const chain = chainId in CHAIN_INFO ? CHAIN_INFO[chainId as keyof typeof CHAIN_INFO] : undefined
-  const explorerUrl = chain && account ? `${chain.explorer}/address/${account}` : undefined
+  const explorerUrl = account ? getExplorerLink(chainId, account, ExplorerDataType.ADDRESS) : undefined
 
   return (
     <PageShell
@@ -94,10 +107,10 @@ export default function ProfilePage(): ReactNode {
             />
             <Callout tone="info">
               <p>
-                <strong>Note on the chain row.</strong> &quot;App chain&quot; is the chain Ophis is
-                routing on for this session, normalized to a supported network. Your wallet may
-                report a different current chain — check your wallet UI for the actual network it
-                holds. The explorer link points to the app-chain block explorer.
+                <strong>Note on the chain row.</strong> &quot;App chain&quot; is the chain Ophis
+                is routing on for this session, normalized to a supported network. Your wallet
+                may report a different current chain — check your wallet UI for the actual
+                network it holds. The explorer link points to the app-chain block explorer.
               </p>
             </Callout>
           </>
@@ -109,52 +122,16 @@ export default function ProfilePage(): ReactNode {
               identity is read from the wallet, not stored by Ophis.
             </p>
             <p>
-              Supported providers: MetaMask, WalletConnect v2, Coinbase Wallet, Safe, and any
-              EIP-1193-compatible browser extension or mobile wallet.
+              Ophis uses the upstream CoW Swap wallet stack, which supports any EIP-1193
+              browser-extension wallet, WalletConnect-compatible mobile wallet, Coinbase Wallet,
+              Safe app, and hardware wallets via supported connectors.
             </p>
           </Callout>
         )}
       </Section>
 
       <Section id="actions" title="What you can do today">
-        <FeatureGrid minCardWidth="240px">
-          <FeatureCard title="Trade">
-            <p>
-              Plain-English intents across supported EVM chains, plus Solana and Bitcoin
-              destinations via NEAR Intents.
-            </p>
-            <p>
-              <TextLink href="/">Open the trade form →</TextLink>
-            </p>
-          </FeatureCard>
-          <FeatureCard title="Tier ladder">
-            <p>
-              The 4-rung framework (Stargazer → Cosmonaut). Volume-based recognition; tracks
-              automatically once the indexer ships.
-            </p>
-            <p>
-              <TextLink href="/tiers">Read the framework →</TextLink>
-            </p>
-          </FeatureCard>
-          <FeatureCard title="About Ophis">
-            <p>
-              How the protocol works, audit references, what&apos;s live vs planned. All claims
-              status-tagged.
-            </p>
-            <p>
-              <TextLink href="/about">About →</TextLink>
-            </p>
-          </FeatureCard>
-          <FeatureCard title="Institutional">
-            <p>
-              For OTC desks, funds, treasuries. Non-custodial routing, MEV-protected execution,
-              transparent fees.
-            </p>
-            <p>
-              <TextLink href="/institutional">Talk to us →</TextLink>
-            </p>
-          </FeatureCard>
-        </FeatureGrid>
+        <ProfileActions />
       </Section>
 
       <Section

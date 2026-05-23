@@ -45,7 +45,14 @@ const InstitutionalPage = lazy(
 const TiersPage = lazy(() => import(/* webpackChunkName: "ophis_tiers" */ 'pages/Tiers'))
 // Phase C1 (2026-05-23): wallet-aware Profile page. Replaces the upstream
 // `/profile → /account` Navigate alias with an Ophis identity surface.
-const ProfilePage = lazy(() => import(/* webpackChunkName: "ophis_profile" */ 'pages/Profile'))
+// AGENTS.md compliance: named export — `.then(m => ({ default: m.X }))`
+// wrapper adapts the barrel re-export to React.lazy()'s default-export
+// contract without re-introducing a default export in the page module.
+const ProfilePage = lazy(() =>
+  import(/* webpackChunkName: "ophis_profile" */ 'pages/Profile').then((m) => ({
+    default: m.ProfilePage,
+  })),
+)
 
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
