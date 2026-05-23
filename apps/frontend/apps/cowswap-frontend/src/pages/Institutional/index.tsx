@@ -1,239 +1,226 @@
 /**
- * Ophis Institutional / Professional clients page.
+ * Institutional / Professional clients — pitch page for OTC desks,
+ * funds, treasuries, and integrators.
  *
- * Created in PR #240 closing Clement's 2026-05-22 brand task #10
- * (Missing institutional / professional clients page). Pitches the
- * non-custodial, MEV-protected, batch-settled UX to OTC desks, funds,
- * treasuries, and integrators.
+ * Phase A3 rebuild (PR #251, 2026-05-23). Replaces local
+ * styled-components with ophis/ds primitives. The prior page mixed
+ * live claims with aspirational ones; this rewrite separates them with
+ * live/planned/draft Badges per Codex 2026-05-23 guidance.
+ *
+ * KEY DESIGN CHOICE: every feature claim carries a Badge stating
+ * whether it's currently shipped, planned, or partner-dependent.
+ * Claims without operational backing (custom rate limits, SLA,
+ * white-glove support) are explicitly draft / partner-dependent so
+ * the page doesn't function as a sales pitch the operator can't
+ * deliver on.
  */
 import { ReactNode } from 'react'
 
-import styled from 'styled-components/macro'
-
-// PR #245 (2026-05-23): OphisHeader + OphisFooter come from AppContainer.
-const Page = styled.main`
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  color: #f5efe6;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
-`
-
-const Container = styled.section`
-  flex: 1;
-  width: min(880px, 100%);
-  margin: 0 auto;
-  padding: 64px 24px 96px;
-  line-height: 1.65;
-  font-size: 16px;
-
-  @media (max-width: 600px) {
-    padding: 32px 18px 56px;
-    font-size: 15px;
-  }
-`
-
-const Title = styled.h1`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
-  font-weight: 500;
-  font-size: clamp(36px, 5vw, 52px);
-  margin: 0 0 8px;
-  letter-spacing: -0.015em;
-`
-
-const Lede = styled.p`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
-  font-size: 20px;
-  color: #f2a63e;
-  font-style: italic;
-  margin: 0 0 36px;
-`
-
-const Section = styled.section`
-  margin-top: 40px;
-`
-
-const H2 = styled.h2`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
-  font-weight: 500;
-  font-size: 24px;
-  margin: 0 0 14px;
-  color: #f5efe6;
-`
-
-const FeatureGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-`
-
-const FeatureCard = styled.div`
-  border-radius: 12px;
-  padding: 22px 20px;
-  background: rgba(245, 239, 230, 0.04);
-  border: 1px solid rgba(245, 239, 230, 0.08);
-
-  & h3 {
-    margin: 0 0 8px;
-    font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
-    font-weight: 500;
-    font-size: 17px;
-    color: #f2a63e;
-  }
-
-  & p {
-    margin: 0;
-    font-size: 14px;
-    color: rgba(245, 239, 230, 0.7);
-    line-height: 1.55;
-  }
-`
-
-const CtaSection = styled.div`
-  margin-top: 48px;
-  padding: 32px 28px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(242, 166, 62, 0.12) 0%, rgba(79, 29, 202, 0.08) 100%);
-  border: 1px solid rgba(242, 166, 62, 0.25);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-
-  & h2 {
-    margin: 0;
-    font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
-    font-weight: 500;
-    font-size: 24px;
-    color: #f5efe6;
-  }
-
-  & p {
-    margin: 0;
-    color: rgba(245, 239, 230, 0.78);
-    line-height: 1.55;
-  }
-`
-
-const CtaButton = styled.a`
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 22px;
-  border-radius: 999px;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
-  font-weight: 600;
-  font-size: 14px;
-  background: #f2a63e;
-  color: #02000d;
-  text-decoration: none;
-  transition: filter 140ms ease-out;
-
-  &:hover {
-    filter: brightness(1.06);
-  }
-`
+import {
+  Badge,
+  Callout,
+  FeatureCard,
+  FeatureGrid,
+  InlineCode,
+  PageShell,
+  Section,
+  Table,
+  Tbody,
+  Td,
+  TextLink,
+  Th,
+  Thead,
+  Tr,
+} from 'ophis/ds'
 
 export default function InstitutionalPage(): ReactNode {
   return (
-    <Page>
-      <Container>
-        <Title>For institutions &amp; professionals</Title>
-        <Lede>
-          Non-custodial routing, MEV-protected execution, programmatic intent parsing — built on
-          audited DEX-aggregation infrastructure.
-        </Lede>
+    <PageShell
+      width="medium"
+      eyebrow="For institutions & professionals"
+      title="Non-custodial routing. MEV protection. Audit references."
+      lede="Built on audited DEX-aggregation infrastructure. No custody risk, no proprietary spread, transparent solver competition."
+    >
+      <Callout tone="info" title="Reality check on claims">
+        Each feature below carries a status Badge — <Badge tone="live">live</Badge> for shipped,{' '}
+        <Badge tone="planned">planned</Badge> for roadmap items, <Badge tone="partner">partner</Badge>{' '}
+        for items dependent on a partner agreement. Use this page to evaluate Ophis honestly — we
+        don&#39;t pitch features we can&#39;t deliver.
+      </Callout>
 
-        <Section>
-          <H2>Why desks &amp; treasuries use Ophis</H2>
-          <FeatureGrid>
-            <FeatureCard>
-              <h3>Non-custodial</h3>
-              <p>
-                Your tokens never leave your wallet until on-chain settlement. No counterparty
-                custody risk, no exchange withdrawal queue.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>MEV-protected by construction</h3>
-              <p>
-                Every order is settled inside a batch auction at a uniform clearing price. No
-                front-running, no sandwich attacks, no priority-gas-auction loss.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>Audited infrastructure</h3>
-              <p>
-                Settlement layer is the GPv2 contracts from CoW Protocol, audited by Trail of Bits
-                and G0. Ophis-specific solver wiring re-audited via Slither, Halmos, Codex Cyber.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>13 EVM chains + Solana + Bitcoin</h3>
-              <p>
-                Source from any major EVM chain. Cross-chain destinations via NEAR Intents for
-                Solana and Bitcoin without a second wallet.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>Programmatic intent API</h3>
-              <p>
-                <code>POST /api/intent</code> turns plain-English requests into structured orders.
-                30 req/min/IP, no auth, no key. Embed in agent frameworks or your own UI.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>Transparent fees</h3>
-              <p>
-                0% on ordinary trades. 25% of price improvement above quote, capped at 0.5% of
-                volume. No hidden spreads, no surprise basis points.
-              </p>
-            </FeatureCard>
-          </FeatureGrid>
-        </Section>
+      <Section id="why" title="Why desks &amp; treasuries use Ophis">
+        <FeatureGrid minCardWidth="280px">
+          <FeatureCard title="Non-custodial" footer={<Badge tone="live">live</Badge>}>
+            Your tokens never leave your wallet until on-chain settlement. The operator cannot
+            move, freeze, or recover funds. No counterparty custody risk.
+          </FeatureCard>
+          <FeatureCard title="MEV-protected by construction" footer={<Badge tone="live">live</Badge>}>
+            Every order settles inside a batch auction at a uniform clearing price.
+            Front-running and sandwich attacks are designed-out — no priority-gas auction to
+            lose against.
+          </FeatureCard>
+          <FeatureCard title="Audited infrastructure" footer={<Badge tone="live">live</Badge>}>
+            Settlement layer is CoW Protocol&#39;s GPv2 contracts (Trail of Bits + G0 upstream
+            audits). Ophis-specific solver wiring + AllowList contract were reviewed via
+            Slither, Codex Cyber, and the sharp-edges multi-agent pattern in May 2026. See{' '}
+            <TextLink href="/about#audits">/about</TextLink>.
+          </FeatureCard>
+          <FeatureCard
+            title="13 EVM chains + Solana + Bitcoin"
+            footer={<Badge tone="live">live</Badge>}
+          >
+            Source from any major EVM chain. Cross-chain destinations to Solana and Bitcoin via
+            NEAR Intents — no second wallet required.
+          </FeatureCard>
+          <FeatureCard
+            title="Programmatic intent API"
+            footer={<Badge tone="live">live</Badge>}
+          >
+            <InlineCode>POST /api/intent</InlineCode> turns plain-English requests into structured
+            orders. 30 req/min/IP public rate limit, no auth, no key.
+          </FeatureCard>
+          <FeatureCard title="Transparent fees" footer={<Badge tone="live">live</Badge>}>
+            0% on ordinary trades. 25% of price improvement above quote, capped at 0.5% of volume
+            via the CIP-75 partner-fee mechanism. No hidden spreads, no surprise basis points.
+          </FeatureCard>
+        </FeatureGrid>
+      </Section>
 
-        <Section>
-          <H2>Integration paths</H2>
-          <FeatureGrid>
-            <FeatureCard>
-              <h3>Direct use</h3>
-              <p>
-                Your desk operators trade via the standard web UI at <code>ophis.fi</code>. Wallet
-                connect via MetaMask, WalletConnect v2, Coinbase Wallet, Safe, or any EIP-1193
-                provider. No onboarding form, no KYC at the interface layer.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>Programmatic via intent API</h3>
-              <p>
-                Hit <code>POST /api/intent</code> from your bot or agent — Ophis returns a
-                structured order ready to sign. Settle on-chain via the underlying CoW Protocol
-                orderbook.
-              </p>
-            </FeatureCard>
-            <FeatureCard>
-              <h3>White-label widget</h3>
-              <p>
-                CoW Widget (upstream) embeds the swap form in your app. Inherit Ophis&#39;s MEV
-                protection + 13-chain routing without rebuilding the UX. Available via
-                <code> @cowprotocol/widget-react</code>.
-              </p>
-            </FeatureCard>
-          </FeatureGrid>
-        </Section>
+      <Section id="integration-paths" title="Integration paths">
+        <FeatureGrid minCardWidth="280px">
+          <FeatureCard title="Direct use" footer={<Badge tone="live">live</Badge>}>
+            Your desk operators trade via the standard web UI at{' '}
+            <InlineCode>ophis.fi</InlineCode>. Wallet connect via MetaMask, WalletConnect v2,
+            Coinbase Wallet, Safe, or any EIP-1193 provider.
+          </FeatureCard>
+          <FeatureCard title="Intent API" footer={<Badge tone="live">live</Badge>}>
+            Hit <InlineCode>POST /api/intent</InlineCode> from your bot or agent — Ophis returns
+            a structured order ready to sign. Settle on-chain via the underlying CoW Protocol
+            orderbook.
+          </FeatureCard>
+          <FeatureCard
+            title="CoW Widget embed"
+            footer={<Badge tone="partner">upstream-supported</Badge>}
+          >
+            The upstream CoW Widget embeds the swap form in your app. Inherits the MEV-protected
+            routing + 13-chain coverage. Available via <InlineCode>@cowprotocol/widget-react</InlineCode>.
+            Ophis-branded variant is not yet available.
+          </FeatureCard>
+        </FeatureGrid>
+      </Section>
 
-        <CtaSection>
-          <h2>Talk to us</h2>
-          <p>
-            For OTC integrations, custom rate-limit increases on the intent API, or volume-based
-            partnership terms, reach out directly. We respond within one business day.
-          </p>
-          <CtaButton href="mailto:clement@openletz.com?subject=Ophis%20Institutional%20Inquiry">
-            clement@openletz.com →
-          </CtaButton>
-        </CtaSection>
-      </Container>
-    </Page>
+      <Section
+        id="api-overview"
+        title="API + rate-limit overview"
+        intro="The public Intent API. Higher tiers + custom rate increases are partner-dependent and not currently exposed."
+      >
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Endpoint</Th>
+              <Th>Method</Th>
+              <Th>Auth</Th>
+              <Th>Rate limit</Th>
+              <Th>Status</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            <Tr>
+              <Td><InlineCode>/api/intent</InlineCode></Td>
+              <Td>POST</Td>
+              <Td>None</Td>
+              <Td>30 / min / IP</Td>
+              <Td><Badge tone="live">live</Badge></Td>
+            </Tr>
+            <Tr>
+              <Td><InlineCode>/api/intent</InlineCode></Td>
+              <Td>POST</Td>
+              <Td>API key (partner)</Td>
+              <Td>180 / min</Td>
+              <Td><Badge tone="planned">planned</Badge></Td>
+            </Tr>
+            <Tr>
+              <Td><InlineCode>/api/quote</InlineCode></Td>
+              <Td>POST</Td>
+              <Td>None</Td>
+              <Td>—</Td>
+              <Td><Badge tone="planned">planned</Badge></Td>
+            </Tr>
+            <Tr>
+              <Td>CoW orderbook API</Td>
+              <Td>HTTP</Td>
+              <Td>None</Td>
+              <Td>Upstream-defined</Td>
+              <Td><Badge tone="live">live (upstream)</Badge></Td>
+            </Tr>
+          </Tbody>
+        </Table>
+        <Callout tone="info">
+          Full reference at <TextLink href="/docs">/docs</TextLink>. Public-tier rate limits are
+          adequate for low/medium-volume operators today. For higher-throughput needs, reach out
+          via the contact below — partner rate increases are reviewed case-by-case.
+        </Callout>
+      </Section>
+
+      <Section
+        id="support-sla"
+        title="Support, SLA &amp; OTC routing"
+        intro="Current state, honestly stated."
+      >
+        <FeatureGrid minCardWidth="280px">
+          <FeatureCard
+            title="Public best-effort"
+            footer={<Badge tone="live">live</Badge>}
+          >
+            GitHub issues + email response within 1 business day. No formal SLA. The interface is
+            best-effort; downtime, RPC outages, or upstream protocol issues may affect availability.
+          </FeatureCard>
+          <FeatureCard
+            title="Partner-tier support"
+            footer={<Badge tone="partner">partner</Badge>}
+          >
+            Direct Telegram / email channel, higher rate limits, integration assistance. Available
+            on case-by-case basis for material volume routing through Ophis. Not a public tier.
+          </FeatureCard>
+          <FeatureCard
+            title="OTC routing partnership"
+            footer={<Badge tone="partner">partner</Badge>}
+          >
+            Custom solver-set composition, dedicated execution lanes, post-trade reporting. Requires
+            a formal partnership agreement. Reach out to discuss scope + terms.
+          </FeatureCard>
+          <FeatureCard
+            title="Formal SLA"
+            footer={<Badge tone="planned">planned</Badge>}
+          >
+            No formal uptime SLA today. Operator is a Luxembourg consultancy company (not a
+            regulated financial-services entity); SLA negotiation requires a written agreement.
+          </FeatureCard>
+        </FeatureGrid>
+      </Section>
+
+      <Section
+        id="contact"
+        title="Talk to us"
+        intro="For OTC integrations, custom rate-limit needs, or partnership terms — direct contact only. No sales funnel."
+      >
+        <Callout tone="planned" title="Response expectations">
+          One business day for substantive inquiries. We don&#39;t cold-pitch and we don&#39;t
+          chase. If our public model fits your desk, the conversation is short; if it
+          doesn&#39;t, we&#39;ll tell you straight.
+        </Callout>
+        <p>
+          Email:{' '}
+          <TextLink href="mailto:clement@openletz.com?subject=Ophis%20Institutional%20Inquiry">
+            clement@openletz.com
+          </TextLink>{' '}
+          (Subject: Ophis Institutional Inquiry).
+        </p>
+        <p>
+          Operator entity for contract / invoicing purposes: COMMIT MEDIA S.à r.l. (Luxembourg,
+          RCS B276192). Full disclosure on <TextLink href="/legal#operator">/legal § 8</TextLink>.
+        </p>
+      </Section>
+    </PageShell>
   )
 }
