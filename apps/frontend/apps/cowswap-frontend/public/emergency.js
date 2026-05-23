@@ -42,11 +42,22 @@ try {
   }
 }
 
-// We use the HashRouter, thus the pathname should ALWAYS be a '/' —
-// EXCEPT on Ophis static subdomains, where /docs/ and /business/ are
-// real physical files served directly by CF Pages (not the SPA).
-if (!__ophisSubdomain && window.location.pathname !== '/') {
-  window.location.pathname = '/'
+// HashRouter compatibility: the app routes via the fragment (#/about,
+// #/1/swap/_/_, etc.), so the URL pathname should always be `/`.
+// Direct-URL visits to a path (someone shares ophis.fi/about, or hard-
+// refreshes /tiers) must be CONVERTED into the equivalent hash form —
+// NOT stripped to `/` — otherwise the route information is lost and
+// the user lands on the home page instead of the deep-linked route.
+//
+// Subdomains (docs.ophis.fi, business.ophis.fi) are exempt: their
+// `/docs/` and `/business/` paths are real static files served by
+// CF Pages, not SPA routes.
+if (
+  !__ophisSubdomain &&
+  window.location.pathname !== '/' &&
+  !window.location.hash
+) {
+  window.location.replace('/#' + window.location.pathname + window.location.search)
 }
 
 ;(async function () {
