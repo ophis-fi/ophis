@@ -46,6 +46,12 @@ export default function LegalPage(): ReactNode {
         live and factually correct. Last updated <InlineCode>2026-05-23</InlineCode>.
       </Callout>
 
+      <Callout tone="info" title="Plain-English summaries — non-binding">
+        Each section opens with a plain-English summary in a colored Callout box. These summaries
+        are for convenience only and have no legal effect — the operative terms are the
+        paragraph text outside the summary boxes.
+      </Callout>
+
       {/* ─────────────────────────────────────────────────────────── */}
 
       <Section id="acceptance" title="1. Acceptance">
@@ -140,9 +146,8 @@ export default function LegalPage(): ReactNode {
         <p>
           To the maximum extent permitted by applicable law (including consumer-protection
           provisions of your jurisdiction of residence), the operator&#39;s aggregate liability
-          arising from your use of the Service is limited to the partner fees the operator has
-          received from your trades in the trailing twelve (12) months, or EUR 100, whichever is
-          greater.{' '}
+          arising from your use of the Service is limited to a cap to be determined by qualified
+          legal counsel.{' '}
           <Badge tone="draft">draft — pending legal review</Badge>
         </p>
       </Section>
@@ -180,16 +185,20 @@ export default function LegalPage(): ReactNode {
 
       <Section id="privacy" title="7. Privacy Policy">
         <Callout tone="success" title="Plain English">
-          Ophis does not collect personal identifying information. Your wallet address is
-          pseudonymous and necessarily transmitted; we don&#39;t link it to off-chain identity.
-          We use Sentry for anonymized error telemetry. No advertising cookies.
+          Ophis does not intentionally collect account-registration data, identity documents, or
+          KYC. Your wallet address is pseudonymous; we don&#39;t link it to off-chain identity.
+          We use Sentry for anonymized error telemetry. No advertising cookies. Note that
+          pseudonymous data + IP addresses may still qualify as personal data under GDPR.
         </Callout>
 
-        <h3>7.1 — What we collect</h3>
+        <h3>7.1 — What we collect <Badge tone="draft">draft</Badge></h3>
         <p>
-          The Service does not collect personal identifying information (PII). Wallet addresses
-          are pseudonymous public-blockchain identifiers and are transmitted during normal
-          operation; they are not linked to off-chain identity by the operator.
+          The Service does not intentionally collect account-registration data, identity
+          documents, or know-your-customer (KYC) information. Wallet addresses are pseudonymous
+          public-blockchain identifiers and are transmitted during normal operation; the
+          operator does not link them to off-chain identity. Note that under EU law (GDPR),
+          pseudonymous identifiers and IP addresses may still qualify as personal data when
+          linkable to a natural person.
         </p>
 
         <h3>7.2 — Telemetry (Sentry)</h3>
@@ -210,42 +219,74 @@ export default function LegalPage(): ReactNode {
           third-party advertising cookies are set. No first-party tracking cookies are set.
         </p>
 
-        <h3>7.4 — Third-party services</h3>
+        <h3>7.4 — Third-party services <Badge tone="draft">draft</Badge></h3>
         <p>
-          The Service relies on the following third parties; each has its own privacy policy:
+          When you use the Service, your browser makes requests to the following third parties.
+          Each has its own privacy policy. The operator has no special relationship with these
+          services beyond standard API integration.
         </p>
         <ul>
           <li>
-            <strong>Cloudflare Pages</strong> (hosting + CDN) —{' '}
+            <strong>Cloudflare</strong> (hosting + CDN + DNS) — receives IP, user agent, request
+            metadata.{' '}
             <TextLink href="https://www.cloudflare.com/privacypolicy/" external>
               policy
             </TextLink>
           </li>
           <li>
-            <strong>Sentry</strong> (error telemetry) —{' '}
+            <strong>Sentry</strong> (anonymized error + performance telemetry).{' '}
             <TextLink href="https://sentry.io/privacy/" external>
               policy
             </TextLink>
           </li>
           <li>
-            <strong>LibertAI</strong> (natural-language parsing endpoint) —{' '}
+            <strong>Google Fonts</strong> (Fraunces, Plus Jakarta Sans, JetBrains Mono served from{' '}
+            <InlineCode>fonts.googleapis.com</InlineCode> + <InlineCode>fonts.gstatic.com</InlineCode>).
+            Receives IP + user agent on first page load.{' '}
+            <TextLink href="https://policies.google.com/privacy" external>
+              policy
+            </TextLink>
+          </li>
+          <li>
+            <strong>LibertAI</strong> (natural-language intent parsing endpoint).{' '}
             <TextLink href="https://libertai.io" external>
               libertai.io
             </TextLink>
           </li>
           <li>
             <strong>NEAR Intents</strong> (cross-chain bridge layer for Solana / Bitcoin
-            destinations).
+            destinations).{' '}
+            <TextLink href="https://near-intents.org" external>
+              near-intents.org
+            </TextLink>
+          </li>
+          <li>
+            <strong>Bungee Exchange + Across Protocol</strong> (cross-chain EVM bridge providers
+            wired via <InlineCode>@cowprotocol/sdk-bridging</InlineCode>).
+          </li>
+          <li>
+            <strong>CoW Protocol orderbook API</strong> (order submission, quote retrieval,
+            settlement broadcast).{' '}
+            <TextLink href="https://api.cow.fi" external>
+              api.cow.fi
+            </TextLink>
+          </li>
+          <li>
+            <strong>Public RPC providers</strong> (Alchemy, PublicNode, Ankr, viem default
+            endpoints) — receive IP + RPC method call metadata for chain queries.
           </li>
         </ul>
 
-        <h3>7.5 — Your rights (GDPR, if applicable)</h3>
+        <h3>7.5 — Your rights (GDPR, if applicable) <Badge tone="draft">draft</Badge></h3>
         <p>
           If you are a resident of the European Economic Area, you have the right to access,
-          rectify, or delete personal data we hold about you. As stated above, the Service does
-          not collect PII; the operator has no PII to access, rectify, or delete in connection
-          with your use of the interface. For Sentry telemetry deletion, contact Sentry
-          directly per its policy.
+          rectify, restrict, port, or object to processing of personal data the operator holds
+          about you. As stated above, the operator does not intentionally collect account-
+          registration data or identity documents; however, pseudonymous wallet addresses + IP
+          metadata at the CDN layer may qualify as personal data depending on linkability. For
+          requests, contact <TextLink href="mailto:clement@openletz.com">clement@openletz.com</TextLink>{' '}
+          with sufficient detail to identify the data in question. For Sentry telemetry deletion,
+          contact Sentry directly per its policy.
         </p>
       </Section>
 
@@ -261,6 +302,7 @@ export default function LegalPage(): ReactNode {
             { label: 'Operator', value: 'COMMIT MEDIA S.à r.l.' },
             { label: 'Legal form', value: 'Société à responsabilité limitée (Luxembourg)' },
             { label: 'Registered office', value: '147, Route de Thionville, L-2611 Luxembourg' },
+            { label: 'Share capital', value: '12 000 €' },
             { label: 'RCS Luxembourg', value: <InlineCode>B276192</InlineCode> },
             { label: 'VAT (intra-EU)', value: <InlineCode>LU34811132</InlineCode> },
             { label: 'Trade authorisation', value: <InlineCode>10150328 / 0</InlineCode> },
@@ -302,9 +344,13 @@ export default function LegalPage(): ReactNode {
         <AccordionGroup>
           <Accordion summary="Is Ophis a regulated financial-services entity?">
             <p>
-              No. The operator (COMMIT MEDIA S.à r.l.) is a Luxembourg consultancy company
-              providing a non-custodial software interface to permissionless on-chain protocols.
-              The operator does NOT act as a broker, dealer, custodian, or money-service business.
+              The operator (COMMIT MEDIA S.à r.l.) is a Luxembourg consultancy company providing
+              a non-custodial software interface to permissionless on-chain protocols. As of the
+              draft date of this page, the operator is not registered as a regulated investment
+              firm, payment institution, e-money institution, virtual-asset service provider, or
+              equivalent in Luxembourg or other EU jurisdictions. Whether the Service falls
+              under any specific financial-services regime in a given jurisdiction is being
+              reviewed by counsel. <Badge tone="draft">draft</Badge>
             </p>
           </Accordion>
           <Accordion summary="Do you collect KYC?">
