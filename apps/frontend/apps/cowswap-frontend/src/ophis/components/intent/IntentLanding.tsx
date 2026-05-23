@@ -12,7 +12,7 @@
 import { ReactNode, useCallback, useMemo, useState } from 'react'
 
 import { Link, useNavigate } from 'react-router'
-import styled from 'styled-components/macro'
+import styled, { keyframes } from 'styled-components/macro'
 
 import { OphisFooter } from '../OphisFooter'
 import { OphisHeader } from '../OphisHeader'
@@ -49,6 +49,35 @@ const Page = styled.main`
       radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(2, 0, 13, 0.55) 75%),
       linear-gradient(180deg, rgba(2, 0, 13, 0) 0%, rgba(2, 0, 13, 0.6) 75%, rgba(2, 0, 13, 0.95) 100%);
     z-index: 0;
+  }
+
+  /* Two slow-orbiting sunset/violet blobs that drift across the hero —
+     pure CSS, no JS, GPU-cheap. Subtle enough to read as "alive" without
+     pulling the eye away from the intent input. Disabled for users with
+     prefers-reduced-motion set. */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(420px 320px at 20% 30%, rgba(242, 166, 62, 0.16), transparent 70%),
+      radial-gradient(380px 280px at 80% 60%, rgba(180, 138, 255, 0.12), transparent 70%);
+    filter: blur(40px);
+    z-index: 0;
+    animation: ophis-hero-blob 24s ease-in-out infinite alternate;
+  }
+
+  @keyframes ophis-hero-blob {
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    50%  { transform: translate3d(-3%, 2%, 0) scale(1.06); }
+    100% { transform: translate3d(2%, -2%, 0) scale(0.97); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &::after {
+      animation: none;
+    }
   }
 
   & > * {
@@ -102,6 +131,14 @@ const OpenSwapButton = styled(Link)`
   }
 `
 
+// Hero entrance animation — slow fade-in + slight Y-translate. The whole
+// hero column reveals in a staggered cascade on first paint so visitors
+// don't land on a static wall of text. Respects prefers-reduced-motion.
+const fadeInUp = keyframes`
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+`
+
 const Hero = styled.section`
   flex: 1;
   display: flex;
@@ -117,6 +154,24 @@ const Hero = styled.section`
     padding: 28px 16px 48px;
     gap: 20px;
   }
+
+  /* Cascade hero children in on mount. Each child opts in by referencing
+     the animation; staggered delays are applied via :nth-child below. */
+  & > * {
+    animation: ${fadeInUp} 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  & > *:nth-child(1) { animation-delay: 0ms; }
+  & > *:nth-child(2) { animation-delay: 80ms; }
+  & > *:nth-child(3) { animation-delay: 160ms; }
+  & > *:nth-child(4) { animation-delay: 240ms; }
+  & > *:nth-child(5) { animation-delay: 320ms; }
+  & > *:nth-child(n+6) { animation-delay: 400ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    & > * {
+      animation: none;
+    }
+  }
 `
 
 const Eyebrow = styled.span`
@@ -126,6 +181,15 @@ const Eyebrow = styled.span`
   letter-spacing: 0.18em;
   color: rgba(245, 239, 230, 0.6);
   font-weight: 600;
+`
+
+// Subtle hue oscillation on the sunset accent in the tagline. The whole
+// word stays the same color; only the saturation/lightness modulates so
+// the headline feels alive without becoming a rainbow. Subtle enough to
+// pass at 24fps on low-power devices.
+const accentShimmer = keyframes`
+  0%, 100% { color: #f2a63e; }
+  50%      { color: #ffbb6e; }
 `
 
 const Tagline = styled.h1`
@@ -140,6 +204,13 @@ const Tagline = styled.h1`
     font-style: italic;
     color: #f2a63e;
     font-weight: 500;
+    animation: ${accentShimmer} 6s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & em {
+      animation: none;
+    }
   }
 `
 
