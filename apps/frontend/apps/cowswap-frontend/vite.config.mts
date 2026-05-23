@@ -65,6 +65,14 @@ export default defineConfig(({ mode }) => {
       injectManifest: {
         maximumFileSizeToCacheInBytes: 7000000, // 7mb
         globPatterns: ['**/*.{js,css,html,png,jpg,svg,json,woff,woff2,md}'],
+        // emergency.js is the boot script — it controls subdomain redirect
+        // + HashRouter path-to-hash rewriting. It MUST always be fetched
+        // fresh from network so security/routing fixes propagate within
+        // one page load. Workbox precache would otherwise serve stale
+        // versions for hours despite the no-cache HTTP header (precache
+        // bypasses HTTP cache entirely). manifest.json is a small JSON
+        // metadata file that benefits from the same fresh-fetch behavior.
+        globIgnores: ['**/emergency.js', '**/manifest.json'],
       },
     }),
     robotsPlugin({
