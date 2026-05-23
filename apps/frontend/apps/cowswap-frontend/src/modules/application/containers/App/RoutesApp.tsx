@@ -84,18 +84,30 @@ const AccountAffiliateTrader = lazy(
 const AccountNotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
 
 /**
- * /faq deep-links to the static /docs page's #faq section. /docs is
- * served from `public/docs/index.html` — NOT a React route — so a
- * client-side `<Navigate to="/docs#faq" />` would land on the SPA's
- * `*` NotFound catch-all. This component forces a full document
- * navigation via `window.location.assign` on mount, which the browser
- * resolves to the static asset + scrolls to the hash. Renders nothing.
+ * /faq deep-links to the FAQ section on the docs subdomain. Docs lives
+ * at docs.ophis.fi (not a React route on ophis.fi). This component
+ * forces a full document navigation via `window.location.assign` on
+ * mount. Renders nothing.
  *
- * Codex PR #243 audit P1 closure (2026-05-22).
+ * Codex PR #243 audit P1 closure (2026-05-22). Updated 2026-05-23 to
+ * point at docs.ophis.fi instead of the local /docs static page.
  */
 function FaqRedirect(): null {
   useEffect(() => {
-    window.location.assign('/docs#faq')
+    window.location.assign('https://docs.ophis.fi/#faq')
+  }, [])
+  return null
+}
+
+/**
+ * /docs route handler. Docs lives on docs.ophis.fi subdomain — bounce
+ * the user there. Prevents the NotFound fall-through on /#/docs URLs
+ * that escape emergency.js (e.g. client-side <Link to="/docs"> clicks
+ * already inside the SPA).
+ */
+function DocsRedirect(): null {
+  useEffect(() => {
+    window.location.assign('https://docs.ophis.fi/')
   }, [])
   return null
 }
@@ -131,6 +143,7 @@ const lazyRoutes: LazyRouteProps[] = [
   // NOT a React route, so client-side Navigate would land on NotFound.
   // FaqRedirect calls window.location.assign on mount.
   { route: RoutesEnum.FAQ, element: <FaqRedirect /> },
+  { route: RoutesEnum.DOCS, element: <DocsRedirect /> },
   { route: RoutesEnum.ABOUT, element: <AboutPage /> },
   { route: RoutesEnum.LEGAL, element: <LegalPage /> },
   { route: RoutesEnum.BRAND, element: <BrandPage /> },

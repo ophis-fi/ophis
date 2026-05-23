@@ -60,16 +60,27 @@ if (
   window.location.replace('/#' + window.location.pathname + window.location.search)
 }
 
-// /#faq deep-link: send users to the FAQ section of the static /docs
-// page. Users who land on the landing with #faq (from old links or
-// guessed URLs) get bounced to the right place. /faq itself is handled
-// by FaqRedirect in the SPA router.
+// /#faq deep-link: send users to the FAQ section of the docs
+// subdomain. Users who land on the landing with #faq (from old links
+// or guessed URLs) get bounced to the right place. /faq itself is
+// handled by FaqRedirect in the SPA router.
 if (
   !__ophisSubdomain &&
   window.location.pathname === '/' &&
   window.location.hash === '#faq'
 ) {
-  window.location.replace('/docs#faq')
+  window.location.replace('https://docs.ophis.fi/#faq')
+}
+
+// /#/docs (and /#/docs/<subpath>) — Docs lives on the dedicated
+// docs.ophis.fi subdomain. /docs is NOT a React route; hitting
+// /#/docs in the SPA falls through to NotFound. Redirect to the
+// subdomain so the user lands on the actual docs surface.
+if (
+  !__ophisSubdomain &&
+  /^#\/docs(\/.*)?$/.test(window.location.hash)
+) {
+  window.location.replace('https://docs.ophis.fi/' + window.location.hash.slice(7))
 }
 
 ;(async function () {
