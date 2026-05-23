@@ -34,13 +34,16 @@ const StyledTable = styled.table`
   font-size: 14px;
   background: rgba(245, 239, 230, 0.02);
 
-  /* Sticky header on tall tables — operator dashboards, large chain lists */
+  /* Header band has a darker background so it visually anchors the
+     column labels. Sticky positioning is NOT used here — Codex PR #247
+     audit pointed out that the ScrollWrapper's \`overflow-x: auto\`
+     creates a scroll container that prevents \`thead { position: sticky }\`
+     from sticking relative to the page viewport. Tall-table sticky-thead
+     is its own concern: a future TallTable primitive (or a flag on this
+     one) can opt into a vertically-scrolling wrapper with max-height
+     where sticky behaves correctly. */
   & thead {
-    position: sticky;
-    top: 0;
-    background: rgba(2, 0, 13, 0.86);
-    backdrop-filter: blur(8px);
-    z-index: 1;
+    background: rgba(2, 0, 13, 0.55);
   }
 `
 
