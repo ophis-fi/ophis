@@ -14,7 +14,7 @@ interface InlineCodeProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> 
 }
 
 const Code = styled.code`
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 0.875em;
   font-weight: 500;
   color: #f5efe6;

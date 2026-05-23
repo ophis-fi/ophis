@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160" fill="none">
   <style>
     .ophis-wordmark {
-      font-family: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
+      font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
       font-weight: 700;
       font-size: 144px;
       font-feature-settings: 'ss01' on;

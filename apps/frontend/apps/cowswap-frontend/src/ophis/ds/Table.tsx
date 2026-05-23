@@ -62,7 +62,7 @@ const SrCaption = styled.caption`
 export const Th = styled.th`
   text-align: left;
   padding: 12px 16px;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;

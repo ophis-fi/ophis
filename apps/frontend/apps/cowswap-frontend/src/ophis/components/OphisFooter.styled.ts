@@ -11,7 +11,7 @@ export const Bar = styled.footer<{ $borderless: boolean }>`
   display: flex;
   flex-direction: column;
   gap: 36px;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 14px;
   color: rgba(245, 239, 230, 0.6);
   background: rgba(2, 0, 13, 0.86);
@@ -57,7 +57,7 @@ export const BrandMark = styled.div`
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 600;
   font-size: 22px;
   color: #f5efe6;
@@ -81,7 +81,7 @@ export const BrandTagline = styled.p`
 
 export const ColTitle = styled.h4`
   margin: 0 0 14px;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.14em;

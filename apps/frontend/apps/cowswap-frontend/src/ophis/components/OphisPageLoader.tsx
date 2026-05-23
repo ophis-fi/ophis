@@ -33,7 +33,7 @@ const Outer = styled.div`
 
 const Label = styled.p`
   margin: 0;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;

@@ -38,7 +38,7 @@ const Dl = styled.dl<{ $labelWidth: string }>`
 
 const Dt = styled.dt`
   color: rgba(245, 239, 230, 0.55);
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 12px;
   letter-spacing: 0.04em;
 

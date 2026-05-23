@@ -51,7 +51,7 @@ const Outer = styled.div<{ $compact: boolean }>`
 `
 
 const Label = styled.div`
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.14em;
@@ -60,7 +60,7 @@ const Label = styled.div`
 `
 
 const Value = styled.div<{ $compact: boolean }>`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
   font-size: ${({ $compact }) => ($compact ? '20px' : '32px')};
   line-height: 1.1;
@@ -92,7 +92,7 @@ const TREND_GLYPH: Record<TrendDirection, string> = {
 }
 
 const Trend = styled.div<{ $direction: TrendDirection }>`
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 12px;
   font-weight: 600;
   display: inline-flex;

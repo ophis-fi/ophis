@@ -63,7 +63,7 @@ const Pill = styled.span<{ $tone: BadgeTone }>`
   gap: 4px;
   padding: 3px 8px;
   border-radius: 4px;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.12em;

@@ -69,7 +69,7 @@ const OpenTradeCTA = styled(Link)`
   background: #f2a63e;
   color: #02000d;
   border-radius: 999px;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 600;
   font-size: 14px;
   text-decoration: none;

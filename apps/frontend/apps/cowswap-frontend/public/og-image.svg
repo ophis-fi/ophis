@@ -12,7 +12,7 @@
     </linearGradient>
     <style>
       .greg-display {
-        font-family: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
+        font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
         font-weight: 700;
         font-feature-settings: 'ss01' on;
         font-variation-settings: 'opsz' 144, 'SOFT' 50;
@@ -26,7 +26,7 @@
         opacity: 0.85;
       }
       .greg-domain {
-        font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+        font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
         font-weight: 400;
         fill: #FFF3EE;
         opacity: 0.6;

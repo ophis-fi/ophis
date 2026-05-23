@@ -27,7 +27,7 @@ const Details = styled.details`
 
 const Summary = styled.summary`
   cursor: pointer;
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
   font-size: 17px;
   letter-spacing: -0.005em;
@@ -56,7 +56,7 @@ const Summary = styled.summary`
   &::after {
     content: '+';
     margin-left: auto;
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Geist Mono', ui-monospace, monospace;
     font-size: 18px;
     color: #f2a63e;
     transition: transform 160ms ease-out;
