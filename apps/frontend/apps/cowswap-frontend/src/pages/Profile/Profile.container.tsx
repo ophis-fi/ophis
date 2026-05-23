@@ -230,8 +230,8 @@ export function ProfilePage(): ReactNode {
         </p>
         <p>
           Direct contact:{' '}
-          <TextLink href="mailto:clement@openletz.com?subject=Ophis%20Profile%20feedback">
-            clement@openletz.com
+          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Profile%20feedback">
+            contact@3615crypto.com
           </TextLink>
           .
         </p>
