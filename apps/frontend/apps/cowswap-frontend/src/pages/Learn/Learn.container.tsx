@@ -235,8 +235,8 @@ export function LearnPage(): ReactNode {
       >
         <p>
           Drop a note —{' '}
-          <TextLink href="mailto:clement@openletz.com?subject=Ophis%20Learn%20feedback">
-            clement@openletz.com
+          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Learn%20feedback">
+            contact@3615crypto.com
           </TextLink>{' '}
           (Subject: Ophis Learn feedback) — it helps us decide what to document next. If and
           when original Ophis articles or product announcements ship, they should appear in a
