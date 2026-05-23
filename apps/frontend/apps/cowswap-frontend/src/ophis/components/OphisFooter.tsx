@@ -69,6 +69,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
         <ExternalLink href="/docs">Docs</ExternalLink>
         <InternalLink to="/faq">FAQ</InternalLink>
         <InternalLink to="/about">About</InternalLink>
+        <InternalLink to="/learn">Learn</InternalLink>
         <InternalLink to="/institutional">Institutional</InternalLink>
         <InternalLink to="/tiers">Tiers</InternalLink>
         <InternalLink to="/profile">Profile</InternalLink>
