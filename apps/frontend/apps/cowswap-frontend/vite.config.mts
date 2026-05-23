@@ -102,7 +102,18 @@ export default defineConfig(({ mode }) => {
 
   return {
     root: path.resolve(__dirname, './'),
-    base: './',
+    // Absolute base. The previous `'./'` (relative) made every asset path in
+    // the built HTML resolve against the CURRENT URL, which broke on every
+    // multi-segment route: visiting `/1/swap/_/_` made the browser request
+    // `/1/swap/_/emergency.js`, `/1/swap/_/static/...`, etc. CF Pages
+    // returned the SPA fallback HTML for those paths → strict-MIME blocked
+    // every script → emergency.js never ran → my deep-link hash-redirect
+    // (PR #261) couldn't fire → user stayed stuck on a broken page.
+    //
+    // Switching to `'/'` makes assets always resolve from origin root
+    // (`/emergency.js`, `/static/...`) regardless of URL depth. This is
+    // the standard SPA setting.
+    base: '/',
     define: {
       ...getReactProcessEnv(mode),
       'process.env.REACT_APP_GIT_COMMIT_HASH': JSON.stringify(
