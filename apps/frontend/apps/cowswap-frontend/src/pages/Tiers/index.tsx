@@ -180,12 +180,12 @@ export default function TiersPage(): ReactNode {
         </p>
         <p>
           Direct contact:{' '}
-          <TextLink href="mailto:clement@openletz.com?subject=Ophis%20Tiers%20interest">
-            clement@openletz.com
+          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Tiers%20interest">
+            contact@3615crypto.com
           </TextLink>{' '}
-          (Subject: Ophis Tiers interest). Operator entity for any formal arrangement: COMMIT
-          MEDIA S.à r.l. (Luxembourg, RCS B276192) — full disclosure on{' '}
-          <TextLink href="/legal#operator">/legal § 8</TextLink>.
+          (Subject: Ophis Tiers interest). Operator entity for any formal arrangement is a
+          Luxembourg-incorporated consultancy company; full entity details are provided on
+          request — see <TextLink href="/legal#operator">/legal § 8</TextLink>.
         </p>
       </Section>
     </PageShell>
