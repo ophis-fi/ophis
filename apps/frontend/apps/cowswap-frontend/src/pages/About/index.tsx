@@ -55,8 +55,7 @@ export default function AboutPage(): ReactNode {
           Under the hood, every order is broadcast to a network of competing solvers who race to
           find the best path. The winning route settles on-chain through CoW Protocol&#39;s
           audited <InlineCode>GPv2Settlement</InlineCode> contract — at a uniform clearing price,
-          inside a batch auction where front-running and sandwich attacks are eliminated by
-          construction.
+          inside a batch auction designed to prevent front-running and sandwich attacks.
         </p>
       </Section>
 
@@ -90,8 +89,9 @@ export default function AboutPage(): ReactNode {
           interface shows you exactly what will be signed before any transaction leaves your wallet.
         </p>
         <p>
-          The parser is open and the routing layer is transparent. There&#39;s no proprietary
-          black box between your intent and the on-chain order.
+          The parser is open source and the routing layer is transparent — the LLM prompt, the
+          structured output schema, and the order submission are all auditable in the public
+          repository.
         </p>
       </Section>
 
@@ -108,12 +108,19 @@ export default function AboutPage(): ReactNode {
         </p>
       </Section>
 
-      <Section id="mev" title="MEV-protected">
+      <Section id="mev" title="MEV protection">
         <p>
           Every order is settled inside a <strong>batch auction at a uniform clearing price</strong>.
-          Front-running and sandwich attacks are eliminated by construction — the protocol does
-          not reorder transactions for value, so there is no priority-gas auction to win against
-          you.
+          The protocol does not reorder transactions for value — instead, every trade in a batch
+          clears against the same price, which removes the typical priority-gas-auction race that
+          enables front-running and sandwich attacks against ordinary users.
+        </p>
+        <p>
+          For the full mechanism description, see CoW Protocol&#39;s{' '}
+          <TextLink href="https://docs.cow.fi/cow-protocol/concepts" external>
+            protocol concepts docs
+          </TextLink>
+          .
         </p>
       </Section>
 
@@ -134,34 +141,39 @@ export default function AboutPage(): ReactNode {
         </Callout>
       </Section>
 
-      <Section id="audits" title="Audited infrastructure">
+      <Section id="audits" title="Security reviews">
         <p>
-          The settlement layer is the GPv2 contracts from CoW Protocol — audited by{' '}
+          The settlement layer uses CoW Protocol&#39;s GPv2 contracts, which carry upstream audit
+          coverage by{' '}
           <TextLink href="https://github.com/trailofbits/publications" external>
             Trail of Bits
           </TextLink>{' '}
-          and G0. Ophis-specific solver wiring, the partner-fee plumbing, and the driver-level
-          Custom-interaction allowlist were re-audited in May 2026 via Slither strict, Halmos,
-          Trail of Bits agent suite, and Codex Cyber. Sharp-edges multi-round review added a
-          two-step manager-transfer hardening on the OP-mainnet AllowList contract.
+          and G0 Group from the CoW Protocol launch period. The Ophis-specific surface — solver
+          wiring, partner-fee plumbing, the driver-level Custom-interaction allowlist, and the
+          OP-mainnet AllowList contract upgrade — was reviewed in May 2026 across multiple tooling
+          passes. Findings are tracked in <InlineCode>docs/audits/</InlineCode>.
         </p>
         <FeatureGrid minCardWidth="200px" gap="12px">
-          <FeatureCard title="Trail of Bits">
-            Settlement + AllowList suite audited via guidelines-advisor, code-maturity, token-
-            integration, and audit-prep agents.{' '}
-            <Badge tone="audit">Audited</Badge>
+          <FeatureCard title="GPv2 upstream">
+            CoW Protocol&#39;s settlement contracts audited by Trail of Bits and G0 Group on
+            initial launch; Ophis runs the same bytecode under its own AllowList.{' '}
+            <Badge tone="audit">Inherited</Badge>
           </FeatureCard>
           <FeatureCard title="Slither">
-            Strict-mode static analysis on all contract surfaces.{' '}
-            <Badge tone="audit">Clean</Badge>
-          </FeatureCard>
-          <FeatureCard title="Halmos">
-            Symbolic execution as a Verity-equivalent for property checks.{' '}
-            <Badge tone="audit">Clean</Badge>
+            Strict-mode static analysis on all Ophis-deployed contract surfaces (settlement +
+            AllowList + helpers).{' '}
+            <Badge tone="live">Clean</Badge>
           </FeatureCard>
           <FeatureCard title="Codex Cyber">
-            Cyber-trusted LLM review across 32-finding Phase 2 backend audit.{' '}
-            <Badge tone="audit">Pass</Badge>
+            Cyber-trusted LLM review across the 32-finding 2026-05-18 Phase 2 backend audit + the
+            2026-05-22 OP-mainnet impl-upgrade sweep.{' '}
+            <Badge tone="live">Reviewed</Badge>
+          </FeatureCard>
+          <FeatureCard title="Sharp-edges">
+            Multi-round adversarial-pattern review (sharp-edges + silent-failure + adversarial-
+            modeler agents). Added the two-step <InlineCode>setManager</InlineCode> hardening on
+            OP-mainnet (PR #224).{' '}
+            <Badge tone="live">Reviewed</Badge>
           </FeatureCard>
         </FeatureGrid>
       </Section>
