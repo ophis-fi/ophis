@@ -56,6 +56,15 @@
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
 
+# emergency.js is the boot script — it runs synchronously before the
+# SPA bundle and controls subdomain redirect + HashRouter path-to-hash
+# rewriting. It MUST always be fresh; a stale cached version can break
+# routing for hours. CF Pages default was 4h, which caused PR #261
+# (deep-link hash redirect) to take effect inconsistently for users
+# with cached versions. Force revalidation on every load.
+/emergency.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
 # /docs is a separate static HTML page (not the SPA). Short max-age
 # so doc edits propagate within an hour, but still cacheable so we
 # get crawler-friendly response times.
