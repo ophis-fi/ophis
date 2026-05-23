@@ -74,6 +74,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
         <InternalLink to="/tiers">Tiers</InternalLink>
         <InternalLink to="/profile">Profile</InternalLink>
         <InternalLink to="/missions">Missions</InternalLink>
+        <InternalLink to="/earn">Earn</InternalLink>
         <InternalLink to="/brand">Brand</InternalLink>
         <InternalLink to="/legal">Legal</InternalLink>
         <ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
