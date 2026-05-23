@@ -98,13 +98,62 @@ jobs:
       # `cloudflare/wrangler-action` installs its own wrangler. The prior
       # `npm install -g wrangler@latest` step was redundant AND a floating
       # tag against npm — audit finding M2 (2026-05-09). Removed.
+
+      # Sanitize the commit message before handing it to wrangler.
+      #
+      # The Cloudflare Pages deployments API rejects messages with
+      # non-ASCII bytes (em-dash, arrow, degree, smart quotes, etc.)
+      # with error 8000111 "Invalid commit message, it must be a valid
+      # UTF-8 string." That wording is misleading: the message IS valid
+      # UTF-8; CF's parser is just ASCII-only. By default wrangler
+      # reads HEAD's message from git and forwards it, so any author
+      # who uses an em-dash breaks the deploy.
+      #
+      # We reduce the message to a safe ASCII subset (alphanumeric +
+      # narrow shell-neutral punctuation allowlist), so:
+      #   (a) CF's parser accepts it
+      #   (b) it cannot break out of the --commit-message="..." arg
+      #       when shell-quote parses the wrangler command
+      #   (c) untrusted commit-author input never reaches a shell as
+      #       executable text — RAW message lives only in a python
+      #       process env var, output goes to GITHUB_OUTPUT.
+      #
+      # Incident: 2026-05-23 deploy of f088135d6 (PR #272), wrangler
+      # 3.90.0. Em-dash + arrow + degree chars in commit body.
+      - name: sanitize commit message for CF Pages API
+        id: cf_msg
+        env:
+          RAW_COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, re, sys
+          raw = os.environ.get('RAW_COMMIT_MSG', '') or ''
+          # Collapse anything outside [A-Za-z0-9] + a narrow safe-punct
+          # allowlist to single spaces. The allowlist excludes `"`, `$`,
+          # backtick, backslash, semicolon — so the result is shell-safe
+          # under wrangler-action's shell-quote arg parsing.
+          safe = re.sub(r'[^A-Za-z0-9 .,\-_:/()\[\]#+@=!?]', ' ', raw)
+          safe = re.sub(r'\s+', ' ', safe).strip()
+          if not safe:
+              safe = os.environ.get('GITHUB_SHA', 'deploy')
+          safe = safe[:1000]
+          sys.stdout.write('msg<<EOF_CF_MSG\n')
+          sys.stdout.write(safe + '\n')
+          sys.stdout.write('EOF_CF_MSG\n')
+          PY
+
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd  # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
-          command: pages deploy apps/frontend/build/cowswap --project-name=greg --branch=main --commit-dirty=true
+          # commit-message + commit-hash are passed explicitly so
+          # wrangler does not auto-read git HEAD (which would re-
+          # introduce non-ASCII bytes). The msg value comes from the
+          # python sanitizer above: only chars in the safe allowlist,
+          # so it cannot escape the --commit-message="..." quotes.
+          command: pages deploy apps/frontend/build/cowswap --project-name=greg --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}
 
       # ── Explorer (separate Pages project, separate hostname) ──────────
       # Build with our self-hosted orderbook base URLs so the explorer
@@ -130,4 +179,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
-          command: pages deploy apps/frontend/build/explorer --project-name=ophis-explorer --branch=main --commit-dirty=true
+          # Reuses the sanitized message from the cowswap deploy step
+          # above (same workflow run, same HEAD commit). See the
+          # `sanitize commit message for CF Pages API` step for why.
+          command: pages deploy apps/frontend/build/explorer --project-name=ophis-explorer --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}

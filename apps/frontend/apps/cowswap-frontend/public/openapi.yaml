@@ -1,0 +1,266 @@
+openapi: 3.0.3
+info:
+  title: Ophis Intent API
+  version: '1.0.0'
+  description: |
+    Parses plain-English swap requests into structured `ParsedIntent`
+    objects that the Ophis frontend (or an AI agent) can use to
+    pre-fill a swap form or construct a deep-link.
+
+    Backed by LibertAI's Qwen 3.6 27B (open-weights, hosted on Aleph
+    Cloud) via a Cloudflare Pages Function proxy. The LibertAI API key
+    is held server-side as a Pages environment secret — browsers and
+    third-party agents never see it.
+
+    **Trust model:** Ophis is non-custodial. This API does not place,
+    sign, or execute trades — it only normalizes natural-language
+    requests into structured entities. Order signing always happens in
+    the user's wallet on the frontend.
+  contact:
+    name: Ophis operator
+    email: contact@3615crypto.com
+  license:
+    name: Source available
+    url: https://github.com/ophis-fi/ophis
+
+servers:
+  - url: https://ophis.fi
+    description: Production
+
+paths:
+  /api/intent:
+    post:
+      operationId: parseIntent
+      summary: Parse a natural-language swap request
+      description: |
+        Submit free-form English text (up to 280 chars). The proxy
+        forwards it to LibertAI Qwen 3.6 27B with a pinned system
+        prompt and `temperature: 0` for deterministic structured
+        extraction. The response normalizes recognized tokens, the
+        amount, and the target chain.
+
+        Tokens are validated against an internal allowlist (top-200+
+        DEX-traded symbols + DeFi blue-chips + memes + gaming).
+        Unknown symbols are filtered out — the response will still
+        include the other entities, with the unknown one omitted.
+
+        **Origin allowlist:** non-null `Origin` headers are checked
+        against `https://ophis.fi` + Cloudflare Pages preview
+        subdomains. Browser-side calls from other origins return
+        `403 FORBIDDEN`. Non-browser callers (curl, server-side
+        scripts) that omit `Origin` entirely are allowed but subject
+        to the per-IP rate limit.
+
+        **Rate limit:** 30 requests per IP per rolling 60s window,
+        enforced by a KV-backed counter. Exceeding returns `429`
+        with `Retry-After`.
+
+        **Caching:** identical normalized text (lowercased + trimmed)
+        from the same origin bucket is served from a 5-minute KV cache.
+        Hits return `x-ophis-cache: hit` and do not consume an
+        upstream LibertAI call. The rate-limit counter still
+        increments on cache hits.
+      tags:
+        - intent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntentRequest'
+            examples:
+              simpleSwap:
+                summary: Swap 100 USDC for ETH
+                value:
+                  text: 'swap 100 USDC for ETH on Base'
+              memeBuy:
+                summary: Buy PEPE with USDC
+                value:
+                  text: 'buy 50 USDC of PEPE on ethereum'
+              chainShortform:
+                summary: Chain shortform recognised
+                value:
+                  text: '1 ETH to USDC on op'
+      responses:
+        '200':
+          description: Parsed intent
+          headers:
+            x-ophis-cache:
+              description: '`hit` if served from KV cache; absent otherwise.'
+              schema:
+                type: string
+                enum: ['hit']
+            cache-control:
+              description: Always `no-store` — clients must not cache.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseOk'
+              examples:
+                success:
+                  value:
+                    ok: true
+                    data:
+                      intent: 'swap'
+                      entities:
+                        - { type: 'amount', value: '100', raw: '100', start: 5, end: 8 }
+                        - { type: 'sellToken', value: 'USDC', raw: 'USDC', start: 9, end: 13 }
+                        - { type: 'buyToken', value: 'ETH', raw: 'ETH', start: 18, end: 21 }
+                        - { type: 'chain', value: 'base', raw: 'Base', start: 25, end: 29 }
+        '400':
+          description: Bad input (missing/oversized text, invalid JSON body)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseError'
+              examples:
+                missingText:
+                  value:
+                    ok: false
+                    error: { code: 'BAD_INPUT', message: 'text required' }
+                tooLong:
+                  value:
+                    ok: false
+                    error: { code: 'BAD_INPUT', message: 'text exceeds 280 chars' }
+        '403':
+          description: Origin not on allowlist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseError'
+              example:
+                ok: false
+                error: { code: 'FORBIDDEN', message: 'origin not allowed' }
+        '429':
+          description: Rate limit exceeded (30 req / 60s / IP)
+          headers:
+            retry-after:
+              description: Seconds until the next request will be allowed.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseError'
+              example:
+                ok: false
+                error: { code: 'RATE_LIMITED', message: 'too many requests' }
+        '500':
+          description: Operator configuration error (LibertAI key missing)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseError'
+        '502':
+          description: Upstream parser failure (LibertAI unreachable or non-2xx)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseError'
+        '504':
+          description: Upstream parser timed out (>5s)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntentResponseError'
+
+components:
+  schemas:
+    IntentRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          maxLength: 280
+          minLength: 1
+          description: |
+            Plain-English swap request. Recognised entities: amount,
+            sellToken (you're paying with), buyToken (you want),
+            chain. Case-insensitive. The model is pinned to
+            `temperature: 0` so identical normalized inputs produce
+            identical outputs.
+
+    Entity:
+      type: object
+      required: [type, value, raw, start, end]
+      properties:
+        type:
+          type: string
+          enum: [sellToken, buyToken, amount, chain]
+        value:
+          type: string
+          description: |
+            Canonical form (e.g. `USDC`, `0.5`, `optimism`). Validated
+            against an internal allowlist; entities with unknown values
+            are filtered out of the response.
+        raw:
+          type: string
+          description: The exact substring from the input text.
+        start:
+          type: integer
+          minimum: 0
+          description: 0-indexed start position of `raw` within the input.
+        end:
+          type: integer
+          minimum: 1
+          description: 0-indexed end position of `raw` within the input (exclusive).
+
+    ParsedIntent:
+      type: object
+      required: [intent, entities]
+      properties:
+        intent:
+          type: string
+          enum: [swap, unknown]
+        entities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entity'
+
+    IntentResponseOk:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: '#/components/schemas/ParsedIntent'
+
+    IntentErrorCode:
+      type: string
+      enum:
+        - TIMEOUT
+        - UPSTREAM
+        - INVALID_JSON
+        - BAD_INPUT
+        - RATE_LIMITED
+        - FORBIDDEN
+
+    IntentResponseError:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              $ref: '#/components/schemas/IntentErrorCode'
+            message:
+              type: string
+
+tags:
+  - name: intent
+    description: |
+      Natural-language → structured swap intent. The only API surface
+      Ophis exposes for agent integration. Order placement uses the
+      underlying CoW Protocol orderbook (API-compatible with
+      docs.cow.fi/cow-protocol/reference/apis/orderbook); Ophis runs
+      self-hosted orderbook instances per chain.
