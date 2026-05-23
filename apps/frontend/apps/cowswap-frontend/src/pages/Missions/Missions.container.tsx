@@ -165,8 +165,8 @@ export function MissionsPage(): ReactNode {
           For partner introductions:{' '}
           <TextLink href="/institutional">/institutional</TextLink>. For specific mission ideas or
           framework feedback:{' '}
-          <TextLink href="mailto:clement@openletz.com?subject=Ophis%20Missions%20idea">
-            clement@openletz.com
+          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Missions%20idea">
+            contact@3615crypto.com
           </TextLink>{' '}
           (Subject: Ophis Missions idea).
         </p>
