@@ -42,7 +42,7 @@ const Outer = styled.main`
   display: flex;
   flex-direction: column;
   color: #f5efe6;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 16px;
   line-height: 1.65;
 `
@@ -60,7 +60,7 @@ const Inner = styled.div<{ $width: PageWidth }>`
 
 const Eyebrow = styled.p`
   margin: 0 0 12px;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.18em;
@@ -69,7 +69,7 @@ const Eyebrow = styled.p`
 `
 
 const titleStyles = css`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
   font-size: clamp(36px, 5vw, 56px);
   line-height: 1.05;
@@ -83,7 +83,7 @@ const Title = styled.h1`
 `
 
 const Lede = styled.p`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 20px;
   font-style: italic;
   color: #f2a63e;

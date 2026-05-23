@@ -23,7 +23,7 @@ export const BridgeDestinationsSection = styled.section`
 `
 
 export const BridgeDestinationsHeader = styled.div`
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.14em;
@@ -36,7 +36,7 @@ export const BridgeDestinationsHeader = styled.div`
 `
 
 export const BridgeDestinationsBadge = styled.span`
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.16em;
@@ -140,7 +140,7 @@ export const FlyoutHeader = styled.div`
 // with the brand's "JetBrains Mono labels next to data" treatment.
 export const FlyoutHeaderTitle = styled.div`
   flex: 1 1 auto;
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.18em;

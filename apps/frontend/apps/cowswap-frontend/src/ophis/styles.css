@@ -90,10 +90,16 @@
   --ophis-gradient-sunset-soft: linear-gradient(135deg, #FFE0CE 0%, #FFCABE 35%, #F8B8CC 70%, #D5B6D8 100%);
   --ophis-gradient-sunset-radial: radial-gradient(120% 80% at 20% 20%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%);
 
-  /* Type families */
-  --ophis-font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
-  --ophis-font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --ophis-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Type families — Geist (Vercel, OFL) variable-axis sans-serif for
+     the entire site, plus Geist Mono for code/data. Replaces the prior
+     Fraunces/Plus-Jakarta pairing because:
+       1. Geist is significantly more readable at small body sizes
+       2. Single typeface = cleaner brand + lighter font payload
+       3. Variable-axis weights (100-900) give us display + body + mono
+          contrast without loading 3 separate font families. */
+  --ophis-font-display: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ophis-font-body: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ophis-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* Override CoW's font-family CSS variables so existing components inherit Ophis fonts */
   --cow-font-family-primary: var(--ophis-font-body);
@@ -102,7 +108,7 @@
 
 /*
  * Force body font onto the cow root that ThemedGlobalStyle sets via
- * `font-family: 'Inter', sans-serif`. Without this, Plus Jakarta would only
+ * `font-family: 'Inter', sans-serif`. Without this, Geist would only
  * apply where components opt in via var(--cow-font-family-primary).
  */
 html,
@@ -120,12 +126,13 @@ button {
   }
 }
 
-/* Display face for hero/marketing surfaces. Components opt in via .ophis-display class. */
+/* Display class — used on hero/marketing surfaces. Now just sets the
+   heaviest Geist weight for clear visual contrast vs body weight. */
 .ophis-display,
 [data-ophis-display] {
   font-family: var(--ophis-font-display);
-  font-feature-settings: 'ss01' on, 'ss02' on;
-  font-variation-settings: 'opsz' 144, 'SOFT' 50;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 /* Mono for hashes, addresses, numeric data. Opt-in via .ophis-mono class. */

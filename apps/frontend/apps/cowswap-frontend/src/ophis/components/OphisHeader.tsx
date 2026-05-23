@@ -39,7 +39,7 @@ const Bar = styled.header<{ $transparent: boolean }>`
 `
 
 const Wordmark = styled(Link)`
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 600;
   font-size: 22px;
   letter-spacing: -0.01em;

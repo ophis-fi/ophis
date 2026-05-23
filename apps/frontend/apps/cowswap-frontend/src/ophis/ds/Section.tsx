@@ -25,7 +25,7 @@ const Outer = styled.section`
 
 const Heading = styled.h2`
   margin: 0 0 12px;
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
   font-size: clamp(24px, 3vw, 32px);
   line-height: 1.15;
