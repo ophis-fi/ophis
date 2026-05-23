@@ -211,14 +211,17 @@ export default function InstitutionalPage(): ReactNode {
         </Callout>
         <p>
           Email:{' '}
-          <TextLink href="mailto:clement@openletz.com?subject=Ophis%20Institutional%20Inquiry">
-            clement@openletz.com
+          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Institutional%20Inquiry">
+            contact@3615crypto.com
           </TextLink>{' '}
           (Subject: Ophis Institutional Inquiry).
         </p>
         <p>
-          Operator entity for contract / invoicing purposes: COMMIT MEDIA S.à r.l. (Luxembourg,
-          RCS B276192). Full disclosure on <TextLink href="/legal#operator">/legal § 8</TextLink>.
+          Operator entity for contract / invoicing purposes is a Luxembourg-incorporated
+          consultancy company. Full legal-entity details — registered name, RCS number,
+          registered office, VAT, legal representative — are provided on request as part of
+          formal-arrangement discussions. See{' '}
+          <TextLink href="/legal#operator">/legal § 8</TextLink> for the disclosure policy.
         </p>
       </Section>
     </PageShell>
