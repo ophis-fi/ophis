@@ -1,3 +1,24 @@
+// Ophis subdomain → static content redirect. Runs synchronously before
+// the SPA bundle downloads, so docs.ophis.fi / business.ophis.fi visitors
+// bounce straight to their static HTML without a flash of the swap
+// landing page. CSP-safe (external file under 'self'). Mirror in the
+// React useSubdomainRedirect() hook in AppContainer is kept as a defensive
+// fallback for client-side navigations that don't reload index.html.
+//
+// `return` here only exits the IIFE — but window.location.replace()
+// triggers a navigation that pre-empts subsequent script execution
+// before any visible side-effect, so the rest of this file is a no-op
+// once a redirect fires.
+var __ophisSubdomain = ({ 'docs.ophis.fi': true, 'business.ophis.fi': true })[window.location.hostname]
+;(function () {
+  var routes = { 'docs.ophis.fi': '/docs/', 'business.ophis.fi': '/business/' }
+  var target = routes[window.location.hostname]
+  if (target && window.location.pathname === '/') {
+    window.location.replace(target)
+    return
+  }
+})()
+
 // Redirect from the outdated domain
 if (window.location.host === 'cowswap.exchange') {
   window.location.href = 'https://swap.cow.fi'
@@ -21,8 +42,10 @@ try {
   }
 }
 
-// We use the HashRouter, thus the pathname should ALWAYS be a '/'
-if (window.location.pathname !== '/') {
+// We use the HashRouter, thus the pathname should ALWAYS be a '/' —
+// EXCEPT on Ophis static subdomains, where /docs/ and /business/ are
+// real physical files served directly by CF Pages (not the SPA).
+if (!__ophisSubdomain && window.location.pathname !== '/') {
   window.location.pathname = '/'
 }
 
