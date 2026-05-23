@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Business — Ophis</title>
+<meta name="description" content="Ophis for institutions, OTC desks, funds, treasuries. Non-custodial routing, MEV-protected execution, transparent fees. Reach out for partner integrations.">
+<link rel="canonical" href="https://business.ophis.fi">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ophis">
+<meta property="og:title" content="Ophis for Business">
+<meta property="og:description" content="Non-custodial routing, MEV-protected execution, transparent fees for institutional traders.">
+<meta property="og:url" content="https://business.ophis.fi">
+<meta property="og:image" content="https://ophis.fi/ophis-og.jpg">
+<meta name="theme-color" content="#02000d">
+<meta name="robots" content="index, follow">
+
+<style>
+:root {
+  --cosmic: #02000d;
+  --sunset: #f2a63e;
+  --cream: #f5efe6;
+  --hairline: rgba(245, 239, 230, 0.08);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--cosmic);
+  color: var(--cream);
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 36px;
+  border-bottom: 1px solid var(--hairline);
+  background: rgba(2, 0, 13, 0.86);
+}
+.wordmark {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--cream);
+  text-decoration: none;
+}
+.wordmark span { color: var(--sunset); }
+.bar a:hover { color: #fff; }
+main {
+  flex: 1;
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 80px 24px 96px;
+  text-align: center;
+}
+h1 {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(40px, 6vw, 60px);
+  letter-spacing: -0.02em;
+  margin: 0 0 20px;
+}
+.lede {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-size: 22px;
+  font-style: italic;
+  color: var(--sunset);
+  margin: 0 0 48px;
+}
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 24px;
+  border-radius: 999px;
+  background: var(--sunset);
+  color: var(--cosmic);
+  font-weight: 600;
+  text-decoration: none;
+  margin: 0 8px 12px;
+  transition: filter 140ms ease-out;
+}
+.cta:hover { filter: brightness(1.06); }
+.cta.secondary {
+  background: transparent;
+  border: 1px solid rgba(245, 239, 230, 0.22);
+  color: var(--cream);
+}
+.banner {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: rgba(242, 166, 62, 0.1);
+  border: 1px solid rgba(242, 166, 62, 0.4);
+  color: var(--sunset);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+footer {
+  padding: 28px 36px;
+  border-top: 1px solid var(--hairline);
+  font-size: 13px;
+  color: rgba(245, 239, 230, 0.5);
+  text-align: center;
+}
+footer a { color: rgba(245, 239, 230, 0.55); text-decoration: none; margin: 0 8px; }
+footer a:hover { color: var(--cream); }
+</style>
+</head>
+<body>
+<header class="bar">
+  <a href="https://ophis.fi" class="wordmark">ophis<span>.</span></a>
+  <a href="https://ophis.fi" style="color: var(--cream); text-decoration: none; font-size: 14px;">← ophis.fi</a>
+</header>
+
+<main>
+  <div class="banner">Coming soon · business portal</div>
+  <h1>Ophis for business.</h1>
+  <p class="lede">Non-custodial routing. MEV-protected execution. Audited infrastructure. Direct partner channel for desks routing material volume.</p>
+  <p>
+    A dedicated business portal is in development — API docs, SLA reference, OTC routing
+    partnerships, integration paths. In the meantime, the institutional pitch + contact form
+    lives on the main app at <a href="https://ophis.fi/institutional" style="color: var(--sunset);">/institutional</a>.
+  </p>
+  <p style="margin-top: 40px;">
+    <a class="cta" href="https://ophis.fi/institutional">See the institutional page →</a>
+    <a class="cta secondary" href="mailto:clement@openletz.com?subject=Ophis%20Business%20Inquiry">clement@openletz.com</a>
+  </p>
+</main>
+
+<footer>
+  © Ophis 2026 ·
+  <a href="https://ophis.fi">Home</a> ·
+  <a href="https://ophis.fi/docs">Docs</a> ·
+  <a href="https://ophis.fi/institutional">Institutional</a> ·
+  <a href="https://ophis.fi/legal">Legal</a> ·
+  <a href="https://github.com/ophis-fi/ophis">GitHub</a>
+</footer>
+</body>
+</html>

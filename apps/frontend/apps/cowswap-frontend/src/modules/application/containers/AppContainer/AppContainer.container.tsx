@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import styled from 'styled-components/macro'
 
@@ -59,7 +59,41 @@ interface AppContainerProps {
   children: ReactNode | ReactNode[]
 }
 
+/**
+ * Subdomain → content map. Both subdomains share the same CF Pages
+ * project (`greg`) which serves the cowswap-frontend SPA at root for
+ * every host. To present different content per subdomain WITHOUT
+ * separate Pages projects, we redirect at the SPA shell on first
+ * paint:
+ *   - `docs.ophis.fi/*`     → `/docs/` (static HTML served by CF Pages)
+ *   - `business.ophis.fi/*` → `/business/` (static HTML in public/business/)
+ *
+ * The redirect preserves the subdomain in the URL bar. Future upgrade
+ * path: when docs/business get their own CF Pages projects (own git
+ * deploy + own content), this hook becomes a no-op + the projects
+ * serve their roots directly.
+ */
+const SUBDOMAIN_ROUTING: Record<string, string> = {
+  'docs.ophis.fi': '/docs/',
+  'business.ophis.fi': '/business/',
+}
+
+function useSubdomainRedirect(): void {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const target = SUBDOMAIN_ROUTING[window.location.hostname]
+    // Only redirect if (a) we're on a known subdomain, AND (b) we're
+    // currently at the root path — once redirected to e.g. /docs/, the
+    // path is no longer `/` and this hook becomes a no-op on subsequent
+    // navigations.
+    if (target && window.location.pathname === '/') {
+      window.location.replace(target)
+    }
+  }, [])
+}
+
 export function AppContainer({ children }: AppContainerProps): ReactNode {
+  useSubdomainRedirect()
   const { chainId, account } = useWalletInfo()
   const { walletName } = useWalletDetails()
   const cowAnalytics = useCowAnalytics()
