@@ -53,6 +53,12 @@ const ProfilePage = lazy(() =>
     default: m.ProfilePage,
   })),
 )
+// Phase C2 (2026-05-23): draft framework page for missions.
+const MissionsPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_missions" */ 'pages/Missions').then((m) => ({
+    default: m.MissionsPage,
+  })),
+)
 
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
@@ -100,6 +106,7 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalPage /> },
   { route: RoutesEnum.TIERS, element: <TiersPage /> },
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
+  { route: RoutesEnum.MISSIONS, element: <MissionsPage /> },
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser
   // refresh-on-/faq.
