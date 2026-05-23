@@ -130,7 +130,7 @@ export default function BrandPage(): ReactNode {
       width="wide"
       eyebrow="Brand kit"
       title="Logos, colors, type."
-      lede="Drop-in assets for partners, journalists, and integrators. All released under the same license as the open-source frontend (LGPL v3.0)."
+      lede="Drop-in assets for partners, journalists, and integrators. Brand-use terms are separate from the code license — see § License + attribution."
     >
       <Section
         id="logos"
@@ -276,8 +276,33 @@ export default function BrandPage(): ReactNode {
             </Tr>
             <Tr>
               <Td>Background</Td>
-              <Td>Ensure sufficient contrast — minimum 4.5:1 against the cosmic backdrop.</Td>
+              <Td>For text/UI foreground, maintain WCAG AA contrast (4.5:1 for body text, 3:1 for large text). For decorative logos, ensure they remain visually distinct.</Td>
               <Td>Place the wordmark on a busy photo without backplate.</Td>
+            </Tr>
+            <Tr>
+              <Td>Favicon</Td>
+              <Td>
+                Use <InlineCode>ophis-icon.svg</InlineCode> @ 32×32 / 16×16 minimum. PWA icon at
+                512×512 from <InlineCode>ophis-mark-app-icon.svg</InlineCode>.
+              </Td>
+              <Td>Embed the wordmark below 24px height (illegible).</Td>
+            </Tr>
+            <Tr>
+              <Td>Social / OG image</Td>
+              <Td>
+                <InlineCode>ophis-og.jpg</InlineCode> @ 1200×630 (Twitter / Open Graph default).
+                Cosmic backdrop with the lockup left-aligned.
+              </Td>
+              <Td>Use a portrait-orientation image (cropped on most platforms).</Td>
+            </Tr>
+            <Tr>
+              <Td>Partner embedding</Td>
+              <Td>
+                On light backgrounds: use the wordmark / inverse icon variants. On dark
+                backgrounds: use the default lockup / icon variants. When in doubt, contact{' '}
+                <TextLink href="mailto:clement@openletz.com">clement@openletz.com</TextLink>.
+              </Td>
+              <Td>Apply CSS filters (hue-rotate, invert) to recolor the logo.</Td>
             </Tr>
             <Tr>
               <Td>Print</Td>
@@ -289,19 +314,46 @@ export default function BrandPage(): ReactNode {
       </Section>
 
       <Section id="meta" title="License + attribution">
+        <Callout tone="info" title="Brand vs code — different terms">
+          The Ophis frontend source code is open source. The Ophis brand assets (name, logos,
+          wordmarks, color palette as applied) are SEPARATE from the code license and carry their
+          own use terms below. Trademark posture is being formalized; until then, use of the Ophis
+          name and marks is governed by this page and good-faith fair-use principles.{' '}
+          <Badge tone="draft">draft</Badge>
+        </Callout>
+        <h3>Brand assets</h3>
         <p>
-          Logos and brand assets are licensed under the same{' '}
-          <TextLink href="https://www.gnu.org/licenses/lgpl-3.0.html" external>
-            GNU LGPL v3.0
-          </TextLink>{' '}
-          as the open-source frontend. Use in derivative materials is permitted with attribution.
+          Logos and wordmarks (the SVG files served from <InlineCode>/ophis-*.svg</InlineCode>)
+          may be used:
         </p>
+        <ul>
+          <li>To link to or reference ophis.fi in journalism, research, partner integrations.</li>
+          <li>In screenshots showing the Ophis product UI.</li>
+          <li>With attribution to &quot;Ophis&quot; alongside the asset.</li>
+        </ul>
+        <p>They may NOT be used:</p>
+        <ul>
+          <li>To imply endorsement or partnership without prior written agreement.</li>
+          <li>In a misleading, defamatory, or deceptive manner.</li>
+          <li>To suggest the asset itself is a sponsor or principal of your work.</li>
+        </ul>
+
+        <h3>Code license</h3>
         <p>
-          Color tokens reference Nucleus UI Lite (Gumroad, free tier) for the underlying token
-          scale; brand values are Ophis-specific. See{' '}
-          <InlineCode>docs/development/specs/2026-05-06-ophis-brand-foundations.md</InlineCode> for
-          full design-system provenance + the rationale for the warm sunset palette over the
-          typical DEX-aggregator cool-blue stack. <Badge tone="live">Live</Badge>
+          Ophis source code is governed by its own license (see{' '}
+          <InlineCode>LICENSE</InlineCode> at the repository root). This is independent of the
+          brand-use terms above.
+        </p>
+
+        <h3>Design-system provenance</h3>
+        <p>
+          Color token scale + spacing/typography rhythm draw on{' '}
+          <TextLink href="https://nucleus-ui.com" external>
+            Nucleus UI Lite
+          </TextLink>{' '}
+          (Gumroad free tier). Specific brand values (sunset palette, cosmic background) are
+          Ophis-specific. Full provenance + license review status in{' '}
+          <InlineCode>docs/development/specs/2026-05-06-ophis-brand-foundations.md</InlineCode>.
         </p>
       </Section>
     </PageShell>
