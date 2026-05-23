@@ -115,7 +115,7 @@ const OpenSwapButton = styled(Link)`
   gap: 6px;
   padding: 9px 18px;
   border-radius: 999px;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 600;
   font-size: 14px;
   background: rgba(245, 239, 230, 0.08);
@@ -176,7 +176,7 @@ const Hero = styled.section`
 
 const Eyebrow = styled.span`
   text-transform: uppercase;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 11px;
   letter-spacing: 0.18em;
   color: rgba(245, 239, 230, 0.6);
@@ -194,7 +194,7 @@ const accentShimmer = keyframes`
 
 const Tagline = styled.h1`
   margin: 0;
-  font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
   font-size: clamp(34px, 5vw, 56px);
   line-height: 1.05;
@@ -216,7 +216,7 @@ const Tagline = styled.h1`
 
 const Sub = styled.p`
   margin: 0;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 16px;
   line-height: 1.55;
   color: rgba(245, 239, 230, 0.7);
@@ -231,7 +231,7 @@ const InputBlock = styled.div`
 `
 
 const Helper = styled.div<{ $variant: 'hint' | 'error' }>`
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 13px;
   text-align: center;
   color: ${({ $variant }) => ($variant === 'error' ? '#FFB7B7' : 'rgba(245, 239, 230, 0.6)')};
@@ -243,7 +243,7 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   border: none;
   border-radius: 999px;
   padding: 16px 36px;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.01em;

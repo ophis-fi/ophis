@@ -80,12 +80,12 @@ const ColorSwatch = styled.div<{ $bg: string; $fg: string }>`
 
   & h3 {
     margin: 0;
-    font-family: 'Fraunces', var(--cow-font-family-primary, system-ui);
+    font-family: 'Geist', var(--cow-font-family-primary, system-ui);
     font-size: 16px;
     font-weight: 500;
   }
   & code {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-family: 'Geist Mono', ui-monospace, monospace;
     font-size: 13px;
     opacity: 0.85;
   }
@@ -115,12 +115,12 @@ const FontSample = styled.div<{ $family: string }>`
   & .name {
     font-size: 13px;
     color: rgba(245, 239, 230, 0.6);
-    font-family: 'Plus Jakarta Sans', system-ui;
+    font-family: 'Geist', system-ui;
   }
   & .role {
     font-size: 12px;
     color: rgba(242, 166, 62, 0.9);
-    font-family: 'Plus Jakarta Sans', system-ui;
+    font-family: 'Geist', system-ui;
   }
 `
 
@@ -225,17 +225,17 @@ export default function BrandPage(): ReactNode {
 
       <Section id="typography" title="Typography">
         <FeatureGrid minCardWidth="280px">
-          <FontSample $family="'Fraunces', system-ui">
+          <FontSample $family="'Geist', system-ui">
             <div className="sample">Aa Bb Cc</div>
             <div className="name">Fraunces</div>
             <div className="role">Display — headings, taglines</div>
           </FontSample>
-          <FontSample $family="'Plus Jakarta Sans', system-ui">
+          <FontSample $family="'Geist', system-ui">
             <div className="sample">Aa Bb Cc</div>
             <div className="name">Plus Jakarta Sans</div>
             <div className="role">Body — UI, paragraphs, navigation</div>
           </FontSample>
-          <FontSample $family="'JetBrains Mono', monospace">
+          <FontSample $family="'Geist Mono', monospace">
             <div className="sample">Aa Bb Cc</div>
             <div className="name">JetBrains Mono</div>
             <div className="role">Data — addresses, hashes, code</div>
