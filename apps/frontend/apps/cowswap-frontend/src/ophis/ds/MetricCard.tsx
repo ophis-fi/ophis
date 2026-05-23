@@ -37,6 +37,17 @@ const Outer = styled.div<{ $compact: boolean }>`
   display: flex;
   flex-direction: column;
   gap: ${({ $compact }) => ($compact ? '4px' : '6px')};
+  transition: border-color 180ms ease-out, transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  &:hover {
+    border-color: rgba(242, 166, 62, 0.28);
+    transform: translateY(-1px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: border-color 120ms ease-out;
+    &:hover {
+      transform: none;
+    }
+  }
 `
 
 const Label = styled.div`

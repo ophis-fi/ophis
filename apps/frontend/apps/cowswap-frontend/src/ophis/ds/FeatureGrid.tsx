@@ -59,10 +59,25 @@ const Card = styled.article`
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: border-color 120ms ease-out;
+  transition:
+    border-color 180ms ease-out,
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms ease-out,
+    background 200ms ease-out;
 
   &:hover {
-    border-color: rgba(245, 239, 230, 0.14);
+    border-color: rgba(242, 166, 62, 0.32);
+    background: rgba(245, 239, 230, 0.06);
+    transform: translateY(-2px);
+    box-shadow: 0 18px 40px -20px rgba(242, 166, 62, 0.18);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: border-color 120ms ease-out;
+    &:hover {
+      transform: none;
+      box-shadow: none;
+    }
   }
 `
 
