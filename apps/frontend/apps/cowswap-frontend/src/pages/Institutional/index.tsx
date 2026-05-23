@@ -156,7 +156,7 @@ export default function InstitutionalPage(): ReactNode {
           </Tbody>
         </Table>
         <Callout tone="info">
-          Full reference at <TextLink href="/docs">/docs</TextLink>. Public-tier rate limits are
+          Full reference at <TextLink href="https://docs.ophis.fi/">/docs</TextLink>. Public-tier rate limits are
           adequate for low/medium-volume operators today. For higher-throughput needs, reach out
           via the contact below — partner rate increases are reviewed case-by-case.
         </Callout>

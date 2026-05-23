@@ -189,7 +189,7 @@ export default function AboutPage(): ReactNode {
             View the code on GitHub
           </TextLink>
           {' · '}
-          <TextLink href="/docs">Read the docs</TextLink>
+          <TextLink href="https://docs.ophis.fi/">Read the docs</TextLink>
         </p>
       </Section>
 
@@ -240,12 +240,12 @@ export default function AboutPage(): ReactNode {
             <p>
               Yes. The natural-language → structured-order endpoint is publicly available at{' '}
               <InlineCode>POST /api/intent</InlineCode> with a 30 req/min/IP rate limit. No auth,
-              no key. See <TextLink href="/docs">the docs</TextLink> for the full reference.
+              no key. See <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
             </p>
           </Accordion>
         </AccordionGroup>
         <p>
-          <TextLink href="/docs#faq">All FAQs in the docs →</TextLink>
+          <TextLink href="https://docs.ophis.fi/#faq" external>All FAQs in the docs →</TextLink>
         </p>
       </Section>
     </PageShell>

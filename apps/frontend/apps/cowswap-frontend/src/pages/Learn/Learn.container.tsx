@@ -79,7 +79,7 @@ export function LearnPage(): ReactNode {
               competition, MEV-protected settlement. Includes a FAQ and API reference.
             </p>
             <p>
-              <TextLink href="/docs" external>
+              <TextLink href="https://docs.ophis.fi/" external>
                 /docs
               </TextLink>
             </p>
