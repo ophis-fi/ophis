@@ -1,86 +1,114 @@
 /**
  * Ophis-branded site footer. Used on every route.
+ *
+ * Grouped link grid (Codex audit 2026-05-23): the original 14-link
+ * single-row layout was too flat to scan. Now organized into four
+ * columns by user intent — Product / Resources / Company / Reach.
+ *
+ * Styled-components extracted to OphisFooter.styled.ts to keep this
+ * file under the AGENTS.md 250-LOC cap.
  */
 import { ReactNode } from 'react'
 
-import { Link } from 'react-router'
-import styled from 'styled-components/macro'
+import * as styledEl from './OphisFooter.styled'
 
 interface Props {
   /** Render with no top border for routes where the body already has its own divider. */
   borderless?: boolean
 }
 
-const Bar = styled.footer<{ $borderless: boolean }>`
-  width: 100%;
-  padding: 28px 36px 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
-  font-size: 13px;
-  color: rgba(245, 239, 230, 0.5);
-  background: rgba(2, 0, 13, 0.86);
-  border-top: 1px solid ${({ $borderless }) => ($borderless ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
-  @media (max-width: 600px) {
-    padding: 22px 20px 26px;
-    font-size: 12px;
-  }
-`
-
-const Left = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-`
-
-const Right = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-`
-
-const ExternalLink = styled.a`
-  color: rgba(245, 239, 230, 0.55);
-  text-decoration: none;
-  &:hover {
-    color: rgba(245, 239, 230, 0.85);
-  }
-`
-
-const InternalLink = styled(Link)`
-  color: rgba(245, 239, 230, 0.55);
-  text-decoration: none;
-  &:hover {
-    color: rgba(245, 239, 230, 0.85);
-  }
-`
-
 export function OphisFooter({ borderless = false }: Props): ReactNode {
   return (
-    <Bar $borderless={borderless}>
-      <Left>© Ophis 2026</Left>
-      <Right>
-        <InternalLink to="/">Home</InternalLink>
-        <InternalLink to="/1/swap/_/_">Trade</InternalLink>
-        <ExternalLink href="/docs">Docs</ExternalLink>
-        <InternalLink to="/faq">FAQ</InternalLink>
-        <InternalLink to="/about">About</InternalLink>
-        <InternalLink to="/learn">Learn</InternalLink>
-        <InternalLink to="/institutional">Institutional</InternalLink>
-        <InternalLink to="/tiers">Tiers</InternalLink>
-        <InternalLink to="/profile">Profile</InternalLink>
-        <InternalLink to="/missions">Missions</InternalLink>
-        <InternalLink to="/earn">Earn</InternalLink>
-        <InternalLink to="/brand">Brand</InternalLink>
-        <InternalLink to="/legal">Legal</InternalLink>
-        <ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
-          GitHub
-        </ExternalLink>
-      </Right>
-    </Bar>
+    <styledEl.Bar $borderless={borderless}>
+      <styledEl.Grid>
+        <styledEl.Brand>
+          <styledEl.BrandMark>
+            <styledEl.BrandIcon src="/ophis-icon.svg" alt="" aria-hidden="true" />
+            ophis<span>.</span>
+          </styledEl.BrandMark>
+          <styledEl.BrandTagline>
+            Intent-based DEX aggregator. Plain-English swaps across 13 EVM chains, Solana, and
+            Bitcoin destinations.
+          </styledEl.BrandTagline>
+        </styledEl.Brand>
+
+        <div>
+          <styledEl.ColTitle>Product</styledEl.ColTitle>
+          <styledEl.ColList>
+            <li>
+              <styledEl.InternalLink to="/1/swap/_/_">Trade</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/tiers">Tiers</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/missions">Missions</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/earn">Earn</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/profile">Profile</styledEl.InternalLink>
+            </li>
+          </styledEl.ColList>
+        </div>
+
+        <div>
+          <styledEl.ColTitle>Resources</styledEl.ColTitle>
+          <styledEl.ColList>
+            <li>
+              <styledEl.ExternalLink href="/docs">Docs</styledEl.ExternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/learn">Learn</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/about">About</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/faq">FAQ</styledEl.InternalLink>
+            </li>
+          </styledEl.ColList>
+        </div>
+
+        <div>
+          <styledEl.ColTitle>Company</styledEl.ColTitle>
+          <styledEl.ColList>
+            <li>
+              <styledEl.InternalLink to="/institutional">Institutional</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/brand">Brand</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
+            </li>
+          </styledEl.ColList>
+        </div>
+
+        <div>
+          <styledEl.ColTitle>Reach</styledEl.ColTitle>
+          <styledEl.ColList>
+            <li>
+              <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
+                GitHub
+              </styledEl.ExternalLink>
+            </li>
+            <li>
+              <styledEl.ExternalLink href="mailto:contact@3615crypto.com">Email</styledEl.ExternalLink>
+            </li>
+          </styledEl.ColList>
+        </div>
+      </styledEl.Grid>
+
+      <styledEl.BottomBar>
+        <span>© Ophis 2026</span>
+        <styledEl.BottomLinks>
+          <styledEl.SmallLink to="/legal">Terms</styledEl.SmallLink>
+          <styledEl.SmallLink to="/legal#privacy">Privacy</styledEl.SmallLink>
+          <styledEl.SmallLink to="/brand">Brand kit</styledEl.SmallLink>
+        </styledEl.BottomLinks>
+      </styledEl.BottomBar>
+    </styledEl.Bar>
   )
 }
