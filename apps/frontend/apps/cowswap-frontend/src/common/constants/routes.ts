@@ -44,6 +44,9 @@ export const Routes = {
   // Ophis: '/profile' = wallet-aware trader identity page (Phase C1).
   // Replaces the upstream `/profile → /account` redirect alias.
   PROFILE: '/profile',
+  // Ophis: '/missions' = draft framework page documenting the planned
+  // mission categories + lifecycle (Phase C2). No live missions exist.
+  MISSIONS: '/missions',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',
