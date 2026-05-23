@@ -23,6 +23,10 @@
  *     fulfillment / Off-app agreement.
  *   - Non-retroactive footer matches /missions.
  *   - "Could make available under live terms" — never "will flow".
+ *
+ * AGENTS.md compliance (proactive — same constraints as PR #255 Profile):
+ *   - Named export (no default).
+ *   - Page implementation in *.container.tsx, barrel in index.ts.
  */
 import { ReactNode } from 'react'
 
@@ -37,7 +41,7 @@ import {
   TextLink,
 } from 'ophis/ds'
 
-export default function EarnPage(): ReactNode {
+export function EarnPage(): ReactNode {
   return (
     <PageShell
       width="medium"
