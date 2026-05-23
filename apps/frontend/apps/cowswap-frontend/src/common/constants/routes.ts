@@ -50,6 +50,10 @@ export const Routes = {
   // Ophis: '/learn' = orientation / navigation hub linking the existing
   // Ophis pages + upstream CoW Protocol context. Not a publication archive.
   LEARN: '/learn',
+  // Ophis: '/earn' = draft rewards-catalogue page (Phase C3). Documents
+  // the categories of rewards Ophis may support after indexing + signed
+  // partner terms are live. NOT a yield aggregator or claim page.
+  EARN: '/earn',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',
