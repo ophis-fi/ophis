@@ -86,7 +86,8 @@ export function EarnPage(): ReactNode {
           <FeatureCard title="Recognition tags" footer={<Badge tone="planned">planned</Badge>}>
             <p>
               Labels, not monetary. Multi-chain participation, tier rung, or onboarding-readiness
-              status may be recorded in a future profile / status surface once the indexer ships.
+              status may be recorded on <TextLink href="/profile">/profile</TextLink> once the
+              indexer ships.
             </p>
             <p>
               Recognition is not a reward — it is metadata that may inform partner eligibility or
@@ -188,13 +189,15 @@ export function EarnPage(): ReactNode {
             },
             {
               label: 'Missions',
-              value:
-                '/missions — qualification mechanisms. Wired in a separate PR (Phase C2); link will activate once that lands.',
+              value: (
+                <TextLink href="/missions">/missions — qualification mechanisms</TextLink>
+              ),
             },
             {
               label: 'Profile',
-              value:
-                '/profile — wallet-aware status surface. Wired in a separate PR (Phase C1); link will activate once that lands.',
+              value: (
+                <TextLink href="/profile">/profile — wallet-aware status surface</TextLink>
+              ),
             },
           ]}
         />

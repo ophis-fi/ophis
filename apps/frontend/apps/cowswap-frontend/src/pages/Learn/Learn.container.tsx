@@ -132,18 +132,28 @@ export function LearnPage(): ReactNode {
             },
             {
               label: 'Missions',
-              value:
-                '/missions — how to qualify for tier credit + partner perks. Wired in a separate PR (Phase C2); link will activate once that lands.',
+              value: (
+                <TextLink href="/missions">
+                  /missions — how to qualify for tier credit + partner perks
+                </TextLink>
+              ),
             },
             {
               label: 'Earn',
-              value:
-                '/earn — rewards-catalogue documenting what may be distributable (no claims today). Wired in a separate PR (Phase C3); link will activate once that lands.',
+              value: (
+                <TextLink href="/earn">
+                  /earn — rewards-catalogue documenting what may be distributable (no claims
+                  today)
+                </TextLink>
+              ),
             },
             {
               label: 'Profile',
-              value:
-                '/profile — wallet-aware view of your current status. Wired in a separate PR (Phase C1); link will activate once that lands.',
+              value: (
+                <TextLink href="/profile">
+                  /profile — wallet-aware view of your current status
+                </TextLink>
+              ),
             },
           ]}
         />
@@ -158,8 +168,9 @@ export function LearnPage(): ReactNode {
           <FeatureCard title="Legal terms">
             <p>
               10 numbered sections covering Terms of Service, Privacy, third-party services,
-              operator entity disclosure (COMMIT MEDIA S.à r.l., Luxembourg, RCS B276192), GDPR
-              posture, dispute resolution. Plain-English summaries above each section.
+              operator-entity disclosure policy (Luxembourg-incorporated consultancy; full
+              details on request), GDPR posture, dispute resolution. Plain-English summaries
+              above each section.
             </p>
             <p>
               <TextLink href="/legal">/legal →</TextLink>
