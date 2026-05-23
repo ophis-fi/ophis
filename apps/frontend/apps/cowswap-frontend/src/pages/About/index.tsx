@@ -15,7 +15,7 @@
  *   - Cross-chain via NEAR Intents (Solana + Bitcoin destinations)
  *   - Audited infrastructure (audit artifacts, claim badges)
  *   - Open source (license, GitHub, audit trail)
- *   - Who operates Ophis (Commit Media S.à r.l. KeyValueList stub)
+ *   - Who operates Ophis (Luxembourg-incorporated consultancy; entity details on request)
  *   - FAQ (Accordion; deep-links to /docs#faq for full set)
  */
 import { ReactNode } from 'react'
@@ -195,16 +195,20 @@ export default function AboutPage(): ReactNode {
 
       <Section id="operator" title="Who operates Ophis">
         <p>
-          The interface at <InlineCode>ophis.fi</InlineCode> is operated by{' '}
-          <strong>COMMIT MEDIA S.à r.l.</strong>, a Luxembourg consultancy company. Full
-          legal-entity disclosure on the <TextLink href="/legal">Legal page</TextLink>.
+          The interface at <InlineCode>ophis.fi</InlineCode> is operated by a
+          Luxembourg-incorporated consultancy company. Full entity details (legal name, RCS
+          number, registered office, legal representative) are provided on request for formal
+          arrangements — see the operator section on the{' '}
+          <TextLink href="/legal#operator">Legal page</TextLink> for the disclosure policy and
+          the <TextLink href="/institutional#contact">Institutional page</TextLink> for the
+          contact channel.
         </p>
         <KeyValueList
           items={[
-            { label: 'Operator', value: 'COMMIT MEDIA S.à r.l.' },
             { label: 'Jurisdiction', value: 'Grand Duchy of Luxembourg' },
-            { label: 'RCS', value: 'B276192' },
-            { label: 'Contact', value: <TextLink href="mailto:clement@openletz.com">clement@openletz.com</TextLink> },
+            { label: 'Legal form', value: 'Société à responsabilité limitée' },
+            { label: 'Registry', value: 'Luxembourg Business Registers (RCS)' },
+            { label: 'Full entity details', value: 'On request for formal arrangements' },
           ]}
         />
       </Section>
