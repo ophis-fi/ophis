@@ -43,6 +43,16 @@ const InstitutionalPage = lazy(
   () => import(/* webpackChunkName: "ophis_institutional" */ 'pages/Institutional'),
 )
 const TiersPage = lazy(() => import(/* webpackChunkName: "ophis_tiers" */ 'pages/Tiers'))
+// Phase C1 (2026-05-23): wallet-aware Profile page. Replaces the upstream
+// `/profile → /account` Navigate alias with an Ophis identity surface.
+// AGENTS.md compliance: named export — `.then(m => ({ default: m.X }))`
+// wrapper adapts the barrel re-export to React.lazy()'s default-export
+// contract without re-introducing a default export in the page module.
+const ProfilePage = lazy(() =>
+  import(/* webpackChunkName: "ophis_profile" */ 'pages/Profile').then((m) => ({
+    default: m.ProfilePage,
+  })),
+)
 
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
@@ -89,6 +99,7 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
   { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalPage /> },
   { route: RoutesEnum.TIERS, element: <TiersPage /> },
+  { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser
   // refresh-on-/faq.
@@ -126,7 +137,7 @@ export function RoutesApp(): ReactNode {
         <Route index element={<AccountProxiesPage />} />
       </Route>
       <Route path="claim" element={<Navigate to={RoutesEnum.ACCOUNT} />} />
-      <Route path="profile" element={<Navigate to={RoutesEnum.ACCOUNT} />} />
+      {/* /profile is wired below via lazyRoutes (Phase C1, PR Profile page). */}
 
       {/*Swap*/}
       <Route path={RoutesEnum.SWAP} element={<SwapPage />} />
