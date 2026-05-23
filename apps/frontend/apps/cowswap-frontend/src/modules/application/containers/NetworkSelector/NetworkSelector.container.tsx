@@ -120,7 +120,7 @@ export function NetworkSelector(): ReactNode {
                   are NEAR-Intents bridge destinations only — no wallet
                   connect possible. Surfacing here for discoverability;
                   actual selection happens in the buy-side token picker. */}
-              <BridgeDestinationsFooter />
+              <BridgeDestinationsFooter onClose={isOpen ? toggleModal : undefined} />
             </styledEl.FlyoutMenuScrollable>
           </styledEl.FlyoutMenuContents>
         </styledEl.FlyoutMenu>
@@ -135,8 +135,13 @@ export function NetworkSelector(): ReactNode {
  * not call `eth_switchNetwork` (Solana/Bitcoin aren't EVM, no wallet
  * adapter). Clicking a row deep-links to the swap form so the user can
  * pick a buy-side token on that chain.
+ *
+ * `onClose` is invoked on click so the network-selector dropdown closes
+ * during the SPA navigation (Codex audit 2026-05-23 — previously the
+ * dropdown stayed open after route change because Link doesn't trigger
+ * the click-outside handler).
  */
-function BridgeDestinationsFooter(): ReactNode {
+function BridgeDestinationsFooter({ onClose }: { onClose?: () => void }): ReactNode {
   const isDarkMode = useIsDarkMode()
   const bridgeChainIds = [AdditionalTargetChainId.SOLANA, AdditionalTargetChainId.BITCOIN] as const
 
@@ -151,9 +156,10 @@ function BridgeDestinationsFooter(): ReactNode {
           const info = getChainInfo(id)
           const logoUrl = isDarkMode ? info.logo.dark : info.logo.light
           return (
-            <styledEl.BridgeDestinationRow key={id} href="/1/swap/_/_" rel="nofollow">
+            <styledEl.BridgeDestinationRow key={id} to="/1/swap/_/_" rel="nofollow" onClick={onClose}>
               <img src={logoUrl} alt="" />
               <span>{info.label}</span>
+              <span className="chevron" aria-hidden="true">→</span>
             </styledEl.BridgeDestinationRow>
           )
         })}

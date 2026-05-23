@@ -2,6 +2,7 @@ import { Media, UI } from '@cowprotocol/ui'
 
 import { darken, transparentize } from 'color2k'
 import { AlertTriangle, ChevronDown, X } from 'react-feather'
+import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { TAP_DESKTOP, TAP_MOBILE } from 'common/pure/NetworksList/NetworksList.constants'
@@ -52,26 +53,63 @@ export const BridgeDestinationsList = styled.div`
   gap: 4px;
 `
 
-export const BridgeDestinationRow = styled.a`
+// react-router Link — handles HashRouter (#/1/swap/_/_) navigation
+// natively. Previous `styled.a` with `href="/1/swap/_/_"` triggered a
+// non-hash full-page navigation that emergency.js then had to rewrite
+// to a hash form, causing a 2-hop redirect or (pre-P0-fix) a silent
+// land-on-home. Closes the "clicking Solana/NEAR does nothing"
+// regression Clement flagged 2026-05-23.
+export const BridgeDestinationRow = styled(Link)`
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
   text-decoration: none;
   color: var(${UI.COLOR_TEXT});
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 120ms ease-out;
+  border: 1px solid transparent;
+  transition:
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
 
-  &:hover {
-    background-color: var(${UI.COLOR_PAPER_DARKER});
+  &:hover,
+  &:focus-visible {
+    background-color: rgba(242, 166, 62, 0.08);
+    border-color: rgba(242, 166, 62, 0.3);
+    transform: translateX(2px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(242, 166, 62, 0.5);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: background-color 120ms ease-out;
+    &:hover, &:focus-visible {
+      transform: none;
+    }
   }
 
   & img {
     width: 24px;
     height: 24px;
     border-radius: 50%;
+  }
+
+  & .chevron {
+    margin-left: auto;
+    color: var(${UI.COLOR_TEXT_OPACITY_60});
+    font-size: 16px;
+    transition: transform 160ms ease-out;
+  }
+  &:hover .chevron,
+  &:focus-visible .chevron {
+    color: #f2a63e;
+    transform: translateX(2px);
   }
 `
 
