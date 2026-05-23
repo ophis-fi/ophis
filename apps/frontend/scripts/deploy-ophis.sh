@@ -116,12 +116,24 @@ fi
 rm -rf "$STAGE/functions"
 cp -r "$FUNCTIONS_SRC" "$STAGE/functions"
 
-# Write _routes.json so /api/* is explicitly handled by functions (the
-# default would also work but explicit is robust under future changes).
+# Write _routes.json. `include` controls which URL paths invoke
+# Functions — anything not listed is served directly by the static
+# asset handler, skipping Functions entirely (perf + cost win).
+#
+# We include:
+#   - `/api/*`  — the intent parser at functions/api/intent.ts
+#   - `/`       — required so the root-only middleware in
+#                 functions/_middleware.ts fires on docs.ophis.fi/
+#                 and business.ophis.fi/. Without this, the hostname
+#                 rewrite is skipped and visitors fall through to
+#                 the SPA's defensive React hook
+#                 (useSubdomainRedirect), which client-bounces to
+#                 /docs/ and brings back the "useless URL extension"
+#                 UX. Added 2026-05-23 alongside the middleware ship.
 cat > "$STAGE/_routes.json" <<EOF
 {
   "version": 1,
-  "include": ["/api/*"],
+  "include": ["/", "/api/*"],
   "exclude": []
 }
 EOF
