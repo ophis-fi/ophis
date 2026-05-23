@@ -47,6 +47,9 @@ export const Routes = {
   // Ophis: '/missions' = draft framework page documenting the planned
   // mission categories + lifecycle (Phase C2). No live missions exist.
   MISSIONS: '/missions',
+  // Ophis: '/learn' = orientation / navigation hub linking the existing
+  // Ophis pages + upstream CoW Protocol context. Not a publication archive.
+  LEARN: '/learn',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',
