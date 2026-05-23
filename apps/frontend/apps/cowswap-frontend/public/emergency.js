@@ -1,23 +1,17 @@
-// Ophis subdomain → static content redirect. Runs synchronously before
-// the SPA bundle downloads, so docs.ophis.fi / business.ophis.fi visitors
-// bounce straight to their static HTML without a flash of the swap
-// landing page. CSP-safe (external file under 'self'). Mirror in the
-// React useSubdomainRedirect() hook in AppContainer is kept as a defensive
-// fallback for client-side navigations that don't reload index.html.
+// Ophis subdomain awareness. docs.ophis.fi and business.ophis.fi serve
+// their static content via the Cloudflare Pages middleware at
+// functions/_middleware.ts — that performs a same-URL internal rewrite
+// (the address bar stays at `/`, but /docs/index.html or
+// /business/index.html is served). Those static pages do NOT include
+// emergency.js, so the HashRouter/path-rewrite block below never runs
+// for them in practice.
 //
-// `return` here only exits the IIFE — but window.location.replace()
-// triggers a navigation that pre-empts subsequent script execution
-// before any visible side-effect, so the rest of this file is a no-op
-// once a redirect fires.
+// We still mark the subdomain here so that IF emergency.js ever IS
+// inlined into one of those pages (e.g. accidental re-introduction of
+// `<script src="/emergency.js">` in /docs/index.html), the path-to-
+// hash rewriter doesn't mangle the URL — the subdomain pages are real
+// static files, not SPA routes.
 var __ophisSubdomain = ({ 'docs.ophis.fi': true, 'business.ophis.fi': true })[window.location.hostname]
-;(function () {
-  var routes = { 'docs.ophis.fi': '/docs/', 'business.ophis.fi': '/business/' }
-  var target = routes[window.location.hostname]
-  if (target && window.location.pathname === '/') {
-    window.location.replace(target)
-    return
-  }
-})()
 
 // Redirect from the outdated domain
 if (window.location.host === 'cowswap.exchange') {
