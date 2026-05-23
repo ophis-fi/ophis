@@ -15,8 +15,11 @@
  * This page is NOT a substitute for lawyer-reviewed terms. Sections
  * marked Badge tone='draft' are placeholders that need legal review
  * before any volume routes through ophis.fi in jurisdictions with
- * consumer-protection enforcement (EU, UK). The Commit Media legal
- * entity disclosure IS live and factually correct (from RCS B276192).
+ * consumer-protection enforcement (EU, UK). The operator-entity
+ * disclosure section (§ 8) is intentionally generic — specific
+ * identifiers (legal name, registered office, RCS / VAT numbers,
+ * trade authorisation, legal representative) are provided on request
+ * for formal contractual / regulatory / dispute-resolution matters.
  */
 import { ReactNode } from 'react'
 
@@ -284,9 +287,10 @@ export default function LegalPage(): ReactNode {
           about you. As stated above, the operator does not intentionally collect account-
           registration data or identity documents; however, pseudonymous wallet addresses + IP
           metadata at the CDN layer may qualify as personal data depending on linkability. For
-          requests, contact <TextLink href="mailto:clement@openletz.com">clement@openletz.com</TextLink>{' '}
-          with sufficient detail to identify the data in question. For Sentry telemetry deletion,
-          contact Sentry directly per its policy.
+          requests, reach the operator via the contact channel on{' '}
+          <TextLink href="/institutional#contact">/institutional</TextLink> with sufficient
+          detail to identify the data in question. For Sentry telemetry deletion, contact
+          Sentry directly per its policy.
         </p>
       </Section>
 
@@ -294,23 +298,32 @@ export default function LegalPage(): ReactNode {
 
       <Section id="operator" title="8. Operator (legal entity)">
         <Callout tone="info">
-          <strong>This section is live and factually accurate.</strong> Operator legal-entity
-          details are publicly registered at the Luxembourg Business Registers (RCS B276192).
+          The Service is operated by a Luxembourg-incorporated consultancy company registered
+          with the Luxembourg Business Registers (RCS). Full entity details — including the
+          registered legal name, registered office, RCS / VAT numbers, trade authorisation
+          reference, NACE classification, and legal representative — are provided on request
+          for formal contractual, regulatory, or dispute-resolution matters.
         </Callout>
         <KeyValueList
           items={[
-            { label: 'Operator', value: 'COMMIT MEDIA S.à r.l.' },
-            { label: 'Legal form', value: 'Société à responsabilité limitée (Luxembourg)' },
-            { label: 'Registered office', value: '147, Route de Thionville, L-2611 Luxembourg' },
-            { label: 'Share capital', value: '12 000 €' },
-            { label: 'RCS Luxembourg', value: <InlineCode>B276192</InlineCode> },
-            { label: 'VAT (intra-EU)', value: <InlineCode>LU34811132</InlineCode> },
-            { label: 'Trade authorisation', value: <InlineCode>10150328 / 0</InlineCode> },
-            { label: 'NACE code', value: '70.210 — Activités des sièges sociaux et de conseil de gestion' },
-            { label: 'Legal representative', value: 'Clément Fermaud, Gérant' },
+            { label: 'Jurisdiction', value: 'Grand Duchy of Luxembourg' },
+            { label: 'Legal form', value: 'Limited-liability company (Société à responsabilité limitée)' },
             {
-              label: 'Contact',
-              value: <TextLink href="mailto:clement@openletz.com">clement@openletz.com</TextLink>,
+              label: 'Registry',
+              value: 'Luxembourg Business Registers (RCS) — entity number on request',
+            },
+            {
+              label: 'Activity classification',
+              value: 'Management consultancy / head-office activities',
+            },
+            {
+              label: 'Entity details (full)',
+              value: (
+                <>
+                  Available on request for formal arrangements — reach out via the contact
+                  section on <TextLink href="/institutional#contact">/institutional</TextLink>.
+                </>
+              ),
             },
           ]}
         />
@@ -344,7 +357,7 @@ export default function LegalPage(): ReactNode {
         <AccordionGroup>
           <Accordion summary="Is Ophis a regulated financial-services entity?">
             <p>
-              The operator (COMMIT MEDIA S.à r.l.) is a Luxembourg consultancy company providing
+              The operator is a Luxembourg-incorporated consultancy company providing
               a non-custodial software interface to permissionless on-chain protocols. As of the
               draft date of this page, the operator is not registered as a regulated investment
               firm, payment institution, e-money institution, virtual-asset service provider, or

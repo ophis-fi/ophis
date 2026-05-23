@@ -300,7 +300,7 @@ export default function BrandPage(): ReactNode {
               <Td>
                 On light backgrounds: use the wordmark / inverse icon variants. On dark
                 backgrounds: use the default lockup / icon variants. When in doubt, contact{' '}
-                <TextLink href="mailto:clement@openletz.com">clement@openletz.com</TextLink>.
+                <TextLink href="mailto:contact@3615crypto.com">contact@3615crypto.com</TextLink>.
               </Td>
               <Td>Apply CSS filters (hue-rotate, invert) to recolor the logo.</Td>
             </Tr>
