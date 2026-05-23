@@ -41,6 +41,9 @@ export const Routes = {
   INSTITUTIONAL: '/institutional',
   // Ophis: '/tiers' = trader ladder / volume-based recognition tiers.
   TIERS: '/tiers',
+  // Ophis: '/profile' = wallet-aware trader identity page (Phase C1).
+  // Replaces the upstream `/profile → /account` redirect alias.
+  PROFILE: '/profile',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',
