@@ -47,11 +47,28 @@ const Wordmark = styled(Link)`
   text-decoration: none;
   user-select: none;
   display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
+  transition: color 140ms ease-out, transform 140ms ease-out;
   &:hover {
     color: #ffffff;
   }
+  &:hover img {
+    transform: rotate(8deg);
+  }
+`
+
+const Mark = styled.img`
+  width: 28px;
+  height: 28px;
+  display: block;
+  transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+`
+
+const WordmarkText = styled.span`
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
 `
 
 const WordmarkAccent = styled.span`
@@ -67,8 +84,11 @@ const Right = styled.div`
 export function OphisHeader({ children, transparent = false }: Props): ReactNode {
   return (
     <Bar $transparent={transparent}>
-      <Wordmark to="/">
-        ophis<WordmarkAccent>.</WordmarkAccent>
+      <Wordmark to="/" aria-label="Ophis — home">
+        <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" />
+        <WordmarkText>
+          ophis<WordmarkAccent>.</WordmarkAccent>
+        </WordmarkText>
       </Wordmark>
       <Right>{children}</Right>
     </Bar>
