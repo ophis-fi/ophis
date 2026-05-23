@@ -122,9 +122,9 @@ export function ProfilePage(): ReactNode {
               identity is read from the wallet, not stored by Ophis.
             </p>
             <p>
-              Ophis uses the upstream CoW Swap wallet stack, which supports any EIP-1193
-              browser-extension wallet, WalletConnect-compatible mobile wallet, Coinbase Wallet,
-              Safe app, and hardware wallets via supported connectors.
+              Ophis uses the upstream CoW Swap wallet stack and supports the wallets exposed by
+              the configured connectors. The full list is governed by upstream — there is no
+              custody and no Ophis-specific wallet allowlist.
             </p>
           </Callout>
         )}
