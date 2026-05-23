@@ -20,6 +20,10 @@
  *     operation that does not exist.
  *   - /profile, /missions, /earn referenced as PLAIN TEXT until their
  *     respective PRs (#255, #256, #257) land, then a follow-up re-links.
+ *
+ * AGENTS.md compliance (proactive — same constraints as PR #255 Profile):
+ *   - Named export (no default).
+ *   - Page implementation in *.container.tsx, barrel in index.ts.
  */
 import { ReactNode } from 'react'
 
@@ -33,7 +37,7 @@ import {
   TextLink,
 } from 'ophis/ds'
 
-export default function LearnPage(): ReactNode {
+export function LearnPage(): ReactNode {
   return (
     <PageShell
       width="medium"
