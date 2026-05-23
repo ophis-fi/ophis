@@ -12,7 +12,7 @@ import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 //   anywhere   → Ophis header (wordmark + wallet controls) + Ophis footer.
 // Cowswap's AppMenu, hiring banner, cow scene, snowfall, AMM banner are
 // dropped wholesale. See apps/frontend/.ophis-divergences.md.
-import { useLocation } from 'react-router'
+import { Link, useLocation } from 'react-router'
 
 import { URLWarning } from 'legacy/components/Header/URLWarning'
 
@@ -27,6 +27,7 @@ import { useGetMarketDimension } from 'common/hooks/useGetMarketDimension'
 
 import { OphisFooter } from 'ophis/components/OphisFooter'
 import { OphisHeader } from 'ophis/components/OphisHeader'
+import { ScrollToTop } from 'ophis/components/ScrollToTop'
 
 import { RecoveryBanner } from './RecoveryBanner'
 
@@ -54,6 +55,51 @@ const OphisBodyWrapper = styled.div`
     margin: 0 auto;
   }
 `
+
+// Open Trade CTA — shown in the header right-slot on non-trade routes
+// (about, tiers, legal, etc.) so users always have a one-click path
+// back to the swap form. On actual trade routes, the existing
+// NetworkAndAccountControls (chain dropdown + wallet button) takes the
+// slot because users on those pages need the network/wallet UI to act.
+const OpenTradeCTA = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: #f2a63e;
+  color: #02000d;
+  border-radius: 999px;
+  font-family: 'Plus Jakarta Sans', var(--cow-font-family-primary, system-ui);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transition: filter 140ms ease-out, transform 140ms ease-out;
+  &:hover,
+  &:focus-visible {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+  &:focus-visible {
+    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline-offset: 2px;
+  }
+`
+
+// Trade route detection — pathname patterns the upstream cowswap
+// modes use: /:chainId/(swap|limit|advanced|yield)/... — note `hooks`
+// is `/swap/hooks` (matched via `swap`), not a top-level segment.
+// `(?:/|$)` boundary prevents accidental matches like `/swapfoo` or
+// `/advanced-orders`.
+//
+// Used to decide whether the header right-slot renders the
+// network+wallet controls (trade routes) or the Open Trade CTA (info
+// routes like /about, /tiers, /legal, etc.).
+const TRADE_ROUTE_REGEX = /^\/(?:\d+\/)?(?:swap|limit|advanced|yield)(?:\/|$)/
+
+function useIsTradeRoute(): boolean {
+  const { pathname } = useLocation()
+  return TRADE_ROUTE_REGEX.test(pathname)
+}
 
 interface AppContainerProps {
   children: ReactNode | ReactNode[]
@@ -94,6 +140,7 @@ function useSubdomainRedirect(): void {
 
 export function AppContainer({ children }: AppContainerProps): ReactNode {
   useSubdomainRedirect()
+  const isTradeRoute = useIsTradeRoute()
   const { chainId, account } = useWalletInfo()
   const { walletName } = useWalletDetails()
   const cowAnalytics = useCowAnalytics()
@@ -132,6 +179,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
   if (isStandaloneLanding) {
     return (
       <PageBackgroundContext.Provider value={pageBackgroundValue}>
+        <ScrollToTop />
         <styledEl.AppWrapper>{children}</styledEl.AppWrapper>
       </PageBackgroundContext.Provider>
     )
@@ -154,6 +202,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
   // Every other route: Ophis chrome wrapping cowswap's body.
   return (
     <PageBackgroundContext.Provider value={pageBackgroundValue}>
+      <ScrollToTop />
       <styledEl.AppWrapper>
         <URLWarning />
         <RecoveryBanner />
@@ -162,7 +211,11 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
         <OrdersPanel />
 
         <OphisHeader>
-          <NetworkAndAccountControls />
+          {isTradeRoute ? (
+            <NetworkAndAccountControls />
+          ) : (
+            <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>
+          )}
         </OphisHeader>
 
         <OphisBodyWrapper>

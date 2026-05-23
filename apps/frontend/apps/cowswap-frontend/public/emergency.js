@@ -60,6 +60,18 @@ if (
   window.location.replace('/#' + window.location.pathname + window.location.search)
 }
 
+// /#faq deep-link: send users to the FAQ section of the static /docs
+// page. Users who land on the landing with #faq (from old links or
+// guessed URLs) get bounced to the right place. /faq itself is handled
+// by FaqRedirect in the SPA router.
+if (
+  !__ophisSubdomain &&
+  window.location.pathname === '/' &&
+  window.location.hash === '#faq'
+) {
+  window.location.replace('/docs#faq')
+}
+
 ;(async function () {
   const WIPE_KEY = 'emergencyWipe:v1'
   const RETURNING_USER_KEY = 'tokens:lastUpdateTimeAtom:v6'

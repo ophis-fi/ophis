@@ -4,12 +4,13 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { Navigate, Route, Routes } from 'react-router'
 
-import { Loading } from 'legacy/components/FlashingLoading'
 import { RedirectPathToSwapOnly, RedirectToPath } from 'legacy/pages/Swap/redirects'
 
 // Ophis: natural-language intent landing replaces upstream `/` redirect.
 // docs/development/specs/2026-05-08-ophis-intent-input-design.md
 import { IntentLanding } from 'ophis/components/intent'
+// Branded page-level loader replaces cowswap's FlashingLoading.
+import { OphisPageLoader } from 'ophis/components'
 
 import {
   AccountProxyWidgetPage,
@@ -102,7 +103,7 @@ function FaqRedirect(): null {
 type LazyRouteProps = { route: RoutesValues; element: ReactNode; key?: number }
 
 function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
-  return <Route key={key} path={route} element={<Suspense fallback={<Loading />}>{element}</Suspense>} />
+  return <Route key={key} path={route} element={<Suspense fallback={<OphisPageLoader />}>{element}</Suspense>} />
 }
 
 // Ophis: routes that previously externally-redirected to cow.fi/* (FAQ_*,
@@ -178,7 +179,7 @@ export function RoutesApp(): ReactNode {
       <Route
         path="*"
         element={
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<OphisPageLoader />}>
             <NotFound />
           </Suspense>
         }

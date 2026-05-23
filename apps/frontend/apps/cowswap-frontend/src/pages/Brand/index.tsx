@@ -344,17 +344,6 @@ export default function BrandPage(): ReactNode {
           <InlineCode>LICENSE</InlineCode> at the repository root). This is independent of the
           brand-use terms above.
         </p>
-
-        <h3>Design-system provenance</h3>
-        <p>
-          Color token scale + spacing/typography rhythm draw on{' '}
-          <TextLink href="https://nucleus-ui.com" external>
-            Nucleus UI Lite
-          </TextLink>{' '}
-          (Gumroad free tier). Specific brand values (sunset palette, cosmic background) are
-          Ophis-specific. Full provenance + license review status in{' '}
-          <InlineCode>docs/development/specs/2026-05-06-ophis-brand-foundations.md</InlineCode>.
-        </p>
       </Section>
     </PageShell>
   )
