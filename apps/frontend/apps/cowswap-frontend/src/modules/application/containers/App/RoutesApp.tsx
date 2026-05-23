@@ -66,6 +66,13 @@ const LearnPage = lazy(() =>
     default: m.LearnPage,
   })),
 )
+// Phase C3 (2026-05-23): draft rewards-catalogue page.
+// AGENTS.md-compliant lazy pattern — see ProfilePage above.
+const EarnPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_earn" */ 'pages/Earn').then((m) => ({
+    default: m.EarnPage,
+  })),
+)
 
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
@@ -115,6 +122,7 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
   { route: RoutesEnum.MISSIONS, element: <MissionsPage /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
+  { route: RoutesEnum.EARN, element: <EarnPage /> },
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser
   // refresh-on-/faq.
