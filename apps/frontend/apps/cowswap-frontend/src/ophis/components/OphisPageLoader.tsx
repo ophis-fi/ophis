@@ -2,19 +2,22 @@
  * OphisPageLoader — centered Ophis-branded loading shell for
  * route-level Suspense fallbacks.
  *
- * Replaces the legacy cowswap `Loading` (FlashingLoading) component
- * used in the SPA Suspense fallback. Wraps OphisGlobeLoader with a
- * full-viewport centered layout so lazy-route loads feel intentional
- * and on-brand instead of flashing a generic spinner.
+ * Wraps OphisLogoLoader (the animated brand mark — ouroboros +
+ * satellite arrows) with a full-viewport centered layout so lazy-route
+ * loads feel intentional and on-brand instead of flashing a generic
+ * spinner.
+ *
+ * Replaced OphisGlobeLoader (d3-geo earth) 2026-05-23 per Clement's
+ * "change the animated loader with an animated logo" feedback.
  */
 import { ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
 
-import { OphisGlobeLoader } from './OphisGlobeLoader'
+import { OphisLogoLoader } from './OphisLogoLoader'
 
 interface Props {
-  /** Optional override for the inner globe size in px. Defaults to 120. */
+  /** Optional override for the inner mark size in px. Defaults to 120. */
   size?: number
   /** Optional sub-label shown under the loader (e.g. "Loading docs"). */
   label?: string
@@ -43,7 +46,7 @@ const Label = styled.p`
 export function OphisPageLoader({ size = 120, label }: Props): ReactNode {
   return (
     <Outer>
-      <OphisGlobeLoader size={size} />
+      <OphisLogoLoader size={size} />
       {label && <Label>{label}</Label>}
     </Outer>
   )
