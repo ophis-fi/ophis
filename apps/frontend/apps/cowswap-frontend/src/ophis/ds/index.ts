@@ -38,3 +38,13 @@ export { InlineCode } from './InlineCode'
 
 export { KeyValueList } from './KeyValueList'
 export type { KeyValueRow } from './KeyValueList'
+
+// Phase A2 (PR #247, 2026-05-23) — composition primitives.
+export { Accordion, AccordionGroup } from './Accordion'
+
+export { MetricCard } from './MetricCard'
+export type { TrendDirection } from './MetricCard'
+
+export { FeatureGrid, FeatureCard } from './FeatureGrid'
+
+export { Table, Th, Td, Tr, Thead, Tbody } from './Table'
