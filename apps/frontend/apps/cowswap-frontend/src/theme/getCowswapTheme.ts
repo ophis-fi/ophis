@@ -38,11 +38,35 @@ const COSMIC = {
   indigoStrong: '#4F1DCA',
 }
 
+// Brand sunset (saffron) — single source of truth for the primary accent
+// that should match every Ophis-native surface: header wordmark accent,
+// hero `<em>` accent, ds/ primitive accents, Open Trade CTA, footer
+// brand dot, business page CTAs. Used as cowswap's `primary` so the
+// swap form, token selector, chain selector, wallet modal, and every
+// other cowswap component re-color to match the rest of the brand
+// instead of inheriting the legacy coral brand ramp.
+const SUNSET = {
+  primary: '#f2a63e', // canonical sunset — matches CSS `--sunset` var sitewide
+  // Deeper saffron for light mode. Codex audit 2026-05-23: #d18a1f had
+  // only 2.85:1 contrast on white paper, failing WCAG AA for text-only
+  // uses of `--cow-color-primary`. #a85f0f hits ~4.5:1 — accessible for
+  // both filled controls (white text on saffron) and text-color uses on
+  // light backgrounds.
+  primaryLight: '#a85f0f',
+}
+
 function gregOverrides(darkMode: boolean): Record<string, string> {
   if (darkMode) {
     return {
-      // Brand
-      primary: ophisColors.brand[50],
+      // Brand — saffron sunset, matches the rest of the Ophis brand
+      // (header wordmark, hero accent, ds/ primitives, business page).
+      // Previously this was `ophisColors.brand[50]` (#FF7A60 coral) which
+      // made the swap form look noticeably different from every other
+      // Ophis surface. Now drives `--cow-color-primary` + derived
+      // PRIMARY_LIGHTER / DARKER / PAPER / OPACITY_* variables so the
+      // swap form, token selector, chain selector, wallet modal, and
+      // every other cowswap component re-color to match.
+      primary: SUNSET.primary,
       buttonTextCustom: ophisColors.neutral[100],
       // State colors
       success: ophisColors.green[40],
@@ -89,8 +113,10 @@ function gregOverrides(darkMode: boolean): Record<string, string> {
     }
   }
   return {
-    // Brand
-    primary: ophisColors.brand[60],
+    // Brand — saffron sunset (slightly deeper variant for better
+    // light-mode contrast). Same rationale as the dark-mode override:
+    // matches every Ophis-native surface that uses `--sunset` (#f2a63e).
+    primary: SUNSET.primaryLight,
     buttonTextCustom: ophisColors.white,
     // State colors
     success: ophisColors.green[50],
