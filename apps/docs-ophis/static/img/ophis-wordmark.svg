@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160" fill="none">
+  <style>
+    .ophis-wordmark {
+      font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 144px;
+      font-feature-settings: 'ss01' on;
+      font-variation-settings: 'opsz' 144, 'SOFT' 50;
+      letter-spacing: -0.02em;
+      fill: #F2A63E;
+    }
+  </style>
+  <text class="ophis-wordmark" x="0" y="120">Ophis</text>
+</svg>

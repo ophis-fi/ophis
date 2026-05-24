@@ -1,0 +1,68 @@
+---
+id: faq
+title: FAQ
+description: Common questions about Ophis — how it differs from other aggregators, fees, networks, MEV protection, and custody.
+sidebar_label: FAQ
+sidebar_position: 2
+---
+
+# FAQ
+
+### How is Ophis different from 1inch or Matcha?
+
+Ophis uses batch auctions and a solver competition to settle every order
+at the best on-chain price, with [MEV protection](./architecture.md) by
+construction. The natural-language input lets you skip token-pickers
+entirely. And the [fee model](./fees.md) is price-improvement-only: 0% on
+ordinary trades, 25% of any positive slippage above the quote, capped at
+0.5% of volume.
+
+### Do I need to connect a wallet?
+
+Yes — you sign your swap order with your own wallet. Ophis is
+non-custodial; the signed order is broadcast to the solver network and
+your funds move only when a solver settles the batch.
+
+### Which networks are supported?
+
+11 EVM chains as source / destination: Ethereum, Arbitrum One, Avalanche,
+Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, and
+Polygon. Plus **Solana** and **Bitcoin** as cross-chain destinations via
+NEAR Intents. See [Getting started](./getting-started.md#supported-networks).
+
+### Is my trade protected from MEV?
+
+Yes. The batch auction settles every order in a batch at the same uniform
+clearing price. Front-running and sandwich attacks are eliminated by
+construction — there is no priority-gas auction to win because the
+protocol does not reorder transactions for value. See
+[Security & audits](./audits.md#mev-protection-by-construction).
+
+### What happens if no solver matches my intent?
+
+The order expires after its configured validity window (30 minutes by
+default) and your funds stay in your wallet. You can resubmit, change
+parameters, or cancel at any time.
+
+### How are partner fees collected?
+
+Via the CoW Protocol CIP-75 `priceImprovementBps` field in the order's
+`appData`. The fee is taken from the trade output at settlement and routed
+to the Ophis multisig weekly. A 25% service fee is retained by the
+underlying protocol on the partner share by default. Full detail on the
+[Fees & rebates](./fees.md) page.
+
+### Is Ophis open source?
+
+Yes — full source at
+[github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis). Ophis is
+an open-source DEX aggregator frontend with an added natural-language
+intent-parsing layer, built on CoW Protocol's settlement primitives.
+
+### Can I use Ophis's intent parser in my own app?
+
+Yes. The natural-language → structured-order endpoint is publicly
+available at `POST /api/intent` with a 30 req/min/IP rate limit, no auth,
+and no key. Build it into a Telegram bot, browser extension, agent
+framework, or your own UI. See the [Intent API](./intent-api.md) reference
+and the [AI agent integration](./ai-agents.md) guide.
