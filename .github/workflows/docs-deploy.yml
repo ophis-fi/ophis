@@ -66,10 +66,17 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
+          # Run wrangler from apps/docs-ophis, NOT the repo root. `wrangler
+          # pages deploy` auto-bundles a `functions/` dir found in its cwd;
+          # at the repo root that is the greg subdomain-rewrite middleware,
+          # which then ships into ophis-docs and rewrites docs.ophis.fi/ ->
+          # /docs/ (404 on the flat portal). apps/docs-ophis has no
+          # functions/, so the docs deploy as pure static assets.
+          workingDirectory: apps/docs-ophis
           # A static ASCII commit-message is passed explicitly so wrangler
           # does not auto-read the git HEAD message (which could contain
           # non-ASCII bytes the CF Pages API rejects with error 8000111 —
           # see cloudflare-deploy.yml). commit-hash links the deploy back
           # to the exact commit; github.sha is a controlled value, not
           # untrusted input.
-          command: pages deploy apps/docs-ophis/build --project-name=ophis-docs --branch=main --commit-dirty=true --commit-message="docs.ophis.fi deploy" --commit-hash=${{ github.sha }}
+          command: pages deploy build --project-name=ophis-docs --branch=main --commit-dirty=true --commit-message="docs.ophis.fi deploy" --commit-hash=${{ github.sha }}
