@@ -1,0 +1,125 @@
+/**
+ * Ophis brand theme for Docusaurus (Infima override).
+ *
+ * Mirrors the cosmic palette + Geist typography of the app
+ * (apps/frontend/.../src/greg/styles.css and the static /docs page):
+ *   deep    #02000d   ink      #F5EFE6   ink-mute #A8A2B8
+ *   coral   #FF7A60   saffron  #F2A63E   indigo   #7A6EE0
+ *   sunset  linear-gradient(135deg, #FF8A52, #FF6B5A, #E55A88, #A44E91)
+ *
+ * Dark is the default and the fully-branded surface; light mode is a
+ * readable fallback for users who toggle it.
+ */
+
+:root {
+  /* Light-mode primary: a darker coral so links clear WCAG AA on white. */
+  --ifm-color-primary: #e5481f;
+  --ifm-color-primary-dark: #cf401b;
+  --ifm-color-primary-darker: #c33c19;
+  --ifm-color-primary-darkest: #a13115;
+  --ifm-color-primary-light: #ec5d38;
+  --ifm-color-primary-lighter: #ee6a48;
+  --ifm-color-primary-lightest: #f28d74;
+
+  --ifm-font-family-base: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'Geist Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  --ifm-heading-font-weight: 600;
+  --ifm-heading-letter-spacing: -0.02em;
+
+  --ifm-code-font-size: 92%;
+  --docusaurus-highlighted-code-line-bg: rgba(2, 0, 13, 0.08);
+
+  --ophis-deep: #02000d;
+  --ophis-saffron: #f2a63e;
+  --ophis-coral: #ff7a60;
+  --ophis-sunset: linear-gradient(135deg, #ff8a52 0%, #ff6b5a 30%, #e55a88 65%, #a44e91 100%);
+}
+
+/* Dark — the canonical Ophis surface. */
+[data-theme='dark'] {
+  --ifm-color-primary: #ff7a60;
+  --ifm-color-primary-dark: #ff5e40;
+  --ifm-color-primary-darker: #ff4f30;
+  --ifm-color-primary-darkest: #e5350f;
+  --ifm-color-primary-light: #ff9680;
+  --ifm-color-primary-lighter: #ffa590;
+  --ifm-color-primary-lightest: #ffcfc2;
+
+  --ifm-background-color: #02000d;
+  --ifm-background-surface-color: #0a0420;
+  --ifm-color-content: #f5efe6;
+  --ifm-color-content-secondary: #a8a2b8;
+
+  --ifm-navbar-background-color: rgba(2, 0, 13, 0.86);
+  --ifm-navbar-link-hover-color: var(--ophis-saffron);
+  --ifm-footer-background-color: #050211;
+  --ifm-footer-link-hover-color: var(--ophis-saffron);
+
+  --ifm-link-color: #ff7a60;
+  --ifm-link-hover-color: var(--ophis-saffron);
+  --ifm-menu-color-active: var(--ophis-saffron);
+  --ifm-breadcrumb-color-active: var(--ophis-saffron);
+
+  --ifm-color-emphasis-100: #0f0726;
+  --ifm-color-emphasis-200: #1a0f36;
+  --ifm-color-emphasis-300: #2a1d4d;
+  --ifm-toc-border-color: rgba(245, 239, 230, 0.1);
+  --ifm-table-border-color: rgba(245, 239, 230, 0.12);
+  --ifm-hr-border-color: rgba(245, 239, 230, 0.1);
+
+  --ifm-code-background: rgba(245, 239, 230, 0.08);
+  --docusaurus-highlighted-code-line-bg: rgba(245, 239, 230, 0.08);
+}
+
+/* Subtle cosmic wash behind the page, matching the app's bg-stage. */
+[data-theme='dark'] body {
+  background-image:
+    radial-gradient(60% 45% at 8% 0%, rgba(255, 138, 82, 0.1) 0%, transparent 60%),
+    radial-gradient(45% 40% at 92% 6%, rgba(122, 110, 224, 0.12) 0%, transparent 60%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+[data-theme='dark'] .navbar {
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(245, 239, 230, 0.08);
+}
+
+[data-theme='dark'] .menu,
+[data-theme='dark'] .navbar-sidebar {
+  background-color: transparent;
+}
+
+[data-theme='dark'] .card {
+  background-color: #13072b;
+  border: 1px solid rgba(245, 239, 230, 0.08);
+}
+
+/* Headings use the display weight + tight tracking across both themes. */
+h1,
+h2,
+h3,
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  letter-spacing: var(--ifm-heading-letter-spacing);
+}
+
+.navbar__title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Pill-shaped buttons echo the app's CTA hierarchy. */
+.button {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+/* Sunset gradient accent reused for the intro page's lead line. */
+.ophis-gradient-text {
+  background: var(--ophis-sunset);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
