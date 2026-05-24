@@ -1,0 +1,75 @@
+name: Deploy docs to Cloudflare Pages
+
+# The docs portal (docs.ophis.fi) ships to its OWN Cloudflare Pages
+# project (`ophis-docs`), separate from the main app's `greg` project.
+# Keeping it in a separate workflow means a docs build failure never
+# reddens — or blocks — the app deploy, and the docs only rebuild when
+# docs change.
+#
+# ONE-TIME OPERATOR SETUP (the deploy step fails until this is done):
+#   1. Create the Pages project:
+#        pnpm dlx wrangler pages project create ophis-docs --production-branch main
+#   2. Move the docs.ophis.fi custom domain from the `greg` project to
+#      `ophis-docs` in the Cloudflare dashboard (do it off-hours).
+# See apps/docs-ophis/README.md for the full runbook + post-swap cleanup.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/docs-ophis/**'
+      - '.github/workflows/docs-deploy.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: build + deploy docs
+    runs-on: ubuntu-latest
+    concurrency:
+      group: cloudflare-pages-docs-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      # All actions pinned to commit SHAs (audit finding M3, 2026-05-09).
+      # Tag refs are mutable; SHAs are immutable. Kept in lockstep with
+      # .github/workflows/cloudflare-deploy.yml.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            apps/docs-ophis/pnpm-lock.yaml
+
+      - name: install docs deps
+        working-directory: apps/docs-ophis
+        run: pnpm install --frozen-lockfile
+
+      - name: build docs
+        working-directory: apps/docs-ophis
+        # A broken link/anchor fails the build (onBrokenLinks: 'throw'),
+        # so a green build here is also the content correctness gate.
+        run: pnpm run build
+
+      - name: deploy docs to Cloudflare Pages
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd  # v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          # A static ASCII commit-message is passed explicitly so wrangler
+          # does not auto-read the git HEAD message (which could contain
+          # non-ASCII bytes the CF Pages API rejects with error 8000111 —
+          # see cloudflare-deploy.yml). commit-hash links the deploy back
+          # to the exact commit; github.sha is a controlled value, not
+          # untrusted input.
+          command: pages deploy apps/docs-ophis/build --project-name=ophis-docs --branch=main --commit-dirty=true --commit-message="docs.ophis.fi deploy" --commit-hash=${{ github.sha }}

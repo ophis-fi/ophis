@@ -1,0 +1,6 @@
+# Establishes apps/docs-ophis as its own pnpm workspace root, so a
+# `pnpm install` run here does NOT walk up to the repo-root
+# pnpm-workspace.yaml (which deliberately excludes this app, the same
+# way apps/frontend is excluded). This app is a single package — there
+# are no member packages beyond the root.
+packages: []
