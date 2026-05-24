@@ -60,19 +60,31 @@ jobs:
         # so a green build here is also the content correctness gate.
         run: pnpm run build
 
+      - name: stage build in a clean dir (no functions/, no node_modules)
+        # Two traps to avoid:
+        #  (a) `wrangler pages deploy` auto-bundles a `functions/` dir found
+        #      in its cwd. From the repo root that's the greg subdomain
+        #      middleware, which then ships into ophis-docs and rewrites
+        #      docs.ophis.fi/ -> /docs/ (404 on the flat portal).
+        #  (b) We can't just cd into apps/docs-ophis: the wrangler-action
+        #      runs `npm i wrangler` in its cwd, and that dir's pnpm-managed
+        #      node_modules makes npm fail ("Cannot read properties of null").
+        # Staging the build in a fresh dir with neither functions/ nor
+        # node_modules sidesteps both.
+        run: |
+          rm -rf "${{ runner.temp }}/docs-dist"
+          mkdir -p "${{ runner.temp }}/docs-dist"
+          cp -R apps/docs-ophis/build "${{ runner.temp }}/docs-dist/build"
+
       - name: deploy docs to Cloudflare Pages
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd  # v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: npm
-          # Run wrangler from apps/docs-ophis, NOT the repo root. `wrangler
-          # pages deploy` auto-bundles a `functions/` dir found in its cwd;
-          # at the repo root that is the greg subdomain-rewrite middleware,
-          # which then ships into ophis-docs and rewrites docs.ophis.fi/ ->
-          # /docs/ (404 on the flat portal). apps/docs-ophis has no
-          # functions/, so the docs deploy as pure static assets.
-          workingDirectory: apps/docs-ophis
+          # Deploy from the clean staging dir (see the stage step): no
+          # functions/ to bundle, no node_modules to break `npm i wrangler`.
+          workingDirectory: ${{ runner.temp }}/docs-dist
           # A static ASCII commit-message is passed explicitly so wrangler
           # does not auto-read the git HEAD message (which could contain
           # non-ASCII bytes the CF Pages API rejects with error 8000111 —
