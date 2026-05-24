@@ -222,9 +222,9 @@ Rules:
   "uniswap" -> UNI. "aave" -> AAVE. "chainlink" -> LINK. "polygon"
   (the token) -> MATIC. "solana" (token) -> SOL. "cardano" -> ADA.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
-- Chain canonical values: lowercase slugs. Allowed:
-    ethereum, optimism, base, arbitrum, polygon, avalanche, gnosis, linea, bnb, megaeth, scroll, blast, mantle, zksync
-- Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "zk sync"/"zk-sync" -> zksync.
+- Chain canonical values: lowercase slugs. Allowed (mirrors SORTED_CHAIN_IDS in the FE — chains the NetworkSelector actually surfaces):
+    ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon
+- Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "arbitrum one"/"arb" -> arbitrum.
 - Amount: numeric string only ("100", "1.5"). "a hundred" -> "100". "a thousand" -> "1000". No units. No suffix multipliers like "k" / "m".
 - ETH disambiguation: chain only when preceded by "on"/"via"/"using"; otherwise it is a token.
 - Unknown tokens/chains: OMIT, do not invent. Do not output anything outside the allowed lists.
@@ -310,21 +310,25 @@ const TOKEN_VALUES = new Set([
   'STG', 'RAD',
 ])
 
+// Mirrors SORTED_CHAIN_IDS in apps/frontend/libs/common-const/src/chainInfo.ts —
+// the actual chains the NetworkSelector surfaces in production. If a chain
+// is added/removed there, mirror it here so the LLM doesn't extract a chain
+// the frontend cannot route to (silent UX failure for the user).
+// Previously included blast/mantle/scroll/zksync/megaeth — none of those are
+// in SORTED_CHAIN_IDS as of 2026-05-24. Removed per the chain-list-honesty
+// sweep triggered by Clement noticing "Blast" listed in /docs.
 const CHAIN_VALUES = new Set([
   'ethereum',
-  'optimism',
-  'base',
   'arbitrum',
-  'polygon',
   'avalanche',
-  'gnosis',
-  'linea',
+  'base',
   'bnb',
-  'megaeth',
-  'scroll',
-  'blast',
-  'mantle',
-  'zksync',
+  'gnosis',
+  'ink',
+  'linea',
+  'optimism',
+  'plasma',
+  'polygon',
 ])
 
 function isValidEntity(e: unknown, textLen: number): e is Entity {

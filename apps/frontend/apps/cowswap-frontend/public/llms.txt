@@ -40,7 +40,7 @@ Ophis is designed to be agent-friendly. The intent endpoint above accepts free-f
 3. Construct a deep-link: `https://ophis.fi/#/<chainId>/swap/<sellTokenSymbol>/<buyTokenSymbol>?inputCurrency=<amount>`.
 4. Open the link for the user to review and sign. Ophis never auto-signs — every order requires explicit wallet approval.
 
-Agents that submit orders programmatically should use the CoW Protocol orderbook API directly (Ophis runs self-hosted instances at optimism-mainnet.ophis.fi, megaeth-mainnet.ophis.fi, hyperevm.ophis.fi). See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the underlying schema — Ophis's orderbook is API-compatible.
+Agents that submit orders programmatically should use the CoW Protocol orderbook API directly. Ophis surfaces 11 EVM source/destination chains in the network selector — Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon — plus Sepolia for integration testing. Orderbook endpoints for the CoW-aligned chains live at `api.cow.fi`; Ophis-specific orderbook deployments (currently Optimism mainnet via `optimism-mainnet.ophis.fi`) follow the same schema. See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the API contract.
 
 Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-sign model is the trust boundary; bypassing it for payment automation would compromise self-custody.
 
