@@ -64,19 +64,21 @@ import requests
 
 OPHIS = "https://ophis.fi"
 
-# Current slug -> chainId mapping used by the app's deep-link builder.
-# The Intent API can return chains this map doesn't cover yet (e.g. newly
-# added networks); build_deeplink() raises rather than misrouting them.
+# The 11 EVM chains the Intent API can return, mapped to their chain IDs.
+# Keep in sync with the API's supported-network list; build_deeplink()
+# raises on any future slug not listed here rather than misrouting it.
 CHAIN_SLUG_TO_ID = {
     "ethereum": 1,
     "optimism": 10,
-    "base": 8453,
-    "arbitrum": 42161,
-    "polygon": 137,
-    "avalanche": 43114,
-    "gnosis": 100,
-    "linea": 59144,
     "bnb": 56,
+    "gnosis": 100,
+    "polygon": 137,
+    "base": 8453,
+    "ink": 57073,
+    "linea": 59144,
+    "arbitrum": 42161,
+    "avalanche": 43114,
+    "plasma": 9745,
 }
 
 
