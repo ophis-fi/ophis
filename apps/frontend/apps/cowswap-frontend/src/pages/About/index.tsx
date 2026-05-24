@@ -245,7 +245,7 @@ export default function AboutPage(): ReactNode {
           </Accordion>
         </AccordionGroup>
         <p>
-          <TextLink href="https://docs.ophis.fi/#faq" external>All FAQs in the docs →</TextLink>
+          <TextLink href="https://docs.ophis.fi/faq" external>All FAQs in the docs →</TextLink>
         </p>
       </Section>
     </PageShell>

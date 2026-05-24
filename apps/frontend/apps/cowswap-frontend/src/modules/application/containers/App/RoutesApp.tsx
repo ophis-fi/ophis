@@ -84,17 +84,18 @@ const AccountAffiliateTrader = lazy(
 const AccountNotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
 
 /**
- * /faq deep-links to the FAQ section on the docs subdomain. Docs lives
+ * /faq deep-links to the FAQ page on the docs subdomain. Docs lives
  * at docs.ophis.fi (not a React route on ophis.fi). This component
  * forces a full document navigation via `window.location.assign` on
  * mount. Renders nothing.
  *
- * Codex PR #243 audit P1 closure (2026-05-22). Updated 2026-05-23 to
- * point at docs.ophis.fi instead of the local /docs static page.
+ * Codex PR #243 audit P1 closure (2026-05-22). Updated 2026-05-25 to
+ * the multi-page portal's dedicated /faq page (the old single-page
+ * /#faq anchor no longer exists).
  */
 function FaqRedirect(): null {
   useEffect(() => {
-    window.location.assign('https://docs.ophis.fi/#faq')
+    window.location.assign('https://docs.ophis.fi/faq')
   }, [])
   return null
 }
