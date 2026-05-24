@@ -64,7 +64,7 @@ export default function TiersPage(): ReactNode {
             <ul>
               <li>Default fees: 0% on trades, 25% of price improvement above quote (live).</li>
               <li>Intent API: 30 req/min/IP (live).</li>
-              <li>Standard solver routing across 13 EVM chains (live).</li>
+              <li>Standard solver routing across 11 EVM chains (live).</li>
             </ul>
           </FeatureCard>
           <FeatureCard title="Navigator" footer={<Badge tone="draft">draft</Badge>}>
