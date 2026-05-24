@@ -65,7 +65,8 @@ import requests
 OPHIS = "https://ophis.fi"
 
 # Current slug -> chainId mapping used by the app's deep-link builder.
-# Extend as the supported-network list grows.
+# The Intent API can return chains this map doesn't cover yet (e.g. newly
+# added networks); build_deeplink() raises rather than misrouting them.
 CHAIN_SLUG_TO_ID = {
     "ethereum": 1,
     "optimism": 10,
@@ -92,9 +93,17 @@ def parse_intent(text: str) -> dict:
 def build_deeplink(parsed: dict) -> str:
     """Turn a ParsedIntent into a swap deep link for the user to sign."""
     by_type = {e["type"]: e["value"] for e in parsed["entities"]}
-    chain_id = CHAIN_SLUG_TO_ID.get(by_type.get("chain", "ethereum"), 1)
     sell = by_type.get("sellToken", "_")
     buy = by_type.get("buyToken", "_")
+    chain_slug = by_type.get("chain")
+    if chain_slug is None:
+        chain_id = 1  # no chain in the request -> default to Ethereum
+    elif chain_slug in CHAIN_SLUG_TO_ID:
+        chain_id = CHAIN_SLUG_TO_ID[chain_slug]
+    else:
+        # The parser may return a chain this map doesn't cover yet. Fail
+        # loud instead of silently routing the user to the wrong chain.
+        raise ValueError(f"unmapped chain slug {chain_slug!r}; update CHAIN_SLUG_TO_ID")
     # The user sets/confirms the amount and signs in the app.
     return f"{OPHIS}/#/{chain_id}/swap/{sell}/{buy}"
 
