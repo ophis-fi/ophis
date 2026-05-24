@@ -74,7 +74,7 @@ const LEARN_ITEM = {
       external: true,
     },
     {
-      href: 'https://ophis.fi/docs/',
+      href: 'https://docs.ophis.fi/',
       label: msg`Docs`,
       external: true,
     },
