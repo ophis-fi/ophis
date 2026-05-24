@@ -63,7 +63,7 @@ if (
   window.location.pathname === '/' &&
   window.location.hash === '#faq'
 ) {
-  window.location.replace('https://docs.ophis.fi/#faq')
+  window.location.replace('https://docs.ophis.fi/faq')
 }
 
 // /#/docs (and /#/docs/<subpath>) — Docs lives on the dedicated
