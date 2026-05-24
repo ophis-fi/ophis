@@ -110,6 +110,9 @@ const TOKEN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   JASMY: 'jpg', PIXEL: 'png', PORTAL: 'jpg', VOXEL: 'png',
 }
 
+// Only chains with a logo asset in public/logos/. ink + plasma are
+// intentionally absent — no logo file exists, so chainLogo() returns
+// undefined and the chip renders text-only (graceful degradation).
 const CHAIN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   ethereum: 'png',
   optimism: 'png',
@@ -120,11 +123,6 @@ const CHAIN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   gnosis: 'png',
   linea: 'jpg',
   bnb: 'png',
-  megaeth: 'png',
-  scroll: 'png',
-  blast: 'png',
-  mantle: 'png',
-  zksync: 'jpg',
 }
 
 export function tokenLogo(symbol: string): string | undefined {
