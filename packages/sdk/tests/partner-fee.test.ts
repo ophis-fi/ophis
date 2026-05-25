@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ophisDefaultPartnerFee,
+  buildOphisAppDataPartnerFee,
   OPHIS_PARTNER_FEE_RECIPIENT,
   OPHIS_PRICE_IMPROVEMENT_BPS,
   OPHIS_MAX_VOLUME_BPS,
@@ -52,5 +53,22 @@ describe('@ophis/sdk partner fee defaults', () => {
 
   it('returns undefined for an unsupported chainId', () => {
     expect(ophisDefaultPartnerFee(999_999)).toBeUndefined();
+  });
+
+  it('throws on an invalid chainId so a forgotten arg fails loud (not a silent undefined)', () => {
+    // @ts-expect-error testing the runtime guard with a missing arg
+    expect(() => ophisDefaultPartnerFee()).toThrow(/positive integer/);
+    expect(() => ophisDefaultPartnerFee(Number.NaN)).toThrow(/positive integer/);
+    expect(() => ophisDefaultPartnerFee(0)).toThrow(/positive integer/);
+    expect(() => ophisDefaultPartnerFee(-10)).toThrow(/positive integer/);
+  });
+
+  it('buildOphisAppDataPartnerFee returns the exact appData.metadata.partnerFee fragment', () => {
+    expect(buildOphisAppDataPartnerFee(10)).toEqual({
+      priceImprovementBps: 2500,
+      maxVolumeBps: 50,
+      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+    });
+    expect(buildOphisAppDataPartnerFee(1)).toBeUndefined();
   });
 });

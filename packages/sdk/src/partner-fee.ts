@@ -13,6 +13,8 @@
  *   - apps/frontend/.../appData/updater/shouldEmitOphisPartnerFee.ts (chain gate)
  */
 
+import { assertValidChainId } from './guards.js';
+
 /**
  * Recipient — Safe multisig deployed on Gnosis Chain on 2026-05-03 at version
  * 1.4.1. CREATE2-deterministic: the same address resolves on every chain
@@ -67,6 +69,7 @@ export interface OphisPartnerFee {
  * for chains where Ophis does not operate a stack (and so charges no fee).
  */
 export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undefined => {
+  assertValidChainId(chainId);
   if (!OPHIS_FEE_CHAIN_IDS.has(chainId)) return undefined;
   return {
     priceImprovementBps: OPHIS_PRICE_IMPROVEMENT_BPS,
@@ -74,3 +77,17 @@ export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undef
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   };
 };
+
+/**
+ * Builds the exact value for a CoW order's `appData.metadata.partnerFee`, or
+ * `undefined` on chains where Ophis charges no fee. Use this instead of
+ * hand-assembling the object — it guarantees the CIP-75 price-improvement shape
+ * `{ priceImprovementBps, maxVolumeBps, recipient }`, NOT the flat
+ * `{ bps, recipient }` widget shape (mixing them is a silent 100x fee error).
+ *
+ * @example
+ *   const partnerFee = buildOphisAppDataPartnerFee(10);
+ *   const appData = { metadata: { partnerFee, hooks: { pre: [], post: [] } } };
+ */
+export const buildOphisAppDataPartnerFee = (chainId: number): OphisPartnerFee | undefined =>
+  ophisDefaultPartnerFee(chainId);
