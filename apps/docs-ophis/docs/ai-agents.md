@@ -24,11 +24,13 @@ and routing; **the human always reviews and signs.**
 4. **Hand off.** Open the link for the user to review and sign. Ophis
    never auto-signs — every order requires explicit wallet approval.
 
-:::warning The signature is the trust boundary
+:::warning[The signature is the trust boundary]
+
 Ophis intentionally does **not** implement [x402](https://x402.org) or any
 HTTP-native payment automation. An order only becomes real when the user
 signs it in their wallet; bypassing that step would break self-custody.
 Agents must always hand off to the user for signing.
+
 :::
 
 Server-side callers (no browser `Origin` header) are allowed, subject to
@@ -167,14 +169,155 @@ the resulting deep link to the user.
 
 ## Submitting orders programmatically
 
-The Intent API only normalizes language — it does not place orders. To
-submit orders programmatically, use the
-[CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)
-directly:
+The Intent API only normalizes language — it does not place orders. To submit
+orders programmatically, build and sign a
+[CoW Protocol order](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)
+yourself. Four things must each be exactly right — every one fails **silently**
+(a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
 
-- CoW-aligned chains use `api.cow.fi`.
-- Ophis-specific orderbook deployments follow the same schema (e.g.
-  Optimism mainnet at `optimism-mainnet.ophis.fi`).
+The helpers below live in **`@ophis/sdk`**, internal to the Ophis monorepo. It
+is not yet published to npm, so vendor the package (or copy the values from the
+call-outs) until it is.
 
-Even then, the order must carry a valid signature from the user's wallet
-— the self-custody model is non-negotiable.
+### 1. Resolve the orderbook host from the chain ID
+
+:::danger[Optimism does not live on api.cow.fi]
+
+Optimism is the one chain that breaks the `api.cow.fi/<slug>` pattern — Ophis
+self-hosts its OP orderbook at `optimism-mainnet.ophis.fi`. Posting an OP order
+to `api.cow.fi/optimism-mainnet` (a host that does not serve Ophis) **silently
+bypasses the Ophis solver and zeroes the partner fee**.
+
+:::
+
+```typescript
+import { getOphisOrderbookUrl } from '@ophis/sdk';
+
+const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.ophis.fi
+// Throws on an invalid or unsupported chainId rather than guessing a host.
+```
+
+### 2. Build the partner-fee appData correctly
+
+The partner fee is a CIP-75 **price-improvement** fee written into the order's
+`appData` at `metadata.partnerFee`. Use the price-improvement shape
+`{ priceImprovementBps, maxVolumeBps, recipient }` — **not** the flat
+`{ bps, recipient }` widget shape (slotting `2500` into a `bps`/volume field is
+a silent 100× error). Hash the appData with cow-sdk's deterministic serializer,
+**never** `keccak256(JSON.stringify(doc))` — JSON key order isn't stable, so the
+hash won't match what solvers expect.
+
+```typescript
+import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+import { keccak256, toUtf8Bytes } from 'ethers';
+import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
+
+// buildOphisAppDataPartnerFee(chainId) REQUIRES a chainId and THROWS on a
+// missing/invalid one (a forgotten arg fails loud, not as a silent `undefined`).
+// It returns the metadata.partnerFee value, or `undefined` off the
+// Ophis-operated chains (10, 4326, 999) where no fee is charged.
+const partnerFee = buildOphisAppDataPartnerFee(10);
+// -> { priceImprovementBps: 2500, maxVolumeBps: 50, recipient: '0x858f0F5e…CeF8' }
+
+const metadataApi = new MetadataApi();
+const doc = await metadataApi.generateAppDataDoc({
+  appCode: 'Ophis',
+  metadata: {
+    partnerFee,
+    hooks: {}, // pin empty — appData hooks are arbitrary on-chain calls
+  },
+});
+const fullAppData = await stringifyDeterministic(doc);
+const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32 -> order.appData
+```
+
+### 3. Sign with the correct EIP-712 domain
+
+CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
+`signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
+chains do **not** use CoW's canonical settlement.
+
+:::danger[The Optimism settlement is not the canonical CoW one]
+
+On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, **not** the canonical
+`0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
+order with the SDK default yields a domain separator the deployed contract
+rejects — every order fails. Build the domain from the chain ID instead.
+
+:::
+
+```typescript
+import { getOphisOrderDomain } from '@ophis/sdk';
+
+// CoW's EIP-712 order struct is named `Order` (the Solidity library is
+// GPv2Order, but the EIP-712 type name — which feeds the type hash — is
+// `Order`; a wrong name produces a valid-looking but unusable signature).
+const ORDER_TYPES = {
+  Order: [
+    { name: 'sellToken', type: 'address' },
+    { name: 'buyToken', type: 'address' },
+    { name: 'receiver', type: 'address' },
+    { name: 'sellAmount', type: 'uint256' },
+    { name: 'buyAmount', type: 'uint256' },
+    { name: 'validTo', type: 'uint32' },
+    { name: 'appData', type: 'bytes32' },
+    { name: 'feeAmount', type: 'uint256' },
+    { name: 'kind', type: 'string' },
+    { name: 'partiallyFillable', type: 'bool' },
+    { name: 'sellTokenBalance', type: 'string' },
+    { name: 'buyTokenBalance', type: 'string' },
+  ],
+};
+
+// ethers v6 — signer.signTypedData(domain, types, value). The domain's
+// verifyingContract must be the Ophis OP settlement (getOphisOrderDomain).
+const signature = await wallet.signTypedData(getOphisOrderDomain(10), ORDER_TYPES, order);
+// NOT wallet.signMessage(order) — that produces an invalid order signature.
+```
+
+### 4. Pin the order `receiver`
+
+A CoW order's `receiver` is part of the signed payload and is fully
+caller-controlled. Pin it to the order owner: a non-owner receiver sends the
+bought tokens elsewhere on settlement, and the signature makes that
+irreversible. In the UI a wallet prompt gates this; an autonomous signer has no
+such gate, so guard it in code before signing.
+
+```typescript
+import { assertReceiverIsOwner } from '@ophis/sdk';
+
+assertReceiverIsOwner(owner, order.receiver); // throws if receiver !== owner
+```
+
+## Autonomous agent trading (advanced)
+
+Everything above keeps a **human in the signing loop**. For an agent that signs
+*without* human review, off-chain helpers are not enough — a compromised or
+prompt-injected agent will sign whatever it is told. Safety has to be enforced
+where the agent cannot reach it:
+
+1. **Funds in a smart account (Safe).** The agent never holds the fund-owning
+   key; it only *proposes* orders. The account's EIP-1271 validator (or a Safe
+   module) approves only order hashes that satisfy policy.
+2. **A deterministic policy gate** between the (untrusted) LLM and any signature,
+   owning every order field:
+   - token resolution from a chain-scoped allowlist only — never an LLM-emitted address;
+   - `receiver` pinned to the account;
+   - `appData` pinned to the Ophis canonical, hooks forced empty;
+   - limit price within X% of an independent, staleness-checked oracle (CoW
+     guarantees you won't fill *below* your limit — not that your limit is sane);
+   - per-trade notional + rolling daily caps; short `validTo`; avoid `presign`.
+3. **Containment:** a bounded vault-relayer allowance (the blast radius if policy
+   fails once), a guardian key that can revoke signing or pause, keys in an
+   HSM/TEE, and a tamper-evident audit trail.
+4. **Defense in depth:** enforce the policy in two places — the EIP-1271
+   validator/signer **and** server-side at orderbook ingestion.
+
+:::warning[The signing gate must be in code, not prose]
+
+Today "the human always signs" is a documented social contract, not an enforced
+boundary. Autonomous signing is fine to pursue — but only once that promise is
+replaced by the policy-enforced kit above. Otherwise an autonomous integrator is
+one unpinned `receiver` away from draining itself.
+
+:::
