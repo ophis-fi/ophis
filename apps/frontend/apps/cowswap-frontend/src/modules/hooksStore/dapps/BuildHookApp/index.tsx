@@ -2,12 +2,14 @@ import { useCallback, useState } from 'react'
 
 import { capitalizeFirstLetter } from '@cowprotocol/common-utils'
 import { ButtonPrimary } from '@cowprotocol/ui'
+import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { MessageDescriptor } from '@lingui/core'
 import { msg, t } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react/macro'
 
 import { CowHook, HookDappProps } from '../../types/hooks'
+import { getForbiddenHookTargetError } from '../../utils/validateHookTarget'
 import { ContentWrapper, Row, Wrapper, ErrorText } from '../styled'
 
 interface FormFieldParams {
@@ -42,12 +44,21 @@ const FIELDS: ReadonlyArray<FormFieldParams> = [
 export function BuildHookApp({ context }: HookDappProps) {
   const hookToEdit = context.hookToEdit
   const isPreHook = context.isPreHook
+  const { chainId } = useWalletInfo()
   const [hook, setHook] = useState<CowHook>(hookToEdit?.hook || DEFAULT_HOOK_STATE)
   const [errors, setErrors] = useState<Record<keyof CowHook, string>>(DEFAULT_ERRORS_STATE)
 
-  const validateInput = useCallback((name: keyof CowHook, value: string) => {
-    setErrors((prev) => ({ ...prev, [name]: value.trim() ? '' : `${capitalizeFirstLetter(name)} ` + t`is required` }))
-  }, [])
+  const validateInput = useCallback(
+    (name: keyof CowHook, value: string) => {
+      let error = value.trim() ? '' : `${capitalizeFirstLetter(name)} ` + t`is required`
+      // Ophis (2026-05-25): block protocol-contract hook targets (audit L3).
+      if (!error && name === 'target') {
+        error = getForbiddenHookTargetError(value, chainId) ?? ''
+      }
+      setErrors((prev) => ({ ...prev, [name]: error }))
+    },
+    [chainId],
+  )
 
   const handleInputChange = useCallback(
     ({ name, value }: { name: string; value: string }) => {
@@ -60,7 +71,7 @@ export function BuildHookApp({ context }: HookDappProps) {
   const handleSubmit = useCallback(() => {
     const newErrors: Record<keyof CowHook, string> = { ...DEFAULT_ERRORS_STATE }
 
-    const hasErrors = Object.entries(hook).some(([key, value]) => {
+    let hasErrors = Object.entries(hook).some(([key, value]) => {
       if (key === 'dappId') return false
 
       if (!value.trim()) {
@@ -69,6 +80,13 @@ export function BuildHookApp({ context }: HookDappProps) {
       }
       return false
     })
+
+    // Ophis (2026-05-25): reject protocol-contract hook targets (audit L3).
+    const targetError = getForbiddenHookTargetError(hook.target, chainId)
+    if (targetError) {
+      newErrors.target = targetError
+      hasErrors = true
+    }
 
     if (hasErrors) {
       setErrors(newErrors)
@@ -81,7 +99,7 @@ export function BuildHookApp({ context }: HookDappProps) {
           hook,
         })
       : context.addHook({ hook })
-  }, [hook, context, hookToEdit])
+  }, [hook, context, hookToEdit, chainId])
 
   return (
     <Wrapper>
