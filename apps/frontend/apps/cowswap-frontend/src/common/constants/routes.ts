@@ -50,6 +50,10 @@ export const Routes = {
   // Ophis: '/learn' = orientation / navigation hub linking the existing
   // Ophis pages + upstream CoW Protocol context. Not a publication archive.
   LEARN: '/learn',
+  // Ophis: '/protocol' = trading-mechanism deep-dive + the upstream-CoW vs
+  // Ophis stack-delta table. Bridges /about (overview) and docs.ophis.fi
+  // (reference). Not a second /about — mechanism only.
+  PROTOCOL: '/protocol',
   // Ophis: '/earn' = draft rewards-catalogue page (Phase C3). Documents
   // the categories of rewards Ophis may support after indexing + signed
   // partner terms are live. NOT a yield aggregator or claim page.

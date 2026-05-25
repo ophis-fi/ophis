@@ -47,4 +47,4 @@ export type { TrendDirection } from './MetricCard'
 
 export { FeatureGrid, FeatureCard } from './FeatureGrid'
 
-export { Table, Th, Td, Tr, Thead, Tbody } from './Table'
+export { Table, Th, Td, RowTh, Tr, Thead, Tbody } from './Table'
