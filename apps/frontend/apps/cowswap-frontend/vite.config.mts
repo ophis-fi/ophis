@@ -1,6 +1,6 @@
 /// <reference types="vitest" />
 import { lingui } from '@lingui/vite-plugin'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 import stdLibBrowser from 'node-stdlib-browser'
 import { bundleStats } from 'rollup-plugin-bundle-stats'
 import { visualizer } from 'rollup-plugin-visualizer'
@@ -45,8 +45,16 @@ export default defineConfig(({ mode }) => {
       },
       protocolImports: true,
     }),
+    // Ophis (2026-05-25): swapped from @vitejs/plugin-react-swc to the babel
+    // plugin. The SWC plugin only transforms files under the vite root, so the
+    // workspace libs/* served via /@fs/ (outside root) fell through to esbuild
+    // and broke the JSX dev runtime ("_jsxDEV is not a function" -> blank dev
+    // server on every page). The babel plugin transforms /@fs/ files too. Lingui
+    // macro handling moves from @lingui/swc-plugin to the babel macro plugin.
     react({
-      plugins: [['@lingui/swc-plugin', {}]],
+      babel: {
+        plugins: ['@lingui/babel-plugin-lingui-macro'],
+      },
     }),
     viteTsConfigPaths({
       root: '../../',
