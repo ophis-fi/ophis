@@ -1,7 +1,7 @@
 ---
 id: audits
 title: Security & audits
-description: Ophis is non-custodial, MEV-protected by construction, and built on unmodified CoW Protocol settlement contracts.
+description: Ophis is non-custodial and protects orders from MEV by construction, built on CoW Protocol's GPv2 settlement with Ophis-specific, separately-reviewed contracts.
 sidebar_label: Security & audits
 sidebar_position: 1
 ---
@@ -16,8 +16,8 @@ trust. This page describes the security posture.
 
 Ophis is **non-custodial**. The protocol cannot move user funds without an
 EIP-712 (or ERC-1271) signature from the user's wallet. Ophis never holds,
-escrows, or takes possession of your tokens — you sign each order, and a
-permissionless solver settles it on-chain.
+escrows, or takes possession of your tokens — you sign each order, and an
+authorized solver settles it on-chain.
 
 ## MEV protection by construction
 
@@ -30,16 +30,34 @@ not as a best-effort mitigation:
 - **No priority-gas auction** — execution order within a batch is not for
   sale.
 
+One residual remains at the operational layer: when a solver broadcasts the
+winning settlement transaction, its calldata is briefly visible in the public
+mempool, which can enable gas-level MEV extraction against the *settlement*
+itself. This neither reorders nor worsens your trade and carries no fund-loss
+risk; a private submission path is on the roadmap.
+
 ## Smart contracts
 
-Ophis uses **unmodified CoW Protocol settlement contracts** on Optimism
-mainnet. Because the settlement layer is the original CoW Protocol code,
-its existing audit history applies directly:
+Ophis is built on CoW Protocol's GPv2 settlement architecture. The core
+**settlement contract** (`GPv2Settlement`) is CoW Protocol's code, unchanged —
+so CoW's settlement audits apply to it directly:
 
 - CoW Protocol contract audits:
   [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs)
 - CoW Protocol documentation:
   [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol)
+
+On Optimism, Ophis runs its **own deployment** of this stack — the settlement
+at `0x310784c7…B859`, plus an Ophis-operated orderbook and solver. Two pieces
+are **Ophis-specific** (not stock CoW) and were reviewed in Ophis's own security
+audits:
+
+- a hardened `GPv2AllowListAuthentication` — a two-step manager transfer guards
+  control of the solver allowlist, and
+- partner-fee settlement-buffer handling.
+
+Upstream CoW audits cover only the unchanged upstream code; the Ophis-specific
+contracts, deployment, and operations are covered by Ophis's own audit notes.
 
 ## Ophis-specific code
 

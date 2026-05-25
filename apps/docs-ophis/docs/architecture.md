@@ -59,8 +59,8 @@ the one that maximises total surplus wins the right to settle.
 ### 4. Uniform-price settlement
 
 The winning solver settles the batch on-chain. Every trade in a batch
-clears at the **same uniform price**, which is what eliminates
-MEV by construction:
+clears at the **same uniform price**, which is what eliminates these
+order-level MEV vectors by construction:
 
 - **No front-running** — there's no pending-order mempool race to win.
 - **No sandwiching** — the protocol does not reorder trades for value.
@@ -74,7 +74,7 @@ MEV by construction:
 | **Frontend** | A fork of the CoW Swap frontend with the natural-language intent layer added. |
 | **Intent-parser proxy** | A Cloudflare Pages Function in front of LibertAI Qwen 3.6 27B. See [Intent API](./intent-api.md). |
 | **Self-hosted orderbook** | Ophis runs CoW Protocol orderbook instances per chain (e.g. `optimism-mainnet.ophis.fi`). CoW-aligned chains use `api.cow.fi`. |
-| **Settlement contracts** | Unmodified CoW Protocol settlement contracts. See [Security & audits](./audits.md). |
+| **Settlement contracts** | CoW Protocol's `GPv2Settlement` (unchanged code), deployed and operated by Ophis on Optimism, alongside Ophis-specific allowlist + fee-handling contracts. See [Security & audits](./audits.md). |
 | **Rebate indexer** | Indexes positive-slippage rebates that accrue to traders. See [Fees & rebates](./fees.md). |
 
 ## Cross-chain via NEAR Intents

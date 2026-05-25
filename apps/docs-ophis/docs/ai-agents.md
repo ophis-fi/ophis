@@ -214,8 +214,8 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 
 // buildOphisAppDataPartnerFee(chainId) REQUIRES a chainId and THROWS on a
 // missing/invalid one (a forgotten arg fails loud, not as a silent `undefined`).
-// It returns the metadata.partnerFee value, or `undefined` off the
-// Ophis-operated chains (10, 4326, 999) where no fee is charged.
+// It returns the metadata.partnerFee value on the Ophis-operated chains
+// (10, 4326, 999), or `undefined` on other chains (where no fee is charged).
 const partnerFee = buildOphisAppDataPartnerFee(10);
 // -> { priceImprovementBps: 2500, maxVolumeBps: 50, recipient: '0x858f0F5e…CeF8' }
 

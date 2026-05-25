@@ -32,8 +32,8 @@ swap 100 USDC for ETH on Base
   trade clears at one uniform price. Sandwich attacks and front-running
   are structurally absent — not best-effort.
 - **Self-custodial.** Ophis never holds funds. Every order is signed by
-  your wallet (EIP-712 or ERC-1271) and executed by a permissionless
-  solver.
+  your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
+  from the allowlisted solver set.
 - **Free for ordinary trades.** 0% protocol fee on standard swaps. Ophis
   earns only when a solver beats your quoted price (positive-slippage
   capture); if execution doesn't beat the quote, you pay nothing extra.
