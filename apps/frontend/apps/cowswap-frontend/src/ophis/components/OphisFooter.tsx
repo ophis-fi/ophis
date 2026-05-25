@@ -27,7 +27,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
             ophis<span>.</span>
           </styledEl.BrandMark>
           <styledEl.BrandTagline>
-            Intent-based DEX aggregator. Plain-English swaps across 13 EVM chains, Solana, and
+            Intent-based DEX aggregator. Plain-English swaps across 11 EVM chains, Solana, and
             Bitcoin destinations.
           </styledEl.BrandTagline>
         </styledEl.Brand>
