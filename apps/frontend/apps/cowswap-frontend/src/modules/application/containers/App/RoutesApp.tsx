@@ -2,15 +2,15 @@ import { lazy, ReactNode, Suspense, useEffect } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
+import { OphisPageLoader } from 'ophis/components'
+import { IntentLanding } from 'ophis/components/intent'
 import { Navigate, Route, Routes } from 'react-router'
 
 import { RedirectPathToSwapOnly, RedirectToPath } from 'legacy/pages/Swap/redirects'
 
 // Ophis: natural-language intent landing replaces upstream `/` redirect.
 // docs/development/specs/2026-05-08-ophis-intent-input-design.md
-import { IntentLanding } from 'ophis/components/intent'
 // Branded page-level loader replaces cowswap's FlashingLoading.
-import { OphisPageLoader } from 'ophis/components'
 
 import {
   AccountProxyWidgetPage,
@@ -40,9 +40,7 @@ const AboutPage = lazy(() => import(/* webpackChunkName: "ophis_about" */ 'pages
 const BrandPage = lazy(() => import(/* webpackChunkName: "ophis_brand" */ 'pages/Brand'))
 
 // PR #240 (2026-05-22 backlog batch): institutional pitch + trader ladder.
-const InstitutionalPage = lazy(
-  () => import(/* webpackChunkName: "ophis_institutional" */ 'pages/Institutional'),
-)
+const InstitutionalPage = lazy(() => import(/* webpackChunkName: "ophis_institutional" */ 'pages/Institutional'))
 const TiersPage = lazy(() => import(/* webpackChunkName: "ophis_tiers" */ 'pages/Tiers'))
 // Phase C1 (2026-05-23): wallet-aware Profile page. Replaces the upstream
 // `/profile → /account` Navigate alias with an Ophis identity surface.
@@ -65,6 +63,13 @@ const MissionsPage = lazy(() =>
 const LearnPage = lazy(() =>
   import(/* webpackChunkName: "ophis_learn" */ 'pages/Learn').then((m) => ({
     default: m.LearnPage,
+  })),
+)
+// Phase A3 (2026-05-25): trading-mechanism + CoW-vs-Ophis stack-delta page.
+// AGENTS.md-compliant lazy pattern — see ProfilePage above.
+const ProtocolPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_protocol" */ 'pages/Protocol').then((m) => ({
+    default: m.ProtocolPage,
   })),
 )
 // Phase C3 (2026-05-23): draft rewards-catalogue page.
@@ -136,6 +141,7 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
   { route: RoutesEnum.MISSIONS, element: <MissionsPage /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
+  { route: RoutesEnum.PROTOCOL, element: <ProtocolPage /> },
   { route: RoutesEnum.EARN, element: <EarnPage /> },
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser

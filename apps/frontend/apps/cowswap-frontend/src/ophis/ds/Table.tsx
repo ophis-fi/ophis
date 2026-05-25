@@ -79,6 +79,21 @@ export const Td = styled.td`
   line-height: 1.5;
 `
 
+/**
+ * Row-header cell — a real `<th scope="row">` (screen readers announce it as
+ * the row's label) styled like a Td with slight emphasis. Use for the first
+ * column of comparison / spec tables; avoids the bold-centered `<th>` UA
+ * default and the column-header styling of `Th`.
+ */
+export const RowTh = styled.th`
+  text-align: left;
+  font-weight: 500;
+  padding: 12px 16px;
+  color: rgba(245, 239, 230, 0.92);
+  vertical-align: top;
+  line-height: 1.5;
+`
+
 export const Tr = styled.tr`
   border-bottom: 1px solid rgba(245, 239, 230, 0.05);
   transition: background-color 120ms ease-out;
@@ -87,7 +102,7 @@ export const Tr = styled.tr`
     border-bottom: none;
   }
 
-  &:hover ${Td} {
+  &:hover ${Td}, &:hover ${RowTh} {
     background: rgba(245, 239, 230, 0.03);
   }
 `
