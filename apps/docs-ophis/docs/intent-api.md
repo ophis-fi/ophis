@@ -12,10 +12,11 @@ The Intent API parses a plain-English swap request into a structured
 `ParsedIntent` that the Ophis frontend — or your own app or agent — can
 use to pre-fill a swap form or construct a deep link.
 
-It is the **only API surface Ophis exposes for integration**. It does not
-place, sign, or execute trades; order signing always happens in the
-user's wallet. See [AI agent integration](./ai-agents.md) for end-to-end
-patterns.
+It is Ophis's **only bespoke integration API**. To place orders
+programmatically you use the standard CoW Protocol orderbook API per chain
+(see [AI agent integration](./ai-agents.md)). The Intent API itself does not
+place, sign, or execute trades; order signing always happens in the user's
+wallet.
 
 - **Base URL:** `https://ophis.fi`
 - **Endpoint:** `POST /api/intent`

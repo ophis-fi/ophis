@@ -49,8 +49,9 @@ parameters, or cancel at any time.
 Via the CoW Protocol CIP-75 `priceImprovementBps` field in the order's
 `appData`. The fee is taken from the trade output at settlement and routed
 to the Ophis multisig weekly. A 25% service fee is retained by the
-underlying protocol on the partner share by default. Full detail on the
-[Fees & rebates](./fees.md) page.
+underlying protocol on the partner share by default. It applies on
+Ophis-operated chains (currently Optimism); on CoW-hosted chains Ophis adds
+no partner fee. Full detail on the [Fees & rebates](./fees.md) page.
 
 ### Is Ophis open source?
 
