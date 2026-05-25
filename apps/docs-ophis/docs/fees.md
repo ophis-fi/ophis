@@ -49,7 +49,9 @@ The fee is implemented via the CoW Protocol **CIP-75** partner-fee model
 from the trade output at settlement and routed to the Ophis multisig
 weekly. Of the partner share, a 25% service fee is retained by the
 underlying protocol, so Ophis nets roughly **18.75% of price
-improvement** after that.
+improvement** after that. The fee is collected on Ophis-operated chains
+(currently live on Optimism); on CoW-hosted chains Ophis uses CoW's
+infrastructure and adds no partner fee.
 
 For the full protocol-level details, see the governance proposal
 [CIP-75 — Partner incentive alignment](https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253).
