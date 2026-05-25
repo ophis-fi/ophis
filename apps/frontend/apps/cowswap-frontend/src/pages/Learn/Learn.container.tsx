@@ -27,16 +27,9 @@
  */
 import { ReactNode } from 'react'
 
-import {
-  Callout,
-  FeatureCard,
-  FeatureGrid,
-  KeyValueList,
-  PageShell,
-  Section,
-  TextLink,
-} from 'ophis/ds'
+import { Callout, FeatureCard, FeatureGrid, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
 
+// eslint-disable-next-line max-lines-per-function -- static content page; single ds/ composition with no logic to extract
 export function LearnPage(): ReactNode {
   return (
     <PageShell
@@ -47,36 +40,38 @@ export function LearnPage(): ReactNode {
     >
       <Callout tone="info" title="What this page is — and isn't">
         <p>
-          <strong>This page is</strong> an orientation map. It points at existing Ophis pages,
-          tells you what each covers, and links to upstream CoW Protocol material where Ophis
-          inherits behavior from the protocol we forked.
+          <strong>This page is</strong> an orientation map. It points at existing Ophis pages, tells you what each
+          covers, and links to upstream CoW Protocol material where Ophis inherits behavior from the protocol we forked.
         </p>
         <p>
-          <strong>This page is not</strong> a knowledge base, blog, podcast index, or press
-          archive. When we publish those, they will appear in clearly-labeled sections — not as
-          placeholders.
+          <strong>This page is not</strong> a knowledge base, blog, podcast index, or press archive. When we publish
+          those, they will appear in clearly-labeled sections — not as placeholders.
         </p>
       </Callout>
 
-      <Section
-        id="start-here"
-        title="Start here"
-        intro="If you're new to Ophis, read these in order."
-      >
+      <Section id="start-here" title="Start here" intro="If you're new to Ophis, read these in order.">
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="About Ophis">
             <p>
-              How the protocol works, audit references, what&apos;s live vs planned. All product
-              claims status-tagged.
+              How the protocol works, audit references, what&apos;s live vs planned. All product claims status-tagged.
             </p>
             <p>
               <TextLink href="/about">/about →</TextLink>
             </p>
           </FeatureCard>
+          <FeatureCard title="Protocol mechanism">
+            <p>
+              The trading mechanism in depth — intent lifecycle, the batch-auction settlement Ophis inherits from CoW,
+              and a layer-by-layer table of exactly what Ophis adds on top.
+            </p>
+            <p>
+              <TextLink href="/protocol">/protocol →</TextLink>
+            </p>
+          </FeatureCard>
           <FeatureCard title="Docs">
             <p>
-              How a swap intent flows through Ophis — describing a trade in plain English, solver
-              competition, MEV-protected settlement. Includes a FAQ and API reference.
+              How a swap intent flows through Ophis — describing a trade in plain English, solver competition,
+              MEV-protected settlement. Includes a FAQ and API reference.
             </p>
             <p>
               <TextLink href="https://docs.ophis.fi/" external>
@@ -95,9 +90,8 @@ export function LearnPage(): ReactNode {
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Trade form">
             <p>
-              The actual swap interface. Plain-English intent → pre-filled order → sign and
-              settle. Supports EVM source chains and Solana / Bitcoin destinations via NEAR
-              Intents.
+              The actual swap interface. Plain-English intent → pre-filled order → sign and settle. Supports EVM source
+              chains and Solana / Bitcoin destinations via NEAR Intents.
             </p>
             <p>
               <TextLink href="/">Open trade form →</TextLink>
@@ -105,8 +99,8 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Tiers framework (draft)">
             <p>
-              Volume-based recognition ladder (Stargazer → Cosmonaut). Documents the draft fee
-              discount structure tied to cumulative routing volume. Infra targeted Q3 2026.
+              Volume-based recognition ladder (Stargazer → Cosmonaut). Documents the draft fee discount structure tied
+              to cumulative routing volume. Infra targeted Q3 2026.
             </p>
             <p>
               <TextLink href="/tiers">/tiers →</TextLink>
@@ -124,36 +118,23 @@ export function LearnPage(): ReactNode {
           items={[
             {
               label: 'Tiers',
-              value: (
-                <TextLink href="/tiers">
-                  /tiers — eligibility ladder + draft fee discount framework
-                </TextLink>
-              ),
+              value: <TextLink href="/tiers">/tiers — eligibility ladder + draft fee discount framework</TextLink>,
             },
             {
               label: 'Missions',
-              value: (
-                <TextLink href="/missions">
-                  /missions — how to qualify for tier credit + partner perks
-                </TextLink>
-              ),
+              value: <TextLink href="/missions">/missions — how to qualify for tier credit + partner perks</TextLink>,
             },
             {
               label: 'Earn',
               value: (
                 <TextLink href="/earn">
-                  /earn — rewards-catalogue documenting what may be distributable (no claims
-                  today)
+                  /earn — rewards-catalogue documenting what may be distributable (no claims today)
                 </TextLink>
               ),
             },
             {
               label: 'Profile',
-              value: (
-                <TextLink href="/profile">
-                  /profile — wallet-aware view of your current status
-                </TextLink>
-              ),
+              value: <TextLink href="/profile">/profile — wallet-aware view of your current status</TextLink>,
             },
           ]}
         />
@@ -167,10 +148,9 @@ export function LearnPage(): ReactNode {
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Legal terms">
             <p>
-              10 numbered sections covering Terms of Service, Privacy, third-party services,
-              operator-entity disclosure policy (Luxembourg-incorporated consultancy; full
-              details on request), GDPR posture, dispute resolution. Plain-English summaries
-              above each section.
+              10 numbered sections covering Terms of Service, Privacy, third-party services, operator-entity disclosure
+              policy (Luxembourg-incorporated consultancy; full details on request), GDPR posture, dispute resolution.
+              Plain-English summaries above each section.
             </p>
             <p>
               <TextLink href="/legal">/legal →</TextLink>
@@ -178,8 +158,8 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Institutional">
             <p>
-              For OTC desks, funds, treasuries. Non-custodial routing, MEV-protected execution,
-              transparent fees, API access. Material-volume contact channel.
+              For OTC desks, funds, treasuries. Non-custodial routing, MEV-protected execution, transparent fees, API
+              access. Material-volume contact channel.
             </p>
             <p>
               <TextLink href="/institutional">/institutional →</TextLink>
@@ -187,8 +167,8 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Brand kit">
             <p>
-              Logo lockup, color palette, typography, usage rules. Separate brand-use terms from
-              code license (GPL-3.0 for code; brand requires explicit permission).
+              Logo lockup, color palette, typography, usage rules. Separate brand-use terms from code license (GPL-3.0
+              for code; brand requires explicit permission).
             </p>
             <p>
               <TextLink href="/brand">/brand →</TextLink>
@@ -204,9 +184,8 @@ export function LearnPage(): ReactNode {
       >
         <Callout tone="info" title="Read with attribution in mind">
           <p>
-            CoW DAO and its publications speak for CoW Protocol, not for Ophis. We link here
-            because the underlying mechanism is shared — not because CoW endorses Ophis or
-            because CoW docs define Ophis policy.
+            CoW DAO and its publications speak for CoW Protocol, not for Ophis. We link here because the underlying
+            mechanism is shared — not because CoW endorses Ophis or because CoW docs define Ophis policy.
           </p>
         </Callout>
         <KeyValueList
@@ -249,9 +228,8 @@ export function LearnPage(): ReactNode {
           <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Learn%20feedback">
             contact@3615crypto.com
           </TextLink>{' '}
-          (Subject: Ophis Learn feedback) — it helps us decide what to document next. If and
-          when original Ophis articles or product announcements ship, they should appear in a
-          new section above.
+          (Subject: Ophis Learn feedback) — it helps us decide what to document next. If and when original Ophis
+          articles or product announcements ship, they should appear in a new section above.
         </p>
       </Section>
     </PageShell>
