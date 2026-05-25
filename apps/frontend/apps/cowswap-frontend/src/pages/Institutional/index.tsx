@@ -66,7 +66,7 @@ export default function InstitutionalPage(): ReactNode {
             <TextLink href="/about#audits">/about</TextLink>.
           </FeatureCard>
           <FeatureCard
-            title="13 EVM chains + Solana + Bitcoin"
+            title="11 EVM chains + Solana + Bitcoin"
             footer={<Badge tone="live">live</Badge>}
           >
             Source from any major EVM chain. Cross-chain destinations to Solana and Bitcoin via
@@ -103,7 +103,7 @@ export default function InstitutionalPage(): ReactNode {
             footer={<Badge tone="partner">upstream-supported</Badge>}
           >
             The upstream CoW Widget embeds the swap form in your app. Inherits the MEV-protected
-            routing + 13-chain coverage. Available via <InlineCode>@cowprotocol/widget-react</InlineCode>.
+            routing + multi-chain coverage. Available via <InlineCode>@cowprotocol/widget-react</InlineCode>.
             Ophis-branded variant is not yet available.
           </FeatureCard>
         </FeatureGrid>
