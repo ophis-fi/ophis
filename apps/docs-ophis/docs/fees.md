@@ -54,11 +54,13 @@ improvement** after that.
 For the full protocol-level details, see the governance proposal
 [CIP-75 — Partner incentive alignment](https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253).
 
-:::note Positive-slippage rebates
+:::note[Positive-slippage rebates]
+
 Because the fee is capped and applies only to improvement, ordinary
 trades stay free. Traders accrue the upside of solver competition as
 positive-slippage rebates — track them in the app's **Earn** and
 **Profile** surfaces.
+
 :::
 
 ## Custody of fees
