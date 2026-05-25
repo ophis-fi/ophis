@@ -24,10 +24,12 @@ trade, review it, and sign.
 4. Review the quote and **sign the order with your wallet.** Nothing
    leaves your wallet until a solver settles the trade.
 
-:::note Non-custodial by design
+:::note[Non-custodial by design]
+
 Ophis never takes possession of your funds. The signed order is
 broadcast to the solver network; your tokens move only when a solver
 settles the batch on-chain.
+
 :::
 
 ## How it works
@@ -78,8 +80,10 @@ address and sign with your EVM wallet; NEAR Intents brokers the bridge.
 Around 150+ tokens are recognised across stablecoins, ETH/BTC pegs, DeFi
 blue-chips, AI/RWA, memes, and gaming.
 
-:::tip Building on Ophis?
+:::tip[Building on Ophis?]
+
 Skip the UI entirely — the [Intent API](./intent-api.md) exposes the same
 natural-language parser as a public endpoint, and the
 [AI agent guide](./ai-agents.md) shows how to wire it into an agent.
+
 :::
