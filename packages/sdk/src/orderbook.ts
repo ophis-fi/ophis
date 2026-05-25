@@ -10,7 +10,7 @@ import { assertValidChainId } from './guards.js';
  * silently bypasses the Ophis solver and the Ophis partner fee. Always resolve
  * the host through `getOphisOrderbookUrl` rather than assembling it by slug.
  */
-export const OPHIS_ORDERBOOK_URLS: Readonly<Record<number, string>> = Object.freeze({
+export const OPHIS_ORDERBOOK_URLS: Readonly<Partial<Record<number, string>>> = Object.freeze({
   1: 'https://api.cow.fi/mainnet',
   100: 'https://api.cow.fi/xdai', // Gnosis Chain — slug is "xdai", not "gnosis"
   42161: 'https://api.cow.fi/arbitrum_one',

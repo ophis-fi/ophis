@@ -20,6 +20,13 @@ export {
 } from './orderbook.js';
 
 export {
+  getOphisSettlementAddress,
+  getOphisOrderDomain,
+  OPHIS_SETTLEMENT_ADDRESSES,
+  type OphisOrderDomain,
+} from './domain.js';
+
+export {
   ophisOrderReceiver,
   assertReceiverIsOwner,
   type ReceiverOptions,
