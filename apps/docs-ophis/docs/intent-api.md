@@ -34,11 +34,13 @@ patterns.
 | **Rate limit** | 30 requests per IP per rolling 60-second window. Exceeding returns `429` with a `Retry-After` header. |
 | **Caching** | Identical normalized text (lowercased + trimmed) within an origin bucket is served from a 5-minute edge cache. Cache hits return the header `x-ophis-cache: hit` and don't consume an upstream model call. The rate-limit counter still increments on a cache hit. |
 
-:::note Origin is a speed bump, not a security boundary
+:::note[Origin is a speed bump, not a security boundary]
+
 The `Origin` check raises the bar for casual browser abuse but can be
 omitted by any non-browser client. The real protections are the per-IP
 rate limit and the fact that the endpoint only normalizes text — it
 moves no funds.
+
 :::
 
 ## Request
