@@ -61,6 +61,12 @@ export const BrandMark = styled.div`
   font-weight: 600;
   font-size: 22px;
   color: #f5efe6;
+`
+
+// Wordmark groups "ophis" and its accent period into ONE flex item, so
+// BrandMark's 10px gap separates only the icon from the word — not the word
+// from its trailing period (which previously rendered as a detached "ophis .").
+export const Wordmark = styled.span`
   & span {
     color: #f2a63e;
   }
