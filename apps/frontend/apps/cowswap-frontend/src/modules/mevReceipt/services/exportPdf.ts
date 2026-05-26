@@ -1,6 +1,14 @@
 import { jsPDF } from 'jspdf'
 
-import type { MevProofReceipt } from '../types'
+import type { MevProofReceipt, PartnerFeeInfo } from '../types'
+
+const formatPartnerFee = (fee: PartnerFeeInfo | null): string => {
+  if (!fee) return '(none)'
+  if (fee.type === 'priceImprovement') {
+    return `${fee.priceImprovementBps} bps of price improvement (max ${fee.maxVolumeBps} bps of volume) -> ${fee.recipient}`
+  }
+  return `${fee.volumeBps} bps of volume -> ${fee.recipient}`
+}
 
 /**
  * Generates a single-page PDF of a CoW Protocol order receipt.
@@ -33,11 +41,7 @@ export const exportPdf = (receipt: MevProofReceipt): Blob => {
     `Block:            ${receipt.settlementBlock ?? '-'}`,
     `Surplus vs quote: ${receipt.surplusVsQuote === null ? '-' : `${(receipt.surplusVsQuote * 100).toFixed(2)}%`}`,
     '',
-    `Partner fee:      ${
-      receipt.partnerFee
-        ? `${receipt.partnerFee.volumeBps} bps -> ${receipt.partnerFee.recipient}`
-        : '(none)'
-    }`,
+    `Partner fee:      ${formatPartnerFee(receipt.partnerFee)}`,
     '',
     `Receipt version:  ${receipt.receiptVersion}`,
     `Generated:        ${receipt.generatedAt}`,
