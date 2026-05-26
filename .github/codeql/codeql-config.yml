@@ -4,8 +4,6 @@ paths-ignore:
   # Vendored upstream code — has its own CI in the upstream repo.
   - 'apps/backend/'
   - 'contracts/'
-  - 'v2-core/'
-  - 'v2-periphery/'
   # Generated / build artifacts.
   - '**/node_modules/'
   - '**/dist/'
