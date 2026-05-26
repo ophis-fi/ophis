@@ -1,7 +1,7 @@
 # Brand reference
 
 Single-page snapshot of Ophis's visual system. Open `sheet.html` locally for the
-live render (loads Fraunces / Plus Jakarta / JetBrains Mono from Google Fonts;
+live render (loads Geist / Geist Mono from Google Fonts;
 the Ophie animated states play in-browser). `sheet.png` is the rasterized
 fallback at 1600×~2200 for quick previews and PR comments.
 
