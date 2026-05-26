@@ -7,14 +7,14 @@ import { OPHIE_PAD_X, OPHIE_PATH, OPHIE_VIEWBOX } from '../ophiePath'
 export type OphieAnimation = 'none' | 'spin' | 'spin-fast' | 'pulse'
 
 export type OphieFill =
-  | 'coral' // brand/60 — workhorse
+  | 'saffron' // brand/60 — workhorse
   | 'cream' // brand/10 — inverse / dark surfaces
   | 'dark' // neutral/100 — mono dark
   | 'sunset' // gradient — hero only
   | 'currentColor' // inherit
 
 const FILLS: Record<Exclude<OphieFill, 'sunset' | 'currentColor'>, string> = {
-  coral: '#E66A55',
+  saffron: '#f2a63e',
   cream: '#FFF3EE',
   dark: '#131214',
 }
@@ -80,7 +80,7 @@ function resolveFill(fill: OphieFill | string | undefined): string {
  */
 export function OphieMark({
   size = 96,
-  fill = 'coral',
+  fill = 'saffron',
   animate = 'none',
   className,
   ariaLabel = 'Ophis',
