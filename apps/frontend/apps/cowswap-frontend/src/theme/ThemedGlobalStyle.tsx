@@ -52,7 +52,11 @@ export const ThemedGlobalStyle = createGlobalStyle`
   }
 
   html {
-    background-color: ${({ theme }) => (theme.isWidget ? 'transparent' : `var(${UI.COLOR_CONTAINER_BG_02})`)};
+    // Page-base canvas, not paper: the body is transparent, so <html> backs the
+    // overscroll region and any sub-pixel gap below the footer. It must be the
+    // deep page color (COLOR_BACKGROUND #02000d), or those gaps flash the purple
+    // card surface (COLOR_CONTAINER_BG_02 = paper #13072B).
+    background-color: ${({ theme }) => (theme.isWidget ? 'transparent' : `var(${UI.COLOR_BACKGROUND})`)};
   }
 
   *, *:after, *:before {
