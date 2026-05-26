@@ -7,13 +7,14 @@ fallback at 1600×~2200 for quick previews and PR comments.
 
 What's on the sheet:
 
-- **Logo variants** — coral workhorse, cream inverse, on neutral, sunset hero.
+- **Logo variants** — saffron workhorse, cream inverse, on neutral, sunset hero.
 - **Animated states** — `OphieSpinner` at full size, plus three rotation
   speeds (slow / normal / fast) showing the favicon cycle.
 - **Components** — pill button hierarchy (BIG/DEFAULT/SMALL secondary), tabs
-  with coral underline, snackbar with `--ophis-shadow-medium`.
-- **Color anchor** — `brand/10..100` ramp with `brand/60 #E66A55` as the
-  primary action anchor (★).
+  with saffron underline, snackbar with `--ophis-shadow-medium`.
+- **Color anchor** — `saffron/10..100` ramp with `saffron/60 #f2a63e` as the
+  primary action anchor (★) — matches the live primary set in
+  `getCowswapTheme.ts`.
 
 Source-of-truth files:
 
@@ -33,7 +34,7 @@ Regenerate `sheet.png` from `sheet.html`:
 ```sh
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
-  --window-size=1600,2200 \
+  --window-size=1600,2200 --virtual-time-budget=4000 \
   --screenshot=docs/brand/sheet.png \
   "file://$(pwd)/docs/brand/sheet.html"
 ```
