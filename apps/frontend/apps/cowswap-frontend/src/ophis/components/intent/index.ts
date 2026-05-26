@@ -1,6 +1,5 @@
 export { IntentLanding } from './IntentLanding'
 export { IntentInput } from './IntentInput'
-export { EntityChip, ChipRow } from './EntityChip'
 export { IntentCarousel } from './IntentCarousel'
 export { useIntentParse } from './useIntentParse'
 export { intentToUrl } from './intentToUrl'
