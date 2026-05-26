@@ -1,32 +1,44 @@
-# ⚠️ GPv2AllowListAuthentication artifacts are stale (pre-upgrade)
+# GPv2AllowListAuthentication artifacts — regenerated 2026-05-26
 
-The committed `GPv2AllowListAuthentication*.json` artifacts in this directory
-**predate the two-step-manager upgrade** and do not describe the live contract.
+These `GPv2AllowListAuthentication*.json` artifacts were regenerated to describe
+the live two-step-manager implementation on Optimism (they previously described
+the pre-upgrade impl `0xFAB54856…`).
 
-Verified on-chain (Optimism mainnet, 2026-05-25):
+On-chain state (Optimism mainnet, verified 2026-05-26):
 
 | | Address |
 |---|---|
 | Proxy | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` |
-| Implementation (live) | `0x59eE2de83b559e5cC2Afb930F29abeA3dBB4cc9D` |
+| Implementation | `0x59eE2de83b559e5cC2Afb930F29abeA3dBB4cc9D` |
 | Manager | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
 
-The live implementation includes the **two-step manager transfer**
-(`proposeManager` / `acceptManagership` / `cancelManagerTransfer` /
-`pendingManager`) — confirmed because `pendingManager()` resolves on-chain
-against the proxy. The matching source is `contracts/src/contracts/GPv2AllowListAuthentication.sol`.
+## How they were regenerated
 
-What is stale:
+The **implementation's** compiled fields (abi, bytecode, deployedBytecode,
+metadata, storageLayout, devdoc, userdoc) were produced from
+`src/contracts/GPv2AllowListAuthentication.sol` with the exact deploy settings —
+**solc 0.7.6, evmVersion istanbul, optimizer 1,000,000 runs** — and **verified
+against chain**: the regenerated
+`deployedBytecode` hashes to
+`0xeebc795ab56337e75100295fbf151056e7473cd40a35487e59ae63f08b86ff27`,
+byte-for-byte equal to the live implementation's `EXTCODEHASH`.
 
-- `GPv2AllowListAuthentication_Implementation.json` lists the **previous** impl
-  `0xFAB54856B6731BC0C32904BE5297A627d9FDFA31` with the stock ABI (no
-  `pendingManager`).
-- `GPv2AllowListAuthentication.json` has the correct proxy address but the stock
-  ABI.
+- `_Implementation.json` → address `0x59eE2de83b…`; ABI now includes
+  `proposeManager` / `acceptManagership` / `cancelManagerTransfer` /
+  `pendingManager`; storageLayout includes the appended `pendingManager` slot.
+- `GPv2AllowListAuthentication.json` (combined) → `implementation` repointed to
+  `0x59eE2de83b…`; ABI merges the modified impl with the proxy's own entries
+  (`upgradeTo`, `owner`, `ProxyImplementationUpdated`, …). The proxy's own
+  bytecode/metadata/args are unchanged — the proxy itself was not redeployed.
+- `_Proxy.json` → unchanged; its constructor args correctly record the proxy's
+  original deployment (initial impl `0xFAB54856…`), which the later upgrade
+  does not alter.
 
-**Action:** regenerate these via the deploy/verify tooling so `address`, `abi`,
-`bytecode`, `storageLayout`, and `receipt` all reflect impl
-`0x59eE2de83b…`. They were intentionally **not** hand-edited: a partial edit
-(address/abi only) would leave the bytecode/receipt/transactionHash fields
-describing the old impl — an internally inconsistent record that breaks
-bytecode-verification tooling.
+## Caveat
+
+The implementation was upgraded **outside hardhat-deploy** (no local deploy
+record, and the impl's creation tx is not retrievable from the public RPC), so
+`_Implementation.json`'s `receipt` / `transactionHash` / `solcInputHash`
+deploy-tracking fields are intentionally **omitted** rather than fabricated. No
+deploy script targets this contract, so hardhat-deploy will not attempt a
+redeploy from their absence. Every field present is authoritative and verified.
