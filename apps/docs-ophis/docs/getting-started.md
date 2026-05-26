@@ -27,7 +27,7 @@ trade, review it, and sign.
 :::note[Non-custodial by design]
 
 Ophis never takes possession of your funds. The signed order is
-broadcast to the solver network; your tokens move only when a solver
+broadcast to the solver auction; your tokens move only when a solver
 settles the batch on-chain.
 
 :::
@@ -49,7 +49,8 @@ so its API key never reaches the browser. See the
 Your signed order is broadcast to a batch auction. Solvers race to find
 the best path — an on-chain DEX, a peer-to-peer match against another
 order in the same batch, or a cross-chain route — and bid for the right
-to settle it.
+to settle it. On Optimism, Ophis currently operates the solver itself,
+competing across several routing strategies — see [How it works](./architecture.md).
 
 ### 3 · Settle — on-chain, MEV-protected
 

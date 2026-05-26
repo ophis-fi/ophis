@@ -1,7 +1,7 @@
 ---
 id: intro
 title: Introduction
-description: Ophis is an intent-based DEX aggregator — describe a swap in plain English and a solver network fills it MEV-protected.
+description: Ophis is an intent-based DEX aggregator — describe a swap in plain English and a competitive solver auction fills it MEV-protected.
 slug: /
 sidebar_label: Introduction
 sidebar_position: 1
@@ -10,8 +10,8 @@ sidebar_position: 1
 # Ophis
 
 **Ophis is an intent-based DEX aggregator.** You describe a swap in plain
-English — _"swap 100 USDC for ETH on Base"_ — and a network of solvers
-competes to fill it at the best price. The trade settles on-chain with
+English — _"swap 100 USDC for ETH on Base"_ — and a competitive solver
+auction fills it at the best price. The trade settles on-chain with
 MEV protection built in, and you sign every order with your own wallet.
 
 Ophis is a fork of [CoW Protocol](https://docs.cow.fi/cow-protocol)'s
