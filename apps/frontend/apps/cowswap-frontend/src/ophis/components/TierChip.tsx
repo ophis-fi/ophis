@@ -49,7 +49,7 @@ export function TierChip({ wallet }: Props) {
   return (
     <a
       className={`${styles.chip} ${styles[tier]}`}
-      href={`https://rebates.ophis.fi/tier/${wallet.toLowerCase()}`}
+      href={`https://rebates.ophis.fi/tier/${encodeURIComponent(wallet.toLowerCase())}`}
       target="_blank"
       rel="noreferrer"
     >
