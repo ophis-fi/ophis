@@ -7,10 +7,30 @@
  * Derived from `api.cow.fi`'s order + trades endpoints.
  */
 
-export interface PartnerFeeInfo {
-  readonly volumeBps: number
-  readonly recipient: string
-}
+/**
+ * Partner-fee config baked into the order's appData. CIP-75 lets a partner
+ * pick a monetisation model; Ophis writes the `priceImprovement` shape on the
+ * chains it operates, while widget consumers may override with the legacy flat
+ * `volume` shape. Discriminated on `type` so a receipt records exactly which
+ * model — and which bps — applied, rather than collapsing distinct fee
+ * structures into one ambiguous number. CIP-75's surplus and tiered-array
+ * models are out of scope: Ophis never emits them, so they decode to null.
+ */
+export type PartnerFeeInfo =
+  | {
+      readonly type: 'priceImprovement'
+      /** Share of execution beating the shown quote, in bps (Ophis: 2500 = 25%). */
+      readonly priceImprovementBps: number
+      /** Hard ceiling on the fee as a fraction of volume, in bps (Ophis: 50 = 0.5%). */
+      readonly maxVolumeBps: number
+      readonly recipient: string
+    }
+  | {
+      readonly type: 'volume'
+      /** Flat fee as a fraction of trade volume, in bps. */
+      readonly volumeBps: number
+      readonly recipient: string
+    }
 
 export interface MevProofReceipt {
   /** CoW order UID (66-char hex including the 0x prefix). */
@@ -39,12 +59,13 @@ export interface MevProofReceipt {
   readonly settlementBlock: number | null
   /** Order status from CoW API (fulfilled / open / cancelled / expired). */
   readonly status: string
-  /** Partner-fee config baked into the order's appData; null if order had no partner fee. */
+  /** Partner-fee config baked into the order's appData; null if the order had no partner fee. */
   readonly partnerFee: PartnerFeeInfo | null
   /** Fractional surplus over the quoted minimum buyAmount; null if not settled. (executed - quoted) / quoted */
   readonly surplusVsQuote: number | null
-  /** Ophis's receipt schema version. */
-  readonly receiptVersion: '1'
+  /** Ophis's receipt schema version. Bumped to '2' when partnerFee became a
+   * discriminated union (priceImprovement | volume); v1 only carried volumeBps. */
+  readonly receiptVersion: '2'
   /** ISO-8601 UTC timestamp of receipt creation. */
   readonly generatedAt: string
 }
