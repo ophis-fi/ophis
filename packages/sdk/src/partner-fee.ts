@@ -16,17 +16,10 @@
 import { assertValidChainId } from './guards.js';
 
 /**
- * Recipient — Safe multisig deployed on Gnosis Chain on 2026-05-03 at version
- * 1.4.1. CREATE2-deterministic: the same address resolves on every chain
- * where Safe's `SafeProxyFactory` is deployed. Funds sent to this address on a
- * chain where the proxy isn't yet deployed are still receivable; deploy the
- * proxy on that chain when payouts there warrant the gas to spend them.
- *
- * Initial setup: threshold 1-of-1, owner = `0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
- * Phase 2.6 / pre-revenue task: upgrade to ≥ 2-of-N before significant accrual.
- *
- * Previous recipient (Phase 1.5 single-sig EOA, retired 2026-05-03):
- *   `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E` (Keychain `ophis-partner-fee-recipient`).
+ * Recipient — the Ophis partner-fee Safe multisig. CREATE2-deterministic: the
+ * same address resolves on every chain where Safe's `SafeProxyFactory` is
+ * deployed. Funds sent on a chain where the proxy isn't deployed yet are still
+ * receivable; deploy the proxy there when payouts warrant the gas.
  */
 export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;
