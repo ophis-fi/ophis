@@ -32,8 +32,10 @@ export function intentToUrl(parsed: ParsedIntent): string {
   segments.push('swap')
 
   if (sell || buy) {
-    segments.push(sell ?? '_')
-    if (buy) segments.push(buy)
+    // Encode token segments: valid symbols/addresses are unaffected, but a
+    // malformed parser value (containing `/`, `?`, `#`, …) can't alter the route.
+    segments.push(sell ? encodeURIComponent(sell) : '_')
+    if (buy) segments.push(encodeURIComponent(buy))
   }
 
   return '/' + segments.join('/')

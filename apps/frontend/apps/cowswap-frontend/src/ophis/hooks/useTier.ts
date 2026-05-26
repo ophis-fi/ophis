@@ -48,11 +48,20 @@ export function useTier(wallet: `0x${string}` | undefined): UseTierResult {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`${REBATES_API}/tier/${wallet.toLowerCase()}`)
+    fetch(`${REBATES_API}/tier/${encodeURIComponent(wallet.toLowerCase())}`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`tier API ${res.status}`)
-        const json = (await res.json()) as TierStatus
-        if (!cancelled) setData(json)
+        const json = (await res.json()) as Partial<TierStatus>
+        // A malformed 2xx (e.g. `{}`) must fall back to Bronze (the catch
+        // below), not crash render — TierChip dereferences these fields.
+        if (
+          typeof json?.volume_30d_usd !== 'number' ||
+          typeof json?.tier?.name !== 'string' ||
+          (json.next_tier != null && typeof json.usd_to_next_tier !== 'number')
+        ) {
+          throw new Error('malformed tier response')
+        }
+        if (!cancelled) setData(json as TierStatus)
       })
       .catch((err) => {
         if (cancelled) return

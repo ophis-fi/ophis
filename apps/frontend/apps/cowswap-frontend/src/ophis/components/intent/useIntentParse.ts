@@ -137,7 +137,20 @@ export function useIntentParse(text: string): IntentParseState {
         setState({ status: 'error', parsed: null, errorCode: body.error.code, errorMessage: body.error.message })
         return
       }
-      setState({ status: 'ok', parsed: body.data, errorCode: null, errorMessage: null })
+      // Guard: a malformed 2xx (missing/non-array `entities`, or entries that
+      // aren't well-formed objects) must not crash consumers that iterate it
+      // (IntentLanding render, intentToUrl). Keep only object entries with a
+      // string `type`; the happy path is unchanged, a degraded response renders
+      // as "nothing parsed" instead of a white screen.
+      const safeEntities = (Array.isArray(body.data?.entities) ? body.data.entities : []).filter(
+        (e) => e != null && typeof (e as { type?: unknown }).type === 'string',
+      )
+      setState({
+        status: 'ok',
+        parsed: { ...body.data, entities: safeEntities },
+        errorCode: null,
+        errorMessage: null,
+      })
     } catch (err) {
       if (controller.signal.aborted) return
       if (requestId !== requestIdRef.current) return
