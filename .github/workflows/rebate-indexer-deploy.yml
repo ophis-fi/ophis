@@ -50,8 +50,6 @@ jobs:
             --exclude="apps/frontend" \
             --exclude="apps/backend" \
             --exclude="contracts" \
-            --exclude="v2-core" \
-            --exclude="v2-periphery" \
             --exclude="infra" \
             --exclude="docs" \
             --exclude="*.log" \
