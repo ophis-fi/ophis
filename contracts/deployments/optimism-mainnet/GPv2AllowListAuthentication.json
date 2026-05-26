@@ -2,6 +2,279 @@
   "address": "0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70",
   "abi": [
     {
+      "type": "function",
+      "name": "acceptManagership",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "addSolver",
+      "inputs": [
+        {
+          "name": "solver",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "cancelManagerTransfer",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "getStorageAt",
+      "inputs": [
+        {
+          "name": "offset",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "length",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "initializeManager",
+      "inputs": [
+        {
+          "name": "manager_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "isSolver",
+      "inputs": [
+        {
+          "name": "prospectiveSolver",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "manager",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "pendingManager",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "proposeManager",
+      "inputs": [
+        {
+          "name": "manager_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "removeSolver",
+      "inputs": [
+        {
+          "name": "solver",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setManager",
+      "inputs": [
+        {
+          "name": "manager_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "simulateDelegatecall",
+      "inputs": [
+        {
+          "name": "targetContract",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "calldataPayload",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "simulateDelegatecallInternal",
+      "inputs": [
+        {
+          "name": "targetContract",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "calldataPayload",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "bytes",
+          "internalType": "bytes"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "ManagerChanged",
+      "inputs": [
+        {
+          "name": "newManager",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "oldManager",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ManagerTransferCancelled",
+      "inputs": [
+        {
+          "name": "cancelledPendingManager",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ManagerTransferProposed",
+      "inputs": [
+        {
+          "name": "pendingManager",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "currentManager",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "SolverAdded",
+      "inputs": [
+        {
+          "name": "solver",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "SolverRemoved",
+      "inputs": [
+        {
+          "name": "solver",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
       "anonymous": false,
       "inputs": [
         {
@@ -124,207 +397,6 @@
       "type": "receive"
     },
     {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "newManager",
-          "type": "address"
-        },
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "oldManager",
-          "type": "address"
-        }
-      ],
-      "name": "ManagerChanged",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "solver",
-          "type": "address"
-        }
-      ],
-      "name": "SolverAdded",
-      "type": "event"
-    },
-    {
-      "anonymous": false,
-      "inputs": [
-        {
-          "indexed": false,
-          "internalType": "address",
-          "name": "solver",
-          "type": "address"
-        }
-      ],
-      "name": "SolverRemoved",
-      "type": "event"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "solver",
-          "type": "address"
-        }
-      ],
-      "name": "addSolver",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "offset",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "length",
-          "type": "uint256"
-        }
-      ],
-      "name": "getStorageAt",
-      "outputs": [
-        {
-          "internalType": "bytes",
-          "name": "",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "manager_",
-          "type": "address"
-        }
-      ],
-      "name": "initializeManager",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "prospectiveSolver",
-          "type": "address"
-        }
-      ],
-      "name": "isSolver",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "manager",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "solver",
-          "type": "address"
-        }
-      ],
-      "name": "removeSolver",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "manager_",
-          "type": "address"
-        }
-      ],
-      "name": "setManager",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "targetContract",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "calldataPayload",
-          "type": "bytes"
-        }
-      ],
-      "name": "simulateDelegatecall",
-      "outputs": [
-        {
-          "internalType": "bytes",
-          "name": "response",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "targetContract",
-          "type": "address"
-        },
-        {
-          "internalType": "bytes",
-          "name": "calldataPayload",
-          "type": "bytes"
-        }
-      ],
-      "name": "simulateDelegatecallInternal",
-      "outputs": [
-        {
-          "internalType": "bytes",
-          "name": "response",
-          "type": "bytes"
-        }
-      ],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
       "inputs": [
         {
           "internalType": "address",
@@ -419,7 +491,7 @@
       "0xBeC5B03ffDcac50071693E87bFDb88bAa6710199"
     ]
   },
-  "implementation": "0xFAB54856B6731BC0C32904BE5297A627d9FDFA31",
+  "implementation": "0x59eE2de83b559e5cC2Afb930F29abeA3dBB4cc9D",
   "devdoc": {
     "kind": "dev",
     "methods": {},
