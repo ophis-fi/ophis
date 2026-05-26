@@ -43,23 +43,8 @@ When those change, update the corresponding page here.
 Shipped to a **dedicated Cloudflare Pages project** (`ophis-docs`),
 separate from the main app's `greg` project, by
 `.github/workflows/docs-deploy.yml` on pushes to `main` that touch
-`apps/docs-ophis/**`.
-
-### One-time setup (operator)
-
-1. **Create the Pages project** (the deploy step fails until it exists):
-   ```sh
-   pnpm dlx wrangler pages project create ophis-docs --production-branch main
-   ```
-2. **Point the domain at it.** In the Cloudflare dashboard, move the
-   `docs.ophis.fi` custom domain from the `greg` project to `ophis-docs`.
-   Do this off-hours — there is a brief window during DNS/cert
-   propagation. The main app (`ophis.fi`) is unaffected.
-3. **Post-swap cleanup (follow-up PR).** Once `docs.ophis.fi` serves this
-   site, retire the old static shim in the `greg` project:
-   - delete `apps/frontend/apps/cowswap-frontend/public/docs/`
-   - remove the `docs.ophis.fi` entry from `functions/_middleware.ts`
-     (keep the `business.ophis.fi` entry)
-
-   Sequencing matters: do **not** remove the old shim before the domain
-   swap, or `docs.ophis.fi` will 404 while it still points at `greg`.
+`apps/docs-ophis/**`. The `docs.ophis.fi` custom domain points at this
+project. The historical static shim that previously served `/docs` from
+the main app — a `public/docs/` mirror plus a `_middleware.ts` rewrite —
+was retired once this portal went live; `_middleware.ts` now just 301s
+apex `/docs*` here.
