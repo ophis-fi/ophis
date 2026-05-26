@@ -9,17 +9,17 @@
  */
 
 :root {
-  /* Brand — coral sunset */
-  --ophis-brand-10: #FFF3EE;
-  --ophis-brand-20: #FFDFD3;
-  --ophis-brand-30: #FFBDA8;
-  --ophis-brand-40: #FF9579;
-  --ophis-brand-50: #FF7A60;
-  --ophis-brand-60: #E66A55;
-  --ophis-brand-70: #C2503D;
-  --ophis-brand-80: #993627;
-  --ophis-brand-90: #5C1D14;
-  --ophis-brand-100: #2A0B07;
+  /* Brand — saffron sunset (mirrors src/ophis/tokens.ts colors.brand) */
+  --ophis-brand-10: #fef4e6;
+  --ophis-brand-20: #fce6c2;
+  --ophis-brand-30: #f9d195;
+  --ophis-brand-40: #f6bd63;
+  --ophis-brand-50: #f4b04a;
+  --ophis-brand-60: #f2a63e;
+  --ophis-brand-70: #d98a22;
+  --ophis-brand-80: #a85f0f;
+  --ophis-brand-90: #6e3d08;
+  --ophis-brand-100: #3a2003;
 
   /* Accent — magenta/rose */
   --ophis-accent-10: #FFF0F6;
