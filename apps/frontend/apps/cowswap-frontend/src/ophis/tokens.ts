@@ -3,7 +3,7 @@
  *
  * Token *system* (scale, naming, ramp shape, spacing rhythm) lifted from
  * Nucleus UI Lite (Gumroad, Lite tier). Token *values* are Ophis-specific:
- * a warm "sunset" coral primary derived from the kit's gradient card studies
+ * a warm "sunset" saffron primary derived from the kit's gradient card studies
  * (`Auto Layout-2.svg`).
  *
  * Sunset rationale: every DEX aggregator (1inch, Velora, Jumper, Bungee,
@@ -17,21 +17,24 @@
  */
 
 export const colors = {
-  // Ophis's primary brand ramp — warm coral. Designed to match Nucleus's
-  // contrast curve (10 = pale tint near white, 60 = primary action,
-  // 100 = deep near-black warm). Anchor `#E66A55` derived from the
-  // sunset gradient's saturated peak.
+  // Ophis's primary brand ramp — warm saffron (sunset). Contrast curve from
+  // Nucleus (10 = pale tint near white, 60 = primary action, 100 = deep
+  // near-black warm). Anchor `#f2a63e` (60) is the canonical sunset accent
+  // used across every Ophis-native surface (header wordmark, hero, ds/
+  // primitives, CTAs) and as cowswap's `primary` via getCowswapTheme.
+  // `80 = #a85f0f` is the deeper saffron for light-mode text/contrast —
+  // WCAG AA ~4.5:1 on white (Codex audit 2026-05-23; #d18a1f failed at 2.85:1).
   brand: {
-    10: '#FFF3EE',
-    20: '#FFDFD3',
-    30: '#FFBDA8',
-    40: '#FF9579',
-    50: '#FF7A60',
-    60: '#E66A55', // primary action (light mode)
-    70: '#C2503D',
-    80: '#993627',
-    90: '#5C1D14',
-    100: '#2A0B07',
+    10: '#fef4e6',
+    20: '#fce6c2',
+    30: '#f9d195',
+    40: '#f6bd63',
+    50: '#f4b04a',
+    60: '#f2a63e', // primary action — canonical saffron
+    70: '#d98a22',
+    80: '#a85f0f', // light-mode text/contrast (WCAG AA on white)
+    90: '#6e3d08',
+    100: '#3a2003',
   },
   // Secondary accent — magenta/rose. Used sparingly for highlights, gradient
   // stops, illustration. Derived from the gradient's bottom-right magenta peak.
