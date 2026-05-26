@@ -38,21 +38,19 @@ const COSMIC = {
   indigoStrong: '#4F1DCA',
 }
 
-// Brand sunset (saffron) — single source of truth for the primary accent
-// that should match every Ophis-native surface: header wordmark accent,
-// hero `<em>` accent, ds/ primitive accents, Open Trade CTA, footer
-// brand dot, business page CTAs. Used as cowswap's `primary` so the
-// swap form, token selector, chain selector, wallet modal, and every
-// other cowswap component re-color to match the rest of the brand
-// instead of inheriting the legacy coral brand ramp.
+// Brand sunset (saffron) — the primary accent that matches every Ophis-native
+// surface: header wordmark, hero `<em>`, ds/ primitives, Open Trade CTA, footer
+// brand dot, business page CTAs. Used as cowswap's `primary` so the swap form,
+// token/chain selectors, wallet modal, and every other cowswap component
+// re-color to match the rest of the brand.
+//
+// Single source of truth: the saffron `brand` ramp in src/ophis/tokens.ts.
+// brand[60] = #f2a63e is the canonical sunset; brand[80] = #a85f0f is the deeper
+// light-mode value — WCAG AA ~4.5:1 on white for text-only uses of
+// `--cow-color-primary` (Codex audit 2026-05-23; #d18a1f failed at 2.85:1).
 const SUNSET = {
-  primary: '#f2a63e', // canonical sunset — matches CSS `--sunset` var sitewide
-  // Deeper saffron for light mode. Codex audit 2026-05-23: #d18a1f had
-  // only 2.85:1 contrast on white paper, failing WCAG AA for text-only
-  // uses of `--cow-color-primary`. #a85f0f hits ~4.5:1 — accessible for
-  // both filled controls (white text on saffron) and text-color uses on
-  // light backgrounds.
-  primaryLight: '#a85f0f',
+  primary: ophisColors.brand[60],
+  primaryLight: ophisColors.brand[80],
 }
 
 function gregOverrides(darkMode: boolean): Record<string, string> {
