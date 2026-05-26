@@ -1,12 +1,46 @@
 {
   "name": "@ophis/sdk",
   "version": "0.0.1",
-  "private": true,
+  "description": "Integration helpers for Ophis (a CoW Protocol fork): correct orderbook hosts, the CIP-75 partner-fee appData fragment, the per-chain EIP-712 signing domain, and order receiver-safety guards.",
+  "license": "GPL-3.0-or-later",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://docs.ophis.fi/ai-agents",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": [
+    "ophis",
+    "cow-protocol",
+    "cowswap",
+    "dex",
+    "defi",
+    "optimism"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "vitest": "^2.0.0",
