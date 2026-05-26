@@ -20,7 +20,7 @@ ordinary trades, 25% of any positive slippage above the quote, capped at
 ### Do I need to connect a wallet?
 
 Yes — you sign your swap order with your own wallet. Ophis is
-non-custodial; the signed order is broadcast to the solver network and
+non-custodial; the signed order is broadcast to the solver auction and
 your funds move only when a solver settles the batch.
 
 ### Which networks are supported?
@@ -43,6 +43,16 @@ protocol does not reorder transactions for value. See
 The order expires after its configured validity window (30 minutes by
 default) and your funds stay in your wallet. You can resubmit, change
 parameters, or cancel at any time.
+
+### Who runs the solvers?
+
+On the CoW-hosted chains Ophis surfaces, CoW's established solver network
+competes. On Optimism — where Ophis runs its own stack — Ophis currently
+operates the solver itself, competing across several routing strategies (a
+baseline router plus multiple DEX aggregators) per batch; the on-chain allowlist
+gates who may settle, and more solvers can be authorized over time. Your
+protection is the same either way: the signed order's limit price is enforced
+on-chain, so no solver can fill it worse than the price you accepted.
 
 ### How are partner fees collected?
 
