@@ -45,7 +45,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: |
           if [ -f packages/sdk/package.json ]; then
-            pnpm --filter @greg/sdk test
+            pnpm --filter @ophis/sdk test
           else
             echo "packages/sdk not present yet — skipping"
           fi
