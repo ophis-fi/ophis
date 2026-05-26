@@ -34,7 +34,7 @@ const Pill = styled.span<{ $type: EntityType }>`
   background: ${({ $type }) => {
     switch ($type) {
       case 'sellToken':
-        return 'rgba(230, 106, 85, 0.12)' /* brand 60 @ 12% */
+        return 'rgba(242, 166, 62, 0.12)' /* brand 60 @ 12% */
       case 'buyToken':
         return 'rgba(199, 61, 108, 0.12)' /* accent 60 @ 12% */
       case 'amount':
@@ -46,7 +46,7 @@ const Pill = styled.span<{ $type: EntityType }>`
   border-color: ${({ $type }) => {
     switch ($type) {
       case 'sellToken':
-        return '#E66A55'
+        return '#f2a63e'
       case 'buyToken':
         return '#C73D6C'
       case 'amount':
@@ -58,7 +58,7 @@ const Pill = styled.span<{ $type: EntityType }>`
   color: ${({ $type }) => {
     switch ($type) {
       case 'sellToken':
-        return '#993627'
+        return '#a85f0f'
       case 'buyToken':
         return '#7A1A40'
       case 'amount':
