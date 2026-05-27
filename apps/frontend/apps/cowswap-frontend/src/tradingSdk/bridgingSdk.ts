@@ -13,6 +13,12 @@ import { tradingSdk } from './tradingSdk'
 
 const bungeeApiBase = getBungeeApiBase()
 
+// The Ophis affiliate ID rides the public `affiliate` header (rev-share
+// attribution), so it is safe client-side. The DEDICATED API key is NOT inlined
+// here: Bungee's docs require the key server-side (`x-api-key` against
+// dedicated-backend.bungee.exchange, "rather than exposing the key in frontend
+// code"). Enabling the dedicated tier + explicit feeBps is a follow-up via a
+// Cloudflare Function proxy, not the browser bundle.
 export const bungeeBridgeProvider = new BungeeBridgeProvider({
   apiOptions: {
     includeBridges: ['across', 'cctp', 'gnosis-native-bridge'],
