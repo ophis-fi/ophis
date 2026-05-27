@@ -37,9 +37,11 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // path stays for widget consumers that override partnerFee with
   // their own volumeBps shape via injectedWidgetParamsAtom.
   //
-  // Chain-gate (Phase 3 audit H3): only emit the Ophis partner-fee
-  // metadata on chains where Ophis actually operates a settlement
-  // stack — driven by `DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK`.
+  // Chain-gate: emit the Ophis partner fee on every chain the frontend
+  // serves (restored all-chain model 2026-05-27). shouldEmitOphisPartnerFee
+  // gates on chain SUPPORT (membership in the per-network recipient map),
+  // not the recipient value; the recipient itself is the Ophis Safe via
+  // partnerFeeDefault.ts.
   const ophisAppDataPartnerFeeRaw = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
   const ophisAppDataPartnerFee = shouldEmitOphisPartnerFee(chainId) ? ophisAppDataPartnerFeeRaw : undefined
   const replacedOrderUid = useReplacedOrderUid()
