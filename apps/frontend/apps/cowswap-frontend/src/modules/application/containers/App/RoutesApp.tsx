@@ -63,6 +63,13 @@ const ProtocolPage = lazy(() =>
     default: m.ProtocolPage,
   })),
 )
+// Contact form (2026-05-27): relays to the Ophis inbox via /api/contact.
+// AGENTS.md-compliant lazy pattern — see ProfilePage above.
+const ContactPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_contact" */ 'pages/Contact').then((m) => ({
+    default: m.ContactPage,
+  })),
+)
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
 const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
@@ -134,6 +141,7 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
   { route: RoutesEnum.PROTOCOL, element: <ProtocolPage /> },
+  { route: RoutesEnum.CONTACT, element: <ContactPage /> },
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser
   // refresh-on-/faq.

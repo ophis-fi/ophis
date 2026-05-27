@@ -37,6 +37,9 @@ export const Routes = {
   // Ophis: '/brand' = brand kit page (logo variants, color tokens,
   // typography spec).
   BRAND: '/brand',
+  // Ophis: '/contact' = message form relaying to the Ophis inbox via
+  // /api/contact. No email address is rendered anywhere on the site.
+  CONTACT: '/contact',
   // Ophis: '/institutional' = pitch page for OTC desks, funds, treasuries.
   INSTITUTIONAL: '/institutional',
   // Ophis: '/profile' = wallet-aware trader identity page (Phase C1).

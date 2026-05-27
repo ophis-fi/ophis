@@ -18,7 +18,7 @@ info:
     the user's wallet on the frontend.
   contact:
     name: Ophis operator
-    email: contact@3615crypto.com
+    url: https://ophis.fi/#/contact
   license:
     name: Source available
     url: https://github.com/ophis-fi/ophis
