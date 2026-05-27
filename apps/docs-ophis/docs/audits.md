@@ -16,7 +16,7 @@ trust. This page describes the security posture.
 
 Ophis is **non-custodial**. The protocol cannot move user funds without an
 EIP-712 (or ERC-1271) signature from the user's wallet. Ophis never holds,
-escrows, or takes possession of your tokens — you sign each order, and an
+escrows, or takes possession of your tokens, you sign each order, and an
 authorized solver settles it on-chain.
 
 ## MEV protection by construction
@@ -25,9 +25,9 @@ Orders settle through a batch auction in which every trade clears at the
 same uniform price. This eliminates the common MEV vectors structurally,
 not as a best-effort mitigation:
 
-- **No front-running** — there is no pending-order mempool race to win.
-- **No sandwiching** — the protocol does not reorder trades for value.
-- **No priority-gas auction** — execution order within a batch is not for
+- **No front-running**, there is no pending-order mempool race to win.
+- **No sandwiching**, the protocol does not reorder trades for value.
+- **No priority-gas auction**, execution order within a batch is not for
   sale.
 
 One residual remains at the operational layer: when a solver broadcasts the
@@ -39,7 +39,7 @@ risk; a private submission path is on the roadmap.
 ## Smart contracts
 
 Ophis is built on CoW Protocol's GPv2 settlement architecture. The core
-**settlement contract** (`GPv2Settlement`) is CoW Protocol's code, unchanged —
+**settlement contract** (`GPv2Settlement`) is CoW Protocol's code, unchanged , 
 so CoW's settlement audits apply to it directly:
 
 - CoW Protocol contract audits:
@@ -47,12 +47,12 @@ so CoW's settlement audits apply to it directly:
 - CoW Protocol documentation:
   [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol)
 
-On Optimism, Ophis runs its **own deployment** of this stack — the settlement
+On Optimism, Ophis runs its **own deployment** of this stack, the settlement
 at `0x310784c7…B859`, plus an Ophis-operated orderbook and solver. Two pieces
 are **Ophis-specific** (not stock CoW) and were reviewed in Ophis's own security
 audits:
 
-- a hardened `GPv2AllowListAuthentication` — a two-step manager transfer guards
+- a hardened `GPv2AllowListAuthentication`, a two-step manager transfer guards
   control of the solver allowlist, and
 - partner-fee settlement-buffer handling.
 
@@ -80,6 +80,6 @@ chain**. Fees are routed to the Safe weekly. See
 
 ## Contact
 
-Operator contact: [contact@3615crypto.com](mailto:contact@3615crypto.com).
+Operator contact: [contact form](https://ophis.fi/#/contact).
 For source, issues, and the full infrastructure runbooks, see
 [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).

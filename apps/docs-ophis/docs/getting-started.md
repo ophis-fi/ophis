@@ -9,7 +9,7 @@ sidebar_position: 1
 # Getting started
 
 Ophis turns a sentence into a settled, MEV-protected swap. There's no
-token-picker to fight and no router to configure — you describe the
+token-picker to fight and no router to configure, you describe the
 trade, review it, and sign.
 
 ## Your first swap
@@ -36,7 +36,7 @@ settles the batch on-chain.
 
 Three steps from your sentence to settlement:
 
-### 1 · Intent — parse the request
+### 1 · Intent, parse the request
 
 You type a swap in plain English. An open LLM (LibertAI's Qwen 3.6 27B,
 hosted on Aleph Cloud) extracts the sell token, buy token, amount, and
@@ -44,15 +44,15 @@ chain into a structured order. The model runs behind a server-side proxy
 so its API key never reaches the browser. See the
 [Intent API](./intent-api.md) for the public endpoint.
 
-### 2 · Auction — solver competition
+### 2 · Auction, solver competition
 
 Your signed order is broadcast to a batch auction. Solvers race to find
-the best path — an on-chain DEX, a peer-to-peer match against another
-order in the same batch, or a cross-chain route — and bid for the right
+the best path, an on-chain DEX, a peer-to-peer match against another
+order in the same batch, or a cross-chain route, and bid for the right
 to settle it. On Optimism, Ophis currently operates the solver itself,
-competing across several routing strategies — see [How it works](./architecture.md).
+competing across several routing strategies, see [How it works](./architecture.md).
 
-### 3 · Settle — on-chain, MEV-protected
+### 3 · Settle, on-chain, MEV-protected
 
 The winning solver settles your order in a batch where every trade
 clears at the same uniform price. There's no front-running, no
@@ -74,7 +74,7 @@ selector:
 | Plasma | Polygon | |
 
 Plus **Solana** and **Bitcoin** as cross-chain _destinations_ via
-[NEAR Intents](https://near.org/intents) — trade from any EVM source
+[NEAR Intents](https://near.org/intents), trade from any EVM source
 chain to those networks without a second wallet. You paste a destination
 address and sign with your EVM wallet; NEAR Intents brokers the bridge.
 
@@ -83,7 +83,7 @@ blue-chips, AI/RWA, memes, and gaming.
 
 :::tip[Building on Ophis?]
 
-Skip the UI entirely — the [Intent API](./intent-api.md) exposes the same
+Skip the UI entirely, the [Intent API](./intent-api.md) exposes the same
 natural-language parser as a public endpoint, and the
 [AI agent guide](./ai-agents.md) shows how to wire it into an agent.
 

@@ -12,14 +12,14 @@
  */
 
 :root {
-  /* Light-mode primary: a darker coral so links clear WCAG AA on white. */
-  --ifm-color-primary: #e5481f;
-  --ifm-color-primary-dark: #cf401b;
-  --ifm-color-primary-darker: #c33c19;
-  --ifm-color-primary-darkest: #a13115;
-  --ifm-color-primary-light: #ec5d38;
-  --ifm-color-primary-lighter: #ee6a48;
-  --ifm-color-primary-lightest: #f28d74;
+  /* Light-mode primary: a darker saffron so links clear WCAG AA on white. */
+  --ifm-color-primary: #a86411;
+  --ifm-color-primary-dark: #975a0f;
+  --ifm-color-primary-darker: #8e550e;
+  --ifm-color-primary-darkest: #75450b;
+  --ifm-color-primary-light: #c2751a;
+  --ifm-color-primary-lighter: #cf7f23;
+  --ifm-color-primary-lightest: #e09a3c;
 
   --ifm-font-family-base: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --ifm-font-family-monospace: 'Geist Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
@@ -37,13 +37,13 @@
 
 /* Dark — the canonical Ophis surface. */
 [data-theme='dark'] {
-  --ifm-color-primary: #ff7a60;
-  --ifm-color-primary-dark: #ff5e40;
-  --ifm-color-primary-darker: #ff4f30;
-  --ifm-color-primary-darkest: #e5350f;
-  --ifm-color-primary-light: #ff9680;
-  --ifm-color-primary-lighter: #ffa590;
-  --ifm-color-primary-lightest: #ffcfc2;
+  --ifm-color-primary: #f2a63e;
+  --ifm-color-primary-dark: #f09a23;
+  --ifm-color-primary-darker: #ec9417;
+  --ifm-color-primary-darkest: #c1760a;
+  --ifm-color-primary-light: #f4b257;
+  --ifm-color-primary-lighter: #f6b966;
+  --ifm-color-primary-lightest: #f9ce95;
 
   --ifm-background-color: #02000d;
   --ifm-background-surface-color: #0a0420;
@@ -55,8 +55,8 @@
   --ifm-footer-background-color: #050211;
   --ifm-footer-link-hover-color: var(--ophis-saffron);
 
-  --ifm-link-color: #ff7a60;
-  --ifm-link-hover-color: var(--ophis-saffron);
+  --ifm-link-color: var(--ophis-saffron);
+  --ifm-link-hover-color: #f9ce95;
   --ifm-menu-color-active: var(--ophis-saffron);
   --ifm-breadcrumb-color-active: var(--ophis-saffron);
 
@@ -74,7 +74,7 @@
 /* Subtle cosmic wash behind the page, matching the app's bg-stage. */
 [data-theme='dark'] body {
   background-image:
-    radial-gradient(60% 45% at 8% 0%, rgba(255, 138, 82, 0.1) 0%, transparent 60%),
+    radial-gradient(60% 45% at 8% 0%, rgba(242, 166, 62, 0.12) 0%, transparent 60%),
     radial-gradient(45% 40% at 92% 6%, rgba(122, 110, 224, 0.12) 0%, transparent 60%);
   background-attachment: fixed;
   background-repeat: no-repeat;

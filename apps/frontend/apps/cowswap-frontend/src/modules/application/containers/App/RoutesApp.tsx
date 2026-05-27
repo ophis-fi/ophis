@@ -39,9 +39,6 @@ const LegalPage = lazy(() => import(/* webpackChunkName: "ophis_legal" */ 'pages
 const AboutPage = lazy(() => import(/* webpackChunkName: "ophis_about" */ 'pages/About'))
 const BrandPage = lazy(() => import(/* webpackChunkName: "ophis_brand" */ 'pages/Brand'))
 
-// PR #240 (2026-05-22 backlog batch): institutional pitch + trader ladder.
-const InstitutionalPage = lazy(() => import(/* webpackChunkName: "ophis_institutional" */ 'pages/Institutional'))
-const TiersPage = lazy(() => import(/* webpackChunkName: "ophis_tiers" */ 'pages/Tiers'))
 // Phase C1 (2026-05-23): wallet-aware Profile page. Replaces the upstream
 // `/profile → /account` Navigate alias with an Ophis identity surface.
 // AGENTS.md compliance: named export — `.then(m => ({ default: m.X }))`
@@ -50,12 +47,6 @@ const TiersPage = lazy(() => import(/* webpackChunkName: "ophis_tiers" */ 'pages
 const ProfilePage = lazy(() =>
   import(/* webpackChunkName: "ophis_profile" */ 'pages/Profile').then((m) => ({
     default: m.ProfilePage,
-  })),
-)
-// Phase C2 (2026-05-23): draft framework page for missions.
-const MissionsPage = lazy(() =>
-  import(/* webpackChunkName: "ophis_missions" */ 'pages/Missions').then((m) => ({
-    default: m.MissionsPage,
   })),
 )
 // Phase A3 tail (2026-05-23): orientation/navigation hub page.
@@ -72,14 +63,13 @@ const ProtocolPage = lazy(() =>
     default: m.ProtocolPage,
   })),
 )
-// Phase C3 (2026-05-23): draft rewards-catalogue page.
+// Contact form (2026-05-27): relays to the Ophis inbox via /api/contact.
 // AGENTS.md-compliant lazy pattern — see ProfilePage above.
-const EarnPage = lazy(() =>
-  import(/* webpackChunkName: "ophis_earn" */ 'pages/Earn').then((m) => ({
-    default: m.EarnPage,
+const ContactPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_contact" */ 'pages/Contact').then((m) => ({
+    default: m.ContactPage,
   })),
 )
-
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
 const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
@@ -118,6 +108,17 @@ function DocsRedirect(): null {
   return null
 }
 
+/**
+ * /institutional moved to the business.ophis.fi subdomain (2026-05-27).
+ * Bounce any in-app or bookmarked /institutional hit to the business page.
+ */
+function InstitutionalRedirect(): null {
+  useEffect(() => {
+    window.location.assign('https://business.ophis.fi')
+  }, [])
+  return null
+}
+
 type LazyRouteProps = { route: RoutesValues; element: ReactNode; key?: number }
 
 function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
@@ -136,13 +137,11 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
   { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
-  { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalPage /> },
-  { route: RoutesEnum.TIERS, element: <TiersPage /> },
+  { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalRedirect /> },
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
-  { route: RoutesEnum.MISSIONS, element: <MissionsPage /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
   { route: RoutesEnum.PROTOCOL, element: <ProtocolPage /> },
-  { route: RoutesEnum.EARN, element: <EarnPage /> },
+  { route: RoutesEnum.CONTACT, element: <ContactPage /> },
   // /faq deep-links to the FAQ section already in /docs (single source
   // of truth; avoids content duplication). `Navigate` preserves browser
   // refresh-on-/faq.

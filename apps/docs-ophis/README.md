@@ -1,6 +1,6 @@
 # docs-ophis
 
-The Ophis documentation portal — [docs.ophis.fi](https://docs.ophis.fi).
+The Ophis documentation portal, [docs.ophis.fi](https://docs.ophis.fi).
 Built with [Docusaurus 3](https://docusaurus.io/) (docs-only mode, offline
 search, Ophis cosmic brand theme).
 
@@ -32,9 +32,9 @@ Pages live in `docs/` as Markdown with frontmatter; ordering and
 category grouping are defined in `sidebars.ts`. Content is sourced from
 the canonical app assets:
 
-- `apps/frontend/apps/cowswap-frontend/public/openapi.yaml` — Intent API spec
-- `apps/frontend/apps/cowswap-frontend/public/llms.txt` — agent-facing summary
-- `functions/api/intent.ts` — the live parser behaviour (model, limits)
+- `apps/frontend/apps/cowswap-frontend/public/openapi.yaml`. Intent API spec
+- `apps/frontend/apps/cowswap-frontend/public/llms.txt`, agent-facing summary
+- `functions/api/intent.ts`, the live parser behaviour (model, limits)
 
 When those change, update the corresponding page here.
 
@@ -45,6 +45,6 @@ separate from the main app's `greg` project, by
 `.github/workflows/docs-deploy.yml` on pushes to `main` that touch
 `apps/docs-ophis/**`. The `docs.ophis.fi` custom domain points at this
 project. The historical static shim that previously served `/docs` from
-the main app — a `public/docs/` mirror plus a `_middleware.ts` rewrite —
+the main app, a `public/docs/` mirror plus a `_middleware.ts` rewrite , 
 was retired once this portal went live; `_middleware.ts` now just 301s
 apex `/docs*` here.

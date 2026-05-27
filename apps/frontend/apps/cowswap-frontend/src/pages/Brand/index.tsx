@@ -130,12 +130,12 @@ export default function BrandPage(): ReactNode {
       width="wide"
       eyebrow="Brand kit"
       title="Logos, colors, type."
-      lede="Drop-in assets for partners, journalists, and integrators. Brand-use terms are separate from the code license — see § License + attribution."
+      lede="Drop-in assets for partners, journalists, and integrators. Brand-use terms are separate from the code license, see § License + attribution."
     >
       <Section
         id="logos"
         title="Logo"
-        intro="Six variants. Prefer the dark-background lockup for digital contexts; use the icon-only variant when space is constrained (favicons, social avatars)."
+        intro="Logo variants. Prefer the dark-background lockup for digital contexts; use the icon-only variant when space is constrained (favicons, social avatars)."
       >
         <FeatureGrid minCardWidth="220px">
           <LogoTile $dark>
@@ -192,6 +192,15 @@ export default function BrandPage(): ReactNode {
               </DownloadLink>
             </LogoMeta>
           </LogoTile>
+          <LogoTile>
+            <img src="/ophis-logo-alt.svg" alt="Ophis alternative mark" />
+            <LogoMeta>
+              <span>Alternative mark</span>
+              <DownloadLink href="/ophis-logo-alt.svg" download>
+                Download SVG ↓
+              </DownloadLink>
+            </LogoMeta>
+          </LogoTile>
         </FeatureGrid>
       </Section>
 
@@ -205,7 +214,7 @@ export default function BrandPage(): ReactNode {
           <ColorSwatch $bg="#f2a63e" $fg="#02000d">
             <h3>Sunset</h3>
             <code>#F2A63E</code>
-            <span>Primary accent. Use sparingly — CTAs, emphasis, gradient anchor.</span>
+            <span>Primary accent. Use sparingly. CTAs, emphasis, gradient anchor.</span>
           </ColorSwatch>
           <ColorSwatch $bg="#f5efe6" $fg="#02000d">
             <h3>Cream</h3>
@@ -227,18 +236,18 @@ export default function BrandPage(): ReactNode {
         <FeatureGrid minCardWidth="280px">
           <FontSample $family="'Geist', system-ui">
             <div className="sample">Aa Bb Cc</div>
-            <div className="name">Fraunces</div>
-            <div className="role">Display — headings, taglines</div>
+            <div className="name">Geist</div>
+            <div className="role">Display, headings, taglines</div>
           </FontSample>
           <FontSample $family="'Geist', system-ui">
             <div className="sample">Aa Bb Cc</div>
-            <div className="name">Plus Jakarta Sans</div>
-            <div className="role">Body — UI, paragraphs, navigation</div>
+            <div className="name">Geist</div>
+            <div className="role">Body, UI, paragraphs, navigation</div>
           </FontSample>
           <FontSample $family="'Geist Mono', monospace">
             <div className="sample">Aa Bb Cc</div>
-            <div className="name">JetBrains Mono</div>
-            <div className="role">Data — addresses, hashes, code</div>
+            <div className="name">Geist Mono</div>
+            <div className="role">Data, addresses, hashes, code</div>
           </FontSample>
         </FeatureGrid>
         <Callout tone="info">
@@ -299,8 +308,8 @@ export default function BrandPage(): ReactNode {
               <Td>Partner embedding</Td>
               <Td>
                 On light backgrounds: use the wordmark / inverse icon variants. On dark
-                backgrounds: use the default lockup / icon variants. When in doubt, contact{' '}
-                <TextLink href="mailto:contact@3615crypto.com">contact@3615crypto.com</TextLink>.
+                backgrounds: use the default lockup / icon variants. When in doubt, reach out via{' '}
+                <TextLink href="/contact">our contact form</TextLink>.
               </Td>
               <Td>Apply CSS filters (hue-rotate, invert) to recolor the logo.</Td>
             </Tr>
@@ -314,7 +323,7 @@ export default function BrandPage(): ReactNode {
       </Section>
 
       <Section id="meta" title="License + attribution">
-        <Callout tone="info" title="Brand vs code — different terms">
+        <Callout tone="info" title="Brand vs code, different terms">
           The Ophis frontend source code is open source. The Ophis brand assets (name, logos,
           wordmarks, color palette as applied) are SEPARATE from the code license and carry their
           own use terms below. Trademark posture is being formalized; until then, use of the Ophis

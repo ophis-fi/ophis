@@ -3,8 +3,7 @@
   Ophis sitemap. SEO-relevant routes:
    - /              (landing — intent input)
    - /about         (operator + mission + NEAR Intents)
-   - /institutional (pitch for OTC desks, funds, treasuries)
-   - /tiers         (trader ladder / volume-based recognition)
+   - business.ophis.fi (institutional pitch for OTC desks, funds, treasuries)
    - /legal         (terms + privacy + entity)
    - /brand         (brand kit)
   Docs moved to https://docs.ophis.fi (served from its own Pages project
@@ -24,14 +23,9 @@
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://ophis.fi/institutional</loc>
+    <loc>https://business.ophis.fi/</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>https://ophis.fi/tiers</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://ophis.fi/legal</loc>

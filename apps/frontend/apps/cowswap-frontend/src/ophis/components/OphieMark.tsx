@@ -7,10 +7,10 @@ import { OPHIE_PAD_X, OPHIE_PATH, OPHIE_VIEWBOX } from '../ophiePath'
 export type OphieAnimation = 'none' | 'spin' | 'spin-fast' | 'pulse'
 
 export type OphieFill =
-  | 'saffron' // brand/60 — workhorse
-  | 'cream' // brand/10 — inverse / dark surfaces
-  | 'dark' // neutral/100 — mono dark
-  | 'sunset' // gradient — hero only
+  | 'saffron' // brand/60, workhorse
+  | 'cream' // brand/10, inverse / dark surfaces
+  | 'dark' // neutral/100, mono dark
+  | 'sunset' // gradient, hero only
   | 'currentColor' // inherit
 
 const FILLS: Record<Exclude<OphieFill, 'sunset' | 'currentColor'>, string> = {

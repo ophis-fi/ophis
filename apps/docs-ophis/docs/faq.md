@@ -1,7 +1,7 @@
 ---
 id: faq
 title: FAQ
-description: Common questions about Ophis — how it differs from other aggregators, fees, networks, MEV protection, and custody.
+description: Common questions about Ophis, how it differs from other aggregators, fees, networks, MEV protection, and custody.
 sidebar_label: FAQ
 sidebar_position: 2
 ---
@@ -19,7 +19,7 @@ ordinary trades, 25% of any positive slippage above the quote, capped at
 
 ### Do I need to connect a wallet?
 
-Yes — you sign your swap order with your own wallet. Ophis is
+Yes, you sign your swap order with your own wallet. Ophis is
 non-custodial; the signed order is broadcast to the solver auction and
 your funds move only when a solver settles the batch.
 
@@ -34,7 +34,7 @@ NEAR Intents. See [Getting started](./getting-started.md#supported-networks).
 
 Yes. The batch auction settles every order in a batch at the same uniform
 clearing price. Front-running and sandwich attacks are eliminated by
-construction — there is no priority-gas auction to win because the
+construction, there is no priority-gas auction to win because the
 protocol does not reorder transactions for value. See
 [Security & audits](./audits.md#mev-protection-by-construction).
 
@@ -47,7 +47,7 @@ parameters, or cancel at any time.
 ### Who runs the solvers?
 
 On the CoW-hosted chains Ophis surfaces, CoW's established solver network
-competes. On Optimism — where Ophis runs its own stack — Ophis currently
+competes. On Optimism, where Ophis runs its own stack. Ophis currently
 operates the solver itself, competing across several routing strategies (a
 baseline router plus multiple DEX aggregators) per batch; the on-chain allowlist
 gates who may settle, and more solvers can be authorized over time. Your
@@ -65,7 +65,7 @@ no partner fee. Full detail on the [Fees & rebates](./fees.md) page.
 
 ### Is Ophis open source?
 
-Yes — full source at
+Yes, full source at
 [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis). Ophis is
 an open-source DEX aggregator frontend with an added natural-language
 intent-parsing layer, built on CoW Protocol's settlement primitives.

@@ -26,7 +26,6 @@ import { ReactNode } from 'react'
 import {
   Accordion,
   AccordionGroup,
-  Badge,
   Callout,
   InlineCode,
   KeyValueList,
@@ -43,15 +42,9 @@ export default function LegalPage(): ReactNode {
       title="Terms, Privacy & Disclosures"
       lede="Plain-English summaries above the legal language where helpful. Reviewed against Luxembourg consumer-protection guidelines; see § Dispute resolution for jurisdiction."
     >
-      <Callout tone="planned" title="Draft notice">
-        Sections marked <Badge tone="draft">draft</Badge> are placeholder language pending review
-        by a qualified Luxembourg legal counsel. The legal-entity disclosure (§ Operator) is
-        live and factually correct. Last updated <InlineCode>2026-05-23</InlineCode>.
-      </Callout>
-
-      <Callout tone="info" title="Plain-English summaries — non-binding">
+      <Callout tone="info" title="Plain-English summaries, non-binding">
         Each section opens with a plain-English summary in a colored Callout box. These summaries
-        are for convenience only and have no legal effect — the operative terms are the
+        are for convenience only and have no legal effect, the operative terms are the
         paragraph text outside the summary boxes.
       </Callout>
 
@@ -67,7 +60,6 @@ export default function LegalPage(): ReactNode {
           or otherwise using the interface (collectively, <strong>&quot;the Service&quot;</strong>),
           you agree to be bound by these Terms of Service (<strong>&quot;Terms&quot;</strong>) and
           the Privacy Policy below.{' '}
-          <Badge tone="draft">draft</Badge>
         </p>
       </Section>
 
@@ -82,7 +74,6 @@ export default function LegalPage(): ReactNode {
         <p>
           You confirm you have the legal capacity to enter into binding contracts under your
           jurisdiction. Use by minors is prohibited.{' '}
-          <Badge tone="draft">draft</Badge>
         </p>
       </Section>
 
@@ -129,8 +120,7 @@ export default function LegalPage(): ReactNode {
             the operator.
           </li>
         </ul>
-        <Badge tone="draft">draft</Badge>
-      </Section>
+             </Section>
 
       {/* ─────────────────────────────────────────────────────────── */}
 
@@ -151,7 +141,6 @@ export default function LegalPage(): ReactNode {
           provisions of your jurisdiction of residence), the operator&#39;s aggregate liability
           arising from your use of the Service is limited to a cap to be determined by qualified
           legal counsel.{' '}
-          <Badge tone="draft">draft — pending legal review</Badge>
         </p>
       </Section>
 
@@ -194,7 +183,7 @@ export default function LegalPage(): ReactNode {
           pseudonymous data + IP addresses may still qualify as personal data under GDPR.
         </Callout>
 
-        <h3>7.1 — What we collect <Badge tone="draft">draft</Badge></h3>
+        <h3>7.1. What we collect</h3>
         <p>
           The Service does not intentionally collect account-registration data, identity
           documents, or know-your-customer (KYC) information. Wallet addresses are pseudonymous
@@ -204,7 +193,7 @@ export default function LegalPage(): ReactNode {
           linkable to a natural person.
         </p>
 
-        <h3>7.2 — Telemetry (Sentry)</h3>
+        <h3>7.2. Telemetry (Sentry)</h3>
         <p>
           The Service uses{' '}
           <TextLink href="https://sentry.io" external>
@@ -215,14 +204,14 @@ export default function LegalPage(): ReactNode {
           Sentry can be blocked locally via browser settings; the Service continues to function.
         </p>
 
-        <h3>7.3 — Cookies + localStorage</h3>
+        <h3>7.3. Cookies + localStorage</h3>
         <p>
           The Service uses first-party <InlineCode>localStorage</InlineCode> for SPA state (chain
           selection, recent tokens, intent-input history, wallet connection state). No
           third-party advertising cookies are set. No first-party tracking cookies are set.
         </p>
 
-        <h3>7.4 — Third-party services <Badge tone="draft">draft</Badge></h3>
+        <h3>7.4. Third-party services</h3>
         <p>
           When you use the Service, your browser makes requests to the following third parties.
           Each has its own privacy policy. The operator has no special relationship with these
@@ -230,7 +219,7 @@ export default function LegalPage(): ReactNode {
         </p>
         <ul>
           <li>
-            <strong>Cloudflare</strong> (hosting + CDN + DNS) — receives IP, user agent, request
+            <strong>Cloudflare</strong> (hosting + CDN + DNS), receives IP, user agent, request
             metadata.{' '}
             <TextLink href="https://www.cloudflare.com/privacypolicy/" external>
               policy
@@ -276,11 +265,11 @@ export default function LegalPage(): ReactNode {
           </li>
           <li>
             <strong>Public RPC providers</strong> (Alchemy, PublicNode, Ankr, viem default
-            endpoints) — receive IP + RPC method call metadata for chain queries.
+            endpoints), receive IP + RPC method call metadata for chain queries.
           </li>
         </ul>
 
-        <h3>7.5 — Your rights (GDPR, if applicable) <Badge tone="draft">draft</Badge></h3>
+        <h3>7.5. Your rights (GDPR, if applicable)</h3>
         <p>
           If you are a resident of the European Economic Area, you have the right to access,
           rectify, restrict, port, or object to processing of personal data the operator holds
@@ -288,7 +277,7 @@ export default function LegalPage(): ReactNode {
           registration data or identity documents; however, pseudonymous wallet addresses + IP
           metadata at the CDN layer may qualify as personal data depending on linkability. For
           requests, reach the operator via the contact channel on{' '}
-          <TextLink href="/institutional#contact">/institutional</TextLink> with sufficient
+          <TextLink href="/contact">the contact form</TextLink> with sufficient
           detail to identify the data in question. For Sentry telemetry deletion, contact
           Sentry directly per its policy.
         </p>
@@ -299,9 +288,9 @@ export default function LegalPage(): ReactNode {
       <Section id="operator" title="8. Operator (legal entity)">
         <Callout tone="info">
           The Service is operated by a Luxembourg-incorporated consultancy company registered
-          with the Luxembourg Business Registers (RCS). Full entity details — including the
+          with the Luxembourg Business Registers (RCS). Full entity details, including the
           registered legal name, registered office, RCS / VAT numbers, trade authorisation
-          reference, NACE classification, and legal representative — are provided on request
+          reference, NACE classification, and legal representative, are provided on request
           for formal contractual, regulatory, or dispute-resolution matters.
         </Callout>
         <KeyValueList
@@ -310,7 +299,7 @@ export default function LegalPage(): ReactNode {
             { label: 'Legal form', value: 'Limited-liability company (Société à responsabilité limitée)' },
             {
               label: 'Registry',
-              value: 'Luxembourg Business Registers (RCS) — entity number on request',
+              value: 'Luxembourg Business Registers (RCS), entity number on request',
             },
             {
               label: 'Activity classification',
@@ -320,8 +309,8 @@ export default function LegalPage(): ReactNode {
               label: 'Entity details (full)',
               value: (
                 <>
-                  Available on request for formal arrangements — reach out via the contact
-                  section on <TextLink href="/institutional#contact">/institutional</TextLink>.
+                  Available on request for formal arrangements, reach out via the contact
+                  section on <TextLink href="/contact">the contact form</TextLink>.
                 </>
               ),
             },
@@ -337,7 +326,6 @@ export default function LegalPage(): ReactNode {
           arising from your use of the Service shall be submitted to the exclusive jurisdiction
           of the competent courts of the District of Luxembourg, without prejudice to any
           mandatory consumer-protection provisions of your jurisdiction of residence.{' '}
-          <Badge tone="draft">draft</Badge>
         </p>
       </Section>
 
@@ -346,7 +334,7 @@ export default function LegalPage(): ReactNode {
       <Section id="changes" title="10. Changes to these terms">
         <p>
           The operator may revise these Terms at any time. Material changes will be reflected via
-          an updated <InlineCode>Last updated</InlineCode> date in the draft notice above. Continued
+          an updated <InlineCode>Last updated</InlineCode> date here. Continued
           use of the Service after a revision constitutes acceptance of the revised Terms.
         </p>
       </Section>
@@ -359,12 +347,11 @@ export default function LegalPage(): ReactNode {
             <p>
               The operator is a Luxembourg-incorporated consultancy company providing
               a non-custodial software interface to permissionless on-chain protocols. As of the
-              draft date of this page, the operator is not registered as a regulated investment
+              date of this page, the operator is not registered as a regulated investment
               firm, payment institution, e-money institution, virtual-asset service provider, or
               equivalent in Luxembourg or other EU jurisdictions. Whether the Service falls
               under any specific financial-services regime in a given jurisdiction is being
-              reviewed by counsel. <Badge tone="draft">draft</Badge>
-            </p>
+              reviewed by counsel.            </p>
           </Accordion>
           <Accordion summary="Do you collect KYC?">
             <p>
@@ -376,7 +363,7 @@ export default function LegalPage(): ReactNode {
           </Accordion>
           <Accordion summary="What happens if I lose access to my wallet?">
             <p>
-              The operator cannot help. Ophis is non-custodial — your private keys, your tokens.
+              The operator cannot help. Ophis is non-custodial, your private keys, your tokens.
               We have no recovery mechanism, no support process for lost keys, and no ability to
               freeze or move funds from any wallet.
             </p>

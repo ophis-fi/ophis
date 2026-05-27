@@ -37,16 +37,14 @@ export const Routes = {
   // Ophis: '/brand' = brand kit page (logo variants, color tokens,
   // typography spec).
   BRAND: '/brand',
+  // Ophis: '/contact' = message form relaying to the Ophis inbox via
+  // /api/contact. No email address is rendered anywhere on the site.
+  CONTACT: '/contact',
   // Ophis: '/institutional' = pitch page for OTC desks, funds, treasuries.
   INSTITUTIONAL: '/institutional',
-  // Ophis: '/tiers' = trader ladder / volume-based recognition tiers.
-  TIERS: '/tiers',
   // Ophis: '/profile' = wallet-aware trader identity page (Phase C1).
   // Replaces the upstream `/profile → /account` redirect alias.
   PROFILE: '/profile',
-  // Ophis: '/missions' = draft framework page documenting the planned
-  // mission categories + lifecycle (Phase C2). No live missions exist.
-  MISSIONS: '/missions',
   // Ophis: '/learn' = orientation / navigation hub linking the existing
   // Ophis pages + upstream CoW Protocol context. Not a publication archive.
   LEARN: '/learn',
@@ -54,10 +52,6 @@ export const Routes = {
   // Ophis stack-delta table. Bridges /about (overview) and docs.ophis.fi
   // (reference). Not a second /about — mechanism only.
   PROTOCOL: '/protocol',
-  // Ophis: '/earn' = draft rewards-catalogue page (Phase C3). Documents
-  // the categories of rewards Ophis may support after indexing + signed
-  // partner terms are live. NOT a yield aggregator or claim page.
-  EARN: '/earn',
   PRIVACY_POLICY: '/privacy-policy',
   COOKIE_POLICY: '/cookie-policy',
   TERMS_CONDITIONS: '/terms-and-conditions',

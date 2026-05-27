@@ -9,16 +9,16 @@ info:
 
     Backed by LibertAI's Qwen 3.6 27B (open-weights, hosted on Aleph
     Cloud) via a Cloudflare Pages Function proxy. The LibertAI API key
-    is held server-side as a Pages environment secret — browsers and
+    is held server-side as a Pages environment secret, browsers and
     third-party agents never see it.
 
     **Trust model:** Ophis is non-custodial. This API does not place,
-    sign, or execute trades — it only normalizes natural-language
+    sign, or execute trades, it only normalizes natural-language
     requests into structured entities. Order signing always happens in
     the user's wallet on the frontend.
   contact:
     name: Ophis operator
-    email: contact@3615crypto.com
+    url: https://ophis.fi/#/contact
   license:
     name: Source available
     url: https://github.com/ophis-fi/ophis
@@ -41,7 +41,7 @@ paths:
 
         Tokens are validated against an internal allowlist (top-200+
         DEX-traded symbols + DeFi blue-chips + memes + gaming).
-        Unknown symbols are filtered out — the response will still
+        Unknown symbols are filtered out, the response will still
         include the other entities, with the unknown one omitted.
 
         **Origin allowlist:** non-null `Origin` headers are checked
@@ -91,7 +91,7 @@ paths:
                 type: string
                 enum: ['hit']
             cache-control:
-              description: Always `no-store` — clients must not cache.
+              description: Always `no-store`, clients must not cache.
               schema:
                 type: string
           content:

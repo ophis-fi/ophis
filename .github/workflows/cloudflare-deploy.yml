@@ -49,6 +49,21 @@ jobs:
         working-directory: apps/frontend
         run: pnpm install --frozen-lockfile
 
+      # Deploy the Formspree form config (formspree.json at repo root) so the
+      # /contact form is managed as code. Uses the deploy key from a repo secret
+      # (NEVER in client code). Skips cleanly if unset and never blocks the
+      # frontend deploy (continue-on-error).
+      - name: deploy Formspree forms
+        continue-on-error: true
+        env:
+          FORMSPREE_DEPLOY_KEY: ${{ secrets.FORMSPREE_DEPLOY_KEY }}
+        run: |
+          if [ -n "$FORMSPREE_DEPLOY_KEY" ]; then
+            npx --yes @formspree/cli@latest deploy -k "$FORMSPREE_DEPLOY_KEY"
+          else
+            echo "FORMSPREE_DEPLOY_KEY not set; skipping Formspree form deploy."
+          fi
+
       - name: build cowswap
         working-directory: apps/frontend
         env:
@@ -70,6 +85,10 @@ jobs:
           # Without this, production runs as "local" env and defaults to
           # staging endpoints.
           REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi|greg-etm\.pages\.dev)$
+          # Public Formspree form endpoint for /contact (the short /f/<hashid>,
+          # NOT the deploy key). Set as a repo secret/var after the first
+          # `formspree deploy` provisions the form.
+          REACT_APP_FORMSPREE_ENDPOINT: ${{ secrets.REACT_APP_FORMSPREE_ENDPOINT }}
         run: pnpm run build:cowswap
 
       - name: drop production source maps

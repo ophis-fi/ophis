@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Ophis — intent-based DEX aggregator. Tell us what to swap in plain English; we'll route you to a pre-filled, MEV-protected swap."
+      content="Ophis is an intent-based DEX aggregator. Describe a trade in plain English and Ophis routes you to a pre-filled, MEV-protected trade."
     />
     <script src="/emergency.js"></script>
 
@@ -30,30 +30,31 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
     />
-    <!-- Inter retained for legacy components that reference it directly. -->
-    <link rel="preload" href="/static/Inter-roman.var.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/Inter-italic.var.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Inter loads on-demand via @font-face (src/styles/fonts.css) for the few
+         legacy components that still reference it. Deliberately NOT preloaded:
+         the landing and all rebranded surfaces use Geist, so eagerly fetching
+         ~472KB of Inter on every page was pure critical-path waste. -->
 
     <!-- Social media tags -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Ophis — intent-based DEX aggregator" />
+    <meta property="og:title" content="Ophis, the intent-based DEX aggregator" />
     <meta
       property="og:description"
-      content="Tell Ophis what to swap in plain English. We pre-fill the form and you sign. Intent-based, MEV-protected."
+      content="Describe your trade in plain English. Ophis pre-fills the order and you sign. Intent-based, MEV-protected."
     />
     <meta property="og:image" content="/ophis-og.jpg" />
     <meta property="og:image:width" content="1920" />
     <meta property="og:image:height" content="1080" />
-    <meta property="og:image:alt" content="Ophis — cosmic gradient hero" />
+    <meta property="og:image:alt" content="Ophis cosmic gradient hero" />
     <meta property="og:url" content="https://ophis.fi" />
     <meta property="og:site_name" content="Ophis" />
 
     <!-- Twitter media tags -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Ophis — intent-based DEX aggregator" />
-    <meta name="twitter:description" content="Tell Ophis what to swap in plain English. We pre-fill the form and you sign. Intent-based, MEV-protected." />
+    <meta name="twitter:title" content="Ophis, the intent-based DEX aggregator" />
+    <meta name="twitter:description" content="Describe your trade in plain English. Ophis pre-fills the order and you sign. Intent-based, MEV-protected." />
     <meta name="twitter:image" content="/ophis-og.jpg" />
-    <meta name="twitter:image:alt" content="Ophis — cosmic gradient hero" />
+    <meta name="twitter:image:alt" content="Ophis cosmic gradient hero" />
     <style>
       html,
       body {
