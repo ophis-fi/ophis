@@ -11,10 +11,13 @@ import styled from 'styled-components/macro'
 
 import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
 
-// Formspree form endpoint (public by design, lives client-side). Submissions
-// email the Ophis inbox; Formspree handles delivery + spam filtering, plus the
-// _gotcha honeypot below. Swap the id here if the Formspree form changes.
-const FORMSPREE_ENDPOINT = 'https://formspree.io/f/421f903a6d1346f9bd3b957974e7bb57'
+// Formspree form endpoint = the PUBLIC form hashid (safe client-side), injected
+// at build via REACT_APP_FORMSPREE_ENDPOINT (e.g. https://formspree.io/f/<hashid>).
+// This is NOT the deploy key — that is a secret used only by the Formspree CLI
+// in CI (FORMSPREE_DEPLOY_KEY) and must never appear in client code. The form
+// config lives in formspree.json (project 3010910624528989815) and is deployed
+// by the CLI; see .github/workflows/cloudflare-deploy.yml.
+const FORMSPREE_ENDPOINT = process.env.REACT_APP_FORMSPREE_ENDPOINT || ''
 
 type Status = 'idle' | 'sending' | 'success' | 'error'
 
