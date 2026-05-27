@@ -1,7 +1,6 @@
 /**
- * Contact — a simple message form that relays to the Ophis inbox via the
- * /api/contact Cloudflare Pages Function (Brevo). No email address is
- * rendered anywhere on the site; the form is the only contact affordance.
+ * Contact, a simple message form that submits to Formspree. No email address
+ * is rendered anywhere on the site; the form is the only contact affordance.
  *
  * AGENTS.md compliance: named export, page implementation in *.container.tsx,
  * barrel re-export in index.ts.
@@ -11,6 +10,11 @@ import { FormEvent, ReactNode, useState } from 'react'
 import styled from 'styled-components/macro'
 
 import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
+
+// Formspree form endpoint (public by design, lives client-side). Submissions
+// email the Ophis inbox; Formspree handles delivery + spam filtering, plus the
+// _gotcha honeypot below. Swap the id here if the Formspree form changes.
+const FORMSPREE_ENDPOINT = 'https://formspree.io/f/421f903a6d1346f9bd3b957974e7bb57'
 
 type Status = 'idle' | 'sending' | 'success' | 'error'
 
@@ -110,13 +114,12 @@ export function ContactPage(): ReactNode {
     if (status === 'sending') return
     setStatus('sending')
     try {
-      const res = await fetch('/api/contact', {
+      const res = await fetch(FORMSPREE_ENDPOINT, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, email, message, company }),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ name, email, message, _gotcha: company }),
       })
-      const data = (await res.json().catch(() => null)) as { ok?: boolean } | null
-      if (res.ok && data?.ok) {
+      if (res.ok) {
         setStatus('success')
         setName('')
         setEmail('')
