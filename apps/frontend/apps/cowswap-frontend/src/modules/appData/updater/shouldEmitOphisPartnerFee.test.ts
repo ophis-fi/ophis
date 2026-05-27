@@ -17,6 +17,7 @@ describe('shouldEmitOphisPartnerFee', () => {
     expect(shouldEmitOphisPartnerFee(8453)).toBe(true) // Base
     expect(shouldEmitOphisPartnerFee(42161)).toBe(true) // Arbitrum One
     expect(shouldEmitOphisPartnerFee(137)).toBe(true) // Polygon
+    expect(shouldEmitOphisPartnerFee(11155111)).toBe(true) // Sepolia testnet — fee path stays testable
   })
 
   it('returns false for undefined chainId (wallet disconnected)', () => {

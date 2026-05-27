@@ -44,17 +44,19 @@ export const OPHIS_MAX_VOLUME_BPS = 50;
  * on our own stack (100%, no CoW cut); CoW-hosted chains settle via api.cow.fi
  * + CoW's solver network (CoW disburses 75% weekly).
  *
- * Mirrors the frontend gate `shouldEmitOphisPartnerFee`, which derives its
- * supported set from cow-sdk's `DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK`.
- * This SDK has no cow-sdk dependency, so the set is hand-maintained here —
- * update it when CoW adds a supported chain (the frontend picks new chains up
- * automatically; this list does not).
+ * Mirrors the frontend gate `shouldEmitOphisPartnerFee`, whose served set is
+ * the keys of `DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK` = cow-sdk's
+ * `SupportedChainId` enum (`@cowprotocol/sdk-config`) plus the Ophis-operated
+ * chains. This SDK has no cow-sdk dependency, so the set is hand-maintained
+ * here — update it when CoW adds a supported chain (the frontend picks new
+ * chains up automatically via the enum; this list does not).
  */
 export const OPHIS_FEE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([
-  // Ophis-operated (own stack — 100%)
+  // Ophis-operated (own stack — 100%; NOT cow-sdk SupportedChainId members)
   10, 4326, 999,
-  // CoW-hosted (settle via api.cow.fi — CoW disburses 75% weekly)
-  1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144,
+  // CoW-hosted = cow-sdk SupportedChainId (settle via api.cow.fi, 75% weekly).
+  // Sepolia (11155111) is the testnet member — kept so the fee path is testable.
+  1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
 ]);
 
 export interface OphisPartnerFee {
