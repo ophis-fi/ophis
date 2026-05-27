@@ -134,10 +134,12 @@ const config: Config = {
       style: 'dark',
       links: [
         {
-          title: 'Product',
+          title: 'Documentation',
           items: [
-            {label: 'Open app', href: APP_URL},
-            {label: 'Business portal', href: BUSINESS_URL},
+            {label: 'How it works', to: '/architecture'},
+            {label: 'Fees & rebates', to: '/fees'},
+            {label: 'Security & audits', to: '/audits'},
+            {label: 'FAQ', to: '/faq'},
           ],
         },
         {
@@ -150,16 +152,25 @@ const config: Config = {
           ],
         },
         {
-          title: 'Protocol',
+          title: 'Product',
           items: [
-            {label: 'How it works', to: '/architecture'},
-            {label: 'Fees & rebates', to: '/fees'},
-            {label: 'Security & audits', to: '/audits'},
+            {label: 'Trade', href: APP_URL},
+            {label: 'Learn', href: `${APP_URL}/#/learn`},
+            {label: 'About', href: `${APP_URL}/#/about`},
+            {label: 'Business', href: BUSINESS_URL},
+          ],
+        },
+        {
+          title: 'Company',
+          items: [
+            {label: 'Brand', href: `${APP_URL}/#/brand`},
+            {label: 'Legal', href: `${APP_URL}/#/legal`},
+            {label: 'Contact', href: `${APP_URL}/#/contact`},
             {label: 'GitHub', href: GITHUB_URL},
           ],
         },
       ],
-      copyright: `© Ophis ${new Date().getFullYear()} · Non-custodial · MEV-protected`,
+      copyright: `Best-execution, MEV-protected trading from a plain-English intent. © Ophis ${new Date().getFullYear()}.`,
     },
     prism: {
       theme: prismThemes.oneLight,

@@ -24,31 +24,36 @@ import { ReactNode } from 'react'
 
 import styled, { keyframes } from 'styled-components/macro'
 
-const EXAMPLES: readonly string[] = [
-  // Swaps — common pairs across the most-trafficked chains
-  'Swap 100 USDC for ETH on Base',
-  'Trade 0.5 ETH for USDC on Optimism',
-  'Buy 1000 USDT on Arbitrum',
-  'Swap 250 DAI for WBTC on Ethereum',
-  // Memes
-  'Swap 50 USDC for PEPE on Ethereum',
-  'Trade 1000 USDT for DOGE on BNB',
-  // Cross-chain feel (lands on the right chain)
-  'Buy 1 ETH on Linea with USDC',
-  'Swap 500 USDT for ARB on Arbitrum',
-  // Liquid staking
-  'Trade 2 ETH for wstETH on Ethereum',
-  'Swap 1 ETH for weETH on Arbitrum',
-  // Stablecoins
-  'Trade 5000 USDT for USDC on Polygon',
-  'Swap 1000 DAI for sDAI on Ethereum',
-  // DeFi / governance
-  'Buy 100 UNI on Ethereum',
-  'Swap 0.1 ETH for LDO on Ethereum',
-  // Big amounts (whale-ish)
-  'Swap 10 ETH for USDC on Base',
-  // Long-tail
-  'Trade 50 USDC for ENA on Ethereum',
+import { chainLogo, tokenLogo } from './tokenAssets'
+
+type Example = {
+  /** Display text shown in the chip + pre-filled into the input on click. */
+  readonly label: string
+  /** Sell-token symbol for the leading logo (omitted for "buy" examples). */
+  readonly from?: string
+  /** Buy-token symbol. */
+  readonly to: string
+  /** Chain slug for the trailing chain logo. */
+  readonly chain: string
+}
+
+const EXAMPLES: readonly Example[] = [
+  { label: 'Swap 100 USDC for ETH on Base', from: 'USDC', to: 'ETH', chain: 'base' },
+  { label: 'Trade 0.5 ETH for USDC on Optimism', from: 'ETH', to: 'USDC', chain: 'optimism' },
+  { label: 'Buy 1000 USDT on Arbitrum', to: 'USDT', chain: 'arbitrum' },
+  { label: 'Swap 250 DAI for WBTC on Ethereum', from: 'DAI', to: 'WBTC', chain: 'ethereum' },
+  { label: 'Swap 50 USDC for PEPE on Ethereum', from: 'USDC', to: 'PEPE', chain: 'ethereum' },
+  { label: 'Trade 1000 USDT for DOGE on BNB', from: 'USDT', to: 'DOGE', chain: 'bnb' },
+  { label: 'Buy 1 ETH on Linea with USDC', from: 'USDC', to: 'ETH', chain: 'linea' },
+  { label: 'Swap 500 USDT for ARB on Arbitrum', from: 'USDT', to: 'ARB', chain: 'arbitrum' },
+  { label: 'Trade 2 ETH for wstETH on Ethereum', from: 'ETH', to: 'wstETH', chain: 'ethereum' },
+  { label: 'Swap 1 ETH for weETH on Arbitrum', from: 'ETH', to: 'weETH', chain: 'arbitrum' },
+  { label: 'Trade 5000 USDT for USDC on Polygon', from: 'USDT', to: 'USDC', chain: 'polygon' },
+  { label: 'Swap 1000 DAI for sDAI on Ethereum', from: 'DAI', to: 'sDAI', chain: 'ethereum' },
+  { label: 'Buy 100 UNI on Ethereum', to: 'UNI', chain: 'ethereum' },
+  { label: 'Swap 0.1 ETH for LDO on Ethereum', from: 'ETH', to: 'LDO', chain: 'ethereum' },
+  { label: 'Swap 10 ETH for USDC on Base', from: 'ETH', to: 'USDC', chain: 'base' },
+  { label: 'Trade 50 USDC for ENA on Ethereum', from: 'USDC', to: 'ENA', chain: 'ethereum' },
 ]
 
 const scroll = keyframes`
@@ -104,6 +109,9 @@ const Track = styled.div`
 const Chip = styled.button`
   appearance: none;
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   border: 1px solid rgba(245, 239, 230, 0.18);
   background: rgba(8, 4, 24, 0.45);
   color: rgba(245, 239, 230, 0.78);
@@ -146,6 +154,21 @@ const Chip = styled.button`
   }
 `
 
+const Logo = styled.img`
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+`
+
+// Smaller + dimmed so the chain reads as a suffix, not another token in the pair.
+const ChainBadge = styled(Logo)`
+  width: 14px;
+  height: 14px;
+  opacity: 0.9;
+`
+
 export function IntentCarousel({ onPick }: { onPick: (text: string) => void }): ReactNode {
   // The track contains the example list twice in immediate succession so
   // that translating by -50% lands on the same starting frame — making
@@ -156,19 +179,27 @@ export function IntentCarousel({ onPick }: { onPick: (text: string) => void }): 
   return (
     <Viewport aria-label="Example swap intents">
       <Track>
-        {tracks.map((ex, i) => (
-          <Chip
-            key={`${ex}-${i}`}
-            type="button"
-            onClick={() => onPick(ex)}
-            // Mark the duplicate half hidden from screen-readers so the
-            // intent list is announced once, not twice.
-            aria-hidden={i >= EXAMPLES.length ? true : undefined}
-            tabIndex={i >= EXAMPLES.length ? -1 : 0}
-          >
-            {ex}
-          </Chip>
-        ))}
+        {tracks.map((ex, i) => {
+          const fromSrc = ex.from ? tokenLogo(ex.from) : undefined
+          const toSrc = tokenLogo(ex.to)
+          const chainSrc = chainLogo(ex.chain)
+          return (
+            <Chip
+              key={`${ex.label}-${i}`}
+              type="button"
+              onClick={() => onPick(ex.label)}
+              // Mark the duplicate half hidden from screen-readers so the
+              // intent list is announced once, not twice.
+              aria-hidden={i >= EXAMPLES.length ? true : undefined}
+              tabIndex={i >= EXAMPLES.length ? -1 : 0}
+            >
+              {fromSrc && <Logo src={fromSrc} alt="" aria-hidden="true" />}
+              {toSrc && <Logo src={toSrc} alt="" aria-hidden="true" />}
+              <span>{ex.label}</span>
+              {chainSrc && <ChainBadge src={chainSrc} alt="" aria-hidden="true" />}
+            </Chip>
+          )
+        })}
       </Track>
     </Viewport>
   )
