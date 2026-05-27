@@ -89,6 +89,11 @@ jobs:
           # NOT the deploy key). Set as a repo secret/var after the first
           # `formspree deploy` provisions the form.
           REACT_APP_FORMSPREE_ENDPOINT: ${{ secrets.REACT_APP_FORMSPREE_ENDPOINT }}
+          # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
+          # the Ophis Safe). The dedicated API key is intentionally NOT built
+          # into the frontend bundle (Bungee requires it server-side); it stays
+          # a repo secret for a future Cloudflare Function proxy.
+          REACT_APP_BUNGEE_AFFILIATE_ID: ${{ secrets.REACT_APP_BUNGEE_AFFILIATE_ID }}
         run: pnpm run build:cowswap
 
       - name: drop production source maps

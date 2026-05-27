@@ -1,2 +1,7 @@
-export const bungeeAffiliateCode =
-  '609913096e1a3d62cecd0ffff47aa3e459eaedceb5fef75aad43e6cbff367039708902197e0b2b78b1d76cb0837ad0b318baedceb5fef75aad43e6cb'
+// Ophis Bungee affiliate ID, injected at build via the GitHub Actions secret
+// REACT_APP_BUNGEE_AFFILIATE_ID (see .github/workflows/cloudflare-deploy.yml).
+// Sent as the `affiliate` header on Bungee bridge quotes so the affiliate
+// rev-share accrues to the Ophis Safe instead of the upstream CoW integrator.
+// Undefined when unset, in which case no affiliate header is sent (the fee is
+// never routed to a third party by default).
+export const bungeeAffiliateCode = process.env.REACT_APP_BUNGEE_AFFILIATE_ID
