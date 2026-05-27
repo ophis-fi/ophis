@@ -152,11 +152,12 @@ export function ContactPage(): ReactNode {
             </p>
           </Callout>
         ) : (
-          <Form onSubmit={handleSubmit}>
+          <Form onSubmit={handleSubmit} action={FORMSPREE_ENDPOINT} method="POST">
             <Field>
               Name
               <Input
                 type="text"
+                name="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -169,6 +170,7 @@ export function ContactPage(): ReactNode {
               Email
               <Input
                 type="email"
+                name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -180,6 +182,7 @@ export function ContactPage(): ReactNode {
             <Field>
               Message
               <Textarea
+                name="message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 required
@@ -193,6 +196,7 @@ export function ContactPage(): ReactNode {
                 Company
                 <input
                   type="text"
+                  name="_gotcha"
                   tabIndex={-1}
                   autoComplete="off"
                   value={company}
