@@ -39,15 +39,23 @@ export const OPHIS_PRICE_IMPROVEMENT_BPS = 2500;
 export const OPHIS_MAX_VOLUME_BPS = 50;
 
 /**
- * Chains where Ophis operates its own stack and therefore charges the partner
- * fee. Mirrors the frontend gate `shouldEmitOphisPartnerFee` — exactly the
- * chains whose per-network fee recipient is the Ophis Safe. On all other
- * (CoW-hosted) chains Ophis does not operate and collects no partner fee.
- *   - 10   Optimism (live)
- *   - 4326 MegaETH  (paused)
- *   - 999  HyperEVM (paused)
+ * Chains where Ophis charges the CIP-75 partner fee — every chain its frontend
+ * serves (restored all-chain model, 2026-05-27). Ophis-operated chains settle
+ * on our own stack (100%, no CoW cut); CoW-hosted chains settle via api.cow.fi
+ * + CoW's solver network (CoW disburses 75% weekly).
+ *
+ * Mirrors the frontend gate `shouldEmitOphisPartnerFee`, which derives its
+ * supported set from cow-sdk's `DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK`.
+ * This SDK has no cow-sdk dependency, so the set is hand-maintained here —
+ * update it when CoW adds a supported chain (the frontend picks new chains up
+ * automatically; this list does not).
  */
-export const OPHIS_FEE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 4326, 999]);
+export const OPHIS_FEE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([
+  // Ophis-operated (own stack — 100%)
+  10, 4326, 999,
+  // CoW-hosted (settle via api.cow.fi — CoW disburses 75% weekly)
+  1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144,
+]);
 
 export interface OphisPartnerFee {
   /** Share of price improvement over the user's quote, in bps (2500 = 25%). */
@@ -59,7 +67,7 @@ export interface OphisPartnerFee {
 
 /**
  * Returns Ophis's CIP-75 partner-fee config for a given chain, or `undefined`
- * for chains where Ophis does not operate a stack (and so charges no fee).
+ * for chains Ophis does not serve (not in `OPHIS_FEE_CHAIN_IDS`).
  */
 export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undefined => {
   assertValidChainId(chainId);

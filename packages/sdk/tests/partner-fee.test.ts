@@ -32,9 +32,11 @@ describe('@ophis/sdk partner fee defaults', () => {
     }
   });
 
-  it('returns undefined on CoW-hosted chains where Ophis does not operate', () => {
+  it('returns the CIP-75 fee on all CoW-supported chains (restored all-chain model 2026-05-27)', () => {
     for (const chainId of [1, 100, 8453, 42161, 137, 43114, 56, 59144, 9745, 57073]) {
-      expect(ophisDefaultPartnerFee(chainId)).toBeUndefined();
+      const fee = ophisDefaultPartnerFee(chainId);
+      expect(fee?.priceImprovementBps).toBe(2500);
+      expect(fee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
     }
   });
 
@@ -43,8 +45,10 @@ describe('@ophis/sdk partner fee defaults', () => {
     expect(OPHIS_MAX_VOLUME_BPS).toBe(50);
   });
 
-  it('OPHIS_FEE_CHAIN_IDS is exactly the Ophis-operated set {10, 4326, 999}', () => {
-    expect([...OPHIS_FEE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 999, 4326]);
+  it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + CoW-hosted)', () => {
+    expect([...OPHIS_FEE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
+      1, 10, 56, 100, 137, 999, 4326, 8453, 9745, 42161, 43114, 57073, 59144,
+    ]);
   });
 
   it('returns a recipient that is a 0x-prefixed 40-hex-char address', () => {
@@ -69,6 +73,10 @@ describe('@ophis/sdk partner fee defaults', () => {
       maxVolumeBps: 50,
       recipient: OPHIS_PARTNER_FEE_RECIPIENT,
     });
-    expect(buildOphisAppDataPartnerFee(1)).toBeUndefined();
+    expect(buildOphisAppDataPartnerFee(1)).toEqual({
+      priceImprovementBps: 2500,
+      maxVolumeBps: 50,
+      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+    });
   });
 });
