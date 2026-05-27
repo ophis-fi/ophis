@@ -277,7 +277,7 @@ export default function LegalPage(): ReactNode {
           registration data or identity documents; however, pseudonymous wallet addresses + IP
           metadata at the CDN layer may qualify as personal data depending on linkability. For
           requests, reach the operator via the contact channel on{' '}
-          <TextLink href="/institutional#contact">/institutional</TextLink> with sufficient
+          <TextLink href="/contact">the contact form</TextLink> with sufficient
           detail to identify the data in question. For Sentry telemetry deletion, contact
           Sentry directly per its policy.
         </p>
@@ -310,7 +310,7 @@ export default function LegalPage(): ReactNode {
               value: (
                 <>
                   Available on request for formal arrangements, reach out via the contact
-                  section on <TextLink href="/institutional#contact">/institutional</TextLink>.
+                  section on <TextLink href="/contact">the contact form</TextLink>.
                 </>
               ),
             },

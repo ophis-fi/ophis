@@ -186,7 +186,7 @@ export default function AboutPage(): ReactNode {
           company. Full entity details (legal name, RCS number, registered office, legal representative) are provided on
           request for formal arrangements, see the operator section on the{' '}
           <TextLink href="/legal#operator">Legal page</TextLink> for the disclosure policy and the{' '}
-          <TextLink href="/institutional#contact">Institutional page</TextLink> for the contact channel.
+          <TextLink href="/contact">contact form</TextLink> for the contact channel.
         </p>
         <KeyValueList
           items={[

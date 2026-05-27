@@ -18,11 +18,7 @@
 - [/#/advanced](https://ophis.fi/#/advanced): Advanced trading. TWAP / programmable order types.
 - [/#/yield](https://ophis.fi/#/yield): Yield, token-to-yield-bearing-token routes.
 - [/#/about](https://ophis.fi/#/about): About, what Ophis is and isn't.
-- [/#/institutional](https://ophis.fi/#/institutional): Institutional, agents/treasuries/funds, intent API integration patterns.
-- [/#/tiers](https://ophis.fi/#/tiers): Fee tiers, positive-slippage rebate schedule by 30-day volume.
-- [/#/profile](https://ophis.fi/#/profile): Profile, wallet-scoped lifetime stats (trades, rebates, savings).
-- [/#/missions](https://ophis.fi/#/missions): Missions, discoverable in-protocol challenges (no points, no airdrop fishing).
-- [/#/earn](https://ophis.fi/#/earn): Earn, explicit rebate mechanics + tier ladder.
+- [/#/profile](https://ophis.fi/#/profile): Profile, wallet identity read from your connected wallet (address, chain, ENS).
 - [/#/learn](https://ophis.fi/#/learn): Learn, primers on intents, solvers, MEV, batch auctions.
 - [https://docs.ophis.fi](https://docs.ophis.fi): Full docs, protocol overview, intent API spec, architecture, AI-agent integration guide, audits.
 - [https://business.ophis.fi](https://business.ophis.fi): Business portal, integration playbook for institutional desks, custodians, and AI agents.

@@ -34,6 +34,29 @@ const MAX_MESSAGE = 4000
 // Contact is low-volume + abuse-prone; cap tighter than the intent API.
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 5
+const RATE_LIMIT_MAX_KEYS = 2048
+
+// Per-isolate fallback bucket, used when the KV binding is absent or errors.
+// Best-effort (each isolate has its own Map) but bounds the Brevo relay
+// instead of failing open in exactly the misconfig case rate-limiting guards.
+const ipBuckets = new Map<string, number[]>()
+
+function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
+  const now = Date.now()
+  const cutoff = now - RATE_LIMIT_WINDOW_MS
+  if (ipBuckets.size > RATE_LIMIT_MAX_KEYS) {
+    for (const k of Array.from(ipBuckets.keys()).slice(0, 256)) ipBuckets.delete(k)
+  }
+  const recent = (ipBuckets.get(ip) ?? []).filter((t) => t >= cutoff)
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSec = Math.max(1, Math.ceil((recent[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
+    ipBuckets.set(ip, recent)
+    return { ok: false, retryAfterSec }
+  }
+  recent.push(now)
+  ipBuckets.set(ip, recent)
+  return { ok: true }
+}
 
 const ALLOWED_ORIGINS = new Set<string>(['https://ophis.fi', 'https://greg-etm.pages.dev'])
 const ALLOWED_ORIGIN_SUFFIXES = ['.greg-etm.pages.dev', '.greg.pages.dev']
@@ -63,7 +86,7 @@ const json = (body: ContactResponse, status = 200, extraHeaders: Record<string, 
 
 async function checkRateLimit(env: Env, ip: string): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
   const kv = env.OPHIS_RATELIMIT
-  if (!kv) return { ok: true }
+  if (!kv) return checkRateLimitIsolate(ip)
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS
   const key = `contact-rl:${ip}`
@@ -82,8 +105,8 @@ async function checkRateLimit(env: Env, ip: string): Promise<{ ok: true } | { ok
     await kv.put(key, JSON.stringify(timestamps), { expirationTtl: 120 })
     return { ok: true }
   } catch {
-    // KV outage → don't block a legitimate contact attempt.
-    return { ok: true }
+    // KV outage → fall back to the per-isolate cap rather than failing open.
+    return checkRateLimitIsolate(ip)
   }
 }
 
@@ -98,8 +121,11 @@ function asString(v: unknown): string {
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context
 
+  // Contact is a browser-form-only endpoint (no public API use case), so
+  // require an allowed Origin. Browsers always send Origin on POST, so this
+  // rejects curl/script abuse without blocking the legitimate form.
   const origin = request.headers.get('origin')
-  if (origin && !isAllowedOrigin(origin)) {
+  if (!isAllowedOrigin(origin)) {
     return json({ ok: false, error: { code: 'FORBIDDEN', message: 'origin not allowed' } }, 403)
   }
 
