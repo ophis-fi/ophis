@@ -15,7 +15,7 @@ export function useFilterTokens(tokens: TokenWithLogo[], query: string): TokenWi
     const searchAddress = isAddress(query)
     const queryParts = query
       .toLowerCase()
-      .split(/\+s/)
+      .split(/\s+/)
       .filter((s) => s.length)
 
     return tokens.filter((token: TokenWithLogo) => {

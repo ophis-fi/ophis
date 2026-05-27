@@ -13,8 +13,8 @@
  *     (address, chain, optional ENS, optional wallet name). No inferred
  *     activity, no leaderboard.
  *
- * Real backend (volume indexer, tier auto-progression, partner perks,
- * Missions/Earn integration) is targeted for Q3 2026 per the /tiers page.
+ * Real backend (volume indexer, tier auto-progression, partner perks) is
+ * targeted for Q3 2026.
  *
  * AGENTS.md compliance (post-Codex GitHub bot audit):
  *   - Named export (no default).
@@ -33,17 +33,7 @@ import { CHAIN_INFO } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink } from '@cowprotocol/common-utils'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
-import {
-  Badge,
-  Callout,
-  FeatureGrid,
-  InlineCode,
-  KeyValueList,
-  MetricCard,
-  PageShell,
-  Section,
-  TextLink,
-} from 'ophis/ds'
+import { Callout, InlineCode, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
 
 import { ProfileActions } from './ProfileActions.pure'
 
@@ -60,9 +50,9 @@ export function ProfilePage(): ReactNode {
   return (
     <PageShell
       width="medium"
-      eyebrow="Profile — draft framework"
+      eyebrow="Profile"
       title="Wallet-aware identity. Honest about what's live."
-      lede="Connect a wallet to see your address and current app chain. Trading history, tier eligibility, and partner perks are planned for Q3 2026 — until then, nothing on this page pretends to be a record we hold."
+      lede="Connect a wallet to see your address, current app chain, and ENS name, read directly from your wallet. Ophis holds no account and stores nothing on this page."
     >
       <Callout tone="info" title="Data sources">
         <p>
@@ -70,11 +60,6 @@ export function ProfilePage(): ReactNode {
           provider name. Nothing is sent to Ophis servers for this section to render.{' '}
           <strong>Resolved via public RPC:</strong> ENS name (if any) is looked up against the
           public ENS registry.
-        </p>
-        <p>
-          <strong>Not yet indexed:</strong> historical trade volume, tier eligibility, partner
-          rewards. The on-chain trade indexer launches Q3 2026; no figures appear here in the
-          meantime. <Badge tone="draft">draft</Badge>
         </p>
       </Callout>
 
@@ -100,7 +85,7 @@ export function ProfilePage(): ReactNode {
                       View address on {chain?.explorerTitle ?? 'explorer'}
                     </TextLink>
                   ) : (
-                    '—'
+                    'Not available'
                   ),
                 },
               ]}
@@ -134,106 +119,18 @@ export function ProfilePage(): ReactNode {
         <ProfileActions />
       </Section>
 
-      <Section
-        id="tier"
-        title="Tier framework"
-        intro="Default-state view of the volume-tier ladder. No tier is computed for your wallet until the indexer is live."
-      >
-        <FeatureGrid minCardWidth="260px" gap="20px">
-          <MetricCard
-            label="Default framework tier"
-            value="Stargazer"
-            sublabel="< $10k cumulative · indexer not yet live"
-          />
-        </FeatureGrid>
-        <KeyValueList
-          items={[
-            { label: 'Indexed volume', value: 'Not yet indexed' },
-            { label: 'Next threshold (draft)', value: '$10k cumulative → Navigator' },
-            { label: 'Tracking launch', value: 'Q3 2026 planned' },
-            {
-              label: 'Retroactive eligibility',
-              value: 'May be reviewed at launch — not a binding promise',
-            },
-          ]}
-        />
-        <p>
-          The full draft ladder (volume bands, target fee discounts, perk classes) lives on the{' '}
-          <TextLink href="/tiers">Tiers page</TextLink>. Until the volume indexer ships, no tier
-          is auto-assigned to your wallet, and the figures above are framework defaults — not a
-          read of your activity.
-        </p>
-      </Section>
-
-      <Section
-        id="history"
-        title="Trade history"
-        intro={
-          <>
-            <Badge tone="planned">planned</Badge>&nbsp;On-chain trade indexer is planned for Q3
-            2026.
-          </>
-        }
-      >
-        <Callout tone="planned" title="Until the indexer ships">
-          <p>
-            Your trade history lives in your wallet&apos;s transaction view and on each
-            chain&apos;s public block explorer. Ophis does not currently index trades — nothing
-            on this page is a record of activity we hold.
-          </p>
-          <p>
-            When the indexer goes live, this section will surface order history, settlement
-            receipts, and aggregate volume across chains.
-          </p>
-        </Callout>
-        {account && explorerUrl && (
-          <p>
-            For the current app chain ({chain?.label ?? `#${chainId}`}), view transactions
-            directly on the app-chain explorer:{' '}
-            <TextLink href={explorerUrl} external>
-              {chain?.explorerTitle ?? 'block explorer'}
-            </TextLink>
-            .
-          </p>
-        )}
-      </Section>
-
-      <Section
-        id="perks"
-        title="Partner perks"
-        intro={
-          <>
-            <Badge tone="planned">planned</Badge>&nbsp;Launches alongside Missions + Earn pages
-            (Phase C2 + C3).
-          </>
-        }
-      >
-        <Callout tone="planned" title="No partner perks shown by design">
-          <p>
-            Future perk cards will appear here only after signed partner terms exist. Showing
-            placeholder discounts now — even as a layout preview — would be dishonest: there are
-            no live partner integrations yet.
-          </p>
-          <p>
-            Real integrations launch with the upcoming <em>Missions</em> (partner protocol
-            integrations) and <em>Earn</em> (rewards from partner programs) pages.
-          </p>
-        </Callout>
-      </Section>
-
       <Section id="contact" title="Found a gap?">
         <p>
           This page intentionally avoids fabricating data while the underlying indexer is being
           built. If you&apos;re routing material volume and want eligibility tracked before the
           public launch, reach out via the{' '}
-          <TextLink href="/institutional">Institutional page</TextLink>.
-        </p>
-        <p>
-          Direct contact:{' '}
-          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Profile%20feedback">
-            contact@3615crypto.com
+          <TextLink href="https://business.ophis.fi" external>
+            business page
           </TextLink>
           .
+        </p>
+        <p>
+          Questions or feedback? Use the <TextLink href="/contact">contact form</TextLink>.
         </p>
       </Section>
     </PageShell>

@@ -97,47 +97,7 @@ export function LearnPage(): ReactNode {
               <TextLink href="/">Open trade form →</TextLink>
             </p>
           </FeatureCard>
-          <FeatureCard title="Tiers framework (draft)">
-            <p>
-              Volume-based recognition ladder (Stargazer → Cosmonaut). Documents the draft fee discount structure tied
-              to cumulative routing volume. Infra targeted Q3 2026.
-            </p>
-            <p>
-              <TextLink href="/tiers">/tiers →</TextLink>
-            </p>
-          </FeatureCard>
         </FeatureGrid>
-      </Section>
-
-      <Section
-        id="eligibility-perks"
-        title="Eligibility &amp; perks (planned)"
-        intro="The Phase C pages document how recognition + perks may be distributed once the volume indexer and signed partner terms are live. Nothing is currently claimable."
-      >
-        <KeyValueList
-          items={[
-            {
-              label: 'Tiers',
-              value: <TextLink href="/tiers">/tiers — eligibility ladder + draft fee discount framework</TextLink>,
-            },
-            {
-              label: 'Missions',
-              value: <TextLink href="/missions">/missions — how to qualify for tier credit + partner perks</TextLink>,
-            },
-            {
-              label: 'Earn',
-              value: (
-                <TextLink href="/earn">
-                  /earn — rewards-catalogue documenting what may be distributable (no claims today)
-                </TextLink>
-              ),
-            },
-            {
-              label: 'Profile',
-              value: <TextLink href="/profile">/profile — wallet-aware view of your current status</TextLink>,
-            },
-          ]}
-        />
       </Section>
 
       <Section
@@ -162,7 +122,9 @@ export function LearnPage(): ReactNode {
               access. Material-volume contact channel.
             </p>
             <p>
-              <TextLink href="/institutional">/institutional →</TextLink>
+              <TextLink href="https://business.ophis.fi" external>
+                business.ophis.fi →
+              </TextLink>
             </p>
           </FeatureCard>
           <FeatureCard title="Brand kit">
@@ -224,12 +186,9 @@ export function LearnPage(): ReactNode {
         intro="This page intentionally avoids making content up. If a topic you expect is absent, it's because it doesn't exist on Ophis yet."
       >
         <p>
-          Drop a note —{' '}
-          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Learn%20feedback">
-            contact@3615crypto.com
-          </TextLink>{' '}
-          (Subject: Ophis Learn feedback) — it helps us decide what to document next. If and when original Ophis
-          articles or product announcements ship, they should appear in a new section above.
+          Drop a note via the <TextLink href="/contact">contact form</TextLink>, it helps us decide what to document
+          next. If and when original Ophis articles or product announcements ship, they should appear in a new section
+          above.
         </p>
       </Section>
     </PageShell>

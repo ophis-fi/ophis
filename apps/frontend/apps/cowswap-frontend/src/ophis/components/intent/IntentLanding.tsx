@@ -348,7 +348,7 @@ export function IntentLanding(): ReactNode {
       <Hero>
         <Eyebrow>Intent-based DEX aggregator</Eyebrow>
         <Tagline>
-          Tell us what to <em>trade.</em>
+          Nothing lost. Nothing created. Everything <em>traded.</em>
         </Tagline>
         <Sub>
           Describe your trade in plain English. Ophis identifies the tokens, the chain, and the amount,
