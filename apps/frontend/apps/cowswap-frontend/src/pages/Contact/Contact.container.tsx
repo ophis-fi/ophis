@@ -14,7 +14,7 @@
  * AGENTS.md compliance: named export, page implementation in *.container.tsx,
  * barrel re-export in index.ts.
  */
-import { FormEvent, ReactNode, useEffect, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
 
 import styled from 'styled-components/macro'
 
@@ -23,8 +23,10 @@ import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
 declare global {
   interface Window {
     turnstile?: {
+      render: (container: HTMLElement, params: { sitekey: string }) => string
       getResponse: (widgetId?: string) => string | undefined
       reset: (widgetId?: string) => void
+      remove: (widgetId?: string) => void
     }
   }
 }
@@ -160,15 +162,48 @@ export function ContactPage(): ReactNode {
   const [company, setCompany] = useState('') // honeypot
   const [status, setStatus] = useState<Status>('idle')
 
-  // Load the Turnstile script once, only when a site key is configured.
+  const widgetRef = useRef<HTMLDivElement>(null)
+  const widgetIdRef = useRef<string | undefined>(undefined)
+
+  // Explicitly render Turnstile (SPA-safe: the implicit class scan only runs on
+  // script load, so a later route mount would get no widget + no token). Load
+  // the script if needed, render into our ref'd div, clean up on unmount.
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY) return
-    if (document.querySelector(`script[src="${TURNSTILE_SCRIPT_SRC}"]`)) return
-    const script = document.createElement('script')
-    script.src = TURNSTILE_SCRIPT_SRC
-    script.async = true
-    script.defer = true
-    document.head.appendChild(script)
+    const siteKey = TURNSTILE_SITE_KEY
+    if (!siteKey) return
+    let cancelled = false
+    // Narrowed-to-string copy so the nested closure sees `string`, not
+    // `string | undefined` (TS flow narrowing doesn't cross into nested fns).
+    const key: string = siteKey
+
+    function renderWidget(): void {
+      if (cancelled || !widgetRef.current || !window.turnstile || widgetIdRef.current !== undefined) return
+      widgetIdRef.current = window.turnstile.render(widgetRef.current, { sitekey: key })
+    }
+
+    if (window.turnstile) {
+      renderWidget()
+    } else {
+      const existing = document.querySelector<HTMLScriptElement>(`script[src^="${TURNSTILE_SCRIPT_SRC}"]`)
+      if (existing) {
+        existing.addEventListener('load', renderWidget, { once: true })
+      } else {
+        const script = document.createElement('script')
+        script.src = `${TURNSTILE_SCRIPT_SRC}?render=explicit`
+        script.async = true
+        script.defer = true
+        script.addEventListener('load', renderWidget, { once: true })
+        document.head.appendChild(script)
+      }
+    }
+
+    return () => {
+      cancelled = true
+      if (widgetIdRef.current !== undefined) {
+        window.turnstile?.remove(widgetIdRef.current)
+        widgetIdRef.current = undefined
+      }
+    }
   }, [])
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
@@ -177,7 +212,7 @@ export function ContactPage(): ReactNode {
 
     let turnstileToken: string | undefined
     if (TURNSTILE_SITE_KEY) {
-      turnstileToken = window.turnstile?.getResponse()
+      turnstileToken = window.turnstile?.getResponse(widgetIdRef.current)
       if (!turnstileToken) {
         setStatus('captcha')
         return
@@ -211,7 +246,7 @@ export function ContactPage(): ReactNode {
         setMessage('')
       } else {
         setStatus('error')
-        window.turnstile?.reset()
+        window.turnstile?.reset(widgetIdRef.current)
       }
     } catch {
       setStatus('error')
@@ -333,7 +368,7 @@ export function ContactPage(): ReactNode {
             </Honeypot>
 
             {TURNSTILE_SITE_KEY && (
-              <TurnstileWidget className="cf-turnstile" data-sitekey={TURNSTILE_SITE_KEY} />
+              <TurnstileWidget ref={widgetRef} />
             )}
 
             {status === 'captcha' && (
