@@ -37,7 +37,7 @@ async function mapHttpStatus(
   if (res.status === 429) {
     return {
       code: bodyErr?.code ?? 'RATE_LIMITED',
-      message: bodyErr?.message ?? 'too many requests — slow down a moment',
+      message: bodyErr?.message ?? 'too many requests, slow down a moment',
     }
   }
   if (res.status === 401 || res.status === 403) {

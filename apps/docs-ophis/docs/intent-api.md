@@ -1,7 +1,7 @@
 ---
 id: intent-api
 title: Intent API
-description: POST /api/intent — turn a plain-English swap request into a structured ParsedIntent. Public, no key, rate-limited.
+description: POST /api/intent, turn a plain-English swap request into a structured ParsedIntent. Public, no key, rate-limited.
 sidebar_label: Intent API
 sidebar_position: 1
 ---
@@ -9,7 +9,7 @@ sidebar_position: 1
 # Intent API
 
 The Intent API parses a plain-English swap request into a structured
-`ParsedIntent` that the Ophis frontend — or your own app or agent — can
+`ParsedIntent` that the Ophis frontend, or your own app or agent, can
 use to pre-fill a swap form or construct a deep link.
 
 It is Ophis's **only bespoke integration API**. To place orders
@@ -20,7 +20,7 @@ wallet.
 
 - **Base URL:** `https://ophis.fi`
 - **Endpoint:** `POST /api/intent`
-- **Auth:** none — no API key required.
+- **Auth:** none, no API key required.
 - **Backed by:** LibertAI Qwen 3.6 27B (open-weights, on Aleph Cloud),
   behind a Cloudflare Pages Function proxy. The LibertAI key is held
   server-side and never reaches callers.
@@ -39,7 +39,7 @@ wallet.
 
 The `Origin` check raises the bar for casual browser abuse but can be
 omitted by any non-browser client. The real protections are the per-IP
-rate limit and the fact that the endpoint only normalizes text — it
+rate limit and the fact that the endpoint only normalizes text, it
 moves no funds.
 
 :::
@@ -104,7 +104,7 @@ On success, `200 OK` with a `ParsedIntent`:
 | `end` | integer | 0-indexed end offset of `raw` (exclusive). `text.slice(start, end) === raw`. |
 
 **Token values** are validated against an internal allowlist (200+
-DEX-traded symbols). Unknown symbols are filtered out — the response
+DEX-traded symbols). Unknown symbols are filtered out, the response
 still includes the other entities, with the unknown one omitted.
 
 **Chain values** are lowercase slugs, limited to the chains the network
@@ -144,7 +144,7 @@ additionally sets `x-ophis-cache: hit`.
 ## Trust model
 
 Ophis is non-custodial. This endpoint **does not place, sign, or execute
-trades** — it only normalizes natural language into structured entities.
+trades**, it only normalizes natural language into structured entities.
 Order signing always happens in the user's wallet on the frontend. To
 submit orders programmatically, use the
 [CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)

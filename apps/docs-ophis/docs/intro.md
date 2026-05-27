@@ -1,7 +1,7 @@
 ---
 id: intro
 title: Introduction
-description: Ophis is an intent-based DEX aggregator — describe a swap in plain English and a competitive solver auction fills it MEV-protected.
+description: Ophis is an intent-based DEX aggregator, describe a swap in plain English and a competitive solver auction fills it MEV-protected.
 slug: /
 sidebar_label: Introduction
 sidebar_position: 1
@@ -10,7 +10,7 @@ sidebar_position: 1
 # Ophis
 
 **Ophis is an intent-based DEX aggregator.** You describe a swap in plain
-English — _"swap 100 USDC for ETH on Base"_ — and a competitive solver
+English, _"swap 100 USDC for ETH on Base"_, and a competitive solver
 auction fills it at the best price. The trade settles on-chain with
 MEV protection built in, and you sign every order with your own wallet.
 
@@ -30,7 +30,7 @@ swap 100 USDC for ETH on Base
   solvers compete on _how_ to deliver it.
 - **MEV-protected.** Orders settle through a batch auction where every
   trade clears at one uniform price. Sandwich attacks and front-running
-  are structurally absent — not best-effort.
+  are structurally absent, not best-effort.
 - **Self-custodial.** Ophis never holds funds. Every order is signed by
   your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
   from the allowlisted solver set.
@@ -47,7 +47,7 @@ swap 100 USDC for ETH on Base
 | [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
 | [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
 | [Fees & rebates](./fees.md) | The price-improvement fee model and how rebates accrue. |
-| [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint — parse English into a structured order. |
+| [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |
 | [AI agent integration](./ai-agents.md) | Wire the intent API into LangChain, AutoGPT, or your own agent. |
 | [Security & audits](./audits.md) | Custody model, settlement contracts, and audit posture. |
 | [FAQ](./faq.md) | Common questions about fees, networks, MEV, and custody. |

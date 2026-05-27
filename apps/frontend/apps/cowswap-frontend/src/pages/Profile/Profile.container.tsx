@@ -94,7 +94,7 @@ export function ProfilePage(): ReactNode {
               <p>
                 <strong>Note on the chain row.</strong> &quot;App chain&quot; is the chain Ophis
                 is routing on for this session, normalized to a supported network. Your wallet
-                may report a different current chain — check your wallet UI for the actual
+                may report a different current chain, check your wallet UI for the actual
                 network it holds. The explorer link points to the app-chain block explorer.
               </p>
             </Callout>
@@ -103,12 +103,12 @@ export function ProfilePage(): ReactNode {
           <Callout tone="info" title="Connect a wallet">
             <p>
               Use the <strong>Connect</strong> button in the header (top-right) to link a wallet.
-              Your address and current app chain will appear here. Nothing else is collected —
+              Your address and current app chain will appear here. Nothing else is collected , 
               identity is read from the wallet, not stored by Ophis.
             </p>
             <p>
               Ophis uses the upstream CoW Swap wallet stack and supports the wallets exposed by
-              the configured connectors. The full list is governed by upstream — there is no
+              the configured connectors. The full list is governed by upstream, there is no
               custody and no Ophis-specific wallet allowlist.
             </p>
           </Callout>

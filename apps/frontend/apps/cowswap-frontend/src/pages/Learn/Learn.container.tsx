@@ -34,18 +34,18 @@ export function LearnPage(): ReactNode {
   return (
     <PageShell
       width="medium"
-      eyebrow="Learn — navigation hub"
+      eyebrow="Learn, navigation hub"
       title="Learn Ophis without the guesswork."
-      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage — if and when we do, they should land in their own section below."
+      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage, if and when we do, they should land in their own section below."
     >
-      <Callout tone="info" title="What this page is — and isn't">
+      <Callout tone="info" title="What this page is, and isn't">
         <p>
           <strong>This page is</strong> an orientation map. It points at existing Ophis pages, tells you what each
           covers, and links to upstream CoW Protocol material where Ophis inherits behavior from the protocol we forked.
         </p>
         <p>
           <strong>This page is not</strong> a knowledge base, blog, podcast index, or press archive. When we publish
-          those, they will appear in clearly-labeled sections — not as placeholders.
+          those, they will appear in clearly-labeled sections, not as placeholders.
         </p>
       </Callout>
 
@@ -61,7 +61,7 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Protocol mechanism">
             <p>
-              The trading mechanism in depth — intent lifecycle, the batch-auction settlement Ophis inherits from CoW,
+              The trading mechanism in depth, intent lifecycle, the batch-auction settlement Ophis inherits from CoW,
               and a layer-by-layer table of exactly what Ophis adds on top.
             </p>
             <p>
@@ -70,7 +70,7 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Docs">
             <p>
-              How a swap intent flows through Ophis — describing a trade in plain English, solver competition,
+              How a swap intent flows through Ophis, describing a trade in plain English, solver competition,
               MEV-protected settlement. Includes a FAQ and API reference.
             </p>
             <p>
@@ -142,12 +142,12 @@ export function LearnPage(): ReactNode {
       <Section
         id="upstream-cow"
         title="Upstream CoW Protocol context"
-        intro="Ophis is a fork of CoW Protocol. The contracts, intent format, and solver-competition mechanism are inherited from upstream — so CoW's literature applies where Ophis hasn't yet written its own equivalent. Not Ophis documentation, not Ophis policy."
+        intro="Ophis is a fork of CoW Protocol. The contracts, intent format, and solver-competition mechanism are inherited from upstream, so CoW's literature applies where Ophis hasn't yet written its own equivalent. Not Ophis documentation, not Ophis policy."
       >
         <Callout tone="info" title="Read with attribution in mind">
           <p>
             CoW DAO and its publications speak for CoW Protocol, not for Ophis. We link here because the underlying
-            mechanism is shared — not because CoW endorses Ophis or because CoW docs define Ophis policy.
+            mechanism is shared, not because CoW endorses Ophis or because CoW docs define Ophis policy.
           </p>
         </Callout>
         <KeyValueList

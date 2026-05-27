@@ -294,17 +294,17 @@ function helperText(
 ): { variant: 'hint' | 'error'; message: string } {
   if (errorCode) {
     if (errorMessage && /key not configured/i.test(errorMessage)) {
-      return { variant: 'error', message: 'Search not enabled yet — operator setup pending.' }
+      return { variant: 'error', message: 'Search not enabled yet, operator setup pending.' }
     }
     if (errorCode === 'RATE_LIMITED') {
-      return { variant: 'error', message: 'Slow down — wait a moment before searching again.' }
+      return { variant: 'error', message: 'Slow down, wait a moment before searching again.' }
     }
     if (errorCode === 'FORBIDDEN') {
       return { variant: 'error', message: 'Origin not allowed.' }
     }
-    if (errorCode === 'TIMEOUT') return { variant: 'error', message: 'Took too long — try the manual swap.' }
-    if (errorCode === 'INVALID_JSON') return { variant: 'error', message: "Couldn't read that — try the manual swap." }
-    return { variant: 'error', message: "Couldn't reach the parser — try the manual swap." }
+    if (errorCode === 'TIMEOUT') return { variant: 'error', message: 'Took too long, try the manual swap.' }
+    if (errorCode === 'INVALID_JSON') return { variant: 'error', message: "Couldn't read that, try the manual swap." }
+    return { variant: 'error', message: "Couldn't reach the parser, try the manual swap." }
   }
   if (text.trim().length === 0) {
     return { variant: 'hint', message: 'Try: "swap 100 USDC for ETH on Base"' }
@@ -338,7 +338,7 @@ export function IntentLanding(): ReactNode {
     <Page>
       <OphisHeader transparent>
         {/* PR #245 (2026-05-23): removed the inline `<Logo src="/ophis-lockup.svg">`
-            from the hero header — OphisHeader already renders the "ophis."
+            from the hero header. OphisHeader already renders the "ophis."
             wordmark on its left side, so the lockup was a redundant
             second-logo Clement flagged. Keep only the secondary CTA on
             the right. */}

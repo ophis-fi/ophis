@@ -42,9 +42,9 @@ export default function LegalPage(): ReactNode {
       title="Terms, Privacy & Disclosures"
       lede="Plain-English summaries above the legal language where helpful. Reviewed against Luxembourg consumer-protection guidelines; see § Dispute resolution for jurisdiction."
     >
-      <Callout tone="info" title="Plain-English summaries — non-binding">
+      <Callout tone="info" title="Plain-English summaries, non-binding">
         Each section opens with a plain-English summary in a colored Callout box. These summaries
-        are for convenience only and have no legal effect — the operative terms are the
+        are for convenience only and have no legal effect, the operative terms are the
         paragraph text outside the summary boxes.
       </Callout>
 
@@ -183,7 +183,7 @@ export default function LegalPage(): ReactNode {
           pseudonymous data + IP addresses may still qualify as personal data under GDPR.
         </Callout>
 
-        <h3>7.1 — What we collect</h3>
+        <h3>7.1. What we collect</h3>
         <p>
           The Service does not intentionally collect account-registration data, identity
           documents, or know-your-customer (KYC) information. Wallet addresses are pseudonymous
@@ -193,7 +193,7 @@ export default function LegalPage(): ReactNode {
           linkable to a natural person.
         </p>
 
-        <h3>7.2 — Telemetry (Sentry)</h3>
+        <h3>7.2. Telemetry (Sentry)</h3>
         <p>
           The Service uses{' '}
           <TextLink href="https://sentry.io" external>
@@ -204,14 +204,14 @@ export default function LegalPage(): ReactNode {
           Sentry can be blocked locally via browser settings; the Service continues to function.
         </p>
 
-        <h3>7.3 — Cookies + localStorage</h3>
+        <h3>7.3. Cookies + localStorage</h3>
         <p>
           The Service uses first-party <InlineCode>localStorage</InlineCode> for SPA state (chain
           selection, recent tokens, intent-input history, wallet connection state). No
           third-party advertising cookies are set. No first-party tracking cookies are set.
         </p>
 
-        <h3>7.4 — Third-party services</h3>
+        <h3>7.4. Third-party services</h3>
         <p>
           When you use the Service, your browser makes requests to the following third parties.
           Each has its own privacy policy. The operator has no special relationship with these
@@ -219,7 +219,7 @@ export default function LegalPage(): ReactNode {
         </p>
         <ul>
           <li>
-            <strong>Cloudflare</strong> (hosting + CDN + DNS) — receives IP, user agent, request
+            <strong>Cloudflare</strong> (hosting + CDN + DNS), receives IP, user agent, request
             metadata.{' '}
             <TextLink href="https://www.cloudflare.com/privacypolicy/" external>
               policy
@@ -265,11 +265,11 @@ export default function LegalPage(): ReactNode {
           </li>
           <li>
             <strong>Public RPC providers</strong> (Alchemy, PublicNode, Ankr, viem default
-            endpoints) — receive IP + RPC method call metadata for chain queries.
+            endpoints), receive IP + RPC method call metadata for chain queries.
           </li>
         </ul>
 
-        <h3>7.5 — Your rights (GDPR, if applicable)</h3>
+        <h3>7.5. Your rights (GDPR, if applicable)</h3>
         <p>
           If you are a resident of the European Economic Area, you have the right to access,
           rectify, restrict, port, or object to processing of personal data the operator holds
@@ -288,9 +288,9 @@ export default function LegalPage(): ReactNode {
       <Section id="operator" title="8. Operator (legal entity)">
         <Callout tone="info">
           The Service is operated by a Luxembourg-incorporated consultancy company registered
-          with the Luxembourg Business Registers (RCS). Full entity details — including the
+          with the Luxembourg Business Registers (RCS). Full entity details, including the
           registered legal name, registered office, RCS / VAT numbers, trade authorisation
-          reference, NACE classification, and legal representative — are provided on request
+          reference, NACE classification, and legal representative, are provided on request
           for formal contractual, regulatory, or dispute-resolution matters.
         </Callout>
         <KeyValueList
@@ -299,7 +299,7 @@ export default function LegalPage(): ReactNode {
             { label: 'Legal form', value: 'Limited-liability company (Société à responsabilité limitée)' },
             {
               label: 'Registry',
-              value: 'Luxembourg Business Registers (RCS) — entity number on request',
+              value: 'Luxembourg Business Registers (RCS), entity number on request',
             },
             {
               label: 'Activity classification',
@@ -309,7 +309,7 @@ export default function LegalPage(): ReactNode {
               label: 'Entity details (full)',
               value: (
                 <>
-                  Available on request for formal arrangements — reach out via the contact
+                  Available on request for formal arrangements, reach out via the contact
                   section on <TextLink href="/institutional#contact">/institutional</TextLink>.
                 </>
               ),
@@ -363,7 +363,7 @@ export default function LegalPage(): ReactNode {
           </Accordion>
           <Accordion summary="What happens if I lose access to my wallet?">
             <p>
-              The operator cannot help. Ophis is non-custodial — your private keys, your tokens.
+              The operator cannot help. Ophis is non-custodial, your private keys, your tokens.
               We have no recovery mechanism, no support process for lost keys, and no ability to
               freeze or move funds from any wallet.
             </p>

@@ -1,6 +1,6 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator. You describe a swap in plain English ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. 0% fees on ordinary trades — Ophis only earns when a solver beats your quoted price (positive-slippage rebates). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator. You describe a swap in plain English ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. 0% fees on ordinary trades. Ophis only earns when a solver beats your quoted price (positive-slippage rebates). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
@@ -12,20 +12,20 @@
 
 ## Routes
 
-- [/](https://ophis.fi/): Landing — entry point, brand surfaces, language-first swap intent input.
-- [/#/swap](https://ophis.fi/#/swap): Trade — standard swap UI (token A → token B, instant fill via solver auction).
-- [/#/limit](https://ophis.fi/#/limit): Limit orders — sign-once orders that solvers fill when your target price is reachable.
-- [/#/advanced](https://ophis.fi/#/advanced): Advanced trading — TWAP / programmable order types.
-- [/#/yield](https://ophis.fi/#/yield): Yield — token-to-yield-bearing-token routes.
-- [/#/about](https://ophis.fi/#/about): About — what Ophis is and isn't.
-- [/#/institutional](https://ophis.fi/#/institutional): Institutional — agents/treasuries/funds, intent API integration patterns.
-- [/#/tiers](https://ophis.fi/#/tiers): Fee tiers — positive-slippage rebate schedule by 30-day volume.
-- [/#/profile](https://ophis.fi/#/profile): Profile — wallet-scoped lifetime stats (trades, rebates, savings).
-- [/#/missions](https://ophis.fi/#/missions): Missions — discoverable in-protocol challenges (no points, no airdrop fishing).
-- [/#/earn](https://ophis.fi/#/earn): Earn — explicit rebate mechanics + tier ladder.
-- [/#/learn](https://ophis.fi/#/learn): Learn — primers on intents, solvers, MEV, batch auctions.
-- [https://docs.ophis.fi](https://docs.ophis.fi): Full docs — protocol overview, intent API spec, architecture, AI-agent integration guide, audits.
-- [https://business.ophis.fi](https://business.ophis.fi): Business portal — integration playbook for institutional desks, custodians, and AI agents.
+- [/](https://ophis.fi/): Landing, entry point, brand surfaces, language-first swap intent input.
+- [/#/swap](https://ophis.fi/#/swap): Trade, standard swap UI (token A → token B, instant fill via solver auction).
+- [/#/limit](https://ophis.fi/#/limit): Limit orders, sign-once orders that solvers fill when your target price is reachable.
+- [/#/advanced](https://ophis.fi/#/advanced): Advanced trading. TWAP / programmable order types.
+- [/#/yield](https://ophis.fi/#/yield): Yield, token-to-yield-bearing-token routes.
+- [/#/about](https://ophis.fi/#/about): About, what Ophis is and isn't.
+- [/#/institutional](https://ophis.fi/#/institutional): Institutional, agents/treasuries/funds, intent API integration patterns.
+- [/#/tiers](https://ophis.fi/#/tiers): Fee tiers, positive-slippage rebate schedule by 30-day volume.
+- [/#/profile](https://ophis.fi/#/profile): Profile, wallet-scoped lifetime stats (trades, rebates, savings).
+- [/#/missions](https://ophis.fi/#/missions): Missions, discoverable in-protocol challenges (no points, no airdrop fishing).
+- [/#/earn](https://ophis.fi/#/earn): Earn, explicit rebate mechanics + tier ladder.
+- [/#/learn](https://ophis.fi/#/learn): Learn, primers on intents, solvers, MEV, batch auctions.
+- [https://docs.ophis.fi](https://docs.ophis.fi): Full docs, protocol overview, intent API spec, architecture, AI-agent integration guide, audits.
+- [https://business.ophis.fi](https://business.ophis.fi): Business portal, integration playbook for institutional desks, custodians, and AI agents.
 
 ## APIs
 
@@ -38,9 +38,9 @@ Ophis is designed to be agent-friendly. The intent endpoint above accepts free-f
 1. POST your user's request (or your agent-generated trade idea) to `/api/intent`.
 2. Receive `ParsedIntent` with normalized `sellToken`, `buyToken`, `amount`, `chain` entities.
 3. Construct a deep-link: `https://ophis.fi/#/<chainId>/swap/<sellTokenSymbol>/<buyTokenSymbol>?inputCurrency=<amount>`.
-4. Open the link for the user to review and sign. Ophis never auto-signs — every order requires explicit wallet approval.
+4. Open the link for the user to review and sign. Ophis never auto-signs, every order requires explicit wallet approval.
 
-Agents that submit orders programmatically should use the CoW Protocol orderbook API directly. Ophis surfaces 11 EVM source/destination chains in the network selector — Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon — plus Sepolia for integration testing. Orderbook endpoints for the CoW-aligned chains live at `api.cow.fi`; Ophis-specific orderbook deployments (currently Optimism mainnet via `optimism-mainnet.ophis.fi`) follow the same schema. See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the API contract.
+Agents that submit orders programmatically should use the CoW Protocol orderbook API directly. Ophis surfaces 11 EVM source/destination chains in the network selector. Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, plus Sepolia for integration testing. Orderbook endpoints for the CoW-aligned chains live at `api.cow.fi`; Ophis-specific orderbook deployments (currently Optimism mainnet via `optimism-mainnet.ophis.fi`) follow the same schema. See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the API contract.
 
 Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-sign model is the trust boundary; bypassing it for payment automation would compromise self-custody.
 
@@ -55,4 +55,4 @@ Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-s
 
 - [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis): Full source code (frontend, intent proxy, indexer, infra runbooks).
 - [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts (Ophis runs these unmodified on OP mainnet).
-- [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol): CoW Protocol docs — the settlement primitives Ophis is built on.
+- [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol): CoW Protocol docs, the settlement primitives Ophis is built on.

@@ -28,7 +28,7 @@ const DcaLink = styled(NavLink)`
 
 const DcaCta = (
   <InlineBanner bannerType={StatusColorVariant.Info} iconSize={32}>
-    <strong>New: Set up a DCA.</strong> Buy on a schedule — MEV-protected, gas-free.{' '}
+    <strong>New: Set up a DCA.</strong> Buy on a schedule. MEV-protected, gas-free.{' '}
     <DcaLink to='/advanced'>Try it &rarr;</DcaLink>
   </InlineBanner>
 )

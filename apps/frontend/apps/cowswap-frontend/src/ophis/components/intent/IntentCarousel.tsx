@@ -65,7 +65,7 @@ const Viewport = styled.div`
   width: 100%;
   overflow: hidden;
   /* Soft fade at both edges so chips don't appear/disappear with a hard
-     cut — matches the cosmic backdrop's diffuse aesthetic. */
+     cut, matches the cosmic backdrop's diffuse aesthetic. */
   mask-image: linear-gradient(
     to right,
     transparent 0%,

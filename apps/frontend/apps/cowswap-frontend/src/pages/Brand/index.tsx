@@ -130,7 +130,7 @@ export default function BrandPage(): ReactNode {
       width="wide"
       eyebrow="Brand kit"
       title="Logos, colors, type."
-      lede="Drop-in assets for partners, journalists, and integrators. Brand-use terms are separate from the code license — see § License + attribution."
+      lede="Drop-in assets for partners, journalists, and integrators. Brand-use terms are separate from the code license, see § License + attribution."
     >
       <Section
         id="logos"
@@ -214,7 +214,7 @@ export default function BrandPage(): ReactNode {
           <ColorSwatch $bg="#f2a63e" $fg="#02000d">
             <h3>Sunset</h3>
             <code>#F2A63E</code>
-            <span>Primary accent. Use sparingly — CTAs, emphasis, gradient anchor.</span>
+            <span>Primary accent. Use sparingly. CTAs, emphasis, gradient anchor.</span>
           </ColorSwatch>
           <ColorSwatch $bg="#f5efe6" $fg="#02000d">
             <h3>Cream</h3>
@@ -323,7 +323,7 @@ export default function BrandPage(): ReactNode {
       </Section>
 
       <Section id="meta" title="License + attribution">
-        <Callout tone="info" title="Brand vs code — different terms">
+        <Callout tone="info" title="Brand vs code, different terms">
           The Ophis frontend source code is open source. The Ophis brand assets (name, logos,
           wordmarks, color palette as applied) are SEPARATE from the code license and carry their
           own use terms below. Trademark posture is being formalized; until then, use of the Ophis
