@@ -34,18 +34,18 @@ export function LearnPage(): ReactNode {
   return (
     <PageShell
       width="medium"
-      eyebrow="Learn — navigation hub"
+      eyebrow="Learn, navigation hub"
       title="Learn Ophis without the guesswork."
-      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage — if and when we do, they should land in their own section below."
+      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage, if and when we do, they should land in their own section below."
     >
-      <Callout tone="info" title="What this page is — and isn't">
+      <Callout tone="info" title="What this page is, and isn't">
         <p>
           <strong>This page is</strong> an orientation map. It points at existing Ophis pages, tells you what each
           covers, and links to upstream CoW Protocol material where Ophis inherits behavior from the protocol we forked.
         </p>
         <p>
           <strong>This page is not</strong> a knowledge base, blog, podcast index, or press archive. When we publish
-          those, they will appear in clearly-labeled sections — not as placeholders.
+          those, they will appear in clearly-labeled sections, not as placeholders.
         </p>
       </Callout>
 
@@ -61,7 +61,7 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Protocol mechanism">
             <p>
-              The trading mechanism in depth — intent lifecycle, the batch-auction settlement Ophis inherits from CoW,
+              The trading mechanism in depth, intent lifecycle, the batch-auction settlement Ophis inherits from CoW,
               and a layer-by-layer table of exactly what Ophis adds on top.
             </p>
             <p>
@@ -70,7 +70,7 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Docs">
             <p>
-              How a swap intent flows through Ophis — describing a trade in plain English, solver competition,
+              How a swap intent flows through Ophis, describing a trade in plain English, solver competition,
               MEV-protected settlement. Includes a FAQ and API reference.
             </p>
             <p>
@@ -97,47 +97,7 @@ export function LearnPage(): ReactNode {
               <TextLink href="/">Open trade form →</TextLink>
             </p>
           </FeatureCard>
-          <FeatureCard title="Tiers framework (draft)">
-            <p>
-              Volume-based recognition ladder (Stargazer → Cosmonaut). Documents the draft fee discount structure tied
-              to cumulative routing volume. Infra targeted Q3 2026.
-            </p>
-            <p>
-              <TextLink href="/tiers">/tiers →</TextLink>
-            </p>
-          </FeatureCard>
         </FeatureGrid>
-      </Section>
-
-      <Section
-        id="eligibility-perks"
-        title="Eligibility &amp; perks (planned)"
-        intro="The Phase C pages document how recognition + perks may be distributed once the volume indexer and signed partner terms are live. Nothing is currently claimable."
-      >
-        <KeyValueList
-          items={[
-            {
-              label: 'Tiers',
-              value: <TextLink href="/tiers">/tiers — eligibility ladder + draft fee discount framework</TextLink>,
-            },
-            {
-              label: 'Missions',
-              value: <TextLink href="/missions">/missions — how to qualify for tier credit + partner perks</TextLink>,
-            },
-            {
-              label: 'Earn',
-              value: (
-                <TextLink href="/earn">
-                  /earn — rewards-catalogue documenting what may be distributable (no claims today)
-                </TextLink>
-              ),
-            },
-            {
-              label: 'Profile',
-              value: <TextLink href="/profile">/profile — wallet-aware view of your current status</TextLink>,
-            },
-          ]}
-        />
       </Section>
 
       <Section
@@ -162,7 +122,9 @@ export function LearnPage(): ReactNode {
               access. Material-volume contact channel.
             </p>
             <p>
-              <TextLink href="/institutional">/institutional →</TextLink>
+              <TextLink href="https://business.ophis.fi" external>
+                business.ophis.fi →
+              </TextLink>
             </p>
           </FeatureCard>
           <FeatureCard title="Brand kit">
@@ -180,12 +142,12 @@ export function LearnPage(): ReactNode {
       <Section
         id="upstream-cow"
         title="Upstream CoW Protocol context"
-        intro="Ophis is a fork of CoW Protocol. The contracts, intent format, and solver-competition mechanism are inherited from upstream — so CoW's literature applies where Ophis hasn't yet written its own equivalent. Not Ophis documentation, not Ophis policy."
+        intro="Ophis is a fork of CoW Protocol. The contracts, intent format, and solver-competition mechanism are inherited from upstream, so CoW's literature applies where Ophis hasn't yet written its own equivalent. Not Ophis documentation, not Ophis policy."
       >
         <Callout tone="info" title="Read with attribution in mind">
           <p>
             CoW DAO and its publications speak for CoW Protocol, not for Ophis. We link here because the underlying
-            mechanism is shared — not because CoW endorses Ophis or because CoW docs define Ophis policy.
+            mechanism is shared, not because CoW endorses Ophis or because CoW docs define Ophis policy.
           </p>
         </Callout>
         <KeyValueList
@@ -224,12 +186,9 @@ export function LearnPage(): ReactNode {
         intro="This page intentionally avoids making content up. If a topic you expect is absent, it's because it doesn't exist on Ophis yet."
       >
         <p>
-          Drop a note —{' '}
-          <TextLink href="mailto:contact@3615crypto.com?subject=Ophis%20Learn%20feedback">
-            contact@3615crypto.com
-          </TextLink>{' '}
-          (Subject: Ophis Learn feedback) — it helps us decide what to document next. If and when original Ophis
-          articles or product announcements ship, they should appear in a new section above.
+          Drop a note via the <TextLink href="/contact">contact form</TextLink>, it helps us decide what to document
+          next. If and when original Ophis articles or product announcements ship, they should appear in a new section
+          above.
         </p>
       </Section>
     </PageShell>

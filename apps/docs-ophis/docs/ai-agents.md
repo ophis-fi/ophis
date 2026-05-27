@@ -1,7 +1,7 @@
 ---
 id: ai-agents
 title: AI agent integration
-description: Wire the Ophis Intent API into LangChain, AutoGPT, or any function-calling agent — parse a request, build a deep link, let the user sign.
+description: Wire the Ophis Intent API into LangChain, AutoGPT, or any function-calling agent, parse a request, build a deep link, let the user sign.
 sidebar_label: AI agent integration
 sidebar_position: 2
 ---
@@ -22,7 +22,7 @@ and routing; **the human always reviews and signs.**
 3. **Build a deep link.** Map the chain slug to its chain ID and
    construct `https://ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
 4. **Hand off.** Open the link for the user to review and sign. Ophis
-   never auto-signs — every order requires explicit wallet approval.
+   never auto-signs, every order requires explicit wallet approval.
 
 :::warning[The signature is the trust boundary]
 
@@ -130,7 +130,7 @@ def ophis_swap_intent(text: str) -> dict:
     """Parse a plain-English swap request into a structured Ophis intent
     and a deep link the user can open to review and sign. Use this
     whenever a user wants to swap, buy, or sell a crypto token.
-    The link must be shown to the user — never auto-execute a trade."""
+    The link must be shown to the user, never auto-execute a trade."""
     parsed = parse_intent(text)
     return {"intent": parsed, "deeplink": build_deeplink(parsed)}
 ```
@@ -140,8 +140,8 @@ about the trade) and a link (so the user can sign it).
 
 ## AutoGPT / function-calling agents
 
-Any function-calling agent — AutoGPT commands, OpenAI Assistants, or a
-custom tool loop — can register the parser with this schema:
+Any function-calling agent. AutoGPT commands, OpenAI Assistants, or a
+custom tool loop, can register the parser with this schema:
 
 ```json
 {
@@ -169,10 +169,10 @@ the resulting deep link to the user.
 
 ## Submitting orders programmatically
 
-The Intent API only normalizes language — it does not place orders. To submit
+The Intent API only normalizes language, it does not place orders. To submit
 orders programmatically, build and sign a
 [CoW Protocol order](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)
-yourself. Four things must each be exactly right — every one fails **silently**
+yourself. Four things must each be exactly right, every one fails **silently**
 (a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
 
 The helpers below live in **`@ophis/sdk`**, internal to the Ophis monorepo. It
@@ -183,7 +183,7 @@ call-outs) until it is.
 
 :::danger[Optimism does not live on api.cow.fi]
 
-Optimism is the one chain that breaks the `api.cow.fi/<slug>` pattern — Ophis
+Optimism is the one chain that breaks the `api.cow.fi/<slug>` pattern. Ophis
 self-hosts its OP orderbook at `optimism-mainnet.ophis.fi`. Posting an OP order
 to `api.cow.fi/optimism-mainnet` (a host that does not serve Ophis) **silently
 bypasses the Ophis solver and zeroes the partner fee**.
@@ -201,10 +201,10 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 The partner fee is a CIP-75 **price-improvement** fee written into the order's
 `appData` at `metadata.partnerFee`. Use the price-improvement shape
-`{ priceImprovementBps, maxVolumeBps, recipient }` — **not** the flat
+`{ priceImprovementBps, maxVolumeBps, recipient }`, **not** the flat
 `{ bps, recipient }` widget shape (slotting `2500` into a `bps`/volume field is
 a silent 100× error). Hash the appData with cow-sdk's deterministic serializer,
-**never** `keccak256(JSON.stringify(doc))` — JSON key order isn't stable, so the
+**never** `keccak256(JSON.stringify(doc))`. JSON key order isn't stable, so the
 hash won't match what solvers expect.
 
 ```typescript
@@ -224,7 +224,7 @@ const doc = await metadataApi.generateAppDataDoc({
   appCode: 'Ophis',
   metadata: {
     partnerFee,
-    hooks: {}, // pin empty — appData hooks are arbitrary on-chain calls
+    hooks: {}, // pin empty, appData hooks are arbitrary on-chain calls
   },
 });
 const fullAppData = await stringifyDeterministic(doc);
@@ -242,7 +242,7 @@ chains do **not** use CoW's canonical settlement.
 On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, **not** the canonical
 `0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
 order with the SDK default yields a domain separator the deployed contract
-rejects — every order fails. Build the domain from the chain ID instead.
+rejects, every order fails. Build the domain from the chain ID instead.
 
 :::
 
@@ -250,7 +250,7 @@ rejects — every order fails. Build the domain from the chain ID instead.
 import { getOphisOrderDomain } from '@ophis/sdk';
 
 // CoW's EIP-712 order struct is named `Order` (the Solidity library is
-// GPv2Order, but the EIP-712 type name — which feeds the type hash — is
+// GPv2Order, but the EIP-712 type name, which feeds the type hash, is
 // `Order`; a wrong name produces a valid-looking but unusable signature).
 const ORDER_TYPES = {
   Order: [
@@ -269,10 +269,10 @@ const ORDER_TYPES = {
   ],
 };
 
-// ethers v6 — signer.signTypedData(domain, types, value). The domain's
+// ethers v6, signer.signTypedData(domain, types, value). The domain's
 // verifyingContract must be the Ophis OP settlement (getOphisOrderDomain).
 const signature = await wallet.signTypedData(getOphisOrderDomain(10), ORDER_TYPES, order);
-// NOT wallet.signMessage(order) — that produces an invalid order signature.
+// NOT wallet.signMessage(order), that produces an invalid order signature.
 ```
 
 ### 4. Pin the order `receiver`
@@ -292,7 +292,7 @@ assertReceiverIsOwner(owner, order.receiver); // throws if receiver !== owner
 ## Autonomous agent trading (advanced)
 
 Everything above keeps a **human in the signing loop**. For an agent that signs
-*without* human review, off-chain helpers are not enough — a compromised or
+*without* human review, off-chain helpers are not enough, a compromised or
 prompt-injected agent will sign whatever it is told. Safety has to be enforced
 where the agent cannot reach it:
 
@@ -301,22 +301,22 @@ where the agent cannot reach it:
    module) approves only order hashes that satisfy policy.
 2. **A deterministic policy gate** between the (untrusted) LLM and any signature,
    owning every order field:
-   - token resolution from a chain-scoped allowlist only — never an LLM-emitted address;
+   - token resolution from a chain-scoped allowlist only, never an LLM-emitted address;
    - `receiver` pinned to the account;
    - `appData` pinned to the Ophis canonical, hooks forced empty;
    - limit price within X% of an independent, staleness-checked oracle (CoW
-     guarantees you won't fill *below* your limit — not that your limit is sane);
+     guarantees you won't fill *below* your limit, not that your limit is sane);
    - per-trade notional + rolling daily caps; short `validTo`; avoid `presign`.
 3. **Containment:** a bounded vault-relayer allowance (the blast radius if policy
    fails once), a guardian key that can revoke signing or pause, keys in an
    HSM/TEE, and a tamper-evident audit trail.
-4. **Defense in depth:** enforce the policy in two places — the EIP-1271
+4. **Defense in depth:** enforce the policy in two places, the EIP-1271
    validator/signer **and** server-side at orderbook ingestion.
 
 :::warning[The signing gate must be in code, not prose]
 
 Today "the human always signs" is a documented social contract, not an enforced
-boundary. Autonomous signing is fine to pursue — but only once that promise is
+boundary. Autonomous signing is fine to pursue, but only once that promise is
 replaced by the policy-enforced kit above. Otherwise an autonomous integrator is
 one unpinned `receiver` away from draining itself.
 

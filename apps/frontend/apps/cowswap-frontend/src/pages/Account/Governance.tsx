@@ -21,7 +21,7 @@ export default function Governance() {
           </ExtLink>
           {/*
             F9 rebrand sweep (2026-05-21): removed Forum link to
-            https://forum.cow.fi/ — Ophis has no equivalent community
+            https://forum.cow.fi/. Ophis has no equivalent community
             forum. The surrounding Governance page is itself
             CoW-DAO-specific (vCOW + Snapshot space cow.eth) and is a
             candidate for future removal.

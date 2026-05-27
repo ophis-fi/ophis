@@ -16,7 +16,11 @@ import { fetchTokenFromBlockchain } from '../../utils/fetchTokenFromBlockchain'
 import { getTokenSearchFilter } from '../../utils/getTokenSearchFilter'
 import { parseTokensFromApi } from '../../utils/parseTokensFromApi'
 
-const IN_LISTS_DEBOUNCE_TIME = ms`100ms`
+// Local token-list filtering is cheap (sub-5ms for ~hundreds of tokens), so a
+// short debounce keeps results feeling instant while still coalescing rapid
+// keystrokes. The expensive sources (external API + on-chain lookup) keep the
+// longer 1s debounce below.
+const IN_LISTS_DEBOUNCE_TIME = ms`50ms`
 const IN_EXTERNALS_DEBOUNCE_TIME = ms`1s`
 
 export type TokenSearchResponse = {
