@@ -1,7 +1,7 @@
 ---
 id: architecture
 title: How it works
-description: The Ophis intent lifecycle — parsing, batch auctions, solver competition, and settlement on CoW Protocol contracts.
+description: The Ophis intent lifecycle, parsing, batch auctions, solver competition, and settlement on CoW Protocol contracts.
 sidebar_label: How it works
 sidebar_position: 2
 ---
@@ -39,24 +39,24 @@ that proxies [LibertAI](https://libertai.io)'s **Qwen 3.6 27B**
 - returns a structured `ParsedIntent` the UI uses to pre-fill the form.
 
 The parser **only normalizes language**. It never places, signs, or
-executes a trade — that is always the user's wallet on the frontend.
+executes a trade, that is always the user's wallet on the frontend.
 
 ### 2. Order signing
 
 Once the form is filled, the user signs an order with their own wallet
 (EIP-712 for EOAs, ERC-1271 for smart-contract wallets). The signature
-authorizes a _limit_ — a minimum acceptable output — not a specific
+authorizes a _limit_, a minimum acceptable output, not a specific
 execution path. Solvers may only do better than the limit, never worse.
 
 ### 3. Batch auction & solver competition
 
 Signed orders collect into batches. For each batch, solvers search for
-the best way to settle every order simultaneously — routing through
+the best way to settle every order simultaneously, routing through
 on-chain liquidity, matching orders against each other peer-to-peer
 (no liquidity pool needed), or bridging cross-chain. Solvers bid, and
 the one that maximises total surplus wins the right to settle.
 
-On Optimism — where Ophis runs its own stack — Ophis currently operates the
+On Optimism, where Ophis runs its own stack. Ophis currently operates the
 solver itself, competing across several routing strategies (a baseline on-chain
 router plus multiple DEX aggregators) that bid against each other per batch, so
 there is genuine price competition even though the solver is Ophis-operated. The
@@ -72,9 +72,9 @@ The winning solver settles the batch on-chain. Every trade in a batch
 clears at the **same uniform price**, which is what eliminates these
 order-level MEV vectors by construction:
 
-- **No front-running** — there's no pending-order mempool race to win.
-- **No sandwiching** — the protocol does not reorder trades for value.
-- **No priority-gas auction** — execution order inside a batch is not
+- **No front-running**, there's no pending-order mempool race to win.
+- **No sandwiching**, the protocol does not reorder trades for value.
+- **No priority-gas auction**, execution order inside a batch is not
   for sale.
 
 ## What Ophis runs

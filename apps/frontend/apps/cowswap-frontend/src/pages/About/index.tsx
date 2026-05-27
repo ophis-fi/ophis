@@ -55,7 +55,7 @@ export default function AboutPage(): ReactNode {
         <p>
           Under the hood, every order is broadcast to a network of competing solvers who race to find the best path. The
           winning route settles on-chain through CoW Protocol&#39;s audited <InlineCode>GPv2Settlement</InlineCode>{' '}
-          contract — at a uniform clearing price, inside a batch auction designed to prevent front-running and sandwich
+          contract, at a uniform clearing price, inside a batch auction designed to prevent front-running and sandwich
           attacks.
         </p>
       </Section>
@@ -67,8 +67,8 @@ export default function AboutPage(): ReactNode {
             amount, and chain into a structured order.
           </FeatureCard>
           <FeatureCard icon="02" title="Auction">
-            The signed order is broadcast to the batch auction. Solvers race to find the best path — DEX, peer-to-peer
-            match, or cross-chain bridge — and bid for the right to settle.
+            The signed order is broadcast to the batch auction. Solvers race to find the best path. DEX, peer-to-peer
+            match, or cross-chain bridge, and bid for the right to settle.
           </FeatureCard>
           <FeatureCard icon="03" title="Settle">
             The winning solver settles your order in a batch where every trade clears at the same uniform price. No
@@ -85,7 +85,7 @@ export default function AboutPage(): ReactNode {
           transaction leaves your wallet.
         </p>
         <p>
-          The parser is open source and the routing layer is transparent — the LLM prompt, the structured output schema,
+          The parser is open source and the routing layer is transparent, the LLM prompt, the structured output schema,
           and the order submission are all auditable in the public repository.
         </p>
       </Section>
@@ -98,14 +98,14 @@ export default function AboutPage(): ReactNode {
         </Callout>
         <p>
           The protocol itself executes settlements; the Ophis interface only routes intents. Ophis cannot move your
-          tokens — only the protocol can, and only against an order you signed.
+          tokens, only the protocol can, and only against an order you signed.
         </p>
       </Section>
 
       <Section id="mev" title="MEV protection">
         <p>
           Every order is settled inside a <strong>batch auction at a uniform clearing price</strong>. The protocol does
-          not reorder transactions for value — instead, every trade in a batch clears against the same price, which
+          not reorder transactions for value, instead, every trade in a batch clears against the same price, which
           removes the typical priority-gas-auction race that enables front-running and sandwich attacks against ordinary
           users.
         </p>
@@ -140,8 +140,8 @@ export default function AboutPage(): ReactNode {
           <TextLink href="https://github.com/trailofbits/publications" external>
             Trail of Bits
           </TextLink>{' '}
-          and G0 Group from the CoW Protocol launch period. The Ophis-specific surface — solver wiring, partner-fee
-          plumbing, the driver-level Custom-interaction allowlist, and the OP-mainnet AllowList contract upgrade — was
+          and G0 Group from the CoW Protocol launch period. The Ophis-specific surface, solver wiring, partner-fee
+          plumbing, the driver-level Custom-interaction allowlist, and the OP-mainnet AllowList contract upgrade, was
           reviewed in May 2026 across multiple tooling passes. Findings are tracked in{' '}
           <InlineCode>docs/audits/</InlineCode>.
         </p>
@@ -184,9 +184,9 @@ export default function AboutPage(): ReactNode {
         <p>
           The interface at <InlineCode>ophis.fi</InlineCode> is operated by a Luxembourg-incorporated consultancy
           company. Full entity details (legal name, RCS number, registered office, legal representative) are provided on
-          request for formal arrangements — see the operator section on the{' '}
+          request for formal arrangements, see the operator section on the{' '}
           <TextLink href="/legal#operator">Legal page</TextLink> for the disclosure policy and the{' '}
-          <TextLink href="/institutional#contact">Institutional page</TextLink> for the contact channel.
+          <TextLink href="/contact">contact form</TextLink> for the contact channel.
         </p>
         <KeyValueList
           items={[
@@ -202,7 +202,7 @@ export default function AboutPage(): ReactNode {
         <AccordionGroup>
           <Accordion summary="Do I need to connect a wallet?">
             <p>
-              Yes — you sign your swap order with your own wallet. Ophis is non-custodial; the signed order is broadcast
+              Yes, you sign your swap order with your own wallet. Ophis is non-custodial; the signed order is broadcast
               to the solver network for execution and your funds move only when a solver settles the batch.
             </p>
           </Accordion>
@@ -215,7 +215,7 @@ export default function AboutPage(): ReactNode {
           <Accordion summary="Is the natural-language parser reliable?">
             <p>
               The parser is best-effort. Ambiguous or malformed intents fall through to a standard swap form with
-              whatever fields the parser could extract — you can correct before signing. Nothing executes until you
+              whatever fields the parser could extract, you can correct before signing. Nothing executes until you
               sign.
             </p>
           </Accordion>

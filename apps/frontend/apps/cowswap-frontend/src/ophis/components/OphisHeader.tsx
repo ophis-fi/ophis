@@ -84,7 +84,7 @@ const Right = styled.div`
 export function OphisHeader({ children, transparent = false }: Props): ReactNode {
   return (
     <Bar $transparent={transparent}>
-      <Wordmark to="/" aria-label="Ophis — home">
+      <Wordmark to="/" aria-label="Ophis, home">
         <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" />
         <WordmarkText>
           ophis<WordmarkAccent>.</WordmarkAccent>

@@ -35,7 +35,7 @@ const StyledTable = styled.table`
   background: rgba(245, 239, 230, 0.02);
 
   /* Header band has a darker background so it visually anchors the
-     column labels. Sticky positioning is NOT used here — Codex PR #247
+     column labels. Sticky positioning is NOT used here. Codex PR #247
      audit pointed out that the ScrollWrapper's \`overflow-x: auto\`
      creates a scroll container that prevents \`thead { position: sticky }\`
      from sticking relative to the page viewport. Tall-table sticky-thead

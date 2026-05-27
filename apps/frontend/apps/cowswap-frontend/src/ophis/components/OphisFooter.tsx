@@ -29,7 +29,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
             </styledEl.Wordmark>
           </styledEl.BrandMark>
           <styledEl.BrandTagline>
-            Intent-based DEX aggregator. Plain-English swaps across 11 EVM chains, Solana, and Bitcoin destinations.
+            Best-execution, MEV-protected trading from a plain-English intent. Across 11 EVM chains, plus Solana and Bitcoin destinations.
           </styledEl.BrandTagline>
         </styledEl.Brand>
 
@@ -38,15 +38,6 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
           <styledEl.ColList>
             <li>
               <styledEl.InternalLink to="/1/swap/_/_">Trade</styledEl.InternalLink>
-            </li>
-            <li>
-              <styledEl.InternalLink to="/tiers">Tiers</styledEl.InternalLink>
-            </li>
-            <li>
-              <styledEl.InternalLink to="/missions">Missions</styledEl.InternalLink>
-            </li>
-            <li>
-              <styledEl.InternalLink to="/earn">Earn</styledEl.InternalLink>
             </li>
             <li>
               <styledEl.InternalLink to="/profile">Profile</styledEl.InternalLink>
@@ -79,7 +70,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
           <styledEl.ColTitle>Company</styledEl.ColTitle>
           <styledEl.ColList>
             <li>
-              <styledEl.InternalLink to="/institutional">Institutional</styledEl.InternalLink>
+              <styledEl.ExternalLink href="https://business.ophis.fi">Institutional</styledEl.ExternalLink>
             </li>
             <li>
               <styledEl.InternalLink to="/brand">Brand</styledEl.InternalLink>
@@ -99,7 +90,7 @@ export function OphisFooter({ borderless = false }: Props): ReactNode {
               </styledEl.ExternalLink>
             </li>
             <li>
-              <styledEl.ExternalLink href="mailto:contact@3615crypto.com">Email</styledEl.ExternalLink>
+              <styledEl.InternalLink to="/contact">Contact</styledEl.InternalLink>
             </li>
           </styledEl.ColList>
         </div>

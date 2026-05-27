@@ -20,15 +20,6 @@ export function ProfileActions(): ReactNode {
           <TextLink href="/">Open the trade form →</TextLink>
         </p>
       </FeatureCard>
-      <FeatureCard title="Tier ladder">
-        <p>
-          The 4-rung framework (Stargazer → Cosmonaut). Volume-based recognition; tracks
-          automatically once the indexer ships.
-        </p>
-        <p>
-          <TextLink href="/tiers">Read the framework →</TextLink>
-        </p>
-      </FeatureCard>
       <FeatureCard title="About Ophis">
         <p>
           How the protocol works, audit references, what&apos;s live vs planned. All claims
@@ -44,7 +35,9 @@ export function ProfileActions(): ReactNode {
           transparent fees.
         </p>
         <p>
-          <TextLink href="/institutional">Talk to us →</TextLink>
+          <TextLink href="https://business.ophis.fi" external>
+            Talk to us →
+          </TextLink>
         </p>
       </FeatureCard>
     </FeatureGrid>

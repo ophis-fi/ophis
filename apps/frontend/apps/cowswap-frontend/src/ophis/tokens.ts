@@ -30,7 +30,7 @@ export const colors = {
     30: '#f9d195',
     40: '#f6bd63',
     50: '#f4b04a',
-    60: '#f2a63e', // primary action — canonical saffron
+    60: '#f2a63e', // primary action, canonical saffron
     70: '#d98a22',
     80: '#a85f0f', // light-mode text/contrast (WCAG AA on white)
     90: '#6e3d08',

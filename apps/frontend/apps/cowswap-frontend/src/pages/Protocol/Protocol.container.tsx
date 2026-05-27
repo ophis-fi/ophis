@@ -60,9 +60,9 @@ export function ProtocolPage(): ReactNode {
       width="medium"
       eyebrow="Protocol"
       title="The mechanism behind the sentence."
-      lede="How an Ophis trade actually works — from a plain-English intent to batch-auction settlement — and exactly where Ophis differs from the CoW Protocol it forks."
+      lede="How an Ophis trade actually works, from a plain-English intent to batch-auction settlement, and exactly where Ophis differs from the CoW Protocol it forks."
     >
-      <Callout tone="info" title="What this page covers — and what it doesn't">
+      <Callout tone="info" title="What this page covers, and what it doesn't">
         <p>
           This is the mechanism page: the order lifecycle, the settlement model Ophis inherits from CoW Protocol, and
           the layers Ophis operates itself. For the product overview, operator entity, and security reviews see{' '}
@@ -77,7 +77,7 @@ export function ProtocolPage(): ReactNode {
       <Section id="lifecycle" title="Intent lifecycle" intro="From a sentence to a settled batch, in five steps.">
         <FeatureGrid minCardWidth="240px">
           <FeatureCard icon="01" title="Describe">
-            You type the trade in plain English — &#34;swap 1 ETH for USDC on Base&#34;. No forms, no token-address
+            You type the trade in plain English, &#34;swap 1 ETH for USDC on Base&#34;. No forms, no token-address
             lookups, no network dropdown.
           </FeatureCard>
           <FeatureCard icon="02" title="Parse">
@@ -89,8 +89,8 @@ export function ProtocolPage(): ReactNode {
             nothing executes until this signature.
           </FeatureCard>
           <FeatureCard icon="04" title="Compete">
-            The signed order is broadcast to a batch auction. Solvers race to find the best path — on-chain DEX,
-            peer-to-peer match, or cross-chain route — and bid for the right to settle it.
+            The signed order is broadcast to a batch auction. Solvers race to find the best path, on-chain DEX,
+            peer-to-peer match, or cross-chain route, and bid for the right to settle it.
           </FeatureCard>
           <FeatureCard icon="05" title="Settle">
             The winning solver settles your order inside a batch at a uniform clearing price, through CoW Protocol&#39;s{' '}
@@ -102,7 +102,7 @@ export function ProtocolPage(): ReactNode {
       <Section
         id="cow-mechanism"
         title="Inherited from CoW Protocol"
-        intro="The settlement engine is CoW Protocol, unmodified. These properties come from the protocol Ophis forked — not from anything Ophis built."
+        intro="The settlement engine is CoW Protocol, unmodified. These properties come from the protocol Ophis forked, not from anything Ophis built."
       >
         <FeatureGrid minCardWidth="240px">
           <FeatureCard title="Batch auctions" footer={<Badge tone="audit">Upstream CoW</Badge>}>
@@ -110,7 +110,7 @@ export function ProtocolPage(): ReactNode {
             first-come-first-served. There is no per-transaction priority race to win.
           </FeatureCard>
           <FeatureCard title="Coincidence of wants" footer={<Badge tone="audit">Upstream CoW</Badge>}>
-            Opposing orders in the same batch can settle directly against each other — a peer-to-peer match that skips
+            Opposing orders in the same batch can settle directly against each other, a peer-to-peer match that skips
             routing through external liquidity pools.
           </FeatureCard>
           <FeatureCard title="Uniform clearing price" footer={<Badge tone="audit">Upstream CoW</Badge>}>
@@ -118,7 +118,7 @@ export function ProtocolPage(): ReactNode {
             front-running and sandwich attacks profitable against ordinary users.
           </FeatureCard>
           <FeatureCard title="GPv2 settlement contract" footer={<Badge tone="audit">Unmodified</Badge>}>
-            Ophis runs CoW Protocol&#39;s audited <InlineCode>GPv2Settlement</InlineCode> bytecode as deployed — under
+            Ophis runs CoW Protocol&#39;s audited <InlineCode>GPv2Settlement</InlineCode> bytecode as deployed, under
             its own allow-listed solver set. No contract fork, no custom settlement logic.
           </FeatureCard>
         </FeatureGrid>
@@ -204,7 +204,7 @@ export function ProtocolPage(): ReactNode {
       <Section id="trust-boundaries" title="Trust boundaries" intro="Your signature is the execution boundary.">
         <Callout tone="success" title="The parser cannot move your funds">
           The natural-language parser only fills in a form. It runs server-side, holds no keys, and cannot sign or
-          submit an order. Execution begins only when <strong>you</strong> sign — and a solver can act only against the
+          submit an order. Execution begins only when <strong>you</strong> sign, and a solver can act only against the
           exact order you signed.
         </Callout>
         <KeyValueList
@@ -223,7 +223,7 @@ export function ProtocolPage(): ReactNode {
             },
             {
               label: 'Solana & Bitcoin',
-              value: 'Receive (destination) addresses only — never source chains or connected wallets.',
+              value: 'Receive (destination) addresses only, never source chains or connected wallets.',
             },
           ]}
         />
@@ -232,7 +232,7 @@ export function ProtocolPage(): ReactNode {
       <Section
         id="fees"
         title="Fees"
-        intro="Ophis charges nothing on ordinary trades. It takes a share only of price improvement — execution that beats the quote you were shown — and that share is bounded by protocol-enforced CIP-75 caps."
+        intro="Ophis charges nothing on ordinary trades. It takes a share only of price improvement, execution that beats the quote you were shown, and that share is bounded by protocol-enforced CIP-75 caps."
       >
         <FeatureGrid minCardWidth="200px" gap="12px">
           <MetricCard label="Ordinary trades" value="0%" sublabel="when execution does not beat your quote" />
@@ -244,7 +244,7 @@ export function ProtocolPage(): ReactNode {
         </FeatureGrid>
         <p>
           The price-improvement share is capped by CIP-75 validation at <InlineCode>2500</InlineCode> bps, and the total
-          fee can never exceed <InlineCode>50</InlineCode> bps (0.5%) of trade volume — a ceiling that protects large
+          fee can never exceed <InlineCode>50</InlineCode> bps (0.5%) of trade volume, a ceiling that protects large
           trades. Values above either cap are rejected at app-data validation as a protocol-level violation.
         </p>
         <KeyValueList
@@ -256,7 +256,7 @@ export function ProtocolPage(): ReactNode {
             },
             {
               label: 'Arbitrary recipients',
-              value: 'Rejected — app-data cannot name an unlisted fee recipient (closes audit finding C3).',
+              value: 'Rejected, app-data cannot name an unlisted fee recipient (closes audit finding C3).',
             },
             {
               label: 'Full formulas & examples',
@@ -285,10 +285,10 @@ export function ProtocolPage(): ReactNode {
           </Thead>
           <Tbody>
             <Tr>
-              {/* Count mirrors SORTED_CHAIN_IDS in libs/common-const/chainInfo.ts — update together. */}
+              {/* Count mirrors SORTED_CHAIN_IDS in libs/common-const/chainInfo.ts, update together. */}
               <RowTh scope="row">EVM source chains</RowTh>
               <Td>
-                11 production chains selectable in the app — including Ethereum, Arbitrum, Base, Optimism, Polygon
+                11 production chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Polygon
               </Td>
               <Td>
                 <Badge tone="live">Selectable</Badge>
@@ -296,7 +296,7 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Ophis-operated stack</RowTh>
-              <Td>Self-hosted orderbook, driver, and solver — Optimism mainnet</Td>
+              <Td>Self-hosted orderbook, driver, and solver. Optimism mainnet</Td>
               <Td>
                 <Badge tone="live">Live</Badge>
               </Td>
@@ -317,7 +317,7 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Paused</RowTh>
-              <Td>HyperEVM, MegaETH — previously announced, not currently routable</Td>
+              <Td>HyperEVM, MegaETH, previously announced, not currently routable</Td>
               <Td>
                 <Badge tone="draft">Paused</Badge>
               </Td>
@@ -336,25 +336,25 @@ export function ProtocolPage(): ReactNode {
           items={[
             {
               label: 'Product & operator',
-              value: <TextLink href="/about">/about — overview, operator entity, security reviews</TextLink>,
+              value: <TextLink href="/about">/about, overview, operator entity, security reviews</TextLink>,
             },
             {
               label: 'Technical reference',
               value: (
                 <TextLink href="https://docs.ophis.fi/" external>
-                  docs.ophis.fi — architecture, intent API, fee formulas, audit index
+                  docs.ophis.fi, architecture, intent API, fee formulas, audit index
                 </TextLink>
               ),
             },
             {
               label: 'Guided index',
-              value: <TextLink href="/learn">/learn — a map of every Ophis surface</TextLink>,
+              value: <TextLink href="/learn">/learn, a map of every Ophis surface</TextLink>,
             },
             {
               label: 'Upstream protocol',
               value: (
                 <TextLink href="https://cow.fi/cow-protocol" external>
-                  cow.fi/cow-protocol — the settlement layer Ophis inherits (not Ophis documentation)
+                  cow.fi/cow-protocol, the settlement layer Ophis inherits (not Ophis documentation)
                 </TextLink>
               ),
             },
