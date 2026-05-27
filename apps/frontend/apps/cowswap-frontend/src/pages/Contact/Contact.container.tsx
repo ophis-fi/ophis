@@ -11,13 +11,12 @@ import styled from 'styled-components/macro'
 
 import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
 
-// Formspree form endpoint = the PUBLIC form hashid (safe client-side), injected
-// at build via REACT_APP_FORMSPREE_ENDPOINT (e.g. https://formspree.io/f/<hashid>).
-// This is NOT the deploy key — that is a secret used only by the Formspree CLI
-// in CI (FORMSPREE_DEPLOY_KEY) and must never appear in client code. The form
-// config lives in formspree.json (project 3010910624528989815) and is deployed
-// by the CLI; see .github/workflows/cloudflare-deploy.yml.
-const FORMSPREE_ENDPOINT = process.env.REACT_APP_FORMSPREE_ENDPOINT || ''
+// Formspree PUBLIC project-form endpoint (safe client-side; it's the form
+// action URL). NOT the deploy key, which is a secret used only by the Formspree
+// CLI in CI (FORMSPREE_DEPLOY_KEY) and must never appear in client code. The
+// form config lives in formspree.json (form key "contact") and is deployed by
+// the CLI; see .github/workflows/cloudflare-deploy.yml.
+const FORMSPREE_ENDPOINT = 'https://formspree.io/p/3010910624528989815/f/contact'
 
 type Status = 'idle' | 'sending' | 'success' | 'error'
 
