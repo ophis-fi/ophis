@@ -30,9 +30,10 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
     />
-    <!-- Inter retained for legacy components that reference it directly. -->
-    <link rel="preload" href="/static/Inter-roman.var.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/static/Inter-italic.var.woff2" as="font" type="font/woff2" crossorigin />
+    <!-- Inter loads on-demand via @font-face (src/styles/fonts.css) for the few
+         legacy components that still reference it. Deliberately NOT preloaded:
+         the landing and all rebranded surfaces use Geist, so eagerly fetching
+         ~472KB of Inter on every page was pure critical-path waste. -->
 
     <!-- Social media tags -->
     <meta property="og:type" content="website" />
