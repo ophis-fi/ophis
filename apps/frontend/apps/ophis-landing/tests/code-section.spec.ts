@@ -10,18 +10,15 @@ test('code section default tab is curl', async ({ page }) => {
 
 test('clicking JavaScript tab switches code body', async ({ page }) => {
   await page.goto('/')
-  // Ensure viewport is large enough to show code section
-  await page.setViewportSize({ width: 1280, height: 900 })
-  // Scroll code section into view to trigger client:visible hydration
-  await page.locator('.code-section').scrollIntoViewIfNeeded()
-  // Wait for Preact hydration: SSR renders divs; Preact replaces with buttons
-  await page.waitForFunction(() => {
-    const btns = document.querySelectorAll('.code-section button.tab')
-    return btns.length > 0
-  }, { timeout: 10000 })
-  await page.locator('.code-section button.tab', { hasText: 'JavaScript' }).click()
-  // Wait for preact re-render
-  await expect(page.locator('.code-section .code-body')).toContainText('fetch', { timeout: 5000 })
+  const jsTab = page.locator('.code-section button.tab', { hasText: 'JavaScript' })
+  await jsTab.waitFor({ state: 'visible' })
+  // Preact (client:load) attaches event listeners asynchronously after page load.
+  // Use toPass to retry click + assertion until Preact hydration completes.
+  await expect(async () => {
+    await jsTab.click({ force: true })
+    const text = await page.locator('.code-section .code-body').textContent()
+    expect(text).toContain('fetch')
+  }).toPass({ intervals: [100, 200, 500, 1000, 2000], timeout: 10000 })
   await expect(page.locator('.code-section .code-body')).not.toContainText('curl -X POST')
 })
 

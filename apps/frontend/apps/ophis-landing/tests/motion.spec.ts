@@ -7,7 +7,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const TOKENS_CSS = join(__dirname, '..', 'src', 'styles', 'tokens.css')
 const GLOBAL_CSS = join(__dirname, '..', 'src', 'styles', 'global.css')
 
-async function loadOphisStyles(page) {
+async function loadOphisStyles(page: import('@playwright/test').Page) {
   // tokens.css is generated, ensure it exists first
   if (!existsSync(TOKENS_CSS)) {
     // run prebuild to generate it
