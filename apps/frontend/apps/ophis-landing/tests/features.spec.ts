@@ -8,3 +8,9 @@ test('feature grid renders MEV / Rebates / SDK cards', async ({ page }) => {
   await expect(cards.nth(1)).toContainText(/[Vv]olume.*[Rr]ebate/)
   await expect(cards.nth(2)).toContainText(/Agent.*safety/)
 })
+
+test('feature cards each have an icon SVG', async ({ page }) => {
+  await page.goto('/')
+  const icons = page.locator('.features .feat svg.feat-icon')
+  await expect(icons).toHaveCount(3)
+})
