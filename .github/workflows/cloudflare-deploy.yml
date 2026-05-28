@@ -97,11 +97,13 @@ jobs:
           # a repo secret for a future Cloudflare Function proxy.
           REACT_APP_BUNGEE_AFFILIATE_ID: ${{ secrets.REACT_APP_BUNGEE_AFFILIATE_ID }}
           # Cloudflare Turnstile site key for the /contact form widget. PUBLIC
-          # value (it's literally rendered to the browser as a `sitekey` attr);
-          # safe to inline in the bundle. The matching SECRET stays CI/server-
-          # side as FORMSPREE_TURNSTILE_SECRET (Formspree validates the token
-          # against CF using it). If unset, Contact.container.tsx skips the
-          # widget and the form falls back to honeypot + Formspree ML.
+          # value (rendered to the browser as a `sitekey` attr) — safe to
+          # inline in the bundle. The matching SECRET is NOT a CI secret: it
+          # lives in the Formspree dashboard (per-form CAPTCHA setting) because
+          # formspree.json's schema is recaptcha-only (see the pinned-contract
+          # comment above the `deploy Formspree forms` step). If this site key
+          # is unset, Contact.container.tsx skips the widget and the form
+          # falls back to honeypot + Formspree ML.
           REACT_APP_TURNSTILE_SITE_KEY: ${{ secrets.REACT_APP_TURNSTILE_SITE_KEY }}
         run: pnpm run build:cowswap
 
