@@ -86,29 +86,6 @@ const Page = styled.main`
   }
 `
 
-// Ophis brand logo on the landing hero header. Sized so the lockup fits
-// cleanly in the chrome bar without dominating. PR #234 task #1 + #4
-// follow-up: removed `NavLink` ("Manual swap") and `SkipLink` ("Skip to
-// manual swap") because the 3-CTA pile-up flagged by Clement read as
-// duplicate noise — left ONLY the primary "Continue →" inline + the
-// secondary "Open Trade →" header button. Single primary, single
-// secondary, no redundant "Skip" footer link.
-const Logo = styled.img`
-  height: 28px;
-  width: auto;
-  display: block;
-  @media (max-width: 600px) {
-    height: 22px;
-  }
-`
-
-const HeaderRight = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-`
-
 const OpenSwapButton = styled(Link)`
   display: inline-flex;
   align-items: center;
@@ -276,9 +253,9 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   }
 `
 
-// `SkipLink` ("Skip to manual swap") removed in PR #234 task #4 CTA dedup
-// follow-up — see Logo styled-component above for rationale. Keeping
-// the import-free Link unused triggers @typescript-eslint/no-unused-vars.
+// `Logo`, `HeaderRight`, and `SkipLink` ("Skip to manual swap") removed in
+// PR #234 task #4 CTA dedup — the 3-CTA pile-up was replaced with a single
+// primary "Continue →" and secondary "Open Trade →" header button.
 
 function isReadyToSubmit(parsed: ParsedIntent | null): boolean {
   if (!parsed || parsed.intent !== 'swap') return false
