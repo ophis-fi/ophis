@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import rateLimit from '@fastify/rate-limit';
 import { eq, desc } from 'drizzle-orm';
 import { timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { logger } from './logger.js';
@@ -47,8 +48,47 @@ function assertAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
   return true;
 }
 
+// Trust X-Forwarded-For ONLY when the immediate TCP peer is one of:
+//   - loopback (127.0.0.0/8, ::1) — local dev / same-container
+//   - Docker bridge / overlay networks (172.16.0.0/12, covers the default
+//     172.17-23/16 ranges that Docker and Compose assign) — production compose
+//     stack where Caddy reaches the indexer at a 172.x.x.x peer address
+//   - Tailscale (100.64.0.0/10) — operator SSH-tunnel reach path
+//
+// All other sources have their XFF header ignored. This means a public
+// attacker hitting :8080 directly (bypassing Caddy, which compose exposes
+// via `ports: 8080:8080`) cannot spoof X-Forwarded-For to manipulate
+// req.ip and escape the per-IP rate-limit bucket.
+//
+// The 172.16.0.0/12 range is RFC 1918 private; in a non-Docker deploy it
+// is inert because no public peer will originate from that range.
+function isTrustedProxyPeer(addr: string): boolean {
+  if (!addr) return false;
+  // Loopback IPv4 + IPv6
+  if (addr === '127.0.0.1' || addr === '::1' || addr.startsWith('127.')) return true;
+  // IPv4-mapped IPv6 ::ffff:127.x
+  if (addr.startsWith('::ffff:127.')) return true;
+  if (isIP(addr) !== 4) return addr.startsWith('::ffff:') ? isTrustedProxyPeer(addr.slice(7)) : false;
+  const [o0, o1] = addr.split('.').map(Number);
+  // 172.16.0.0/12 — Docker bridge / compose networks
+  if (o0 === 172 && o1 !== undefined && o1 >= 16 && o1 <= 31) return true;
+  // 100.64.0.0/10 — Tailscale CGNAT range
+  if (o0 === 100 && o1 !== undefined && o1 >= 64 && o1 <= 127) return true;
+  return false;
+}
+
 export async function buildApiServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });                              // we use pino directly
+  const app = Fastify({
+    logger: false,
+    // The indexer sits behind Caddy in the prod compose stack. Without
+    // trustProxy, req.ip is the Caddy peer IP (172.x.x.x on Docker bridge)
+    // and the per-route rate-limit configs collapse into ONE shared bucket.
+    // isTrustedProxyPeer() whitelists loopback + Docker bridge + Tailscale
+    // so Fastify reads the real client IP from X-Forwarded-For — but only
+    // when the TCP peer is actually one of those trusted ranges. Public
+    // attackers hitting :8080 directly cannot spoof XFF.
+    trustProxy: isTrustedProxyPeer,
+  });
 
   // Rate-limiting: 100 requests per minute per IP across all public endpoints.
   // Admin endpoints are inherently harder to brute-force (constant-time token
@@ -57,6 +97,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     max: 100,
     timeWindow: '1 minute',
     errorResponseBuilder: (_req, context) => ({
+      statusCode: context.statusCode,  // 429 normally, 403 if ban triggers
       error: 'too many requests',
       retryAfter: context.after,
     }),
@@ -73,7 +114,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
 
-  app.get('/health', async () => {
+  app.get('/health', {
+    config: {
+      rateLimit: { max: 200, timeWindow: '1 minute' }, // permissive — uptime monitors hit this continuously
+    },
+  }, async () => {
     const healthRows = await sql<{ last_fetch: string | null }[]>`
       SELECT MAX(fetched_at)::text AS last_fetch FROM trades
     `;
@@ -85,7 +130,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { ok: true, last_fetch, pending_batches: parseInt(pending, 10) };
   });
 
-  app.get('/status', async (req, reply) => {
+  app.get('/status', {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' }, // stricter — admin endpoint
+    },
+  }, async (req, reply) => {
     // Admin-only — exposes total wallets + 30d volume + next cycle.
     // Operationally useful for the team dashboard, but a competitive-
     // intelligence and front-runner timing signal if public.
@@ -107,14 +156,22 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     };
   });
 
-  app.get<{ Params: { wallet: string } }>('/tier/:wallet', async (req, reply) => {
+  app.get<{ Params: { wallet: string } }>('/tier/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public — matches global default, explicit for CodeQL
+    },
+  }, async (req, reply) => {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
     const status = await getWalletStatus(raw as `0x${string}`);
     return status;
   });
 
-  app.get('/batches', async (req, reply) => {
+  app.get('/batches', {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' }, // stricter — admin endpoint
+    },
+  }, async (req, reply) => {
     // Admin-only — exposes the entire rebate ledger (every cycle's pool,
     // safe-proposal hash, finalized tx, status). Pre-auth this was a
     // CRITICAL public-deanon + competitor-intel leak.
@@ -123,7 +180,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return rows;
   });
 
-  app.get<{ Params: { id: string } }>('/batches/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/batches/:id', {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' }, // stricter — admin endpoint
+    },
+  }, async (req, reply) => {
     // Admin-only — exposes per-wallet entries (every recipient's address,
     // tier, rebate_pct, and exact wei payout for that cycle). Pre-auth
     // this was a phishing target list + full user deanonymization.
@@ -136,6 +197,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { batch, entries };
   });
 
+  // Rate-limit 404s too — otherwise an attacker hitting random paths
+  // bypasses the limiter entirely (CodeQL js/missing-rate-limiting).
+  app.setNotFoundHandler(
+    { preHandler: app.rateLimit({ max: 100, timeWindow: '1 minute' }) },
+    async (_req, reply) => reply.code(404).send({ error: 'not found' })
+  );
+
   return app;
 }
 
@@ -147,6 +215,30 @@ function nextFirstOfMonth(): Date {
 }
 
 export async function startApi(): Promise<FastifyInstance> {
+  const ADMIN_TOKEN_MIN_LEN = 32;
+  const token = process.env.REBATE_INDEXER_ADMIN_TOKEN;
+  if (!token) {
+    throw new Error('REBATE_INDEXER_ADMIN_TOKEN must be set');
+  }
+  if (token.length < ADMIN_TOKEN_MIN_LEN) {
+    throw new Error(
+      `REBATE_INDEXER_ADMIN_TOKEN must be at least ${ADMIN_TOKEN_MIN_LEN} chars (got ${token.length})`
+    );
+  }
+  // Length-based check is sufficient when paired with format awareness.
+  // A 32-char hex token gives 128 bits of entropy (random). A 32-char
+  // base64url token gives ~192 bits. Both are far above brute-force risk
+  // at our rate-limit cap (30/min on admin endpoints = ~16 million years
+  // for 128 bits).
+  //
+  // We don't try to detect the format because operators may use either;
+  // just enforce minimum length and rely on the operator to generate
+  // from a cryptographic RNG (e.g., `openssl rand -hex 32` or
+  // `openssl rand -base64 24`). The prior unique-char heuristic
+  // (>= 16 distinct chars) was a false positive for valid hex tokens
+  // from `openssl rand -hex 32`: hex uses only 0-9a-f (16 possible chars)
+  // so a legitimately random token could trip the guard.
+
   const app = await buildApiServer();
   const port = parseInt(process.env.API_PORT ?? '8080', 10);
   await app.listen({ host: '0.0.0.0', port });
