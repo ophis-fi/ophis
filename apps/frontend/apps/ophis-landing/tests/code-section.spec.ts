@@ -22,11 +22,27 @@ test('clicking JavaScript tab switches code body', async ({ page }) => {
   await expect(page.locator('.code-section .code-body')).not.toContainText('curl -X POST')
 })
 
-test('code section never includes any auth header or API key', async ({ page }) => {
+test('code section never includes any auth header or API key in ANY tab', async ({ page }) => {
   await page.goto('/')
-  // Check all code bodies on the page for security
-  const bodies = page.locator('.code-section .code-body')
-  await bodies.scrollIntoViewIfNeeded()
-  const body = await bodies.textContent()
-  expect(body).not.toMatch(/api[_-]?key|x-api-key|bearer|authorization/i)
+
+  // Assert against each tab's rendered code body, not just the active one.
+  // Hydration is async (Preact client:load), so use toPass with retries.
+  const tabs = ['curl', 'JavaScript', 'Rust']
+
+  for (const tab of tabs) {
+    if (tab !== 'curl') {
+      // curl is the default active tab; click the others
+      const tabBtn = page.locator('.code-section button.tab', { hasText: tab })
+      await expect(async () => {
+        await tabBtn.click({ force: true })
+        const active = await page.locator('.code-section .tab.active').textContent()
+        expect(active).toContain(tab)
+      }).toPass({ intervals: [100, 200, 500, 1000, 2000], timeout: 10000 })
+    }
+
+    const body = await page.locator('.code-section .code-body').textContent()
+    expect(body, `Tab "${tab}" must not contain auth headers`).not.toMatch(
+      /api[_-]?key|x-api-key|bearer|authorization/i
+    )
+  }
 })
