@@ -1,7 +1,11 @@
 {
   "forms": {
     "contact": {
-      "name": "Ophis contact form"
+      "name": "Ophis contact form",
+      "captcha": {
+        "type": "turnstile",
+        "turnstileSecret": "$FORMSPREE_TURNSTILE_SECRET"
+      }
     }
   }
 }
