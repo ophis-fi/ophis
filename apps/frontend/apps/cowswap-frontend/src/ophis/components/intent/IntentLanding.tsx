@@ -29,7 +29,7 @@ const Page = styled.main`
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: #02000d;
+  background-color: #0a0a0a; /* canonical --ophis-bg; was #02000d (old pre-token value) */
   background-image: url('/ophis-hero-bg.jpg');
   background-size: cover;
   background-position: center top;
@@ -46,8 +46,8 @@ const Page = styled.main`
     inset: 0;
     pointer-events: none;
     background:
-      radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(2, 0, 13, 0.55) 75%),
-      linear-gradient(180deg, rgba(2, 0, 13, 0) 0%, rgba(2, 0, 13, 0.6) 75%, rgba(2, 0, 13, 0.95) 100%);
+      radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(10, 10, 10, 0.55) 75%),
+      linear-gradient(180deg, rgba(10, 10, 10, 0) 0%, rgba(10, 10, 10, 0.6) 75%, rgba(10, 10, 10, 0.95) 100%);
     z-index: 0;
   }
 
