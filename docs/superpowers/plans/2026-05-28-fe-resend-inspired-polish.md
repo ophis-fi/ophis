@@ -2227,7 +2227,7 @@ Expected: `"active"`.
 - [ ] **Step 2: Create the ophis-landing CF Pages project**
 
 ```bash
-ACCT=4761b41ef352631db0ed367fea98ffdc
+ACCT=$CLOUDFLARE_ACCOUNT_ID
 TOKEN=$(security find-generic-password -s cloudflare-api-token -w)
 curl -sH "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
   -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCT}/pages/projects" \
@@ -2240,15 +2240,17 @@ Expected: `"ophis-landing"`.
 
 ```bash
 gh secret set CLOUDFLARE_API_TOKEN -R ophis-fi/ophis -b "$(security find-generic-password -s cloudflare-api-token -w)"
-gh secret set CLOUDFLARE_ACCOUNT_ID -R ophis-fi/ophis -b "4761b41ef352631db0ed367fea98ffdc"
+gh secret set CLOUDFLARE_ACCOUNT_ID -R ophis-fi/ophis -b "$CLOUDFLARE_ACCOUNT_ID"
 ```
 
-- [ ] **Step 4: Add swap.ophis.fi as a custom domain to the existing greg-etm project (DOES NOT touch ophis.fi yet)**
+- [ ] **Step 4: Add swap.ophis.fi as a custom domain to the existing swap CF Pages project (DOES NOT touch ophis.fi yet)**
 
 ```bash
 TOKEN=$(security find-generic-password -s cloudflare-api-token -w)
+# Project name stored in CLOUDFLARE_PAGES_SWAP_PROJECT GH secret / keychain
+SWAP_PROJECT=$(security find-generic-password -s cloudflare-pages-swap-project -w 2>/dev/null || echo "see keychain")
 curl -sH "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
-  -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCT}/pages/projects/greg-etm/domains" \
+  -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCT}/pages/projects/${SWAP_PROJECT}/domains" \
   -d '{"name":"swap.ophis.fi"}' | jq '.result.name'
 ```
 
@@ -2256,9 +2258,11 @@ Then add the CNAME DNS record:
 
 ```bash
 ZONE=$(curl -sH "Authorization: Bearer ${TOKEN}" "https://api.cloudflare.com/client/v4/zones?name=ophis.fi" | jq -r '.result[0].id')
+# CNAME points to the swap project's .pages.dev URL (look up in CF dashboard or keychain)
+SWAP_PAGES_DEV=$(security find-generic-password -s cloudflare-pages-swap-pagesdev -w 2>/dev/null || echo "see-keychain.pages.dev")
 curl -sH "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
   -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE}/dns_records" \
-  -d '{"type":"CNAME","name":"swap","content":"greg-etm.pages.dev","proxied":true}' | jq '.result.name'
+  -d "{\"type\":\"CNAME\",\"name\":\"swap\",\"content\":\"${SWAP_PAGES_DEV}\",\"proxied\":true}" | jq '.result.name'
 ```
 
 - [ ] **Step 5: Verify swap.ophis.fi resolves + loads the swap UI**
@@ -2551,7 +2555,7 @@ curl -sI https://ophis-landing.pages.dev/ | head -5
 
 ```bash
 TOKEN=$(security find-generic-password -s cloudflare-api-token -w)
-ACCT=4761b41ef352631db0ed367fea98ffdc
+ACCT=$CLOUDFLARE_ACCOUNT_ID
 curl -sH "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
   -X POST "https://api.cloudflare.com/client/v4/accounts/${ACCT}/pages/projects/ophis-landing/domains" \
   -d '{"name":"ophis.fi"}' | jq '.result.name'
@@ -2560,7 +2564,7 @@ curl -sH "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
   -d '{"name":"www.ophis.fi"}' | jq '.result.name'
 ```
 
-Cloudflare swaps routing atomically — `greg-etm` project loses `ophis.fi` at the same moment `ophis-landing` gains it.
+Cloudflare swaps routing atomically — the existing swap CF Pages project loses `ophis.fi` at the same moment `ophis-landing` gains it.
 
 - [ ] **Step 4: Verify cutover live**
 
@@ -2571,11 +2575,11 @@ curl -s https://ophis.fi/ | grep -o "DEX aggregator" | head -1
 
 Expected: HTTP 200, "DEX aggregator" appears in body.
 
-- [ ] **Step 5: Remove ophis.fi from greg-etm (cleanup)**
+- [ ] **Step 5: Remove ophis.fi from the swap CF Pages project (cleanup)**
 
 ```bash
 curl -sH "Authorization: Bearer ${TOKEN}" -X DELETE \
-  "https://api.cloudflare.com/client/v4/accounts/${ACCT}/pages/projects/greg-etm/domains/ophis.fi" | jq '.success'
+  "https://api.cloudflare.com/client/v4/accounts/${ACCT}/pages/projects/${SWAP_PROJECT}/domains/ophis.fi" | jq '.success'
 ```
 
 Expected: `true`.
@@ -2646,4 +2650,4 @@ Final summary message in the terminal: production URLs, perf scores, Codex audit
 
 **Type consistency:** `useScrollClass(threshold)` matches usage. `configurePartnerFee({chainId, receiver, bps})` matches the existing `@ophis/sdk` shape. `data-ophis-cta` is consistent across Phase 5 tasks. `ophis_wallet_connected` localStorage key is identical across Base.astro redirect script and Task 5.4's set call.
 
-**Scope gaps surfaced during self-review:** None. The spec's "out of scope" list is honored (no loading skeletons, no page transitions, no form-field focus). The deliberate `greg-etm.pages.dev` cushion is not touched.
+**Scope gaps surfaced during self-review:** None. The spec's "out of scope" list is honored (no loading skeletons, no page transitions, no form-field focus). The deliberate swap `.pages.dev` cushion is not touched.

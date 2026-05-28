@@ -22,7 +22,7 @@ Build a new Ophis landing page at `ophis.fi/` that adapts resend.com's design pa
 - Customer logos, testimonials, or volume metrics (don't have the content yet)
 - Blog or changelog section (next sub-project's territory)
 - Form-field focus animations, page-transition animations, loading skeletons in the app (user skipped)
-- Touching `greg-etm.pages.dev` references — those are a deliberate 30-day cushion expiring 2026-06-10, tracked in the `project_greg_etm_url_cushion` Claude memory. The landing must NOT introduce new `greg-etm.pages.dev` references.
+- Touching the existing swap CF Pages project's `.pages.dev` references — those are a deliberate 30-day cushion expiring 2026-06-10, tracked in the `project_greg_etm_url_cushion` Claude memory. The landing must NOT introduce new `.pages.dev` references for the swap project.
 
 ## 4. Architecture
 
@@ -74,14 +74,14 @@ apps/frontend/apps/ophis-landing/
 ### 4.2 Routing
 
 - `ophis.fi/` → the new landing (Cloudflare Pages project `ophis-landing`)
-- `swap.ophis.fi` → the existing swap app (Cloudflare Pages project `greg-etm` keeps serving its current build; we add a new custom domain to it: `swap.ophis.fi`)
+- `swap.ophis.fi` → the existing swap app (existing swap CF Pages project keeps serving its current build; we add a new custom domain to it: `swap.ophis.fi`)
 - `docs.ophis.fi`, `explorer.ophis.fi`, `rebates.ophis.fi` — unchanged
 - Soft-redirect on landing: if `localStorage.ophis_wallet_connected === 'true'` is set (we add this flag to the swap app on first wallet connect), the landing's `<head>` includes a `<meta http-equiv="refresh">` to `https://swap.ophis.fi/`. New visitors and search engines see the landing; returning traders bounce to the app.
 
 ### 4.3 DNS + Pages setup
 
 - New CF Pages project: `ophis-landing`, custom domain `ophis.fi` + `www.ophis.fi`
-- Existing CF Pages project `greg-etm`: add custom domain `swap.ophis.fi`. Keep `greg-etm.pages.dev` alive until 2026-06-10 per the documented cushion.
+- Existing swap CF Pages project: add custom domain `swap.ophis.fi`. Keep the swap project's `.pages.dev` URL alive until 2026-06-10 per the documented cushion.
 - DNS via CF API token already in keychain (`cloudflare-api-token`).
 
 ### 4.4 Brand tokens — single source of truth
@@ -185,11 +185,11 @@ New workflow `.github/workflows/landing-deploy.yml`:
 
 Strict ordering to avoid users hitting 404s during the transition:
 
-1. **Add `swap.ophis.fi` to the existing `greg-etm` CF Pages project's custom domains.** Verify DNS resolves + the swap UI loads at the new subdomain.
+1. **Add `swap.ophis.fi` to the existing swap CF Pages project's custom domains.** Verify DNS resolves + the swap UI loads at the new subdomain.
 2. **Add `ophis_wallet_connected = true` localStorage write to the swap app's wallet-connect path.** Ship via the standard cowswap-frontend deploy. Real users start accumulating the flag.
 3. **Deploy the landing to a *preview* URL** (CF Pages auto-generates `<branch>.ophis-landing.pages.dev`). Smoke-test the redirect logic + Lighthouse budget on staging.
-4. **Promote landing to production by attaching `ophis.fi` to the `ophis-landing` project.** Cloudflare swaps the routing atomically — there's no period where `ophis.fi` is 404. The previous owner (`greg-etm`) loses the `ophis.fi` domain at the same moment.
-5. **Remove `ophis.fi` from the `greg-etm` project's custom domains** (cleanup; should already be detached after step 4 but verify).
+4. **Promote landing to production by attaching `ophis.fi` to the `ophis-landing` project.** Cloudflare swaps the routing atomically — there's no period where `ophis.fi` is 404. The previous swap CF Pages project loses the `ophis.fi` domain at the same moment.
+5. **Remove `ophis.fi` from the swap CF Pages project's custom domains** (cleanup; should already be detached after step 4 but verify).
 
 Existing users with wallets: the landing's `<head>` includes a tiny inline `<script>` (synchronous, < 200 bytes) that reads `localStorage.ophis_wallet_connected`. If truthy, it does `window.location.replace('https://swap.ophis.fi/')` before the rest of the page renders. New visitors and search engines see the landing. The script runs before paint, so there's no flash of landing for returning users.
 
@@ -256,7 +256,7 @@ The landing is a **PUBLIC, SSG-rendered, static asset bundle.** Anything in the 
 
 ## 12. Existing-code constraints
 
-- **Do NOT touch `greg-etm.pages.dev` references in `cowswap-frontend`** — those are the deliberate 30-day cushion expiring 2026-06-10. The landing must not introduce any new ones.
+- **Do NOT touch the swap CF Pages project's `.pages.dev` references in `cowswap-frontend`** — those are the deliberate 30-day cushion expiring 2026-06-10. The landing must not introduce any new ones.
 - **Do NOT add Greg-era brand strings.** The landing uses "Ophis" exclusively. Audit the spec content for any stale leftover terminology before commit.
 - **Lingui compatibility.** Even though i18n isn't on for the landing initially, write strings in a way that's extractable later (e.g., constants in `src/content/sections.ts`).
 
