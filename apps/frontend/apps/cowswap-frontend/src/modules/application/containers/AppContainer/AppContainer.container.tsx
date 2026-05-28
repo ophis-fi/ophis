@@ -28,6 +28,7 @@ import { useGetMarketDimension } from 'common/hooks/useGetMarketDimension'
 import { OphisFooter } from 'ophis/components/OphisFooter'
 import { OphisHeader } from 'ophis/components/OphisHeader'
 import { ScrollToTop } from 'ophis/components/ScrollToTop'
+import { useOphisWalletFlag } from 'ophis/hooks/useOphisWalletFlag'
 
 import { RecoveryBanner } from './RecoveryBanner'
 
@@ -158,6 +159,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
     injectedWidgetAppId: useInjectedWidgetMetaData()?.appCode,
   })
 
+  useOphisWalletFlag(!!account)
   useInitializeUtm()
   const isInjectedWidgetMode = isInjectedWidget()
   const isStandaloneLanding = useLocation().pathname === '/' && !isInjectedWidgetMode

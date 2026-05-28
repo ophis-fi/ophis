@@ -48,10 +48,15 @@ const {
     } catch (e) { /* localStorage blocked: ignore */ }
   </script>
 
-  <!-- Critical CSS slot -- Astro inlines /src/styles/global.css here -->
-  <style>@import '../styles/global.css';</style>
+  <!-- Critical CSS slot -- Astro inlines /src/styles/global.css here.
+       `is:global` is REQUIRED: without it, Astro scopes the @import via
+       data-astro-cid-* attributes that match only Base.astro elements,
+       so .nav / .bg-orbs / .reveal-up rules silently miss the components
+       in src/components/. -->
+  <style is:global>@import '../styles/global.css';</style>
 </head>
 <body>
+  <div class="bg-orbs" aria-hidden="true"></div>
   <div class="scroll-progress" aria-hidden="true"></div>
   <slot />
 </body>

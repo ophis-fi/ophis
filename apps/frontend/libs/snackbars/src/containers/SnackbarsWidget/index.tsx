@@ -1,10 +1,11 @@
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useResetAtom } from 'jotai/utils'
-import { ReactElement, ReactNode, useCallback, useEffect, useMemo } from 'react'
+import React, { ReactElement, ReactNode, useCallback, useEffect, useMemo } from 'react'
 
 import { useMediaQuery } from '@cowprotocol/common-hooks'
 import { Media, UI } from '@cowprotocol/ui'
 
+import { animated, useTransition } from '@react-spring/web'
 import ms from 'ms.macro'
 import { AlertTriangle, CheckCircle } from 'react-feather'
 import styled from 'styled-components/macro'
@@ -71,6 +72,22 @@ const icons: Record<IconType, ReactElement | undefined> = {
 
 const WIDGET_DEFAULT_TOP_POSITION = 80
 
+// React 19 dropped implicit `children` from HTMLAttributes, so animated.div
+// doesn't accept children in its own JSX type. We work around it by creating
+// a plain-div wrapper whose style is driven by a react-spring SpringValue ref
+// prop. This preserves the animated interpolation while staying type-safe.
+const AnimatedSlide = animated(
+  function SlideWrapper({
+    children,
+    style,
+  }: {
+    children?: ReactNode
+    style?: React.CSSProperties
+  }) {
+    return <div style={style}>{children}</div>
+  },
+)
+
 interface SnackbarsWidgetProps {
   /**
    * This prop might seem a bit hacky and this is true
@@ -82,7 +99,7 @@ interface SnackbarsWidgetProps {
   hidden?: boolean
   /**
    * Id of a DOM element to which the snackbars should be anchored (displayed under)
-   * In CoW Swap the element is the header menu
+   * In CoW Swap the header menu
    */
   anchorElementId?: string
 }
@@ -113,10 +130,28 @@ export function SnackbarsWidget({ hidden, anchorElementId }: SnackbarsWidgetProp
     document.body.style.overflow = isOverlayDisplayed ? 'hidden' : ''
   }, [isOverlayDisplayed])
 
+  // Slide-from-right enter/exit animation for each snackbar.
+  // Uses @react-spring/web (already in this lib's deps) so no new dep is added.
+  // prefers-reduced-motion: the spring config uses a near-zero duration so the
+  // values jump instantly — the CSS media query `@media (prefers-reduced-motion)`
+  // cannot apply to JS springs, but immediate:true achieves the same result.
+  const prefersReducedMotion =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  const transitions = useTransition(snackbars, {
+    keys: (snackbar) => snackbar.id,
+    from: { opacity: 0, transform: 'translateX(60px) scale(0.95)' },
+    enter: { opacity: 1, transform: 'translateX(0px) scale(1)' },
+    leave: { opacity: 0, transform: 'translateX(60px) scale(0.95)' },
+    config: prefersReducedMotion
+      ? { duration: 0 }
+      : { tension: 320, friction: 26 }, // ~220ms snappy ease-out
+  })
+
   return (
     <Host hidden$={!!hidden} top$={widgetTop}>
       <List>
-        {snackbars.map((snackbar) => {
+        {transitions((style, snackbar) => {
           const icon = snackbar.icon
             ? snackbar.icon === 'custom'
               ? snackbar.customIcon
@@ -126,9 +161,11 @@ export function SnackbarsWidget({ hidden, anchorElementId }: SnackbarsWidgetProp
           const duration = snackbar.duration ?? DEFAULT_DURATION
 
           return (
-            <SnackbarPopup key={snackbar.id} id={snackbar.id} icon={icon} duration={duration} onExpire={onExpire}>
-              {snackbar.content}
-            </SnackbarPopup>
+            <AnimatedSlide key={snackbar.id} style={style}>
+              <SnackbarPopup id={snackbar.id} icon={icon} duration={duration} onExpire={onExpire}>
+                {snackbar.content}
+              </SnackbarPopup>
+            </AnimatedSlide>
           )
         })}
       </List>
