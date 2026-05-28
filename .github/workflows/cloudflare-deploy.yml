@@ -57,6 +57,11 @@ jobs:
         continue-on-error: true
         env:
           FORMSPREE_DEPLOY_KEY: ${{ secrets.FORMSPREE_DEPLOY_KEY }}
+          # Turnstile secret consumed by the `$FORMSPREE_TURNSTILE_SECRET`
+          # reference in formspree.json (the CLI substitutes $VAR_NAME at
+          # deploy time). Pair with the public REACT_APP_TURNSTILE_SITE_KEY
+          # used in the browser bundle.
+          FORMSPREE_TURNSTILE_SECRET: ${{ secrets.FORMSPREE_TURNSTILE_SECRET }}
         run: |
           if [ -n "$FORMSPREE_DEPLOY_KEY" ]; then
             npx --yes @formspree/cli@latest deploy -k "$FORMSPREE_DEPLOY_KEY"
@@ -90,6 +95,13 @@ jobs:
           # into the frontend bundle (Bungee requires it server-side); it stays
           # a repo secret for a future Cloudflare Function proxy.
           REACT_APP_BUNGEE_AFFILIATE_ID: ${{ secrets.REACT_APP_BUNGEE_AFFILIATE_ID }}
+          # Cloudflare Turnstile site key for the /contact form widget. PUBLIC
+          # value (it's literally rendered to the browser as a `sitekey` attr);
+          # safe to inline in the bundle. The matching SECRET stays CI/server-
+          # side as FORMSPREE_TURNSTILE_SECRET (Formspree validates the token
+          # against CF using it). If unset, Contact.container.tsx skips the
+          # widget and the form falls back to honeypot + Formspree ML.
+          REACT_APP_TURNSTILE_SITE_KEY: ${{ secrets.REACT_APP_TURNSTILE_SITE_KEY }}
         run: pnpm run build:cowswap
 
       - name: drop production source maps
