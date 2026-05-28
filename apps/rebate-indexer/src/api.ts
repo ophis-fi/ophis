@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import rateLimit from '@fastify/rate-limit';
 import { eq, desc } from 'drizzle-orm';
 import { timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { logger } from './logger.js';
@@ -47,15 +48,46 @@ function assertAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
   return true;
 }
 
+// Trust X-Forwarded-For ONLY when the immediate TCP peer is one of:
+//   - loopback (127.0.0.0/8, ::1) — local dev / same-container
+//   - Docker bridge / overlay networks (172.16.0.0/12, covers the default
+//     172.17-23/16 ranges that Docker and Compose assign) — production compose
+//     stack where Caddy reaches the indexer at a 172.x.x.x peer address
+//   - Tailscale (100.64.0.0/10) — operator SSH-tunnel reach path
+//
+// All other sources have their XFF header ignored. This means a public
+// attacker hitting :8080 directly (bypassing Caddy, which compose exposes
+// via `ports: 8080:8080`) cannot spoof X-Forwarded-For to manipulate
+// req.ip and escape the per-IP rate-limit bucket.
+//
+// The 172.16.0.0/12 range is RFC 1918 private; in a non-Docker deploy it
+// is inert because no public peer will originate from that range.
+function isTrustedProxyPeer(addr: string): boolean {
+  if (!addr) return false;
+  // Loopback IPv4 + IPv6
+  if (addr === '127.0.0.1' || addr === '::1' || addr.startsWith('127.')) return true;
+  // IPv4-mapped IPv6 ::ffff:127.x
+  if (addr.startsWith('::ffff:127.')) return true;
+  if (isIP(addr) !== 4) return addr.startsWith('::ffff:') ? isTrustedProxyPeer(addr.slice(7)) : false;
+  const [o0, o1] = addr.split('.').map(Number);
+  // 172.16.0.0/12 — Docker bridge / compose networks
+  if (o0 === 172 && o1 !== undefined && o1 >= 16 && o1 <= 31) return true;
+  // 100.64.0.0/10 — Tailscale CGNAT range
+  if (o0 === 100 && o1 !== undefined && o1 >= 64 && o1 <= 127) return true;
+  return false;
+}
+
 export async function buildApiServer(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
     // The indexer sits behind Caddy in the prod compose stack. Without
-    // trustProxy, req.ip is the loopback peer (Caddy) and the per-route
-    // rate-limit configs collapse into ONE shared bucket. Setting
-    // trustProxy='loopback' tells Fastify to use the rightmost X-Forwarded-For
-    // entry that Caddy populates, so req.ip is the real client IP.
-    trustProxy: 'loopback',
+    // trustProxy, req.ip is the Caddy peer IP (172.x.x.x on Docker bridge)
+    // and the per-route rate-limit configs collapse into ONE shared bucket.
+    // isTrustedProxyPeer() whitelists loopback + Docker bridge + Tailscale
+    // so Fastify reads the real client IP from X-Forwarded-For — but only
+    // when the TCP peer is actually one of those trusted ranges. Public
+    // attackers hitting :8080 directly cannot spoof XFF.
+    trustProxy: isTrustedProxyPeer,
   });
 
   // Rate-limiting: 100 requests per minute per IP across all public endpoints.
@@ -193,14 +225,19 @@ export async function startApi(): Promise<FastifyInstance> {
       `REBATE_INDEXER_ADMIN_TOKEN must be at least ${ADMIN_TOKEN_MIN_LEN} chars (got ${token.length})`
     );
   }
-  // Optional entropy guard: reject low-entropy tokens (dictionary words, etc.)
-  // Simple heuristic: distinct character count >= 16.
-  if (new Set(token).size < 16) {
-    throw new Error(
-      'REBATE_INDEXER_ADMIN_TOKEN has too low character entropy ' +
-      `(${new Set(token).size} unique chars; expected >= 16)`
-    );
-  }
+  // Length-based check is sufficient when paired with format awareness.
+  // A 32-char hex token gives 128 bits of entropy (random). A 32-char
+  // base64url token gives ~192 bits. Both are far above brute-force risk
+  // at our rate-limit cap (30/min on admin endpoints = ~16 million years
+  // for 128 bits).
+  //
+  // We don't try to detect the format because operators may use either;
+  // just enforce minimum length and rely on the operator to generate
+  // from a cryptographic RNG (e.g., `openssl rand -hex 32` or
+  // `openssl rand -base64 24`). The prior unique-char heuristic
+  // (>= 16 distinct chars) was a false positive for valid hex tokens
+  // from `openssl rand -hex 32`: hex uses only 0-9a-f (16 possible chars)
+  // so a legitimately random token could trip the guard.
 
   const app = await buildApiServer();
   const port = parseInt(process.env.API_PORT ?? '8080', 10);
