@@ -73,7 +73,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
 
-  app.get('/health', async () => {
+  app.get('/health', {
+    config: {
+      rateLimit: { max: 200, timeWindow: '1 minute' }, // permissive — uptime monitors hit this continuously
+    },
+  }, async () => {
     const healthRows = await sql<{ last_fetch: string | null }[]>`
       SELECT MAX(fetched_at)::text AS last_fetch FROM trades
     `;
@@ -85,7 +89,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { ok: true, last_fetch, pending_batches: parseInt(pending, 10) };
   });
 
-  app.get('/status', async (req, reply) => {
+  app.get('/status', {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' }, // stricter — admin endpoint
+    },
+  }, async (req, reply) => {
     // Admin-only — exposes total wallets + 30d volume + next cycle.
     // Operationally useful for the team dashboard, but a competitive-
     // intelligence and front-runner timing signal if public.
@@ -107,14 +115,22 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     };
   });
 
-  app.get<{ Params: { wallet: string } }>('/tier/:wallet', async (req, reply) => {
+  app.get<{ Params: { wallet: string } }>('/tier/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public — matches global default, explicit for CodeQL
+    },
+  }, async (req, reply) => {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
     const status = await getWalletStatus(raw as `0x${string}`);
     return status;
   });
 
-  app.get('/batches', async (req, reply) => {
+  app.get('/batches', {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' }, // stricter — admin endpoint
+    },
+  }, async (req, reply) => {
     // Admin-only — exposes the entire rebate ledger (every cycle's pool,
     // safe-proposal hash, finalized tx, status). Pre-auth this was a
     // CRITICAL public-deanon + competitor-intel leak.
@@ -123,7 +139,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return rows;
   });
 
-  app.get<{ Params: { id: string } }>('/batches/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/batches/:id', {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' }, // stricter — admin endpoint
+    },
+  }, async (req, reply) => {
     // Admin-only — exposes per-wallet entries (every recipient's address,
     // tier, rebate_pct, and exact wei payout for that cycle). Pre-auth
     // this was a phishing target list + full user deanonymization.
