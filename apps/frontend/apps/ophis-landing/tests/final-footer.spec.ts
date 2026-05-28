@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test'
 
-test('final CTA shows reimagined headline + Launch app', async ({ page }) => {
+test('final CTA shows new multi-chain headline + Trade CTA', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('.final h2')).toContainText('reimagined')
-  await expect(page.locator('.final .cta-primary')).toContainText(/Launch app/)
+  await expect(page.locator('.final h2')).toContainText('Trade anywhere')
+  await expect(page.locator('.final h2')).toContainText('Settle in one batch')
+  await expect(page.locator('.final p')).toContainText('11 chains')
+  await expect(page.locator('.final .cta-primary')).toContainText(/Trade/)
 })
 
 test('footer has 4 columns + nav-back-to-top link', async ({ page }) => {

@@ -12,3 +12,5 @@ minimumReleaseAgeExclude:
   - typescript
   - '@types/*'
   - '@cowprotocol/*'
+  # Security patches: bypass soak for CVE fixes
+  - astro

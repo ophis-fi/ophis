@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { eq, desc } from 'drizzle-orm';
 import { timingSafeEqual } from 'node:crypto';
 import { sql, db, schema } from './db/index.js';
@@ -48,6 +49,18 @@ function assertAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
 
 export async function buildApiServer(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });                              // we use pino directly
+
+  // Rate-limiting: 100 requests per minute per IP across all public endpoints.
+  // Admin endpoints are inherently harder to brute-force (constant-time token
+  // compare) but still benefit from request-rate caps to limit log noise.
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (_req, context) => ({
+      error: 'too many requests',
+      retryAfter: context.after,
+    }),
+  });
 
   // CORS — the swap page (ophis.fi + *.pages.dev) calls /tier directly.
   app.addHook('onRequest', async (req, reply) => {
