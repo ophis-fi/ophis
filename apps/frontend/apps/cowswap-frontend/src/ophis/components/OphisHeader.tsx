@@ -11,6 +11,8 @@ import { ReactNode } from 'react'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
+import { useScrollClass } from '../../hooks/useScrollClass'
+
 interface Props {
   children?: ReactNode
   /** Render with a transparent background to overlay the cosmic hero. */
@@ -82,8 +84,9 @@ const Right = styled.div`
 `
 
 export function OphisHeader({ children, transparent = false }: Props): ReactNode {
+  const scrolled = useScrollClass(40)
   return (
-    <Bar $transparent={transparent}>
+    <Bar $transparent={transparent} className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}>
       <Wordmark to="/" aria-label="Ophis, home">
         <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" />
         <WordmarkText>
