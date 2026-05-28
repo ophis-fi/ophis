@@ -48,7 +48,15 @@ function assertAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
 }
 
 export async function buildApiServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false });                              // we use pino directly
+  const app = Fastify({
+    logger: false,
+    // The indexer sits behind Caddy in the prod compose stack. Without
+    // trustProxy, req.ip is the loopback peer (Caddy) and the per-route
+    // rate-limit configs collapse into ONE shared bucket. Setting
+    // trustProxy='loopback' tells Fastify to use the rightmost X-Forwarded-For
+    // entry that Caddy populates, so req.ip is the real client IP.
+    trustProxy: 'loopback',
+  });
 
   // Rate-limiting: 100 requests per minute per IP across all public endpoints.
   // Admin endpoints are inherently harder to brute-force (constant-time token
@@ -57,6 +65,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     max: 100,
     timeWindow: '1 minute',
     errorResponseBuilder: (_req, context) => ({
+      statusCode: context.statusCode,  // 429 normally, 403 if ban triggers
       error: 'too many requests',
       retryAfter: context.after,
     }),
@@ -156,6 +165,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { batch, entries };
   });
 
+  // Rate-limit 404s too — otherwise an attacker hitting random paths
+  // bypasses the limiter entirely (CodeQL js/missing-rate-limiting).
+  app.setNotFoundHandler(
+    { preHandler: app.rateLimit({ max: 100, timeWindow: '1 minute' }) },
+    async (_req, reply) => reply.code(404).send({ error: 'not found' })
+  );
+
   return app;
 }
 
@@ -167,6 +183,25 @@ function nextFirstOfMonth(): Date {
 }
 
 export async function startApi(): Promise<FastifyInstance> {
+  const ADMIN_TOKEN_MIN_LEN = 32;
+  const token = process.env.REBATE_INDEXER_ADMIN_TOKEN;
+  if (!token) {
+    throw new Error('REBATE_INDEXER_ADMIN_TOKEN must be set');
+  }
+  if (token.length < ADMIN_TOKEN_MIN_LEN) {
+    throw new Error(
+      `REBATE_INDEXER_ADMIN_TOKEN must be at least ${ADMIN_TOKEN_MIN_LEN} chars (got ${token.length})`
+    );
+  }
+  // Optional entropy guard: reject low-entropy tokens (dictionary words, etc.)
+  // Simple heuristic: distinct character count >= 16.
+  if (new Set(token).size < 16) {
+    throw new Error(
+      'REBATE_INDEXER_ADMIN_TOKEN has too low character entropy ' +
+      `(${new Set(token).size} unique chars; expected >= 16)`
+    );
+  }
+
   const app = await buildApiServer();
   const port = parseInt(process.env.API_PORT ?? '8080', 10);
   await app.listen({ host: '0.0.0.0', port });
