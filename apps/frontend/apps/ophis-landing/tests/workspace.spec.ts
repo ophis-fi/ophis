@@ -10,3 +10,10 @@ test('package.json defines @ophis/landing', () => {
   expect(pkg.name).toBe('@ophis/landing')
   expect(pkg.private).toBe(true)
 })
+
+import { existsSync } from 'node:fs'
+
+test('astro build produces dist/index.html', async () => {
+  const distIndex = join(__dirname, '..', 'dist', 'index.html')
+  expect(existsSync(distIndex)).toBe(true)
+})

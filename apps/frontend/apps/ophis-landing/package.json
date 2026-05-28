@@ -13,14 +13,15 @@
     "lh": "lhci autorun"
   },
   "dependencies": {
-    "astro": "^5.0.0",
     "@astrojs/preact": "^4.0.0",
+    "astro": "^5.0.0",
     "preact": "^10.0.0",
     "sharp": "^0.33.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
     "@lhci/cli": "^0.14.0",
+    "@playwright/test": "^1.49.0",
+    "lightningcss": "^1.32.0",
     "typescript": "^5.5.0"
   }
 }
