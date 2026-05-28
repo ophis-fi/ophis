@@ -15,6 +15,7 @@
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: clip; scroll-behavior: smooth; }
 body {
   margin: 0;
+  position: relative;
   background: var(--ophis-bg);
   color: var(--ophis-fg);
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
@@ -40,12 +41,16 @@ body {
 .stagger > .reveal-up:nth-child(4) { transition-delay: 240ms; }
 .stagger > .reveal-up:nth-child(5) { transition-delay: 320ms; }
 
-/* Nav blur (toggled by JS) */
-.nav { background: transparent; transition: background 200ms ease, border-color 200ms ease; border-bottom: 1px solid transparent; }
+/* Nav blur (toggled by JS) — always frosted from the start, scrolled intensifies */
+.nav {
+  background: rgba(10, 10, 10, 0.72);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  backdrop-filter: blur(10px) saturate(180%);
+  border-bottom: 1px solid transparent;
+  transition: background 200ms ease, border-color 200ms ease, backdrop-filter 200ms ease;
+}
 .nav.scrolled {
-  background: rgba(10, 10, 10, 0.85);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: rgba(10, 10, 10, 0.92);
   border-bottom-color: var(--ophis-border);
 }
 
@@ -122,6 +127,47 @@ body {
   to { transform: scaleX(1); }
 }
 
+/* Cosmic backdrop — two slowly-drifting radial gradients (saffron + violet)
+   over a vignette. Pure CSS, GPU-cheap. Disabled for prefers-reduced-motion. */
+.bg-orbs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.bg-orbs::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(10, 10, 10, 0.55) 75%),
+    linear-gradient(180deg, rgba(10, 10, 10, 0) 0%, rgba(10, 10, 10, 0.6) 75%, rgba(10, 10, 10, 0.95) 100%);
+  z-index: 1;
+}
+.bg-orbs::after {
+  content: '';
+  position: absolute;
+  inset: -10%;
+  background:
+    radial-gradient(420px 320px at 20% 30%, rgba(242, 166, 62, 0.18), transparent 70%),
+    radial-gradient(380px 280px at 80% 60%, rgba(180, 138, 255, 0.14), transparent 70%),
+    radial-gradient(300px 220px at 55% 85%, rgba(242, 166, 62, 0.10), transparent 70%);
+  filter: blur(50px);
+  z-index: 0;
+  animation: bg-orb-drift 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes bg-orb-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(-2%, 1.5%, 0) scale(1.05); }
+  66%  { transform: translate3d(1.5%, -1.5%, 0) scale(0.97); }
+  100% { transform: translate3d(-1%, 1%, 0) scale(1.02); }
+}
+
+/* Ensure main content sits above the orb layer */
+main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
+
 @media (prefers-reduced-motion: reduce) {
   .reveal-up { opacity: 1 !important; transform: none !important; transition: none !important; }
   .claw { animation: none !important; }
@@ -129,5 +175,6 @@ body {
   .feat, .cta-primary, .nav-cta { transition: none !important; }
   .pill::before { animation: none !important; }
   .scroll-progress { animation: none !important; transform: scaleX(0) !important; }
+  .bg-orbs::after { animation: none !important; transform: none !important; }
   * { transition: none !important; }
 }
