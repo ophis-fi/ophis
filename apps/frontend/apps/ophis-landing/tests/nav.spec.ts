@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test'
 
-test('nav renders logo + nav links + Launch app CTA', async ({ page }) => {
+test('nav renders logo (with SVG claw) + nav links + Trade CTA', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('.nav .logo')).toHaveText('Ophis')
+  await expect(page.locator('.nav .logo')).toContainText('Ophis')
+  // Logo should contain an inline SVG (the claw)
+  await expect(page.locator('.nav .logo svg.logo-claw')).toBeVisible()
   const links = page.locator('.nav .nav-links a')
   await expect(links).toHaveCount(5)
-  await expect(page.locator('.nav .nav-cta')).toHaveText(/Launch app/)
+  await expect(page.locator('.nav .nav-cta')).toHaveText(/Trade/)
 })
 
 test('nav becomes frosted past scroll threshold', async ({ page }) => {

@@ -141,3 +141,34 @@ button {
   font-family: var(--ophis-font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Ophis header: frosted-glass on scroll (matches landing) */
+.ophis-header-root {
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+.ophis-header-root.scrolled {
+  background-color: rgba(10, 10, 10, 0.85);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Ophis CTA polish: press-scale + saffron hover-glow */
+.ophis-cta,
+[data-ophis-cta] {
+  transition: transform 80ms ease-out, box-shadow 200ms ease, filter 150ms ease;
+}
+.ophis-cta:hover,
+[data-ophis-cta]:hover {
+  box-shadow: 0 8px 24px -8px rgba(242, 166, 62, 0.45);
+  filter: brightness(1.05);
+}
+.ophis-cta:active,
+[data-ophis-cta]:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ophis-cta, [data-ophis-cta] {
+    transition: none;
+    transform: none !important;
+  }
+}

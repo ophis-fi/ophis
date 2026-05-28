@@ -2,7 +2,7 @@
 @import './tokens.css';
 
 * { box-sizing: border-box; }
-html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: clip; scroll-behavior: smooth; }
 body {
   margin: 0;
   background: var(--ophis-bg);
@@ -64,9 +64,60 @@ body {
   animation: shimmer 8s ease-in-out infinite;
 }
 
+/* Card hover lift */
+.feat {
+  transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease;
+}
+.feat:hover {
+  transform: translateY(-4px);
+  border-color: rgba(242, 166, 62, 0.3);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+/* CTA hover glow (more pronounced) */
+.cta-primary, .nav-cta {
+  transition: filter 150ms ease, box-shadow 250ms ease, transform 80ms ease;
+}
+.cta-primary:hover, .nav-cta:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 24px -8px rgba(242, 166, 62, 0.55);
+}
+.cta-primary:active, .nav-cta:active {
+  transform: scale(0.97);
+}
+
+/* Pill subtle attention pulse */
+@keyframes pill-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 166, 62, 0); }
+  50%      { box-shadow: 0 0 0 6px rgba(242, 166, 62, 0.08); }
+}
+.pill::before {
+  animation: pill-pulse 2.4s ease-in-out infinite;
+}
+
+/* Scroll-progress thin bar at top — pure CSS using scroll-timeline (modern browsers) */
+.scroll-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--ophis-saffron-60), var(--ophis-saffron-30));
+  transform-origin: left center;
+  transform: scaleX(0);
+  z-index: 60;
+  pointer-events: none;
+  animation: scroll-progress linear;
+  animation-timeline: scroll(root);
+}
+@keyframes scroll-progress {
+  to { transform: scaleX(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal-up { opacity: 1 !important; transform: none !important; transition: none !important; }
   .claw { animation: none !important; }
   .accent { animation: none !important; }
+  .feat, .cta-primary, .nav-cta { transition: none !important; }
+  .pill::before { animation: none !important; }
+  .scroll-progress { animation: none !important; transform: scaleX(0) !important; }
   * { transition: none !important; }
 }

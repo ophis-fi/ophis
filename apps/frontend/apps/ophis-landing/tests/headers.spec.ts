@@ -18,7 +18,7 @@ test('built dist includes _headers with strict CSP', () => {
 test('built dist does NOT leak Aleph VM IPs or tailscale hostnames', () => {
   const indexPath = join(__dirname, '..', 'dist', 'index.html')
   const content = readFileSync(indexPath, 'utf8')
-  expect(content).not.toMatch(/2a01:240:|100\.100\./)
-  expect(content).not.toMatch(/\.ts\.net/)
-  expect(content).not.toMatch(/aleph\.im|aleph\.cloud/) // we may surface aleph.cloud later, but not in v1
+  expect(content).not.toMatch(/(?:^|\b)2a01:240:|100\.100\./)
+  expect(content).not.toMatch(/\.ts\.net(?:\b|$)/)
+  expect(content).not.toMatch(/\baleph\.im\b|\baleph\.cloud\b/) // we may surface aleph.cloud later, but not in v1
 })

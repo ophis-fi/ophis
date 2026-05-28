@@ -15,7 +15,6 @@ import styled from 'styled-components/macro'
 import {
   Badge,
   Callout,
-  FeatureCard,
   FeatureGrid,
   InlineCode,
   PageShell,

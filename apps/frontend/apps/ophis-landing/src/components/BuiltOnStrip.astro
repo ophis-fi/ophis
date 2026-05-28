@@ -1,17 +1,27 @@
 ---
-const items = ['CoW Protocol', 'Foundry', 'Alloy', 'Cloudflare Pages', 'OP Stack']
+const items = [
+  { name: 'CoW Protocol',    note: 'Settlement stack we forked.' },
+  { name: 'Aleph Cloud',     note: 'Decentralized compute infra.' },
+  { name: 'LibertAI',        note: 'LLM for natural-language intent parsing.' },
+  { name: 'Trail of Bits',   note: 'Security audits.' },
+  { name: 'NEAR Intents',    note: 'Cross-chain bridging to Solana + Bitcoin.' },
+  { name: 'Bungee',          note: 'Bridge aggregation.' },
+]
 ---
 <section class="built-on">
   <div class="built-inner">
     <h2 class="reveal-up" data-reveal>
-      Built on the rails <span class="accent">DeFi already trusts.</span>
+      Built with the tools and partners <span class="accent">that earned our trust.</span>
     </h2>
     <p class="sub reveal-up" data-reveal>
-      Forked from CoW Protocol's settlement stack. Same MEV-protection guarantees, Ophis-controlled allowlist, in-house solver competition.
+      Forked from CoW Protocol's settlement stack. Audited by Trail of Bits. Powered by Aleph Cloud compute. LLM intent parsing via LibertAI. Cross-chain routing via NEAR Intents and Bungee.
     </p>
-    <div class="built-row stagger">
-      {items.map(label => (
-        <div class="built-item reveal-up" data-reveal>{label}</div>
+    <div class="built-grid stagger">
+      {items.map(item => (
+        <div class="built-item reveal-up" data-reveal>
+          <span class="built-name">{item.name}</span>
+          <span class="built-note">{item.note}</span>
+        </div>
       ))}
     </div>
   </div>
@@ -29,17 +39,38 @@ const items = ['CoW Protocol', 'Foundry', 'Alloy', 'Cloudflare Pages', 'OP Stack
   }
   .sub {
     color: var(--ophis-fg-muted);
-    margin: 0 auto 40px;
-    max-width: 540px;
+    margin: 0 auto 48px;
+    max-width: 680px;
     font-size: 15px;
+    line-height: 1.6;
   }
-  .built-row {
+  .built-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    text-align: left;
+  }
+  .built-item {
+    background: var(--ophis-surface);
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius-sm);
+    padding: 18px 20px;
     display: flex;
-    justify-content: center;
-    gap: 50px;
-    flex-wrap: wrap;
-    color: var(--ophis-fg-faded);
-    font-weight: 500;
+    flex-direction: column;
+    gap: 4px;
   }
-  @media (max-width: 720px) { .built-row { gap: 24px; } }
+  .built-name {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ophis-saffron-60);
+  }
+  .built-note {
+    font-size: 13px;
+    color: var(--ophis-fg-muted);
+    line-height: 1.4;
+  }
+  @media (max-width: 720px) {
+    .built-grid { grid-template-columns: repeat(2, 1fr); }
+    h2 { font-size: 26px; }
+  }
 </style>
