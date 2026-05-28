@@ -351,9 +351,7 @@ export function IntentLanding(): ReactNode {
           Nothing lost. Nothing created. Everything <em>traded.</em>
         </Tagline>
         <Sub>
-          Describe your trade in plain English. Ophis identifies the tokens, the chain, and the amount,
-          then takes you to a pre-filled trade. Cross-chain to <em>Solana</em> and{' '}
-          <em>Bitcoin</em> via NEAR Intents.
+          Describe your trade, ophis identifies the tokens, the chain, and the amount, then takes you to a pre-filled trade.
         </Sub>
 
         <InputBlock>
