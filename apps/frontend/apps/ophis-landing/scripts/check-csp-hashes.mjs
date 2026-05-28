@@ -19,8 +19,12 @@ const root = resolve(__dirname, '..')
 const html = readFileSync(resolve(root, 'dist/index.html'), 'utf8')
 const headers = readFileSync(resolve(root, 'public/_headers'), 'utf8')
 
-// Extract all inline script bodies (both plain and type=module inline blocks)
-const scriptRe = /<script(?:[^>]*)>([\s\S]*?)<\/script>/g
+// Extract all inline script bodies (both plain and type=module inline blocks).
+// Attribute pattern uses [^>"']* and quoted-value alternatives to prevent a
+// crafted attribute value containing ">" from prematurely closing the tag match
+// (CodeQL js/bad-tag-filter). The closing tag is anchored with a word boundary
+// so "<\/scriptx>" cannot match.
+const scriptRe = /<script(?:\s+(?:[^>"'/\s][^>"'/\s]*(?:=(?:"[^"]*"|'[^']*'|[^>\s"'`=]+))?|\s*))*\s*>([\s\S]*?)<\/script\b[^>]*>/gi
 let m
 const hashes = []
 while ((m = scriptRe.exec(html)) !== null) {
