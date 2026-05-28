@@ -1,0 +1,79 @@
+---
+import CodeTabs from '../islands/CodeTabs.tsx'
+---
+<section class="code-section" id="features">
+  <div class="code-inner">
+    <h2 class="reveal-up" data-reveal>
+      Trade <span class="accent">tonight.</span>
+    </h2>
+    <p class="sub reveal-up" data-reveal>
+      An intent, a sell token, a buy token. The Ophis API does the rest — quote, route, MEV protection, settlement. Hit it from JavaScript, Rust, or just <code>curl</code>.
+    </p>
+    <div class="reveal-up" data-reveal>
+      <CodeTabs client:visible />
+    </div>
+  </div>
+</section>
+
+<style>
+  .code-section { padding: 80px 56px; }
+  .code-inner { max-width: 880px; margin: 0 auto; }
+  h2 {
+    text-align: center;
+    font-size: 40px;
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+  }
+  .sub {
+    text-align: center;
+    color: var(--ophis-fg-muted);
+    margin: 0 auto 40px;
+    max-width: 540px;
+  }
+  .sub code {
+    background: var(--ophis-surface);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+  }
+  :global(.code-frame) {
+    background: #111114;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    overflow: hidden;
+  }
+  :global(.tabs) {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ophis-border);
+  }
+  :global(.tab) {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--ophis-fg-faded);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  :global(.tab.active) {
+    background: var(--ophis-surface);
+    color: var(--ophis-saffron-60);
+  }
+  :global(.code-body) {
+    margin: 0;
+    padding: 24px;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ophis-fg-muted);
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+</style>
