@@ -53,15 +53,16 @@ jobs:
       # /contact form is managed as code. Uses the deploy key from a repo secret
       # (NEVER in client code). Skips cleanly if unset and never blocks the
       # frontend deploy (continue-on-error).
+      # Note: Cloudflare Turnstile CANNOT be configured via formspree.json —
+      # the Formspree CLI's schema only accepts `captcha.type: "recaptcha"`,
+      # not "turnstile" (confirmed by the API itself: 2026-05-28 run 26564209293
+      # rejected `"turnstile"` with `'recaptcha' was expected`). The Turnstile
+      # SECRET must be set in the Formspree dashboard UI for the form — paired
+      # with the public REACT_APP_TURNSTILE_SITE_KEY built into the bundle.
       - name: deploy Formspree forms
         continue-on-error: true
         env:
           FORMSPREE_DEPLOY_KEY: ${{ secrets.FORMSPREE_DEPLOY_KEY }}
-          # Turnstile secret consumed by the `$FORMSPREE_TURNSTILE_SECRET`
-          # reference in formspree.json (the CLI substitutes $VAR_NAME at
-          # deploy time). Pair with the public REACT_APP_TURNSTILE_SITE_KEY
-          # used in the browser bundle.
-          FORMSPREE_TURNSTILE_SECRET: ${{ secrets.FORMSPREE_TURNSTILE_SECRET }}
         run: |
           if [ -n "$FORMSPREE_DEPLOY_KEY" ]; then
             npx --yes @formspree/cli@latest deploy -k "$FORMSPREE_DEPLOY_KEY"
