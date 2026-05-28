@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ophis-fi/ophis/blob/main/SECURITY.md
+    about: Anything that could affect user funds, solver budget, or partner-fee accrual must be disclosed privately via SECURITY.md, NOT here.
+  - name: Documentation
+    url: https://docs.ophis.fi
+    about: User-facing guides, integration walkthroughs, and architecture overview.
+  - name: SDK reference
+    url: https://github.com/ophis-fi/ophis/tree/main/packages/sdk
+    about: '@ophis/sdk public API surface for partner integrations.'
