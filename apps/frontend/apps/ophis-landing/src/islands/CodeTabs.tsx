@@ -6,34 +6,39 @@ const samples = {
 curl -X POST https://swap.ophis.fi/api/intent \\
   -H "Content-Type: application/json" \\
   -d '{
-    "intent": "swap 100 USDC for ETH on Optimism"
+    "text": "swap 100 USDC for ETH on Optimism"
   }'
 
-# Returns the parsed entities (tokens, chain, amount) ready to feed into the swap UI.
-# Example response:
+# Successful response is wrapped in { ok, data }:
 # {
-#   "intent": "swap",
-#   "entities": [
-#     { "type": "amount",    "value": "100",     "raw": "100",     "start": 5,  "end": 8 },
-#     { "type": "sellToken", "value": "USDC",    "raw": "USDC",    "start": 9,  "end": 13 },
-#     { "type": "buyToken",  "value": "ETH",     "raw": "ETH",     "start": 18, "end": 21 },
-#     { "type": "chain",     "value": "optimism","raw": "Optimism","start": 25, "end": 33 }
-#   ]
+#   "ok": true,
+#   "data": {
+#     "intent": "swap",
+#     "entities": [
+#       { "type": "amount",    "value": "100",     "raw": "100",     "start": 5,  "end": 8 },
+#       { "type": "sellToken", "value": "USDC",    "raw": "USDC",    "start": 9,  "end": 13 },
+#       { "type": "buyToken",  "value": "ETH",     "raw": "ETH",     "start": 18, "end": 21 },
+#       { "type": "chain",     "value": "optimism","raw": "Optimism","start": 25, "end": 33 }
+#     ]
+#   }
 # }`,
   JavaScript: `// Parse a natural-language swap intent
 const res = await fetch('https://swap.ophis.fi/api/intent', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    intent: 'swap 100 USDC for ETH on Optimism',
+    text: 'swap 100 USDC for ETH on Optimism',
   }),
 })
-const { intent, entities } = await res.json()
+const { ok, data } = await res.json()
+if (!ok) throw new Error('intent parse failed')
+
+const { intent, entities } = data
 // Build a deep link to the swap UI:
 // /1/swap/USDC/ETH?sellAmount=100  (chain inferred from entities.chain)`,
   Rust: `// Parse a natural-language swap intent
 let body = serde_json::json!({
-  "intent": "swap 100 USDC for ETH on Optimism"
+  "text": "swap 100 USDC for ETH on Optimism"
 });
 let parsed: serde_json::Value = reqwest::Client::new()
   .post("https://swap.ophis.fi/api/intent")
@@ -42,8 +47,10 @@ let parsed: serde_json::Value = reqwest::Client::new()
   .await?
   .json()
   .await?;
-// parsed.intent == "swap"
-// parsed.entities holds {type, value, raw, start, end} per token/chain/amount.`,
+
+// parsed.ok == true
+// parsed.data.intent == "swap"
+// parsed.data.entities holds {type, value, raw, start, end} per token/chain/amount.`,
 } as const
 
 type Tab = keyof typeof samples

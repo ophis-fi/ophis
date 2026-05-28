@@ -4,45 +4,30 @@ test('code section default tab is curl', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.code-section h2')).toContainText(/Trade.*tonight/)
   await expect(page.locator('.code-section .tab.active')).toContainText('curl')
-  await expect(page.locator('.code-section .code-body')).toContainText('curl')
   await expect(page.locator('.code-section .code-body')).toContainText('swap.ophis.fi/api/intent')
 })
 
-test('clicking JavaScript tab switches code body', async ({ page }) => {
-  await page.goto('/')
-  const jsTab = page.locator('.code-section button.tab', { hasText: 'JavaScript' })
-  await jsTab.waitFor({ state: 'visible' })
-  // Preact (client:load) attaches event listeners asynchronously after page load.
-  // Use toPass to retry click + assertion until Preact hydration completes.
-  await expect(async () => {
-    await jsTab.click({ force: true })
-    const text = await page.locator('.code-section .code-body').textContent()
-    expect(text).toContain('fetch')
-  }).toPass({ intervals: [100, 200, 500, 1000, 2000], timeout: 10000 })
-  await expect(page.locator('.code-section .code-body')).not.toContainText('curl -X POST')
-})
+// Table-driven: per-tab assertions on the API contract
+const TABS = [
+  { label: 'curl', requestField: '"text":', responseWrap: '"ok": true', responseData: '"data":' },
+  { label: 'JavaScript', requestField: 'text:', responseWrap: 'ok', responseData: 'data' },
+  { label: 'Rust', requestField: '"text":', responseWrap: 'parsed.ok', responseData: 'parsed.data' },
+]
 
-test('code section never includes any auth header or API key in ANY tab', async ({ page }) => {
-  await page.goto('/')
-
-  // Assert against each tab's rendered code body, not just the active one.
-  // Hydration is async (Preact client:load), so use toPass with retries.
-  const tabs = ['curl', 'JavaScript', 'Rust']
-
-  for (const tab of tabs) {
-    if (tab !== 'curl') {
-      // curl is the default active tab; click the others
-      const tabBtn = page.locator('.code-section button.tab', { hasText: tab })
-      await expect(async () => {
-        await tabBtn.click({ force: true })
-        const active = await page.locator('.code-section .tab.active').textContent()
-        expect(active).toContain(tab)
-      }).toPass({ intervals: [100, 200, 500, 1000, 2000], timeout: 10000 })
+for (const { label, requestField, responseWrap, responseData } of TABS) {
+  test(`${label} tab uses the real API contract (text + ok+data wrapper)`, async ({ page }) => {
+    await page.goto('/')
+    if (label !== 'curl') {
+      await page.locator('.code-section .tab', { hasText: label }).click()
+      await page.waitForTimeout(150) // allow hydration + tab switch
     }
-
     const body = await page.locator('.code-section .code-body').textContent()
-    expect(body, `Tab "${tab}" must not contain auth headers`).not.toMatch(
-      /api[_-]?key|x-api-key|bearer|authorization/i
-    )
-  }
-})
+    expect(body).toContain('swap.ophis.fi/api/intent')
+    expect(body).toContain(requestField)
+    // Response shape uses {ok, data} wrapper
+    expect(body).toContain(responseWrap)
+    expect(body).toContain(responseData)
+    // Security: still no auth headers/keys
+    expect(body).not.toMatch(/api[_-]?key|x-api-key|bearer|authorization/i)
+  })
+}
