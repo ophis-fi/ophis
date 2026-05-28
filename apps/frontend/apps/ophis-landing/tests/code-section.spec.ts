@@ -5,7 +5,7 @@ test('code section default tab is curl', async ({ page }) => {
   await expect(page.locator('.code-section h2')).toContainText(/Trade.*tonight/)
   await expect(page.locator('.code-section .tab.active')).toContainText('curl')
   await expect(page.locator('.code-section .code-body')).toContainText('curl')
-  await expect(page.locator('.code-section .code-body')).toContainText('ophis.fi/api/intent')
+  await expect(page.locator('.code-section .code-body')).toContainText('swap.ophis.fi/api/intent')
 })
 
 test('clicking JavaScript tab switches code body', async ({ page }) => {
