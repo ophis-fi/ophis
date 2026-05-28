@@ -18,8 +18,11 @@ for (const { label, requestField, responseWrap, responseData } of TABS) {
   test(`${label} tab uses the real API contract (text + ok+data wrapper)`, async ({ page }) => {
     await page.goto('/')
     if (label !== 'curl') {
-      await page.locator('.code-section .tab', { hasText: label }).click()
-      await page.waitForTimeout(150) // allow hydration + tab switch
+      const tabBtn = page.locator('.code-section .tab', { hasText: label })
+      // Wait for island to hydrate (client:load) before clicking
+      await tabBtn.waitFor({ state: 'visible' })
+      await tabBtn.click()
+      await page.waitForTimeout(200) // allow preact state update
     }
     const body = await page.locator('.code-section .code-body').textContent()
     expect(body).toContain('swap.ophis.fi/api/intent')
