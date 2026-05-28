@@ -1,0 +1,45 @@
+---
+const items = ['CoW Protocol', 'Foundry', 'Alloy', 'Cloudflare Pages', 'OP Stack']
+---
+<section class="built-on">
+  <div class="built-inner">
+    <h2 class="reveal-up" data-reveal>
+      Built on the rails <span class="accent">DeFi already trusts.</span>
+    </h2>
+    <p class="sub reveal-up" data-reveal>
+      Forked from CoW Protocol's settlement stack. Same MEV-protection guarantees, Ophis-controlled allowlist, in-house solver competition.
+    </p>
+    <div class="built-row stagger">
+      {items.map(label => (
+        <div class="built-item reveal-up" data-reveal>{label}</div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .built-on { padding: 80px 56px; text-align: center; }
+  .built-inner { max-width: 1200px; margin: 0 auto; }
+  h2 {
+    font-size: 32px;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+  }
+  .sub {
+    color: var(--ophis-fg-muted);
+    margin: 0 auto 40px;
+    max-width: 540px;
+    font-size: 15px;
+  }
+  .built-row {
+    display: flex;
+    justify-content: center;
+    gap: 50px;
+    flex-wrap: wrap;
+    color: var(--ophis-fg-faded);
+    font-weight: 500;
+  }
+  @media (max-width: 720px) { .built-row { gap: 24px; } }
+</style>

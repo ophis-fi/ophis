@@ -1,0 +1,57 @@
+---
+export interface Props {
+  title?: string
+  description?: string
+  canonical?: string
+}
+const {
+  title = 'Ophis — DEX aggregator for the agent era',
+  description = 'Intent-based, MEV-protected, batch-settled swaps. Describe a trade in plain English; settle in one batch. Built for autonomous agents.',
+  canonical = 'https://ophis.fi/',
+} = Astro.props
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>{title}</title>
+  <meta name="description" content={description}>
+  <link rel="canonical" href={canonical}>
+  <link rel="icon" type="image/svg+xml" href="/ophis-claw-saffron.svg">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content={title}>
+  <meta property="og:description" content={description}>
+  <meta property="og:url" content={canonical}>
+  <meta property="og:image" content="https://ophis.fi/og-image.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:site_name" content="Ophis">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content={title}>
+  <meta name="twitter:description" content={description}>
+  <meta name="twitter:image" content="https://ophis.fi/og-image.png">
+
+  <!-- Font preload TODO: subset Geist in a follow-up; system fallbacks active for now -->
+
+  <!-- Returning-trader fast path. Runs synchronously before paint. Literal URL only. -->
+  <script is:inline>
+    try {
+      if (localStorage.getItem('ophis_wallet_connected') === 'true') {
+        window.location.replace('https://swap.ophis.fi/');
+      }
+    } catch (e) { /* localStorage blocked: ignore */ }
+  </script>
+
+  <!-- Critical CSS slot -- Astro inlines /src/styles/global.css here -->
+  <style>@import '../styles/global.css';</style>
+</head>
+<body>
+  <slot />
+</body>
+</html>
