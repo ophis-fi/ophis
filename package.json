@@ -14,7 +14,7 @@
     "format": "prettier -w \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore"
   },
   "devDependencies": {
-    "turbo": "^2.1.0",
+    "turbo": "^2.9.14",
     "typescript": "^5.5.0",
     "prettier": "^3.3.0",
     "eslint": "^9.10.0",
