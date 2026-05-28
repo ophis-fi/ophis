@@ -68,7 +68,10 @@ jobs:
           RAW_MSG: ${{ github.event.head_commit.message }}
         run: |
           # CF Pages rejects non-ASCII in commit messages (error 8000111).
-          MSG=$(printf '%s' "$RAW_MSG" | LC_ALL=C tr -cd '\11\12\15\40-\176' | head -c 200)
+          # Strip to printable ASCII only (no tabs/LF/CR) — multiline commit messages
+          # corrupt GITHUB_OUTPUT's single-line key=value format. CF Pages also rejects
+          # non-ASCII (error 8000111). Ref: feedback_cf_pages_ascii_commit_message.
+          MSG=$(printf '%s' "$RAW_MSG" | LC_ALL=C tr -cd '\40-\176' | head -c 200)
           echo "msg=${MSG}" >> "$GITHUB_OUTPUT"
 
       - name: wrangler pages deploy
