@@ -156,7 +156,10 @@ body {
   filter: blur(50px);
   z-index: 0;
   animation: bg-orb-drift 28s ease-in-out infinite alternate;
-  will-change: transform;
+  /* `will-change` intentionally omitted: this layer animates forever, and
+     pinning a permanent composited layer with `filter: blur(50px)` would
+     hold GPU memory on mobile for the entire session. Browsers promote
+     transformed elements automatically; let them. */
 }
 @keyframes bg-orb-drift {
   0%   { transform: translate3d(0, 0, 0) scale(1); }
