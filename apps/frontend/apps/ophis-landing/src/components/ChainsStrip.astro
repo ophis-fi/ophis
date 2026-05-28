@@ -1,0 +1,53 @@
+---
+const chains = [
+  { name: 'Optimism', status: 'live' },
+  { name: 'HyperEVM', status: 'paused' },
+  { name: 'MegaETH', status: 'paused' },
+  { name: 'Solana', status: 'via NEAR' },
+  { name: 'Bitcoin', status: 'via NEAR' },
+]
+---
+<section class="chains">
+  <div class="chains-inner reveal-up" data-reveal>
+    <div class="label">Live on</div>
+    <div class="chains-row stagger">
+      {chains.map(c => (
+        <div class={`chain reveal-up ${c.status === 'live' ? 'is-live' : 'is-muted'}`} data-reveal>
+          <span class="chain-name">{c.name}</span>
+          {c.status !== 'live' && <span class="chain-status">{c.status}</span>}
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .chains { padding: 60px 56px; text-align: center; }
+  .label {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ophis-fg-faded);
+    margin-bottom: 24px;
+  }
+  .chains-row {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 60px;
+    flex-wrap: wrap;
+  }
+  .chain { display: flex; align-items: center; gap: 8px; }
+  .chain.is-live { color: var(--ophis-fg-muted); }
+  .chain.is-muted { color: var(--ophis-fg-faded); }
+  .chain-name { font-weight: 600; font-size: 17px; }
+  .chain-status {
+    font-size: 10px;
+    color: var(--ophis-fg-faded);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  @media (max-width: 720px) {
+    .chains-row { gap: 24px; }
+  }
+</style>

@@ -1,0 +1,29 @@
+{
+  "name": "@ophis/landing",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prebuild": "node scripts/tokens-to-css.mjs",
+    "dev": "pnpm prebuild && astro dev",
+    "build": "pnpm prebuild && astro build",
+    "postbuild": "node scripts/check-csp-hashes.mjs",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "test": "playwright test",
+    "lh": "lhci autorun"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@astrojs/preact": "^4.0.0",
+    "astro": "^5.0.0",
+    "preact": "^10.0.0",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "@lhci/cli": "^0.14.0",
+    "@playwright/test": "^1.49.0",
+    "lightningcss": "^1.32.0",
+    "typescript": "^5.9.3"
+  }
+}

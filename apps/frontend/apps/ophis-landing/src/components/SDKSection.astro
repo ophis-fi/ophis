@@ -1,0 +1,111 @@
+---
+const code = `import { configurePartnerFee } from '@ophis/sdk'
+
+const order = configurePartnerFee({
+  chainId: 10,
+  receiver: '0xYourSafe...',
+  bps: 25, // 0.25% of surplus
+})
+
+// receiver-pin + chain-id checks happen automatically`
+---
+<section class="sdk" id="sdk">
+  <div class="sdk-inner">
+    <div class="sdk-copy reveal-up" data-reveal>
+      <span class="sdk-tag">@ophis/sdk</span>
+      <h2>Ship integrations <span class="accent">in an afternoon.</span></h2>
+      <p>
+        Receiver-pin checks, chain-id validation, partner-fee config — everything an agent needs to swap without footguns.
+      </p>
+      <div class="ctas">
+        <a class="cta-secondary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a>
+        <a class="cta-secondary" href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
+    <div class="sdk-code reveal-up" data-reveal>
+      <div class="code-frame">
+        <div class="tabs"><div class="tab active">JavaScript</div></div>
+        <pre class="code-body"><code>{code}</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .sdk { padding: 80px 56px; }
+  .sdk-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 50px;
+    align-items: center;
+  }
+  .sdk-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(242, 166, 62, 0.12);
+    color: var(--ophis-saffron-60);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-size: 40px;
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 16px;
+  }
+  .sdk-copy p {
+    color: var(--ophis-fg-muted);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+  .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .cta-secondary {
+    color: var(--ophis-fg);
+    padding: 12px 22px;
+    border-radius: var(--ophis-radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--ophis-border);
+    text-decoration: none;
+    transition: border-color 150ms ease;
+  }
+  .cta-secondary:hover { border-color: var(--ophis-fg-muted); }
+  .code-frame {
+    background: #111114;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    overflow: hidden;
+  }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ophis-border);
+  }
+  .tab {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--ophis-surface);
+    color: var(--ophis-saffron-60);
+  }
+  .code-body {
+    margin: 0;
+    padding: 24px;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ophis-fg-muted);
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+  @media (max-width: 720px) {
+    .sdk-inner { grid-template-columns: 1fr; gap: 32px; }
+    h2 { font-size: 30px; }
+  }
+</style>
