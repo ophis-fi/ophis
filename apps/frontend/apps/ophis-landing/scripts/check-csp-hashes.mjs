@@ -20,13 +20,17 @@ const html = readFileSync(resolve(root, 'dist/index.html'), 'utf8')
 const headers = readFileSync(resolve(root, 'public/_headers'), 'utf8')
 
 // Extract all inline script bodies (both plain and type=module inline blocks).
-// Linear pattern: [^>]* skips attributes without nested quantifiers (no ReDoS),
-// [\s\S]*? is lazy (linear), and \/script\s*> is a fixed closing literal.
-// CodeQL js/bad-tag-filter is satisfied because the closing tag is the literal
-// string "</script>" — not a wildcard.  We control the input (our own Astro
-// build output), so no exotic attribute values with embedded ">" are expected,
-// and the simpler pattern is both safe and sufficient.
-const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi
+// PRECONDITION: input is dist/index.html from OUR Astro build. Do not reuse
+// this pattern on untrusted/third-party HTML without re-validating that no
+// <script> attribute can embed a literal ">".
+//
+// Linearity (no ReDoS): both opening and closing tags use [^>]* which is a
+// linear quantifier (no nested star). [\s\S]*? is lazy non-greedy (linear).
+// js/bad-tag-filter (CodeQL): the \b word boundary on both sides of `script`
+// ensures `</scriptx>` does NOT match — so a payload like
+// `<script>evil()</scriptx><script>real()</script>` cannot smuggle an inner
+// script-end into the captured body.
+const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/gi
 let m
 const hashes = []
 while ((m = scriptRe.exec(html)) !== null) {
