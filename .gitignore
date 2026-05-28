@@ -26,3 +26,6 @@ infra/shared/cron/safe-drift-check.sh
 # Private ops runbooks — contain host IPs, version pins, SSH endpoints, iptables rules
 # These details enable recon if leaked. Keep on operator's machine only.
 docs/operations/*.private.md
+
+# Superpowers brainstorming session artifacts (visual companion)
+.superpowers/

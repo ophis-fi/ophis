@@ -1,0 +1,73 @@
+---
+const features = [
+  {
+    name: 'MEV protection',
+    desc: 'Batch auctions, off-chain solver competition. Users never lose surplus to frontrunners.',
+  },
+  {
+    name: 'Volume-tier rebates',
+    desc: 'High-volume agents and DAOs earn fee rebates automatically via the rebate-indexer.',
+  },
+  {
+    name: 'Agent-safety SDK',
+    desc: 'Receiver-pin checks, chain-id validation, partner-fee config — guardrails out of the box.',
+  },
+]
+---
+<section class="features">
+  <div class="features-inner">
+    <h2 class="reveal-up" data-reveal>
+      Built for <span class="accent">real flow.</span>
+    </h2>
+    <div class="features-grid stagger">
+      {features.map(f => (
+        <article class="feat reveal-up" data-reveal>
+          <div class="feat-icon"></div>
+          <h3>{f.name}</h3>
+          <p>{f.desc}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .features { padding: 80px 56px; }
+  .features-inner { max-width: 1200px; margin: 0 auto; }
+  h2 {
+    text-align: center;
+    font-size: 40px;
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 50px;
+  }
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .feat {
+    background: var(--ophis-surface);
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    padding: 28px;
+  }
+  .feat-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--ophis-radius-sm);
+    background: rgba(242, 166, 62, 0.12);
+    margin-bottom: 16px;
+  }
+  .feat h3 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+  .feat p {
+    color: var(--ophis-fg-muted);
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0;
+  }
+  @media (max-width: 720px) {
+    .features-grid { grid-template-columns: 1fr; }
+  }
+</style>

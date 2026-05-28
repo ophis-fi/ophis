@@ -1,0 +1,72 @@
+/* Imports tokens.css (generated). MUST be first. */
+@import './tokens.css';
+
+* { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  margin: 0;
+  background: var(--ophis-bg);
+  color: var(--ophis-fg);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+/* Reveal-up motion primitive */
+.reveal-up {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 300ms ease-out, transform 300ms ease-out;
+  will-change: opacity, transform;
+}
+.reveal-up.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger via nth-child */
+.stagger > .reveal-up:nth-child(2) { transition-delay: 80ms; }
+.stagger > .reveal-up:nth-child(3) { transition-delay: 160ms; }
+.stagger > .reveal-up:nth-child(4) { transition-delay: 240ms; }
+.stagger > .reveal-up:nth-child(5) { transition-delay: 320ms; }
+
+/* Nav blur (toggled by JS) */
+.nav { background: transparent; transition: background 200ms ease, border-color 200ms ease; border-bottom: 1px solid transparent; }
+.nav.scrolled {
+  background: rgba(10, 10, 10, 0.85);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom-color: var(--ophis-border);
+}
+
+/* Claw rotate */
+@keyframes claw-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.claw {
+  animation: claw-spin 40s linear infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
+/* Gradient accent shimmer */
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.accent {
+  background: linear-gradient(135deg, var(--ophis-saffron-60) 0%, var(--ophis-saffron-30) 50%, var(--ophis-saffron-60) 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-up { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .claw { animation: none !important; }
+  .accent { animation: none !important; }
+  * { transition: none !important; }
+}
