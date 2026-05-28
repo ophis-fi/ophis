@@ -1,5 +1,4 @@
 import SafeApiKit from '@safe-global/api-kit';
-import { OPHIS_SAFE_ADDRESS } from '../safe/addresses.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'poll' });

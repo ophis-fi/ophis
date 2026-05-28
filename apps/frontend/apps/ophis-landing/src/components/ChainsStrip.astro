@@ -1,10 +1,19 @@
 ---
-const chains = [
-  { name: 'Optimism', status: 'live' },
-  { name: 'HyperEVM', status: 'paused' },
-  { name: 'MegaETH', status: 'paused' },
-  { name: 'Solana', status: 'via NEAR' },
-  { name: 'Bitcoin', status: 'via NEAR' },
+type Chain = { name: string; logo: string | null; status: string; svg?: string }
+const chains: Chain[] = [
+  { name: 'Ethereum',  logo: '/logos/chain-ethereum.png',  status: 'live' },
+  { name: 'BNB',       logo: '/logos/chain-bnb.png',       status: 'live' },
+  { name: 'Base',      logo: '/logos/chain-base.png',      status: 'live' },
+  { name: 'Arbitrum',  logo: '/logos/chain-arbitrum.jpg',  status: 'live' },
+  { name: 'Polygon',   logo: '/logos/chain-polygon.png',   status: 'live' },
+  { name: 'Avalanche', logo: '/logos/chain-avalanche.png', status: 'live' },
+  { name: 'Linea',     logo: '/logos/chain-linea.jpg',     status: 'live' },
+  { name: 'Plasma',    logo: null,                          status: 'live' },
+  { name: 'Ink',       logo: null,                          status: 'live' },
+  { name: 'Gnosis',    logo: '/logos/chain-gnosis.png',    status: 'live' },
+  { name: 'Optimism',  logo: '/logos/chain-optimism.png',  status: 'live' },
+  { name: 'Solana',    logo: null,                          status: 'via-near', svg: 'solana' },
+  { name: 'Bitcoin',   logo: null,                          status: 'via-near', svg: 'bitcoin' },
 ]
 ---
 <section class="chains">
@@ -12,9 +21,34 @@ const chains = [
     <div class="label">Live on</div>
     <div class="chains-row stagger">
       {chains.map(c => (
-        <div class={`chain reveal-up ${c.status === 'live' ? 'is-live' : 'is-muted'}`} data-reveal>
-          <span class="chain-name">{c.name}</span>
-          {c.status !== 'live' && <span class="chain-status">{c.status}</span>}
+        <div class={`chain reveal-up`} data-reveal>
+          {c.logo && (
+            <img class="chain-logo" src={c.logo} alt="" width="20" height="20" loading="lazy" decoding="async">
+          )}
+          {!c.logo && c.svg === 'bitcoin' && (
+            <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="16" cy="16" r="16" fill="#F7931A"/>
+              <path fill="#fff" d="M22.6 14.2c.3-1.9-1.2-3-3.2-3.7l.7-2.6-1.6-.4-.6 2.5-1.3-.3.6-2.5-1.6-.4-.7 2.6-1-.3-2.2-.5-.4 1.7s1.2.3 1.2.3c.6.2.8.6.7 1l-1.9 7.6c-.1.2-.3.5-.8.4 0 0-1.2-.3-1.2-.3l-.8 1.8 2 .5 1.2.3-.7 2.6 1.6.4.7-2.6 1.3.3-.7 2.6 1.6.4.7-2.6c2.7.5 4.7.3 5.6-2.1.7-2-.1-3.1-1.5-3.8 1.1-.2 1.9-1 2.1-2.4Zm-3.6 5c-.5 2-3.8 1-4.9.7l.9-3.5c1.1.3 4.5.8 4 2.8Zm.5-5c-.4 1.8-3.2.9-4.1.7l.8-3.2c.9.2 3.7.6 3.3 2.5Z"/>
+            </svg>
+          )}
+          {!c.logo && c.svg === 'solana' && (
+            <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <defs>
+                <linearGradient id="sol-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#9945FF"/><stop offset="1" stop-color="#14F195"/>
+                </linearGradient>
+              </defs>
+              <circle cx="16" cy="16" r="16" fill="#0B0B14"/>
+              <path fill="url(#sol-g)" d="M8.5 21.2c.2-.2.5-.3.8-.3h14c.3 0 .5.4.3.6l-2.6 2.8c-.2.2-.5.3-.8.3H6.2c-.3 0-.5-.4-.3-.6l2.6-2.8Zm0-10c.2-.2.5-.3.8-.3h14c.3 0 .5.4.3.6l-2.6 2.8c-.2.2-.5.3-.8.3H6.2c-.3 0-.5-.4-.3-.6l2.6-2.8Zm14.8 5c-.2-.2-.5-.3-.8-.3H8.5c-.3 0-.5.4-.3.6l2.6 2.8c.2.2.5.3.8.3h14c.3 0 .5-.4.3-.6l-2.6-2.8Z"/>
+            </svg>
+          )}
+          {!c.logo && !c.svg && (
+            <div class="chain-placeholder" aria-hidden="true"></div>
+          )}
+          <div class="chain-info">
+            <span class="chain-name">{c.name}</span>
+            {c.status === 'via-near' && <span class="chain-via">via NEAR</span>}
+          </div>
         </div>
       ))}
     </div>
@@ -34,20 +68,45 @@ const chains = [
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 60px;
+    gap: 32px;
     flex-wrap: wrap;
   }
-  .chain { display: flex; align-items: center; gap: 8px; }
-  .chain.is-live { color: var(--ophis-fg-muted); }
-  .chain.is-muted { color: var(--ophis-fg-faded); }
-  .chain-name { font-weight: 600; font-size: 17px; }
-  .chain-status {
+  .chain {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ophis-fg-muted);
+  }
+  .chain-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+  .chain-placeholder {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--ophis-border);
+    flex-shrink: 0;
+  }
+  .chain-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .chain-name { font-weight: 600; font-size: 14px; line-height: 1.2; }
+  .chain-via {
     font-size: 10px;
     color: var(--ophis-fg-faded);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    line-height: 1;
   }
   @media (max-width: 720px) {
-    .chains-row { gap: 24px; }
+    .chains-row { gap: 20px; }
+    .chain-name { font-size: 13px; }
   }
 </style>

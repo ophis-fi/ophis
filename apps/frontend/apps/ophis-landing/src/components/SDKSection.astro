@@ -1,13 +1,21 @@
 ---
-const code = `import { configurePartnerFee } from '@ophis/sdk'
+const code = `import {
+  ophisDefaultPartnerFee,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+} from '@ophis/sdk'
 
-const order = configurePartnerFee({
-  chainId: 10,
-  receiver: '0xYourSafe...',
-  bps: 25, // 0.25% of surplus
-})
+// Resolve Ophis's default partner-fee config for the chain
+// (price-improvement-bps capped by max-volume-bps).
+const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
 
-// receiver-pin + chain-id checks happen automatically`
+// partnerFee = {
+//   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+//   bps: 2500,           // 25% of price-improvement
+//   maxVolumeBps: 50,    // capped at 0.5% of volume
+// }
+
+// Plug into your CoW order's appData — receiver-pin and chain-id
+// checks happen in buildOphisAppDataPartnerFee() under the hood.`
 ---
 <section class="sdk" id="sdk">
   <div class="sdk-inner">
@@ -15,7 +23,7 @@ const order = configurePartnerFee({
       <span class="sdk-tag">@ophis/sdk</span>
       <h2>Ship integrations <span class="accent">in an afternoon.</span></h2>
       <p>
-        Receiver-pin checks, chain-id validation, partner-fee config — everything an agent needs to swap without footguns.
+        Partner-fee defaults, chain registry, settlement-address resolution, and agent-safety guards — everything an integrator needs to ship without footguns.
       </p>
       <div class="ctas">
         <a class="cta-secondary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a>

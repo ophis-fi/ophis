@@ -37,7 +37,8 @@ const describeE2E = RUN_E2E ? describe : describe.skip;
 
 const SAFE_ADDRESS = process.env.E2E_SAFE_ADDRESS as `0x${string}`;
 const BURNER_KEY = process.env.E2E_SAFE_BURNER_KEY as `0x${string}`;
-const SEPOLIA_WETH: `0x${string}` = '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14';
+// TODO(e2e): add SEPOLIA_WETH to WETH_BY_CHAIN before running live (chainId 11_155_111)
+// const SEPOLIA_WETH: `0x${string}` = '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14';
 const SEPOLIA_RPC = process.env.SEPOLIA_RPC_URL ?? 'https://ethereum-sepolia-rpc.publicnode.com';
 
 describeE2E('Sepolia: full propose → execute lifecycle', () => {
