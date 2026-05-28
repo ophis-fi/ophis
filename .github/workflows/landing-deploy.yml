@@ -32,8 +32,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/frontend/pnpm-lock.yaml
+          # cache disabled: pnpm/action-setup handles pnpm caching;
+          # setup-node's cache feature conflicts with that and fails post-job
+          # with "Path Validation Error: Path(s) specified...do(es) not exist".
 
       - name: install
         working-directory: apps/frontend
