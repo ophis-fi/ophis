@@ -1,10 +1,30 @@
-# Ophis
+<p align="center">
+  <img src="apps/frontend/apps/cowswap-frontend/public/ophis-logo-full.svg" alt="Ophis" width="320"/>
+</p>
 
-> Intent-based DEX aggregator. Describe a trade in plain English — Ophis resolves
-> the tokens, chain, and amount, then routes it through a self-hosted
-> [CoW Protocol](https://cow.fi) settlement stack.
+<h1 align="center">Ophis</h1>
 
-**App:** [ophis.fi](https://ophis.fi) · **Docs:** [docs.ophis.fi](https://docs.ophis.fi) · **Explorer:** [explorer.ophis.fi](https://explorer.ophis.fi)
+<p align="center">
+  Intent-based DEX aggregator. Describe a trade in plain English — Ophis resolves the tokens, chain, and amount, then routes it through a self-hosted <a href="https://cow.fi">CoW Protocol</a> settlement stack.
+</p>
+
+<p align="center">
+  <a href="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml"><img src="https://github.com/ophis-fi/ophis/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/ophis-fi/ophis/actions/workflows/codeql.yml"><img src="https://github.com/ophis-fi/ophis/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"/></a>
+  <a href="https://github.com/ophis-fi/ophis/actions/workflows/security.yml"><img src="https://github.com/ophis-fi/ophis/actions/workflows/security.yml/badge.svg" alt="Security audits"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0 License"/></a>
+  <a href="https://ophis.fi"><img src="https://img.shields.io/badge/Optimism-live-7c3aed" alt="OP mainnet live"/></a>
+</p>
+
+<p align="center">
+  <a href="https://ophis.fi"><b>App</b></a> ·
+  <a href="https://docs.ophis.fi"><b>Docs</b></a> ·
+  <a href="https://explorer.ophis.fi"><b>Explorer</b></a> ·
+  <a href="packages/sdk"><b>SDK</b></a> ·
+  <a href="SECURITY.md"><b>Security</b></a>
+</p>
+
+---
 
 Ophis is a fork of CoW Protocol — orderbook, autopilot, driver, and baseline
 solver — running under Ophis-controlled settlement contracts, fronted by a
