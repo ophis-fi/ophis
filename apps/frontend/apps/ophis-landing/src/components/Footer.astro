@@ -1,0 +1,80 @@
+---
+const cols = [
+  {
+    title: 'Product',
+    links: [
+      { label: 'Swap', href: 'https://swap.ophis.fi/' },
+      { label: 'Limit', href: 'https://swap.ophis.fi/#/1/limit' },
+      { label: 'TWAP', href: 'https://swap.ophis.fi/#/1/advanced' },
+      { label: 'Status', href: 'https://docs.ophis.fi/status' },
+    ],
+  },
+  {
+    title: 'Developers',
+    links: [
+      { label: 'SDK', href: 'https://github.com/ophis-fi/ophis/tree/main/packages/sdk' },
+      { label: 'Intent API', href: 'https://docs.ophis.fi/api' },
+      { label: 'Docs', href: 'https://docs.ophis.fi' },
+      { label: 'GitHub', href: 'https://github.com/ophis-fi/ophis' },
+    ],
+  },
+  {
+    title: 'Resources',
+    links: [
+      { label: 'Security', href: 'https://github.com/ophis-fi/ophis/blob/main/SECURITY.md' },
+      { label: 'Brand', href: 'https://github.com/ophis-fi/ophis/tree/main/docs/brand' },
+      { label: 'Changelog', href: 'https://github.com/ophis-fi/ophis/blob/main/CHANGELOG.md' },
+    ],
+  },
+  {
+    title: 'Connect',
+    links: [
+      { label: 'Twitter', href: 'https://x.com/ophis_fi' },
+      { label: 'GitHub', href: 'https://github.com/ophis-fi' },
+    ],
+  },
+]
+---
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="logo">Ophis</div>
+      <p>Intent-based DEX aggregator for the agent era.</p>
+      <p class="copyright">&copy; 2026 Ophis. GPL-3.0.</p>
+    </div>
+    {cols.map(col => (
+      <div class="footer-col">
+        <h5>{col.title}</h5>
+        <ul>
+          {col.links.map(l => (
+            <li><a href={l.href} rel={l.href.startsWith('http') ? 'noopener' : undefined}>{l.label}</a></li>
+          ))}
+        </ul>
+      </div>
+    ))}
+  </div>
+</footer>
+
+<style>
+  .footer { padding: 50px 56px 30px; }
+  .footer-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    gap: 32px;
+    color: var(--ophis-fg-faded);
+    font-size: 13px;
+  }
+  .footer-brand .logo { font-weight: 700; color: var(--ophis-saffron-60); font-size: 18px; margin-bottom: 8px; }
+  .footer-brand p { margin: 0 0 16px; }
+  .footer-brand .copyright { font-size: 11px; }
+  h5 { color: var(--ophis-fg); font-size: 13px; margin: 0 0 12px; font-weight: 600; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { margin-bottom: 8px; }
+  a { color: var(--ophis-fg-faded); text-decoration: none; transition: color 120ms ease; }
+  a:hover { color: var(--ophis-fg); }
+  @media (max-width: 720px) {
+    .footer-inner { grid-template-columns: 1fr 1fr; }
+  }
+</style>
