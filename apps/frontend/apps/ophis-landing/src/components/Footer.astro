@@ -44,7 +44,7 @@ const cols = [
     </div>
     {cols.map(col => (
       <div class="footer-col">
-        <h5>{col.title}</h5>
+        <h3>{col.title}</h3>
         <ul>
           {col.links.map(l => (
             <li><a href={l.href} rel={l.href.startsWith('http') ? 'noopener' : undefined}>{l.label}</a></li>
@@ -69,7 +69,7 @@ const cols = [
   .footer-brand .logo { font-weight: 700; color: var(--ophis-saffron-60); font-size: 18px; margin-bottom: 8px; }
   .footer-brand p { margin: 0 0 16px; }
   .footer-brand .copyright { font-size: 11px; }
-  h5 { color: var(--ophis-fg); font-size: 13px; margin: 0 0 12px; font-weight: 600; }
+  h3 { color: var(--ophis-fg); font-size: 13px; margin: 0 0 12px; font-weight: 600; }
   ul { list-style: none; padding: 0; margin: 0; }
   li { margin-bottom: 8px; }
   a { color: var(--ophis-fg-faded); text-decoration: none; transition: color 120ms ease; }
