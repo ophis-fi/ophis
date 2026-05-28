@@ -14,3 +14,4 @@ minimumReleaseAgeExclude:
   - '@cowprotocol/*'
   # Security patches: bypass soak for CVE fixes
   - astro
+  - '@astrojs/*'

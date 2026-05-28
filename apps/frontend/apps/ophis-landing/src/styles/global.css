@@ -1,6 +1,16 @@
 /* Imports tokens.css (generated). MUST be first. */
 @import './tokens.css';
 
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-sans-variable.woff2') format('woff2-variations'),
+       url('/fonts/geist-sans-variable.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+2010-2027, U+2030-205E;
+}
+
 * { box-sizing: border-box; }
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: clip; scroll-behavior: smooth; }
 body {
