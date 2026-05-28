@@ -11,7 +11,7 @@ import { ReactNode } from 'react'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
-import { useScrollClass } from '../../hooks/useScrollClass'
+import { useScrollClass } from '../hooks/useScrollClass'
 
 interface Props {
   children?: ReactNode
