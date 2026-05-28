@@ -11,5 +11,10 @@ export default defineConfig({
     baseURL: 'http://localhost:4321',
     trace: 'on-first-retry',
   },
-  webServer: undefined, // tests that need a server start it explicitly; per-test
+  webServer: {
+    command: 'pnpm dev',
+    url: 'http://localhost:4321',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60000,
+  },
 })
