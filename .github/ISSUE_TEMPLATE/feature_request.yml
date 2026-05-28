@@ -1,0 +1,59 @@
+name: Feature request
+description: Propose a new feature, integration, or improvement
+labels: ["feature", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Before filing:
+
+        - Check the [docs](https://docs.ophis.fi) — the behavior you want may already be wired (e.g., partner-fee chain support, intent-API verbs).
+        - For SDK integrations, the [packages/sdk](../../packages/sdk) README documents the public API surface.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Frontend / UX
+        - Backend / solver behavior
+        - Contracts / on-chain
+        - SDK / partner integration
+        - Rebate / fee model
+        - Intent API / natural-language parser
+        - Infra / new chain support
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve? Who's affected and how often?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Concrete approach. If you have a design in mind, sketch the API / UI / config surface.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you've thought through and why you rejected them. Optional but helpful.
+    validations:
+      required: false
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Estimated effort (rough), affected components, breaking-change implications.
+    validations:
+      required: false

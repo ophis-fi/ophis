@@ -1,0 +1,43 @@
+# Code ownership for Ophis. Each path's owners are auto-requested on PR review.
+# Most-specific match wins; the catch-all at the top covers anything not listed below.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner — applies to anything not matched by a more-specific rule
+* @san-npm
+
+# Solidity contracts and deployment scripts — requires security-conscious review
+/contracts/                          @san-npm
+/contracts/src/                      @san-npm
+/contracts/script/                   @san-npm
+
+# Rust backend (autopilot, driver, orderbook, solvers)
+/apps/backend/                       @san-npm
+
+# Frontend (CoW Swap fork + Ophis intent layer)
+/apps/frontend/                      @san-npm
+
+# SDK — public partner integration surface
+/packages/sdk/                       @san-npm
+
+# Rebate indexer + partner-fee API
+/apps/rebate-indexer/                @san-npm
+
+# Cloudflare Pages Functions (intent parser, host routing)
+/functions/                          @san-npm
+
+# Infra: per-chain runtime stacks + shared RPC + Cloudflare config
+/infra/                              @san-npm
+
+# Docs portal and audit reports
+/apps/docs-ophis/                    @san-npm
+/docs/                               @san-npm
+/audit/                              @san-npm
+
+# CI / repo policy (workflows, dependabot, codeql, this file itself)
+/.github/                            @san-npm
+
+# Security policy and contributing guide — protected from drift
+/SECURITY.md                         @san-npm
+/CONTRIBUTING.md                     @san-npm
+/README.md                           @san-npm
+/LICENSE                             @san-npm
