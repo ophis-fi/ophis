@@ -27,7 +27,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: '10.30.3'
+          package_json_file: apps/frontend/package.json
 
       - uses: actions/setup-node@v4
         with:
