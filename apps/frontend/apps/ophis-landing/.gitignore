@@ -2,3 +2,5 @@ dist/
 .astro/
 node_modules/
 src/styles/tokens.css
+test-results/
+playwright-report/
