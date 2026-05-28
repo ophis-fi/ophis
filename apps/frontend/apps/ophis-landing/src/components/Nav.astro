@@ -1,0 +1,70 @@
+---
+const links = [
+  { href: '#features', label: 'Product' },
+  { href: 'https://docs.ophis.fi', label: 'Docs' },
+  { href: 'https://github.com/ophis-fi/ophis/tree/main/packages/sdk', label: 'SDK' },
+  { href: '#sdk', label: 'Pricing' },
+  { href: 'https://github.com/ophis-fi/ophis/blob/main/CHANGELOG.md', label: 'Blog' },
+]
+---
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="logo" href="/">Ophis</a>
+    <div class="nav-links">
+      {links.map(({ href, label }) => (
+        <a href={href} rel={href.startsWith('http') ? 'noopener' : undefined}>{label}</a>
+      ))}
+    </div>
+    <a class="nav-cta" href="https://swap.ophis.fi/">Launch app</a>
+  </div>
+</nav>
+<script>
+  import '../lib/nav-blur.ts'
+</script>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding-block: 16px;
+  }
+  .nav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-inline: 56px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .nav .logo {
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    color: var(--ophis-saffron-60);
+    text-decoration: none;
+  }
+  .nav-links { display: flex; gap: 24px; }
+  .nav-links a {
+    color: var(--ophis-fg-muted);
+    font-size: 13px;
+    text-decoration: none;
+    transition: color 120ms ease;
+  }
+  .nav-links a:hover { color: var(--ophis-fg); }
+  .nav-cta {
+    background: var(--ophis-saffron-60);
+    color: var(--ophis-bg);
+    padding: 8px 16px;
+    border-radius: var(--ophis-radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: filter 150ms ease;
+  }
+  .nav-cta:hover { filter: brightness(1.05); }
+  @media (max-width: 720px) {
+    .nav-inner { padding-inline: 20px; }
+    .nav-links { display: none; }
+  }
+</style>
