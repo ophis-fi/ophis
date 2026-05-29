@@ -1,9 +1,9 @@
 import { EnvironmentName, environmentName } from './environments'
 
-const DEFAULT_SWAP_URL = 'https://swap.cow.fi'
+const DEFAULT_SWAP_URL = 'https://swap.ophis.fi'
 
 const swapUrlByEnvironment: Record<EnvironmentName, string> = {
-  production: 'https://swap.cow.fi',
+  production: 'https://swap.ophis.fi',
   barn: 'https://barn.swap.cow.fi',
   ens: 'https://ens.swap.cow.fi',
   staging: 'https://staging.swap.cow.fi',
