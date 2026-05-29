@@ -63,6 +63,37 @@ test('prefers-reduced-motion suppresses claw and reveal', async ({ browser }) =>
   await ctx.close()
 })
 
+// Particle field tests
+
+test('particle has drift + twinkle animations', async ({ page }) => {
+  await page.setContent(`<span class="particle particle--saffron" id="p"></span>`)
+  await loadOphisStyles(page)
+  const anim = await page.locator('#p').evaluate((el) => getComputedStyle(el).animationName)
+  expect(anim).toContain('particle-drift')
+  expect(anim).toContain('particle-twinkle')
+})
+
+test('prefers-reduced-motion suppresses particle animation (stays visible)', async ({ browser }) => {
+  const ctx = await browser.newContext({ reducedMotion: 'reduce' })
+  const page = await ctx.newPage()
+  await page.setContent(`<span class="particle particle--violet" id="p" style="--op:0.5"></span>`)
+  await loadOphisStyles(page)
+  const anim = await page.locator('#p').evaluate((el) => getComputedStyle(el).animationName)
+  expect(anim).toBe('none')
+  await ctx.close()
+})
+
+test('built dist renders a static aria-hidden particle field', async ({}, testInfo) => {
+  const dist = join(__dirname, '..', 'dist', 'index.html')
+  testInfo.skip(!existsSync(dist), 'dist/index.html not built yet')
+  const html = readFileSync(dist, 'utf8')
+  // The field container is aria-hidden so the dots never reach the a11y tree.
+  expect(html).toMatch(/class="particles"[^>]*aria-hidden|aria-hidden[^>]*class="particles"/)
+  // Field is statically rendered (no JS): expect many particle spans in the markup.
+  const count = (html.match(/class="particle particle--/g) || []).length
+  expect(count).toBeGreaterThanOrEqual(40)
+})
+
 // Task 2.2 — reveal.ts tests
 
 test('reveal.ts adds .in-view when element is observed', async ({ page }) => {

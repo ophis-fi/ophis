@@ -1,0 +1,58 @@
+---
+/**
+ * Static particle field for the cosmic backdrop.
+ *
+ * Rendered ONCE at build time into N positioned <span> dots — pure HTML +
+ * CSS, NO client-side JavaScript and NO Astro island hydration. That keeps
+ * the build's inline-script set (and therefore the CSP hashes in
+ * public/_headers) completely unchanged, and adds nothing to the LHCI
+ * Total-Blocking-Time budget. All motion lives in global.css and is fully
+ * disabled under prefers-reduced-motion.
+ *
+ * Positions/sizes/timing come from a seeded deterministic PRNG so every
+ * build emits byte-identical markup (reproducible diffs, stable CSP hashes).
+ */
+
+const COUNT = 58
+
+// Mulberry32 — tiny deterministic PRNG. Fixed seed => identical sequence
+// on every build, so the markup never drifts between CI and local.
+function makeRng(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const rng = makeRng(0x9e3779b9)
+
+const particles = Array.from({ length: COUNT }, () => {
+  const depth = rng() // 0 (far) .. 1 (near) — drives size, opacity, speed
+  const dur = +(18 + rng() * 24).toFixed(1) // 18–42s vertical drift
+  return {
+    left: +(rng() * 100).toFixed(2),
+    top: +(rng() * 100).toFixed(2),
+    size: +(1.2 + depth * 2.8).toFixed(2), // 1.2–4px (nearer = bigger)
+    drift: +(10 + rng() * 26).toFixed(1), // px of vertical travel
+    dur,
+    delay: +(-rng() * dur).toFixed(1), // negative delay desyncs start frames
+    tdur: +(3.5 + rng() * 5).toFixed(1), // 3.5–8.5s twinkle period
+    op: +(0.22 + depth * 0.55).toFixed(2), // far dots dimmer, near dots brighter
+    hue: rng() > 0.5 ? 'saffron' : 'violet',
+  }
+})
+---
+
+<div class="particles" aria-hidden="true">
+  {
+    particles.map((p) => (
+      <span
+        class={`particle particle--${p.hue}`}
+        style={`left:${p.left}%;top:${p.top}%;width:${p.size}px;height:${p.size}px;--drift:${p.drift}px;--dur:${p.dur}s;--delay:${p.delay}s;--tdur:${p.tdur}s;--op:${p.op};`}
+      />
+    ))
+  }
+</div>

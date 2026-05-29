@@ -152,7 +152,8 @@ body {
   background:
     radial-gradient(420px 320px at 20% 30%, rgba(242, 166, 62, 0.18), transparent 70%),
     radial-gradient(380px 280px at 80% 60%, rgba(180, 138, 255, 0.14), transparent 70%),
-    radial-gradient(300px 220px at 55% 85%, rgba(242, 166, 62, 0.10), transparent 70%);
+    radial-gradient(300px 220px at 55% 85%, rgba(242, 166, 62, 0.10), transparent 70%),
+    radial-gradient(340px 300px at 88% 18%, rgba(217, 96, 181, 0.10), transparent 72%);
   filter: blur(50px);
   z-index: 0;
   animation: bg-orb-drift 28s ease-in-out infinite alternate;
@@ -162,13 +163,50 @@ body {
      transformed elements automatically; let them. */
 }
 @keyframes bg-orb-drift {
-  0%   { transform: translate3d(0, 0, 0) scale(1); }
-  33%  { transform: translate3d(-2%, 1.5%, 0) scale(1.05); }
-  66%  { transform: translate3d(1.5%, -1.5%, 0) scale(0.97); }
-  100% { transform: translate3d(-1%, 1%, 0) scale(1.02); }
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%  { transform: translate3d(-2.5%, 1.5%, 0) scale(1.06) rotate(1.2deg); }
+  66%  { transform: translate3d(2%, -1.5%, 0) scale(0.96) rotate(-1deg); }
+  100% { transform: translate3d(-1%, 1.5%, 0) scale(1.03) rotate(0.6deg); }
 }
 
-/* Ensure main content sits above the orb layer */
+/* Particle field — N static dots (rendered by Particles.astro) drifting up
+   and twinkling. Each dot carries its own --drift/--dur/--delay/--tdur/--op
+   custom properties set inline at build time. Only transform + opacity
+   animate (compositor-friendly); box-shadow is static. Sits on the orb
+   layer (z-index 0), behind all content (z-index 1). */
+.particles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  opacity: var(--op, 0.4);
+  animation:
+    particle-drift var(--dur, 24s) ease-in-out var(--delay, 0s) infinite alternate,
+    particle-twinkle var(--tdur, 5s) ease-in-out var(--delay, 0s) infinite;
+}
+.particle--saffron {
+  background: rgba(242, 166, 62, 0.9);
+  box-shadow: 0 0 6px 1px rgba(242, 166, 62, 0.35);
+}
+.particle--violet {
+  background: rgba(180, 138, 255, 0.9);
+  box-shadow: 0 0 6px 1px rgba(180, 138, 255, 0.30);
+}
+@keyframes particle-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, calc(var(--drift, 16px) * -1), 0); }
+}
+@keyframes particle-twinkle {
+  0%, 100% { opacity: calc(var(--op, 0.4) * 0.35); }
+  50%      { opacity: var(--op, 0.4); }
+}
+
+/* Ensure main content sits above the orb + particle layers */
 main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -179,5 +217,7 @@ main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
   .pill::before { animation: none !important; }
   .scroll-progress { animation: none !important; transform: scaleX(0) !important; }
   .bg-orbs::after { animation: none !important; transform: none !important; }
+  /* Particles stay visible as a static starfield, just no motion. */
+  .particle { animation: none !important; }
   * { transition: none !important; }
 }
