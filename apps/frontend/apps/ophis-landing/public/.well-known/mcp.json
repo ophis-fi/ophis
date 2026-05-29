@@ -1,0 +1,19 @@
+{
+  "name": "ophis",
+  "title": "Ophis MCP",
+  "description": "Agent-facing tools for the Ophis DEX: parse swap intents, fetch best-execution quotes, build bounded signable CoW orders, relay pre-signed orders, and look up fee-rebate tiers. Public, unauthenticated, and keyless — the server never holds keys or signs; build_order pins the order receiver to the owner by default (custom receivers require an explicit unsafe opt-in) and the agent signs locally.",
+  "endpoint": "https://mcp.ophis.fi/mcp",
+  "transport": "streamable-http",
+  "authentication": "none",
+  "tools": [
+    { "name": "parse_intent", "description": "Plain-English swap request -> structured intent (intent + entities)." },
+    { "name": "get_quote", "description": "Best-execution quote from the chain's Ophis orderbook." },
+    { "name": "build_order", "description": "A bounded, ready-to-sign EIP-712 CoW order (receiver pinned to owner; correct per-chain settlement; CIP-75 partner fee)." },
+    { "name": "submit_order", "description": "Relay a pre-signed order to the orderbook." },
+    { "name": "lookup_tier", "description": "A wallet's fee-rebate tier and live status." },
+    { "name": "list_chains", "description": "Supported chains with orderbook host and settlement contract." }
+  ],
+  "documentation": "https://docs.ophis.fi/",
+  "openapi": "https://ophis.fi/openapi.json",
+  "source": "https://github.com/ophis-fi/ophis"
+}
