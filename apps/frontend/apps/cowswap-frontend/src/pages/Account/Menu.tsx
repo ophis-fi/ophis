@@ -21,7 +21,6 @@ interface MenuItem {
 
 const ACCOUNT_MENU_LINKS = (chainId: SupportedChainId, isAffiliateProgramEnabled: boolean): MenuItem[] => {
   return [
-    { title: msg`Overview`, url: '/account' },
     ...(isAffiliateProgramEnabled
       ? [
           { title: msg`Affiliate`, url: '/account/affiliate' },
