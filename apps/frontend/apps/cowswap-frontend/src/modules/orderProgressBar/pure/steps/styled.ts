@@ -426,22 +426,33 @@ export const SolverLogo = styled.div`
 
 export const SolverName = styled.span`
   flex-grow: 1;
-  /* Must be able to shrink + truncate: long solver names (in an auto-layout
-     <table>) otherwise force the column — and the inline-rendered progress
-     modal — wider than a narrow mobile viewport (Rabby in-app browser), which
-     shifts the whole page sideways. (2026-05-29 responsive incident.) */
+  /* Flex row that can shrink, holding the truncating name text + the (non-
+     shrinking) description tooltip. The clipping lives on SolverNameText so the
+     tooltip stays reachable even when the name truncates on a narrow viewport.
+     (2026-05-29 responsive incident + tooltip-clip follow-up.) */
   min-width: 0;
   max-width: 100%;
+  display: flex;
+  align-items: center;
   color: inherit;
-  text-transform: capitalize;
+`
+
+/* Only the name TEXT truncates — keeps long names from forcing the auto-layout
+   table (and the inline-rendered progress modal) wider than a narrow viewport. */
+export const SolverNameText = styled.span`
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: capitalize;
+`
 
-  > span {
-    margin-left: 4px;
-    vertical-align: middle;
-  }
+/* The description tooltip sits OUTSIDE the clipped text so it's never cut off. */
+export const SolverTooltip = styled.span`
+  flex-shrink: 0;
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
 `
 
 export const TrophyIcon = styled.span`
