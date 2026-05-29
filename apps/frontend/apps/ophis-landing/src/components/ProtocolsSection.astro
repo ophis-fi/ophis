@@ -1,0 +1,167 @@
+---
+/**
+ * Aggregated-protocols section — the liquidity venues the Ophis solver stack
+ * sources from. These are the real protocols the CoW-forked solver network
+ * aggregates (the shipped AMMsLogo set + DEX icon assets), so the wall is
+ * accurate, not illustrative. Framing is on the solver/batch-auction model
+ * rather than a per-chain matrix we can't verify end-to-end.
+ *
+ * Logos copied into public/logos/protocols/ from libs/assets (SVG marks where
+ * available, small PNGs otherwise). Pure markup + scoped CSS; the breathing
+ * bloom + sweep flares come from the shared .section-bloom / .flare-sweep
+ * classes in global.css (disabled under prefers-reduced-motion).
+ */
+
+type Protocol = { name: string; logo: string }
+const protocols: Protocol[] = [
+  { name: 'Uniswap',     logo: '/logos/protocols/uniswap.svg' },
+  { name: 'PancakeSwap', logo: '/logos/protocols/pancakeswap.svg' },
+  { name: 'Curve',       logo: '/logos/protocols/curve.svg' },
+  { name: 'Sushi',       logo: '/logos/protocols/sushi.svg' },
+  { name: 'Balancer',    logo: '/logos/protocols/balancer.png' },
+  { name: '1inch',       logo: '/logos/protocols/1inch.png' },
+  { name: '0x',          logo: '/logos/protocols/0x.png' },
+  { name: 'ParaSwap',    logo: '/logos/protocols/paraswap.png' },
+  { name: 'Honeyswap',   logo: '/logos/protocols/honeyswap.png' },
+  { name: 'Swapr',       logo: '/logos/protocols/swapr.png' },
+  { name: 'Baoswap',     logo: '/logos/protocols/baoswap.png' },
+  { name: 'Elk',         logo: '/logos/protocols/elk.png' },
+  { name: 'Symmetric',   logo: '/logos/protocols/symmetric.png' },
+  { name: 'Levinswap',   logo: '/logos/protocols/levinswap.png' },
+]
+---
+<section class="protocols">
+  <div class="protocols-inner">
+    <div class="label reveal-up" data-reveal>Aggregated liquidity</div>
+    <h2 class="reveal-up section-bloom" data-reveal>
+      Every venue. <span class="accent">Every chain.</span>
+    </h2>
+    <p class="sub reveal-up" data-reveal>
+      Ophis is solver-driven. A competitive network of solvers races to fill your intent —
+      routing across the deepest on-chain AMMs and professional DEX aggregators on every
+      network we settle. You sign once; they find the best executable price, MEV-protected.
+    </p>
+
+    <div class="protocol-wall reveal-up" data-reveal>
+      <span class="wall-flare flare-sweep" aria-hidden="true"></span>
+      <div class="protocol-grid stagger">
+        {protocols.map(p => (
+          <div class="protocol reveal-up" data-reveal>
+            <span class="protocol-badge">
+              <img src={p.logo} alt={`${p.name} logo`} width="30" height="30" loading="lazy" decoding="async" />
+            </span>
+            <span class="protocol-name">{p.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <p class="coverage reveal-up" data-reveal>
+      Liquidity sourced across <strong>11 EVM chains</strong> — with Solana &amp; Bitcoin
+      destinations via <strong>NEAR Intents</strong>.
+    </p>
+  </div>
+</section>
+
+<style>
+  .protocols { padding: 80px 56px; text-align: center; }
+  .protocols-inner { max-width: 1100px; margin: 0 auto; }
+  .label {
+    display: inline-block;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--ophis-fg-faded);
+    margin-bottom: 16px;
+  }
+  h2 {
+    font-size: 32px;
+    line-height: 1.15;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+  }
+  .sub {
+    color: var(--ophis-fg-muted);
+    margin: 0 auto 44px;
+    max-width: 660px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .protocol-wall { position: relative; }
+  /* Sweep flare lives in this clipped layer (z 0) so the cards' hover-lift +
+     shadow (z 1) are never clipped. .flare-sweep supplies overflow:hidden,
+     the sweeping ::after band, and the reduced-motion gate (global.css). */
+  .wall-flare {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--ophis-radius);
+    pointer-events: none;
+  }
+  .protocol-grid {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 14px;
+    border-radius: var(--ophis-radius);
+  }
+  .protocol {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 8px;
+    background: var(--ophis-surface);
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease, box-shadow 250ms ease;
+  }
+  .protocol:hover {
+    transform: translateY(-4px);
+    border-color: rgba(242, 166, 62, 0.3);
+    background-color: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 12px 30px -14px rgba(242, 166, 62, 0.45);
+  }
+  /* Light chip: third-party brand marks are authored for light backgrounds,
+     so monochrome-dark logos (Uniswap, Sushi, PancakeSwap, Balancer) would
+     vanish on a dark badge. A near-white circle keeps every logo legible. */
+  .protocol-badge {
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #f4f4f6;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+    flex-shrink: 0;
+  }
+  .protocol-badge img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+  }
+  .protocol-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ophis-fg-muted);
+    line-height: 1.2;
+  }
+  .coverage {
+    margin: 40px auto 0;
+    max-width: 560px;
+    font-size: 13.5px;
+    color: var(--ophis-fg-faded);
+    line-height: 1.6;
+  }
+  .coverage strong { color: var(--ophis-fg-muted); font-weight: 600; }
+
+  @media (max-width: 900px) {
+    .protocol-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    .protocols { padding: 64px 24px; }
+    .protocol-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    h2 { font-size: 26px; }
+  }
+</style>
