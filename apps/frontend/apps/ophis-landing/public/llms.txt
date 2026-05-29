@@ -7,7 +7,8 @@ Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed inte
 ## For agents
 
 - [MCP server](https://mcp.ophis.fi/mcp): a Streamable-HTTP Model Context Protocol server. Tools: `parse_intent` (plain English -> structured swap), `get_quote` (best-execution quote), `build_order` (a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner), `submit_order` (relay a pre-signed order), `lookup_tier` (fee-rebate tier), `list_chains`. Public, unauthenticated, and keyless — it never holds keys or signs; the agent signs with its own key.
-- [Intent API](https://swap.ophis.fi/api/intent): `POST {"text": "swap 100 USDC for ETH on Optimism"}` returns `{ok: true, data: {intent, entities}}` where entities are `{type: sellToken|buyToken|amount|chain, value, raw}`.
+- [Intent API](https://swap.ophis.fi/api/intent): `POST {"text": "swap 100 USDC for ETH on Optimism"}` returns `{ok: true, data: {intent, entities}}` where entities are `{type: sellToken|buyToken|amount|chain, value, raw, start, end}`. Machine-readable spec: [OpenAPI](https://ophis.fi/openapi.json).
+- Discovery manifests: [`/.well-known/mcp.json`](https://ophis.fi/.well-known/mcp.json) (MCP server + tools), [`/.well-known/ai-plugin.json`](https://ophis.fi/.well-known/ai-plugin.json) (plugin manifest).
 
 ## Product
 
