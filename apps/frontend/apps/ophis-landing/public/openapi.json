@@ -1,0 +1,119 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ophis Intent API",
+    "version": "1.0.0",
+    "summary": "Parse a plain-English swap request into a structured intent.",
+    "description": "Turns a natural-language swap request (e.g. \"swap 100 USDC for ETH on Optimism\") into a structured intent with recognized entities. Backed by LibertAI Qwen. Public and unauthenticated; rate-limited to 30 requests/minute/IP. For the full agent toolset (quotes, building bounded signable orders, tier lookups) use the Ophis MCP server at https://mcp.ophis.fi/mcp.",
+    "contact": { "name": "Ophis", "url": "https://ophis.fi/" },
+    "license": { "name": "Source on GitHub", "url": "https://github.com/ophis-fi/ophis" }
+  },
+  "servers": [{ "url": "https://swap.ophis.fi", "description": "Production" }],
+  "externalDocs": { "description": "Ophis docs", "url": "https://docs.ophis.fi/" },
+  "paths": {
+    "/api/intent": {
+      "post": {
+        "operationId": "parseIntent",
+        "summary": "Parse a natural-language swap request",
+        "description": "POST a plain-English swap request; receive the recognized intent and entities (sell token, buy token, amount, chain). No authentication. Rate-limited 30/min/IP.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Parsed intent.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentSuccess" } } }
+          },
+          "400": {
+            "description": "BAD_INPUT — missing/invalid JSON body or text over 280 chars.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
+          },
+          "403": {
+            "description": "FORBIDDEN — origin not allowed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
+          },
+          "429": {
+            "description": "RATE_LIMITED — exceeded 30 requests/minute/IP.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
+          },
+          "500": {
+            "description": "UPSTREAM — server-side parser misconfiguration.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
+          },
+          "502": {
+            "description": "UPSTREAM / INVALID_JSON — the parser failed or returned an unparseable response.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
+          },
+          "504": {
+            "description": "TIMEOUT — the parser did not respond in time.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "IntentRequest": {
+        "type": "object",
+        "required": ["text"],
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 280,
+            "description": "The natural-language swap request, e.g. \"swap 100 USDC for ETH on Optimism\".",
+            "examples": ["swap 100 USDC for ETH on Optimism"]
+          }
+        }
+      },
+      "Entity": {
+        "type": "object",
+        "required": ["type", "value", "raw", "start", "end"],
+        "properties": {
+          "type": { "type": "string", "enum": ["sellToken", "buyToken", "amount", "chain"] },
+          "value": { "type": "string", "description": "Normalized value (e.g. \"optimism\", \"USDC\", \"100\")." },
+          "raw": { "type": "string", "description": "The exact substring from the input." },
+          "start": { "type": "integer", "description": "Start offset of the raw substring." },
+          "end": { "type": "integer", "description": "End offset of the raw substring." }
+        }
+      },
+      "ParsedIntent": {
+        "type": "object",
+        "required": ["intent", "entities"],
+        "properties": {
+          "intent": { "type": "string", "enum": ["swap", "unknown"] },
+          "entities": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } }
+        }
+      },
+      "IntentSuccess": {
+        "type": "object",
+        "required": ["ok", "data"],
+        "properties": {
+          "ok": { "type": "boolean", "const": true },
+          "data": { "$ref": "#/components/schemas/ParsedIntent" }
+        }
+      },
+      "IntentError": {
+        "type": "object",
+        "required": ["ok", "error"],
+        "properties": {
+          "ok": { "type": "boolean", "const": false },
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": ["TIMEOUT", "UPSTREAM", "INVALID_JSON", "BAD_INPUT", "RATE_LIMITED", "FORBIDDEN"]
+              },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
