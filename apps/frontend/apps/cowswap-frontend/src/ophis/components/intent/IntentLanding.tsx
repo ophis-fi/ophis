@@ -26,7 +26,23 @@ import { useIntentParse } from './useIntentParse'
 const Page = styled.main`
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  min-height: 100vh;
+  /* Viewport-fit: the swap landing shows all content on one screen with no
+     page scroll on every normal viewport. Hero is sized (clamp/vh) to fit
+     header + Hero + compact footer inside 100dvh. 100dvh tracks the mobile
+     URL-bar collapse; 100vh is the fallback for browsers without dvh.
+
+     overflow-y:auto (NOT hidden): on every laptop/desktop and most portrait
+     phones the content fits 100dvh exactly, so no scrollbar ever appears —
+     it reads as a locked, no-scroll screen. On a pathologically short/narrow
+     viewport where the hero genuinely cannot fit (e.g. 360x680 with a 5-line
+     wrapped headline + wrapped footer), it falls back to SCROLLING rather
+     than CLIPPING — hiding reachable content (the Continue button, the input)
+     is never acceptable. overflow-x:hidden kills the horizontal scrollbar the
+     100vw full-bleed trick would otherwise create. */
+  height: 100vh;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   background-color: #0a0a0a; /* canonical --ophis-bg; was #02000d (old pre-token value) */
@@ -118,18 +134,23 @@ const fadeInUp = keyframes`
 
 const Hero = styled.section`
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 24px 80px;
-  gap: 28px;
+  /* Viewport-height-aware spacing: collapses on short laptops so the hero
+     plus the compact footer always fit one screen with no scroll. Top
+     padding stays >= header height so the centered column clears the
+     position:absolute header even when content nearly fills the viewport. */
+  padding: clamp(64px, 8vh, 88px) 24px clamp(20px, 3vh, 40px);
+  gap: clamp(12px, 2.2vh, 28px);
   width: min(720px, 100%);
   margin: 0 auto;
   text-align: center;
   @media (max-width: 600px) {
-    padding: 28px 16px 48px;
-    gap: 20px;
+    padding: clamp(60px, 11vh, 88px) 16px clamp(16px, 3vh, 40px);
+    gap: clamp(10px, 2vh, 20px);
   }
 
   /* Cascade hero children in on mount. Each child opts in by referencing
@@ -173,7 +194,9 @@ const Tagline = styled.h1`
   margin: 0;
   font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 500;
-  font-size: clamp(34px, 5vw, 56px);
+  /* vh component shrinks the headline on short viewports so the hero never
+     forces a scroll; vw keeps it large on tall/wide screens. */
+  font-size: clamp(30px, min(4.6vw, 6.4vh), 50px);
   line-height: 1.05;
   letter-spacing: -0.02em;
   color: #f5efe6;
@@ -350,7 +373,7 @@ export function IntentLanding(): ReactNode {
         </ContinueButton>
       </Hero>
 
-      <OphisFooter borderless />
+      <OphisFooter compact borderless />
     </Page>
   )
 }
