@@ -24,15 +24,29 @@ export function JazzIcon({ className, size, account }: JazzIconProps): ReactNode
     // eslint-disable-next-line react-hooks/purity
     const defaultSeed = Math.floor(Math.random() * 1000000)
 
-    const seed = account ? parseInt(account.slice(2, 10), 16) : defaultSeed
-    return jazzicon(size, seed)
+    // A non-hex or malformed `account` makes parseInt() return NaN, which
+    // propagates into @metamask/jazzicon's hue rotation and makes its `color`
+    // dependency throw on the generated value. Keep the seed a finite number.
+    const parsedSeed = account ? parseInt(account.slice(2, 10), 16) : defaultSeed
+    const seed = Number.isFinite(parsedSeed) ? parsedSeed : defaultSeed
+
+    try {
+      return jazzicon(size, seed)
+    } catch (error) {
+      // A cosmetic identicon must NEVER take down the whole app. Any throw in
+      // jazzicon's color generation degrades to an empty avatar (the styled
+      // wrapper still renders) instead of tripping the global error boundary.
+      // (2026-05-29 production crash on swap.ophis.fi.)
+      console.error('JazzIcon generation failed; rendering empty avatar', error)
+      return null
+    }
   }, [size, account])
 
   useEffect(() => {
     if (!ref.current) return
 
     ref.current.innerHTML = ''
-    ref.current.appendChild(icon)
+    if (icon) ref.current.appendChild(icon)
   }, [icon])
 
   return <JazzIconWrapper ref={ref} className={className}></JazzIconWrapper>
