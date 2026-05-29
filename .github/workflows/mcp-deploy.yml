@@ -1,0 +1,59 @@
+name: Deploy @ophis/mcp-server to Cloudflare Workers
+
+# Build + typecheck + unit-test on PRs; build + deploy to Cloudflare Workers on
+# push to main.
+#
+# Deploy uses CLOUDFLARE_WORKERS_TOKEN — a LEAST-PRIVILEGE, account-scoped token
+# with only "Workers Scripts: Edit" + "Workers Routes: Edit" (created 2026-05-29).
+# The other CF deploys (Pages) use the separate Pages/DNS-scoped
+# CLOUDFLARE_API_TOKEN, which cannot deploy Workers. The custom domain
+# mcp.ophis.fi is already provisioned, so the Workers-Routes scope is sufficient
+# for re-asserting it on each deploy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mcp-server/**'
+      - 'packages/sdk/**'
+      - '.github/workflows/mcp-deploy.yml'
+  pull_request:
+    paths:
+      - 'apps/mcp-server/**'
+      - 'packages/sdk/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    name: build + test + deploy
+    runs-on: ubuntu-latest
+    steps:
+      # Action SHAs pinned (mirrors ci.yml). Tag refs are mutable; SHAs are not.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The MCP Worker imports @ophis/sdk from its built dist/.
+      - run: pnpm --filter @ophis/sdk build
+
+      - run: pnpm --filter @ophis/mcp-server typecheck
+      - run: pnpm --filter @ophis/mcp-server test
+
+      - name: wrangler deploy
+        if: github.ref == 'refs/heads/main'
+        working-directory: apps/mcp-server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy
