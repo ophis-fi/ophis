@@ -1,0 +1,58 @@
+# @ophis/mcp-server
+
+Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
+with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
+
+It exposes the Ophis trading surface to autonomous agents and MCP clients
+without making them re-derive the fork's non-obvious, easy-to-get-wrong details
+(non-canonical settlement contracts on the Ophis-operated chains, the self
+-hosted Optimism orderbook host, the CIP-75 partner-fee appData shape, and
+receiver pinning).
+
+## Security model
+
+The server holds **no private keys and never signs**. `build_order` returns a
+*bounded, ready-to-sign* EIP-712 payload with the order **receiver pinned to the
+owner** (the #1 autonomous-agent drain vector); the agent signs with its own key
+and submits. This is the V1 "bounded capability" pattern — an off-chain misuse
+guard, not an on-chain authorization boundary. It is public and unauthenticated:
+every backing endpoint is already public, and the tools are read/build-only.
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `parse_intent` | Plain-English swap request → structured intent (LibertAI Qwen via `swap.ophis.fi/api/intent`). |
+| `get_quote` | Best-execution quote from the chain's Ophis orderbook (`/api/v1/quote`). |
+| `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
+| `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
+| `lookup_tier` | A wallet's fee-rebate tier + live status (`rebates.ophis.fi/tier/:wallet`). |
+| `list_chains` | Supported chains, orderbook hosts, settlement contracts, partner-fee config. |
+
+## Typical agent flow
+
+```
+parse_intent("swap 100 USDC for ETH on Optimism")
+  → get_quote({ chainId, sellToken, buyToken, kind:'sell', amount, from })
+  → build_order({ chainId, owner, sellToken, buyToken, sellAmount, buyAmount /* slippage-adjusted */, kind })
+  → (agent signs `order` as EIP-712 with `signing`)
+  → submit_order({ chainId, order, signature, from, fullAppData })
+```
+
+## Develop
+
+```bash
+pnpm --filter @ophis/sdk build      # build the workspace SDK this depends on
+pnpm --filter @ophis/mcp-server test        # unit tests (pure logic)
+pnpm --filter @ophis/mcp-server typecheck
+pnpm --filter @ophis/mcp-server dev         # wrangler dev (local Streamable HTTP)
+npx @modelcontextprotocol/inspector@latest  # point at http://localhost:8787/mcp
+```
+
+## Deploy
+
+```bash
+pnpm --filter @ophis/mcp-server deploy       # wrangler deploy → mcp.ophis.fi
+```
+
+Custom domain `mcp.ophis.fi` is provisioned from `wrangler.jsonc` (`routes`).

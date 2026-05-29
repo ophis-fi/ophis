@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ophis-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-01",
+  // nodejs_compat is required by the agents SDK / @modelcontextprotocol/sdk
+  // (node:crypto, node:stream shims). Ref: agents-sdk configuration.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  // McpAgent is a Durable Object. Each MCP session is one DO instance; our
+  // tools are stateless (each call is independent) so the DO just holds the
+  // Streamable-HTTP transport session — no app state is persisted.
+  "durable_objects": {
+    "bindings": [{ "name": "OPHIS_MCP", "class_name": "OphisMCP" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OphisMCP"] }],
+  // Per-IP rate limit for the public /mcp endpoint (60 requests / 60s, per colo).
+  // Best-effort abuse cap; combined with the in-handler batch/body cap it closes
+  // the JSON-RPC amplification path. Local `wrangler dev` treats this as a no-op.
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "MCP_RATE_LIMIT",
+        "type": "ratelimit",
+        "namespace_id": "1001",
+        "simple": { "limit": 60, "period": 60 }
+      }
+    ]
+  },
+  // Custom domain — provisioned by wrangler on deploy (ophis.fi zone is in this
+  // CF account). The MCP is reachable at https://mcp.ophis.fi/mcp.
+  "routes": [{ "pattern": "mcp.ophis.fi", "custom_domain": true }]
+}
