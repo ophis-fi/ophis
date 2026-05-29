@@ -535,9 +535,17 @@ function isValidEntity(e: unknown, text: string): e is Entity {
     return TOKEN_VALUES.has(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
   }
   if (o.type === 'chain') {
-    if (!CHAIN_VALUES.has(o.value) || !valueDerivesFromRaw('chain', o.value, o.raw)) return false
+    // The model may include a leading article in the raw span ("an L1", "the
+    // Base") because raw need only be an exact substring of the input. Strip it
+    // ONCE here so both the derivation check and the context match see the bare
+    // chain term — otherwise "an L1" fails valueDerivesFromRaw ("an l1" is not a
+    // CHAIN_ALIASES key) and the documented l1->ethereum request is dropped.
+    // (Codex P2 2026-05-29.) The raw-in-text integrity check above already ran
+    // on the ORIGINAL o.raw, so this strip can't smuggle in an unevidenced term.
+    const chainRaw = o.raw.replace(/^\s*(?:the|an?)\s+/i, '')
+    if (!CHAIN_VALUES.has(o.value) || !valueDerivesFromRaw('chain', o.value, chainRaw)) return false
     // EVERY chain entity must be anchored to an explicit routing phrase
-    // (on/via/using <chain>, the article "the" tolerated). There is NO
+    // (on/via/using <chain>, an article the/a/an tolerated). There is NO
     // bare-acceptance exemption, because no chain slug is unambiguous: each of
     // the 11 is either a tradable token (ethereum=ETH, base=BASE, ink=INK,
     // arbitrum=ARB, optimism=OP, polygon=MATIC, bnb, gnosis=GNO, avalanche=AVAX)
@@ -553,7 +561,7 @@ function isValidEntity(e: unknown, text: string): e is Entity {
     // mention is dropped (the swap stays on the current network and the user can
     // pick it in the NetworkSelector) — a safe failure vs. mis-routing funds.
     // (Codex P2 + adversarial sweep 2026-05-29.)
-    return inChainContext(text, o.raw)
+    return inChainContext(text, chainRaw)
   }
   if (o.type === 'amount') {
     return /^\d+(\.\d+)?$/.test(o.value) && valueDerivesFromRaw('amount', o.value, o.raw)
