@@ -1,8 +1,6 @@
 import { ReactNode, useCallback } from 'react'
 
-import cowNoConnectionIMG from '@cowprotocol/assets/cow-swap/cow-no-connection.png'
-import { DISCORD_LINK } from '@cowprotocol/common-const'
-import { AutoRow, ButtonPrimary, ExternalLink, MEDIA_WIDTHS } from '@cowprotocol/ui'
+import { AutoRow, ButtonPrimary, MEDIA_WIDTHS } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
@@ -16,13 +14,14 @@ import CopyHelper from 'legacy/components/Copy'
 import { Title } from 'modules/application/pure/Page'
 
 /**
- * We use the `cow-no-connection.png` image in case when there is no internet connection
- * Cause of it we must preload the image before lost of connection
+ * Preload the no-connection image as a data URL so it still renders if the
+ * connection drops (or a stale chunk fails to load) after this point.
  */
-let cowNoConnectionIMGCache: string | null = null
+const NO_CONNECTION_IMG = '/ophis-icon-sunset.svg'
+let noConnectionIMGCache: string | null = null
 
 function preloadNoConnectionImg(): void {
-  fetch(cowNoConnectionIMG)
+  fetch(NO_CONNECTION_IMG)
     .then((res) => res.blob())
     .then((blob) => {
       const reader = new FileReader()
@@ -35,7 +34,7 @@ function preloadNoConnectionImg(): void {
       })
     })
     .then((img) => {
-      cowNoConnectionIMGCache = img
+      noConnectionIMGCache = img
     })
     .catch(() => {})
 }
@@ -58,11 +57,6 @@ const FlexContainer = styled.div`
     flex-direction: column;
     align-items: center;
   }
-`
-
-const LinkWrapper = styled.div`
-  color: ${({ theme }) => theme.blue1};
-  padding: 6px 24px;
 `
 
 const NoConnectionContainer = styled.div`
@@ -132,20 +126,12 @@ export const ChunkLoadError = ({ eventId }: ChunkLoadErrorProps): ReactNode => {
               </IdRow>
             )}
           </NoConnectionDesc>
-          {cowNoConnectionIMGCache && <NoConnectionImg src={cowNoConnectionIMGCache} alt={t`Ophis no connection`} />}
+          {noConnectionIMGCache && <NoConnectionImg src={noConnectionIMGCache} alt={t`Ophis`} />}
         </NoConnectionContainer>
         <AutoRowWithGap justify="center">
           <ButtonPrimary width="fit-content" onClick={reloadPage}>
             <Trans>Reload page</Trans>
           </ButtonPrimary>
-          <LinkWrapper>
-            <ExternalLink id="get-support-on-discord" href={DISCORD_LINK}>
-              <ThemedText.Link fontSize={16}>
-                <Trans>Get support on Discord</Trans>
-                <span>↗</span>
-              </ThemedText.Link>
-            </ExternalLink>
-          </LinkWrapper>
         </AutoRowWithGap>
       </AutoColumn>
     </>
