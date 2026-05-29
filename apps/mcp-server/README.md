@@ -42,17 +42,23 @@ parse_intent("swap 100 USDC for ETH on Optimism")
 ## Develop
 
 ```bash
-pnpm --filter @ophis/sdk build      # build the workspace SDK this depends on
-pnpm --filter @ophis/mcp-server test        # unit tests (pure logic)
+pnpm --filter @ophis/mcp-server test         # unit tests (pure logic)
 pnpm --filter @ophis/mcp-server typecheck
-pnpm --filter @ophis/mcp-server dev         # wrangler dev (local Streamable HTTP)
-npx @modelcontextprotocol/inspector@latest  # point at http://localhost:8787/mcp
+pnpm --filter @ophis/mcp-server dev          # wrangler dev (local Streamable HTTP)
+npx @modelcontextprotocol/inspector@latest   # point at http://localhost:8787/mcp
 ```
+
+`dev` / `deploy` / `dry-run` auto-build the workspace SDK first (`pre*` scripts),
+so a clean checkout works without a manual `@ophis/sdk` build.
 
 ## Deploy
 
+Auto-deploys on push to `main` via `.github/workflows/mcp-deploy.yml`, using the
+least-privilege `CLOUDFLARE_WORKERS_TOKEN` secret (Workers Scripts + Routes
+only). Manual:
+
 ```bash
-pnpm --filter @ophis/mcp-server deploy       # wrangler deploy → mcp.ophis.fi
+pnpm --filter @ophis/mcp-server deploy        # builds the SDK, then wrangler deploy → mcp.ophis.fi
 ```
 
 Custom domain `mcp.ophis.fi` is provisioned from `wrangler.jsonc` (`routes`).

@@ -142,17 +142,26 @@ describe('submitOrder (relay guards — no network on the throw paths)', () => {
 })
 
 describe('listChains', () => {
-  it('marks Optimism as Ophis-operated with the non-canonical settlement', () => {
-    const op = listChains().find((c) => c.chainId === 10)
+  it('puts Optimism in tradeable with the non-canonical settlement + live orderbook', () => {
+    const op = listChains().tradeable.find((c) => c.chainId === 10)
     expect(op?.ophisOperated).toBe(true)
     expect(op?.settlement).toBe(OPHIS_OP_SETTLEMENT)
     expect(op?.orderbookUrl).toBe('https://optimism-mainnet.ophis.fi')
     expect(op?.partnerFee?.priceImprovementBps).toBe(2500)
   })
 
-  it('marks Ethereum mainnet as CoW-hosted with the canonical settlement', () => {
-    const eth = listChains().find((c) => c.chainId === 1)
+  it('puts Ethereum mainnet in tradeable with the canonical settlement', () => {
+    const eth = listChains().tradeable.find((c) => c.chainId === 1)
     expect(eth?.ophisOperated).toBe(false)
     expect(eth?.settlement).toBe('0x9008D19f58AAbD9eD0D60971565AA8510560ab41')
+  })
+
+  it('puts orderbook-paused fee chains (MegaETH, HyperEVM) in paused, not tradeable', () => {
+    const { tradeable, paused } = listChains()
+    expect(paused.map((c) => c.chainId)).toEqual(expect.arrayContaining([4326, 999]))
+    expect(tradeable.map((c) => c.chainId)).not.toContain(4326)
+    expect(tradeable.map((c) => c.chainId)).not.toContain(999)
+    // Every tradeable chain has a real orderbook URL (no dead-ends).
+    expect(tradeable.every((c) => typeof c.orderbookUrl === 'string')).toBe(true)
   })
 })
