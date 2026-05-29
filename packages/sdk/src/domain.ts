@@ -77,7 +77,7 @@ export interface OphisOrderDomain {
  *
  * @example
  *   const domain = getOphisOrderDomain(10);
- *   const signature = await wallet.signTypedData({ domain, types, primaryType: 'GPv2Order', message: order });
+ *   const signature = await wallet.signTypedData({ domain, types, primaryType: 'Order', message: order });
  */
 export const getOphisOrderDomain = (chainId: number): OphisOrderDomain => ({
   name: 'Gnosis Protocol',
