@@ -21,7 +21,7 @@ import {
 } from 'modules/accountProxy'
 
 import { Routes as RoutesEnum, RoutesValues } from 'common/constants/routes'
-import Account, { AccountOverview } from 'pages/Account'
+import Account from 'pages/Account'
 import { AdvancedOrdersPage } from 'pages/AdvancedOrders/AdvancedOrders.page'
 import AnySwapAffectedUsers from 'pages/error/AnySwapAffectedUsers'
 import { HooksPage } from 'pages/Hooks'
@@ -162,7 +162,9 @@ export function RoutesApp(): ReactNode {
     <Routes>
       {/*Account*/}
       <Route path={RoutesEnum.ACCOUNT} element={<Account />}>
-        <Route path={RoutesEnum.ACCOUNT} element={<AccountOverview />} />
+        {/* Account overview was the COW/vCOW/governance/delegate dashboard (CoW-DAO
+            token features Ophis doesn't have). Removed; /account now lands on Tokens. */}
+        <Route path={RoutesEnum.ACCOUNT} element={<Navigate to={RoutesEnum.ACCOUNT_TOKENS} replace />} />
         <Route path={RoutesEnum.ACCOUNT_TOKENS} element={<AccountTokensOverview />} />
         {isAffiliateProgramEnabled && (
           <Route path={RoutesEnum.ACCOUNT_AFFILIATE_PARTNER} element={<AccountAffiliatePartner />} />

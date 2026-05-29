@@ -70,7 +70,7 @@ const DAO_NAV_ITEMS: MenuItem[] = [
     utmContent: 'menubar-dao-nav-cowdao',
   },
   {
-    href: 'https://swap.cow.fi/',
+    href: 'https://swap.ophis.fi/',
     productVariant: ProductVariant.CowSwap,
     hoverColor: `var(${UI.COLOR_BLUE_300_PRIMARY})`,
     hoverBgColor: `var(${UI.COLOR_BLUE_900_PRIMARY})`,
