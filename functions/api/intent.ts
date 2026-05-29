@@ -459,12 +459,16 @@ function escapeRegExp(s: string): string {
  * Without this, {type:'chain', value:'ethereum', raw:'ETH'} for "swap ETH for
  * USDC" would mis-route the swap to Ethereum. Verify the (trimmed) raw appears
  * in a chain context somewhere in the text — offset-independent, since the
- * model's start/end can be off by one. Tolerates the article "the" between the
- * preposition and the chain name ("on the Base network"). We deliberately do
- * NOT tolerate "a"/"an": no legitimate chain selection reads "on a Base", while
- * "a"/"an" let incidental prose match ("on a OP node", "using a base coat",
- * "via an Arbitrum One bridge") — pure false-context surface. (Codex P2 +
- * adversarial sweep 2026-05-29.)
+ * model's start/end can be off by one. Tolerates an article ("the"/"a"/"an")
+ * between the preposition and the chain name ("on the Base network", "using an
+ * L1"). "a"/"an" is required because generic chain NOUNS take the indefinite
+ * article — the prompt documents "l1" -> ethereum, and "swap USDC for ETH using
+ * an L1" is a natural request that must route to Ethereum, not the default chain
+ * (Codex P2 2026-05-29). The cost is that "a"/"an" also lets some incidental
+ * prose match ("on a OP node", "using a base coat") — but those require the LLM
+ * to mis-emit a chain entity for obvious prose and fall under the documented
+ * offset-independent residual below, a far less likely failure than dropping a
+ * documented alias a user actually typed.
  *
  * KNOWN LIMITATION (defense-in-depth, not a complete filter): because the match
  * is offset-independent, prose that literally contains "on/via/using <chain>"
@@ -481,7 +485,7 @@ function inChainContext(text: string, raw: string): boolean {
   // still matches; internal punctuation (the hyphen in "c-chain") is preserved.
   const r = raw.trim().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '')
   if (r.length === 0) return false
-  return new RegExp('\\b(?:on|via|using)\\s+(?:the\\s+)?' + escapeRegExp(r) + '\\b', 'i').test(text)
+  return new RegExp('\\b(?:on|via|using)\\s+(?:the\\s+|an?\\s+)?' + escapeRegExp(r) + '\\b', 'i').test(text)
 }
 
 /**
