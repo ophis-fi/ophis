@@ -19,10 +19,15 @@ for (const { label, requestField, responseWrap, responseData } of TABS) {
     await page.goto('/')
     if (label !== 'curl') {
       const tabBtn = page.locator('.code-section .tab', { hasText: label })
-      // Wait for island to hydrate (client:load) before clicking
       await tabBtn.waitFor({ state: 'visible' })
-      await tabBtn.click()
-      await page.waitForTimeout(200) // allow preact state update
+      // The tabs are a Preact island (client:load). A click before hydration is
+      // a no-op, so a fixed wait raced and flaked. Retry click-until-active:
+      // Playwright re-runs the block until the tab gains `.active` (i.e. the
+      // island has hydrated and the state update landed), with no magic delay.
+      await expect(async () => {
+        await tabBtn.click()
+        await expect(tabBtn).toHaveClass(/active/, { timeout: 300 })
+      }).toPass({ timeout: 6000 })
     }
     const body = await page.locator('.code-section .code-body').textContent()
     expect(body).toContain('swap.ophis.fi/api/intent')
