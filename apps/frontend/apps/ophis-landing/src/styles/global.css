@@ -206,6 +206,101 @@ body {
   50%      { opacity: var(--op, 0.4); }
 }
 
+/* Spark field — brighter 4-point star motes (rendered by Sparks.astro) that
+   drift along a random 2D vector (--dx/--dy) while twinkling. The cross shape
+   is two thin crossing gradients; the soft halo is the ::after radial glow.
+   Only transform + opacity animate (compositor-friendly). Sits on the orb
+   layer (z-index 0), behind all content (z-index 1). */
+.sparks {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.spark {
+  position: absolute;
+  opacity: var(--op, 0.6);
+  background:
+    linear-gradient(var(--c) 0 0) center / 100% 9% no-repeat,
+    linear-gradient(var(--c) 0 0) center / 9% 100% no-repeat;
+  animation:
+    spark-move var(--dur, 10s) ease-in-out var(--delay, 0s) infinite alternate,
+    spark-twinkle var(--tdur, 4s) ease-in-out var(--delay, 0s) infinite;
+}
+.spark::after {
+  content: '';
+  position: absolute;
+  inset: -55%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--g) 0%, transparent 65%);
+}
+.spark--saffron { --c: rgba(255, 209, 154, 0.95); --g: rgba(242, 166, 62, 0.45); }
+.spark--violet  { --c: rgba(214, 196, 255, 0.95); --g: rgba(180, 138, 255, 0.40); }
+@keyframes spark-move {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to   { transform: translate3d(var(--dx, 0), var(--dy, 0), 0) rotate(var(--rot, 0deg)); }
+}
+@keyframes spark-twinkle {
+  0%, 100% { opacity: calc(var(--op, 0.6) * 0.12); }
+  50%      { opacity: var(--op, 0.6); }
+}
+
+/* ── Section light flares ─────────────────────────────────────────────────
+   Reusable, GPU-cheap accents applied to section wrappers/headings.
+   `.flare-sweep`  — a periodic light beam sweeping diagonally across an inner
+                     wrapper (long idle gap so it reads as an occasional flare).
+   `.section-bloom`— a soft radial bloom behind a heading that gently breathes.
+   Both decorative + aria-hidden via pseudo-elements; disabled under
+   prefers-reduced-motion. */
+.flare-sweep { position: relative; overflow: hidden; isolation: isolate; }
+.flare-sweep::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 45%;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(242, 166, 62, 0.07) 42%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(180, 138, 255, 0.07) 58%,
+    transparent 100%
+  );
+  transform: translateX(-140%) skewX(-12deg);
+  animation: flare-sweep 11s ease-in-out var(--sweep-delay, 0s) infinite;
+}
+@keyframes flare-sweep {
+  0%        { transform: translateX(-140%) skewX(-12deg); }
+  55%, 100% { transform: translateX(320%) skewX(-12deg); }
+}
+.section-bloom { position: relative; }
+.section-bloom::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: min(560px, 80%);
+  height: 260px;
+  transform: translate(-50%, -28%);
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(242, 166, 62, 0.14), transparent 70%);
+  filter: blur(22px);
+  animation: bloom-pulse 7.5s ease-in-out infinite;
+}
+.section-bloom--violet::before {
+  background: radial-gradient(50% 50% at 50% 50%, rgba(180, 138, 255, 0.14), transparent 70%);
+}
+@keyframes bloom-pulse {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -28%) scale(0.96); }
+  50%      { opacity: 1;    transform: translate(-50%, -28%) scale(1.04); }
+}
+
 /* Ensure main content sits above the orb + particle layers */
 main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
 
@@ -217,7 +312,10 @@ main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
   .pill::before { animation: none !important; }
   .scroll-progress { animation: none !important; transform: scaleX(0) !important; }
   .bg-orbs::after { animation: none !important; transform: none !important; }
-  /* Particles stay visible as a static starfield, just no motion. */
+  /* Particles + sparks stay visible as a static starfield, just no motion. */
   .particle { animation: none !important; }
+  .spark { animation: none !important; transform: none !important; }
+  .flare-sweep::after { animation: none !important; transform: translateX(-140%) skewX(-12deg) !important; opacity: 0 !important; }
+  .section-bloom::before { animation: none !important; }
   * { transition: none !important; }
 }
