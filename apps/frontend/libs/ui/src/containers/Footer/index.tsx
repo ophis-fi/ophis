@@ -98,7 +98,7 @@ const PRODUCT_LOGO_LINKS: {
   utmContent: string
 }[] = [
   {
-    href: 'https://swap.cow.fi/',
+    href: 'https://swap.ophis.fi/',
     label: 'CoW Swap',
     productVariant: ProductVariant.CowSwap,
     external: true,

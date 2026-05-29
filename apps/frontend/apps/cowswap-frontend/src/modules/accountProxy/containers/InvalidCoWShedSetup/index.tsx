@@ -1,6 +1,5 @@
 import React, { ReactNode } from 'react'
 
-import { DISCORD_LINK } from '@cowprotocol/common-const'
 import { ExternalLink, InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -40,7 +39,7 @@ export function InvalidCoWShedSetup(): ReactNode {
             <Trans>Smart account setup is invalid!</Trans>
           </div>
           <div>
-            <ExternalLink href={DISCORD_LINK}>
+            <ExternalLink href="https://ophis.fi">
               <Trans>Please contact Ophis support!</Trans>
             </ExternalLink>
           </div>

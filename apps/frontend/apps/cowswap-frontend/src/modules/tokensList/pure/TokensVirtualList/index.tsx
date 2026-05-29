@@ -7,7 +7,6 @@ import { VirtualItem } from '@tanstack/react-virtual'
 
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
-import { CoWAmmBanner } from 'common/containers/CoWAmmBanner'
 import { VirtualList } from 'common/pure/VirtualList'
 
 import { buildVirtualRows, sortTokensByBalance } from './tokensVirtualListUtils'
@@ -85,7 +84,6 @@ export function TokensVirtualList({
       getItemView={getItemView}
       scrollResetKey={selectedTargetChainId}
     >
-      {isYieldEnabled ? <CoWAmmBanner isTokenSelectorView /> : null}
     </VirtualList>
   )
 }

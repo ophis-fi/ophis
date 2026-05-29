@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import cow404IMG from '@cowprotocol/assets/cow-swap/cow-404.png'
+import cow404IMG from '@cowprotocol/assets/cow-swap/ophis-mark.svg'
 import { ButtonPrimary, ExternalLink as ExternalLinkTheme, Media } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
