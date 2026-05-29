@@ -5,10 +5,19 @@ on:
     branches: [main]
     paths:
       - 'apps/frontend/apps/ophis-landing/**'
+      # ophis.fi/api/intent is served by the SHARED functions/api/ handler,
+      # staged into the landing bundle by the "stage intent API function" step
+      # below. Without this path, changes to functions/api/** redeploy only
+      # swap.ophis.fi (cloudflare-deploy.yml, no path filter) and ophis.fi's
+      # endpoint silently falls behind (it lagged 5 hardening PRs before this
+      # was added, 2026-05-29). swap.ophis.fi gets the same file via its own
+      # workflow; this keeps the two hosts' /api/intent in lockstep.
+      - 'functions/api/**'
       - '.github/workflows/landing-deploy.yml'
   pull_request:
     paths:
       - 'apps/frontend/apps/ophis-landing/**'
+      - 'functions/api/**'
 
 permissions:
   contents: read
