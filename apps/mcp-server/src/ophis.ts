@@ -112,9 +112,17 @@ export interface BuildOrderParams {
   owner: Address
   sellToken: Address
   buyToken: Address
-  /** Exact sell amount to sign, in atoms (uint256 decimal string). */
+  /**
+   * sellAmount in atoms (uint256 decimal string). For kind 'sell' this is the
+   * EXACT amount you sell. For kind 'buy' it is the MAXIMUM you are willing to
+   * spend (slippage-adjusted UP from the quote's sellAmount).
+   */
   sellAmount: string
-  /** Minimum buy amount to accept, in atoms — apply your slippage to the quote's buyAmount. */
+  /**
+   * buyAmount in atoms (uint256 decimal string). For kind 'sell' this is the
+   * MINIMUM you will accept (slippage-adjusted DOWN from the quote's buyAmount).
+   * For kind 'buy' it is the EXACT amount you want to receive.
+   */
   buyAmount: string
   kind: 'sell' | 'buy'
   /** Order lifetime in seconds from now (default 1200 = 20 min). */
@@ -219,6 +227,12 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
 
 // --- API callers (real endpoints, no mocks) --------------------------------
 
+// Intent parser host. Deliberately swap.ophis.fi, NOT ophis.fi: verified
+// 2026-05-29 that https://ophis.fi/api/intent returns HTTP 500
+// {"code":"UPSTREAM","message":"LibertAI key not configured"} (the Pages
+// Function is deployed on the landing project without the key bound), while
+// https://swap.ophis.fi/api/intent returns a real 200 parse. swap.ophis.fi is
+// the live, key-bound endpoint that the swap app itself calls.
 const INTENT_API = 'https://swap.ophis.fi/api/intent'
 const REBATE_API = 'https://rebates.ophis.fi'
 
@@ -468,19 +482,59 @@ const CHAIN_NAMES: Record<number, string> = {
   11155111: 'Sepolia',
 }
 
-/** Lists every chain Ophis charges its fee on, with orderbook host + settlement contract. Pure. */
-export function listChains(): ChainInfo[] {
+export interface PausedChain {
+  chainId: number
+  name: string
+  ophisOperated: boolean
+  settlement: Address | null
+  /** Why the chain isn't usable yet. */
+  reason: string
+}
+
+export interface ChainList {
+  /** Chains you can quote/build/submit on right now (orderbook host is live). */
+  tradeable: ChainInfo[]
+  /**
+   * Fee chains whose settlement contract is deployed but whose orderbook host
+   * is NOT live yet (MegaETH, HyperEVM). get_quote / build_order throw for
+   * these, so do not pick them — listed only for transparency.
+   */
+  paused: PausedChain[]
+}
+
+/**
+ * Lists Ophis chains, split into `tradeable` (orderbook live — use these) and
+ * `paused` (settlement deployed but no live orderbook — get_quote/build_order
+ * would throw). Pure. Only ever route a chainId from `tradeable`.
+ */
+export function listChains(): ChainList {
   const ophisOperated = new Set<number>(Object.values(OPHIS_CHAIN_IDS))
-  return [...OPHIS_FEE_CHAIN_IDS]
-    .sort((a, b) => a - b)
-    .map((chainId) => ({
-      chainId,
-      name: CHAIN_NAMES[chainId] ?? `chain-${chainId}`,
-      ophisOperated: ophisOperated.has(chainId),
-      orderbookUrl: OPHIS_ORDERBOOK_URLS[chainId] ?? null,
-      settlement: OPHIS_SETTLEMENT_ADDRESSES[chainId] ?? null,
-      partnerFee: ophisDefaultPartnerFee(chainId) ?? null,
-    }))
+  const tradeable: ChainInfo[] = []
+  const paused: PausedChain[] = []
+  for (const chainId of [...OPHIS_FEE_CHAIN_IDS].sort((a, b) => a - b)) {
+    const name = CHAIN_NAMES[chainId] ?? `chain-${chainId}`
+    const settlement = OPHIS_SETTLEMENT_ADDRESSES[chainId] ?? null
+    const orderbookUrl = OPHIS_ORDERBOOK_URLS[chainId] ?? null
+    if (orderbookUrl) {
+      tradeable.push({
+        chainId,
+        name,
+        ophisOperated: ophisOperated.has(chainId),
+        orderbookUrl,
+        settlement,
+        partnerFee: ophisDefaultPartnerFee(chainId) ?? null,
+      })
+    } else {
+      paused.push({
+        chainId,
+        name,
+        ophisOperated: ophisOperated.has(chainId),
+        settlement,
+        reason: 'orderbook host not live yet (settlement deployed) — get_quote/build_order will throw for this chain',
+      })
+    }
+  }
+  return { tradeable, paused }
 }
 
 // --- internal guards -------------------------------------------------------

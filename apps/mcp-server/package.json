@@ -6,7 +6,11 @@
   "description": "Ophis MCP server — agent-facing tools to parse swap intents, fetch quotes, and build bounded, ready-to-sign CoW orders on the Ophis DEX. Holds no keys; build-only.",
   "scripts": {
     "dev": "wrangler dev",
+    "build:sdk": "pnpm --filter @ophis/sdk build",
+    "predev": "pnpm run build:sdk",
+    "predeploy": "pnpm run build:sdk",
     "deploy": "wrangler deploy",
+    "predry-run": "pnpm run build:sdk",
     "dry-run": "wrangler deploy --dry-run --outdir=dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

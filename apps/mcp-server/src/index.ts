@@ -72,7 +72,7 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       'get_quote',
       {
         description:
-          "Fetch a best-execution quote from the chain's Ophis orderbook. Amounts are in atoms (smallest unit, uint256 decimal string). For kind='sell' the amount is the sell amount before fee; for kind='buy' it is the desired buy amount. Returns the orderbook quote (sellAmount/buyAmount/feeAmount/validTo). Apply your own slippage to buyAmount before calling build_order.",
+          "Fetch a best-execution quote from the chain's Ophis orderbook (use a chainId from list_chains' `tradeable`). Amounts are in atoms (smallest unit, uint256 decimal string). For kind='sell' the amount is the sell amount before fee; for kind='buy' it is the desired buy amount. Returns the orderbook quote (sellAmount/buyAmount/feeAmount/validTo). Before build_order, apply slippage to the limit side by kind: kind='sell' -> lower buyAmount (min out); kind='buy' -> raise sellAmount (max in).",
         inputSchema: {
           chainId: z.number().int().describe('EVM chain id (use list_chains for supported chains).'),
           sellToken: z.string().describe('Sell token address (0x...).'),
@@ -106,14 +106,18 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       'build_order',
       {
         description:
-          'Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is PINNED to the owner (proceeds cannot leave the account) unless unsafeCustomReceiver is set. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Sign `order` as EIP-712 with `signing`, then call submit_order. amounts are atoms (uint256 strings); set buyAmount to your slippage-adjusted minimum from get_quote.',
+          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is PINNED to the owner (proceeds cannot leave the account) unless unsafeCustomReceiver is set. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). Sign `order` as EIP-712 with `signing`, then call submit_order.",
         inputSchema: {
           chainId: z.number().int(),
           owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
           sellToken: z.string(),
           buyToken: z.string(),
-          sellAmount: z.string().describe('Exact sell amount to sign, in atoms.'),
-          buyAmount: z.string().describe('Minimum buy amount to accept, in atoms (apply slippage to the quote).'),
+          sellAmount: z
+            .string()
+            .describe("In atoms. kind 'sell': the EXACT amount you sell. kind 'buy': the MAXIMUM you'll spend (slippage-adjusted UP from the quote)."),
+          buyAmount: z
+            .string()
+            .describe("In atoms. kind 'sell': the MINIMUM you accept (slippage-adjusted DOWN from the quote). kind 'buy': the EXACT amount you want to receive."),
           kind: z.enum(['sell', 'buy']),
           validForSeconds: z.number().int().positive().optional().describe('Order lifetime (default 1200 = 20 min).'),
           feeAmount: z.string().optional().describe('Signed feeAmount in atoms (default "0" — CoW fee is in surplus).'),
@@ -224,7 +228,7 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       'list_chains',
       {
         description:
-          'List the chains Ophis serves, each with its orderbook host and GPv2Settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and partner-fee config. No input.',
+          "List Ophis chains, split into `tradeable` (orderbook host is live — only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, e.g. MegaETH/HyperEVM — these throw). Each tradeable chain includes its orderbook host and GPv2Settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and partner-fee config. No input.",
         inputSchema: {},
       },
       async () => {
