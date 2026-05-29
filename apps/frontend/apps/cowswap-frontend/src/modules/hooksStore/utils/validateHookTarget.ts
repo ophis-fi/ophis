@@ -22,8 +22,8 @@ export function getForbiddenHookTargetError(target: string | undefined, chainId:
   if (!normalized) return null
 
   const protocolContracts: ReadonlyArray<[string | undefined, string]> = [
-    [COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS[chainId], 'CoW Settlement'],
-    [COW_PROTOCOL_VAULT_RELAYER_ADDRESS[chainId], 'CoW VaultRelayer'],
+    [COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS[chainId], 'Ophis Settlement'],
+    [COW_PROTOCOL_VAULT_RELAYER_ADDRESS[chainId], 'Ophis VaultRelayer'],
   ]
 
   for (const [address, name] of protocolContracts) {

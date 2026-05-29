@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import ninjaCowImg from '@cowprotocol/assets/cow-swap/ninja-cow.png'
+import ninjaCowImg from '@cowprotocol/assets/cow-swap/ophis-mark.svg'
 import { PAGE_TITLES } from '@cowprotocol/common-const'
 import { ButtonPrimary } from '@cowprotocol/ui'
 
