@@ -369,6 +369,73 @@ const CHAIN_VALUES = new Set([
   'polygon',
 ])
 
+// Aliases the SYSTEM_PROMPT documents (raw phrase -> canonical value). Used to
+// verify that an entity's `value` actually DERIVES from its `raw` substring —
+// not just that `value` is allow-listed. Keep in sync with SYSTEM_PROMPT's
+// "Common aliases" / "Chain aliases" / amount rules. Undocumented aliases the
+// model might invent are dropped (graceful: the model normally emits the symbol
+// directly, which the direct match below accepts).
+const TOKEN_ALIASES: Record<string, string> = {
+  ether: 'ETH',
+  ethers: 'ETH',
+  'wrapped eth': 'WETH',
+  'lido staked eth': 'STETH',
+  'wrapped btc': 'WBTC',
+  bitcoin: 'BTC',
+  uniswap: 'UNI',
+  aave: 'AAVE',
+  chainlink: 'LINK',
+  polygon: 'MATIC',
+  solana: 'SOL',
+  cardano: 'ADA',
+}
+const CHAIN_ALIASES: Record<string, string> = {
+  'eth mainnet': 'ethereum',
+  l1: 'ethereum',
+  mainnet: 'ethereum',
+  op: 'optimism',
+  'polygon pos': 'polygon',
+  bsc: 'bnb',
+  'binance smart chain': 'bnb',
+  'arbitrum one': 'arbitrum',
+  arb: 'arbitrum',
+}
+const WORD_NUMBERS: Record<string, string> = {
+  'a hundred': '100',
+  hundred: '100',
+  'a thousand': '1000',
+  thousand: '1000',
+}
+
+function rawKey(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/**
+ * The canonical `value` must DERIVE from the `raw` substring: either `raw`
+ * normalizes to `value` (the model emitted the symbol/slug/number itself) or
+ * `raw` is a documented alias of `value`. Combined with the `raw ∈ text` check
+ * in isValidEntity, this guarantees the value is genuinely evidenced in the
+ * user's text — an injected response can't anchor a fabricated allow-listed
+ * value (e.g. USDC) to an unrelated `raw` like a space or "for". (Codex P2.)
+ */
+function valueDerivesFromRaw(kind: 'token' | 'chain' | 'amount', value: string, raw: string): boolean {
+  const k = rawKey(raw)
+  const alnum = k.replace(/[^a-z0-9]/g, '')
+  if (kind === 'token') {
+    if (alnum.length > 0 && alnum === value.toLowerCase()) return true // raw IS the symbol (USDC, weth, 1inch)
+    return TOKEN_ALIASES[k] === value
+  }
+  if (kind === 'chain') {
+    if (k === value || (alnum.length > 0 && alnum === value)) return true // raw IS the slug (optimism)
+    return CHAIN_ALIASES[k] === value
+  }
+  // amount: digits-of-raw match the numeric value, or a documented word-number.
+  const digits = k.replace(/[^0-9.]/g, '')
+  if (digits.length > 0 && digits === value) return true
+  return WORD_NUMBERS[k] === value
+}
+
 function isValidEntity(e: unknown, text: string): e is Entity {
   if (!e || typeof e !== 'object') return false
   const o = e as Record<string, unknown>
@@ -383,9 +450,19 @@ function isValidEntity(e: unknown, text: string): e is Entity {
   // sometimes off-by-one and the frontend (IntentInput.expandRange) re-anchors
   // them — but a `raw` that isn't in the text at all is a hallucination, dropped.
   if (o.raw.length === 0 || !text.toLowerCase().includes(o.raw.toLowerCase())) return false
-  if (o.type === 'sellToken' || o.type === 'buyToken') return TOKEN_VALUES.has(o.value)
-  if (o.type === 'chain') return CHAIN_VALUES.has(o.value)
-  if (o.type === 'amount') return /^\d+(\.\d+)?$/.test(o.value)
+  // `value` must be allow-listed AND actually derive from `raw` (Codex P2):
+  // raw-in-text + value-derives-from-raw ⇒ the value is genuinely evidenced in
+  // the user's text, so an injected response can't anchor a fabricated
+  // allow-listed value to an unrelated `raw`.
+  if (o.type === 'sellToken' || o.type === 'buyToken') {
+    return TOKEN_VALUES.has(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
+  }
+  if (o.type === 'chain') {
+    return CHAIN_VALUES.has(o.value) && valueDerivesFromRaw('chain', o.value, o.raw)
+  }
+  if (o.type === 'amount') {
+    return /^\d+(\.\d+)?$/.test(o.value) && valueDerivesFromRaw('amount', o.value, o.raw)
+  }
   return false
 }
 
