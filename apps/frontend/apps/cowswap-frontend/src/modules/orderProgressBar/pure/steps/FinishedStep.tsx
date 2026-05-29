@@ -312,11 +312,11 @@ function SolverRow({
             />
           </styledEl.SolverLogo>
           <styledEl.SolverName>
-            {solver.displayName || solver.solver}
+            <styledEl.SolverNameText>{solver.displayName || solver.solver}</styledEl.SolverNameText>
             {solver.description && (
-              <span>
+              <styledEl.SolverTooltip>
                 <InfoTooltip content={solver.description} />
-              </span>
+              </styledEl.SolverTooltip>
             )}
           </styledEl.SolverName>
         </styledEl.SolverInfo>
