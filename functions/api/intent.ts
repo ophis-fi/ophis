@@ -392,9 +392,9 @@ const TOKEN_ALIASES: Record<string, string> = {
   polygon: 'MATIC',
   solana: 'SOL',
   cardano: 'ADA',
-  // Full chain NAMES that are also token names — listed so (a) the token sense
-  // derives ("swap optimism for usdc" -> OP) and (b) rawCouldBeToken treats them
-  // as ambiguous, so the chain sense requires on/via/using context.
+  // Full chain NAMES that are also token names — listed so the token sense
+  // derives ("swap optimism for usdc" -> OP). The chain sense always requires
+  // on/via/using context (see the chain branch of isValidEntity).
   optimism: 'OP',
   arbitrum: 'ARB',
   avalanche: 'AVAX',
@@ -454,30 +454,34 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * True if `raw` could ALSO be a token (its symbol or a documented token alias).
- * Only such ambiguous raws (eth, op, arb, matic, avax, bnb, polygon, ethereum,
- * ...) need the chain-context guard below; unambiguous chain terms (base, ink,
- * linea, plasma, xdai, bsc, multi-word aliases) are never confused with tokens.
- */
-function rawCouldBeToken(raw: string): boolean {
-  const k = rawKey(raw)
-  const alnum = k.replace(/[^a-z0-9]/g, '')
-  return (alnum.length > 0 && TOKEN_VALUES.has(alnum.toUpperCase())) || TOKEN_ALIASES[k] !== undefined
-}
-
-/**
- * The prompt treats a token-like term as a chain ONLY when preceded by
+ * A chain term is treated as a routing selection ONLY when preceded by
  * on/via/using (NOT "to" — "swap USDC to ETH" means buy the ETH *token*).
  * Without this, {type:'chain', value:'ethereum', raw:'ETH'} for "swap ETH for
  * USDC" would mis-route the swap to Ethereum. Verify the (trimmed) raw appears
  * in a chain context somewhere in the text — offset-independent, since the
- * model's start/end can be off by one. Tolerates a determiner between the
- * preposition and the chain name ("on the Base network"). (Codex P2.)
+ * model's start/end can be off by one. Tolerates the article "the" between the
+ * preposition and the chain name ("on the Base network"). We deliberately do
+ * NOT tolerate "a"/"an": no legitimate chain selection reads "on a Base", while
+ * "a"/"an" let incidental prose match ("on a OP node", "using a base coat",
+ * "via an Arbitrum One bridge") — pure false-context surface. (Codex P2 +
+ * adversarial sweep 2026-05-29.)
+ *
+ * KNOWN LIMITATION (defense-in-depth, not a complete filter): because the match
+ * is offset-independent, prose that literally contains "on/via/using <chain>"
+ * still passes even when that clause is not the swap's routing directive (e.g.
+ * "gas paid on OP", "listed on Binance"). A regex cannot distinguish "on OP"
+ * [route] from "on OP" [prose]; the primary defense is the temperature-0 LLM,
+ * which should not emit a chain entity for such mentions. A stricter
+ * offset-adjacent check is intentionally avoided here because the model's
+ * offsets are themselves unreliable (see isValidEntity) and would over-reject.
  */
 function inChainContext(text: string, raw: string): boolean {
-  const r = raw.trim()
+  // Trim whitespace AND leading/trailing punctuation the model sometimes
+  // includes in the raw span ("Base." / "(base)") so a genuine "on Base."
+  // still matches; internal punctuation (the hyphen in "c-chain") is preserved.
+  const r = raw.trim().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '')
   if (r.length === 0) return false
-  return new RegExp('\\b(?:on|via|using)\\s+(?:the\\s+|an?\\s+)?' + escapeRegExp(r) + '\\b', 'i').test(text)
+  return new RegExp('\\b(?:on|via|using)\\s+(?:the\\s+)?' + escapeRegExp(r) + '\\b', 'i').test(text)
 }
 
 /**
@@ -528,12 +532,24 @@ function isValidEntity(e: unknown, text: string): e is Entity {
   }
   if (o.type === 'chain') {
     if (!CHAIN_VALUES.has(o.value) || !valueDerivesFromRaw('chain', o.value, o.raw)) return false
-    // Only a raw that could ALSO be a token (eth, op, matic, ...) needs the
-    // chain-context guard (preceded by on/via/using) so a token-side ticker
-    // like "ETH" in "swap ETH for USDC" isn't mis-read as the Ethereum chain.
-    // Unambiguous chains (base, linea, xdai, multi-word aliases) are accepted
-    // regardless of surrounding determiners — fixes "on the Base network".
-    return rawCouldBeToken(o.raw) ? inChainContext(text, o.raw) : true
+    // EVERY chain entity must be anchored to an explicit routing phrase
+    // (on/via/using <chain>, the article "the" tolerated). There is NO
+    // bare-acceptance exemption, because no chain slug is unambiguous: each of
+    // the 11 is either a tradable token (ethereum=ETH, base=BASE, ink=INK,
+    // arbitrum=ARB, optimism=OP, polygon=MATIC, bnb, gnosis=GNO, avalanche=AVAX)
+    // or an ordinary English word (base, ink, linea="line", plasma) — usually
+    // both. A bare slug is therefore indistinguishable from a token-side mention
+    // ("swap base for usdc" = the BASE token) or plain prose ("the base case",
+    // "plasma protocol", "I think" -> substring 'ink'). The raw-in-text gate is a
+    // boundary-less substring includes(), so a bare slug would let any text
+    // containing the slug (database, chainlink, think) anchor a mis-routing or
+    // injected chain entity; inChainContext applies a \b word boundary the
+    // includes() check lacks. Aligns with the system prompt's own rule (a chain
+    // is recognised only after on/via/using). Cost: a prepositionless chain
+    // mention is dropped (the swap stays on the current network and the user can
+    // pick it in the NetworkSelector) — a safe failure vs. mis-routing funds.
+    // (Codex P2 + adversarial sweep 2026-05-29.)
+    return inChainContext(text, o.raw)
   }
   if (o.type === 'amount') {
     return /^\d+(\.\d+)?$/.test(o.value) && valueDerivesFromRaw('amount', o.value, o.raw)
