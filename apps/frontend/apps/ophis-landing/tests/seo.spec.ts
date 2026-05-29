@@ -41,8 +41,8 @@ test('llms.txt follows the standard (H1 + summary blockquote) and links agent su
 test('index.html embeds schema.org JSON-LD (Organization / WebSite / SoftwareApplication) and is parseable', () => {
   const html = read('index.html')
   const m = html.match(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/)
-  expect(m).not.toBeNull()
-  const data = JSON.parse(m![1])
+  if (!m) throw new Error('JSON-LD <script> not found in index.html')
+  const data = JSON.parse(m[1])
   const types = (data['@graph'] ?? []).map((n: { '@type': string }) => n['@type'])
   expect(types).toEqual(expect.arrayContaining(['Organization', 'WebSite', 'SoftwareApplication']))
   // robots meta present.
