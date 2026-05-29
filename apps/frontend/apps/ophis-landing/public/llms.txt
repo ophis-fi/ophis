@@ -1,0 +1,21 @@
+# Ophis
+
+> Ophis is an intent-based, MEV-protected DEX aggregator built for the agent era. Describe a trade in plain English; Ophis parses the intent, fetches a best-execution quote, and batch-settles it MEV-protected on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Autonomous agents can trade through a public MCP server.
+
+Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price — an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On the Ophis-operated chains (Optimism, MegaETH, HyperEVM) settlement uses Ophis's own GPv2Settlement contract (NOT CoW's canonical address); resolve per-chain settlement and orderbook hosts through the `@ophis/sdk` helpers or the MCP `list_chains` tool.
+
+## For agents
+
+- [MCP server](https://mcp.ophis.fi/mcp): a Streamable-HTTP Model Context Protocol server. Tools: `parse_intent` (plain English -> structured swap), `get_quote` (best-execution quote), `build_order` (a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner), `submit_order` (relay a pre-signed order), `lookup_tier` (fee-rebate tier), `list_chains`. Public, unauthenticated, and keyless — it never holds keys or signs; the agent signs with its own key.
+- [Intent API](https://swap.ophis.fi/api/intent): `POST {"text": "swap 100 USDC for ETH on Optimism"}` returns `{ok: true, data: {intent, entities}}` where entities are `{type: sellToken|buyToken|amount|chain, value, raw}`.
+
+## Product
+
+- [Swap app](https://swap.ophis.fi/): the trading interface — start from a plain-English intent.
+- [Docs](https://docs.ophis.fi/): protocol design, Intent API reference, SDK, security audits.
+- [SDK](https://github.com/ophis-fi/ophis/tree/main/packages/sdk): `@ophis/sdk` — agent-safety helpers for building bounded CoW orders on Ophis (correct per-chain settlement domain, CIP-75 partner fee, receiver pinning).
+
+## Optional
+
+- [GitHub](https://github.com/ophis-fi/ophis): full source.
+- Fee model: CIP-75 price-improvement (25% of execution that beats the quote, capped at 0.5% of volume). Ordinary trades that do not beat the quote pay nothing.
