@@ -22,6 +22,64 @@ export const Bar = styled.footer<{ $borderless: boolean }>`
   }
 `
 
+// --- Compact variant -------------------------------------------------------
+// Slim footer used on viewport-fit routes (the intent landing): brand mark /
+// essential links / copyright. ~57px (one row) on desktop; may wrap to two
+// centered rows (~90px) on narrow mobile, which is fine — the landing's
+// Page uses overflow-y:auto, so a wrapped footer scrolls rather than clips.
+export const CompactBar = styled.footer<{ $borderless: boolean }>`
+  width: 100%;
+  flex: 0 0 auto;
+  padding: 14px 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  flex-wrap: wrap;
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-size: 13px;
+  color: rgba(245, 239, 230, 0.6);
+  /* More-opaque dark backing (0.72) gives the footer text a reliable dark
+     surface over the bright hero behind it, so the copyright/links clear
+     WCAG-AA contrast regardless of what hue sits behind the translucent bar. */
+  background: rgba(2, 0, 13, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid ${({ $borderless }) => ($borderless ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
+
+  @media (max-width: 600px) {
+    padding: 12px 18px;
+    justify-content: center;
+    gap: 6px 16px;
+  }
+`
+
+export const CompactBrand = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-weight: 600;
+  font-size: 15px;
+  color: #f5efe6;
+`
+
+export const CompactLinks = styled.nav`
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+`
+
+export const CompactCopy = styled.span`
+  font-size: 12px;
+  /* 0.6 (was 0.42) over the 0.72 dark bar clears WCAG-AA 4.5:1 for the
+     12px copyright line. Review finding LOW#2. */
+  color: rgba(245, 239, 230, 0.6);
+  white-space: nowrap;
+`
+
 export const Grid = styled.div`
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
