@@ -1,7 +1,5 @@
 import { ReactNode } from 'react'
 
-import CowError from '@cowprotocol/assets/cow-swap/CowError.png'
-import { CODE_LINK, DISCORD_LINK } from '@cowprotocol/common-const'
 import { userAgent } from '@cowprotocol/common-utils'
 import { AutoRow, MEDIA_WIDTHS, ExternalLink, UI, Media } from '@cowprotocol/ui'
 
@@ -15,6 +13,11 @@ import CopyHelper from 'legacy/components/Copy'
 
 // eslint-disable-next-line import/no-internal-modules -- Direct import to avoid circular dependency (barrel re-exports App which imports ErrorBoundary)
 import { Title } from 'modules/application/pure/Page'
+
+// Ophis public repo for crash reports (the global GITHUB_REPOSITORY const still
+// points at cowprotocol/cowswap because RAW_CODE_LINK fetches upstream assets
+// from there — so we scope the Ophis repo locally for the issue link).
+const OPHIS_REPO = 'https://github.com/ophis-fi/ophis'
 
 const FlexContainer = styled.div`
   display: flex;
@@ -91,7 +94,7 @@ export const ErrorWithStackTrace = ({ error, eventId }: ErrorWithStackTraceProps
         <StyledTitle>
           <Trans>Something went wrong</Trans>
         </StyledTitle>
-        <img src={CowError} alt={t`Ophis Error`} height="125" />
+        <img src="/ophis-icon-sunset.svg" alt={t`Ophis`} height="125" />
       </FlexContainer>
       <AutoColumn gap={'md'}>
         {eventId && (
@@ -112,7 +115,7 @@ export const ErrorWithStackTrace = ({ error, eventId }: ErrorWithStackTraceProps
             <ExternalLink
               id="create-github-issue-link"
               href={
-                CODE_LINK +
+                OPHIS_REPO +
                 `/issues/new?assignees=&labels=🐞 Bug,🔥 Critical&body=${encodedBody}&title=${encodeURIComponent(
                   `Crash report${eventId ? ` [${eventId}]` : ''}: \`${error.name}${error.message && `: ${truncate(error.message)}`}\``,
                 )}`
@@ -120,14 +123,6 @@ export const ErrorWithStackTrace = ({ error, eventId }: ErrorWithStackTraceProps
             >
               <ThemedText.Link fontSize={16}>
                 <Trans>Create an issue on GitHub</Trans>
-                <span>↗</span>
-              </ThemedText.Link>
-            </ExternalLink>
-          </LinkWrapper>
-          <LinkWrapper>
-            <ExternalLink id="get-support-on-discord" href={DISCORD_LINK}>
-              <ThemedText.Link fontSize={16}>
-                <Trans>Get support on Discord</Trans>
                 <span>↗</span>
               </ThemedText.Link>
             </ExternalLink>
@@ -140,7 +135,6 @@ export const ErrorWithStackTrace = ({ error, eventId }: ErrorWithStackTraceProps
 
 function issueBody(error: Error, eventId: string): string {
   const deviceData = userAgent
-  const sentryEventUrl = `https://cowprotocol.sentry.io/issues/?query=${encodeURIComponent(`id:${eventId}`)}`
   return `## URL
 
 ${window.location.href}
@@ -150,8 +144,6 @@ ${window.location.href}
 \`\`\`
 ${eventId}
 \`\`\`
-
-${sentryEventUrl}
 
 ${
   error.name &&
