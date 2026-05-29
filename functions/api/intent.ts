@@ -392,6 +392,13 @@ const TOKEN_ALIASES: Record<string, string> = {
   polygon: 'MATIC',
   solana: 'SOL',
   cardano: 'ADA',
+  // Full chain NAMES that are also token names — listed so (a) the token sense
+  // derives ("swap optimism for usdc" -> OP) and (b) rawCouldBeToken treats them
+  // as ambiguous, so the chain sense requires on/via/using context.
+  optimism: 'OP',
+  arbitrum: 'ARB',
+  avalanche: 'AVAX',
+  gnosis: 'GNO',
 }
 // Comprehensive aliases for the 11 routable chains (a BOUNDED domain, unlike
 // tokens). Covers the colloquial shorthands the model emits as `raw` — notably
@@ -447,18 +454,30 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * The prompt treats a chain term as a chain ONLY when preceded by on/via/using
- * (NOT "to" — "swap USDC to ETH" means buy the ETH *token*). Most chain names
- * double as token tickers (eth, op, arb, matic, avax, bnb, polygon, ...), so
- * without this context check an entity like {type:'chain', value:'ethereum',
- * raw:'ETH'} for "swap ETH for USDC" would mis-route the swap to Ethereum.
- * Verify the raw actually appears in a chain context somewhere in the text.
- * Offset-independent (the model's start/end can be off by one). (Codex P2.)
+ * True if `raw` could ALSO be a token (its symbol or a documented token alias).
+ * Only such ambiguous raws (eth, op, arb, matic, avax, bnb, polygon, ethereum,
+ * ...) need the chain-context guard below; unambiguous chain terms (base, ink,
+ * linea, plasma, xdai, bsc, multi-word aliases) are never confused with tokens.
+ */
+function rawCouldBeToken(raw: string): boolean {
+  const k = rawKey(raw)
+  const alnum = k.replace(/[^a-z0-9]/g, '')
+  return (alnum.length > 0 && TOKEN_VALUES.has(alnum.toUpperCase())) || TOKEN_ALIASES[k] !== undefined
+}
+
+/**
+ * The prompt treats a token-like term as a chain ONLY when preceded by
+ * on/via/using (NOT "to" — "swap USDC to ETH" means buy the ETH *token*).
+ * Without this, {type:'chain', value:'ethereum', raw:'ETH'} for "swap ETH for
+ * USDC" would mis-route the swap to Ethereum. Verify the (trimmed) raw appears
+ * in a chain context somewhere in the text — offset-independent, since the
+ * model's start/end can be off by one. Tolerates a determiner between the
+ * preposition and the chain name ("on the Base network"). (Codex P2.)
  */
 function inChainContext(text: string, raw: string): boolean {
   const r = raw.trim()
   if (r.length === 0) return false
-  return new RegExp('\\b(?:on|via|using)\\s+' + escapeRegExp(r) + '\\b', 'i').test(text)
+  return new RegExp('\\b(?:on|via|using)\\s+(?:the\\s+|an?\\s+)?' + escapeRegExp(r) + '\\b', 'i').test(text)
 }
 
 /**
@@ -508,10 +527,13 @@ function isValidEntity(e: unknown, text: string): e is Entity {
     return TOKEN_VALUES.has(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
   }
   if (o.type === 'chain') {
-    // Allow-listed + derives from raw + the raw is actually in a chain context
-    // (preceded by on/via/using) — so a bare ticker on the token side (e.g.
-    // "ETH" in "swap ETH for USDC") is NOT mis-read as the Ethereum chain.
-    return CHAIN_VALUES.has(o.value) && valueDerivesFromRaw('chain', o.value, o.raw) && inChainContext(text, o.raw)
+    if (!CHAIN_VALUES.has(o.value) || !valueDerivesFromRaw('chain', o.value, o.raw)) return false
+    // Only a raw that could ALSO be a token (eth, op, matic, ...) needs the
+    // chain-context guard (preceded by on/via/using) so a token-side ticker
+    // like "ETH" in "swap ETH for USDC" isn't mis-read as the Ethereum chain.
+    // Unambiguous chains (base, linea, xdai, multi-word aliases) are accepted
+    // regardless of surrounding determiners — fixes "on the Base network".
+    return rawCouldBeToken(o.raw) ? inChainContext(text, o.raw) : true
   }
   if (o.type === 'amount') {
     return /^\d+(\.\d+)?$/.test(o.value) && valueDerivesFromRaw('amount', o.value, o.raw)
