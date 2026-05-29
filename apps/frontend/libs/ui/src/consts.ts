@@ -5,7 +5,7 @@
 // is functional infrastructure (Safe wallet app deep-link), not
 // brand-marketing. LINK_GUIDE_ADD_CUSTOM_TOKEN was a cow.fi/learn/
 // article; repointed to Ophis homepage as placeholder.
-export const SAFE_COW_APP_LINK = 'https://app.safe.global/share/safe-app?appUrl=https%3A%2F%2Fswap.ophis.fi&chain=eth'
+export const SAFE_COW_APP_LINK = 'https://app.safe.global/share/safe-app?appUrl=https%3A%2F%2Fswap.cow.fi&chain=eth'
 export const LINK_GUIDE_ADD_CUSTOM_TOKEN = 'https://ophis.fi'
 export const MY_ORDERS_ID = 'my-orders'
 
