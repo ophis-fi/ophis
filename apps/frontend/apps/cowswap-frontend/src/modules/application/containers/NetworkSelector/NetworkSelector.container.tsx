@@ -1,4 +1,5 @@
 import { ReactNode, useRef, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 
 import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableChains, useBodyScrollbarLocker, useMediaQuery, useOnClickOutside } from '@cowprotocol/common-hooks'
@@ -76,6 +77,37 @@ export function NetworkSelector(): ReactNode {
     return null
   }
 
+  const flyoutMenu = (
+    <styledEl.FlyoutMenu>
+      <styledEl.FlyoutMenuContents ref={nodeMobile} onClick={stopPropagation}>
+        <styledEl.FlyoutMenuScrollable>
+          <styledEl.FlyoutHeader>
+            <styledEl.FlyoutHeaderTitle>
+              <Trans>Select a network</Trans>
+            </styledEl.FlyoutHeaderTitle>
+            <styledEl.CloseButton type="button" aria-label={t`Close`} onClick={handleClose}>
+              <styledEl.CloseIcon aria-hidden="true" />
+            </styledEl.CloseButton>
+          </styledEl.FlyoutHeader>
+          <styledEl.FlayoutMenuList>
+            <NetworksList
+              currentChainId={isChainIdUnsupported ? null : chainId}
+              isDarkMode={isDarkMode}
+              onSelectChain={handleSelectChain}
+              availableChains={availableChains}
+            />
+          </styledEl.FlayoutMenuList>
+
+          {/* Ophis bridge destinations (2026-05-22). Solana + Bitcoin
+              are NEAR-Intents bridge destinations only — no wallet
+              connect possible. Surfacing here for discoverability;
+              actual selection happens in the buy-side token picker. */}
+          <BridgeDestinationsFooter onClose={isOpen ? toggleModal : undefined} />
+        </styledEl.FlyoutMenuScrollable>
+      </styledEl.FlyoutMenuContents>
+    </styledEl.FlyoutMenu>
+  )
+
   return (
     <styledEl.SelectorWrapper ref={node} onClick={toggleModal}>
       <styledEl.SelectorControls ref={nodeSelector} $isChainIdUnsupported={isChainIdUnsupported} $isOpen={isOpen}>
@@ -95,36 +127,13 @@ export function NetworkSelector(): ReactNode {
           </>
         )}
       </styledEl.SelectorControls>
-      {isOpen && (
-        <styledEl.FlyoutMenu>
-          <styledEl.FlyoutMenuContents ref={nodeMobile} onClick={stopPropagation}>
-            <styledEl.FlyoutMenuScrollable>
-              <styledEl.FlyoutHeader>
-                <styledEl.FlyoutHeaderTitle>
-                  <Trans>Select a network</Trans>
-                </styledEl.FlyoutHeaderTitle>
-                <styledEl.CloseButton type="button" aria-label={t`Close`} onClick={handleClose}>
-                  <styledEl.CloseIcon aria-hidden="true" />
-                </styledEl.CloseButton>
-              </styledEl.FlyoutHeader>
-              <styledEl.FlayoutMenuList>
-                <NetworksList
-                  currentChainId={isChainIdUnsupported ? null : chainId}
-                  isDarkMode={isDarkMode}
-                  onSelectChain={handleSelectChain}
-                  availableChains={availableChains}
-                />
-              </styledEl.FlayoutMenuList>
-
-              {/* Ophis bridge destinations (2026-05-22). Solana + Bitcoin
-                  are NEAR-Intents bridge destinations only — no wallet
-                  connect possible. Surfacing here for discoverability;
-                  actual selection happens in the buy-side token picker. */}
-              <BridgeDestinationsFooter onClose={isOpen ? toggleModal : undefined} />
-            </styledEl.FlyoutMenuScrollable>
-          </styledEl.FlyoutMenuContents>
-        </styledEl.FlyoutMenu>
-      )}
+      {/* On mobile the flyout is a position:fixed bottom-sheet. It must be
+          PORTALED to <body>: rendered inline it sits inside OphisHeader, whose
+          backdrop-filter:blur creates a containing block for fixed descendants,
+          so `bottom:56px` resolved against the ~83px header and the sheet
+          rendered off-screen at the top (unselectable). On desktop the flyout
+          is position:absolute relative to the selector, so it stays inline. */}
+      {isOpen && (isUpToMedium ? createPortal(flyoutMenu, document.body) : flyoutMenu)}
     </styledEl.SelectorWrapper>
   )
 }
