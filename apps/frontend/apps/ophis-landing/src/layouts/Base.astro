@@ -1,5 +1,6 @@
 ---
 import Particles from '../components/Particles.astro'
+import Sparks from '../components/Sparks.astro'
 
 export interface Props {
   title?: string
@@ -68,6 +69,7 @@ const {
 <body>
   <div class="bg-orbs" aria-hidden="true"></div>
   <Particles />
+  <Sparks />
   <div class="scroll-progress" aria-hidden="true"></div>
   <slot />
 </body>

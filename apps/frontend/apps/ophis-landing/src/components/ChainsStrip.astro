@@ -8,8 +8,8 @@ const chains: Chain[] = [
   { name: 'Polygon',   logo: '/logos/chain-polygon.png',   status: 'live' },
   { name: 'Avalanche', logo: '/logos/chain-avalanche.png', status: 'live' },
   { name: 'Linea',     logo: '/logos/chain-linea.jpg',     status: 'live' },
-  { name: 'Plasma',    logo: null,                          status: 'live' },
-  { name: 'Ink',       logo: null,                          status: 'live' },
+  { name: 'Plasma',    logo: '/logos/chain-plasma.svg',     status: 'live' },
+  { name: 'Ink',       logo: '/logos/chain-ink.svg',        status: 'live' },
   { name: 'Gnosis',    logo: '/logos/chain-gnosis.png',    status: 'live' },
   { name: 'Optimism',  logo: '/logos/chain-optimism.png',  status: 'live' },
   { name: 'Solana',    logo: null,                          status: 'via-near', svg: 'solana' },
@@ -17,7 +17,7 @@ const chains: Chain[] = [
 ]
 ---
 <section class="chains">
-  <div class="chains-inner reveal-up" data-reveal>
+  <div class="chains-inner reveal-up flare-sweep" data-reveal>
     <div class="label">Live on</div>
     <div class="chains-row stagger">
       {chains.map(c => (
