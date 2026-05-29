@@ -454,21 +454,38 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * Reduce a chain `raw` span to the bare chain term for derivation + context
+ * matching. The model may wrap the term in punctuation ("(Base)", "Base.") or
+ * prefix an article ("an L1", "the Base") because raw need only be an exact
+ * substring of the input. Strip surrounding punctuation FIRST, then a single
+ * leading article — order matters: "(the Base)" must become "Base", not stall
+ * on the leading "(" before the article strip can run (Codex P2 2026-05-29).
+ * Internal punctuation (the hyphen in "c-chain") and inner spaces ("arbitrum
+ * one") are preserved.
+ */
+function normalizeChainRaw(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^[^a-zA-Z0-9]+/, '')
+    .replace(/[^a-zA-Z0-9]+$/, '')
+    .replace(/^(?:the|an?)\s+/i, '')
+}
+
+/**
  * A chain term is treated as a routing selection ONLY when preceded by
  * on/via/using (NOT "to" — "swap USDC to ETH" means buy the ETH *token*).
  * Without this, {type:'chain', value:'ethereum', raw:'ETH'} for "swap ETH for
- * USDC" would mis-route the swap to Ethereum. Verify the (trimmed) raw appears
- * in a chain context somewhere in the text — offset-independent, since the
- * model's start/end can be off by one. Tolerates an article ("the"/"a"/"an")
- * between the preposition and the chain name ("on the Base network", "using an
- * L1"). "a"/"an" is required because generic chain NOUNS take the indefinite
- * article — the prompt documents "l1" -> ethereum, and "swap USDC for ETH using
- * an L1" is a natural request that must route to Ethereum, not the default chain
- * (Codex P2 2026-05-29). The cost is that "a"/"an" also lets some incidental
- * prose match ("on a OP node", "using a base coat") — but those require the LLM
- * to mis-emit a chain entity for obvious prose and fall under the documented
- * offset-independent residual below, a far less likely failure than dropping a
- * documented alias a user actually typed.
+ * USDC" would mis-route the swap to Ethereum. Verify the (already normalized)
+ * term appears in a chain context somewhere in the text — offset-independent,
+ * since the model's start/end can be off by one. Tolerates an article
+ * ("the"/"a"/"an") between the preposition and the chain name ("on the Base
+ * network", "using an L1") — "a"/"an" is required because generic chain NOUNS
+ * take the indefinite article (the prompt documents "l1" -> ethereum, and "swap
+ * USDC for ETH using an L1" must route to Ethereum). Also tolerates a single
+ * opening bracket/quote so "on (Base)" matches. The term must NOT be followed by
+ * a word char or hyphen, so "using base-fee" / "OP-stack" / "base-layer" do not
+ * match the chain as a hyphenated prefix (\b alone treats "-" as a boundary —
+ * Codex 2026-05-29).
  *
  * KNOWN LIMITATION (defense-in-depth, not a complete filter): because the match
  * is offset-independent, prose that literally contains "on/via/using <chain>"
@@ -479,13 +496,12 @@ function escapeRegExp(s: string): string {
  * offset-adjacent check is intentionally avoided here because the model's
  * offsets are themselves unreliable (see isValidEntity) and would over-reject.
  */
-function inChainContext(text: string, raw: string): boolean {
-  // Trim whitespace AND leading/trailing punctuation the model sometimes
-  // includes in the raw span ("Base." / "(base)") so a genuine "on Base."
-  // still matches; internal punctuation (the hyphen in "c-chain") is preserved.
-  const r = raw.trim().replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '')
-  if (r.length === 0) return false
-  return new RegExp('\\b(?:on|via|using)\\s+(?:the\\s+|an?\\s+)?' + escapeRegExp(r) + '\\b', 'i').test(text)
+function inChainContext(text: string, term: string): boolean {
+  const t = term.trim()
+  if (t.length === 0) return false
+  const pattern =
+    '\\b(?:on|via|using)\\s+[("\'\\[]?\\s*(?:the\\s+|an?\\s+)?' + escapeRegExp(t) + '(?![\\w-])'
+  return new RegExp(pattern, 'i').test(text)
 }
 
 /**
@@ -535,14 +551,12 @@ function isValidEntity(e: unknown, text: string): e is Entity {
     return TOKEN_VALUES.has(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
   }
   if (o.type === 'chain') {
-    // The model may include a leading article in the raw span ("an L1", "the
-    // Base") because raw need only be an exact substring of the input. Strip it
-    // ONCE here so both the derivation check and the context match see the bare
-    // chain term — otherwise "an L1" fails valueDerivesFromRaw ("an l1" is not a
-    // CHAIN_ALIASES key) and the documented l1->ethereum request is dropped.
-    // (Codex P2 2026-05-29.) The raw-in-text integrity check above already ran
-    // on the ORIGINAL o.raw, so this strip can't smuggle in an unevidenced term.
-    const chainRaw = o.raw.replace(/^\s*(?:the|an?)\s+/i, '')
+    // Reduce the raw span to the bare chain term (strip surrounding punctuation
+    // + a leading article) so both the derivation check and the context match
+    // see "L1"/"Base", not "an L1"/"(Base)". The raw-in-text integrity check
+    // above already ran on the ORIGINAL o.raw, so this can't smuggle in an
+    // unevidenced term. (Codex P2 2026-05-29.)
+    const chainRaw = normalizeChainRaw(o.raw)
     if (!CHAIN_VALUES.has(o.value) || !valueDerivesFromRaw('chain', o.value, chainRaw)) return false
     // EVERY chain entity must be anchored to an explicit routing phrase
     // (on/via/using <chain>, an article the/a/an tolerated). There is NO
