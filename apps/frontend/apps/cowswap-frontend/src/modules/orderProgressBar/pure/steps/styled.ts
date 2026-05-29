@@ -296,6 +296,11 @@ export const SolverRankings = styled.div`
   justify-content: center;
   align-items: center;
   width: 100%;
+  /* Backstop: clip any residual horizontal overflow from the solver table so
+     it can never widen the document on a narrow viewport (overflow-x: clip
+     leaves vertical flow + tooltip portals intact; gracefully ignored on
+     older engines, where the SolverName truncation above already prevents it). */
+  overflow-x: clip;
   margin: 32px auto 0;
 
   > h3 {
@@ -408,23 +413,34 @@ export const SolverInfo = styled.div`
   align-items: center;
   gap: 6px;
   color: inherit;
+  min-width: 0;
+  max-width: 100%;
 `
 
 export const SolverLogo = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 `
 
 export const SolverName = styled.span`
   flex-grow: 1;
+  /* Must be able to shrink + truncate: long solver names (in an auto-layout
+     <table>) otherwise force the column — and the inline-rendered progress
+     modal — wider than a narrow mobile viewport (Rabby in-app browser), which
+     shifts the whole page sideways. (2026-05-29 responsive incident.) */
+  min-width: 0;
+  max-width: 100%;
   color: inherit;
   text-transform: capitalize;
-  display: flex;
-  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
   > span {
     margin-left: 4px;
+    vertical-align: middle;
   }
 `
 
