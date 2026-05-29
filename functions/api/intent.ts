@@ -442,6 +442,25 @@ function rawKey(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * The prompt treats a chain term as a chain ONLY when preceded by on/via/using
+ * (NOT "to" — "swap USDC to ETH" means buy the ETH *token*). Most chain names
+ * double as token tickers (eth, op, arb, matic, avax, bnb, polygon, ...), so
+ * without this context check an entity like {type:'chain', value:'ethereum',
+ * raw:'ETH'} for "swap ETH for USDC" would mis-route the swap to Ethereum.
+ * Verify the raw actually appears in a chain context somewhere in the text.
+ * Offset-independent (the model's start/end can be off by one). (Codex P2.)
+ */
+function inChainContext(text: string, raw: string): boolean {
+  const r = raw.trim()
+  if (r.length === 0) return false
+  return new RegExp('\\b(?:on|via|using)\\s+' + escapeRegExp(r) + '\\b', 'i').test(text)
+}
+
 /**
  * The canonical `value` must DERIVE from the `raw` substring: either `raw`
  * normalizes to `value` (the model emitted the symbol/slug/number itself) or
@@ -489,7 +508,10 @@ function isValidEntity(e: unknown, text: string): e is Entity {
     return TOKEN_VALUES.has(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
   }
   if (o.type === 'chain') {
-    return CHAIN_VALUES.has(o.value) && valueDerivesFromRaw('chain', o.value, o.raw)
+    // Allow-listed + derives from raw + the raw is actually in a chain context
+    // (preceded by on/via/using) — so a bare ticker on the token side (e.g.
+    // "ETH" in "swap ETH for USDC") is NOT mis-read as the Ethereum chain.
+    return CHAIN_VALUES.has(o.value) && valueDerivesFromRaw('chain', o.value, o.raw) && inChainContext(text, o.raw)
   }
   if (o.type === 'amount') {
     return /^\d+(\.\d+)?$/.test(o.value) && valueDerivesFromRaw('amount', o.value, o.raw)
