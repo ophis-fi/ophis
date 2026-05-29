@@ -378,10 +378,14 @@ const CHAIN_VALUES = new Set([
 const TOKEN_ALIASES: Record<string, string> = {
   ether: 'ETH',
   ethers: 'ETH',
+  ethereum: 'ETH', // full name as the ETH token (parallels "ether"); chain-sense is handled by CHAIN_ALIASES
   'wrapped eth': 'WETH',
+  'wrapped ether': 'WETH',
   'lido staked eth': 'STETH',
   'wrapped btc': 'WBTC',
+  'wrapped bitcoin': 'WBTC',
   bitcoin: 'BTC',
+  tether: 'USDT',
   uniswap: 'UNI',
   aave: 'AAVE',
   chainlink: 'LINK',
@@ -389,16 +393,43 @@ const TOKEN_ALIASES: Record<string, string> = {
   solana: 'SOL',
   cardano: 'ADA',
 }
+// Comprehensive aliases for the 11 routable chains (a BOUNDED domain, unlike
+// tokens). Covers the colloquial shorthands the model emits as `raw` — notably
+// bare "eth" for the Ethereum chain (prompt rule: ETH after on/via/using is a
+// chain), which the prior narrow map dropped (Codex P2 regression). Slugs
+// themselves (ethereum, base, ink, linea, plasma, …) match directly via the
+// k===value check in valueDerivesFromRaw, so only NON-slug aliases live here.
 const CHAIN_ALIASES: Record<string, string> = {
+  // ethereum
+  eth: 'ethereum',
   'eth mainnet': 'ethereum',
-  l1: 'ethereum',
+  'ethereum mainnet': 'ethereum',
   mainnet: 'ethereum',
-  op: 'optimism',
-  'polygon pos': 'polygon',
-  bsc: 'bnb',
-  'binance smart chain': 'bnb',
-  'arbitrum one': 'arbitrum',
+  l1: 'ethereum',
+  // arbitrum
   arb: 'arbitrum',
+  'arbitrum one': 'arbitrum',
+  // avalanche
+  avax: 'avalanche',
+  'avalanche c-chain': 'avalanche',
+  'c-chain': 'avalanche',
+  // bnb
+  bsc: 'bnb',
+  binance: 'bnb',
+  'binance chain': 'bnb',
+  'binance smart chain': 'bnb',
+  'bnb chain': 'bnb',
+  // gnosis
+  xdai: 'gnosis',
+  'gnosis chain': 'gnosis',
+  // optimism
+  op: 'optimism',
+  'op mainnet': 'optimism',
+  'optimism mainnet': 'optimism',
+  // polygon
+  matic: 'polygon',
+  'polygon pos': 'polygon',
+  poly: 'polygon',
 }
 const WORD_NUMBERS: Record<string, string> = {
   'a hundred': '100',
