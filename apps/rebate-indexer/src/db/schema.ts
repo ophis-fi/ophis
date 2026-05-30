@@ -62,7 +62,12 @@ export const trades = pgTable(
 export const trackedWallets = pgTable('tracked_wallets', {
   wallet: bytea('wallet').primaryKey(),
   firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+  // Stamped on a fully-successful fetch (all chains OK). Drives the 6h refresh
+  // window and "this wallet has no Ophis trades" eviction.
   lastFetched: timestamp('last_fetched', { withTimezone: true }),
+  // Stamped on EVERY fetch attempt (success or failure). Lets the prune tell a
+  // wallet we tried-and-failed (keep, retry) from one we never reached (overflow).
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
 });
 
 export const rebateBatches = pgTable('rebate_batches', {

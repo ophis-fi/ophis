@@ -214,39 +214,56 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
         }
       }
-      // Only advance the cursor when EVERY chain succeeded — otherwise a transient
-      // CoW outage would mark the wallet fresh and skip it for a full cycle.
+      // Always record the attempt; advance last_fetched only when EVERY chain
+      // succeeded. A transient CoW outage must not mark the wallet fully fetched
+      // (it should retry next run) NOR look like never-attempted junk (the prune
+      // distinguishes the two via last_attempt_at).
       if (ownerOk) {
-        await sql`UPDATE tracked_wallets SET last_fetched = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+        await sql`UPDATE tracked_wallets SET last_fetched = now(), last_attempt_at = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+      } else {
+        await sql`UPDATE tracked_wallets SET last_attempt_at = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       }
     }
 
-    // Evict spam wallets registered via public /tier that never produced an
-    // Ophis trade. Bounds table growth + the per-run CoW fan-out an attacker
-    // could inflate by mass-registering junk. Two tiers, to avoid dropping a
-    // legitimate wallet's volume before we've had a fair chance to fetch it:
-    //   - FETCHED-and-empty (last_fetched IS NOT NULL): we already queried CoW
-    //     and found no Ophis trades -> evict after 7 days.
-    //   - NEVER-FETCHED (last_fetched IS NULL, i.e. overflow behind the
-    //     MAX_OWNERS_PER_RUN cap under spam): give it 30 days = the full rebate
-    //     window. New wallets are fetched first (ORDER BY ... NULLS FIRST), so a
-    //     legit wallet is almost always fetched well within 30d; and a trade
-    //     older than 30d is outside the rebate window anyway, so evicting then
-    //     loses nothing rebateable. A wallet evicted in error simply re-registers
-    //     on its next /tier hit and its trades are still on CoW to re-fetch.
-    const pruned = await sql`
-      DELETE FROM tracked_wallets
-      WHERE wallet NOT IN (SELECT wallet FROM trades)
-        AND (
-          (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
-          OR (last_fetched IS NULL AND first_seen < now() - INTERVAL '30 days')
-        )
-    `;
-    log.info({ owners: owners.length, inserted, pruned: pruned.count }, 'fetcher complete');
+    // NB: pruning lives in pruneStaleWallets() (called nightly), NOT here.
+    // runFetcher is invoked in a LOOP by replay-from-genesis; pruning inside it
+    // would delete aged, not-yet-refetched wallets before later iterations reach
+    // them, silently rebuilding an incomplete ledger.
+    log.info({ owners: owners.length, inserted }, 'fetcher complete');
     return { inserted, owners: owners.length };
   } finally {
     // Release on the SAME reserved connection that acquired it, then return it.
     await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
     lockConn.release();
   }
+}
+
+/**
+ * Evict tracked wallets that will never yield an Ophis rebate, to bound the
+ * registry under public /tier spam. Runs OUT of band (nightly only) — never
+ * inside runFetcher — so a replay-from-genesis loop can rebuild the ledger
+ * without the prune deleting aged, not-yet-refetched wallets mid-rebuild.
+ *
+ * Never touches a proven wallet (one with a row in `trades`), and never drops a
+ * wallet we haven't given a fair chance to fetch (uses last_attempt_at to tell a
+ * transient failure apart from genuine emptiness / deep spam backlog):
+ *   - fetched OK but empty     (last_fetched set)                 -> 7 days since registration
+ *   - attempted, never succeeded (last_attempt_at set, no fetch)  -> 30 days since the last attempt
+ *   - never even attempted      (overflow behind the per-run cap) -> 30 days since registration
+ * A wallet still being retried (attempted recently, last_attempt_at < 30d) is
+ * NOT pruned, so a CoW outage on its chain can't drop it before it succeeds.
+ */
+export async function pruneStaleWallets(): Promise<{ pruned: number }> {
+  const { sql } = await import('./db/index.js');
+  const pruned = await sql`
+    DELETE FROM tracked_wallets
+    WHERE wallet NOT IN (SELECT wallet FROM trades)
+      AND (
+        (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
+        OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')
+        OR (last_fetched IS NULL AND last_attempt_at IS NULL AND first_seen < now() - INTERVAL '30 days')
+      )
+  `;
+  log.info({ pruned: pruned.count }, 'pruned stale tracked wallets');
+  return { pruned: pruned.count };
 }
