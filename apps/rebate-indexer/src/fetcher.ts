@@ -94,14 +94,21 @@ export async function fetchChainTrades(
       }
       if (!isAppCodeOfInterest(appCode)) continue;
 
-      // Only record fully-settled orders, and use the order's EXECUTED amounts
-      // (total across all fills, surplus-inclusive) rather than one fill's
-      // amount — otherwise partial-fill / TWAP orders undercount volume and
-      // underpay rebates. A still-filling order is skipped now and picked up on
-      // a later run once it settles (it isn't in `trades` yet, so not deduped).
-      if (order.status !== 'fulfilled') continue;
+      // Record settled volume from any order in a TERMINAL state, using the
+      // order's EXECUTED amounts (total across fills, surplus-inclusive). This
+      // includes orders that partially filled and were then cancelled/expired:
+      // those fills are real settled CoW volume the rebate must count, and the
+      // executed amount is final once terminal. We skip only still-active orders
+      // (open/presignaturePending) — they may fill more and re-evaluate on a
+      // later run (they aren't stored, so not deduped out). Using the order's
+      // executed total (not a single fill) also prevents partial-fill/TWAP
+      // undercounting.
+      const isTerminal =
+        order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired';
+      if (!isTerminal) continue;
       const execSell = order.executedSellAmount ?? t.sellAmount;
       const execBuy = order.executedBuyAmount ?? t.buyAmount;
+      if (BigInt(execSell) === 0n) continue; // no settled volume (defensive; a /trades row implies a fill)
 
       out.push({
         tradeUid: t.orderUid as `0x${string}`,
@@ -137,7 +144,7 @@ export async function fetchChainTrades(
 // Fixed key for the singleton advisory lock (any constant works).
 const FETCHER_LOCK_KEY = 770042;
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number }> {
+export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -155,7 +162,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
   if (!lockRow?.locked) {
     lockConn.release();
     log.info('fetcher already running (advisory lock held); skipping');
-    return { inserted: 0 };
+    return { inserted: 0, owners: 0 };
   }
 
   try {
@@ -214,17 +221,29 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       }
     }
 
-    // Evict spam: wallets registered via public /tier that produced no Ophis
-    // trade within a week. Bounds table growth and the per-run CoW fan-out an
-    // attacker could otherwise inflate by mass-registering junk addresses.
+    // Evict spam wallets registered via public /tier that never produced an
+    // Ophis trade. Bounds table growth + the per-run CoW fan-out an attacker
+    // could inflate by mass-registering junk. Two tiers, to avoid dropping a
+    // legitimate wallet's volume before we've had a fair chance to fetch it:
+    //   - FETCHED-and-empty (last_fetched IS NOT NULL): we already queried CoW
+    //     and found no Ophis trades -> evict after 7 days.
+    //   - NEVER-FETCHED (last_fetched IS NULL, i.e. overflow behind the
+    //     MAX_OWNERS_PER_RUN cap under spam): give it 30 days = the full rebate
+    //     window. New wallets are fetched first (ORDER BY ... NULLS FIRST), so a
+    //     legit wallet is almost always fetched well within 30d; and a trade
+    //     older than 30d is outside the rebate window anyway, so evicting then
+    //     loses nothing rebateable. A wallet evicted in error simply re-registers
+    //     on its next /tier hit and its trades are still on CoW to re-fetch.
     const pruned = await sql`
       DELETE FROM tracked_wallets
-      WHERE last_fetched IS NOT NULL
-        AND first_seen < now() - INTERVAL '7 days'
-        AND wallet NOT IN (SELECT wallet FROM trades)
+      WHERE wallet NOT IN (SELECT wallet FROM trades)
+        AND (
+          (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
+          OR (last_fetched IS NULL AND first_seen < now() - INTERVAL '30 days')
+        )
     `;
     log.info({ owners: owners.length, inserted, pruned: pruned.count }, 'fetcher complete');
-    return { inserted };
+    return { inserted, owners: owners.length };
   } finally {
     // Release on the SAME reserved connection that acquired it, then return it.
     await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;

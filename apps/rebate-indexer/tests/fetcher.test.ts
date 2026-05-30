@@ -38,7 +38,7 @@ describe('fetcher.fetchChainTrades', () => {
     blockTime: vi.fn(),
   }));
   const server = setupServer(
-    http.get(`${COW_FAKE_BASE}/xdai/api/v1/trades`, () => HttpResponse.json(handlers.trades())),
+    http.get(`${COW_FAKE_BASE}/xdai/api/v2/trades`, () => HttpResponse.json(handlers.trades())),
     http.get(`${COW_FAKE_BASE}/xdai/api/v1/orders/:uid`, ({ params }) =>
       HttpResponse.json(handlers.order(params.uid))),
   );
@@ -79,21 +79,29 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows).toHaveLength(1017);
   });
 
-  it('skips non-fulfilled orders and records executed (not fill) amounts', async () => {
-    const filledUid = '0x' + '0e'.repeat(56);
-    const openUid = '0x' + '0f'.repeat(56);
+  it('records terminal orders (fulfilled/cancelled/expired) with executed amounts, skips active ones', async () => {
+    const fulfilledUid = '0x' + '0e'.repeat(56);
+    const cancelledUid = '0x' + '0f'.repeat(56);
+    const openUid = '0x' + '1a'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
     handlers.trades.mockReturnValue([
-      sampleTrade(filledUid, '0xa'.padEnd(42, '0'), '1'), // fill amount '1' differs from executed
-      sampleTrade(openUid, '0xa'.padEnd(42, '0'), '1'),
+      sampleTrade(fulfilledUid, owner, '1'), // fill amount '1' differs from executed total
+      sampleTrade(cancelledUid, owner, '1'),
+      sampleTrade(openUid, owner, '1'),
     ]);
-    handlers.order.mockImplementation((uid: string) => uid === filledUid
-      ? { ...sampleOrder(filledUid, '0xa'.padEnd(42, '0'), 'ophis'), status: 'fulfilled', executedSellAmount: '9999', executedBuyAmount: '8888' }
-      : { ...sampleOrder(openUid, '0xa'.padEnd(42, '0'), 'ophis'), status: 'open' });
+    handlers.order.mockImplementation((uid: string) => {
+      const base = sampleOrder(uid, owner, 'ophis');
+      if (uid === fulfilledUid) return { ...base, status: 'fulfilled', executedSellAmount: '9999', executedBuyAmount: '8888' };
+      if (uid === cancelledUid) return { ...base, status: 'cancelled', executedSellAmount: '500', executedBuyAmount: '400' }; // partial fill, then cancelled
+      return { ...base, status: 'open' }; // still active
+    });
 
     const { fetchChainTrades } = await import('../src/fetcher.js');
-    const rows = await fetchChainTrades(100, '0xa'.padEnd(42, '0') as `0x${string}`, {});
-    expect(rows.map((r) => r.tradeUid)).toEqual([filledUid]); // 'open' order skipped
-    expect(rows[0]!.sellAmount).toBe(9999n); // executed total, not the fill's '1'
-    expect(rows[0]!.buyAmount).toBe(8888n);
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    const byUid = Object.fromEntries(rows.map((r) => [r.tradeUid, r]));
+    expect(Object.keys(byUid).sort()).toEqual([cancelledUid, fulfilledUid].sort()); // 'open' skipped
+    expect(byUid[fulfilledUid]!.sellAmount).toBe(9999n); // executed total, not the fill's '1'
+    expect(byUid[fulfilledUid]!.buyAmount).toBe(8888n);
+    expect(byUid[cancelledUid]!.sellAmount).toBe(500n); // partial settled volume of a cancelled order is counted
   });
 });
