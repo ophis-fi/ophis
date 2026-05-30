@@ -33,7 +33,21 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     await runMigrations();
     log.info('clearing derived state');
     await sql`TRUNCATE rebate_batch_entries, rebate_batches, trades RESTART IDENTITY CASCADE`;
-    await runFetcher();
+    // Reset the fetch cursor too: runFetcher only re-fetches wallets whose
+    // last_fetched is NULL or older than 6h. After a truncate, a replay run
+    // shortly after the nightly fetch would otherwise skip every recently-
+    // fetched wallet and rebuild an empty/partial ledger. Clearing last_fetched
+    // forces a full re-fetch of all tracked wallets from scratch.
+    await sql`UPDATE tracked_wallets SET last_fetched = NULL`;
+    // runFetcher processes at most MAX_OWNERS_PER_RUN owners per call, so loop
+    // until a run finds no eligible owners — otherwise a registry larger than
+    // the per-run cap would only be partially rebuilt. Bounded guard against a
+    // persistently-failing owner that never advances its cursor.
+    for (let i = 0; i < 100; i++) {
+      const { owners } = await runFetcher();
+      if (owners === 0) break;
+      if (i === 99) log.warn('replay-from-genesis fetch loop hit guard limit (persistently-failing owners?)');
+    }
     await runPricer();
     await runScorer();
   },

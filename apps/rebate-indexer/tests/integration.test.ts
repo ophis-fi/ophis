@@ -39,7 +39,7 @@ const handlers = {
 };
 const server = setupServer(
   // xdai (chainId=100) — the chain under test
-  http.get(`${COW}/xdai/api/v1/trades`, () => HttpResponse.json(handlers.trades)),
+  http.get(`${COW}/xdai/api/v2/trades`, () => HttpResponse.json(handlers.trades)),
   http.get(`${COW}/xdai/api/v1/orders/:uid`, ({ params }) => HttpResponse.json(handlers.order(params.uid as string))),
   http.post(`${COW}/xdai/api/v1/quote`, async () => HttpResponse.json({
     quote: {
@@ -51,7 +51,7 @@ const server = setupServer(
     expiration: '2026-05-01T13:00:00Z',
   })),
   // Catch-all: return empty trades for all other chains so the fetcher doesn't hit real network.
-  http.get(`${COW}/:chain/api/v1/trades`, () => HttpResponse.json([])),
+  http.get(`${COW}/:chain/api/v2/trades`, () => HttpResponse.json([])),
 );
 
 beforeAll(async () => {
