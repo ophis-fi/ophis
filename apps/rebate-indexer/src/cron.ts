@@ -6,21 +6,11 @@ import { runBatcher, isFirstOfMonth } from './batcher.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
-import { createPublicClient, http } from 'viem';
-import { gnosis } from 'viem/chains';
 
 const log = logger.child({ module: 'cron' });
 
 function gnosisRpc(): string {
   return process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com';
-}
-
-async function blockTimestampLookup(_chainId: number, blockNumber: number): Promise<Date> {
-  // For Phase 1 we only block-fetch on Gnosis. Other chains: rely on CoW's API timestamps
-  // (we accept a 1-day clock-skew worst case; rebate window is 30 days).
-  const client = createPublicClient({ chain: gnosis, transport: http(gnosisRpc()) });
-  const block = await client.getBlock({ blockNumber: BigInt(blockNumber) });
-  return new Date(Number(block.timestamp) * 1_000);
 }
 
 /**
@@ -33,7 +23,7 @@ export async function runNightlyPipeline(): Promise<void> {
   log.info('pipeline start');
 
   try {
-    const { inserted } = await runFetcher({ blockTimestampLookup });
+    const { inserted } = await runFetcher();
     log.info({ inserted }, 'fetcher complete');
 
     const priced = await runPricer();
