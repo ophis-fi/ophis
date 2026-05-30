@@ -26,6 +26,9 @@ const sampleOrder = (uid: string, owner: string, appCode = 'ophis') => ({
   appData: '0xabc',
   fullAppData: JSON.stringify({ appCode, metadata: { partnerFee: { recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' } } }),
   creationDate: '2026-05-01T12:00:00Z',
+  status: 'fulfilled',
+  executedSellAmount: '1000000000000000000',
+  executedBuyAmount: '2500000000',
 });
 
 describe('fetcher.fetchChainTrades', () => {
@@ -57,9 +60,11 @@ describe('fetcher.fetchChainTrades', () => {
       : sampleOrder(otherUid, '0xb'.padEnd(42, '0'), 'someoneelse'));
 
     const { fetchChainTrades } = await import('../src/fetcher.js');
-    const rows = await fetchChainTrades(100, { blockTimestampLookup: async () => new Date('2026-05-01T12:00:00Z') });
+    const rows = await fetchChainTrades(100, '0xa'.padEnd(42, '0') as `0x${string}`, {});
     expect(rows.map((r) => r.tradeUid)).toEqual([ophisUid]);
     expect(rows[0]!.appCode).toBe('ophis');
+    // block_timestamp now comes from the order's creationDate.
+    expect(rows[0]!.blockTimestamp.toISOString()).toBe('2026-05-01T12:00:00.000Z');
   });
 
   it('paginates until the API returns fewer than limit rows', async () => {
@@ -70,7 +75,25 @@ describe('fetcher.fetchChainTrades', () => {
     handlers.order.mockImplementation((uid: string) => sampleOrder(uid, '0xa'.padEnd(42, '0'), 'ophis'));
 
     const { fetchChainTrades } = await import('../src/fetcher.js');
-    const rows = await fetchChainTrades(100, { blockTimestampLookup: async () => new Date('2026-05-01T12:00:00Z') });
+    const rows = await fetchChainTrades(100, '0xa'.padEnd(42, '0') as `0x${string}`, {});
     expect(rows).toHaveLength(1017);
+  });
+
+  it('skips non-fulfilled orders and records executed (not fill) amounts', async () => {
+    const filledUid = '0x' + '0e'.repeat(56);
+    const openUid = '0x' + '0f'.repeat(56);
+    handlers.trades.mockReturnValue([
+      sampleTrade(filledUid, '0xa'.padEnd(42, '0'), '1'), // fill amount '1' differs from executed
+      sampleTrade(openUid, '0xa'.padEnd(42, '0'), '1'),
+    ]);
+    handlers.order.mockImplementation((uid: string) => uid === filledUid
+      ? { ...sampleOrder(filledUid, '0xa'.padEnd(42, '0'), 'ophis'), status: 'fulfilled', executedSellAmount: '9999', executedBuyAmount: '8888' }
+      : { ...sampleOrder(openUid, '0xa'.padEnd(42, '0'), 'ophis'), status: 'open' });
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, '0xa'.padEnd(42, '0') as `0x${string}`, {});
+    expect(rows.map((r) => r.tradeUid)).toEqual([filledUid]); // 'open' order skipped
+    expect(rows[0]!.sellAmount).toBe(9999n); // executed total, not the fill's '1'
+    expect(rows[0]!.buyAmount).toBe(8888n);
   });
 });

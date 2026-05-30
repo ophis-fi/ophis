@@ -163,6 +163,14 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   }, async (req, reply) => {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    // Register the wallet so the fetcher backfills its Ophis trades on the next
+    // run. Cheap idempotent upsert, no outbound calls — the heavy CoW fetching
+    // happens in runFetcher, not on this request path (keeps /tier fast + no
+    // amplification DoS surface).
+    await sql`
+      INSERT INTO tracked_wallets (wallet) VALUES (decode(${raw.slice(2)}, 'hex'))
+      ON CONFLICT (wallet) DO NOTHING
+    `;
     const status = await getWalletStatus(raw as `0x${string}`);
     return status;
   });

@@ -32,6 +32,9 @@ const handlers = {
     appData: '0xabc',
     fullAppData: JSON.stringify({ appCode: 'ophis' }),
     creationDate: '2026-05-01T12:00:00Z',
+    status: 'fulfilled',
+    executedSellAmount: '1000000000000000000',
+    executedBuyAmount: '2500000000',
   }),
 };
 const server = setupServer(
@@ -78,8 +81,14 @@ describe('full nightly cycle', () => {
     const { runFetcher } = await import('../src/fetcher.js');
     const { runPricer } = await import('../src/pricer.js');
     const { getWalletStatus } = await import('../src/tierer.js');
+    const { sql } = await import('../src/db/index.js');
 
-    await runFetcher({ blockTimestampLookup: async () => new Date() });
+    // Owner-centric fetch: register the wallets under test so runFetcher fetches them.
+    for (const w of ['a'.repeat(40), 'b'.repeat(40)]) {
+      await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${w}, 'hex')) ON CONFLICT (wallet) DO NOTHING`;
+    }
+
+    await runFetcher();
     await runPricer();
     await runScorer();
 
@@ -98,9 +107,10 @@ describe('full nightly cycle', () => {
     const { runFetcher } = await import('../src/fetcher.js');
     const { sql } = await import('../src/db/index.js');
 
-    await runFetcher({ blockTimestampLookup: async () => new Date() });
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${'a'.repeat(40)}, 'hex')) ON CONFLICT (wallet) DO NOTHING`;
+    await runFetcher();
     const snap1 = await sql`SELECT * FROM trades ORDER BY trade_uid`;
-    await runFetcher({ blockTimestampLookup: async () => new Date() });
+    await runFetcher();
     const snap2 = await sql`SELECT * FROM trades ORDER BY trade_uid`;
     expect(snap2.length).toBe(snap1.length);
     expect(snap2.map((r: any) => r.trade_uid.toString('hex')))
