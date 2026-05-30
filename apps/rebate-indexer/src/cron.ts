@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { runFetcher } from './fetcher.js';
+import { runFetcher, pruneStaleWallets } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth } from './batcher.js';
@@ -25,6 +25,12 @@ export async function runNightlyPipeline(): Promise<void> {
   try {
     const { inserted } = await runFetcher();
     log.info({ inserted }, 'fetcher complete');
+
+    // Registry maintenance — nightly only (never inside runFetcher / the replay
+    // loop). Evicts spam wallets that will never yield a rebate; keeps proven
+    // wallets and any still being retried.
+    const { pruned } = await pruneStaleWallets();
+    log.info({ pruned }, 'prune complete');
 
     const priced = await runPricer();
     log.info(priced, 'pricer complete');

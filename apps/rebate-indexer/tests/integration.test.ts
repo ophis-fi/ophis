@@ -117,3 +117,41 @@ describe('full nightly cycle', () => {
       .toEqual(snap1.map((r: any) => r.trade_uid.toString('hex')));
   });
 });
+
+describe('pruneStaleWallets', () => {
+  it('evicts only confirmed junk; keeps proven, recently-retried, and recent wallets', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { pruneStaleWallets } = await import('../src/fetcher.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+
+    const proven = 'a'.repeat(40);
+    // Proven wallet must have a row in `trades` so the prune never touches it.
+    await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code)
+      VALUES (decode(${'01'.repeat(56)}, 'hex'), 100, decode(${proven}, 'hex'), 1, now(), decode(${'11'.repeat(20)}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis')`;
+
+    // first_seen / last_fetched / last_attempt_at chosen to hit every prune branch.
+    await sql`INSERT INTO tracked_wallets (wallet, first_seen, last_fetched, last_attempt_at) VALUES
+      (decode(${proven}, 'hex'),           now() - interval '40 days', now(),                       now()),                       -- proven -> KEEP
+      (decode(${'b'.repeat(40)}, 'hex'),   now() - interval '8 days',  now() - interval '8 days',   now() - interval '8 days'),   -- fetched-empty 8d -> EVICT
+      (decode(${'c'.repeat(40)}, 'hex'),   now() - interval '3 days',  now() - interval '3 days',   now() - interval '3 days'),   -- fetched-empty 3d -> KEEP
+      (decode(${'d'.repeat(40)}, 'hex'),   now() - interval '40 days', NULL,                        now() - interval '31 days'),  -- attempted, never ok, 31d -> EVICT
+      (decode(${'e'.repeat(40)}, 'hex'),   now() - interval '40 days', NULL,                        now() - interval '2 days'),   -- attempted 2d ago (retrying) -> KEEP (P2)
+      (decode(${'f'.repeat(40)}, 'hex'),   now() - interval '31 days', NULL,                        NULL),                        -- never attempted 31d -> EVICT
+      (decode(${'1a'.repeat(20)}, 'hex'),  now() - interval '3 days',  NULL,                        NULL)                         -- never attempted 3d -> KEEP
+    `;
+
+    await pruneStaleWallets();
+    const rows = await sql<{ w: string }[]>`SELECT encode(wallet, 'hex') AS w FROM tracked_wallets`;
+    const survivors = new Set(rows.map((r) => r.w));
+
+    expect(survivors.has('a'.repeat(40))).toBe(true);   // proven
+    expect(survivors.has('c'.repeat(40))).toBe(true);   // fetched-empty 3d (< 7d)
+    expect(survivors.has('e'.repeat(40))).toBe(true);   // recently retried (P2: a chain outage must not evict it)
+    expect(survivors.has('1a'.repeat(20))).toBe(true);  // never attempted, only 3d old
+    expect(survivors.has('b'.repeat(40))).toBe(false);  // fetched-empty 8d
+    expect(survivors.has('d'.repeat(40))).toBe(false);  // attempted, never ok, 31d
+    expect(survivors.has('f'.repeat(40))).toBe(false);  // never attempted, 31d
+
+    await sql`TRUNCATE trades, tracked_wallets`;
+  });
+});
