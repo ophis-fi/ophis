@@ -5,27 +5,35 @@ import { runScorer } from './scorer.js';
 import { runBatcher } from './batcher.js';
 import { sql } from './db/index.js';
 import { logger } from './logger.js';
-import { createPublicClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { gnosis } from 'viem/chains';
 
 const log = logger.child({ module: 'cli' });
-
-async function blockTimestampLookup(_chainId: number, blockNumber: number): Promise<Date> {
-  const client = createPublicClient({ chain: gnosis, transport: http(process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com') });
-  const block = await client.getBlock({ blockNumber: BigInt(blockNumber) });
-  return new Date(Number(block.timestamp) * 1_000);
-}
 
 const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async migrate() {
     await runMigrations();
   },
+  // One-shot run of the fetch -> price -> score pipeline for the tracked
+  // wallets. Useful for manual backfills / verification without waiting for
+  // the nightly cron. Idempotent (trades upsert onConflictDoNothing).
+  async fetch() {
+    const { inserted } = await runFetcher();
+    log.info({ inserted }, 'fetch complete');
+    await runPricer();
+    await runScorer();
+  },
+  // Register a wallet in the owner registry so the next fetch backfills it.
+  async ['track-wallet'](args) {
+    const addr = args.find((a) => /^0x[0-9a-fA-F]{40}$/.test(a))?.toLowerCase();
+    if (!addr) throw new Error('usage: track-wallet 0x<40 hex>');
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${addr.slice(2)}, 'hex')) ON CONFLICT (wallet) DO NOTHING`;
+    log.info({ wallet: addr }, 'wallet tracked');
+  },
   async ['replay-from-genesis']() {
     await runMigrations();
     log.info('clearing derived state');
     await sql`TRUNCATE rebate_batch_entries, rebate_batches, trades RESTART IDENTITY CASCADE`;
-    await runFetcher({ blockTimestampLookup });
+    await runFetcher();
     await runPricer();
     await runScorer();
   },

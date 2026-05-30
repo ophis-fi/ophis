@@ -56,6 +56,15 @@ export const trades = pgTable(
   }),
 );
 
+// Owner registry the fetcher iterates. CoW's orderbook can only be queried
+// per-owner (`/api/v1/trades?owner=`), so we keep the set of wallets to fetch
+// here — populated by `GET /tier/:wallet` and seeded in migration 0001.
+export const trackedWallets = pgTable('tracked_wallets', {
+  wallet: bytea('wallet').primaryKey(),
+  firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+  lastFetched: timestamp('last_fetched', { withTimezone: true }),
+});
+
 export const rebateBatches = pgTable('rebate_batches', {
   id: serial('id').primaryKey(),
   cycleMonth: date('cycle_month').notNull().unique(),
