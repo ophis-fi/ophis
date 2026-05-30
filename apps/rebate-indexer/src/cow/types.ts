@@ -27,6 +27,12 @@ export const CowOrder = z.object({
   appData: z.string(),                                                // IPFS-hash hex
   fullAppData: z.string().nullable().optional(),                      // JSON string, when CoW resolved it
   creationDate: z.string(),                                           // ISO 8601 (informational)
+  status: z.string().optional(),                                      // 'fulfilled' | 'open' | 'cancelled' | 'expired' | ...
+  // Total filled across ALL fills (surplus-inclusive on the buy side). We
+  // record these instead of a single trade-fill's amount so partial-fill / TWAP
+  // orders don't undercount a wallet's volume (and therefore its rebate).
+  executedSellAmount: z.string().optional(),
+  executedBuyAmount: z.string().optional(),
 });
 export type CowOrder = z.infer<typeof CowOrder>;
 
