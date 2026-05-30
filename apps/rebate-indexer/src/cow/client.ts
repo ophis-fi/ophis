@@ -47,7 +47,13 @@ export async function listTrades(p: ListTradesParams): Promise<CowTrade[]> {
   if (p.owner) q.set('owner', p.owner);
   q.set('offset', String(p.offset ?? 0));
   q.set('limit', String(p.limit ?? 1000));
-  const url = `${BASE_URL}/${path}/api/v1/trades?${q}`;
+  // v2 (paginated). v1 is deprecated AND unpaginated — it ignores offset/limit
+  // and returns the owner's ENTIRE trade set on every call, so the caller's
+  // "stop when page < limit" loop never terminates for owners with >= limit
+  // trades (the fetcher would spin forever holding its advisory lock). v2 honors
+  // offset/limit; the loop's "offset += returned; stop when < limit" matches its
+  // documented pagination protocol exactly.
+  const url = `${BASE_URL}/${path}/api/v2/trades?${q}`;
   log.debug({ url }, 'GET trades');
   return fetchJson(url, z.array(CowTrade));
 }
