@@ -71,13 +71,17 @@ export async function postQuote(p: QuoteParams): Promise<CowQuoteResponse> {
   const path = COW_API_PATH[p.chainId];
   if (!path) throw new Error(`unsupported chain ${p.chainId}`);
   const url = `${BASE_URL}/${path}/api/v1/quote`;
-  // CoW expects a richer body; we ask for an indicative sell quote (no validity, no signing).
+  // Indicative sell quote (no validity, no signing). We intentionally omit
+  // appData/appDataHash: CoW validates that appDataHash == keccak256(appData),
+  // and sending appData '{}' with a zero hash fails with `AppDataHashMismatch`,
+  // which rejected EVERY price quote and left trades unpriced (their value_usd
+  // null -> excluded from the `wallets` matview -> 0 volume). appData doesn't
+  // affect the price, so leaving it to CoW's default is both correct and
+  // simpler.
   const body = {
     sellToken: p.sellToken,
     buyToken: p.buyToken,
     receiver: '0x0000000000000000000000000000000000000000',
-    appData: '{}',
-    appDataHash: '0x0000000000000000000000000000000000000000000000000000000000000000',
     sellTokenBalance: 'erc20',
     buyTokenBalance: 'erc20',
     from: '0x0000000000000000000000000000000000000000',
