@@ -154,4 +154,40 @@ describe('pruneStaleWallets', () => {
 
     await sql`TRUNCATE trades, tracked_wallets`;
   });
+
+  it('skips pruning while a fetch holds the advisory lock (no eviction race)', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { pruneStaleWallets, FETCHER_LOCK_KEY } = await import('../src/fetcher.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+
+    // A wallet that the prune predicate WOULD evict (never attempted, 31d old).
+    // Stand-in for a wallet an in-flight fetch has selected but not yet written
+    // trades for / stamped last_attempt_at on.
+    const victim = 'c'.repeat(40);
+    await sql`INSERT INTO tracked_wallets (wallet, first_seen, last_fetched, last_attempt_at)
+      VALUES (decode(${victim}, 'hex'), now() - interval '31 days', NULL, NULL)`;
+
+    // Simulate a concurrent runFetcher: hold FETCHER_LOCK_KEY on a reserved
+    // connection (same mechanism runFetcher uses) for the duration of a prune.
+    const fetchConn = await sql.reserve();
+    const [held] = await fetchConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+    expect(held?.locked).toBe(true);
+    try {
+      const { pruned } = await pruneStaleWallets();
+      expect(pruned).toBe(0); // must skip: the lock is held by the "fetch"
+      const stillThere = await sql`SELECT 1 FROM tracked_wallets WHERE wallet = decode(${victim}, 'hex')`;
+      expect(stillThere.length).toBe(1); // victim survived
+    } finally {
+      await fetchConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+      fetchConn.release();
+    }
+
+    // Once the fetch releases the lock, the next prune cycle evicts it normally.
+    const { pruned } = await pruneStaleWallets();
+    expect(pruned).toBe(1);
+    const rows = await sql`SELECT 1 FROM tracked_wallets WHERE wallet = decode(${victim}, 'hex')`;
+    expect(rows.length).toBe(0);
+
+    await sql`TRUNCATE trades, tracked_wallets`;
+  });
 });

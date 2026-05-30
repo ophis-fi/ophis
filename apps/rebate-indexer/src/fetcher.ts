@@ -142,7 +142,8 @@ export async function fetchChainTrades(
  * and seeded in migration 0001. A single owner/chain failure never aborts the rest.
  */
 // Fixed key for the singleton advisory lock (any constant works).
-const FETCHER_LOCK_KEY = 770042;
+// Exported so pruneStaleWallets() can share it and a test can simulate a held lock.
+export const FETCHER_LOCK_KEY = 770042;
 
 export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
@@ -255,15 +256,46 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
  */
 export async function pruneStaleWallets(): Promise<{ pruned: number }> {
   const { sql } = await import('./db/index.js');
-  const pruned = await sql`
-    DELETE FROM tracked_wallets
-    WHERE wallet NOT IN (SELECT wallet FROM trades)
-      AND (
-        (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
-        OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')
-        OR (last_fetched IS NULL AND last_attempt_at IS NULL AND first_seen < now() - INTERVAL '30 days')
-      )
-  `;
-  log.info({ pruned: pruned.count }, 'pruned stale tracked wallets');
-  return { pruned: pruned.count };
+
+  // Share runFetcher's advisory lock so a prune NEVER runs while a fetch is in
+  // flight. runFetcher selects a batch of owners up front, then per owner
+  // inserts trades and stamps last_fetched / last_attempt_at. The nightly
+  // pipeline runs fetch→prune sequentially, but the prune can still overlap a
+  // SEPARATE fetch — the startup backfill (index.ts kicks runFetcher off
+  // un-awaited) or a manual `cli fetch` — that already holds the lock. Without
+  // this guard the prune could DELETE a wallet that the in-flight fetch had
+  // already selected but not yet written trades for / stamped last_attempt_at
+  // on: its trades row wouldn't exist yet and last_attempt_at would still be
+  // old, so it matches the prune predicate and is evicted — then the fetcher's
+  // later `UPDATE tracked_wallets ... WHERE wallet = ...` matches zero rows and
+  // that wallet (with real CoW trades) silently stops refreshing forever.
+  //
+  // Same SESSION-level lock caveat as runFetcher: acquire + release on one
+  // reserved connection. If a fetch holds the lock we skip this cycle (the next
+  // nightly tick re-runs it) rather than block behind a long backfill.
+  const lockConn = await sql.reserve();
+  const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+  if (!lockRow?.locked) {
+    lockConn.release();
+    log.info('fetch in progress (advisory lock held); skipping prune');
+    return { pruned: 0 };
+  }
+
+  try {
+    const pruned = await sql`
+      DELETE FROM tracked_wallets
+      WHERE wallet NOT IN (SELECT wallet FROM trades)
+        AND (
+          (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
+          OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')
+          OR (last_fetched IS NULL AND last_attempt_at IS NULL AND first_seen < now() - INTERVAL '30 days')
+        )
+    `;
+    log.info({ pruned: pruned.count }, 'pruned stale tracked wallets');
+    return { pruned: pruned.count };
+  } finally {
+    // Release on the SAME reserved connection that acquired it, then return it.
+    await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+    lockConn.release();
+  }
 }
