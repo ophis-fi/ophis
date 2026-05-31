@@ -158,14 +158,15 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
   // on a different connection and leak the lock. So we reserve a dedicated
   // connection for the lock's lifetime; the work itself runs on the pool.
   const lockConn = await sql.reserve();
-  const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
-  if (!lockRow?.locked) {
-    lockConn.release();
-    log.info('fetcher already running (advisory lock held); skipping');
-    return { inserted: 0, owners: 0 };
-  }
-
+  let locked = false;
   try {
+    const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+    locked = lockRow?.locked === true;
+    if (!locked) {
+      log.info('fetcher already running (advisory lock held); skipping');
+      return { inserted: 0, owners: 0 };
+    }
+
     const dbDeps: FetcherDeps = { db: db as unknown as FetcherDb };
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
@@ -232,8 +233,16 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
     return { inserted, owners: owners.length };
   } finally {
-    // Release on the SAME reserved connection that acquired it, then return it.
-    await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+    // Always runs — even if the lock acquire or unlock throws — so a transient
+    // error can't leak the reserved connection. Unlock on the SAME connection
+    // that acquired it, and only if we actually got the lock.
+    if (locked) {
+      try {
+        await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+      } catch (err) {
+        log.error({ err }, 'advisory unlock failed');
+      }
+    }
     lockConn.release();
   }
 }
@@ -255,15 +264,37 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
  */
 export async function pruneStaleWallets(): Promise<{ pruned: number }> {
   const { sql } = await import('./db/index.js');
-  const pruned = await sql`
-    DELETE FROM tracked_wallets
-    WHERE wallet NOT IN (SELECT wallet FROM trades)
-      AND (
-        (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
-        OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')
-        OR (last_fetched IS NULL AND last_attempt_at IS NULL AND first_seen < now() - INTERVAL '30 days')
-      )
-  `;
-  log.info({ pruned: pruned.count }, 'pruned stale tracked wallets');
-  return { pruned: pruned.count };
+  // Hold the SAME advisory lock runFetcher uses, so the prune can NEVER run
+  // concurrently with a fetch. Without it, a fetch already holding the lock may
+  // have SELECTED an owner but not yet inserted its trades / stamped
+  // last_attempt_at; this prune could then delete that row, and the fetch's
+  // later `UPDATE tracked_wallets ... WHERE wallet = ...` would match zero rows
+  // -> the wallet silently stops refreshing and its volume is lost. If a fetch
+  // is running we simply skip pruning this cycle (it's maintenance; the next
+  // nightly retries). The lock acquire+release must use one reserved connection.
+  const lockConn = await sql.reserve();
+  try {
+    const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+    if (!lockRow?.locked) {
+      log.info('fetcher running (advisory lock held); skipping prune this cycle');
+      return { pruned: 0 };
+    }
+    try {
+      const pruned = await sql`
+        DELETE FROM tracked_wallets
+        WHERE wallet NOT IN (SELECT wallet FROM trades)
+          AND (
+            (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
+            OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')
+            OR (last_fetched IS NULL AND last_attempt_at IS NULL AND first_seen < now() - INTERVAL '30 days')
+          )
+      `;
+      log.info({ pruned: pruned.count }, 'pruned stale tracked wallets');
+      return { pruned: pruned.count };
+    } finally {
+      await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+    }
+  } finally {
+    lockConn.release();
+  }
 }
