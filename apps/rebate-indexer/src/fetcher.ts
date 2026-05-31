@@ -158,14 +158,15 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
   // on a different connection and leak the lock. So we reserve a dedicated
   // connection for the lock's lifetime; the work itself runs on the pool.
   const lockConn = await sql.reserve();
-  const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
-  if (!lockRow?.locked) {
-    lockConn.release();
-    log.info('fetcher already running (advisory lock held); skipping');
-    return { inserted: 0, owners: 0 };
-  }
-
+  let locked = false;
   try {
+    const [lockRow] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${FETCHER_LOCK_KEY}) AS locked`;
+    locked = lockRow?.locked === true;
+    if (!locked) {
+      log.info('fetcher already running (advisory lock held); skipping');
+      return { inserted: 0, owners: 0 };
+    }
+
     const dbDeps: FetcherDeps = { db: db as unknown as FetcherDb };
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
@@ -232,8 +233,16 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
     return { inserted, owners: owners.length };
   } finally {
-    // Release on the SAME reserved connection that acquired it, then return it.
-    await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+    // Always runs — even if the lock acquire or unlock throws — so a transient
+    // error can't leak the reserved connection. Unlock on the SAME connection
+    // that acquired it, and only if we actually got the lock.
+    if (locked) {
+      try {
+        await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
+      } catch (err) {
+        log.error({ err }, 'advisory unlock failed');
+      }
+    }
     lockConn.release();
   }
 }
