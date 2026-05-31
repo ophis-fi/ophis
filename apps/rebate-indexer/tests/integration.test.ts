@@ -20,6 +20,10 @@ const trade = (uid: string, owner: string, sellAmount = '1000000000000000000') =
 });
 
 let pg: StartedPostgreSqlContainer;
+// Relative recent timestamp — the trade's block_timestamp comes from this and the
+// `wallets` matview only counts trades within the last 30 days. A hardcoded date
+// silently ages out of the window (it did, on 2026-05-31), so compute it from now.
+const RECENT_ISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
 const handlers = {
   trades: [] as any[],
   order: (uid: string) => ({
@@ -31,7 +35,7 @@ const handlers = {
     buyAmount:  '2500000000',
     appData: '0xabc',
     fullAppData: JSON.stringify({ appCode: 'ophis' }),
-    creationDate: '2026-05-01T12:00:00Z',
+    creationDate: RECENT_ISO,
     status: 'fulfilled',
     executedSellAmount: '1000000000000000000',
     executedBuyAmount: '2500000000',
