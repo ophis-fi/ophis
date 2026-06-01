@@ -1,7 +1,7 @@
-import { ReactNode, useMemo, lazy, Suspense } from 'react'
+import { ReactNode, useMemo } from 'react'
 
+import ophisMark from '@cowprotocol/assets/cow-swap/ophis-mark.svg'
 import { AMOUNT_OF_ORDERS_TO_FETCH } from '@cowprotocol/common-const'
-import { useTheme } from '@cowprotocol/common-hooks'
 import { useIsSafeViaWc } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
@@ -12,12 +12,9 @@ import { useLoadMoreOrders } from 'modules/orders'
 import { getTitle, getDescription } from './OrdersTableNoOrdersContent.utils'
 
 import { HistoryStatusFilter } from '../../../../hooks/useFilteredOrders'
-import { useNoOrdersAnimation } from '../../../../hooks/useNoOrdersAnimation'
 import { useOrdersTableState } from '../../../../hooks/useOrdersTableState'
 import { OrderTabId } from '../../../../state/tabs/ordersTableTabs.constants'
 import * as styledEl from '../../Container/OrdersTableContainer.styled'
-
-const Lottie = lazy(() => import('lottie-react'))
 
 interface OrdersTableNoOrdersContentProps {
   currentTab: OrderTabId
@@ -32,12 +29,10 @@ export function OrdersTableNoOrdersContent({
   historyStatusFilter,
   hasHydratedOrders,
 }: OrdersTableNoOrdersContentProps): ReactNode {
-  const { darkMode: isDarkMode } = useTheme()
   const isSafeViaWc = useIsSafeViaWc()
   const injectedWidgetParams = useInjectedWidgetParams()
   const { orderType, displayOrdersOnlyForSafeApp, orders = [] } = useOrdersTableState() || {}
   const emptyOrdersImage = injectedWidgetParams?.images?.emptyOrders
-  const animationData = useNoOrdersAnimation({ emptyOrdersImage, hasHydratedOrders, isDarkMode })
   const { t } = useLingui()
   const { limit, isLoading, hasMoreOrders } = useLoadMoreOrders()
   const hasOrders = orders.length > 0
@@ -92,16 +87,9 @@ export function OrdersTableNoOrdersContent({
       <styledEl.NoOrdersAnimation>
         {emptyOrdersImage ? (
           <img src={emptyOrdersImage} alt={t`There are no orders`} />
-        ) : animationData ? (
-          <styledEl.NoOrdersLottieFrame aria-label={t`Empty order list animation`}>
-            {/* TODO: what fallback should be used here? */}
-            <Suspense fallback={null}>
-              <Lottie animationData={animationData} loop autoplay />
-            </Suspense>
-          </styledEl.NoOrdersLottieFrame>
-        ) : (
-          <styledEl.NoOrdersLottieFrame aria-hidden="true" />
-        )}
+        ) : hasHydratedOrders ? (
+          <img src={ophisMark} alt={t`There are no open orders`} />
+        ) : null}
       </styledEl.NoOrdersAnimation>
     </styledEl.Content>
   )
