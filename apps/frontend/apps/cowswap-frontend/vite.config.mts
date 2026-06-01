@@ -70,6 +70,12 @@ export default defineConfig(({ mode }) => {
       srcDir: 'src',
       filename: 'service-worker.ts',
       minify: true,
+      // Ophis: do not auto-generate /manifest.webmanifest. The hand-authored
+      // public/manifest.json (linked from index.html) is the canonical Ophis
+      // PWA manifest; the generated webmanifest only re-derived a stale
+      // 'cowswap-monorepo' name from the root package.json and injected a
+      // duplicate <link rel="manifest">.
+      manifest: false,
       injectManifest: {
         maximumFileSizeToCacheInBytes: 7000000, // 7mb
         globPatterns: ['**/*.{js,css,html,png,jpg,svg,json,woff,woff2,md}'],
