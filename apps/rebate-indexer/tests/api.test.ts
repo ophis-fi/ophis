@@ -52,3 +52,17 @@ test('404 handler returns 404 with JSON body', async () => {
   expect(res.statusCode).toBe(404);
   expect(JSON.parse(res.body)).toMatchObject({ error: 'not found' });
 });
+
+test('/health exposes ok + last_fetch + last_fetch_attempt + pending_batches', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/health' });
+  expect(res.statusCode).toBe(200);
+  const body = JSON.parse(res.body);
+  expect(body.ok).toBe(true);
+  // last_fetch_attempt is the insert-independent liveness heartbeat (advances on
+  // every fetch run). Value is null under the mocked db; the KEY must always be
+  // present so an idle-but-healthy fetcher is distinguishable from a dead one.
+  expect(body).toHaveProperty('last_fetch');
+  expect(body).toHaveProperty('last_fetch_attempt');
+  expect(body).toHaveProperty('pending_batches');
+});
