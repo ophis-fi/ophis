@@ -137,19 +137,6 @@ export const NoOrdersAnimation = styled.div`
   }
 `
 
-export const NoOrdersLottieFrame = styled.div`
-  position: relative;
-  width: 100%;
-  padding-top: calc(386 / 1099 * 100%);
-
-  > div {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
-`
-
 export const TopContainer = styled.div`
   display: flex;
   align-items: center;

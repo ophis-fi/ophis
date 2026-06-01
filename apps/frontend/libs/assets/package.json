@@ -16,8 +16,7 @@
     "./images/*": "./src/images/*",
     "./lottie/*": "./src/lottie/*",
     "./svg/*": "./src/svg/*",
-    "./video/*": "./src/video/*",
-    "./lazy-loaders.ts": "./src/lazy-loaders.ts"
+    "./video/*": "./src/video/*"
   },
   "publishConfig": {
     "main": "./index.js",

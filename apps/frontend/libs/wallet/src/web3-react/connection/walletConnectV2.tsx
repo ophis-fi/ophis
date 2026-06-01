@@ -26,6 +26,8 @@ export const walletConnectV2Option = {
 const wc2Connections = new Map<SupportedChainId, Web3ReactConnection>()
 
 function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactConnection {
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://swap.ophis.fi'
+
   const [connector, hooks] = initializeConnector<WalletConnectV2Connector>(
     (actions) =>
       new WalletConnectV2Connector({
@@ -40,6 +42,15 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
           optionalChains: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
           rpcMap: RPC_URLS,
           showQrModal: true,
+          // Ophis: explicit dApp metadata so wallets never fall back to
+          // auto-detecting the name/icon from index.html (which historically
+          // surfaced "CoW Swap" + the cow favicon in the connect prompt).
+          metadata: {
+            name: 'Ophis',
+            description: 'Ophis is an intent-based DEX aggregator.',
+            url: appUrl,
+            icons: [`${appUrl}/apple-touch-icon.png`],
+          },
         },
       }),
   )

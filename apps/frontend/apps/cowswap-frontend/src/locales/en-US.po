@@ -1580,6 +1580,10 @@ msgstr "vCOW contract not present"
 msgid "Accent"
 msgstr "Accent"
 
+#: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.tsx
+msgid "There are no open orders"
+msgstr "There are no open orders"
+
 #: apps/cowswap-frontend/src/common/pure/CancellationModal/ModalTopContent.tsx
 msgid "Unknown"
 msgstr "Unknown"
@@ -3295,8 +3299,8 @@ msgid "and saved "
 msgstr "and saved "
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.tsx
-msgid "Empty order list animation"
-msgstr "Empty order list animation"
+#~ msgid "Empty order list animation"
+#~ msgstr "Empty order list animation"
 
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTableRow.tsx
 msgid "Approve all"
