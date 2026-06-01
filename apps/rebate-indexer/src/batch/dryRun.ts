@@ -1,13 +1,23 @@
 import {
   createPublicClient,
+  encodeFunctionData,
   http,
   type PublicClient,
 } from 'viem';
 import { logger } from '../logger.js';
-import { buildRebateMultisend } from './multisend.js';
-import { multiSendCallOnlyAddress, OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
+import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
 
 const log = logger.child({ module: 'dry-run' });
+
+const ERC20_TRANSFER_ABI = [
+  {
+    type: 'function',
+    name: 'transfer',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    outputs: [{ type: 'bool' }],
+  },
+] as const;
 
 export interface Transfer {
   readonly to: `0x${string}`;
@@ -21,7 +31,18 @@ export interface SimulateResult {
 
 export type SimulateFn = (batch: readonly Transfer[]) => Promise<SimulateResult>;
 
-/** Run a real eth_call against an RPC, returning ok=true if the multiSend doesn't revert. */
+/**
+ * Real eth_call simulator. ok=true if every transfer in the batch succeeds.
+ *
+ * The real payout is a Safe DELEGATECALL to MultiSendCallOnly, so each inner
+ * WETH.transfer runs with msg.sender = the SAFE. We model that directly:
+ * eth_call each transfer FROM the Safe TO the WETH token.
+ *
+ * The old code did a plain `call` from the Safe TO the multisend contract — but
+ * a plain CALL is not a DELEGATECALL, so the inner transfers would run from the
+ * multisend contract (which holds no WETH), reverting EVERY transfer. That made
+ * the dry-run quarantine every recipient and propose no payout at all.
+ */
 export function buildEthCallSimulator(opts: {
   chainId: number;
   rpcUrl: string;
@@ -29,21 +50,18 @@ export function buildEthCallSimulator(opts: {
   const client: PublicClient = createPublicClient({ transport: http(opts.rpcUrl) });
   const weth = WETH_BY_CHAIN[opts.chainId];
   if (!weth) throw new Error(`no WETH configured for chain ${opts.chainId}`);
-  const multiSend = multiSendCallOnlyAddress(opts.chainId);
 
   return async (batch) => {
     if (batch.length === 0) return { ok: true };
-    const calldata = buildRebateMultisend(batch, weth);
-    try {
-      await client.call({
-        account: OPHIS_SAFE_ADDRESS,                                   // simulate as if Safe is the sender (DELEGATECALL context)
-        to: multiSend,
-        data: calldata,
-      });
-      return { ok: true };
-    } catch (err: any) {
-      return { ok: false, reason: err?.shortMessage ?? err?.message ?? 'eth_call reverted' };
+    for (const t of batch) {
+      const data = encodeFunctionData({ abi: ERC20_TRANSFER_ABI, functionName: 'transfer', args: [t.to, t.amount] });
+      try {
+        await client.call({ account: OPHIS_SAFE_ADDRESS, to: weth, data });
+      } catch (err: any) {
+        return { ok: false, reason: err?.shortMessage ?? err?.message ?? 'transfer eth_call reverted' };
+      }
     }
+    return { ok: true };
   };
 }
 
