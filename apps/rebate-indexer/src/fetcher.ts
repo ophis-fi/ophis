@@ -180,7 +180,11 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL OR last_fetched < now() - INTERVAL '6 hours'
-      ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC, last_fetched ASC NULLS FIRST
+      -- proven wallets first; then least-recently-fetched (never-fetched first);
+      -- then OLDEST registration. The first_seen tiebreaker makes never-fetched
+      -- selection FIFO so /tier spam can't starve an older legit wallet that
+      -- registered before the flood (they'd otherwise tie on last_fetched=NULL).
+      ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC, last_fetched ASC NULLS FIRST, first_seen ASC
       LIMIT ${MAX_OWNERS_PER_RUN}
     `;
     let inserted = 0;
