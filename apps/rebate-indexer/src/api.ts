@@ -119,15 +119,26 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       rateLimit: { max: 200, timeWindow: '1 minute' }, // permissive — uptime monitors hit this continuously
     },
   }, async () => {
-    const healthRows = await sql<{ last_fetch: string | null }[]>`
-      SELECT MAX(fetched_at)::text AS last_fetch FROM trades
+    // last_fetch       = MAX(trades.fetched_at): advances only when a NEW Ophis
+    //                    trade is inserted, so it is STALE during any quiet
+    //                    period and is NOT a fetcher-liveness signal on its own.
+    // last_fetch_attempt = MAX(tracked_wallets.last_attempt_at): stamped on EVERY
+    //                    fetch run regardless of inserts, so an idle-but-healthy
+    //                    fetcher is distinguishable from a dead one without
+    //                    needing the admin-gated /status. Non-sensitive (a single
+    //                    aggregate timestamp, no wallet data).
+    const healthRows = await sql<{ last_fetch: string | null; last_fetch_attempt: string | null }[]>`
+      SELECT
+        (SELECT MAX(fetched_at)::text FROM trades) AS last_fetch,
+        (SELECT MAX(last_attempt_at)::text FROM tracked_wallets) AS last_fetch_attempt
     `;
     const pendingRows = await sql<{ pending: string }[]>`
       SELECT COUNT(*)::text AS pending FROM rebate_batches WHERE status IN ('computing','proposed')
     `;
     const last_fetch = healthRows[0]?.last_fetch ?? null;
+    const last_fetch_attempt = healthRows[0]?.last_fetch_attempt ?? null;
     const pending = pendingRows[0]?.pending ?? '0';
-    return { ok: true, last_fetch, pending_batches: parseInt(pending, 10) };
+    return { ok: true, last_fetch, last_fetch_attempt, pending_batches: parseInt(pending, 10) };
   });
 
   app.get('/status', {
