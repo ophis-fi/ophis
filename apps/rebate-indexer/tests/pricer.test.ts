@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { computeTradeUsd } from '../src/pricer.js';
+import { computeTradeUsd, priceTrade } from '../src/pricer.js';
+
+describe('priceTrade — stablecoin self-pricing', () => {
+  it('prices a USD-reference stablecoin sell at ITS decimals, not 18 (regression: was off by 1e12)', async () => {
+    // USDC.e on Gnosis (chain 100) is the chain's USD reference, 6 decimals.
+    // Selling it is already USD: 10,000 USDC.e -> $10,000. The bug used the
+    // 18-decimal fallback, yielding ~$1e-8 and corrupting payouts.
+    const usd = await priceTrade({
+      tradeUid: ('0x' + '0a'.repeat(56)) as `0x${string}`,
+      chainId: 100,
+      sellToken: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83' as `0x${string}`, // USDC.e (ref token)
+      sellAmount: 10_000_000_000n, // 10,000 USDC.e at 6 decimals
+    });
+    expect(usd).toBeCloseTo(10_000, 2);
+  });
+});
 
 describe('computeTradeUsd', () => {
   it('values a trade by sell-side USD when sellToken→USDC quote is provided', () => {
