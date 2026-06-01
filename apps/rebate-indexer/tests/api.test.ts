@@ -53,16 +53,19 @@ test('404 handler returns 404 with JSON body', async () => {
   expect(JSON.parse(res.body)).toMatchObject({ error: 'not found' });
 });
 
-test('/health exposes ok + last_fetch + last_fetch_attempt + pending_batches', async () => {
+test('/health exposes the fetcher + pipeline liveness fields', async () => {
   app = await buildApiServer();
   const res = await app.inject({ method: 'GET', url: '/health' });
   expect(res.statusCode).toBe(200);
   const body = JSON.parse(res.body);
   expect(body.ok).toBe(true);
-  // last_fetch_attempt is the insert-independent liveness heartbeat (advances on
-  // every fetch run). Value is null under the mocked db; the KEY must always be
-  // present so an idle-but-healthy fetcher is distinguishable from a dead one.
+  // Liveness heartbeats (values null under the mocked db; the KEYS must always be
+  // present): last_fetch_attempt = any fetch run (incl. backfill);
+  // last_pipeline_run_at = the nightly cron tick (survives redeploys);
+  // last_batcher_run_at = the last first-of-month run (the monthly Safe batcher).
   expect(body).toHaveProperty('last_fetch');
   expect(body).toHaveProperty('last_fetch_attempt');
+  expect(body).toHaveProperty('last_pipeline_run_at');
+  expect(body).toHaveProperty('last_batcher_run_at');
   expect(body).toHaveProperty('pending_batches');
 });
