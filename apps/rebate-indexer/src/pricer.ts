@@ -50,41 +50,6 @@ export function computeTradeUsd(p: ComputeTradeUsdParams): number {
   return Number(scaled) / 10_000;
 }
 
-const TOKEN_DECIMALS_CACHE = new Map<string, number>();
-
-async function fetchTokenDecimals(chainId: number, token: `0x${string}`): Promise<number> {
-  const key = `${chainId}:${token.toLowerCase()}`;
-  const cached = TOKEN_DECIMALS_CACHE.get(key);
-  if (cached !== undefined) return cached;
-  // We avoid a viem chain client here and rely on the CoW /tokens endpoint when available,
-  // falling back to 18. Long-tail tokens that aren't in CoW's registry rarely make trades
-  // through CoW in the first place.
-  // TODO(post-launch): replace with a per-chain viem client + ERC20.decimals() call.
-  const path = chainPath(chainId);
-  try {
-    const res = await fetch(`${process.env.COW_API_BASE ?? 'https://api.cow.fi'}/${path}/api/v1/tokens/${token}/native_price`);
-    if (res.ok) {
-      const json: any = await res.json();
-      if (typeof json?.decimals === 'number') {
-        TOKEN_DECIMALS_CACHE.set(key, json.decimals);
-        return json.decimals;
-      }
-    }
-  } catch { /* fall through */ }
-  TOKEN_DECIMALS_CACHE.set(key, 18);
-  return 18;
-}
-
-function chainPath(chainId: number): string {
-  const m: Record<number, string> = {
-    1: 'mainnet', 100: 'xdai', 8453: 'base', 42161: 'arbitrum_one', 137: 'polygon',
-    43114: 'avalanche', 56: 'bnb', 59144: 'linea', 9745: 'plasma', 57073: 'ink', 11155111: 'sepolia',
-  };
-  const p = m[chainId];
-  if (!p) throw new Error(`unsupported chain ${chainId}`);
-  return p;
-}
-
 export async function priceTrade(row: {
   tradeUid: `0x${string}`;
   chainId: number;
@@ -94,10 +59,13 @@ export async function priceTrade(row: {
   const ref = USD_REFERENCE[row.chainId];
   if (!ref) throw new Error(`no USD reference for chain ${row.chainId}`);
   if (row.sellToken.toLowerCase() === ref.token.toLowerCase()) {
-    const decimals = await fetchTokenDecimals(row.chainId, row.sellToken);
-    return Number(row.sellAmount) / 10 ** decimals;                    // already USD-denominated
+    // Selling the chain's USD reference stablecoin itself — already USD.
+    // Use ref.decimals (the KNOWN decimals of that stablecoin, e.g. 6 for
+    // USDC/USDC.e). Do NOT use fetchTokenDecimals here: CoW's native_price
+    // endpoint returns no `decimals` field, so that helper always falls back to
+    // 18 — which would understate a USDC sell by 10^12 and corrupt the payout.
+    return Number(row.sellAmount) / 10 ** ref.decimals;
   }
-  const sellDecimals = await fetchTokenDecimals(row.chainId, row.sellToken);
   const quote = await postQuote({
     chainId: row.chainId,
     sellToken: row.sellToken,
@@ -106,7 +74,9 @@ export async function priceTrade(row: {
   });
   return computeTradeUsd({
     sellAmount: row.sellAmount,
-    sellTokenDecimals: sellDecimals,
+    // sellTokenDecimals cancels out of computeTradeUsd's ratio (it appears in
+    // both the trade and quote sell amounts), so the value here is irrelevant.
+    sellTokenDecimals: 18,
     quoteSellAmount: BigInt(quote.quote.sellAmount),
     quoteBuyAmount: BigInt(quote.quote.buyAmount),
     quoteBuyTokenDecimals: ref.decimals,
@@ -116,43 +86,56 @@ export async function priceTrade(row: {
 export async function runPricer(): Promise<{ priced: number; failed: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { sql } = await import('./db/index.js');
-  const rows = await sql<{
-    trade_uid: Buffer;
-    chain_id: number;
-    sell_token: Buffer;
-    sell_amount: string;
-  }[]>`
-    SELECT trade_uid, chain_id, sell_token, sell_amount::text
-    FROM trades
-    WHERE value_usd IS NULL
-    LIMIT 1000
-  `;
 
-  // Map postgres-js snake_case / Buffer results to the camelCase shape priceTrade expects.
-  const unpriced = rows.map((r) => ({
-    tradeUid: `0x${r.trade_uid.toString('hex')}` as `0x${string}`,
-    chainId: r.chain_id,
-    sellToken: `0x${r.sell_token.toString('hex')}` as `0x${string}`,
-    sellAmount: BigInt(r.sell_amount),
-  }));
-
+  // Price EVERY unpriced trade, keyset-paginated by the trade_uid primary key.
+  // The old single `LIMIT 1000` pass left any backlog (or > 1000 new trades)
+  // unpriced, and the `wallets` matview EXCLUDES value_usd-NULL rows — so the
+  // scorer/tiers/Safe-payout that run right after would undercount. Keyset
+  // paging advances the cursor by PK on EVERY row (priced or failed), so:
+  //   - memory stays bounded to one 1000-row page,
+  //   - a per-trade failure (left value_usd NULL, retried next run) can't block
+  //     the priceable rows behind it, and
+  //   - the loop always terminates (cursor strictly increases).
   let priced = 0;
   let failed = 0;
-  for (const row of unpriced) {
-    try {
-      const usd = await priceTrade(row);
-      const tradeUidBuf = Buffer.from(row.tradeUid.slice(2), 'hex');
-      await sql`
-        UPDATE trades
-        SET value_usd = ${usd}, priced_at = now()
-        WHERE trade_uid = ${tradeUidBuf}
-      `;
-      priced++;
-    } catch (err) {
-      log.warn({ err, tradeUid: row.tradeUid }, 'pricing failed');
-      failed++;
+  let cursor: Buffer = Buffer.alloc(0); // empty bytea sorts before every trade_uid
+  for (;;) {
+    const rows = await sql<{
+      trade_uid: Buffer;
+      chain_id: number;
+      sell_token: Buffer;
+      sell_amount: string;
+    }[]>`
+      SELECT trade_uid, chain_id, sell_token, sell_amount::text
+      FROM trades
+      WHERE value_usd IS NULL AND trade_uid > ${cursor}
+      ORDER BY trade_uid
+      LIMIT 1000
+    `;
+    if (rows.length === 0) break;
+
+    for (const r of rows) {
+      cursor = r.trade_uid; // advance by PK regardless of outcome
+      const row = {
+        tradeUid: `0x${r.trade_uid.toString('hex')}` as `0x${string}`,
+        chainId: r.chain_id,
+        sellToken: `0x${r.sell_token.toString('hex')}` as `0x${string}`,
+        sellAmount: BigInt(r.sell_amount),
+      };
+      try {
+        const usd = await priceTrade(row);
+        await sql`
+          UPDATE trades
+          SET value_usd = ${usd}, priced_at = now()
+          WHERE trade_uid = ${r.trade_uid}
+        `;
+        priced++;
+      } catch (err) {
+        log.warn({ err, tradeUid: row.tradeUid }, 'pricing failed');
+        failed++;
+      }
     }
   }
-  log.info({ priced, failed, remaining: unpriced.length - priced - failed }, 'pricer pass complete');
+  log.info({ priced, failed }, 'pricer complete');
   return { priced, failed };
 }
