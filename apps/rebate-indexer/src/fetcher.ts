@@ -141,8 +141,43 @@ export async function fetchChainTrades(
  * populated by `GET /tier/:wallet` (the swap frontend calls it on wallet connect)
  * and seeded in migration 0001. A single owner/chain failure never aborts the rest.
  */
-// Fixed key for the singleton advisory lock (any constant works).
+// Fixed keys for the advisory locks (any constants work; must be distinct).
 const FETCHER_LOCK_KEY = 770042;
+const PIPELINE_LOCK_KEY = 770043;
+
+/**
+ * Run `fn` while holding a PIPELINE-level advisory lock so the two pipeline
+ * triggers — the non-blocking startup backfill and the nightly cron — can never
+ * overlap. Without this they can race on price/score, and on the 1st the cron's
+ * batcher could propose a Safe payout off a matview a concurrent backfill is
+ * mid-updating. Returns true if it ran, false if another pipeline held the lock
+ * (the caller decides whether a skip matters). Distinct key from the fetcher
+ * lock, so runFetcher (FETCHER_LOCK_KEY) nested inside still works.
+ */
+export async function withPipelineLock(fn: () => Promise<void>): Promise<boolean> {
+  const { sql } = await import('./db/index.js');
+  const lockConn = await sql.reserve();
+  let locked = false;
+  try {
+    const [row] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${PIPELINE_LOCK_KEY}) AS locked`;
+    locked = row?.locked === true;
+    if (!locked) {
+      log.info('another pipeline run holds the lock; skipping');
+      return false;
+    }
+    await fn();
+    return true;
+  } finally {
+    if (locked) {
+      try {
+        await lockConn`SELECT pg_advisory_unlock(${PIPELINE_LOCK_KEY})`;
+      } catch (err) {
+        log.error({ err }, 'pipeline advisory unlock failed');
+      }
+    }
+    lockConn.release();
+  }
+}
 
 export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.

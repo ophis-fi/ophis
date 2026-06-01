@@ -1,7 +1,7 @@
 import { runMigrations } from './db/migrate.js';
 import { startApi } from './api.js';
 import { startCron } from './cron.js';
-import { runFetcher } from './fetcher.js';
+import { runFetcher, withPipelineLock } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { logger } from './logger.js';
@@ -23,10 +23,15 @@ async function main() {
   // pending (pricer scans `value_usd IS NULL`; scorer just refreshes the view).
   void (async () => {
     try {
-      const { inserted } = await runFetcher();
-      const priced = await runPricer();
-      const scored = await runScorer();
-      logger.info({ inserted, priced, scored }, 'initial backfill complete');
+      // Under the pipeline lock so it can't overlap the nightly cron (which
+      // batches on the 1st). If the nightly is already running, just skip.
+      const ran = await withPipelineLock(async () => {
+        const { inserted } = await runFetcher();
+        const priced = await runPricer();
+        const scored = await runScorer();
+        logger.info({ inserted, priced, scored }, 'initial backfill complete');
+      });
+      if (!ran) logger.info('initial backfill skipped (nightly pipeline running)');
     } catch (err) {
       logger.error({ err: err instanceof Error ? err.message : err }, 'initial backfill failed');
     }
