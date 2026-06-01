@@ -8,6 +8,7 @@ import {
   serial,
   date,
   numeric,
+  boolean,
   index,
   primaryKey,
 } from 'drizzle-orm/pg-core';
@@ -102,6 +103,17 @@ export const rebateBatchEntries = pgTable(
     walletIdx: index('rebate_entries_wallet_idx').on(t.wallet),
   }),
 );
+
+// Append-only nightly-completion heartbeat: one row per COMPLETED runPipelineSteps
+// (the cron path only — the startup backfill does NOT call it). Lets /health
+// witness the 02:00 UTC tick (and, via first_of_month, the monthly batcher) without
+// the admin-gated /status, and survives redeploys (unlike last_fetch_attempt). See
+// migration 0003_pipeline_runs.sql.
+export const pipelineRuns = pgTable('pipeline_runs', {
+  id: serial('id').primaryKey(),
+  ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+  firstOfMonth: boolean('first_of_month').notNull().default(false),
+});
 
 // `wallets` is a MATERIALIZED VIEW (not modelled as a drizzle table) —
 // created by the raw SQL migration 0000_init.sql. Query via `sql\`SELECT … FROM wallets\``.

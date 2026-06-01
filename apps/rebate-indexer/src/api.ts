@@ -123,22 +123,47 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     //                    trade is inserted, so it is STALE during any quiet
     //                    period and is NOT a fetcher-liveness signal on its own.
     // last_fetch_attempt = MAX(tracked_wallets.last_attempt_at): stamped on EVERY
-    //                    fetch run regardless of inserts, so an idle-but-healthy
-    //                    fetcher is distinguishable from a dead one without
-    //                    needing the admin-gated /status. Non-sensitive (a single
-    //                    aggregate timestamp, no wallet data).
-    const healthRows = await sql<{ last_fetch: string | null; last_fetch_attempt: string | null }[]>`
+    //                    fetch run (incl. the startup backfill), so an idle-but-
+    //                    healthy fetcher is distinguishable from a dead one. NOTE:
+    //                    a redeploy's backfill overwrites this, so it cannot
+    //                    witness the 02:00 cron tick specifically.
+    // last_pipeline_run_at = MAX(pipeline_runs.ran_at): set ONLY by the nightly
+    //                    cron (runPipelineSteps), never by the startup backfill —
+    //                    so a redeploy can't clobber it. This is the signal that
+    //                    the 02:00 UTC pipeline actually ran. NULL until the first
+    //                    nightly completes after this table was created.
+    // last_batcher_run_at = MAX(ran_at) over first-of-month runs: when the monthly
+    //                    Safe batcher step last executed, so "did the batcher tick
+    //                    on the 1st?" is answerable from /health without admin auth.
+    // All are single aggregate timestamps — no wallet data exposed.
+    const healthRows = await sql<{
+      last_fetch: string | null;
+      last_fetch_attempt: string | null;
+      last_pipeline_run_at: string | null;
+      last_batcher_run_at: string | null;
+    }[]>`
       SELECT
         (SELECT MAX(fetched_at)::text FROM trades) AS last_fetch,
-        (SELECT MAX(last_attempt_at)::text FROM tracked_wallets) AS last_fetch_attempt
+        (SELECT MAX(last_attempt_at)::text FROM tracked_wallets) AS last_fetch_attempt,
+        (SELECT MAX(ran_at)::text FROM pipeline_runs) AS last_pipeline_run_at,
+        (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at
     `;
     const pendingRows = await sql<{ pending: string }[]>`
       SELECT COUNT(*)::text AS pending FROM rebate_batches WHERE status IN ('computing','proposed')
     `;
     const last_fetch = healthRows[0]?.last_fetch ?? null;
     const last_fetch_attempt = healthRows[0]?.last_fetch_attempt ?? null;
+    const last_pipeline_run_at = healthRows[0]?.last_pipeline_run_at ?? null;
+    const last_batcher_run_at = healthRows[0]?.last_batcher_run_at ?? null;
     const pending = pendingRows[0]?.pending ?? '0';
-    return { ok: true, last_fetch, last_fetch_attempt, pending_batches: parseInt(pending, 10) };
+    return {
+      ok: true,
+      last_fetch,
+      last_fetch_attempt,
+      last_pipeline_run_at,
+      last_batcher_run_at,
+      pending_batches: parseInt(pending, 10),
+    };
   });
 
   app.get('/status', {

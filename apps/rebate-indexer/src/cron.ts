@@ -75,6 +75,14 @@ async function runPipelineSteps(): Promise<void> {
       }
     }
   }
+
+  // Durable nightly-completion heartbeat — LAST, so a row means the whole
+  // pipeline (incl. the batcher on the 1st) ran to completion. Written only
+  // here (the cron path), never by the startup backfill, so /health can witness
+  // the 02:00 UTC tick without the admin-gated /status and a redeploy can't
+  // clobber it. first_of_month makes the monthly batcher tick separately
+  // observable via /health.last_batcher_run_at.
+  await sql`INSERT INTO pipeline_runs (first_of_month) VALUES (${isFirstOfMonth()})`;
 }
 
 export async function runNightlyPipeline(): Promise<void> {
