@@ -13,6 +13,35 @@ accepts free-form natural language and returns structured JSON your agent
 can map directly to a pre-filled swap link. The agent does the parsing
 and routing; **the human always reviews and signs.**
 
+## MCP server (recommended)
+
+The fastest way to give an MCP-capable agent full Ophis access is the hosted
+**Model Context Protocol** server:
+
+```
+https://mcp.ophis.fi/mcp
+```
+
+It speaks streamable-HTTP MCP and exposes six tools:
+
+| Tool | What it does |
+| --- | --- |
+| `parse_intent` | Parse a plain-English request into a structured intent. |
+| `get_quote` | Fetch an executable quote for a parsed intent. |
+| `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
+| `submit_order` | Submit a signed order to the correct per-chain orderbook. |
+| `lookup_tier` | Look up a wallet's 30-day volume tier / rebate status. |
+| `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
+
+Point any MCP client (Claude, Cursor, or a custom agent) at that URL. Ophis
+never holds keys — `build_order` returns a bounded order the agent signs
+locally; the signature is the trust boundary (see the warning below). A bare
+request without an `Accept: text/event-stream` header returns HTTP 406; that is
+the transport negotiating, not an outage.
+
+If you'd rather make a single REST call than wire up the full toolset, use the
+[Intent API](./intent-api.md) directly, as shown next.
+
 ## The integration flow
 
 1. **Parse.** `POST` the user's request (or your agent-generated trade
