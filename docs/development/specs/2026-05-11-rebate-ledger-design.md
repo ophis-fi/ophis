@@ -304,7 +304,11 @@ Three actors:
 - **Safe Transaction Service** — Safe's hosted indexing+queue service at `https://safe-transaction-gnosis-chain.safe.global`.
 - **Clement (signer)** — holds the signer key in Rabby/Frame; logs into Safe UI to execute.
 
-The Safe is currently **1-of-1** with owner `0x0494…d1A`. This flow is designed to remain correct after the **O1 upgrade to 2-of-N**: the proposer key becomes a non-owner key with proposer-only rights; execution requires N signatures from human-held owner keys.
+The Safe is now **2-of-2** (O1 done) with owners `0xBeC5B03f…0199` and custodes `0x0494F503…284d1A`; the proposer key is a non-owner key with proposer-only rights, and execution requires both human-held owner signatures.
+
+> **Open items (2026-06-02):**
+> - **Insider/recipient overlap:** the partner-fee *recipient* Safe is the SAME Safe the batcher pays *out from*, and custodes is both a Safe owner and the only eligible rebate recipient to date. Decision: split out a **dedicated rebate-pool Safe** separate from the treasury Safe so `pool = Safe WETH balance` can never sweep non-fee treasury funds into a payout. (Blocked on the payout-chain question below — the rebate-pool Safe must live on whichever chain CoW actually disburses to.)
+> - **Payout chain UNVERIFIED:** CoW docs say partner fees are paid "to your designated Ethereum wallet address, weekly" but never name the *chain*. The assumption that WETH lands on Gnosis (chain 100) is **not yet observed on-chain** (the Safe has zero incoming transfers to date). Resolve empirically from the first real disbursement (or by asking CoW) before building any fee-token conversion. The batcher now emits a loud alert if the Safe ever holds non-WETH value with a zero pool (Issue #360), so we'll learn the moment fees land and in which token.
 
 ### Why Gnosis Chain only (Phase 1)
 
@@ -387,7 +391,7 @@ digraph batch {
    > Top: 0xCarol… 0.18182 WETH (Platinum, $600k vol)
    > https://app.safe.global/transactions/queue?safe=gno:0x858f…CeF8
 
-8. **Human confirms.** Review the batch (count, total, top recipients), sign, execute. Under 1-of-1 this is a single click. After O1's 2-of-N, it's N clicks across N devices but the proposal step is identical.
+8. **Human confirms.** Review the batch (count, total, top recipients), sign, execute. Under the current **2-of-2** it's two signatures across two devices; the proposal step is identical regardless of threshold.
 
 9. **Indexer polls for finality.** Every minute, query `safeApi.getTransaction(safe_proposal_hash)`. When `executed && isSuccessful`, capture `transactionHash`.
 
