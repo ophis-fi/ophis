@@ -15,48 +15,63 @@ const chains: Chain[] = [
   { name: 'Solana',    logo: null,                          status: 'via-near', svg: 'solana' },
   { name: 'Bitcoin',   logo: null,                          status: 'via-near', svg: 'bitcoin' },
 ]
+// Two passes feed a seamless CSS marquee: the first is the real, accessible set
+// (counted by tests + read by AT); the second is an aria-hidden clone marked
+// data-clone so the track can scroll exactly one set-width and loop with no seam.
+// The inter-item gap is a per-item margin-right (not flex gap) so every item,
+// including the last of each set, carries a trailing gap; translateX(-50%) then
+// lands precisely on the clone's first item regardless of varying item widths.
+const passes = [false, true]
 ---
 <section class="chains">
   <div class="chains-inner reveal-up flare-sweep" data-reveal>
     <div class="label">Live on</div>
-    <div class="chains-row stagger">
-      {chains.map(c => (
-        <div class={`chain reveal-up`} data-reveal>
-          {c.logo && (
-            <img class="chain-logo" src={c.logo} alt="" width="20" height="20" loading="lazy" decoding="async">
-          )}
-          {!c.logo && c.svg === 'bitcoin' && (
-            <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <circle cx="16" cy="16" r="16" fill="#F7931A"/>
-              <path fill="#fff" d="M22.6 14.2c.3-1.9-1.2-3-3.2-3.7l.7-2.6-1.6-.4-.6 2.5-1.3-.3.6-2.5-1.6-.4-.7 2.6-1-.3-2.2-.5-.4 1.7s1.2.3 1.2.3c.6.2.8.6.7 1l-1.9 7.6c-.1.2-.3.5-.8.4 0 0-1.2-.3-1.2-.3l-.8 1.8 2 .5 1.2.3-.7 2.6 1.6.4.7-2.6 1.3.3-.7 2.6 1.6.4.7-2.6c2.7.5 4.7.3 5.6-2.1.7-2-.1-3.1-1.5-3.8 1.1-.2 1.9-1 2.1-2.4Zm-3.6 5c-.5 2-3.8 1-4.9.7l.9-3.5c1.1.3 4.5.8 4 2.8Zm.5-5c-.4 1.8-3.2.9-4.1.7l.8-3.2c.9.2 3.7.6 3.3 2.5Z"/>
-            </svg>
-          )}
-          {!c.logo && c.svg === 'solana' && (
-            <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <defs>
-                <linearGradient id="sol-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#9945FF"/><stop offset="1" stop-color="#14F195"/>
-                </linearGradient>
-              </defs>
-              <circle cx="16" cy="16" r="16" fill="#0B0B14"/>
-              <path fill="url(#sol-g)" d="M8.5 21.2c.2-.2.5-.3.8-.3h14c.3 0 .5.4.3.6l-2.6 2.8c-.2.2-.5.3-.8.3H6.2c-.3 0-.5-.4-.3-.6l2.6-2.8Zm0-10c.2-.2.5-.3.8-.3h14c.3 0 .5.4.3.6l-2.6 2.8c-.2.2-.5.3-.8.3H6.2c-.3 0-.5-.4-.3-.6l2.6-2.8Zm14.8 5c-.2-.2-.5-.3-.8-.3H8.5c-.3 0-.5.4-.3.6l2.6 2.8c.2.2.5.3.8.3h14c.3 0 .5-.4.3-.6l-2.6-2.8Z"/>
-            </svg>
-          )}
-          {!c.logo && !c.svg && (
-            <div class="chain-placeholder" aria-hidden="true"></div>
-          )}
-          <div class="chain-info">
-            <span class="chain-name">{c.name}</span>
-            {c.status === 'via-near' && <span class="chain-via">via NEAR</span>}
+    {/* CSS-only pause/play control (WCAG 2.2.2: auto-moving content needs a
+        keyboard-operable pause). The checkbox is the focusable control; :has()
+        toggles animation-play-state. No JS, so no CSP hash. */}
+    <input type="checkbox" id="chains-pause" class="chains-pause-input" aria-label="Pause the chains carousel" />
+    <label for="chains-pause" class="chains-pause-btn" title="Pause or play the chains carousel"></label>
+    <div class="chains-marquee">
+      <div class="chains-track">
+        {passes.map((isClone) => chains.map((c) => (
+          <div class="chain" aria-hidden={isClone ? 'true' : undefined} data-clone={isClone ? '' : undefined}>
+            {c.logo && (
+              <img class="chain-logo" src={c.logo} alt="" width="20" height="20" loading="lazy" decoding="async">
+            )}
+            {!c.logo && c.svg === 'bitcoin' && (
+              <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <circle cx="16" cy="16" r="16" fill="#F7931A"/>
+                <path fill="#fff" d="M22.6 14.2c.3-1.9-1.2-3-3.2-3.7l.7-2.6-1.6-.4-.6 2.5-1.3-.3.6-2.5-1.6-.4-.7 2.6-1-.3-2.2-.5-.4 1.7s1.2.3 1.2.3c.6.2.8.6.7 1l-1.9 7.6c-.1.2-.3.5-.8.4 0 0-1.2-.3-1.2-.3l-.8 1.8 2 .5 1.2.3-.7 2.6 1.6.4.7-2.6 1.3.3-.7 2.6 1.6.4.7-2.6c2.7.5 4.7.3 5.6-2.1.7-2-.1-3.1-1.5-3.8 1.1-.2 1.9-1 2.1-2.4Zm-3.6 5c-.5 2-3.8 1-4.9.7l.9-3.5c1.1.3 4.5.8 4 2.8Zm.5-5c-.4 1.8-3.2.9-4.1.7l.8-3.2c.9.2 3.7.6 3.3 2.5Z"/>
+              </svg>
+            )}
+            {!c.logo && c.svg === 'solana' && (
+              <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <defs>
+                  <linearGradient id="sol-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#9945FF"/><stop offset="1" stop-color="#14F195"/>
+                  </linearGradient>
+                </defs>
+                <circle cx="16" cy="16" r="16" fill="#0B0B14"/>
+                <path fill="url(#sol-g)" d="M8.5 21.2c.2-.2.5-.3.8-.3h14c.3 0 .5.4.3.6l-2.6 2.8c-.2.2-.5.3-.8.3H6.2c-.3 0-.5-.4-.3-.6l2.6-2.8Zm0-10c.2-.2.5-.3.8-.3h14c.3 0 .5.4.3.6l-2.6 2.8c-.2.2-.5.3-.8.3H6.2c-.3 0-.5-.4-.3-.6l2.6-2.8Zm14.8 5c-.2-.2-.5-.3-.8-.3H8.5c-.3 0-.5.4-.3.6l2.6 2.8c.2.2.5.3.8.3h14c.3 0 .5-.4.3-.6l-2.6-2.8Z"/>
+              </svg>
+            )}
+            {!c.logo && !c.svg && (
+              <div class="chain-placeholder" aria-hidden="true"></div>
+            )}
+            <div class="chain-info">
+              <span class="chain-name">{c.name}</span>
+              {c.status === 'via-near' && <span class="chain-via">via NEAR</span>}
+            </div>
           </div>
-        </div>
-      ))}
+        )))}
+      </div>
     </div>
   </div>
 </section>
 
 <style>
-  .chains { padding: 60px 56px; text-align: center; }
+  .chains { padding: 60px 0; text-align: center; }
+  .chains-inner { position: relative; }
   .label {
     text-transform: uppercase;
     font-size: 11px;
@@ -64,18 +79,38 @@ const chains: Chain[] = [
     color: var(--ophis-fg-faded);
     margin-bottom: 24px;
   }
-  .chains-row {
+  /* Auto-scrolling marquee. The track holds 2x the chains; every item carries a
+     trailing margin-right, so the two sets are exactly equal width and
+     translateX(-50%) loops with no seam. Edges fade via a mask. */
+  .chains-marquee {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  }
+  .chains-track {
     display: flex;
-    justify-content: center;
     align-items: center;
-    gap: 32px;
-    flex-wrap: wrap;
+    width: max-content;
+    animation: chains-scroll 46s linear infinite;
+    will-change: transform;
+  }
+  /* Pause on hover, on keyboard focus within the strip, or via the explicit
+     toggle (checkbox). */
+  .chains-marquee:hover .chains-track,
+  .chains:has(.chains-pause-input:checked) .chains-track {
+    animation-play-state: paused;
+  }
+  @keyframes chains-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
   }
   .chain {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-right: 40px;
     color: var(--ophis-fg-muted);
+    flex-shrink: 0;
   }
   .chain-logo {
     width: 20px;
@@ -97,7 +132,7 @@ const chains: Chain[] = [
     align-items: flex-start;
     gap: 1px;
   }
-  .chain-name { font-weight: 600; font-size: 14px; line-height: 1.2; }
+  .chain-name { font-weight: 600; font-size: 14px; line-height: 1.2; white-space: nowrap; }
   .chain-via {
     font-size: 10px;
     color: var(--ophis-fg-faded);
@@ -105,8 +140,65 @@ const chains: Chain[] = [
     letter-spacing: 0.04em;
     line-height: 1;
   }
-  @media (max-width: 720px) {
-    .chains-row { gap: 20px; }
-    .chain-name { font-size: 13px; }
+  /* Pause/play toggle: a focusable checkbox (visually hidden) + a styled label
+     button at the top-right of the strip. The label's icon flips pause<->play. */
+  .chains-pause-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .chains-pause-btn {
+    position: absolute;
+    top: -4px;
+    right: 24px;
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--ophis-border);
+    border-radius: 50%;
+    color: var(--ophis-fg-muted);
+    cursor: pointer;
+    transition: border-color 150ms ease, color 150ms ease;
+    z-index: 2;
+  }
+  .chains-pause-btn:hover { color: var(--ophis-fg); border-color: var(--ophis-fg-muted); }
+  .chains-pause-input:focus-visible + .chains-pause-btn {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 2px;
+  }
+  /* Pause glyph (two bars) while running; play glyph (triangle) when paused. */
+  .chains-pause-btn::before {
+    content: '';
+    width: 8px;
+    height: 9px;
+    border-left: 3px solid currentColor;
+    border-right: 3px solid currentColor;
+  }
+  .chains:has(.chains-pause-input:checked) .chains-pause-btn::before {
+    width: 0;
+    height: 0;
+    border: 5px solid transparent;
+    border-left: 8px solid currentColor;
+    border-right: 0;
+    transform: translateX(1px);
+  }
+  /* Reduced motion: no auto-scroll, no pause control. Fall back to the original
+     static wrapped row (all chains visible, no clones, no mask, no motion). */
+  @media (prefers-reduced-motion: reduce) {
+    .chains-marquee { overflow: visible; -webkit-mask-image: none; mask-image: none; }
+    .chains-track {
+      animation: none;
+      width: auto;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px 0;
+      padding-inline: 24px;
+    }
+    .chain[data-clone] { display: none; }
+    .chains-pause-input, .chains-pause-btn { display: none; }
   }
 </style>

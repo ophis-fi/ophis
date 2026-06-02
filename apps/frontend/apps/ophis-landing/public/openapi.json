@@ -26,27 +26,27 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentSuccess" } } }
           },
           "400": {
-            "description": "BAD_INPUT — missing/invalid JSON body or text over 280 chars.",
+            "description": "BAD_INPUT: missing/invalid JSON body or text over 280 chars.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
           },
           "403": {
-            "description": "FORBIDDEN — origin not allowed.",
+            "description": "FORBIDDEN: origin not allowed.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
           },
           "429": {
-            "description": "RATE_LIMITED — exceeded 30 requests/minute/IP.",
+            "description": "RATE_LIMITED: exceeded 30 requests/minute/IP.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
           },
           "500": {
-            "description": "UPSTREAM — server-side parser misconfiguration.",
+            "description": "UPSTREAM: server-side parser misconfiguration.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
           },
           "502": {
-            "description": "UPSTREAM / INVALID_JSON — the parser failed or returned an unparseable response.",
+            "description": "UPSTREAM / INVALID_JSON: the parser failed or returned an unparseable response.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
           },
           "504": {
-            "description": "TIMEOUT — the parser did not respond in time.",
+            "description": "TIMEOUT: the parser did not respond in time.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentError" } } }
           }
         }
