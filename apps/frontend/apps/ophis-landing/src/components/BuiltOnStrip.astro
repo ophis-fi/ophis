@@ -1,11 +1,13 @@
 ---
+// Logos are each partner's own official mark (in-repo SVG for CoW/Bungee,
+// official org marks for the rest), used for factual "built with" attribution.
 const items = [
-  { name: 'CoW Protocol',    note: 'Settlement stack we forked.' },
-  { name: 'Aleph Cloud',     note: 'Decentralized compute infra.' },
-  { name: 'LibertAI',        note: 'LLM for natural-language intent parsing.' },
-  { name: 'Trail of Bits',   note: 'Security audits.' },
-  { name: 'NEAR Intents',    note: 'Cross-chain bridging to Solana + Bitcoin.' },
-  { name: 'Bungee',          note: 'Bridge aggregation.' },
+  { name: 'CoW Protocol',    note: 'Settlement stack we forked.',                  logo: '/logos/partners/cow.svg' },
+  { name: 'Aleph Cloud',     note: 'Decentralized compute infra.',                 logo: '/logos/partners/aleph.png' },
+  { name: 'LibertAI',        note: 'LLM for natural-language intent parsing.',     logo: '/logos/partners/libertai.png' },
+  { name: 'Trail of Bits',   note: 'Security audits.',                             logo: '/logos/partners/trailofbits.png' },
+  { name: 'NEAR Intents',    note: 'Cross-chain bridging to Solana + Bitcoin.',    logo: '/logos/partners/near.png' },
+  { name: 'Bungee',          note: 'Bridge aggregation.',                          logo: '/logos/partners/bungee.svg' },
 ]
 ---
 <section class="built-on">
@@ -19,7 +21,12 @@ const items = [
     <div class="built-grid stagger">
       {items.map(item => (
         <div class="built-item reveal-up" data-reveal>
-          <span class="built-name">{item.name}</span>
+          <div class="built-head">
+            <span class="built-logo">
+              <img src={item.logo} alt={`${item.name} logo`} width="26" height="26" loading="lazy" decoding="async" />
+            </span>
+            <span class="built-name">{item.name}</span>
+          </div>
           <span class="built-note">{item.note}</span>
         </div>
       ))}
@@ -57,7 +64,28 @@ const items = [
     padding: 18px 20px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
+  }
+  .built-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .built-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: #fff;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid var(--ophis-border);
+  }
+  .built-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   .built-name {
     font-weight: 600;

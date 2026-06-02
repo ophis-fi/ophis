@@ -25,7 +25,7 @@ async function loadOphisStyles(page: import('@playwright/test').Page) {
 
 // Task 2.1 — global.css tests
 
-test('reveal-up: hidden initially, visible with .in-view class', async ({ page }) => {
+test('reveal-up: visible by default (JS-off), hidden under html.js until .in-view', async ({ page }) => {
   // Disable transitions so opacity snaps to declared value immediately — avoids
   // mid-transition reads when CSS is injected after element creation.
   await page.setContent(`
@@ -34,9 +34,17 @@ test('reveal-up: hidden initially, visible with .in-view class', async ({ page }
     <div class="reveal-up in-view" id="t2">visible</div>
   `)
   await loadOphisStyles(page)
-  const initial = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
+  // JS-off fallback: WITHOUT html.js, reveal-up content stays fully visible, so a
+  // disabled/failed reveal module can never blank the page (the prior bug).
+  const jsOff = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
+  expect(parseFloat(jsOff)).toBe(1)
+  // JS-on path: the inline head script adds html.js, which gates the hidden
+  // initial state; .in-view (also scoped under html.js) reveals it.
+  await page.evaluate(() => document.documentElement.classList.add('js'))
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
+  const hidden = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
   const active = await page.locator('#t2').evaluate(el => getComputedStyle(el).opacity)
-  expect(parseFloat(initial)).toBeLessThan(0.5)
+  expect(parseFloat(hidden)).toBeLessThan(0.5)
   expect(parseFloat(active)).toBe(1)
 })
 
