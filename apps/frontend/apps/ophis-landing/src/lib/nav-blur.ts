@@ -20,30 +20,36 @@ if (nav) {
 const burger = document.getElementById('nav-burger')
 const drawer = document.getElementById('nav-drawer')
 const scrim = document.getElementById('nav-scrim')
-if (burger && drawer && scrim) {
+const drawerClose = document.getElementById('nav-drawer-close')
+if (burger && drawer && scrim && drawerClose) {
   const drawerLinks = Array.from(drawer.querySelectorAll<HTMLAnchorElement>('a'))
+  // Focusable controls that live INSIDE the open drawer/scrim layer (which sits
+  // above the nav). The burger is deliberately excluded: while open it is covered
+  // by the drawer, so it must never receive focus — the in-drawer close button is
+  // the visible close affordance.
+  const focusables = [drawerClose, ...drawerLinks]
   const setOpen = (open: boolean) => {
     burger.setAttribute('aria-expanded', String(open))
-    burger.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu')
     drawer.dataset.open = String(open)
     scrim.dataset.open = String(open)
     drawer.setAttribute('aria-hidden', String(!open))
     scrim.setAttribute('aria-hidden', String(!open))
     document.body.style.overflow = open ? 'hidden' : ''
-    drawerLinks.forEach((a) => {
-      a.tabIndex = open ? 0 : -1
+    focusables.forEach((el) => {
+      el.tabIndex = open ? 0 : -1
     })
-    if (open) drawerLinks[0]?.focus()
+    if (open) drawerClose.focus()
     else burger.focus()
   }
   const isOpen = () => drawer.dataset.open === 'true'
   burger.addEventListener('click', () => setOpen(!isOpen()))
   scrim.addEventListener('click', () => setOpen(false))
+  drawerClose.addEventListener('click', () => setOpen(false))
   // Close when a link is chosen (same-page anchors and external both).
   drawerLinks.forEach((a) => a.addEventListener('click', () => setOpen(false)))
   // Keyboard handling while open: Escape closes; Tab is trapped within the
-  // burger (the close control) + drawer links, so focus can never escape to the
-  // background content sitting behind the scrim.
+  // in-drawer close button + drawer links, so focus can never escape to the
+  // background behind the scrim or to the now-covered burger.
   document.addEventListener('keydown', (e) => {
     if (!isOpen()) return
     if (e.key === 'Escape') {
@@ -51,7 +57,6 @@ if (burger && drawer && scrim) {
       return
     }
     if (e.key !== 'Tab') return
-    const focusables = [burger, ...drawerLinks]
     const first = focusables[0]
     const last = focusables[focusables.length - 1]
     const active = document.activeElement
