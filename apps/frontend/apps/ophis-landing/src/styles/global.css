@@ -23,24 +23,33 @@ body {
   line-height: 1.5;
 }
 
-/* Reveal-up motion primitive. The hidden initial state is gated on `html.js`
-   (added by an inline head script in Base.astro) so that if JS is disabled OR
-   the reveal module fails to run, every [data-reveal] section renders FULLY
-   VISIBLE instead of being stuck at opacity:0 forever (the prior failure mode
-   that could blank the chains banner + whole page). JS-on => animated reveal.
-   Both states are scoped under html.js so `.in-view` keeps higher specificity
-   than the hidden base. */
+/* Reveal-up motion primitive. The hidden initial state is gated on
+   `html.reveal-armed`, which src/lib/reveal.ts adds ONLY after it has confirmed
+   IntersectionObserver support and is arming the observer. So this fails OPEN:
+   if JS is disabled, the module fails to load/run, or IntersectionObserver is
+   unavailable, the class is never added and every [data-reveal] section renders
+   FULLY VISIBLE instead of being stuck at opacity:0 (which would blank the
+   chains banner + most of the page). reveal.ts also pre-marks above-the-fold
+   elements `.in-view` before arming, so there's no hidden-then-shown flash.
+   Both states are scoped under html.reveal-armed so `.in-view` keeps higher
+   specificity than the hidden base. */
 .reveal-up {
-  transition: opacity 300ms ease-out, transform 300ms ease-out;
   will-change: opacity, transform;
 }
-html.js .reveal-up {
+/* Hide WITHOUT a transition: arming the gate must snap not-yet-revealed
+   elements straight to opacity:0 (no 1->0 fade). A fade-out would (a) flicker
+   off-screen content and (b) be caught by axe mid-transition as a false
+   low-contrast violation, since --ophis-fg-faded is rgba(255,255,255,0.5) and
+   axe multiplies by element opacity. */
+html.reveal-armed .reveal-up {
   opacity: 0;
   transform: translateY(30px);
 }
-html.js .reveal-up.in-view {
+/* The reveal itself (0->1 on scroll) carries the transition. */
+html.reveal-armed .reveal-up.in-view {
   opacity: 1;
   transform: translateY(0);
+  transition: opacity 300ms ease-out, transform 300ms ease-out;
 }
 
 /* Stagger via nth-child */
