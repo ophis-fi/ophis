@@ -14,6 +14,7 @@ import { ReactNode, useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
 
+import { CosmicStarfield } from '../CosmicStarfield'
 import { OphisFooter } from '../OphisFooter'
 import { OphisHeader } from '../OphisHeader'
 
@@ -336,6 +337,7 @@ export function IntentLanding(): ReactNode {
 
   return (
     <Page>
+      <CosmicStarfield />
       <OphisHeader transparent>
         {/* PR #245 (2026-05-23): removed the inline `<Logo src="/ophis-lockup.svg">`
             from the hero header. OphisHeader already renders the "ophis."
