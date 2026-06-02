@@ -152,10 +152,10 @@ const passes = [false, true]
   }
   .chains-pause-btn {
     position: absolute;
-    top: -4px;
+    top: -7px;
     right: 24px;
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
     display: grid;
     place-items: center;
     border: 1px solid var(--ophis-border);
@@ -195,9 +195,13 @@ const passes = [false, true]
       width: auto;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 20px 0;
+      gap: 20px 32px;
       padding-inline: 24px;
     }
+    /* The marquee uses per-item margin-right for a seamless loop; in the static
+       wrapped fallback reset it to 0 and let the flex column-gap space items,
+       so the wrapped rows have even, symmetric columns. */
+    .chain { margin-right: 0; }
     .chain[data-clone] { display: none; }
     .chains-pause-input, .chains-pause-btn { display: none; }
   }

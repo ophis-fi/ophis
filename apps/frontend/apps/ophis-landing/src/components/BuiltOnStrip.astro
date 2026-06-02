@@ -53,7 +53,9 @@ const items = [
   }
   .built-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    /* minmax(0, 1fr) (not bare 1fr) lets columns shrink below the cards'
+       min-content so they never force a row wider than the viewport. */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
     text-align: left;
   }
@@ -98,7 +100,15 @@ const items = [
     line-height: 1.4;
   }
   @media (max-width: 720px) {
-    .built-grid { grid-template-columns: repeat(2, 1fr); }
+    .built-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     h2 { font-size: 26px; }
+  }
+  /* Phones: drop the 56px side padding (it consumed 112px of a 320px viewport
+     and forced horizontal page overflow) to match the .protocols breakpoint. */
+  @media (max-width: 560px) {
+    .built-on { padding: 64px 20px; }
+  }
+  @media (max-width: 400px) {
+    .built-grid { grid-template-columns: 1fr; }
   }
 </style>
