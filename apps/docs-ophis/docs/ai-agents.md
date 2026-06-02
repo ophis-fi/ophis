@@ -34,7 +34,7 @@ It speaks streamable-HTTP MCP and exposes six tools:
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
 
 Point any MCP client (Claude, Cursor, or a custom agent) at that URL. Ophis
-never holds keys — `build_order` returns a bounded order the agent signs
+never holds keys: `build_order` returns a bounded order the agent signs
 locally; the signature is the trust boundary (see the warning below). A bare
 request without an `Accept: text/event-stream` header returns HTTP 406; that is
 the transport negotiating, not an outage.
