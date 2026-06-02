@@ -8,7 +8,7 @@ export interface Props {
   canonical?: string
 }
 const {
-  title = 'Ophis — DEX aggregator for the agent era',
+  title = 'Ophis: DEX aggregator for the agent era',
   description = 'Intent-based, MEV-protected, batch-settled swaps. Describe a trade in plain English; settle in one batch. Built for autonomous agents.',
   canonical = 'https://ophis.fi/',
 } = Astro.props
@@ -77,5 +77,10 @@ const {
   <Sparks />
   <div class="scroll-progress" aria-hidden="true"></div>
   <slot />
+  <script>
+    // GSAP enhancement layer (nav entrance, scroll depth parallax, CTA
+    // micro-interactions). Additive + reduced-motion-gated; see gsap-anim.ts.
+    import '../lib/gsap-anim.ts'
+  </script>
 </body>
 </html>

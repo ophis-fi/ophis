@@ -29,3 +29,13 @@ docs/operations/*.private.md
 
 # Superpowers brainstorming session artifacts (visual companion)
 .superpowers/
+
+# AI agent skills (gsap-skills etc.) — installed locally, not part of the repo
+.agents/
+skills-lock.json
+
+# Local security scan output
+.semgrep-results/
+
+# Playwright run output (frontend root level; per-app output already ignored)
+apps/frontend/test-results/
