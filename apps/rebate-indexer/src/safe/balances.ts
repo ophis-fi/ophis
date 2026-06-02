@@ -11,6 +11,10 @@ const TX_SERVICE_BY_CHAIN: Readonly<Record<number, string>> = {
   100: process.env.SAFE_TX_SERVICE_GNOSIS ?? 'https://api.safe.global/tx-service/gno',
 };
 
+// Per-request timeout for the balances probe so a stalled Safe API can't hang
+// the batcher (the probe runs on the payout path, every cycle).
+const FETCH_TIMEOUT_MS = 8_000;
+
 export interface TokenBalance {
   tokenAddress: string;
   symbol: string;
@@ -45,33 +49,50 @@ export async function getNonWethTokenBalances(args: {
   const base = TX_SERVICE_BY_CHAIN[args.chainId];
   if (!base) return [];
   const wethLc = args.weth.toLowerCase();
+  const collected: SafeBalanceRow[] = [];
   try {
-    const url = `${base}/api/v2/safes/${args.safe}/balances/`;
-    const res = await fetch(url, { headers: { accept: 'application/json' } });
-    if (!res.ok) {
-      log.warn({ status: res.status }, 'safe balances fetch failed');
-      return [];
-    }
     // v2 returns a paginated envelope { count, next, previous, results: [...] };
-    // older deployments return a bare array. Accept both. First page only — for
-    // a "does the Safe hold ANY non-WETH value" probe, page 1 is sufficient.
-    const json = (await res.json()) as SafeBalanceRow[] | { results?: SafeBalanceRow[] };
-    const rows: SafeBalanceRow[] = Array.isArray(json) ? json : Array.isArray(json?.results) ? json.results : [];
-    return rows
-      .filter(
-        (r) =>
-          r.tokenAddress != null && // skip the native coin
-          r.tokenAddress.toLowerCase() !== wethLc && // skip WETH (already covered by the pool read)
-          r.balance != null &&
-          BigInt(r.balance) > 0n,
-      )
-      .map((r) => ({
-        tokenAddress: r.tokenAddress as string,
-        symbol: r.token?.symbol ?? 'UNKNOWN',
-        balance: r.balance,
-      }));
+    // older deployments return a bare array (single page, no `next`). Follow the
+    // `next` links so a stranded token on a later page is NOT missed. Page cap is
+    // a runaway guard (25 pages ≫ any real Safe's token count); each fetch is
+    // timeout-bounded so a stalled API can't hang the (payout-path) batcher.
+    let url: string | null = `${base}/api/v2/safes/${args.safe}/balances/`;
+    for (let page = 0; url && page < 25; page++) {
+      const res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (!res.ok) {
+        log.warn({ status: res.status, page }, 'safe balances fetch failed');
+        break; // page 0 fail → collected empty → []; later page → use what we have
+      }
+      const json = (await res.json()) as SafeBalanceRow[] | { results?: SafeBalanceRow[]; next?: string | null };
+      if (Array.isArray(json)) {
+        collected.push(...json);
+        break; // bare array is not paginated
+      }
+      if (Array.isArray(json?.results)) collected.push(...json.results);
+      url = json?.next ?? null; // DRF `next` is an absolute URL, or null on the last page
+    }
   } catch (err) {
-    log.warn({ err }, 'safe balances probe threw');
-    return [];
+    // Includes AbortSignal timeouts. Fall through and use whatever pages we
+    // collected before the error (partial > nothing for a stranding probe).
+    log.warn({ err }, 'safe balances probe errored; using partial results');
   }
+  // Defensive per-row parse — MUST NOT throw (this runs on the payout path).
+  // Skips malformed rows (non-string tokenAddress, unparseable balance, etc.)
+  // rather than letting a single bad row bubble an exception into runBatcher.
+  const out: TokenBalance[] = [];
+  for (const r of collected) {
+    try {
+      if (typeof r.tokenAddress !== 'string') continue; // null = native coin, or malformed
+      if (r.tokenAddress.toLowerCase() === wethLc) continue; // WETH already covered by the pool read
+      if (r.balance == null || BigInt(r.balance) <= 0n) continue; // BigInt may throw on a bad string → caught below
+      out.push({
+        tokenAddress: r.tokenAddress,
+        symbol: typeof r.token?.symbol === 'string' ? r.token.symbol : 'UNKNOWN',
+        balance: String(r.balance),
+      });
+    } catch {
+      // skip this malformed row
+    }
+  }
+  return out;
 }

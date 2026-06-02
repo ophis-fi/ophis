@@ -112,6 +112,10 @@ export const rebateBatchEntries = pgTable(
 export const pipelineRuns = pgTable('pipeline_runs', {
   id: serial('id').primaryKey(),
   ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+  // true ONLY when the monthly batcher STEP actually executed this run (set from
+  // cron.ts `batcherRan`) — NOT merely that it was the 1st. A skipped batcher
+  // (e.g. missing proposer key) leaves this false so /health.last_batcher_run_at
+  // never falsely claims the batcher ticked.
   firstOfMonth: boolean('first_of_month').notNull().default(false),
 });
 

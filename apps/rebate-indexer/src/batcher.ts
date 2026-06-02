@@ -14,6 +14,13 @@ import { logger } from './logger.js';
 const log = logger.child({ module: 'batcher' });
 const ERC20 = parseAbi(['function balanceOf(address) view returns (uint256)']);
 
+// Telegram alerts are sent with parse_mode 'HTML' (alerter.ts). An ERC20
+// `symbol` is attacker-controllable — anyone can airdrop a token with markup in
+// its symbol — so escape untrusted token metadata before interpolating it.
+const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const MAX_ALERT_TOKENS = 12;
+
 export interface BatcherDeps {
   readonly chainId: number;                                            // payout chain (100 in Phase 1)
   readonly rpcUrl: string;
@@ -52,6 +59,42 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
   const netFee = await client.readContract({ address: weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
   const pool = (netFee * BigInt(POOL_SPLIT_BPS)) / 10_000n;
 
+  // 1b. Issue #360 safety net — runs EVERY batcher cycle, regardless of the WETH
+  //     pool. The rebate pool is WETH-only, so any value the Safe holds in OTHER
+  //     tokens (CoW partner fees accrue in the trade's surplus token) is NOT
+  //     distributed and accrues silently — including on a normal cycle where
+  //     WETH pays out (a mixed WETH + token disbursement). Surface it loudly.
+  //     The balances probe is timeout-bounded and never throws; the alert is
+  //     fire-and-forget (+ its own timeout), so this can neither block nor break
+  //     the payout that follows.
+  try {
+    const stranded = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
+    if (stranded.length > 0) {
+      // Cap the listed tokens so a dust/spam-flooded Safe can't produce a
+      // message Telegram rejects; HTML-escape the (attacker-controllable) token
+      // metadata since notify() sends with parse_mode 'HTML'.
+      const shown = stranded
+        .slice(0, MAX_ALERT_TOKENS)
+        .map((t) => `${escapeHtml(t.symbol)} ${t.balance} (${escapeHtml(t.tokenAddress)})`)
+        .join(', ');
+      const detail = stranded.length > MAX_ALERT_TOKENS ? `${shown}, +${stranded.length - MAX_ALERT_TOKENS} more` : shown;
+      log.warn({ strandedCount: stranded.length, stranded, poolWei: pool.toString() }, 'non-WETH value in Safe, not covered by WETH-only pool');
+      // Fire-and-forget: a (bounded) Telegram send must not delay the payout.
+      void alerts
+        .alert(
+          'batcher',
+          `Safe holds non-WETH value NOT included in the WETH-only rebate pool: ${detail}. ` +
+            `Partner fees may accrue in trade tokens (Issue #360); ` +
+            (pool === 0n
+              ? `the pool is 0 WETH so rebates will NOT pay this cycle until handled.`
+              : `the WETH payout proceeds but this value is excluded and will accrue until converted/handled.`),
+        )
+        .catch((err) => log.warn({ err }, 'stranded-fee alert send failed'));
+    }
+  } catch (err) {
+    log.warn({ err }, 'stranded-fee probe failed (ignored)');
+  }
+
   // 2. Read eligible wallets.
   const eligible = await sql<{ wallet: Buffer; volume_30d_usd: string }[]>`
     SELECT wallet, volume_30d_usd::text FROM wallets WHERE volume_30d_usd > 0
@@ -78,36 +121,12 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
     throw err;
   }
 
-  // 4. No recipients → record + bail out.
+  // 4. No recipients → record + bail out. (The stranded non-WETH probe ran in
+  //    step 1b, regardless of pool, so a zero-pool cycle is already alerted.)
   if (wallets.length === 0 || pool === 0n) {
     await db.update(schema.rebateBatches).set({ status: 'no_recipients' })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, reason: pool === 0n ? 'zero pool' : 'no wallets' }, 'no recipients');
-
-    // Issue #360 safety net: a zero WETH pool while the Safe is actually holding
-    // value means fees may have landed in a non-WETH token (CoW computes partner
-    // fees in the trade's surplus token). The WETH-only pool read can't see that,
-    // so this branch would otherwise no-op SILENTLY forever while value accrues.
-    // Make it LOUD. Best-effort + never throws, so it can't break the recorded
-    // batch result. We probe only when pool === 0n; a non-empty `wallets` set
-    // with pool > 0 is the normal "recipients but..." path, not a stranding bug.
-    if (pool === 0n) {
-      const stranded = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
-      if (stranded.length > 0) {
-        // Cap the listed tokens so a dust/spam-flooded Safe can't produce a
-        // message Telegram rejects (notify() only logs a non-OK send).
-        const MAX_TOKENS = 12;
-        const shown = stranded.slice(0, MAX_TOKENS).map((t) => `${t.symbol} ${t.balance} (${t.tokenAddress})`).join(', ');
-        const detail = stranded.length > MAX_TOKENS ? `${shown}, +${stranded.length - MAX_TOKENS} more` : shown;
-        log.warn({ batchId, strandedCount: stranded.length, stranded }, 'non-WETH value in Safe with zero pool');
-        await alerts.alert(
-          'batcher',
-          `Rebate pool is 0 WETH but the Safe holds non-WETH value: ${detail}. ` +
-            `Partner fees may have landed in trade tokens (Issue #360) — rebates will NOT pay until this is converted/handled.`,
-        );
-      }
-    }
-
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: pool };
   }
 
