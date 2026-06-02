@@ -8,7 +8,9 @@ const EXPECTED_CHAINS = [
 
 test('chains strip lists 13 chains in order', async ({ page }) => {
   await page.goto('/')
-  const items = page.locator('.chains .chain')
+  // The marquee renders an aria-hidden [data-clone] duplicate for a seamless
+  // loop; count only the real, accessible set.
+  const items = page.locator('.chains .chain:not([data-clone])')
   await expect(items).toHaveCount(13)
   for (let i = 0; i < EXPECTED_CHAINS.length; i++) {
     await expect(items.nth(i)).toContainText(EXPECTED_CHAINS[i])
@@ -17,7 +19,9 @@ test('chains strip lists 13 chains in order', async ({ page }) => {
 
 test('Solana and Bitcoin are labeled "via NEAR"', async ({ page }) => {
   await page.goto('/')
-  const items = page.locator('.chains .chain')
+  // The marquee renders an aria-hidden [data-clone] duplicate for a seamless
+  // loop; count only the real, accessible set.
+  const items = page.locator('.chains .chain:not([data-clone])')
   await expect(items.nth(11)).toContainText('via NEAR') // Solana
   await expect(items.nth(12)).toContainText('via NEAR') // Bitcoin
 })
