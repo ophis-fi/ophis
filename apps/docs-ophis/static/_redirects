@@ -1,0 +1,6 @@
+# Cloudflare Pages redirects. Docusaurus copies static/* to the build root,
+# and CF Pages honours a top-level _redirects file.
+#
+# /api was a dead path (404). The Intent API reference lives at /intent-api.
+/api      /intent-api   301
+/api/     /intent-api   301

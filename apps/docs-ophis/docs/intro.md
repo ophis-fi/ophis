@@ -57,5 +57,5 @@ swap 100 USDC for ETH on Base
 - **App:** [ophis.fi](https://ophis.fi)
 - **Business portal:** [business.ophis.fi](https://business.ophis.fi)
 - **Machine-readable summary:** [ophis.fi/llms.txt](https://ophis.fi/llms.txt)
-- **OpenAPI spec:** [ophis.fi/openapi.yaml](https://ophis.fi/openapi.yaml)
+- **OpenAPI spec:** [ophis.fi/openapi.json](https://ophis.fi/openapi.json)
 - **Source:** [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis)

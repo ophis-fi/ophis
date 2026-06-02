@@ -23,7 +23,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Trust',
       collapsed: false,
-      items: ['audits', 'faq'],
+      items: ['audits', 'status', 'faq'],
     },
   ],
 };
