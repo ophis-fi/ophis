@@ -1,7 +1,7 @@
 {
   "name": "ophis",
   "title": "Ophis MCP",
-  "description": "Agent-facing tools for the Ophis DEX: parse swap intents, fetch best-execution quotes, build bounded signable CoW orders, relay pre-signed orders, and look up fee-rebate tiers. Public, unauthenticated, and keyless — the server never holds keys or signs; build_order pins the order receiver to the owner by default (custom receivers require an explicit unsafe opt-in) and the agent signs locally.",
+  "description": "Agent-facing tools for the Ophis DEX: parse swap intents, fetch best-execution quotes, build bounded signable CoW orders, relay pre-signed orders, and look up fee-rebate tiers. Public, unauthenticated, and keyless: the server never holds keys or signs; build_order pins the order receiver to the owner by default (custom receivers require an explicit unsafe opt-in) and the agent signs locally.",
   "endpoint": "https://mcp.ophis.fi/mcp",
   "transport": "streamable-http",
   "authentication": "none",

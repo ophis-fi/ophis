@@ -1257,6 +1257,9 @@ importers:
       astro:
         specifier: ^6.4.2
         version: 6.4.2(@types/node@25.9.1)(idb-keyval@6.2.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(rollup@4.60.4)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.47.1)(yaml@1.10.3)
+      gsap:
+        specifier: ^3.13.0
+        version: 3.15.0
       preact:
         specifier: ^10.0.0
         version: 10.28.2
@@ -11528,6 +11531,9 @@ packages:
   graphql@16.12.0:
     resolution: {integrity: sha512-DKKrynuQRne0PNpEbzuEdHlYOMksHSUI8Zc9Unei5gTsMNA2/vMpoMz/yKba50pejK56qj98qM0SjYxAKi13gQ==}
     engines: {node: ^12.22.0 || ^14.16.0 || ^16.0.0 || >=17.0.0}
+
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
 
   h3@1.15.11:
     resolution: {integrity: sha512-L3THSe2MPeBwgIZVSH5zLdBBU90TOxarvhK9d04IDY2AmVS8j2Jz2LIWtwsGOU3lu2I5jCN7FNvVfY2+XyF+mg==}
@@ -30645,6 +30651,8 @@ snapshots:
       tslib: 2.8.1
 
   graphql@16.12.0: {}
+
+  gsap@3.15.0: {}
 
   h3@1.15.11:
     dependencies:

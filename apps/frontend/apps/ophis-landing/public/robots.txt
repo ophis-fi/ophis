@@ -1,11 +1,11 @@
-# Ophis is built to be found — by search engines AND by answer / generative
+# Ophis is built to be found by search engines AND by answer / generative
 # engines and autonomous agents. Everything here is public marketing content;
 # we explicitly welcome AI crawlers (AEO / GEO).
 
 User-agent: *
 Allow: /
 
-# Answer-engine / LLM crawlers — explicitly allowed.
+# Answer-engine / LLM crawlers explicitly allowed.
 User-agent: GPTBot
 Allow: /
 

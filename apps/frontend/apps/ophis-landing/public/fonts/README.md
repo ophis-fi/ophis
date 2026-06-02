@@ -1,4 +1,4 @@
-# Bundled fonts — third-party attribution
+# Bundled fonts: third-party attribution
 
 This directory ships fonts that are not authored by Ophis. Each font's license must be respected when redistributing the landing page.
 
