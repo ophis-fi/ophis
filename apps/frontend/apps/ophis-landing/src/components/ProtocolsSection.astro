@@ -2,11 +2,15 @@
 /**
  * Aggregated-protocols section — the liquidity venues the Ophis solver network
  * sources from. Grounded in the backend baseline-liquidity sources
- * (crates/liquidity-sources: UniswapV2/V3, SushiSwap, BalancerV2, Curve,
- * PancakeSwap, 0x/ZeroEx RFQ) plus the professional aggregators the solver
- * competition routes across — every entry is a currently-operating venue, not
- * marketing filler. (Dropped 2026-06-02: Elk/Symmetric/Levinswap — never solver
- * sources — and the obscure Gnosis micro-AMMs, per Clement's accuracy review.)
+ * (crates/liquidity-sources/src/lib.rs: UniswapV2/V3, SushiSwap, BalancerV2,
+ * 0x/ZeroEx RFQ, plus the Gnosis-chain baseline AMMs Honeyswap, Swapr and
+ * Baoswap), PancakeSwap (a driver preset, not a lib.rs baseline), and Curve
+ * plus the professional aggregators (1inch, ParaSwap) the solver competition
+ * routes across — every entry is a
+ * currently-operating venue, not marketing filler. Honeyswap/Swapr/Baoswap are
+ * restored here (2026-06-02) because they are real backend sources for the live
+ * Gnosis chain. Only Elk/Symmetric/Levinswap stay dropped — they were never
+ * solver sources.
  *
  * Logos live in public/logos/protocols/ (official SVG marks where available,
  * small PNGs otherwise). Pure markup + scoped CSS; the breathing bloom + sweep
@@ -24,6 +28,9 @@ const protocols: Protocol[] = [
   { name: '0x',          logo: '/logos/protocols/0x.png' },
   { name: '1inch',       logo: '/logos/protocols/1inch.png' },
   { name: 'ParaSwap',    logo: '/logos/protocols/paraswap.png' },
+  { name: 'Honeyswap',   logo: '/logos/protocols/honeyswap.png' },
+  { name: 'Swapr',       logo: '/logos/protocols/swapr.png' },
+  { name: 'Baoswap',     logo: '/logos/protocols/baoswap.png' },
 ]
 ---
 <section class="protocols">

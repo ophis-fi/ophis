@@ -43,12 +43,10 @@ const {
 
   <link rel="preload" href="/fonts/geist-sans-variable.woff2" as="font" type="font/woff2" crossorigin>
 
-  <!-- JS-capability flag, set BEFORE first paint. The reveal-up hidden state
-       (opacity:0) is gated on `html.js` in global.css, so if JS is disabled or
-       the reveal module fails, all content stays fully visible instead of being
-       stuck invisible. Inline => adds a CSP script-hash: after editing, run
-       `node scripts/check-csp-hashes.mjs --print` and update public/_headers. -->
-  <script is:inline>document.documentElement.classList.add('js')</script>
+  <!-- Reveal-up hidden state is gated on `html.reveal-armed`, added by
+       src/lib/reveal.ts only after it confirms IntersectionObserver and arms
+       the observer (fail-open: a failed/absent reveal module leaves content
+       visible). No head script needed. -->
 
   <!-- schema.org structured data (Organization / WebSite / SoftwareApplication)
        for SEO + answer-engine optimization. STATIC content only: the postbuild
