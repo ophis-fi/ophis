@@ -339,10 +339,6 @@ msgstr "y"
 msgid "This is the current market price, including the fee."
 msgstr "This is the current market price, including the fee."
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Convert to COW <0/>"
-#~ msgstr "Convert to COW <0/>"
-
 #: apps/cowswap-frontend/src/modules/swap/containers/DeprecatedNetworkBanner/DeprecatedNetworkBanner.container.tsx
 msgid "You can see your past transactions in Explorer"
 msgstr "You can see your past transactions in Explorer"
@@ -403,10 +399,6 @@ msgstr "I have access to this address on Ethereum."
 msgid "Bridging failed. Refund started..."
 msgstr "Bridging failed. Refund started..."
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Buy COW"
-#~ msgstr "Buy COW"
-
 #: apps/cowswap-frontend/src/legacy/hooks/useWrapCallback.ts
 #: apps/cowswap-frontend/src/legacy/hooks/useWrapCallback.ts
 msgid "Reject"
@@ -421,10 +413,6 @@ msgstr "got"
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/OrderIntent.tsx
 msgid "{sellTokenPart} for at least {buyTokenPart}"
 msgstr "{sellTokenPart} for at least {buyTokenPart}"
-
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Converting vCOW..."
-#~ msgstr "Converting vCOW..."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AppliedHookItem/index.tsx
 msgid "Run a simulation"
@@ -627,10 +615,6 @@ msgstr "View all {totalChains} networks"
 msgid "The connection attempt failed. Please click try again and follow the steps to connect in your wallet."
 msgstr "The connection attempt failed. Please click try again and follow the steps to connect in your wallet."
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "COW token is not available on this network"
-#~ msgstr "COW token is not available on this network"
-
 #: apps/cowswap-frontend/src/modules/affiliate/pure/shared/AffiliateTermsFaqLinks.pure.tsx
 msgid "Terms"
 msgstr "Terms"
@@ -657,18 +641,9 @@ msgstr "Pool tokens"
 msgid "Cancelling order"
 msgstr "Cancelling order"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "<0><1>Vested vCOW</1> is the portion of your vCOW token balance, which is fully available to convert to COW token.</0><2>This includes any vCOW received through an <3>airdrop.</3></2><4>When converting your vested vCOW balance to COW, your entire vested balance will be converted.</4>"
-#~ msgstr "<0><1>Vested vCOW</1> is the portion of your vCOW token balance, which is fully available to convert to COW token.</0><2>This includes any vCOW received through an <3>airdrop.</3></2><4>When converting your vested vCOW balance to COW, your entire vested balance will be converted.</4>"
-
 #: apps/cowswap-frontend/src/common/containers/OrderHooksDetails/HookItem/index.tsx
 msgid "Unknown Hook"
 msgstr "Unknown Hook"
-
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Click to copy token contract address"
-#~ msgstr "Click to copy token contract address"
 
 #: apps/cowswap-frontend/src/legacy/components/swap/UnsupportedCurrencyFooter/index.tsx
 msgid "Unsupported Token"
@@ -760,10 +735,6 @@ msgstr "Overview"
 msgid "Loading operation"
 msgstr "Loading operation"
 
-#: apps/cowswap-frontend/src/modules/governance/pure/GovernanceList/index.tsx
-#~ msgid "Proposal 2"
-#~ msgstr "Proposal 2"
-
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 #: apps/cowswap-frontend/src/modules/ordersTable/state/tabs/ordersTableTabs.constants.ts
 msgid "Signing"
@@ -833,10 +804,6 @@ msgstr "The estimated time for the bridge transaction to complete."
 msgid "months"
 msgstr "months"
 
-#: apps/cowswap-frontend/src/pages/Account/Governance.tsx
-#~ msgid "Delegate (v)COW"
-#~ msgstr "Delegate (v)COW"
-
 #: apps/cowswap-frontend/src/common/pure/ChainPrefixWarning/index.tsx
 msgid "The recipient address you inputted had the chain prefix <0>{chainPrefixWarning}</0>, which is not the expected for the output token's network."
 msgstr "The recipient address you inputted had the chain prefix <0>{chainPrefixWarning}</0>, which is not the expected for the output token's network."
@@ -858,10 +825,6 @@ msgstr "Switch Network"
 msgid "warning"
 msgstr "warning"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Available COW balance"
-#~ msgstr "Available COW balance"
-
 #: apps/cowswap-frontend/src/modules/bridge/pure/BridgeTransactionLink/index.tsx
 msgid "Bridge explorer"
 msgstr "Bridge explorer"
@@ -881,10 +844,6 @@ msgstr "Got it"
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/index.tsx
 msgid "pools"
 msgstr "pools"
-
-#: apps/cowswap-frontend/src/pages/Account/Governance.tsx
-#~ msgid "Forum"
-#~ msgstr "Forum"
 
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
@@ -922,12 +881,6 @@ msgstr "Min received (incl. costs)"
 msgid "Search name or paste address..."
 msgstr "Search name or paste address..."
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Copy contract"
-#~ msgstr "Copy contract"
-
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/index.tsx
 msgid "pools available to get yield on your assets!"
 msgstr "pools available to get yield on your assets!"
@@ -940,10 +893,6 @@ msgstr "pools available to get yield on your assets!"
 #: apps/cowswap-frontend/src/modules/trade/pure/TradeConfirmation/index.tsx
 msgid "Confirm"
 msgstr "Confirm"
-
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Total vCOW balance"
-#~ msgstr "Total vCOW balance"
 
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
@@ -1058,13 +1007,6 @@ msgstr "Ophis's robust solver competition protects your slippage from being expl
 msgid "Order Open"
 msgstr "Order Open"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "View contract"
-#~ msgstr "View contract"
-
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Only \"sell\" orders are supported"
 msgstr "Only \"sell\" orders are supported"
@@ -1120,10 +1062,6 @@ msgstr "creating"
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/AirdropHookApp/index.tsx
 msgid "Claimable amount"
 msgstr "Claimable amount"
-
-#: apps/cowswap-frontend/src/modules/governance/pure/GovernanceList/index.tsx
-#~ msgid "Proposal 1"
-#~ msgstr "Proposal 1"
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliateTraderCodeInfo.tsx
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/AffiliateTradeCodeForm.tsx
@@ -1292,10 +1230,6 @@ msgstr "Allows you to choose a destination address for the swap other than the c
 msgid "Your account is affected by the AnySwap Hack"
 msgstr "Your account is affected by the AnySwap Hack"
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "COW vesting from locked GNO"
-#~ msgstr "COW vesting from locked GNO"
-
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Deprecated Network"
 msgstr "Deprecated Network"
@@ -1435,11 +1369,6 @@ msgstr "View all orders"
 #: apps/cowswap-frontend/src/modules/accountProxy/consts.ts
 msgid "Need help"
 msgstr "Need help"
-
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Unvested"
-#~ msgstr "Unvested"
 
 #: apps/cowswap-frontend/src/legacy/components/CowSubsidyModal/SubsidyTable.tsx
 msgid "(v)COW balance"
@@ -1618,19 +1547,10 @@ msgstr "No fees for failed transactions"
 msgid "Order type"
 msgstr "Order type"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/Delegate.tsx
-#~ msgid "Token balance"
-#~ msgstr "Token balance"
-
 #. js-lingui-explicit-id
 #: apps/cowswap-frontend/src/modules/ordersTable/containers/OrdersTableWidget/OrdersTableWidget.container.tsx
 msgid "Expired orders"
 msgstr "Expired orders"
-
-#: apps/cowswap-frontend/src/legacy/components/ErrorBoundary/ErrorWithStackTrace.tsx
-#~ msgid "Ophis Error"
-#~ msgstr "Ophis Error"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/containers/HooksStoreWidget/index.tsx
 msgid "Learn more."
@@ -1737,10 +1657,6 @@ msgstr "Filled orders"
 #: apps/cowswap-frontend/src/modules/tokensList/containers/LpTokenPage/index.tsx
 msgid "Volume (24h)"
 msgstr "Volume (24h)"
-
-#: apps/cowswap-frontend/src/legacy/components/ErrorBoundary/ChunkLoadError.tsx
-#~ msgid "Ophis no connection"
-#~ msgstr "Ophis no connection"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/TwapOrderStatus/TwapOrderStatus.pure.tsx
 msgid "Order partially filled"
@@ -1897,10 +1813,6 @@ msgstr "Order cancelled"
 msgid "Expired before creation"
 msgstr "Expired before creation"
 
-#: apps/cowswap-frontend/src/pages/Account/Governance.tsx
-#~ msgid "Use your (v)COW balance to vote on important proposals or participate in forum discussions."
-#~ msgstr "Use your (v)COW balance to vote on important proposals or participate in forum discussions."
-
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "Collapse"
 msgstr "Collapse"
@@ -1947,10 +1859,6 @@ msgstr "and"
 msgid "Waiting for confirmation."
 msgstr "Waiting for confirmation."
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "COW token"
-#~ msgstr "COW token"
-
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
 msgid "(via WalletConnect)"
 msgstr "(via WalletConnect)"
@@ -1959,10 +1867,6 @@ msgstr "(via WalletConnect)"
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Error loading price. Try again later."
 msgstr "Error loading price. Try again later."
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/hooks.ts
-#~ msgid "Trying to claim without claim data"
-#~ msgstr "Trying to claim without claim data"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderEstimatedExecutionPrice/OrderEstimatedExecutionPrice.pure.tsx
 #: apps/cowswap-frontend/src/modules/trade/pure/TradeNumberInput/index.tsx
@@ -2232,10 +2136,6 @@ msgstr "vCOW token not present"
 msgid "{solversLength} solvers"
 msgstr "{solversLength} solvers"
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/hooks.ts
-#~ msgid "Claim vested"
-#~ msgstr "Claim vested"
-
 #: apps/cowswap-frontend/src/modules/application/containers/AppContainer/CowSpeechBubble/CowSpeechBubbleHiringBanner.tsx
 msgid "Dismiss hiring message"
 msgstr "Dismiss hiring message"
@@ -2342,17 +2242,9 @@ msgstr "A new competition has started"
 msgid "Quote expired. Please refresh."
 msgstr "Quote expired. Please refresh."
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Successfully converted!"
-#~ msgstr "Successfully converted!"
-
 #: apps/cowswap-frontend/src/pages/games/MevSlicer/index.tsx
 msgid "Ninja Order"
 msgstr "Ninja Order"
-
-#: apps/cowswap-frontend/src/pages/Account/Delegate.tsx
-#~ msgid "Too <0>busy</0> <1/>to vote?"
-#~ msgstr "Too <0>busy</0> <1/>to vote?"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Header/ordersTableHeader.constants.tsx
 msgid "Expiration"
@@ -2404,10 +2296,6 @@ msgstr "Sell amount too small"
 #: apps/cowswap-frontend/src/legacy/components/Badge/RangeBadge.tsx
 msgid "Your position has 0 liquidity, and is not earning fees."
 msgstr "Your position has 0 liquidity, and is not earning fees."
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Click to copy contract address"
-#~ msgstr "Click to copy contract address"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWarnings/warnings/UnsupportedWalletWarning.tsx
 msgid "Unsupported wallet detected"
@@ -2556,14 +2444,6 @@ msgstr "on-chain"
 #: apps/cowswap-frontend/src/pages/Account/index.tsx
 msgid "Tokens overview"
 msgstr "Tokens overview"
-
-#: apps/cowswap-frontend/src/pages/Account/index.tsx
-#~ msgid "Account overview"
-#~ msgstr "Account overview"
-
-#: apps/cowswap-frontend/src/pages/Account/Delegate.tsx
-#~ msgid "Delegate your"
-#~ msgstr "Delegate your"
 
 #: apps/cowswap-frontend/src/modules/notifications/containers/NotificationsList/index.tsx
 msgid "<0>Enable trade alerts</0> for fills and expiries"
@@ -2834,11 +2714,6 @@ msgstr "safeBundleFlowContext is not set!"
 msgid "Invalid URL: No manifest.json file found. Please check the URL and try again."
 msgstr "Invalid URL: No manifest.json file found. Please check the URL and try again."
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/hooks.ts
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/hooks.ts
-#~ msgid "COW token not found for chain {SupportedChainIdMAINNET}"
-#~ msgstr "COW token not found for chain {SupportedChainIdMAINNET}"
-
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Unwrap"
 msgstr "Unwrap"
@@ -2952,11 +2827,6 @@ msgstr "Order presigned"
 #: apps/cowswap-frontend/src/modules/affiliate/pure/HowItWorks.tsx
 msgid "See how it works."
 msgstr "See how it works."
-
-#: apps/cowswap-frontend/src/legacy/components/ErrorBoundary/ChunkLoadError.tsx
-#: apps/cowswap-frontend/src/legacy/components/ErrorBoundary/ErrorWithStackTrace.tsx
-#~ msgid "Get support on Discord"
-#~ msgstr "Get support on Discord"
 
 #: apps/cowswap-frontend/src/common/hooks/useConfirmPriceImpactWithoutFee.ts
 #: apps/cowswap-frontend/src/common/hooks/useConfirmPriceImpactWithoutFee.ts
@@ -3115,10 +2985,6 @@ msgstr "Get started!"
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/DeadlineSelector/index.tsx
 msgid "Set custom date"
 msgstr "Set custom date"
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Claimable"
-#~ msgstr "Claimable"
 
 #: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
 msgid "Docs"
@@ -3297,10 +3163,6 @@ msgstr "No. of parts"
 #: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
 msgid "and saved "
 msgstr "and saved "
-
-#: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.tsx
-#~ msgid "Empty order list animation"
-#~ msgstr "Empty order list animation"
 
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTableRow.tsx
 msgid "Approve all"
@@ -3492,10 +3354,6 @@ msgstr "Couldn't load balances"
 msgid "Not available in your region"
 msgstr "Not available in your region"
 
-#: apps/cowswap-frontend/src/pages/Account/Delegate.tsx
-#~ msgid "Delegate"
-#~ msgstr "Delegate"
-
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/SolvingStep.tsx
 msgid "cancel the order"
 msgstr "cancel the order"
@@ -3675,10 +3533,6 @@ msgstr "Approve"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Header/ordersTableHeader.constants.tsx
 msgid "Execution time"
 msgstr "Execution time"
-
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "vCOW token"
-#~ msgstr "vCOW token"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 msgid "Place orders for higher than available balance!"
@@ -3909,10 +3763,6 @@ msgstr "This is the recommended slippage tolerance based on current gas prices &
 msgid "buy"
 msgstr "buy"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Converting vCOW to COW"
-#~ msgstr "Converting vCOW to COW"
-
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapConfirmModal/useLabelsAndTooltips.tsx
 msgid "Maximum sent"
 msgstr "Maximum sent"
@@ -4011,10 +3861,6 @@ msgstr "Another order has used up the approval amount. Set a new token approval 
 msgid "Enter valid token address"
 msgstr "Enter valid token address"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "vCOW conversion"
-#~ msgstr "vCOW conversion"
-
 #: apps/cowswap-frontend/src/legacy/components/ErrorBoundary/ChunkLoadError.tsx
 msgid "Sorry, we were unable to load the requested page."
 msgstr "Sorry, we were unable to load the requested page."
@@ -4046,11 +3892,6 @@ msgstr "Your wallet is eligible for rewards. After your first trade, the referra
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/ClaimGnoHookApp/index.tsx
 msgid "Update Pre-hook"
 msgstr "Update Pre-hook"
-
-#: apps/cowswap-frontend/src/pages/Account/Governance.tsx
-#: apps/cowswap-frontend/src/pages/Account/index.tsx
-#~ msgid "Governance"
-#~ msgstr "Governance"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/DeadlineSelector/index.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
@@ -4089,10 +3930,6 @@ msgstr "24 Hours"
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxyPage/index.tsx
 msgid "Recoverable tokens"
 msgstr "Recoverable tokens"
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/hooks.ts
-#~ msgid "Contract not present or not connected to any supported chain"
-#~ msgstr "Contract not present or not connected to any supported chain"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/LoadMore/Section/LoadMoreOrdersSection.tsx
 msgid "That's all your open orders."
@@ -4593,10 +4430,6 @@ msgstr "Selling {nativeSymbol} is only supported on SWAP orders."
 msgid "Wrap"
 msgstr "Wrap"
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/hooks.ts
-#~ msgid "Contract and chainId are not on the same chain"
-#~ msgstr "Contract and chainId are not on the same chain"
-
 #: apps/cowswap-frontend/src/modules/hooksStore/containers/HookRegistryList/index.tsx
 msgid "Search hooks by title or description"
 msgstr "Search hooks by title or description"
@@ -4763,12 +4596,6 @@ msgstr "Trade tokens"
 msgid "Boost Your Yield with One-Click Conversion"
 msgstr "Boost Your Yield with One-Click Conversion"
 
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Vested"
-#~ msgstr "Vested"
-
 #: apps/cowswap-frontend/src/modules/wallet/pure/WalletModal/styled.tsx
 msgid "Learn more about wallets"
 msgstr "Learn more about wallets"
@@ -4915,10 +4742,6 @@ msgstr "Add Pre-Hook Action"
 msgid "Page {page} of {maxPage}"
 msgstr "Page {page} of {maxPage}"
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Each time you claim, you will receive the entire claimable amount."
-#~ msgstr "Each time you claim, you will receive the entire claimable amount."
-
 #: apps/cowswap-frontend/src/modules/tokensList/pure/SelectTokenModal/MobileChainSelector.tsx
 msgid "Selected network {activeChainLabel}"
 msgstr "Selected network {activeChainLabel}"
@@ -4946,10 +4769,6 @@ msgstr "I acknowledge the high price impact"
 msgid "Simulation Failed"
 msgstr "Simulation Failed"
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Successfully claimed"
-#~ msgstr "Successfully claimed"
-
 #: apps/cowswap-frontend/src/modules/twap/pure/PrimaryActionButton/index.tsx
 msgid "Minimum trade size for xStocks tokens is ${XSTOCK_MIN_TRADE_SIZE_USD} per part"
 msgstr "Minimum trade size for xStocks tokens is ${XSTOCK_MIN_TRADE_SIZE_USD} per part"
@@ -4974,10 +4793,6 @@ msgstr "Confirm swap"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Part of a {twapOrderN}-part TWAP order split"
 msgstr "Part of a {twapOrderN}-part TWAP order split"
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Claim COW <0/>"
-#~ msgstr "Claim COW <0/>"
 
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliatePartner/AffiliatePartnerCodeForm.tsx
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/AffiliateTradeCodeForm.tsx
@@ -5437,10 +5252,6 @@ msgstr "When enabled, the orders table will be displayed on the left side on des
 msgid "Dismiss incident notice"
 msgstr "Dismiss incident notice"
 
-#: apps/cowswap-frontend/src/pages/Account/Governance.tsx
-#~ msgid "View proposals"
-#~ msgstr "View proposals"
-
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step2.tsx
 msgid "Creating Order"
@@ -5638,10 +5449,6 @@ msgstr "Expected to sell"
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeBasicConfirmDetails/index.tsx
 msgid "This is the minimum amount that you will receive."
 msgstr "This is the minimum amount that you will receive."
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "Claiming COW..."
-#~ msgstr "Claiming COW..."
 
 #: apps/cowswap-frontend/src/common/hooks/useConfirmPriceImpactWithoutFee.ts
 msgid "continue with this swap"
@@ -5896,10 +5703,6 @@ msgstr "You will be prompted to <0>wrap your {nativeSymbol} to {wrappedSymbol}</
 msgid "Cancelling {ordersCount} orders"
 msgstr "Cancelling {ordersCount} orders"
 
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "User rejected signing COW claim transaction"
-#~ msgstr "User rejected signing COW claim transaction"
-
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
@@ -5973,10 +5776,6 @@ msgstr "Manage"
 #: apps/cowswap-frontend/src/modules/zeroApproval/containers/ZeroApprovalModal/ZeroApprovalModal.tsx
 msgid "Reset {symbol} allowance to 0 before setting new spending cap"
 msgstr "Reset {symbol} allowance to 0 before setting new spending cap"
-
-#: apps/cowswap-frontend/src/pages/Account/Delegate.tsx
-#~ msgid "Delegate Now"
-#~ msgstr "Delegate Now"
 
 #: apps/cowswap-frontend/src/modules/trade/pure/LimitOrdersPromoBanner/index.tsx
 msgid "Try new limit orders now"
@@ -6056,10 +5855,6 @@ msgstr "View List"
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxyPage/index.tsx
 msgid "Invalid proxy address"
 msgstr "Invalid proxy address"
-
-#: apps/cowswap-frontend/src/pages/Account/Balances.tsx
-#~ msgid "Convert vCOW to COW"
-#~ msgstr "Convert vCOW to COW"
 
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
@@ -6152,10 +5947,6 @@ msgstr "Limit"
 #: apps/cowswap-frontend/src/modules/trade/pure/TradeConfirmation/getPendingText.ts
 msgid "Confirm bridging"
 msgstr "Confirm bridging"
-
-#: apps/cowswap-frontend/src/pages/Account/LockedGnoVesting/index.tsx
-#~ msgid "<0>COW vesting from the GNO lock</0> is vested linearly over four years, starting on"
-#~ msgstr "<0>COW vesting from the GNO lock</0> is vested linearly over four years, starting on"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWidget/tooltips.tsx
 msgid "The \"Part duration\" refers to the duration between each part of your TWAP order.<0/><1/>Choosing a shorter time allows for faster execution of each part, potentially reducing price fluctuations. Striking the right balance is crucial for optimal execution."

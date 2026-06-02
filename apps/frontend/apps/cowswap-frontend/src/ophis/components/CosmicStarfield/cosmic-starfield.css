@@ -1,0 +1,90 @@
+/* Cosmic starfield — ported 1:1 from the ophis.fi landing (global.css
+   .particle / .spark) so swap.ophis.fi matches the landing backdrop. Classes
+   are `ophis-` prefixed to avoid any clash with app styles. Only transform +
+   opacity animate (compositor-friendly); all motion is disabled under
+   prefers-reduced-motion. */
+
+.ophis-starfield {
+  /* !important: IntentLanding's `Page > * { position:relative; z-index:1 }`
+     rule targets every direct child; without these overrides it would turn this
+     layer relative (collapsing it) and lift it to z-1 over the content. We want
+     an absolute, full-bleed z-0 layer behind the z-1 content (same layering the
+     landing uses for its particles/orbs). */
+  position: absolute !important;
+  inset: 0;
+  z-index: 0 !important;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Soft drifting/twinkling dots (the far→near depth field). */
+.ophis-particle {
+  position: absolute;
+  border-radius: 50%;
+  opacity: var(--op, 0.4);
+  animation:
+    ophis-particle-drift var(--dur, 24s) ease-in-out var(--delay, 0s) infinite alternate,
+    ophis-particle-twinkle var(--tdur, 5s) ease-in-out var(--delay, 0s) infinite;
+}
+.ophis-particle--saffron {
+  background: rgba(242, 166, 62, 0.9);
+  box-shadow: 0 0 6px 1px rgba(242, 166, 62, 0.35);
+}
+.ophis-particle--violet {
+  background: rgba(180, 138, 255, 0.9);
+  box-shadow: 0 0 6px 1px rgba(180, 138, 255, 0.3);
+}
+@keyframes ophis-particle-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, calc(var(--drift, 16px) * -1), 0); }
+}
+@keyframes ophis-particle-twinkle {
+  0%, 100% { opacity: calc(var(--op, 0.4) * 0.35); }
+  50%      { opacity: var(--op, 0.4); }
+}
+
+/* Brighter 4-point sparkle glints (the redesigned non-cross stars). */
+.ophis-spark {
+  position: absolute;
+  opacity: var(--op, 0.6);
+  animation:
+    ophis-spark-move var(--dur, 10s) ease-in-out var(--delay, 0s) infinite alternate,
+    ophis-spark-twinkle var(--tdur, 4s) ease-in-out var(--delay, 0s) infinite;
+}
+.ophis-spark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, #fff 0%, var(--c) 30%, transparent 74%);
+  clip-path: polygon(
+    50% 0%, 58% 42%, 100% 50%, 58% 58%,
+    50% 100%, 42% 58%, 0% 50%, 42% 42%
+  );
+  filter: drop-shadow(0 0 3px var(--g));
+}
+.ophis-spark::after {
+  content: '';
+  position: absolute;
+  inset: -75%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--g) 0%, transparent 60%);
+  z-index: -1;
+}
+.ophis-spark--saffron { --c: rgba(255, 209, 154, 0.95); --g: rgba(242, 166, 62, 0.45); }
+.ophis-spark--violet  { --c: rgba(214, 196, 255, 0.95); --g: rgba(180, 138, 255, 0.4); }
+@keyframes ophis-spark-move {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to   { transform: translate3d(var(--dx, 0), var(--dy, 0), 0) rotate(var(--rot, 0deg)); }
+}
+@keyframes ophis-spark-twinkle {
+  0%, 100% { opacity: calc(var(--op, 0.6) * 0.12); }
+  50%      { opacity: var(--op, 0.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ophis-particle,
+  .ophis-spark {
+    animation: none !important;
+    transform: none !important;
+  }
+}
