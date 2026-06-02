@@ -1,11 +1,6 @@
-import { useFlags } from 'launchdarkly-react-client-sdk'
-
-type SolversFeatureFlags = {
-  isSolversEnabled?: boolean
-}
-
+// LaunchDarkly removed (Ophis fork). Solvers visibility is statically off to
+// preserve prior behavior: CoW's LD context never returned isSolversEnabled for
+// the 'explorer' key, so this hook already resolved to false at runtime.
 export function useSolversFeatureFlag(): boolean {
-  const flags = useFlags() as SolversFeatureFlags
-
-  return flags.isSolversEnabled ?? false
+  return false
 }

@@ -3,7 +3,6 @@ import React from 'react'
 import { mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Media } from '@cowprotocol/ui'
 
-import { useFlags } from 'launchdarkly-react-client-sdk'
 import { Helmet } from 'react-helmet'
 import styled from 'styled-components/macro'
 
@@ -75,7 +74,12 @@ const SHOW_TOKENS_TABLE: Record<SupportedChainId, boolean> = {
 export const Home: React.FC = () => {
   const networkId = useNetworkId() ?? undefined
 
-  const { isTheGraphEnabled } = useFlags()
+  // LaunchDarkly removed (Ophis fork). Statically OFF: this preserves the prior
+  // live behavior (CoW's LD context never resolved isTheGraphEnabled, so it was
+  // falsy and the charts were hidden), and it avoids surfacing the StatsSummary /
+  // TokensTable widgets — those query CoW's mainnet subgraph (needs an API key
+  // Ophis doesn't ship, and would show CoW data, not Ophis orderbook data).
+  const isTheGraphEnabled = false
 
   const showCharts = !!networkId && isTheGraphEnabled && subgraphApiSDK.SUBGRAPH_PROD_CONFIG[networkId] !== null
   const showTokensTable = !!networkId && isTheGraphEnabled && SHOW_TOKENS_TABLE[networkId]

@@ -2,30 +2,9 @@ import { renderHook } from '@testing-library/react'
 
 import { useSolversFeatureFlag } from '../../hooks/useSolversFeatureFlag'
 
-jest.mock('launchdarkly-react-client-sdk', () => ({
-  useFlags: jest.fn(),
-}))
-
-const { useFlags } = jest.requireMock('launchdarkly-react-client-sdk') as {
-  useFlags: jest.Mock
-}
-
+// LaunchDarkly was removed from the Ophis fork; the hook is now a static stub.
 describe('useSolversFeatureFlag', () => {
-  beforeEach(() => {
-    useFlags.mockReset()
-  })
-
-  it('defaults to disabled when the LaunchDarkly flag is missing', () => {
-    useFlags.mockReturnValue({})
-
-    const { result } = renderHook(() => useSolversFeatureFlag())
-
-    expect(result.current).toBe(false)
-  })
-
-  it('returns the LaunchDarkly flag value when provided', () => {
-    useFlags.mockReturnValue({ isSolversEnabled: false })
-
+  it('returns false now that LaunchDarkly is removed (Solvers statically disabled)', () => {
     const { result } = renderHook(() => useSolversFeatureFlag())
 
     expect(result.current).toBe(false)
