@@ -3,8 +3,8 @@ const links = [
   { href: '#features', label: 'Product' },
   { href: 'https://docs.ophis.fi', label: 'Docs' },
   { href: 'https://github.com/ophis-fi/ophis/tree/main/packages/sdk', label: 'SDK' },
-  { href: '#sdk', label: 'Pricing' },
-  { href: 'https://github.com/ophis-fi/ophis/blob/main/CHANGELOG.md', label: 'Blog' },
+  { href: '#sdk', label: 'Integrate' },
+  { href: 'https://github.com/ophis-fi/ophis/blob/main/CHANGELOG.md', label: 'Changelog' },
 ]
 ---
 <nav class="nav">
@@ -22,8 +22,32 @@ const links = [
       ))}
     </div>
     <a class="nav-cta" href="https://swap.ophis.fi/">Trade</a>
+    <button
+      type="button"
+      class="nav-burger"
+      id="nav-burger"
+      aria-label="Open navigation menu"
+      aria-expanded="false"
+      aria-controls="nav-drawer"
+    >
+      <span class="nav-burger-box" aria-hidden="true"><span class="nav-burger-bar"></span></span>
+    </button>
   </div>
 </nav>
+<!-- Drawer + scrim live OUTSIDE <nav> on purpose: .nav sets backdrop-filter,
+     which establishes a containing block for position:fixed descendants. If the
+     drawer were nested inside .nav it would anchor to the nav box instead of the
+     viewport (the bug fixed in PR #333). As siblings of <nav> they anchor to the
+     viewport correctly. -->
+<div class="nav-drawer" id="nav-drawer" data-open="false" aria-hidden="true">
+  <nav class="nav-drawer-links" aria-label="Mobile">
+    {links.map(({ href, label }) => (
+      <a href={href} rel={href.startsWith('http') ? 'noopener' : undefined} tabindex="-1">{label}</a>
+    ))}
+    <a class="nav-drawer-cta" href="https://swap.ophis.fi/" tabindex="-1">Trade</a>
+  </nav>
+</div>
+<div class="nav-scrim" id="nav-scrim" data-open="false" aria-hidden="true"></div>
 <script>
   import '../lib/nav-blur.ts'
 </script>
@@ -79,8 +103,111 @@ const links = [
     transition: filter 150ms ease;
   }
   .nav-cta:hover { filter: brightness(1.05); }
+  /* --- Mobile nav (hamburger + slide-in drawer) --- */
+  .nav-burger {
+    display: none;
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius-sm);
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    cursor: pointer;
+    color: var(--ophis-fg);
+    align-items: center;
+    justify-content: center;
+  }
+  .nav-burger:focus-visible {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 2px;
+  }
+  .nav-burger-box { position: relative; display: block; width: 18px; height: 12px; }
+  .nav-burger-bar,
+  .nav-burger-bar::before,
+  .nav-burger-bar::after {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: currentColor;
+    border-radius: 2px;
+    transition: transform 200ms ease, opacity 150ms ease;
+  }
+  .nav-burger-bar { top: 5px; }
+  .nav-burger-bar::before { content: ''; top: -5px; }
+  .nav-burger-bar::after  { content: ''; top: 5px; }
+  .nav-burger[aria-expanded='true'] .nav-burger-bar { background: transparent; }
+  .nav-burger[aria-expanded='true'] .nav-burger-bar::before { transform: translateY(5px) rotate(45deg); }
+  .nav-burger[aria-expanded='true'] .nav-burger-bar::after  { transform: translateY(-5px) rotate(-45deg); }
+
+  .nav-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 200ms ease, visibility 0s linear 200ms;
+  }
+  .nav-scrim[data-open='true'] {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 200ms ease;
+  }
+
+  .nav-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 51;
+    height: 100dvh;
+    width: min(82vw, 320px);
+    padding: 88px 24px 32px;
+    background: rgba(10, 10, 10, 0.98);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    backdrop-filter: blur(12px) saturate(180%);
+    border-left: 1px solid var(--ophis-border);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 240ms;
+  }
+  .nav-drawer[data-open='true'] {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .nav-drawer-links { display: flex; flex-direction: column; gap: 4px; }
+  .nav-drawer-links a {
+    color: var(--ophis-fg-muted);
+    font-size: 16px;
+    text-decoration: none;
+    padding: 12px 8px;
+    border-radius: var(--ophis-radius-sm);
+    transition: color 120ms ease, background-color 120ms ease;
+  }
+  .nav-drawer-links a:hover { color: var(--ophis-fg); background: rgba(255, 255, 255, 0.04); }
+  .nav-drawer-links a:focus-visible { outline: 2px solid var(--ophis-saffron-60); outline-offset: 2px; }
+  .nav-drawer-cta {
+    margin-top: 12px;
+    background: var(--ophis-saffron-60);
+    color: var(--ophis-bg) !important;
+    font-weight: 600;
+    text-align: center;
+  }
+
   @media (max-width: 720px) {
     .nav-inner { padding-inline: 20px; }
     .nav-links { display: none; }
+    .nav-burger { display: inline-flex; }
+    .nav .nav-cta { display: none; }
+  }
+  @media (min-width: 721px) {
+    /* never show the drawer/scrim on desktop even if a stale data-open lingers */
+    .nav-drawer, .nav-scrim { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nav-drawer, .nav-scrim,
+    .nav-burger-bar, .nav-burger-bar::before, .nav-burger-bar::after { transition: none !important; }
   }
 </style>
