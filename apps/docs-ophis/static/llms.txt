@@ -1,10 +1,10 @@
 # Ophis Docs
 
-> Developer documentation for Ophis — an intent-based, MEV-protected DEX aggregator (a CoW Protocol fork) built for the agent era. Describe a swap in plain English; a competitive solver auction fills it across the deepest on-chain liquidity, MEV-protected, settled in one batch. Agents integrate via a hosted MCP server or a single REST call.
+> Developer documentation for Ophis: an intent-based, MEV-protected DEX aggregator (a CoW Protocol fork) built for the agent era. Describe a swap in plain English; a competitive solver auction fills it across the deepest on-chain liquidity, MEV-protected, settled in one batch. Agents integrate via a hosted MCP server or a single REST call.
 
 ## Build with Ophis
 
-- [AI agent integration](https://docs.ophis.fi/ai-agents): hosted MCP server at https://mcp.ophis.fi/mcp (tools: parse_intent, get_quote, build_order, submit_order, lookup_tier, list_chains), plus Intent-API recipes for LangChain / AutoGPT / function-calling agents. The human always signs — the signature is the trust boundary.
+- [AI agent integration](https://docs.ophis.fi/ai-agents): hosted MCP server at https://mcp.ophis.fi/mcp (tools: parse_intent, get_quote, build_order, submit_order, lookup_tier, list_chains), plus Intent-API recipes for LangChain / AutoGPT / function-calling agents. The human always signs: the signature is the trust boundary.
 - [Intent API](https://docs.ophis.fi/intent-api): `POST https://ophis.fi/api/intent` with `{"text": "swap 100 USDC for ETH on Base"}` returns `{ok, data: {intent, entities}}`. OpenAPI spec: https://ophis.fi/openapi.json
 
 ## Reference
