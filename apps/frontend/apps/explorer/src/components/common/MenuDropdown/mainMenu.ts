@@ -1,20 +1,15 @@
 import IMAGE_APPDATA from 'assets/img/code.svg'
-import IMAGE_COW from 'assets/img/CowProtocol-logo.svg'
-import IMAGE_DISCORD from 'assets/img/discord.svg'
 import IMAGE_DOC from 'assets/img/doc.svg'
-import IMAGE_ANALYTICS from 'assets/img/pie.svg'
+import IMAGE_OPHIS from 'assets/img/ophis-logo.svg'
+import { FaGithub, FaXTwitter } from 'react-icons/fa6'
 import { PiMathOperationsFill } from 'react-icons/pi'
 
 import { MenuItemKind, MenuLink, MenuTreeItem } from './types'
 
-import {
-  DOCS_LINK,
-  DISCORD_LINK,
-  PROTOCOL_LINK,
-  COWSWAP_LINK,
-  DUNE_DASHBOARD_LINK,
-  Routes,
-} from '../../../explorer/const'
+import { DOCS_LINK, PROTOCOL_LINK, COWSWAP_LINK, TWITTER_LINK, Routes } from '../../../explorer/const'
+
+// Ophis has no Discord/Dune; the real community surfaces are X + the Ophis GitHub org.
+const GITHUB_ORG_LINK = 'https://github.com/ophis-fi'
 
 export function getMainMenu(isSolversEnabled = true): MenuTreeItem[] {
   const otherLinks: MenuLink[] = [
@@ -48,16 +43,16 @@ export function getMainMenu(isSolversEnabled = true): MenuTreeItem[] {
           sectionTitle: 'OVERVIEW',
           links: [
             {
-              title: 'CoW Swap',
+              title: 'Ophis Swap',
               url: COWSWAP_LINK,
               kind: MenuItemKind.EXTERNAL_LINK,
-              iconSVG: IMAGE_COW,
+              iconSVG: IMAGE_OPHIS,
             },
             {
-              title: 'CoW Protocol',
+              title: 'Ophis',
               url: PROTOCOL_LINK,
               kind: MenuItemKind.EXTERNAL_LINK,
-              iconSVG: IMAGE_COW,
+              iconSVG: IMAGE_OPHIS,
             },
             {
               title: 'Documentation',
@@ -65,22 +60,22 @@ export function getMainMenu(isSolversEnabled = true): MenuTreeItem[] {
               kind: MenuItemKind.EXTERNAL_LINK,
               iconSVG: IMAGE_DOC,
             },
-            {
-              title: 'Analytics',
-              url: DUNE_DASHBOARD_LINK,
-              kind: MenuItemKind.EXTERNAL_LINK,
-              iconSVG: IMAGE_ANALYTICS,
-            },
           ],
         },
         {
           sectionTitle: 'COMMUNITY',
           links: [
             {
-              title: 'Discord',
-              url: DISCORD_LINK,
-              iconSVG: IMAGE_DISCORD, // If icon is a <SVG> inline component
+              title: 'X',
+              url: TWITTER_LINK,
               kind: MenuItemKind.EXTERNAL_LINK,
+              iconComponent: FaXTwitter,
+            },
+            {
+              title: 'GitHub',
+              url: GITHUB_ORG_LINK,
+              kind: MenuItemKind.EXTERNAL_LINK,
+              iconComponent: FaGithub,
             },
           ],
         },
