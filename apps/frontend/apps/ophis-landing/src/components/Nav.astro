@@ -40,6 +40,17 @@ const links = [
      viewport (the bug fixed in PR #333). As siblings of <nav> they anchor to the
      viewport correctly. -->
 <div class="nav-drawer" id="nav-drawer" data-open="false" aria-hidden="true">
+  <button
+    type="button"
+    class="nav-drawer-close"
+    id="nav-drawer-close"
+    aria-label="Close navigation menu"
+    tabindex="-1"
+  >
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+    </svg>
+  </button>
   <nav class="nav-drawer-links" aria-label="Mobile">
     {links.map(({ href, label }) => (
       <a href={href} rel={href.startsWith('http') ? 'noopener' : undefined} tabindex="-1">{label}</a>
@@ -137,14 +148,15 @@ const links = [
   .nav-burger-bar { top: 5px; }
   .nav-burger-bar::before { content: ''; top: -5px; }
   .nav-burger-bar::after  { content: ''; top: 5px; }
-  .nav-burger[aria-expanded='true'] .nav-burger-bar { background: transparent; }
-  .nav-burger[aria-expanded='true'] .nav-burger-bar::before { transform: translateY(5px) rotate(45deg); }
-  .nav-burger[aria-expanded='true'] .nav-burger-bar::after  { transform: translateY(-5px) rotate(-45deg); }
 
+  /* Scrim sits ABOVE the sticky nav (z-50) so the open drawer is a true modal:
+     the whole header (logo included) is covered and non-interactive. The drawer
+     carries its own close button, so the now-covered burger is not the close
+     affordance. */
   .nav-scrim {
     position: fixed;
     inset: 0;
-    z-index: 49;
+    z-index: 60;
     background: rgba(0, 0, 0, 0.55);
     opacity: 0;
     visibility: hidden;
@@ -160,7 +172,7 @@ const links = [
     position: fixed;
     top: 0;
     right: 0;
-    z-index: 51;
+    z-index: 61;
     height: 100dvh;
     width: min(82vw, 320px);
     padding: 88px 24px 32px;
@@ -194,6 +206,26 @@ const links = [
     color: var(--ophis-bg) !important;
     font-weight: 600;
     text-align: center;
+  }
+  .nav-drawer-close {
+    position: absolute;
+    top: 22px;
+    right: 20px;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    appearance: none;
+    background: transparent;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius-sm);
+    color: var(--ophis-fg);
+    cursor: pointer;
+  }
+  .nav-drawer-close:focus-visible {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 2px;
   }
 
   @media (max-width: 720px) {
