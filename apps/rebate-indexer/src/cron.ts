@@ -50,6 +50,11 @@ async function runPipelineSteps(): Promise<void> {
   const volume = volumeRows[0]?.volume ?? '0';
   await alerts.nightlyComplete({ newTrades: parseInt(new_trades, 10), volumeUsd: parseFloat(volume ?? '0') });
 
+  // Tracks whether the monthly batcher STEP actually executed this run — NOT
+  // merely that it is the 1st. A skipped batcher (e.g. missing proposer key)
+  // must NOT advance /health.last_batcher_run_at, or the signal would claim the
+  // batcher ticked while masking the very missed batch it exists to expose.
+  let batcherRan = false;
   if (isFirstOfMonth()) {
     log.info('first-of-month: running batcher');
     const proposeEnabled = process.env.BATCHER_PROPOSE_ENABLED !== 'false';
@@ -64,6 +69,7 @@ async function runPipelineSteps(): Promise<void> {
         proposerPrivateKey: proposerKey as `0x${string}`,
         proposeEnabled,
       });
+      batcherRan = true; // batcher executed (any result — proposed / no_recipients / dry-run)
       if (result.status === 'proposed') {
         await alerts.batchReady({
           cycle: new Date().toISOString().slice(0, 7),
@@ -77,12 +83,12 @@ async function runPipelineSteps(): Promise<void> {
   }
 
   // Durable nightly-completion heartbeat — LAST, so a row means the whole
-  // pipeline (incl. the batcher on the 1st) ran to completion. Written only
-  // here (the cron path), never by the startup backfill, so /health can witness
-  // the 02:00 UTC tick without the admin-gated /status and a redeploy can't
-  // clobber it. first_of_month makes the monthly batcher tick separately
-  // observable via /health.last_batcher_run_at.
-  await sql`INSERT INTO pipeline_runs (first_of_month) VALUES (${isFirstOfMonth()})`;
+  // pipeline ran to completion. Written only here (the cron path), never by the
+  // startup backfill, so /health can witness the 02:00 UTC tick without the
+  // admin-gated /status and a redeploy can't clobber it. The first_of_month
+  // column is set ONLY when the batcher STEP actually ran (batcherRan), so
+  // /health.last_batcher_run_at reflects real batcher executions, not skips.
+  await sql`INSERT INTO pipeline_runs (first_of_month) VALUES (${batcherRan})`;
 }
 
 export async function runNightlyPipeline(): Promise<void> {
