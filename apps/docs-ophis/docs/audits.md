@@ -43,7 +43,7 @@ Ophis is built on CoW Protocol's GPv2 settlement architecture. The core
 so CoW's settlement audits apply to it directly:
 
 - CoW Protocol contract audits:
-  [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs)
+  [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts)
 - CoW Protocol documentation:
   [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol)
 

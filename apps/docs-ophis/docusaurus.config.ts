@@ -147,7 +147,7 @@ const config: Config = {
           items: [
             {label: 'Intent API', to: '/intent-api'},
             {label: 'AI agent integration', to: '/ai-agents'},
-            {label: 'OpenAPI spec', href: `${APP_URL}/openapi.yaml`},
+            {label: 'OpenAPI spec', href: `${APP_URL}/openapi.json`},
             {label: 'llms.txt', href: `${APP_URL}/llms.txt`},
           ],
         },

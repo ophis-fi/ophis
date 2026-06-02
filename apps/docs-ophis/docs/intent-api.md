@@ -24,7 +24,7 @@ wallet.
 - **Backed by:** LibertAI Qwen 3.6 27B (open-weights, on Aleph Cloud),
   behind a Cloudflare Pages Function proxy. The LibertAI key is held
   server-side and never reaches callers.
-- **Machine-readable spec:** [openapi.yaml](https://ophis.fi/openapi.yaml)
+- **Machine-readable spec:** [openapi.json](https://ophis.fi/openapi.json)
 
 ## Access control
 
