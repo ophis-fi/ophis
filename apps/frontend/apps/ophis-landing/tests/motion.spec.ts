@@ -25,7 +25,7 @@ async function loadOphisStyles(page: import('@playwright/test').Page) {
 
 // Task 2.1 — global.css tests
 
-test('reveal-up: visible by default (JS-off), hidden under html.js until .in-view', async ({ page }) => {
+test('reveal-up: fails open — visible until html.reveal-armed, then hidden unless .in-view', async ({ page }) => {
   // Disable transitions so opacity snaps to declared value immediately — avoids
   // mid-transition reads when CSS is injected after element creation.
   await page.setContent(`
@@ -34,13 +34,15 @@ test('reveal-up: visible by default (JS-off), hidden under html.js until .in-vie
     <div class="reveal-up in-view" id="t2">visible</div>
   `)
   await loadOphisStyles(page)
-  // JS-off fallback: WITHOUT html.js, reveal-up content stays fully visible, so a
-  // disabled/failed reveal module can never blank the page (the prior bug).
-  const jsOff = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
-  expect(parseFloat(jsOff)).toBe(1)
-  // JS-on path: the inline head script adds html.js, which gates the hidden
-  // initial state; .in-view (also scoped under html.js) reveals it.
-  await page.evaluate(() => document.documentElement.classList.add('js'))
+  // FAIL-OPEN: until reveal.ts confirms IntersectionObserver and adds
+  // html.reveal-armed, all content stays fully visible. So JS-off OR a failed/
+  // absent reveal module can never blank the page (the prior bug + the new one
+  // Codex flagged: JS on but reveal never runs).
+  const failOpen = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
+  expect(parseFloat(failOpen)).toBe(1)
+  // Once the reveal bootstrap arms the gate, the hidden initial state applies;
+  // .in-view (also scoped under html.reveal-armed) reveals it.
+  await page.evaluate(() => document.documentElement.classList.add('reveal-armed'))
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
   const hidden = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
   const active = await page.locator('#t2').evaluate(el => getComputedStyle(el).opacity)
