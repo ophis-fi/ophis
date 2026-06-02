@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@9.12.0",
   "engines": {
-    "node": ">=20"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "scripts": {
     "build": "turbo run build",
@@ -30,7 +30,8 @@
       "ws": "^8.20.1",
       "tmp": "^0.2.6",
       "esbuild": "^0.25.0",
-      "protobufjs": "^7.5.8"
+      "protobufjs": "^7.5.8",
+      "vite": "^7.0.0"
     }
   }
 }
