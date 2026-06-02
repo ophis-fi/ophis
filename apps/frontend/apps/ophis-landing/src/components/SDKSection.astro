@@ -26,15 +26,8 @@ const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
         Partner-fee defaults, chain registry, settlement-address resolution, and agent-safety guards: everything an integrator needs to ship without footguns.
       </p>
       <div class="ctas">
-        {/* STOPGAP 2026-05-29: @ophis/sdk is not on npm yet (registry 404), so the
-            npm-install button is shown as a non-clickable "soon" chip rather than a
-            dead link: the SDK code is live on GitHub today. ON PUBLISH, restore the
-            live button by replacing the <span class="cta-soon"> below with:
-            <a class="cta-secondary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a> */}
-        <a class="cta-secondary cta-primary" href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk" rel="noopener">Get the SDK on GitHub</a>
-        <span class="cta-soon" aria-disabled="true" title="Publishing to npm soon: available on GitHub today">
-          <span class="cmd">npm i @ophis/sdk</span><span class="soon-badge">soon</span>
-        </span>
+        <a class="cta-secondary cta-primary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a>
+        <a class="cta-secondary" href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk" rel="noopener">Get the SDK on GitHub</a>
       </div>
     </div>
     <div class="sdk-code reveal-up" data-reveal>
@@ -96,28 +89,6 @@ const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
   .cta-secondary:hover { border-color: var(--ophis-fg-muted); }
   .cta-primary { background: rgba(242, 166, 62, 0.12); border-color: var(--ophis-saffron-60); }
   .cta-primary:hover { border-color: var(--ophis-saffron-60); background: rgba(242, 166, 62, 0.18); }
-  /* Non-clickable "coming soon" chip for the npm command until @ophis/sdk is
-     published. Keeps the npm-distribution signal without a dead link. */
-  .cta-soon {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 18px;
-    border-radius: var(--ophis-radius-sm);
-    border: 1px dashed var(--ophis-border);
-    font-size: 14px;
-    color: var(--ophis-fg-muted);
-    cursor: default;
-  }
-  .cta-soon .cmd { font-family: 'JetBrains Mono', monospace; }
-  .cta-soon .soon-badge {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--ophis-saffron-60);
-    background: rgba(242, 166, 62, 0.12);
-    padding: 2px 7px;
-    border-radius: 4px;
-  }
   .code-frame {
     background: #111114;
     border: 1px solid var(--ophis-border);
