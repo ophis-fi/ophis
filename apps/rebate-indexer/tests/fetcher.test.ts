@@ -31,12 +31,15 @@ const sampleOrder = (uid: string, owner: string, appCode = 'ophis') => ({
   executedBuyAmount: '2500000000',
 });
 
+// Hoisted to the top level (vitest 4 warns — and will error in a future version —
+// if vi.hoisted() is nested inside describe()). It still executes before imports.
+const handlers = vi.hoisted(() => ({
+  trades: vi.fn(),
+  order: vi.fn(),
+  blockTime: vi.fn(),
+}));
+
 describe('fetcher.fetchChainTrades', () => {
-  const handlers = vi.hoisted(() => ({
-    trades: vi.fn(),
-    order: vi.fn(),
-    blockTime: vi.fn(),
-  }));
   const server = setupServer(
     http.get(`${COW_FAKE_BASE}/xdai/api/v2/trades`, () => HttpResponse.json(handlers.trades())),
     http.get(`${COW_FAKE_BASE}/xdai/api/v1/orders/:uid`, ({ params }) =>
