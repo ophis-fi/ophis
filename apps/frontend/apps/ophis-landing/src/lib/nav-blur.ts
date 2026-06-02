@@ -54,8 +54,8 @@ if (burger && drawer && scrim) {
     const focusables = [burger, ...drawerLinks]
     const first = focusables[0]
     const last = focusables[focusables.length - 1]
-    const active = document.activeElement as HTMLElement | null
-    const inTrap = active !== null && focusables.includes(active)
+    const active = document.activeElement
+    const inTrap = active !== null && focusables.some((f) => f === active)
     if (e.shiftKey) {
       if (active === first || !inTrap) {
         e.preventDefault()
