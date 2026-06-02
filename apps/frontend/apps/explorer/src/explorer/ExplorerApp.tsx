@@ -29,9 +29,31 @@ import { RedirectMainnet, RedirectXdai, useNetworkId } from '../state/network'
 import { NetworkUpdater } from '../state/network/NetworkUpdater'
 import { environmentName } from '../utils/env'
 
-// Initialize analytics instances
-const cowAnalytics = initGtm()
-const pixelAnalytics = initPixelAnalytics()
+// Ophis: do NOT boot CoW's analytics from the Ophis domain. initGtm() ships
+// CoW's GTM container and initPixelAnalytics() fires CoW's ad-network pixels
+// (Twitter/AppNexus etc.) — both phone home and leak page context from
+// explorer.ophis.fi, and are a CSP concern. Stub the GTM analytics with a no-op
+// matching the interface, and leave pixelAnalytics undefined (useAnalyticsReporter
+// no-ops on undefined, so no pixels fire). Re-enable once Ophis has its own IDs
+// + privacy policy — tracked in apps/frontend/.ophis-divergences.md.
+const cowAnalytics: ReturnType<typeof initGtm> = {
+  setUserAccount: () => undefined,
+  sendPageView: () => undefined,
+  sendEvent: () => undefined,
+  sendTiming: () => undefined,
+  sendError: () => undefined,
+  outboundLink: ({ hitCallback }) => {
+    try {
+      hitCallback()
+    } catch {
+      /* ignore */
+    }
+  },
+  setContext: () => undefined,
+}
+void initGtm // keep the import for the day we re-enable analytics
+const pixelAnalytics = undefined
+void initPixelAnalytics // keep the import for the day we re-enable pixels
 const webVitalsAnalytics = new WebVitalsAnalytics(cowAnalytics)
 
 const SENTRY_DSN = process.env.REACT_APP_EXPLORER_SENTRY_DSN

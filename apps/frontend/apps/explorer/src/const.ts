@@ -34,7 +34,7 @@ export const ONE_HUNDRED_BIG_NUMBER = new BigNumber(100)
 // Value used on formatSmart's smallLimit for integer values, such as raw token amounts
 export const MINIMUM_ATOM_VALUE = '1'
 
-export const APP_NAME = 'CoW Protocol'
+export const APP_NAME = 'Ophis'
 
 export const DEFAULT_DECIMALS = 5
 // The prices on the contract will update at max once every batch, which is 5min long

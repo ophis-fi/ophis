@@ -1,8 +1,8 @@
 {
   "background_color": "#ffffff",
   "display": "standalone",
-  "homepage_url": "https://explorer.cow.fi/",
-  "description": "CoW Explorer is a blockchain explorer for the CoW Protocol.",
+  "homepage_url": "https://explorer.ophis.fi/",
+  "description": "Ophis Explorer is a blockchain explorer for Ophis, the intent-based DEX aggregator.",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
@@ -18,8 +18,8 @@
     }
   ],
   "orientation": "portrait",
-  "name": "CoW Swap",
-  "short_name": "CoW Swap",
+  "name": "Ophis Explorer",
+  "short_name": "Ophis",
   "start_url": ".",
   "theme_color": "#ffffff"
 }

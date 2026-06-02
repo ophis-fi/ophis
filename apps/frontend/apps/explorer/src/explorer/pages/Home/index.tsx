@@ -85,7 +85,7 @@ export const Home: React.FC = () => {
       <Helmet>
         <title>{APP_TITLE}</title>
       </Helmet>
-      <h1>Search on CoW Protocol Explorer</h1>
+      <h1>Search on Ophis Explorer</h1>
       <Search className="home" />
       <SummaryWrapper>
         {showCharts && (
