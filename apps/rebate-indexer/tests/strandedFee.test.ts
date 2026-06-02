@@ -41,6 +41,41 @@ describe('getNonWethTokenBalances (Issue #360 stranded-fee safety net)', () => {
     expect(r[0]).toMatchObject({ symbol: 'GNO', tokenAddress: GNO });
   });
 
+  it('follows pagination (next) and collects non-WETH tokens across pages', async () => {
+    const page1 = {
+      count: 3,
+      next: 'https://api.safe.global/tx-service/gno/api/v2/safes/X/balances/?limit=1&offset=1',
+      previous: null,
+      results: [{ tokenAddress: GNO, balance: '1000000000000000000', token: { symbol: 'GNO' } }],
+    };
+    const page2 = {
+      count: 3,
+      next: null,
+      previous: null,
+      results: [{ tokenAddress: EURE, balance: '2000000000000000000', token: { symbol: 'EURe' } }],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => page1 })
+      .mockResolvedValueOnce({ ok: true, json: async () => page2 });
+    vi.stubGlobal('fetch', fetchMock);
+    const r = await getNonWethTokenBalances({ chainId: 100, safe: SAFE, weth: WETH });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(r.map((t) => t.symbol).sort()).toEqual(['EURe', 'GNO']);
+  });
+
+  it('skips malformed rows without throwing (defensive parse on the payout path)', async () => {
+    stubBalances([
+      { tokenAddress: 12345, balance: '1', token: { symbol: 'BAD_ADDR' } }, // non-string address -> skip
+      { tokenAddress: GNO, balance: 'not-a-number', token: { symbol: 'BAD_BAL' } }, // BigInt() throws -> skip
+      { tokenAddress: EURE, balance: '4000000000000000000', token: { symbol: 'EURe' } }, // valid -> kept
+      { tokenAddress: GNO, balance: '5000000000000000000', token: null }, // null token -> symbol UNKNOWN
+    ]);
+    const r = await getNonWethTokenBalances({ chainId: 100, safe: SAFE, weth: WETH });
+    expect(r).toHaveLength(2);
+    expect(r.map((t) => t.symbol).sort()).toEqual(['EURe', 'UNKNOWN']);
+  });
+
   it('is case-insensitive on the WETH address', async () => {
     stubBalances([{ tokenAddress: WETH.toLowerCase(), balance: '5', token: { symbol: 'WETH' } }]);
     expect(await getNonWethTokenBalances({ chainId: 100, safe: SAFE, weth: WETH })).toEqual([]);
