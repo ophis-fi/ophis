@@ -56,6 +56,10 @@ const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
     gap: 50px;
     align-items: center;
   }
+  /* Let each grid column shrink below its content's min-content so the code
+     block's own overflow-x:auto handles long lines instead of forcing the
+     column (and the page) wider than the viewport. */
+  .sdk-inner > * { min-width: 0; }
   .sdk-tag {
     display: inline-block;
     padding: 4px 10px;
@@ -146,5 +150,10 @@ const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
   @media (max-width: 720px) {
     .sdk-inner { grid-template-columns: 1fr; gap: 32px; }
     h2 { font-size: 30px; }
+  }
+  /* Phones: drop the 56px side padding that pushed the content past the
+     viewport edge (matches the .protocols breakpoint). */
+  @media (max-width: 560px) {
+    .sdk { padding: 64px 20px; }
   }
 </style>
