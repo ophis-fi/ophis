@@ -3162,10 +3162,6 @@ msgstr "Nº de partes"
 msgid "and saved "
 msgstr "y guardado "
 
-#: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.tsx
-msgid "Empty order list animation"
-msgstr ""
-
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTableRow.tsx
 msgid "Approve all"
 msgstr "Aprobar todo"

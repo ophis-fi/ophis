@@ -1,23 +1,10 @@
-import { JSX, PropsWithChildren, ReactNode } from 'react'
+import { PropsWithChildren, ReactNode } from 'react'
 
-import { LAUNCH_DARKLY_CLIENT_KEY } from '@cowprotocol/common-const'
-
-import { withLDProvider } from 'launchdarkly-react-client-sdk'
-
-// TODO: remove duplicated component with app/cowswap-frontend/src/modules/application/containers/WithLDProvider
-
-function InnerWithLDProvider({ children }: PropsWithChildren): ReactNode {
+// LaunchDarkly removed for the Ophis fork: the upstream CoW client-side ID
+// triggered failed app.launchdarkly.com requests + console errors on the Ophis
+// explorer. All former flags are now statically defaulted at their call sites
+// (useSolversFeatureFlag, Home's isTheGraphEnabled). Kept as a pass-through so
+// ExplorerApp's component tree is unchanged.
+export function WithLDProvider({ children }: PropsWithChildren): ReactNode {
   return children
 }
-
-export const WithLDProvider = withLDProvider<PropsWithChildren & JSX.IntrinsicAttributes>({
-  clientSideID: LAUNCH_DARKLY_CLIENT_KEY,
-  context: {
-    kind: 'user',
-    key: 'explorer',
-    name: 'explorer',
-  },
-  options: {
-    bootstrap: 'localStorage',
-  },
-})(InnerWithLDProvider)
