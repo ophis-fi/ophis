@@ -50,7 +50,7 @@ swap 100 USDC for ETH on Base
 | [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |
 | [AI agent integration](./ai-agents.md) | Wire the intent API into LangChain, AutoGPT, or your own agent. |
 | [Security & audits](./audits.md) | Custody model, settlement contracts, and audit posture. |
-| [FAQ](./faq.md) | Common questions about fees, networks, MEV, and custody. |
+| [FAQ](./faq.mdx) | Common questions about fees, networks, MEV, and custody. |
 
 ## Quick links
 
