@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { transformSync } from 'esbuild'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const TOKENS_CSS = join(__dirname, '..', 'src', 'styles', 'tokens.css')
@@ -130,14 +129,13 @@ test('nav-blur toggles .scrolled past 40px scroll', async ({ page }) => {
     </div>
   `)
   await loadOphisStyles(page)
-  // Transpile the real TS module to plain JS (strips ALL type syntax) so the whole
-  // module parses when injected as a classic <script>. esbuild is already in the
-  // toolchain (Vite/Astro use it); this is far more robust than regex-stripping
-  // individual TS constructs as the module grows (generics, `as`, param annotations).
-  const navBlurScript = transformSync(
-    readFileSync(join(__dirname, '..', 'src', 'lib', 'nav-blur.ts'), 'utf8'),
-    { loader: 'ts', format: 'esm' },
-  ).code.replace(/^export\s*\{\s*\};?\s*$/m, '')
+  // Strip the module's TS syntax so it parses when injected as a classic <script>.
+  // nav-blur.ts is deliberately kept to a small, known set of TS constructs:
+  // querySelector/querySelectorAll generics and single-param type annotations.
+  const navBlurScript = readFileSync(join(__dirname, '..', 'src', 'lib', 'nav-blur.ts'), 'utf8')
+    .replace(/\.(querySelector(?:All)?)<[^>]+>/g, '.$1') // generics: .querySelector(All)<T> -> .querySelector(All)
+    .replace(/\((\w+):\s*[\w.]+\)/g, '($1)') // single-param annotations: (open: boolean) -> (open)
+    .replace(/^export\s*\{\s*\};?\s*$/m, '')
   await page.addScriptTag({ content: navBlurScript })
   await expect(page.locator('#nav')).not.toHaveClass(/scrolled/)
   await page.evaluate(() => window.scrollTo(0, 100))
