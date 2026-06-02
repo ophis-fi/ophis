@@ -1,33 +1,29 @@
 ---
 /**
- * Aggregated-protocols section — the liquidity venues the Ophis solver stack
- * sources from. These are the real protocols the CoW-forked solver network
- * aggregates (the shipped AMMsLogo set + DEX icon assets), so the wall is
- * accurate, not illustrative. Framing is on the solver/batch-auction model
- * rather than a per-chain matrix we can't verify end-to-end.
+ * Aggregated-protocols section — the liquidity venues the Ophis solver network
+ * sources from. Grounded in the backend baseline-liquidity sources
+ * (crates/liquidity-sources: UniswapV2/V3, SushiSwap, BalancerV2, Curve,
+ * PancakeSwap, 0x/ZeroEx RFQ) plus the professional aggregators the solver
+ * competition routes across — every entry is a currently-operating venue, not
+ * marketing filler. (Dropped 2026-06-02: Elk/Symmetric/Levinswap — never solver
+ * sources — and the obscure Gnosis micro-AMMs, per Clement's accuracy review.)
  *
- * Logos copied into public/logos/protocols/ from libs/assets (SVG marks where
- * available, small PNGs otherwise). Pure markup + scoped CSS; the breathing
- * bloom + sweep flares come from the shared .section-bloom / .flare-sweep
- * classes in global.css (disabled under prefers-reduced-motion).
+ * Logos live in public/logos/protocols/ (official SVG marks where available,
+ * small PNGs otherwise). Pure markup + scoped CSS; the breathing bloom + sweep
+ * flares come from the shared .section-bloom / .flare-sweep classes in
+ * global.css (disabled under prefers-reduced-motion).
  */
 
 type Protocol = { name: string; logo: string }
 const protocols: Protocol[] = [
   { name: 'Uniswap',     logo: '/logos/protocols/uniswap.svg' },
-  { name: 'PancakeSwap', logo: '/logos/protocols/pancakeswap.svg' },
   { name: 'Curve',       logo: '/logos/protocols/curve.svg' },
+  { name: 'Balancer',    logo: '/logos/protocols/balancer.svg' },
   { name: 'Sushi',       logo: '/logos/protocols/sushi.svg' },
-  { name: 'Balancer',    logo: '/logos/protocols/balancer.png' },
-  { name: '1inch',       logo: '/logos/protocols/1inch.png' },
+  { name: 'PancakeSwap', logo: '/logos/protocols/pancakeswap.svg' },
   { name: '0x',          logo: '/logos/protocols/0x.png' },
+  { name: '1inch',       logo: '/logos/protocols/1inch.png' },
   { name: 'ParaSwap',    logo: '/logos/protocols/paraswap.png' },
-  { name: 'Honeyswap',   logo: '/logos/protocols/honeyswap.png' },
-  { name: 'Swapr',       logo: '/logos/protocols/swapr.png' },
-  { name: 'Baoswap',     logo: '/logos/protocols/baoswap.png' },
-  { name: 'Elk',         logo: '/logos/protocols/elk.png' },
-  { name: 'Symmetric',   logo: '/logos/protocols/symmetric.png' },
-  { name: 'Levinswap',   logo: '/logos/protocols/levinswap.png' },
 ]
 ---
 <section class="protocols">
@@ -102,7 +98,7 @@ const protocols: Protocol[] = [
     position: relative;
     z-index: 1;
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 14px;
     border-radius: var(--ophis-radius);
   }
