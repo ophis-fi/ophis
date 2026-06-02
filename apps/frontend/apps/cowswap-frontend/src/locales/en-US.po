@@ -2043,6 +2043,16 @@ msgstr "The time before your total TWAP order ends."
 msgid "Unsupported network. Please change to Gnosis Chain"
 msgstr "Unsupported network. Please change to Gnosis Chain"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+msgid ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis: https://greg-etm.pages.dev"
+msgstr ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis: https://greg-etm.pages.dev"
+
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/DebugPanel/index.tsx
 msgid "Debug Step:"
 msgstr "Debug Step:"
@@ -2599,16 +2609,6 @@ msgstr "Protocol fee"
 msgid "Reduce your slippage by breaking big orders into smaller ones"
 msgstr "Reduce your slippage by breaking big orders into smaller ones"
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-msgid ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Ophis — https://greg-etm.pages.dev"
-msgstr ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Ophis — https://greg-etm.pages.dev"
-
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/RowQuoteId.container.tsx
 msgid "Copied!"
 msgstr "Copied!"
@@ -2856,6 +2856,17 @@ msgstr "Share on X"
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/ClaimGnoHookApp/index.tsx
 msgid "Total claimable rewards:"
 msgstr "Total claimable rewards:"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection. https://greg-etm.pages.dev"
+msgstr ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection. https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
 msgid "Connected with"
@@ -3135,10 +3146,6 @@ msgstr "is worth"
 msgid "View account"
 msgstr "View account"
 
-#: apps/cowswap-frontend/src/modules/yield/pure/TargetPoolPreviewInfo.tsx
-msgid "When you swap (sell) <0/>, solvers handle the transaction by purchasing the required tokens, depositing them into the pool, and issuing LP tokens to you in return — all in a gas-less operation."
-msgstr "When you swap (sell) <0/>, solvers handle the transaction by purchasing the required tokens, depositing them into the pool, and issuing LP tokens to you in return — all in a gas-less operation."
-
 #: apps/cowswap-frontend/src/common/hooks/useBlockNumber/useBlockNumber.ts
 msgid "BlockNumber hooks must be wrapped in a"
 msgstr "BlockNumber hooks must be wrapped in a"
@@ -3273,17 +3280,6 @@ msgstr "My orders <0/>"
 #: apps/cowswap-frontend/src/modules/notifications/pure/NotificationSettingsPopover.tsx
 msgid "Trade alert settings info"
 msgstr "Trade alert settings info"
-
-#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid ""
-"I just {actionWord} an extra {surplus} on Ophis.\n"
-"\n"
-"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
-msgstr ""
-"I just {actionWord} an extra {surplus} on Ophis.\n"
-"\n"
-"Intent-based swaps with MEV protection — https://greg-etm.pages.dev"
 
 #: apps/cowswap-frontend/src/modules/twap/pure/CustomDeadlineSelector/index.tsx
 msgid "Define custom total time"
@@ -4397,6 +4393,10 @@ msgstr "You can protect all your Ethereum transactions from MEV - not just trade
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 msgid "more signature is"
 msgstr "more signature is"
+
+#: apps/cowswap-frontend/src/modules/yield/pure/TargetPoolPreviewInfo.tsx
+msgid "When you swap (sell) <0/>, solvers handle the transaction by purchasing the required tokens, depositing them into the pool, and issuing LP tokens to you in return, all in a gas-less operation."
+msgstr "When you swap (sell) <0/>, solvers handle the transaction by purchasing the required tokens, depositing them into the pool, and issuing LP tokens to you in return, all in a gas-less operation."
 
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowBanner/index.tsx
 msgid "Lower minimal slippage (instead of {minEthFlowSlippageToSignificant}% minimum)"

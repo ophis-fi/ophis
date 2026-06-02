@@ -19,7 +19,7 @@ export const exportPdf = (receipt: MevProofReceipt): Blob => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
 
   doc.setFontSize(14)
-  doc.text('Ophis — MEV-Proof Order Receipt', 40, 50)
+  doc.text('Ophis: MEV-Proof Order Receipt', 40, 50)
 
   doc.setFontSize(10)
   doc.setFont('courier', 'normal')

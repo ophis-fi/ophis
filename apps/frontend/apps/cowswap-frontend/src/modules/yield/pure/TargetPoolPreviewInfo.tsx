@@ -68,7 +68,7 @@ export function TargetPoolPreviewInfo({
             <InfoTooltip>
               <Trans>
                 When you swap (sell) <TokenSymbol token={oppositeToken} />, solvers handle the transaction by purchasing
-                the required tokens, depositing them into the pool, and issuing LP tokens to you in return — all in a
+                the required tokens, depositing them into the pool, and issuing LP tokens to you in return, all in a
                 gas-less operation.
               </Trans>
             </InfoTooltip>

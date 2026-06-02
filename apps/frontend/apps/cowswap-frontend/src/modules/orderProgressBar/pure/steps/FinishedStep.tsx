@@ -376,7 +376,7 @@ function AggregationAndRouteInfo({ chainId, order }: { chainId: SupportedChainId
       <ul>
         {info.sources.map(({ solver, covers }) => (
           <li key={solver}>
-            <b>{solver}</b> — {covers}
+            <b>{solver}</b>: {covers}
           </li>
         ))}
       </ul>

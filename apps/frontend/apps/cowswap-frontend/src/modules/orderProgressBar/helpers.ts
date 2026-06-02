@@ -19,7 +19,7 @@ export function getTwitterText(surplusAmount: string, surplusToken: string, orde
   const actionWord = isSellOrder(orderKind) ? t`got` : t`saved`
   const surplus = `${surplusAmount} ${surplusToken}`
   return encodeURIComponent(
-    t`I just ${actionWord} an extra ${surplus} on Ophis.\n\nIntent-based swaps with MEV protection — https://greg-etm.pages.dev`,
+    t`I just ${actionWord} an extra ${surplus} on Ophis.\n\nIntent-based swaps with MEV protection. https://greg-etm.pages.dev`,
   )
 }
 
@@ -37,7 +37,7 @@ export function getTwitterShareUrl(surplusData: SurplusData | undefined, order: 
 }
 
 export function getTwitterTextForBenefit(benefit: string): string {
-  return encodeURIComponent(t`Did you know? ${benefit}\n\nStart swapping on Ophis — https://greg-etm.pages.dev`)
+  return encodeURIComponent(t`Did you know? ${benefit}\n\nStart swapping on Ophis: https://greg-etm.pages.dev`)
 }
 
 export function getTwitterShareUrlForBenefit(benefit: string): string {
