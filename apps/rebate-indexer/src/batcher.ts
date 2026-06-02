@@ -6,6 +6,8 @@ import { proposeRebateBatch } from './batch/propose.js';
 import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
+import { getNonWethTokenBalances } from './safe/balances.js';
+import { alerts } from './telegram/alerter.js';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { logger } from './logger.js';
 
@@ -81,6 +83,31 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
     await db.update(schema.rebateBatches).set({ status: 'no_recipients' })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, reason: pool === 0n ? 'zero pool' : 'no wallets' }, 'no recipients');
+
+    // Issue #360 safety net: a zero WETH pool while the Safe is actually holding
+    // value means fees may have landed in a non-WETH token (CoW computes partner
+    // fees in the trade's surplus token). The WETH-only pool read can't see that,
+    // so this branch would otherwise no-op SILENTLY forever while value accrues.
+    // Make it LOUD. Best-effort + never throws, so it can't break the recorded
+    // batch result. We probe only when pool === 0n; a non-empty `wallets` set
+    // with pool > 0 is the normal "recipients but..." path, not a stranding bug.
+    if (pool === 0n) {
+      const stranded = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
+      if (stranded.length > 0) {
+        // Cap the listed tokens so a dust/spam-flooded Safe can't produce a
+        // message Telegram rejects (notify() only logs a non-OK send).
+        const MAX_TOKENS = 12;
+        const shown = stranded.slice(0, MAX_TOKENS).map((t) => `${t.symbol} ${t.balance} (${t.tokenAddress})`).join(', ');
+        const detail = stranded.length > MAX_TOKENS ? `${shown}, +${stranded.length - MAX_TOKENS} more` : shown;
+        log.warn({ batchId, strandedCount: stranded.length, stranded }, 'non-WETH value in Safe with zero pool');
+        await alerts.alert(
+          'batcher',
+          `Rebate pool is 0 WETH but the Safe holds non-WETH value: ${detail}. ` +
+            `Partner fees may have landed in trade tokens (Issue #360) — rebates will NOT pay until this is converted/handled.`,
+        );
+      }
+    }
+
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: pool };
   }
 
