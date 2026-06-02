@@ -18,6 +18,9 @@ export async function notify(text: string): Promise<void> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+      // Bound the send so a stalled Telegram API can't hang an awaited alert in
+      // the nightly pipeline / batcher payout path.
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       log.warn({ status: res.status, body: await res.text() }, 'telegram send failed');
