@@ -14,17 +14,20 @@ export interface Tier {
   readonly rebate_pct: number;
 }
 
-// Deep-frozen: both the array and each tier object are immutable at runtime, so
-// a consumer (or prototype pollution) can't change a min_usd / rebate_pct and
-// silently alter assignTier or a caller's rebate math.
-export const TIERS: readonly Tier[] = Object.freeze(
-  ([
-    { name: 'bronze',   min_usd:      0, rebate_pct: 0.10 },
-    { name: 'silver',   min_usd:  5_000, rebate_pct: 0.20 },
-    { name: 'gold',     min_usd: 50_000, rebate_pct: 0.35 },
-    { name: 'platinum', min_usd: 500_000, rebate_pct: 0.50 },
-  ] as Tier[]).map((t) => Object.freeze(t)),
-);
+// The `[...] as const` literal form is REQUIRED: a CI invariant
+// (scripts/check-tier-invariant.sh) canonicalizes this exact array literal and
+// asserts it byte-matches apps/rebate-indexer/src/tiers.ts. Do not wrap it.
+export const TIERS: readonly Tier[] = [
+  { name: 'bronze',   min_usd:      0, rebate_pct: 0.10 },
+  { name: 'silver',   min_usd:  5_000, rebate_pct: 0.20 },
+  { name: 'gold',     min_usd: 50_000, rebate_pct: 0.35 },
+  { name: 'platinum', min_usd: 500_000, rebate_pct: 0.50 },
+] as const;
+// Deep-freeze in place (the readonly types above are compile-time only): block
+// runtime mutation of a tier threshold, which would silently change assignTier
+// and any consumer's rebate math.
+TIERS.forEach((tier) => Object.freeze(tier));
+Object.freeze(TIERS);
 
 export const POOL_SPLIT_BPS = 5_000;
 
