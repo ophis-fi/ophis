@@ -15,7 +15,7 @@ trade, review it, and sign.
 ## Your first swap
 
 1. Open [ophis.fi](https://ophis.fi) and connect a wallet.
-2. Type what you want in plain English, for example:
+2. Type what you want in your own words, for example:
    - `swap 100 USDC for ETH on Base`
    - `buy 50 USDC of PEPE on ethereum`
    - `1 ETH to USDC on op`
@@ -38,7 +38,7 @@ Three steps from your sentence to settlement:
 
 ### 1 · Intent, parse the request
 
-You type a swap in plain English. An open LLM (LibertAI's Qwen 3.6 27B,
+You type the swap as a sentence. An open LLM (LibertAI's Qwen 3.6 27B,
 hosted on Aleph Cloud) extracts the sell token, buy token, amount, and
 chain into a structured order. The model runs behind a server-side proxy
 so its API key never reaches the browser. See the

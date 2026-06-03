@@ -1,14 +1,14 @@
 ---
 id: intent-api
 title: Intent API
-description: POST /api/intent, turn a plain-English swap request into a structured ParsedIntent. Public, no key, rate-limited.
+description: POST /api/intent, turn a natural-language swap request into a structured ParsedIntent. Public, no key, rate-limited.
 sidebar_label: Intent API
 sidebar_position: 1
 ---
 
 # Intent API
 
-The Intent API parses a plain-English swap request into a structured
+The Intent API parses a free-form swap request into a structured
 `ParsedIntent` that the Ophis frontend, or your own app or agent, can
 use to pre-fill a swap form or construct a deep link.
 
@@ -54,7 +54,7 @@ moves no funds.
 
 | Field | Type | Constraints |
 | --- | --- | --- |
-| `text` | string | Required. 1–280 characters. Plain-English swap request. Case-insensitive. |
+| `text` | string | Required. 1–280 characters. The swap request in your own words. Case-insensitive. |
 
 The model is pinned to `temperature: 0`, so identical normalized inputs
 produce identical outputs.
