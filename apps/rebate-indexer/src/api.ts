@@ -269,8 +269,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // tier, rebate_pct, and exact wei payout for that cycle). Pre-auth
     // this was a phishing target list + full user deanonymization.
     if (!assertAdminAuth(req, reply)) return reply;
+    // Strict digits-only: parseInt('5abc',10)===5 and parseInt('0x5',10)===0
+    // would otherwise coerce padded/garbage ids. Mirror the strict /tier/:wallet
+    // address regex. (audit P3)
+    if (!/^\d+$/.test(req.params.id)) return reply.code(400).send({ error: 'invalid id' });
     const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid id' });
     const [batch] = await db.select().from(schema.rebateBatches).where(eq(schema.rebateBatches.id, id));
     if (!batch) return reply.code(404).send({ error: 'not found' });
     const entries = await db.select().from(schema.rebateBatchEntries).where(eq(schema.rebateBatchEntries.batchId, id));
