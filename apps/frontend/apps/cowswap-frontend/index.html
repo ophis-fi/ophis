@@ -55,6 +55,33 @@
     <meta name="twitter:description" content="Describe your trade in natural language. Ophis pre-fills the order and you sign. Intent-based, MEV-protected." />
     <meta name="twitter:image" content="/ophis-og.jpg" />
     <meta name="twitter:image:alt" content="Ophis cosmic gradient hero" />
+
+    <!-- Site-level structured data (SEO parity with the landing). Static in the
+         shell so crawlers see it without executing the SPA. Per-route canonical
+         + meta still want react-helmet (tracked follow-up). -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "Ophis",
+            "url": "https://ophis.fi",
+            "logo": "https://swap.ophis.fi/ophis-og.jpg",
+            "sameAs": ["https://github.com/ophis-fi/ophis", "https://x.com/ophisfi"]
+          },
+          {
+            "@type": "WebApplication",
+            "name": "Ophis",
+            "url": "https://swap.ophis.fi",
+            "applicationCategory": "FinanceApplication",
+            "operatingSystem": "Web",
+            "description": "Intent-based DEX aggregator. Describe a trade in natural language; a competitive solver network fills it MEV-protected, and you sign with your own wallet.",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+          }
+        ]
+      }
+    </script>
     <style>
       html,
       body {
