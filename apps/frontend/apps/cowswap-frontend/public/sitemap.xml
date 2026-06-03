@@ -1,40 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Ophis sitemap. SEO-relevant routes:
-   - /              (landing — intent input)
-   - /about         (operator + mission + NEAR Intents)
-   - business.ophis.fi (institutional pitch for OTC desks, funds, treasuries)
-   - /legal         (terms + privacy + entity)
-   - /brand         (brand kit)
-  Docs moved to https://docs.ophis.fi (served from its own Pages project
-  with a Docusaurus-generated sitemap); the old /docs path 301-redirects.
-  Trading routes (/:chainId/swap/*) are excluded because they're
-  user-state-dependent and not useful to index.
+  Sitemap for the Ophis swap app, served at swap.ophis.fi/sitemap.xml.
+  Lists ONLY same-host swap.ophis.fi URLs so it stays consistent with the
+  swap.ophis.fi/robots.txt `Host` + `Sitemap` directives: host-validating
+  crawlers reject sitemap entries that point at a different host, which silently
+  breaks sitemap discovery. (Earlier this file listed ophis.fi/* + business.ophis.fi/*
+  URLs while robots pointed crawlers at swap.ophis.fi/sitemap.xml; those pages also
+  render on swap.ophis.fi, where they are now listed.)
+
+  Out of scope for this file:
+   - The landing (ophis.fi) ships its own sitemap with its own ophis.fi URLs.
+   - business.ophis.fi has its own canonical (set per-page) and shares this deploy.
+   - The cross-domain canonical-host choice for /about,/legal,/brand,/learn (they
+     resolve on both ophis.fi and swap.ophis.fi) is a separate, still-open decision.
+   - Docs live at https://docs.ophis.fi with a Docusaurus-generated sitemap.
+   - Trading routes (/:chainId/swap/*) are excluded as user-state-dependent and
+     not useful to index.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://ophis.fi/</loc>
+    <loc>https://swap.ophis.fi/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://ophis.fi/about</loc>
+    <loc>https://swap.ophis.fi/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://business.ophis.fi/</loc>
+    <loc>https://swap.ophis.fi/learn</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://ophis.fi/legal</loc>
-    <changefreq>yearly</changefreq>
-    <priority>0.4</priority>
-  </url>
-  <url>
-    <loc>https://ophis.fi/brand</loc>
+    <loc>https://swap.ophis.fi/brand</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://swap.ophis.fi/legal</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
   </url>
 </urlset>
