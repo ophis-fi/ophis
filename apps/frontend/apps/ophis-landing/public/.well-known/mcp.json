@@ -6,7 +6,7 @@
   "transport": "streamable-http",
   "authentication": "none",
   "tools": [
-    { "name": "parse_intent", "description": "Plain-English swap request -> structured intent (intent + entities)." },
+    { "name": "parse_intent", "description": "Natural-language swap request -> structured intent (intent + entities)." },
     { "name": "get_quote", "description": "Best-execution quote from the chain's Ophis orderbook." },
     { "name": "build_order", "description": "A bounded, ready-to-sign EIP-712 CoW order (receiver pinned to owner; correct per-chain settlement; CIP-75 partner fee)." },
     { "name": "submit_order", "description": "Relay a pre-signed order to the orderbook." },
