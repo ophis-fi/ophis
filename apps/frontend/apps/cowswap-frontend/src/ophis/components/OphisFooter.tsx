@@ -58,7 +58,7 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
             </styledEl.Wordmark>
           </styledEl.BrandMark>
           <styledEl.BrandTagline>
-            Best-execution, MEV-protected trading from a plain-English intent. Across 11 EVM chains, plus Solana and Bitcoin destinations.
+            Best-execution, MEV-protected, intent-based trading. Across 11 EVM chains, plus Solana and Bitcoin destinations.
           </styledEl.BrandTagline>
         </styledEl.Brand>
 
