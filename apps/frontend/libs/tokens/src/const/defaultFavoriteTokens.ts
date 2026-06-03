@@ -3,12 +3,6 @@ import {
   BTCB_BNB,
   BUSD_BNB,
   CBBTC_BASE,
-  COW_TOKEN_ARBITRUM,
-  COW_TOKEN_BASE,
-  COW_TOKEN_BNB,
-  COW_TOKEN_MAINNET,
-  COW_TOKEN_SEPOLIA,
-  COW_TOKEN_XDAI,
   DAI,
   DAI_ARBITRUM_ONE,
   DAI_BASE,
@@ -69,7 +63,6 @@ const tokensListToMap = (list: (TokenWithLogo | null)[]): TokensMap =>
 export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
   [SupportedChainId.MAINNET]: tokensListToMap([
     DAI,
-    COW_TOKEN_MAINNET,
     USDC_MAINNET,
     USDT,
     WBTC,
@@ -77,7 +70,6 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
   ]),
   [SupportedChainId.GNOSIS_CHAIN]: tokensListToMap([
     USDCe_GNOSIS_CHAIN,
-    COW_TOKEN_XDAI,
     EURE_GNOSIS_CHAIN,
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.GNOSIS_CHAIN],
     GNO_GNOSIS_CHAIN,
@@ -91,7 +83,6 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WBTC_ARBITRUM_ONE,
     DAI_ARBITRUM_ONE,
     ARB_ARBITRUM_ONE,
-    COW_TOKEN_ARBITRUM,
   ]),
   [SupportedChainId.BASE]: tokensListToMap([
     USDC_BASE,
@@ -99,11 +90,9 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.BASE],
     CBBTC_BASE,
     DAI_BASE,
-    COW_TOKEN_BASE,
   ]),
   [SupportedChainId.SEPOLIA]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.SEPOLIA],
-    COW_TOKEN_SEPOLIA,
     USDC_SEPOLIA,
   ]),
   [SupportedChainId.POLYGON]: tokensListToMap([
@@ -125,7 +114,6 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     BUSD_BNB,
     DAI_BNB,
     BTCB_BNB,
-    COW_TOKEN_BNB,
   ]),
   [SupportedChainId.LINEA]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.LINEA],
