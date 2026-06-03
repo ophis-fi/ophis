@@ -64,6 +64,26 @@ const {
     } catch (e) { /* localStorage blocked: ignore */ }
   </script>
 
+  <!-- Google Analytics 4 (gtag). is:inline so it is emitted verbatim and hashed
+       by scripts/check-csp-hashes.mjs (its sha256 must appear in public/_headers
+       script-src). Gated to the production host so preview (*.pages.dev) +
+       localhost traffic never reaches the property. Loads gtag.js from
+       googletagmanager.com (allowlisted in script-src); beacons go to
+       *.google-analytics.com (allowlisted in connect-src). After editing this
+       block run `node scripts/check-csp-hashes.mjs --print` and update _headers. -->
+  <script is:inline>
+    if (location.hostname === 'ophis.fi') {
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM';
+      document.head.appendChild(s);
+      window.gtag('js', new Date());
+      window.gtag('config', 'G-NG9YX5G9CM', { anonymize_ip: true });
+    }
+  </script>
+
   <!-- Critical CSS slot -- Astro inlines /src/styles/global.css here.
        `is:global` is REQUIRED: without it, Astro scopes the @import via
        data-astro-cid-* attributes that match only Base.astro elements,

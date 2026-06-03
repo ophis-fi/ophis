@@ -82,6 +82,13 @@ const config: Config = {
           editUrl: `${GITHUB_URL}/tree/main/apps/docs-ophis/`,
         },
         blog: false,
+        // GA4 via the built-in plugin-google-gtag (bundled in preset-classic).
+        // It injects gtag.js + handles SPA page-view tracking. docs.ophis.fi has
+        // no CSP, so no allowlist change is needed here (unlike swap/landing).
+        gtag: {
+          trackingID: 'G-NG9YX5G9CM',
+          anonymizeIP: true,
+        },
         theme: {
           customCss: './src/css/custom.css',
         },
