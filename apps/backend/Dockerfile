@@ -9,14 +9,6 @@ WORKDIR /src/
 ARG CARGO_BUILD_FEATURES=""
 ARG RUSTFLAGS=""
 
-# Version string for the orderbook GET /api/v1/version route. The build context
-# (apps/backend) has no .git, so vergen's `git describe` falls back to the
-# literal "VERGEN_IDEMPOTENT_OUTPUT" sentinel. The deploy injects the real value
-# via `--build-arg OPHIS_GIT_DESCRIBE=$(git describe --tags --always --dirty)`;
-# orderbook/build.rs reads it. Empty default keeps in-tree builds on vergen.
-ARG OPHIS_GIT_DESCRIBE=""
-ENV OPHIS_GIT_DESCRIBE=${OPHIS_GIT_DESCRIBE}
-
 # Install dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && \
     apt-get install -y git libssl-dev pkg-config build-essential
@@ -25,6 +17,18 @@ RUN rustup install stable && rustup default stable
 
 # Copy and Build Code
 COPY . .
+
+# Version string for the orderbook GET /api/v1/version route. Declared HERE,
+# immediately before the build, so a release-only version bump (git describe
+# differs per commit) busts ONLY the final cargo-build layer, not the cached
+# apt + rustup base layers above. The build context (apps/backend) has no .git,
+# so vergen's `git describe` falls back to the "VERGEN_IDEMPOTENT_OUTPUT"
+# sentinel; the deploy injects the real value via
+# `--build-arg OPHIS_GIT_DESCRIBE=$(git describe --tags --always --dirty)` and
+# orderbook/build.rs reads it. Empty default keeps in-tree builds on vergen.
+ARG OPHIS_GIT_DESCRIBE=""
+ENV OPHIS_GIT_DESCRIBE=${OPHIS_GIT_DESCRIBE}
+
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
     CARGO_PROFILE_RELEASE_DEBUG=1 RUSTFLAGS="${RUSTFLAGS}" cargo build --release \
     -p autopilot -p driver -p orderbook -p refunder -p solvers \
