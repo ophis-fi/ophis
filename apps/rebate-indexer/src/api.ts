@@ -216,9 +216,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // chip's own data fetch sends `Accept: */*`, so it still receives JSON
     // unchanged — no frontend change needed.
     //
-    // Vary: Accept so a shared cache (Caddy/CF) keys HTML vs JSON separately
-    // and never serves the page to the chip's JSON fetch (or vice versa).
-    reply.header('vary', 'accept');
+    // Vary on BOTH Origin and Accept. Accept so a shared cache keys HTML vs
+    // JSON separately; Origin because the onRequest CORS hook above sets
+    // `Vary: origin` (+ Access-Control-Allow-Origin) for allowed origins, and a
+    // bare `reply.header('vary', 'accept')` would OVERWRITE that — risking a
+    // cached response served with the wrong ACAO. Listing Origin here is inert
+    // for non-CORS requests, so setting it unconditionally is safe.
+    reply.header('vary', 'Origin, Accept');
     const accept = req.headers.accept ?? '';
     if (accept.includes('text/html')) {
       // Single cheap aggregate (mirrors /health) so the payout line reflects
