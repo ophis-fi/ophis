@@ -24,13 +24,8 @@ const chains: Chain[] = [
 const passes = [false, true]
 ---
 <section class="chains">
-  <div class="chains-inner reveal-up flare-sweep" data-reveal>
+  <div class="chains-inner reveal-up" data-reveal>
     <div class="label">Live on</div>
-    {/* CSS-only pause/play control (WCAG 2.2.2: auto-moving content needs a
-        keyboard-operable pause). The checkbox is the focusable control; :has()
-        toggles animation-play-state. No JS, so no CSP hash. */}
-    <input type="checkbox" id="chains-pause" class="chains-pause-input" aria-label="Pause the chains carousel" />
-    <label for="chains-pause" class="chains-pause-btn" title="Pause or play the chains carousel"></label>
     <div class="chains-marquee">
       <div class="chains-track">
         {passes.map((isClone) => chains.map((c) => (
@@ -94,10 +89,8 @@ const passes = [false, true]
     animation: chains-scroll 46s linear infinite;
     will-change: transform;
   }
-  /* Pause on hover, on keyboard focus within the strip, or via the explicit
-     toggle (checkbox). */
-  .chains-marquee:hover .chains-track,
-  .chains:has(.chains-pause-input:checked) .chains-track {
+  /* Pause on hover (a nicety; reduced-motion users get the static fallback). */
+  .chains-marquee:hover .chains-track {
     animation-play-state: paused;
   }
   @keyframes chains-scroll {
@@ -140,54 +133,8 @@ const passes = [false, true]
     letter-spacing: 0.04em;
     line-height: 1;
   }
-  /* Pause/play toggle: a focusable checkbox (visually hidden) + a styled label
-     button at the top-right of the strip. The label's icon flips pause<->play. */
-  .chains-pause-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-  .chains-pause-btn {
-    position: absolute;
-    top: -7px;
-    right: 24px;
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--ophis-border);
-    border-radius: 50%;
-    color: var(--ophis-fg-muted);
-    cursor: pointer;
-    transition: border-color 150ms ease, color 150ms ease;
-    z-index: 2;
-  }
-  .chains-pause-btn:hover { color: var(--ophis-fg); border-color: var(--ophis-fg-muted); }
-  .chains-pause-input:focus-visible + .chains-pause-btn {
-    outline: 2px solid var(--ophis-saffron-60);
-    outline-offset: 2px;
-  }
-  /* Pause glyph (two bars) while running; play glyph (triangle) when paused. */
-  .chains-pause-btn::before {
-    content: '';
-    width: 8px;
-    height: 9px;
-    border-left: 3px solid currentColor;
-    border-right: 3px solid currentColor;
-  }
-  .chains:has(.chains-pause-input:checked) .chains-pause-btn::before {
-    width: 0;
-    height: 0;
-    border: 5px solid transparent;
-    border-left: 8px solid currentColor;
-    border-right: 0;
-    transform: translateX(1px);
-  }
-  /* Reduced motion: no auto-scroll, no pause control. Fall back to the original
-     static wrapped row (all chains visible, no clones, no mask, no motion). */
+  /* Reduced motion: no auto-scroll. Fall back to the original static wrapped row
+     (all chains visible, no clones, no mask, no motion). */
   @media (prefers-reduced-motion: reduce) {
     .chains-marquee { overflow: visible; -webkit-mask-image: none; mask-image: none; }
     .chains-track {
@@ -203,6 +150,5 @@ const passes = [false, true]
        so the wrapped rows have even, symmetric columns. */
     .chain { margin-right: 0; }
     .chain[data-clone] { display: none; }
-    .chains-pause-input, .chains-pause-btn { display: none; }
   }
 </style>

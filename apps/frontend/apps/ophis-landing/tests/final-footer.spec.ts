@@ -13,5 +13,6 @@ test('footer has 4 columns + nav-back-to-top link', async ({ page }) => {
   const cols = page.locator('.footer .footer-col')
   await expect(cols).toHaveCount(4)
   await expect(page.locator('.footer .copyright')).toContainText('2026')
-  await expect(page.locator('.footer .copyright')).toContainText('GPL-3.0')
+  // GPL-3.0 intentionally removed from the footer.
+  await expect(page.locator('.footer .copyright')).not.toContainText('GPL')
 })
