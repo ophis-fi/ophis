@@ -33,7 +33,7 @@
 | `agents/backend.md` | root | Backend agent definition |
 | `apps/frontend/` | subtree | `cowprotocol/cowswap` vendored via `git subtree add` |
 | `apps/backend/` | subtree | `cowprotocol/services` vendored via `git subtree add` |
-| `packages/sdk/package.json` | new | `@greg/sdk` package metadata |
+| `packages/sdk/package.json` | new | `@ophis/sdk` package metadata |
 | `packages/sdk/src/index.ts` | new | thin wrapper around `@cowprotocol/cow-sdk` exporting Ophis defaults (chain, partner fee) |
 | `packages/sdk/tsconfig.json` | new | extends `tsconfig.base.json` |
 | `packages/sdk/tests/sdk.test.ts` | new | unit test verifying default config |
@@ -70,7 +70,7 @@ pnpm --version   # expect ≥ 9; install with `npm i -g pnpm` if missing
 
 ```json
 {
-  "name": "greg",
+  "name": "ophis",
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@9.12.0",
@@ -301,7 +301,7 @@ the SDK wrapper, and Vercel deployments.
 ## Scope
 - `apps/frontend/` — vendored fork of `cowprotocol/cowswap`. Modify carefully;
   preserve subtree-merge compatibility with upstream where reasonable.
-- `packages/sdk/` — `@greg/sdk`, thin wrapper around `@cowprotocol/cow-sdk`.
+- `packages/sdk/` — `@ophis/sdk`, thin wrapper around `@cowprotocol/cow-sdk`.
 - `infra/rpc/` — RPC fallback config consumed by FE.
 - Vercel deploys (`vercel` CLI).
 
@@ -417,7 +417,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @greg/sdk test
+      - run: pnpm --filter @ophis/sdk test
 ```
 
 (Note: the `frontend` and `backend` jobs are deliberately omitted from this file — they ship in Phase 1 once those subtrees actually build cleanly inside CI. Adding them now produces red builds on day 1.)
@@ -516,7 +516,7 @@ git commit -m "chore(frontend): pin upstream cowswap commit"
 
 **Files:**
 - Modify: `pnpm-workspace.yaml` if cowswap turns out to use pnpm too; otherwise no edits.
-- Create: `apps/frontend/.greg-build-notes.md` (one-paragraph build provenance).
+- Create: `apps/frontend/.ophis-build-notes.md` (one-paragraph build provenance).
 
 - [ ] **Step 1: Detect upstream package manager**
 
@@ -555,7 +555,7 @@ Expected: build succeeds. Note any required Node version, env vars, or manual st
 
 - [ ] **Step 4: Document the build path**
 
-Write `apps/frontend/.greg-build-notes.md`:
+Write `apps/frontend/.ophis-build-notes.md`:
 
 ```markdown
 # apps/frontend build notes
@@ -570,7 +570,7 @@ Known gotchas: <list, or "none discovered">.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/frontend/.greg-build-notes.md pnpm-workspace.yaml 2>/dev/null
+git add apps/frontend/.ophis-build-notes.md pnpm-workspace.yaml 2>/dev/null
 git commit -m "build(frontend): document local build path for cowswap subtree" || true
 ```
 
@@ -633,7 +633,7 @@ Expected: `clementfrmds-projects` (or active account).
 - [ ] **Step 2: Link the project**
 
 ```bash
-( cd apps/frontend && vercel link --project greg-frontend --yes )
+( cd apps/frontend && vercel link --project ophis-frontend --yes )
 ```
 Expected: creates the Vercel project on first run, writes `.vercel/project.json`.
 
@@ -649,7 +649,7 @@ If cowswap requires a non-default build command/output directory (it does — it
   "installCommand": "<exact install command from build notes>"
 }
 ```
-Fill the placeholders from `apps/frontend/.greg-build-notes.md`. If cowswap's docs specify a Vercel template, prefer that.
+Fill the placeholders from `apps/frontend/.ophis-build-notes.md`. If cowswap's docs specify a Vercel template, prefer that.
 
 - [ ] **Step 4: Pull env (none expected for pure frontend, but verify)**
 
@@ -706,7 +706,7 @@ git commit -m "chore(backend): pin upstream services commit"
 ## Task 10: Get the services fork building locally
 
 **Files:**
-- Create: `apps/backend/.greg-build-notes.md`.
+- Create: `apps/backend/.ophis-build-notes.md`.
 
 - [ ] **Step 1: Verify Rust toolchain**
 
@@ -740,7 +740,7 @@ Expected: green (or pre-existing failures clearly upstream-unrelated to our chan
 
 - [ ] **Step 5: Document**
 
-Write `apps/backend/.greg-build-notes.md`:
+Write `apps/backend/.ophis-build-notes.md`:
 
 ```markdown
 # apps/backend build notes
@@ -756,13 +756,13 @@ Known gotchas: <list>.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/backend/.greg-build-notes.md
+git add apps/backend/.ophis-build-notes.md
 git commit -m "build(backend): document local build path for services subtree"
 ```
 
 ---
 
-## Task 11: `@greg/sdk` wrapper package (TDD)
+## Task 11: `@ophis/sdk` wrapper package (TDD)
 
 **Files:**
 - Create: `packages/sdk/package.json`, `packages/sdk/tsconfig.json`, `packages/sdk/src/index.ts`, `packages/sdk/src/config.ts`, `packages/sdk/tests/sdk.test.ts`, `packages/sdk/vitest.config.ts`.
@@ -772,9 +772,9 @@ git commit -m "build(backend): document local build path for services subtree"
 `packages/sdk/tests/sdk.test.ts`:
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { gregDefaults, OPHIS_PARTNER_FEE_BPS, OPHIS_PARTNER_RECIPIENT } from '@greg/sdk';
+import { gregDefaults, OPHIS_PARTNER_FEE_BPS, OPHIS_PARTNER_RECIPIENT } from '@ophis/sdk';
 
-describe('@greg/sdk defaults', () => {
+describe('@ophis/sdk defaults', () => {
   it('targets Gnosis Chain (chainId 100)', () => {
     expect(gregDefaults.chainId).toBe(100);
   });
@@ -794,7 +794,7 @@ describe('@greg/sdk defaults', () => {
 `packages/sdk/package.json`:
 ```json
 {
-  "name": "@greg/sdk",
+  "name": "@ophis/sdk",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -829,9 +829,9 @@ export default defineConfig({ test: { environment: 'node', include: ['tests/**/*
 
 ```bash
 pnpm install
-pnpm --filter @greg/sdk test
+pnpm --filter @ophis/sdk test
 ```
-Expected: fails with "Cannot find module '@greg/sdk'" or unresolved imports.
+Expected: fails with "Cannot find module '@ophis/sdk'" or unresolved imports.
 
 - [ ] **Step 4: Implement minimal SDK surface**
 
@@ -870,7 +870,7 @@ export {
 - [ ] **Step 5: Run tests to verify pass**
 
 ```bash
-pnpm --filter @greg/sdk test
+pnpm --filter @ophis/sdk test
 ```
 Expected: 3 passing.
 
@@ -878,7 +878,7 @@ Expected: 3 passing.
 
 ```bash
 git add packages/sdk/
-git commit -m "feat(sdk): @greg/sdk minimal wrapper with Gnosis defaults + 5bps partner fee"
+git commit -m "feat(sdk): @ophis/sdk minimal wrapper with Gnosis defaults + 5bps partner fee"
 ```
 
 ---

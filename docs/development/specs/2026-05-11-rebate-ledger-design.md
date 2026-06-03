@@ -128,7 +128,7 @@ CREATE TABLE trades (
   sell_amount        NUMERIC(78) NOT NULL,       -- raw uint256
   buy_amount         NUMERIC(78) NOT NULL,
 
-  app_code           TEXT        NOT NULL,       -- "ophis" expected, "greg" tolerated for pre-rebrand
+  app_code           TEXT        NOT NULL,       -- "ophis" expected, "ophis" tolerated for pre-rebrand
   partner_fee_wei    NUMERIC(78),                -- Ophis's net cut (after CoW DAO's 25%)
 
   value_usd          NUMERIC(20,4),              -- NULL until pricer enriches it

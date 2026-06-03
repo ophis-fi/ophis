@@ -1,6 +1,6 @@
-# Greg Local Self-Hosted Stack (Phase 1)
+# Ophis Local Self-Hosted Stack (Phase 1)
 
-This directory contains the operator runbook + configs for running Greg's
+This directory contains the operator runbook + configs for running Ophis's
 backend (orderbook + autopilot + driver + baseline solver + Postgres)
 locally on the Mac mini.
 
@@ -12,7 +12,7 @@ locally on the Mac mini.
 
 ## Prereqs
 - Colima running (`colima status` shows healthy) with ≥ 8 GB allocated
-- `apps/backend/` builds locally (Phase 0 prereq — see `apps/backend/.greg-build-notes.md`)
+- `apps/backend/` builds locally (Phase 0 prereq — see `apps/backend/.ophis-build-notes.md`)
 - `infra/local/.env` populated (see `.env.example`)
 
 (Boot order, troubleshooting, and teardown filled in by Tasks 4 / 7 / 11.)

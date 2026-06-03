@@ -129,8 +129,8 @@ Removed risks (the amended plan retires these):
 
 - The frontend stays as the cowswap fork (vendored at SHA `0174f35e7…`).
 - The vendored `cowprotocol/services` stack stays in `apps/backend/` — production runtime for Phase 3.
-- `@greg/sdk` partner-fee defaults stay (chain Gnosis, 5 bps default, recipient placeholder).
-- `@greg/rpc` Gnosis fallback transport stays.
+- `@ophis/sdk` partner-fee defaults stay (chain Gnosis, 5 bps default, recipient placeholder).
+- `@ophis/rpc` Gnosis fallback transport stays.
 - All Phase 0 work stays valid — repo, CI, agents, Vercel deploy, etc.
 - GPL-3.0 license, private repo until public launch.
 - Branch protocol: `main` for now; feature branches when CI maturity demands.

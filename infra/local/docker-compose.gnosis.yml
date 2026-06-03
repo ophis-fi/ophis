@@ -1,5 +1,5 @@
 # infra/local/docker-compose.gnosis.yml
-# Greg Stage-2 stack — real Gnosis mainnet (no anvil). Requires GNOSIS_RPC_URL in .env.
+# Ophis Stage-2 stack — real Gnosis mainnet (no anvil). Requires GNOSIS_RPC_URL in .env.
 # Boot: docker compose -f infra/local/docker-compose.gnosis.yml --env-file infra/local/.env up -d
 
 services:

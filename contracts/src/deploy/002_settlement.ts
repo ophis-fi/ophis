@@ -57,7 +57,7 @@ const deploySettlement: DeployFunction = async function ({
     }
   }
 
-  // Greg patch: chain-aware gas limit. See 001_authenticator.ts for context.
+  // Ophis patch: chain-aware gas limit. See 001_authenticator.ts for context.
   const overrideGas = process.env.OPHIS_SETTLEMENT_GAS_LIMIT;
   const gasLimit = overrideGas
     ? Number(overrideGas)

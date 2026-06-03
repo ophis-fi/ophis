@@ -26,7 +26,7 @@ useAppData() — returns partner-fee-augmented AppDataInfo
        ↓
      ComposableCoW conditional-order spec carries appData →
      watch-tower-generated child orders inherit parent appData →
-     every child order on api.cow.fi has Greg's partnerFee in fullAppData.
+     every child order on api.cow.fi has Ophis's partnerFee in fullAppData.
 ```
 
 Source references (cowswap fork):
@@ -38,7 +38,7 @@ Source references (cowswap fork):
 
 **Verdict:** TWAP/DCA partner fee propagation PASS by construction.
 
-### Tier 2: MEV-proof receipt download (new Greg-only feature)
+### Tier 2: MEV-proof receipt download (new Ophis-only feature)
 
 New module at `apps/cowswap-frontend/src/modules/mevReceipt/`:
 
@@ -61,11 +61,11 @@ Known limitation: the current mount uses `ParsedOrder` from cowswap, which does 
 
 | Substrate | Status | Evidence |
 |---|---|---|
-| Manifest hardened (Greg `homepage_url` + `description` + `iconPath`) | PASS | `apps/cowswap-frontend/public/manifest.json` — Phase 2 Task 5 |
+| Manifest hardened (Ophis `homepage_url` + `description` + `iconPath`) | PASS | `apps/cowswap-frontend/public/manifest.json` — Phase 2 Task 5 |
 | `/manifest.json` CORS | PASS | `Access-Control-Allow-Origin: *` (verified via `curl -sI`) |
 | `/manifest.json` Safe-spec compliant | PASS | name=Greg, description=96 chars (≤200 limit), iconPath set |
 | Root URL has no iframe-blocking headers | PASS | No `X-Frame-Options`, no restrictive CSP `frame-ancestors` |
-| `@safe-global/safe-apps-sdk` integration upstream-supplied | PASS | Already a cowswap dependency; Greg inherits |
+| `@safe-global/safe-apps-sdk` integration upstream-supplied | PASS | Already a cowswap dependency; Ophis inherits |
 | `/service-worker.js` reachable | PASS | HTTP 200, 41 KB workbox-based |
 | Service worker has fetch handler | PASS | Workbox routing constants present |
 | Manifest linked from HTML head | PASS | `<link rel="manifest" href="./manifest.json">` |
@@ -80,14 +80,14 @@ All four phase-gate criteria met. The retail engineering substrate is complete. 
 
 - **Architecturally:** the Phase-1.5 partner-fee patch flows correctly through TWAP/DCA orders without any extra work.
 - **Functionally:** users can download a JSON or PDF MEV-proof receipt for any order with a settled-or-open status, from cowswap's existing `ReceiptModal`.
-- **Operationally:** Greg passes Safe app installation prerequisites (manifest, CORS, iframe headers, Safe SDK upstream) and PWA installation prerequisites (HTTPS, manifest, service worker, fetch handler).
+- **Operationally:** Ophis passes Safe app installation prerequisites (manifest, CORS, iframe headers, Safe SDK upstream) and PWA installation prerequisites (HTTPS, manifest, service worker, fetch handler).
 
 Tag: `v0.2-phase2`.
 
 ## Open follow-ups for Phase 2.5
 
 - Real project name + domain (`greg` codename retired before launch).
-- Brand work: logo, colour palette, voice (the Greg-rebranded cowswap UI is functional but visually identical to upstream).
+- Brand work: logo, colour palette, voice (the Ophis-rebranded cowswap UI is functional but visually identical to upstream).
 - DCA UX redesign on top of cowswap's `/advanced` route — promote DCA to a top-level entry point with consumer-friendly framing.
 - Submit Safe app PR against `safe-global/safe-apps-list` once the real domain is set.
 - Thread trades-API data into `ReceiptModal` so receipts include settlement tx hash + block number.
@@ -102,9 +102,9 @@ Tag: `v0.2-phase2`.
 - `apps/frontend/apps/cowswap-frontend/src/modules/mevReceipt/{types,services/{buildReceipt,exportJson,exportPdf},containers/DownloadReceiptButton,index}.ts(x)` — new module.
 - `apps/frontend/apps/cowswap-frontend/src/modules/mevReceipt/services/buildReceipt.test.ts` — 7 Jest tests.
 - `apps/frontend/apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx` — mount point.
-- `apps/frontend/apps/cowswap-frontend/public/manifest.json` — Greg fields + iconPath.
+- `apps/frontend/apps/cowswap-frontend/public/manifest.json` — Ophis fields + iconPath.
 - `apps/frontend/apps/cowswap-frontend/package.json` + `apps/frontend/pnpm-lock.yaml` — `jspdf` dep.
-- `apps/frontend/.greg-divergences.md` — Phase-2 entries appended.
+- `apps/frontend/.ophis-divergences.md` — Phase-2 entries appended.
 - `docs/development/safe-app-submission.md` — submission package.
 - `docs/development/pwa-verification.md` — PWA evidence.
 - `docs/development/phase-2-validation.md` — this file.

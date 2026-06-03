@@ -22,14 +22,14 @@ pub enum Chain {
     Linea = 59144,
     Plasma = 9745,
     Ink = 57073,
-    // Greg additions for Phase 3 — MegaETH testnet (live; chain 6342 is the
+    // Ophis additions for Phase 3 — MegaETH testnet (live; chain 6342 is the
     // deprecated previous testnet) and MegaETH mainnet.
     MegaethTestnet = 6343,
     MegaethMainnet = 4326,
-    // Greg additions for Phase 3b — Hyperliquid HyperEVM.
+    // Ophis additions for Phase 3b — Hyperliquid HyperEVM.
     HyperEvmTestnet = 998,
     HyperEvmMainnet = 999,
-    // Greg additions for Phase 3c — multi-chain expansion (Optimism mainnet
+    // Ophis additions for Phase 3c — multi-chain expansion (Optimism mainnet
     // is already declared above; just add OP Sepolia for testnet).
     OptimismSepolia = 11155420,
     KatanaTestnet = 737373,    // "Bokuto" testnet

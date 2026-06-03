@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Greg Phase 3 Stage-2 — seed the WETH/USDT0 pool on the Greg-deployed V2.
+# Ophis Phase 3 Stage-2 — seed the WETH/USDT0 pool on the Ophis-deployed V2.
 #
 # Pre-reqs:
 #  - deploy-mainnet-all.sh has run (V2 Factory + Router deployed, addresses in .env)

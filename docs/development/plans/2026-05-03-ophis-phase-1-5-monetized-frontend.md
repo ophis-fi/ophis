@@ -23,8 +23,8 @@
 | `packages/sdk/src/index.ts` | modify | export the new module |
 | `packages/sdk/tests/partner-fee.test.ts` | create | TDD coverage for the new module |
 | `apps/frontend/apps/cowswap-frontend/src/modules/injectedWidget/state/injectedWidgetParamsAtom.ts` | modify | atom defaults to Ophis's partner-fee config when widget params do not supply one |
-| `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | create | inline Ophis constants for cowswap (mirrors `@greg/sdk` values; small file with explanatory comment about why we inline) |
-| `apps/frontend/.greg-divergences.md` | create | tracking document for upstream-conflict-on-pull files |
+| `apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts` | create | inline Ophis constants for cowswap (mirrors `@ophis/sdk` values; small file with explanatory comment about why we inline) |
+| `apps/frontend/.ophis-divergences.md` | create | tracking document for upstream-conflict-on-pull files |
 | `docs/development/phase-1-5-validation.md` | create | phase-gate evidence |
 
 **Not modified:** `apps/backend/`, `infra/local/`, `infra/rpc/`, `packages/sdk/src/config.ts` (the Phase 0 file, kept stable).
@@ -34,7 +34,7 @@
 ## Dispatch hints
 
 - **Tasks 1, 6, 8:** main session (CTO) — wallet generation, deployment, validation, tagging.
-- **Tasks 2:** `frontend` agent — TDD for `@greg/sdk` extension.
+- **Tasks 2:** `frontend` agent — TDD for `@ophis/sdk` extension.
 - **Tasks 3–5:** `frontend` agent — cowswap fork patch + local smoke test.
 - **Task 7:** main session — actual on-chain swap and `api.cow.fi` verification.
 
@@ -105,7 +105,7 @@ The recipient address is **not a secret** — only the private key is. Append to
 
 (Defer the actual file write to Task 7; record the address here for handoff.)
 
-## Task 2: Extend `@greg/sdk` with partner-fee defaults (TDD)
+## Task 2: Extend `@ophis/sdk` with partner-fee defaults (TDD)
 
 **Files:**
 - Create: `packages/sdk/src/partner-fee.ts`, `packages/sdk/tests/partner-fee.test.ts`
@@ -120,9 +120,9 @@ import {
   gregDefaultPartnerFee,
   OPHIS_PARTNER_FEE_RECIPIENT,
   OPHIS_PARTNER_FEE_BPS,
-} from '@greg/sdk';
+} from '@ophis/sdk';
 
-describe('@greg/sdk partner fee defaults', () => {
+describe('@ophis/sdk partner fee defaults', () => {
   it('returns the same recipient on every CoW-supported chainId', () => {
     const chains = [1, 100, 8453, 42161, 137, 43114, 56, 59144, 9745, 57073];
     for (const chainId of chains) {
@@ -150,7 +150,7 @@ describe('@greg/sdk partner fee defaults', () => {
 
 ```bash
 cd /Users/scep/greg
-pnpm --filter @greg/sdk test
+pnpm --filter @ophis/sdk test
 ```
 Expected: fails — `gregDefaultPartnerFee` is not exported.
 
@@ -221,8 +221,8 @@ export {
 
 ```bash
 cd /Users/scep/greg
-pnpm --filter @greg/sdk test
-pnpm --filter @greg/sdk typecheck
+pnpm --filter @ophis/sdk test
+pnpm --filter @ophis/sdk typecheck
 ```
 Expected: 4 partner-fee tests pass + the 3 pre-existing tests from Phase 0 still pass = 7 total. Typecheck clean.
 
@@ -239,22 +239,22 @@ git push
 ## Task 3: Inline Ophis's partner-fee constants inside the cowswap fork
 
 **Files:**
-- Create: `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`
-- Create: `apps/frontend/.greg-divergences.md`
+- Create: `apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts`
+- Create: `apps/frontend/.ophis-divergences.md`
 
-The cowswap fork lives in its own pnpm workspace (`apps/frontend/`) which is **deliberately excluded from the root pnpm workspace** (per `pnpm-workspace.yaml`). It cannot import from `@greg/sdk` without significant cross-workspace plumbing. Instead we duplicate the constants with a clear comment pointing back to `@greg/sdk` as the source of truth, and track the divergence so future `git subtree pull cowswap-upstream main --squash` operations know what to reconcile.
+The cowswap fork lives in its own pnpm workspace (`apps/frontend/`) which is **deliberately excluded from the root pnpm workspace** (per `pnpm-workspace.yaml`). It cannot import from `@ophis/sdk` without significant cross-workspace plumbing. Instead we duplicate the constants with a clear comment pointing back to `@ophis/sdk` as the source of truth, and track the divergence so future `git subtree pull cowswap-upstream main --squash` operations know what to reconcile.
 
 - [ ] **Step 1: Create the inline constants file**
 
-`apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`:
+`apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts`:
 ```typescript
 /**
- * Ophis partner-fee defaults — duplicated from `@greg/sdk` because the cowswap
+ * Ophis partner-fee defaults — duplicated from `@ophis/sdk` because the cowswap
  * fork lives in its own pnpm workspace and cannot import from the outer
  * monorepo.
  *
  * Source of truth: `packages/sdk/src/partner-fee.ts`. Keep these values in
- * sync. Whenever `@greg/sdk` changes, mirror the change here in the same PR.
+ * sync. Whenever `@ophis/sdk` changes, mirror the change here in the same PR.
  *
  * See docs/development/specs/2026-05-03-ophis-design-amendment.md for the
  * partner-fee strategy. See https://docs.cow.fi/governance/fees/partner-fee
@@ -278,7 +278,7 @@ export const OPHIS_DEFAULT_PARTNER_FEE: PartnerFee = {
 
 Substitute `0xREPLACE_WITH_TASK_1_ADDRESS` with the Task-1 address before saving.
 
-- [ ] **Step 2: Create `apps/frontend/.greg-divergences.md`**
+- [ ] **Step 2: Create `apps/frontend/.ophis-divergences.md`**
 
 ```markdown
 # apps/frontend — divergences from upstream cowprotocol/cowswap
@@ -301,10 +301,10 @@ expect conflicts on these paths and re-apply the changes manually.
 
 ## Added (Ophis-only)
 
-- `apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` — Ophis partner-fee
-  inline constants (mirror of `@greg/sdk`).
+- `apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts` — Ophis partner-fee
+  inline constants (mirror of `@ophis/sdk`).
 - `.greg-upstream` — pinned upstream commit SHA.
-- `.greg-build-notes.md` — local build documentation.
+- `.ophis-build-notes.md` — local build documentation.
 - `scripts/vercel-build.sh` — Vercel deployment helper script.
 
 ## Conflict-recovery procedure
@@ -320,8 +320,8 @@ When `git subtree pull` produces conflicts on the **Modified** files above:
 
 ```bash
 cd /Users/scep/greg
-git add apps/frontend/.greg-divergences.md \
-        apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts
+git add apps/frontend/.ophis-divergences.md \
+        apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts
 git status
 git commit -m "feat(frontend): add Ophis partner-fee constants inside cowswap fork"
 git push
@@ -352,7 +352,7 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => get(injectedWidgetPara
 Replace the `injectedWidgetPartnerFeeAtom` export so it falls back to Ophis's default. Keep all other exports unchanged.
 
 ```typescript
-import { OPHIS_DEFAULT_PARTNER_FEE } from 'greg/partnerFeeDefault'
+import { OPHIS_DEFAULT_PARTNER_FEE } from 'ophis/partnerFeeDefault'
 
 export const injectedWidgetPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
@@ -360,7 +360,7 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
 })
 ```
 
-The import path `'greg/partnerFeeDefault'` assumes cowswap-frontend's TS config resolves `src/` as a root (which it does — see `apps/frontend/apps/cowswap-frontend/tsconfig.json`'s `baseUrl`). If the resolution does not work, fall back to the relative path `'../../../greg/partnerFeeDefault'` from the atom file's location.
+The import path `'ophis/partnerFeeDefault'` assumes cowswap-frontend's TS config resolves `src/` as a root (which it does — see `apps/frontend/apps/cowswap-frontend/tsconfig.json`'s `baseUrl`). If the resolution does not work, fall back to the relative path `'../../../greg/partnerFeeDefault'` from the atom file's location.
 
 - [ ] **Step 3: Build cowswap to confirm the patch compiles**
 
@@ -706,11 +706,11 @@ Edit `project_greg.md` to add:
 - `0xREPLACE_WITH_TASK_1_ADDRESS` is the only placeholder, and it is **explicitly required to be replaced before commit** in both Task 2 and Task 3. The phase gate (Task 7) catches the issue if it survives — `metadata.partnerFee.recipient` would be the placeholder string and the verification would fail.
 
 **Type / name consistency**
-- `OPHIS_PARTNER_FEE_BPS` (5) and `OPHIS_PARTNER_FEE_RECIPIENT` are referenced with the same names across `packages/sdk/src/partner-fee.ts` and `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`. Keeping the duplicate in sync is documented in `apps/frontend/.greg-divergences.md`.
+- `OPHIS_PARTNER_FEE_BPS` (5) and `OPHIS_PARTNER_FEE_RECIPIENT` are referenced with the same names across `packages/sdk/src/partner-fee.ts` and `apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts`. Keeping the duplicate in sync is documented in `apps/frontend/.ophis-divergences.md`.
 - `PartnerFee` type imported from `@cowprotocol/widget-lib` matches the type expected by `injectedWidgetPartnerFeeAtom`.
 
 **Risks the plan acknowledges**
-- The cowswap fork modification creates a tracked divergence from upstream. Documented in Task 3's `.greg-divergences.md`.
+- The cowswap fork modification creates a tracked divergence from upstream. Documented in Task 3's `.ophis-divergences.md`.
 - The recipient EOA is single-sig in Phase 1.5; upgrade to Safe in Phase 2.5 before any meaningful balance accumulates (CoW pays out weekly, smallest payout 0.001 WETH, so timing aligns).
 - Sepolia solver coverage is sparse — Task 7 Step 5 explicitly accepts that the order may not settle within the validation window. The phase gate is partner-fee injection, not settlement timing.
 

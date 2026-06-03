@@ -146,7 +146,7 @@ The window is < 30 seconds of clock time + bounded blast radius. Not a launch bl
 
 ### Condition 3 — Rebrand "verified complete" was overstated (KEY MISS #3)
 
-**Codex finding:** the audit treated the Greg → Ophis rename as fully complete, but public-facing remnants remain in `apps/frontend/apps/cow-fi/const/meta.ts:15` (OG/utmSource references to `greg-etm.pages.dev`) and `functions/api/intent.ts:60` (ALLOWED_ORIGINS list).
+**Codex finding:** the audit treated the greg → Ophis rename as fully complete, but public-facing remnants remain in `apps/frontend/apps/cow-fi/const/meta.ts:15` (OG/utmSource references to `greg-etm.pages.dev`) and `functions/api/intent.ts:60` (ALLOWED_ORIGINS list).
 
 **Status: deliberate (per project_ophis.md 2026-05-12 decision).** The legacy CF Pages subdomain `greg-etm.pages.dev` stays live for ~30 days as a transition cushion. The plan: drop both references after 2026-06-10 (≥30 days of zero traffic).
 

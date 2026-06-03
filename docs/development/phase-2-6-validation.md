@@ -27,7 +27,7 @@ The frontend deploy pipeline. Nothing else changed:
 | 4 | Subsequent push triggers another auto-deploy | Run `25292479…` (manifest URL update commit `19bcde1f1`) — GH Action triggered | PASS |
 | 5 | Manifest `homepage_url` repointed at CF | `apps/cowswap-frontend/public/manifest.json` → `https://greg-etm.pages.dev` | PASS |
 | 6 | Safe-app submission package URL repointed at CF | `docs/development/safe-app-submission.md` updated (5 occurrences) | PASS |
-| 7 | Bundle parity with Vercel | Safe recipient `0x858f0F5e…CeF8` present in CF-deployed bundle; `<title>Greg</title>`; manifest serves correctly with CORS open | PASS |
+| 7 | Bundle parity with Vercel | Safe recipient `0x858f0F5e…CeF8` present in CF-deployed bundle; `<title>Ophis</title>`; manifest serves correctly with CORS open | PASS |
 
 ## Workflow gotchas captured (so we don't relearn next time)
 
@@ -46,18 +46,18 @@ All three are now baked into the workflow file.
 **Sunset plan (Phase 2.7):**
 1. After ~5 pushes with CF parity confirmed: `cd /Users/scep/greg && vercel git disconnect`
 2. Vercel will stop auto-deploying on push but the existing deployment URL stays live
-3. After ~1 month of CF stability OR if Phase 3 ships first: `vercel project rm greg`
+3. After ~1 month of CF stability OR if Phase 3 ships first: `vercel project rm ophis`
 4. Update `infra/local/.env` and any docs referencing Vercel URLs
 
 ## What still needs follow-up
 
-- **Custom domain.** Currently `greg-etm.pages.dev` is the canonical URL. Phase 2.7 / brand work will swap to a real domain (e.g., `greg.openletz.com` or a dedicated one). Cloudflare-side setup is `pages.cloudflare.com → greg → Custom domains → Add` (or via API).
-- **`@greg/sdk` package's `partnerFee.recipient`.** Stayed at the Phase-2.5 Safe `0x858f0F5e…CeF8`. Unchanged — migration is infrastructural, not financial.
+- **Custom domain.** Currently `greg-etm.pages.dev` is the canonical URL. Phase 2.7 / brand work will swap to a real domain (e.g., `greg.openletz.com` or a dedicated one). Cloudflare-side setup is `pages.cloudflare.com → ophis → Custom domains → Add` (or via API).
+- **`@ophis/sdk` package's `partnerFee.recipient`.** Stayed at the Phase-2.5 Safe `0x858f0F5e…CeF8`. Unchanged — migration is infrastructural, not financial.
 - **GitHub repo's old `CI` workflow** (Phase 0 Task 3) still runs alongside the new CF deploy workflow on every push. They're independent — CI runs lint/typecheck, CF deploy builds + ships. Both pass. No conflict.
 
 ## Phase 2.6 verdict: PASS
 
-CF Pages is now the primary deploy pipeline. Greg.app accessible at `https://greg-etm.pages.dev`. Manifest + Safe-app docs repointed. Vercel kept running for fallback.
+CF Pages is now the primary deploy pipeline. Ophis.app accessible at `https://greg-etm.pages.dev`. Manifest + Safe-app docs repointed. Vercel kept running for fallback.
 
 ## Next phase
 

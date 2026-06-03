@@ -11,7 +11,7 @@ const deployAuthenticator: DeployFunction = async function ({
   const { deploy } = deployments;
 
   const { authenticator } = CONTRACT_NAMES;
-  // Greg patch: chain-aware gas limit. MegaETH consumes ~45× more gas per
+  // Ophis patch: chain-aware gas limit. MegaETH consumes ~45× more gas per
   // opcode than standard EVM, so we ship a high default for it; HyperEVM
   // (and other normal chains) cap at 30M per big block, so we use a much
   // lower value there. Read OPHIS_AUTH_PROXY_GAS_LIMIT to override.
