@@ -280,38 +280,10 @@ html.reveal-armed .reveal-up.in-view {
   50%      { opacity: var(--op, 0.6); }
 }
 
-/* ── Section light flares ─────────────────────────────────────────────────
-   Reusable, GPU-cheap accents applied to section wrappers/headings.
-   `.flare-sweep`  — a periodic light beam sweeping diagonally across an inner
-                     wrapper (long idle gap so it reads as an occasional flare).
-   `.section-bloom`— a soft radial bloom behind a heading that gently breathes.
-   Both decorative + aria-hidden via pseudo-elements; disabled under
+/* ── Section light accents ────────────────────────────────────────────────
+   `.section-bloom`: a soft radial bloom behind a heading that gently breathes.
+   Decorative + aria-hidden via pseudo-element; disabled under
    prefers-reduced-motion. */
-.flare-sweep { position: relative; overflow: hidden; isolation: isolate; }
-.flare-sweep::after {
-  content: '';
-  position: absolute;
-  top: -20%;
-  bottom: -20%;
-  left: 0;
-  width: 45%;
-  pointer-events: none;
-  z-index: -1;
-  background: linear-gradient(
-    100deg,
-    transparent 0%,
-    rgba(242, 166, 62, 0.07) 42%,
-    rgba(255, 255, 255, 0.05) 50%,
-    rgba(180, 138, 255, 0.07) 58%,
-    transparent 100%
-  );
-  transform: translateX(-140%) skewX(-12deg);
-  animation: flare-sweep 11s ease-in-out var(--sweep-delay, 0s) infinite;
-}
-@keyframes flare-sweep {
-  0%        { transform: translateX(-140%) skewX(-12deg); }
-  55%, 100% { transform: translateX(320%) skewX(-12deg); }
-}
 .section-bloom { position: relative; }
 .section-bloom::before {
   content: '';
@@ -349,7 +321,6 @@ main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
   /* Particles + sparks stay visible as a static starfield, just no motion. */
   .particle { animation: none !important; }
   .spark { animation: none !important; transform: none !important; }
-  .flare-sweep::after { animation: none !important; transform: translateX(-140%) skewX(-12deg) !important; opacity: 0 !important; }
   .section-bloom::before { animation: none !important; }
   * { transition: none !important; }
 }
