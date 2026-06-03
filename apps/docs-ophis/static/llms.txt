@@ -1,6 +1,6 @@
 # Ophis Docs
 
-> Developer documentation for Ophis: an intent-based, MEV-protected DEX aggregator (a CoW Protocol fork) built for the agent era. Describe a swap in plain English; a competitive solver auction fills it across the deepest on-chain liquidity, MEV-protected, settled in one batch. Agents integrate via a hosted MCP server or a single REST call.
+> Developer documentation for Ophis: an intent-based, MEV-protected DEX aggregator (a CoW Protocol fork) built for the agent era. Describe a swap in natural language; a competitive solver auction fills it across the deepest on-chain liquidity, MEV-protected, settled in one batch. Agents integrate via a hosted MCP server or a single REST call.
 
 ## Build with Ophis
 
