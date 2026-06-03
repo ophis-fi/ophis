@@ -59,7 +59,8 @@ const config: Config = {
     // Measurement auto-tracks SPA route page-views via History events, so no
     // Docusaurus-plugin route hook is needed. docs.ophis.fi has no CSP.
     // A future opt-in banner can call gtag('consent','update',{analytics_storage:'granted'}).
-    {tagName: 'script', attributes: {async: 'true', src: 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM'}},
+    // Inline bootstrap FIRST (synchronous, runs at parse time) so the consent
+    // default is queued before the async gtag.js can execute, even from cache.
     {
       tagName: 'script',
       attributes: {},
@@ -68,6 +69,7 @@ const config: Config = {
         "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'});" +
         "gtag('js',new Date());gtag('config','G-NG9YX5G9CM',{anonymize_ip:true});",
     },
+    {tagName: 'script', attributes: {async: 'true', src: 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM'}},
     // Site-level Organization structured data (Docusaurus emits a per-page
     // BreadcrumbList automatically; this adds the publisher entity for SEO/AEO).
     {
