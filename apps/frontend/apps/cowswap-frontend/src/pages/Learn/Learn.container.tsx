@@ -85,7 +85,7 @@ export function LearnPage(): ReactNode {
       <Section
         id="trading-fees"
         title="Trading, routing, and fees"
-        intro="Mechanics of how Ophis charges (0% on ordinary trades, 25% of price improvement above quote) and how routing decisions get made."
+        intro="Mechanics of how Ophis charges (0% on ordinary trades, only a small capped share of price improvement above your quote) and how routing decisions get made."
       >
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Trade form">
@@ -109,8 +109,7 @@ export function LearnPage(): ReactNode {
           <FeatureCard title="Legal terms">
             <p>
               10 numbered sections covering Terms of Service, Privacy, third-party services, operator-entity disclosure
-              policy (Luxembourg-incorporated consultancy; full details on request), GDPR posture, dispute resolution.
-              Quick summaries above each section.
+              policy, GDPR posture, dispute resolution. Quick summaries above each section.
             </p>
             <p>
               <TextLink href="/legal">/legal →</TextLink>
