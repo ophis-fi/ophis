@@ -31,8 +31,11 @@
   Cache-Control: public, max-age=300, must-revalidate
   # Agent-discovery Link headers (RFC 8288 / RFC 9727): point agents at the API
   # catalog, machine + human API docs, the MCP server card, and llms.txt.
-  Link: </.well-known/api-catalog>; rel="api-catalog", </openapi.json>; rel="service-desc"; type="application/json", <https://docs.ophis.fi/>; rel="service-doc", </.well-known/mcp.json>; rel="service-meta"; type="application/json", </llms.txt>; rel="related"; type="text/plain"
+  Link: </.well-known/api-catalog>; rel="api-catalog", </openapi.json>; rel="service-desc"; type="application/json", <https://docs.ophis.fi/>; rel="service-doc", </.well-known/mcp.json>; rel="service-meta"; type="application/json", </llms.txt>; rel="describedby"; type="text/plain"
 
-# RFC 9727 API catalog is an extension-less file; force its media type.
+# RFC 9727 API catalog: force its media type (extension-less file) AND echo the
+# api-catalog Link on the resource itself, so a HEAD/GET directly against the
+# catalog endpoint is self-describing (the root `/` Link rule does not match here).
 /.well-known/api-catalog
   Content-Type: application/linkset+json; charset=utf-8
+  Link: </.well-known/api-catalog>; rel="api-catalog"
