@@ -70,7 +70,7 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Docs">
             <p>
-              How a swap intent flows through Ophis, describing a trade in plain English, solver competition,
+              How a swap intent flows through Ophis, describing a trade in natural language, solver competition,
               MEV-protected settlement. Includes a FAQ and API reference.
             </p>
             <p>
@@ -90,7 +90,7 @@ export function LearnPage(): ReactNode {
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Trade form">
             <p>
-              The actual swap interface. Plain-English intent → pre-filled order → sign and settle. Supports EVM source
+              The actual swap interface. Natural-language intent → pre-filled order → sign and settle. Supports EVM source
               chains and Solana / Bitcoin destinations via NEAR Intents.
             </p>
             <p>
@@ -110,7 +110,7 @@ export function LearnPage(): ReactNode {
             <p>
               10 numbered sections covering Terms of Service, Privacy, third-party services, operator-entity disclosure
               policy (Luxembourg-incorporated consultancy; full details on request), GDPR posture, dispute resolution.
-              Plain-English summaries above each section.
+              Quick summaries above each section.
             </p>
             <p>
               <TextLink href="/legal">/legal →</TextLink>
