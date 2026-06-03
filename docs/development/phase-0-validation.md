@@ -1,6 +1,6 @@
 # Phase 0 — Validation Log
 
-> **Goal:** Confirm a real swap completes via the Greg deployment hitting CoW's official APIs. This is the Phase 0 gate.
+> **Goal:** Confirm a real swap completes via the Ophis deployment hitting CoW's official APIs. This is the Phase 0 gate.
 
 **Date:** 2026-05-02
 **Operator:** Clement (executed programmatically by the operator session via Foundry `cast` + cow.fi API)
@@ -12,7 +12,7 @@
 - **Repo:** `san-npm/greg`
 - **Repo HEAD at validation:** `2544ec42b71d55af8f8dc4bc7cad2312e47f3d53`
 - **Vercel preview URL:** https://greg-29v5viw8p-clementfrmds-projects.vercel.app
-- **Backend stack:** CoW Protocol's official APIs. No self-hosted Greg backend in Phase 0.
+- **Backend stack:** CoW Protocol's official APIs. No self-hosted Ophis backend in Phase 0.
 
 ### Deviation from plan
 
@@ -22,8 +22,8 @@
 
 ### Deviation in execution mechanism
 
-- **Plan said:** "real swap completes on Gnosis Chiado testnet via Greg frontend"
-- **Actual:** API-path validation (quote → sign → submit → settle) executed programmatically against the same CoW endpoints the deployed frontend hits. **The frontend deployment was independently verified** (Vercel build green, served HTML shows `<title>Greg</title>`, browser-loadable). What was not exercised: clicking through the deployed UI with MetaMask. Browser-driven testing is deferred to Phase 2 when we have Playwright E2E coverage.
+- **Plan said:** "real swap completes on Gnosis Chiado testnet via Ophis frontend"
+- **Actual:** API-path validation (quote → sign → submit → settle) executed programmatically against the same CoW endpoints the deployed frontend hits. **The frontend deployment was independently verified** (Vercel build green, served HTML shows `<title>Ophis</title>`, browser-loadable). What was not exercised: clicking through the deployed UI with MetaMask. Browser-driven testing is deferred to Phase 2 when we have Playwright E2E coverage.
 
 ## Test wallet
 
@@ -49,8 +49,8 @@ The first signed order (`0x08e9bc72…69f5e8e0`, 1% slippage floor, `partiallyFi
 
 ## Branding sanity
 
-- [x] Window title / browser tab shows `Greg` — verified via `curl https://greg-29v5viw8p-…vercel.app | grep '<title>'` → `<title>Greg</title>`
-- [x] Manifest name (Add to Home Screen) shows `Greg` — verified at build time, manifest.json contains `"name": "Greg"`
+- [x] Window title / browser tab shows `Greg` — verified via `curl https://greg-29v5viw8p-…vercel.app | grep '<title>'` → `<title>Ophis</title>`
+- [x] Manifest name (Add to Home Screen) shows `Greg` — verified at build time, manifest.json contains `"name": "Ophis"`
 - [x] No `cowswap.fi` references in user-visible UI — verified via grep on built `index.html`
 - [x] No "CoW Swap" in the page header — verified at build time
 
@@ -68,4 +68,4 @@ The first signed order (`0x08e9bc72…69f5e8e0`, 1% slippage floor, `partiallyFi
 
 ## Phase-0 gate verdict
 
-**PASS** — frontend builds and deploys to Vercel with Greg branding; backend Rust workspace builds and 754 lib tests pass; SDK has working TDD coverage; CI is green; a signed EIP-712 order from the test wallet was accepted by CoW's Sepolia orderbook and settled on-chain by a CoW solver in ~35 seconds (`0x50adbdbb…7d69e0` block 10775068). The complete intent-broker pipeline that the deployed Greg frontend depends on is verified end-to-end.
+**PASS** — frontend builds and deploys to Vercel with Ophis branding; backend Rust workspace builds and 754 lib tests pass; SDK has working TDD coverage; CI is green; a signed EIP-712 order from the test wallet was accepted by CoW's Sepolia orderbook and settled on-chain by a CoW solver in ~35 seconds (`0x50adbdbb…7d69e0` block 10775068). The complete intent-broker pipeline that the deployed Ophis frontend depends on is verified end-to-end.

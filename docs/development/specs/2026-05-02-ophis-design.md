@@ -73,12 +73,12 @@ The retail-first sequence is deliberate: DAOs trust traction, not pitches. Phase
 ### Repo layout (`ophis-fi/ophis`, private, GPL-3.0, pnpm monorepo)
 
 ```
-greg/
+ophis/
 ├── apps/
 │   ├── frontend/          # forked cowswap, Ophis UX, PWA
 │   └── backend/           # forked cowprotocol/services (Rust)
 ├── packages/
-│   ├── sdk/               # @greg/sdk — TS wrapper around cow-sdk
+│   ├── sdk/               # @ophis/sdk — TS wrapper around cow-sdk
 │   └── contracts/         # empty Phase 1 placeholder
 ├── infra/
 │   ├── aleph/             # Aleph Cloud manifests
@@ -227,7 +227,7 @@ Aleph wins the Rust-services slot because of long-running compute and free acces
 - Final domain (default candidates: `greg.xyz`, `greg.fi`, `usegreg.app`, or one of the openletz domains).
 - Partner-fee bp (default: 5bps, configurable).
 - Aleph region(s) for primary + failover.
-- Whether to publish `@greg/sdk` to npm before Phase 2.
+- Whether to publish `@ophis/sdk` to npm before Phase 2.
 
 ## 13. References
 

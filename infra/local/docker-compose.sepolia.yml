@@ -1,5 +1,5 @@
 # infra/local/docker-compose.sepolia.yml
-# Greg Stage-2 stack — real Sepolia testnet (no anvil). Requires SEPOLIA_RPC_URL in .env.
+# Ophis Stage-2 stack — real Sepolia testnet (no anvil). Requires SEPOLIA_RPC_URL in .env.
 # Boot: docker compose -f infra/local/docker-compose.sepolia.yml --env-file infra/local/.env up -d
 
 services:

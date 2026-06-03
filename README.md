@@ -58,7 +58,7 @@ Canonical contract addresses and the disclosure policy are in
 | `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `megaeth-mainnet/`, `hyperevm-mainnet/`, `local/`) plus shared RPC and Cloudflare config. |
 
 Upstream subtrees are vendored as-is; Ophis changes are catalogued in
-`apps/frontend/.ophis-divergences.md` and `apps/backend/.greg-divergences.md` so
+`apps/frontend/.ophis-divergences.md` and `apps/backend/.ophis-divergences.md` so
 `git subtree pull` stays tractable.
 
 ## Repo map

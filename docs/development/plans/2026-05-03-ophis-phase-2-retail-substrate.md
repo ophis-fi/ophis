@@ -43,7 +43,7 @@ Validation log committed to `docs/development/phase-2-validation.md`. Tag `v0.2-
 | `apps/frontend/apps/cowswap-frontend/src/pages/Account/Tokens/TokensOverview.tsx` (or similar) | modify | mount `<DownloadReceiptButton />` on the order-detail row |
 | `apps/frontend/apps/cowswap-frontend/public/manifest.json` | modify | replace `homepage_url` + `description` with Ophis-specific values; add `iconPath` for Safe app compatibility |
 | `apps/frontend/apps/cowswap-frontend/package.json` | modify | add `jspdf` dependency |
-| `apps/frontend/.greg-divergences.md` | modify | track new files + edits |
+| `apps/frontend/.ophis-divergences.md` | modify | track new files + edits |
 | `docs/development/safe-app-submission.md` | create | Safe app submission instructions for Phase 2.5 |
 | `docs/development/pwa-verification.md` | create | PWA install evidence |
 | `docs/development/phase-2-validation.md` | create | phase-gate evidence |
@@ -206,7 +206,7 @@ const FIXTURE_ORDER = {
   validTo: 1777833559,
   fullAppData: JSON.stringify({
     version: '1.4.0',
-    appCode: 'greg',
+    appCode: 'ophis',
     metadata: {
       partnerFee: { volumeBps: 5, recipient: '0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E' },
     },
@@ -863,7 +863,7 @@ Write `/Users/scep/greg/docs/development/safe-app-submission.md`:
 
 ## App URL
 - **Production-ish branch alias:** https://greg-git-main-clementfrmds-projects.vercel.app
-- **Phase 2.5 will replace this with a real domain (e.g., greg.app or one of the openletz domains).**
+- **Phase 2.5 will replace this with a real domain (e.g., ophis.app or one of the openletz domains).**
 
 ## Manifest
 
@@ -1012,9 +1012,9 @@ git push
 
 **Files:**
 - Create: `docs/development/phase-2-validation.md`
-- Modify: `apps/frontend/.greg-divergences.md` (add the new Modified / Added paths from Phase 2)
+- Modify: `apps/frontend/.ophis-divergences.md` (add the new Modified / Added paths from Phase 2)
 
-### Step 1: Append Phase 2 divergences to `apps/frontend/.greg-divergences.md`
+### Step 1: Append Phase 2 divergences to `apps/frontend/.ophis-divergences.md`
 
 Read the file, then append under the existing sections:
 
@@ -1076,7 +1076,7 @@ The retail engineering substrate is in place. Phase 2.5 (public launch) can now 
 
 ```bash
 cd /Users/scep/greg
-git add apps/frontend/.greg-divergences.md docs/development/phase-2-validation.md
+git add apps/frontend/.ophis-divergences.md docs/development/phase-2-validation.md
 git status
 git commit -m "docs(phase-2): close-out — substrate ready for public launch (Phase 2.5)"
 git push
@@ -1097,7 +1097,7 @@ Submission package ready for Phase 2.5 public launch.
 
 New module: apps/cowswap-frontend/src/modules/mevReceipt/ (TDD, 7 tests
 green). Vendored cowswap fork divergences tracked in
-apps/frontend/.greg-divergences.md."
+apps/frontend/.ophis-divergences.md."
 git push --tags
 ```
 

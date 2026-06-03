@@ -257,7 +257,7 @@ The landing is a **PUBLIC, SSG-rendered, static asset bundle.** Anything in the 
 ## 12. Existing-code constraints
 
 - **Do NOT touch the swap CF Pages project's `.pages.dev` references in `cowswap-frontend`** — those are the deliberate 30-day cushion expiring 2026-06-10. The landing must not introduce any new ones.
-- **Do NOT add Greg-era brand strings.** The landing uses "Ophis" exclusively. Audit the spec content for any stale leftover terminology before commit.
+- **Do NOT add Ophis-era brand strings.** The landing uses "Ophis" exclusively. Audit the spec content for any stale leftover terminology before commit.
 - **Lingui compatibility.** Even though i18n isn't on for the landing initially, write strings in a way that's extractable later (e.g., constants in `src/content/sections.ts`).
 
 ## 13. Open questions
