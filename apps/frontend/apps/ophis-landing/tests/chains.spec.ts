@@ -25,3 +25,17 @@ test('Solana and Bitcoin are labeled "via NEAR"', async ({ page }) => {
   await expect(items.nth(11)).toContainText('via NEAR') // Solana
   await expect(items.nth(12)).toContainText('via NEAR') // Bitcoin
 })
+
+test('chains marquee has a keyboard-operable pause, hidden until focused (WCAG 2.2.2)', async ({ page }) => {
+  await page.goto('/')
+  const input = page.locator('.chains-pause-input')
+  const btn = page.locator('.chains-pause-btn')
+  // Invisible to mouse users by default (no clutter on the logo strip).
+  await expect(btn).toHaveCSS('opacity', '0')
+  // Keyboard focus reveals it (the input is sr-only, so focus directly and
+  // activate with Space — .check() would reject the hidden input).
+  await input.focus()
+  await expect(btn).toHaveCSS('opacity', '1')
+  await page.keyboard.press('Space')
+  await expect(page.locator('.chains-track')).toHaveCSS('animation-play-state', 'paused')
+})
