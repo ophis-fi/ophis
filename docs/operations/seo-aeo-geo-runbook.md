@@ -27,12 +27,19 @@ hosted MCP server). The docs FAQ page carries `FAQPage` structured data. The
 natural-language positioning is consistent across titles, descriptions, and
 structured data.
 
-> **Note on the inline JSON-LD + CSP:** the swap app's `<script type="application/ld+json">`
-> is a non-executed *data block*, so the deployed `_headers` `script-src` (no
-> `unsafe-inline`/hash) does **not** block it. CSP `script-src` governs script
-> *execution*, and a non-JavaScript MIME type is never executed. Verified live: the
-> JSON-LD is present in the DOM and parses under the enforced CSP. No CSP hash is
-> needed for structured data; only executable third-party scripts (e.g. gtag)
+> **Note on the inline JSON-LD + CSP (not a CSP issue):** the swap app's
+> `<script type="application/ld+json">` is a non-executed *data block*. Per the
+> HTML spec, a `<script>` whose `type` is not a JavaScript MIME type is never
+> executed, so the CSP `script-src` inline-script check is never reached: data
+> blocks are exempt from `script-src`. The element and its text remain in the DOM,
+> and structured-data consumers (Googlebot, Rich Results) read its `textContent`
+> regardless of CSP. **Verified on the live deploy** (under the enforced `_headers`
+> CSP with no `unsafe-inline`/nonce/hash): the JSON-LD is present in the DOM, its
+> `type` is `application/ld+json`, and `JSON.parse` of its content succeeds, with no
+> CSP violation logged. So **no hash or nonce is needed** for the JSON-LD, and one
+> should not be added. (A CSP linter that pattern-matches "inline `<script>` + no
+> `unsafe-inline`" *without* checking `type` will report a false positive here.)
+> Only **executable** scripts (e.g. external `gtag.js` and its inline bootstrap)
 > require a `script-src` allowance.
 
 ## Pending — needs operator action
@@ -65,14 +72,22 @@ all three, or use separate IDs per surface for cleaner segmentation. Wiring:
   `apps/frontend/apps/cowswap-frontend/public/_headers`, **not** `vercel.ts` (the
   latter is the upstream CoW Vercel config and is not the deployed surface). The
   `_headers` `script-src` is `'self' 'wasm-unsafe-eval' 'unsafe-eval'
-  https://challenges.cloudflare.com` — it does **not** allow Google's hosts, so
-  gtag **will be blocked** until you add `https://www.googletagmanager.com` and
-  `https://www.google-analytics.com` to `script-src` in `_headers`. `connect-src`
-  already allows `https:`, so the analytics beacons are fine. Note also that the
-  upstream GTM bootstrap is intentionally stubbed to a no-op in
-  `src/cow-react/index.tsx` (see `apps/frontend/.ophis-divergences.md`); un-stub it
-  or inject gtag via `react-helmet-async` (already a dependency) once the
-  `_headers` change is in.
+  https://challenges.cloudflare.com`, with **no `unsafe-inline`, nonce, or hash**.
+  Two consequences for gtag, both must be handled:
+    1. The **external** `gtag.js` is blocked until you add
+       `https://www.googletagmanager.com` and `https://www.google-analytics.com`
+       to `script-src` in `_headers`.
+    2. The standard gtag **inline bootstrap** (`window.dataLayer = []; gtag('config', ID)`)
+       is **also** blocked by the same CSP (it is an inline script element). Do
+       **not** add an inline `<script>` for it. Instead either (a) load `gtag.js`
+       and call `gtag(...)` from app TypeScript so there is no inline element
+       (preferred), or (b) un-stub the existing **DOM-created** GTM path in
+       `src/cow-react/index.tsx` (`initGtm()` appends a `<script src>` element
+       programmatically, so it needs only the host allowance above, not an
+       inline-script hash). A `react-helmet-async` external-`src` tag is fine; an
+       inline config block is not (it would need its own sha256 hash in `_headers`).
+  `connect-src` already allows `https:`, so the analytics beacons are fine. See
+  `apps/frontend/.ophis-divergences.md` for the GTM-stub divergence.
 - **landing**: add an inline gtag `<script is:inline>` in `Base.astro`, then
   regenerate the strict-CSP hash list (`scripts/check-csp-hashes.mjs`) and
   update `public/_headers` `script-src` (the landing CSP pins per-script
@@ -86,9 +101,13 @@ all three, or use separate IDs per surface for cleaner segmentation. Wiring:
   (the marketing pages `/about`, `/legal`, `/brand` resolve on both `ophis.fi`
   and `swap.ophis.fi`, so the canonical also resolves the duplicate-content
   question — pick one canonical host per page).
-- **Swap `sitemap.xml` same-host (done) + canonical host (still open).** The swap
-  sitemap now lists only `swap.ophis.fi/*` URLs, consistent with the
-  `swap.ophis.fi/robots.txt` `Sitemap`/`Host` directives. Still open: the
-  marketing pages (`/about`, `/legal`, `/brand`, `/learn`) resolve on both
-  `ophis.fi` and `swap.ophis.fi`; pick one canonical host per page and align each
-  surface's sitemap + `rel=canonical` to it.
+- **Swap `sitemap.xml` host-consistent (done) + canonical host (still open).** The
+  shared sitemap (served at both `swap.ophis.fi/sitemap.xml` and
+  `business.ophis.fi/sitemap.xml` from the one Pages deploy) now lists the
+  `swap.ophis.fi/*` content routes **plus** `business.ophis.fi/`, so each host's
+  own pages are discoverable and it stays consistent with the shared
+  `robots.txt` `Sitemap`/`Host` directives. The landing (`ophis.fi`) stays out (it
+  is a separate deploy with its own sitemap). Still open: the marketing pages
+  (`/about`, `/legal`, `/brand`, `/learn`) resolve on both `ophis.fi` and
+  `swap.ophis.fi`; pick one canonical host per page and align each surface's
+  sitemap + `rel=canonical` to it.
