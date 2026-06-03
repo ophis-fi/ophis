@@ -118,6 +118,10 @@ cp .env.example .env
 
 # 3. Bring up the stack
 docker compose up -d --build
+# Prefer ./compose-up.sh instead: it re-renders, runs the safety checks, AND
+# stamps the git version into the orderbook /api/v1/version. A bare
+# `docker compose up --build` leaves /api/v1/version on the vergen sentinel
+# (OPHIS_GIT_DESCRIBE is exported only by compose-up.sh).
 
 # 4. Wait for healthchecks to settle (~60s typical)
 docker compose ps
