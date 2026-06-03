@@ -93,7 +93,7 @@
       "@babel/plugin-transform-modules-systemjs": "^7.29.4",
       "minimatch": "^10.2.3",
       "svgo": "^3.3.3",
-      "tmp": "^0.2.4"
+      "tmp": "^0.2.6"
     }
   },
   "config": {
