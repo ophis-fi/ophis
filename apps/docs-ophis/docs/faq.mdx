@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is price-improvement-only: 0% on ordinary trades, 25% of any positive slippage above the quote, capped at 0.5% of volume.",
+        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is price-improvement-only: 0% on ordinary trades, with only a small, capped share of any positive slippage when a solver beats your quote. Your principal is never touched.",
       },
     },
     {
@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Via the CoW Protocol CIP-75 priceImprovementBps field in the order's appData. The fee is taken from the trade output at settlement and routed to the Ophis multisig weekly. A 25% service fee is retained by the underlying protocol on the partner share by default. It applies on Ophis-operated chains (currently Optimism); on CoW-hosted chains Ophis adds no partner fee.",
+        text: "Via the CoW Protocol CIP-75 priceImprovementBps field in the order's appData, taken from the trade output at settlement. It applies on Ophis-operated chains (currently Optimism); on CoW-hosted chains Ophis adds no partner fee.",
       },
     },
     {
@@ -103,8 +103,8 @@ Ophis uses batch auctions and a solver competition to settle every order
 at the best on-chain price, with [MEV protection](./architecture.md) by
 construction. The natural-language input lets you skip token-pickers
 entirely. And the [fee model](./fees.md) is price-improvement-only: 0% on
-ordinary trades, 25% of any positive slippage above the quote, capped at
-0.5% of volume.
+ordinary trades, with only a small, capped share of any positive slippage
+when a solver beats your quote. Your principal is never touched.
 
 ### Do I need to connect a wallet?
 
@@ -146,9 +146,7 @@ on-chain, so no solver can fill it worse than the price you accepted.
 ### How are partner fees collected?
 
 Via the CoW Protocol CIP-75 `priceImprovementBps` field in the order's
-`appData`. The fee is taken from the trade output at settlement and routed
-to the Ophis multisig weekly. A 25% service fee is retained by the
-underlying protocol on the partner share by default. It applies on
+`appData`, taken from the trade output at settlement. It applies on
 Ophis-operated chains (currently Optimism); on CoW-hosted chains Ophis adds
 no partner fee. Full detail on the [Fees & rebates](./fees.md) page.
 
