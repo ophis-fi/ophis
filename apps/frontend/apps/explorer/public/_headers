@@ -1,0 +1,28 @@
+# Cloudflare Pages _headers for the Ophis explorer (explorer.ophis.fi).
+# Audit P2-1 (2026-06): the explorer shipped with NO security headers while the
+# swap + landing apps both carry a full set. This mirrors the swap app's policy
+# (apps/frontend/apps/cowswap-frontend/public/_headers): the explorer is the same
+# Vite SPA stack, minus the GA4 / Turnstile / Formspree allowances the explorer
+# doesn't use, plus an X-Frame-Options fallback.
+#
+# Notes:
+# - script-src: 'self' + 'wasm-unsafe-eval' + 'unsafe-eval' (same cowswap reason:
+#   the token-list validator compiles ajv schemas at runtime). NO 'unsafe-inline'.
+# - connect-src/img-src use broad https:/wss: because the explorer reaches the
+#   Ophis/CoW orderbook hosts, subgraphs, RPC providers and token-list CDNs;
+#   tightening to an explicit allow-list is brittle on cowswap subtree pulls.
+#   Still blocks mixed-content + non-HTTPS exfiltration.
+# - frame-ancestors 'self' + X-Frame-Options: SAMEORIGIN: anti-clickjacking,
+#   same-origin embeds only.
+# To debug a CSP block after deploy: DevTools Console/Network for blocked entries,
+# then add the origin to the matching directive.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; frame-ancestors 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), midi=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  X-DNS-Prefetch-Control: on
