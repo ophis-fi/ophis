@@ -8,16 +8,17 @@
  * competition leans on (KyberSwap, Velora, OKX, 0x, 1inch), which each route
  * across hundreds of underlying pools per chain.
  *
- * Logos live in public/logos/protocols/ (current official marks: SVG where the
- * brand ships one, PNG otherwise). Pure markup plus scoped CSS; the breathing
- * bloom and sweep flares come from the shared .section-bloom / .flare-sweep
- * classes in global.css (disabled under prefers-reduced-motion).
+ * Logos live in public/logos/protocols/ (official brand marks: SVG where the
+ * brand ships a clean one, a high-res raster otherwise, e.g. Curve, whose only
+ * vector mark is a 150KB+ traced mesh). Pure markup plus scoped CSS; the
+ * breathing bloom comes from the shared .section-bloom class in global.css
+ * (disabled under prefers-reduced-motion).
  */
 
 type Protocol = { name: string; logo: string }
 const protocols: Protocol[] = [
   { name: 'Uniswap',     logo: '/logos/protocols/uniswap.svg' },
-  { name: 'Curve',       logo: '/logos/protocols/curve.svg' },
+  { name: 'Curve',       logo: '/logos/protocols/curve.png' },
   { name: 'Balancer',    logo: '/logos/protocols/balancer.svg' },
   { name: 'PancakeSwap', logo: '/logos/protocols/pancakeswap.svg' },
   { name: 'SushiSwap',   logo: '/logos/protocols/sushi.svg' },
@@ -30,8 +31,8 @@ const protocols: Protocol[] = [
   { name: 'KyberSwap',   logo: '/logos/protocols/kyberswap.svg' },
   { name: 'Velora',      logo: '/logos/protocols/velora.svg' },
   { name: 'OKX',         logo: '/logos/protocols/okx.svg' },
-  { name: '0x',          logo: '/logos/protocols/0x.png' },
-  { name: '1inch',       logo: '/logos/protocols/1inch.png' },
+  { name: '0x',          logo: '/logos/protocols/0x.svg' },
+  { name: '1inch',       logo: '/logos/protocols/1inch.svg' },
 ]
 ---
 <section class="protocols">
@@ -47,7 +48,6 @@ const protocols: Protocol[] = [
     </p>
 
     <div class="protocol-wall reveal-up" data-reveal>
-      <span class="wall-flare flare-sweep" aria-hidden="true"></span>
       <div class="protocol-grid stagger">
         {protocols.map(p => (
           <div class="protocol reveal-up" data-reveal>
@@ -59,6 +59,12 @@ const protocols: Protocol[] = [
         ))}
       </div>
     </div>
+
+    <p class="solver-note reveal-up" data-reveal>
+      The marks above are liquidity venues, not solvers: a competitive solver layer
+      routes each order across the venues available on its chain, and more solvers
+      can be authorized over time.
+    </p>
 
     <p class="coverage reveal-up" data-reveal>
       Liquidity sourced across <strong>11 EVM chains</strong>, with Solana &amp; Bitcoin
@@ -93,15 +99,6 @@ const protocols: Protocol[] = [
     line-height: 1.6;
   }
   .protocol-wall { position: relative; }
-  /* Sweep flare lives in this clipped layer (z 0) so the cards' hover-lift +
-     shadow (z 1) are never clipped. .flare-sweep supplies overflow:hidden,
-     the sweeping ::after band, and the reduced-motion gate (global.css). */
-  .wall-flare {
-    position: absolute;
-    inset: 0;
-    border-radius: var(--ophis-radius);
-    pointer-events: none;
-  }
   .protocol-grid {
     position: relative;
     z-index: 1;
@@ -151,8 +148,15 @@ const protocols: Protocol[] = [
     color: var(--ophis-fg-muted);
     line-height: 1.2;
   }
+  .solver-note {
+    margin: 32px auto 0;
+    max-width: 620px;
+    font-size: 13.5px;
+    color: var(--ophis-fg-muted);
+    line-height: 1.6;
+  }
   .coverage {
-    margin: 40px auto 0;
+    margin: 16px auto 0;
     max-width: 560px;
     font-size: 13.5px;
     color: var(--ophis-fg-faded);
