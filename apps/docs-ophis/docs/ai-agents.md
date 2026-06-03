@@ -231,8 +231,9 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 The partner fee is a CIP-75 **price-improvement** fee written into the order's
 `appData` at `metadata.partnerFee`. Use the price-improvement shape
 `{ priceImprovementBps, maxVolumeBps, recipient }`, **not** the flat
-`{ bps, recipient }` widget shape (slotting `2500` into a `bps`/volume field is
-a silent 100× error). Hash the appData with cow-sdk's deterministic serializer,
+`{ bps, recipient }` widget shape: the two shapes use different denominators, so
+slotting a price-improvement value into a flat volume `bps` field is a silent
+magnitude error. Hash the appData with cow-sdk's deterministic serializer,
 **never** `keccak256(JSON.stringify(doc))`. JSON key order isn't stable, so the
 hash won't match what solvers expect.
 
@@ -243,10 +244,12 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 
 // buildOphisAppDataPartnerFee(chainId) REQUIRES a chainId and THROWS on a
 // missing/invalid one (a forgotten arg fails loud, not as a silent `undefined`).
-// It returns the metadata.partnerFee value on the Ophis-operated chains
-// (10, 4326, 999), or `undefined` on other chains (where no fee is charged).
+// It returns the metadata.partnerFee value on the Ophis-operated chain IDs the
+// SDK is configured for (10, 4326, 999; fees are currently live on Optimism, 10),
+// or `undefined` on any other chain (no fee charged).
 const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> { priceImprovementBps: 2500, maxVolumeBps: 50, recipient: '0x858f0F5e…CeF8' }
+// -> the Ophis CIP-75 partner-fee fragment for this chain
+//    (or `undefined` on chains where Ophis charges no fee)
 
 const metadataApi = new MetadataApi();
 const doc = await metadataApi.generateAppDataDoc({
