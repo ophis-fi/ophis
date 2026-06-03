@@ -244,9 +244,9 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 
 // buildOphisAppDataPartnerFee(chainId) REQUIRES a chainId and THROWS on a
 // missing/invalid one (a forgotten arg fails loud, not as a silent `undefined`).
-// It returns the metadata.partnerFee value on the Ophis-operated chain IDs the
-// SDK is configured for (10, 4326, 999; fees are currently live on Optimism, 10),
-// or `undefined` on any other chain (no fee charged).
+// It returns the metadata.partnerFee value on every chain in the SDK's
+// OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
+// fork serves), or `undefined` on any other chain (no fee charged).
 const partnerFee = buildOphisAppDataPartnerFee(10);
 // -> the Ophis CIP-75 partner-fee fragment for this chain
 //    (or `undefined` on chains where Ophis charges no fee)
