@@ -18,8 +18,16 @@ test('nav becomes frosted past scroll threshold', async ({ page }) => {
     document.body.style.minHeight = '3000px'
   })
   await expect(page.locator('.nav')).not.toHaveClass(/scrolled/)
-  await page.evaluate(() => window.scrollTo(0, 200))
-  await page.waitForTimeout(80)
+  // Deterministically scroll past the 40px threshold + fire the scroll event.
+  // (Avoids the prior flaky-deploy source: smooth-scroll / a missed native
+  // scrollTo event under CI load.)
+  await page.evaluate(() => {
+    // html has scroll-behavior:smooth, which animates the jump — disable it so
+    // scrollTop applies instantly and the dispatched scroll event sees >40.
+    document.documentElement.style.scrollBehavior = 'auto'
+    document.documentElement.scrollTop = 600
+    window.dispatchEvent(new Event('scroll'))
+  })
   await expect(page.locator('.nav')).toHaveClass(/scrolled/)
 })
 
