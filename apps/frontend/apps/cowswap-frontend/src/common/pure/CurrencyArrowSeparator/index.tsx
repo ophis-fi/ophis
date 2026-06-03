@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 
-import { OphieMark } from 'ophis/components/OphieMark'
+import { OphieMark } from 'ophis/components'
 
 import * as styledEl from './styled'
 
