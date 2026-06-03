@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Via the CoW Protocol CIP-75 priceImprovementBps field in the order's appData, taken from the trade output at settlement. It applies on Ophis-operated chains (currently Optimism); on CoW-hosted chains Ophis adds no partner fee.",
+        text: "Via the CoW Protocol CIP-75 priceImprovementBps field in the order's appData, taken from the trade output at settlement.",
       },
     },
     {
@@ -146,9 +146,8 @@ on-chain, so no solver can fill it worse than the price you accepted.
 ### How are partner fees collected?
 
 Via the CoW Protocol CIP-75 `priceImprovementBps` field in the order's
-`appData`, taken from the trade output at settlement. It applies on
-Ophis-operated chains (currently Optimism); on CoW-hosted chains Ophis adds
-no partner fee. Full detail on the [Fees & rebates](./fees.md) page.
+`appData`, taken from the trade output at settlement. Full detail on the
+[Fees & rebates](./fees.md) page.
 
 ### Is Ophis open source?
 
