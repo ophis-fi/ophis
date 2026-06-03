@@ -1,6 +1,6 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator. You describe a swap in plain English ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. 0% fees on ordinary trades. Ophis only earns when a solver beats your quoted price (positive-slippage rebates). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. 0% fees on ordinary trades. Ophis only earns when a solver beats your quoted price (positive-slippage rebates). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
@@ -25,7 +25,7 @@
 
 ## APIs
 
-- [POST /api/intent](https://ophis.fi/api/intent): Plain-English → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Same-origin only (Origin allowlist enforced). Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
+- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Same-origin only (Origin allowlist enforced). Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
 
 ## For AI agents
 
