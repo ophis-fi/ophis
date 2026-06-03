@@ -403,8 +403,12 @@ footer.site {
       <div class="chip"><img src="/logos/chain-avalanche.png" alt=""><span class="name">Avalanche</span></div>
       <div class="chip"><img src="/logos/chain-gnosis.png" alt=""><span class="name">Gnosis</span></div>
       <div class="chip"><img src="/logos/chain-linea.jpg" alt=""><span class="name">Linea</span></div>
-      <div class="chip"><img src="/logos/chain-ink.svg" alt=""><span class="name">Ink</span></div>
-      <div class="chip"><img src="/logos/chain-plasma.svg" alt=""><span class="name">Plasma</span></div>
+      <!-- ?v=1 cache-bust: these two logos were added in #406; the /logos/* rule in
+           public/_headers stamps assets (incl. 404 misses) immutable for 30d, so any
+           edge node that cached a pre-deploy soft-404 for these URLs would keep serving
+           it. A fresh cache key sidesteps that without a CDN purge. -->
+      <div class="chip"><img src="/logos/chain-ink.svg?v=1" alt=""><span class="name">Ink</span></div>
+      <div class="chip"><img src="/logos/chain-plasma.svg?v=1" alt=""><span class="name">Plasma</span></div>
       <div class="chip"><img src="/logos/token-sol.svg" alt=""><span class="name">Solana</span><span class="via">via NEAR</span></div>
       <div class="chip"><img src="/logos/token-btc.svg" alt=""><span class="name">Bitcoin</span><span class="via">via NEAR</span></div>
     </div>
