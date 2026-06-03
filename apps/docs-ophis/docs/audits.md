@@ -80,6 +80,6 @@ chain**. Fees are routed to the Safe weekly. See
 
 ## Contact
 
-Operator contact: [contact form](https://ophis.fi/#/contact).
+Operator contact: [contact form](https://swap.ophis.fi/#/contact).
 For source, issues, and the full infrastructure runbooks, see
 [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).

@@ -13,8 +13,12 @@ type FavoriteTokens = Record<SupportedChainId, TokensMap>
 
 const EMPTY_FAVORITE_TOKENS: TokenWithLogo[] = []
 
+// v3 (2026-06-03): dropped the CoW governance token from the default favorites
+// and refreshed the set. The merger storage is additive, so the key bump is
+// what actually removes COW for existing users (one-time reset to the new
+// default; user-added favorites are re-picked as needed).
 export const favoriteTokensAtom = atomWithStorage<FavoriteTokens>(
-  'favoriteTokensAtom:v2',
+  'favoriteTokensAtom:v3',
   DEFAULT_FAVORITE_TOKENS,
   getJotaiMergerStorage(),
 )

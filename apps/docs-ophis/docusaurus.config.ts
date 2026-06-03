@@ -6,6 +6,9 @@ import {themes as prismThemes} from 'prism-react-renderer';
 
 const SITE_URL = 'https://docs.ophis.fi';
 const APP_URL = 'https://ophis.fi';
+// In-app HashRouter routes (/#/brand, /#/legal, /#/contact) live on the swap
+// app, not the landing — linking them via APP_URL lands on the landing home.
+const SWAP_URL = 'https://swap.ophis.fi';
 const BUSINESS_URL = 'https://business.ophis.fi';
 const GITHUB_URL = 'https://github.com/ophis-fi/ophis';
 
@@ -163,9 +166,9 @@ const config: Config = {
         {
           title: 'Company',
           items: [
-            {label: 'Brand', href: `${APP_URL}/#/brand`},
-            {label: 'Legal', href: `${APP_URL}/#/legal`},
-            {label: 'Contact', href: `${APP_URL}/#/contact`},
+            {label: 'Brand', href: `${SWAP_URL}/#/brand`},
+            {label: 'Legal', href: `${SWAP_URL}/#/legal`},
+            {label: 'Contact', href: `${SWAP_URL}/#/contact`},
             {label: 'GitHub', href: GITHUB_URL},
           ],
         },
