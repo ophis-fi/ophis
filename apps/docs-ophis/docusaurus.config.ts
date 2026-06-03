@@ -53,6 +53,21 @@ const config: Config = {
   headTags: [
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'}},
+    // GA4 (gtag) + Consent Mode v2 (default-denied). Done manually rather than via
+    // the preset `gtag` option so the consent-default is GUARANTEED to run before
+    // gtag('config') (so GA4 never sets cookies pre-consent). GA4 Enhanced
+    // Measurement auto-tracks SPA route page-views via History events, so no
+    // Docusaurus-plugin route hook is needed. docs.ophis.fi has no CSP.
+    // A future opt-in banner can call gtag('consent','update',{analytics_storage:'granted'}).
+    {tagName: 'script', attributes: {async: 'true', src: 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM'}},
+    {
+      tagName: 'script',
+      attributes: {},
+      innerHTML:
+        "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}" +
+        "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'});" +
+        "gtag('js',new Date());gtag('config','G-NG9YX5G9CM',{anonymize_ip:true});",
+    },
     // Site-level Organization structured data (Docusaurus emits a per-page
     // BreadcrumbList automatically; this adds the publisher entity for SEO/AEO).
     {
@@ -82,13 +97,6 @@ const config: Config = {
           editUrl: `${GITHUB_URL}/tree/main/apps/docs-ophis/`,
         },
         blog: false,
-        // GA4 via the built-in plugin-google-gtag (bundled in preset-classic).
-        // It injects gtag.js + handles SPA page-view tracking. docs.ophis.fi has
-        // no CSP, so no allowlist change is needed here (unlike swap/landing).
-        gtag: {
-          trackingID: 'G-NG9YX5G9CM',
-          anonymizeIP: true,
-        },
         theme: {
           customCss: './src/css/custom.css',
         },

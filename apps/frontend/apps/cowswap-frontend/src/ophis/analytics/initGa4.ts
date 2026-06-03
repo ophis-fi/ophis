@@ -33,6 +33,17 @@ export function initGa4(): void {
     w.dataLayer.push(arguments)
   }
 
+  // Consent Mode v2, default-denied: GA4 runs in cookieless mode (no analytics
+  // cookies / client-id persistence) until consent is granted, for GDPR/ePrivacy
+  // compliance. MUST be queued before config so GA never sets cookies pre-consent.
+  // A future opt-in banner can call gtag('consent','update',{analytics_storage:'granted'}).
+  w.gtag('consent', 'default', {
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
+    analytics_storage: 'denied',
+  })
+
   const script = document.createElement('script')
   script.id = 'ophis-ga4'
   script.async = true
