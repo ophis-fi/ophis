@@ -150,7 +150,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at
     `;
     const pendingRows = await sql<{ pending: string }[]>`
-      SELECT COUNT(*)::text AS pending FROM rebate_batches WHERE status IN ('computing','proposed')
+      SELECT COUNT(*)::text AS pending FROM rebate_batches WHERE status IN ('computing','proposing','proposed')
     `;
     const last_fetch = healthRows[0]?.last_fetch ?? null;
     const last_fetch_attempt = healthRows[0]?.last_fetch_attempt ?? null;
