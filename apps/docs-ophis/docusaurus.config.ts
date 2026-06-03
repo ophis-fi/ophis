@@ -14,7 +14,7 @@ const GITHUB_URL = 'https://github.com/ophis-fi/ophis';
 
 const config: Config = {
   title: 'Ophis Docs',
-  tagline: 'Describe a swap in plain English. A solver network fills it, MEV-protected.',
+  tagline: 'Describe a swap in natural language. A solver network fills it, MEV-protected.',
   favicon: 'img/ophis-icon.svg',
 
   future: {
@@ -102,7 +102,7 @@ const config: Config = {
       {
         name: 'description',
         content:
-          'Ophis is an intent-based DEX aggregator: describe a swap in plain English and a solver network fills it MEV-protected. Docs cover the intent API, AI-agent integration, architecture, fees, and security.',
+          'Ophis is an intent-based DEX aggregator: describe a swap in natural language and a solver network fills it MEV-protected. Docs cover the intent API, AI-agent integration, architecture, fees, and security.',
       },
       {
         name: 'keywords',
@@ -173,7 +173,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Best-execution, MEV-protected trading from a plain-English intent. © Ophis ${new Date().getFullYear()}.`,
+      copyright: `Best-execution, MEV-protected trading across 11 EVM chains. © Ophis ${new Date().getFullYear()}.`,
     },
     prism: {
       theme: prismThemes.oneLight,
