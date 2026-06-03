@@ -16,9 +16,10 @@
  * zones — every claim below is source-verified, not recalled):
  *   - Parser model: functions/api/intent.ts → LIBERTAI_MODEL = 'qwen3.6-27b'.
  *     Framed as "currently" (implementation detail, drift-prone).
- *   - Fee framing mirrors the already-shipped /learn copy (0% ordinary, 25%
- *     of price improvement); caps from app_data.rs (MAX_PARTNER_FEE_BPS=2500,
- *     MAX_PARTNER_VOLUME_BPS=50).
+ *   - Fee framing mirrors the /learn copy (0% ordinary, a small capped share of
+ *     price improvement). The exact caps live in app_data.rs
+ *     (MAX_PARTNER_FEE_BPS / MAX_PARTNER_VOLUME_BPS) and are intentionally NOT
+ *     surfaced in user copy (fee discretion, review item #14).
  *   - Chain count "11" mirrors SORTED_CHAIN_IDS (libs/common-const/chainInfo.ts).
  *     Update both together if the chain set changes (known drift source).
  *   - Solana/Bitcoin = destination-only (in SORTED_DST_CHAIN_IDS, NOT
@@ -238,14 +239,14 @@ export function ProtocolPage(): ReactNode {
           <MetricCard label="Ordinary trades" value="0%" sublabel="when execution does not beat your quote" />
           <MetricCard
             label="Price improvement"
-            value="25%"
-            sublabel="of execution that beats the quote you were shown"
+            value="capped"
+            sublabel="a small share of execution that beats your quote, never your principal"
           />
         </FeatureGrid>
         <p>
-          The price-improvement share is capped by CIP-75 validation at <InlineCode>2500</InlineCode> bps, and the total
-          fee can never exceed <InlineCode>50</InlineCode> bps (0.5%) of trade volume, a ceiling that protects large
-          trades. Values above either cap are rejected at app-data validation as a protocol-level violation.
+          The price-improvement share is bounded by CIP-75 validation, with a hard ceiling on the share of trade
+          volume that protects large trades. Values above the cap are rejected at app-data validation as a
+          protocol-level violation.
         </p>
         <KeyValueList
           items={[
@@ -259,10 +260,10 @@ export function ProtocolPage(): ReactNode {
               value: 'Rejected, app-data cannot name an unlisted fee recipient (closes audit finding C3).',
             },
             {
-              label: 'Full formulas & examples',
+              label: 'Fee policy',
               value: (
-                <TextLink href="https://docs.ophis.fi/" external>
-                  docs.ophis.fi
+                <TextLink href="https://docs.ophis.fi/fees" external>
+                  docs.ophis.fi/fees
                 </TextLink>
               ),
             },
