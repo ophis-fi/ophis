@@ -4,9 +4,10 @@ name: Security
 # workflow_dispatch for ad-hoc runs.
 #
 # Three jobs run in parallel:
-#   - slither       — Solidity static analysis (Trail of Bits)
-#   - pnpm-audit    — JS/TS dep advisories
-#   - cargo-audit   — Rust dep advisories
+#   - slither             — Solidity static analysis (Trail of Bits)
+#   - pnpm-audit          — root-workspace JS/TS dep advisories
+#   - pnpm-audit-frontend — apps/frontend (separate workspace) dep advisories
+#   - cargo-audit         — Rust dep advisories
 #
 # Each job blocks merge if it regresses against the 2026-05-13 audit baseline.
 
@@ -202,6 +203,92 @@ jobs:
                   print(f"  - {b}")
               sys.exit(1)
           print(f"OK -- {len(advisories)} total advisories, none HIGH/CRITICAL")
+          PYEOF
+
+  pnpm-audit-frontend:
+    name: pnpm audit (frontend deps)
+    runs-on: ubuntu-latest
+    # apps/frontend is its OWN pnpm workspace (cowswap upstream ships its own
+    # package manager) with a separate lockfile, so the root pnpm-audit job above
+    # does NOT cover it — the largest, browser-facing dependency tree. This job
+    # closes that gap (audit 2026-06 P3: a `tmp` HIGH had stayed green because the
+    # frontend was never audited in CI). Documented non-reachable advisories are
+    # ignored below; keep that list TIGHT (each entry needs a written reason).
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Run pnpm audit --prod (frontend workspace)
+        working-directory: apps/frontend
+        run: |
+          # pnpm audit reads apps/frontend/pnpm-lock.yaml directly (no install
+          # needed). `|| true` because it exits non-zero on ANY advisory.
+          pnpm audit --prod --json > /tmp/fe-audit.json || true
+          cat /tmp/fe-audit.json
+
+      - name: Block on NEW HIGH or CRITICAL advisories
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys
+          # Documented, non-runtime-reachable advisories with no upstream fix.
+          # Keep TIGHT — every entry needs a written justification.
+          IGNORE = {
+              # `ip` SSRF (improper isPublic categorization): transitive
+              # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
+              # already pinned to latest 2.0.1. (audit 2026-06)
+              'GHSA-2p57-rm9w-gvfp',
+          }
+          def ghsa(url):
+              return (url or '').rstrip('/').split('/')[-1]
+          with open('/tmp/fe-audit.json') as f:
+              d = json.load(f)
+
+          blocking, ignored, shape = [], [], None
+          # Shape A (npm-v6 / current pnpm): advisories = { id: {severity, module_name, url, title} }
+          adv = d.get('advisories')
+          if isinstance(adv, dict):
+              shape = 'advisories'
+              for k, a in adv.items():
+                  if a.get('severity') not in ('high', 'critical'):
+                      continue
+                  g = ghsa(a.get('url')) or str(k)
+                  rec = f"{a.get('module_name','?')} (sev={a.get('severity')}, {g}): {a.get('title','?')}"
+                  (ignored if g in IGNORE else blocking).append(rec)
+          # Shape B (npm-v7): vulnerabilities = { name: {severity, via: [{url,title}|str]} }
+          vuln = d.get('vulnerabilities')
+          if isinstance(vuln, dict) and vuln:
+              shape = shape or 'vulnerabilities'
+              for name, a in vuln.items():
+                  if a.get('severity') not in ('high', 'critical'):
+                      continue
+                  gs = [ghsa(v.get('url')) for v in (a.get('via') or []) if isinstance(v, dict)]
+                  gs = [g for g in gs if g]
+                  rec = f"{name} (sev={a.get('severity')}, {','.join(gs) or '?'})"
+                  # Ignore only if EVERY contributing advisory is allow-listed.
+                  (ignored if gs and all(g in IGNORE for g in gs) else blocking).append(rec)
+
+          # Fail CLOSED: never silently pass on an unrecognized/empty audit shape.
+          meta_v = (d.get('metadata') or {}).get('vulnerabilities') or {}
+          meta_hc = (meta_v.get('high') or 0) + (meta_v.get('critical') or 0)
+          if shape is None:
+              print("ERROR: unrecognized pnpm audit JSON (no advisories/vulnerabilities) — failing closed.", file=sys.stderr)
+              sys.exit(1)
+          if meta_hc > 0 and not blocking and not ignored:
+              print(f"ERROR: metadata reports {meta_hc} high/critical but parser matched none "
+                    f"(shape='{shape}' mismatch?) — failing closed.", file=sys.stderr)
+              sys.exit(1)
+
+          for i in ignored:
+              print(f"IGNORED (documented non-reachable): {i}")
+          if blocking:
+              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories in apps/frontend")
+              for b in blocking:
+                  print(f"  - {b}")
+              sys.exit(1)
+          print(f"OK -- shape={shape}, none blocking ({len(ignored)} ignored, metadata high/crit={meta_hc})")
           PYEOF
 
   cargo-audit:
