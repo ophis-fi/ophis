@@ -60,7 +60,7 @@ export function ProtocolPage(): ReactNode {
       width="medium"
       eyebrow="Protocol"
       title="The mechanism behind the sentence."
-      lede="How an Ophis trade actually works, from a plain-English intent to batch-auction settlement, and exactly where Ophis differs from the CoW Protocol it forks."
+      lede="How an Ophis trade actually works, from a natural-language intent to batch-auction settlement, and exactly where Ophis differs from the CoW Protocol it forks."
     >
       <Callout tone="info" title="What this page covers, and what it doesn't">
         <p>
@@ -77,7 +77,7 @@ export function ProtocolPage(): ReactNode {
       <Section id="lifecycle" title="Intent lifecycle" intro="From a sentence to a settled batch, in five steps.">
         <FeatureGrid minCardWidth="240px">
           <FeatureCard icon="01" title="Describe">
-            You type the trade in plain English, &#34;swap 1 ETH for USDC on Base&#34;. No forms, no token-address
+            You type the trade in natural language, &#34;swap 1 ETH for USDC on Base&#34;. No forms, no token-address
             lookups, no network dropdown.
           </FeatureCard>
           <FeatureCard icon="02" title="Parse">

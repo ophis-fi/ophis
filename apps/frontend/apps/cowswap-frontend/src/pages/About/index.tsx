@@ -40,7 +40,7 @@ export default function AboutPage(): ReactNode {
     <PageShell
       width="medium"
       eyebrow="About Ophis"
-      title="Plain English to settled trade."
+      title="From a sentence to a settled trade."
       lede="Tell us what to trade. We pre-fill the form. You sign. The trade settles in a batch auction with MEV protection by construction."
     >
       <Section id="what" title="What is Ophis">
@@ -49,7 +49,7 @@ export default function AboutPage(): ReactNode {
           <TextLink href="https://cow.fi" external>
             CoW Protocol
           </TextLink>
-          . You describe what you want to trade in plain English; we parse the tokens, chain, and amount, then route you
+          . You describe what you want to trade in your own words; we parse the tokens, chain, and amount, then route you
           to a pre-filled swap form that you sign with your own wallet.
         </p>
         <p>
@@ -63,7 +63,7 @@ export default function AboutPage(): ReactNode {
       <Section id="how" title="How it works" intro="Three steps from your sentence to settlement.">
         <FeatureGrid minCardWidth="280px">
           <FeatureCard icon="01" title="Intent">
-            You type a swap in plain English. An open LLM (LibertAI Qwen 3.6 27B) extracts the sell token, buy token,
+            You type the swap as a sentence. An open LLM (LibertAI Qwen 3.6 27B) extracts the sell token, buy token,
             amount, and chain into a structured order.
           </FeatureCard>
           <FeatureCard icon="02" title="Auction">
