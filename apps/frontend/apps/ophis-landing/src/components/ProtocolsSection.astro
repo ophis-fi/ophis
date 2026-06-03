@@ -10,18 +10,20 @@
  *
  * Logos live in public/logos/protocols/ (official brand marks: SVG where the
  * brand ships a clean one, a high-res raster otherwise, e.g. Curve, whose only
- * vector mark is a 150KB+ traced mesh). Pure markup plus scoped CSS; the
- * breathing bloom comes from the shared .section-bloom class in global.css
- * (disabled under prefers-reduced-motion).
+ * vector mark is a 150KB+ traced mesh). public/ assets are served at stable
+ * URLs with a long cache TTL, so when a mark is CORRECTED, bump its filename
+ * (e.g. uniswap.svg -> uniswap-v2.svg) to bust any already-cached immutable
+ * copy. Pure markup plus scoped CSS; the breathing bloom comes from the shared
+ * .section-bloom class in global.css (disabled under prefers-reduced-motion).
  */
 
 type Protocol = { name: string; logo: string }
 const protocols: Protocol[] = [
-  { name: 'Uniswap',     logo: '/logos/protocols/uniswap.svg' },
+  { name: 'Uniswap',     logo: '/logos/protocols/uniswap-v2.svg' },
   { name: 'Curve',       logo: '/logos/protocols/curve.png' },
   { name: 'Balancer',    logo: '/logos/protocols/balancer.svg' },
-  { name: 'PancakeSwap', logo: '/logos/protocols/pancakeswap.svg' },
-  { name: 'SushiSwap',   logo: '/logos/protocols/sushi.svg' },
+  { name: 'PancakeSwap', logo: '/logos/protocols/pancakeswap-v2.svg' },
+  { name: 'SushiSwap',   logo: '/logos/protocols/sushi-v2.svg' },
   { name: 'Velodrome',   logo: '/logos/protocols/velodrome.svg' },
   { name: 'Aerodrome',   logo: '/logos/protocols/aerodrome.png' },
   { name: 'QuickSwap',   logo: '/logos/protocols/quickswap.png' },
