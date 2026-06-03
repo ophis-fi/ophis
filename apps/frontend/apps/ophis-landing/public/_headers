@@ -20,5 +20,12 @@
 /_assets/*
   Cache-Control: public, max-age=31536000, immutable
 
+# NOTE: CF Pages _headers COMBINES all matching rules (duplicate headers are
+# comma-joined), it does NOT override. So a `/logos/*` rule could not relax the
+# `/*.svg` + `/*.png` immutable policy here — it would just append a second,
+# conflicting Cache-Control. Mutable assets (e.g. brand logos that get
+# corrected) are instead cache-busted by version-bumping the filename
+# (uniswap.svg -> uniswap-v2.svg); see ProtocolsSection.astro.
+
 /
   Cache-Control: public, max-age=300, must-revalidate
