@@ -10,6 +10,16 @@
 # volumes).
 name: optimism-mainnet
 
+# Shared build-args for the Rust backend images (orderbook/autopilot/driver/
+# solvers). OPHIS_GIT_DESCRIBE injects the real version into the orderbook
+# GET /api/v1/version route; the build context (apps/backend) has no .git, so
+# vergen otherwise emits the literal "VERGEN_IDEMPOTENT_OUTPUT" sentinel.
+# compose-up.sh exports it from `git describe`. Applied to EVERY Rust service
+# so the shared cargo-build stage has one consistent cache key (a differing
+# arg between services would force a second full workspace compile).
+x-backend-build-args: &backend-build-args
+  OPHIS_GIT_DESCRIBE: "${OPHIS_GIT_DESCRIBE:-}"
+
 #
 # Secret management:
 #   - Addresses come from ../optimism/.env (deployed by deploy-mainnet-all.sh)
@@ -131,6 +141,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: orderbook
+      args: *backend-build-args
     restart: always
     mem_limit: 2g
     depends_on:
@@ -176,6 +187,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: autopilot
+      args: *backend-build-args
     restart: always
     mem_limit: 1g
     depends_on:
@@ -216,6 +228,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: driver
+      args: *backend-build-args
     restart: always
     mem_limit: 2g
     depends_on:
@@ -289,6 +302,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: solvers
+      args: *backend-build-args
     restart: always
     mem_limit: 1g
     environment:
@@ -316,6 +330,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: solvers
+      args: *backend-build-args
     restart: always
     mem_limit: 1g
     environment:
@@ -341,6 +356,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: solvers
+      args: *backend-build-args
     restart: always
     mem_limit: 1g
     environment:
@@ -368,6 +384,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: solvers
+      args: *backend-build-args
     restart: always
     mem_limit: 1g
     environment:
