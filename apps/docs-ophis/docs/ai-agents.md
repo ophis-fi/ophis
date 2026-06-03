@@ -26,7 +26,7 @@ It speaks streamable-HTTP MCP and exposes six tools:
 
 | Tool | What it does |
 | --- | --- |
-| `parse_intent` | Parse a plain-English request into a structured intent. |
+| `parse_intent` | Parse a natural-language request into a structured intent. |
 | `get_quote` | Fetch an executable quote for a parsed intent. |
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
@@ -156,7 +156,7 @@ from langchain_core.tools import tool
 
 @tool
 def ophis_swap_intent(text: str) -> dict:
-    """Parse a plain-English swap request into a structured Ophis intent
+    """Parse a natural-language swap request into a structured Ophis intent
     and a deep link the user can open to review and sign. Use this
     whenever a user wants to swap, buy, or sell a crypto token.
     The link must be shown to the user, never auto-execute a trade."""
@@ -177,13 +177,13 @@ custom tool loop, can register the parser with this schema:
   "type": "function",
   "function": {
     "name": "ophis_parse_intent",
-    "description": "Parse a plain-English crypto swap request into a structured intent (sellToken, buyToken, amount, chain). Returns a deep link the user opens to review and sign. Never auto-executes a trade.",
+    "description": "Parse a natural-language crypto swap request into a structured intent (sellToken, buyToken, amount, chain). Returns a deep link the user opens to review and sign. Never auto-executes a trade.",
     "parameters": {
       "type": "object",
       "properties": {
         "text": {
           "type": "string",
-          "description": "The swap request in plain English, e.g. 'swap 100 USDC for ETH on Base'. Max 280 characters."
+          "description": "The swap request in natural language, e.g. 'swap 100 USDC for ETH on Base'. Max 280 characters."
         }
       },
       "required": ["text"]
