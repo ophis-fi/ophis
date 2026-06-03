@@ -30,7 +30,7 @@ export interface BatcherDeps {
 
 export interface BatcherResult {
   readonly batchId: number;
-  readonly status: 'computing' | 'proposed' | 'no_recipients' | 'failed';
+  readonly status: 'computing' | 'proposing' | 'proposed' | 'no_recipients' | 'failed' | 'executed';
   readonly safeTxHash: `0x${string}` | null;
   readonly recipientCount: number;
   readonly poolWei: bigint;
@@ -104,8 +104,13 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
     volume_30d_usd: parseFloat(r.volume_30d_usd),
   }));
 
-  // 3. Insert the batch row up-front so we have a stable ID even if subsequent steps fail.
-  //    UNIQUE on cycle_month → idempotent: retrying the same month no-ops at the INSERT.
+  // 3. Insert the batch row up-front so we have a stable ID even if subsequent
+  //    steps fail. cycle_month is UNIQUE, so a row for this cycle may already
+  //    exist from a prior run. We must distinguish two cases (audit P2-3):
+  //      - already PROPOSED/terminal  → abort, never re-propose (no double-pay);
+  //      - inserted 'computing'/'failed' but NEVER proposed (a prior run crashed
+  //        at/before propose) → RESUME on the same row, so a transient failure
+  //        cannot permanently wedge the month.
   let batchId: number;
   try {
     const inserted = await db
@@ -114,11 +119,72 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
       .returning({ id: schema.rebateBatches.id });
     batchId = inserted[0]!.id;
   } catch (err: any) {
-    if (String(err?.message ?? '').includes('rebate_batches_cycle_month_unique')) {
-      log.warn({ cycleMonth }, 'batch already exists for this cycle, aborting (no double-pay)');
-      throw err;
+    // 23505 = unique_violation. Branch on the SQLSTATE code, not the constraint
+    // NAME: the inline `cycle_month ... UNIQUE` is auto-named
+    // `rebate_batches_cycle_month_key` (NOT the `_unique` Drizzle convention the
+    // old string match looked for, so that branch never fired).
+    if (err?.code !== '23505') throw err;
+    const existing = await db
+      .select()
+      .from(schema.rebateBatches)
+      .where(eq(schema.rebateBatches.cycleMonth, cycleMonth))
+      .limit(1);
+    const row = existing[0];
+    if (!row) throw err; // unexpected (cron is single-flight); surface it.
+
+    // MID-PROPOSE crash: a prior run set 'proposing' immediately before the Safe
+    // proposal call but never persisted a hash. Safe proposal-create and our DB
+    // hash-write are NOT atomic, so a proposal MAY already be queued. Do NOT
+    // auto-re-propose (a second queued Safe tx for the same cycle is a money-path
+    // hazard); abort and alert for manual Safe-queue verification (audit P2-3).
+    if (row.status === 'proposing') {
+      log.error({ cycleMonth, batchId: row.id }, 'cycle stuck in proposing — manual Safe-queue verification required');
+      void alerts
+        .alert(
+          'batcher',
+          `Rebate cycle ${cycleMonth} is stuck in 'proposing': a prior run attempted the Safe proposal but did not persist its hash, so a proposal MAY already be queued. Verify the Safe queue manually; only after confirming NO proposal exists, reset this cycle's row to retry. Do NOT blindly re-trigger.`,
+        )
+        .catch((e) => log.warn({ err: e }, 'proposing-stuck alert failed'));
+      return { batchId: row.id, status: 'proposing', safeTxHash: null, recipientCount: 0, poolWei: pool };
     }
-    throw err;
+
+    // ABORT if this cycle already has a live/terminal Safe proposal —
+    // re-proposing would queue a second Safe payout for the same month.
+    if (
+      row.safeProposalHash != null ||
+      row.status === 'proposed' ||
+      row.status === 'executed' ||
+      row.status === 'no_recipients'
+    ) {
+      log.warn(
+        { cycleMonth, batchId: row.id, status: row.status },
+        'cycle already proposed/terminal; not re-proposing (no double-pay)',
+      );
+      const st = (['proposed', 'executed', 'no_recipients'].includes(row.status)
+        ? row.status
+        : 'proposed') as BatcherResult['status'];
+      return {
+        batchId: row.id,
+        status: st,
+        safeTxHash: row.safeProposalHash ?? null,
+        recipientCount: 0,
+        poolWei: pool,
+      };
+    }
+
+    // RESUME a stuck pre-propose row ('computing'/'failed', no Safe proposal):
+    // reuse it, refresh the pool/fee snapshot, and clear any stale entries so the
+    // recompute below is clean.
+    log.warn(
+      { cycleMonth, batchId: row.id, status: row.status },
+      'resuming incomplete cycle (recompute + re-propose)',
+    );
+    batchId = row.id;
+    await db
+      .update(schema.rebateBatches)
+      .set({ status: 'computing', netFeeWethWei: netFee, poolWethWei: pool })
+      .where(eq(schema.rebateBatches.id, batchId));
+    await db.delete(schema.rebateBatchEntries).where(eq(schema.rebateBatchEntries.batchId, batchId));
   }
 
   // 4. No recipients → record + bail out. (The stranded non-WETH probe ran in
@@ -166,12 +232,31 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
     log.info({ batchId, recipientCount: good.length, poolWei: pool.toString() }, 'dry-run only, not proposing');
     return { batchId, status: 'computing', safeTxHash: null, recipientCount: good.length, poolWei: pool };
   }
-  const { safeTxHash } = await proposeRebateBatch({
-    chainId: deps.chainId,
-    rpcUrl: deps.rpcUrl,
-    proposerPrivateKey: deps.proposerPrivateKey,
-    transfers: good,
-  });
+  // Mark 'proposing' BEFORE the external Safe-proposal call. If the process dies
+  // between the Safe Tx Service accepting the proposal and us persisting its hash
+  // (these are not atomic), the next run sees 'proposing' and requires manual
+  // verification rather than auto-re-proposing a possible duplicate (audit P2-3).
+  await db.update(schema.rebateBatches).set({ status: 'proposing', proposedAt: new Date() })
+    .where(eq(schema.rebateBatches.id, batchId));
+  let safeTxHash: `0x${string}`;
+  try {
+    ({ safeTxHash } = await proposeRebateBatch({
+      chainId: deps.chainId,
+      rpcUrl: deps.rpcUrl,
+      proposerPrivateKey: deps.proposerPrivateKey,
+      transfers: good,
+    }));
+  } catch (err) {
+    // Leave the row 'proposing' (NOT auto-resumable): a thrown timeout/connection
+    // reset can still mean the Safe service accepted the proposal while we never
+    // saw the response, so we cannot prove no proposal exists. The next run's
+    // 'proposing' branch alerts for manual Safe-queue verification (audit P2-3).
+    log.error({ err, batchId, cycleMonth }, 'propose attempt failed; left as proposing for manual verification');
+    void alerts
+      .alert('batcher', `Rebate cycle ${cycleMonth} propose attempt FAILED. A Safe proposal may or may not have been created — verify the Safe queue manually before retrying.`)
+      .catch((e) => log.warn({ err: e }, 'propose-failed alert failed'));
+    throw err;
+  }
   await db.update(schema.rebateBatches).set({
     status: 'proposed',
     safeProposalHash: safeTxHash,

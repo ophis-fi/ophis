@@ -102,8 +102,10 @@ export async function runNightlyPipeline(): Promise<void> {
     const ran = await withPipelineLock(runPipelineSteps);
     if (!ran && isFirstOfMonth()) {
       // Skipping on any other day just defers a fetch by 24h — harmless. On the
-      // 1st it could defer the monthly Safe proposal, so surface it loudly; the
-      // batcher is idempotent (cycle_month UNIQUE) so a manual re-trigger is safe.
+      // 1st it could defer the monthly Safe proposal, so surface it loudly; a
+      // manual re-trigger is safe and recovers a stuck cycle: runBatcher RESUMES
+      // a 'computing'/'failed' row that never proposed, and ABORTS (no double-pay)
+      // if the cycle was already proposed/terminal.
       log.error('nightly pipeline skipped on the 1st — another run held the lock; monthly batch may be deferred');
       await alerts.alert('batcher', 'Nightly pipeline skipped on the 1st (another run held the pipeline lock); the monthly rebate batch may be deferred. Verify the Safe queue or re-trigger.');
     }
