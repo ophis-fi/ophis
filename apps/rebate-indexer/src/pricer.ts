@@ -1,11 +1,21 @@
 import { postQuote } from './cow/client.js';
 import { logger } from './logger.js';
+import { alerts } from './telegram/alerter.js';
 
 const log = logger.child({ module: 'pricer' });
 
 // Stablecoin canonical pricing targets per chain. The pricer asks CoW for a quote
 // from the trade's sellToken to one of these and back-computes USD.
 // Addresses sourced from CoW docs and project memory. Audit before extending.
+// IMPORTANT: do NOT add a chain with a PLACEHOLDER / cross-chain token address —
+// pricing a trade against the wrong chain's stablecoin produces garbage USD that
+// pollutes a wallet's rebate volume. assertUsdReferenceSane() (called by runPricer)
+// rejects a config where two chains share a token address, the tell-tale of a
+// copy-pasted placeholder. A chain with no verified USDC is left OUT entirely: its
+// trades then fail to price (value_usd NULL → excluded from the payout matview),
+// which under-counts (fail-safe) rather than mis-prices. (plasma/9745 was removed
+// for exactly this reason — it had reused Linea's USDC; re-add only with the real,
+// decimals-verified plasma USDC.)
 const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: number }>> = {
   1:        { token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },  // USDC mainnet
   100:      { token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', decimals: 6 },  // USDC.e gnosis
@@ -15,10 +25,48 @@ const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: n
   43114:    { token: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e', decimals: 6 },  // USDC avalanche
   56:       { token: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d', decimals: 18 }, // USDC bnb
   59144:    { token: '0x176211869ca2b568f2a7d4ee941e073a821ee1ff', decimals: 6 },  // USDC linea
-  9745:     { token: '0x176211869ca2b568f2a7d4ee941e073a821ee1ff', decimals: 6 },  // PLACEHOLDER plasma — verify before mainnet pricing
   57073:    { token: '0xf1815bd50389c46847f0bda824ec8da914045d14', decimals: 6 },  // USDC ink
   11155111: { token: '0xbe72e441bf55620febc26715db68d3494213d8cb', decimals: 18 }, // USDC sepolia (cow staging)
 };
+
+// Per-trade rebate-volume contribution ceiling (USD). A trade's recorded value is
+// clamped to this before it feeds volume_30d_usd / the fixed payout pool, which
+// (a) caps how much any single trade — legitimate whale OR a thin/illiquid route
+// whose CoW quote an attacker skewed at pricing time — can influence the zero-sum
+// pool, and (b) bounds the damage from a broken/wrong-decimals quote. Clamped
+// trades are logged + summarised in a Telegram alert so manipulation is visible
+// before the (human-signed) monthly batch. Tune via REBATE_MAX_TRADE_USD. (audit P2-2)
+const DEFAULT_MAX_TRADE_USD = 1_000_000;
+
+// Resolve + VALIDATE the cap. A misconfigured env must fail fast rather than
+// silently disable the mitigation: e.g. `usd > NaN` is always false (no clamping)
+// and `0`/negative would clamp every trade to a bad value. Called by runPricer.
+export function resolveMaxTradeUsd(): number {
+  const raw = process.env.REBATE_MAX_TRADE_USD;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_MAX_TRADE_USD;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`REBATE_MAX_TRADE_USD must be a finite positive number; got "${raw}"`);
+  }
+  return n;
+}
+
+// Fail fast if USD_REFERENCE contains a duplicate token address across chains —
+// the signature of a copy-pasted placeholder (e.g. the old plasma=Linea entry).
+export function assertUsdReferenceSane(): void {
+  const seen = new Map<string, number>();
+  for (const [chainId, ref] of Object.entries(USD_REFERENCE)) {
+    const addr = ref.token.toLowerCase();
+    const prev = seen.get(addr);
+    if (prev !== undefined) {
+      throw new Error(
+        `USD_REFERENCE misconfig: chains ${prev} and ${chainId} share token ${addr} ` +
+          `(likely a placeholder). Each chain needs its own verified USDC, or be removed.`,
+      );
+    }
+    seen.set(addr, Number(chainId));
+  }
+}
 
 export interface ComputeTradeUsdParams {
   sellAmount: bigint;
@@ -96,8 +144,12 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
   //   - a per-trade failure (left value_usd NULL, retried next run) can't block
   //     the priceable rows behind it, and
   //   - the loop always terminates (cursor strictly increases).
+  assertUsdReferenceSane();
+  const maxTradeUsd = resolveMaxTradeUsd();
   let priced = 0;
   let failed = 0;
+  let clamped = 0;
+  const clampedExamples: { tradeUid: `0x${string}`; rawUsd: number }[] = [];
   let cursor: Buffer = Buffer.alloc(0); // empty bytea sorts before every trade_uid
   for (;;) {
     const rows = await sql<{
@@ -123,7 +175,16 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
         sellAmount: BigInt(r.sell_amount),
       };
       try {
-        const usd = await priceTrade(row);
+        let usd = await priceTrade(row);
+        if (usd > maxTradeUsd) {
+          log.warn(
+            { tradeUid: row.tradeUid, chainId: row.chainId, rawUsd: usd, cap: maxTradeUsd },
+            'trade value exceeds per-trade rebate cap; clamping (possible volume inflation or broken quote)',
+          );
+          if (clampedExamples.length < 10) clampedExamples.push({ tradeUid: row.tradeUid, rawUsd: usd });
+          clamped++;
+          usd = maxTradeUsd;
+        }
         await sql`
           UPDATE trades
           SET value_usd = ${usd}, priced_at = now()
@@ -136,6 +197,19 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
       }
     }
   }
-  log.info({ priced, failed }, 'pricer complete');
+  if (clamped > 0) {
+    log.warn({ clamped, cap: maxTradeUsd, examples: clampedExamples }, 'trades clamped to per-trade rebate cap');
+    // Fire-and-forget: surfacing possible volume manipulation must not block the
+    // pricer. The message is numbers + trade UIDs only (no attacker-controlled text).
+    void alerts
+      .alert(
+        'pricer',
+        `${clamped} trade(s) this run exceeded the $${maxTradeUsd.toLocaleString()} per-trade rebate cap and were clamped. ` +
+          `This bounds single-trade pool influence, but may indicate volume inflation via a thin/manipulable route (or a broken quote) — ` +
+          `review the affected wallets before the monthly batch is signed.`,
+      )
+      .catch((e) => log.warn({ err: e }, 'pricer clamp alert failed'));
+  }
+  log.info({ priced, failed, clamped }, 'pricer complete');
   return { priced, failed };
 }
