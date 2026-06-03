@@ -19,6 +19,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Version string for the orderbook GET /api/v1/version route. The Docker build
+# context (apps/backend) has no .git, so vergen falls back to the literal
+# "VERGEN_IDEMPOTENT_OUTPUT" sentinel and it leaks out of /version. Compute the
+# real version from the repo HEAD and pass it through as a build-arg (consumed
+# by orderbook/build.rs via the x-backend-build-args anchor in the compose
+# file). `|| true` keeps a git-less checkout from aborting the deploy — it just
+# falls back to the sentinel, same as before this fix.
+OPHIS_GIT_DESCRIBE="$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || true)"
+export OPHIS_GIT_DESCRIBE
+echo "==> OPHIS_GIT_DESCRIBE=${OPHIS_GIT_DESCRIBE:-<unset, /version will show the vergen sentinel>}"
+
 # F7 (2026-05-21 whole-repo audit, HIGH H2): source inter-service auth
 # token from the macOS Keychain if not already in the environment. This
 # is what makes F7 persistent across host reboots — without it, the
