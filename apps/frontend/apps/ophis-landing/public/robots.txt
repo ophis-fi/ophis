@@ -4,10 +4,6 @@
 
 User-agent: *
 Allow: /
-# Content usage preferences (contentsignals.org / IETF AIPREF). Ophis marketing
-# content is public and built for the agent era: we welcome search indexing, use
-# as input to AI answers (AEO/GEO), and AI training.
-Content-Signal: search=yes, ai-input=yes, ai-train=yes
 
 # Answer-engine / LLM crawlers explicitly allowed.
 User-agent: GPTBot
