@@ -3,7 +3,7 @@ info:
   title: Ophis Intent API
   version: '1.0.0'
   description: |
-    Parses plain-English swap requests into structured `ParsedIntent`
+    Parses natural-language swap requests into structured `ParsedIntent`
     objects that the Ophis frontend (or an AI agent) can use to
     pre-fill a swap form or construct a deep-link.
 
@@ -177,7 +177,7 @@ components:
           maxLength: 280
           minLength: 1
           description: |
-            Plain-English swap request. Recognised entities: amount,
+            Natural-language swap request. Recognised entities: amount,
             sellToken (you're paying with), buyToken (you want),
             chain. Case-insensitive. The model is pinned to
             `temperature: 0` so identical normalized inputs produce
