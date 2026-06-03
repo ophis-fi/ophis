@@ -27,6 +27,14 @@ hosted MCP server). The docs FAQ page carries `FAQPage` structured data. The
 natural-language positioning is consistent across titles, descriptions, and
 structured data.
 
+> **Note on the inline JSON-LD + CSP:** the swap app's `<script type="application/ld+json">`
+> is a non-executed *data block*, so the deployed `_headers` `script-src` (no
+> `unsafe-inline`/hash) does **not** block it. CSP `script-src` governs script
+> *execution*, and a non-JavaScript MIME type is never executed. Verified live: the
+> JSON-LD is present in the DOM and parses under the enforced CSP. No CSP hash is
+> needed for structured data; only executable third-party scripts (e.g. gtag)
+> require a `script-src` allowance.
+
 ## Pending — needs operator action
 
 ### 1. Search Console / Bing / Yandex verification (preferred: DNS-TXT)
@@ -53,9 +61,18 @@ all three, or use separate IDs per surface for cleaner segmentation. Wiring:
 
 - **docs**: add `gtag: { trackingID: '<G-ID>', anonymizeIP: true }` to the
   `classic` preset options in `docusaurus.config.ts` (built-in; handles CSP).
-- **swap**: inject gtag via `react-helmet-async` (already a dependency). The
-  swap CSP (`vercel.ts`) already allowlists `googletagmanager.com` +
-  `google-analytics.com`, so no CSP change is needed.
+- **swap**: the swap app deploys to **Cloudflare Pages**, so the enforced CSP is
+  `apps/frontend/apps/cowswap-frontend/public/_headers`, **not** `vercel.ts` (the
+  latter is the upstream CoW Vercel config and is not the deployed surface). The
+  `_headers` `script-src` is `'self' 'wasm-unsafe-eval' 'unsafe-eval'
+  https://challenges.cloudflare.com` — it does **not** allow Google's hosts, so
+  gtag **will be blocked** until you add `https://www.googletagmanager.com` and
+  `https://www.google-analytics.com` to `script-src` in `_headers`. `connect-src`
+  already allows `https:`, so the analytics beacons are fine. Note also that the
+  upstream GTM bootstrap is intentionally stubbed to a no-op in
+  `src/cow-react/index.tsx` (see `apps/frontend/.ophis-divergences.md`); un-stub it
+  or inject gtag via `react-helmet-async` (already a dependency) once the
+  `_headers` change is in.
 - **landing**: add an inline gtag `<script is:inline>` in `Base.astro`, then
   regenerate the strict-CSP hash list (`scripts/check-csp-hashes.mjs`) and
   update `public/_headers` `script-src` (the landing CSP pins per-script
@@ -69,7 +86,9 @@ all three, or use separate IDs per surface for cleaner segmentation. Wiring:
   (the marketing pages `/about`, `/legal`, `/brand` resolve on both `ophis.fi`
   and `swap.ophis.fi`, so the canonical also resolves the duplicate-content
   question — pick one canonical host per page).
-- **Swap `sitemap.xml` cross-domain.** It currently lists `ophis.fi/*` URLs
-  while being served at `swap.ophis.fi/sitemap.xml`. Decide the canonical host
-  for the marketing pages, then make each surface's sitemap list only its own
-  same-host URLs.
+- **Swap `sitemap.xml` same-host (done) + canonical host (still open).** The swap
+  sitemap now lists only `swap.ophis.fi/*` URLs, consistent with the
+  `swap.ophis.fi/robots.txt` `Sitemap`/`Host` directives. Still open: the
+  marketing pages (`/about`, `/legal`, `/brand`, `/learn`) resolve on both
+  `ophis.fi` and `swap.ophis.fi`; pick one canonical host per page and align each
+  surface's sitemap + `rel=canonical` to it.
