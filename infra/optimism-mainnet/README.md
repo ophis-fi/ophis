@@ -113,21 +113,21 @@ cp .env.example .env
 #   OKX_*  from corresponding Keychain entries
 #   POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
 
-# 2. Render the templated TOMLs (envsubst with .env vars)
-./render-configs.sh
+# 2. Bring up the stack via the wrapper. compose-up.sh renders the templated
+#    TOMLs, runs the Tier-1.5 RAM-disk + RPC-bypass safety checks, stamps the
+#    git version into the orderbook /api/v1/version, then starts everything.
+./compose-up.sh
+#
+# Fallback (raw compose, only if you JUST ran ./render-configs.sh): the bare
+# command below SKIPS the safety checks AND leaves /api/v1/version on the
+# vergen sentinel, because OPHIS_GIT_DESCRIBE is exported only by compose-up.sh.
+#   ./render-configs.sh && docker compose up -d --build
 
-# 3. Bring up the stack
-docker compose up -d --build
-# Prefer ./compose-up.sh instead: it re-renders, runs the safety checks, AND
-# stamps the git version into the orderbook /api/v1/version. A bare
-# `docker compose up --build` leaves /api/v1/version on the vergen sentinel
-# (OPHIS_GIT_DESCRIBE is exported only by compose-up.sh).
-
-# 4. Wait for healthchecks to settle (~60s typical)
+# 3. Wait for healthchecks to settle (~60s typical)
 docker compose ps
 # Look for: orderbook, driver, baseline, okx-solver all in "healthy" state
 
-# 5. Smoke test
+# 4. Smoke test
 curl -s http://127.0.0.1:8102/api/v1/auction | jq '.id'
 # Should return the current auction ID (non-zero integer)
 ```
