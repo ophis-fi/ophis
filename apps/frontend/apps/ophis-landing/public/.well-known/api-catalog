@@ -1,0 +1,22 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://swap.ophis.fi/api/intent",
+      "service-desc": [
+        { "href": "https://ophis.fi/openapi.json", "type": "application/json" }
+      ],
+      "service-doc": [
+        { "href": "https://docs.ophis.fi/intent-api", "type": "text/html" }
+      ]
+    },
+    {
+      "anchor": "https://mcp.ophis.fi/mcp",
+      "service-meta": [
+        { "href": "https://ophis.fi/.well-known/mcp.json", "type": "application/json" }
+      ],
+      "service-doc": [
+        { "href": "https://docs.ophis.fi/ai-agents", "type": "text/html" }
+      ]
+    }
+  ]
+}
