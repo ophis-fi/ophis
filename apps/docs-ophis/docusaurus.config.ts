@@ -53,6 +53,20 @@ const config: Config = {
   headTags: [
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'}},
+    // Site-level Organization structured data (Docusaurus emits a per-page
+    // BreadcrumbList automatically; this adds the publisher entity for SEO/AEO).
+    {
+      tagName: 'script',
+      attributes: {type: 'application/ld+json'},
+      innerHTML: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: 'Ophis',
+        url: 'https://ophis.fi',
+        logo: 'https://docs.ophis.fi/img/og-image.png',
+        sameAs: ['https://github.com/ophis-fi/ophis', 'https://x.com/ophisfi'],
+      }),
+    },
   ],
   stylesheets: [
     'https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap',
