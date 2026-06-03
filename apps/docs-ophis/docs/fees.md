@@ -18,8 +18,8 @@ the fee never touches your principal.
 - **0% fee** on every trade that fills at the quoted rate.
 - When a solver **beats your quote**, Ophis keeps a **small, capped share of the
   improvement**, never a share of your principal.
-- You always come out **ahead of the quote you accepted**. The exact fee for any
-  given trade is shown in the order review before you sign.
+- You always come out **ahead of the quote you accepted**: the fee applies only
+  to that improvement, is capped, and never touches your principal.
 
 ## A worked example
 
@@ -39,8 +39,7 @@ principal. If the solver had only matched the quote, the fee would be 0.
 
 The fee uses CoW Protocol's **CIP-75** partner-fee model (the
 `priceImprovementBps` field in the order's `appData`), taken from the trade
-output at settlement. It applies on Ophis-operated chains (currently live on
-Optimism); on CoW-hosted chains Ophis adds no partner fee.
+output at settlement.
 
 For the protocol-level details, see
 [CIP-75: Partner incentive alignment](https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253).
