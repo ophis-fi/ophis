@@ -39,7 +39,7 @@ risk; a private submission path is on the roadmap.
 ## Smart contracts
 
 Ophis is built on CoW Protocol's GPv2 settlement architecture. The core
-**settlement contract** (`GPv2Settlement`) is CoW Protocol's code, unchanged , 
+**settlement contract** (`GPv2Settlement`) is CoW Protocol's code, unchanged,
 so CoW's settlement audits apply to it directly:
 
 - CoW Protocol contract audits:
@@ -73,10 +73,9 @@ Source: [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
 
 ## Fee custody
 
-Partner fees accrue to a Gnosis Safe multisig (`0x858f…CeF8`), deployed
-deterministically (CREATE2) to the **same address on every supported
-chain**. Fees are routed to the Safe weekly. See
-[Fees & rebates](./fees.md) for how the fee is calculated.
+Partner fees are held in a multisig, kept separate from trader funds, which
+Ophis never custodies. See [Fees & rebates](./fees.md) for how the fee is
+calculated.
 
 ## Contact
 
