@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-WG4lLsY3iG+UMgk0QNtu4qwNYgUvijA8ss88Z5+A6tU=' 'sha256-fUv2t8ZBpNKDnHv7gyyxSjTZqBa1qlbDcufWvLWAwj8=' 'sha256-OjMWgQLPPSzN65f1zKvtlywmsmNSBxGiBnZwIFAyAqk=' 'sha256-QzWFZi+FLIx23tnm9SBU4aEgx4x8DsuASP07mfqol/c=' 'sha256-SaCkFfPruIdTXT8/97JArQmGxiJAL2o4bBDvSgJ5y3Q=' 'sha256-ezSiDExJhYobcEEMrcata/kmI+hg9fLfaxvxfiEdhxM='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://swap.ophis.fi https://ophis.fi; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-WG4lLsY3iG+UMgk0QNtu4qwNYgUvijA8ss88Z5+A6tU=' 'sha256-fUv2t8ZBpNKDnHv7gyyxSjTZqBa1qlbDcufWvLWAwj8=' 'sha256-OjMWgQLPPSzN65f1zKvtlywmsmNSBxGiBnZwIFAyAqk=' 'sha256-QzWFZi+FLIx23tnm9SBU4aEgx4x8DsuASP07mfqol/c=' 'sha256-SaCkFfPruIdTXT8/97JArQmGxiJAL2o4bBDvSgJ5y3Q=' 'sha256-SuinMiccMvfxH4Wsw20lp4ZO7yXeJPr2zgCG1khIh7o='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://swap.ophis.fi https://ophis.fi; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
