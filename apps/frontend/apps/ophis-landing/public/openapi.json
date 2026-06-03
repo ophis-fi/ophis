@@ -3,7 +3,7 @@
   "info": {
     "title": "Ophis Intent API",
     "version": "1.0.0",
-    "summary": "Parse a plain-English swap request into a structured intent.",
+    "summary": "Parse a natural-language swap request into a structured intent.",
     "description": "Turns a natural-language swap request (e.g. \"swap 100 USDC for ETH on Optimism\") into a structured intent with recognized entities. Backed by LibertAI Qwen. Public and unauthenticated; rate-limited to 30 requests/minute/IP. For the full agent toolset (quotes, building bounded signable orders, tier lookups) use the Ophis MCP server at https://mcp.ophis.fi/mcp.",
     "contact": { "name": "Ophis", "url": "https://ophis.fi/" },
     "license": { "name": "Source on GitHub", "url": "https://github.com/ophis-fi/ophis" }
@@ -15,7 +15,7 @@
       "post": {
         "operationId": "parseIntent",
         "summary": "Parse a natural-language swap request",
-        "description": "POST a plain-English swap request; receive the recognized intent and entities (sell token, buy token, amount, chain). No authentication. Rate-limited 30/min/IP.",
+        "description": "POST a natural-language swap request; receive the recognized intent and entities (sell token, buy token, amount, chain). No authentication. Rate-limited 30/min/IP.",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IntentRequest" } } }
