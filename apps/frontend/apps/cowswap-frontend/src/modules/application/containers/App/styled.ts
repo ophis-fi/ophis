@@ -30,6 +30,10 @@ export const AppWrapper = styled.div<Partial<CSS.Properties>>`
   flex-flow: column;
   align-items: flex-start;
   min-height: ${({ theme }) => (theme.isWidget ? '400px' : '100vh')};
+  /* dvh = dynamic viewport height: 100vh overshoots the visible area on mobile
+     when the URL bar is shown, cutting off the bottom (CTA) + causing scroll
+     jank. dvh tracks the real viewport; the vh line above is the fallback. */
+  min-height: ${({ theme }) => (theme.isWidget ? '400px' : '100dvh')};
   height: ${({ theme }) => (theme.isWidget ? 'initial' : '100%')};
   position: relative;
 `
@@ -111,6 +115,7 @@ export const BodyWrapper = styled.div<{
       theme.isWidget ? '0 0 16px' : $hasActiveSpeechBubbleNotification ? '150px 16px 330px' : '150px 16px 150px'};
     flex: none;
     min-height: ${({ theme }) => (theme.isWidget ? 'initial' : 'calc(100vh - 200px)')};
+    min-height: ${({ theme }) => (theme.isWidget ? 'initial' : 'calc(100dvh - 200px)')};
     background-size: ${({ customTheme }) =>
       customTheme === 'darkHalloween' || isChristmasTheme(customTheme) ? 'contain' : 'auto'};
 
@@ -135,6 +140,7 @@ export const BodyWrapper = styled.div<{
     padding: ${({ theme, $hasActiveSpeechBubbleNotification }) =>
       theme.isWidget ? '0 0 16px' : $hasActiveSpeechBubbleNotification ? '90px 16px 400px' : '90px 16px 200px'};
     min-height: ${({ theme }) => (theme.isWidget ? 'initial' : 'calc(100vh - 100px)')};
+    min-height: ${({ theme }) => (theme.isWidget ? 'initial' : 'calc(100dvh - 100px)')};
     background-size: ${({ customTheme }) =>
       customTheme === 'darkHalloween' || isChristmasTheme(customTheme) ? 'contain' : 'auto'};
 
