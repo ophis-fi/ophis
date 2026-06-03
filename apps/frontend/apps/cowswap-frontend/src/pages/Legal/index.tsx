@@ -40,19 +40,26 @@ export default function LegalPage(): ReactNode {
       width="medium"
       eyebrow="Legal"
       title="Terms, Privacy & Disclosures"
-      lede="Plain-English summaries above the legal language where helpful. Reviewed against Luxembourg consumer-protection guidelines; see § Dispute resolution for jurisdiction."
+      lede="A working draft pending review by qualified legal counsel. Plain-language summaries sit above the legal language where helpful; governing law and jurisdiction are in § Dispute resolution."
     >
-      <Callout tone="info" title="Plain-English summaries, non-binding">
-        Each section opens with a plain-English summary in a colored Callout box. These summaries
-        are for convenience only and have no legal effect, the operative terms are the
-        paragraph text outside the summary boxes.
+      <Callout tone="warning" title="Draft, pending legal counsel">
+        This page is a working draft pending review by qualified legal counsel and is subject to
+        revision. All sections, including the operator disclosure and the governing-law clause,
+        may change before launch in jurisdictions with consumer-protection enforcement. Where the
+        plain-language summaries and the operative terms differ, the operative terms govern.
+      </Callout>
+
+      <Callout tone="info" title="Plain-language summaries, non-binding">
+        Each section opens with a plain-language summary in a colored Callout box. These summaries
+        are for convenience only and have no legal effect; the operative terms are the paragraph
+        text outside the summary boxes.
       </Callout>
 
       {/* ─────────────────────────────────────────────────────────── */}
 
       <Section id="acceptance" title="1. Acceptance">
         <Callout tone="info">
-          <strong>Plain English:</strong> by using the Ophis interface, you accept these terms.
+          <strong>In short:</strong> by using the Ophis interface, you accept these terms.
           If you don&#39;t accept them, don&#39;t connect a wallet and don&#39;t sign orders.
         </Callout>
         <p>
@@ -80,7 +87,7 @@ export default function LegalPage(): ReactNode {
       {/* ─────────────────────────────────────────────────────────── */}
 
       <Section id="non-custodial" title="3. Non-custodial nature of the Service">
-        <Callout tone="success" title="Plain English">
+        <Callout tone="success" title="In short">
           Ophis never holds your funds. Your wallet signs orders; the blockchain executes them.
           We cannot move your tokens, freeze your account, or recover lost keys.
         </Callout>
@@ -125,7 +132,7 @@ export default function LegalPage(): ReactNode {
       {/* ─────────────────────────────────────────────────────────── */}
 
       <Section id="disclaimers" title="5. Disclaimers + limitation of liability">
-        <Callout tone="warning" title="Plain English">
+        <Callout tone="warning" title="In short">
           The Service is provided <em>as-is</em>. Trading is risky. You can lose money. Ophis
           and its operator are not liable for losses arising from your use of the Service, the
           blockchain, or any solver / liquidity venue Ophis routes through.
@@ -176,7 +183,7 @@ export default function LegalPage(): ReactNode {
       {/* ─────────────────────────────────────────────────────────── */}
 
       <Section id="privacy" title="7. Privacy Policy">
-        <Callout tone="success" title="Plain English">
+        <Callout tone="success" title="In short">
           Ophis does not intentionally collect account-registration data, identity documents, or
           KYC. Your wallet address is pseudonymous; we don&#39;t link it to off-chain identity.
           We use Sentry for anonymized error telemetry. No advertising cookies. Note that
