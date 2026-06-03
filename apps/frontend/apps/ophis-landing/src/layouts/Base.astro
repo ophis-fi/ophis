@@ -9,7 +9,7 @@ export interface Props {
 }
 const {
   title = 'Ophis: DEX aggregator for the agent era',
-  description = 'Intent-based, MEV-protected, batch-settled swaps. Describe a trade in plain English; settle in one batch. Built for autonomous agents.',
+  description = 'Intent-based, MEV-protected, batch-settled swaps. Describe a trade in natural language; settle in one batch. Built for autonomous agents.',
   canonical = 'https://ophis.fi/',
 } = Astro.props
 ---
@@ -53,7 +53,7 @@ const {
        CSP-hash check (scripts/check-csp-hashes.mjs) hashes this block, so any
        edit must be followed by `node scripts/check-csp-hashes.mjs --print` and
        an update to public/_headers. -->
-  <script type="application/ld+json" is:inline>{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://ophis.fi/#organization","name":"Ophis","url":"https://ophis.fi/","logo":"https://ophis.fi/ophis-claw-saffron.svg","description":"Intent-based, MEV-protected DEX aggregator built for the agent era.","sameAs":["https://github.com/ophis-fi/ophis"]},{"@type":"WebSite","@id":"https://ophis.fi/#website","url":"https://ophis.fi/","name":"Ophis","description":"Describe a trade in plain English; settle MEV-protected in one batch. Built for autonomous agents.","publisher":{"@id":"https://ophis.fi/#organization"},"inLanguage":"en"},{"@type":"SoftwareApplication","@id":"https://ophis.fi/#software","name":"Ophis","applicationCategory":"FinanceApplication","applicationSubCategory":"Decentralized Exchange Aggregator","operatingSystem":"Web","url":"https://swap.ophis.fi/","description":"Intent-based, MEV-protected, batch-settled swaps on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Agent-accessible via an MCP server at mcp.ophis.fi.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://ophis.fi/#organization"}}]}</script>
+  <script type="application/ld+json" is:inline>{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://ophis.fi/#organization","name":"Ophis","url":"https://ophis.fi/","logo":"https://ophis.fi/ophis-claw-saffron.svg","description":"Intent-based, MEV-protected DEX aggregator built for the agent era.","sameAs":["https://github.com/ophis-fi/ophis"]},{"@type":"WebSite","@id":"https://ophis.fi/#website","url":"https://ophis.fi/","name":"Ophis","description":"Describe a trade in natural language; settle MEV-protected in one batch. Built for autonomous agents.","publisher":{"@id":"https://ophis.fi/#organization"},"inLanguage":"en"},{"@type":"SoftwareApplication","@id":"https://ophis.fi/#software","name":"Ophis","applicationCategory":"FinanceApplication","applicationSubCategory":"Decentralized Exchange Aggregator","operatingSystem":"Web","url":"https://swap.ophis.fi/","description":"Intent-based, MEV-protected, batch-settled swaps on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Agent-accessible via an MCP server at mcp.ophis.fi.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://ophis.fi/#organization"}}]}</script>
 
   <!-- Returning-trader fast path. Runs synchronously before paint. Literal URL only. -->
   <script is:inline>

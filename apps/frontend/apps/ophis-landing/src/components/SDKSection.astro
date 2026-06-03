@@ -1,21 +1,21 @@
 ---
 const code = `import {
-  ophisDefaultPartnerFee,
-  OPHIS_PARTNER_FEE_RECIPIENT,
+  getOphisOrderbookUrl,
+  getOphisOrderDomain,
+  assertReceiverIsOwner,
 } from '@ophis/sdk'
 
-// Resolve Ophis's default partner-fee config for the chain
-// (price-improvement-bps capped by max-volume-bps).
-const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
+// The correct orderbook host per chain — Optimism is self-hosted,
+// not api.cow.fi; the wrong host silently bypasses Ophis.
+const orderbook = getOphisOrderbookUrl(/* chainId */ 10)
 
-// partnerFee = {
-//   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-//   bps: 2500,           // 25% of price-improvement
-//   maxVolumeBps: 50,    // capped at 0.5% of volume
-// }
+// The EIP-712 signing domain with the right per-chain verifying
+// contract (cow-sdk's default is wrong on the Ophis-operated chains).
+const domain = getOphisOrderDomain(10)
 
-// Plug into your CoW order's appData: receiver-pin and chain-id
-// checks happen in buildOphisAppDataPartnerFee() under the hood.`
+// Pin the receiver to the owner before signing — an unpinned
+// receiver is the #1 drain vector for an automated signer.
+assertReceiverIsOwner(owner, order.receiver)`
 ---
 <section class="sdk" id="sdk">
   <div class="sdk-inner">
@@ -23,7 +23,7 @@ const partnerFee = ophisDefaultPartnerFee(/* chainId */ 10)
       <span class="sdk-tag">@ophis/sdk</span>
       <h2>Ship integrations <span class="accent">in an afternoon.</span></h2>
       <p>
-        Partner-fee defaults, chain registry, settlement-address resolution, and agent-safety guards: everything an integrator needs to ship without footguns.
+        Correct orderbook hosts, per-chain signing domains, and agent-safety guards: everything an integrator needs to ship without footguns.
       </p>
       <div class="ctas">
         <a class="cta-secondary cta-primary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a>
