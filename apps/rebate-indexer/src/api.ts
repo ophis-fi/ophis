@@ -5,6 +5,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
+import { renderTierPage } from './tier-page.js';
 import { logger } from './logger.js';
 
 /**
@@ -208,6 +209,37 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       ON CONFLICT (wallet) DO NOTHING
     `;
     const status = await getWalletStatus(raw as `0x${string}`);
+
+    // Content negotiation (review item #17): a BROWSER navigating here (e.g.
+    // clicking the rebate chip, which opens this URL in a new tab) sends
+    // `Accept: text/html` and gets a styled page instead of raw JSON. The
+    // chip's own data fetch sends `Accept: */*`, so it still receives JSON
+    // unchanged — no frontend change needed.
+    //
+    // Vary: Accept so a shared cache (Caddy/CF) keys HTML vs JSON separately
+    // and never serves the page to the chip's JSON fetch (or vice versa).
+    reply.header('vary', 'accept');
+    const accept = req.headers.accept ?? '';
+    if (accept.includes('text/html')) {
+      // Single cheap aggregate (mirrors /health) so the payout line reflects
+      // the REAL batcher state and never implies a distribution that has not
+      // happened yet.
+      const batcherRows = await sql<{ last: string | null }[]>`
+        SELECT MAX(ran_at)::text AS last FROM pipeline_runs WHERE first_of_month
+      `;
+      const html = renderTierPage(status, {
+        nextCycleIso: nextFirstOfMonth().toISOString(),
+        lastBatcherRunAt: batcherRows[0]?.last ?? null,
+      });
+      return reply
+        .type('text/html; charset=utf-8')
+        .header('cache-control', 'public, max-age=300')
+        .header(
+          'content-security-policy',
+          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+        )
+        .send(html);
+    }
     return status;
   });
 
