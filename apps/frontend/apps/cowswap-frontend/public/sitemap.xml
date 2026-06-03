@@ -1,36 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Sitemap for the Ophis Cloudflare Pages deploy that backs BOTH swap.ophis.fi
-  and business.ophis.fi (one project, two custom domains; functions/_middleware.ts
-  rewrites business.ophis.fi/ to /business/). This one file is served at both
-  swap.ophis.fi/sitemap.xml and business.ophis.fi/sitemap.xml, so it lists the
-  canonical URLs for BOTH hosts' own pages:
-   - swap.ophis.fi/{,about,learn,brand,legal} (the swap app + its content routes)
-   - business.ophis.fi/ (the institutional page)
-  A host-validating crawler self-selects the entries matching the host it fetched
-  the sitemap from, so each domain gets its own pages indexed; together they stay
-  consistent with the shared robots.txt Host/Sitemap directives.
+  Sitemap for swap.ophis.fi, served at swap.ophis.fi/sitemap.xml.
+  Lists ONLY same-host swap.ophis.fi URLs, per the Sitemaps protocol: every URL
+  in a sitemap must reside on the same host as the sitemap file, or host-validating
+  crawlers reject/ignore the sitemap (losing discovery for the valid entries too).
 
-  Excluded on purpose:
-   - The landing (ophis.fi) is a SEPARATE deploy with its OWN sitemap listing its
-     ophis.fi URLs; listing them here would point this deploy's sitemap at a
-     different deploy (and ophis.fi/about,/legal,/brand soft-404 on the landing).
-   - The cross-domain canonical-host choice for /about,/legal,/brand,/learn (they
-     resolve on both ophis.fi and swap.ophis.fi) is a separate, still-open decision.
-   - Docs live at https://docs.ophis.fi with a Docusaurus-generated sitemap.
-   - Trading routes (/:chainId/swap/*) are excluded as user-state-dependent and
-     not useful to index.
+  This static file backs the swap.ophis.fi host. business.ophis.fi shares the same
+  Pages deploy but is served its OWN same-host robots.txt + sitemap.xml by
+  functions/_middleware.ts (it would otherwise serve this swap-only file cross-host).
+  The landing (ophis.fi) is a separate deploy with its own sitemap.
+
+  The cross-domain canonical-host choice for /about,/legal,/brand,/learn (they resolve
+  on both ophis.fi and swap.ophis.fi) is a separate, still-open decision. Docs live at
+  https://docs.ophis.fi with a Docusaurus-generated sitemap. Trading routes
+  (/:chainId/swap/*) are excluded as user-state-dependent and not useful to index.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://swap.ophis.fi/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://business.ophis.fi/</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://swap.ophis.fi/about</loc>
