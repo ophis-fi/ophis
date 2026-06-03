@@ -19,7 +19,7 @@ Surfaces: **landing** `ophis.fi` (Astro), **swap** `swap.ophis.fi`
 | Canonical | yes | per-route follow-up | yes (Docusaurus) |
 | JSON-LD | Organization, WebSite, SoftwareApplication | Organization + WebApplication (added) | Organization (added) + per-page BreadcrumbList |
 | GA4 (G-NG9YX5G9CM) | yes (Consent Mode denied) | yes (Consent Mode denied) | yes (Consent Mode denied) |
-| Search engine verification | covered by ophis.fi apex DNS-TXT | covered by apex | covered by apex |
+| Search engine verification | GSC/Bing/Yandex via apex | GSC/Bing via apex; **Yandex per-host pending** | GSC/Bing via apex; **Yandex per-host pending** |
 
 **AEO/GEO posture is already strong:** every surface allows the answer-engine
 crawlers (GPTBot, ClaudeBot, PerplexityBot, OAI-SearchBot, Google-Extended,
@@ -46,20 +46,25 @@ structured data.
 
 ## Done: analytics + verification (live as of 2026-06-03)
 
-### 1. Search Console / Bing / Yandex verification (DONE)
+### 1. Search Console / Bing / Yandex verification (GSC + Bing DONE; Yandex apex done, subdomains PENDING)
 
-- **Google Search Console + Bing Webmaster**: verified by the operator.
-- **Yandex Webmaster**: verified via a DNS-TXT record on the `ophis.fi` apex,
+- **Google Search Console + Bing Webmaster (DONE)**: verified by the operator as
+  **domain** properties on `ophis.fi`, which cover every subdomain
+  (swap/docs/business) automatically.
+- **Yandex Webmaster — `ophis.fi` apex DONE; subdomains PENDING (operator action).**
+  `ophis.fi` is verified via a DNS-TXT record on the apex,
   `yandex-verification: a34df2b7b99d0c54` (added via the Cloudflare API; the token
-  now has `Zone -> DNS:Edit` records again). **Caveat:** unlike Google Search
-  Console / Bing **domain** properties (one apex verification covers every
-  subdomain), Yandex Webmaster verifies each **site/host separately**. The apex
-  DNS-TXT verifies `ophis.fi` itself; to own `swap.ophis.fi`, `docs.ophis.fi`, or
-  `business.ophis.fi` data in Yandex you must still ADD each host in Yandex
-  Webmaster and verify it (the same apex DNS-TXT is accepted as the verification
-  method, but each host is a separate site that must be added + verified). Meta-tag
-  fallback slots, if ever needed: landing `src/layouts/Base.astro` `<head>`, swap
-  `index.html` `<head>`, docs `docusaurus.config.ts` `themeConfig.metadata`.
+  now has `Zone -> DNS:Edit` records again). Unlike GSC/Bing **domain** properties
+  (one apex verification covers every subdomain), Yandex Webmaster verifies each
+  **site/host separately**, so:
+    - **PENDING (operator):** add + verify `swap.ophis.fi`, `docs.ophis.fi`, and
+      `business.ophis.fi` as separate sites in Yandex Webmaster. The same apex
+      DNS-TXT is accepted as the verification method for each, but each host must
+      still be added and verified individually; until then their Yandex indexing
+      data is unowned.
+  Meta-tag fallback slots, if ever needed: landing `src/layouts/Base.astro`
+  `<head>`, swap `index.html` `<head>`, docs `docusaurus.config.ts`
+  `themeConfig.metadata`.
 
 ### 2. Google Analytics 4 (DONE: G-NG9YX5G9CM, Consent Mode default-denied)
 
