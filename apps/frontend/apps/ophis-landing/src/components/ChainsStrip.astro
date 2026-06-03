@@ -26,6 +26,11 @@ const passes = [false, true]
 <section class="chains">
   <div class="chains-inner reveal-up" data-reveal>
     <div class="label">Live on</div>
+    {/* WCAG 2.2.2 pause for auto-moving content. Intentionally invisible in
+        normal use (no visual clutter) — the control only appears when a keyboard
+        user Tabs to it. CSS-only (checkbox + :has), so no JS and no CSP hash. */}
+    <input type="checkbox" id="chains-pause" class="chains-pause-input" />
+    <label for="chains-pause" class="chains-pause-btn">Pause animation</label>
     <div class="chains-marquee">
       <div class="chains-track">
         {passes.map((isClone) => chains.map((c) => (
@@ -89,10 +94,49 @@ const passes = [false, true]
     animation: chains-scroll 46s linear infinite;
     will-change: transform;
   }
-  /* Pause on hover (a nicety; reduced-motion users get the static fallback). */
-  .chains-marquee:hover .chains-track {
+  /* Pause on hover, or via the keyboard-revealed control (WCAG 2.2.2). */
+  .chains-marquee:hover .chains-track,
+  .chains:has(.chains-pause-input:checked) .chains-track {
     animation-play-state: paused;
   }
+  /* Keyboard-operable pause, hidden until focused (no visual clutter for mouse
+     users; sighted keyboard users see it on Tab; SR users get the aria-label via
+     the associated control). The checkbox is the focusable control; the label is
+     the visible affordance that fades in on focus. */
+  .chains-pause-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .chains-pause-btn {
+    position: absolute;
+    top: -2px;
+    right: 24px;
+    z-index: 2;
+    padding: 3px 9px;
+    font-size: 11px;
+    color: var(--ophis-fg-muted);
+    background: var(--ophis-surface);
+    border: 1px solid var(--ophis-border);
+    border-radius: 6px;
+    cursor: pointer;
+    /* invisible + inert until the control is keyboard-focused */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+  /* :focus (not :focus-visible) — the control is only reachable by keyboard/AT
+     (sr-only + pointer-events:none until shown), so any focus is a keyboard focus. */
+  .chains-pause-input:focus + .chains-pause-btn {
+    opacity: 1;
+    pointer-events: auto;
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 2px;
+  }
+  .chains:has(.chains-pause-input:checked) .chains-pause-btn { opacity: 1; pointer-events: auto; }
   @keyframes chains-scroll {
     from { transform: translateX(0); }
     to   { transform: translateX(-50%); }
@@ -150,5 +194,7 @@ const passes = [false, true]
        so the wrapped rows have even, symmetric columns. */
     .chain { margin-right: 0; }
     .chain[data-clone] { display: none; }
+    /* Nothing is animating, so the pause control is a pointless tab stop. */
+    .chains-pause-input, .chains-pause-btn { display: none; }
   }
 </style>
