@@ -6,7 +6,7 @@ weth = "0x4200000000000000000000000000000000000006"  # OP Stack predeploy
 # Stage-1 caveat: testnet has no DEX with discoverable liquidity, so the
 # baseline solver returns NoLiquidity for any quote. Stage 1 boots the stack
 # to verify the deploy + ABI integration; the real first-swap (phase gate)
-# lives in Stage 2 on mainnet (4326), via a Greg-deployed Uniswap V2 fork.
+# lives in Stage 2 on mainnet (4326), via a Ophis-deployed Uniswap V2 fork.
 base-tokens = [
   "0x4200000000000000000000000000000000000006",
   "0xd031ce1c577cad1530bd8283caa6a6a106a5b61b",  # GTUSD

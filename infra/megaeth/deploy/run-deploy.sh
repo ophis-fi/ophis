@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Greg Phase 3 — MegaETH deploy runbook
+# Ophis Phase 3 — MegaETH deploy runbook
 #
 # Usage:
 #   ./run-deploy.sh megaeth-testnet
@@ -7,7 +7,7 @@
 #
 # Pulls the deployer private key from macOS Keychain, sources non-secret
 # env (RPC URLs etc) from infra/megaeth/.env, and runs hardhat-deploy
-# with the Greg-specific config that lives inside contracts/.
+# with the Ophis-specific config that lives inside contracts/.
 
 set -euo pipefail
 
@@ -38,7 +38,7 @@ OPHIS_MEGAETH_DEPLOYER_PK=$(security find-generic-password \
 export OPHIS_MEGAETH_DEPLOYER_PK
 
 # Sourced from .env above; export so the hardhat config sees it for the
-# namedAccounts override (owner + manager → Greg deployer EOA).
+# namedAccounts override (owner + manager → Ophis deployer EOA).
 export OPHIS_MEGAETH_DEPLOYER_ADDRESS
 
 # Sanity: mainnet RPC must be set if we're hitting mainnet.
@@ -52,7 +52,7 @@ LOG_FILE="$REPO_ROOT/infra/megaeth/deploy-log-${NETWORK}-$(date +%Y%m%d-%H%M%S).
 
 cd "$REPO_ROOT/contracts"
 
-echo "=== Greg MegaETH deploy: $NETWORK ==="
+echo "=== Ophis MegaETH deploy: $NETWORK ==="
 echo "=== Deployer: ${OPHIS_MEGAETH_DEPLOYER_ADDRESS:?must be set in .env} ==="
 echo "=== Log file: $LOG_FILE ==="
 echo ""

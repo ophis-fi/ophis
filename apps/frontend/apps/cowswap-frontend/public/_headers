@@ -11,7 +11,7 @@
 #   (apps/cowswap-frontend/vercel.ts:51-53). NO 'unsafe-inline' on
 #   scripts: Vite production bundles have no inline <script> tags,
 #   and the upstream GTM call (which would have needed inline) is
-#   disabled in our build — see cow-react/index.tsx Greg/Ophis note.
+#   disabled in our build — see cow-react/index.tsx Ophis rebrand note.
 # - style-src includes 'unsafe-inline' because styled-components
 #   injects runtime style tags. Standard practice.
 # - connect-src and img-src use the broad `https:` / `wss:` schemes

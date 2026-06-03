@@ -52,7 +52,7 @@ impl CoinGecko {
     // uses `x-cg-pro-api-key` because they have Pro tier. Our deployment uses
     // CoinGecko's free Demo tier (signup at coingecko.com/api/pricing) which
     // accepts the `CG-...` key only via the Demo header. Tracked in
-    // apps/backend/.greg-divergences.md (TODO: create if missing).
+    // apps/backend/.ophis-divergences.md (TODO: create if missing).
     const AUTHORIZATION: &'static str = "x-cg-demo-api-key";
 
     pub async fn new(

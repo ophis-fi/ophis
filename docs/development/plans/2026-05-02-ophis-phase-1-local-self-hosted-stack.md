@@ -147,7 +147,7 @@ locally on the Mac mini.
 
 ## Prereqs
 - Docker Desktop running (≥ 8 GB allocated)
-- `apps/backend/` builds locally (Phase 0 prereq — see `apps/backend/.greg-build-notes.md`)
+- `apps/backend/` builds locally (Phase 0 prereq — see `apps/backend/.ophis-build-notes.md`)
 - `infra/local/.env` populated (see `.env.example`)
 
 (Boot order, troubleshooting, and teardown filled in by Tasks 4 / 7 / 11.)
@@ -728,7 +728,7 @@ describe('gnosisFallbackTransport', () => {
 
 ```json
 {
-  "name": "@greg/rpc",
+  "name": "@ophis/rpc",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -762,7 +762,7 @@ packages:
 ```bash
 cd /Users/scep/greg
 pnpm install
-pnpm --filter @greg/rpc test
+pnpm --filter @ophis/rpc test
 ```
 Expected: fails because `src/fallback.ts` does not exist.
 
@@ -804,7 +804,7 @@ export default defineConfig({ test: { environment: 'node', include: ['tests/**/*
 - [ ] **Step 6: Run tests, verify green**
 
 ```bash
-pnpm --filter @greg/rpc test
+pnpm --filter @ophis/rpc test
 ```
 Expected: 2 passing.
 
@@ -812,7 +812,7 @@ Expected: 2 passing.
 
 ```bash
 git add infra/rpc/ pnpm-workspace.yaml pnpm-lock.yaml
-git commit -m "feat(rpc): @greg/rpc gnosis fallback transport (Alchemy → PublicNode → Ankr)"
+git commit -m "feat(rpc): @ophis/rpc gnosis fallback transport (Alchemy → PublicNode → Ankr)"
 git push
 ```
 
@@ -1029,7 +1029,7 @@ git push
 - Self-hosted orderbook: Tasks 1–4 (Postgres + boot orderbook).
 - Self-hosted autopilot + driver + solver: Tasks 3–5.
 - Postgres on Supabase: **NOT in this plan** — Phase 2 deliverable. Phase 1 uses local Postgres in Docker. The spec didn't require Supabase as part of Phase 1's *correctness* gate; it required it as part of *production hosting*, which is Phase 2.
-- RPC fallback: Task 8 (`@greg/rpc`).
+- RPC fallback: Task 8 (`@ophis/rpc`).
 - Frontend repointed: **NOT in this plan** — repointing to *localhost:8080* without a stable address is awkward. Phase 2 (cloud deploy) gives us a real URL to repoint to. Phase 1 still validates the FE→our-orderbook integration via `apps/frontend/.env.development.local.example` doc, but doesn't make the prod build use it.
 - Real Gnosis-mainnet swap as the gate: Tasks 9–10.
 - Aleph deploy: explicitly Phase 2.

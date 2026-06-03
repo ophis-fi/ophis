@@ -75,10 +75,10 @@
 | `packages/sdk/src/tiers.ts` | Create | Re-export of TIERS for frontend consumption |
 | `packages/sdk/src/index.ts` | Modify | Add tiers export |
 | `packages/sdk/tests/tiers.test.ts` | Create | Verify SDK tier export matches indexer source |
-| `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.tsx` | Create | Swap-page tier chip component |
-| `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.module.css` | Create | Tier chip styles |
-| `apps/frontend/apps/cowswap-frontend/src/greg/hooks/useTier.ts` | Create | React hook fetching `rebates.ophis.fi/tier/:wallet` |
-| `apps/frontend/apps/cowswap-frontend/src/greg/.greg-divergences.md` | Modify | Document the new TierChip module |
+| `apps/frontend/apps/cowswap-frontend/src/ophis/components/TierChip.tsx` | Create | Swap-page tier chip component |
+| `apps/frontend/apps/cowswap-frontend/src/ophis/components/TierChip.module.css` | Create | Tier chip styles |
+| `apps/frontend/apps/cowswap-frontend/src/ophis/hooks/useTier.ts` | Create | React hook fetching `rebates.ophis.fi/tier/:wallet` |
+| `apps/frontend/apps/cowswap-frontend/src/ophis/.ophis-divergences.md` | Modify | Document the new TierChip module |
 | `pnpm-workspace.yaml` | Modify | Add `apps/rebate-indexer` |
 | `.github/workflows/rebate-indexer-ci.yml` | Create | Unit + integration tests on PR |
 | `.github/workflows/rebate-indexer-deploy.yml` | Create | Build + push image + ssh deploy on push to main |
@@ -928,7 +928,7 @@ export const CowQuoteResponse = z.object({
 });
 export type CowQuoteResponse = z.infer<typeof CowQuoteResponse>;
 
-export const APP_CODES = ['ophis', 'greg'] as const;                  // greg tolerated for pre-rebrand history
+export const APP_CODES = ['ophis', 'ophis'] as const;                  // ophis tolerated for pre-rebrand history
 export type AppCode = (typeof APP_CODES)[number];
 ```
 
@@ -3329,13 +3329,13 @@ git commit -m "ci(rebate-indexer): test + deploy workflows (build, push to GHCR,
 - Create: `packages/sdk/src/tiers.ts`
 - Modify: `packages/sdk/src/index.ts`
 - Create: `packages/sdk/tests/tiers.test.ts`
-- Create: `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.tsx`
-- Create: `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.module.css`
-- Create: `apps/frontend/apps/cowswap-frontend/src/greg/hooks/useTier.ts`
-- Modify: `apps/frontend/apps/cowswap-frontend/src/greg/.greg-divergences.md`
+- Create: `apps/frontend/apps/cowswap-frontend/src/ophis/components/TierChip.tsx`
+- Create: `apps/frontend/apps/cowswap-frontend/src/ophis/components/TierChip.module.css`
+- Create: `apps/frontend/apps/cowswap-frontend/src/ophis/hooks/useTier.ts`
+- Modify: `apps/frontend/apps/cowswap-frontend/src/ophis/.ophis-divergences.md`
 - Modify: `.github/workflows/cloudflare-deploy.yml` (add `REACT_APP_REBATES_API`)
 
-### Step 1: Re-export tier table from `@greg/sdk`
+### Step 1: Re-export tier table from `@ophis/sdk`
 
 Write `packages/sdk/src/tiers.ts`:
 
@@ -3393,7 +3393,7 @@ Write `packages/sdk/tests/tiers.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { TIERS, POOL_SPLIT_BPS, assignTier as sdkAssign } from '@greg/sdk';
+import { TIERS, POOL_SPLIT_BPS, assignTier as sdkAssign } from '@ophis/sdk';
 
 // The indexer ships its own TS source. We import it directly and compare exports.
 // If the workspace layout moves the indexer, this import path breaks and the test
@@ -3404,7 +3404,7 @@ import {
   assignTier as indexerAssign,
 } from '../../../apps/rebate-indexer/src/tiers.js';
 
-describe('@greg/sdk tiers mirror apps/rebate-indexer/src/tiers.ts', () => {
+describe('@ophis/sdk tiers mirror apps/rebate-indexer/src/tiers.ts', () => {
   it('TIERS array matches the indexer source exactly', () => {
     expect(TIERS).toEqual(INDEXER_TIERS);
   });
@@ -3424,11 +3424,11 @@ describe('@greg/sdk tiers mirror apps/rebate-indexer/src/tiers.ts', () => {
 
 ### Step 4: React hook fetching `/tier/:wallet`
 
-Write `apps/frontend/apps/cowswap-frontend/src/greg/hooks/useTier.ts`:
+Write `apps/frontend/apps/cowswap-frontend/src/ophis/hooks/useTier.ts`:
 
 ```ts
 import { useEffect, useState } from 'react';
-import { assignTier, type Tier } from '@greg/sdk';
+import { assignTier, type Tier } from '@ophis/sdk';
 
 const REBATES_API = process.env.REACT_APP_REBATES_API ?? 'https://rebates.ophis.fi';
 
@@ -3484,7 +3484,7 @@ export function useTier(wallet: `0x${string}` | undefined): {
 
 ### Step 5: TierChip component
 
-Write `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.tsx`:
+Write `apps/frontend/apps/cowswap-frontend/src/ophis/components/TierChip.tsx`:
 
 ```tsx
 import { useTier } from '../hooks/useTier';
@@ -3521,7 +3521,7 @@ export function TierChip({ wallet }: Props) {
 
 ### Step 6: TierChip styles
 
-Write `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.module.css`:
+Write `apps/frontend/apps/cowswap-frontend/src/ophis/components/TierChip.module.css`:
 
 ```css
 .chip {
@@ -3547,18 +3547,18 @@ Write `apps/frontend/apps/cowswap-frontend/src/greg/components/TierChip.module.c
 .platinum { color: #b9f2ff; border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }
 ```
 
-### Step 7: Document new module in `.greg-divergences.md`
+### Step 7: Document new module in `.ophis-divergences.md`
 
-Append a new "Added (Ophis-only)" entry to `apps/frontend/apps/cowswap-frontend/src/greg/.greg-divergences.md`:
+Append a new "Added (Ophis-only)" entry to `apps/frontend/apps/cowswap-frontend/src/ophis/.ophis-divergences.md`:
 
 ```markdown
 
 ### Added 2026-05-11 — Tier chip
 
-- `apps/cowswap-frontend/src/greg/hooks/useTier.ts` — fetches `rebates.ophis.fi/tier/:wallet`,
+- `apps/cowswap-frontend/src/ophis/hooks/useTier.ts` — fetches `rebates.ophis.fi/tier/:wallet`,
   falls back to Bronze locally if the API is unreachable.
-- `apps/cowswap-frontend/src/greg/components/TierChip.tsx` + `.module.css` — small
-  always-visible chip on the swap page. Imports `@greg/sdk` for tier constants (mirror
+- `apps/cowswap-frontend/src/ophis/components/TierChip.tsx` + `.module.css` — small
+  always-visible chip on the swap page. Imports `@ophis/sdk` for tier constants (mirror
   of `apps/rebate-indexer/src/tiers.ts`).
 - **`REACT_APP_REBATES_API`** — set in `.github/workflows/cloudflare-deploy.yml` to
   `https://rebates.ophis.fi`. Hook defaults to the same value, so missing env still works.
@@ -3600,7 +3600,7 @@ Expected: previous tests + 3 new tier-mirror tests pass.
 
 ```bash
 git add packages/sdk apps/frontend/apps/cowswap-frontend/src/greg .github/workflows/cloudflare-deploy.yml
-git commit -m "feat(frontend): TierChip swap-page widget + @greg/sdk tier mirror"
+git commit -m "feat(frontend): TierChip swap-page widget + @ophis/sdk tier mirror"
 ```
 
 ---

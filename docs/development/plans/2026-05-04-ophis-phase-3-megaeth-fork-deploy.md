@@ -224,7 +224,7 @@ Expected: hardhat-based repo with `src/contracts/` directory containing `GPv2Set
 ## Task 3: Build `cowprotocol/contracts` locally
 
 **Files:**
-- Create: `contracts/.greg-build-notes.md`
+- Create: `contracts/.ophis-build-notes.md`
 
 ### Step 1: Read the upstream README
 
@@ -263,7 +263,7 @@ Expected: artifacts produced at `contracts/build/artifacts/` or `contracts/artif
 
 ### Step 4: Document the build path
 
-Write `/Users/scep/greg/contracts/.greg-build-notes.md`:
+Write `/Users/scep/greg/contracts/.ophis-build-notes.md`:
 
 ```markdown
 # contracts/ build notes
@@ -280,7 +280,7 @@ Required Node version: <from .nvmrc or engines field>.
 
 ```bash
 cd /Users/scep/greg
-git add contracts/.greg-build-notes.md
+git add contracts/.ophis-build-notes.md
 git commit -m "build(contracts): document local build path"
 git push
 ```
@@ -931,7 +931,7 @@ The actual submission is operator-driven; the plan only commits the draft so it'
 
 **Files:**
 - Create: `docs/development/phase-3-validation.md`
-- Modify: `apps/frontend/.greg-divergences.md`? **No.** Phase 3 doesn't touch the frontend; nothing to track in cowswap-divergence file.
+- Modify: `apps/frontend/.ophis-divergences.md`? **No.** Phase 3 doesn't touch the frontend; nothing to track in cowswap-divergence file.
 - Modify: `infra/megaeth/README.md`
 
 ### Step 1: Write `infra/megaeth/README.md` operator runbook

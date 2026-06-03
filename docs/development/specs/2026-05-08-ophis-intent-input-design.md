@@ -156,7 +156,7 @@ Chain slug → chainId table (V1 set):
 
 ## 5. Components
 
-All new components live in `apps/frontend/apps/cowswap-frontend/src/greg/components/intent/`.
+All new components live in `apps/frontend/apps/cowswap-frontend/src/ophis/components/intent/`.
 
 | File                | Role                                                                                                                                              |
 |---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -168,14 +168,14 @@ All new components live in `apps/frontend/apps/cowswap-frontend/src/greg/compone
 | `intentToUrl.ts`    | Pure function. `(ParsedIntent) => string` returning the `/#/swap?…` URL using §4.3.                                                              |
 
 Reused, untouched:
-- `src/greg/ophiePath.ts` — mascot SVG.
-- `src/greg/components/OphieMark.tsx`, `OphieSpinner.tsx`.
-- `src/greg/tokens.ts` — color, font, spacing tokens.
+- `src/ophis/ophiePath.ts` — mascot SVG.
+- `src/ophis/components/OphieMark.tsx`, `OphieSpinner.tsx`.
+- `src/ophis/tokens.ts` — color, font, spacing tokens.
 - Cowswap's `TokenLogo`, route table, `<HashRouter>`, swap form.
 
 ### 5.1 Routing patch
 
-Cowswap upstream redirects `/` → `/#/swap`. We insert a divergence in the route tree (cowswap-frontend `MainContent.tsx` or equivalent) that maps `/` to `<IntentLanding />`, with `/#/swap` still reachable directly. The "Skip to manual swap →" link in IntentLanding navigates to `/#/swap`. Documented in `apps/frontend/.greg-divergences.md`.
+Cowswap upstream redirects `/` → `/#/swap`. We insert a divergence in the route tree (cowswap-frontend `MainContent.tsx` or equivalent) that maps `/` to `<IntentLanding />`, with `/#/swap` still reachable directly. The "Skip to manual swap →" link in IntentLanding navigates to `/#/swap`. Documented in `apps/frontend/.ophis-divergences.md`.
 
 ## 6. Failure handling
 

@@ -76,7 +76,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
           # Tags every order produced by this build with appCode "ophis"
           # (instead of cowswap's upstream default "CoW Swap"). Tracked
-          # in apps/frontend/.greg-divergences.md.
+          # in apps/frontend/.ophis-divergences.md.
           REACT_APP_APP_CODE: ophis
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
@@ -114,7 +114,7 @@ jobs:
         # production deploy. Future option if local debugging needs them:
         # set `sourcemap: process.env.NODE_ENV !== 'production'` in
         # apps/cowswap-frontend/vite.config.mts (would be a tracked
-        # divergence on subtree pulls — see apps/frontend/.greg-divergences.md).
+        # divergence on subtree pulls — see apps/frontend/.ophis-divergences.md).
         run: |
           find apps/frontend/build/cowswap -name '*.js.map' -type f -delete
           echo "remaining map files (none expected):"

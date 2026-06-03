@@ -72,10 +72,10 @@ After Spec 4: any user on `ophis.fi` switching to MegaETH or Optimism *automatic
 
 `@cowprotocol/cow-sdk` (vendored via subtree in `apps/frontend/libs/cow-sdk`) defines `SupportedChainId`. We need to add new entries.
 
-**Decision:** Don't fork cow-sdk. Use **TypeScript module augmentation** in `apps/frontend/apps/cowswap-frontend/src/greg/supportedChainIds.ts` to extend the enum without modifying the vendored library. This survives `git subtree pull` cleanly.
+**Decision:** Don't fork cow-sdk. Use **TypeScript module augmentation** in `apps/frontend/apps/cowswap-frontend/src/ophis/supportedChainIds.ts` to extend the enum without modifying the vendored library. This survives `git subtree pull` cleanly.
 
 ```typescript
-// apps/cowswap-frontend/src/greg/supportedChainIds.ts
+// apps/cowswap-frontend/src/ophis/supportedChainIds.ts
 declare module '@cowprotocol/cow-sdk' {
   export enum SupportedChainId {
     OPTIMISM_SEPOLIA = 11155420,
@@ -177,7 +177,7 @@ Frontend RPC pressure is much lighter than the CoW driver's (no continuous block
 - [ ] Bundle size delta < 10 KB (chain metadata is small)
 
 ### Repo state
-- [ ] `apps/frontend/.greg-divergences.md` updated with the new files
+- [ ] `apps/frontend/.ophis-divergences.md` updated with the new files
 - [ ] `infra/cloudflare/ophis-chain-backends.md` notes the frontend-to-backend mapping
 - [ ] `project_greg.md` Phase 4 section reflects Spec 4 ship
 

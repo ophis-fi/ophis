@@ -1,5 +1,5 @@
 # infra/local/docker-compose.fork.yml
-# Greg Stage-1 stack — anvil-forked Gnosis. No UIs, no observability containers.
+# Ophis Stage-1 stack — anvil-forked Gnosis. No UIs, no observability containers.
 # Boot: docker compose -f infra/local/docker-compose.fork.yml --env-file infra/local/.env up -d
 
 services:

@@ -24,10 +24,10 @@ url = "https://carrot.megaeth.com/rpc"
 [liquidity]
 base-tokens = [
   "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy)
-  "0xd031ce1c577cad1530bd8283caa6a6a106a5b61b",  # GTUSD (Greg test stable, seeded in WETH/GTUSD pool)
+  "0xd031ce1c577cad1530bd8283caa6a6a106a5b61b",  # GTUSD (Ophis test stable, seeded in WETH/GTUSD pool)
 ]
 
-# Greg-deployed Uniswap V2 fork on testnet. Manual config: no subgraph needed
+# Ophis-deployed Uniswap V2 fork on testnet. Manual config: no subgraph needed
 # since V2 pools are CREATE2-deterministic from (factory, sortedTokens) keyed
 # by the canonical Pair init-code hash. Pool-discovery probes the factory
 # directly via getPair() once the pair is hot.
