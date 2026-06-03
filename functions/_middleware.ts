@@ -7,7 +7,14 @@
  *    a same-URL internal rewrite (env.ASSETS.fetch) rather than
  *    _redirects, which can only issue HTTP redirects, not rewrites.
  *
- * 2. The old on-domain docs are retired: docs now live in their own Pages
+ * 2. business.ophis.fi gets its OWN same-host robots.txt + sitemap.xml.
+ *    The static public/{robots.txt,sitemap.xml} belong to swap.ophis.fi;
+ *    serving them on business.ophis.fi would advertise cross-host URLs, which
+ *    the Sitemaps protocol forbids (every URL in a sitemap must be on the same
+ *    host as the sitemap file) and host-validating crawlers reject. swap.ophis.fi
+ *    keeps the static files; business.ophis.fi's are generated here.
+ *
+ * 3. The old on-domain docs are retired: docs now live in their own Pages
  *    project at https://docs.ophis.fi (the former docs.ophis.fi rewrite
  *    here is gone). Any leftover /docs* request on the apex is
  *    301-redirected to the new portal so old links and search results
@@ -20,11 +27,39 @@ interface Env {
   ASSETS: Fetcher
 }
 
+// business.ophis.fi is intentionally a SINGLE-PAGE host: only '/' serves content
+// (rewritten to the static /business/ landing). It has no sub-path links of its
+// own (its nav points at swap.ophis.fi / docs.ophis.fi / GitHub), and its sitemap
+// below lists only '/'. Any other business.ophis.fi/* path falls through to the
+// SPA unchanged; if sub-pages are ever added, give them /business/* assets + a
+// rewrite here.
 const SUBDOMAIN_TO_PATH: Record<string, string> = {
   'business.ophis.fi': '/business/',
 }
 
 const DOCS_PORTAL = 'https://docs.ophis.fi/'
+
+const BUSINESS_ORIGIN = 'https://business.ophis.fi'
+
+// business.ophis.fi same-host robots.txt: points at its OWN sitemap (not
+// swap.ophis.fi's). No non-standard 'Host:' directive (a deprecated Yandex-only
+// extension, redundant with the Sitemap directive + rel=canonical).
+const BUSINESS_ROBOTS = `User-agent: *
+Allow: /
+Sitemap: ${BUSINESS_ORIGIN}/sitemap.xml
+`
+
+// business.ophis.fi same-host sitemap: the subdomain is a single indexable
+// page (the institutional landing served at /).
+const BUSINESS_SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${BUSINESS_ORIGIN}/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+`
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
@@ -35,6 +70,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     (url.pathname === '/docs' || url.pathname.startsWith('/docs/'))
   ) {
     return Response.redirect(DOCS_PORTAL, 301)
+  }
+
+  // business.ophis.fi: serve its own same-host robots.txt + sitemap.xml so the
+  // shared deploy never advertises cross-host sitemap URLs. Must run before the
+  // root rewrite below (these paths are not '/').
+  if (url.hostname === 'business.ophis.fi') {
+    if (url.pathname === '/robots.txt') {
+      return new Response(BUSINESS_ROBOTS, {
+        headers: {
+          'content-type': 'text/plain; charset=utf-8',
+          'cache-control': 'public, max-age=3600',
+        },
+      })
+    }
+    if (url.pathname === '/sitemap.xml') {
+      return new Response(BUSINESS_SITEMAP, {
+        headers: {
+          'content-type': 'application/xml; charset=utf-8',
+          'cache-control': 'public, max-age=3600',
+        },
+      })
+    }
   }
 
   const target = SUBDOMAIN_TO_PATH[url.hostname]
