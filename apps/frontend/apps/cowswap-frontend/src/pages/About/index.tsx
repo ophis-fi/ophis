@@ -15,7 +15,7 @@
  *   - Cross-chain via NEAR Intents (Solana + Bitcoin destinations)
  *   - Audited infrastructure (audit artifacts, claim badges)
  *   - Open source (license, GitHub, audit trail)
- *   - Who operates Ophis (Luxembourg-incorporated consultancy; entity details on request)
+ *   - Who operates Ophis (non-custodial; formal operator disclosure on the Legal page)
  *   - FAQ (Accordion; deep-links to /docs#faq for full set)
  */
 import { ReactNode } from 'react'
@@ -28,7 +28,6 @@ import {
   FeatureCard,
   FeatureGrid,
   InlineCode,
-  KeyValueList,
   PageShell,
   Section,
   TextLink,
@@ -182,20 +181,12 @@ export default function AboutPage(): ReactNode {
 
       <Section id="operator" title="Who operates Ophis">
         <p>
-          The interface at <InlineCode>ophis.fi</InlineCode> is operated by a Luxembourg-incorporated consultancy
-          company. Full entity details (legal name, RCS number, registered office, legal representative) are provided on
-          request for formal arrangements, see the operator section on the{' '}
-          <TextLink href="/legal#operator">Legal page</TextLink> for the disclosure policy and the{' '}
-          <TextLink href="/contact">contact form</TextLink> for the contact channel.
+          The Ophis interface is non-custodial and operated independently. The formal operator
+          disclosure, including jurisdiction and entity details available on request for formal
+          contractual or regulatory matters, lives in the operator section of the{' '}
+          <TextLink href="/legal#operator">Legal page</TextLink>. Reach the team via the{' '}
+          <TextLink href="/contact">contact form</TextLink>.
         </p>
-        <KeyValueList
-          items={[
-            { label: 'Jurisdiction', value: 'Grand Duchy of Luxembourg' },
-            { label: 'Legal form', value: 'Société à responsabilité limitée' },
-            { label: 'Registry', value: 'Luxembourg Business Registers (RCS)' },
-            { label: 'Full entity details', value: 'On request for formal arrangements' },
-          ]}
-        />
       </Section>
 
       <Section id="faq" title="Common questions" intro="Selected highlights. Full FAQ in the docs.">
