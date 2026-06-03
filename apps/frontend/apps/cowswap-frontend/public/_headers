@@ -9,9 +9,12 @@
 #   schemas at runtime — without it, custom-token-list loading
 #   silently fails. Upstream cowswap CSP makes the same allowance
 #   (apps/cowswap-frontend/vercel.ts:51-53). NO 'unsafe-inline' on
-#   scripts: Vite production bundles have no inline <script> tags,
-#   and the upstream GTM call (which would have needed inline) is
-#   disabled in our build — see cow-react/index.tsx Ophis rebrand note.
+#   scripts: Vite production bundles have no inline <script> tags.
+#   The upstream CoW GTM call stays disabled; Ophis GA4 (gtag.js) is
+#   loaded from https://www.googletagmanager.com by a BUNDLED module
+#   (src/ophis/analytics/initGa4.ts), not an inline snippet, so no
+#   'unsafe-inline' is needed. GA4 beacons to *.google-analytics.com
+#   are already covered by `connect-src https:`.
 # - style-src includes 'unsafe-inline' because styled-components
 #   injects runtime style tags. Standard practice.
 # - connect-src and img-src use the broad `https:` / `wss:` schemes
@@ -33,7 +36,7 @@
 # resource is blocked, add its origin to the matching directive.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; frame-ancestors 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self' https://formspree.io; object-src 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' https://challenges.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; frame-ancestors 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self' https://formspree.io; object-src 'none'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
