@@ -85,8 +85,6 @@ export function NetworksList({
             {rowContent}
             <ActiveRowLinks
               bridge={info.bridge}
-              explorer={info.explorer}
-              explorerTitle={info.explorerTitle}
               helpCenterUrl={info.helpCenterUrl}
               targetChainId={targetChainId}
             />

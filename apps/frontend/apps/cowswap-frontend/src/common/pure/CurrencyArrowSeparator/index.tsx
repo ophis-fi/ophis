@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 
-import { CowLoadingIcon } from 'common/pure/CowLoadingIcon'
+import { OphieMark } from 'ophis/components/OphieMark'
 
 import * as styledEl from './styled'
 
@@ -21,7 +21,6 @@ export function CurrencyArrowSeparator({
   isCollapsed = true,
   hasSeparatorLine,
   disabled = false,
-  isDarkMode = false,
 }: CurrencyArrowSeparatorProps): ReactNode {
   const isInjectedWidgetMode = isInjectedWidget()
 
@@ -32,9 +31,15 @@ export function CurrencyArrowSeparator({
       isCollapsed={isCollapsed}
       hasSeparatorLine={hasSeparatorLine}
     >
-      <styledEl.LoadingWrapper type="button" $isLoading={isLoading} disabled={disabled} onClick={onSwitchTokens}>
+      <styledEl.LoadingWrapper
+        type="button"
+        aria-label="Switch tokens"
+        $isLoading={isLoading}
+        disabled={disabled}
+        onClick={onSwitchTokens}
+      >
         {!isInjectedWidgetMode && isLoading ? (
-          <CowLoadingIcon size={26} isDarkMode={isDarkMode} />
+          <OphieMark size={26} fill="saffron" animate="spin-fast" ariaLabel="Switch tokens" />
         ) : (
           <styledEl.ArrowDownIcon disabled={disabled} />
         )}
