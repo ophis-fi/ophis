@@ -34,6 +34,8 @@ import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
 import { loadActiveLocaleMessages } from 'lib/localeMessages'
 
+import { initGa4 } from 'ophis/analytics'
+
 import { APP_HEADER_ELEMENT_ID } from '../common/constants/common'
 import { WalletUnsupportedNetworkBanner } from '../common/containers/WalletUnsupportedNetworkBanner'
 import { BlockNumberProvider } from '../common/hooks/useBlockNumber'
@@ -115,6 +117,7 @@ export function Main({ localeMessages }: MainProps): ReactNode {
 }
 
 async function initApp(): Promise<void> {
+  initGa4()
   resetReact310RecoveryOnDocumentLoad()
 
   const container = document.getElementById('root')
