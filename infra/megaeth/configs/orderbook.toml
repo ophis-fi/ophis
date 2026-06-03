@@ -10,7 +10,7 @@ simulation-node-url = "https://carrot.megaeth.com/rpc"
 # `Instance::deployed(provider)` lookup panics. Providing every address
 # explicitly bypasses the lookup entirely.
 [shared.contracts]
-settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"  # GPv2Settlement (Greg-deployed)
+settlement = "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce"  # GPv2Settlement (Ophis-deployed)
 balances = "0x7c2461066e6af18520384ecfb5afdd7209ea9be7"     # Balances helper
 signatures = "0xf9cc3c9982d8ad424fa8071f09f3fa3072bc03a1"   # Signatures helper
 native-token = "0x4200000000000000000000000000000000000006"  # WETH (OP Stack predeploy)

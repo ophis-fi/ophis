@@ -30,7 +30,7 @@ If Clement does not decide D1 / D2 by the time Tasks 4 (manifest update) or 7 (p
 1. Trade-data threaded through `ReceiptModal` so settled orders' receipts contain `settlementTxHash` + `settlementBlock`.
 2. SVG icon variant added; manifest updated.
 3. DCA top-level CTA visible on home page; clicks route to `/advanced`.
-4. Multisig partner-fee recipient deployed and live in `@greg/sdk` + `partnerFeeDefault.ts`.
+4. Multisig partner-fee recipient deployed and live in `@ophis/sdk` + `partnerFeeDefault.ts`.
 5. Production Vercel deployment promoted (or already serving the same content with SSO disabled on production target only).
 6. Safe-list PR against `safe-global/safe-apps-list` open with our deployment URL.
 7. Show HN draft committed to `docs/development/show-hn-draft.md`; Product Hunt page draft committed to `docs/development/product-hunt-draft.md`.
@@ -49,8 +49,8 @@ Validation log committed to `docs/development/phase-2-5-validation.md`. Tag `v0.
 | `apps/frontend/apps/cowswap-frontend/public/manifest.json` | modify | `iconPath` → `/greg-icon.svg` |
 | `apps/frontend/apps/cowswap-frontend/src/<home page>` | modify | Add a "Set up a DCA" top-level CTA linking to `/advanced` |
 | `packages/sdk/src/partner-fee.ts` | modify | `OPHIS_PARTNER_FEE_RECIPIENT` → multisig address |
-| `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` | modify | mirror update |
-| `apps/frontend/.greg-divergences.md` | modify | track Phase-2.5 entries |
+| `apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts` | modify | mirror update |
+| `apps/frontend/.ophis-divergences.md` | modify | track Phase-2.5 entries |
 | `docs/development/show-hn-draft.md` | create | Show HN post + thread plan |
 | `docs/development/product-hunt-draft.md` | create | Product Hunt submission text |
 | `docs/development/phase-2-5-validation.md` | create | phase-gate evidence |
@@ -210,7 +210,7 @@ If **B**, the rename touches:
 - [ ] `apps/frontend/libs/ui/src/pure/ProductLogo/index.tsx` — alt text
 - [ ] `packages/sdk/package.json` — package name
 - [ ] `infra/rpc/package.json` — package name
-- [ ] All `@greg/*` imports across the workspace
+- [ ] All `@ophis/*` imports across the workspace
 - [ ] Root `package.json` — `name` field
 - [ ] `README.md`
 - [ ] GitHub repo rename (`ophis-fi/ophis` → `san-npm/<newname>`) via `gh repo rename`
@@ -241,7 +241,7 @@ If using an existing Cloudflare-managed domain:
 VC_TOKEN=$(cat ~/Library/Application\ Support/com.vercel.cli/auth.json | python3 -c "import json,sys; print(json.load(sys.stdin)['token'])")
 TEAM=team_C0UfZCb5p2kuRtKKRcZpt0qd
 PROJECT=prj_Bphlj9iJ6kFDT9n99ojNYULs8cDc
-DOMAIN=<your domain, e.g., greg.openletz.com>
+DOMAIN=<your domain, e.g., ophis.openletz.com>
 
 curl -sS -X POST "https://api.vercel.com/v10/projects/${PROJECT}/domains?teamId=${TEAM}" \
   -H "Authorization: Bearer $VC_TOKEN" \
@@ -417,7 +417,7 @@ git push
 
 **Files:**
 - Modify: `packages/sdk/src/partner-fee.ts`
-- Modify: `apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`
+- Modify: `apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts`
 
 The Phase-1.5 single-sig EOA `0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E` becomes a single point of failure once partner-fee accrual hits the first WETH disbursement (≥ 0.001 WETH per [CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)). Upgrade to a multisig before that.
 
@@ -431,7 +431,7 @@ Open [https://app.safe.global](https://app.safe.global) → "Create Safe". Confi
 
 After deployment, capture the Safe's address. **Verify the same address resolves on every other CoW-supported chain** by visiting the Safe URL on each (Safe deploys deterministically via CREATE2 + ProxyFactory — same code, same address, same threshold needed if you want it usable across chains; some chains may need a follow-up deploy with the same factory + same salt).
 
-### Step 2: Update `@greg/sdk` source of truth
+### Step 2: Update `@ophis/sdk` source of truth
 
 Edit `/Users/scep/greg/packages/sdk/src/partner-fee.ts`:
 ```typescript
@@ -441,7 +441,7 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
 
 ### Step 3: Update inline mirror in cowswap fork
 
-Edit `/Users/scep/greg/apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts`:
+Edit `/Users/scep/greg/apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts`:
 ```typescript
 const OPHIS_PARTNER_FEE_RECIPIENT = '0x<NEW_SAFE_ADDRESS>' as const
 ```
@@ -450,8 +450,8 @@ const OPHIS_PARTNER_FEE_RECIPIENT = '0x<NEW_SAFE_ADDRESS>' as const
 
 ```bash
 cd /Users/scep/greg
-pnpm --filter @greg/sdk test
-pnpm --filter @greg/sdk typecheck
+pnpm --filter @ophis/sdk test
+pnpm --filter @ophis/sdk typecheck
 
 cd apps/frontend
 pnpm run build:cowswap 2>&1 | tail -5
@@ -460,15 +460,15 @@ Expected: 7 sdk tests still pass (4 of them assert `recipient` matches the const
 
 ### Step 5: Update docs
 
-Edit `apps/frontend/.greg-divergences.md` to note the recipient change. Edit `docs/development/safe-app-submission.md` and `docs/development/phase-1-5-validation.md` to reflect the new recipient (search-replace the old EOA address).
+Edit `apps/frontend/.ophis-divergences.md` to note the recipient change. Edit `docs/development/safe-app-submission.md` and `docs/development/phase-1-5-validation.md` to reflect the new recipient (search-replace the old EOA address).
 
 ### Step 6: Commit
 
 ```bash
 cd /Users/scep/greg
 git add packages/sdk/src/partner-fee.ts \
-        apps/frontend/apps/cowswap-frontend/src/greg/partnerFeeDefault.ts \
-        apps/frontend/.greg-divergences.md \
+        apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts \
+        apps/frontend/.ophis-divergences.md \
         docs/development/
 git status
 git commit -m "feat(partnerFee): upgrade recipient from single-sig EOA to multisig Safe"
@@ -731,11 +731,11 @@ Commit: `git commit -m "docs(launch): Product Hunt draft"`
 
 **Files:**
 - Create: `docs/development/phase-2-5-validation.md`
-- Modify: `apps/frontend/.greg-divergences.md` (add Phase 2.5 entries)
+- Modify: `apps/frontend/.ophis-divergences.md` (add Phase 2.5 entries)
 
 ### Step 1: Append Phase 2.5 divergences
 
-Open `apps/frontend/.greg-divergences.md`. Append:
+Open `apps/frontend/.ophis-divergences.md`. Append:
 
 ```markdown
 ## Modified (Phase 2.5, 2026-05-XX)
@@ -794,7 +794,7 @@ GPv2Settlement + GPv2VaultRelayer bytecode unchanged on MegaETH (chainId
 
 ```bash
 cd /Users/scep/greg
-git add apps/frontend/.greg-divergences.md docs/development/phase-2-5-validation.md
+git add apps/frontend/.ophis-divergences.md docs/development/phase-2-5-validation.md
 git status
 git commit -m "docs(phase-2-5): close-out — Ophis launched publicly"
 git push

@@ -3,8 +3,8 @@
 > **Date:** 2026-05-07
 > **Owner:** Clement (san-npm)
 > **Implements:** `apps/frontend/apps/cowswap-frontend/public/greg-*.svg`,
-> `apps/frontend/apps/cowswap-frontend/src/greg/tokens.ts`,
-> `apps/frontend/apps/cowswap-frontend/src/greg/styles.css`
+> `apps/frontend/apps/cowswap-frontend/src/ophis/tokens.ts`,
+> `apps/frontend/apps/cowswap-frontend/src/ophis/styles.css`
 > **Supersedes (in part):** `2026-05-06-ophis-brand-foundations.md` §7 mascot decision
 
 ---

@@ -3,7 +3,7 @@
 > **Date:** 2026-05-06
 > **Owner:** Clement (san-npm)
 > **Source:** Nucleus UI Lite (Gumroad, Lite/free tier) + brand brief 2026-05-06
-> **Implements:** `apps/frontend/apps/cowswap-frontend/src/greg/tokens.ts`
+> **Implements:** `apps/frontend/apps/cowswap-frontend/src/ophis/tokens.ts`
 
 ---
 

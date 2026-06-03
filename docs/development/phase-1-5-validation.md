@@ -21,7 +21,7 @@ $ grep -li ba6da6bb0fc6a3fabd69a3fceb25af4a35a8c76e /tmp/greg-bundles/*.js
 /tmp/greg-bundles/index-BRwvh4_w.js
 ```
 
-Recipient hex baked into the production bundle. The patched `injectedWidgetPartnerFeeAtom` (Phase 1.5 Task 4, commit `feb704659`) is live in the deployment. Title tag also confirms `<title>Greg</title>`.
+Recipient hex baked into the production bundle. The patched `injectedWidgetPartnerFeeAtom` (Phase 1.5 Task 4, commit `feb704659`) is live in the deployment. Title tag also confirms `<title>Ophis</title>`.
 
 ### Tier 2: api.cow.fi records partner fee
 
@@ -31,7 +31,7 @@ Programmatic order submitted with `appData.metadata.partnerFee = {volumeBps: 5, 
 - **Trader:** `0x412cbCCe46FCBa707A3190ECEd8113Bbc2c294aB` (Phase-0 reuse, Keychain `ophis-chiado-test`)
 - **Pair:** WETH (`0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14`) → COW (`0x0625afb445c3b6b7b929342a04a22599fd5dbb59`)
 - **Amount in:** 0.0005 WETH (`500000000000000` wei before fee)
-- **appData JSON:** `{"version":"1.4.0","appCode":"greg","metadata":{"partnerFee":{"volumeBps":5,"recipient":"0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E"}}}`
+- **appData JSON:** `{"version":"1.4.0","appCode":"ophis","metadata":{"partnerFee":{"volumeBps":5,"recipient":"0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E"}}}`
 - **appDataHash:** `0x768d637a8d585f23012c53fbf58965778fea89a1455062080b0271ec66364c53` (matches CoW's quote response — confirms hash agreement)
 - **Order UID:** `0x8e03c24db84f4e74bae2d869e989088d643164f869acf0bd5ba8806ee6e915a2412cbcce46fcba707a3190eced8113bbc2c294ab69f79657`
 - **POST /api/v1/orders response:** HTTP 201
@@ -59,14 +59,14 @@ The order didn't just get accepted — a CoW solver picked it up and settled it 
 
 ## Phase 1.5 verdict: PASS
 
-The patched `injectedWidgetPartnerFeeAtom` produces the partner-fee `appData` we configured. CoW Protocol's API ingests it, records it, and a CoW solver settled the swap on Sepolia mainnet. Same patch will produce the same effect on every order from the deployed Greg.app on every CoW-supported chain (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink, Gnosis) — the atom modification is chain-independent.
+The patched `injectedWidgetPartnerFeeAtom` produces the partner-fee `appData` we configured. CoW Protocol's API ingests it, records it, and a CoW solver settled the swap on Sepolia mainnet. Same patch will produce the same effect on every order from the deployed Ophis.app on every CoW-supported chain (Ethereum, BNB, Base, Arbitrum, Polygon, Avalanche, Linea, Plasma, Ink, Gnosis) — the atom modification is chain-independent.
 
 ## Operational notes
 
 - **Vercel SSO state:** the verification preview was deployed while project-level `ssoProtection` was disabled. Project-level SSO re-enabled (`{"deploymentType":"preview"}`) after verification. Existing deployment URLs deployed before the re-enable retain their original open state (Vercel locks deployment-level SSO at build time). Future preview deploys triggered by pushes to `main` will be gated. The current open URL is hash-randomized (`fvnctfrq9`) and de-facto private.
 - **Vercel ↔ GitHub link** restored during this phase via `vercel git connect https://github.com/san-npm/greg`. Push-triggered auto-deploys now fire.
-- **Cowswap fork divergences** tracked in `apps/frontend/.greg-divergences.md`. Two new modifications relative to upstream: `injectedWidgetParamsAtom.ts` partner-fee fallback, and the new `apps/cowswap-frontend/src/greg/partnerFeeDefault.ts` constants file.
-- **`@greg/sdk` v0.0.1** now exports `gregDefaultPartnerFee(chainId)`, `OPHIS_PARTNER_FEE_RECIPIENT`, `OPHIS_PARTNER_FEE_BPS`, `COW_SUPPORTED_CHAIN_IDS`. Mirror of constants in the cowswap fork; keep in sync.
+- **Cowswap fork divergences** tracked in `apps/frontend/.ophis-divergences.md`. Two new modifications relative to upstream: `injectedWidgetParamsAtom.ts` partner-fee fallback, and the new `apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts` constants file.
+- **`@ophis/sdk` v0.0.1** now exports `gregDefaultPartnerFee(chainId)`, `OPHIS_PARTNER_FEE_RECIPIENT`, `OPHIS_PARTNER_FEE_BPS`, `COW_SUPPORTED_CHAIN_IDS`. Mirror of constants in the cowswap fork; keep in sync.
 
 ## Open follow-ups
 
