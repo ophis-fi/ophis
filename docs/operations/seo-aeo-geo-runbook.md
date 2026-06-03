@@ -51,10 +51,15 @@ structured data.
 - **Google Search Console + Bing Webmaster**: verified by the operator.
 - **Yandex Webmaster**: verified via a DNS-TXT record on the `ophis.fi` apex,
   `yandex-verification: a34df2b7b99d0c54` (added via the Cloudflare API; the token
-  now has `Zone -> DNS:Edit` records again). A domain property on the apex covers
-  all subdomains. Meta-tag fallback slots, if ever needed: landing
-  `src/layouts/Base.astro` `<head>`, swap `index.html` `<head>`, docs
-  `docusaurus.config.ts` `themeConfig.metadata`.
+  now has `Zone -> DNS:Edit` records again). **Caveat:** unlike Google Search
+  Console / Bing **domain** properties (one apex verification covers every
+  subdomain), Yandex Webmaster verifies each **site/host separately**. The apex
+  DNS-TXT verifies `ophis.fi` itself; to own `swap.ophis.fi`, `docs.ophis.fi`, or
+  `business.ophis.fi` data in Yandex you must still ADD each host in Yandex
+  Webmaster and verify it (the same apex DNS-TXT is accepted as the verification
+  method, but each host is a separate site that must be added + verified). Meta-tag
+  fallback slots, if ever needed: landing `src/layouts/Base.astro` `<head>`, swap
+  `index.html` `<head>`, docs `docusaurus.config.ts` `themeConfig.metadata`.
 
 ### 2. Google Analytics 4 (DONE: G-NG9YX5G9CM, Consent Mode default-denied)
 
@@ -89,28 +94,24 @@ full (cookied) measurement; until then GA reports limited/modeled data. As wired
 OPEN follow-up (no operator input strictly needed): a minimal opt-in **consent
 banner** to upgrade Consent Mode to `granted` (for full data) on the surfaces.
 
-### (reference) swap CSP detail
+### (reference) swap CSP, as implemented
 
-The swap app deploys to **Cloudflare Pages**, so the enforced CSP is
-  `apps/frontend/apps/cowswap-frontend/public/_headers`, **not** `vercel.ts` (the
-  latter is the upstream CoW Vercel config and is not the deployed surface). The
-  `_headers` `script-src` is `'self' 'wasm-unsafe-eval' 'unsafe-eval'
-  https://challenges.cloudflare.com`, with **no `unsafe-inline`, nonce, or hash**.
-  Two consequences for gtag, both must be handled:
-    1. The **external** `gtag.js` is blocked until you add
-       `https://www.googletagmanager.com` and `https://www.google-analytics.com`
-       to `script-src` in `_headers`.
-    2. The standard gtag **inline bootstrap** (`window.dataLayer = []; gtag('config', ID)`)
-       is **also** blocked by the same CSP (it is an inline script element). Do
-       **not** add an inline `<script>` for it. Instead either (a) load `gtag.js`
-       and call `gtag(...)` from app TypeScript so there is no inline element
-       (preferred), or (b) un-stub the existing **DOM-created** GTM path in
-       `src/cow-react/index.tsx` (`initGtm()` appends a `<script src>` element
-       programmatically, so it needs only the host allowance above, not an
-       inline-script hash). A `react-helmet-async` external-`src` tag is fine; an
-       inline config block is not (it would need its own sha256 hash in `_headers`).
-  `connect-src` already allows `https:`, so the analytics beacons are fine. See
-  `apps/frontend/.ophis-divergences.md` for the GTM-stub divergence.
+The swap app deploys to **Cloudflare Pages**, so the enforced CSP lives in
+`apps/frontend/apps/cowswap-frontend/public/_headers`, **not** `vercel.ts` (the
+latter is the upstream CoW Vercel config and is not the deployed surface). As
+shipped for GA4, `script-src` is `'self' 'wasm-unsafe-eval' 'unsafe-eval'
+https://challenges.cloudflare.com https://www.googletagmanager.com` (still **no
+`unsafe-inline`, nonce, or hash**). Two gtag constraints this design respects:
+
+1. The external `gtag.js` loads because `https://www.googletagmanager.com` is in
+   `script-src`; GA4 beacons to `*.google-analytics.com` are covered by
+   `connect-src 'self' https:`.
+2. There is deliberately **no inline gtag bootstrap** (an inline `<script>` would
+   be blocked by this CSP). The bundled `src/ophis/analytics/initGa4.ts` module
+   DOM-injects `gtag.js` and runs consent-default + config from app code instead.
+   Any future inline `<script>` would need its own sha256 hash added to `_headers`
+   (the landing already does this for its inline gtag). See
+   `apps/frontend/.ophis-divergences.md` for the CoW-GTM-stub divergence.
 - **landing**: add an inline gtag `<script is:inline>` in `Base.astro`, then
   regenerate the strict-CSP hash list (`scripts/check-csp-hashes.mjs`) and
   update `public/_headers` `script-src` (the landing CSP pins per-script
