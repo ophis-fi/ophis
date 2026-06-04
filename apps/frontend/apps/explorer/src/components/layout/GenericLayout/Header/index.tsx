@@ -72,8 +72,11 @@ export const Header: React.FC<Props> = ({ children, linkTo, onClickOptional }) =
   return (
     <HeaderStyled>
       <Logo to={linkTo || '/'} onClick={(event): void => onClickOptional && onClickOptional(event)}>
+        {/* Ophis: render the Ophis wordmark (the CowSwap variant art was rebranded
+            to Ophis in-place) rather than the upstream CoW Explorer wordmark, so the
+            explorer header carries Ophis branding, not CoW's. */}
         <ProductLogo
-          variant={ProductVariant.CowExplorer}
+          variant={ProductVariant.CowSwap}
           overrideColor={`var(${UI.COLOR_NEUTRAL_100})`}
           logoIconOnly={isUpToMedium}
         />

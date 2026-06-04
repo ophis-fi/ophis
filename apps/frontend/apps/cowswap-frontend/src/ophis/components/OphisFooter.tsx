@@ -81,6 +81,9 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
               <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
             </li>
             <li>
+              <styledEl.ExternalLink href="https://explorer.ophis.fi/">Explorer</styledEl.ExternalLink>
+            </li>
+            <li>
               <styledEl.InternalLink to="/learn">Learn</styledEl.InternalLink>
             </li>
             <li>
