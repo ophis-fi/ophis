@@ -32,7 +32,7 @@ that proxies [LibertAI](https://libertai.io)'s **Qwen 3.6 27B**
 `temperature: 0` for deterministic extraction. The proxy:
 
 - holds the LibertAI API key server-side (browsers never see it),
-- validates extracted tokens against an internal allowlist of 200+
+- validates extracted tokens against an internal allowlist of 236
   DEX-traded symbols,
 - validates the chain against the set the network selector can actually
   route to, and
