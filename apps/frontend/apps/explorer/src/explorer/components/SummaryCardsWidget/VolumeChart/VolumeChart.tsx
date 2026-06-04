@@ -254,7 +254,7 @@ export function VolumeChart({
     <>
       <WrapperChart ref={chartContainerRef}>
         <ContainerTitle captionColor={captionNameColor}>
-          <h3>CoW Protocol {periodTitle} volume</h3>
+          <h3>Protocol {periodTitle} volume</h3>
           <span>
             {isLoading ? (
               <StyledShimmerBar height={2} />
