@@ -152,7 +152,7 @@ Settlement, VaultRelayer, AllowList authenticator are the trio.
 | Submitter PK | Mac mini at `/Users/ophis-driver/.config/submitter.key` | Settlement dispatch blocked. Solver shows liveness alarm. Recovery: Section 4.2 to rotate the EOA. |
 | Ledger #1, #2, #3 | Clement's home, separately stored | If 1 is lost, still 2-of-3 → ops continue. If 2 are lost, Safe is bricked — need to factory-reset survivor + seed-restore, OR deploy a new Safe + migrate (Settlement contract `manager()` is non-rotatable, so a Safe loss = redeploy authenticator). |
 | Cloudflare account | `4761b41ef352631db0ed367fea98ffdc` | DNS + tunnels (`mcp-api.3615crypto.com`, `allo.3615crypto.com`, `optimism-mainnet.ophis.fi`) AND the Ophis frontends (Cloudflare Pages — see next row). Account loss = everything below it down. |
-| Cloudflare Pages (frontends) | `4761b41ef352631db0ed367fea98ffdc` account | All three live surfaces are CF Pages projects, auto-deployed from `ophis-fi/ophis` master via GitHub Actions (`wrangler pages deploy`): project `greg` → `swap.ophis.fi`, `ophis-docs` → `docs.ophis.fi`, `ophis-landing` → `ophis.fi`. MCP server is a CF Worker (`@ophis/mcp-server`). NOT Vercel — the `vercel.json` files in the repo are inherited CoW upstream sub-apps, not the deployed surfaces. Stop = static frontend cached at edge for a while, then 404. |
+| Cloudflare Pages (frontends) | `4761b41ef352631db0ed367fea98ffdc` account | All three live surfaces are CF Pages projects, auto-deployed from `ophis-fi/ophis` main via GitHub Actions (`wrangler pages deploy`): project `greg` → `swap.ophis.fi`, `ophis-docs` → `docs.ophis.fi`, `ophis-landing` → `ophis.fi`. MCP server is a CF Worker (`@ophis/mcp-server`). NOT Vercel — the `vercel.json` files in the repo are inherited CoW upstream sub-apps, not the deployed surfaces. Stop = static frontend cached at edge for a while, then 404. |
 | Aleph VMs | postiz-stuart, mcp-services, allo.3615crypto | None are load-bearing for Ophis core (these are Stuart / mcp / allo work). |
 | Tailscale | `100.100.107.110` (Mac mini IP) | Remote shell into Mac mini stops working. Stack stays up. |
 | GitHub `ophis-fi/ophis` | org `ophis-fi` (owned by the `san-npm` account) | Source of truth. Canonical remote: `https://github.com/ophis-fi/ophis.git`. `san-npm` is the personal account that owns the org — the repo slug is always `ophis-fi/ophis`. |
@@ -270,7 +270,7 @@ expired ~24h after the 2026-05-19 pause.
 - **`ophis.fi`**: Cloudflare Dashboard → Domains → ophis.fi → ensure
   auto-renew on. Account: Clement's email.
 - **Frontend deployment (Cloudflare Pages)**: all three surfaces
-  auto-deploy from `ophis-fi/ophis` master via GitHub Actions
+  auto-deploy from `ophis-fi/ophis` main via GitHub Actions
   (`wrangler pages deploy`): project `greg` → `swap.ophis.fi`,
   `ophis-docs` → `docs.ophis.fi`, `ophis-landing` → `ophis.fi`. To
   trigger manually, re-run the relevant workflow or run the
@@ -309,17 +309,24 @@ backup itself cannot be hacked.
 
 Daily dump → S3-compatible storage with version retention.
 
-**Suggested:** 
+**Automated (this is where the real dumps live during DR):** a LaunchAgent on
+the Mac mini runs `infra/shared/cron/postgres-backup.sh` daily at 03:30 (see
+`postgres-backup-setup.md`). It writes `op-YYYY-MM-DD.pgdump` (mode 0600, 14-day
+local retention) to:
 ```bash
-# LaunchAgent on Mac mini, daily at 03:30 (see postgres-backup-setup.md), 14-day retention:
+$HOME/.local/state/ophis/pg-backups/op-$(date +%F).pgdump
+```
+The script also validates each dump, prunes old ones, and pushes off-site when
+`REMOTE_BACKUP_CMD` is set (Backblaze B2 / AWS S3 / Hetzner Storage Box, ~$1/mo).
+
+Manual one-off to the SAME location (do not invent a `~/backups/` path; DR looks
+in the dir above):
+```bash
 docker exec optimism-mainnet-db-1 pg_dump -Fc -U ophis ophis \
-  > ~/backups/ophis-$(date +%F).pgdump
+  > "$HOME/.local/state/ophis/pg-backups/op-$(date +%F).pgdump"
 ```
 
-Push to Backblaze B2 / AWS S3 / Hetzner Storage Box. ~$1/mo for adequate
-retention.
-
-Restore: `pg_restore -d ophis -U ophis < ophis-2026-XX-XX.pgdump`.
+Restore: `pg_restore -d ophis -U ophis < "$HOME/.local/state/ophis/pg-backups/op-2026-XX-XX.pgdump"`.
 
 ### 5.3 Ledger seed phrases
 
@@ -387,7 +394,7 @@ checkout, but zero context. Order of operations:
    docker compose logs autopilot --since=2m | grep -iE "error|panic" | tail -10
    ```
 8. **Bring up FE separately**: the frontends are Cloudflare Pages, not
-   Vercel. Push to `ophis-fi/ophis` master (GitHub Actions runs
+   Vercel. Push to `ophis-fi/ophis` main (GitHub Actions runs
    `wrangler pages deploy` for `greg`/`ophis-docs`/`ophis-landing`), or
    run the workflow's `wrangler pages deploy` command against a local
    build. See §4.4.
