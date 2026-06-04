@@ -21,6 +21,12 @@ const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g,
 
 const MAX_ALERT_TOKENS = 12;
 
+// Advisory-lock key for runBatcher single-flight. MUST be distinct from
+// fetcher.ts's FETCHER_LOCK_KEY (770042) / PIPELINE_LOCK_KEY (770043): the cron
+// path nests runBatcher inside withPipelineLock, so reusing the pipeline key
+// would self-deadlock (a second reserved connection can't re-acquire it). (Codex P1)
+const BATCHER_LOCK_KEY = 770044;
+
 export interface BatcherDeps {
   readonly chainId: number;                                            // payout chain (100 in Phase 1)
   readonly rpcUrl: string;
@@ -49,7 +55,47 @@ function cycleMonthKey(now: Date): string {
   return `${y}-${m}-01`;
 }
 
+/**
+ * Single-flight wrapper around the real batcher. runBatcher has TWO entrypoints:
+ * the nightly cron (already serialized by withPipelineLock) AND the CLI
+ * (`simulate-batch` / `dry-run-monthly` in cli.ts call it directly, with NO
+ * pipeline lock). Without a guard here, an overlapping manual run that hits the
+ * duplicate-cycle branch would treat the live run's 'computing' row as stale and
+ * delete its entries — or, for two proposers, queue a second Safe payout. A
+ * dedicated Postgres advisory lock makes runBatcher mutually exclusive across
+ * BOTH paths; once held, any 'computing' row seen below is provably a crashed
+ * prior run, never a live one, so the resume logic is unambiguously safe. The
+ * lock is released before the fire-and-forget execution polling detaches (which
+ * only updates an already-'proposed' row, against which concurrent runs abort).
+ * (Codex P1)
+ */
 export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Promise<BatcherResult> {
+  // SESSION-level lock ⇒ acquire + release MUST run on the same backend
+  // connection; reserve a dedicated one for the lock's lifetime (the work runs on
+  // the pool). Mirrors withPipelineLock in fetcher.ts.
+  const lockConn = await sql.reserve();
+  let locked = false;
+  try {
+    const [lk] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${BATCHER_LOCK_KEY}) AS locked`;
+    locked = lk?.locked === true;
+    if (!locked) {
+      log.error({ cycleMonth: cycleMonthKey(now) }, 'another batcher run holds the advisory lock; aborting to avoid a concurrent cycle');
+      throw new Error('batcher: another run holds the advisory lock; aborting to avoid a concurrent cycle (would risk deleting a live batch\'s entries or a duplicate Safe proposal)');
+    }
+    return await runBatcherLocked(deps, now);
+  } finally {
+    if (locked) {
+      try {
+        await lockConn`SELECT pg_advisory_unlock(${BATCHER_LOCK_KEY})`;
+      } catch (err) {
+        log.error({ err }, 'batcher advisory unlock failed');
+      }
+    }
+    lockConn.release();
+  }
+}
+
+async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherResult> {
   const cycleMonth = cycleMonthKey(now);
   log.info({ cycleMonth, chainId: deps.chainId, proposeEnabled: deps.proposeEnabled }, 'batcher start');
 
@@ -148,6 +194,34 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
       return { batchId: row.id, status: 'proposing', safeTxHash: null, recipientCount: 0, poolWei: pool };
     }
 
+    // EXECUTION FAILED: a prior cycle was proposed (hash persisted), signed, and
+    // executed on-chain, but the Safe tx reported failure — poll.ts wrote 'failed'
+    // WITHOUT clearing safe_proposal_hash. Recipients were NOT paid, yet a proposal
+    // existed and may have moved partial value, so auto-re-proposing risks a
+    // duplicate payout. Must come BEFORE the generic has-hash block below, which
+    // would otherwise coerce this row to 'proposed' and make the cron path emit a
+    // false "batch ready to sign" alert. Abort, alert, and return the real
+    // 'failed' status for human triage. (Codex P2)
+    if (row.status === 'failed' && row.safeProposalHash != null) {
+      log.error(
+        { cycleMonth, batchId: row.id, safeProposalHash: row.safeProposalHash },
+        'cycle previously FAILED execution; manual on-chain verification required before any retry',
+      );
+      void alerts
+        .alert(
+          'batcher',
+          `Rebate cycle ${cycleMonth} previously FAILED execution (Safe tx ${row.safeProposalHash}); recipients were NOT paid. Verify on-chain whether any transfer settled before deciding to re-propose — do NOT blindly re-trigger.`,
+        )
+        .catch((e) => log.warn({ err: e }, 'failed-cycle alert failed'));
+      return {
+        batchId: row.id,
+        status: 'failed',
+        safeTxHash: row.safeProposalHash,
+        recipientCount: 0,
+        poolWei: pool,
+      };
+    }
+
     // ABORT if this cycle already has a live/terminal Safe proposal —
     // re-proposing would queue a second Safe payout for the same month.
     if (
@@ -174,7 +248,9 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
 
     // RESUME a stuck pre-propose row ('computing'/'failed', no Safe proposal):
     // reuse it, refresh the pool/fee snapshot, and clear any stale entries so the
-    // recompute below is clean.
+    // recompute below is clean. SAFE because the advisory lock (held since the top
+    // of runBatcher) guarantees no other batcher is live, so this 'computing' row
+    // is a crashed prior run — never a sibling mid-compute. (Codex P1)
     log.warn(
       { cycleMonth, batchId: row.id, status: row.status },
       'resuming incomplete cycle (recompute + re-propose)',
@@ -221,6 +297,12 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
   await db.insert(schema.rebateBatchEntries).values(entryRows);
 
   if (good.length === 0) {
+    // INVARIANT: this 'failed' is written with NO safe_proposal_hash (none exists
+    // yet — propose runs below). That is what lets the duplicate-cycle handler
+    // above disambiguate the two 'failed' meanings purely by hash presence:
+    //   failed + NO hash  → all-quarantined here, no proposal queued  → RESUME;
+    //   failed + hash     → a proposal executed and reverted (poll.ts) → ABORT (P2a).
+    // Do NOT set a hash on this path, or a recoverable cycle would be wedged.
     await db.update(schema.rebateBatches).set({ status: 'failed' })
       .where(eq(schema.rebateBatches.id, batchId));
     log.error({ batchId, badCount: bad.length }, 'all recipients quarantined');
@@ -232,12 +314,15 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
     log.info({ batchId, recipientCount: good.length, poolWei: pool.toString() }, 'dry-run only, not proposing');
     return { batchId, status: 'computing', safeTxHash: null, recipientCount: good.length, poolWei: pool };
   }
-  // Mark 'proposing' BEFORE the external Safe-proposal call. If the process dies
-  // between the Safe Tx Service accepting the proposal and us persisting its hash
-  // (these are not atomic), the next run sees 'proposing' and requires manual
-  // verification rather than auto-re-proposing a possible duplicate (audit P2-3).
-  await db.update(schema.rebateBatches).set({ status: 'proposing', proposedAt: new Date() })
-    .where(eq(schema.rebateBatches.id, batchId));
+  // The row stays 'computing' through proposeRebateBatch's LOCAL pre-submit work
+  // (Safe init, RPC reads, tx build, hash, signing). It flips to 'proposing' only
+  // inside onBeforeSubmit — fired immediately before the Safe Transaction Service
+  // POST — so a transient RPC/config failure during pre-submit leaves the cycle
+  // 'computing' and auto-resumable instead of wedged into manual verification.
+  // `submitAttempted` is set ONLY after the row is durably 'proposing', so it is
+  // true iff a submit could have queued a proposal (and our hash-write is not
+  // atomic with it). (Codex P2)
+  let submitAttempted = false;
   let safeTxHash: `0x${string}`;
   try {
     ({ safeTxHash } = await proposeRebateBatch({
@@ -245,16 +330,31 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
       rpcUrl: deps.rpcUrl,
       proposerPrivateKey: deps.proposerPrivateKey,
       transfers: good,
+      onBeforeSubmit: async () => {
+        await db.update(schema.rebateBatches).set({ status: 'proposing', proposedAt: new Date() })
+          .where(eq(schema.rebateBatches.id, batchId));
+        submitAttempted = true;
+      },
     }));
   } catch (err) {
-    // Leave the row 'proposing' (NOT auto-resumable): a thrown timeout/connection
-    // reset can still mean the Safe service accepted the proposal while we never
-    // saw the response, so we cannot prove no proposal exists. The next run's
-    // 'proposing' branch alerts for manual Safe-queue verification (audit P2-3).
-    log.error({ err, batchId, cycleMonth }, 'propose attempt failed; left as proposing for manual verification');
-    void alerts
-      .alert('batcher', `Rebate cycle ${cycleMonth} propose attempt FAILED. A Safe proposal may or may not have been created — verify the Safe queue manually before retrying.`)
-      .catch((e) => log.warn({ err: e }, 'propose-failed alert failed'));
+    if (submitAttempted) {
+      // Failure AT/AFTER the Safe-service submit: the service may have accepted the
+      // proposal before the connection dropped, yet we never persisted a hash. Row
+      // is 'proposing' → the next run requires manual Safe-queue verification rather
+      // than auto-re-proposing a possible duplicate. (Codex P2-3)
+      log.error({ err, batchId, cycleMonth }, 'submit attempt failed; left as proposing for manual verification');
+      void alerts
+        .alert('batcher', `Rebate cycle ${cycleMonth} Safe submit attempt FAILED after the proposal was sent. A proposal may or may not exist — verify the Safe queue manually before retrying.`)
+        .catch((e) => log.warn({ err: e }, 'submit-failed alert failed'));
+    } else {
+      // Failure during LOCAL pre-submit work: no proposal can have been queued. The
+      // row is still 'computing' → the next run safely RESUMES (recompute +
+      // re-propose), so a flaky RPC no longer wedges the month into manual-only.
+      log.error({ err, batchId, cycleMonth }, 'pre-submit failed; cycle left computing for automatic resume');
+      void alerts
+        .alert('batcher', `Rebate cycle ${cycleMonth} failed BEFORE the Safe submit (no proposal queued); it will auto-resume on the next batcher run.`)
+        .catch((e) => log.warn({ err: e }, 'pre-submit-failed alert failed'));
+    }
     throw err;
   }
   await db.update(schema.rebateBatches).set({
