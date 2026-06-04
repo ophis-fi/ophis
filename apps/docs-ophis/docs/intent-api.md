@@ -103,7 +103,7 @@ On success, `200 OK` with a `ParsedIntent`:
 | `start` | integer | 0-indexed start offset of `raw` (inclusive). |
 | `end` | integer | 0-indexed end offset of `raw` (exclusive). `text.slice(start, end) === raw`. |
 
-**Token values** are validated against an internal allowlist (200+
+**Token values** are validated against an internal allowlist (236
 DEX-traded symbols). Unknown symbols are filtered out, the response
 still includes the other entities, with the unknown one omitted.
 
