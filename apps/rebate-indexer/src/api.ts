@@ -149,14 +149,25 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         (SELECT MAX(ran_at)::text FROM pipeline_runs) AS last_pipeline_run_at,
         (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at
     `;
-    const pendingRows = await sql<{ pending: string }[]>`
-      SELECT COUNT(*)::text AS pending FROM rebate_batches WHERE status IN ('computing','proposing','proposed')
+    // pending_batches = in-flight (computing/proposing/proposed) — expected to be
+    // transient. failed_batches = cycles that did NOT pay out (execution reverted,
+    // or all recipients quarantined) and need human triage. The nightly reconciler
+    // alerts via Telegram, but that is fire-and-forget; exposing failed_batches on
+    // this PUBLIC, rate-permissive endpoint lets an external uptime monitor catch a
+    // non-paying cycle even if the Telegram alert is dropped. Count only, no wallet
+    // data. (audit 2026-06 P3)
+    const batchCountRows = await sql<{ pending: string; failed: string }[]>`
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('computing','proposing','proposed'))::text AS pending,
+        COUNT(*) FILTER (WHERE status = 'failed')::text AS failed
+      FROM rebate_batches
     `;
     const last_fetch = healthRows[0]?.last_fetch ?? null;
     const last_fetch_attempt = healthRows[0]?.last_fetch_attempt ?? null;
     const last_pipeline_run_at = healthRows[0]?.last_pipeline_run_at ?? null;
     const last_batcher_run_at = healthRows[0]?.last_batcher_run_at ?? null;
-    const pending = pendingRows[0]?.pending ?? '0';
+    const pending = batchCountRows[0]?.pending ?? '0';
+    const failed = batchCountRows[0]?.failed ?? '0';
     return {
       ok: true,
       last_fetch,
@@ -164,6 +175,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       last_pipeline_run_at,
       last_batcher_run_at,
       pending_batches: parseInt(pending, 10),
+      failed_batches: parseInt(failed, 10),
     };
   });
 
