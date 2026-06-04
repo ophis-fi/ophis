@@ -3,7 +3,7 @@
 **Created:** 2026-06-04. **Owner:** Clement.
 **Origin:** external security review (2026-06-04) plus the Cloudflare Security
 Insights scan of the same date.
-**Companion docs:** `../../THREAT-MODEL.md` (what a compromise can/cannot do),
+**Companion docs:** `./threat-model.md` (what a compromise can/cannot do),
 `../../SECURITY.md` (disclosure), `../operations/founder-bus-factor.md` (ops).
 
 This roadmap turns the threat model's known gaps into tracked, ordered work. It
@@ -66,8 +66,10 @@ user who signs a bad authorization, so this tier is first.
 
 ## P3 - governance and assurance (backlog)
 
-- Unify the partner-fee Safe threshold across chains (OP is 2-of-3,
-  Gnosis/Ethereum are 2-of-2). Roadmap task 1.8.
+- Upgrade the partner-fee Safe from 1-of-1 to 2-of-3 across all chains (OP,
+  Gnosis, Ethereum). It is currently 1-of-1 on every chain (single signer,
+  Clement's Ledger) per `../operations/founder-bus-factor.md`: the same blast
+  radius as a hot wallet until the threshold is raised. Roadmap task 1.8.
 - Add a second trusted operator with scoped access; run a tested cold-start
   dry-run of `founder-bus-factor.md` 7.
 - External audit of the Ophis-specific diffs (two-step-manager AllowList impl,
