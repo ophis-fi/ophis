@@ -11,8 +11,13 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
   } else if (isBarn) {
     baseUrl = process.env.REACT_APP_EXPLORER_URL_BARN || 'https://barn.explorer.cow.fi'
   } else {
-    // Production by default
-    baseUrl = process.env.REACT_APP_EXPLORER_URL_PROD || 'https://explorer.cow.fi'
+    // Production by default. Ophis runs its own rebranded explorer at
+    // explorer.ophis.fi (a fork of the CoW explorer app in apps/explorer),
+    // so order/address deep-links from the swap UI point there — same path
+    // scheme (`/gc`, `/arb1`, `/orders/<uid>`, …) as upstream. The dev/
+    // staging/barn defaults stay on cow.fi: those internal envs have no
+    // Ophis-hosted counterpart and are never user-facing in prod.
+    baseUrl = process.env.REACT_APP_EXPLORER_URL_PROD || 'https://explorer.ophis.fi'
   }
 
   return {
