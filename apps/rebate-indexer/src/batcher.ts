@@ -274,6 +274,23 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
 
   // 5. Compute shares.
   const shares = computeShares(wallets, pool);
+
+  // 5b. No QUALIFYING recipients: tracked wallets exist and the pool is nonzero,
+  //     but every wallet is below the entry floor (tier 'none' = zero weight), so
+  //     computeShares dropped them all. This became reachable when the $20k Bronze
+  //     floor was introduced (before that, any volume > 0 earned >= 10% weight).
+  //     Record terminal 'no_recipients' and bail BEFORE the empty-transfer path:
+  //     an empty batch must not (a) attempt an empty entry insert, nor (b) fall
+  //     into the `good.length === 0` branch and be recorded as 'failed' (no hash) —
+  //     which the duplicate-cycle guard would RESUME and recompute the same empty
+  //     result every run, wedging the cycle. (Codex P2, post-floor)
+  if (shares.size === 0) {
+    await db.update(schema.rebateBatches).set({ status: 'no_recipients' })
+      .where(eq(schema.rebateBatches.id, batchId));
+    log.info({ batchId, walletCount: wallets.length, poolWei: pool.toString() }, 'no qualifying recipients (all tracked wallets below the entry floor)');
+    return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: pool };
+  }
+
   const transfersAll: Transfer[] = [...shares.entries()].map(([to, amount]) => ({ to, amount }));
 
   // 6. Dry-run + quarantine.
