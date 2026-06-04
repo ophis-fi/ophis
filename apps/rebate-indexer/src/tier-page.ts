@@ -18,9 +18,11 @@ import type { WalletStatus } from './tierer.js';
 type TierName = WalletStatus['tier']['name'];
 
 const TIER_META: Record<TierName, { label: string; color: string }> = {
+  none: { label: 'Unranked', color: '#8b8ba3' },
   bronze: { label: 'Bronze', color: '#c98a5a' },
   silver: { label: 'Silver', color: '#b9c2cf' },
   gold: { label: 'Gold', color: '#e3b341' },
+  palladium: { label: 'Palladium', color: '#cdd6e0' },
   platinum: { label: 'Platinum', color: '#9fd8e6' },
 };
 

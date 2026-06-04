@@ -14,16 +14,19 @@
  */
 
 export interface Tier {
-  readonly name: 'bronze' | 'silver' | 'gold' | 'platinum'
+  readonly name: 'none' | 'bronze' | 'silver' | 'gold' | 'palladium' | 'platinum'
   readonly min_usd: number
   readonly rebate_pct: number
 }
 
+// `none` = sub-entry floor: < $20k 30-day volume earns no rebate (rebate_pct 0).
 export const TIERS: readonly Tier[] = [
-  { name: 'bronze', min_usd: 0, rebate_pct: 0.1 },
-  { name: 'silver', min_usd: 5_000, rebate_pct: 0.2 },
-  { name: 'gold', min_usd: 50_000, rebate_pct: 0.35 },
-  { name: 'platinum', min_usd: 500_000, rebate_pct: 0.5 },
+  { name: 'none', min_usd: 0, rebate_pct: 0 },
+  { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
+  { name: 'silver', min_usd: 50_000, rebate_pct: 0.15 },
+  { name: 'gold', min_usd: 100_000, rebate_pct: 0.25 },
+  { name: 'palladium', min_usd: 500_000, rebate_pct: 0.35 },
+  { name: 'platinum', min_usd: 1_000_000, rebate_pct: 0.5 },
 ] as const
 
 export const POOL_SPLIT_BPS = 5_000
