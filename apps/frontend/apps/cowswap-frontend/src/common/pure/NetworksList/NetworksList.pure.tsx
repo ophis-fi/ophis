@@ -83,11 +83,7 @@ export function NetworksList({
         return (
           <styledEl.ActiveRowWrapper key={targetChainId}>
             {rowContent}
-            <ActiveRowLinks
-              bridge={info.bridge}
-              helpCenterUrl={info.helpCenterUrl}
-              targetChainId={targetChainId}
-            />
+            <ActiveRowLinks helpCenterUrl={info.helpCenterUrl} targetChainId={targetChainId} />
           </styledEl.ActiveRowWrapper>
         )
       })}
