@@ -19,10 +19,10 @@ describe('@ophis/sdk tiers mirror apps/rebate-indexer/src/tiers.ts', () => {
     expect(POOL_SPLIT_BPS).toBe(INDEXER_POOL);
   });
 
-  it.each([0, 4_999.99, 5_000, 49_999.99, 50_000, 499_999.99, 500_000, 1_000_000_000])(
-    'assignTier(%s) matches indexer behaviour',
-    (volume) => {
-      expect(sdkAssign(volume)).toEqual(indexerAssign(volume));
-    },
-  );
+  it.each([
+    0, 19_999.99, 20_000, 49_999.99, 50_000, 99_999.99, 100_000, 499_999.99, 500_000, 999_999.99, 1_000_000,
+    1_000_000_000,
+  ])('assignTier(%s) matches indexer behaviour', (volume) => {
+    expect(sdkAssign(volume)).toEqual(indexerAssign(volume));
+  });
 });

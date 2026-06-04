@@ -56,13 +56,15 @@ wallets in proportion to their **30-day volume weighted by tier**:
 
 | Tier | 30-day volume | Weight |
 | --- | --- | --- |
-| Bronze | $0+ | 10% |
-| Silver | $5,000+ | 20% |
-| Gold | $50,000+ | 35% |
-| Platinum | $500,000+ | 50% |
+| Bronze | $20,000+ | 10% |
+| Silver | $50,000+ | 15% |
+| Gold | $100,000+ | 25% |
+| Palladium | $500,000+ | 35% |
+| Platinum | $1,000,000+ | 50% |
 
-A higher tier raises your weight in the split, so more volume earns a larger share
-of the pool. The pool is the WETH the fee Safe holds; fees collected in other tokens
-are not currently part of it. Your current tier is shown on the swap page.
+Wallets below $20,000 of 30-day volume are unranked and do not share in the rebate
+pool. A higher tier raises your weight in the split, so more volume earns a larger
+share of the pool. The pool is the WETH the fee Safe holds; fees collected in other
+tokens are not currently part of it. Your current tier is shown on the swap page.
 
 :::

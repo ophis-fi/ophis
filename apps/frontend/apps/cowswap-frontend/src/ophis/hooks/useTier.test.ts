@@ -22,9 +22,9 @@ describe('useTier privacy gate', () => {
             wallet: '0x0000000000000000000000000000000000000001',
             volume_30d_usd: 1234,
             trade_count_30d: 5,
-            tier: { name: 'bronze', min_usd: 0, rebate_pct: 0.1 },
-            next_tier: { name: 'silver', min_usd: 5_000, rebate_pct: 0.2 },
-            usd_to_next_tier: 3766,
+            tier: { name: 'none', min_usd: 0, rebate_pct: 0 },
+            next_tier: { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
+            usd_to_next_tier: 18_766,
           }),
       }) as unknown as Promise<Response>,
     )

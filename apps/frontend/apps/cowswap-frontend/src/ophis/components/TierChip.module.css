@@ -37,10 +37,13 @@
   }
 }
 
-.bronze   { color: #cd7f32; border-color: rgba(205,127,50,0.5);  background: rgba(205,127,50,0.06); }
-.silver   { color: #9aa3b2; border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
-.gold     { color: #d4af37; border-color: rgba(212,175,55,0.5);  background: rgba(212,175,55,0.06); }
-.platinum { color: #b9f2ff; border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }
+/* 'none' = sub-$20k floor (not yet earning): neutral ghost styling, like optIn. */
+.none      { color: rgba(245,239,230,0.55); border-color: rgba(245,239,230,0.18); background: transparent; }
+.bronze    { color: #cd7f32; border-color: rgba(205,127,50,0.5);  background: rgba(205,127,50,0.06); }
+.silver    { color: #9aa3b2; border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
+.gold      { color: #d4af37; border-color: rgba(212,175,55,0.5);  background: rgba(212,175,55,0.06); }
+.palladium { color: #ced0dd; border-color: rgba(206,208,221,0.5); background: rgba(206,208,221,0.06); }
+.platinum  { color: #b9f2ff; border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }
 
 /* Opt-in CTA — neutral ghost styling so it doesn't compete visually with
    the colored tier states. Reads as "discoverable but optional." */
