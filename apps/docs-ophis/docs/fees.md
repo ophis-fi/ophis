@@ -50,9 +50,9 @@ For the protocol-level details, see
 :::note[Positive-slippage rebates]
 
 Because the fee applies only to improvement, ordinary trades stay free, and the
-upside of solver competition flows back to traders. Each month, **50% of the fees
-Ophis collects** is paid out as rebates, split across active wallets in proportion
-to their **30-day volume weighted by tier**:
+upside of solver competition flows back to traders. Each month, **50% of the WETH
+fees accrued to the Ophis fee Safe** is paid out as rebates, split across active
+wallets in proportion to their **30-day volume weighted by tier**:
 
 | Tier | 30-day volume | Weight |
 | --- | --- | --- |
@@ -62,6 +62,7 @@ to their **30-day volume weighted by tier**:
 | Platinum | $500,000+ | 50% |
 
 A higher tier raises your weight in the split, so more volume earns a larger share
-of the pool. Your current tier is shown on the swap page.
+of the pool. The pool is the WETH the fee Safe holds; fees collected in other tokens
+are not currently part of it. Your current tier is shown on the swap page.
 
 :::
