@@ -37,9 +37,15 @@ vi.mock('../src/batch/propose.js', () => ({
     return { safeTxHash: ('0x' + 'ab'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '99'.repeat(20)) as `0x${string}` };
   }),
 }));
+// Controllable proposal status for the reconcile test (getProposalStatus); the batcher
+// tests don't use it. Hoisted so the vi.mock factory can close over it.
+const pollState = vi.hoisted(() => ({
+  status: { executed: false, isSuccessful: null as boolean | null, transactionHash: null as string | null },
+}));
 vi.mock('../src/batch/poll.js', () => ({
   // Fire-and-forget tail: resolve "not yet executed" so it never touches the row.
   waitForExecution: vi.fn(async () => ({ executed: false, isSuccessful: null, transactionHash: null })),
+  getProposalStatus: vi.fn(async () => pollState.status),
 }));
 
 const server = setupServer(
@@ -86,10 +92,12 @@ async function seedWallet(sql: Sql, addr20: string, volumeUsd: number) {
     VALUES (decode(${uid}, 'hex'), 100, decode(${addr20}, 'hex'), 1, now(), decode(${WETH}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis', ${volumeUsd}, now())`;
   await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
 }
-// Seed a prior cycle row directly (status + optional basis) to drive the basis read.
-async function seedBatch(sql: Sql, month: string, status: string, basisWei: bigint | null) {
+// Seed a prior cycle row directly (status + optional basis + optional pool) to drive
+// the basis read and the pool-payout-since detection. A POOL row = (basisWei=null,
+// poolWei>0); a DIRECT row = (basisWei set).
+async function seedBatch(sql: Sql, month: string, status: string, basisWei: bigint | null, poolWei: bigint = 0n) {
   await sql`INSERT INTO rebate_batches (cycle_month, net_fee_weth_wei, pool_weth_wei, status, fee_basis_weth_wei)
-    VALUES (${month}, 0, 0, ${status}, ${basisWei === null ? null : basisWei.toString()})`;
+    VALUES (${month}, 0, ${poolWei.toString()}, ${status}, ${basisWei === null ? null : basisWei.toString()})`;
 }
 
 beforeAll(async () => {
@@ -113,6 +121,7 @@ beforeEach(async () => {
   mockBalanceWei = 0n;
   badRecipients.clear();
   delete process.env.REBATE_FEE_BASIS_WEI;
+  pollState.status = { executed: false, isSuccessful: null, transactionHash: null };
 });
 
 describe('direct-mode accrual basis', () => {
@@ -176,7 +185,7 @@ describe('direct-mode accrual basis', () => {
     expect(BigInt(entry!.a)).toBe(ONE / 4n);
   });
 
-  it('quarantined recipient is DEFERRED: basis advances by OWED, not PAID (CRITICAL-2)', async () => {
+  it('quarantined recipient: unpaid rebate stays in the Safe, NOT redistributed (P2-4)', async () => {
     const sql = await getSql();
     await seedBatch(sql, MAY, 'executed', 9n * ONE);
     await seedWallet(sql, 'aa'.repeat(20), 100_000); // gold
@@ -187,9 +196,9 @@ describe('direct-mode accrual basis', () => {
     expect(r.status).toBe('proposed');
     expect(r.recipientCount).toBe(1); // only A is paid
     const [row] = await sql<{ b: string }[]>`SELECT fee_basis_weth_wei::text AS b FROM rebate_batches WHERE cycle_month = ${'2026-06-01'}`;
-    // owed = 0.125 (A) + 0.125 (B) = 0.25; basis = 10 - 0.25 = 9.75 (NOT 10 - 0.125 = 9.875).
-    // B's deferred 0.125 stays ABOVE the basis -> re-enters next cycle's delta, not kept as profit.
-    expect(BigInt(row!.b)).toBe(10n * ONE - ONE / 4n);
+    // basis = balance - PAID = 10 - 0.125 = 9.875 (the true post-payout balance). B's owed
+    // 0.125 stays in the Safe BELOW the basis -> NOT redistributed to A next cycle. (P2-4)
+    expect(BigInt(row!.b)).toBe(10n * ONE - ONE / 8n);
   });
 
   it('full lifecycle: cycle N+1 rebates ONLY the fees that arrived after cycle N executed', async () => {
@@ -207,5 +216,97 @@ describe('direct-mode accrual basis', () => {
     mockBalanceWei = expectedBasis + ONE / 4n; // 9.75 + 0.25 = 10
     const n1 = await runBatcher(JUN);
     expect(n1.poolWei).toBe(ONE / 4n); // distributable = 10 - 9.75 = 0.25, NOT the whole balance
+  });
+
+  it('rejects a malformed REBATE_FEE_BASIS_WEI instead of silently ignoring it (P2-1)', async () => {
+    process.env.REBATE_FEE_BASIS_WEI = '1.5e18'; // non-decimal typo: must THROW, not be treated as unset
+    mockBalanceWei = 10n * ONE;
+    await expect(runBatcher(JUN)).rejects.toThrow(/malformed/i);
+  });
+
+  it('persists the direct distributable into pool_weth_wei, not the stale 50% (P2-2)', async () => {
+    const sql = await getSql();
+    await seedBatch(sql, MAY, 'executed', 9n * ONE);
+    await seedWallet(sql, 'aa'.repeat(20), 100_000); // gold
+    mockBalanceWei = 10n * ONE; // distributable = 10 - 9 = 1 WETH (50%-of-balance would be 5)
+    const r = await runBatcher(JUN);
+    expect(r.status).toBe('proposed');
+    const [row] = await sql<{ p: string }[]>`SELECT pool_weth_wei::text AS p FROM rebate_batches WHERE cycle_month = ${'2026-06-01'}`;
+    expect(BigInt(row!.p)).toBe(1n * ONE);
+  });
+
+  it('re-baselines when a POOL payout executed since the last direct basis (P2-3)', async () => {
+    const sql = await getSql();
+    await seedBatch(sql, '2026-03-01', 'executed', 10n * ONE); // direct basis 10 (earlier id)
+    await seedBatch(sql, APR, 'executed', null, 6n * ONE); // POOL payout since (NULL basis, pool>0, later id)
+    await seedWallet(sql, 'aa'.repeat(20), 100_000); // gold: WITHOUT the fix this cycle PROPOSES
+    // Balance recovered to 11 (ABOVE the stale basis 10). WITHOUT the fix: distributable
+    // = 11-10 = 1 -> A earns a rebate -> status 'proposed', poolWei 1 (silent under-rebate of
+    // the gap). WITH the fix: a POOL payout since the basis -> re-baseline to 11 -> 0 -> none.
+    mockBalanceWei = 11n * ONE;
+    const r = await runBatcher(JUN);
+    expect(r.status).toBe('no_recipients'); // WITHOUT the fix this would be 'proposed'
+    expect(r.poolWei).toBe(0n); // WITHOUT the fix this would be 1 WETH
+    const [row] = await sql<{ b: string }[]>`SELECT fee_basis_weth_wei::text AS b FROM rebate_batches WHERE cycle_month = ${'2026-06-01'}`;
+    expect(BigInt(row!.b)).toBe(11n * ONE); // fresh baseline = current balance
+  });
+
+  it('alerts + re-baselines on a balance drop below the basis (withdrawal arm) (P2-3)', async () => {
+    const sql = await getSql();
+    const { alerts } = await import('../src/telegram/alerter.js');
+    await seedBatch(sql, MAY, 'executed', 10n * ONE); // direct basis 10, NO pool row
+    mockBalanceWei = 8n * ONE; // balance fell below the basis (a manual withdrawal)
+    const spy = vi.spyOn(alerts, 'alert').mockResolvedValue(undefined as never);
+    const r = await runBatcher(JUN);
+    expect(r.status).toBe('no_recipients');
+    const [row] = await sql<{ b: string }[]>`SELECT fee_basis_weth_wei::text AS b FROM rebate_batches WHERE cycle_month = ${'2026-06-01'}`;
+    expect(BigInt(row!.b)).toBe(8n * ONE); // re-baselined to current balance
+    // The withdrawal arm's observable effect is the operator alert (the DB outcome alone
+    // matches no_recipients either way) — assert the re-baseline alert fired.
+    expect(spy.mock.calls.some((c) => /stale|re-baselin/i.test(String(c[1])))).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('reconcile reports the actual PAID sum, not the (distributable) pool column (P2-2)', async () => {
+    const sql = await getSql();
+    const { reconcileBatches } = await import('../src/batch/reconcile.js');
+    const { alerts } = await import('../src/telegram/alerter.js');
+    // A proposed direct row whose pool_weth_wei = distributable (1 WETH), but only 0.25 WETH
+    // is actually paid: one good entry (0.25) + one quarantined entry (zeroed).
+    await sql`INSERT INTO rebate_batches (cycle_month, net_fee_weth_wei, pool_weth_wei, status, safe_proposal_hash)
+      VALUES (${'2026-06-01'}, ${(10n * ONE).toString()}, ${(1n * ONE).toString()}, 'proposed', decode(${'cd'.repeat(32)}, 'hex'))`;
+    const [b] = await sql<{ id: number }[]>`SELECT id FROM rebate_batches WHERE cycle_month = ${'2026-06-01'}`;
+    await sql`INSERT INTO rebate_batch_entries (batch_id, wallet, volume_30d_usd, tier, rebate_pct, weth_amount_wei) VALUES
+      (${b!.id}, decode(${'aa'.repeat(20)}, 'hex'), 100000, 'gold', 0.25, ${(ONE / 4n).toString()}),
+      (${b!.id}, decode(${'bb'.repeat(20)}, 'hex'), 100000, 'gold', 0.25, 0)`;
+    pollState.status = { executed: true, isSuccessful: true, transactionHash: '0x' + 'cd'.repeat(32) };
+    const spy = vi.spyOn(alerts, 'batchExecuted').mockResolvedValue(undefined as never);
+    await reconcileBatches({ chainId: 100 });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const arg = spy.mock.calls[0]![0] as { pool: string; count: number };
+    expect(arg.pool).toBe('0.25000'); // Σ paid entries (0.25), NOT pool_weth_wei (1.0)
+    expect(arg.count).toBe(1); // one good recipient (the zeroed entry excluded)
+    spy.mockRestore();
+  });
+
+  it('quarantined amount is NOT carried into the next cycle (stays as profit) (P2-4)', async () => {
+    const sql = await getSql();
+    await seedBatch(sql, APR, 'executed', 9n * ONE);
+    await seedWallet(sql, 'aa'.repeat(20), 100_000);
+    await seedWallet(sql, 'bb'.repeat(20), 100_000);
+    badRecipients.add('bb'.repeat(20));
+    mockBalanceWei = 10n * ONE; // cycle N (May): A paid 0.125, B (0.125) quarantined; basis = 9.875
+    const n = await runBatcher(new Date('2026-05-01T02:00:00Z'));
+    expect(n.status).toBe('proposed');
+    expect(n.recipientCount).toBe(1);
+    await sql`UPDATE rebate_batches SET status = 'executed' WHERE cycle_month = ${MAY}`;
+    // After execution A's 0.125 left; B's 0.125 stayed -> Safe = 9.875 = the recorded basis.
+    // Cycle N+1: no new fees; distributable = 9.875 - 9.875 = 0. B's quarantined 0.125 is
+    // BELOW the basis (kept as profit), NOT redistributed. (Had the basis been owedWei=9.75,
+    // distributable would be 0.125 here and B's amount would leak to others.)
+    badRecipients.clear();
+    mockBalanceWei = 10n * ONE - ONE / 8n; // 9.875
+    const n1 = await runBatcher(JUN);
+    expect(n1.poolWei).toBe(0n);
   });
 });

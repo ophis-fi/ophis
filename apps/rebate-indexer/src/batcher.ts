@@ -73,6 +73,34 @@ function resolveDirectMode(): boolean {
 }
 
 /**
+ * Parse the optional first-cycle accrual seed REBATE_FEE_BASIS_WEI (direct mode only,
+ * consulted ONLY when no accounted direct cycle exists yet). Returns the seed, or
+ * undefined when unset/empty or an explicit 0 (0 would rebate the ENTIRE balance —
+ * rejected with a warn). THROWS on a SET-BUT-MALFORMED value (non-decimal: "1.5e18",
+ * "0x10", "1_000", a negative, trailing junk) so a typo fails loudly instead of being
+ * silently treated as "unset" and dropping the operator's intended baseline. Mirrors
+ * resolveDirectMode's fail-closed parsing. The throw deliberately fail-CLOSES the
+ * first direct cycle (the only one that reads the seed): the batcher defers and
+ * Telegram-alerts the exact bad value (cron catch) until the operator fixes/unsets the
+ * env and re-triggers — a bootstrap guard, never a silent wrong baseline. (P2-1)
+ */
+function parseFeeBasisSeed(): bigint | undefined {
+  const raw = process.env.REBATE_FEE_BASIS_WEI?.trim();
+  if (!raw) return undefined; // unset / empty: no seed
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new Error(
+      `REBATE_FEE_BASIS_WEI is malformed: "${raw}" — must be decimal wei digits only (e.g. "1000000000000000000" for 1 WETH). Fix or unset it.`,
+    );
+  }
+  const v = BigInt(raw);
+  if (v === 0n) {
+    log.warn('REBATE_FEE_BASIS_WEI=0 ignored (would rebate the entire balance); using the current balance as the first-cycle baseline instead');
+    return undefined;
+  }
+  return v;
+}
+
+/**
  * Single-flight wrapper around the real batcher. runBatcher has TWO entrypoints:
  * the nightly cron (already serialized by withPipelineLock) AND the CLI
  * (`simulate-batch` / `dry-run-monthly` in cli.ts call it directly, with NO
@@ -311,48 +339,72 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
         .catch((e) => log.warn({ err: e }, 'pending-defer alert failed'));
       return { batchId, status: 'computing', safeTxHash: null, recipientCount: 0, poolWei: 0n };
     }
-    // Previous basis = the most recent ACCOUNTED cycle (an executed payout or a
-    // no_recipients cycle). Deliberately EXCLUDES 'proposed' rows: their basis is
-    // recorded optimistically (balance - rebates) and is only correct once the
-    // payout executes — the pending-guard above guarantees we never read past one.
-    const prev = await sql<{ b: string }[]>`
-      SELECT fee_basis_weth_wei::text AS b FROM rebate_batches
+    // Previous basis = the most recent ACCOUNTED DIRECT cycle (executed payout or
+    // no_recipients). Deliberately EXCLUDES 'proposed' rows (optimistic basis, correct
+    // only once executed — the pending-guard guarantees we never read past one) and
+    // POOL rows (NULL basis). `id` is fetched too, to detect a POOL payout since.
+    const prev = await sql<{ id: number; b: string }[]>`
+      SELECT id, fee_basis_weth_wei::text AS b FROM rebate_batches
       WHERE status IN ('executed', 'no_recipients') AND fee_basis_weth_wei IS NOT NULL
       ORDER BY id DESC LIMIT 1
     `;
-    // First-cycle seed (only consulted when no accounted cycle exists yet). A seed
-    // BELOW the current balance intentionally rebates already-accrued historical
-    // fees, so it is gated: 0 is REJECTED (it would rebate the ENTIRE balance and is
-    // the natural fat-finger / empty-default value), and any below-balance seed
-    // fires a loud alert. (sharp-edges HIGH-2)
-    const envSeed = (() => {
-      const raw = process.env.REBATE_FEE_BASIS_WEI?.trim();
-      if (!raw || !/^[0-9]+$/.test(raw)) return undefined;
-      const v = BigInt(raw);
-      if (v === 0n) {
-        log.warn({ batchId }, 'REBATE_FEE_BASIS_WEI=0 ignored (would rebate the entire balance); using current balance as the first-cycle baseline instead');
-        return undefined;
-      }
-      return v;
-    })();
+    // First-cycle seed: consulted ONLY when no accounted DIRECT cycle exists yet. A
+    // seed BELOW the current balance intentionally rebates already-accrued historical
+    // fees (loud alert below); 0 is rejected; a SET-BUT-MALFORMED value THROWS
+    // (parseFeeBasisSeed, P2-1) rather than being silently treated as "unset" and
+    // dropping the operator's intended baseline. (HIGH-2)
     let previousBasis: bigint;
     if (prev.length > 0) {
       previousBasis = BigInt(prev[0]!.b);
-    } else if (envSeed !== undefined) {
-      previousBasis = envSeed;
-      if (envSeed < netFee) {
-        void alerts
-          .alert('batcher', `Direct-rebate FIRST cycle ${cycleMonth} seeded BELOW the current balance (REBATE_FEE_BASIS_WEI): will rebate ${(netFee - envSeed).toString()} wei of ALREADY-ACCRUED fees, not just this month's accrual. Confirm this is intended.`)
-          .catch((e) => log.warn({ err: e }, 'first-cycle-seed alert failed'));
-      }
     } else {
-      previousBasis = netFee; // first direct cycle, no seed -> baseline = current balance (rebate nothing this cycle)
+      const envSeed = parseFeeBasisSeed(); // throws on a set-but-malformed value
+      if (envSeed !== undefined) {
+        previousBasis = envSeed;
+        if (envSeed < netFee) {
+          void alerts
+            .alert('batcher', `Direct-rebate FIRST cycle ${cycleMonth} seeded BELOW the current balance (REBATE_FEE_BASIS_WEI): will rebate ${(netFee - envSeed).toString()} wei of ALREADY-ACCRUED fees, not just this month's accrual. Confirm this is intended.`)
+            .catch((e) => log.warn({ err: e }, 'first-cycle-seed alert failed'));
+        }
+      } else {
+        previousBasis = netFee; // unset / 0-rejected -> baseline = current balance (rebate nothing this cycle)
+      }
+    }
+    // Re-baseline a STALE basis. The direct basis only tracks DIRECT payouts, so it is
+    // stale if, since it was recorded, either (a) a POOL-mode payout executed (POOL
+    // rows keep a NULL basis and never update it), or (b) the balance otherwise fell
+    // below it (a manual Safe withdrawal). In both cases the balance no longer relates
+    // to the recorded mark, so treat the current balance as a FRESH baseline (rebate
+    // nothing this transition cycle) and alert — otherwise the recovery toward a stale
+    // mark is mis-counted as new fees (over- OR under-rebate, in either direction).
+    // Gated on directMode, so pure pool mode is unaffected. (P2-3)
+    const poolPaidSince =
+      prev.length > 0 &&
+      (
+        await sql<{ one: number }[]>`
+          SELECT 1 AS one FROM rebate_batches
+          WHERE fee_basis_weth_wei IS NULL AND status = 'executed' AND pool_weth_wei > 0 AND id > ${prev[0]!.id}
+          LIMIT 1
+        `
+      ).length > 0;
+    if (poolPaidSince || netFee < previousBasis) {
+      log.warn(
+        { batchId, previousBasisWei: previousBasis.toString(), balanceWei: netFee.toString(), poolPaidSince },
+        'stale direct basis (pool payout or withdrawal since last direct cycle); re-baselining to current balance',
+      );
+      void alerts
+        .alert('batcher', `Direct-rebate cycle ${cycleMonth}: the recorded basis (${previousBasis.toString()} wei) is stale — ${poolPaidSince ? 'a POOL-mode payout executed' : 'the Safe balance fell below it (a withdrawal)'} since the last direct cycle. Re-baselining to the current balance (${netFee.toString()} wei); fees that arrived in the gap are absorbed (seed REBATE_FEE_BASIS_WEI to capture them). Avoid toggling REBATE_DIRECT_MODE mid-program.`)
+        .catch((e) => log.warn({ err: e }, 'basis-rebaseline alert failed'));
+      previousBasis = netFee;
     }
     distributable = netFee > previousBasis ? netFee - previousBasis : 0n;
     log.info(
       { batchId, balanceWei: netFee.toString(), previousBasisWei: previousBasis.toString(), newFeesWei: distributable.toString() },
       'direct-mode accrual basis',
     );
+    // Persist the recomputed distributable so /status, /batches and the reconciler
+    // report this direct cycle's real pool (newFees), not the stale 50%-of-balance
+    // value written at insert. Direct-mode only (gated); POOL rows keep their pool. (P2-2)
+    await db.update(schema.rebateBatches).set({ poolWethWei: distributable }).where(eq(schema.rebateBatches.id, batchId));
   }
 
   // 4. Nothing to distribute -> terminal no_recipients. POOL: no wallets / zero
@@ -429,20 +481,32 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     return { batchId, status: 'failed', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
-  // DIRECT mode basis accounting. `paidWei` = the rebates actually proposed for
-  // payout (good recipients only). `owedWei` = ALL rebates this cycle earned,
-  // INCLUDING any quarantined (bad) recipient whose transfer reverted at dry-run.
-  // The recorded basis advances by `owedWei`, NOT `paidWei`: a quarantined wallet's
-  // earned-but-unpaid rebate must stay ABOVE the next basis so it re-enters the
-  // distributable delta next cycle (a defer, matching the POOL model) instead of
-  // silently falling below the line and being kept as profit. (sharp-edges CRITICAL-2)
+  // DIRECT mode basis accounting. `paidWei` = the rebates actually proposed for payout
+  // (good recipients only). The basis advances by `paidWei` (below), so it equals the
+  // TRUE post-payout Safe balance (Safe MultiSend is atomic — exactly `good` leaves). A
+  // quarantined (bad) recipient's earned-but-unpaid rebate stays in the Safe BELOW the
+  // next basis and is NOT redistributed to other wallets next cycle. (Codex post-merge
+  // P2-4: the prior "defer ABOVE the basis" silently misattributed it to whoever had
+  // volume next cycle, which may not include the quarantined wallet.) Each quarantined
+  // recipient is surfaced per-recipient below so ops can retry/clear it — WETH has no
+  // transfer hook, so quarantine is near-impossible in practice.
   const paidWei = good.reduce((sum, t) => sum + t.amount, 0n);
-  const owedWei = [...shares.values()].reduce((sum, v) => sum + v, 0n);
-  if (directMode && owedWei !== paidWei) {
+  if (directMode && bad.length > 0) {
+    const quarantinedWei = bad.reduce((sum, t) => sum + t.amount, 0n);
     log.warn(
-      { batchId, badCount: bad.length, owedWei: owedWei.toString(), paidWei: paidWei.toString() },
-      'direct-mode: quarantined recipients deferred — their rebate is kept above the basis for retry next cycle, not paid this cycle',
+      { batchId, badCount: bad.length, quarantinedWei: quarantinedWei.toString(), paidWei: paidWei.toString() },
+      'direct-mode: quarantined recipients NOT paid; owed amounts stay in the Safe (not redistributed to others)',
     );
+    // One capped alert (mirrors the stranded-token cap) rather than N sends, so a
+    // pathological mass-quarantine can't flood Telegram. Addresses are 0x-hex (safe).
+    const shown = bad
+      .slice(0, MAX_ALERT_TOKENS)
+      .map((b) => `<code>${b.to}</code> (${b.amount.toString()} wei)`)
+      .join(', ');
+    const detail = bad.length > MAX_ALERT_TOKENS ? `${shown}, +${bad.length - MAX_ALERT_TOKENS} more` : shown;
+    void alerts
+      .alert('batcher', `Direct-rebate cycle ${cycleMonth}: ${bad.length} recipient(s) QUARANTINED (transfer reverted at dry-run); their owed rebate was NOT paid and stays in the Safe (NOT auto-redistributed): ${detail}. Retry them or clear from tracking.`)
+      .catch((err) => log.warn({ err }, 'quarantine alert failed'));
   }
 
   // 8. Propose (unless deps.proposeEnabled is false — first-batch dry-run).
@@ -497,15 +561,13 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     status: 'proposed',
     safeProposalHash: safeTxHash,
     proposedAt: new Date(),
-    // DIRECT mode: record the accrual basis = balance - rebates OWED (incl.
-    // quarantined), so the next cycle rebates fees arriving after this payout PLUS
-    // any deferred (quarantined) rebate. Because a Safe MultiSend is atomic, on
-    // successful execution paidWei == owedWei (no quarantine) and basis == the real
-    // post-payout balance; with quarantine, basis < post-balance so the deferred
-    // amount re-enters next cycle's delta. The status-filtered read + the
-    // pending-guard ensure this optimistic basis is only ever read after the payout
-    // settles (or skipped entirely if it reverts). (sharp-edges CRITICAL-1/2)
-    ...(directMode ? { feeBasisWethWei: netFee - owedWei } : {}),
+    // DIRECT mode: record the accrual basis = balance - rebates PAID = the TRUE
+    // post-payout Safe balance (Safe MultiSend is atomic, so exactly `good` leaves). A
+    // quarantined recipient's unpaid rebate stays in the Safe BELOW this basis and is
+    // NOT redistributed next cycle (surfaced per-recipient above for manual retry). The
+    // status-filtered read + the pending-guard ensure this is only read once the payout
+    // settles (skipped if it reverts). (Codex post-merge P2-4; sharp-edges CRITICAL-1/2)
+    ...(directMode ? { feeBasisWethWei: netFee - paidWei } : {}),
   }).where(eq(schema.rebateBatches.id, batchId));
 
   // 9. Fire-and-forget polling for finality.

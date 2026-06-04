@@ -75,6 +75,10 @@ export const rebateBatches = pgTable('rebate_batches', {
   id: serial('id').primaryKey(),
   cycleMonth: date('cycle_month').notNull().unique(),
   netFeeWethWei: uint256('net_fee_weth_wei').notNull(),
+  // The WETH this cycle distributes FROM: in POOL mode the 50%-of-balance pool; in
+  // DIRECT mode the recomputed distributable (newFees), overwritten after the accrual
+  // basis is resolved so /status, /batches and the reconciler don't read the stale
+  // 50% value written at insert. (NOT the amount actually paid — that is Σ entries.)
   poolWethWei: uint256('pool_weth_wei').notNull(),
   // DIRECT-mode accrual basis (REBATE_DIRECT_MODE, migration 0004): the Safe WETH
   // balance level already accounted for as of this cycle, so the NEXT cycle rebates
