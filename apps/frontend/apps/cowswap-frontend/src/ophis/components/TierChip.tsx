@@ -42,6 +42,8 @@ export function TierChip({ wallet }: Props) {
   if (loading || !data) return null
 
   const tier = data.tier.name
+  // 'none' is the sub-$20k floor; show "Unranked" rather than the raw "none".
+  const tierLabel = tier === 'none' ? 'unranked' : tier
   const usd = data.volume_30d_usd.toLocaleString(undefined, { maximumFractionDigits: 0 })
   const next = data.next_tier
   const remaining = next ? data.usd_to_next_tier.toLocaleString(undefined, { maximumFractionDigits: 0 }) : null
@@ -53,7 +55,7 @@ export function TierChip({ wallet }: Props) {
       target="_blank"
       rel="noreferrer"
     >
-      <span className={styles.tierName}>{tier}</span>
+      <span className={styles.tierName}>{tierLabel}</span>
       <span className={styles.divider}>•</span>
       <span className={styles.volume}>30d: ${usd}</span>
       {next && remaining && (

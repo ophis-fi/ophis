@@ -97,12 +97,13 @@ describe('full nightly cycle', () => {
     await runScorer();
 
     // Each WETH trade is 1 WETH × 2500 USDC/WETH = $2500 USD.
-    // Wallet A had 2 trades → $5000 → silver. Wallet B had 1 → $2500 → bronze.
+    // Wallet A had 2 trades → $5000, Wallet B had 1 → $2500. Both are below the
+    // $20k Bronze floor, so both map to the 'none' tier (no rebate weight).
     const a = await getWalletStatus(('0x' + 'a'.repeat(40)) as `0x${string}`);
     const b = await getWalletStatus(('0x' + 'b'.repeat(40)) as `0x${string}`);
-    expect(a.tier.name).toBe('silver');
+    expect(a.tier.name).toBe('none');
     expect(a.volume_30d_usd).toBeCloseTo(5000, 0);
-    expect(b.tier.name).toBe('bronze');
+    expect(b.tier.name).toBe('none');
     expect(b.volume_30d_usd).toBeCloseTo(2500, 0);
   });
 

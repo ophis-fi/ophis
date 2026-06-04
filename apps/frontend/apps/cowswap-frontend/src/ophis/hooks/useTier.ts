@@ -32,7 +32,7 @@ export interface UseTierResult {
 // returning e.g. { tier: { name: '__proto__' } } would otherwise pass the old
 // string-only check, skip the Bronze fallback, and render an unstyled chip with
 // arbitrary text. (audit P3)
-const VALID_TIER_NAMES: readonly string[] = ['bronze', 'silver', 'gold', 'platinum']
+const VALID_TIER_NAMES: readonly string[] = ['none', 'bronze', 'silver', 'gold', 'palladium', 'platinum']
 function isValidTier(t: unknown): t is Tier {
   if (typeof t !== 'object' || t === null) return false
   const o = t as Record<string, unknown>
@@ -89,14 +89,14 @@ export function useTier(wallet: `0x${string}` | undefined): UseTierResult {
       .catch((err) => {
         if (cancelled) return
         setError(err)
-        // Local fallback so the UI is never blank: Bronze with progress to Silver.
+        // Local fallback so the UI is never blank: Unranked with progress to Bronze.
         setData({
           wallet,
           volume_30d_usd: 0,
           trade_count_30d: 0,
           tier: assignTier(0),
-          next_tier: { name: 'silver', min_usd: 5_000, rebate_pct: 0.2 },
-          usd_to_next_tier: 5_000,
+          next_tier: { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
+          usd_to_next_tier: 20_000,
         })
       })
       .finally(() => {
