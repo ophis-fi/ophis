@@ -212,8 +212,11 @@ jobs:
     # package manager) with a separate lockfile, so the root pnpm-audit job above
     # does NOT cover it — the largest, browser-facing dependency tree. This job
     # closes that gap (audit 2026-06 P3: a `tmp` HIGH had stayed green because the
-    # frontend was never audited in CI). Documented non-reachable advisories are
-    # ignored below; keep that list TIGHT (each entry needs a written reason).
+    # frontend was never audited in CI). It audits the FULL tree incl.
+    # devDependencies (NOT --prod), since build-time deps compile the browser
+    # bundle and are a supply-chain surface (audit 2026-06 P2). Documented
+    # non-reachable advisories are ignored below; keep that list TIGHT (each entry
+    # needs a written reason).
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
@@ -221,12 +224,21 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run pnpm audit --prod (frontend workspace)
+      - name: Run pnpm audit (frontend workspace, incl. devDependencies)
         working-directory: apps/frontend
         run: |
+          # Audit the FULL dependency tree, NOT --prod. `--prod` scopes to
+          # dependencies + optionalDependencies only, which would SKIP exactly the
+          # class this job exists to guard: build-time devDependencies
+          # (Nx/webpack/vite/patch-package) that compile the browser bundle, and
+          # are therefore a supply-chain surface. Concretely, the `tmp` HIGH this
+          # job was added for is pulled in via the devDependency patch-package
+          # (package.json), so a --prod audit never saw it — the gate skipped the
+          # very thing it claimed to cover. (audit 2026-06 P2)
           # pnpm audit reads apps/frontend/pnpm-lock.yaml directly (no install
-          # needed). `|| true` because it exits non-zero on ANY advisory.
-          pnpm audit --prod --json > /tmp/fe-audit.json || true
+          # needed). `|| true` because it exits non-zero on ANY advisory; the
+          # python step below decides what actually blocks (HIGH/CRITICAL only).
+          pnpm audit --json > /tmp/fe-audit.json || true
           cat /tmp/fe-audit.json
 
       - name: Block on NEW HIGH or CRITICAL advisories
