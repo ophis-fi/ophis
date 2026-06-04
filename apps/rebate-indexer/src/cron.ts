@@ -3,6 +3,7 @@ import { runFetcher, pruneStaleWallets, withPipelineLock } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth } from './batcher.js';
+import { reconcileBatches } from './batch/reconcile.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
@@ -38,6 +39,20 @@ async function runPipelineSteps(): Promise<void> {
   log.info(scored, 'scorer complete');
 
   // tierer.ts has no batch refresh — it's read-on-demand. Nothing to call here.
+
+  // Reconcile open Safe batches EVERY night (independent of the 1st-of-month
+  // batcher): heals 'proposed' rows whose in-process execution poller was lost to
+  // a restart, nags unsigned batches, and surfaces stuck 'proposing' rows. It only
+  // READS the Safe service + writes terminal status/alerts — it never proposes or
+  // pays — so a failure here is non-fatal and must NOT abort the pipeline or block
+  // the batcher below. (Runs before the batcher so last cycle is closed out first.)
+  try {
+    const rec = await reconcileBatches({ chainId: 100 });
+    log.info(rec, 'reconcile complete');
+  } catch (err) {
+    log.error({ err }, 'reconcile failed (non-fatal; observability only)');
+    await alerts.alert('reconcile', `Nightly batch reconciliation failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
+  }
 
   // Telegram summary.
   const newTradesRows = await sql<{ new_trades: string }[]>`
