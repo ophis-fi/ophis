@@ -72,8 +72,9 @@ export function useTier(wallet: `0x${string}` | undefined): UseTierResult {
       .then(async (res) => {
         if (!res.ok) throw new Error(`tier API ${res.status}`)
         const json = (await res.json()) as Partial<TierStatus>
-        // A malformed 2xx (e.g. `{}`) must fall back to Bronze (the catch
-        // below), not crash render — TierChip dereferences these fields.
+        // A malformed 2xx (e.g. `{}`) must fall back to the local default (the
+        // catch below: tier none/Unranked, with progress to Bronze), not crash
+        // render — TierChip dereferences these fields.
         if (
           typeof json?.volume_30d_usd !== 'number' ||
           !Number.isFinite(json.volume_30d_usd) ||
