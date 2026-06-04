@@ -203,11 +203,16 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=6144
           # Maps `SupportedChainId → orderbook host` for every chain the
-          # explorer should be able to surface orders for. The Ophis-fork
-          # chains (10, 4326, 999) point at our self-hosted CoW services.
-          # Canonical CoW chains (1, 100, 11155111) stay on api.cow.fi
-          # because we don't run our own orderbook there.
-          REACT_APP_ORDER_BOOK_URLS: '{"1":"https://api.cow.fi/mainnet","100":"https://api.cow.fi/xdai","11155111":"https://api.cow.fi/sepolia","10":"https://optimism-mainnet.ophis.fi","4326":"https://megaeth-mainnet.ophis.fi","999":"https://hyperevm.ophis.fi"}'
+          # explorer should be able to surface orders for. This MUST cover
+          # every chain the swap app offers (libs/common-const/src/chainInfo.ts)
+          # — the swap UI's order-id deep-link points at explorer.ophis.fi/<net>/
+          # orders/<uid>, and any chain missing here makes the orderbook base
+          # resolve to the string "undefined" -> /undefined/api/v1/orders/... ->
+          # 404 -> a blank Order Details page (caught on Base, 2026-06-04).
+          # The Ophis-fork chains (10, 4326, 999) point at our self-hosted CoW
+          # services; the canonical CoW chains stay on api.cow.fi (we don't run
+          # our own orderbook there). All api.cow.fi slugs verified live.
+          REACT_APP_ORDER_BOOK_URLS: '{"1":"https://api.cow.fi/mainnet","100":"https://api.cow.fi/xdai","42161":"https://api.cow.fi/arbitrum_one","8453":"https://api.cow.fi/base","137":"https://api.cow.fi/polygon","43114":"https://api.cow.fi/avalanche","56":"https://api.cow.fi/bnb","59144":"https://api.cow.fi/linea","57073":"https://api.cow.fi/ink","9745":"https://api.cow.fi/plasma","11155111":"https://api.cow.fi/sepolia","10":"https://optimism-mainnet.ophis.fi","4326":"https://megaeth-mainnet.ophis.fi","999":"https://hyperevm.ophis.fi"}'
         run: pnpx nx run explorer:build --skip-nx-cache
 
       - name: deploy explorer to Cloudflare Pages
