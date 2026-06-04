@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ophis for Business, non-custodial intent routing for desks &amp; integrators</title>
-<meta name="description" content="Ophis for desks, treasuries, and integrators. Non-custodial intent routing, MEV-protected execution, audit references inherited from CoW Protocol's GPv2 contracts. 11 EVM chains + Solana and Bitcoin destinations via NEAR Intents.">
+<meta name="description" content="Ophis for desks, treasuries, and integrators. Non-custodial intent routing, MEV-protected execution, audit references inherited from CoW Protocol's GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. 0% on ordinary trades; 25% of price improvement, capped at 0.5% of volume.">
 <link rel="canonical" href="https://business.ophis.fi">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, integrators. Honest framing, audit-inherited contracts, public best-effort + partner access by agreement.">
+<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, integrators. Honest framing, audit-inherited contracts, public best-effort plus partner access by agreement.">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta name="theme-color" content="#02000d">
@@ -26,26 +26,19 @@
 :root {
   --cosmic: #02000d;
   --cosmic-2: #070328;
+  --panel: rgba(245, 239, 230, 0.035);
+  --panel-2: rgba(245, 239, 230, 0.06);
   --sunset: #f2a63e;
+  --sunset-soft: #ffc88a;
+  --violet: #b48aff;
+  --green: #6dcfa1;
   --cream: #f5efe6;
-  --hairline: rgba(245, 239, 230, 0.08);
-  --hairline-strong: rgba(245, 239, 230, 0.14);
-  --muted: rgba(245, 239, 230, 0.6);
-  --muted-2: rgba(245, 239, 230, 0.6);
+  --hairline: rgba(245, 239, 230, 0.09);
+  --hairline-strong: rgba(245, 239, 230, 0.16);
+  --muted: rgba(245, 239, 230, 0.62);
+  --muted-2: rgba(245, 239, 230, 0.45);
 }
 
-.skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  background: var(--sunset);
-  color: var(--cosmic);
-  padding: 8px 16px;
-  font-weight: 600;
-  z-index: 100;
-  border-radius: 0 0 8px 0;
-}
-.skip-link:focus { left: 0; }
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -54,187 +47,208 @@ body {
   color: var(--cream);
   font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 1.62;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
+/* Subtle page-wide grain + a fixed top glow so the dark field is never flat. */
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(1200px 680px at 50% -8%, rgba(242, 166, 62, 0.10), transparent 60%),
+    radial-gradient(900px 600px at 92% 8%, rgba(180, 138, 255, 0.07), transparent 62%);
+}
+main, header.bar, footer.site { position: relative; z-index: 1; }
+
 a { color: var(--sunset); text-decoration: none; }
-a:hover, a:focus-visible { color: #ffc88a; }
-h1, h2, h3, h4 { font-family: 'Geist', ui-serif, Georgia, serif; font-weight: 500; letter-spacing: -0.01em; margin: 0; }
+a:hover, a:focus-visible { color: var(--sunset-soft); }
+h1, h2, h3, h4 { font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
 .mono { font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace; letter-spacing: 0.04em; }
+
+.skip-link { position: absolute; left: -9999px; top: 0; background: var(--sunset); color: var(--cosmic); padding: 8px 16px; font-weight: 600; z-index: 100; border-radius: 0 0 8px 0; }
+.skip-link:focus { left: 0; }
 
 /* ───── NAV ───── */
 header.bar {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 36px;
-  background: rgba(2, 0, 13, 0.86);
-  backdrop-filter: blur(16px);
+  padding: 16px 36px;
+  background: rgba(2, 0, 13, 0.72);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--hairline);
 }
-.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cream); text-decoration: none; font-family: 'Geist'; font-weight: 600; font-size: 22px; }
-.bar .brand img { width: 28px; height: 28px; }
+.bar .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--cream); font-weight: 600; font-size: 21px; letter-spacing: -0.02em; }
+.bar .brand img { width: 26px; height: 26px; }
 .bar .brand span { color: var(--sunset); }
-.bar nav { display: inline-flex; align-items: center; gap: 22px; }
-.bar nav a { color: var(--muted); font-size: 14px; }
+.bar nav { display: inline-flex; align-items: center; gap: 24px; }
+.bar nav a { color: var(--muted); font-size: 13.5px; transition: color 140ms ease; }
 .bar nav a:hover { color: var(--cream); }
-.bar .cta { padding: 10px 18px; border-radius: 999px; background: var(--sunset); color: var(--cosmic); font-weight: 600; font-size: 14px; }
-.bar .cta:hover { filter: brightness(1.06); color: var(--cosmic); }
-@media (max-width: 720px) {
-  header.bar { padding: 14px 18px; }
-  .bar nav { display: none; }
-}
+.bar .cta { padding: 9px 18px; border-radius: 999px; background: var(--sunset); color: var(--cosmic); font-weight: 600; font-size: 13.5px; transition: filter 140ms ease, transform 140ms ease; }
+.bar .cta:hover { filter: brightness(1.07); color: var(--cosmic); transform: translateY(-1px); }
+@media (max-width: 820px) { header.bar { padding: 14px 18px; } .bar nav { display: none; } }
 
 /* ───── COMMON ───── */
-section { padding: 96px 24px; }
+section { padding: 104px 24px; }
 .wrap { max-width: 1140px; margin: 0 auto; }
-.eyebrow { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 14px; }
-h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.15; margin-bottom: 18px; }
-.lede { max-width: 720px; font-size: 17px; line-height: 1.6; color: var(--muted); }
-.divider { width: 100%; border-top: 1px solid var(--hairline); }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--sunset); margin-bottom: 18px;
+}
+.eyebrow::before { content: ''; width: 22px; height: 1px; background: var(--sunset); opacity: 0.7; }
+h2 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.08; margin-bottom: 18px; max-width: 18ch; }
+.lede { max-width: 680px; font-size: 17px; line-height: 1.62; color: var(--muted); }
+.divider { width: 100%; max-width: 1140px; margin: 0 auto; border-top: 1px solid var(--hairline); }
+
+/* ───── MOTION (CSS-only; the host CSP forbids inline JS) ───── */
+/* Hero entrance only. We deliberately do NOT use an opacity-based scroll reveal:
+   with no inline JS allowed, the only pure-CSS option (animation-timeline: view())
+   leaves below-fold content at opacity 0 until it scrolls into the viewport, which
+   is fragile and can hide content. The page reads as a strong static layout; the
+   .reveal class is kept as a harmless hook only. */
+@media (prefers-reduced-motion: no-preference) {
+  .rise { animation: rise 760ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .d1 { animation-delay: 90ms; } .d2 { animation-delay: 180ms; } .d3 { animation-delay: 270ms; }
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+  /* Below-fold blocks: a subtle one-shot lift via scroll timeline, TRANSFORM ONLY
+     (never opacity), so content is always visible with or without support. */
+  @supports (animation-timeline: view()) {
+    .reveal { animation: liftin linear both; animation-timeline: view(); animation-range: entry 0% entry 60%; }
+    @keyframes liftin { from { transform: translateY(16px); } to { transform: none; } }
+  }
+}
 
 /* ───── HERO ───── */
-.hero { padding: 96px 24px 80px; position: relative; overflow: hidden; }
-.hero::before {
-  content: ''; position: absolute; inset: 0;
-  background: radial-gradient(900px 500px at 30% 0%, rgba(242, 166, 62, 0.10), transparent 70%),
-              radial-gradient(700px 400px at 80% 30%, rgba(180, 138, 255, 0.06), transparent 70%);
-  pointer-events: none;
-}
-.hero .wrap { position: relative; }
-.hero h1 { font-size: clamp(40px, 6vw, 64px); line-height: 1.05; margin-bottom: 18px; }
-.hero h1 em { font-style: italic; color: var(--sunset); }
-.hero .sub { max-width: 640px; font-size: 19px; line-height: 1.55; color: var(--muted); margin-bottom: 32px; }
-.hero .ctas { display: inline-flex; gap: 12px; flex-wrap: wrap; margin-bottom: 40px; }
+.hero { padding: 120px 24px 88px; position: relative; }
+.hero h1 { font-size: clamp(42px, 6.4vw, 70px); line-height: 1.02; letter-spacing: -0.03em; margin-bottom: 22px; max-width: 16ch; }
+.hero h1 em { font-style: normal; color: var(--sunset); }
+.hero .sub { max-width: 600px; font-size: 19px; line-height: 1.55; color: var(--muted); margin-bottom: 34px; }
+.ctas { display: inline-flex; gap: 12px; flex-wrap: wrap; }
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 14px 22px; border-radius: 999px;
-  font-weight: 600; font-size: 15px;
-  transition: filter 140ms ease-out, transform 140ms ease-out;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 14px 24px; border-radius: 999px; font-weight: 600; font-size: 15px;
+  transition: filter 140ms ease, transform 140ms ease, background 140ms ease, border-color 140ms ease;
 }
 .btn.primary { background: var(--sunset); color: var(--cosmic); }
-.btn.primary:hover { filter: brightness(1.06); transform: translateY(-1px); color: var(--cosmic); }
+.btn.primary:hover { filter: brightness(1.07); transform: translateY(-2px); color: var(--cosmic); }
 .btn.ghost { background: transparent; border: 1px solid var(--hairline-strong); color: var(--cream); }
-.btn.ghost:hover { background: rgba(245, 239, 230, 0.04); color: var(--cream); transform: translateY(-1px); }
-.stats { display: inline-flex; gap: 36px; flex-wrap: wrap; padding: 18px 24px; border: 1px solid var(--hairline); border-radius: 16px; background: rgba(245, 239, 230, 0.02); }
-.stats .stat { display: flex; flex-direction: column; gap: 4px; }
-.stats .num { font-family: 'Geist'; font-size: 28px; line-height: 1; color: var(--cream); }
-.stats .lab { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); }
+.btn.ghost:hover { background: var(--panel); color: var(--cream); transform: translateY(-2px); border-color: var(--sunset); }
 
-/* ───── GRIDS ───── */
-.grid { display: grid; gap: 18px; }
+/* Credential strip */
+.cred { margin-top: 52px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); border-radius: 18px; overflow: hidden; }
+.cred .c { padding: 22px 24px; background: rgba(2, 0, 13, 0.5); display: flex; flex-direction: column; gap: 6px; }
+.cred .num { font-size: 27px; line-height: 1; color: var(--cream); letter-spacing: -0.02em; font-weight: 600; }
+.cred .num b { color: var(--sunset); font-weight: 600; }
+.cred .lab { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted-2); }
+@media (max-width: 720px) { .cred { grid-template-columns: 1fr; } }
+
+/* ───── GRIDS / CARDS ───── */
+.grid { display: grid; gap: 16px; margin-top: 44px; }
 .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 900px) {
-  .cols-3, .cols-4 { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 600px) {
-  .cols-3, .cols-4, .cols-2 { grid-template-columns: 1fr; }
-}
+@media (max-width: 900px) { .cols-3, .cols-4 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .cols-3, .cols-4, .cols-2 { grid-template-columns: 1fr; } }
 
 .card {
-  padding: 22px 22px 26px;
-  border: 1px solid var(--hairline);
-  border-radius: 16px;
-  background: rgba(245, 239, 230, 0.04);
-  display: flex; flex-direction: column; gap: 10px;
-  transition: border-color 160ms ease-out, transform 160ms ease-out;
+  position: relative; padding: 26px 24px 28px; border: 1px solid var(--hairline); border-radius: 18px;
+  background: var(--panel); display: flex; flex-direction: column; gap: 11px;
+  transition: border-color 200ms ease, transform 200ms ease, background 200ms ease;
 }
-.card:hover { border-color: var(--hairline-strong); }
-.card h3 { font-size: 19px; color: var(--sunset); margin: 0 0 4px; }
-.card p { margin: 0; font-size: 14px; line-height: 1.6; color: rgba(245, 239, 230, 0.78); }
-.card .foot { margin-top: auto; padding-top: 8px; font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted-2); }
-.badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; border: 1px solid; font-family: 'Geist Mono'; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
-.badge.live { border-color: rgba(109, 207, 161, 0.4); color: #6dcfa1; background: rgba(109, 207, 161, 0.06); }
-.badge.planned { border-color: rgba(242, 166, 62, 0.4); color: #f2a63e; background: rgba(242, 166, 62, 0.08); }
-.badge.partner { border-color: rgba(180, 138, 255, 0.45); color: #b48aff; background: rgba(180, 138, 255, 0.06); }
+.card::before { content: ''; position: absolute; left: 24px; right: 24px; top: 0; height: 1px; background: linear-gradient(90deg, var(--sunset), transparent); opacity: 0; transition: opacity 220ms ease; }
+.card:hover { border-color: var(--hairline-strong); transform: translateY(-3px); background: var(--panel-2); }
+.card:hover::before { opacity: 0.9; }
+.card .idx { font-family: 'Geist Mono'; font-size: 12px; color: var(--sunset); letter-spacing: 0.1em; }
+.card h3 { font-size: 19px; color: var(--cream); margin: 0 0 2px; letter-spacing: -0.01em; }
+.card p { margin: 0; font-size: 14px; line-height: 1.62; color: rgba(245, 239, 230, 0.76); }
+.card .foot { margin-top: auto; padding-top: 10px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; border: 1px solid; font-family: 'Geist Mono'; font-size: 10px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
+.badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.badge.live { border-color: rgba(109, 207, 161, 0.4); color: var(--green); background: rgba(109, 207, 161, 0.06); }
+.badge.planned { border-color: rgba(242, 166, 62, 0.4); color: var(--sunset); background: rgba(242, 166, 62, 0.08); }
+.badge.partner { border-color: rgba(180, 138, 255, 0.45); color: var(--violet); background: rgba(180, 138, 255, 0.06); }
+
+/* ───── ECONOMICS SHOWCASE ───── */
+.econ { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; margin-top: 44px; }
+@media (max-width: 880px) { .econ { grid-template-columns: 1fr; } }
+.panel { border: 1px solid var(--hairline); border-radius: 20px; background: var(--panel); padding: 30px; }
+.panel .ttl { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 22px; }
+.feerow { display: flex; align-items: baseline; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--hairline); }
+.feerow:last-of-type { border-bottom: 0; }
+.feerow .big { font-size: 34px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; min-width: 3.6ch; }
+.feerow .big.zero { color: var(--green); }
+.feerow .big.take { color: var(--sunset); }
+.feerow .big.cap { color: var(--violet); }
+.feerow .txt { font-size: 14px; color: rgba(245, 239, 230, 0.78); line-height: 1.5; }
+.feerow .txt b { color: var(--cream); font-weight: 600; }
+.example { margin-top: 22px; padding: 16px 18px; border: 1px dashed var(--hairline-strong); border-radius: 12px; font-family: 'Geist Mono'; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+.example b { color: var(--cream); }
+.example .plus { color: var(--green); }
+
+.tier { width: 100%; border-collapse: collapse; }
+.tier th, .tier td { padding: 13px 6px; text-align: left; border-bottom: 1px solid var(--hairline); font-size: 14px; }
+.tier th { font-family: 'Geist Mono'; font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted-2); font-weight: 500; }
+.tier td:last-child, .tier th:last-child { text-align: right; }
+.tier .pct { color: var(--sunset); font-weight: 600; font-family: 'Geist Mono'; }
+.tier tr:last-child td { border-bottom: 0; }
+.tier .nm { color: var(--cream); }
+.pool { margin-top: 18px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+.pool b { color: var(--cream); }
 
 /* ───── CHAIN GRID ───── */
-.chains {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
+.chains { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 36px; }
 @media (max-width: 900px) { .chains { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 600px) { .chains { grid-template-columns: repeat(2, 1fr); } }
-.chip {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 12px;
-  background: rgba(245, 239, 230, 0.04);
-  font-size: 14px;
-}
+.chip { display: flex; align-items: center; gap: 10px; padding: 13px 14px; border: 1px solid var(--hairline); border-radius: 13px; background: var(--panel); font-size: 14px; transition: border-color 180ms ease, transform 180ms ease; }
+.chip:hover { border-color: var(--hairline-strong); transform: translateY(-2px); }
 .chip .name { color: var(--cream); }
-.chip .via { margin-left: auto; font-family: 'Geist Mono'; font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted-2); }
+.chip .via { margin-left: auto; font-family: 'Geist Mono'; font-size: 9.5px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--violet); }
 .chip img { width: 22px; height: 22px; border-radius: 50%; background: rgba(245, 239, 230, 0.08); }
 
 /* ───── TABLE ───── */
-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--hairline); }
-th { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); font-weight: 500; }
-td code { font-family: 'Geist Mono'; font-size: 13px; background: rgba(245, 239, 230, 0.06); padding: 2px 6px; border-radius: 4px; color: var(--cream); }
-.table-wrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 14px; background: rgba(245, 239, 230, 0.02); }
+table.api { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.api th, table.api td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--hairline); }
+table.api th { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); font-weight: 500; }
+table.api tr:last-child td { border-bottom: 0; }
+code { font-family: 'Geist Mono'; font-size: 13px; background: var(--panel-2); padding: 2px 7px; border-radius: 5px; color: var(--cream); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: 16px; background: var(--panel); margin-top: 44px; }
 
 /* ───── FAQ ───── */
-details {
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  background: rgba(245, 239, 230, 0.03);
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-details summary {
-  cursor: pointer;
-  padding: 16px 20px;
-  list-style: none;
-  font-family: 'Geist';
-  font-size: 17px;
-  color: var(--cream);
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
-}
-details summary::after { content: '+'; color: var(--sunset); font-size: 22px; line-height: 1; }
-details[open] summary::after { content: '−'; }
+details { border: 1px solid var(--hairline); border-radius: 14px; background: var(--panel); margin-bottom: 10px; overflow: hidden; transition: border-color 180ms ease; }
+details[open] { border-color: var(--hairline-strong); }
+details summary { cursor: pointer; padding: 18px 22px; list-style: none; font-size: 17px; font-weight: 500; color: var(--cream); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+details summary::after { content: '+'; color: var(--sunset); font-size: 24px; line-height: 1; transition: transform 200ms ease; }
+details[open] summary::after { content: '+'; transform: rotate(45deg); }
 details summary::-webkit-details-marker { display: none; }
-details .body { padding: 0 20px 18px; color: rgba(245, 239, 230, 0.78); font-size: 14px; line-height: 1.6; }
+details .body { padding: 0 22px 20px; color: rgba(245, 239, 230, 0.78); font-size: 14px; line-height: 1.65; }
 details .body p { margin: 8px 0; }
 
 /* ───── CTA BANNER ───── */
 .cta-banner {
-  margin: 40px auto;
-  padding: 36px 32px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(242, 166, 62, 0.08), rgba(180, 138, 255, 0.04));
-  display: flex; align-items: center; justify-content: space-between; gap: 24px;
-  flex-wrap: wrap;
+  max-width: 1140px; margin: 0 auto; padding: 40px 36px; border: 1px solid var(--hairline-strong); border-radius: 22px;
+  background: linear-gradient(135deg, rgba(242, 166, 62, 0.12), rgba(180, 138, 255, 0.06));
+  display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap;
 }
-.cta-banner h3 { font-size: 22px; margin: 0; }
-.cta-banner p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.cta-banner h3 { font-size: 23px; margin: 0; letter-spacing: -0.01em; }
+.cta-banner p { margin: 6px 0 0; color: var(--muted); font-size: 14px; max-width: 52ch; }
 
 /* ───── FOOTER ───── */
-footer.site {
-  padding: 56px 24px 32px;
-  background: rgba(2, 0, 13, 0.94);
-  border-top: 1px solid var(--hairline);
-}
-.foot-grid {
-  max-width: 1140px; margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr;
-  gap: 36px;
-}
+footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-top: 1px solid var(--hairline); }
+.foot-grid { max-width: 1140px; margin: 0 auto; display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 36px; }
 @media (max-width: 900px) { .foot-grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 540px) { .foot-grid { grid-template-columns: 1fr; } }
-.foot-grid h4 { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 14px; font-weight: 500; }
-.foot-grid ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.foot-grid h4 { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 16px; font-weight: 500; }
+.foot-grid ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 11px; }
 .foot-grid a { color: rgba(245, 239, 230, 0.7); font-size: 14px; }
 .foot-grid a:hover { color: var(--cream); }
-.foot-bottom {
-  max-width: 1140px; margin: 32px auto 0;
-  padding-top: 22px; border-top: 1px solid var(--hairline);
-  display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
-  font-size: 12px; color: var(--muted-2);
-}
+.foot-brand .mark { display: inline-flex; align-items: center; gap: 10px; color: var(--cream); font-weight: 600; font-size: 21px; margin-bottom: 12px; }
+.foot-brand .mark img { width: 26px; height: 26px; }
+.foot-brand .mark span { color: var(--sunset); }
+.foot-brand p { max-width: 280px; font-size: 13px; line-height: 1.55; color: var(--muted-2); margin: 4px 0 0; }
+.foot-bottom { max-width: 1140px; margin: 36px auto 0; padding-top: 24px; border-top: 1px solid var(--hairline); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted-2); }
+.foot-bottom a { color: var(--muted-2); }
+.foot-bottom a:hover { color: var(--cream); }
 </style>
 </head>
 <body>
@@ -248,7 +262,7 @@ footer.site {
   </a>
   <nav>
     <a href="#why">Why</a>
-    <a href="#audits">Audits</a>
+    <a href="#economics">Economics</a>
     <a href="#chains">Chains</a>
     <a href="#integration">Integration</a>
     <a href="#api">API</a>
@@ -263,31 +277,29 @@ footer.site {
 <!-- ───────── HERO ───────── -->
 <section class="hero">
   <div class="wrap">
-    <h1>Ophis for desks, treasuries &amp; <em>integrators</em>.</h1>
-    <p class="sub">
-      Non-custodial intent routing. MEV-protected execution. Audit references inherited from
-      CoW Protocol's GPv2 contracts. Lean, honest, and built to scale into partner agreements,
-      not pre-loaded with claims we can't keep.
+    <h1 class="rise">Execution infrastructure for <em>desks &amp; integrators</em>.</h1>
+    <p class="sub rise d1">
+      Non-custodial intent routing with MEV-protected, uniform-price settlement on CoW Protocol's
+      audited GPv2 contracts. Lean and honest: public best-effort access today, partner agreements
+      when you need more, and no claims we cannot keep.
     </p>
-    <div class="ctas">
-      <a class="btn primary" href="https://swap.ophis.fi/#/contact">
-        Talk to us →
-      </a>
+    <div class="ctas rise d2">
+      <a class="btn primary" href="https://swap.ophis.fi/#/contact">Talk to us →</a>
       <a class="btn ghost" href="https://docs.ophis.fi">Read the docs</a>
     </div>
 
-    <div class="stats">
-      <div class="stat">
-        <span class="num">11</span>
-        <span class="lab">EVM chains</span>
+    <div class="cred rise d3">
+      <div class="c">
+        <span class="num">11 <b>EVM</b></span>
+        <span class="lab">Production chains</span>
       </div>
-      <div class="stat">
-        <span class="num">+ Solana &amp; BTC</span>
-        <span class="lab">Cross-chain via NEAR Intents</span>
+      <div class="c">
+        <span class="num">Solana + Bitcoin</span>
+        <span class="lab">Destinations via NEAR Intents</span>
       </div>
-      <div class="stat">
-        <span class="num">0%</span>
-        <span class="lab">Ophis fee on ordinary trades</span>
+      <div class="c">
+        <span class="num"><b>0%</b> &rarr; 25%</span>
+        <span class="lab">Ordinary trades free; 25% of price improvement</span>
       </div>
     </div>
   </div>
@@ -298,38 +310,40 @@ footer.site {
 <!-- ───────── WHY OPHIS ───────── -->
 <section id="why">
   <div class="wrap">
-    <div class="eyebrow">Why Ophis</div>
-    <h2>Three things desks consistently care about.</h2>
-    <p class="lede">
-      These are mechanism-level properties, not marketing slogans. Each is implemented at the
-      contract or settlement layer Ophis inherits from CoW Protocol.
+    <div class="eyebrow reveal">Why Ophis</div>
+    <h2 class="reveal">Three properties desks care about, enforced at the protocol layer.</h2>
+    <p class="lede reveal">
+      Mechanism-level guarantees, not marketing. Each is implemented at the contract or settlement
+      layer Ophis inherits from CoW Protocol, so it holds regardless of the interface.
     </p>
 
-    <div class="grid cols-3" style="margin-top: 40px;">
+    <div class="grid cols-3 reveal">
       <div class="card">
+        <span class="idx">01</span>
         <h3>Non-custodial by construction</h3>
         <p>
-          Your tokens never leave your wallet until on-chain settlement. The operator cannot
-          move, freeze, or recover funds. No counterparty custody risk; no recoverable hot
-          wallet.
+          Your tokens never leave your wallet until on-chain settlement. The operator cannot move,
+          freeze, or recover funds. No counterparty custody risk, no recoverable hot wallet.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
-        <h3>MEV-protected at the protocol layer</h3>
+        <span class="idx">02</span>
+        <h3>MEV-protected settlement</h3>
         <p>
-          Settled orders execute inside a batch auction at a uniform clearing price.
-          Front-running and sandwich attacks are designed-out, there is no priority-gas
-          auction to lose against. Inherited from CoW Protocol's GPv2 mechanism.
+          Orders execute inside a batch auction at a single uniform clearing price. Front-running
+          and sandwich attacks are designed out, with no priority-gas auction to lose. Inherited
+          from CoW Protocol's GPv2 mechanism.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
+        <span class="idx">03</span>
         <h3>Audit-inherited contracts</h3>
         <p>
-          The settlement layer is CoW Protocol's GPv2 contracts (audited by Trail of Bits and
-          G0 upstream). Ophis-specific solver wiring &amp; AllowList contract were reviewed
-          internally via static analysis and multi-agent code review passes.
+          Settlement runs on CoW Protocol's GPv2 contracts, audited by Trail of Bits and G0 Group
+          upstream. Ophis-specific solver wiring and the AllowList contract were reviewed with
+          Slither, Echidna fuzzing, and multi-agent code review.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
@@ -339,43 +353,55 @@ footer.site {
 
 <div class="divider"></div>
 
-<!-- ───────── AUDIT POSTURE ───────── -->
-<section id="audits">
+<!-- ───────── ECONOMICS ───────── -->
+<section id="economics">
   <div class="wrap">
-    <div class="eyebrow">Security posture</div>
-    <h2>Honest about what's been reviewed by whom.</h2>
-    <p class="lede">
-      We don't claim certifications we don't hold. Below is the actual review history for the
-      relevant routing and settlement components.
+    <div class="eyebrow reveal">Economics</div>
+    <h2 class="reveal">A fee that only ever touches the upside.</h2>
+    <p class="lede reveal">
+      Ophis charges nothing on the principal of a trade. The only fee is a capped share of price
+      improvement, the difference between the quote you accepted and what a solver actually
+      delivered. Half of what is collected flows back to active traders as monthly rebates.
     </p>
 
-    <div class="grid cols-3" style="margin-top: 40px;">
-      <div class="card">
-        <h3>Upstream contract audits</h3>
-        <p>
-          GPv2 settlement contracts have been audited by <strong>Trail of Bits</strong> and
-          <strong>G0</strong> as part of CoW Protocol. Reports are publicly available in the
-          CoW DAO repositories.
-        </p>
-        <div class="foot"><span class="badge live">Live · upstream</span></div>
+    <div class="econ reveal">
+      <div class="panel">
+        <div class="ttl">Fee, on price improvement only</div>
+        <div class="feerow">
+          <span class="big zero">0%</span>
+          <span class="txt">on every trade that fills at the quoted rate. <b>No flat protocol fee, no spread, never your principal.</b></span>
+        </div>
+        <div class="feerow">
+          <span class="big take">25%</span>
+          <span class="txt">of any <b>price improvement</b> when a solver beats the quote you accepted (CIP-75 <code>priceImprovementBps: 2500</code>).</span>
+        </div>
+        <div class="feerow">
+          <span class="big cap">0.5%</span>
+          <span class="txt">hard cap on the fee as a share of trade volume (<code>maxVolumeBps: 50</code>), whatever the improvement.</span>
+        </div>
+        <div class="example">
+          Quote <b>0.300 ETH</b> &rarr; solver delivers <b>0.303 ETH</b><br>
+          improvement <b>0.003 ETH</b>, fee 25% = <b>0.00075 ETH</b><br>
+          you receive <span class="plus">0.30225 ETH</span>, above your quote.
+        </div>
       </div>
-      <div class="card">
-        <h3>Ophis application reviews</h3>
-        <p>
-          Ophis-specific solver wiring, AllowList authentication contract, and partner-fee
-          handling were reviewed with <strong>Slither</strong> static analysis and multi-agent
-          code review passes during May 2026. Findings + responses tracked in commit history.
+
+      <div class="panel">
+        <div class="ttl">Rebate tiers, by 30-day volume</div>
+        <table class="tier">
+          <thead><tr><th>Tier</th><th>30-day volume</th><th>Rebate weight</th></tr></thead>
+          <tbody>
+            <tr><td class="nm">Bronze</td><td>$0+</td><td class="pct">10%</td></tr>
+            <tr><td class="nm">Silver</td><td>$5,000+</td><td class="pct">20%</td></tr>
+            <tr><td class="nm">Gold</td><td>$50,000+</td><td class="pct">35%</td></tr>
+            <tr><td class="nm">Platinum</td><td>$500,000+</td><td class="pct">50%</td></tr>
+          </tbody>
+        </table>
+        <p class="pool">
+          Each month, <b>50% of the fees Ophis collects</b> is paid out as rebates, split across
+          active wallets in proportion to their 30-day volume weighted by tier. A higher tier
+          raises your weight in the split. Your current tier is shown on the swap page.
         </p>
-        <div class="foot"><span class="badge live">Live · internal</span></div>
-      </div>
-      <div class="card">
-        <h3>Ongoing security work</h3>
-        <p>
-          Additional external review and a formal bug bounty are part of the planned roadmap.
-          We will list them here when they are operational, not before. For now, reach out to
-          discuss security disclosure paths.
-        </p>
-        <div class="foot"><span class="badge planned">Planned</span></div>
       </div>
     </div>
   </div>
@@ -386,14 +412,14 @@ footer.site {
 <!-- ───────── CHAIN COVERAGE ───────── -->
 <section id="chains">
   <div class="wrap">
-    <div class="eyebrow">Chain coverage</div>
-    <h2>11 EVM chains, plus Solana &amp; Bitcoin destinations.</h2>
-    <p class="lede">
-      EVM source via the standard CoW Protocol orderbook. Solana and Bitcoin destinations
-      from EVM source via NEAR Intents, no second wallet required.
+    <div class="eyebrow reveal">Chain coverage</div>
+    <h2 class="reveal">11 EVM chains, plus Solana &amp; Bitcoin destinations.</h2>
+    <p class="lede reveal">
+      EVM source via the CoW Protocol orderbook. Solana and Bitcoin destinations from EVM source
+      via NEAR Intents, with no second wallet required.
     </p>
 
-    <div class="chains" style="margin-top: 32px;">
+    <div class="chains reveal">
       <div class="chip"><img src="/logos/chain-ethereum.png" alt=""><span class="name">Ethereum</span></div>
       <div class="chip"><img src="/logos/chain-arbitrum.jpg" alt=""><span class="name">Arbitrum</span></div>
       <div class="chip"><img src="/logos/chain-optimism.png" alt=""><span class="name">Optimism</span></div>
@@ -403,16 +429,12 @@ footer.site {
       <div class="chip"><img src="/logos/chain-avalanche.png" alt=""><span class="name">Avalanche</span></div>
       <div class="chip"><img src="/logos/chain-gnosis.png" alt=""><span class="name">Gnosis</span></div>
       <div class="chip"><img src="/logos/chain-linea.jpg" alt=""><span class="name">Linea</span></div>
-      <!-- ?v=1 cache-bust: these two logos were added in #406; the /logos/* rule in
-           public/_headers stamps assets (incl. 404 misses) immutable for 30d, so any
-           edge node that cached a pre-deploy soft-404 for these URLs would keep serving
-           it. A fresh cache key sidesteps that without a CDN purge. -->
       <div class="chip"><img src="/logos/chain-ink.svg?v=1" alt=""><span class="name">Ink</span></div>
       <div class="chip"><img src="/logos/chain-plasma.svg?v=1" alt=""><span class="name">Plasma</span></div>
       <div class="chip"><img src="/logos/token-sol.svg" alt=""><span class="name">Solana</span><span class="via">via NEAR</span></div>
       <div class="chip"><img src="/logos/token-btc.svg" alt=""><span class="name">Bitcoin</span><span class="via">via NEAR</span></div>
     </div>
-    <p style="margin-top: 18px; font-size: 13px; color: var(--muted-2);">
+    <p style="margin-top: 20px; font-size: 13px; color: var(--muted-2);">
       Sepolia testnet is available for integration testing, not listed here to keep the
       production-coverage view honest.
     </p>
@@ -421,44 +443,43 @@ footer.site {
 
 <div class="divider"></div>
 
-<!-- ───────── INTEGRATION PATHS (merged) ───────── -->
+<!-- ───────── INTEGRATION PATHS ───────── -->
 <section id="integration">
   <div class="wrap">
-    <div class="eyebrow">Integration paths</div>
-    <h2>Three ways to put Ophis in front of users.</h2>
-    <p class="lede">
-      Each path inherits the MEV-protected routing + multi-chain coverage. Choose by where the
-      user lives + how much UI you want to own.
+    <div class="eyebrow reveal">Integration paths</div>
+    <h2 class="reveal">Three ways to put Ophis in front of users.</h2>
+    <p class="lede reveal">
+      All three settle through CoW Protocol's MEV-protected batch auction. The direct UI and
+      Intent API carry Ophis's full routing and multi-chain coverage; choose by how much of the
+      interface you want to own.
     </p>
 
-    <div class="grid cols-3" style="margin-top: 40px;">
+    <div class="grid cols-3 reveal">
       <div class="card">
         <h3>Direct use</h3>
         <p>
-          Your desk operators trade via the standard web UI at
-          <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">swap.ophis.fi</code>.
-          Wallet connect via MetaMask, WalletConnect v2, Coinbase Wallet, Safe, or any
-          EIP-1193 provider. No code required.
+          Operators trade via the web UI at <code>swap.ophis.fi</code>. Wallet connect via
+          MetaMask, WalletConnect v2, Coinbase Wallet, Safe, or any EIP-1193 provider. No code
+          required.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <h3>Intent API</h3>
         <p>
-          Hit <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">POST /api/intent</code>
-          from your bot or agent. Ophis returns a structured order ready to sign. Settle
-          on-chain via the underlying CoW Protocol orderbook. Public rate limit:
-          30 req/min/IP. Partner-tier higher quotas available by agreement.
+          Call <code>POST /api/intent</code> from your bot or agent and Ophis returns a structured
+          order ready to sign, settled on the CoW Protocol orderbook. Public rate limit 30
+          req/min/IP; partner-tier quotas by agreement.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <h3>CoW Widget embed</h3>
         <p>
-          The upstream CoW Widget embeds the swap form in your app. Inherits the same
-          MEV-protected routing + chain coverage. Available via
-          <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">@cowprotocol/widget-react</code>.
-          Ophis-branded widget variant is not yet available; reach out if you need it.
+          The upstream CoW Widget embeds the swap form in your app with the same MEV-protected,
+          batch-auction settlement, via <code>@cowprotocol/widget-react</code>. An Ophis-branded
+          variant, with our routing and partner-fee config, is not yet available; reach out if you
+          need it.
         </p>
         <div class="foot"><span class="badge partner">Upstream-supported</span></div>
       </div>
@@ -468,10 +489,10 @@ footer.site {
 
 <!-- ───────── CTA MID ───────── -->
 <section style="padding: 0 24px;">
-  <div class="cta-banner">
+  <div class="cta-banner reveal">
     <div>
-      <h3>Discuss partner access &amp; custom rate limits</h3>
-      <p>Material-volume routing? OTC partnership scope? Higher rate limits? We answer usually within one business day.</p>
+      <h3>Partner access &amp; custom rate limits</h3>
+      <p>Material-volume routing, OTC partnership scope, or higher rate limits? We respond within one business day.</p>
     </div>
     <a class="btn primary" href="https://swap.ophis.fi/#/contact">Discuss partner access →</a>
   </div>
@@ -480,31 +501,75 @@ footer.site {
 <!-- ───────── API OVERVIEW ───────── -->
 <section id="api">
   <div class="wrap">
-    <div class="eyebrow">API overview</div>
-    <h2>Public Intent API. Higher tiers by partner agreement.</h2>
-    <p class="lede">
-      The public Intent API requires no auth and no key, useful for prototyping and low-volume
-      automation. Higher rate limits + partner-tier endpoints are reviewed case-by-case.
+    <div class="eyebrow reveal">API overview</div>
+    <h2 class="reveal">Public Intent API. Higher tiers by agreement.</h2>
+    <p class="lede reveal">
+      The public Intent API needs no auth and no key, useful for prototyping and low-volume
+      automation. Higher rate limits and partner-tier endpoints are reviewed case by case.
     </p>
 
-    <div class="table-wrap" style="margin-top: 40px;">
-      <table>
+    <div class="table-wrap reveal">
+      <table class="api">
         <thead>
           <tr><th>Endpoint</th><th>Method</th><th>Auth</th><th>Rate limit</th><th>Status</th></tr>
         </thead>
         <tbody>
           <tr><td><code>/api/intent</code></td><td>POST</td><td>None</td><td>30 / min / IP</td><td><span class="badge live">Live</span></td></tr>
-          <tr><td><code>/api/intent</code></td><td>POST</td><td>API key (partner)</td><td>180 / min</td><td><span class="badge planned">Planned</span></td></tr>
-          <tr><td><code>/api/quote</code></td><td>POST</td><td>None</td><td>TBD</td><td><span class="badge planned">Planned</span></td></tr>
-          <tr><td>CoW orderbook API</td><td>HTTP</td><td>None</td><td>Upstream-defined</td><td><span class="badge live">Live · upstream</span></td></tr>
+          <tr><td><code>/api/intent</code></td><td>POST</td><td>API key (partner)</td><td>Higher, by agreement</td><td><span class="badge planned">Planned</span></td></tr>
+          <tr><td>CoW orderbook API</td><td>HTTP</td><td>None</td><td>Upstream-defined</td><td><span class="badge live">Live</span></td></tr>
         </tbody>
       </table>
     </div>
     <p style="margin-top: 18px; color: var(--muted); font-size: 14px;">
-      Full reference: <a href="https://docs.ophis.fi">docs.ophis.fi</a>. Public-tier rate limits
-      are adequate for low/medium-volume operators. For higher throughput or partner-tier
-      access, reach out, quotas are reviewed case-by-case.
+      Full reference at <a href="https://docs.ophis.fi/intent-api">docs.ophis.fi</a>. Public-tier
+      limits suit low and medium-volume operators; for higher throughput or partner-tier access,
+      reach out and quotas are reviewed case by case.
     </p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ───────── SECURITY POSTURE ───────── -->
+<section id="audits">
+  <div class="wrap">
+    <div class="eyebrow reveal">Security posture</div>
+    <h2 class="reveal">Honest about what has been reviewed, and by whom.</h2>
+    <p class="lede reveal">
+      We do not claim certifications we do not hold. Below is the actual review history for the
+      routing and settlement components.
+    </p>
+
+    <div class="grid cols-3 reveal">
+      <div class="card">
+        <h3>Upstream contract audits</h3>
+        <p>
+          The GPv2 settlement contracts were audited by <strong>Trail of Bits</strong> and
+          <strong>G0 Group</strong> as part of CoW Protocol. Reports are public in the CoW DAO
+          repositories.
+        </p>
+        <div class="foot"><span class="badge live">Live · upstream</span></div>
+      </div>
+      <div class="card">
+        <h3>Ophis application reviews</h3>
+        <p>
+          Ophis-specific solver wiring, the AllowList authentication contract, and partner-fee
+          handling were reviewed with <strong>Slither</strong> static analysis, <strong>Echidna</strong>
+          property fuzzing, and multi-agent code-review passes. Findings and responses are tracked
+          in commit history.
+        </p>
+        <div class="foot"><span class="badge live">Live · internal</span></div>
+      </div>
+      <div class="card">
+        <h3>Ongoing security work</h3>
+        <p>
+          Additional external review and a formal bug bounty are on the roadmap. We will list them
+          here once operational, not before. For now, reach out to discuss security disclosure
+          paths.
+        </p>
+        <div class="foot"><span class="badge planned">Planned</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -513,47 +578,46 @@ footer.site {
 <!-- ───────── ACCESS & ENGAGEMENT ───────── -->
 <section id="engagement">
   <div class="wrap">
-    <div class="eyebrow">Access &amp; engagement</div>
-    <h2>Public, partner, or institutional, by agreement.</h2>
-    <p class="lede">
-      Four engagement shapes, with honest framing about what each gives you and what it
-      doesn't. We don't sell features we can't deliver.
+    <div class="eyebrow reveal">Access &amp; engagement</div>
+    <h2 class="reveal">Public, partner, or institutional, by agreement.</h2>
+    <p class="lede reveal">
+      Four engagement shapes, with honest framing about what each gives you and what it does not.
+      We do not sell features we cannot deliver.
     </p>
 
-    <div class="grid cols-4" style="margin-top: 40px;">
+    <div class="grid cols-4 reveal">
       <div class="card">
         <h3>Public best-effort</h3>
         <p>
-          Open access to the web UI + public Intent API. GitHub issues + email response within
-          1 business day. No formal SLA; downtime, RPC outages, or upstream protocol issues
-          may affect availability.
+          Open access to the web UI and public Intent API. GitHub issues and email answered within
+          one business day. No formal SLA; downtime, RPC outages, or upstream protocol issues may
+          affect availability.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <h3>Partner-tier support</h3>
         <p>
-          Direct Telegram / email channel, higher API rate limits, integration assistance.
-          Reviewed case-by-case for material-volume routing through Ophis. Not a public tier;
-          terms negotiated per agreement.
+          Direct Telegram or email channel, higher API rate limits, integration assistance.
+          Reviewed case by case for material-volume routing through Ophis. Not a public tier; terms
+          per agreement.
         </p>
         <div class="foot"><span class="badge partner">By agreement</span></div>
       </div>
       <div class="card">
         <h3>OTC routing partnership</h3>
         <p>
-          Custom solver-set composition, dedicated execution lanes, post-trade reporting.
-          Requires a formal partnership agreement. Reach out to discuss scope, terms, and fit.
+          Custom solver-set composition, dedicated execution lanes, post-trade reporting. Requires
+          a formal partnership agreement. Reach out to discuss scope, terms, and fit.
         </p>
         <div class="foot"><span class="badge partner">By agreement</span></div>
       </div>
       <div class="card">
         <h3>Contracting path</h3>
         <p>
-          The interface is operated independently and is not a regulated financial-services
-          entity. Formal terms, uptime commitments, indemnification, and liability allocation
-          are handled case-by-case via a written agreement; full operator and entity details
-          are provided on request.
+          The interface is operated independently and is not a regulated financial-services entity.
+          Formal terms, uptime commitments, indemnification, and liability are handled per a written
+          agreement; full operator and entity details on request.
         </p>
         <div class="foot"><span class="badge partner">By agreement</span></div>
       </div>
@@ -566,28 +630,27 @@ footer.site {
 <!-- ───────── OPERATIONAL BOUNDARIES ───────── -->
 <section id="boundaries">
   <div class="wrap">
-    <div class="eyebrow">Operational boundaries</div>
-    <h2>What Ophis is, and isn't.</h2>
-    <p class="lede">
-      Explicit scope statements so there are no surprises during integration discussions.
+    <div class="eyebrow reveal">Operational boundaries</div>
+    <h2 class="reveal">What Ophis is, and what it is not.</h2>
+    <p class="lede reveal">
+      Explicit scope statements, so there are no surprises during integration discussions.
     </p>
 
-    <div class="grid cols-2" style="margin-top: 40px;">
+    <div class="grid cols-2 reveal">
       <div class="card">
         <h3>What Ophis is</h3>
         <p>
           A non-custodial interface to the CoW Protocol settlement layer, with a plain-English
-          intent parser, partner-fee mechanism (CIP-75), and cross-chain destination support
-          via NEAR Intents. Operated independently, open-source under its own license.
+          intent parser, a CIP-75 partner-fee mechanism, and cross-chain destination support via
+          NEAR Intents. Operated independently and open-source under GPL-3.0.
         </p>
       </div>
       <div class="card">
-        <h3>What Ophis isn't</h3>
+        <h3>What Ophis is not</h3>
         <p>
-          A regulated investment firm; a custodian; a guaranteed-execution venue; an
-          ISO-certified provider; an exchange or market maker. Execution depends on solver
-          competition and upstream protocol availability. We do not promise outcomes we
-          cannot enforce on-chain.
+          A regulated investment firm, a custodian, a guaranteed-execution venue, an ISO-certified
+          provider, an exchange, or a market maker. Execution depends on solver competition and
+          upstream protocol availability. We do not promise outcomes we cannot enforce on-chain.
         </p>
       </div>
     </div>
@@ -599,19 +662,19 @@ footer.site {
 <!-- ───────── FAQ ───────── -->
 <section id="faq">
   <div class="wrap">
-    <div class="eyebrow">FAQ</div>
-    <h2>Questions desks usually ask first.</h2>
+    <div class="eyebrow reveal">FAQ</div>
+    <h2 class="reveal">Questions desks ask first.</h2>
 
-    <div style="max-width: 820px; margin-top: 36px;">
+    <div class="reveal" style="max-width: 840px; margin-top: 36px;">
       <details>
         <summary>Are you a regulated financial-services entity?</summary>
         <div class="body">
           <p>
-            No. Ophis is operated independently and provides a non-custodial software interface
-            to permissionless on-chain protocols. It does not take custody of funds, execute
+            No. Ophis is operated independently and provides a non-custodial software interface to
+            permissionless on-chain protocols. It does not take custody of funds, execute
             discretionary trades, or hold a regulated financial-services license. For formal
-            contractual arrangements, full operator and entity details are provided on request
-            via the contact below.
+            contractual arrangements, full operator and entity details are provided on request via
+            the contact below.
           </p>
         </div>
       </details>
@@ -620,16 +683,15 @@ footer.site {
         <summary>What is your fee structure?</summary>
         <div class="body">
           <p>
-            <strong>0% on ordinary trades.</strong> Ophis charges nothing on the principal
-            value of a swap, and the fee never touches your principal. The only fee is a small,
-            capped share of <em>price improvement</em>: when a solver beats the quote you
-            accepted, Ophis may take a portion of that surplus via CoW Protocol's CIP-75
-            partner-fee mechanism. If your order fills at the quoted rate, the fee is 0%.
+            <strong>0% on ordinary trades.</strong> Ophis charges nothing on the principal value of
+            a swap, and the fee never touches your principal. The only fee is <strong>25% of price
+            improvement</strong>: when a solver beats the quote you accepted, Ophis takes a quarter
+            of that surplus via CoW Protocol's CIP-75 mechanism, hard-capped at <strong>0.5% of
+            trade volume</strong>. If your order fills at the quoted rate, the fee is 0%.
           </p>
           <p>
-            No flat protocol fee, no hidden spreads. The full breakdown, including how the
-            capped share is calculated, is in the
-            <a href="https://docs.ophis.fi/fees">fees documentation</a>. Partner-tier terms are
+            No flat protocol fee, no hidden spreads. The full breakdown and the rebate tiers are in
+            the <a href="https://docs.ophis.fi/fees">fees documentation</a>. Partner-tier terms are
             handled per agreement.
           </p>
         </div>
@@ -639,10 +701,10 @@ footer.site {
         <summary>Can I get a custom rate limit?</summary>
         <div class="body">
           <p>
-            Yes, partner-tier rate limits are reviewed case-by-case. The public Intent API
-            allows 30 requests/min/IP, which is adequate for low/medium-volume operators.
-            For higher throughput, reach out with a brief description of your use case +
-            target volume and we'll respond usually within one business day.
+            Yes, partner-tier rate limits are reviewed case by case. The public Intent API allows 30
+            requests/min/IP, adequate for low and medium-volume operators. For higher throughput,
+            reach out with a brief description of your use case and target volume, and we respond
+            within one business day.
           </p>
         </div>
       </details>
@@ -651,25 +713,23 @@ footer.site {
         <summary>How do I integrate?</summary>
         <div class="body">
           <p>
-            Three paths (more detail above): (1) point your operators at
+            Three paths, detailed above: (1) point your operators at
             <a href="https://swap.ophis.fi">swap.ophis.fi</a> for direct use, (2) call
-            <code style="font-family:'Geist Mono';font-size:13px;background:rgba(245,239,230,0.06);padding:2px 6px;border-radius:4px;">POST /api/intent</code>
-            from your bot/agent, or (3) embed the upstream CoW Widget. Documentation at
-            <a href="https://docs.ophis.fi">docs.ophis.fi</a>.
+            <code>POST /api/intent</code> from your bot or agent, or (3) embed the upstream CoW
+            Widget. Documentation at <a href="https://docs.ophis.fi">docs.ophis.fi</a>.
           </p>
         </div>
       </details>
 
       <details>
-        <summary>What happens if a solver fails or upstream protocol has an outage?</summary>
+        <summary>What happens if a solver fails or the upstream protocol has an outage?</summary>
         <div class="body">
           <p>
-            Solver competition handles single-solver failures automatically, your order is
-            settled by whichever solver wins the batch. If the underlying CoW Protocol
-            orderbook is degraded (rare but possible), Ophis surfaces an explicit error
-            instead of routing through a degraded venue. Unsettled orders incur no Ophis or
-            CoW settlement fee, though network gas costs may still apply to any token
-            approvals or other wallet actions you signed before the order was placed.
+            Solver competition handles single-solver failures automatically: your order is settled
+            by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded
+            (rare but possible), Ophis surfaces an explicit error instead of routing through a
+            degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network
+            gas may still apply to token approvals or other wallet actions you signed first.
           </p>
         </div>
       </details>
@@ -678,10 +738,10 @@ footer.site {
         <summary>Do you have references or case studies?</summary>
         <div class="body">
           <p>
-            Not yet. Ophis is pre-launch in commercial terms. We list specific partner
-            integrations here only after a signed agreement exists; we don't publish
-            anonymous "trusted by" claims. If you'd like to be an early reference partner,
-            mention it in your first email.
+            Not yet. Ophis is pre-launch in commercial terms. We list specific partner integrations
+            here only after a signed agreement exists; we do not publish anonymous "trusted by"
+            claims. If you would like to be an early reference partner, mention it in your first
+            email.
           </p>
         </div>
       </details>
@@ -690,16 +750,14 @@ footer.site {
 </section>
 
 <!-- ───────── FINAL CTA ───────── -->
-<section style="padding: 56px 24px 96px;">
+<section style="padding: 64px 24px 104px;">
   <div class="wrap" style="text-align: center;">
-    <h2>Contact Ophis.</h2>
-    <p class="lede" style="margin: 16px auto 28px;">
-      Same-business-day response on substantive inquiries. We don't cold-pitch; we don't
-      chase. If our public model fits your desk, the conversation is short.
+    <h2 class="reveal" style="margin: 0 auto;">Start the conversation.</h2>
+    <p class="lede reveal" style="margin: 18px auto 30px;">
+      A response within one business day on substantive inquiries. We do not cold-pitch and we do
+      not chase. If our public model fits your desk, the conversation is short.
     </p>
-    <a class="btn primary" href="https://swap.ophis.fi/#/contact">
-      Contact us →
-    </a>
+    <a class="btn primary reveal" href="https://swap.ophis.fi/#/contact">Contact us →</a>
   </div>
 </section>
 
@@ -708,12 +766,12 @@ footer.site {
 <!-- ───────── FOOTER ───────── -->
 <footer class="site">
   <div class="foot-grid">
-    <div>
-      <a class="brand" href="https://ophis.fi" style="display:inline-flex;align-items:center;gap:10px;color:var(--cream);text-decoration:none;font-family:'Geist';font-weight:600;font-size:22px;margin-bottom:12px;">
-        <img src="/ophis-icon.svg" alt="" aria-hidden="true" style="width:28px;height:28px;">
-        ophis<span style="color:var(--sunset);">.</span>
+    <div class="foot-brand">
+      <a class="mark" href="https://ophis.fi">
+        <img src="/ophis-icon.svg" alt="" aria-hidden="true">
+        ophis<span>.</span>
       </a>
-      <p style="max-width:280px;font-size:13px;line-height:1.55;color:var(--muted-2);margin:4px 0 0;">
+      <p>
         Intent-based DEX aggregator. Non-custodial, MEV-protected, audit-inherited. For
         material-volume traders and integrators.
       </p>
@@ -723,6 +781,7 @@ footer.site {
       <h4>Product</h4>
       <ul>
         <li><a href="https://swap.ophis.fi">Trade</a></li>
+        <li><a href="https://explorer.ophis.fi">Explorer</a></li>
         <li><a href="https://swap.ophis.fi/#/profile">Profile</a></li>
       </ul>
     </div>
@@ -731,8 +790,8 @@ footer.site {
       <h4>Resources</h4>
       <ul>
         <li><a href="https://docs.ophis.fi">Docs</a></li>
+        <li><a href="https://docs.ophis.fi/fees">Fees</a></li>
         <li><a href="https://swap.ophis.fi/#/learn">Learn</a></li>
-        <li><a href="https://swap.ophis.fi/#/about">About</a></li>
         <li><a href="https://swap.ophis.fi/#/legal">Legal</a></li>
       </ul>
     </div>
@@ -749,11 +808,11 @@ footer.site {
   <div class="foot-bottom">
     <span>© Ophis 2026 · Non-custodial, operated independently</span>
     <span>
-      <a href="https://swap.ophis.fi/#/legal" style="color:var(--muted-2);">Terms</a>
+      <a href="https://swap.ophis.fi/#/legal">Terms</a>
       &nbsp;·&nbsp;
-      <a href="https://swap.ophis.fi/#/legal#privacy" style="color:var(--muted-2);">Privacy</a>
+      <a href="https://swap.ophis.fi/#/legal#privacy">Privacy</a>
       &nbsp;·&nbsp;
-      <a href="https://swap.ophis.fi/#/brand" style="color:var(--muted-2);">Brand</a>
+      <a href="https://swap.ophis.fi/#/brand">Brand</a>
     </span>
   </div>
 </footer>
