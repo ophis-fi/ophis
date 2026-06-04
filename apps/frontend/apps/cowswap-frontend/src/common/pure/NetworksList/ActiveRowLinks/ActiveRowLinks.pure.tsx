@@ -7,31 +7,21 @@ import { Trans } from '@lingui/react/macro'
 import * as styledEl from './ActiveRowLinks.styled'
 
 export interface ActiveRowLinksProps {
-  bridge: string | undefined
   helpCenterUrl: string | undefined
   targetChainId: SupportedChainId
 }
 
 // Ophis: dropped the hardcoded "CoW Protocol Explorer" row and the per-chain
-// block-explorer (Etherscan/Arbiscan) link — keep the network selector focused
-// on Ophis actions (bridge + help). Block-explorer links still appear on order
-// receipts / transaction rows, just not in the network dropdown.
+// block-explorer (Etherscan/Arbiscan) link. Also dropped the per-chain external
+// "Bridge" link (e.g. bridge.optimism.io): it is obsolete now that Ophis bridges
+// natively in-app via Bungee + Across (EVM to EVM) and NEAR Intents (Solana,
+// Bitcoin); you just pick a destination chain in the token picker. Block-explorer
+// links still appear on order receipts and transaction rows.
 export function ActiveRowLinks({
-  bridge,
   helpCenterUrl,
 }: ActiveRowLinksProps): ReactNode {
   return (
     <styledEl.ActiveRowLinkList>
-      {bridge && (
-        <styledEl.ActiveRowLink href={bridge}>
-          <styledEl.ActiveRowLinkLabel>
-            <Trans>Bridge</Trans>
-          </styledEl.ActiveRowLinkLabel>
-          <styledEl.LinkOutIconWrapper>
-            <styledEl.LinkOutCircle aria-hidden="true" />
-          </styledEl.LinkOutIconWrapper>
-        </styledEl.ActiveRowLink>
-      )}
       {helpCenterUrl && (
         <styledEl.ActiveRowLink href={helpCenterUrl}>
           <styledEl.ActiveRowLinkLabel>
