@@ -162,7 +162,7 @@ export const Footer: React.FC<FooterType> = (props) => {
       </ContractsWrapper>
       <VersionsWrapper>
         {url.web && VERSION && (
-          <a target="_blank" rel="noopener noreferrer" href={url.web + VERSION}>
+          <a target="_blank" rel="noopener noreferrer" href={url.web}>
             Web: v{VERSION} <LogoWrapper className="github-logo" src={LOGO_MAP.github} title="Open it on Github" />
           </a>
         )}
