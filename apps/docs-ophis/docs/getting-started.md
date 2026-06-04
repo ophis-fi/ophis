@@ -78,7 +78,7 @@ Plus **Solana** and **Bitcoin** as cross-chain _destinations_ via
 chain to those networks without a second wallet. You paste a destination
 address and sign with your EVM wallet; NEAR Intents brokers the bridge.
 
-Around 200+ tokens are recognised across stablecoins, ETH/BTC pegs, DeFi
+236 tokens are recognised across stablecoins, ETH/BTC pegs, DeFi
 blue-chips, AI/RWA, memes, and gaming.
 
 :::tip[Building on Ophis?]
