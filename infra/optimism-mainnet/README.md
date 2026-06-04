@@ -51,9 +51,9 @@ External dependencies:
   └── KyberSwap API       → aggregator-api.kyberswap.com/optimism/api/v1/
 ```
 
-**Protocol authority**: 2-of-2 Safe at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` (HW wallet + independent EOA). Holds `owner()` and `manager()` of `AllowListAuthentication`. Phase 3 of Spec 5 adds a third signer for 2-of-3.
+**Protocol authority**: 2-of-3 Safe (v1.4.1) at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, hardware-backed signers (see `docs/operations/founder-bus-factor.md` §2.2). Holds `owner()` (proxy-upgrade admin) and `manager()` of `AllowListAuthentication`. Threshold and the three owners verified on-chain. No timelock: solver-allowlist changes and AllowList upgrades take effect immediately on 2-of-3 execution.
 
-**Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50.
+**Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50. On Optimism this is a Safe v1.4.1 with threshold 2 and the same three owners as the protocol Safe (verified on-chain). On Gnosis and Ethereum the same address is deployed 2-of-2 (owners `0xBeC5B03f…0199` + `0x0494F503…284d1A`). See `docs/operations/founder-bus-factor.md` §2.3.
 
 **Public reachability**: `https://optimism-mainnet.ophis.fi` → Cloudflare Tunnel `ophis-optimism-mainnet` (id `56a68415-b1d9-4808-8218-850ec066b40b`) → `127.0.0.1:8102` on the Mac mini. Tunnel runs persistently via launchd at `~/Library/LaunchAgents/com.ophis.cloudflared.op-mainnet.plist`. Config at `~/.cloudflared/config-ophis-op-mainnet.yml`.
 
@@ -66,15 +66,18 @@ External dependencies:
 | Chain ID | `10` |
 | Settlement | `0x310784c7FCE12d578dA6f53460777bAc9718B859` |
 | AuthListAuth Proxy | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` |
-| AuthListAuth Impl | `0xFAB54856B6731BC0C32904BE5297A627d9FDFA31` |
+| AuthListAuth Impl (current) | `0x59eE2de83b559e5cC2Afb930F29abeA3dBB4cc9D` |
+| AuthListAuth Impl (initial, pre-upgrade) | `0xFAB54856B6731BC0C32904BE5297A627d9FDFA31` |
 | VaultRelayer | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` |
-| Balances | `0x78799f98276efba1edeed32eae03a3fd8cdfec3a` |
-| Signatures | `0x5f315a204e7971fc29a66fef3a5773f6b0202fac` |
-| HooksTrampoline | `0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810` |
+| Balances | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` |
+| Signatures | `0x5f315A204E7971fC29a66fef3a5773f6B0202fac` |
+| HooksTrampoline | `0x2FbB1e41fF4f9b707E4428EEC7F5AFAaC5D60810` |
 | Protocol Safe | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
 | Partner-fee Safe | `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` |
 | Driver-submitter EOA | `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1` |
 | HW deployer | `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` |
+
+> **AllowList impl upgrade.** The proxy was deployed with initial impl `0xFAB54856…` and later upgraded (via the Safe calling `upgradeTo`) to the two-step-manager impl `0x59eE2de8…` (`proposeManager`/`acceptManagership`/`pendingManager`). The current impl's `deployedBytecode` is verified byte-for-byte against the live `EXTCODEHASH`. Full record: [`contracts/deployments/optimism-mainnet/NOTE-allowlist-upgrade.md`](../../contracts/deployments/optimism-mainnet/NOTE-allowlist-upgrade.md). `GPv2Settlement` and `VaultRelayer` are non-upgradeable (no proxy).
 
 ### Host ports (all 127.0.0.1-bound)
 
@@ -291,7 +294,7 @@ This is the hardest rotation — the new EOA must be allowlisted on-chain via th
 
 1. Generate new keypair: `cast wallet new` → save PK to Keychain as `ophis-driver-submitter`, note address
 2. Fund new EOA with ~0.05 OP ETH
-3. Via the protocol Safe (2-of-2), propose + execute: `AllowListAuthentication.addSolver(NEW_ADDR)`
+3. Via the protocol Safe (2-of-3), propose + execute: `AllowListAuthentication.addSolver(NEW_ADDR)`
 4. Update autopilot.toml `[[drivers]] address = "NEW_ADDR"`
 5. Update `.env` `OPHIS_DRIVER_SUBMITTER_KEY` = new PK
 6. `docker compose up -d driver autopilot`
@@ -471,4 +474,4 @@ cast logs --rpc-url https://optimism-rpc.publicnode.com \
 
 ---
 
-Last updated: 2026-05-13. Maintainer: Clement (san-npm).
+Last updated: 2026-06-04. Maintainer: Clement; repo `ophis-fi/ophis` (org owned by the `san-npm` account).

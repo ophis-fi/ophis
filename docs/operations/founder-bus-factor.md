@@ -9,7 +9,10 @@ rotate it, how to redeploy, what's load-bearing on the Mac mini — was
 mostly in Clement's head. This document moves it out. Read it
 end-to-end before assuming anything.
 
-**Last updated:** 2026-05-19 (post HL pivot, OP-only operation).
+**Last updated:** 2026-06-04 (bus-factor verification pass: corrected hosting
+to Cloudflare Pages, repo org to `ophis-fi/ophis`, driver/orderbook ports to
+8103/8102, partner-fee Safe config, pg_dump cadence/DB name, EIP-55-canonicalized
+addresses, refreshed stale CONTRIBUTING.md / op-runbook TODOs).
 
 ---
 
@@ -36,8 +39,16 @@ end-to-end before assuming anything.
 
 Single EOA, same address across all chains. Signs every settlement tx.
 Allowlisted as solver on each chain's `GPv2AllowListAuthentication`
-contract. If this EOA is compromised, attacker can dispatch arbitrary
-settle calls (drain pending VaultRelayer approvals).
+contract. If this EOA is compromised, the attacker becomes an
+allowlisted solver until evicted: they can submit settlements and route
+through arbitrary contracts, but **every settlement is still bounded by
+each order's on-chain signed limit** — VaultRelayer only honours the
+immutable Settlement, and `settle()` reverts unless every trader
+receives at least their signed minimum-buy. Worst case is therefore
+surplus/MEV extraction on *in-flight* signed orders plus censorship/DoS
+— **not** draining idle wallets or arbitrary token approvals. Eviction:
+2-of-3 `removeSolver` (Section 4.2). See `../../SECURITY.md` for the
+disclosure process and the known-residuals list.
 
 **PK custody (Tier 1):** plaintext file at
 `/Users/ophis-driver/.config/submitter.key` on the Mac mini.
@@ -56,9 +67,17 @@ authenticator (Section 4.2 below). Update
 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF
 ```
 
-Same address on Ethereum, Optimism, Gnosis, HL, MegaETH (CREATE2
-deterministic, identical owner set + salt). **2-of-3 multisig**, Safe
-1.4.1. Owners are Clement's 3 Ledger Nano devices.
+**2-of-3 multisig**, Safe 1.4.1. Threshold (2) and the three owner
+addresses (`0x746Ad9C63cCA6d3A8588731d60Fb87deaB4da46A`,
+`0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`,
+`0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`) are verified on-chain.
+The owners are intended to be Clement's 3 Ledger Nano devices — on-chain
+proves they are plain EOAs but cannot prove hardware-wallet backing.
+
+The address is CREATE2-deterministic and identical across chains *where
+deployed*: confirmed live on Optimism (10), HyperEVM (999), and MegaETH
+(4326). It is **NOT** currently deployed on Ethereum mainnet (1) or
+Gnosis (100) — the address is only reserved there, not a live Safe.
 
 This Safe is the `manager()` of the AllowList authenticator on every
 chain. Any change to allowlisted solvers requires 2-of-3 Ledger
@@ -87,7 +106,8 @@ target is the AllowListAuthentication contract** (above), NOT the
 Settlement contract and NOT the signatures validator
 (`0x5f315a204e7971fc29a66fef3a5773f6b0202fac` on OP — common point of
 confusion, that's the EIP-1271 signature validator listed as
-`signatures` in the CoW config). 2026-05-20 incident: rotation
+`signatures` in the CoW config — canonical EIP-55 is
+`0x5f315A204E7971fC29a66fef3a5773f6B0202fac`). 2026-05-20 incident: rotation
 simulation reverted because the batch targeted the signatures
 validator instead of the AllowList — see
 [[feedback-allowlist-not-signatures]].
@@ -98,13 +118,23 @@ validator instead of the AllowList — see
 0x858f0F5eE954846D47155F5203c04aF1819eCeF8
 ```
 
-CREATE2-deterministic, lives on Gnosis (and lazy-deployed elsewhere as
-fees accrue). **Currently 1-of-1**, owner
-`0x0494F503912C101Bfd76b88e4F5D8A33de284d1A` (Clement's Ledger #1).
+CREATE2-deterministic, deployed on multiple chains. **Verified on-chain
+(2026-06-04):**
 
-**⚠️ Critical:** 1-of-1 is the same blast radius as a hot wallet. Before
-ANY meaningful revenue accrues, add 2 more Ledger signers + raise
-threshold to 2-of-3. Tracked as roadmap task 1.8.
+- **Optimism (10):** Safe 1.4.1, **2-of-3**, owners identical to the
+  protocol Safe set (`0x746Ad9C6…4da46A`, `0xBeC5B03f…0199`,
+  `0x0494F503…284d1A`).
+- **Gnosis (100)** and **Ethereum (1):** Safe 1.4.1, **2-of-2**, owners
+  `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` (HW deployer / protocol
+  Safe owner #3) + `0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
+
+The earlier "1-of-1, owner `0x0494F503…` only, lives on Gnosis" note was
+**wrong on every dimension** and has been corrected from on-chain reads.
+No single-signer config exists on any verified chain.
+
+**⚠️ Note the per-chain config divergence:** OP is 2-of-3, Gnosis/Ethereum
+are 2-of-2. Reconcile to a single intended threshold before meaningful
+revenue accrues. Tracked as roadmap task 1.8.
 
 ### 2.4 Settlement contracts (per chain)
 
@@ -121,11 +151,11 @@ Settlement, VaultRelayer, AllowList authenticator are the trio.
 | Mac mini (`scep.local`) | Clement's apartment, Luxembourg | Whole Ophis stack down. Recovery: bring up a replacement host with the same docker-compose, restore Postgres dumps from off-site backup (Section 6), restore `submitter.key` from off-site (Section 5). |
 | Submitter PK | Mac mini at `/Users/ophis-driver/.config/submitter.key` | Settlement dispatch blocked. Solver shows liveness alarm. Recovery: Section 4.2 to rotate the EOA. |
 | Ledger #1, #2, #3 | Clement's home, separately stored | If 1 is lost, still 2-of-3 → ops continue. If 2 are lost, Safe is bricked — need to factory-reset survivor + seed-restore, OR deploy a new Safe + migrate (Settlement contract `manager()` is non-rotatable, so a Safe loss = redeploy authenticator). |
-| Cloudflare account | `4761b41ef352631db0ed367fea98ffdc` | DNS + tunnel for `mcp-api.3615crypto.com`, `allo.3615crypto.com`. Stop = those subdomains 522, but Ophis FE itself is on Vercel. |
-| Vercel deployment | `clementfrmds-projects` account | `ophis.fi` frontend. Auto-deploys from `san-npm/ophis` master. Stop = static frontend cached at edge for a while, then 404. |
+| Cloudflare account | `4761b41ef352631db0ed367fea98ffdc` | DNS + tunnels (`mcp-api.3615crypto.com`, `allo.3615crypto.com`, `optimism-mainnet.ophis.fi`) AND the Ophis frontends (Cloudflare Pages — see next row). Account loss = everything below it down. |
+| Cloudflare Pages (frontends) | `4761b41ef352631db0ed367fea98ffdc` account | All three live surfaces are CF Pages projects, auto-deployed from `ophis-fi/ophis` main via GitHub Actions (`wrangler pages deploy`): project `greg` → `swap.ophis.fi`, `ophis-docs` → `docs.ophis.fi`, `ophis-landing` → `ophis.fi`. MCP server is a CF Worker (`@ophis/mcp-server`). NOT Vercel — the `vercel.json` files in the repo are inherited CoW upstream sub-apps, not the deployed surfaces. Stop = static frontend cached at edge for a while, then 404. |
 | Aleph VMs | postiz-stuart, mcp-services, allo.3615crypto | None are load-bearing for Ophis core (these are Stuart / mcp / allo work). |
 | Tailscale | `100.100.107.110` (Mac mini IP) | Remote shell into Mac mini stops working. Stack stays up. |
-| GitHub `ophis-fi/ophis` | san-npm account | Source of truth. Org account = `ophis-fi`. |
+| GitHub `ophis-fi/ophis` | org `ophis-fi` (owned by the `san-npm` account) | Source of truth. Canonical remote: `https://github.com/ophis-fi/ophis.git`. `san-npm` is the personal account that owns the org — the repo slug is always `ophis-fi/ophis`. |
 | Domain `ophis.fi` | Registered via Cloudflare. Renewals: Clement. | If lapses, frontend serves a parking page. |
 
 ### 3.1 Mac mini health checklist
@@ -162,7 +192,7 @@ docker compose logs --since=10m driver autopilot orderbook | grep -iE "error|pan
 | All containers down | `docker compose up -d` |
 | Driver crash-looping on bootstrap | Check eRPC consensus (`docker compose logs rpc-proxy --tail=50`). If consensus is failing, look at upstream RPC health: `for u in <upstreams>; do cast block-number --rpc-url $u; done` |
 | Orderbook 503 | Check Postgres: `docker exec optimism-mainnet-db-1 pg_isready`. If down: `docker compose restart db`, wait 10s, then `docker compose restart orderbook autopilot`. |
-| Driver healthz red but logs clean | `curl http://localhost:8301/healthz`. The driver runs balance check + consensus check + chain_id match. Any failing component is reported in the JSON body. |
+| Driver healthz red but logs clean | `curl http://localhost:8103/healthz`. The driver runs balance check + consensus check + chain_id match. Any failing component is reported in the JSON body. |
 | Autopilot ERROR logs about `essential maintenance` | This is the PR #89 visibility fix — autopilot view is stalling. Usually upstream RPC consensus failure. Same fix as driver crash-loop above. |
 
 If nothing helps: `docker compose down && docker compose up -d --build` (full rebuild). Takes 10-15min on Mac mini.
@@ -212,7 +242,7 @@ You need this when:
 
 6. **Verify**: the driver healthz endpoint shows the new submitter:
    ```bash
-   curl http://localhost:8201/healthz | jq '.submitter'
+   curl http://localhost:8103/healthz | jq '.submitter'
    ```
 
 7. **Shred the old key** after 24h of clean operation:
@@ -239,11 +269,17 @@ expired ~24h after the 2026-05-19 pause.
 
 - **`ophis.fi`**: Cloudflare Dashboard → Domains → ophis.fi → ensure
   auto-renew on. Account: Clement's email.
-- **Vercel deployment**: auto-deploys from `san-npm/ophis` master. To
-  manually trigger: `vercel --prod` from local checkout.
+- **Frontend deployment (Cloudflare Pages)**: all three surfaces
+  auto-deploy from `ophis-fi/ophis` main via GitHub Actions
+  (`wrangler pages deploy`): project `greg` → `swap.ophis.fi`,
+  `ophis-docs` → `docs.ophis.fi`, `ophis-landing` → `ophis.fi`. To
+  trigger manually, re-run the relevant workflow or run the
+  `wrangler pages deploy` command from the workflow against a local
+  build. (There is NO root Vercel project; do not run `vercel --prod`.)
 - **Cloudflare Tunnels** (for `mcp-api.3615crypto.com`,
-  `allo.3615crypto.com`): the tunnel daemon (`cloudflared`) runs on
-  Mac mini via launchd. `launchctl list | grep cloudflared` to verify.
+  `allo.3615crypto.com`, `optimism-mainnet.ophis.fi`): the tunnel daemon
+  (`cloudflared`) runs on Mac mini via launchd.
+  `launchctl list | grep cloudflared` to verify.
 
 ---
 
@@ -273,17 +309,24 @@ backup itself cannot be hacked.
 
 Daily dump → S3-compatible storage with version retention.
 
-**Suggested:** 
+**Automated (this is where the real dumps live during DR):** a LaunchAgent on
+the Mac mini runs `infra/shared/cron/postgres-backup.sh` daily at 03:30 (see
+`postgres-backup-setup.md`). It writes `op-YYYY-MM-DD.pgdump` (mode 0600, 14-day
+local retention) to:
 ```bash
-# Cron on Mac mini, weekly:
-docker exec optimism-mainnet-db-1 pg_dump -Fc -U orderbook orderbook \
-  > ~/backups/orderbook-$(date +%F).pgdump
+$HOME/.local/state/ophis/pg-backups/op-$(date +%F).pgdump
+```
+The script also validates each dump, prunes old ones, and pushes off-site when
+`REMOTE_BACKUP_CMD` is set (Backblaze B2 / AWS S3 / Hetzner Storage Box, ~$1/mo).
+
+Manual one-off to the SAME location (do not invent a `~/backups/` path; DR looks
+in the dir above):
+```bash
+docker exec optimism-mainnet-db-1 pg_dump -Fc -U ophis ophis \
+  > "$HOME/.local/state/ophis/pg-backups/op-$(date +%F).pgdump"
 ```
 
-Push to Backblaze B2 / AWS S3 / Hetzner Storage Box. ~$1/mo for adequate
-retention.
-
-Restore: `pg_restore -d orderbook < orderbook-2026-XX-XX.pgdump`.
+Restore: `pg_restore -d ophis -U ophis < "$HOME/.local/state/ophis/pg-backups/op-2026-XX-XX.pgdump"`.
 
 ### 5.3 Ledger seed phrases
 
@@ -310,7 +353,7 @@ they can be retrieved by Clement's next-of-kin in emergency.
 | Rotate submitter EOA | Operator + 2 of 3 Ledger holders | Requires Safe vote (Section 4.2) |
 | Add new allowlisted solver | 2 of 3 Ledger holders | Safe vote |
 | Deploy new Settlement contract | Clement (auditor sign-off first) | High-stakes, one-way |
-| Change partner-fee Safe recipient | Clement (currently 1-of-1) | Until 1.8 ships, only Clement can act |
+| Move accrued partner fees out of the Safe | 2 signers (OP 2-of-3; Gnosis/Eth 2-of-2) | Multisig-gated, not single-key — see §2.3. Roadmap 1.8: unify the threshold across chains. |
 | Press the big red button (stop all Ophis containers) | Anyone with Mac mini access | No on-chain consequence; users see "Ophis offline" but their funds are safe in Settlement contract |
 
 **What CANNOT be undone without Clement / multi-sig action:** any
@@ -346,12 +389,15 @@ checkout, but zero context. Order of operations:
    ```
 7. **Wait 5 minutes**, then verify:
    ```bash
-   curl localhost:8201/healthz | jq          # driver
-   curl localhost:8200/api/v1/version | jq   # orderbook
+   curl localhost:8103/healthz | jq          # driver
+   curl localhost:8102/api/v1/version | jq   # orderbook
    docker compose logs autopilot --since=2m | grep -iE "error|panic" | tail -10
    ```
-8. **Bring up FE separately**: deploy `san-npm/ophis` to Vercel
-   (`vercel --prod` from local).
+8. **Bring up FE separately**: the frontends are Cloudflare Pages, not
+   Vercel. Push to `ophis-fi/ophis` main (GitHub Actions runs
+   `wrangler pages deploy` for `greg`/`ophis-docs`/`ophis-landing`), or
+   run the workflow's `wrangler pages deploy` command against a local
+   build. See §4.4.
 
 If anything looks wrong, the runbooks in Section 4 cover most cases.
 
@@ -366,17 +412,14 @@ If anything looks wrong, the runbooks in Section 4 cover most cases.
 - **Operational runbooks**: `docs/operations/` (this file + HL-specific
   one).
 - **Spec validations**: `docs/development/`.
-- **Repository conventions**: `CONTRIBUTING.md` (does not exist as of
-  2026-05-19 — TODO).
+- **Repository conventions**: `CONTRIBUTING.md` (exists at repo root as
+  of 2026-05-20).
 - **Upstream CoW Protocol docs**: <https://docs.cow.fi>.
 
 ---
 
 ## 9. Things that aren't documented but should be (TODO)
 
-- `CONTRIBUTING.md` — code style, PR review expectations, CI overview.
-- `docs/operations/op-runbook.md` — OP-specific operational runbook
-  (clone the HL one's structure).
 - `docs/operations/safe-rotation-runbook.md` — full step-by-step for
   rotating any of the 3 Safes or adding signers.
 - Recovery test — a periodic dry-run of the cold-start procedure in
