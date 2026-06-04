@@ -4,7 +4,7 @@ import { computeShares, type EligibleWallet } from './batch/computeShares.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from './batch/dryRun.js';
 import { proposeRebateBatch } from './batch/propose.js';
 import { waitForExecution } from './batch/poll.js';
-import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
+import { assignTier, getEffectivePoolSplitBps } from './tiers.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
 import { getNonWethTokenBalances } from './safe/balances.js';
 import { alerts } from './telegram/alerter.js';
@@ -103,7 +103,8 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   const weth = WETH_BY_CHAIN[deps.chainId]!;
   const client = createPublicClient({ transport: http(deps.rpcUrl) });
   const netFee = await client.readContract({ address: weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
-  const pool = (netFee * BigInt(POOL_SPLIT_BPS)) / 10_000n;
+  // Flag-overridable split (default 50% = POOL_SPLIT_BPS); REBATE_POOL_SPLIT_BPS=2000 trims to a 20% kicker.
+  const pool = (netFee * BigInt(getEffectivePoolSplitBps())) / 10_000n;
 
   // 1b. Issue #360 safety net — runs EVERY batcher cycle, regardless of the WETH
   //     pool. The rebate pool is WETH-only, so any value the Safe holds in OTHER
