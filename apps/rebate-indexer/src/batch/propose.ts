@@ -11,6 +11,16 @@ export interface ProposeParams {
   readonly rpcUrl: string;
   readonly proposerPrivateKey: `0x${string}`;
   readonly transfers: readonly Transfer[];
+  /**
+   * Invoked exactly once, AFTER all local/RPC pre-submit work (Safe init, tx
+   * build, hash, signing) and IMMEDIATELY BEFORE the Safe Transaction Service
+   * submit. This is the point of no return: only from here can a proposal be
+   * queued. The batcher uses it to flip the cycle row to 'proposing' precisely at
+   * this boundary, so a failure during pre-submit (a transient RPC error, bad
+   * local config) leaves the cycle auto-resumable rather than wedged into
+   * manual-verification. If it throws, the submit is NOT attempted. (Codex P2)
+   */
+  readonly onBeforeSubmit?: () => Promise<void>;
 }
 
 export interface ProposeResult {
@@ -44,6 +54,10 @@ export async function proposeRebateBatch(p: ProposeParams): Promise<ProposeResul
   const senderSignature = await protocolKit.signHash(safeTxHash);
 
   const apiKit = new SafeApiKit({ chainId: BigInt(p.chainId) });
+  // Point of no return: everything above is local/RPC work that queues nothing.
+  // The submit below may queue a proposal on the Safe Transaction Service, so the
+  // caller marks the cycle 'proposing' here and not before. (Codex P2)
+  await p.onBeforeSubmit?.();
   await apiKit.proposeTransaction({
     safeAddress: OPHIS_SAFE_ADDRESS,
     safeTransactionData: safeTx.data,
