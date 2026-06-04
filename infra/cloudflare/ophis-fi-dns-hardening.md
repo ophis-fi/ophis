@@ -201,3 +201,55 @@ curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: applica
 ```
 Then remove the DS at Gandi. There's a 24-48h NXDOMAIN risk window during this
 sequence — only do this if active outage forces it.
+
+## Edge security settings (HSTS / Always Use HTTPS / SSL) — issue #440
+
+Source: 2026-06-04 Cloudflare Security Insights scan (all findings Moderate/Low).
+The scanner flagged missing HSTS, missing "Always Use HTTPS", and SSL not
+Full(strict) on `ophis.fi` + its subdomains (`optimism-mainnet`, `rebates`,
+`mcp`, `megaeth*`) and the parked zones `ophis.xyz` / `ophis.finance` /
+`ophis.exchange`. (`swap.ophis.fi` already sets HSTS via its `_headers`.)
+
+**security.txt (done, in-repo):** `/.well-known/security.txt` is served from each
+Pages surface's tracked static dir (swap/explorer/landing `public/.well-known/`,
+docs `static/.well-known/`). Edit those 4 source files, not build output. Bump
+`Expires:` before 2027-06-05.
+
+**Zone settings (BLOCKED on token scope — needs action):** the Keychain
+`cloudflare-api-token` can READ zone settings but PATCH returns `9109
+Unauthorized` — it lacks **Zone Settings:Edit**. Either widen that token's scope
+or run the calls below with a token that has it (or toggle in the dashboard:
+SSL/TLS > Edge Certificates). Token is read into an env var in a subshell and
+NEVER echoed:
+
+```
+CF_TOKEN=$(security find-generic-password -l "cloudflare-api-token" -w)
+# Zone IDs: ophis.fi=dd7588af506387891f094a4927e11d7a
+#           ophis.xyz=3569e4bcb2f7b82967fd5dbbf85c2d34
+#           ophis.finance=e5439d6423c432ba0301831e57d2ace0
+#           ophis.exchange=ec0a041627dc152e2ace46f70748f885
+ZID=dd7588af506387891f094a4927e11d7a   # repeat per zone
+
+# Always Use HTTPS (edge http->https redirect; safe)
+curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"value":"on"}' \
+  "https://api.cloudflare.com/client/v4/zones/$ZID/settings/always_use_https"
+
+# HSTS (1y, includeSubDomains, preload-eligible, nosniff)
+curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"value":{"strict_transport_security":{"enabled":true,"max_age":31536000,"include_subdomains":true,"nosniff":true,"preload":true}}}' \
+  "https://api.cloudflare.com/client/v4/zones/$ZID/settings/security_header"
+```
+
+**SSL Full(strict) — verify origins FIRST, do not blind-flip.** The `ophis.fi`
+zone fronts both edge-terminated Pages hosts (fine) AND the tunnel origin
+`optimism-mainnet.ophis.fi`. Cloudflared presents a valid cert to the edge, so
+strict is normally safe, but confirm each origin's chain before flipping:
+```
+curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+  -d '{"value":"strict"}' "https://api.cloudflare.com/client/v4/zones/$ZID/settings/ssl"
+```
+Verify after any change: `curl -sI https://<host>/` shows
+`strict-transport-security: max-age=31536000; includeSubDomains; preload` and an
+http URL 301-redirects to https. Do NOT submit to hstspreload.org here — that is
+the separate post-7-days step tracked in `ophis-domains.md`.
