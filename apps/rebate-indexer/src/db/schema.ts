@@ -76,6 +76,12 @@ export const rebateBatches = pgTable('rebate_batches', {
   cycleMonth: date('cycle_month').notNull().unique(),
   netFeeWethWei: uint256('net_fee_weth_wei').notNull(),
   poolWethWei: uint256('pool_weth_wei').notNull(),
+  // DIRECT-mode accrual basis (REBATE_DIRECT_MODE, migration 0004): the Safe WETH
+  // balance level already accounted for as of this cycle, so the NEXT cycle
+  // rebates only (current balance - this) = the new fees. Set on direct-mode
+  // proposed (= balance - rebates paid) / no_recipients (= full balance) rows;
+  // NULL on POOL-mode / failed / computing rows (the basis read skips NULLs).
+  feeBasisWethWei: uint256('fee_basis_weth_wei'),
 
   safeProposalHash: bytea('safe_proposal_hash'),
   safeTxHash: bytea('safe_tx_hash'),

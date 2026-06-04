@@ -6,7 +6,7 @@ import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from './ba
 import { proposeRebateBatch } from './batch/propose.js';
 import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
-import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN, getRevenueAddress } from './safe/addresses.js';
+import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
 import { getNonWethTokenBalances } from './safe/balances.js';
 import { alerts } from './telegram/alerter.js';
 import { createPublicClient, http, parseAbi } from 'viem';
@@ -61,9 +61,9 @@ function cycleMonthKey(now: Date): string {
  * Rebate distribution model. Default (unset/false/0) = the POOL model
  * (computeShares: POOL_SPLIT_BPS% of the Safe's WETH, weighted by volume*tier%).
  * 'true'/'1' = the DIRECT model (computeDirectRebates: each wallet gets its tier%
- * of its own fee-share, Ophis keeps the rest via the revenue sweep). Default-OFF
- * so the live deploy is byte-identical until flipped; any other value throws
- * (fail loud rather than silently choosing a payout model).
+ * of its share of the NEW fees that accrued since the last cycle; the un-rebated
+ * remainder stays in the fee Safe as profit and is never re-rebated). Default-OFF
+ * so the live deploy is byte-identical until flipped; any other value throws.
  */
 function resolveDirectMode(): boolean {
   const raw = process.env.REBATE_DIRECT_MODE?.trim();
@@ -281,66 +281,96 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     await db.delete(schema.rebateBatchEntries).where(eq(schema.rebateBatchEntries.batchId, batchId));
   }
 
-  // 4. Bail early when there is nothing to distribute. POOL mode: no wallets, or
-  //    the pool rounds to 0. DIRECT mode: ONLY when the Safe is genuinely empty
-  //    (netFee === 0) — if it holds WETH but no wallet qualifies, we must NOT stop
-  //    here, or the balance stays in the fee Safe and is re-counted (re-rebated)
-  //    next cycle; instead fall through so the 7b retention sweep moves it to the
-  //    revenue address. (The stranded non-WETH probe in step 1b already alerted
-  //    regardless of pool.) (Codex P2)
-  if (directMode ? netFee === 0n : wallets.length === 0 || pool === 0n) {
-    await db.update(schema.rebateBatches).set({ status: 'no_recipients' })
+  // 3b. DIRECT mode: rebate ONLY the NEW fees accrued since the last accounted
+  //     cycle, so Ophis's retained profit stays IN the fee Safe and is never
+  //     re-rebated. newFees = current balance - the basis recorded by the most
+  //     recent cycle that set one (NULL rows -> pool/failed/computing -> skipped).
+  //     First-ever direct cycle: basis defaults to the CURRENT balance (rebates
+  //     nothing, just sets the baseline) unless REBATE_FEE_BASIS_WEI seeds it
+  //     (0 = rebate the whole balance the first cycle). POOL mode is unchanged:
+  //     `distributable` is just the pool.
+  let distributable = pool;
+  if (directMode) {
+    const prev = await sql<{ b: string }[]>`
+      SELECT fee_basis_weth_wei::text AS b FROM rebate_batches
+      WHERE fee_basis_weth_wei IS NOT NULL ORDER BY id DESC LIMIT 1
+    `;
+    const envBasis = process.env.REBATE_FEE_BASIS_WEI?.trim();
+    const previousBasis =
+      prev.length > 0
+        ? BigInt(prev[0]!.b)
+        : envBasis && /^[0-9]+$/.test(envBasis)
+          ? BigInt(envBasis)
+          : netFee; // first direct cycle, no seed -> baseline = current balance (rebate nothing this cycle)
+    distributable = netFee > previousBasis ? netFee - previousBasis : 0n;
+    log.info(
+      { batchId, balanceWei: netFee.toString(), previousBasisWei: previousBasis.toString(), newFeesWei: distributable.toString() },
+      'direct-mode accrual basis',
+    );
+  }
+
+  // 4. Nothing to distribute -> terminal no_recipients. POOL: no wallets / zero
+  //    pool. DIRECT: no NEW fees since last cycle. In DIRECT mode advance the basis
+  //    to the current balance so any new-but-unpaid fees (e.g. rounding dust) are
+  //    kept as profit, not re-rebated. (The stranded non-WETH probe in step 1b
+  //    already alerted regardless of pool.)
+  if (directMode ? distributable === 0n : wallets.length === 0 || pool === 0n) {
+    await db.update(schema.rebateBatches)
+      .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: netFee } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info(
-      { batchId, directMode, reason: netFee === 0n ? 'empty safe' : pool === 0n ? 'zero pool' : 'no wallets' },
+      { batchId, directMode, reason: directMode ? 'no new fees' : pool === 0n ? 'zero pool' : 'no wallets' },
       'no recipients',
     );
-    return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: pool };
+    return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
-  // 5. Compute the per-recipient WETH amounts. Two flag-selected models:
-  //    - POOL (default): computeShares distributes POOL_SPLIT_BPS% of the Safe's
-  //      WETH balance, weighted by volume*tier%.
-  //    - DIRECT (REBATE_DIRECT_MODE): computeDirectRebates pays each wallet its
-  //      tier% of its own fee-share of the FULL balance; Ophis keeps the rest,
-  //      swept to the revenue address in step 7b. No pool.
-  //    Both return Map<wallet, wei>; both feed the same empty-guard + dry-run.
-  const shares = directMode ? computeDirectRebates(wallets, netFee) : computeShares(wallets, pool);
+  // 5. Compute the per-recipient WETH amounts: POOL weights vs DIRECT (each wallet
+  //    gets its tier% of its share of the NEW fees). Both return Map<wallet, wei>.
+  const shares = directMode ? computeDirectRebates(wallets, distributable) : computeShares(wallets, pool);
 
-  // 6. Recipient transfers from the computed shares. The map is EMPTY when every
-  //    tracked wallet is below the entry floor (tier 'none'); we do NOT early-
-  //    return here — the all-unranked case is handled uniformly at 7b/7c (POOL ->
-  //    no_recipients; DIRECT -> sweep the whole balance to revenue).
+  // 5b. No QUALIFYING recipients: tracked wallets exist and the pool is nonzero,
+  //     but every wallet is below the entry floor (tier 'none' = zero weight), so
+  //     computeShares dropped them all. This became reachable when the $20k Bronze
+  //     floor was introduced (before that, any volume > 0 earned >= 10% weight).
+  //     Record terminal 'no_recipients' and bail BEFORE the empty-transfer path:
+  //     an empty batch must not (a) attempt an empty entry insert, nor (b) fall
+  //     into the `good.length === 0` branch and be recorded as 'failed' (no hash) —
+  //     which the duplicate-cycle guard would RESUME and recompute the same empty
+  //     result every run, wedging the cycle. (Codex P2, post-floor)
+  if (shares.size === 0) {
+    // DIRECT mode: new fees arrived but no wallet qualified (all below the floor)
+    // -> keep them as profit by advancing the basis to the current balance.
+    await db.update(schema.rebateBatches)
+      .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: netFee } : {}) })
+      .where(eq(schema.rebateBatches.id, batchId));
+    log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor)');
+    return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
+  }
+
+  const transfersAll: Transfer[] = [...shares.entries()].map(([to, amount]) => ({ to, amount }));
+
+  // 6. Dry-run + quarantine.
   const simulate = buildEthCallSimulator({ chainId: deps.chainId, rpcUrl: deps.rpcUrl });
-  const revenueAddress = directMode ? getRevenueAddress() : null;
-  const recipientTransfers: Transfer[] = [...shares.entries()].map(([to, amount]) => ({ to, amount }));
+  const { good, bad } = await isolateBadRecipients(transfersAll, simulate);
 
-  // 6b. Dry-run + quarantine the recipients (skipped when there are none).
-  const { good, bad }: { good: Transfer[]; bad: Transfer[] } =
-    recipientTransfers.length > 0 ? await isolateBadRecipients(recipientTransfers, simulate) : { good: [], bad: [] };
+  // 7. Write per-wallet entries (good + bad, with bad amounts zeroed).
+  const entryRows = transfersAll.map((t) => {
+    const w = wallets.find((x) => x.wallet === t.to)!;
+    const tier = assignTier(w.volume_30d_usd);
+    const isBad = bad.some((b) => b.to === t.to);
+    return {
+      batchId,
+      wallet: t.to,
+      volumeUsd: w.volume_30d_usd.toFixed(4),
+      tier: tier.name,
+      rebatePct: tier.rebate_pct.toFixed(4),
+      wethAmountWei: isBad ? 0n : t.amount,
+    };
+  });
+  await db.insert(schema.rebateBatchEntries).values(entryRows);
 
-  // 7. Per-recipient entries (good + bad, bad zeroed) — none when nobody qualified.
-  if (recipientTransfers.length > 0) {
-    const entryRows = recipientTransfers.map((t) => {
-      const w = wallets.find((x) => x.wallet === t.to)!;
-      const tier = assignTier(w.volume_30d_usd);
-      const isBad = bad.some((b) => b.to === t.to);
-      return {
-        batchId,
-        wallet: t.to,
-        volumeUsd: w.volume_30d_usd.toFixed(4),
-        tier: tier.name,
-        rebatePct: tier.rebate_pct.toFixed(4),
-        wethAmountWei: isBad ? 0n : t.amount,
-      };
-    });
-    await db.insert(schema.rebateBatchEntries).values(entryRows);
-  }
-
-  // 7a. Recipients existed but EVERY one was quarantined by the dry-run -> genuine
-  //     failure (bad addresses), distinct from "nobody qualified" (-> 7c). Not
-  //     swept: a quarantine failure needs operator attention, not a silent sweep.
-  if (recipientTransfers.length > 0 && good.length === 0) {
+  if (good.length === 0) {
     // INVARIANT: this 'failed' is written with NO safe_proposal_hash (none exists
     // yet — propose runs below). That is what lets the duplicate-cycle handler
     // above disambiguate the two 'failed' meanings purely by hash presence:
@@ -350,58 +380,18 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     await db.update(schema.rebateBatches).set({ status: 'failed' })
       .where(eq(schema.rebateBatches.id, batchId));
     log.error({ batchId, badCount: bad.length }, 'all recipients quarantined');
-    return { batchId, status: 'failed', safeTxHash: null, recipientCount: 0, poolWei: pool };
+    return { batchId, status: 'failed', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
-  // 7b. Build the multisend: good recipient rebates + the DIRECT-mode retention
-  //     sweep of everything NOT paid out, so the fee Safe is emptied and the
-  //     remainder is not re-counted/re-rebated next cycle. leftover = netFee -
-  //     Σ(GOOD), so a quarantined recipient's unpaid amount is retained too, AND
-  //     an all-unranked month (good=[]) sweeps the ENTIRE balance (Codex P2). POOL
-  //     mode never sweeps (its floor-division dust stays in the Safe, unchanged).
-  const proposedTransfers: Transfer[] = [...good];
-  if (directMode) {
-    const paidWei = good.reduce((sum, t) => sum + t.amount, 0n);
-    const leftoverWei = netFee - paidWei;
-    if (revenueAddress && leftoverWei > 0n) {
-      // Fail closed if the revenue address can't receive WETH: proposing a
-      // multisend that reverts on-chain would block the recipients' payouts too,
-      // and silently dropping the sweep would forfeit retention.
-      const { good: sweepGood } = await isolateBadRecipients([{ to: revenueAddress, amount: leftoverWei }], simulate);
-      if (sweepGood.length === 0) {
-        await db.update(schema.rebateBatches).set({ status: 'failed' })
-          .where(eq(schema.rebateBatches.id, batchId));
-        log.error({ batchId, revenueAddress }, 'direct-mode revenue address reverted on WETH transfer in dry-run; not proposing');
-        void alerts
-          .alert('batcher', `Direct-rebate cycle ${cycleMonth}: REBATE_REVENUE_ADDRESS ${revenueAddress} reverted on a WETH transfer in the dry-run. No proposal was queued; fix the address and re-run.`)
-          .catch((e) => log.warn({ err: e }, 'bad-revenue-address alert failed'));
-        return { batchId, status: 'failed', safeTxHash: null, recipientCount: good.length, poolWei: pool };
-      }
-      proposedTransfers.push({ to: revenueAddress, amount: leftoverWei });
-      log.info({ batchId, leftoverWei: leftoverWei.toString(), recipientCount: good.length, revenueAddress }, 'direct-mode: sweeping retained margin to revenue address');
-    } else if (!revenueAddress && leftoverWei > 0n) {
-      log.warn({ batchId, leftoverWei: leftoverWei.toString() }, 'direct mode ON without REBATE_REVENUE_ADDRESS: leftover stays in the fee Safe (re-counted next cycle; not retained)');
-      void alerts
-        .alert('batcher', `Direct-rebate cycle ${cycleMonth}: no REBATE_REVENUE_ADDRESS set, so ${leftoverWei.toString()} wei WETH stays in the fee Safe and WILL be re-counted next cycle (no true retention). Set REBATE_REVENUE_ADDRESS to sweep it out.`)
-        .catch((e) => log.warn({ err: e }, 'no-revenue-address alert failed'));
-    }
-  }
-
-  // 7c. Nothing to move: POOL mode with no qualifying recipients, or DIRECT mode
-  //     with no recipients and no sweep (no revenue address). Terminal
-  //     no_recipients (NOT 'failed' -> the duplicate-cycle guard treats it as
-  //     terminal and will not resume/recompute forever). (Codex P2 + post-floor)
-  if (proposedTransfers.length === 0) {
-    await db.update(schema.rebateBatches).set({ status: 'no_recipients' })
-      .where(eq(schema.rebateBatches.id, batchId));
-    log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor; nothing to sweep)');
-    return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: pool };
-  }
+  // DIRECT mode: the basis to record once these rebates are proposed is the
+  // expected post-payout balance (current balance minus the good rebates), so the
+  // un-rebated remainder stays in the Safe as profit, below next cycle's basis.
+  const paidWei = good.reduce((sum, t) => sum + t.amount, 0n);
 
   // 8. Propose (unless deps.proposeEnabled is false — first-batch dry-run).
   if (!deps.proposeEnabled) {
-    log.info({ batchId, recipientCount: good.length, poolWei: pool.toString() }, 'dry-run only, not proposing');
-    return { batchId, status: 'computing', safeTxHash: null, recipientCount: good.length, poolWei: pool };
+    log.info({ batchId, recipientCount: good.length, distributableWei: distributable.toString() }, 'dry-run only, not proposing');
+    return { batchId, status: 'computing', safeTxHash: null, recipientCount: good.length, poolWei: distributable };
   }
   // The row stays 'computing' through proposeRebateBatch's LOCAL pre-submit work
   // (Safe init, RPC reads, tx build, hash, signing). It flips to 'proposing' only
@@ -418,7 +408,7 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       chainId: deps.chainId,
       rpcUrl: deps.rpcUrl,
       proposerPrivateKey: deps.proposerPrivateKey,
-      transfers: proposedTransfers,
+      transfers: good,
       onBeforeSubmit: async () => {
         await db.update(schema.rebateBatches).set({ status: 'proposing', proposedAt: new Date() })
           .where(eq(schema.rebateBatches.id, batchId));
@@ -450,6 +440,9 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     status: 'proposed',
     safeProposalHash: safeTxHash,
     proposedAt: new Date(),
+    // DIRECT mode: record the accrual basis = balance - rebates proposed, so the
+    // next cycle only rebates fees that arrive after this payout.
+    ...(directMode ? { feeBasisWethWei: netFee - paidWei } : {}),
   }).where(eq(schema.rebateBatches.id, batchId));
 
   // 9. Fire-and-forget polling for finality.
@@ -463,5 +456,5 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     }
   }).catch((err) => log.error({ err, batchId }, 'polling failed'));
 
-  return { batchId, status: 'proposed', safeTxHash, recipientCount: good.length, poolWei: pool };
+  return { batchId, status: 'proposed', safeTxHash, recipientCount: good.length, poolWei: distributable };
 }

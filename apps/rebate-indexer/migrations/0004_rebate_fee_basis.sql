@@ -1,0 +1,13 @@
+-- Accrual basis for the DIRECT rebate model (REBATE_DIRECT_MODE).
+--
+-- In direct mode each cycle rebates only the NEW fees that arrived since the last
+-- accounted cycle: new_fees = current Safe WETH balance - fee_basis_weth_wei of
+-- the most recent cycle that set it. Ophis's retained profit therefore accumulates
+-- IN THE FEE SAFE and is never re-rebated (no second vault, no sweep).
+--
+-- Set when a direct-mode cycle proposes (= balance - rebates paid, the expected
+-- post-payout balance) or records no_recipients (= the full balance, since the new
+-- fees are kept as profit). Left NULL on failed/computing rows and on every POOL-
+-- mode cycle, so the "previous basis" read (WHERE fee_basis_weth_wei IS NOT NULL
+-- ORDER BY id DESC LIMIT 1) skips them. NULL by default => POOL mode unaffected.
+ALTER TABLE rebate_batches ADD COLUMN IF NOT EXISTS fee_basis_weth_wei NUMERIC(78,0);
