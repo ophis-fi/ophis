@@ -1,7 +1,7 @@
 export const footerConfig = {
   isBeta: false,
   url: {
-    web: 'https://github.com/cowprotocol/cowswap/releases/tag/explorer-v',
+    web: 'https://github.com/ophis-fi/ophis',
     // TODO: Pending to move and adapt the wiki
     appId: null,
     // appId: 'https://github.com/gnosis/gp-v1-ui/wiki/App-Ids-for-Forks',
