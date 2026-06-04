@@ -21,7 +21,9 @@
  * trade authorisation, legal representative) are provided on request
  * for formal contractual / regulatory / dispute-resolution matters.
  */
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
+
+import { useLocation } from 'react-router'
 
 import {
   Accordion,
@@ -35,6 +37,17 @@ import {
 } from 'ophis/ds'
 
 export default function LegalPage(): ReactNode {
+  // HashRouter URLs look like /#/legal#privacy, so a "Privacy" deep-link lands here
+  // with location.hash = '#privacy', but the browser never scrolls (the fragment is
+  // inside the router hash, not a real document anchor). Scroll to the target section
+  // id ourselves, on mount and whenever the hash changes.
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!hash) return
+    const el = document.getElementById(hash.slice(1))
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [hash])
+
   return (
     <PageShell
       width="medium"
