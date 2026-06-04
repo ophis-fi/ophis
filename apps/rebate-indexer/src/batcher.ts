@@ -103,8 +103,13 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   const weth = WETH_BY_CHAIN[deps.chainId]!;
   const client = createPublicClient({ transport: http(deps.rpcUrl) });
   const netFee = await client.readContract({ address: weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
-  // Flag-overridable split (default 50% = POOL_SPLIT_BPS); REBATE_POOL_SPLIT_BPS=2000 trims to a 20% kicker.
-  const pool = (netFee * BigInt(getEffectivePoolSplitBps())) / 10_000n;
+  // Flag-overridable split (default 50% = POOL_SPLIT_BPS). REBATE_POOL_SPLIT_BPS
+  // is a per-cycle PAYOUT RATE on the Safe's WHOLE WETH balance, NOT a retention
+  // split: the unpaid remainder is not swept, stays in the Safe, and is re-split
+  // next cycle (geometric decay), so a "20% kicker" pays 20%, then 16%, ... .
+  // True revenue retention needs an explicit sweep (deferred; see tiers.ts). (Review P3)
+  const splitBps = getEffectivePoolSplitBps();
+  const pool = (netFee * BigInt(splitBps)) / 10_000n;
 
   // 1b. Issue #360 safety net — runs EVERY batcher cycle, regardless of the WETH
   //     pool. The rebate pool is WETH-only, so any value the Safe holds in OTHER
@@ -262,6 +267,26 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       .set({ status: 'computing', netFeeWethWei: netFee, poolWethWei: pool })
       .where(eq(schema.rebateBatches.id, batchId));
     await db.delete(schema.rebateBatchEntries).where(eq(schema.rebateBatchEntries.batchId, batchId));
+  }
+
+  // 3b. Kill switch (REBATE_POOL_SPLIT_BPS=0) active → pool is zero by a DELIBERATE
+  //     pause, not because the cycle is genuinely done. Do NOT write the terminal
+  //     'no_recipients' status: the duplicate-cycle guard above treats it as final,
+  //     so removing the env to resume would never recompute or pay the WETH that
+  //     accrued during the pause (a temporary pause would become a permanent month
+  //     skip). Leave the row 'computing' so that guard resumes it, and alert. (Review P1)
+  if (splitBps === 0) {
+    log.warn(
+      { batchId, cycleMonth, netFeeWei: netFee.toString() },
+      'rebate split kill switch active (REBATE_POOL_SPLIT_BPS=0); pausing cycle non-terminally (resumable)',
+    );
+    void alerts
+      .alert(
+        'batcher',
+        `Rebate split kill switch active (REBATE_POOL_SPLIT_BPS=0) for ${cycleMonth}: pool=0, nothing proposed this run. The cycle is left RESUMABLE (status 'computing', not terminal). Remove the env var and re-run the batcher to recompute and pay any WETH accrued during the pause.`,
+      )
+      .catch((err) => log.warn({ err }, 'kill-switch pause alert failed'));
+    return { batchId, status: 'computing', safeTxHash: null, recipientCount: 0, poolWei: 0n };
   }
 
   // 4. No recipients → record + bail out. (The stranded non-WETH probe ran in

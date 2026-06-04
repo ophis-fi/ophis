@@ -243,9 +243,19 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       const batcherRows = await sql<{ last: string | null }[]>`
         SELECT MAX(ran_at)::text AS last FROM pipeline_runs WHERE first_of_month
       `;
+      // Mirror of the frontend REACT_APP_OPHIS_VOLUME_FEE_BPS so the /tier page
+      // fee disclaimer matches the LIVE model. Unset/blank/out-of-range => undefined
+      // (the default price-improvement copy); set to N bps (same 1..50 bound as the
+      // frontend flag) when the flat volume fee is enabled. Keep the two envs in
+      // lockstep at deploy time. (Review P2)
+      const rawFlatBps = process.env.REBATE_FLAT_FEE_BPS?.trim();
+      const parsedFlatBps = rawFlatBps ? Number(rawFlatBps) : NaN;
+      const flatFeeBps =
+        Number.isInteger(parsedFlatBps) && parsedFlatBps >= 1 && parsedFlatBps <= 50 ? parsedFlatBps : undefined;
       const html = renderTierPage(status, {
         nextCycleIso: nextFirstOfMonth().toISOString(),
         lastBatcherRunAt: batcherRows[0]?.last ?? null,
+        flatFeeBps,
       });
       return reply
         .type('text/html; charset=utf-8')

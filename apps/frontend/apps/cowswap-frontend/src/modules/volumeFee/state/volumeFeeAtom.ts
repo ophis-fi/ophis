@@ -13,6 +13,8 @@ import { tradeQuotesAtom } from 'modules/tradeQuote'
 
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
+import { OPHIS_FLAT_VOLUME_FEE_ENABLED } from 'ophis/partnerFeeDefault'
+
 import { isCorrelatedTrade } from './isCorrelatedTrade'
 import { safeAppFeeAtom } from './safeAppFeeAtom'
 
@@ -25,6 +27,16 @@ export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
 
   if (!widgetPartnerFee && shouldSkipFee) {
     return undefined
+  }
+
+  // When the Ophis flat-fee flag is on, the Ophis volume fee (widgetPartnerFee,
+  // carrying OPHIS_DEFAULT_PARTNER_FEE) is the single source of truth for BOTH the
+  // quote display and the on-chain appData fee (the direct appData fee is
+  // suppressed in injectedWidgetAppDataPartnerFeeAtom). It must therefore win over
+  // a Safe-App fee; otherwise enabling the flag inside a Safe App silently drops
+  // the Ophis fee in favour of the Safe's recipient instead of charging flat bps. (Review P2)
+  if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
+    return widgetPartnerFee
   }
 
   // Ophis Fee won't be enabled when in Widget mode, thus it takes precedence here
