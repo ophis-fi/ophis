@@ -391,17 +391,19 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <table class="tier">
           <thead><tr><th>Tier</th><th>30-day volume</th><th>Rebate weight</th></tr></thead>
           <tbody>
-            <tr><td class="nm">Bronze</td><td>$0+</td><td class="pct">10%</td></tr>
-            <tr><td class="nm">Silver</td><td>$5,000+</td><td class="pct">20%</td></tr>
-            <tr><td class="nm">Gold</td><td>$50,000+</td><td class="pct">35%</td></tr>
-            <tr><td class="nm">Platinum</td><td>$500,000+</td><td class="pct">50%</td></tr>
+            <tr><td class="nm">Bronze</td><td>$20,000+</td><td class="pct">10%</td></tr>
+            <tr><td class="nm">Silver</td><td>$50,000+</td><td class="pct">15%</td></tr>
+            <tr><td class="nm">Gold</td><td>$100,000+</td><td class="pct">25%</td></tr>
+            <tr><td class="nm">Palladium</td><td>$500,000+</td><td class="pct">35%</td></tr>
+            <tr><td class="nm">Platinum</td><td>$1,000,000+</td><td class="pct">50%</td></tr>
           </tbody>
         </table>
         <p class="pool">
           Each month, <b>50% of the WETH fees accrued to the Ophis fee Safe</b> is paid out as
           rebates, split across active wallets in proportion to their 30-day volume weighted by
-          tier. (Fees collected in other tokens are not currently part of the pool.) A higher
-          tier raises your weight in the split; your current tier is shown on the swap page.
+          tier. Wallets below $20,000 of 30-day volume are unranked and do not share in the pool.
+          (Fees collected in other tokens are not currently part of the pool.) A higher tier
+          raises your weight in the split; your current tier is shown on the swap page.
         </p>
       </div>
     </div>
