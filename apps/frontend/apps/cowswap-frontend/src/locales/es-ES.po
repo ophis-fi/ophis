@@ -2052,7 +2052,7 @@ msgstr "Red no soportada. Cambie a la cadena de Gnosis"
 msgid ""
 "Did you know? {benefit}\n"
 "\n"
-"Start swapping on Ophis: https://greg-etm.pages.dev"
+"Start swapping on Ophis: https://swap.ophis.fi"
 msgstr ""
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/DebugPanel/index.tsx
@@ -2864,7 +2864,7 @@ msgstr "Recompensas cobrables totales:"
 msgid ""
 "I just {actionWord} an extra {surplus} on Ophis.\n"
 "\n"
-"Intent-based swaps with MEV protection. https://greg-etm.pages.dev"
+"Intent-based swaps with MEV protection. https://swap.ophis.fi"
 msgstr ""
 
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
