@@ -98,11 +98,16 @@ export async function reconcileBatches(opts: { chainId: number; now?: Date }): P
 
       if (status.isSuccessful) {
         advancedExecuted++;
-        const [cnt] = await sql<{ n: string }[]>`
-          SELECT COUNT(*)::text AS n FROM rebate_batch_entries WHERE batch_id = ${row.id} AND weth_amount_wei > 0
+        // Report the amount ACTUALLY paid (Σ good entries), not the stored pool column:
+        // in direct mode that column is the distributable (newFees), which is larger
+        // than the rebates paid. Σ paid entries is correct for both modes (in pool mode
+        // it equals the pool modulo integer-division dust). (P2-2)
+        const [agg] = await sql<{ n: string; s: string }[]>`
+          SELECT COUNT(*)::text AS n, COALESCE(SUM(weth_amount_wei), 0)::text AS s
+          FROM rebate_batch_entries WHERE batch_id = ${row.id} AND weth_amount_wei > 0
         `;
-        const count = parseInt(cnt?.n ?? '0', 10);
-        const pool = (Number(row.poolWethWei) / 1e18).toFixed(5);
+        const count = parseInt(agg?.n ?? '0', 10);
+        const pool = (Number(BigInt(agg?.s ?? '0')) / 1e18).toFixed(5);
         log.info({ cycle, batchId: row.id, txHash: status.transactionHash }, 'reconcile: batch executed (healed lost in-process poll)');
         void alerts
           .batchExecuted({ cycle, pool, count, txHash: status.transactionHash ?? '' })
