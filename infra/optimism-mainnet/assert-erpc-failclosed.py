@@ -44,10 +44,14 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
     "100.77.53.81",
 })
 # Settlement-relevant reads that MUST stay under fail-closed consensus — mirror
-# the template's two consensus blocks. eth_getTransactionReceipt is included: the
-# driver derives a settlement's Executed/Reverted outcome from it.
+# the template's two consensus blocks. NOTE eth_getTransactionReceipt is
+# deliberately NOT here: the self-hosted op-reth returns empty receipts a few
+# seconds longer than hosted indexers during settlement broadcast, which under
+# consensus generates empty-response disputes that cordon ophis-self-op and
+# degrade 2-of-3 (template 2026-05-21 note). It stays on the catch-all path until
+# the indexing/cordon issue is fixed (Codex #465 P1).
 BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt")
-BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash", "eth_getTransactionReceipt",
+BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash",
            "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
 PROTECTED_METHODS = BLOCK_A + BLOCK_B
 
