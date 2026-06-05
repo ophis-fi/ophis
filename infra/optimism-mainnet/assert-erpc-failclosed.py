@@ -9,9 +9,10 @@ the same invariants without parsing secrets.
 Parses the YAML tree (never line greps) and proves the chain-10 config keeps its
 2-of-3-across-3 fail-closed consensus posture, modelling eRPC routing semantics
 (https://docs.erpc.cloud): `failsafe[]` is first-match top-to-bottom by
-`matchMethod` + `matchFinality`; method access is filtered at project ->
-network -> upstreamDefaults -> upstream scope with `allowMethods` taking
-precedence over `ignoreMethods`; upstreams can be pinned to a chain via
+`matchMethod` + `matchFinality`; in matchMethod ONLY `*` is a wildcard (`?`, `[`,
+`]` are literal — unlike Python fnmatch) with `|` alternation; method access is
+filtered project -> network -> upstreamDefaults -> upstream with `allowMethods`
+taking precedence over `ignoreMethods`; upstreams can be chain-pinned via
 `evm.chainId`.
 
 WHY CI, NOT render-configs.sh: wiring PyYAML into the operator/DR render path
@@ -19,22 +20,23 @@ would make a stack restart fail on a host without PyYAML — worse than the
 weakening it guards against (Codex #464 P1). Template edits go through PRs.
 
 Fails closed (exit 14) on ANY of, for the chain-10 network:
-  - chain-10-eligible upstreams (evm.chainId in {unset,10}) != 3 with distinct
-    ids AND distinct normalized hosts (a duplicated provider or a
-    trailing-slash/query/:443/case alias collapses the 3 failure domains; an
-    upstream pinned to another chain does not serve OP and must not be counted);
-  - any matchMethod / allow / ignoreMethods using eRPC `!` (NOT), `&` (AND) or
-    `()` operators — only `*` and `|` are modelled, the rest fail closed;
+  - chain-10-eligible upstreams (evm.chainId in {unset,10}) whose hostnames are
+    not EXACTLY the 3 expected independent failure domains (a sibling hostname,
+    IP-literal, duplicate, or 4th provider collapses or dilutes the 2-of-3
+    posture; intentional provider changes must update EXPECTED_UPSTREAM_HOSTS);
+  - any matchMethod / allow / ignoreMethods segment with a char outside
+    [A-Za-z0-9_*] (covers eRPC `!`/`&`/`()` AND fnmatch-only metachars `?`/`[`/`]`
+    that the daemon treats as literal) — un-modellable, fails closed;
   - any protected method (Block A state-reads + Block B) excluded at project or
     network scope, or filtered from any upstream (eligible upstreams < 3);
   - any protected method whose FIRST-matching failsafe rule (per finality) is
     not a fail-closed consensus rule;
-  - ANY consensus rule in the failsafe that is not fail-closed (so a weakening
-    to Block B, or any added block, is caught directly);
+  - ANY consensus rule that is not fail-closed (catches a weakened Block B / any
+    added block);
   where fail-closed consensus == maxParticipants:3, agreementThreshold:2,
   dispute+lowParticipants:returnError, and NO ignoreFields.
 """
-import fnmatch
+import re
 import sys
 from urllib.parse import urlsplit
 
@@ -42,29 +44,47 @@ import yaml
 
 CHAIN_ID = 10
 EXPECTED_UPSTREAMS = 3
-# Methods the template places under fail-closed consensus — mirror the two
-# consensus blocks in configs/erpc.yaml.tmpl. Each must keep a fail-closed
-# consensus first-match. (Changing this set is a deliberate, reviewed edit.)
+# The 3 intended INDEPENDENT failure domains (distinct operators / DNS / network).
+# Pinned by hostname so a sibling hostname, IP-literal, or extra provider of the
+# same operator cannot masquerade as a 3rd domain. Changing providers (or the
+# self-hosted node's IP — see the template's "UPDATE THIS ENDPOINT" note) is a
+# deliberate security decision that MUST update this set.
+EXPECTED_UPSTREAM_HOSTS = frozenset({
+    "optimism-rpc.publicnode.com",
+    "optimism.gateway.tenderly.co",
+    "100.77.53.81",
+})
 BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt")
 BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash", "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
 PROTECTED_METHODS = BLOCK_A + BLOCK_B
 FINALITIES = ("finalized", "unfinalized", "realtime", "unknown")
-UNMODELLABLE_OPERATORS = ("!", "&", "(", ")")
+# eRPC matchMethod tokens we model: method-name chars, `*` wildcard. A `|`
+# separates alternatives (handled before this check). Anything else (`!`, `&`,
+# `(`, `)`, and fnmatch-only `?`/`[`/`]`) is rejected as un-modellable.
+_SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
 EXIT_FAIL = 14
 
 
 def _modellable(pattern):
-    return pattern is None or not any(op in str(pattern) for op in UNMODELLABLE_OPERATORS)
+    if pattern is None:
+        return True
+    return all(_SEGMENT_OK.match(seg.strip()) for seg in str(pattern).split("|"))
 
 
 def _method_matches(method, pattern):
-    """Match an eRPC matchMethod limited to the modellable subset (* glob, | OR)."""
+    """Match a method against an eRPC matchMethod. ONLY `*` is a wildcard
+    (everything else, incl. ?/[/], is literal); `|` is alternation. Call only on
+    patterns that passed _modellable()."""
     if pattern is None:
         return True
-    return any(
-        alt.strip() and fnmatch.fnmatch(method, alt.strip())
-        for alt in str(pattern).split("|")
-    )
+    for alt in str(pattern).split("|"):
+        alt = alt.strip()
+        if not alt:
+            continue
+        rx = ".*".join(re.escape(part) for part in alt.split("*"))
+        if re.fullmatch(rx, method):
+            return True
+    return False
 
 
 def _finality_matches(rule, finality):
@@ -73,9 +93,7 @@ def _finality_matches(rule, finality):
 
 
 def _filter_serves(src, method):
-    """Whether a filter scope (project/network/upstream) serves `method`.
-    eRPC: allowMethods takes precedence over ignoreMethods — if allowMethods is
-    set, only matching methods are served and ignoreMethods is irrelevant."""
+    """eRPC: allowMethods (if set) takes precedence over ignoreMethods."""
     allow = src.get("allowMethods")
     if allow is not None:
         return any(_method_matches(method, p) for p in allow)
@@ -85,18 +103,12 @@ def _filter_serves(src, method):
     return True
 
 
-def _norm_host(endpoint):
-    """Normalized failure-domain key (lowercased host:port) so trailing-slash /
-    query / :443 / case aliases of one node collapse to the same key."""
+def _hostname(endpoint):
     s = str(endpoint)
     try:
-        u = urlsplit(s)
-        if not u.hostname:
-            return s.strip().rstrip("/").lower()  # e.g. an un-substituted ${VAR}
-        port = u.port if u.port is not None else {"https": 443, "http": 80}.get((u.scheme or "").lower())
-        return f"{u.hostname.lower()}:{port}"
+        return (urlsplit(s).hostname or s.strip().rstrip("/")).lower()
     except Exception:
-        return s
+        return s.lower()
 
 
 def _serves_chain(upstream):
@@ -118,6 +130,13 @@ def _failclosed_reason(rule):
         return f"lowParticipantsBehavior={c.get('lowParticipantsBehavior')!r} (must be returnError)", False
     if c.get("ignoreFields"):
         return f"ignoreFields={c.get('ignoreFields')!r} (must be absent — lets an upstream forge the skipped field)", False
+    prefer = sorted(k for k in c if str(k).startswith("prefer"))
+    if prefer:
+        return (
+            f"quorum-overriding preference(s) {prefer} present (e.g. preferNonEmpty can return a "
+            f"lone below-threshold result instead of returnError — defeats fail-closed)",
+            False,
+        )
     return "", True
 
 
@@ -130,18 +149,25 @@ def validate(cfg):
         ups = [u for u in all_ups if _serves_chain(u)]  # chain-10-eligible only
         if len(ups) != EXPECTED_UPSTREAMS:
             errs.append(f"expected exactly {EXPECTED_UPSTREAMS} chain-{CHAIN_ID} upstreams, found {len(ups)} (of {len(all_ups)} total): {[u.get('id') for u in ups]}")
-        ids = [u.get("id") for u in ups]
-        if len(set(ids)) != len(ids):
-            errs.append(f"upstream ids are not distinct: {ids}")
-        hosts = [_norm_host(u.get("endpoint")) for u in ups]
-        if len(set(hosts)) != len(hosts):
-            errs.append(f"upstream endpoints collapse to fewer distinct hosts (same failure domain reused): {hosts}")
-        # Un-modellable matcher operators anywhere in method filters -> fail closed.
+        if len({u.get('id') for u in ups}) != len(ups):
+            errs.append(f"upstream ids are not distinct: {[u.get('id') for u in ups]}")
+        for u in ups:
+            if not u.get("endpoint"):
+                errs.append(f"upstream {u.get('id')!r} has no endpoint (a participant without an endpoint is not a usable consensus vote)")
+        # Note (Codex #464 r6): upstreams here don't pin evm.chainId, so eRPC
+        # auto-detects the chain from the endpoint. That is safe ONLY because the
+        # host allowlist below forces every endpoint to be one of the 3 known OP
+        # endpoints — a non-OP endpoint (which would auto-detect to another
+        # chain) is rejected by the allowlist, and an upstream explicitly pinned
+        # to a non-10 chain is dropped by _serves_chain above (failing the count).
+        hosts = {_hostname(u.get("endpoint")) for u in ups}
+        if hosts != EXPECTED_UPSTREAM_HOSTS:
+            errs.append(f"chain-{CHAIN_ID} upstream hosts {sorted(hosts)} != the 3 expected independent failure domains {sorted(EXPECTED_UPSTREAM_HOSTS)} (a sibling host / IP-literal / extra provider dilutes the 2-of-3-across-3 posture; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
         for label, src in [("project", proj), ("upstreamDefaults", defaults)] + [(f"upstream {u.get('id')}", u) for u in all_ups]:
             for key in ("allowMethods", "ignoreMethods"):
                 for p in src.get(key) or []:
                     if not _modellable(p):
-                        errs.append(f"{label}.{key} pattern {p!r} uses an un-modellable eRPC operator (!/&/()) — refusing to certify")
+                        errs.append(f"{label}.{key} pattern {p!r} has an un-modellable matcher char (only [A-Za-z0-9_*] + | allowed) — refusing to certify")
         for net in proj.get("networks") or []:
             if (net.get("evm") or {}).get("chainId") != CHAIN_ID:
                 continue
@@ -149,25 +175,20 @@ def validate(cfg):
             for key in ("allowMethods", "ignoreMethods"):
                 for p in net.get(key) or []:
                     if not _modellable(p):
-                        errs.append(f"network.{key} pattern {p!r} uses an un-modellable eRPC operator (!/&/()) — refusing to certify")
+                        errs.append(f"network.{key} pattern {p!r} has an un-modellable matcher char — refusing to certify")
             rules = [r for r in (net.get("failsafe") or []) if isinstance(r, dict)]
             for r in rules:
                 if not _modellable(r.get("matchMethod")):
-                    errs.append(f"failsafe matchMethod {r.get('matchMethod')!r} uses an un-modellable eRPC operator (!/&/()) — refusing to certify (could be a hidden first-match)")
-            # Every consensus rule must itself be fail-closed (catches a weakened
-            # Block B / any added block even if its methods are matched elsewhere).
-            for r in rules:
+                    errs.append(f"failsafe matchMethod {r.get('matchMethod')!r} has an un-modellable matcher char — refusing to certify (could be a hidden first-match)")
                 if "consensus" in r:
                     why, ok = _failclosed_reason(r)
                     if not ok:
                         errs.append(f"consensus rule (matchMethod={r.get('matchMethod')!r}) is not fail-closed: {why}")
             for m in PROTECTED_METHODS:
-                # project/network-scope exclusion = method rejected before upstreams.
                 if not _filter_serves(proj, m):
                     errs.append(f"{m}: excluded by a project-level allow/ignoreMethods filter")
                 if not _filter_serves(net, m):
                     errs.append(f"{m}: excluded by a network-level allow/ignoreMethods filter")
-                # per-upstream eligibility (upstream filter overrides defaults).
                 ineligible = []
                 for u in ups:
                     eff = {
@@ -178,7 +199,6 @@ def validate(cfg):
                         ineligible.append(u.get("id"))
                 if ineligible:
                     errs.append(f"{m}: filtered from upstream(s) (eligible < 3): {ineligible}")
-                # first-matching failsafe rule per finality must be fail-closed consensus.
                 bad = []
                 for fin in FINALITIES:
                     first = next(
@@ -195,7 +215,7 @@ def validate(cfg):
                     errs.append(f"{m}: first-matching failsafe rule is not fail-closed consensus -> " + "; ".join(bad))
     if networks_checked == 0:
         errs.append(f"no chain-{CHAIN_ID} network found")
-    return list(dict.fromkeys(errs))  # de-dup, preserve order
+    return list(dict.fromkeys(errs))
 
 
 def main(path):
@@ -212,10 +232,10 @@ def main(path):
             print(f"  - {e}", file=sys.stderr)
         return EXIT_FAIL
     print(
-        "OK (#447): OP eRPC fail-closed — 3 chain-10 upstreams with distinct ids+hosts, no project/"
+        "OK (#447): OP eRPC fail-closed — exactly the 3 expected independent upstream hosts; no project/"
         "network/upstream method filters excluding protected methods; every Block A+B method's "
         "first-matching failsafe rule across all finalities is a maxParticipants:3/agreementThreshold:2/"
-        "returnError consensus block with no ignoreFields; and every consensus rule is fail-closed."
+        "returnError consensus block with no ignoreFields; every consensus rule fail-closed."
     )
     return 0
 

@@ -264,7 +264,6 @@ projects:
               agreementThreshold: 2
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
-              preferNonEmpty: true
               # No `ignoreFields` here — see HL eRPC Codex Cyber finding #1.
               # Allowing field-level skip lets a hostile upstream forge the
               # skipped field while matching every other field; consensus
@@ -324,7 +323,6 @@ projects:
               agreementThreshold: 2
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
-              preferNonEmpty: true
               punishMisbehavior:
                 # 200 was sized to absorb the receipt burst — without
                 # that method here, the remaining members have much
