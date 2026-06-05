@@ -18,6 +18,17 @@ issues carry the `blocked` label and reference the P0/P1 blockers
 (#435 - #442). This keeps focus on the funds-theft surface before the
 surface-reduction work.
 
+**Deviation (2026-06-05, explicit):** some P2 *monitoring/surface-reduction* work
+(#443 sender, #447 eRPC guard, #444 settlement watcher, #446 CF WAF) was done in
+parallel while three P0/P1 items remain open — #438 (full byte-for-byte repro),
+#440 (HSTS/Full(strict) zone-settings), #441 (remote-signer/HSM). Those three are
+**not** blocked on engineering bandwidth; each is gated on an external grant (a CF
+plan/token, a reproducible-build toolchain) and cannot compete with the P2 work.
+This deviation is conscious and bounded: the three open items stay **top
+priority** as the real funds-theft blockers; the parallel P2 items are
+defense-in-depth that does not touch those surfaces. Do not read the P2 progress
+below as "P0/P1 are done."
+
 ## What is already in place (do not redo)
 
 - `GPv2Settlement` and `GPv2VaultRelayer` are immutable (verified: no proxy).
@@ -113,9 +124,10 @@ expected. No action needed.
 - **P1 — timelock enforced; key-custody reviewed (NOT HSM):** AllowList 24h
   timelock deployed, migrated, ENFORCED (#442, closed). Submitter-key custody
   REVIEWED (Tier-1.5 RAM-disk isolation live); the remote-signer/HSM target
-  (#441) is NOT done and stays OPEN. P2 is unblocked on the timelock + frontend
-  surface — not on a claim that the hot-key mitigation is complete.
-- **P2 — in progress:** F7 orderbook sender merged (#443, enforcement flip is a
+  (#441) is NOT done and stays OPEN — it remains a top-priority funds-theft
+  blocker, NOT something the parallel P2 work below closes (see the Sequencing
+  rule deviation note).
+- **P2 — partial (parallel monitoring/surface-reduction; see deviation note, NOT a P0/P1-complete signal):** F7 orderbook sender merged (#443, enforcement flip is a
   separate windowed step); eRPC fail-closed CI guard merged (#447) with
   `eth_getTransactionReceipt` under a no-punishMisbehavior consensus rule;
   settlement-anomaly watcher (#444) in review. Owner-gated remainders: hardware

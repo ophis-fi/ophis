@@ -97,19 +97,30 @@ alert() {
 # Catches a missing expected holder AND any extra/rogue holder (granted
 # deployer/EOA/admin) that a plain hasRole($want) check would miss.
 check_sole_role_member() {
-  local rpc="$1" tl="$2" role_name="$3" want="$4" cname="$5" label="$6"
-  local role count member
+  local rpc="$1" tl="$2" role_name="$3" want="$4" cname="$5" label="$6" blk="$7"
+  local role count_raw count member_raw member
   role="$(cast keccak "$role_name")"
-  count="$(cast call --rpc-url "$rpc" "$tl" 'getRoleMemberCount(bytes32)(uint256)' "$role" 2>&1 | head -1 | awk '{print $1}')"
+  # Both reads pinned to the same block ($blk) and failure-guarded: an RPC flake
+  # or revert must alert + return, not exit the cron under set -euo pipefail
+  # (the `| head | awk` pipeline still propagates cast's non-zero via pipefail).
+  count_raw="$(cast call --block "$blk" --rpc-url "$rpc" "$tl" 'getRoleMemberCount(bytes32)(uint256)' "$role" 2>&1)" || {
+    alert "Timelock ${label} getRoleMemberCount call failed on $cname: $count_raw"
+    return
+  }
+  count="$(echo "$count_raw" | head -1 | awk '{print $1}')"
   if [[ ! "$count" =~ ^[0-9]+$ ]]; then
-    alert "Timelock ${label} getRoleMemberCount failed on $cname: $count"
+    alert "Timelock ${label} getRoleMemberCount non-numeric on $cname: $count_raw"
     return
   fi
   if [[ "$count" != "1" ]]; then
     alert "Timelock ${label} role has ${count} holders on <b>$cname</b> (expected exactly 1 = <code>${want}</code>) — enumerate getRoleMember to find extras"
     return
   fi
-  member="$(cast call --rpc-url "$rpc" "$tl" 'getRoleMember(bytes32,uint256)(address)' "$role" 0 2>&1 | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+  member_raw="$(cast call --block "$blk" --rpc-url "$rpc" "$tl" 'getRoleMember(bytes32,uint256)(address)' "$role" 0 2>&1)" || {
+    alert "Timelock ${label} getRoleMember call failed on $cname: $member_raw"
+    return
+  }
+  member="$(echo "$member_raw" | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
   if [[ "$member" != "$want" ]]; then
     alert "Timelock ${label} sole holder drift on <b>$cname</b>%0Aexpected: <code>${want}</code>%0Aactual:   <code>${member}</code>"
   fi
@@ -276,17 +287,26 @@ check_chain() {
   # getMinDelay >= 24h AND each role held by EXACTLY the expected sole member
   # (enumerated, so an extra/rogue proposer/executor/admin is caught too).
   if [[ "$expected_owner_lower" != "$proto_lower" ]]; then
-    local min_delay_raw min_delay
-    min_delay_raw="$(cast call --rpc-url "$rpc" "$expected_proxy_owner" 'getMinDelay()(uint256)' 2>&1)" || {
+    # Pin every Timelock read to ONE block so getMinDelay + the per-role
+    # count/member enumeration form a coherent snapshot. OZ warns enumeration
+    # must be same-block: a grant/revoke mined between getRoleMemberCount and
+    # getRoleMember could otherwise certify a role while a rogue holder slips in
+    # at a higher index (count==1 at block N, extra added at N+1, index 0 still
+    # the Safe -> the check would pass and miss the extra holder).
+    local tl_blk min_delay_raw min_delay
+    tl_blk="$(cast block-number --rpc-url "$rpc" 2>&1)" || {
+      alert "block-number for Timelock checks failed on $name: $tl_blk"; return
+    }
+    min_delay_raw="$(cast call --block "$tl_blk" --rpc-url "$rpc" "$expected_proxy_owner" 'getMinDelay()(uint256)' 2>&1)" || {
       alert "Timelock getMinDelay() call failed on $name: $min_delay_raw"; return
     }
     min_delay="$(echo "$min_delay_raw" | head -1 | awk '{print $1}')"
     if [[ ! "$min_delay" =~ ^[0-9]+$ ]] || (( min_delay < 86400 )); then
       alert "Timelock getMinDelay drift on <b>$name</b>%0Aexpected >= 86400 (24h), actual: <code>${min_delay}</code>"
     fi
-    check_sole_role_member "$rpc" "$expected_proxy_owner" "PROPOSER_ROLE" "$proto_lower" "$name" "proposer"
-    check_sole_role_member "$rpc" "$expected_proxy_owner" "EXECUTOR_ROLE" "$proto_lower" "$name" "executor"
-    check_sole_role_member "$rpc" "$expected_proxy_owner" "TIMELOCK_ADMIN_ROLE" "$expected_owner_lower" "$name" "admin (self)"
+    check_sole_role_member "$rpc" "$expected_proxy_owner" "PROPOSER_ROLE" "$proto_lower" "$name" "proposer" "$tl_blk"
+    check_sole_role_member "$rpc" "$expected_proxy_owner" "EXECUTOR_ROLE" "$proto_lower" "$name" "executor" "$tl_blk"
+    check_sole_role_member "$rpc" "$expected_proxy_owner" "TIMELOCK_ADMIN_ROLE" "$expected_owner_lower" "$name" "admin (self)" "$tl_blk"
   fi
 
   # --- Expected submitter is allowlisted ---
