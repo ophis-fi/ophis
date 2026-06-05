@@ -447,6 +447,13 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
+# NOTE: the eRPC 2-of-3 fail-closed consensus guard (#447) is enforced at CI/PR
+# time (infra/optimism-mainnet/assert-erpc-failclosed.py, run by the
+# "erpc-consensus-guard" job in .github/workflows/ci.yml) — deliberately NOT
+# here. Wiring PyYAML into the render path would make a stack restart fail on an
+# operator/DR host without PyYAML, which is worse than the weakening it guards
+# against (Codex #464 P1). Template edits go through PRs, where the guard fires.
+
 # Post-render secret-leak assertion (sharp-edges MED-1 + Codex Medium):
 # If a future template-edit introduces a secret-substitution into a
 # file NOT in PK_BEARING_NAMES, the prior loop would silently write the
