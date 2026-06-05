@@ -7,9 +7,21 @@ AllowList authentication manager hasn't drifted from expected.
 
 1. Protocol Safe `getOwners()` matches the expected sorted set.
 2. Protocol Safe `getThreshold()` matches expected (default 2).
-3. Partner-fee Safe `getOwners()` matches expected (default `[Clement Ledger #1]`).
-4. AllowList authentication manager `manager()` == protocol Safe.
+3. Partner-fee Safe `getOwners()` + `getThreshold()` match expected (2-of-3, same
+   owner set as the protocol Safe since the 2026-06-05 unification).
+4. AllowList authentication `manager()` == the expected manager (the
+   AllowListGuardian since the #442 timelock migration; the protocol Safe before).
 5. Configured submitter EOA `isSolver()` returns true.
+6. AllowList proxy `owner()` == the expected proxy owner (the TimelockController
+   post-#442; the protocol Safe before) — so `upgradeTo` stays 24h-delayed.
+7. When a Guardian is the manager (post-#442): the Guardian's `guardian()` ==
+   the protocol Safe (the instant-eviction authority) and its immutable
+   `timelock()` / `authenticator()` match — so the manager isn't a rogue Guardian.
+8. When a Timelock governs the chain (proxy owner != Safe): the Timelock's
+   `getMinDelay()` >= 86400 (24h), and PROPOSER_ROLE + EXECUTOR_ROLE are each held
+   by **exactly** the protocol Safe and TIMELOCK_ADMIN_ROLE by **exactly** the
+   Timelock itself — enumerated via `getRoleMemberCount`/`getRoleMember`, so an
+   extra/rogue role holder (a granted deployer/EOA) is caught, not just a missing one.
 
 Any drift → Telegram alert to chat `735726338`.
 
@@ -22,10 +34,11 @@ Any drift → Telegram alert to chat `735726338`.
 cp infra/shared/cron/safe-drift-check.sh.tmpl infra/shared/cron/safe-drift-check.sh
 chmod 700 infra/shared/cron/safe-drift-check.sh
 
-# Update the EXPECTED_PROTOCOL_OWNERS_SORTED with the real 3 Ledger addresses
-# (first owner already in place: 0x0494f503912c101bfd76b88e4f5d8a33de284d1a).
-# Edit lines 30 + 33 of safe-drift-check.sh and fill in the 2 remaining Ledger
-# addresses, then `git add` (NOT the rendered .sh — only the .tmpl) and commit.
+# EXPECTED_PROTOCOL_OWNERS_SORTED / EXPECTED_PARTNER_OWNERS_SORTED are now
+# pre-filled with the live 3-owner set (0x0494f503…, 0x746ad9c6…, 0xbec5b03f…)
+# and the OP CHAINS row carries the real allowlist_proxy + expected_manager
+# (Guardian). Verify they still match on-chain before installing; update the
+# .tmpl (NOT the rendered .sh) + commit if signers/manager ever change.
 
 # Install launchd plist:
 cp infra/shared/cron/ai.ophis.safe-drift-check.plist ~/Library/LaunchAgents/
@@ -53,10 +66,14 @@ hardcoded list doesn't match the real on-chain set. Fix the script's expectation
 
 ## Adding a new chain
 
-Append a new stanza to `CHAINS=(...)` with fields:
+Append a new stanza to `CHAINS=(...)` with ALL nine fields (the preflight
+exits if any is missing/non-address):
 ```
-name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter
+name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter|expected_manager|expected_proxy_owner
 ```
+For a chain with NO timelock yet, set both `expected_manager` and
+`expected_proxy_owner` to the protocol Safe (the manager/owner before migration);
+the Timelock delay/role checks then auto-skip (they run only when proxy owner != Safe).
 
 If the chain doesn't have the partner-fee Safe lazy-deployed yet, the script
 will log a WARN and skip — no alert.

@@ -1,7 +1,9 @@
 # AllowList governance runbook — 24h timelock + fast eviction (#442)
 
-**Status:** contract + tests landed; **on-chain migration NOT yet executed**
-(requires the 2-of-3 Safe / Clement's Ledgers).
+**Status:** **DEPLOYED + MIGRATED + ENFORCED on OP mainnet (2026-06-05).** The
+AllowList `manager()` is the Guardian and the proxy `owner()` is the Timelock
+(verified on-chain). The steps below are retained as the deploy/migration record
+and for re-running on another chain; §3 is the live day-2 governance flow.
 **Design:** Option A (Guardian wrapper) — the audited live AllowList impl is
 left untouched.
 
@@ -36,8 +38,8 @@ changes and upgrades are instant. After this change:
 |---|---|
 | AllowList proxy | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` |
 | Protocol Safe (proposer/executor/guardian) | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
-| TimelockController | _deployed in step 1 below_ |
-| AllowListGuardian | _deployed in step 1 below_ |
+| TimelockController (24h; proposer=executor=Safe) | `0x8fEe42897a0113BbeC86e4caCCaC5787D7AEC373` |
+| AllowListGuardian (manager; guardian=Safe) | `0x327F8894caEd538525c3956Fcd694b374B26B6fC` |
 
 ## 1. Deploy (no hot key; deployer EOA only pays gas, holds no authority)
 
@@ -129,8 +131,25 @@ cast call <GUARDIAN> "guardian()(address)"                                  # ==
 
 - The timelock delays *adding* capability and upgrades; it never delays
   *removing* a solver, so incident response stays instant.
-- A compromised 2-of-3 still cannot add a solver or upgrade silently — every
-  such action is visible on-chain for 24h, giving time to react.
+- A compromised 2-of-3 cannot add a solver or upgrade **silently or instantly** —
+  every such action is scheduled on-chain and **delayed a full 24h** before it can
+  execute, giving observers time to react (and the immutable Settlement/Vault cap
+  the blast radius regardless). It is a *public-delay* protection, **not
+  prevention**: a compromised Safe can still push a change through after 24h.
+- **Single-party governance (verified 2026-06-05).** The Safe is the **sole**
+  PROPOSER, **sole** EXECUTOR, and (OZ 3.4 `cancel` = `onlyRole(PROPOSER_ROLE)`)
+  **sole** canceller; the Timelock self-administers; EXECUTOR is not open. So there
+  is **no independent guardian/canceller veto** over a malicious queued op — the
+  24h window is the only check. A future hardening is a separate canceller
+  (CANCELLER role / a watcher Safe) that can veto within the window.
+- **The 24h delay genuinely holds (PoC-verified 2026-06-05).** OZ 3.4.0's
+  `executeBatch` checks readiness in `_afterCall` (after the calls) rather than
+  `_beforeCall`, but this is **not** a sub-24h bypass: the entry op's `_afterCall`
+  `isOperationReady` gate is unsatisfiable for a fresh id (its timestamp can only
+  be `0`, `1`=DONE, or `now+≥86400`), and self-scheduling the entry batch is a
+  keccak fixed-point (infeasible). A Forge PoC attempting the one-tx bypass reverts
+  with "operation is not ready"; the op only executes after a 24h warp. Re-verify
+  if the Timelock is ever redeployed on a different OZ version.
 - Pre-merge audit (Codex + sharp-edges) is mandatory for this mainnet
   governance change. Migration is irreversible-ish; double-check the batch in
   Tenderly before signing.
