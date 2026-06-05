@@ -52,7 +52,7 @@ user who signs a bad authorization, so this tier is first.
 | # | Action | Issue | Effort |
 |---|---|---|---|
 | P1.1 | Submitter key to remote signer / HSM with `settle()`-only policy | [#441](https://github.com/ophis-fi/ophis/issues/441) | medium |
-| P1.2 | Timelock on AllowList upgrades + solver-set changes | [#442](https://github.com/ophis-fi/ophis/issues/442) | medium |
+| P1.2 | Timelock on AllowList upgrades + solver-set changes (Option A Guardian; contract + tests landed, on-chain migration pending Ledgers) | [#442](https://github.com/ophis-fi/ophis/issues/442) | medium |
 
 ## P2 - surface reduction + detection (BLOCKED until P0+P1 green)
 
