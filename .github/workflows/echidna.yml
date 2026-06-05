@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   echidna:
-    name: Echidna — E2EAllowListEchidna
+    name: Echidna — AllowList + AllowListGuardian
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -40,21 +40,36 @@ jobs:
           mkdir -p /tmp/echidna-out
           chmod 0777 /tmp/echidna-out
           # Same digest-pinned TOB image as security.yml's Slither job.
+          # Run from the contracts root (/work), NOT cd echidna: the harnesses
+          # import `../src/...`, which must fall inside solc's allow-paths
+          # (running from echidna/ put src/ out of scope -> "File not found").
+          # Force istanbul: foundry.toml targets `cancun`, which solc 0.7.6
+          # (the production pin) rejects; FOUNDRY_EVM_VERSION makes
+          # crytic-compile pass a 0.7.6-compatible EVM version.
           docker run --rm \
             -v "${WORKSPACE}/contracts:/work" \
             -v /tmp/echidna-out:/out \
             -w /work \
+            -e FOUNDRY_EVM_VERSION=istanbul \
             trailofbits/eth-security-toolbox@sha256:a60d69da3d7f3fb444be052f93caecac0b560085bf2ccf9c3dcb5386d7532fa9 \
             bash -c '
-              set -e
+              # pipefail is REQUIRED: each echidna run is piped through tee, and
+              # without it the pipeline exit status is the tee status (0), which
+              # masks an invariant/compile failure and lets the job pass when a
+              # harness actually failed.
+              set -eo pipefail
               solc-select use 0.7.6 >/dev/null 2>&1
-              cd echidna
-              echidna E2EAllowList.sol \
-                --contract E2EAllowListEchidna \
-                --config echidna.yaml \
-                --corpus-dir /out/corpus \
-                --format text \
-                2>&1 | tee /out/echidna.log
+              export FOUNDRY_EVM_VERSION=istanbul
+              # contract name == file stem for both harnesses.
+              for h in E2EAllowList E2EAllowListGuardian; do
+                echo "=== echidna ${h} ==="
+                echidna "echidna/${h}.sol" \
+                  --contract "${h}" \
+                  --config echidna/echidna.yaml \
+                  --corpus-dir "/out/corpus-${h}" \
+                  --format text \
+                  2>&1 | tee "/out/${h}.log"
+              done
             '
 
       - name: Upload Echidna corpus + log
