@@ -12,6 +12,11 @@ AllowList authentication manager hasn't drifted from expected.
 4. AllowList authentication `manager()` == the expected manager (the
    AllowListGuardian since the #442 timelock migration; the protocol Safe before).
 5. Configured submitter EOA `isSolver()` returns true.
+6. AllowList proxy `owner()` == the expected proxy owner (the TimelockController
+   post-#442; the protocol Safe before) — so `upgradeTo` stays 24h-delayed.
+7. When a Timelock governs the chain (proxy owner != Safe): the Timelock's
+   `getMinDelay()` >= 86400 (24h) and the protocol Safe still holds PROPOSER_ROLE
+   + EXECUTOR_ROLE — so the slow-path can't be silently un-gated.
 
 Any drift → Telegram alert to chat `735726338`.
 
@@ -56,10 +61,14 @@ hardcoded list doesn't match the real on-chain set. Fix the script's expectation
 
 ## Adding a new chain
 
-Append a new stanza to `CHAINS=(...)` with fields:
+Append a new stanza to `CHAINS=(...)` with ALL nine fields (the preflight
+exits if any is missing/non-address):
 ```
-name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter
+name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter|expected_manager|expected_proxy_owner
 ```
+For a chain with NO timelock yet, set both `expected_manager` and
+`expected_proxy_owner` to the protocol Safe (the manager/owner before migration);
+the Timelock delay/role checks then auto-skip (they run only when proxy owner != Safe).
 
 If the chain doesn't have the partner-fee Safe lazy-deployed yet, the script
 will log a WARN and skip — no alert.
