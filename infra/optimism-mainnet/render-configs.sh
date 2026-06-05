@@ -447,17 +447,12 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
-# eRPC consensus fail-closed guard (#447). Structural YAML validation (parses
-# the tree — NOT line greps, so comments / key reordering / added blocks cannot
-# mask a weakening). Refuses to render — and therefore to (re)boot the stack —
-# unless the rendered eRPC config keeps its full 2-of-3-across-3 fail-closed
-# shape: exactly 3 upstreams; >=2 consensus blocks, EACH with maxParticipants:3,
-# agreementThreshold:2, disputeBehavior+lowParticipantsBehavior=returnError; and
-# eth_call + the state-read methods still covered by a consensus matchMethod.
-# See assert-erpc-failclosed.py for the full invariant list + Codex history.
-if [[ -f rendered/erpc.yaml ]]; then
-  python3 "$SCRIPT_DIR/assert-erpc-failclosed.py" rendered/erpc.yaml || exit 14
-fi
+# NOTE: the eRPC 2-of-3 fail-closed consensus guard (#447) is enforced at CI/PR
+# time (infra/optimism-mainnet/assert-erpc-failclosed.py, run by the
+# "erpc-consensus-guard" job in .github/workflows/ci.yml) — deliberately NOT
+# here. Wiring PyYAML into the render path would make a stack restart fail on an
+# operator/DR host without PyYAML, which is worse than the weakening it guards
+# against (Codex #464 P1). Template edits go through PRs, where the guard fires.
 
 # Post-render secret-leak assertion (sharp-edges MED-1 + Codex Medium):
 # If a future template-edit introduces a secret-substitution into a
