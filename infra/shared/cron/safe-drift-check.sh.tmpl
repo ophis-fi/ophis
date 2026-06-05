@@ -17,8 +17,11 @@ umask 077
 # Each chain expects: $name $chain_id $rpc $protocol_safe $partner_safe $allowlist_proxy $expected_submitter
 # ----------------------------------------------------------------------
 declare -a CHAINS=(
-  # name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter
-  "optimism|10|https://mainnet.optimism.io|0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF|0x858f0F5eE954846D47155F5203c04aF1819eCeF8|0x9eFDcC2770Af6837B285702d386D558BD1066BA8|0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+  # name|chain_id|rpc_url|protocol_safe|partner_safe|allowlist_proxy|expected_submitter|expected_manager
+  # allowlist_proxy = Settlement.authenticator() (the real GPv2AllowListAuthentication).
+  # expected_manager = AllowListGuardian after the #442 timelock migration (was the
+  # protocol Safe pre-migration). NOTE: the prior 0x9eFDcC2770… address had NO CODE.
+  "optimism|10|https://mainnet.optimism.io|0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF|0x858f0F5eE954846D47155F5203c04aF1819eCeF8|0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70|0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1|0x327F8894caEd538525c3956Fcd694b374B26B6fC"
 )
 
 # Expected protocol Safe owners (lowercase 40-hex, space-separated).
@@ -29,11 +32,13 @@ declare -a CHAINS=(
 # at startup. Placeholder strings (`0x...ledger2`) cause an immediate
 # exit-1 — by design, so a half-configured script can't silently fire
 # drift alerts on every check.
-EXPECTED_PROTOCOL_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x...ledger2 0x...ledger3'
+EXPECTED_PROTOCOL_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x746ad9c63cca6d3a8588731d60fb87deab4da46a 0xbec5b03ffdcac50071693e87bfdb88baa6710199'
 EXPECTED_PROTOCOL_THRESHOLD=2
 
-EXPECTED_PARTNER_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a'
-EXPECTED_PARTNER_THRESHOLD=1
+# Partner-fee Safe unified to 2-of-3 across all chains (2026-06-05), same owner
+# set as the protocol Safe (was 2-of-2 / single-owner on Gnosis+Ethereum before).
+EXPECTED_PARTNER_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x746ad9c63cca6d3a8588731d60fb87deab4da46a 0xbec5b03ffdcac50071693e87bfdb88baa6710199'
+EXPECTED_PARTNER_THRESHOLD=2
 
 # Pre-flight: refuse to run with placeholder OR malformed addresses.
 # Also validates the CHAINS array — each pipe-separated address field
@@ -41,8 +46,8 @@ EXPECTED_PARTNER_THRESHOLD=1
 # allowlist_proxy / safe addresses that would otherwise produce silent
 # `cast call` failures and weekly alert noise).
 for chain_row in "${CHAINS[@]}"; do
-  IFS='|' read -r _ _ _ proto_safe partner_safe allowlist_proxy submitter <<< "$chain_row"
-  for addr in "$proto_safe" "$partner_safe" "$allowlist_proxy" "$submitter"; do
+  IFS='|' read -r _ _ _ proto_safe partner_safe allowlist_proxy submitter expected_manager <<< "$chain_row"
+  for addr in "$proto_safe" "$partner_safe" "$allowlist_proxy" "$submitter" "$expected_manager"; do
     if [[ ! "$addr" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
       echo "ERROR: CHAINS row has invalid address: '$addr' (must be 0x + 40 hex)" >&2
       echo "  Row: $chain_row" >&2
@@ -113,7 +118,7 @@ normalize_addresses() {
 
 check_chain() {
   local stanza="$1"
-  IFS='|' read -r name chain_id rpc protocol_safe partner_safe allowlist_proxy expected_submitter <<< "$stanza"
+  IFS='|' read -r name chain_id rpc protocol_safe partner_safe allowlist_proxy expected_submitter expected_manager <<< "$stanza"
 
   log "checking chain=$name (chain_id=$chain_id)"
 
@@ -176,7 +181,7 @@ check_chain() {
     alert "Partner-fee Safe owners drift on <b>$name</b>%0Aexpected: <code>${expected_partner_norm}</code>%0Aactual:   <code>${partner_owners_norm}</code>"
   fi
 
-  # --- AllowList manager points at protocol Safe ---
+  # --- AllowList manager points at the expected manager (AllowListGuardian post-#442) ---
   local manager_raw
   manager_raw="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'manager()(address)' 2>&1)" || {
     alert "AllowList manager() call failed on $name: $manager_raw"
@@ -188,10 +193,10 @@ check_chain() {
     alert "AllowList manager() on $name returned non-address: $manager_raw"
     return
   fi
-  local proto_lower
-  proto_lower="$(echo "$protocol_safe" | tr '[:upper:]' '[:lower:]')"
-  if [[ "$manager" != "$proto_lower" ]]; then
-    alert "AllowList manager drift on <b>$name</b>%0Aexpected: <code>${proto_lower}</code>%0Aactual:   <code>${manager}</code>"
+  local expected_manager_lower
+  expected_manager_lower="$(echo "$expected_manager" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$manager" != "$expected_manager_lower" ]]; then
+    alert "AllowList manager drift on <b>$name</b>%0Aexpected: <code>${expected_manager_lower}</code>%0Aactual:   <code>${manager}</code>"
   fi
 
   # --- Expected submitter is allowlisted ---

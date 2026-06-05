@@ -7,8 +7,10 @@ AllowList authentication manager hasn't drifted from expected.
 
 1. Protocol Safe `getOwners()` matches the expected sorted set.
 2. Protocol Safe `getThreshold()` matches expected (default 2).
-3. Partner-fee Safe `getOwners()` matches expected (default `[Clement Ledger #1]`).
-4. AllowList authentication manager `manager()` == protocol Safe.
+3. Partner-fee Safe `getOwners()` + `getThreshold()` match expected (2-of-3, same
+   owner set as the protocol Safe since the 2026-06-05 unification).
+4. AllowList authentication `manager()` == the expected manager (the
+   AllowListGuardian since the #442 timelock migration; the protocol Safe before).
 5. Configured submitter EOA `isSolver()` returns true.
 
 Any drift → Telegram alert to chat `735726338`.
@@ -22,10 +24,11 @@ Any drift → Telegram alert to chat `735726338`.
 cp infra/shared/cron/safe-drift-check.sh.tmpl infra/shared/cron/safe-drift-check.sh
 chmod 700 infra/shared/cron/safe-drift-check.sh
 
-# Update the EXPECTED_PROTOCOL_OWNERS_SORTED with the real 3 Ledger addresses
-# (first owner already in place: 0x0494f503912c101bfd76b88e4f5d8a33de284d1a).
-# Edit lines 30 + 33 of safe-drift-check.sh and fill in the 2 remaining Ledger
-# addresses, then `git add` (NOT the rendered .sh — only the .tmpl) and commit.
+# EXPECTED_PROTOCOL_OWNERS_SORTED / EXPECTED_PARTNER_OWNERS_SORTED are now
+# pre-filled with the live 3-owner set (0x0494f503…, 0x746ad9c6…, 0xbec5b03f…)
+# and the OP CHAINS row carries the real allowlist_proxy + expected_manager
+# (Guardian). Verify they still match on-chain before installing; update the
+# .tmpl (NOT the rendered .sh) + commit if signers/manager ever change.
 
 # Install launchd plist:
 cp infra/shared/cron/ai.ophis.safe-drift-check.plist ~/Library/LaunchAgents/

@@ -43,15 +43,15 @@ user who signs a bad authorization, so this tier is first.
 | P0.1 | Strict CSP + Subresource Integrity on all frontends (docs CSP shipped — was the only surface with none; swap/explorer/landing already carry CSP via `_headers`) | [#435](https://github.com/ophis-fi/ophis/issues/435) | low |
 | P0.2 | Lock the Cloudflare Pages deploy pipeline (scoped token, protected branch, CI-only) | [#436](https://github.com/ophis-fi/ophis/issues/436) | low |
 | P0.3 | Pin GitHub Actions to commit SHAs + lockfile integrity + dependency audit | [#437](https://github.com/ophis-fi/ophis/issues/437) | low |
-| P0.4 | Reproducible build + published artifact hash (SLSA provenance) | [#438](https://github.com/ophis-fi/ophis/issues/438) | medium |
+| P0.4 | Reproducible build + published artifact hash — **SLSA provenance LIVE** (attest steps green on real deploys); **full byte-for-byte reproducibility still OPEN** (toolchain/OS nondeterminism unproven — Phase 4 of #438) | [#438](https://github.com/ophis-fi/ophis/issues/438) | medium |
 | P0.5 | Wallet signing-clarity review (readable EIP-712, anti blind-sign) | [#439](https://github.com/ophis-fi/ophis/issues/439) | low |
-| P0.6 | Cloudflare edge: HSTS + Always Use HTTPS + Full(strict) + security.txt | [#440](https://github.com/ophis-fi/ophis/issues/440) | low |
+| P0.6 | Cloudflare edge: HSTS + Always Use HTTPS + Full(strict) + security.txt — **security.txt LIVE**; the **HSTS / Always-HTTPS / Full(strict) zone-settings still need a widened CF token or dashboard** (current token is read-only on Zone Settings; PATCH → 9109 Unauthorized — see `infra/cloudflare/ophis-fi-dns-hardening.md`) | [#440](https://github.com/ophis-fi/ophis/issues/440) | low |
 
 ## P1 - kill the highest-value host / governance gaps
 
 | # | Action | Issue | Effort |
 |---|---|---|---|
-| P1.1 | Submitter key to remote signer / HSM with `settle()`-only policy | [#441](https://github.com/ophis-fi/ophis/issues/441) | medium |
+| P1.1 | Submitter key to remote signer / HSM with `settle()`-only policy — **custody REVIEWED (Tier-1.5 RAM-disk PK isolation is live); the remote-signer/HSM migration is NOT done — #441 stays OPEN** | [#441](https://github.com/ophis-fi/ophis/issues/441) | medium |
 | P1.2 | Timelock on AllowList upgrades + solver-set changes (Option A Guardian) — **DONE + ENFORCED on-chain 2026-06-05**: Timelock `0x8fEe4289…C373` + Guardian `0x327F8894…6B6fC` deployed (Sourcify-verified), migrated via the 2-of-3 Safe (proxy `manager()`→Guardian, `owner()`→Timelock); 24h delay live. [#442](https://github.com/ophis-fi/ophis/issues/442) closed | medium |
 
 ## P2 - surface reduction + detection (BLOCKED until P0+P1 green)
@@ -104,12 +104,17 @@ expected. No action needed.
 ## Status tracking
 
 **Snapshot 2026-06-05:**
-- **P0 — all shipped + live-verified:** CSP/SRI (#435), locked CF Pages pipeline +
-  branch protection (#436), SHA-pinned Actions + lockfile + audit (#437), SLSA
-  build provenance (#438, attest steps green on real deploys), wallet
-  signing-clarity (#439), CF edge HSTS/Full-strict + security.txt (#440).
-- **P1 — done + on-chain-enforced:** submitter-key custody verified (#441);
-  AllowList 24h timelock deployed, migrated, and ENFORCED (#442, closed).
+- **P0 — shipped + live-verified:** CSP/SRI (#435), locked CF Pages pipeline +
+  branch protection (#436), SHA-pinned Actions + lockfile + audit (#437), wallet
+  signing-clarity (#439). **Partial:** #438 SLSA *provenance* live but full
+  byte-for-byte reproducibility still open; #440 *security.txt* live but the
+  HSTS/Always-HTTPS/Full(strict) zone-settings still need a widened CF token /
+  dashboard. So the funds-theft surface is materially reduced but NOT 100% closed.
+- **P1 — timelock enforced; key-custody reviewed (NOT HSM):** AllowList 24h
+  timelock deployed, migrated, ENFORCED (#442, closed). Submitter-key custody
+  REVIEWED (Tier-1.5 RAM-disk isolation live); the remote-signer/HSM target
+  (#441) is NOT done and stays OPEN. P2 is unblocked on the timelock + frontend
+  surface — not on a claim that the hot-key mitigation is complete.
 - **P2 — in progress:** F7 orderbook sender merged (#443, enforcement flip is a
   separate windowed step); eRPC fail-closed CI guard merged (#447) with
   `eth_getTransactionReceipt` under a no-punishMisbehavior consensus rule;

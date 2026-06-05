@@ -1,7 +1,9 @@
 # AllowList governance runbook — 24h timelock + fast eviction (#442)
 
-**Status:** contract + tests landed; **on-chain migration NOT yet executed**
-(requires the 2-of-3 Safe / Clement's Ledgers).
+**Status:** **DEPLOYED + MIGRATED + ENFORCED on OP mainnet (2026-06-05).** The
+AllowList `manager()` is the Guardian and the proxy `owner()` is the Timelock
+(verified on-chain). The steps below are retained as the deploy/migration record
+and for re-running on another chain; §3 is the live day-2 governance flow.
 **Design:** Option A (Guardian wrapper) — the audited live AllowList impl is
 left untouched.
 
@@ -36,8 +38,8 @@ changes and upgrades are instant. After this change:
 |---|---|
 | AllowList proxy | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` |
 | Protocol Safe (proposer/executor/guardian) | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
-| TimelockController | _deployed in step 1 below_ |
-| AllowListGuardian | _deployed in step 1 below_ |
+| TimelockController (24h; proposer=executor=Safe) | `0x8fEe42897a0113BbeC86e4caCCaC5787D7AEC373` |
+| AllowListGuardian (manager; guardian=Safe) | `0x327F8894caEd538525c3956Fcd694b374B26B6fC` |
 
 ## 1. Deploy (no hot key; deployer EOA only pays gas, holds no authority)
 

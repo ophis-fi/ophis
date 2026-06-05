@@ -220,14 +220,27 @@ You need this when:
    sudo install -m 600 -o ophis-driver -g staff /dev/stdin /Users/ophis-driver/.config/submitter.key.NEW <<< '0x...newpk'
    ```
 
-3. **Update AllowList via Safe** — protocol Safe (`0xe049…01cF`, 2-of-3 Ledgers):
-   - Open Safe webapp on the chain you're rotating: `https://app.safe.global/transactions/queue?safe=oeth:0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`
-   - Queue 2 transactions:
-     - `removeSolver(address oldSubmitter)` — current `0x92B9…1A1B1`
-     - `addSolver(address newSubmitter)` — your new address from step 1
-   - Sign with 2 of the 3 Ledger devices.
-   - Execute. Wait for confirmation.
-   - **Repeat for every active chain.** Today: only Optimism.
+3. **Update the AllowList via the timelock-governed path** (post-#442 migration:
+   the AllowList `manager()` is now the AllowListGuardian `0x327F8894…6B6fC`, NOT
+   the Safe — the Safe can no longer call the AllowList directly). From the
+   protocol Safe (`0xe049…01cF`, 2-of-3 Ledgers):
+   - **Instantly evict the old/compromised submitter (FAST, guardian path):**
+     call `AllowListGuardian.removeSolver(oldSubmitter)` — target
+     `0x327F8894…6B6fC`, `removeSolver(address)`, arg `0x92B9…1A1B1`. `onlyGuardian`
+     (= the Safe), no delay. Sign 2-of-3, execute.
+   - **Authorize the new submitter (SLOW, 24h timelock):** `addSolver` is now
+     `onlyTimelock`. From the Safe, `TimelockController.schedule(target=0x327F8894…6B6fC,
+     value=0, data=abi(addSolver(newSubmitter)), predecessor=0, salt=<random>,
+     delay=86400)` on the Timelock `0x8fEe4289…C373`; wait ≥ 24h; then `execute(...)`
+     with the same args.
+   - **⚠️ 24h settlement gap:** between the instant removeSolver and the timelock
+     execute, no solver is authorized → settlement is paused for ~24h. For a key
+     COMPROMISE that is the correct fail-safe (the compromised key — and the
+     attacker — can't settle either). If continuity matters more than immediacy,
+     `schedule` the addSolver first and time the removeSolver to the execute.
+   - Full day-2 governance flows: `allowlist-governance-runbook.md` §3.
+   - **Repeat for every active chain.** Today the Timelock/Guardian are
+     OP-only — only Optimism's AllowList is timelock-governed.
 
 4. **Swap the PK file**:
    ```bash
