@@ -447,6 +447,33 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
+# eRPC consensus fail-closed assertion (#447). The rendered eRPC config MUST
+# keep its 2-of-3 fail-closed shape — BOTH consensus blocks set
+# agreementThreshold: 2 and dispute/lowParticipants behavior to returnError.
+# A future template edit that weakens this (agreementThreshold: 1, or a
+# behavior of acceptMostCommonValidResult / acceptAnyValidResult) would let a
+# single hostile or diverging upstream skew pricing. Refuse to render — and
+# therefore to (re)boot the stack — on a non-fail-closed eRPC config.
+if [[ -f rendered/erpc.yaml ]]; then
+  if grep -qE 'agreementThreshold:[[:space:]]*1\b' rendered/erpc.yaml; then
+    echo "" >&2
+    echo "ERROR (#447): eRPC consensus weakened — 'agreementThreshold: 1' in rendered/erpc.yaml." >&2
+    echo "              The 2-of-3 fail-closed quorum is a security invariant. Refusing to render." >&2
+    exit 14
+  fi
+  erpc_at=$(grep -cE 'agreementThreshold:[[:space:]]*2\b' rendered/erpc.yaml || true)
+  erpc_db=$(grep -cE 'disputeBehavior:[[:space:]]*returnError\b' rendered/erpc.yaml || true)
+  erpc_lp=$(grep -cE 'lowParticipantsBehavior:[[:space:]]*returnError\b' rendered/erpc.yaml || true)
+  if (( erpc_at < 2 || erpc_db < 2 || erpc_lp < 2 )); then
+    echo "" >&2
+    echo "ERROR (#447): eRPC fail-closed invariants missing in rendered/erpc.yaml:" >&2
+    echo "              agreementThreshold:2 = ${erpc_at} (need >=2), disputeBehavior:returnError = ${erpc_db} (>=2)," >&2
+    echo "              lowParticipantsBehavior:returnError = ${erpc_lp} (>=2). Refusing to render a non-fail-closed eRPC." >&2
+    exit 14
+  fi
+  echo "  assert    eRPC 2-of-3 fail-closed OK (agreementThreshold:2 x${erpc_at}, returnError dispute x${erpc_db}/lowParticipants x${erpc_lp})"
+fi
+
 # Post-render secret-leak assertion (sharp-edges MED-1 + Codex Medium):
 # If a future template-edit introduces a secret-substitution into a
 # file NOT in PK_BEARING_NAMES, the prior loop would silently write the
