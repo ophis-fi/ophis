@@ -45,15 +45,14 @@ const server = setupServer(
   // xdai (chainId=100) — the chain under test
   http.get(`${COW}/xdai/api/v2/trades`, () => HttpResponse.json(handlers.trades)),
   http.get(`${COW}/xdai/api/v1/orders/:uid`, ({ params }) => HttpResponse.json(handlers.order(params.uid as string))),
-  http.post(`${COW}/xdai/api/v1/quote`, async () => HttpResponse.json({
-    quote: {
-      sellToken: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1',
-      buyToken:  '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
-      sellAmount: '1000000000000000000',
-      buyAmount:  '2500000000',                                        // 1 WETH = 2500 USDC
-    },
-    expiration: '2026-05-01T13:00:00Z',
-  })),
+  // Pricer uses CoW's native_price oracle (native-wei per token ATOM). Pick values so
+  // 1 WETH prices to $2500: usd = 1e18 * np(WETH) / np(USDC.e) / 10^6 = 1e18*2500/1e12/1e6.
+  http.get(`${COW}/xdai/api/v1/token/:token/native_price`, ({ params }) => {
+    const t = String(params.token).toLowerCase();
+    if (t === '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1') return HttpResponse.json({ price: 2500 }); // WETH
+    if (t === '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83') return HttpResponse.json({ price: 1_000_000_000_000 }); // USDC.e ref
+    return new HttpResponse(null, { status: 404 }); // NoLiquidity for any other token
+  }),
   // Catch-all: return empty trades for all other chains so the fetcher doesn't hit real network.
   http.get(`${COW}/:chain/api/v2/trades`, () => HttpResponse.json([])),
 );

@@ -36,20 +36,15 @@ export const CowOrder = z.object({
 });
 export type CowOrder = z.infer<typeof CowOrder>;
 
-// POST /api/v1/quote — used by pricer.ts to denominate volume in USD.
-// We use the "sell-amount-from-quote" form to ask: what's $1 worth of <token>?
-// then compute trade USD value from sellAmount / quote.buyAmount.
+// GET /api/v1/token/{token}/native_price — CoW's price oracle, used by pricer.ts to
+// denominate volume in USD. Returns the token's price as native-token wei per 1 ATOM
+// of the token. Unlike /quote it takes NO from/receiver, so it cannot trip CoW's
+// zero-address deny-list (which broke the old /quote-based pricer, 2026-06-05).
 // Schema: https://docs.cow.fi/cow-protocol/reference/apis/orderbook
-export const CowQuoteResponse = z.object({
-  quote: z.object({
-    sellToken: z.string(),
-    buyToken: z.string(),
-    sellAmount: z.string(),
-    buyAmount: z.string(),
-  }),
-  expiration: z.string(),
+export const NativePriceResponse = z.object({
+  price: z.number(),
 });
-export type CowQuoteResponse = z.infer<typeof CowQuoteResponse>;
+export type NativePriceResponse = z.infer<typeof NativePriceResponse>;
 
 export const APP_CODES = ['ophis', 'greg'] as const;                  // greg tolerated for pre-rebrand history
 export type AppCode = (typeof APP_CODES)[number];

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CowTrade, CowOrder, CowQuoteResponse } from './types.js';
+import { CowTrade, CowOrder, NativePriceResponse } from './types.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'cow-client' });
@@ -66,41 +66,17 @@ export async function getOrder(chainId: number, uid: `0x${string}`): Promise<Cow
   return fetchJson(url, CowOrder);
 }
 
-export interface QuoteParams {
-  readonly chainId: number;
-  readonly sellToken: `0x${string}`;
-  readonly buyToken: `0x${string}`;
-  readonly sellAmount: bigint;
-}
-
-export async function postQuote(p: QuoteParams): Promise<CowQuoteResponse> {
-  const path = COW_API_PATH[p.chainId];
-  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
-  const url = `${BASE_URL}/${path}/api/v1/quote`;
-  // Indicative sell quote (no validity, no signing). We intentionally omit
-  // appData/appDataHash: CoW validates that appDataHash == keccak256(appData),
-  // and sending appData '{}' with a zero hash fails with `AppDataHashMismatch`,
-  // which rejected EVERY price quote and left trades unpriced (their value_usd
-  // null -> excluded from the `wallets` matview -> 0 volume). appData doesn't
-  // affect the price, so leaving it to CoW's default is both correct and
-  // simpler.
-  const body = {
-    sellToken: p.sellToken,
-    buyToken: p.buyToken,
-    receiver: '0x0000000000000000000000000000000000000000',
-    sellTokenBalance: 'erc20',
-    buyTokenBalance: 'erc20',
-    from: '0x0000000000000000000000000000000000000000',
-    priceQuality: 'fast',
-    signingScheme: 'eip712',
-    onchainOrder: false,
-    kind: 'sell',
-    sellAmountBeforeFee: p.sellAmount.toString(),
-  };
-  log.debug({ url, sellAmount: p.sellAmount.toString() }, 'POST quote');
-  return fetchJson(url, CowQuoteResponse, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+/**
+ * CoW's price ORACLE: the token's price as native-token wei per 1 ATOM of `token`.
+ * A signer-less GET — NO from/receiver/body — so it structurally cannot hit the
+ * zero-address deny-list that broke the old /quote-based pricer (2026-06-05). For a
+ * thin/unrouteable token CoW returns 404 `NoLiquidity`; fetchJson then throws and the
+ * caller leaves value_usd NULL to retry next run (the same fail-safe as before).
+ */
+export async function nativePrice(chainId: number, token: `0x${string}`): Promise<number> {
+  const path = COW_API_PATH[chainId];
+  if (!path) throw new Error(`unsupported chain ${chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/token/${token}/native_price`;
+  log.debug({ url }, 'GET native_price');
+  return (await fetchJson(url, NativePriceResponse)).price;
 }
