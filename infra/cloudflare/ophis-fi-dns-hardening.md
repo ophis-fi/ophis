@@ -258,3 +258,36 @@ Verify after any change: `curl -sI https://<host>/` shows
 token yet) and an http URL 301-redirects to https. Do NOT submit to
 hstspreload.org here, and do NOT add the `preload` directive until that separate
 post-soak step (tracked in `ophis-domains.md`) is actually ready.
+
+## Email authentication — no-mail lockdown (applied 2026-06-05)
+
+The Security Center flagged the ophis zones for missing email authentication. All
+four ophis zones send and receive **no mail** (`getOwners`-style audit: zero `MX`
+records; outbound contact mail goes via Formspree's own domain, not `@ophis.*`),
+so the correct hardening is to publish records that say "this domain sends no
+mail", which makes spoofing fail closed. Applied to **ophis.fi, ophis.xyz,
+ophis.finance, ophis.exchange** (idempotent; verified via `dig @1.1.1.1`):
+
+| Name | Type | Content |
+|---|---|---|
+| `<zone>` (apex) | TXT | `v=spf1 -all` |
+| `_dmarc.<zone>` | TXT | `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s` |
+| `*._domainkey.<zone>` | TXT | `v=DKIM1; p=` (deny-all DKIM) |
+
+**Before adding `-all` to any zone, re-confirm `MX == 0` and no existing `v=spf1`
+sender** — a mail-sending domain (e.g. `openletz.com`, which sends via Brevo)
+must NOT get `-all`; it needs a proper SPF include for its sender instead.
+
+These records are reversible TXT edits. The remaining Security Center items are
+**owner-gated** (the keychain `cloudflare-api-token` is zone-scoped to the 4 ophis
+zones and has no Zone-Settings or account scope):
+- **DNSSEC `pending`** on ophis.xyz/.finance/.exchange — CF side is enabled; the
+  **DS record must be added at the registrar** (manual) to activate the chain.
+- **Other account domains** (`3615crypto.*`, `openletz.*`, …) — not visible to
+  this token; need an account-scoped token to audit/remediate.
+- **HSTS / Always-HTTPS / Full(strict)** zone-settings — token returns 403 on
+  read and 10000 on PATCH (see #440); needs a widened token or the dashboard.
+
+To finish the account-wide remediation autonomously, mint a token with **Account
+→ Security Center: Read** + **Zone → DNS: Edit** + **Zone → Zone Settings: Edit**
+across *all* zones, then a per-zone pipeline can repeat this lockdown everywhere.
