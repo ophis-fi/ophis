@@ -45,14 +45,20 @@ The TimelockController is OZ `^0.7.0` and the Guardian is `>=0.7.6`, so deploy
 each with its own solc via `forge create` (a single forge script can't span
 both pragmas):
 
+Run from the `contracts/` dir. NOTE the `--evm-version istanbul` override: solc
+0.7.6 cannot target `cancun` (the default in `contracts/foundry.toml`), and
+istanbul matches the original GPv2 deployment.
+
 ```bash
-# 24h timelock, proposer = executor = the Safe.
-forge create --use 0.7.6 \
-  lib/openzeppelin/contracts/access/TimelockController.sol:TimelockController \
+cd contracts
+# 24h timelock, proposer = executor = the Safe. OZ is under contracts/node_modules.
+forge create --use 0.7.6 --evm-version istanbul \
+  node_modules/@openzeppelin/contracts/access/TimelockController.sol:TimelockController \
   --constructor-args 86400 "[0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF]" "[0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF]" \
   --rpc-url "$OP_MAINNET_RPC" --account <deployer>   # -> TIMELOCK
 
-forge create --use 0.7.6 src/contracts/AllowListGuardian.sol:AllowListGuardian \
+forge create --use 0.7.6 --evm-version istanbul \
+  src/contracts/AllowListGuardian.sol:AllowListGuardian \
   --constructor-args 0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70 <TIMELOCK> 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF \
   --rpc-url "$OP_MAINNET_RPC" --account <deployer>   # -> GUARDIAN
 ```
@@ -113,7 +119,11 @@ cast call <GUARDIAN> "guardian()(address)"                                  # ==
 
 **Cancel a pending slow op:** from the Safe, `TimelockController.cancel(id)` (id = `hashOperation(...)`).
 
-**Rotate the guardian Safe (SLOW, 24h):** schedule `GUARDIAN.setGuardian(newSafe)` through the timelock.
+**Rotate the controlling Safe (SLOW, 24h) — THREE role surfaces, not one.** The Safe controls the system in three places; replacing it means rotating all three, or the OLD Safe keeps the slow path:
+1. **Guardian fast-path:** schedule `GUARDIAN.setGuardian(newSafe)` through the timelock.
+2. **Timelock proposer:** schedule `TIMELOCK.grantRole(PROPOSER_ROLE, newSafe)` then `TIMELOCK.revokeRole(PROPOSER_ROLE, oldSafe)`.
+3. **Timelock executor:** schedule `TIMELOCK.grantRole(EXECUTOR_ROLE, newSafe)` then `TIMELOCK.revokeRole(EXECUTOR_ROLE, oldSafe)`.
+(`PROPOSER_ROLE`/`EXECUTOR_ROLE` = `cast keccak "PROPOSER_ROLE"` / `"EXECUTOR_ROLE"`.) Verify afterwards with `hasRole` that ONLY the new Safe holds each role. Until all three are done, the old Safe retains slow-path control.
 
 ## Notes
 
