@@ -124,17 +124,19 @@ CREATE2-deterministic, deployed on multiple chains. **Verified on-chain
 - **Optimism (10):** Safe 1.4.1, **2-of-3**, owners identical to the
   protocol Safe set (`0x746Ad9C6…4da46A`, `0xBeC5B03f…0199`,
   `0x0494F503…284d1A`).
-- **Gnosis (100)** and **Ethereum (1):** Safe 1.4.1, **2-of-2**, owners
-  `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` (HW deployer / protocol
-  Safe owner #3) + `0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
+- **Gnosis (100)** and **Ethereum (1):** Safe 1.4.1, **2-of-3** (raised from
+  2-of-2 on 2026-06-05 by adding the 3rd owner), owners identical to Optimism:
+  `0x746Ad9C63cCA6d3A8588731d60Fb87deaB4da46A`,
+  `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`,
+  `0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
 
 The earlier "1-of-1, owner `0x0494F503…` only, lives on Gnosis" note was
 **wrong on every dimension** and has been corrected from on-chain reads.
 No single-signer config exists on any verified chain.
 
-**⚠️ Note the per-chain config divergence:** OP is 2-of-3, Gnosis/Ethereum
-are 2-of-2. Reconcile to a single intended threshold before meaningful
-revenue accrues. Tracked as roadmap task 1.8.
+**Per-chain threshold unified (2026-06-05):** all three chains are now 2-of-3
+with the same owner set — verified on-chain (`getThreshold()` == 2 and
+`getOwners()` == the 3-address set on OP, Gnosis, and Ethereum).
 
 ### 2.4 Settlement contracts (per chain)
 
