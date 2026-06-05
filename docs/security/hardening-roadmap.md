@@ -66,10 +66,12 @@ user who signs a bad authorization, so this tier is first.
 
 ## P3 - governance and assurance (backlog)
 
-- Upgrade the partner-fee Safe from 1-of-1 to 2-of-3 across all chains (OP,
-  Gnosis, Ethereum). It is currently 1-of-1 on every chain (single signer,
-  Clement's Ledger) per `../operations/founder-bus-factor.md`: the same blast
-  radius as a hot wallet until the threshold is raised. Roadmap task 1.8.
+- Unify the partner-fee Safe threshold across chains. Verified on-chain
+  (2026-06-04, `getThreshold()`): it is **2-of-3 on Optimism** (owners = the
+  protocol Safe set) and **2-of-2 on Gnosis + Ethereum** (owners
+  `0xBeC5B03f…0199`, `0x0494F503…284d1A`) — **not 1-of-1 on any verified
+  chain**. The remaining task is to raise Gnosis/Ethereum to 2-of-3 to match
+  Optimism. See `../operations/founder-bus-factor.md` §2.3. Roadmap task 1.8.
 - Add a second trusted operator with scoped access; run a tested cold-start
   dry-run of `founder-bus-factor.md` 7.
 - External audit of the Ophis-specific diffs (two-step-manager AllowList impl,
