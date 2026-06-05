@@ -40,7 +40,7 @@ user who signs a bad authorization, so this tier is first.
 
 | # | Action | Issue | Effort |
 |---|---|---|---|
-| P0.1 | Strict CSP + Subresource Integrity on all frontends | [#435](https://github.com/ophis-fi/ophis/issues/435) | low |
+| P0.1 | Strict CSP + Subresource Integrity on all frontends (docs CSP shipped — was the only surface with none; swap/explorer/landing already carry CSP via `_headers`) | [#435](https://github.com/ophis-fi/ophis/issues/435) | low |
 | P0.2 | Lock the Cloudflare Pages deploy pipeline (scoped token, protected branch, CI-only) | [#436](https://github.com/ophis-fi/ophis/issues/436) | low |
 | P0.3 | Pin GitHub Actions to commit SHAs + lockfile integrity + dependency audit | [#437](https://github.com/ophis-fi/ophis/issues/437) | low |
 | P0.4 | Reproducible build + published artifact hash (SLSA provenance) | [#438](https://github.com/ophis-fi/ophis/issues/438) | medium |
