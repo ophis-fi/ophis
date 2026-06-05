@@ -25,6 +25,8 @@ on:
 permissions:
   contents: read
   deployments: write
+  id-token: write # SLSA build provenance (#438)
+  attestations: write # SLSA build provenance (#438)
 
 jobs:
   deploy:
@@ -93,3 +95,18 @@ jobs:
           # to the exact commit; github.sha is a controlled value, not
           # untrusted input.
           command: pages deploy build --project-name=ophis-docs --branch=main --commit-dirty=true --commit-message="docs.ophis.fi deploy" --commit-hash=${{ github.sha }}
+
+      # Supply-chain provenance (#438). Runs AFTER the deploy so it can never
+      # block a release. Hashes exactly the bytes that were pushed to CF Pages
+      # into a manifest, then attests that manifest via SLSA build-provenance.
+      - name: generate bundle manifest
+        id: manifest
+        run: |
+          MANIFEST="${{ runner.temp }}/docs-bundle-manifest.txt"
+          ( cd "${{ runner.temp }}/docs-dist/build" && find . -type f -exec sha256sum {} \; | LC_ALL=C sort ) > "$MANIFEST"
+          echo "path=$MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "manifest covers $(wc -l < "$MANIFEST") files"
+      - name: attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ steps.manifest.outputs.path }}

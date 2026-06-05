@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
   deployments: write
+  id-token: write # SLSA build provenance (#438)
+  attestations: write # SLSA build provenance (#438)
 
 jobs:
   deploy:
@@ -225,3 +227,19 @@ jobs:
           # above (same workflow run, same HEAD commit). See the
           # `sanitize commit message for CF Pages API` step for why.
           command: pages deploy apps/frontend/build/explorer --project-name=ophis-explorer --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}
+
+      # Supply-chain provenance (#438). Runs AFTER both deploys so it can never
+      # block a release. Hashes exactly the bytes pushed to CF Pages (swap +
+      # explorer) into one manifest, then attests it via SLSA build-provenance.
+      - name: generate bundle manifest
+        id: manifest
+        run: |
+          MANIFEST="${{ runner.temp }}/cf-bundle-manifest.txt"
+          ( cd apps/frontend/build/cowswap && find . -type f -exec sha256sum {} \; | LC_ALL=C sort | sed 's# \./# swap/#' ) > "$MANIFEST"
+          ( cd apps/frontend/build/explorer && find . -type f -exec sha256sum {} \; | LC_ALL=C sort | sed 's# \./# explorer/#' ) >> "$MANIFEST"
+          echo "path=$MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "manifest covers $(wc -l < "$MANIFEST") files"
+      - name: attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: ${{ steps.manifest.outputs.path }}
