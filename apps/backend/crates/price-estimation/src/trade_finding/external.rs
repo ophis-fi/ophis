@@ -49,15 +49,42 @@ pub struct ExternalTradeFinder {
 
     /// Stream to retrieve latest block information for block-dependent queries.
     block_stream: CurrentBlockWatcher,
+
+    /// F7 inter-service auth: Bearer token sent on every driver `/quote`
+    /// request, read from `OPHIS_INTER_SERVICE_AUTH_TOKEN` at construction
+    /// (per-service-reads-its-own-env, mirroring autopilot + driver). `None`
+    /// (unset/empty) => no header, i.e. un-authenticated (single-tenant ok).
+    inter_service_auth_token: Option<std::sync::Arc<String>>,
 }
 
 impl ExternalTradeFinder {
     pub fn new(driver: Url, client: Client, block_stream: CurrentBlockWatcher) -> Self {
+        // F7: read the inter-service auth token at construction and send it as a
+        // Bearer on driver /quote calls. Mirrors autopilot/driver (each service
+        // reads its own env). No-op when unset/empty, so this is safe to deploy
+        // BEFORE the driver enforces — the enforcement flip is a separate step.
+        let inter_service_auth_token = std::env::var("OPHIS_INTER_SERVICE_AUTH_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(std::sync::Arc::new);
+        if inter_service_auth_token.is_some() {
+            tracing::info!(
+                %driver,
+                "F7 inter-service auth token loaded — orderbook will sign /quote requests to driver"
+            );
+        } else {
+            tracing::warn!(
+                %driver,
+                "F7 OPHIS_INTER_SERVICE_AUTH_TOKEN unset — orderbook /quote calls to driver are \
+                 un-authenticated (acceptable single-tenant; required before driver enforcement)"
+            );
+        }
         Self {
             quote_endpoint: crate::utils::join_url(&driver, "quote"),
             sharing: RequestSharing::labelled(format!("tradefinder_{driver}")),
             client,
             block_stream,
+            inter_service_auth_token,
         }
     }
 
@@ -76,6 +103,7 @@ impl ExternalTradeFinder {
             let id = observe::tracing::distributed::request_id::from_current_span();
             let client = self.client.clone();
             let quote_endpoint = self.quote_endpoint.clone();
+            let auth_token = self.inter_service_auth_token.clone();
             let block_hash = self.block_stream.borrow().hash;
             let timeout = query.timeout;
 
@@ -87,6 +115,11 @@ impl ExternalTradeFinder {
                     .headers(tracing_headers())
                     .header(header::CONTENT_TYPE, "application/json")
                     .header(header::ACCEPT, "application/json");
+
+                // F7: sign the driver /quote request when the token is configured.
+                if let Some(ref token) = auth_token {
+                    request = request.bearer_auth(token.as_str());
+                }
 
                 if block_dependent {
                     request = request.header("X-Current-Block-Hash", block_hash.to_string())
