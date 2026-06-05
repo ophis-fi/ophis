@@ -335,6 +335,28 @@ projects:
                 disputeWindow: 10m
                 sitOutPenalty: 5m
 
+          # === eth_getTransactionReceipt: consensus WITHOUT punishMisbehavior ===
+          # Settlement-authoritative — the driver derives Executed/Reverted from
+          # this receipt (driver/domain/mempools.rs), so a single forged/hidden
+          # receipt could poison the settle() outcome. It needs 2-of-3 agreement.
+          # BUT it gets its OWN rule with NO punishMisbehavior: the self-hosted
+          # op-reth returns empty receipts a few seconds longer than the hosted
+          # indexers during settlement broadcast, so under the punished Block A/B
+          # rules it disputed -> cordoned ophis-self-op (Codex #465/#466, ~12k
+          # empty-misbehavior events). With no punishment the lag merely yields a
+          # transient returnError, which the driver treats as Pending and keeps
+          # polling (fail-safe: it can delay confirmation but never accept a
+          # forged receipt or evict the node). Once the node's receipt lag is
+          # fixed (op-erigon/op-geth), fold this into a punished block.
+          - matchMethod: "eth_getTransactionReceipt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+
           # === Block C: Catch-all retry (no consensus) ===
           # Block-stream polling, balance reads on non-consensus paths.
           # Tx submission routes via driver's pinned [[submission.mempool]]
