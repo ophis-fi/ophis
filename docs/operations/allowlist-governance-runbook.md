@@ -125,7 +125,15 @@ cast call <GUARDIAN> "guardian()(address)"                                  # ==
 1. **Guardian fast-path:** schedule `GUARDIAN.setGuardian(newSafe)` through the timelock.
 2. **Timelock proposer:** schedule `TIMELOCK.grantRole(PROPOSER_ROLE, newSafe)` then `TIMELOCK.revokeRole(PROPOSER_ROLE, oldSafe)`.
 3. **Timelock executor:** schedule `TIMELOCK.grantRole(EXECUTOR_ROLE, newSafe)` then `TIMELOCK.revokeRole(EXECUTOR_ROLE, oldSafe)`.
-(`PROPOSER_ROLE`/`EXECUTOR_ROLE` = `cast keccak "PROPOSER_ROLE"` / `"EXECUTOR_ROLE"`.) Verify afterwards with `hasRole` that ONLY the new Safe holds each role. Until all three are done, the old Safe retains slow-path control.
+(`PROPOSER_ROLE`/`EXECUTOR_ROLE` = `cast keccak "PROPOSER_ROLE"` / `"EXECUTOR_ROLE"`.) Until all three are done, the old Safe retains slow-path control.
+
+**Verify by ENUMERATION, not `hasRole`.** `hasRole(role, newSafe)==true` only proves the new Safe *has* the role — it cannot prove it's the *sole* holder, so a stale old Safe, the deployer, an `address(0)` open executor, or any rogue grant would pass unnoticed and keep slow-path control. For each of PROPOSER and EXECUTOR, assert the member set is **exactly `[newSafe]`**:
+```bash
+ROLE=$(cast keccak "PROPOSER_ROLE")   # then repeat for EXECUTOR_ROLE
+cast call <TIMELOCK> "getRoleMemberCount(bytes32)(uint256)" $ROLE   # must == 1
+cast call <TIMELOCK> "getRoleMember(bytes32,uint256)(address)" $ROLE 0   # must == newSafe
+```
+Also re-check `GUARDIAN.guardian() == newSafe` and that TIMELOCK_ADMIN_ROLE still has exactly one member (the Timelock itself). This mirrors the weekly `safe-drift-check` cron's enumeration.
 
 ## Notes
 
