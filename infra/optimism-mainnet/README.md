@@ -51,7 +51,7 @@ External dependencies:
   └── KyberSwap API       → aggregator-api.kyberswap.com/optimism/api/v1/
 ```
 
-**Protocol authority**: 2-of-3 Safe (v1.4.1) at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, hardware-backed signers (see `docs/operations/founder-bus-factor.md` §2.2). Holds `owner()` (proxy-upgrade admin) and `manager()` of `AllowListAuthentication`. Threshold and the three owners verified on-chain. No timelock: solver-allowlist changes and AllowList upgrades take effect immediately on 2-of-3 execution.
+**Protocol authority**: 2-of-3 Safe (v1.4.1) at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, hardware-backed signers (see `docs/operations/founder-bus-factor.md` §2.2). Threshold and the three owners verified on-chain. **Post-#442 migration (2026-06-05) the Safe no longer holds `owner()`/`manager()` of `AllowListAuthentication` directly** — `manager()` is the AllowListGuardian (`0x327F8894…6B6fC`) and the proxy `owner()` is the TimelockController (`0x8fEe4289…C373`). So `addSolver` and AllowList upgrades go through the **24h timelock** (Safe schedules → waits → executes); only `removeSolver` is instant (Safe → Guardian). A Safe batch sent directly to the AllowList now reverts. See `docs/operations/allowlist-governance-runbook.md` §3.
 
 **Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50. Safe v1.4.1, **2-of-3 on all three chains** (Optimism, Gnosis, Ethereum) with the same three owners as the protocol Safe — unified 2026-06-05 (Gnosis + Ethereum were raised from 2-of-2 by adding the 3rd owner); verified on-chain. See `docs/operations/founder-bus-factor.md` §2.3.
 
