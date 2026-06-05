@@ -53,7 +53,11 @@ jobs:
             -e FOUNDRY_EVM_VERSION=istanbul \
             trailofbits/eth-security-toolbox@sha256:a60d69da3d7f3fb444be052f93caecac0b560085bf2ccf9c3dcb5386d7532fa9 \
             bash -c '
-              set -e
+              # pipefail is REQUIRED: each echidna run is piped through tee, and
+              # without it the pipeline exit status is the tee status (0), which
+              # masks an invariant/compile failure and lets the job pass when a
+              # harness actually failed.
+              set -eo pipefail
               solc-select use 0.7.6 >/dev/null 2>&1
               export FOUNDRY_EVM_VERSION=istanbul
               # contract name == file stem for both harnesses.
