@@ -115,6 +115,13 @@ contract AllowListGuardianTest is Test {
         guardianContract.setManager(stranger);
     }
 
+    function test_setManager_rejects_zero() public {
+        // Fat-fingered address(0) would brick the authenticator manager role.
+        vm.prank(timelock);
+        vm.expectRevert("Guardian: zero manager");
+        guardianContract.setManager(address(0));
+    }
+
     // ─── SLOW path: setGuardian (timelock only) ──────────────────────────
 
     function test_setGuardian_via_timelock_succeeds() public {

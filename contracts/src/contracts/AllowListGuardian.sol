@@ -35,6 +35,18 @@ interface IGPv2AllowListAuthentication {
 /// install script, not here.
 ///
 /// This contract holds no funds and stores no secrets.
+///
+/// FAILURE MODE (by design, fail-safe): `timelock` is immutable and is the ONLY
+/// authority that can add a solver, upgrade, or hand off the manager role. If
+/// the TimelockController is ever broken (e.g. all proposers' keys lost), the
+/// SLOW path freezes permanently and there is NO on-contract escape — this is
+/// intentional. The system fails SAFE: the guardian's instant `removeSolver`
+/// keeps working, so capability can always be REDUCED, never silently ADDED. A
+/// guardian-only escape hatch is deliberately NOT provided because it would
+/// defeat the timelock (the guardian could `setManager` to a puppet that then
+/// instant-adds solvers). Mitigation lives in the migration runbook: assert the
+/// timelock has a live proposer + executor and `getMinDelay() >= 24h` BEFORE
+/// installing this guardian.
 contract AllowListGuardian {
     /// @dev The GPv2AllowListAuthentication proxy this guardian manages.
     IGPv2AllowListAuthentication public immutable authenticator;
@@ -48,6 +60,11 @@ contract AllowListGuardian {
     address public guardian;
 
     event GuardianChanged(address indexed newGuardian, address indexed oldGuardian);
+    /// @dev Local events on every forwarded op so monitoring/alerting can watch
+    /// this guardian directly — especially the time-sensitive instant eviction.
+    event SolverAddedViaTimelock(address indexed solver);
+    event SolverRemovedByGuardian(address indexed solver, address indexed by);
+    event ManagerForwardedViaTimelock(address indexed newManager);
 
     modifier onlyTimelock() {
         require(msg.sender == timelock, "Guardian: caller not timelock");
@@ -75,12 +92,17 @@ contract AllowListGuardian {
     /// @notice Add an allowlisted solver. Only the timelock; subject to its
     /// full scheduling delay.
     function addSolver(address solver) external onlyTimelock {
+        emit SolverAddedViaTimelock(solver);
         authenticator.addSolver(solver);
     }
 
     /// @notice Hand the authenticator `manager()` role to a new address (e.g.
     /// to migrate governance again). Only the timelock.
     function setManager(address newManager) external onlyTimelock {
+        // A fat-fingered address(0) here would brick the authenticator's
+        // manager role entirely; reject it (free, and timelock-fat-finger-safe).
+        require(newManager != address(0), "Guardian: zero manager");
+        emit ManagerForwardedViaTimelock(newManager);
         authenticator.setManager(newManager);
     }
 
@@ -97,6 +119,7 @@ contract AllowListGuardian {
     /// @notice Remove an allowlisted solver immediately. Defensive only
     /// (capability-reducing), so it is not timelocked.
     function removeSolver(address solver) external onlyGuardian {
+        emit SolverRemovedByGuardian(solver, msg.sender);
         authenticator.removeSolver(solver);
     }
 }

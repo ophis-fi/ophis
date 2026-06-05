@@ -66,6 +66,25 @@ cast send <TIMELOCK> "renounceRole(bytes32,address)" \
   $(cast keccak "TIMELOCK_ADMIN_ROLE") <deployer> --rpc-url "$OP_MAINNET_RPC" --account <deployer>
 ```
 
+## 1b. Timelock liveness assertions (MANDATORY before migration)
+
+The guardian has **no escape hatch** if the timelock is broken (fail-safe by
+design — see the contract NatSpec). So prove the timelock is live and correctly
+configured BEFORE handing it authority:
+
+```bash
+cast call <TIMELOCK> "getMinDelay()(uint256)" --rpc-url "$OP_MAINNET_RPC"   # must be >= 86400 (24h)
+cast call <TIMELOCK> "hasRole(bytes32,address)(bool)" \
+  $(cast keccak "PROPOSER_ROLE") 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF --rpc-url "$OP_MAINNET_RPC"  # true
+cast call <TIMELOCK> "hasRole(bytes32,address)(bool)" \
+  $(cast keccak "EXECUTOR_ROLE") 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF --rpc-url "$OP_MAINNET_RPC"  # true
+# Confirm the deployer's admin role was renounced (only the timelock self-administers):
+cast call <TIMELOCK> "hasRole(bytes32,address)(bool)" \
+  $(cast keccak "TIMELOCK_ADMIN_ROLE") <deployer> --rpc-url "$OP_MAINNET_RPC"  # false
+```
+
+If any assertion fails, STOP — do not run the migration; redeploy the timelock.
+
 ## 2. Migration — Safe TX batch (2-of-3 Ledgers, via Safe Transaction Builder)
 
 Build ONE batch with these two calls, sign with 2 of 3 Ledgers, execute.
