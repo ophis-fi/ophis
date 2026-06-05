@@ -53,7 +53,7 @@ External dependencies:
 
 **Protocol authority**: 2-of-3 Safe (v1.4.1) at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, hardware-backed signers (see `docs/operations/founder-bus-factor.md` §2.2). Holds `owner()` (proxy-upgrade admin) and `manager()` of `AllowListAuthentication`. Threshold and the three owners verified on-chain. No timelock: solver-allowlist changes and AllowList upgrades take effect immediately on 2-of-3 execution.
 
-**Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50. On Optimism this is a Safe v1.4.1 with threshold 2 and the same three owners as the protocol Safe (verified on-chain). On Gnosis and Ethereum the same address is deployed 2-of-2 (owners `0xBeC5B03f…0199` + `0x0494F503…284d1A`). See `docs/operations/founder-bus-factor.md` §2.3.
+**Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50. Safe v1.4.1, **2-of-3 on all three chains** (Optimism, Gnosis, Ethereum) with the same three owners as the protocol Safe — unified 2026-06-05 (Gnosis + Ethereum were raised from 2-of-2 by adding the 3rd owner); verified on-chain. See `docs/operations/founder-bus-factor.md` §2.3.
 
 **Public reachability**: `https://optimism-mainnet.ophis.fi` → Cloudflare Tunnel `ophis-optimism-mainnet` (id `56a68415-b1d9-4808-8218-850ec066b40b`) → `127.0.0.1:8102` on the Mac mini. Tunnel runs persistently via launchd at `~/Library/LaunchAgents/com.ophis.cloudflared.op-mainnet.plist`. Config at `~/.cloudflared/config-ophis-op-mainnet.yml`.
 

@@ -18,6 +18,17 @@ issues carry the `blocked` label and reference the P0/P1 blockers
 (#435 - #442). This keeps focus on the funds-theft surface before the
 surface-reduction work.
 
+**Deviation (2026-06-05, explicit):** some P2 *monitoring/surface-reduction* work
+(#443 sender, #447 eRPC guard, #444 settlement watcher, #446 CF WAF) was done in
+parallel while three P0/P1 items remain open — #438 (full byte-for-byte repro),
+#440 (HSTS/Full(strict) zone-settings), #441 (remote-signer/HSM). Those three are
+**not** blocked on engineering bandwidth; each is gated on an external grant (a CF
+plan/token, a reproducible-build toolchain) and cannot compete with the P2 work.
+This deviation is conscious and bounded: the three open items stay **top
+priority** as the real funds-theft blockers; the parallel P2 items are
+defense-in-depth that does not touch those surfaces. Do not read the P2 progress
+below as "P0/P1 are done."
+
 ## What is already in place (do not redo)
 
 - `GPv2Settlement` and `GPv2VaultRelayer` are immutable (verified: no proxy).
@@ -43,16 +54,16 @@ user who signs a bad authorization, so this tier is first.
 | P0.1 | Strict CSP + Subresource Integrity on all frontends (docs CSP shipped — was the only surface with none; swap/explorer/landing already carry CSP via `_headers`) | [#435](https://github.com/ophis-fi/ophis/issues/435) | low |
 | P0.2 | Lock the Cloudflare Pages deploy pipeline (scoped token, protected branch, CI-only) | [#436](https://github.com/ophis-fi/ophis/issues/436) | low |
 | P0.3 | Pin GitHub Actions to commit SHAs + lockfile integrity + dependency audit | [#437](https://github.com/ophis-fi/ophis/issues/437) | low |
-| P0.4 | Reproducible build + published artifact hash (SLSA provenance) | [#438](https://github.com/ophis-fi/ophis/issues/438) | medium |
+| P0.4 | Reproducible build + published artifact hash — **SLSA provenance LIVE** (attest steps green on real deploys); **full byte-for-byte reproducibility still OPEN** (toolchain/OS nondeterminism unproven — Phase 4 of #438) | [#438](https://github.com/ophis-fi/ophis/issues/438) | medium |
 | P0.5 | Wallet signing-clarity review (readable EIP-712, anti blind-sign) | [#439](https://github.com/ophis-fi/ophis/issues/439) | low |
-| P0.6 | Cloudflare edge: HSTS + Always Use HTTPS + Full(strict) + security.txt | [#440](https://github.com/ophis-fi/ophis/issues/440) | low |
+| P0.6 | Cloudflare edge: HSTS + Always Use HTTPS + Full(strict) + security.txt — **security.txt LIVE**; the **HSTS / Always-HTTPS / Full(strict) zone-settings still need a widened CF token or dashboard** (current token is read-only on Zone Settings; PATCH → 9109 Unauthorized — see `infra/cloudflare/ophis-fi-dns-hardening.md`) | [#440](https://github.com/ophis-fi/ophis/issues/440) | low |
 
 ## P1 - kill the highest-value host / governance gaps
 
 | # | Action | Issue | Effort |
 |---|---|---|---|
-| P1.1 | Submitter key to remote signer / HSM with `settle()`-only policy | [#441](https://github.com/ophis-fi/ophis/issues/441) | medium |
-| P1.2 | Timelock on AllowList upgrades + solver-set changes (Option A Guardian; contract + tests landed, on-chain migration pending Ledgers) | [#442](https://github.com/ophis-fi/ophis/issues/442) | medium |
+| P1.1 | Submitter key to remote signer / HSM with `settle()`-only policy — **custody REVIEWED (Tier-1.5 RAM-disk PK isolation is live); the remote-signer/HSM migration is NOT done — #441 stays OPEN** | [#441](https://github.com/ophis-fi/ophis/issues/441) | medium |
+| P1.2 | Timelock on AllowList upgrades + solver-set changes (Option A Guardian) — **DONE + ENFORCED on-chain 2026-06-05**: Timelock `0x8fEe4289…C373` + Guardian `0x327F8894…6B6fC` deployed (Sourcify-verified), migrated via the 2-of-3 Safe (proxy `manager()`→Guardian, `owner()`→Timelock); 24h delay live. [#442](https://github.com/ophis-fi/ophis/issues/442) closed | medium |
 
 ## P2 - surface reduction + detection (BLOCKED until P0+P1 green)
 
@@ -66,12 +77,12 @@ user who signs a bad authorization, so this tier is first.
 
 ## P3 - governance and assurance (backlog)
 
-- Unify the partner-fee Safe threshold across chains. Verified on-chain
-  (2026-06-04, `getThreshold()`): it is **2-of-3 on Optimism** (owners = the
-  protocol Safe set) and **2-of-2 on Gnosis + Ethereum** (owners
-  `0xBeC5B03f…0199`, `0x0494F503…284d1A`) — **not 1-of-1 on any verified
-  chain**. The remaining task is to raise Gnosis/Ethereum to 2-of-3 to match
-  Optimism. See `../operations/founder-bus-factor.md` §2.3. Roadmap task 1.8.
+- **DONE (2026-06-05): partner-fee Safe threshold unified across chains.**
+  Verified on-chain (`getThreshold()` + `getOwners()`): the partner-fee Safe
+  `0x858f0F5e…CeF8` is now **2-of-3 on all three chains** (Optimism, Gnosis,
+  Ethereum) with the identical owner set (`0x746Ad9C6…4da46A`,
+  `0xBeC5B03f…0199`, `0x0494F503…284d1A`) — Gnosis + Ethereum were raised from
+  2-of-2 by adding the 3rd owner. See `../operations/founder-bus-factor.md` §2.3.
 - Add a second trusted operator with scoped access; run a tested cold-start
   dry-run of `founder-bus-factor.md` 7.
 - External audit of the Ophis-specific diffs (two-step-manager AllowList impl,
@@ -103,6 +114,26 @@ expected. No action needed.
 
 ## Status tracking
 
-Progress is tracked on the GitHub issues above and the project board. Update
-this table's links if issue numbers change. When all of P0 and P1 are closed,
-unblock the P2 issues (remove the `blocked` label) and begin that tier.
+**Snapshot 2026-06-05:**
+- **P0 — shipped + live-verified:** CSP/SRI (#435), locked CF Pages pipeline +
+  branch protection (#436), SHA-pinned Actions + lockfile + audit (#437), wallet
+  signing-clarity (#439). **Partial:** #438 SLSA *provenance* live but full
+  byte-for-byte reproducibility still open; #440 *security.txt* live but the
+  HSTS/Always-HTTPS/Full(strict) zone-settings still need a widened CF token /
+  dashboard. So the funds-theft surface is materially reduced but NOT 100% closed.
+- **P1 — timelock enforced; key-custody reviewed (NOT HSM):** AllowList 24h
+  timelock deployed, migrated, ENFORCED (#442, closed). Submitter-key custody
+  REVIEWED (Tier-1.5 RAM-disk isolation live); the remote-signer/HSM target
+  (#441) is NOT done and stays OPEN — it remains a top-priority funds-theft
+  blocker, NOT something the parallel P2 work below closes (see the Sequencing
+  rule deviation note).
+- **P2 — partial (parallel monitoring/surface-reduction; see deviation note, NOT a P0/P1-complete signal):** F7 orderbook sender merged (#443, enforcement flip is a
+  separate windowed step); eRPC fail-closed CI guard merged (#447) with
+  `eth_getTransactionReceipt` under a no-punishMisbehavior consensus rule;
+  settlement-anomaly watcher (#444) in review. Owner-gated remainders: hardware
+  SSH keys + Tailscale ACL (#445), CF Bot Fight Mode + tunnel hardening (#446,
+  rulesets done, Bot Fight Mode needs a widened CF token).
+- **P3 — partner-fee Safe threshold unified to 2-of-3 across all chains (done).**
+  Remaining: second trusted operator + external audit/bug-bounty before scaling TVL.
+
+Progress is tracked on the GitHub issues above and the project board.

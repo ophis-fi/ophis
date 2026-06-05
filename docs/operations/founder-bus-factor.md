@@ -101,16 +101,19 @@ in case the per-chain table above goes stale):
 cast call --rpc-url <RPC> <SETTLEMENT_ADDRESS> "authenticator()(address)"
 ```
 
-**For the rotation procedure (§4.2), the Safe Transaction Builder
-target is the AllowListAuthentication contract** (above), NOT the
-Settlement contract and NOT the signatures validator
-(`0x5f315a204e7971fc29a66fef3a5773f6b0202fac` on OP — common point of
-confusion, that's the EIP-1271 signature validator listed as
-`signatures` in the CoW config — canonical EIP-55 is
-`0x5f315A204E7971fC29a66fef3a5773f6B0202fac`). 2026-05-20 incident: rotation
-simulation reverted because the batch targeted the signatures
-validator instead of the AllowList — see
-[[feedback-allowlist-not-signatures]].
+**Rotation targets (§4.2) — POST-#442 MIGRATION the Safe no longer calls the
+AllowList directly.** The AllowList `manager()` is now the AllowListGuardian
+(`0x327F8894…6B6fC`) and the proxy `owner()` is the Timelock
+(`0x8fEe4289…C373`), so:
+- `removeSolver` (fast eviction) → Safe targets the **AllowListGuardian**.
+- `addSolver` / upgrades (24h) → Safe targets the **TimelockController**
+  (`schedule`/`scheduleBatch` → wait → `execute`).
+A Safe batch sent directly to the AllowListAuthentication contract now **reverts**
+(the Safe isn't `manager()` anymore). Full flow in §4.2 and
+`allowlist-governance-runbook.md` §3. Still NOT the Settlement contract and NOT
+the signatures validator (`0x5f315A204E7971fC29a66fef3a5773f6B0202fac` on OP —
+the EIP-1271 validator listed as `signatures` in the CoW config; 2026-05-20
+incident targeted it by mistake — see [[feedback-allowlist-not-signatures]]).
 
 ### 2.3 Partner-fee Safe (cold)
 
@@ -124,17 +127,19 @@ CREATE2-deterministic, deployed on multiple chains. **Verified on-chain
 - **Optimism (10):** Safe 1.4.1, **2-of-3**, owners identical to the
   protocol Safe set (`0x746Ad9C6…4da46A`, `0xBeC5B03f…0199`,
   `0x0494F503…284d1A`).
-- **Gnosis (100)** and **Ethereum (1):** Safe 1.4.1, **2-of-2**, owners
-  `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` (HW deployer / protocol
-  Safe owner #3) + `0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
+- **Gnosis (100)** and **Ethereum (1):** Safe 1.4.1, **2-of-3** (raised from
+  2-of-2 on 2026-06-05 by adding the 3rd owner), owners identical to Optimism:
+  `0x746Ad9C63cCA6d3A8588731d60Fb87deaB4da46A`,
+  `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`,
+  `0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
 
 The earlier "1-of-1, owner `0x0494F503…` only, lives on Gnosis" note was
 **wrong on every dimension** and has been corrected from on-chain reads.
 No single-signer config exists on any verified chain.
 
-**⚠️ Note the per-chain config divergence:** OP is 2-of-3, Gnosis/Ethereum
-are 2-of-2. Reconcile to a single intended threshold before meaningful
-revenue accrues. Tracked as roadmap task 1.8.
+**Per-chain threshold unified (2026-06-05):** all three chains are now 2-of-3
+with the same owner set — verified on-chain (`getThreshold()` == 2 and
+`getOwners()` == the 3-address set on OP, Gnosis, and Ethereum).
 
 ### 2.4 Settlement contracts (per chain)
 
@@ -218,14 +223,27 @@ You need this when:
    sudo install -m 600 -o ophis-driver -g staff /dev/stdin /Users/ophis-driver/.config/submitter.key.NEW <<< '0x...newpk'
    ```
 
-3. **Update AllowList via Safe** — protocol Safe (`0xe049…01cF`, 2-of-3 Ledgers):
-   - Open Safe webapp on the chain you're rotating: `https://app.safe.global/transactions/queue?safe=oeth:0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`
-   - Queue 2 transactions:
-     - `removeSolver(address oldSubmitter)` — current `0x92B9…1A1B1`
-     - `addSolver(address newSubmitter)` — your new address from step 1
-   - Sign with 2 of the 3 Ledger devices.
-   - Execute. Wait for confirmation.
-   - **Repeat for every active chain.** Today: only Optimism.
+3. **Update the AllowList via the timelock-governed path** (post-#442 migration:
+   the AllowList `manager()` is now the AllowListGuardian `0x327F8894…6B6fC`, NOT
+   the Safe — the Safe can no longer call the AllowList directly). From the
+   protocol Safe (`0xe049…01cF`, 2-of-3 Ledgers):
+   - **Instantly evict the old/compromised submitter (FAST, guardian path):**
+     call `AllowListGuardian.removeSolver(oldSubmitter)` — target
+     `0x327F8894…6B6fC`, `removeSolver(address)`, arg `0x92B9…1A1B1`. `onlyGuardian`
+     (= the Safe), no delay. Sign 2-of-3, execute.
+   - **Authorize the new submitter (SLOW, 24h timelock):** `addSolver` is now
+     `onlyTimelock`. From the Safe, `TimelockController.schedule(target=0x327F8894…6B6fC,
+     value=0, data=abi(addSolver(newSubmitter)), predecessor=0, salt=<random>,
+     delay=86400)` on the Timelock `0x8fEe4289…C373`; wait ≥ 24h; then `execute(...)`
+     with the same args.
+   - **⚠️ 24h settlement gap:** between the instant removeSolver and the timelock
+     execute, no solver is authorized → settlement is paused for ~24h. For a key
+     COMPROMISE that is the correct fail-safe (the compromised key — and the
+     attacker — can't settle either). If continuity matters more than immediacy,
+     `schedule` the addSolver first and time the removeSolver to the execute.
+   - Full day-2 governance flows: `allowlist-governance-runbook.md` §3.
+   - **Repeat for every active chain.** Today the Timelock/Guardian are
+     OP-only — only Optimism's AllowList is timelock-governed.
 
 4. **Swap the PK file**:
    ```bash
