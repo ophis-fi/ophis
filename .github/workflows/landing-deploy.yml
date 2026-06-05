@@ -22,6 +22,8 @@ on:
 permissions:
   contents: read
   deployments: write
+  id-token: write # SLSA build provenance (#438)
+  attestations: write # SLSA build provenance (#438)
 
 concurrency:
   group: landing-deploy-${{ github.ref }}
@@ -117,3 +119,25 @@ jobs:
             --project-name=ophis-landing \
             --branch=main \
             --commit-message="$COMMIT_MSG"
+
+      # Supply-chain provenance (#438). main-only (matches the deploy step) and
+      # AFTER it, so it can never block a release. Hashes exactly the deployed
+      # bytes into a manifest, then attests it via SLSA build-provenance.
+      - name: generate bundle manifest
+        id: manifest
+        if: github.ref == 'refs/heads/main'
+        run: |
+          MANIFEST="${{ runner.temp }}/landing-bundle-manifest.txt"
+          # Exclude functions/ — the staged /api/intent Pages Function is
+          # compiled server-side by CF, so its deployed worker bytes are not
+          # these source files; attest only the static assets shipped verbatim.
+          ( cd apps/frontend/apps/ophis-landing/dist && find . -type f -not -path './functions/*' -exec sha256sum {} \; | LC_ALL=C sort ) > "$MANIFEST"
+          echo "path=$MANIFEST" >> "$GITHUB_OUTPUT"
+          echo "manifest covers $(wc -l < "$MANIFEST") files"
+      # subject-checksums attests each listed file's digest, so any deployed
+      # file is verifiable with `gh attestation verify <file>` (no manifest needed).
+      - name: attest build provenance
+        if: github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-checksums: ${{ steps.manifest.outputs.path }}
