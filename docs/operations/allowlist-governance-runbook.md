@@ -131,8 +131,25 @@ cast call <GUARDIAN> "guardian()(address)"                                  # ==
 
 - The timelock delays *adding* capability and upgrades; it never delays
   *removing* a solver, so incident response stays instant.
-- A compromised 2-of-3 still cannot add a solver or upgrade silently — every
-  such action is visible on-chain for 24h, giving time to react.
+- A compromised 2-of-3 cannot add a solver or upgrade **silently or instantly** —
+  every such action is scheduled on-chain and **delayed a full 24h** before it can
+  execute, giving observers time to react (and the immutable Settlement/Vault cap
+  the blast radius regardless). It is a *public-delay* protection, **not
+  prevention**: a compromised Safe can still push a change through after 24h.
+- **Single-party governance (verified 2026-06-05).** The Safe is the **sole**
+  PROPOSER, **sole** EXECUTOR, and (OZ 3.4 `cancel` = `onlyRole(PROPOSER_ROLE)`)
+  **sole** canceller; the Timelock self-administers; EXECUTOR is not open. So there
+  is **no independent guardian/canceller veto** over a malicious queued op — the
+  24h window is the only check. A future hardening is a separate canceller
+  (CANCELLER role / a watcher Safe) that can veto within the window.
+- **The 24h delay genuinely holds (PoC-verified 2026-06-05).** OZ 3.4.0's
+  `executeBatch` checks readiness in `_afterCall` (after the calls) rather than
+  `_beforeCall`, but this is **not** a sub-24h bypass: the entry op's `_afterCall`
+  `isOperationReady` gate is unsatisfiable for a fresh id (its timestamp can only
+  be `0`, `1`=DONE, or `now+≥86400`), and self-scheduling the entry batch is a
+  keccak fixed-point (infeasible). A Forge PoC attempting the one-tx bypass reverts
+  with "operation is not ready"; the op only executes after a 24h warp. Re-verify
+  if the Timelock is ever redeployed on a different OZ version.
 - Pre-merge audit (Codex + sharp-edges) is mandatory for this mainnet
   governance change. Migration is irreversible-ish; double-check the batch in
   Tenderly before signing.

@@ -101,16 +101,19 @@ in case the per-chain table above goes stale):
 cast call --rpc-url <RPC> <SETTLEMENT_ADDRESS> "authenticator()(address)"
 ```
 
-**For the rotation procedure (§4.2), the Safe Transaction Builder
-target is the AllowListAuthentication contract** (above), NOT the
-Settlement contract and NOT the signatures validator
-(`0x5f315a204e7971fc29a66fef3a5773f6b0202fac` on OP — common point of
-confusion, that's the EIP-1271 signature validator listed as
-`signatures` in the CoW config — canonical EIP-55 is
-`0x5f315A204E7971fC29a66fef3a5773f6B0202fac`). 2026-05-20 incident: rotation
-simulation reverted because the batch targeted the signatures
-validator instead of the AllowList — see
-[[feedback-allowlist-not-signatures]].
+**Rotation targets (§4.2) — POST-#442 MIGRATION the Safe no longer calls the
+AllowList directly.** The AllowList `manager()` is now the AllowListGuardian
+(`0x327F8894…6B6fC`) and the proxy `owner()` is the Timelock
+(`0x8fEe4289…C373`), so:
+- `removeSolver` (fast eviction) → Safe targets the **AllowListGuardian**.
+- `addSolver` / upgrades (24h) → Safe targets the **TimelockController**
+  (`schedule`/`scheduleBatch` → wait → `execute`).
+A Safe batch sent directly to the AllowListAuthentication contract now **reverts**
+(the Safe isn't `manager()` anymore). Full flow in §4.2 and
+`allowlist-governance-runbook.md` §3. Still NOT the Settlement contract and NOT
+the signatures validator (`0x5f315A204E7971fC29a66fef3a5773f6B0202fac` on OP —
+the EIP-1271 validator listed as `signatures` in the CoW config; 2026-05-20
+incident targeted it by mistake — see [[feedback-allowlist-not-signatures]]).
 
 ### 2.3 Partner-fee Safe (cold)
 
