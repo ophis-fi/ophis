@@ -447,38 +447,16 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
-# eRPC consensus fail-closed assertion (#447). The rendered eRPC config MUST
-# keep its 2-of-3-across-3 fail-closed shape on BOTH active consensus blocks:
-#   maxParticipants: 3   (query all three upstreams — the failure-domain shape)
-#   agreementThreshold: 2 (2-of-3 quorum; NOT 1=no-consensus, NOT 3=liveness-fragile)
-#   disputeBehavior: returnError + lowParticipantsBehavior: returnError (fail closed)
-# Refuse to render — and therefore to (re)boot the stack — on any weakening.
-#
-# COMMENTS ARE STRIPPED FIRST (Codex #464): the template carries explanatory
-# comments that mention "agreementThreshold: 2", so a naive line count could
-# mask a weakened *active* block. We count only active YAML keys, and require
-# EVERY active agreementThreshold to be 2 and EVERY active maxParticipants to be
-# 3 (so flipping one block to 3 — or maxParticipants to 2 — fails the check).
+# eRPC consensus fail-closed guard (#447). Structural YAML validation (parses
+# the tree — NOT line greps, so comments / key reordering / added blocks cannot
+# mask a weakening). Refuses to render — and therefore to (re)boot the stack —
+# unless the rendered eRPC config keeps its full 2-of-3-across-3 fail-closed
+# shape: exactly 3 upstreams; >=2 consensus blocks, EACH with maxParticipants:3,
+# agreementThreshold:2, disputeBehavior+lowParticipantsBehavior=returnError; and
+# eth_call + the state-read methods still covered by a consensus matchMethod.
+# See assert-erpc-failclosed.py for the full invariant list + Codex history.
 if [[ -f rendered/erpc.yaml ]]; then
-  erpc_active="$(grep -vE '^[[:space:]]*#' rendered/erpc.yaml)"
-  at_total=$(printf '%s\n' "$erpc_active" | grep -cE '^[[:space:]]*agreementThreshold:[[:space:]]*[0-9]+' || true)
-  at_ok=$(printf '%s\n'   "$erpc_active" | grep -cE '^[[:space:]]*agreementThreshold:[[:space:]]*2[[:space:]]*(#.*)?$' || true)
-  mp_total=$(printf '%s\n' "$erpc_active" | grep -cE '^[[:space:]]*maxParticipants:[[:space:]]*[0-9]+' || true)
-  mp_ok=$(printf '%s\n'   "$erpc_active" | grep -cE '^[[:space:]]*maxParticipants:[[:space:]]*3[[:space:]]*(#.*)?$' || true)
-  db_ok=$(printf '%s\n'   "$erpc_active" | grep -cE '^[[:space:]]*disputeBehavior:[[:space:]]*returnError[[:space:]]*(#.*)?$' || true)
-  lp_ok=$(printf '%s\n'   "$erpc_active" | grep -cE '^[[:space:]]*lowParticipantsBehavior:[[:space:]]*returnError[[:space:]]*(#.*)?$' || true)
-  if (( at_total < 2 || at_ok != at_total || mp_total < 2 || mp_ok != mp_total || db_ok < 2 || lp_ok < 2 )); then
-    echo "" >&2
-    echo "ERROR (#447): eRPC consensus is not fully 2-of-3-across-3 fail-closed in rendered/erpc.yaml" >&2
-    echo "              (active YAML keys only, comments ignored). Required on every active block:" >&2
-    echo "                agreementThreshold: 2   -> ${at_ok}/${at_total} active are 2 (need all, >=2 blocks)" >&2
-    echo "                maxParticipants: 3      -> ${mp_ok}/${mp_total} active are 3 (need all, >=2 blocks)" >&2
-    echo "                disputeBehavior: returnError        -> ${db_ok} (>=2)" >&2
-    echo "                lowParticipantsBehavior: returnError -> ${lp_ok} (>=2)" >&2
-    echo "              Refusing to render a non-fail-closed eRPC config." >&2
-    exit 14
-  fi
-  echo "  assert    eRPC 2-of-3-across-3 fail-closed OK (agreementThreshold:2 x${at_ok}, maxParticipants:3 x${mp_ok}, returnError dispute x${db_ok}/lowParticipants x${lp_ok})"
+  python3 "$SCRIPT_DIR/assert-erpc-failclosed.py" rendered/erpc.yaml || exit 14
 fi
 
 # Post-render secret-leak assertion (sharp-edges MED-1 + Codex Medium):
