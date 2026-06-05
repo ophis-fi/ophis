@@ -106,7 +106,9 @@ jobs:
           ( cd "${{ runner.temp }}/docs-dist/build" && find . -type f -exec sha256sum {} \; | LC_ALL=C sort ) > "$MANIFEST"
           echo "path=$MANIFEST" >> "$GITHUB_OUTPUT"
           echo "manifest covers $(wc -l < "$MANIFEST") files"
+      # subject-checksums attests each listed file's digest, so any deployed
+      # file is verifiable with `gh attestation verify <file>` (no manifest needed).
       - name: attest build provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: ${{ steps.manifest.outputs.path }}
+          subject-checksums: ${{ steps.manifest.outputs.path }}
