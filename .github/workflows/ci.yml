@@ -49,3 +49,16 @@ jobs:
           else
             echo "packages/sdk not present yet — skipping"
           fi
+
+  erpc-consensus-guard:
+    name: eRPC consensus fail-closed guard (#447)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      # ubuntu-latest ships python3 + pip; PyYAML is the only extra dep and is
+      # declared+installed here (NOT in the operator render path — see the note
+      # in infra/optimism-mainnet/render-configs.sh / Codex #464 P1).
+      - name: install pyyaml
+        run: python3 -m pip install --quiet --break-system-packages pyyaml
+      - name: assert OP eRPC template stays 2-of-3-across-3 fail-closed
+        run: python3 infra/optimism-mainnet/assert-erpc-failclosed.py infra/optimism-mainnet/configs/erpc.yaml.tmpl
