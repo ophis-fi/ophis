@@ -43,13 +43,19 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
     "optimism.gateway.tenderly.co",
     "100.77.53.81",
 })
-# Settlement-relevant reads that MUST stay under fail-closed consensus — mirror
-# the template's two consensus blocks. eth_getTransactionReceipt is included: the
-# driver derives a settlement's Executed/Reverted outcome from it.
+# Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
+# mirror the template's consensus rules. Block A/B sit in punished consensus
+# blocks. eth_getTransactionReceipt is ALSO required under consensus (it's
+# settlement-authoritative — the driver derives Executed/Reverted from it) but
+# lives in its OWN rule WITHOUT punishMisbehavior so the self-node's empty-receipt
+# lag can't cordon it (Codex #465/#466). This guard checks the consensus PARAMS
+# (maxParticipants/threshold/behaviors), not punishMisbehavior, so the no-punish
+# receipt rule satisfies it while a single forged receipt still can't reach quorum.
 BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt")
-BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash", "eth_getTransactionReceipt",
+BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash",
            "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
-PROTECTED_METHODS = BLOCK_A + BLOCK_B
+RECEIPT = ("eth_getTransactionReceipt",)
+PROTECTED_METHODS = BLOCK_A + BLOCK_B + RECEIPT
 
 # Allowed keys per structural level of the chain-10 consensus/upstream surface.
 # Any key outside these sets fails closed (the whole point — see module docstring).
