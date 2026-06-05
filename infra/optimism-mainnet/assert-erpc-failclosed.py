@@ -80,7 +80,8 @@ def validate(cfg):
 
 def main(path):
     try:
-        cfg = yaml.safe_load(open(path))
+        with open(path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
     except Exception as e:  # noqa: BLE001 - any parse failure must fail closed
         print(f"ERROR (#447): cannot parse {path}: {e}", file=sys.stderr)
         return EXIT_FAIL
