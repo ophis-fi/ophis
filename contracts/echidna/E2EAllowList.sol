@@ -38,18 +38,25 @@ contract E2EAllowList is GPv2AllowListAuthentication {
         // `this.initializeManager` — the contract is not yet deployed)
         // AND consuming the Initializable._initialized slot via storage
         // slot 0 of Initializable.
-        // Storage layout (inherited order, packed in slot 0):
-        //   Initializable: _initialized (bool, 1 byte), _initializing (bool, 1 byte)
-        // Subsequent slots: StorageAccessible (no storage),
-        //   GPv2AllowListAuthentication.manager (slot 1), solvers (slot 2)
-        manager = INITIAL_MANAGER;
-        originalManager = INITIAL_MANAGER;
-        // Write _initialized = true at slot 0, low byte. The mixin packs
-        // _initialized and _initializing in slot 0 (booleans), so we set
-        // the LSB.
+        // Storage layout (inherited order): slot 0 packs Initializable's
+        // _initialized (byte 0) + _initializing (byte 1) AND
+        // GPv2AllowListAuthentication.manager (address, bytes 2..21 — it fits
+        // in the remaining 30 bytes of slot 0). pendingManager and solvers
+        // occupy later slots.
+        //
+        // ORDER MATTERS: set _initialized via a raw `sstore(0, 1)` FIRST, then
+        // write `manager`. The packed `manager =` assignment is a
+        // read-modify-write of slot 0, so it preserves the _initialized byte.
+        // (Doing it the other way — manager first, then `sstore(0, 1)` — wrote
+        // the WHOLE slot 0 to 1, zeroing the packed `manager` field, so
+        // echidna_manager_unchanged failed at construction with no txs.)
+        // _initialized = true so Echidna cannot call initializeManager and
+        // legitimately reassign the manager.
         assembly {
             sstore(0, 1)
         }
+        manager = INITIAL_MANAGER;
+        originalManager = INITIAL_MANAGER;
         emit ManagerChanged(INITIAL_MANAGER, address(0));
     }
 
