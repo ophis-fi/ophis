@@ -4,4 +4,5 @@ Contact: mailto:clement@aleph.cloud
 Expires: 2027-06-05T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://swap.ophis.fi/.well-known/security.txt
+Canonical: https://business.ophis.fi/.well-known/security.txt
 Policy: https://github.com/ophis-fi/ophis/blob/main/SECURITY.md

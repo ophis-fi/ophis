@@ -235,9 +235,13 @@ curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: applica
   -d '{"value":"on"}' \
   "https://api.cloudflare.com/client/v4/zones/$ZID/settings/always_use_https"
 
-# HSTS (1y, includeSubDomains, preload-eligible, nosniff)
+# HSTS (1y, includeSubDomains, nosniff). NOTE: preload is FALSE here on purpose.
+# The `preload` directive in the header is itself authorization for any third
+# party to submit the apex to hstspreload.org, which is irreversible-ish. Leave
+# it false until the soak/verification window is done, then flip preload:true as
+# the FIRST step of the hstspreload submission (tracked in ophis-domains.md).
 curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
-  -d '{"value":{"strict_transport_security":{"enabled":true,"max_age":31536000,"include_subdomains":true,"nosniff":true,"preload":true}}}' \
+  -d '{"value":{"strict_transport_security":{"enabled":true,"max_age":31536000,"include_subdomains":true,"nosniff":true,"preload":false}}}' \
   "https://api.cloudflare.com/client/v4/zones/$ZID/settings/security_header"
 ```
 
@@ -250,6 +254,7 @@ curl -sS -X PATCH -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: applica
   -d '{"value":"strict"}' "https://api.cloudflare.com/client/v4/zones/$ZID/settings/ssl"
 ```
 Verify after any change: `curl -sI https://<host>/` shows
-`strict-transport-security: max-age=31536000; includeSubDomains; preload` and an
-http URL 301-redirects to https. Do NOT submit to hstspreload.org here — that is
-the separate post-7-days step tracked in `ophis-domains.md`.
+`strict-transport-security: max-age=31536000; includeSubDomains` (NO `preload`
+token yet) and an http URL 301-redirects to https. Do NOT submit to
+hstspreload.org here, and do NOT add the `preload` directive until that separate
+post-soak step (tracked in `ophis-domains.md`) is actually ready.
