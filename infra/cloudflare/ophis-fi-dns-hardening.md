@@ -273,10 +273,18 @@ ophis.finance, ophis.exchange** (idempotent; verified via `dig @1.1.1.1`):
 | `<zone>` (apex) | TXT | `v=spf1 -all` |
 | `_dmarc.<zone>` | TXT | `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s` |
 | `*._domainkey.<zone>` | TXT | `v=DKIM1; p=` (deny-all DKIM) |
+| `<zone>` (apex) | MX | `0 .` (RFC 7505 null MX) |
 
-**Before adding `-all` to any zone, re-confirm `MX == 0` and no existing `v=spf1`
-sender** — a mail-sending domain (e.g. `openletz.com`, which sends via Brevo)
-must NOT get `-all`; it needs a proper SPF include for its sender instead.
+The TXT trio locks down *sending* (spoofing). The **null MX (`0 .`, RFC 7505)**
+locks down *receiving*: `MX == 0` alone does NOT mean "no mail" — SMTP falls back
+to the apex `A`/`AAAA`/`CNAME` records, so without a null MX a sender could still
+attempt (and retry) delivery to `@<zone>` against the web/redirect origin. The
+null MX tells senders this domain accepts no mail.
+
+**Before adding `-all` or a null MX to any zone, re-confirm `MX == 0`, no existing
+`v=spf1` sender, and that the domain truly receives no mail** — a mail domain
+(e.g. `openletz.com`, which sends via Brevo) must NOT get `-all` or a null MX; it
+needs a proper SPF include + real MX instead.
 
 These records are reversible TXT edits. The remaining Security Center items are
 **owner-gated** (the keychain `cloudflare-api-token` is zone-scoped to the 4 ophis
@@ -289,5 +297,7 @@ zones and has no Zone-Settings or account scope):
   read and 10000 on PATCH (see #440); needs a widened token or the dashboard.
 
 To finish the account-wide remediation autonomously, mint a token with **Account
-→ Security Center: Read** + **Zone → DNS: Edit** + **Zone → Zone Settings: Edit**
-across *all* zones, then a per-zone pipeline can repeat this lockdown everywhere.
+→ Security Center: Read** + **Zone → Zone: Read** (List Zones / `GET /zones`
+requires it to discover the zone IDs) + **Zone → DNS: Edit** + **Zone → Zone
+Settings: Edit** across *all* zones, then a per-zone pipeline can repeat this
+lockdown everywhere.
