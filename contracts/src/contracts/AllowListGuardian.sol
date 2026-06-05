@@ -8,7 +8,7 @@ interface IGPv2AllowListAuthentication {
 
     function removeSolver(address solver) external;
 
-    function setManager(address manager) external;
+    function setManager(address manager_) external;
 
     function manager() external view returns (address);
 }
