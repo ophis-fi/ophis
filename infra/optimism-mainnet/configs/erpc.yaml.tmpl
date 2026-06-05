@@ -264,7 +264,6 @@ projects:
               agreementThreshold: 2
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
-              preferNonEmpty: true
               # No `ignoreFields` here — see HL eRPC Codex Cyber finding #1.
               # Allowing field-level skip lets a hostile upstream forge the
               # skipped field while matching every other field; consensus
@@ -316,7 +315,7 @@ projects:
           # If a future version of op-reth speeds up receipt indexing
           # (or we switch to op-erigon / op-geth on the VM), re-add
           # eth_getTransactionReceipt to this regex and bump back.
-          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_getTransactionReceipt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
             timeout:
               duration: 12s
             consensus:
@@ -324,7 +323,6 @@ projects:
               agreementThreshold: 2
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
-              preferNonEmpty: true
               punishMisbehavior:
                 # 200 was sized to absorb the receipt burst — without
                 # that method here, the remaining members have much
