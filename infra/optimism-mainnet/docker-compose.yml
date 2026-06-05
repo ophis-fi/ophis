@@ -164,6 +164,14 @@ services:
       # off; set TRACING_COLLECTOR_ENDPOINT=http://jaeger:4317 in .env to
       # enable. Routed via OTLP/gRPC.
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      # F7 inter-service auth (#443): the orderbook signs its driver /quote
+      # calls with this Bearer token (price-estimation ExternalTradeFinder).
+      # Empty default = no header (un-authenticated) so this is a SAFE no-op
+      # until the driver enforces — the enforcement flip is a separate, windowed
+      # step. compose-up.sh sources the value from the macOS Keychain entry
+      # `ophis-inter-service-auth-token`; all three services (orderbook, driver,
+      # autopilot) must carry the SAME value (constant-time compare = exact).
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
