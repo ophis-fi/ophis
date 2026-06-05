@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.ophis.settlement-anomaly-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/scep/greg/infra/optimism-mainnet/scripts/settlement-anomaly-watch.sh</string>
+  </array>
+
+  <!-- Near-real-time: every 60s. The script is cursor-based and idempotent, so
+       a missed/late run just scans a larger block window next time. -->
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <!-- Don't pile up overlapping runs if one is slow (e.g. RPC stall). -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/scep/Library/Logs/ophis-settlement-anomaly-watch.launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/scep/Library/Logs/ophis-settlement-anomaly-watch.launchd.err</string>
+
+  <!-- foundry's cast + homebrew jq/curl. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/scep/.foundry/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
