@@ -14,9 +14,14 @@ AllowList authentication manager hasn't drifted from expected.
 5. Configured submitter EOA `isSolver()` returns true.
 6. AllowList proxy `owner()` == the expected proxy owner (the TimelockController
    post-#442; the protocol Safe before) — so `upgradeTo` stays 24h-delayed.
-7. When a Timelock governs the chain (proxy owner != Safe): the Timelock's
-   `getMinDelay()` >= 86400 (24h) and the protocol Safe still holds PROPOSER_ROLE
-   + EXECUTOR_ROLE — so the slow-path can't be silently un-gated.
+7. When a Guardian is the manager (post-#442): the Guardian's `guardian()` ==
+   the protocol Safe (the instant-eviction authority) and its immutable
+   `timelock()` / `authenticator()` match — so the manager isn't a rogue Guardian.
+8. When a Timelock governs the chain (proxy owner != Safe): the Timelock's
+   `getMinDelay()` >= 86400 (24h), and PROPOSER_ROLE + EXECUTOR_ROLE are each held
+   by **exactly** the protocol Safe and TIMELOCK_ADMIN_ROLE by **exactly** the
+   Timelock itself — enumerated via `getRoleMemberCount`/`getRoleMember`, so an
+   extra/rogue role holder (a granted deployer/EOA) is caught, not just a missing one.
 
 Any drift → Telegram alert to chat `735726338`.
 

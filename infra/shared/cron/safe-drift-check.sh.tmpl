@@ -93,6 +93,28 @@ alert() {
     >/dev/null 2>&1 || log "WARN: telegram send failed"
 }
 
+# Assert an OZ AccessControl role on $tl has EXACTLY one member == $want.
+# Catches a missing expected holder AND any extra/rogue holder (granted
+# deployer/EOA/admin) that a plain hasRole($want) check would miss.
+check_sole_role_member() {
+  local rpc="$1" tl="$2" role_name="$3" want="$4" cname="$5" label="$6"
+  local role count member
+  role="$(cast keccak "$role_name")"
+  count="$(cast call --rpc-url "$rpc" "$tl" 'getRoleMemberCount(bytes32)(uint256)' "$role" 2>&1 | head -1 | awk '{print $1}')"
+  if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+    alert "Timelock ${label} getRoleMemberCount failed on $cname: $count"
+    return
+  fi
+  if [[ "$count" != "1" ]]; then
+    alert "Timelock ${label} role has ${count} holders on <b>$cname</b> (expected exactly 1 = <code>${want}</code>) — enumerate getRoleMember to find extras"
+    return
+  fi
+  member="$(cast call --rpc-url "$rpc" "$tl" 'getRoleMember(bytes32,uint256)(address)' "$role" 0 2>&1 | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+  if [[ "$member" != "$want" ]]; then
+    alert "Timelock ${label} sole holder drift on <b>$cname</b>%0Aexpected: <code>${want}</code>%0Aactual:   <code>${member}</code>"
+  fi
+}
+
 normalize_addresses() {
   # Convert `cast call ... 'getOwners()(address[])'` output to
   # space-separated lowercase addresses, sorted.
@@ -183,6 +205,15 @@ check_chain() {
   if [[ "$partner_owners_norm" != "$expected_partner_norm" ]]; then
     alert "Partner-fee Safe owners drift on <b>$name</b>%0Aexpected: <code>${expected_partner_norm}</code>%0Aactual:   <code>${partner_owners_norm}</code>"
   fi
+  local partner_thr_raw partner_thr
+  partner_thr_raw="$(cast call --rpc-url "$rpc" "$partner_safe" 'getThreshold()(uint256)' 2>&1)" || {
+    alert "Partner-fee Safe getThreshold() call failed on $name: $partner_thr_raw"
+    return
+  }
+  partner_thr="$(echo "$partner_thr_raw" | head -1 | awk '{print $1}')"
+  if [[ "$partner_thr" != "$EXPECTED_PARTNER_THRESHOLD" ]]; then
+    alert "Partner-fee Safe threshold drift on <b>$name</b>%0Aexpected ${EXPECTED_PARTNER_THRESHOLD}, actual ${partner_thr}"
+  fi
 
   # --- AllowList manager points at the expected manager (AllowListGuardian post-#442) ---
   local manager_raw
@@ -205,7 +236,7 @@ check_chain() {
   # --- AllowList proxy owner() == expected proxy owner (Timelock post-#442) ---
   # The 24h UPGRADE delay depends on owner()==Timelock; a transfer back to a
   # Safe/EOA would un-delay upgradeTo even while manager() stays the Guardian.
-  local owner_raw owner_addr expected_owner_lower proto_lower
+  local owner_raw owner_addr expected_owner_lower proto_lower auth_lower
   owner_raw="$(cast call --rpc-url "$rpc" "$allowlist_proxy" 'owner()(address)' 2>&1)" || {
     alert "AllowList owner() call failed on $name: $owner_raw"
     return
@@ -213,25 +244,49 @@ check_chain() {
   owner_addr="$(echo "$owner_raw" | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
   expected_owner_lower="$(echo "$expected_proxy_owner" | tr '[:upper:]' '[:lower:]')"
   proto_lower="$(echo "$protocol_safe" | tr '[:upper:]' '[:lower:]')"
+  auth_lower="$(echo "$allowlist_proxy" | tr '[:upper:]' '[:lower:]')"
   if [[ "$owner_addr" != "$expected_owner_lower" ]]; then
     alert "AllowList proxy owner drift on <b>$name</b>%0Aexpected: <code>${expected_owner_lower}</code>%0Aactual:   <code>${owner_addr}</code>"
   fi
 
+  # --- AllowListGuardian internal wiring (only when a Guardian is the manager) ---
+  # guardian() (fast removeSolver authority) must be the Safe; immutable
+  # timelock()/authenticator() must match — else the configured manager is a
+  # wrong/rogue Guardian and the instant-eviction path isn't Safe-controlled.
+  if [[ "$expected_manager_lower" != "$proto_lower" ]]; then
+    local g_guardian g_timelock g_auth
+    g_guardian="$(cast call --rpc-url "$rpc" "$expected_manager" 'guardian()(address)' 2>&1)" || {
+      alert "Guardian guardian() call failed on $name: $g_guardian"; return
+    }
+    g_guardian="$(echo "$g_guardian" | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+    [[ "$g_guardian" != "$proto_lower" ]] && alert "Guardian fast-path guardian() drift on <b>$name</b>%0Aexpected Safe <code>${proto_lower}</code>, actual <code>${g_guardian}</code>"
+    g_timelock="$(cast call --rpc-url "$rpc" "$expected_manager" 'timelock()(address)' 2>&1)" || {
+      alert "Guardian timelock() call failed on $name: $g_timelock"; return
+    }
+    g_timelock="$(echo "$g_timelock" | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+    [[ "$g_timelock" != "$expected_owner_lower" ]] && alert "Guardian timelock() drift on <b>$name</b>%0Aexpected <code>${expected_owner_lower}</code>, actual <code>${g_timelock}</code>"
+    g_auth="$(cast call --rpc-url "$rpc" "$expected_manager" 'authenticator()(address)' 2>&1)" || {
+      alert "Guardian authenticator() call failed on $name: $g_auth"; return
+    }
+    g_auth="$(echo "$g_auth" | head -1 | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+    [[ "$g_auth" != "$auth_lower" ]] && alert "Guardian authenticator() drift on <b>$name</b>%0Aexpected <code>${auth_lower}</code>, actual <code>${g_auth}</code>"
+  fi
+
   # --- Timelock health (only when a Timelock governs upgrades: owner != Safe) ---
-  # A 24h slow path also depends on getMinDelay() >= 86400 and the Safe holding
-  # proposer+executor — drift there silently un-gates addSolver/upgrades.
+  # getMinDelay >= 24h AND each role held by EXACTLY the expected sole member
+  # (enumerated, so an extra/rogue proposer/executor/admin is caught too).
   if [[ "$expected_owner_lower" != "$proto_lower" ]]; then
-    local min_delay prop_role exec_role has_prop has_exec
-    min_delay="$(cast call --rpc-url "$rpc" "$expected_proxy_owner" 'getMinDelay()(uint256)' 2>&1 | head -1 | awk '{print $1}')"
+    local min_delay_raw min_delay
+    min_delay_raw="$(cast call --rpc-url "$rpc" "$expected_proxy_owner" 'getMinDelay()(uint256)' 2>&1)" || {
+      alert "Timelock getMinDelay() call failed on $name: $min_delay_raw"; return
+    }
+    min_delay="$(echo "$min_delay_raw" | head -1 | awk '{print $1}')"
     if [[ ! "$min_delay" =~ ^[0-9]+$ ]] || (( min_delay < 86400 )); then
       alert "Timelock getMinDelay drift on <b>$name</b>%0Aexpected >= 86400 (24h), actual: <code>${min_delay}</code>"
     fi
-    prop_role="$(cast keccak 'PROPOSER_ROLE')"
-    exec_role="$(cast keccak 'EXECUTOR_ROLE')"
-    has_prop="$(cast call --rpc-url "$rpc" "$expected_proxy_owner" 'hasRole(bytes32,address)(bool)' "$prop_role" "$protocol_safe" 2>&1 | head -1)"
-    has_exec="$(cast call --rpc-url "$rpc" "$expected_proxy_owner" 'hasRole(bytes32,address)(bool)' "$exec_role" "$protocol_safe" 2>&1 | head -1)"
-    [[ "$has_prop" != "true" ]] && alert "Timelock PROPOSER_ROLE not held by protocol Safe on <b>$name</b> (hasRole: ${has_prop})"
-    [[ "$has_exec" != "true" ]] && alert "Timelock EXECUTOR_ROLE not held by protocol Safe on <b>$name</b> (hasRole: ${has_exec})"
+    check_sole_role_member "$rpc" "$expected_proxy_owner" "PROPOSER_ROLE" "$proto_lower" "$name" "proposer"
+    check_sole_role_member "$rpc" "$expected_proxy_owner" "EXECUTOR_ROLE" "$proto_lower" "$name" "executor"
+    check_sole_role_member "$rpc" "$expected_proxy_owner" "TIMELOCK_ADMIN_ROLE" "$expected_owner_lower" "$name" "admin (self)"
   fi
 
   # --- Expected submitter is allowlisted ---
