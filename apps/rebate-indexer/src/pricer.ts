@@ -1,4 +1,4 @@
-import { postQuote } from './cow/client.js';
+import { nativePrice } from './cow/client.js';
 import { logger } from './logger.js';
 import { alerts } from './telegram/alerter.js';
 
@@ -68,67 +68,61 @@ export function assertUsdReferenceSane(): void {
   }
 }
 
-export interface ComputeTradeUsdParams {
-  sellAmount: bigint;
-  sellTokenDecimals: number;
-  quoteSellAmount: bigint;                                             // the quote's normalized sellAmount in the same token
-  quoteBuyAmount: bigint;                                              // → USD-stable token
-  quoteBuyTokenDecimals: number;
+// Resolve the chain's USD-reference native_price ONCE per run (it's constant), so a
+// 1000-row page costs ~1 ref call + 1 sell call per trade, not 2 per trade.
+async function getRefNativePrice(
+  chainId: number,
+  refToken: `0x${string}`,
+  cache?: Map<number, number>,
+): Promise<number> {
+  const cached = cache?.get(chainId);
+  if (cached !== undefined) return cached;
+  const price = await nativePrice(chainId, refToken);
+  cache?.set(chainId, price);
+  return price;
 }
 
 /**
- * USD value of a trade given a CoW /quote response that prices the sellToken into a stablecoin.
+ * USD value of a trade via CoW's native_price oracle. native_price(token) returns
+ * native-token wei per 1 ATOM of the token, so the chain + token decimals CANCEL out
+ * of the ratio against the USD reference:
  *
- *   usd = (sellAmount / 10^sellDecimals) * (quoteBuyAmount / 10^quoteBuyDecimals)
- *                                       / (quoteSellAmount / 10^sellDecimals)
- *       = sellAmount * quoteBuyAmount / (quoteSellAmount * 10^quoteBuyDecimals)   (× 10^4 / 10^4)
+ *   usd = sellAmount_atoms * np(sellToken) / np(USDCref) / 10^USDCdecimals
  *
- * Returned as a number rounded to 4 decimal places to match NUMERIC(20,4).
+ * native_price is a float oracle; the result is stored into NUMERIC(20,4) which rounds
+ * to 4dp. That precision is ample for this capped, tier-feeding valuation (the value
+ * only selects rebate tiers, it is not an exact payout). Selling the USD reference
+ * itself short-circuits to exact USD. Any non-finite / zero-ref price throws -> the
+ * caller leaves value_usd NULL to retry (same fail-safe as a 404 NoLiquidity).
  */
-export function computeTradeUsd(p: ComputeTradeUsdParams): number {
-  if (p.sellAmount === 0n) return 0;
-  if (p.quoteSellAmount === 0n) throw new Error('computeTradeUsd: quoteSellAmount must be non-zero');
-  // Compute in fixed-point: scale numerator by 10^4 to preserve 4dp precision,
-  // then round to nearest (round-half-up) to match NUMERIC(20,4) DB column semantics.
-  const divisor = p.quoteSellAmount * (10n ** BigInt(p.quoteBuyTokenDecimals));
-  const scaledFloor = (p.sellAmount * p.quoteBuyAmount * 10_000n) / divisor;
-  // Check remainder to decide whether to round up.
-  const remainder = (p.sellAmount * p.quoteBuyAmount * 10_000n) % divisor;
-  const scaled = remainder * 2n >= divisor ? scaledFloor + 1n : scaledFloor;
-  return Number(scaled) / 10_000;
-}
-
-export async function priceTrade(row: {
-  tradeUid: `0x${string}`;
-  chainId: number;
-  sellToken: `0x${string}`;
-  sellAmount: bigint;
-}): Promise<number> {
+export async function priceTrade(
+  row: {
+    tradeUid: `0x${string}`;
+    chainId: number;
+    sellToken: `0x${string}`;
+    sellAmount: bigint;
+  },
+  refPriceCache?: Map<number, number>,
+): Promise<number> {
   const ref = USD_REFERENCE[row.chainId];
   if (!ref) throw new Error(`no USD reference for chain ${row.chainId}`);
   if (row.sellToken.toLowerCase() === ref.token.toLowerCase()) {
-    // Selling the chain's USD reference stablecoin itself — already USD.
-    // Use ref.decimals (the KNOWN decimals of that stablecoin, e.g. 6 for
-    // USDC/USDC.e). Do NOT use fetchTokenDecimals here: CoW's native_price
-    // endpoint returns no `decimals` field, so that helper always falls back to
-    // 18 — which would understate a USDC sell by 10^12 and corrupt the payout.
+    // Selling the chain's USD reference stablecoin itself — already USD. Use the
+    // KNOWN ref.decimals (e.g. 6 for USDC.e); native_price carries no decimals field.
     return Number(row.sellAmount) / 10 ** ref.decimals;
   }
-  const quote = await postQuote({
-    chainId: row.chainId,
-    sellToken: row.sellToken,
-    buyToken: ref.token,
-    sellAmount: row.sellAmount,
-  });
-  return computeTradeUsd({
-    sellAmount: row.sellAmount,
-    // sellTokenDecimals cancels out of computeTradeUsd's ratio (it appears in
-    // both the trade and quote sell amounts), so the value here is irrelevant.
-    sellTokenDecimals: 18,
-    quoteSellAmount: BigInt(quote.quote.sellAmount),
-    quoteBuyAmount: BigInt(quote.quote.buyAmount),
-    quoteBuyTokenDecimals: ref.decimals,
-  });
+  const sellPrice = await nativePrice(row.chainId, row.sellToken);
+  const refPrice = await getRefNativePrice(row.chainId, ref.token, refPriceCache);
+  // Reject non-finite OR non-positive prices on BOTH sides. A 0/negative native_price
+  // is a "couldn't price" signal, not a genuine $0 — fail-safe to value_usd NULL
+  // (retried next run) instead of PERMANENTLY recording $0, which would undercount the
+  // wallet's volume and mis-tier it. (Codex P2)
+  if (!Number.isFinite(sellPrice) || sellPrice <= 0 || !Number.isFinite(refPrice) || refPrice <= 0) {
+    throw new Error(`bad native_price (sell=${sellPrice}, ref=${refPrice}) on chain ${row.chainId}`);
+  }
+  const usd = (Number(row.sellAmount) * sellPrice) / refPrice / 10 ** ref.decimals;
+  if (!Number.isFinite(usd)) throw new Error(`non-finite USD for ${row.tradeUid}`);
+  return usd;
 }
 
 export async function runPricer(): Promise<{ priced: number; failed: number }> {
@@ -150,6 +144,8 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
   let failed = 0;
   let clamped = 0;
   const clampedExamples: { tradeUid: `0x${string}`; rawUsd: number }[] = [];
+  const refPriceCache = new Map<number, number>(); // chain -> USD-ref native_price, cached per run
+  let anyBlocked = false; // set if a pricing error looks like a CoW block (403 / Forbidden / deny-listed)
   let cursor: Buffer = Buffer.alloc(0); // empty bytea sorts before every trade_uid
   for (;;) {
     const rows = await sql<{
@@ -175,7 +171,7 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
         sellAmount: BigInt(r.sell_amount),
       };
       try {
-        let usd = await priceTrade(row);
+        let usd = await priceTrade(row, refPriceCache);
         if (usd > maxTradeUsd) {
           log.warn(
             { tradeUid: row.tradeUid, chainId: row.chainId, rawUsd: usd, cap: maxTradeUsd },
@@ -192,6 +188,8 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
         `;
         priced++;
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/\b403\b|forbidden|deny.?list/i.test(msg)) anyBlocked = true;
         log.warn({ err, tradeUid: row.tradeUid }, 'pricing failed');
         failed++;
       }
@@ -209,6 +207,22 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
           `review the affected wallets before the monthly batch is signed.`,
       )
       .catch((e) => log.warn({ err: e }, 'pricer clamp alert failed'));
+  }
+  // Surface a SYSTEMIC pricing outage (e.g. a CoW API block) — without this, a total
+  // pricing failure shows only in logs and silently staleness the volume/tier data
+  // (as the 2026-06-05 zero-address /quote deny-list did, undetected until the monitor).
+  // Scattered illiquid-token failures alone do NOT trip it: it needs a block-looking
+  // error OR failures to dominate the run.
+  if (failed > 0 && (anyBlocked || failed >= Math.max(1, priced))) {
+    void alerts
+      .alert(
+        'pricer',
+        `Pricer: ${failed} of ${priced + failed} trade(s) failed to price this run` +
+          (anyBlocked
+            ? ' — the errors look like a CoW API block (403 / Forbidden / deny-listed). Volume + rebate-tier data is STALE until pricing recovers; check the indexer logs.'
+            : '. If this persists, volume/tier data goes stale; check the indexer logs.'),
+      )
+      .catch((e) => log.warn({ err: e }, 'pricer-failure alert failed'));
   }
   log.info({ priced, failed, clamped }, 'pricer complete');
   return { priced, failed };
