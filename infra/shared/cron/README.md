@@ -85,3 +85,29 @@ or (b) an actual unauthorized change.
 Today (2026-05-19): only Optimism is monitored. To re-enable HL: add the
 chain stanza. The HL contract addresses are the same CREATE2-deterministic
 ones across chains (Safe + AllowList proxy).
+
+## settlement-anomaly-watch (#444) — OP on-chain settlement monitoring
+
+`../optimism-mainnet/scripts/settlement-anomaly-watch.sh`, scheduled by
+`ai.ophis.settlement-anomaly-watch.plist` every 60s. READ-ONLY on-chain (only
+`cast block-number/balance/logs/tx/abi-decode` against the OP eRPC) — no signing.
+Cursor at `~/.local/state/ophis/settlement-watch/op-cursor`; log at
+`~/Library/Logs/ophis-settlement-anomaly-watch.log`. Alerts reuse the
+safe-drift Telegram path (token file + chat `735726338`).
+
+Watched (GPv2Settlement `0x310784c7FCE12d578dA6f53460777bAc9718B859`; sole
+authorized solver/submitter EOA `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1`):
+- **(b) unexpected solver/target (CRITICAL):** every `Settlement(solver)` event's
+  solver, and the settle() tx `from`/`to`, must be the submitter EOA / Settlement.
+- **(c) submitter health (CRITICAL):** balance below `BALANCE_FLOOR_WEI` (0.005 ETH).
+- **(a) surplus skim (WARNING):** `Trade` fee as bps of sell within the SAME token
+  `> FEE_BPS_MAX` (500 = 5%). Oracle-free, so legitimate slippage can't false-trigger.
+
+Env overrides: `OPHIS_RPC`, `BALANCE_FLOOR_WEI`, `FEE_BPS_MAX`, `MAX_BLOCKS`,
+`STATE_DIR`, `TELEGRAM_BOT_TOKEN_FILE`, `TELEGRAM_CHAT_ID`.
+
+Install: `cp ai.ophis.settlement-anomaly-watch.plist ~/Library/LaunchAgents/ &&
+launchctl load ~/Library/LaunchAgents/ai.ophis.settlement-anomaly-watch.plist`.
+Smoke-test (no Telegram, temp state): `STATE_DIR=/tmp/swtest
+TELEGRAM_BOT_TOKEN_FILE=/tmp/none FIRST_RUN_LOOKBACK=2000
+bash ../optimism-mainnet/scripts/settlement-anomaly-watch.sh`.
