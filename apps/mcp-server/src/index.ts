@@ -273,6 +273,23 @@ export default {
       return Response.json(INFO, { headers: { 'cache-control': 'public, max-age=300' } })
     }
 
+    // RFC 9116 disclosure path (mcp.ophis.fi is a Worker, not a Pages static host).
+    if (url.pathname === '/.well-known/security.txt') {
+      return new Response(
+        [
+          '# Ophis security disclosure',
+          '# Full policy: https://github.com/ophis-fi/ophis/blob/main/SECURITY.md',
+          'Contact: mailto:clement@aleph.cloud',
+          'Expires: 2027-06-05T00:00:00.000Z',
+          'Preferred-Languages: en',
+          'Canonical: https://mcp.ophis.fi/.well-known/security.txt',
+          'Policy: https://github.com/ophis-fi/ophis/blob/main/SECURITY.md',
+          '',
+        ].join('\n'),
+        { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=86400' } },
+      )
+    }
+
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
       // Per-IP rate limit (per-colo, best-effort) — caps brute abuse of the
       // public proxy; combined with the batch cap below it closes the
