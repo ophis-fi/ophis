@@ -92,9 +92,12 @@ if [[ ! "$TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]; then
   exit 1
 fi
 
-# Write with -U (update-or-create), -T (which apps can read without
-# prompt — we pass /usr/bin/security so render-configs.sh can read
-# noninteractively).
+# Write with -U (update-or-create) and -T /usr/bin/security so the
+# security binary can read the entry noninteractively (render-configs.sh).
+# NOTE: -T whitelists the BINARY, not a user — any UID running `security`
+# passes this ACL. The filesystem ACL on the home dir (chmod 0700) is what
+# actually restricts cross-user access. On hosts with multiple interactive
+# users, filesystem ACL is the real defense, not the keychain -T ACL.
 security add-generic-password \
   -a "$ACCOUNT" \
   -s "$SERVICE" \

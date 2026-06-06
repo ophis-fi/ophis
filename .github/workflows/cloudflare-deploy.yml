@@ -18,7 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-pages-${{ github.ref }}
-      cancel-in-progress: true
+      # cancel-in-progress: false — this job runs two sequential, non-atomic
+      # `wrangler pages deploy` calls (cowswap -> project `greg`, explorer ->
+      # project `ophis-explorer`). Cancelling mid-run can leave one Pages
+      # project on the new version and the other on the old, i.e. a
+      # mixed-version production. Let an in-flight deploy finish; a newer push
+      # queues behind it and supersedes it cleanly. (audit-low #217; mirrors
+      # rebate-indexer-deploy.yml.)
+      cancel-in-progress: false
     steps:
       # No fetch-depth: 0 — pages deploy doesn't need full history. Audit
       # finding 2026-05-09: shrinking the working tree shrinks the
