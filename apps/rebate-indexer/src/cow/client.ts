@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CowTrade, CowOrder, NativePriceResponse } from './types.js';
+import { CowTrade, CowOrder, NativePriceResponse, QuoteResponse, AccountOrder } from './types.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'cow-client' });
@@ -79,4 +79,107 @@ export async function nativePrice(chainId: number, token: `0x${string}`): Promis
   const url = `${BASE_URL}/${path}/api/v1/token/${token}/native_price`;
   log.debug({ url }, 'GET native_price');
   return (await fetchJson(url, NativePriceResponse)).price;
+}
+
+// ---------------------------------------------------------------------------
+// #360 fee conversion: quote + place a pre-signed sell order (token -> WETH).
+// ---------------------------------------------------------------------------
+
+export interface SellQuoteParams {
+  readonly chainId: number;
+  readonly sellToken: `0x${string}`;
+  readonly buyToken: `0x${string}`;
+  readonly sellAmountBeforeFee: bigint;
+  readonly from: `0x${string}`;       // the fee Safe (quote `from`)
+  readonly receiver: `0x${string}`;   // the fee Safe (WETH returns here)
+}
+
+/**
+ * POST /api/v1/quote for a SELL order. Returns CoW's canonical order parameters
+ * (incl. appData/appDataHash/feeAmount) which the order POST reuses verbatim, so
+ * we never hand-construct the fragile order fields. `signingScheme: presign` tells
+ * CoW the order will be made valid on-chain via `setPreSignature` (Safe flow).
+ */
+export async function getSellQuote(p: SellQuoteParams): Promise<QuoteResponse> {
+  const path = COW_API_PATH[p.chainId];
+  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/quote`;
+  const body = {
+    sellToken: p.sellToken,
+    buyToken: p.buyToken,
+    from: p.from,
+    receiver: p.receiver,
+    kind: 'sell',
+    sellAmountBeforeFee: p.sellAmountBeforeFee.toString(),
+    signingScheme: 'presign',
+    priceQuality: 'optimal',
+  };
+  log.debug({ url, sellToken: p.sellToken }, 'POST quote');
+  return fetchJson(url, QuoteResponse, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+const OrderUid = z.string().regex(/^0x[0-9a-f]{112}$/i);
+
+export interface PresignOrderParams {
+  readonly chainId: number;
+  readonly quote: QuoteResponse['quote'];
+  readonly buyAmount: bigint;         // slippage-floored minimum buy (<= quote.buyAmount)
+  readonly receiver: `0x${string}`;   // the fee Safe
+  readonly validTo: number;           // unix seconds; long enough for human Safe signing + fill
+  readonly from: `0x${string}`;       // the fee Safe
+}
+
+/**
+ * POST /api/v1/orders with `signingScheme: presign` (signature "0x"). The order is
+ * created in `presignaturePending` state; an on-chain `setPreSignature(uid, true)`
+ * (proposed as a Safe tx, see convert.ts) makes it fillable. Returns the orderUid.
+ * Reuses the quote's params; only overrides receiver (Safe), the slippage-floored
+ * buyAmount, and a longer validTo.
+ */
+export async function placePresignOrder(p: PresignOrderParams): Promise<`0x${string}`> {
+  const path = COW_API_PATH[p.chainId];
+  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/orders`;
+  const q = p.quote;
+  const body = {
+    sellToken: q.sellToken,
+    buyToken: q.buyToken,
+    receiver: p.receiver,
+    sellAmount: q.sellAmount,
+    buyAmount: p.buyAmount.toString(),
+    validTo: p.validTo,
+    appData: q.appData,
+    ...(q.appDataHash ? { appDataHash: q.appDataHash } : {}),
+    feeAmount: q.feeAmount,
+    kind: 'sell',
+    partiallyFillable: false,
+    sellTokenBalance: q.sellTokenBalance ?? 'erc20',
+    buyTokenBalance: q.buyTokenBalance ?? 'erc20',
+    signingScheme: 'presign',
+    signature: '0x',
+    from: p.from,
+  };
+  log.info({ url, sellToken: q.sellToken, buyAmount: body.buyAmount }, 'POST presign order');
+  // OrderUid validates the 56-byte hex shape, so the cast to the template-literal
+  // type is sound (zod infers a plain `string`).
+  const uid = await fetchJson(url, OrderUid, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return uid as `0x${string}`;
+}
+
+/** Open orders for an owner (conversion idempotency — don't re-propose a token that already has a live sell order). */
+export async function getOpenOrders(chainId: number, owner: `0x${string}`): Promise<AccountOrder[]> {
+  const path = COW_API_PATH[chainId];
+  if (!path) throw new Error(`unsupported chain ${chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/account/${owner}/orders?limit=250&offset=0`;
+  log.debug({ url }, 'GET account orders');
+  const orders = await fetchJson(url, z.array(AccountOrder));
+  return orders.filter((o) => (o.status ?? 'open') === 'open');
 }

@@ -48,3 +48,35 @@ export type NativePriceResponse = z.infer<typeof NativePriceResponse>;
 
 export const APP_CODES = ['ophis', 'greg'] as const;                  // greg tolerated for pre-rebrand history
 export type AppCode = (typeof APP_CODES)[number];
+
+// POST /api/v1/quote response (#360 fee conversion). We read the canonical order
+// parameters CoW computes (incl. appData/appDataHash) and reuse them verbatim in
+// the order POST, so we never hand-construct the fragile order fields ourselves.
+export const QuoteResponse = z.object({
+  quote: z.object({
+    sellToken: z.string().regex(/^0x[0-9a-f]{40}$/i),
+    buyToken: z.string().regex(/^0x[0-9a-f]{40}$/i),
+    receiver: z.string().nullable().optional(),
+    sellAmount: z.string().regex(/^\d+$/),
+    buyAmount: z.string().regex(/^\d+$/),
+    validTo: z.number().int().nonnegative(),
+    appData: z.string(),
+    appDataHash: z.string().optional(),
+    feeAmount: z.string().regex(/^\d+$/),
+    kind: z.string(),
+    partiallyFillable: z.boolean(),
+    sellTokenBalance: z.string().optional(),
+    buyTokenBalance: z.string().optional(),
+  }),
+});
+export type QuoteResponse = z.infer<typeof QuoteResponse>;
+
+// GET /api/v1/account/{owner}/orders — used for conversion idempotency (skip a
+// token that already has an open sell→WETH order so we don't re-propose monthly).
+export const AccountOrder = z.object({
+  uid: z.string(),
+  sellToken: z.string().regex(/^0x[0-9a-f]{40}$/i),
+  buyToken: z.string().regex(/^0x[0-9a-f]{40}$/i),
+  status: z.string().optional(),                                       // 'open' | 'fulfilled' | 'expired' | 'cancelled' | ...
+});
+export type AccountOrder = z.infer<typeof AccountOrder>;

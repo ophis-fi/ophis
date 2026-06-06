@@ -4,6 +4,7 @@ import { computeShares, type EligibleWallet } from './batch/computeShares.js';
 import { computeDirectRebates } from './batch/computeDirectRebates.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from './batch/dryRun.js';
 import { proposeRebateBatch } from './batch/propose.js';
+import { convertFeesToWeth } from './batch/convert.js';
 import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
@@ -70,6 +71,19 @@ function resolveDirectMode(): boolean {
   if (raw === undefined || raw === '' || raw === 'false' || raw === '0') return false;
   if (raw === 'true' || raw === '1') return true;
   throw new Error(`REBATE_DIRECT_MODE must be 'true', '1', 'false', '0', or unset; got "${raw}"`);
+}
+
+/**
+ * #360 Option A gate. Default OFF (unset/false/0) so the deploy is byte-inert —
+ * no conversion orders are placed until the operator flips REBATE_CONVERT_ENABLED
+ * after reviewing the flow on Gnosis with a small balance. Any other value throws
+ * (fail-loud), mirroring resolveDirectMode.
+ */
+function resolveConvertMode(): boolean {
+  const raw = process.env.REBATE_CONVERT_ENABLED?.trim();
+  if (raw === undefined || raw === '' || raw === 'false' || raw === '0') return false;
+  if (raw === 'true' || raw === '1') return true;
+  throw new Error(`REBATE_CONVERT_ENABLED must be 'true', '1', 'false', '0', or unset; got "${raw}"`);
 }
 
 /**
@@ -185,6 +199,35 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     }
   } catch (err) {
     log.warn({ err }, 'stranded-fee probe failed (ignored)');
+  }
+
+  // 1c. Issue #360 Option A — convert the Safe's non-WETH fee tokens to WETH so
+  //     they enter the (WETH-only) rebate pool NEXT cycle (CoW settles async).
+  //     Gated behind REBATE_CONVERT_ENABLED (default OFF; byte-inert until the
+  //     operator enables it after reviewing on Gnosis) AND proposeEnabled (never
+  //     in first-batch dry-run). Best-effort: wrapped so a quote/order/propose
+  //     failure can't break the payout that follows.
+  if (deps.proposeEnabled && resolveConvertMode()) {
+    try {
+      const conv = await convertFeesToWeth({
+        chainId: deps.chainId,
+        rpcUrl: deps.rpcUrl,
+        proposerPrivateKey: deps.proposerPrivateKey,
+        nowSeconds: Math.floor(now.getTime() / 1000),
+      });
+      if (conv.proposed) {
+        log.info({ ...conv, cycleMonth }, 'fee-conversion Safe tx proposed (#360)');
+        void alerts
+          .alert(
+            'batcher',
+            `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} non-WETH token(s) → WETH ` +
+              `(safeTxHash ${conv.safeTxHash}). Sign + execute it so the WETH rebates next cycle.`,
+          )
+          .catch((err) => log.warn({ err }, 'conversion alert send failed'));
+      }
+    } catch (err) {
+      log.warn({ err }, 'fee conversion (#360) failed (ignored — payout proceeds)');
+    }
   }
 
   // 2. Read eligible wallets.
