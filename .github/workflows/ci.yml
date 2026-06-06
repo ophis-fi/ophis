@@ -27,6 +27,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint || echo "no lint targets yet"
       - run: pnpm typecheck || echo "no typecheck targets yet"
@@ -42,6 +44,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: |
           if [ -f packages/sdk/package.json ]; then
