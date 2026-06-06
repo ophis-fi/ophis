@@ -29,6 +29,20 @@ const MAX_ALERT_TOKENS = 12;
 // would self-deadlock (a second reserved connection can't re-acquire it). (Codex P1)
 const BATCHER_LOCK_KEY = 770044;
 
+// Overall bound on the optional #360 conversion step. CoW requests are already
+// per-request bounded (cow/client.ts), but the Safe-SDK calls (getNextNonce /
+// proposeTransaction / Safe.init) are not, so this caps the whole step to keep
+// the advisory lock from being held indefinitely on a stalled service. (Codex #474)
+const CONVERSION_TIMEOUT_MS = 120_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
+}
+
 export interface BatcherDeps {
   readonly chainId: number;                                            // payout chain (100 in Phase 1)
   readonly rpcUrl: string;
@@ -209,12 +223,20 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   //     failure can't break the payout that follows.
   if (deps.proposeEnabled && resolveConvertMode()) {
     try {
-      const conv = await convertFeesToWeth({
-        chainId: deps.chainId,
-        rpcUrl: deps.rpcUrl,
-        proposerPrivateKey: deps.proposerPrivateKey,
-        nowSeconds: Math.floor(now.getTime() / 1000),
-      });
+      // Bound the WHOLE conversion step (CoW fetchJson already has its own
+      // per-request timeout, but the Safe-SDK calls — getNextNonce / propose /
+      // Safe.init — do NOT), so a stalled CoW/Safe service can't hang the run
+      // while it holds the advisory lock and starve the payout. (Codex #474)
+      const conv = await withTimeout(
+        convertFeesToWeth({
+          chainId: deps.chainId,
+          rpcUrl: deps.rpcUrl,
+          proposerPrivateKey: deps.proposerPrivateKey,
+          nowSeconds: Math.floor(now.getTime() / 1000),
+        }),
+        CONVERSION_TIMEOUT_MS,
+        'fee conversion (#360)',
+      );
       if (conv.proposed) {
         log.info({ ...conv, cycleMonth }, 'fee-conversion Safe tx proposed (#360)');
         void alerts
