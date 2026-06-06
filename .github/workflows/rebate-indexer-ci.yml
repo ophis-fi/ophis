@@ -36,6 +36,8 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile --filter @ophis/rebate-indexer...
       - run: pnpm --filter @ophis/rebate-indexer typecheck
       - run: pnpm --filter @ophis/rebate-indexer test
@@ -56,6 +58,8 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile --filter @ophis/rebate-indexer...
       - run: pnpm --filter @ophis/rebate-indexer test:e2e
         env:
