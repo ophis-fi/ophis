@@ -32,3 +32,16 @@ export const WETH_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = {
   100: WETH_GNOSIS,
   // Future chains added here as we expand payout reach. Phase 1 = Gnosis only.
 };
+
+/**
+ * CoW Protocol contracts — canonical CREATE2 deployments, IDENTICAL on every CoW
+ * chain (incl. Gnosis). Used by the #360 fee-conversion flow (convert.ts):
+ *   - GPV2_SETTLEMENT: `setPreSignature(orderUid, true)` makes a pre-signed order
+ *     valid so solvers can fill it.
+ *   - GPV2_VAULT_RELAYER: pulls the sell token at settlement, so the Safe must
+ *     `approve(VaultRelayer, sellAmount)` the token being converted.
+ * Verify against https://docs.cow.fi/cow-protocol/reference/contracts/core before
+ * adding any non-canonical chain.
+ */
+export const GPV2_SETTLEMENT = '0x9008D19f58AABD9eD0D60971565AA8510560ab41' as const;
+export const GPV2_VAULT_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110' as const;
