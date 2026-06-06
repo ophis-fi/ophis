@@ -720,6 +720,7 @@ fn observe_cancel_cap_violation(estimate: Eip1559Estimation, mempool: &infra::Me
 /// - unclassified rejection.
 /// - `Err("nonce too low")` — the original settle ALREADY MINED (cancel is moot,
 ///   system healthy); least urgent.
+///
 /// Ties (same category) keep the last-in-order error, preserving the prior
 /// representative-failure behavior. `submitter_cancel_broadcast_failed{reason}`
 /// still increments per-mempool independently for correlation.
@@ -749,6 +750,15 @@ fn aggregate_cancel_broadcast_results(
 /// more actionable; the aggregator surfaces the highest. Classification is by
 /// message substring because every cancel error arrives as `Error::Other(anyhow)`
 /// (the infra mempool layer wraps them), so there is no typed variant to match.
+///
+/// **Definitive node verdicts are checked BEFORE the transient heuristic (Codex
+/// #473 P2).** "already known" and "nonce too low" are unambiguous phrases the
+/// node emits verbatim; they never appear incidentally in a transport error. A
+/// bare HTTP status digit, by contrast, CAN appear incidentally — geth renders a
+/// benign nonce rejection as "nonce too low: next nonce 430, tx nonce 429", whose
+/// nonce VALUE (429) would trip a naive `contains("429")` transient match. By
+/// classifying the node verdict first, a healthy "settle already mined" can never
+/// be mis-promoted to an operator-actionable RPC degradation.
 fn cancel_error_priority(err: &Error) -> u8 {
     let s = err.to_string().to_lowercase();
     // Accepted (HEALTHIEST): "already known" / "already imported" means the cancel
@@ -760,25 +770,64 @@ fn cancel_error_priority(err: &Error) -> u8 {
     if s.contains("already known") || s.contains("already imported") {
         return 3;
     }
+    // NonceResolved (benign): the original settle already mined → cancel is moot.
+    // Checked before the transient heuristic so an HTTP-status digit incidentally
+    // present in the nonce/state values cannot promote it to actionable (Codex #473).
+    if s.contains("nonce too low") || s.contains("nonce is too low") {
+        return 0;
+    }
     // Transient (RPC degraded): nonce may be stuck stack-wide → operator-actionable.
+    if is_transient_rpc_error(&s) {
+        return 2;
+    }
+    1 // Unknown — unclassified rejection
+}
+
+/// Detects a transient RPC/transport failure in an already-lowercased cancel-error
+/// string. Direct transport cues (timeout, connection, rate limit) and unambiguous
+/// HTTP reason phrases match on their own; bare numeric status codes match ONLY
+/// alongside an explicit `http`/`status` cue AND as a standalone number, so an
+/// incidental digit run — a nonce value, gas amount, or tx-hash fragment — is never
+/// misread as a 4xx/5xx status (Codex #473 P2). alloy renders HTTP transport
+/// failures as "HTTP error {code} with body: …", so the cue is present for real ones.
+/// (`code` is deliberately NOT a cue: every JSON-RPC rejection contains "error code N".)
+fn is_transient_rpc_error(s: &str) -> bool {
+    // Direct transport cues + unambiguous HTTP reason phrases: "too many requests"
+    // (429), "bad gateway" (502), "service unavailable" (503), "gateway time(-)out"
+    // (504). These match on their own — no bare digit needed.
     if s.contains("timeout")
         || s.contains("timed out")
         || s.contains("connection")
         || s.contains("rate limit")
         || s.contains("too many requests")
-        || s.contains("429")
-        || s.contains("502")
-        || s.contains("503")
-        || s.contains("504")
         || s.contains("gateway")
+        || s.contains("service unavailable")
     {
-        return 2;
+        return true;
     }
-    // NonceResolved (benign): the original settle already mined → cancel is moot.
-    if s.contains("nonce too low") || s.contains("nonce is too low") {
-        return 0;
-    }
-    1 // Unknown — unclassified rejection
+    let http_context = s.contains("http") || s.contains("status");
+    http_context
+        && ["429", "502", "503", "504"]
+            .iter()
+            .any(|code| contains_standalone_number(s, code))
+}
+
+/// True if the all-ASCII-digit `needle` occurs in `haystack` not flanked by other
+/// ASCII digits — i.e. as a standalone number. "503" matches in "error 503 with"
+/// but not inside "15030" or "5031", so a status code embedded in a longer value
+/// (a port, gas amount, or hash digit run) is not falsely matched.
+fn contains_standalone_number(haystack: &str, needle: &str) -> bool {
+    haystack.match_indices(needle).any(|(i, _)| {
+        let prev_is_digit = haystack[..i]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_ascii_digit());
+        let next_is_digit = haystack[i + needle.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit());
+        !prev_is_digit && !next_is_digit
+    })
 }
 
 /// Pure helper isolating the cap-comparison logic so it can be unit-tested
@@ -979,6 +1028,85 @@ mod tests {
         assert!(
             matches!(&b, Err(Error::Other(e)) if e.to_string().contains("already imported")),
             "a confirmed-present cancel must be surfaced over transient/unclassified errors"
+        );
+    }
+
+    /// Codex #473 P2: a benign `nonce too low` rejection whose numeric nonce
+    /// value happens to contain an HTTP status code (geth emits "nonce too low:
+    /// next nonce 430, tx nonce 429", and alloy wraps it as "server returned an
+    /// error response: error code -32000: …") must classify as NonceResolved,
+    /// NOT as a transient RPC degradation. The definitive node verdict is checked
+    /// before the heuristic status-code match, so an incidental digit can never
+    /// promote a healthy "settle already mined" into an operator-actionable cause.
+    #[test]
+    fn nonce_too_low_with_status_code_digit_is_not_transient() {
+        let err = rpc_err(
+            "server returned an error response: error code -32000: nonce too low: \
+             next nonce 430, tx nonce 429",
+        );
+        assert_eq!(
+            cancel_error_priority(&err),
+            0,
+            "a benign nonce-too-low whose value contains 429 must NOT be transient"
+        );
+    }
+
+    /// Codex #473 P2 (general case): an unclassified node rejection whose message
+    /// embeds a status-code digit inside a value (here a gas amount) but carries
+    /// NO HTTP context must classify as Unknown — not be inflated to a transient
+    /// RPC degradation by a bare-substring `contains("502")` match.
+    #[test]
+    fn unknown_rejection_with_incidental_status_digit_is_not_transient() {
+        let err = rpc_err(
+            "server returned an error response: error code -32000: \
+             intrinsic gas too low: have 502 want 21000",
+        );
+        assert_eq!(
+            cancel_error_priority(&err),
+            1,
+            "an incidental 502 in a value (no HTTP context) is not an HTTP 502"
+        );
+    }
+
+    /// Real HTTP transport failures must STILL classify as transient. alloy formats
+    /// them as "HTTP error {code} with body: …", so the status code always arrives
+    /// with an explicit HTTP cue — the context gate keeps these actionable.
+    #[test]
+    fn http_status_errors_are_transient() {
+        for msg in [
+            "HTTP error 502 with body: <html>bad gateway</html>",
+            "HTTP error 503 with empty body",
+            "HTTP error 504 with body: gateway time-out",
+            "HTTP error 429 with body: too many requests",
+        ] {
+            assert_eq!(
+                cancel_error_priority(&rpc_err(msg)),
+                2,
+                "HTTP transport failure must remain transient: {msg}"
+            );
+        }
+    }
+
+    /// Codex #473 P2 at the aggregate: a benign nonce-too-low whose value contains
+    /// "429" must not be mis-promoted to transient priority and thereby mask a
+    /// co-occurring genuinely-unknown rejection. Post-fix the nonce error is benign
+    /// (priority 0) and the unclassified rejection (priority 1) is surfaced instead.
+    #[test]
+    fn aggregate_benign_nonce_with_digit_does_not_mask_unknown() {
+        let results = vec![
+            Err(rpc_err(
+                "server returned an error response: error code -32000: nonce too low: tx nonce 429",
+            )),
+            Err(rpc_err(
+                "server returned an error response: error code -32010: replacement transaction \
+                 underpriced",
+            )),
+        ];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(
+            matches!(&aggregate, Err(Error::Other(e)) if e.to_string().contains("underpriced")),
+            "a benign nonce-429 must not be mis-promoted to transient and mask the \
+             unclassified rejection"
         );
     }
 
