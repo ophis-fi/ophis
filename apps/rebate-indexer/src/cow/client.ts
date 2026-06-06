@@ -23,8 +23,14 @@ export const SUPPORTED_CHAIN_IDS = Object.keys(COW_API_PATH).map(Number);
 
 const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 
+// Bound every CoW request so a stalled API can't hang a caller — the batcher
+// runs conversion (#360) while holding a Postgres advisory lock, so an
+// unbounded request would block the monthly payout. (Codex #474)
+const REQUEST_TIMEOUT_MS = 10_000;
+
 async function fetchJson<T>(url: string, schema: z.ZodSchema<T>, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  // Default timeout; a caller-provided signal (via init) takes precedence.
+  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...init });
   if (!res.ok) {
     const body = await res.text().catch(() => '<unreadable>');
     throw new Error(`CoW API ${res.status} ${res.statusText} @ ${url} — ${body.slice(0, 200)}`);
@@ -149,12 +155,16 @@ export async function placePresignOrder(p: PresignOrderParams): Promise<`0x${str
     sellToken: q.sellToken,
     buyToken: q.buyToken,
     receiver: p.receiver,
-    sellAmount: q.sellAmount,
+    // Modern CoW order shape: the FULL sell amount goes in sellAmount and
+    // feeAmount is 0 (fees are captured from surplus, not a separate fee field).
+    // Reusing the quote's sell/fee split would sign an obsolete order whose uid
+    // doesn't match the intended settlement amounts. (Codex #474)
+    sellAmount: (BigInt(q.sellAmount) + BigInt(q.feeAmount)).toString(),
     buyAmount: p.buyAmount.toString(),
     validTo: p.validTo,
     appData: q.appData,
     ...(q.appDataHash ? { appDataHash: q.appDataHash } : {}),
-    feeAmount: q.feeAmount,
+    feeAmount: '0',
     kind: 'sell',
     partiallyFillable: false,
     sellTokenBalance: q.sellTokenBalance ?? 'erc20',
@@ -181,5 +191,10 @@ export async function getOpenOrders(chainId: number, owner: `0x${string}`): Prom
   const url = `${BASE_URL}/${path}/api/v1/account/${owner}/orders?limit=250&offset=0`;
   log.debug({ url }, 'GET account orders');
   const orders = await fetchJson(url, z.array(AccountOrder));
-  return orders.filter((o) => (o.status ?? 'open') === 'open');
+  // 'presignaturePending' is the state of a freshly-placed presign order awaiting
+  // the on-chain setPreSignature — it MUST count as live, or the conversion
+  // idempotency check re-queues the same token every cycle while the Safe tx
+  // awaits human signatures. (Codex #474)
+  const LIVE = new Set(['open', 'presignaturepending']);
+  return orders.filter((o) => LIVE.has((o.status ?? 'open').toLowerCase()));
 }

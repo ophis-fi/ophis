@@ -47,13 +47,17 @@ export async function proposeRebateBatch(p: ProposeParams): Promise<ProposeResul
   });
   const proposerAddress = (await protocolKit.getSafeProvider().getSignerAddress()) as `0x${string}`;
 
+  const apiKit = new SafeApiKit({ chainId: BigInt(p.chainId) });
+  // Use the next free nonce (counts already-queued Tx-Service txs, e.g. a same-run
+  // #360 conversion proposal) so this payout doesn't collide at the same nonce.
+  // For the normal case (nothing queued) this equals the on-chain nonce. (Codex #474)
+  const nonce = Number(await apiKit.getNextNonce(OPHIS_SAFE_ADDRESS));
   const safeTx = await protocolKit.createTransaction({
     transactions: [{ to: multiSend, value: '0', data: calldata, operation: 1 /* DELEGATECALL */ }],
+    options: { nonce },
   });
   const safeTxHash = (await protocolKit.getTransactionHash(safeTx)) as `0x${string}`;
   const senderSignature = await protocolKit.signHash(safeTxHash);
-
-  const apiKit = new SafeApiKit({ chainId: BigInt(p.chainId) });
   // Point of no return: everything above is local/RPC work that queues nothing.
   // The submit below may queue a proposal on the Safe Transaction Service, so the
   // caller marks the cycle 'proposing' here and not before. (Codex P2)

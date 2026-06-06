@@ -220,8 +220,10 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
         void alerts
           .alert(
             'batcher',
-            `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} non-WETH token(s) → WETH ` +
-              `(safeTxHash ${conv.safeTxHash}). Sign + execute it so the WETH rebates next cycle.`,
+            `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} sell order(s) + ` +
+              `${conv.approveCount} VaultRelayer approval(s) (safeTxHash ${conv.safeTxHash}). ` +
+              `Sign + execute it; approved tokens get their sell order next cycle, and converted ` +
+              `WETH rebates the cycle after.`,
           )
           .catch((err) => log.warn({ err }, 'conversion alert send failed'));
       }

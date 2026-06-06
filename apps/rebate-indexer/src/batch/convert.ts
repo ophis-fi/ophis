@@ -1,4 +1,4 @@
-import { encodeFunctionData, parseAbi } from 'viem';
+import { encodeFunctionData, parseAbi, createPublicClient, http } from 'viem';
 import SafeApiKit from '@safe-global/api-kit';
 import Safe from '@safe-global/protocol-kit';
 import {
@@ -16,6 +16,7 @@ import { logger } from '../logger.js';
 const log = logger.child({ module: 'convert' });
 
 const ERC20_APPROVE = parseAbi(['function approve(address spender, uint256 amount)']);
+const ERC20_ALLOWANCE = parseAbi(['function allowance(address owner, address spender) view returns (uint256)']);
 const SETTLEMENT_PRESIGN = parseAbi(['function setPreSignature(bytes orderUid, bool signed)']);
 
 // Default 2% slippage floor on the conversion buy amount. Fee tokens aren't
@@ -36,7 +37,8 @@ export interface ConvertDeps {
 
 export interface ConvertResult {
   readonly proposed: boolean;
-  readonly orderCount: number;
+  readonly orderCount: number;   // pre-signed sell orders queued (allowance was sufficient)
+  readonly approveCount: number; // VaultRelayer approvals queued (order placed next cycle)
   readonly skipped: number;
   readonly safeTxHash: `0x${string}` | null;
 }
@@ -52,20 +54,23 @@ export function applySlippageFloor(buyAmount: bigint, slippageBps: number): bigi
 /**
  * #360 Option A — convert the fee Safe's non-WETH token balances to WETH via CoW,
  * so the (WETH-only) rebate pool reflects fees that accrue in trade tokens. Per
- * non-WETH balance: (1) skip if the Safe already has an OPEN sell order for that
- * token (idempotency — don't re-propose monthly while one is pending); (2) quote
- * token→WETH with receiver = Safe; (3) POST a pre-signed sell order (buyAmount
- * floored by slippage); (4) accumulate `approve(VaultRelayer, sellAmount+fee)` +
- * `setPreSignature(uid, true)`. Then propose ONE Safe multisend. Owners sign +
- * execute; solvers fill; the WETH lands in the Safe and rebates the NEXT cycle.
+ * non-WETH balance: (1) skip if the Safe already has a live (open or
+ * presignaturePending) sell order for it (idempotency); (2) check the on-chain
+ * VaultRelayer allowance — CoW validates it at order SUBMISSION, so if it doesn't
+ * yet cover the balance, queue ONLY an `approve(VaultRelayer, balance)` this cycle
+ * and place the order next cycle (self-bootstrapping 2-phase); (3) otherwise quote
+ * token→WETH (receiver=Safe), POST a pre-signed sell order (buyAmount floored by
+ * slippage), and queue `setPreSignature(uid, true)`. Then propose ONE Safe
+ * multisend at a distinct nonce. Owners sign + execute; solvers fill; the WETH
+ * lands in the Safe and rebates the NEXT cycle.
  *
- * Fail-safe: a per-token quote/order failure is logged + skipped (others proceed);
- * if no orders were placed, nothing is proposed. The caller also wraps this in
- * try/catch so it can never break the monthly payout. Gated by the batcher behind
+ * Fail-safe: a per-token failure is logged + skipped (others proceed); if nothing
+ * was queued, nothing is proposed. The caller also wraps this in try/catch so it
+ * can never break the monthly payout. Gated by the batcher behind
  * REBATE_CONVERT_ENABLED + proposeEnabled.
  */
 export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResult> {
-  const none: ConvertResult = { proposed: false, orderCount: 0, skipped: 0, safeTxHash: null };
+  const none: ConvertResult = { proposed: false, orderCount: 0, approveCount: 0, skipped: 0, safeTxHash: null };
   const weth = WETH_BY_CHAIN[deps.chainId];
   if (!weth) {
     log.warn({ chainId: deps.chainId }, 'no WETH configured; skipping conversion');
@@ -75,7 +80,8 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   const balances = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
   if (balances.length === 0) return none;
 
-  // Idempotency: tokens that already have an OPEN sell order from the Safe.
+  // Idempotency: tokens that already have a LIVE (open or presignaturePending)
+  // sell order from the Safe — don't re-queue them while one is pending.
   let openSellTokens = new Set<string>();
   try {
     const open = await getOpenOrders(deps.chainId, OPHIS_SAFE_ADDRESS);
@@ -84,8 +90,11 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
     log.warn({ err }, 'could not list open orders; proceeding without idempotency filter');
   }
 
+  const publicClient = createPublicClient({ transport: http(deps.rpcUrl) });
   const inner: InnerCall[] = [];
   let skipped = 0;
+  let orderCount = 0;
+  let approveCount = 0;
   const validTo = deps.nowSeconds + VALID_TO_SECONDS;
   for (const bal of balances) {
     const token = bal.tokenAddress.toLowerCase() as `0x${string}`;
@@ -94,6 +103,26 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
     try { sellAmount = BigInt(bal.balance); } catch { log.warn({ bal }, 'unparseable balance; skip'); skipped++; continue; }
     if (sellAmount <= 0n) { skipped++; continue; }
     try {
+      // CoW /orders validates the VaultRelayer allowance at SUBMISSION (#474), so a
+      // token whose allowance doesn't yet cover its balance gets an approve THIS
+      // cycle and the order NEXT cycle (self-bootstrapping 2-phase).
+      const allowance = (await publicClient.readContract({
+        address: token,
+        abi: ERC20_ALLOWANCE,
+        functionName: 'allowance',
+        args: [OPHIS_SAFE_ADDRESS, GPV2_VAULT_RELAYER],
+      })) as bigint;
+      if (allowance < sellAmount) {
+        inner.push({
+          to: token,
+          value: 0n,
+          data: encodeFunctionData({ abi: ERC20_APPROVE, functionName: 'approve', args: [GPV2_VAULT_RELAYER, sellAmount] }),
+        });
+        approveCount++;
+        log.info({ token, sellAmount: sellAmount.toString() }, 'queued VaultRelayer approval (order placed next cycle)');
+        continue;
+      }
+      // Allowance already covers the balance → place the order now + presign.
       const quote = await getSellQuote({
         chainId: deps.chainId,
         sellToken: token,
@@ -112,29 +141,15 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
         validTo,
         from: OPHIS_SAFE_ADDRESS,
       });
-      // Approve exactly what the relayer can pull (sellAmount + feeAmount).
-      const approveAmount = BigInt(quote.quote.sellAmount) + BigInt(quote.quote.feeAmount);
-      inner.push({
-        to: token,
-        value: 0n,
-        data: encodeFunctionData({
-          abi: ERC20_APPROVE,
-          functionName: 'approve',
-          args: [GPV2_VAULT_RELAYER, approveAmount],
-        }),
-      });
       inner.push({
         to: GPV2_SETTLEMENT,
         value: 0n,
-        data: encodeFunctionData({
-          abi: SETTLEMENT_PRESIGN,
-          functionName: 'setPreSignature',
-          args: [uid, true],
-        }),
+        data: encodeFunctionData({ abi: SETTLEMENT_PRESIGN, functionName: 'setPreSignature', args: [uid, true] }),
       });
-      log.info({ token, uid, minBuy: minBuy.toString() }, 'queued conversion order');
+      orderCount++;
+      log.info({ token, uid, minBuy: minBuy.toString() }, 'queued conversion order (allowance ok)');
     } catch (err) {
-      log.warn({ err, token }, 'conversion quote/order failed for token; skipping it');
+      log.warn({ err, token }, 'conversion step failed for token; skipping it');
       skipped++;
     }
   }
@@ -149,12 +164,17 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
     safeAddress: OPHIS_SAFE_ADDRESS,
   });
   const proposerAddress = (await protocolKit.getSafeProvider().getSignerAddress()) as `0x${string}`;
+  const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId) });
+  // Distinct nonce: getNextNonce counts already-queued Tx-Service txs, so this
+  // conversion proposal doesn't collide with a same-run monthly payout proposal
+  // (Safe txs at the same nonce are mutually exclusive). (Codex #474)
+  const nonce = Number(await apiKit.getNextNonce(OPHIS_SAFE_ADDRESS));
   const safeTx = await protocolKit.createTransaction({
     transactions: [{ to: multiSend, value: '0', data: calldata, operation: 1 /* DELEGATECALL */ }],
+    options: { nonce },
   });
   const safeTxHash = (await protocolKit.getTransactionHash(safeTx)) as `0x${string}`;
   const sig = await protocolKit.signHash(safeTxHash);
-  const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId) });
   await apiKit.proposeTransaction({
     safeAddress: OPHIS_SAFE_ADDRESS,
     safeTransactionData: safeTx.data,
@@ -162,7 +182,6 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
     senderAddress: proposerAddress,
     senderSignature: sig.data,
   });
-  const orderCount = inner.length / 2;
-  log.info({ safeTxHash, orderCount, skipped }, 'proposed fee-conversion Safe tx');
-  return { proposed: true, orderCount, skipped, safeTxHash };
+  log.info({ safeTxHash, orderCount, approveCount, skipped, nonce }, 'proposed fee-conversion Safe tx');
+  return { proposed: true, orderCount, approveCount, skipped, safeTxHash };
 }
