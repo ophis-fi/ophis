@@ -709,33 +709,76 @@ fn observe_cancel_cap_violation(estimate: Eip1559Estimation, mempool: &infra::Me
 /// builder reads from, the settle can still mine. The race window is
 /// SHRUNK by cancel_all, not eliminated.
 ///
-/// **What `Err(last_failure)` represents:** all mempools rejected the
-/// cancel. The bubbled error is positional ("last in iteration order")
-/// for log-line representativeness — it is NOT chosen for semantic
-/// priority. In particular, `Err("nonce too low")` from every mempool
-/// would indicate "the original settle ALREADY MINED" (cancel is moot,
-/// system is healthy), while `Err("RPC degraded")` from every mempool
-/// would indicate "nonce stuck across the stack" (operator must
-/// intervene). Today the aggregator returns the same `Err` variant for
-/// both; alert correlation should use the per-mempool counter
-/// `submitter_cancel_broadcast_failed{reason}` to distinguish, since
-/// each per-mempool error is logged + counted independently. Smarter
-/// error categorization is tracked as a separate hardening item.
+/// **What `Err(..)` represents:** all mempools rejected the cancel. The bubbled
+/// error is chosen by SEMANTIC PRIORITY (#219), not iteration position, so the
+/// operator's log/alert line reflects the most representative cause (highest first):
+/// - `Err("already known" / "already imported")` — the cancel tx is ALREADY PRESENT
+///   in that mempool, i.e. the cancel propagated; healthiest signal, surfaced first
+///   so a confirmed-present cancel isn't misreported as stuck (Codex #473).
+/// - `Err("RPC degraded": timeout / connection / rate-limit / 5xx)` — the nonce may
+///   be stuck across the stack (operator must intervene).
+/// - unclassified rejection.
+/// - `Err("nonce too low")` — the original settle ALREADY MINED (cancel is moot,
+///   system healthy); least urgent.
+/// Ties (same category) keep the last-in-order error, preserving the prior
+/// representative-failure behavior. `submitter_cancel_broadcast_failed{reason}`
+/// still increments per-mempool independently for correlation.
 fn aggregate_cancel_broadcast_results(
     results: Vec<Result<TxId, Error>>,
 ) -> Result<TxId, Error> {
     if let Some(tx_id) = results.iter().find_map(|r| r.as_ref().ok().copied()) {
         return Ok(tx_id);
     }
-    Err(results
+    results
         .into_iter()
         .filter_map(Result::err)
-        .last()
-        .unwrap_or_else(|| {
-            Error::Other(anyhow::anyhow!(
-                "cancel_all: no mempools configured (Mempools::try_new should have rejected)"
-            ))
-        }))
+        // max_by_key returns the LAST element among equal-priority ties, so a
+        // same-category set bubbles the last error (prior positional behavior).
+        .max_by_key(cancel_error_priority)
+        .map_or_else(
+            || {
+                Err(Error::Other(anyhow::anyhow!(
+                    "cancel_all: no mempools configured (Mempools::try_new should have rejected)"
+                )))
+            },
+            Err,
+        )
+}
+
+/// Semantic priority of a per-mempool cancel-broadcast failure (#219). Higher =
+/// more actionable; the aggregator surfaces the highest. Classification is by
+/// message substring because every cancel error arrives as `Error::Other(anyhow)`
+/// (the infra mempool layer wraps them), so there is no typed variant to match.
+fn cancel_error_priority(err: &Error) -> u8 {
+    let s = err.to_string().to_lowercase();
+    // Accepted (HEALTHIEST): "already known" / "already imported" means the cancel
+    // tx is ALREADY PRESENT in this mempool — the cancel propagated, so the settle
+    // can't double-mine regardless of other mempools' transient errors. Surface it
+    // preferentially so a confirmed-present cancel is NOT misreported as a stuck /
+    // actionable failure (Codex #473): e.g. [already known, replacement underpriced]
+    // bubbles the reassuring "already known", not the noisy unclassified error.
+    if s.contains("already known") || s.contains("already imported") {
+        return 3;
+    }
+    // Transient (RPC degraded): nonce may be stuck stack-wide → operator-actionable.
+    if s.contains("timeout")
+        || s.contains("timed out")
+        || s.contains("connection")
+        || s.contains("rate limit")
+        || s.contains("too many requests")
+        || s.contains("429")
+        || s.contains("502")
+        || s.contains("503")
+        || s.contains("504")
+        || s.contains("gateway")
+    {
+        return 2;
+    }
+    // NonceResolved (benign): the original settle already mined → cancel is moot.
+    if s.contains("nonce too low") || s.contains("nonce is too low") {
+        return 0;
+    }
+    1 // Unknown — unclassified rejection
 }
 
 /// Pure helper isolating the cap-comparison logic so it can be unit-tested
@@ -885,10 +928,9 @@ mod tests {
         );
     }
 
-    /// All-fail catastrophic case: every mempool rejected. Aggregator
-    /// surfaces the LAST error so caller can log a representative failure
-    /// (the alerting metric increments per-mempool independently, so the
-    /// specific error returned matters only for the operator's tracing line).
+    /// All-fail, same category (all Unknown): aggregator surfaces the LAST error
+    /// — equal-priority ties keep the last-in-order failure, preserving the prior
+    /// representative-failure behavior (#219 tie semantics).
     #[test]
     fn aggregate_all_err_returns_last_err() {
         let results = vec![
@@ -898,6 +940,46 @@ mod tests {
         ];
         let aggregate = aggregate_cancel_broadcast_results(results);
         assert!(matches!(&aggregate, Err(Error::Other(e)) if e.to_string() == "last failure"));
+    }
+
+    /// #219: all-fail bubbles by SEMANTIC PRIORITY, not position. A transient
+    /// (RPC-degraded) failure outranks a benign nonce-too-low even when the
+    /// nonce error is last in order — the operator-actionable cause wins.
+    #[test]
+    fn aggregate_all_err_prioritizes_transient_over_nonce_resolved() {
+        let results = vec![
+            Err(rpc_err("connection timed out")), // Transient (priority 2)
+            Err(rpc_err("nonce too low")),        // NonceResolved (priority 0), last
+        ];
+        let aggregate = aggregate_cancel_broadcast_results(results);
+        assert!(
+            matches!(&aggregate, Err(Error::Other(e)) if e.to_string().contains("timed out")),
+            "transient RPC failure must outrank a benign nonce-too-low regardless of order"
+        );
+    }
+
+    /// Codex #473: "already known"/"already imported" (cancel ALREADY PRESENT in a
+    /// mempool — the cancel propagated) is the healthiest signal, surfaced over BOTH
+    /// a benign nonce-too-low AND an actionable transient, so a confirmed-present
+    /// cancel is never misreported as a stuck/actionable failure.
+    #[test]
+    fn aggregate_all_err_accepted_outranks_everything() {
+        // accepted vs nonce-resolved
+        let a = aggregate_cancel_broadcast_results(vec![
+            Err(rpc_err("nonce too low")),
+            Err(rpc_err("already known")),
+        ]);
+        assert!(matches!(&a, Err(Error::Other(e)) if e.to_string().contains("already known")));
+        // accepted vs transient + a noisy unclassified — accepted still wins
+        let b = aggregate_cancel_broadcast_results(vec![
+            Err(rpc_err("connection timed out")),
+            Err(rpc_err("already imported")),
+            Err(rpc_err("replacement transaction underpriced")),
+        ]);
+        assert!(
+            matches!(&b, Err(Error::Other(e)) if e.to_string().contains("already imported")),
+            "a confirmed-present cancel must be surfaced over transient/unclassified errors"
+        );
     }
 
     /// Empty results (N=0): defensive — `Mempools::try_new` rejects empty
