@@ -37,7 +37,11 @@ pub async fn post_order_handler(
             (StatusCode::CREATED, Json(order_uid))
         })
         .inspect_err(|err| {
-            tracing::debug!(?order, ?err, "error creating order");
+            // trace! (not debug!): `?order` renders the whole OrderCreation,
+            // including raw signature bytes (Signature Debug) and the raw
+            // app-data JSON (OrderCreationAppData::Full/Both = user metadata/PII).
+            // Keep that off the default debug surface; still at RUST_LOG=trace. (#210)
+            tracing::trace!(?order, ?err, "error creating order");
         })
         .into_response()
 }
