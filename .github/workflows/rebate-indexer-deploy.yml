@@ -39,6 +39,14 @@ jobs:
           # The VM builds the image locally — no GHCR push needed. We rsync
           # the minimal source subset (excluding workspace siblings the
           # indexer doesn't import + node_modules + the VM's .env file).
+          #
+          # Runtime data dirs (pg_data/caddy_data/caddy_config) are --exclude'd
+          # below so `--delete` (not --delete-excluded) can never wipe DB/proxy
+          # state. Today these are Docker named volumes outside /srv/ophis (absent
+          # from the dest tree anyway); the excludes are belt-and-suspenders if the
+          # layout ever moves them under the rsync root. (#216)
+          # NB: comments must NOT appear between \-continued lines — a comment
+          # after a trailing \ ends the command early (Codex #471 P1).
           rsync -az --delete \
             -e "ssh -i ~/.ssh/id_ed25519 -p $SSH_PORT" \
             --exclude="node_modules" \
@@ -56,6 +64,7 @@ jobs:
             --exclude="apps/rebate-indexer/.env" \
             --exclude="apps/rebate-indexer/pg_data" \
             --exclude="apps/rebate-indexer/caddy_data" \
+            --exclude="apps/rebate-indexer/caddy_config" \
             ./ "$SSH_USER@$SSH_HOST:/srv/ophis/"
 
       - name: build + restart on Aleph VM
