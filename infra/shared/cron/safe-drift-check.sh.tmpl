@@ -70,7 +70,11 @@ for expected_var in EXPECTED_PROTOCOL_OWNERS_SORTED EXPECTED_PARTNER_OWNERS_SORT
   done
 done
 
-TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/hyperevm-mainnet/observability-rendered/telegram-token}"
+# Default to the OP token file — OP is the only live monitored chain (CHAINS
+# above is optimism-only) and the sibling settlement-anomaly-watch.sh uses the
+# same path. The old hyperevm default pointed at a torn-down chain's token, so
+# under set -euo pipefail alert() would abort on the missing file. (#211)
+TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/optimism-mainnet/observability-rendered/telegram-token}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
 LOGFILE="${LOGFILE:-${HOME}/Library/Logs/ophis-safe-drift-check.log}"
 
