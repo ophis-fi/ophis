@@ -1,4 +1,4 @@
-import { encodeFunctionData, parseAbi, createPublicClient, http } from 'viem';
+import { encodeFunctionData, decodeFunctionData, parseAbi, createPublicClient, http } from 'viem';
 import SafeApiKit from '@safe-global/api-kit';
 import Safe from '@safe-global/protocol-kit';
 import {
@@ -8,7 +8,7 @@ import {
   GPV2_SETTLEMENT,
   GPV2_VAULT_RELAYER,
 } from '../safe/addresses.js';
-import { encodeMultiSend, encodeMultiSendCalldata, type InnerCall } from './multisend.js';
+import { encodeMultiSend, encodeMultiSendCalldata, decodeMultiSendCalldata, type InnerCall } from './multisend.js';
 import { getSellQuote, placePresignOrder, getOpenOrders } from '../cow/client.js';
 import { getNonWethTokenBalances } from '../safe/balances.js';
 import { logger } from '../logger.js';
@@ -33,6 +33,21 @@ export interface ConvertDeps {
   readonly proposerPrivateKey: `0x${string}`;
   readonly nowSeconds: number;
   readonly slippageBps?: number;
+  /**
+   * Abort signal from the caller's overall-step timeout. Threaded into the CoW HTTP
+   * calls AND checked immediately before the Safe proposal, so a timed-out conversion
+   * cannot keep running and queue a Safe tx after the batcher moved on. (#360 abort,
+   * Codex #474)
+   */
+  readonly signal?: AbortSignal;
+  /**
+   * Explicit Safe nonce for the conversion proposal. The batcher passes the payout's
+   * nonce + 1 so the conversion is DETERMINISTICALLY above the payout — independent of
+   * whether the Safe Tx Service has yet reflected the just-posted payout (a getNextNonce
+   * read could otherwise race and hand the conversion the SAME nonce as the payout,
+   * which would invalidate it). Falls back to getNextNonce only if unset. (Codex #474)
+   */
+  readonly nonce?: number;
 }
 
 export interface ConvertResult {
@@ -49,6 +64,77 @@ export function applySlippageFloor(buyAmount: bigint, slippageBps: number): bigi
     throw new Error(`slippageBps out of range [0,10000): ${slippageBps}`);
   }
   return (buyAmount * BigInt(10_000 - slippageBps)) / 10_000n;
+}
+
+/**
+ * Build the VaultRelayer approval inner-call(s) for one token, given its CURRENT
+ * on-chain allowance and the amount to sell. Pure; unit-tested. (#360, Codex #474)
+ * - allowance already covers the sell amount → no approval needed (`[]`);
+ * - zero allowance → a single `approve(VaultRelayer, sellAmount)`;
+ * - a NON-ZERO partial allowance → `approve(VaultRelayer, 0)` THEN
+ *   `approve(VaultRelayer, sellAmount)`: USDT-style tokens REVERT on a non-zero →
+ *   non-zero `approve`, so the stale allowance must be reset to 0 first.
+ */
+export function buildVaultRelayerApprovalCalls(
+  allowance: bigint,
+  sellAmount: bigint,
+  token: `0x${string}`,
+): InnerCall[] {
+  if (allowance >= sellAmount) return [];
+  const approve = (amount: bigint): InnerCall => ({
+    to: token,
+    value: 0n,
+    data: encodeFunctionData({ abi: ERC20_APPROVE, functionName: 'approve', args: [GPV2_VAULT_RELAYER, amount] }),
+  });
+  return allowance > 0n ? [approve(0n), approve(sellAmount)] : [approve(sellAmount)];
+}
+
+/**
+ * The token addresses (lowercased, de-duplicated) that the given inner calls approve
+ * to the GPv2 VaultRelayer. Pure; unit-tested. Used to detect an already-pending
+ * VaultRelayer approval in the Safe queue so the conversion doesn't re-queue a
+ * duplicate while a prior approval awaits signatures — the approval bootstrap places
+ * no CoW order, so getOpenOrders alone can't see it (#360 idempotency, Codex #474).
+ */
+export function vaultRelayerApprovalTokens(calls: readonly InnerCall[]): string[] {
+  const vr = GPV2_VAULT_RELAYER.toLowerCase();
+  const tokens = new Set<string>();
+  for (const call of calls) {
+    try {
+      const decoded = decodeFunctionData({ abi: ERC20_APPROVE, data: call.data });
+      if (decoded.functionName === 'approve' && (decoded.args[0] as string).toLowerCase() === vr) {
+        tokens.add(call.to.toLowerCase());
+      }
+    } catch {
+      // not an approve / undecodable inner call — ignore
+    }
+  }
+  return [...tokens];
+}
+
+/**
+ * Tokens that ALREADY have a pending (queued, unexecuted) VaultRelayer approval in
+ * the Safe queue. The approval bootstrap places no CoW order, so getOpenOrders can't
+ * see it; without this, a re-run before the prior approval executes would re-queue a
+ * duplicate approval (#360 idempotency, Codex #474). Decodes each pending multisend
+ * tx and collects its approve→VaultRelayer tokens. NEVER throws — a Tx-Service read
+ * failure just disables this layer (the per-token on-chain allowance check still
+ * caps the worst case at one redundant approve).
+ */
+async function pendingApprovalTokens(apiKit: SafeApiKit, safe: `0x${string}`): Promise<Set<string>> {
+  const tokens = new Set<string>();
+  try {
+    const pending = await apiKit.getPendingTransactions(safe);
+    for (const tx of pending.results ?? []) {
+      if (!tx.data) continue;
+      for (const t of vaultRelayerApprovalTokens(decodeMultiSendCalldata(tx.data as `0x${string}`))) {
+        tokens.add(t);
+      }
+    }
+  } catch (err) {
+    log.warn({ err }, 'could not list pending Safe txs; proceeding without pending-approval idempotency');
+  }
+  return tokens;
 }
 
 /**
@@ -80,15 +166,22 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   const balances = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
   if (balances.length === 0) return none;
 
-  // Idempotency: tokens that already have a LIVE (open or presignaturePending)
-  // sell order from the Safe — don't re-queue them while one is pending.
-  let openSellTokens = new Set<string>();
+  const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId) });
+
+  // Idempotency — skip any token already being handled, from EITHER source:
+  //  (a) a LIVE CoW sell order (open / presignaturePending) from a prior cycle; or
+  //  (b) a still-pending VaultRelayer approval in the Safe queue — the approve
+  //      bootstrap places no CoW order, so (a) alone can't see it (Codex #474).
+  // A read failure on either source only drops THAT layer; the per-token on-chain
+  // allowance check below still bounds the worst case to one redundant approve.
+  const handled = new Set<string>();
   try {
-    const open = await getOpenOrders(deps.chainId, OPHIS_SAFE_ADDRESS);
-    openSellTokens = new Set(open.map((o) => o.sellToken.toLowerCase()));
+    const open = await getOpenOrders(deps.chainId, OPHIS_SAFE_ADDRESS, deps.signal);
+    for (const o of open) handled.add(o.sellToken.toLowerCase());
   } catch (err) {
-    log.warn({ err }, 'could not list open orders; proceeding without idempotency filter');
+    log.warn({ err }, 'could not list open orders; proceeding without the open-order idempotency filter');
   }
+  for (const t of await pendingApprovalTokens(apiKit, OPHIS_SAFE_ADDRESS)) handled.add(t);
 
   const publicClient = createPublicClient({ transport: http(deps.rpcUrl) });
   const inner: InnerCall[] = [];
@@ -97,29 +190,33 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   let approveCount = 0;
   const validTo = deps.nowSeconds + VALID_TO_SECONDS;
   for (const bal of balances) {
+    // Overall-step timeout fired mid-loop → stop queuing more; the pre-propose guard
+    // below ensures nothing already queued gets proposed late. (#360 abort)
+    if (deps.signal?.aborted) break;
     const token = bal.tokenAddress.toLowerCase() as `0x${string}`;
-    if (openSellTokens.has(token)) { skipped++; continue; }
+    if (handled.has(token)) { skipped++; continue; }
     let sellAmount: bigint;
     try { sellAmount = BigInt(bal.balance); } catch { log.warn({ bal }, 'unparseable balance; skip'); skipped++; continue; }
     if (sellAmount <= 0n) { skipped++; continue; }
     try {
       // CoW /orders validates the VaultRelayer allowance at SUBMISSION (#474), so a
       // token whose allowance doesn't yet cover its balance gets an approve THIS
-      // cycle and the order NEXT cycle (self-bootstrapping 2-phase).
+      // cycle and the order NEXT cycle (self-bootstrapping 2-phase). A non-zero
+      // partial allowance is reset to 0 first for USDT-style tokens (Codex #474).
       const allowance = (await publicClient.readContract({
         address: token,
         abi: ERC20_ALLOWANCE,
         functionName: 'allowance',
         args: [OPHIS_SAFE_ADDRESS, GPV2_VAULT_RELAYER],
       })) as bigint;
-      if (allowance < sellAmount) {
-        inner.push({
-          to: token,
-          value: 0n,
-          data: encodeFunctionData({ abi: ERC20_APPROVE, functionName: 'approve', args: [GPV2_VAULT_RELAYER, sellAmount] }),
-        });
-        approveCount++;
-        log.info({ token, sellAmount: sellAmount.toString() }, 'queued VaultRelayer approval (order placed next cycle)');
+      const approvals = buildVaultRelayerApprovalCalls(allowance, sellAmount, token);
+      if (approvals.length > 0) {
+        inner.push(...approvals);
+        approveCount++; // one logical approval per token (a USDT reset is 2 inner calls)
+        log.info(
+          { token, sellAmount: sellAmount.toString(), reset: approvals.length > 1 },
+          'queued VaultRelayer approval (order placed next cycle)',
+        );
         continue;
       }
       // Allowance already covers the balance → place the order now + presign.
@@ -130,6 +227,7 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
         sellAmountBeforeFee: sellAmount,
         from: OPHIS_SAFE_ADDRESS,
         receiver: OPHIS_SAFE_ADDRESS,
+        signal: deps.signal,
       });
       const minBuy = applySlippageFloor(BigInt(quote.quote.buyAmount), slippageBps);
       if (minBuy <= 0n) { log.warn({ token }, 'quote buyAmount floors to 0; skip'); skipped++; continue; }
@@ -140,6 +238,7 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
         receiver: OPHIS_SAFE_ADDRESS,
         validTo,
         from: OPHIS_SAFE_ADDRESS,
+        signal: deps.signal,
       });
       inner.push({
         to: GPV2_SETTLEMENT,
@@ -156,6 +255,15 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
 
   if (inner.length === 0) return { ...none, skipped };
 
+  // Pre-propose abort guard: if the overall-step timeout fired mid-conversion, do
+  // NOT queue a Safe tx — the batcher has already moved on, and a late/duplicate
+  // proposal is a money-path hazard. Any orders already POSTed sit presignaturePending
+  // and are caught by the open-order idempotency filter next cycle. (#360, Codex #474)
+  if (deps.signal?.aborted) {
+    log.warn({ orderCount, approveCount, skipped }, 'fee conversion aborted before propose; not queuing a Safe tx (#360)');
+    return { ...none, skipped };
+  }
+
   const calldata = encodeMultiSendCalldata(encodeMultiSend(inner));
   const multiSend = multiSendCallOnlyAddress(deps.chainId);
   const protocolKit = await Safe.init({
@@ -164,17 +272,25 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
     safeAddress: OPHIS_SAFE_ADDRESS,
   });
   const proposerAddress = (await protocolKit.getSafeProvider().getSignerAddress()) as `0x${string}`;
-  const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId) });
-  // Distinct nonce: getNextNonce counts already-queued Tx-Service txs, so this
-  // conversion proposal doesn't collide with a same-run monthly payout proposal
-  // (Safe txs at the same nonce are mutually exclusive). (Codex #474)
-  const nonce = Number(await apiKit.getNextNonce(OPHIS_SAFE_ADDRESS));
+  // Nonce: the batcher pins this to the payout's nonce + 1 (deps.nonce) so the
+  // conversion is DETERMINISTICALLY above the payout even if the Safe Tx Service has
+  // not yet reflected the just-posted payout — a getNextNonce read could otherwise
+  // race and return the SAME nonce as the payout, and executing the conversion would
+  // then invalidate the payout. Falls back to getNextNonce only when unpinned. (Codex #474)
+  const nonce = deps.nonce ?? Number(await apiKit.getNextNonce(OPHIS_SAFE_ADDRESS));
   const safeTx = await protocolKit.createTransaction({
     transactions: [{ to: multiSend, value: '0', data: calldata, operation: 1 /* DELEGATECALL */ }],
     options: { nonce },
   });
   const safeTxHash = (await protocolKit.getTransactionHash(safeTx)) as `0x${string}`;
   const sig = await protocolKit.signHash(safeTxHash);
+  // Re-check directly before the POST: the Safe-SDK calls above (init / getNextNonce
+  // / sign) do NOT honor the abort signal, so the timeout could have fired during
+  // them. This closes the last window before the irreversible queue write. (Codex #474)
+  if (deps.signal?.aborted) {
+    log.warn({ orderCount, approveCount, skipped }, 'fee conversion aborted before the Safe POST; not queuing (#360)');
+    return { ...none, skipped };
+  }
   await apiKit.proposeTransaction({
     safeAddress: OPHIS_SAFE_ADDRESS,
     safeTransactionData: safeTx.data,

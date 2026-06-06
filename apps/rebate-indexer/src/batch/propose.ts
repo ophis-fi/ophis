@@ -26,6 +26,13 @@ export interface ProposeParams {
 export interface ProposeResult {
   readonly safeTxHash: `0x${string}`;
   readonly proposerAddress: `0x${string}`;
+  /**
+   * The Safe nonce this payout was proposed at. The #360 fee conversion is pinned to
+   * `nonce + 1` (NOT its own getNextNonce read), so it deterministically takes a
+   * HIGHER nonce than the payout even if the Safe Tx Service hasn't yet reflected this
+   * proposal — a same-nonce conversion could otherwise invalidate the payout. (Codex #474)
+   */
+  readonly nonce: number;
 }
 
 /**
@@ -69,6 +76,6 @@ export async function proposeRebateBatch(p: ProposeParams): Promise<ProposeResul
     senderAddress: proposerAddress,
     senderSignature: senderSignature.data,
   });
-  log.info({ safeTxHash, proposerAddress, recipientCount: p.transfers.length }, 'proposed');
-  return { safeTxHash, proposerAddress };
+  log.info({ safeTxHash, proposerAddress, recipientCount: p.transfers.length, nonce }, 'proposed');
+  return { safeTxHash, proposerAddress, nonce };
 }

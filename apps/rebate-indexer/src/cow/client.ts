@@ -29,8 +29,12 @@ const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 const REQUEST_TIMEOUT_MS = 10_000;
 
 async function fetchJson<T>(url: string, schema: z.ZodSchema<T>, init?: RequestInit): Promise<T> {
-  // Default timeout; a caller-provided signal (via init) takes precedence.
-  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...init });
+  // The per-request timeout is COMBINED with any caller signal (the #360 conversion's
+  // overall-step abort) so EITHER can cancel the request — the prior `...init` spread
+  // let a caller signal silently REPLACE the timeout, unbounding the request. (Codex #474)
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const signal = init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
+  const res = await fetch(url, { ...init, signal });
   if (!res.ok) {
     const body = await res.text().catch(() => '<unreadable>');
     throw new Error(`CoW API ${res.status} ${res.statusText} @ ${url} — ${body.slice(0, 200)}`);
@@ -98,6 +102,7 @@ export interface SellQuoteParams {
   readonly sellAmountBeforeFee: bigint;
   readonly from: `0x${string}`;       // the fee Safe (quote `from`)
   readonly receiver: `0x${string}`;   // the fee Safe (WETH returns here)
+  readonly signal?: AbortSignal;      // conversion overall-step abort (#474)
 }
 
 /**
@@ -125,6 +130,7 @@ export async function getSellQuote(p: SellQuoteParams): Promise<QuoteResponse> {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: p.signal,
   });
 }
 
@@ -137,6 +143,7 @@ export interface PresignOrderParams {
   readonly receiver: `0x${string}`;   // the fee Safe
   readonly validTo: number;           // unix seconds; long enough for human Safe signing + fill
   readonly from: `0x${string}`;       // the fee Safe
+  readonly signal?: AbortSignal;      // conversion overall-step abort (#474)
 }
 
 /**
@@ -180,17 +187,22 @@ export async function placePresignOrder(p: PresignOrderParams): Promise<`0x${str
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: p.signal,
   });
   return uid as `0x${string}`;
 }
 
 /** Open orders for an owner (conversion idempotency — don't re-propose a token that already has a live sell order). */
-export async function getOpenOrders(chainId: number, owner: `0x${string}`): Promise<AccountOrder[]> {
+export async function getOpenOrders(
+  chainId: number,
+  owner: `0x${string}`,
+  signal?: AbortSignal,
+): Promise<AccountOrder[]> {
   const path = COW_API_PATH[chainId];
   if (!path) throw new Error(`unsupported chain ${chainId}`);
   const url = `${BASE_URL}/${path}/api/v1/account/${owner}/orders?limit=250&offset=0`;
   log.debug({ url }, 'GET account orders');
-  const orders = await fetchJson(url, z.array(AccountOrder));
+  const orders = await fetchJson(url, z.array(AccountOrder), { signal });
   // 'presignaturePending' is the state of a freshly-placed presign order awaiting
   // the on-chain setPreSignature — it MUST count as live, or the conversion
   // idempotency check re-queues the same token every cycle while the Safe tx

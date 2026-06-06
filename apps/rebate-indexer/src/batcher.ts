@@ -35,10 +35,16 @@ const BATCHER_LOCK_KEY = 770044;
 // the advisory lock from being held indefinitely on a stalled service. (Codex #474)
 const CONVERSION_TIMEOUT_MS = 120_000;
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+// `onTimeout` (optional) fires synchronously when the timeout wins the race, BEFORE
+// the rejection — the conversion step uses it to abort the orphaned promise so a
+// timed-out conversion can't keep running and propose a late Safe tx. (Codex #474)
+function withTimeout<T>(p: Promise<T>, ms: number, label: string, onTimeout?: () => void): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    timer = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
   });
   return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
 }
@@ -98,6 +104,61 @@ function resolveConvertMode(): boolean {
   if (raw === undefined || raw === '' || raw === 'false' || raw === '0') return false;
   if (raw === 'true' || raw === '1') return true;
   throw new Error(`REBATE_CONVERT_ENABLED must be 'true', '1', 'false', '0', or unset; got "${raw}"`);
+}
+
+/**
+ * #360 Option A — convert the Safe's non-WETH fee tokens to WETH (gated, best-effort).
+ *
+ * Called ONLY after a real payout proposal, and pinned to `payoutNonce + 1`, so the
+ * conversion's Safe tx is DETERMINISTICALLY above the payout: a stuck / expired /
+ * unsigned conversion can therefore NEVER block the money-path payout, which executes
+ * at the lower nonce (Safe txs run in strict nonce order). It is deliberately NOT run
+ * on no-payout paths (no_recipients / all-quarantined): a standalone conversion there
+ * would occupy a nonce with no payout above it and could block the NEXT cycle's payout
+ * if it sits unsigned — reintroducing the very bug this fixes. (Codex #474 P1)
+ *
+ * Bounded by CONVERSION_TIMEOUT_MS AND abortable: the timeout aborts the in-flight
+ * conversion (its CoW calls + two pre-propose checks) so an orphaned run can't propose
+ * a late / duplicate Safe tx after the batcher moved on. (The final `proposeTransaction`
+ * POST itself is not abortable; the residual is a correct-but-late proposal, caught by
+ * idempotency next cycle — never a duplicate.) (Codex #474 P1)
+ *
+ * NEVER throws — a conversion failure must not break the payout. No-op unless
+ * REBATE_CONVERT_ENABLED + proposeEnabled (gated, byte-inert until the operator
+ * enables it after reviewing the flow on Gnosis with a small balance).
+ */
+async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: number): Promise<void> {
+  if (!deps.proposeEnabled || !resolveConvertMode()) return;
+  const ac = new AbortController();
+  try {
+    const conv = await withTimeout(
+      convertFeesToWeth({
+        chainId: deps.chainId,
+        rpcUrl: deps.rpcUrl,
+        proposerPrivateKey: deps.proposerPrivateKey,
+        nowSeconds: Math.floor(now.getTime() / 1000),
+        signal: ac.signal,
+        nonce: afterNonce,
+      }),
+      CONVERSION_TIMEOUT_MS,
+      'fee conversion (#360)',
+      () => ac.abort(new Error('fee conversion (#360) timed out')),
+    );
+    if (conv.proposed) {
+      log.info({ ...conv }, 'fee-conversion Safe tx proposed (#360)');
+      void alerts
+        .alert(
+          'batcher',
+          `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} sell order(s) + ` +
+            `${conv.approveCount} VaultRelayer approval(s) (safeTxHash ${conv.safeTxHash}). ` +
+            `Sign + execute it; approved tokens get their sell order next cycle, and converted ` +
+            `WETH rebates the cycle after.`,
+        )
+        .catch((err) => log.warn({ err }, 'conversion alert send failed'));
+    }
+  } catch (err) {
+    log.warn({ err }, 'fee conversion (#360) failed or aborted (ignored — payout proceeds)');
+  }
 }
 
 /**
@@ -215,44 +276,12 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     log.warn({ err }, 'stranded-fee probe failed (ignored)');
   }
 
-  // 1c. Issue #360 Option A — convert the Safe's non-WETH fee tokens to WETH so
-  //     they enter the (WETH-only) rebate pool NEXT cycle (CoW settles async).
-  //     Gated behind REBATE_CONVERT_ENABLED (default OFF; byte-inert until the
-  //     operator enables it after reviewing on Gnosis) AND proposeEnabled (never
-  //     in first-batch dry-run). Best-effort: wrapped so a quote/order/propose
-  //     failure can't break the payout that follows.
-  if (deps.proposeEnabled && resolveConvertMode()) {
-    try {
-      // Bound the WHOLE conversion step (CoW fetchJson already has its own
-      // per-request timeout, but the Safe-SDK calls — getNextNonce / propose /
-      // Safe.init — do NOT), so a stalled CoW/Safe service can't hang the run
-      // while it holds the advisory lock and starve the payout. (Codex #474)
-      const conv = await withTimeout(
-        convertFeesToWeth({
-          chainId: deps.chainId,
-          rpcUrl: deps.rpcUrl,
-          proposerPrivateKey: deps.proposerPrivateKey,
-          nowSeconds: Math.floor(now.getTime() / 1000),
-        }),
-        CONVERSION_TIMEOUT_MS,
-        'fee conversion (#360)',
-      );
-      if (conv.proposed) {
-        log.info({ ...conv, cycleMonth }, 'fee-conversion Safe tx proposed (#360)');
-        void alerts
-          .alert(
-            'batcher',
-            `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} sell order(s) + ` +
-              `${conv.approveCount} VaultRelayer approval(s) (safeTxHash ${conv.safeTxHash}). ` +
-              `Sign + execute it; approved tokens get their sell order next cycle, and converted ` +
-              `WETH rebates the cycle after.`,
-          )
-          .catch((err) => log.warn({ err }, 'conversion alert send failed'));
-      }
-    } catch (err) {
-      log.warn({ err }, 'fee conversion (#360) failed (ignored — payout proceeds)');
-    }
-  }
+  // NOTE: Issue #360 Option A fee conversion runs LATER — see maybeConvertFeesToWeth,
+  //       called ONLY on the successful-payout path, pinned to payoutNonce + 1, so the
+  //       conversion's Safe tx is deterministically above the payout and can never block
+  //       it. It is deliberately NOT run on the no-payout / abort / defer paths: a
+  //       standalone conversion there would occupy a nonce with no payout above it and
+  //       could block a later cycle's payout if left unsigned. (Codex #474 P1)
 
   // 2. Read eligible wallets.
   const eligible = await sql<{ wallet: Buffer; volume_30d_usd: string }[]>`
@@ -487,6 +516,9 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       { batchId, directMode, reason: directMode ? 'no new fees' : pool === 0n ? 'zero pool' : 'no wallets' },
       'no recipients',
     );
+    // No payout this cycle → NO fee conversion: a standalone conversion here would
+    // occupy a nonce with no payout above it and could block the next cycle's payout
+    // if left unsigned. Stranded fees still surface via the step-1b alert. (Codex #474)
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
@@ -510,6 +542,7 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: netFee } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor)');
+    // No payout this cycle → NO fee conversion (see the no_recipients path above). (Codex #474)
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
@@ -545,6 +578,9 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     await db.update(schema.rebateBatches).set({ status: 'failed' })
       .where(eq(schema.rebateBatches.id, batchId));
     log.error({ batchId, badCount: bad.length }, 'all recipients quarantined');
+    // No payout queued (all recipients quarantined) → NO fee conversion: this row is
+    // 'failed' (no hash) and RESUMES next run, and a standalone conversion would occupy
+    // a nonce that could block a later payout if left unsigned. (Codex #474)
     return { batchId, status: 'failed', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
@@ -591,8 +627,9 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   // atomic with it). (Codex P2)
   let submitAttempted = false;
   let safeTxHash: `0x${string}`;
+  let payoutNonce: number;
   try {
-    ({ safeTxHash } = await proposeRebateBatch({
+    ({ safeTxHash, nonce: payoutNonce } = await proposeRebateBatch({
       chainId: deps.chainId,
       rpcUrl: deps.rpcUrl,
       proposerPrivateKey: deps.proposerPrivateKey,
@@ -647,6 +684,12 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       }).where(eq(schema.rebateBatches.id, batchId));
     }
   }).catch((err) => log.error({ err, batchId }, 'polling failed'));
+
+  // #360: convert the Safe's non-WETH fee tokens to WETH — LAST, AFTER the payout is
+  // proposed, and PINNED to payoutNonce + 1 so the conversion's Safe tx is deterministically
+  // above this payout and can never block it (gated; abortable; bounded; never throws).
+  // Only here, never on the no-payout return paths above. (Codex #474 P1)
+  await maybeConvertFeesToWeth(deps, now, payoutNonce + 1);
 
   return { batchId, status: 'proposed', safeTxHash, recipientCount: good.length, poolWei: distributable };
 }
