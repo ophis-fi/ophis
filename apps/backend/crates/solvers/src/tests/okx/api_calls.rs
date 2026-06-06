@@ -134,8 +134,17 @@ async fn swap_buy_enabled() {
         swap.allowance.spender,
         address!("0x40aA958dd87FC8305b97f2BA922CDdCa374bcD7f")
     );
-    // For buy orders, allowance should be U256::MAX
-    assert_eq!(swap.allowance.amount.get(), U256::MAX);
+    // #231: buy-order allowance is now a slippage-padded bounded input amount,
+    // NOT the U256::MAX sentinel (the driver's 2^200 custom-allowlist cap rejects
+    // U256::MAX as an infinite-approval anti-pattern).
+    let allowance = swap.allowance.amount.get();
+    assert_ne!(allowance, U256::MAX, "buy allowance must not be the unbounded sentinel");
+    assert!(!allowance.is_zero(), "buy allowance must be positive");
+    // 2^200 == driver MAX_CUSTOM_ALLOWANCE (from_limbs mirrors custom_allowlist.rs)
+    assert!(
+        allowance < U256::from_limbs([0, 0, 0, 1u64 << 8]),
+        "buy allowance must stay under the driver's 2^200 cap"
+    );
 }
 
 #[ignore]

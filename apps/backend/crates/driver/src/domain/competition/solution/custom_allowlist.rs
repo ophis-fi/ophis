@@ -42,19 +42,14 @@ use {
 ///   a runtime helper. Bit 200 lives in the 4th `u64` limb at offset
 ///   `200 - 192 = 8`.
 ///
-/// **KNOWN INCOMPATIBILITY — OKX buy-mode (Codex PR-227 P1 `r3287846607`).**
-/// OKX's exact-out / buy-order endpoint emits `U256::MAX` allowances when
-/// `buy_orders_endpoint` is configured (see
-/// `crates/solvers/src/infra/dex/okx/mod.rs`). This driver cap rejects
-/// such allowances with `AmountTooLarge` — by design — because
-/// `U256::MAX` from a solver is the exact structural anti-pattern this
-/// gate prevents. **Production status (2026-05-22):** the rendered OKX
-/// config on OP mainnet (`infra/optimism-mainnet/rendered/okx.toml`)
-/// keeps `buy_orders_endpoint` unset; the example config at
-/// `crates/solvers/config/example.okx.toml` ships with that line
-/// commented out. Re-enabling OKX buy-mode requires a solver-side
-/// rewrite of the buy-mode allowance to emit per-trade amounts scoped
-/// to the actual order size — DO NOT just bump this cap.
+/// **OKX buy-mode — resolved (#231).** OKX's exact-out / buy-order path used to
+/// emit `U256::MAX` allowances when `buy_orders_endpoint` is configured, which
+/// this cap rejected with `AmountTooLarge` — by design. As of #231 the OKX solver
+/// emits a BOUNDED allowance (`from_token_amount` padded by slippage, see
+/// `crates/solvers/src/infra/dex/okx/mod.rs`), ~24 orders of magnitude under this
+/// `2^200` cap, so buy-mode is now compatible without weakening the gate. The cap
+/// still rejects any genuine unbounded / infinite-approval sentinel — DO NOT bump
+/// it to accommodate one.
 pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 
 /// Per-chain allowlist of contract addresses approved as `Custom.target`
