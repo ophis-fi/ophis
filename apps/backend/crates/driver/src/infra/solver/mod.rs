@@ -42,6 +42,9 @@ use {
 
 pub mod dto;
 pub mod eip7702;
+pub mod settlement_policy;
+
+pub use settlement_policy::{AllowedTarget, SettlementPolicy};
 
 // TODO At some point I should be checking that the names are unique, I don't
 // think I'm doing that.
@@ -154,6 +157,14 @@ pub enum Account {
     PrivateKey(PrivateKeySigner),
     Kms(AwsSigner),
     Address(Address),
+    /// A policy-guarded signer (#441): wraps an inner signer and refuses to sign
+    /// any transaction that is not an allow-listed settlement (fail-closed; see
+    /// [`settlement_policy`]). Opt-in — the default config uses a bare signer, so
+    /// this is byte-inert until an operator wraps their account with it.
+    PolicyGuarded {
+        inner: Box<Account>,
+        policy: SettlementPolicy,
+    },
 }
 
 #[async_trait::async_trait]
@@ -163,6 +174,7 @@ impl TxSigner<Signature> for Account {
             Account::PrivateKey(local_signer) => local_signer.address(),
             Account::Kms(aws_signer) => aws_signer.address(),
             Account::Address(address) => *address,
+            Account::PolicyGuarded { inner, .. } => inner.address(),
         }
     }
 
@@ -177,6 +189,15 @@ impl TxSigner<Signature> for Account {
             Account::Address(_) => Err(alloy::signers::Error::UnsupportedOperation(
                 alloy::signers::UnsupportedSignerOperation::SignHash,
             )),
+            // Fail-closed settle()-only guard (#441): refuse to sign anything that
+            // isn't an allow-listed settlement before delegating to the inner signer.
+            Account::PolicyGuarded { inner, policy } => {
+                if let Err(violation) = policy.check(tx.to(), tx.input().as_ref(), tx.value()) {
+                    tracing::error!(%violation, "settlement policy: refusing to sign a non-settlement transaction");
+                    return Err(alloy::signers::Error::message(violation));
+                }
+                inner.sign_transaction(tx).await
+            }
         }
     }
 }
@@ -196,6 +217,11 @@ impl Account {
             Account::Address(_) => Err(alloy::signers::Error::UnsupportedOperation(
                 alloy::signers::UnsupportedSignerOperation::SignHash,
             )),
+            // EIP-7702 authorization signing (a hash, not a tx) is delegated — the
+            // settlement-tx policy applies to `sign_transaction`, not auth hashes.
+            // `Box::pin` because this inherent async fn would otherwise be an
+            // infinitely-sized recursive future (unlike the async_trait sign_transaction).
+            Account::PolicyGuarded { inner, .. } => Box::pin(inner.sign_hash(hash)).await,
         }
     }
 }
