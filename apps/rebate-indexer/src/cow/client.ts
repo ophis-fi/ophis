@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CowTrade, CowOrder, NativePriceResponse } from './types.js';
+import { CowTrade, CowOrder, NativePriceResponse, QuoteResponse, AccountOrder } from './types.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'cow-client' });
@@ -23,8 +23,18 @@ export const SUPPORTED_CHAIN_IDS = Object.keys(COW_API_PATH).map(Number);
 
 const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 
+// Bound every CoW request so a stalled API can't hang a caller — the batcher
+// runs conversion (#360) while holding a Postgres advisory lock, so an
+// unbounded request would block the monthly payout. (Codex #474)
+const REQUEST_TIMEOUT_MS = 10_000;
+
 async function fetchJson<T>(url: string, schema: z.ZodSchema<T>, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  // The per-request timeout is COMBINED with any caller signal (the #360 conversion's
+  // overall-step abort) so EITHER can cancel the request — the prior `...init` spread
+  // let a caller signal silently REPLACE the timeout, unbounding the request. (Codex #474)
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const signal = init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
+  const res = await fetch(url, { ...init, signal });
   if (!res.ok) {
     const body = await res.text().catch(() => '<unreadable>');
     throw new Error(`CoW API ${res.status} ${res.statusText} @ ${url} — ${body.slice(0, 200)}`);
@@ -79,4 +89,124 @@ export async function nativePrice(chainId: number, token: `0x${string}`): Promis
   const url = `${BASE_URL}/${path}/api/v1/token/${token}/native_price`;
   log.debug({ url }, 'GET native_price');
   return (await fetchJson(url, NativePriceResponse)).price;
+}
+
+// ---------------------------------------------------------------------------
+// #360 fee conversion: quote + place a pre-signed sell order (token -> WETH).
+// ---------------------------------------------------------------------------
+
+export interface SellQuoteParams {
+  readonly chainId: number;
+  readonly sellToken: `0x${string}`;
+  readonly buyToken: `0x${string}`;
+  readonly sellAmountBeforeFee: bigint;
+  readonly from: `0x${string}`;       // the fee Safe (quote `from`)
+  readonly receiver: `0x${string}`;   // the fee Safe (WETH returns here)
+  readonly signal?: AbortSignal;      // conversion overall-step abort (#474)
+}
+
+/**
+ * POST /api/v1/quote for a SELL order. Returns CoW's canonical order parameters
+ * (incl. appData/appDataHash/feeAmount) which the order POST reuses verbatim, so
+ * we never hand-construct the fragile order fields. `signingScheme: presign` tells
+ * CoW the order will be made valid on-chain via `setPreSignature` (Safe flow).
+ */
+export async function getSellQuote(p: SellQuoteParams): Promise<QuoteResponse> {
+  const path = COW_API_PATH[p.chainId];
+  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/quote`;
+  const body = {
+    sellToken: p.sellToken,
+    buyToken: p.buyToken,
+    from: p.from,
+    receiver: p.receiver,
+    kind: 'sell',
+    sellAmountBeforeFee: p.sellAmountBeforeFee.toString(),
+    signingScheme: 'presign',
+    priceQuality: 'optimal',
+  };
+  log.debug({ url, sellToken: p.sellToken }, 'POST quote');
+  return fetchJson(url, QuoteResponse, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: p.signal,
+  });
+}
+
+const OrderUid = z.string().regex(/^0x[0-9a-f]{112}$/i);
+
+export interface PresignOrderParams {
+  readonly chainId: number;
+  readonly quote: QuoteResponse['quote'];
+  readonly buyAmount: bigint;         // slippage-floored minimum buy (<= quote.buyAmount)
+  readonly receiver: `0x${string}`;   // the fee Safe
+  readonly validTo: number;           // unix seconds; long enough for human Safe signing + fill
+  readonly from: `0x${string}`;       // the fee Safe
+  readonly signal?: AbortSignal;      // conversion overall-step abort (#474)
+}
+
+/**
+ * POST /api/v1/orders with `signingScheme: presign` (signature "0x"). The order is
+ * created in `presignaturePending` state; an on-chain `setPreSignature(uid, true)`
+ * (proposed as a Safe tx, see convert.ts) makes it fillable. Returns the orderUid.
+ * Reuses the quote's params; only overrides receiver (Safe), the slippage-floored
+ * buyAmount, and a longer validTo.
+ */
+export async function placePresignOrder(p: PresignOrderParams): Promise<`0x${string}`> {
+  const path = COW_API_PATH[p.chainId];
+  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/orders`;
+  const q = p.quote;
+  const body = {
+    sellToken: q.sellToken,
+    buyToken: q.buyToken,
+    receiver: p.receiver,
+    // Modern CoW order shape: the FULL sell amount goes in sellAmount and
+    // feeAmount is 0 (fees are captured from surplus, not a separate fee field).
+    // Reusing the quote's sell/fee split would sign an obsolete order whose uid
+    // doesn't match the intended settlement amounts. (Codex #474)
+    sellAmount: (BigInt(q.sellAmount) + BigInt(q.feeAmount)).toString(),
+    buyAmount: p.buyAmount.toString(),
+    validTo: p.validTo,
+    appData: q.appData,
+    ...(q.appDataHash ? { appDataHash: q.appDataHash } : {}),
+    feeAmount: '0',
+    kind: 'sell',
+    partiallyFillable: false,
+    sellTokenBalance: q.sellTokenBalance ?? 'erc20',
+    buyTokenBalance: q.buyTokenBalance ?? 'erc20',
+    signingScheme: 'presign',
+    signature: '0x',
+    from: p.from,
+  };
+  log.info({ url, sellToken: q.sellToken, buyAmount: body.buyAmount }, 'POST presign order');
+  // OrderUid validates the 56-byte hex shape, so the cast to the template-literal
+  // type is sound (zod infers a plain `string`).
+  const uid = await fetchJson(url, OrderUid, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: p.signal,
+  });
+  return uid as `0x${string}`;
+}
+
+/** Open orders for an owner (conversion idempotency — don't re-propose a token that already has a live sell order). */
+export async function getOpenOrders(
+  chainId: number,
+  owner: `0x${string}`,
+  signal?: AbortSignal,
+): Promise<AccountOrder[]> {
+  const path = COW_API_PATH[chainId];
+  if (!path) throw new Error(`unsupported chain ${chainId}`);
+  const url = `${BASE_URL}/${path}/api/v1/account/${owner}/orders?limit=250&offset=0`;
+  log.debug({ url }, 'GET account orders');
+  const orders = await fetchJson(url, z.array(AccountOrder), { signal });
+  // 'presignaturePending' is the state of a freshly-placed presign order awaiting
+  // the on-chain setPreSignature — it MUST count as live, or the conversion
+  // idempotency check re-queues the same token every cycle while the Safe tx
+  // awaits human signatures. (Codex #474)
+  const LIVE = new Set(['open', 'presignaturepending']);
+  return orders.filter((o) => LIVE.has((o.status ?? 'open').toLowerCase()));
 }

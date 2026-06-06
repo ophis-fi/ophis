@@ -29,6 +29,9 @@ describe('nativePrice', () => {
     const [url, init] = fetchSpy.mock.calls[0]!;
     expect(String(url)).toMatch(/\/xdai\/api\/v1\/token\/0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1\/native_price$/);
     // A bodyless GET cannot carry from/receiver -> structurally immune to the deny-list.
-    expect(init).toBeUndefined();
+    // (A timeout `signal` is added to all calls (#474) and is NOT a request payload.)
+    const ri = init as RequestInit | undefined;
+    expect(ri?.body).toBeUndefined();
+    expect(ri?.method ?? 'GET').toBe('GET');
   });
 });
