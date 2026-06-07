@@ -8,12 +8,22 @@
 //! bypassing this). Pairs with key-out-of-process custody (`Account::Kms`) for the
 //! theft side; this closes the "RCE drives the signer to drain the float" vector.
 //!
-//! Fail-closed: a transaction is allowed ONLY if it calls an allow-listed
-//! `(target, selector)` pair with zero ETH value. The allow-set is supplied
-//! explicitly (operator config, validated on a testnet) so it can be tuned to a
-//! given deployment without code changes — on Optimism the only legitimate target
-//! is `settle()` -> GPv2Settlement; deployments that enable flashloans/wrappers add
-//! their `(router, flashLoanAndSettle)` / wrapper pairs.
+//! Fail-closed: a transaction is allowed ONLY if it either (a) calls an allow-listed
+//! `(target, selector)` pair with zero ETH value, or (b) is a self-cancellation — a
+//! value-0, empty-calldata transfer to the submitter's OWN address, which `cancel_all`
+//! uses to unstick a stuck nonce (it moves no value and carries no calldata, so it
+//! cannot drain anything). The allow-set is supplied explicitly (operator config,
+//! validated on a testnet) so it can be tuned to a deployment without code changes —
+//! on Optimism the only legitimate target is `settle()` -> GPv2Settlement; deployments
+//! that enable flashloans/wrappers add their `(router, flashLoanAndSettle)` / wrapper
+//! pairs.
+//!
+//! **Incompatible with EIP-7702 parallel submission.** A guarded account REFUSES
+//! `sign_hash` (it would otherwise let an RCE sign an EIP-7702 authorization that
+//! delegates the submitter EOA to attacker code, bypassing this tx guard), and the
+//! delegated-submission path rewrites settlements into `forward()` calls the outer
+//! check can't validate. Wrap ONLY a simple direct submitter (e.g. the single OP
+//! submitter); do NOT use it on an account configured with `submission-accounts`.
 
 use alloy::primitives::{Address, U256};
 
@@ -63,16 +73,31 @@ impl std::fmt::Display for PolicyViolation {
 }
 
 impl SettlementPolicy {
-    /// Fail-closed check of a transaction against the policy. `to` is the tx
-    /// recipient (`None` = contract creation), `input` the calldata (the 4-byte
-    /// selector is `input[0..4]`; settlement calldata legitimately has extra bytes
-    /// appended after the ABI args, e.g. the auction id, which does not affect the
-    /// selector), `value` the ETH value.
-    pub fn check(&self, to: Option<Address>, input: &[u8], value: U256) -> Result<(), PolicyViolation> {
+    /// Fail-closed check of a transaction against the policy. `own_address` is the
+    /// submitter EOA's own address (used to recognise self-cancellations); `to` is
+    /// the tx recipient (`None` = contract creation), `input` the calldata (the
+    /// 4-byte selector is `input[0..4]`; settlement calldata legitimately has extra
+    /// bytes appended after the ABI args, e.g. the auction id, which does not affect
+    /// the selector), `value` the ETH value.
+    pub fn check(
+        &self,
+        own_address: Address,
+        to: Option<Address>,
+        input: &[u8],
+        value: U256,
+    ) -> Result<(), PolicyViolation> {
         if self.require_zero_value && !value.is_zero() {
             return Err(PolicyViolation::NonZeroValue(value));
         }
         let to = to.ok_or(PolicyViolation::ContractCreation)?;
+        // Self-cancellation: `cancel_all` unsticks a stuck settlement by broadcasting
+        // a value-0, empty-calldata transfer to the submitter's OWN address (see
+        // mempools.rs cancellation tx). It moves no value and carries no calldata, so
+        // it cannot drain anything — always allow it, or a guarded signer could never
+        // clear a stuck nonce (Codex #441 P2).
+        if to == own_address && input.is_empty() {
+            return Ok(());
+        }
         let target = self
             .allowed
             .iter()
@@ -98,6 +123,8 @@ mod tests {
 
     // GPv2Settlement on Optimism mainnet.
     const SETTLEMENT: Address = address!("310784c7FCE12d578dA6f53460777bAc9718B859");
+    // The submitter EOA's own address (for the self-cancellation case).
+    const OWN: Address = address!("931e9f531cDD4835DEf0DEDE1452bA8aFBe5fF9B");
     // settle((address[],uint256[],...)) selector.
     const SETTLE: [u8; 4] = [0x13, 0xd7, 0x9a, 0x0b];
     // ERC20 approve(address,uint256) — the canonical "drain" selector to refuse.
@@ -120,7 +147,34 @@ mod tests {
 
     #[test]
     fn allows_settle_to_settlement_with_appended_auction_id() {
-        assert_eq!(settle_only().check(Some(SETTLEMENT), &settle_calldata(), U256::ZERO), Ok(()));
+        assert_eq!(settle_only().check(OWN, Some(SETTLEMENT), &settle_calldata(), U256::ZERO), Ok(()));
+    }
+
+    #[test]
+    fn allows_self_cancellation() {
+        // cancel_all's unstick tx: to == own address, empty calldata, value 0.
+        assert_eq!(settle_only().check(OWN, Some(OWN), &[], U256::ZERO), Ok(()));
+    }
+
+    #[test]
+    fn rejects_value_transfer_to_self() {
+        // A self-send WITH value is not a cancellation — refused.
+        assert_eq!(
+            settle_only().check(OWN, Some(OWN), &[], U256::from(1)),
+            Err(PolicyViolation::NonZeroValue(U256::from(1)))
+        );
+    }
+
+    #[test]
+    fn rejects_self_call_with_calldata() {
+        // A self-call carrying calldata is not a cancellation; own address is not an
+        // allowed settlement target → refused.
+        let mut input = SETTLE.to_vec();
+        input.extend_from_slice(&[0u8; 32]);
+        assert!(matches!(
+            settle_only().check(OWN, Some(OWN), &input, U256::ZERO),
+            Err(PolicyViolation::DisallowedTarget(_))
+        ));
     }
 
     #[test]
@@ -128,7 +182,7 @@ mod tests {
         let mut input = APPROVE.to_vec();
         input.extend_from_slice(&[0u8; 64]);
         assert!(matches!(
-            settle_only().check(Some(SETTLEMENT), &input, U256::ZERO),
+            settle_only().check(OWN, Some(SETTLEMENT), &input, U256::ZERO),
             Err(PolicyViolation::DisallowedSelector { .. })
         ));
     }
@@ -137,7 +191,7 @@ mod tests {
     fn rejects_settle_to_a_different_target() {
         let other = address!("00000000000000000000000000000000000ABCDE");
         assert_eq!(
-            settle_only().check(Some(other), &settle_calldata(), U256::ZERO),
+            settle_only().check(OWN, Some(other), &settle_calldata(), U256::ZERO),
             Err(PolicyViolation::DisallowedTarget(other))
         );
     }
@@ -145,7 +199,7 @@ mod tests {
     #[test]
     fn rejects_non_zero_value_even_for_a_legit_settle() {
         assert_eq!(
-            settle_only().check(Some(SETTLEMENT), &settle_calldata(), U256::from(1)),
+            settle_only().check(OWN, Some(SETTLEMENT), &settle_calldata(), U256::from(1)),
             Err(PolicyViolation::NonZeroValue(U256::from(1)))
         );
     }
@@ -153,7 +207,7 @@ mod tests {
     #[test]
     fn rejects_contract_creation() {
         assert_eq!(
-            settle_only().check(None, &settle_calldata(), U256::ZERO),
+            settle_only().check(OWN, None, &settle_calldata(), U256::ZERO),
             Err(PolicyViolation::ContractCreation)
         );
     }
@@ -161,7 +215,7 @@ mod tests {
     #[test]
     fn rejects_calldata_shorter_than_a_selector() {
         assert_eq!(
-            settle_only().check(Some(SETTLEMENT), &[0x13, 0xd7], U256::ZERO),
+            settle_only().check(OWN, Some(SETTLEMENT), &[0x13, 0xd7], U256::ZERO),
             Err(PolicyViolation::CalldataTooShort(2))
         );
     }
@@ -180,10 +234,10 @@ mod tests {
         };
         let mut input = flash_loan_and_settle.to_vec();
         input.extend_from_slice(&[0u8; 64]);
-        assert_eq!(policy.check(Some(router), &input, U256::ZERO), Ok(()));
+        assert_eq!(policy.check(OWN, Some(router), &input, U256::ZERO), Ok(()));
         // ...but the flashloan selector to the SETTLEMENT target is still refused.
         assert!(matches!(
-            policy.check(Some(SETTLEMENT), &input, U256::ZERO),
+            policy.check(OWN, Some(SETTLEMENT), &input, U256::ZERO),
             Err(PolicyViolation::DisallowedSelector { .. })
         ));
     }

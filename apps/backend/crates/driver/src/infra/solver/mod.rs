@@ -192,7 +192,9 @@ impl TxSigner<Signature> for Account {
             // Fail-closed settle()-only guard (#441): refuse to sign anything that
             // isn't an allow-listed settlement before delegating to the inner signer.
             Account::PolicyGuarded { inner, policy } => {
-                if let Err(violation) = policy.check(tx.to(), tx.input().as_ref(), tx.value()) {
+                if let Err(violation) =
+                    policy.check(inner.address(), tx.to(), tx.input().as_ref(), tx.value())
+                {
                     tracing::error!(%violation, "settlement policy: refusing to sign a non-settlement transaction");
                     return Err(alloy::signers::Error::message(violation));
                 }
@@ -217,11 +219,20 @@ impl Account {
             Account::Address(_) => Err(alloy::signers::Error::UnsupportedOperation(
                 alloy::signers::UnsupportedSignerOperation::SignHash,
             )),
-            // EIP-7702 authorization signing (a hash, not a tx) is delegated — the
-            // settlement-tx policy applies to `sign_transaction`, not auth hashes.
-            // `Box::pin` because this inherent async fn would otherwise be an
-            // infinitely-sized recursive future (unlike the async_trait sign_transaction).
-            Account::PolicyGuarded { inner, .. } => Box::pin(inner.sign_hash(hash)).await,
+            // REFUSE raw-hash signing on a guarded account. `sign_hash` is used for
+            // EIP-7702 authorization signing — an RCE could sign an Authorization
+            // delegating the submitter EOA to attacker code, bypassing the
+            // settle-only `sign_transaction` guard entirely. Refusing it closes that
+            // hole and makes a guarded account explicitly INCOMPATIBLE with EIP-7702
+            // parallel submission (wrap only a simple direct submitter, e.g. the
+            // single OP submitter). The `_ = hash` keeps the param used. (Codex #441 P0)
+            Account::PolicyGuarded { .. } => {
+                let _ = hash;
+                Err(alloy::signers::Error::message(
+                    "settlement policy: sign_hash refused on a PolicyGuarded account \
+                     (would bypass the settle-only guard; incompatible with EIP-7702)",
+                ))
+            }
         }
     }
 }
