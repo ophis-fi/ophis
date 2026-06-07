@@ -7,7 +7,7 @@ index 6a95e9f..b3d676c 100644
  var DEFAULT_QUOTE_VALIDITY = 60 * 30;
  var DEFAULT_SLIPPAGE_BPS = 50;
 -var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = (0, import_sdk_config.mapSupportedNetworks)(DEFAULT_SLIPPAGE_BPS);
-+var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = { ...(0, import_sdk_config.mapSupportedNetworks)(DEFAULT_SLIPPAGE_BPS), 999: DEFAULT_SLIPPAGE_BPS };
++var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = { ...(0, import_sdk_config.mapSupportedNetworks)(DEFAULT_SLIPPAGE_BPS), 999: DEFAULT_SLIPPAGE_BPS, 10: DEFAULT_SLIPPAGE_BPS };
  var SIGN_SCHEME_MAP = {
    [import_sdk_order_book.EcdsaSigningScheme.EIP712]: import_sdk_order_book.SigningScheme.EIP712,
    [import_sdk_order_book.EcdsaSigningScheme.ETHSIGN]: import_sdk_order_book.SigningScheme.ETHSIGN
@@ -20,7 +20,7 @@ index 3e0c67f..fed19a5 100644
  var DEFAULT_QUOTE_VALIDITY = 60 * 30;
  var DEFAULT_SLIPPAGE_BPS = 50;
 -var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = mapSupportedNetworks(DEFAULT_SLIPPAGE_BPS);
-+var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = { ...mapSupportedNetworks(DEFAULT_SLIPPAGE_BPS), 999: DEFAULT_SLIPPAGE_BPS };
++var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = { ...mapSupportedNetworks(DEFAULT_SLIPPAGE_BPS), 999: DEFAULT_SLIPPAGE_BPS, 10: DEFAULT_SLIPPAGE_BPS };
  var SIGN_SCHEME_MAP = {
    [EcdsaSigningScheme.EIP712]: SigningScheme.EIP712,
    [EcdsaSigningScheme.ETHSIGN]: SigningScheme.ETHSIGN
