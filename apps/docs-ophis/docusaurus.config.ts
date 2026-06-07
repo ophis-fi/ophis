@@ -53,12 +53,17 @@ const config: Config = {
   headTags: [
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
     {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'}},
-    // GA4 (gtag) + Consent Mode v2 (default-denied). Done manually rather than via
+    // GA4 (gtag) + Consent Mode v2, REGION-SCOPED. Done manually rather than via
     // the preset `gtag` option so the consent-default is GUARANTEED to run before
     // gtag('config') (so GA4 never sets cookies pre-consent). GA4 Enhanced
     // Measurement auto-tracks SPA route page-views via History events, so no
     // Docusaurus-plugin route hook is needed. docs.ophis.fi has no CSP.
-    // A future opt-in banner can call gtag('consent','update',{analytics_storage:'granted'}).
+    // analytics_storage is GRANTED by default for rest-of-world (so reports
+    // populate) and DENIED for the EEA/UK/CH region (cookieless until opt-in);
+    // gtag.js resolves the region from Google's IP-geo. A returning visitor's
+    // explicit choice (localStorage 'ophis_consent') is re-applied, overriding
+    // the regional default. The opt-in/opt-out banner is mounted via the
+    // clientModules entry below (src/consent-banner.ts).
     // Inline bootstrap FIRST (synchronous, runs at parse time) so the consent
     // default is queued before the async gtag.js can execute, even from cache.
     {
@@ -66,7 +71,11 @@ const config: Config = {
       attributes: {},
       innerHTML:
         "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}" +
-        "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'});" +
+        "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'granted'});" +
+        "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'," +
+        "region:['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','GB','CH']," +
+        "wait_for_update:500});" +
+        "try{var c=localStorage.getItem('ophis_consent');if(c==='granted'||c==='denied')gtag('consent','update',{analytics_storage:c});}catch(e){}" +
         "gtag('js',new Date());gtag('config','G-NG9YX5G9CM',{anonymize_ip:true});",
     },
     {tagName: 'script', attributes: {async: 'true', src: 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM'}},
@@ -88,6 +97,11 @@ const config: Config = {
   stylesheets: [
     'https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap',
   ],
+
+  // Client-side opt-in/opt-out consent banner. Runs on every page; upgrades or
+  // revokes Consent Mode analytics_storage and persists the choice. Pairs with
+  // the region-scoped consent defaults in headTags above.
+  clientModules: ['./src/consent-banner.ts'],
 
   presets: [
     [
