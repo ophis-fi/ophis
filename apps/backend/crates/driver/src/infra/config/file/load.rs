@@ -410,7 +410,38 @@ async fn load_account(account: file::Account, chain_id: Option<u64>) -> Account 
                 .into()
         }
         file::Account::Address(address) => Account::Address(address),
+        file::Account::PolicyGuarded {
+            guarded,
+            settlement_targets,
+            require_zero_value,
+        } => {
+            // Recursively load the inner signer (async recursion -> Box::pin).
+            let inner = Box::pin(load_account(*guarded, chain_id)).await;
+            let allowed = settlement_targets
+                .into_iter()
+                .map(|t| solver::AllowedTarget {
+                    address: t.address,
+                    selectors: t.selectors.iter().map(|s| parse_settlement_selector(s)).collect(),
+                })
+                .collect();
+            Account::PolicyGuarded {
+                inner: Box::new(inner),
+                policy: solver::SettlementPolicy { allowed, require_zero_value },
+            }
+        }
     }
+}
+
+/// Parse a `0x`-hex 4-byte function selector from an `account.policy-guarded`
+/// settlement target. Panics (startup config validation) on malformed or
+/// wrong-length input — consistent with the rest of `load_account`.
+fn parse_settlement_selector(s: &str) -> [u8; 4] {
+    let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+    let bytes = alloy::hex::decode(hex)
+        .unwrap_or_else(|e| panic!("invalid settlement-target selector {s:?}: {e}"));
+    bytes.try_into().unwrap_or_else(|v: Vec<u8>| {
+        panic!("settlement-target selector {s:?} must be exactly 4 bytes, got {}", v.len())
+    })
 }
 
 /// Read a 32-byte hex-encoded private key from disk.

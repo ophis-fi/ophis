@@ -600,6 +600,46 @@ enum Account {
     /// *unable* to sign transactions as alloy does not support *implicit*
     /// node-side signing.
     Address(eth::Address),
+    /// (#441) Wrap an inner account with a fail-closed settle()-only signing
+    /// policy: the signer refuses to sign any transaction that is not an
+    /// allow-listed settlement (an allowed `(target, selector)` with zero value),
+    /// before delegating to the inner key. Reduces a driver-process compromise
+    /// from "sign a crafted tx to drain the gas float" to "can only replay
+    /// legitimate settlements".
+    ///
+    /// OPT-IN: the default config uses a bare signer, so this is byte-inert until
+    /// an operator wraps their account with it. VALIDATE the allow-set on a
+    /// testnet first — a wrong/missing entry rejects *legitimate* settlements and
+    /// would wedge the solver.
+    PolicyGuarded {
+        /// The inner signer that actually holds the key (any account variant).
+        guarded: Box<Account>,
+        /// The contracts + 4-byte selectors the submitter may call. On Optimism
+        /// this is the GPv2Settlement address with the `settle` selector; add the
+        /// `(flashloan-router, flashLoanAndSettle)` pair for deployments that use
+        /// flashloans.
+        #[serde(rename = "settlement-targets")]
+        settlement_targets: Vec<SettlementTarget>,
+        /// Refuse any tx carrying non-zero ETH value (settlements never send
+        /// value). Defaults to `true`.
+        #[serde(rename = "require-zero-value", default = "default_require_zero_value")]
+        require_zero_value: bool,
+    },
+}
+
+/// One allow-listed settlement target for [`Account::PolicyGuarded`] (#441).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+struct SettlementTarget {
+    /// The contract the submitter may call (e.g. GPv2Settlement).
+    address: eth::Address,
+    /// Permitted 4-byte function selectors as `0x`-hex strings (e.g.
+    /// `"0x13d79a0b"` for `settle`). Parsed + length-checked at load time.
+    selectors: Vec<String>,
+}
+
+fn default_require_zero_value() -> bool {
+    true
 }
 
 #[serde_as]
@@ -1203,6 +1243,39 @@ enum AtBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// (#441) The opt-in `policy-guarded` account must deserialize as
+    /// `PolicyGuarded` and NOT be mis-disambiguated by the untagged enum into a
+    /// bare-signer variant. Also checks the recursive inner account, the selector
+    /// passthrough, and the `require-zero-value` default.
+    #[test]
+    fn policy_guarded_account_deserializes_and_disambiguates() {
+        let toml = r#"
+            guarded = { path = "/run/ophis/driver.key" }
+            settlement-targets = [
+                { address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] },
+            ]
+        "#;
+        let account: Account = toml::from_str(toml).expect("policy-guarded account should parse");
+        match account {
+            Account::PolicyGuarded { guarded, settlement_targets, require_zero_value } => {
+                assert!(matches!(*guarded, Account::PrivateKeyFile { .. }), "inner = key file");
+                assert_eq!(settlement_targets.len(), 1);
+                assert_eq!(settlement_targets[0].selectors, vec!["0x13d79a0b".to_string()]);
+                assert!(require_zero_value, "require-zero-value defaults to true");
+            }
+            other => panic!("expected PolicyGuarded, got {other:?}"),
+        }
+    }
+
+    /// A bare key-file account must still parse as `PrivateKeyFile` (the default,
+    /// unguarded path) — i.e. adding the new variant didn't break disambiguation.
+    #[test]
+    fn bare_key_file_account_still_deserializes_unguarded() {
+        let account: Account =
+            toml::from_str(r#"path = "/run/ophis/driver.key""#).expect("key-file account should parse");
+        assert!(matches!(account, Account::PrivateKeyFile { .. }));
+    }
 
     // ────────────────────────────────────────────────────────────────────
     // Phase 2 audit C4 sub-pieces + L1 — config-time range validators
