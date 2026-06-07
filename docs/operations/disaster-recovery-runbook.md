@@ -3,7 +3,7 @@
 **Audience:** operator (Clement; any successor) responding to a Mac mini failure event.
 **Last updated:** 2026-05-20 (long-tail 6.x).
 **Related:**
-- `docs/operations/founder-bus-factor.md` — strategy + addresses + decision authority
+- `docs/operations/founder-bus-factor.private.md` — strategy + addresses + decision authority
 - `docs/operations/submitter-pk-backup-runbook.md` — PK restore (Section 5.1 in bus-factor)
 - `docs/operations/op-erpc-runbook.md` — RPC layer ops
 - `docs/architecture/2026-05-18-submitter-pk-custody-adr.md` — key custody choices
@@ -63,7 +63,7 @@ The submitter PK may or may not have been compromised in the loss event. **Assum
 - If the Mac was unencrypted at rest (FileVault off): assume PK is compromised.
 - If you only lost the live machine but offsite backup is intact and air-gapped: PK is likely NOT compromised.
 
-**If compromised:** before any other recovery step, follow `docs/operations/founder-bus-factor.md` §4.2 (Rotate the submitter EOA). The driver allowlist EOA on `GPv2AllowListAuthentication` must be swapped via Safe multisig vote BEFORE you restore the old PK anywhere. While the vote is pending, the protocol cannot settle — this is the right state to be in.
+**If compromised:** before any other recovery step, follow `docs/operations/founder-bus-factor.private.md` §4.2 (Rotate the submitter EOA). The driver allowlist EOA on `GPv2AllowListAuthentication` must be swapped via Safe multisig vote BEFORE you restore the old PK anywhere. While the vote is pending, the protocol cannot settle — this is the right state to be in.
 
 ### Step 1 — provision replacement host
 
@@ -182,7 +182,7 @@ CF Tunnel runs as a launchd agent on the Mac mini today; the equivalent on Linux
 - [ ] Backup procedures re-armed (PK USB plugged back in offsite location; pg_dump cron restored)
 - [ ] If on cloud emergency host: plan move-back to physical within 7 days
 - [ ] If EOA rotated in Step 0: confirm new EOA is allowlisted via on-chain `addSolver` event
-- [ ] Update `docs/operations/founder-bus-factor.md` with the post-incident reality (new host, new EOA, what was lost, what was preserved)
+- [ ] Update `docs/operations/founder-bus-factor.private.md` with the post-incident reality (new host, new EOA, what was lost, what was preserved)
 
 ## What this runbook does NOT cover
 
