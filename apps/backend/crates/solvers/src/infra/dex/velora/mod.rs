@@ -123,6 +123,159 @@ fn validate_router_allowlist(router: &Address) -> Result<(), Error> {
     }
 }
 
+/// The Velora `/prices` + `/transactions` `side` parameter for a CoW order
+/// side. SELL = exactIn, BUY = exactOut.
+fn velora_side(side: order::Side) -> &'static str {
+    match side {
+        order::Side::Sell => "SELL",
+        order::Side::Buy => "BUY",
+    }
+}
+
+/// Pad `src` by `bps` basis points, rounding the tolerance UP. Used to size
+/// the exactOut committed input/allowance to Velora's encoded `maxSrc`
+/// (`srcAmount * (1 + slippage)`). Rounding up (div_ceil, matching
+/// `Slippage::add`) guarantees the allowance never under-covers, so the swap
+/// can't revert for insufficient allowance. Saturating arithmetic mirrors
+/// `Slippage::add` — a `U256`-overflowing input is already non-settleable.
+fn pad_src_with_bps(src: U256, bps: u16) -> U256 {
+    let tolerance = src
+        .saturating_mul(U256::from(bps))
+        .div_ceil(U256::from(10_000u16));
+    src.saturating_add(tolerance)
+}
+
+/// Assemble the validated [`dex::Swap`] from a Velora `priceRoute` and the
+/// built calldata. Pure (no I/O) so the side-dependent exactIn/exactOut
+/// invariants are unit-testable without the live API.
+///
+/// **Buffer-siphon defense (audit 2026-05-21, mirrors KyberSwap).** Both
+/// `src_amount` and `dest_amount` come from Velora's API and are fully
+/// attacker-controlled if an edge is compromised (DNS hijack, CA compromise,
+/// malicious CDN worker). We pin the order's FIXED side against
+/// `order.amount`:
+///
+/// - **SELL (exactIn):** the input is fixed. Pin `src_amount == order.amount`
+///   and grant an allowance of exactly `src_amount` — the router can never
+///   pull more than the user is selling, so it can't reach Settlement's
+///   transient buffer balance.
+/// - **BUY (exactOut):** the output is fixed. Pin `dest_amount ==
+///   order.amount`. The input is intrinsically variable, so we grant a
+///   bounded allowance of `src_amount * (1 + slippage)` (the same max-input
+///   Velora bakes into the calldata) — NOT an unbounded `U256::MAX` (the
+///   anti-pattern OKX's buy path uses). An inflated `src_amount` from a
+///   poisoned edge is still bounded downstream: the framework's
+///   [`dex::Swap::satisfies`] rejects any solution whose input exceeds the
+///   user's signed max-sell (`order.sell.amount`), and the on-chain
+///   settlement reverts if the executed input breaches that limit.
+fn build_swap(
+    order: &dex::Order,
+    slippage: &dex::Slippage,
+    prices: &dto::PriceRoute,
+    router: Address,
+    calldata: Vec<u8>,
+) -> Result<dex::Swap, Error> {
+    // Parse gas as decimal string. /transactions returns no `gas` when
+    // `ignoreChecks=true` is set (which we always do because the user is a
+    // smart contract), so use the /prices estimate (`gasCost`). Pad by 50%
+    // to mirror the kyberswap convention.
+    let gas_estimate: u64 = prices
+        .gas_cost
+        .trim()
+        .parse::<u64>()
+        .map_err(|_| Error::GasCalculationFailed)?;
+    let gas_u256 = U256::from(gas_estimate);
+    let gas = gas_u256
+        .checked_add(gas_u256 / U256::from(2))
+        .ok_or(Error::GasCalculationFailed)?;
+
+    // Pin the fixed side against the order amount, then size the COMMITTED
+    // INPUT. This single value is used for BOTH the solution's modeled input
+    // (what the user is charged, via `into_dex_solution`) AND the ERC-20
+    // allowance granted to the router. Keeping them equal is the exactOut
+    // safety invariant: the user is charged exactly the maximum the router
+    // can pull, so a compromised API consuming the full approval skims only
+    // from what the user already committed (bounded by their signed max-sell),
+    // never from Settlement's shared transient buffer.
+    let committed_input = match order.side {
+        order::Side::Sell => {
+            if prices.src_amount != order.amount.get() {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "/prices returned src_amount {:?}, expected exactIn order \
+                         amount {:?}",
+                        prices.src_amount,
+                        order.amount.get()
+                    ),
+                });
+            }
+            // exactIn: the input is fixed; allowance == input == order amount.
+            prices.src_amount
+        }
+        order::Side::Buy => {
+            if prices.dest_amount != order.amount.get() {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "/prices returned dest_amount {:?}, expected exactOut order \
+                         amount {:?}",
+                        prices.dest_amount,
+                        order.amount.get()
+                    ),
+                });
+            }
+            if prices.src_amount.is_zero() {
+                // A zero input for a non-zero output is a degenerate /
+                // malformed route — refuse rather than model a 0 input.
+                return Err(Error::NotFound);
+            }
+            // exactOut: the router pulls *up to* the slippage-padded max
+            // input Velora bakes into the calldata. We model the user's
+            // charge AND the allowance at that same max so a full-approval
+            // pull can't reach the Settlement buffer; positive slippage
+            // between quote and settlement accrues to the buffer, not the
+            // user (the conservative exactOut model). Bounded by the order
+            // limit price via `Swap::satisfies` / `allowance_within_sell_limit`.
+            //
+            // The pad MUST use the SAME slippage clamped to MAX_SLIPPAGE_BPS
+            // that `build_transaction` sends to Velora (Codex P2, PR #477):
+            // when the configured slippage exceeds the cap, Velora's encoded
+            // `maxSrc` uses the clamped bps, so sizing the modeled
+            // input/allowance off the raw (larger) slippage would over-charge,
+            // leave artificial buffer surplus, and can trip
+            // `allowance_within_sell_limit` on otherwise-valid routes.
+            // div_ceil keeps it >= Velora's maxSrc so the allowance never
+            // under-covers.
+            let clamped_bps = slippage
+                .as_bps()
+                .unwrap_or(MAX_SLIPPAGE_BPS)
+                .min(MAX_SLIPPAGE_BPS);
+            pad_src_with_bps(prices.src_amount, clamped_bps)
+        }
+    };
+
+    Ok(dex::Swap {
+        calls: vec![dex::Call {
+            to: router,
+            calldata,
+        }],
+        input: eth::Asset {
+            token: order.sell,
+            amount: committed_input,
+        },
+        output: eth::Asset {
+            token: order.buy,
+            amount: prices.dest_amount,
+        },
+        allowance: dex::Allowance {
+            spender: router,
+            amount: dex::Amount::new(committed_input),
+        },
+        gas: eth::Gas(gas),
+    })
+}
+
 /// Bindings to the Velora aggregator API.
 pub struct Velora {
     client: super::Client,
@@ -214,10 +367,28 @@ impl Velora {
         order: &dex::Order,
         slippage: &dex::Slippage,
     ) -> Result<dex::Swap, Error> {
-        // Velora v6.2 supports both SELL (exactIn) and BUY (exactOut), but
-        // the CoW solver framework currently only models exactIn cleanly
-        // (kyberswap and OKX both reject BUY here). Match that behavior.
-        if order.side == order::Side::Buy {
+        // Velora v6.2 supports both SELL (exactIn) and BUY (exactOut).
+        // SELL pins the input (`srcAmount`) and lets `slippage` reduce the
+        // guaranteed output; BUY pins the output (`destAmount`) and lets
+        // `slippage` raise the max input. The side-dependent invariants
+        // (which amount is pinned, how the allowance is sized) live in the
+        // pure `build_swap` below. Unlike OKX/KyberSwap — which reject BUY
+        // because their wrapped APIs are exactIn-only — Velora's API
+        // genuinely serves exactOut, so we support it here. Funds are
+        // bounded downstream: the framework's `Swap::satisfies` rejects any
+        // solution whose input exceeds the user's signed max-sell, and
+        // `Swap::allowance_within_sell_limit` caps the approval at that
+        // limit so the slippage-padded BUY allowance can't reach the
+        // Settlement buffer.
+
+        // BUY + direct partner-fee skim is not yet net-output verified: the
+        // partner fee is taken from the destination token, so Velora's
+        // exactOut `destAmount` may be quoted GROSS of the fee, leaving the
+        // settlement short of the pinned output. Partner fee is disabled on
+        // OP (the only chain with exactOut enabled), so reject this combo
+        // until it has a dedicated test rather than risk a net-vs-gross
+        // shortfall on a live settlement.
+        if order.side == order::Side::Buy && self.partner_fee_bps.is_some() {
             return Err(Error::OrderNotSupported);
         }
 
@@ -281,61 +452,10 @@ impl Velora {
                 });
             }
 
-            // Parse gas as decimal string. /transactions returns no `gas`
-            // when `ignoreChecks=true` is set (which we always do because
-            // the user is a smart contract), so use the /prices estimate
-            // (`gasCost`). Pad by 50% to mirror the kyberswap convention.
-            let gas_estimate: u64 = prices
-                .gas_cost
-                .trim()
-                .parse::<u64>()
-                .map_err(|_| Error::GasCalculationFailed)?;
-            let gas_u256 = U256::from(gas_estimate);
-            let gas = gas_u256
-                .checked_add(gas_u256 / U256::from(2))
-                .ok_or(Error::GasCalculationFailed)?;
-
-            // Buffer-siphon defense (audit 2026-05-21, mirrors the
-            // KyberSwap check at infra/dex/kyberswap/mod.rs:187-196).
-            // The `prices.src_amount` we received from Velora's /prices
-            // endpoint is fully API-controlled. If a compromised or
-            // misbehaving edge returned `src_amount > order.amount.get()`,
-            // we'd grant Augustus an inflated allowance AND feed an
-            // over-sized input asset into the solution. With Settlement
-            // holding buffer balance from a concurrent settle (CIP-75
-            // partner fee accumulation, MEV-receipt, etc.), Augustus's
-            // `transferFrom(settlement, ...)` could pull from that
-            // buffer beyond the actual order amount. Fail fast rather
-            // than trust the API's `src_amount`.
-            if prices.src_amount != order.amount.get() {
-                return Err(Error::Api {
-                    code: -1,
-                    reason: format!(
-                        "/prices returned src_amount {:?}, expected {:?}",
-                        prices.src_amount,
-                        order.amount.get()
-                    ),
-                });
-            }
-            Ok(dex::Swap {
-                calls: vec![dex::Call {
-                    to: prices_router,
-                    calldata: tx.data,
-                }],
-                input: eth::Asset {
-                    token: order.sell,
-                    amount: prices.src_amount,
-                },
-                output: eth::Asset {
-                    token: order.buy,
-                    amount: prices.dest_amount,
-                },
-                allowance: dex::Allowance {
-                    spender: prices_router,
-                    amount: dex::Amount::new(prices.src_amount),
-                },
-                gas: eth::Gas(gas),
-            })
+            // Pure assembly + side-dependent integrity checks. Extracted so
+            // the exactIn vs exactOut invariants are unit-testable without
+            // hitting the live API.
+            build_swap(order, slippage, &prices, prices_router, tx.data)
         }
         .instrument(tracing::trace_span!("velora-swap", id = %id))
         .await
@@ -346,9 +466,13 @@ impl Velora {
         let mut query = vec![
             ("srcToken", format!("{:#x}", order.sell.0.0)),
             ("destToken", format!("{:#x}", order.buy.0.0)),
-            // Velora's API takes the raw integer in source-token units.
+            // `amount` is denominated in the FIXED side's token: source
+            // units for SELL (exactIn), destination units for BUY
+            // (exactOut). `order.amount` already follows this convention
+            // (`dex::Order::new` picks sell.amount for SELL, buy.amount
+            // for BUY), so the same line serves both sides.
             ("amount", order.amount.get().to_string()),
-            ("side", "SELL".to_string()),
+            ("side", velora_side(order.side).to_string()),
             ("network", self.chain_id.to_string()),
             ("version", API_VERSION.to_string()),
             // CoW Settlement is a smart contract — Velora's default
@@ -399,12 +523,21 @@ impl Velora {
             MAX_SLIPPAGE_BPS,
         );
 
+        // `/transactions` takes `srcAmount` XOR `destAmount` — the fixed
+        // side. For SELL pin the input; for BUY pin the output and let
+        // Velora derive the slippage-padded max input.
+        let (src_amount, dest_amount) = match order.side {
+            order::Side::Sell => (Some(order.amount.get()), None),
+            order::Side::Buy => (None, Some(order.amount.get())),
+        };
+
         let body = dto::TransactionRequest {
             src_token: order.sell.0,
             src_decimals: prices.src_decimals,
             dest_token: order.buy.0,
             dest_decimals: prices.dest_decimals,
-            src_amount: order.amount.get(),
+            src_amount,
+            dest_amount,
             slippage: slippage_clamped as u32,
             user_address: self.settlement_contract,
             receiver: self.settlement_contract,
@@ -531,5 +664,156 @@ impl From<util::http::RoundtripError<dto::ApiError>> for Error {
 impl Error {
     fn classify_error(err: &dto::ApiError) -> Self {
         Velora::classify_error(err)
+    }
+}
+
+#[cfg(test)]
+mod build_swap_tests {
+    use {
+        super::*,
+        crate::domain::{dex::Amount, dex::Order, dex::Slippage, eth::TokenAddress, order::Side},
+        alloy::primitives::{address, U256},
+    };
+
+    const ROUTER: Address = address!("0x6a000f20005980200259b80c5102003040001068");
+    // USDC.e / native-USDC on OP (6 decimals).
+    const USDC: Address = address!("0x0b2c639c533813f4aa9d7837caf62653d097ff85");
+    // WETH on OP (18 decimals).
+    const WETH: Address = address!("0x4200000000000000000000000000000000000006");
+
+    /// Construct a `dto::PriceRoute` fixture. `raw` is irrelevant to
+    /// `build_swap` (it's only echoed to `/transactions`, which runs
+    /// before this function), so `Null` is fine.
+    fn price_route(src_amount: U256, dest_amount: U256) -> dto::PriceRoute {
+        dto::PriceRoute {
+            src_amount,
+            src_decimals: 6,
+            dest_amount,
+            dest_decimals: 18,
+            contract_address: ROUTER,
+            token_transfer_proxy: ROUTER,
+            gas_cost: "150000".to_string(),
+            raw: serde_json::Value::Null,
+        }
+    }
+
+    fn order(side: Side, sell: Address, buy: Address, amount: U256) -> Order {
+        Order {
+            sell: TokenAddress(sell),
+            buy: TokenAddress(buy),
+            side,
+            amount: Amount::new(amount),
+            owner: address!("0x0494f503912c101bfd76b88e4f5d8a33de284d1a"),
+        }
+    }
+
+    // --- SELL (exactIn): input is pinned, allowance is exact ---
+
+    #[test]
+    fn sell_pins_src_and_grants_exact_allowance() {
+        let sell_amount = U256::from(100_000_000_000_000_000_u128); // 0.1 WETH
+        let dest_out = U256::from(180_000_000_u128); // 180 USDC
+        let o = order(Side::Sell, WETH, USDC, sell_amount);
+        let p = price_route(sell_amount, dest_out);
+
+        let swap = build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![]).unwrap();
+
+        assert_eq!(swap.input.token, o.sell);
+        assert_eq!(swap.input.amount, sell_amount);
+        assert_eq!(swap.output.token, o.buy);
+        assert_eq!(swap.output.amount, dest_out);
+        assert_eq!(swap.allowance.spender, ROUTER);
+        // Input is fixed → allowance is exactly the input, no slippage pad.
+        assert_eq!(swap.allowance.amount.get(), sell_amount);
+    }
+
+    #[test]
+    fn sell_rejects_src_mismatch() {
+        let sell_amount = U256::from(100_000_000_000_000_000_u128);
+        let o = order(Side::Sell, WETH, USDC, sell_amount);
+        // API returns a src_amount that doesn't match the exactIn order.
+        let p = price_route(sell_amount + U256::from(1), U256::from(180_000_000_u128));
+
+        let err = build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![]).unwrap_err();
+        assert!(matches!(err, Error::Api { .. }), "got {err:?}");
+    }
+
+    // --- BUY (exactOut): output is pinned, allowance is slippage-padded ---
+
+    #[test]
+    fn buy_pins_dest_and_grants_slippage_padded_allowance() {
+        let buy_amount = U256::from(45_900_000_000_000_000_u128); // 0.0459 WETH out
+        let src_in = U256::from(74_764_580_u128); // ~74.76 USDC in
+        // Buy WETH paying USDC: sell=USDC, buy=WETH, amount=the WETH out.
+        let o = order(Side::Buy, USDC, WETH, buy_amount);
+        let p = price_route(src_in, buy_amount);
+
+        let slippage = Slippage::one_percent();
+        let swap = build_swap(&o, &slippage, &p, ROUTER, vec![]).unwrap();
+
+        let max_src = slippage.add(src_in);
+        assert_eq!(swap.input.token, o.sell);
+        assert_eq!(swap.output.token, o.buy);
+        assert_eq!(swap.output.amount, buy_amount);
+        assert_eq!(swap.allowance.spender, ROUTER);
+        // exactOut safety invariant: the modeled input (user charge) and the
+        // allowance are BOTH the slippage-padded max input, and equal to each
+        // other — so a full-approval pull can't reach the buffer. Both exceed
+        // the raw estimate by the slippage pad.
+        assert_eq!(swap.input.amount, max_src);
+        assert_eq!(swap.allowance.amount.get(), max_src);
+        assert_eq!(swap.input.amount, swap.allowance.amount.get());
+        assert!(max_src > src_in);
+    }
+
+    #[test]
+    fn pad_src_with_bps_rounds_up() {
+        assert_eq!(pad_src_with_bps(U256::from(1000u64), 100), U256::from(1010u64)); // 1%
+        assert_eq!(pad_src_with_bps(U256::from(1000u64), 2000), U256::from(1200u64)); // 20%
+        assert_eq!(pad_src_with_bps(U256::from(101u64), 100), U256::from(103u64)); // 1.01 -> ceil 2
+        assert_eq!(pad_src_with_bps(U256::from(1000u64), 0), U256::from(1000u64)); // no pad
+    }
+
+    #[test]
+    fn buy_clamps_committed_input_to_max_slippage() {
+        let buy_amount = U256::from(45_900_000_000_000_000_u128);
+        let src_in = U256::from(74_764_580_u128);
+        let o = order(Side::Buy, USDC, WETH, buy_amount);
+        let p = price_route(src_in, buy_amount);
+
+        // 50% slippage — above MAX_SLIPPAGE_BPS (20%). build_transaction clamps
+        // the bps it sends to Velora to 20%, so the calldata's maxSrc is the
+        // 20% pad. The modeled input/allowance MUST match that clamp, not the
+        // raw 50% — otherwise the solution over-charges / over-approves beyond
+        // what the calldata can spend (Codex P2 on PR #477).
+        let swap = build_swap(&o, &Slippage::from_bps(5000), &p, ROUTER, vec![]).unwrap();
+
+        let clamped = pad_src_with_bps(src_in, MAX_SLIPPAGE_BPS); // 20% pad
+        let unclamped = pad_src_with_bps(src_in, 5000); // 50% pad — must NOT be used
+        assert_eq!(swap.input.amount, clamped, "input padded by clamped 20%, not raw 50%");
+        assert_eq!(swap.allowance.amount.get(), clamped);
+        assert!(clamped < unclamped, "clamp must reduce the pad vs the raw 50%");
+    }
+
+    #[test]
+    fn buy_rejects_dest_mismatch() {
+        let buy_amount = U256::from(45_900_000_000_000_000_u128);
+        let o = order(Side::Buy, USDC, WETH, buy_amount);
+        // API returns a dest_amount that doesn't match the exactOut order.
+        let p = price_route(U256::from(74_764_580_u128), buy_amount - U256::from(1));
+
+        let err = build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![]).unwrap_err();
+        assert!(matches!(err, Error::Api { .. }), "got {err:?}");
+    }
+
+    #[test]
+    fn buy_rejects_zero_src() {
+        let buy_amount = U256::from(45_900_000_000_000_000_u128);
+        let o = order(Side::Buy, USDC, WETH, buy_amount);
+        // Degenerate: zero input for a non-zero output.
+        let p = price_route(U256::ZERO, buy_amount);
+
+        let err = build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![]).unwrap_err();
+        assert!(matches!(err, Error::NotFound), "got {err:?}");
     }
 }
