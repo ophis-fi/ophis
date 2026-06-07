@@ -64,7 +64,7 @@ const tokensStateAtom = atom(async (get) => {
             // are rebuilt from storage on load, so without this guard the dead
             // token would re-enter the map (and the USD-price queue) until the
             // next background list refresh. See isExcludedListToken.
-            if (isExcludedListToken(tokenAddressKey)) return
+            if (isExcludedListToken(chainId, tokenAddressKey)) return
 
             if (lpTokenProvider) {
               tokenInfo.lpTokenProvider = lpTokenProvider
@@ -142,7 +142,15 @@ export const allActiveTokensAtom = atom(async (get) => {
     tokenSources.push({ [nativeToken.address.toLowerCase()]: nativeToken as TokenInfo })
   }
 
-  const tokens = tokenMapToListWithLogo(tokenSources, chainId)
+  // Final exclusion pass over the merged sources. tokensStateAtom already drops
+  // excluded tokens from list-derived entries, but favorites and user-added
+  // tokens are merged here straight from persisted state and bypass that guard.
+  // Without this, a user who favorited or manually imported the dead OVM_ETH
+  // before the exclusion shipped could still shadow native ETH in the symbol
+  // map and enqueue a 0xDead USD-price lookup.
+  const tokens = tokenMapToListWithLogo(tokenSources, chainId).filter(
+    (token) => !isExcludedListToken(chainId, token.address),
+  )
 
   return { tokens, chainId }
 })
