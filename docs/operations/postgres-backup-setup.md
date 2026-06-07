@@ -2,7 +2,7 @@
 
 **Audience:** operator (Clement / successor) enabling the daily Postgres backup.
 **Last updated:** 2026-05-20.
-**Related:** `docs/operations/disaster-recovery-runbook.md` (Step 5)
+**Related:** `docs/operations/disaster-recovery-runbook.private.md` (Step 5)
 
 ## What this does
 
@@ -104,7 +104,7 @@ If you want zero cloud spend, write a separate weekly job that copies the local 
 
 ## Restore procedure
 
-Documented at length in `docs/operations/disaster-recovery-runbook.md` Step 5. Quick version:
+Documented at length in `docs/operations/disaster-recovery-runbook.private.md` Step 5. Quick version:
 
 ```bash
 # Local restore (use most recent dump)
