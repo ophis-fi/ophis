@@ -557,7 +557,7 @@ if command -v tmutil >/dev/null 2>&1; then
     echo "      of driver.toml was made BEFORE this script's Tier-1.5 upgrade,"
     echo "      the snapshots may still contain the old PK literal. Tier-1.5 does"
     echo "      not scrub them retroactively — that requires either:"
-    echo "        (a) Rotating the submitter EOA (see founder-bus-factor.md §4.2)"
+    echo "        (a) Rotating the submitter EOA (see founder-bus-factor.private.md §4.2)"
     echo "        (b) sudo tmutil deletelocalsnapshots / (wipes ALL APFS snapshots)"
     echo "      Plus checking Time Machine retention if enabled."
     echo ""

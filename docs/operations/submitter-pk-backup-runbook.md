@@ -4,7 +4,7 @@
 post-bus-factor).
 **Last updated:** 2026-05-19 (long-tail 6.x).
 **Related:**
-- `docs/operations/founder-bus-factor.md` Section 5.1 — strategy & rationale
+- `docs/operations/founder-bus-factor.private.md` Section 5.1 — strategy & rationale
 - `docs/architecture/2026-05-18-submitter-pk-custody-adr.md` — custody decisions
 
 ## What this covers
