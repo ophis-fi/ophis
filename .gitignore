@@ -27,6 +27,11 @@ infra/shared/cron/safe-drift-check.sh
 # These details enable recon if leaked. Keep on operator's machine only.
 docs/operations/*.private.md
 
+# Local-only internal security docs — open vulnerabilities, missing hardening,
+# attack surface, incident history. Never publish; only defensible measures go
+# in the published docs (apps/docs-ophis). Keep on operator's machine only.
+docs/security/*.local.md
+
 # Superpowers brainstorming session artifacts (visual companion)
 .superpowers/
 

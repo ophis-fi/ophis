@@ -17,7 +17,6 @@ The frontend at https://ophis.fi targets only the live chain set. Reports agains
 **Do NOT open a public GitHub issue.** For anything that could affect users' funds, the protocol's solver budget, partner-fee accrual, or could enable settlement-on-forged-state:
 
 - **Email:** `clement@aleph.cloud` with subject prefix `[OPHIS SECURITY]`
-- **Telegram:** `@clawdartbot` direct message with the same prefix
 - **Signal / Matrix / encrypted alternative:** request a channel via email first
 
 We do not yet operate a public bug-bounty program. Disclosure incentives are negotiated case-by-case based on impact and demonstrated proof-of-concept.
@@ -33,7 +32,7 @@ Please include:
 
 - **First acknowledgement:** within 48 hours of receipt.
 - **Triage decision** (severity + initial mitigation plan): within 5 business days.
-- **Patch released:** depends on severity. Critical findings (loss-of-funds, settlement-on-forged-state, key disclosure) get an out-of-band emergency push within 72h of triage; the live stack runs on a single Mac mini and one operator (see `docs/operations/founder-bus-factor.md`), so coordination latency is real and disclosed upfront.
+- **Patch released:** depends on severity. Critical findings (loss-of-funds, settlement-on-forged-state, key disclosure) get an out-of-band emergency push within 72h of triage.
 
 ## Out of scope
 
@@ -41,7 +40,7 @@ The following are NOT considered vulnerabilities by this policy:
 
 - Anything in `apps/frontend/` that's pure upstream CoW Protocol code (file a report with [`cowprotocol/cowswap`](https://github.com/cowprotocol/cowswap) instead). Ophis-specific FE code lives under `apps/frontend/apps/cowswap-frontend/src/ophis/` and similar `ophis/`-prefixed paths.
 - Findings in `apps/backend/` against pure upstream CoW Protocol code (file with [`cowprotocol/services`](https://github.com/cowprotocol/services) instead). Ophis additions are marked with `ophis::` module paths or live in dedicated crates: `poison-recovery`, `retry-helper`, `configs`.
-- Theoretical attacks requiring nation-state level adversary capability against shared infrastructure (e.g. Cloudflare DNS control-plane compromise — already documented in `infra/optimism-mainnet/configs/erpc.yaml.tmpl` as accepted DoS-not-poisoning residual).
+- Theoretical attacks requiring nation-state level adversary capability against shared infrastructure (e.g. Cloudflare DNS control-plane compromise).
 - Findings against the deprecated infra dirs that were removed in #124 — `infra/optimism/`, `infra/hyperevm/`, `infra/katana/`, `infra/linea/`, `infra/mantle/`. These no longer exist.
 - DoS via known public-tier rate limits on free RPC providers (the eRPC consensus posture fails closed under low-participants — this is the intended behavior, not a vulnerability).
 
@@ -52,10 +51,10 @@ Examples of what we consider in scope (non-exhaustive):
 - Settlement-contract logic flaws in `contracts/src/` (GPv2Settlement, GPv2AllowListAuthentication, GPv2VaultRelayer).
 - Ophis-specific backend crates (`poison-recovery`, `retry-helper`, `configs`, settlement-state-machine in `driver`).
 - Partner-fee economic exploits (CIP-75 `priceImprovementBps` / `maxVolumeBps` paths).
-- Key custody compromise paths (Tier 1 file-PK exfiltration, Tier 2 KMS misuse — KMS not yet deployed).
+- Key custody compromise paths.
 - Frontend signing-path flaws under `apps/frontend/apps/cowswap-frontend/src/ophis/`.
 - eRPC consensus posture bypass (e.g. a configuration that lets a single-upstream answer be trusted for a critical method).
-- Submission-path leakage of in-flight signed settlement calldata (publicly known residual — escalating proof of concrete loss strengthens the report).
+- Submission-path or in-flight settlement-calldata handling flaws.
 
 ## Audit history
 
@@ -66,7 +65,3 @@ Examples of what we consider in scope (non-exhaustive):
 | 2026-05-19 | Phase 3 — Frontend; Phase 4 — OP infra | sharp-edges × 2 (Codex unavailable that day) | `docs/audits/2026-05-19-phase3-frontend-and-phase4-infra.md` |
 
 Phase 3 + 4 follow-ups were shipped across PRs #120-#138.
-
-## Threat model
-
-See `docs/security/threat-model.md` (incoming) for the formal STRIDE-style threat model covering settlement signing, partner-fee economics, key custody, eRPC posture, and submission MEV leakage.
