@@ -77,7 +77,7 @@ export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 // @cowprotocol/sdk-config + @cowprotocol/sdk-trading landed. See
 // cowProtocolContracts.ts for the full rationale.
 const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
-  10: '0x0000000000000000000000000000000000000000',     // OP — not deployed
+  10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',     // OP — deployed 2026-06-07 (tx 0xc0316c2c…c48e) + sdk patch
   4326: '0x0000000000000000000000000000000000000000',   // MegaETH — not deployed
   999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B',    // HyperEVM — PR #61 (deployed) + PR #65 (sdk patch)
 }

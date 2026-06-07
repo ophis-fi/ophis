@@ -17,8 +17,11 @@ import { isBarnBackendEnv } from './environments'
 const OPHIS_OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
 const OPHIS_OP_SETTLEMENT: `0x${string}` = '0x310784c7FCE12d578dA6f53460777bAc9718B859'
 const OPHIS_OP_VAULT_RELAYER: `0x${string}` = '0x83847EaB41ad9ea43809ce71569eB2e9daF51830'
-// ETH Flow is not deployed on OP for Ophis; empty disables EthFlow UI.
-const OPHIS_OP_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
+// CoWSwapEthFlow deployed on OP 2026-06-07 (tx 0xc0316c2c…c48e),
+// constructor-wired to the OP settlement (0x310784c7) + WETH (0x4200), WETH
+// allowance to vaultRelayer (0x83847EaB) = MAX. Enables native-ETH sells via
+// EthFlow. Backend autopilot indexes this contract (configs/autopilot.toml).
+const OPHIS_OP_ETH_FLOW: `0x${string}` = '0x764fE4aa1FF493cf39931c7923C8ff5837596504'
 
 // Ophis fork: MegaETH mainnet (chain 4326) contract addresses
 // Settlement + VaultRelayer deployed 2026-05-15 (CREATE2-deterministic, same as OP).
