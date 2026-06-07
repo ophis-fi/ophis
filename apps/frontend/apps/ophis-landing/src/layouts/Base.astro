@@ -68,8 +68,11 @@ const {
        is emitted verbatim and hashed by scripts/check-csp-hashes.mjs (its sha256
        must appear in public/_headers script-src). Gated to the production host so
        preview (*.pages.dev) + localhost traffic never reaches the property. Loads
-       gtag.js from googletagmanager.com (allowlisted in script-src); beacons go to
-       *.google-analytics.com (allowlisted in connect-src).
+       gtag.js FIRST-PARTY from the Cloudflare Google Tag Gateway endpoint
+       (/938g, same-origin, covered by script-src 'self'); the CF-served gtag.js
+       carries transport_url=/938g so beacons are first-party too — this is what
+       beats ad-blockers. The googletagmanager.com / *.google-analytics.com CSP
+       allowances are kept for resilience/fallback.
 
        Consent: analytics_storage is GRANTED by default for rest-of-world (so GA4
        reports populate) and DENIED for the EEA/UK/CH region (cookieless until the
@@ -111,7 +114,9 @@ const {
 
       var s = document.createElement('script');
       s.async = true;
-      s.src = 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM';
+      // First-party via Cloudflare Google Tag Gateway (endpoint /938g on the
+      // ophis.fi zone). Same-origin path -> resolves to https://ophis.fi/938g/...
+      s.src = '/938g/gtag/js?id=G-NG9YX5G9CM';
       document.head.appendChild(s);
       window.gtag('js', new Date());
       window.gtag('config', 'G-NG9YX5G9CM', { anonymize_ip: true });
