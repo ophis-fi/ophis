@@ -145,8 +145,19 @@ pub struct TransactionRequest {
     pub src_decimals: u8,
     pub dest_token: eth::Address,
     pub dest_decimals: u8,
-    #[serde_as(as = "serde_with::DisplayFromStr")]
-    pub src_amount: U256,
+    /// Exact INPUT amount — sent for SELL (exactIn) orders only. Velora's
+    /// `/transactions` accepts `srcAmount` XOR `destAmount`, never both:
+    /// the side is fixed by the echoed `priceRoute` and the other amount
+    /// is derived from it (with `slippage`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde_as(as = "Option<serde_with::DisplayFromStr>")]
+    pub src_amount: Option<U256>,
+    /// Exact OUTPUT amount — sent for BUY (exactOut) orders only. Velora
+    /// derives the max input (`srcAmount * (1 + slippage)`) internally and
+    /// bakes it into the calldata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde_as(as = "Option<serde_with::DisplayFromStr>")]
+    pub dest_amount: Option<U256>,
     /// Slippage in bps (e.g. `50` = 0.5%).
     pub slippage: u32,
     /// Settlement contract (`from`).
