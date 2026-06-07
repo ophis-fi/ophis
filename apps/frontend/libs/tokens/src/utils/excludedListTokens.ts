@@ -10,19 +10,26 @@
  * FIRST token registered under that symbol, the dead OVM_ETH entry shadows
  * native ETH: every native-ETH sell quotes 0xDead…0000 and the order book
  * answers NoLiquidity (it is not an EthFlow-eligible native sell, and the dead
- * contract has no routes). Excluding it at list ingestion lets "ETH" resolve to
- * native ETH and route through EthFlow as intended.
+ * contract has no routes). Excluding it lets "ETH" resolve to native ETH and
+ * route through EthFlow as intended.
  */
 export const LEGACY_OVM_ETH_ADDRESS = '0xDeadDeAddeAddEAddeadDEaDDEAdDeaDDeAD0000'
 
-const EXCLUDED_TOKEN_ADDRESSES = new Set<string>([LEGACY_OVM_ETH_ADDRESS.toLowerCase()])
+// The dead address is only the OVM_ETH placeholder on the OP stack. The same
+// vanity address can hold a real, labelled token on other chains, so the
+// exclusion is scoped per-chain rather than applied globally — excluding it
+// everywhere would risk hiding a legitimate token on a future-supported chain.
+const EXCLUDED_TOKENS_BY_CHAIN: Record<number, ReadonlySet<string>> = {
+  10: new Set([LEGACY_OVM_ETH_ADDRESS.toLowerCase()]), // Optimism mainnet
+  11155420: new Set([LEGACY_OVM_ETH_ADDRESS.toLowerCase()]), // OP Sepolia
+}
 
 /**
- * True when a token from a fetched token list must never enter the app's token
- * maps (selector, symbol lookup, address lookup). Matching is address-only and
- * case-insensitive; the excluded addresses are dead sentinels that are never a
- * legitimate tradeable token on any chain.
+ * True when a token must never enter the app's token maps (selector, symbol
+ * lookup, address lookup, USD-price queue) on the given chain. Matching is
+ * address-only and case-insensitive; the excluded entries are dead sentinels
+ * that are never a legitimate tradeable token on that chain.
  */
-export function isExcludedListToken(address: string): boolean {
-  return EXCLUDED_TOKEN_ADDRESSES.has(address.toLowerCase())
+export function isExcludedListToken(chainId: number, address: string): boolean {
+  return EXCLUDED_TOKENS_BY_CHAIN[chainId]?.has(address.toLowerCase()) ?? false
 }
