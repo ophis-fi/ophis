@@ -94,8 +94,10 @@ impl SettlementPolicy {
         // a value-0, empty-calldata transfer to the submitter's OWN address (see
         // mempools.rs cancellation tx). It moves no value and carries no calldata, so
         // it cannot drain anything — always allow it, or a guarded signer could never
-        // clear a stuck nonce (Codex #441 P2).
-        if to == own_address && input.is_empty() {
+        // clear a stuck nonce (Codex #441 P2). `value.is_zero()` is required
+        // unconditionally here (independent of `require_zero_value`): a value-carrying
+        // self-transfer is NOT a cancellation even if the value gate is disabled.
+        if to == own_address && input.is_empty() && value.is_zero() {
             return Ok(());
         }
         let target = self
@@ -173,6 +175,22 @@ mod tests {
         input.extend_from_slice(&[0u8; 32]);
         assert!(matches!(
             settle_only().check(OWN, Some(OWN), &input, U256::ZERO),
+            Err(PolicyViolation::DisallowedTarget(_))
+        ));
+    }
+
+    #[test]
+    fn self_cancel_requires_zero_value_even_when_value_gate_disabled() {
+        let p = SettlementPolicy {
+            allowed: vec![AllowedTarget { address: SETTLEMENT, selectors: vec![SETTLE] }],
+            require_zero_value: false,
+        };
+        // value-0 empty self-transfer is still a valid cancellation.
+        assert_eq!(p.check(OWN, Some(OWN), &[], U256::ZERO), Ok(()));
+        // ...but a VALUE-carrying self-transfer is NOT a cancellation, even with the
+        // value gate off — it falls through and is refused (own isn't a settlement target).
+        assert!(matches!(
+            p.check(OWN, Some(OWN), &[], U256::from(1)),
             Err(PolicyViolation::DisallowedTarget(_))
         ));
     }

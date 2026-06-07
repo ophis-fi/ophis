@@ -97,3 +97,31 @@ such guard anywhere in `crates/driver/src/` (verified).
    Clef entirely. Same true of the in-process wrapper, but the wrapper is free + simpler.
 
 End state, if key-out-of-process is ever funded: **wrapper + `Account::Kms`** (not Clef).
+
+## Built + Codex-reviewed (2026-06-07)
+
+Shipped on `feat/441-settle-only-policy-guard`: pure `SettlementPolicy` (11 tests) +
+`Account::PolicyGuarded` variant + untagged config + recursive loader. Default-off
+(opt-in variant). 128 driver lib tests pass; clippy clean. Two Codex rounds found and
+fixed three real money-path issues:
+
+- **[P0] `sign_hash` bypass** — a guarded account delegated `sign_hash`, so an RCE could
+  sign an EIP-7702 authorization delegating the submitter EOA to attacker code, bypassing
+  the settle-only tx guard. **Fixed:** `sign_hash` is REFUSED on a guarded account →
+  closes the bypass AND makes the account incompatible-by-failure with EIP-7702.
+- **[P2] self-cancellation** — `cancel_all` unsticks a stuck nonce with a value-0,
+  empty-calldata self-transfer (`to == signer`); the guard rejected it (calldata too
+  short). **Fixed:** `check(own_address, …)` always allows a `to == own && empty &&
+  value == 0` self-transfer (it can't drain anything); requires `value.is_zero()`
+  unconditionally so a value-carrying self-send is never mistaken for a cancellation.
+- **[P1/UX] EIP-7702 parallel submission** — delegated submissions rewrite settlements
+  into `forward()` calls the outer guard can't validate, and 7702 setup txs aren't
+  `settle()`. **Resolved by scope:** the guard is for a SINGLE DIRECT submitter (OP has
+  no `submission-accounts`); documented as incompatible with EIP-7702, and the `sign_hash`
+  refusal makes a misuse fail loudly rather than silently bypass. (A `PolicyGuarded` in
+  `submission_accounts` fails when signing `forward()` rather than at startup — documented,
+  not config-enforced; the testnet-validation gate catches it.)
+
+**Still gated before any OP enablement:** validate the allow-set on Sepolia with a real
+settlement (a wrong/missing entry rejects legitimate settlements), then flip the OP
+`driver.toml` account to the `policy-guarded` form.
