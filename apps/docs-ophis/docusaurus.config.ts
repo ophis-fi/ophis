@@ -78,7 +78,10 @@ const config: Config = {
         "try{var c=localStorage.getItem('ophis_consent');if(c==='granted'||c==='denied')gtag('consent','update',{analytics_storage:c});}catch(e){}" +
         "gtag('js',new Date());gtag('config','G-NG9YX5G9CM',{anonymize_ip:true});",
     },
-    {tagName: 'script', attributes: {async: 'true', src: 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM'}},
+    // First-party via Cloudflare Google Tag Gateway (endpoint /938g on the ophis.fi
+    // zone); same-origin path resolves to https://docs.ophis.fi/938g/... and the
+    // CF-served gtag.js routes beacons first-party too (beats ad-blockers).
+    {tagName: 'script', attributes: {async: 'true', src: '/938g/gtag/js?id=G-NG9YX5G9CM'}},
     // Site-level Organization structured data (Docusaurus emits a per-page
     // BreadcrumbList automatically; this adds the publisher entity for SEO/AEO).
     {

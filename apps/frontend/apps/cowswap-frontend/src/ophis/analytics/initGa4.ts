@@ -4,10 +4,11 @@
  * Why a bundled module instead of the standard inline snippet: the swap app
  * deploys to Cloudflare Pages under a strict CSP (public/_headers) with NO
  * 'unsafe-inline' in script-src, so an inline gtag bootstrap would be blocked.
- * This module is part of the 'self' bundle; it injects the external gtag.js
- * (allowed via the https://www.googletagmanager.com entry in script-src) and
- * runs the config from bundled code, so no inline <script> element exists.
- * Beacons to *.google-analytics.com are covered by `connect-src 'self' https:`.
+ * This module is part of the 'self' bundle; it injects gtag.js FIRST-PARTY from
+ * the Cloudflare Google Tag Gateway endpoint (/938g, same-origin, covered by
+ * script-src 'self') and runs the config from bundled code, so no inline
+ * <script> element exists. The CF-served gtag.js routes beacons first-party
+ * (transport_url=/938g), covered by `connect-src 'self' https:`.
  *
  * Gated to the production host so preview (*.pages.dev) and localhost traffic
  * never reach the property. SPA route-change page_views are not yet wired (the
@@ -81,7 +82,11 @@ export function initGa4(): void {
   const script = document.createElement('script')
   script.id = 'ophis-ga4'
   script.async = true
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}`
+  // First-party via Cloudflare Google Tag Gateway (endpoint /938g on the ophis.fi
+  // zone). Same-origin path -> https://swap.ophis.fi/938g/...; the CF-served
+  // gtag.js carries transport_url=/938g so beacons are first-party too (beats
+  // ad-blockers). Covered by script-src 'self'; connect-src 'self' covers beacons.
+  script.src = `/938g/gtag/js?id=${GA4_MEASUREMENT_ID}`
   document.head.appendChild(script)
 
   w.gtag('js', new Date())

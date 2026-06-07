@@ -114,9 +114,16 @@ gtag block in `Base.astro` (DOM-built bar, re-run check-csp-hashes after edits);
 inline) mounted from `initGa4()`; **docs** uses a `clientModules` entry
 (`src/consent-banner.ts`). All share the `localStorage['ophis_consent']` key.
 
-OPEN follow-up (optional): wire Cloudflare **Google Tag Gateway** (first-party
-tag serving) to recover hits lost to ad-blockers — see the analytics deploy
-notes. Requires a dashboard step (the scoped API token cannot enable it).
+DONE (2026-06-07): Cloudflare **Google Tag Gateway** (first-party tag serving)
+is enabled on the ophis.fi zone, endpoint **`/938g`** (measurementId
+G-NG9YX5G9CM, hideOriginalIp). All three surfaces load gtag.js from the
+same-origin first-party path (`/938g/gtag/js?id=...`) instead of
+googletagmanager.com; the CF-served gtag.js carries `transport_url=/938g`, so
+the measurement beacons are first-party too — this is what recovers hits lost to
+ad-blockers. Covered by each CSP's `'self'` (script-src + connect-src); the
+googletagmanager.com / *.google-analytics.com allowances are kept for fallback.
+The endpoint path is assigned by Cloudflare; if it ever rotates, update the
+`/938g` literal in Base.astro, docusaurus.config.ts, and initGa4.ts.
 
 ### (reference) swap CSP, as implemented
 
