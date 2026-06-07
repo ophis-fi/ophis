@@ -103,7 +103,7 @@ async function sanitizeList(list: TokenList): Promise<TokenList> {
   const tokens = list.tokens.reduce<TokenList['tokens']>((acc, token) => {
     const checksummed = isAddress(token.address.toLowerCase())
     if (!checksummed) return acc
-    if (isExcludedListToken(checksummed)) return acc
+    if (isExcludedListToken(token.chainId, checksummed)) return acc
     acc.push({ ...token, address: checksummed })
     return acc
   }, [])
