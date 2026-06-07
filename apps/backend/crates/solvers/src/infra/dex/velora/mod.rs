@@ -132,6 +132,19 @@ fn velora_side(side: order::Side) -> &'static str {
     }
 }
 
+/// Pad `src` by `bps` basis points, rounding the tolerance UP. Used to size
+/// the exactOut committed input/allowance to Velora's encoded `maxSrc`
+/// (`srcAmount * (1 + slippage)`). Rounding up (div_ceil, matching
+/// `Slippage::add`) guarantees the allowance never under-covers, so the swap
+/// can't revert for insufficient allowance. Saturating arithmetic mirrors
+/// `Slippage::add` — a `U256`-overflowing input is already non-settleable.
+fn pad_src_with_bps(src: U256, bps: u16) -> U256 {
+    let tolerance = src
+        .saturating_mul(U256::from(bps))
+        .div_ceil(U256::from(10_000u16));
+    src.saturating_add(tolerance)
+}
+
 /// Assemble the validated [`dex::Swap`] from a Velora `priceRoute` and the
 /// built calldata. Pure (no I/O) so the side-dependent exactIn/exactOut
 /// invariants are unit-testable without the live API.
@@ -219,14 +232,26 @@ fn build_swap(
             }
             // exactOut: the router pulls *up to* the slippage-padded max
             // input Velora bakes into the calldata. We model the user's
-            // charge AND the allowance at that same max (`slippage.add`
-            // div_ceils the tolerance so it never under-covers and the swap
-            // can't revert for insufficient allowance). Positive slippage
-            // between quote and settlement accrues to the protocol buffer
-            // rather than the user — the conservative exactOut model that
-            // keeps the buffer out of the trust path. Bounded by the order
+            // charge AND the allowance at that same max so a full-approval
+            // pull can't reach the Settlement buffer; positive slippage
+            // between quote and settlement accrues to the buffer, not the
+            // user (the conservative exactOut model). Bounded by the order
             // limit price via `Swap::satisfies` / `allowance_within_sell_limit`.
-            slippage.add(prices.src_amount)
+            //
+            // The pad MUST use the SAME slippage clamped to MAX_SLIPPAGE_BPS
+            // that `build_transaction` sends to Velora (Codex P2, PR #477):
+            // when the configured slippage exceeds the cap, Velora's encoded
+            // `maxSrc` uses the clamped bps, so sizing the modeled
+            // input/allowance off the raw (larger) slippage would over-charge,
+            // leave artificial buffer surplus, and can trip
+            // `allowance_within_sell_limit` on otherwise-valid routes.
+            // div_ceil keeps it >= Velora's maxSrc so the allowance never
+            // under-covers.
+            let clamped_bps = slippage
+                .as_bps()
+                .unwrap_or(MAX_SLIPPAGE_BPS)
+                .min(MAX_SLIPPAGE_BPS);
+            pad_src_with_bps(prices.src_amount, clamped_bps)
         }
     };
 
@@ -739,6 +764,35 @@ mod build_swap_tests {
         assert_eq!(swap.allowance.amount.get(), max_src);
         assert_eq!(swap.input.amount, swap.allowance.amount.get());
         assert!(max_src > src_in);
+    }
+
+    #[test]
+    fn pad_src_with_bps_rounds_up() {
+        assert_eq!(pad_src_with_bps(U256::from(1000u64), 100), U256::from(1010u64)); // 1%
+        assert_eq!(pad_src_with_bps(U256::from(1000u64), 2000), U256::from(1200u64)); // 20%
+        assert_eq!(pad_src_with_bps(U256::from(101u64), 100), U256::from(103u64)); // 1.01 -> ceil 2
+        assert_eq!(pad_src_with_bps(U256::from(1000u64), 0), U256::from(1000u64)); // no pad
+    }
+
+    #[test]
+    fn buy_clamps_committed_input_to_max_slippage() {
+        let buy_amount = U256::from(45_900_000_000_000_000_u128);
+        let src_in = U256::from(74_764_580_u128);
+        let o = order(Side::Buy, USDC, WETH, buy_amount);
+        let p = price_route(src_in, buy_amount);
+
+        // 50% slippage — above MAX_SLIPPAGE_BPS (20%). build_transaction clamps
+        // the bps it sends to Velora to 20%, so the calldata's maxSrc is the
+        // 20% pad. The modeled input/allowance MUST match that clamp, not the
+        // raw 50% — otherwise the solution over-charges / over-approves beyond
+        // what the calldata can spend (Codex P2 on PR #477).
+        let swap = build_swap(&o, &Slippage::from_bps(5000), &p, ROUTER, vec![]).unwrap();
+
+        let clamped = pad_src_with_bps(src_in, MAX_SLIPPAGE_BPS); // 20% pad
+        let unclamped = pad_src_with_bps(src_in, 5000); // 50% pad — must NOT be used
+        assert_eq!(swap.input.amount, clamped, "input padded by clamped 20%, not raw 50%");
+        assert_eq!(swap.allowance.amount.get(), clamped);
+        assert!(clamped < unclamped, "clamp must reduce the pad vs the raw 50%");
     }
 
     #[test]

@@ -53,6 +53,12 @@ impl Slippage {
         Self::new("0.01".parse().unwrap())
     }
 
+    /// Returns a slippage of `bps` basis points (e.g. `5000` = 50%).
+    #[cfg(test)]
+    pub fn from_bps(bps: u16) -> Self {
+        Self::new(BigDecimal::from(bps) / BigDecimal::from(10_000))
+    }
+
     /// Returns a zero slippage.
     pub fn zero() -> Self {
         Self::new(BigDecimal::zero())
