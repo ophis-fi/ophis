@@ -23,8 +23,11 @@ weakening it guards against (Codex #464 P1). Template edits go through PRs.
 On top of the schema lock it asserts the value invariants: exactly the 3 expected
 independent upstream hosts; every Block A+B settlement-relevant method's
 first-matching failsafe rule is a consensus rule with maxParticipants:3,
-agreementThreshold:2, dispute+lowParticipants:returnError; every consensus rule
-fail-closed; matchMethod uses only the modelled `*`/`|` matcher.
+agreementThreshold:2, lowParticipants:returnError (always fail-closed on an
+outage) and dispute in {returnError, preferBlockHeadLeader} (the latter only
+breaks 1-block tip-drift ties among upstreams that DID respond — see #476);
+every consensus rule fail-closed; matchMethod uses only the modelled `*`/`|`
+matcher.
 """
 import re
 import sys
@@ -114,14 +117,30 @@ def _hostname(endpoint):
 
 
 def _consensus_failclosed(c):
-    """consensus params (ignoreFields/prefer* are already rejected by the
-    closed-world key check on the consensus level)."""
+    """consensus params (unknown KEYS like ignoreFields are already rejected by
+    the closed-world key check on the consensus level; here we pin the VALUES)."""
     if c.get("maxParticipants") != 3:
         return f"maxParticipants={c.get('maxParticipants')!r} (must be int 3)", False
     if c.get("agreementThreshold") != 2:
         return f"agreementThreshold={c.get('agreementThreshold')!r} (must be int 2)", False
-    if c.get("disputeBehavior") != "returnError":
-        return f"disputeBehavior={c.get('disputeBehavior')!r} (must be returnError)", False
+    # disputeBehavior: a DISPUTE means maxParticipants responded but fewer than
+    # agreementThreshold agree. On OP's ~2s blocks publicnode + self routinely sit
+    # 1 block apart on `latest`-tagged reads, so returnError failed ~30-50% of
+    # quote/state reads (#476). `preferBlockHeadLeader` breaks that tie by freshest
+    # block — it still requires the participants to have responded, so it is NOT a
+    # 1-of-N bypass. Both are fail-closed-enough for DISPUTES; nothing else (e.g.
+    # acceptMostCommonValidResult, onlyBlockHeadLeader) is permitted.
+    if c.get("disputeBehavior") not in ("returnError", "preferBlockHeadLeader"):
+        return (
+            f"disputeBehavior={c.get('disputeBehavior')!r} "
+            "(must be returnError or preferBlockHeadLeader)",
+            False,
+        )
+    # lowParticipantsBehavior MUST stay returnError (Codex #476 P1). LOW
+    # PARTICIPANTS means fewer than agreementThreshold upstreams returned a valid
+    # response (an outage, not a disagreement); serving the lone freshest result
+    # there downgrades 2-of-3 to 1-of-3, letting one hijacked/stale upstream supply
+    # settlement state unchecked. Fail closed.
     if c.get("lowParticipantsBehavior") != "returnError":
         return f"lowParticipantsBehavior={c.get('lowParticipantsBehavior')!r} (must be returnError)", False
     return "", True
@@ -216,7 +235,8 @@ def main(path):
     print(
         "OK (#447): OP eRPC fail-closed — closed-world schema lock passed (no unrecognized config keys); "
         "exactly the 3 expected independent upstream hosts; every Block A+B method's first-matching failsafe "
-        "rule is a maxParticipants:3/agreementThreshold:2/returnError consensus block; every consensus rule fail-closed."
+        "rule is a maxParticipants:3/agreementThreshold:2 consensus block with lowParticipants:returnError "
+        "(outage fail-closed) and dispute in {returnError, preferBlockHeadLeader} (#476); every consensus rule fail-closed."
     )
     return 0
 
