@@ -17,6 +17,17 @@ native-token = "0x4200000000000000000000000000000000000006"
 hooks = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
 balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
 
+# EthFlow: native-ETH sells. CoWSwapEthFlow deployed on OP 2026-06-07
+# (tx 0xc0316c2c627d3af942049ae90045d6b78eaf70a64a7ff52c4da649a96097c48e),
+# constructor-wired to this settlement (0x310784c7) + WETH (0x4200), WETH
+# allowance to vaultRelayer (0x83847EaB) = MAX. The autopilot indexes
+# on-chain eth-flow OrderPlacement/Refund events from this contract so they
+# enter the auction and settle. `indexing-start` is the deploy BLOCK number
+# (find_indexing_start_block treats it as BlockNumberOrTag::Number).
+[ethflow]
+contracts = ["0x764fE4aa1FF493cf39931c7923C8ff5837596504"]
+indexing-start = 152628084
+
 [logging]
 filter = "warn,autopilot=debug,shared=info,price_estimation=info"
 
