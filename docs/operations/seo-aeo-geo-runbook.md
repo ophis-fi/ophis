@@ -18,7 +18,7 @@ Surfaces: **landing** `ophis.fi` (Astro), **swap** `swap.ophis.fi`
 | Meta description | yes | yes | yes |
 | Canonical | yes | per-route follow-up | yes (Docusaurus) |
 | JSON-LD | Organization, WebSite, SoftwareApplication | Organization + WebApplication (added) | Organization (added) + per-page BreadcrumbList |
-| GA4 (G-NG9YX5G9CM) | yes (Consent Mode denied) | yes (Consent Mode denied) | yes (Consent Mode denied) |
+| GA4 (G-NG9YX5G9CM) | yes (Consent Mode region-scoped + banner) | yes (region-scoped + banner) | yes (region-scoped + banner) |
 | Search engine verification | GSC/Bing/Yandex via apex | GSC/Bing via apex; **Yandex per-host pending** | GSC/Bing via apex; **Yandex per-host pending** |
 
 **AEO/GEO posture is already strong:** every surface allows the answer-engine
@@ -66,15 +66,27 @@ structured data.
   `<head>`, swap `index.html` `<head>`, docs `docusaurus.config.ts`
   `themeConfig.metadata`.
 
-### 2. Google Analytics 4 (DONE: G-NG9YX5G9CM, Consent Mode default-denied)
+### 2. Google Analytics 4 (DONE: G-NG9YX5G9CM, Consent Mode REGION-SCOPED + banner)
 
-GA4 `G-NG9YX5G9CM` is wired on all three surfaces with **Consent Mode v2
-default-denied**: `gtag('consent','default',{ad_storage,ad_user_data,
-ad_personalization,analytics_storage: all 'denied'})` is queued **before**
-`gtag('config')`, so GA4 runs cookieless (no analytics cookies / client-id
-persistence) until consent is granted. `anonymize_ip` is also set. A future opt-in
-banner can `gtag('consent','update',{analytics_storage:'granted'})` to upgrade to
-full (cookied) measurement; until then GA reports limited/modeled data. As wired:
+GA4 `G-NG9YX5G9CM` is wired on all three surfaces with **Consent Mode v2,
+region-scoped**. Two `gtag('consent','default',...)` calls are queued **before**
+`gtag('config')`: a global default with `analytics_storage:'granted'` (ads still
+denied) so **rest-of-world is measured**, then an EEA/UK/CH-scoped override
+(`region:[...]`, `wait_for_update:500`) with `analytics_storage:'denied'` so those
+visitors stay **cookieless until they opt in**. `gtag.js` resolves the region from
+Google's IP-geo, so no server-side lookup is needed. `anonymize_ip` is also set.
+
+> **Why this changed (2026-06-07):** the previous global default-denied meant
+> *every* visitor sent only cookieless pings. With no granted sessions, Consent
+> Mode behavioural modeling can never train (it needs granted traffic), so GA4
+> standard reports stayed at ~0 — the cause of the "0 traffic" incident. Region
+> scoping restores full measurement for ROW while keeping the EEA compliant.
+
+An **opt-in/opt-out consent banner** is shipped on all three surfaces (Accept →
+`gtag('consent','update',{analytics_storage:'granted'})`, Decline → keep denied;
+choice persisted in `localStorage['ophis_consent']` and re-applied on return,
+overriding the regional default). EEA visitors (incl. the Luxembourg operator)
+stay cookieless until they Accept. As wired:
 
 - **docs**: a MANUAL `headTags` setup in `docusaurus.config.ts` (NOT the preset
   `gtag` option, which can't guarantee consent-before-config ordering): one
@@ -96,8 +108,15 @@ full (cookied) measurement; until then GA reports limited/modeled data. As wired
   with `https://www.googletagmanager.com`; `connect-src` += GA endpoints, `img-src`
   += `*.google-analytics.com`. Re-run check-csp-hashes after any edit to the block.
 
-OPEN follow-up (no operator input strictly needed): a minimal opt-in **consent
-banner** to upgrade Consent Mode to `granted` (for full data) on the surfaces.
+Consent banner delivery per surface: **landing** extends the hashed `is:inline`
+gtag block in `Base.astro` (DOM-built bar, re-run check-csp-hashes after edits);
+**swap** ships a bundled `src/ophis/analytics/consentBanner.ts` (strict CSP — no
+inline) mounted from `initGa4()`; **docs** uses a `clientModules` entry
+(`src/consent-banner.ts`). All share the `localStorage['ophis_consent']` key.
+
+OPEN follow-up (optional): wire Cloudflare **Google Tag Gateway** (first-party
+tag serving) to recover hits lost to ad-blockers — see the analytics deploy
+notes. Requires a dashboard step (the scoped API token cannot enable it).
 
 ### (reference) swap CSP, as implemented
 

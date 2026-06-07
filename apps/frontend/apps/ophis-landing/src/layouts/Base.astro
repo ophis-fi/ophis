@@ -64,29 +64,104 @@ const {
     } catch (e) { /* localStorage blocked: ignore */ }
   </script>
 
-  <!-- Google Analytics 4 (gtag). is:inline so it is emitted verbatim and hashed
-       by scripts/check-csp-hashes.mjs (its sha256 must appear in public/_headers
-       script-src). Gated to the production host so preview (*.pages.dev) +
-       localhost traffic never reaches the property. Loads gtag.js from
-       googletagmanager.com (allowlisted in script-src); beacons go to
-       *.google-analytics.com (allowlisted in connect-src). After editing this
-       block run `node scripts/check-csp-hashes.mjs --print` and update _headers. -->
+  <!-- Google Analytics 4 (gtag) + Consent Mode v2, REGION-SCOPED. is:inline so it
+       is emitted verbatim and hashed by scripts/check-csp-hashes.mjs (its sha256
+       must appear in public/_headers script-src). Gated to the production host so
+       preview (*.pages.dev) + localhost traffic never reaches the property. Loads
+       gtag.js from googletagmanager.com (allowlisted in script-src); beacons go to
+       *.google-analytics.com (allowlisted in connect-src).
+
+       Consent: analytics_storage is GRANTED by default for rest-of-world (so GA4
+       reports populate) and DENIED for the EEA/UK/CH region (cookieless until the
+       visitor opts in via the banner below). gtag.js resolves the region itself
+       from Google's IP-geo, so no server-side geo lookup is needed. The banner
+       lets any visitor grant/revoke; the choice is stored in localStorage and
+       re-applied (overriding the regional default) on return.
+
+       After editing this block run `node scripts/check-csp-hashes.mjs --print`
+       and update public/_headers. -->
   <script is:inline>
     if (location.hostname === 'ophis.fi') {
+      var EEA = ['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','GB','CH'];
       window.dataLayer = window.dataLayer || [];
       window.gtag = function () { window.dataLayer.push(arguments); };
+      // Global default: ads denied, analytics granted (ROW measured).
       window.gtag('consent', 'default', {
         ad_storage: 'denied',
         ad_user_data: 'denied',
         ad_personalization: 'denied',
-        analytics_storage: 'denied'
+        analytics_storage: 'granted'
       });
+      // EEA/UK/CH override: cookieless until the visitor opts in.
+      window.gtag('consent', 'default', {
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+        analytics_storage: 'denied',
+        region: EEA,
+        wait_for_update: 500
+      });
+      // Re-apply a returning visitor's explicit choice (overrides the regional default).
+      try {
+        var saved = localStorage.getItem('ophis_consent');
+        if (saved === 'granted' || saved === 'denied') {
+          window.gtag('consent', 'update', { analytics_storage: saved });
+        }
+      } catch (e) { /* localStorage blocked: keep regional default */ }
+
       var s = document.createElement('script');
       s.async = true;
       s.src = 'https://www.googletagmanager.com/gtag/js?id=G-NG9YX5G9CM';
       document.head.appendChild(s);
       window.gtag('js', new Date());
       window.gtag('config', 'G-NG9YX5G9CM', { anonymize_ip: true });
+
+      // Consent banner — shown until the visitor chooses. Accept upgrades
+      // analytics to granted (full, cookied measurement); Decline keeps it
+      // cookieless. DOM-built (no innerHTML handlers) so it stays CSP-clean.
+      try {
+        if (!localStorage.getItem('ophis_consent')) {
+          var mountConsent = function () {
+            if (document.getElementById('ophis-consent')) return;
+            var bar = document.createElement('div');
+            bar.id = 'ophis-consent';
+            bar.setAttribute('role', 'dialog');
+            bar.setAttribute('aria-label', 'Analytics consent');
+            bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid rgba(242,166,62,.28);border-radius:14px;background:rgba(10,10,10,.92);backdrop-filter:blur(8px);color:#e8e8e8;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+            var txt = document.createElement('span');
+            txt.style.cssText = 'flex:1 1 240px;min-width:200px';
+            var lead = document.createTextNode('We use privacy-respecting analytics (anonymized IP, no ads). ');
+            var link = document.createElement('a');
+            link.href = 'https://swap.ophis.fi/#/legal';
+            link.textContent = 'Learn more';
+            link.style.cssText = 'color:#f2a63e;text-decoration:underline';
+            txt.appendChild(lead);
+            txt.appendChild(link);
+            txt.appendChild(document.createTextNode('.'));
+            var mkBtn = function (label, value, primary) {
+              var b = document.createElement('button');
+              b.type = 'button';
+              b.textContent = label;
+              b.style.cssText = 'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' + (primary ? '#f2a63e' : 'rgba(255,255,255,.22)') + ';background:' + (primary ? '#f2a63e' : 'transparent') + ';color:' + (primary ? '#0a0a0a' : '#e8e8e8');
+              b.addEventListener('click', function () {
+                try { localStorage.setItem('ophis_consent', value); } catch (e) {}
+                window.gtag('consent', 'update', { analytics_storage: value });
+                bar.remove();
+              });
+              return b;
+            };
+            bar.appendChild(txt);
+            bar.appendChild(mkBtn('Decline', 'denied', false));
+            bar.appendChild(mkBtn('Accept', 'granted', true));
+            document.body.appendChild(bar);
+          };
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', mountConsent);
+          } else {
+            mountConsent();
+          }
+        }
+      } catch (e) { /* never let consent UI break the page */ }
     }
   </script>
 
