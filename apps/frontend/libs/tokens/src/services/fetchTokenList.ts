@@ -11,6 +11,7 @@ import { JsonRpcProvider } from '@ethersproject/providers'
 import { TokenList } from '@uniswap/token-lists'
 
 import { ListSourceConfig, ListState } from '../types'
+import { isExcludedListToken } from '../utils/excludedListTokens'
 import { validateTokenList } from '../utils/validateTokenList'
 
 const MAINNET_PROVIDER = new JsonRpcProvider(RPC_URLS[SupportedChainId.MAINNET])
@@ -96,10 +97,13 @@ function listStateFromSourceConfig(result: ListState, list: ListSourceConfig): L
 }
 
 async function sanitizeList(list: TokenList): Promise<TokenList> {
-  // Remove tokens from the list that don't have valid addresses
+  // Remove tokens from the list that don't have valid addresses, plus dead
+  // sentinels (e.g. the legacy OVM_ETH placeholder) that would shadow native
+  // ETH in the symbol -> token map. See isExcludedListToken for the rationale.
   const tokens = list.tokens.reduce<TokenList['tokens']>((acc, token) => {
     const checksummed = isAddress(token.address.toLowerCase())
     if (!checksummed) return acc
+    if (isExcludedListToken(checksummed)) return acc
     acc.push({ ...token, address: checksummed })
     return acc
   }, [])
