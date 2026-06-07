@@ -94,6 +94,22 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
     'ETH',
     'Ether',
   ),
+  // Native ETH on Optimism (chain 10). OP IS in the SDK's
+  // AdditionalTargetChainId, so `mapAllNetworks` would otherwise give it the
+  // SDK's non-standard native address (0xDeAd…0000). The trading SDK's
+  // eth-flow detection is keyed on NATIVE_CURRENCY_ADDRESS (0xEeee…EEeE), so
+  // with the 0xDeAd address it never recognises the sell as native, never
+  // substitutes WETH for the eth-flow quote, and the quote 404s
+  // (NoLiquidity). Override to the canonical sentinel like 999/4326 so
+  // selling native ETH on OP quotes WETH (0x4200) via EthFlow.
+  [10 as unknown as SupportedChainId]: new TokenWithLogo(
+    undefined,
+    10 as unknown as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'ETH',
+    'Ether',
+  ),
 }
 
 export const WETH_MAINNET = WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET]
