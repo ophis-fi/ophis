@@ -1,0 +1,57 @@
+---
+// Custom 404 page. Astro emits this as dist/404.html, which Cloudflare Pages
+// serves with a real HTTP 404 status for any unmatched path — fixing the
+// soft-404 (missing paths previously fell through to the homepage at 200, which
+// Google/Bing flag as a soft 404 that wastes crawl budget).
+//
+// Deliberately STANDALONE (not the Base layout): it carries no inline <script>,
+// so it needs no CSP script-src hash (scripts/check-csp-hashes.mjs only verifies
+// dist/index.html, so a Base-based 404 could silently ship CSP-blocked scripts).
+// Inline styles only, which the CSP allows via style-src 'unsafe-inline'.
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Page not found — Ophis</title>
+  <meta name="description" content="The page you’re looking for doesn’t exist or has moved.">
+  <meta name="robots" content="noindex, follow">
+  <link rel="canonical" href="https://ophis.fi/">
+  <link rel="icon" type="image/svg+xml" href="/ophis-claw-saffron.svg">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; padding: 24px; text-align: center;
+      background: #0a0a0a; color: #e8e8e8;
+      font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background-image:
+        radial-gradient(420px 320px at 30% 25%, rgba(242,166,62,0.12), transparent 70%),
+        radial-gradient(360px 280px at 70% 80%, rgba(140,120,255,0.10), transparent 70%);
+    }
+    .code { font-size: clamp(64px, 18vw, 140px); font-weight: 700; line-height: 1; letter-spacing: -0.04em; color: #f2a63e; }
+    h1 { font-size: clamp(20px, 4vw, 28px); font-weight: 600; margin: 0; }
+    p { margin: 0; max-width: 42ch; color: #b6b6b6; }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+    a.btn {
+      text-decoration: none; border-radius: 10px; padding: 10px 20px; font-weight: 600; font-size: 15px;
+      border: 1px solid rgba(255,255,255,0.22); color: #e8e8e8;
+    }
+    a.btn.primary { background: #f2a63e; border-color: #f2a63e; color: #0a0a0a; }
+    a.btn:hover { border-color: #f2a63e; }
+  </style>
+</head>
+<body>
+  <div class="code">404</div>
+  <h1>Page not found</h1>
+  <p>The page you’re looking for doesn’t exist or has moved.</p>
+  <div class="actions">
+    <a class="btn primary" href="/">Back to home</a>
+    <a class="btn" href="https://swap.ophis.fi/">Open the app</a>
+  </div>
+</body>
+</html>
