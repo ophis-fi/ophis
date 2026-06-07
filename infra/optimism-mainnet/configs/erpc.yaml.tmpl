@@ -262,7 +262,18 @@ projects:
               # - tenderly-op (Tenderly; Google Cloud DNS)
               # - ophis-self-op (Aleph VM, self-hosted via Tailscale)
               agreementThreshold: 2
-              disputeBehavior: returnError
+              # Tip-drift fix (#476): on OP's ~2s blocks publicnode + self
+              # frequently sit 1 block apart on `latest`-tagged reads — a
+              # DISPUTE (both upstreams UP, values disagree) that the old
+              # returnError failed ~30-50% of the time. preferBlockHeadLeader
+              # breaks the tie by freshest block; it still requires the
+              # participants to have responded, so it is not a 1-of-N bypass.
+              disputeBehavior: preferBlockHeadLeader
+              # lowParticipants stays FAIL-CLOSED (Codex #476 P1): when fewer
+              # than agreementThreshold upstreams return a valid response (an
+              # outage, not a disagreement), refuse rather than serve the
+              # lone freshest 1-of-3 — a single hijacked/stale fresh upstream
+              # must never supply settlement/quote state unchecked.
               lowParticipantsBehavior: returnError
               # No `ignoreFields` here — see HL eRPC Codex Cyber finding #1.
               # Allowing field-level skip lets a hostile upstream forge the
@@ -321,7 +332,10 @@ projects:
             consensus:
               maxParticipants: 3
               agreementThreshold: 2
-              disputeBehavior: returnError
+              # Same tip-drift posture as Block A: dispute breaks ties by
+              # freshest block, but lowParticipants stays fail-closed so an
+              # outage never downgrades to 1-of-3 (Codex #476 P1).
+              disputeBehavior: preferBlockHeadLeader
               lowParticipantsBehavior: returnError
               punishMisbehavior:
                 # 200 was sized to absorb the receipt burst — without
