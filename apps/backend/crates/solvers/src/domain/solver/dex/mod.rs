@@ -182,6 +182,26 @@ impl Dex {
                     return false;
                 }
 
+                // Buffer-exposure bound. A swap must never approve the DEX
+                // spender for more than this fill's signed sell cap (at the
+                // order's limit price). For exactIn solvers the allowance
+                // equals the fixed input so this is implied by `satisfies`,
+                // but exactOut solvers pad the allowance above the input
+                // estimate (the router pulls *up to* `maxSrc`) — `satisfies`
+                // only bounds `input.amount`, not the padded allowance.
+                // Without this, a compromised aggregator API quoting a BUY at
+                // the (proportional) max-sell could get the spender approved
+                // for more and pull the difference from Settlement's transient
+                // buffer. The check mirrors `satisfies` with the allowance, so
+                // it enforces the proportional cap for partial fills too.
+                if !swap.allowance_within_sell_limit(order) {
+                    tracing::debug!("swap allowance exceeds order limit price");
+                    if order.partially_fillable {
+                        self.fills.reduce_next_try(order.uid);
+                    }
+                    return false;
+                }
+
                 // Check minimum surplus requirement
                 let minimum_surplus = self.minimum_surplus.relative(&dex_order.amount(), tokens);
                 let valid_surplus = swap.satisfies_with_minimum_surplus(order, &minimum_surplus);

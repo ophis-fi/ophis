@@ -2,6 +2,7 @@ use {
     super::PriceEstimationError,
     crate::native::{NativePriceEstimateResult, NativePriceEstimating, from_normalized_price},
     alloy::primitives::Address,
+    model::order::BUY_ETH_ADDRESS,
     arc_swap::ArcSwap,
     bigdecimal::BigDecimal,
     futures::{FutureExt, StreamExt},
@@ -312,6 +313,16 @@ impl CachingNativePriceEstimator {
         I::IntoIter: Send + 'a,
     {
         let estimates = tokens.into_iter().map(move |token| async move {
+            // Native ETH sentinel is 1.0 by definition (see the single-token
+            // `estimate_native_price`). The autopilot reaches THIS batch path
+            // directly via `fetch_prices` when building auctions, so without
+            // this branch a buy-ETH order would quote fine but get dropped
+            // from the auction (its BUY_ETH_ADDRESS buy-token price would be
+            // NoLiquidity from UniV3/CoinGecko) and never settle.
+            if token == BUY_ETH_ADDRESS {
+                return (token, Ok(1.0));
+            }
+
             // check if the price is cached by now
             let now = Instant::now();
             if let Some(cached) =
@@ -357,6 +368,13 @@ impl CachingNativePriceEstimator {
     ) -> HashMap<Address, NativePriceEstimateResult> {
         let mut prices = self.0.cache.get_cached_prices(tokens);
         if timeout.is_zero() {
+            // Cache-only mode (native-price-timeout == 0) returns before the
+            // estimator loop that short-circuits the sentinel. The sentinel is
+            // never cached, so resolve its definitional 1.0 here too — else a
+            // cache-only auction build would drop buy-ETH orders.
+            if tokens.contains(&BUY_ETH_ADDRESS) {
+                prices.insert(BUY_ETH_ADDRESS, Ok(1.0));
+            }
             return prices;
         }
 
@@ -390,6 +408,18 @@ impl NativePriceEstimating for CachingNativePriceEstimator {
         timeout: Duration,
     ) -> futures::future::BoxFuture<'_, NativePriceEstimateResult> {
         async move {
+            // Native ETH (the 0xEeee buy sentinel) is worth exactly 1.0 native
+            // token by definition. Short-circuit before the cache/estimator:
+            // on chains whose native-price source is UniswapV3/CoinGecko there
+            // is no pool/listing for the sentinel, so the estimator returns
+            // NoLiquidity — which otherwise fails the mandatory buy-token
+            // native-price check on every buy-ETH quote (orderbook
+            // `EstimatorKind::NativeBuy`). Mirrors the same 1:1 mapping used by
+            // `external_prices` and the sanitized estimator's WETH↔ETH branch.
+            if token == BUY_ETH_ADDRESS {
+                return Ok(1.0);
+            }
+
             let cached = {
                 let now = Instant::now();
                 Cache::get_cached_price(token, now, &self.0.cache.0.data, &self.0.cache.0.max_age)
@@ -622,6 +652,58 @@ mod tests {
                 .await;
             assert_eq!(result.as_ref().unwrap().to_i64().unwrap(), 1);
         }
+    }
+
+    #[tokio::test]
+    async fn native_eth_sentinel_short_circuits_to_one() {
+        // The native price of native ETH (BUY_ETH_ADDRESS) is 1.0 by
+        // definition. It must resolve WITHOUT hitting the inner estimator —
+        // on chains whose native-price source is UniswapV3/CoinGecko (no
+        // pool/listing for the 0xEeee sentinel) the inner returns NoLiquidity,
+        // which used to fail every buy-ETH quote.
+        let mut inner = MockNativePriceEstimating::new();
+        inner.expect_estimate_native_price().never();
+
+        let estimator =
+            create_caching_estimator(inner, Duration::from_millis(30), 1, Default::default());
+
+        let result = estimator
+            .estimate_native_price(BUY_ETH_ADDRESS, HEALTHY_PRICE_ESTIMATION_TIME)
+            .await;
+        assert_eq!(result.unwrap(), 1.0);
+    }
+
+    #[tokio::test]
+    async fn native_eth_sentinel_short_circuits_in_batch_fetch() {
+        // The autopilot builds auctions via the BATCH path (fetch_prices ->
+        // estimate_prices_and_update_cache), bypassing the single-token entry.
+        // The sentinel must resolve to 1.0 there too, else accepted buy-ETH
+        // orders get dropped from the auction and never settle.
+        let mut inner = MockNativePriceEstimating::new();
+        inner.expect_estimate_native_price().never();
+
+        let estimator =
+            create_caching_estimator(inner, Duration::from_millis(30), 1, Default::default());
+
+        let prices = estimator
+            .fetch_prices(&[BUY_ETH_ADDRESS], HEALTHY_PRICE_ESTIMATION_TIME)
+            .await;
+        assert_eq!(prices.get(&BUY_ETH_ADDRESS).unwrap().as_ref().unwrap(), &1.0);
+    }
+
+    #[tokio::test]
+    async fn native_eth_sentinel_resolves_in_cache_only_mode() {
+        // timeout == 0 is the supported "fetch from cache only" mode and
+        // returns before the estimator loop. The sentinel must still resolve
+        // to 1.0 so cache-only auction builds don't drop buy-ETH orders.
+        let mut inner = MockNativePriceEstimating::new();
+        inner.expect_estimate_native_price().never();
+
+        let estimator =
+            create_caching_estimator(inner, Duration::from_millis(30), 1, Default::default());
+
+        let prices = estimator.fetch_prices(&[BUY_ETH_ADDRESS], Duration::ZERO).await;
+        assert_eq!(prices.get(&BUY_ETH_ADDRESS).unwrap().as_ref().unwrap(), &1.0);
     }
 
     #[tokio::test]
