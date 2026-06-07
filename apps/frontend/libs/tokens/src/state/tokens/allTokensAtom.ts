@@ -9,6 +9,7 @@ import { userAddedTokensAtom } from './userAddedTokensAtom'
 
 import { getSourceAsKey } from '../../hooks/lists/useIsListBlocked'
 import { TokensBySymbolState, TokensMap } from '../../types'
+import { isExcludedListToken } from '../../utils/excludedListTokens'
 import { lowerCaseTokensMap } from '../../utils/lowerCaseTokensMap'
 import { parseTokenInfo } from '../../utils/parseTokenInfo'
 import { tokenMapToListWithLogo } from '../../utils/tokenMapToListWithLogo'
@@ -57,6 +58,13 @@ const tokensStateAtom = atom(async (get) => {
             const tokenAddressKey = tokenInfo?.address.toLowerCase()
 
             if (!tokenInfo || !tokenAddressKey) return
+
+            // Exclude dead sentinels (e.g. legacy OVM_ETH) here too, not just at
+            // fetch-time sanitizeList: lists persisted before that filter shipped
+            // are rebuilt from storage on load, so without this guard the dead
+            // token would re-enter the map (and the USD-price queue) until the
+            // next background list refresh. See isExcludedListToken.
+            if (isExcludedListToken(tokenAddressKey)) return
 
             if (lpTokenProvider) {
               tokenInfo.lpTokenProvider = lpTokenProvider
