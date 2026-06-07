@@ -2,7 +2,7 @@ diff --git a/dist/index.js b/dist/index.js
 index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd95ec123a 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -436,6 +436,16 @@ var WRAPPED_NATIVE_CURRENCIES = {
+@@ -436,6 +436,18 @@ var WRAPPED_NATIVE_CURRENCIES = {
      "0x4200000000000000000000000000000000000006",
      wrappedNativeCurrencyEth
    )
@@ -15,26 +15,28 @@ index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd
 +    symbol: "WHYPE",
 +    name: "Wrapped HYPE",
 +    logoUrl: "https://files.cow.fi/tokens/HYPE.png"
-+  }
++  },
++  // Ophis fork — chain 10 (Optimism): WETH at 0x4200…0006 (canonical OP WETH)
++  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
-@@ -951,8 +961,8 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
+@@ -951,8 +963,8 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
  var COMPOSABLE_COW_CONTRACT_ADDRESS = mapAddressToSupportedNetworks(COMPOSABLE_COW);
  var ETH_FLOW_ADDRESS = "0xba3cb449bd2b4adddbc894d8697f5170800eadec";
  var BARN_ETH_FLOW_ADDRESS = "0xb37aDD6AC288BD3825a901Cba6ec65A89f31B8CC";
 -var ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS);
 -var BARN_ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS);
-+var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B" };
-+var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B" };
++var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
++var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
  var MAX_VALID_TO_EPOCH = 4294967295;
- 
+
  // src/chains/utils.ts
 diff --git a/dist/index.mjs b/dist/index.mjs
 index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e82e78ecd 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -341,6 +341,16 @@ var WRAPPED_NATIVE_CURRENCIES = {
+@@ -341,6 +341,18 @@ var WRAPPED_NATIVE_CURRENCIES = {
      "0x4200000000000000000000000000000000000006",
      wrappedNativeCurrencyEth
    )
@@ -47,18 +49,20 @@ index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e
 +    symbol: "WHYPE",
 +    name: "Wrapped HYPE",
 +    logoUrl: "https://files.cow.fi/tokens/HYPE.png"
-+  }
++  },
++  // Ophis fork — chain 10 (Optimism): WETH at 0x4200…0006 (canonical OP WETH)
++  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
-@@ -856,8 +866,8 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
+@@ -856,8 +868,8 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
  var COMPOSABLE_COW_CONTRACT_ADDRESS = mapAddressToSupportedNetworks(COMPOSABLE_COW);
  var ETH_FLOW_ADDRESS = "0xba3cb449bd2b4adddbc894d8697f5170800eadec";
  var BARN_ETH_FLOW_ADDRESS = "0xb37aDD6AC288BD3825a901Cba6ec65A89f31B8CC";
 -var ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS);
 -var BARN_ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS);
-+var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B" };
-+var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B" };
++var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
++var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
  var MAX_VALID_TO_EPOCH = 4294967295;
- 
+
  // src/chains/utils.ts
