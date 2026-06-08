@@ -43,12 +43,12 @@ Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-s
 ## Trust, audits, custody
 
 - **Custody**: Ophis is non-custodial. The protocol cannot move user funds without an EIP-712 signature from the user's wallet.
-- **Smart contracts**: Ophis uses unmodified CoW Protocol settlement contracts on Optimism mainnet. Original audits: [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs).
+- **Smart contracts**: On Optimism mainnet (chain 10), Ophis settles through its OWN GPv2Settlement deployment at `0x310784c7FCE12d578dA6f53460777bAc9718B859`, which is NOT CoW Protocol's canonical settlement address (`0x9008D19f58AAbD9eD0D60971565AA8510560ab41`). The bytecode is identical to CoW's audited GPv2Settlement, so the original audits apply: [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs). Agents MUST resolve the per-chain settlement domain via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address on Optimism yields a domain the deployed contract rejects.
 - **Ophis-specific code**: Frontend fork, intent-parser CF Pages Function, rebate-indexer service. Source: [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
 - **Operator contact**: https://ophis.fi/#/contact (form; no email published).
 
 ## Optional
 
 - [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis): Full source code (frontend, intent proxy, indexer, infra runbooks).
-- [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts (Ophis runs these unmodified on OP mainnet).
+- [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts. Ophis deploys bytecode-identical GPv2Settlement at its own non-canonical address on OP mainnet (resolve the exact address via `@ophis/sdk` or the MCP `list_chains` tool).
 - [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol): CoW Protocol docs, the settlement primitives Ophis is built on.

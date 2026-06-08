@@ -2,13 +2,19 @@
 
 <html lang="en">
   <head>
-    <title>Ophis</title>
+    <title>Ophis: intent-based DEX aggregator, MEV-protected swaps</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
       content="Ophis is an intent-based DEX aggregator. Describe a trade in natural language and Ophis routes you to a pre-filled, MEV-protected trade."
     />
+
+    <!-- Self-referential canonical for the swap host. The SPA still sets
+         per-route canonical at runtime; this is the crawler-visible default
+         so swap.ophis.fi is not deduped against the landing host. -->
+    <link rel="canonical" href="https://swap.ophis.fi/" />
+
     <script src="/emergency.js"></script>
 
     <!-- Manifest, theme & colors  -->
@@ -42,18 +48,18 @@
       property="og:description"
       content="Describe your trade in natural language. Ophis pre-fills the order and you sign. Intent-based, MEV-protected."
     />
-    <meta property="og:image" content="/ophis-og.jpg" />
+    <meta property="og:image" content="https://swap.ophis.fi/ophis-og.jpg" />
     <meta property="og:image:width" content="1920" />
     <meta property="og:image:height" content="1080" />
     <meta property="og:image:alt" content="Ophis cosmic gradient hero" />
-    <meta property="og:url" content="https://ophis.fi" />
+    <meta property="og:url" content="https://swap.ophis.fi/" />
     <meta property="og:site_name" content="Ophis" />
 
     <!-- Twitter media tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Ophis, the intent-based DEX aggregator" />
     <meta name="twitter:description" content="Describe your trade in natural language. Ophis pre-fills the order and you sign. Intent-based, MEV-protected." />
-    <meta name="twitter:image" content="/ophis-og.jpg" />
+    <meta name="twitter:image" content="https://swap.ophis.fi/ophis-og.jpg" />
     <meta name="twitter:image:alt" content="Ophis cosmic gradient hero" />
 
     <!-- Site-level structured data (SEO parity with the landing). Static in the
