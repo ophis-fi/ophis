@@ -120,6 +120,14 @@ jobs:
             --branch=main \
             --commit-message="$COMMIT_MSG"
 
+      # Request a fast recrawl from Bing/Yandex/Seznam via IndexNow. Non-fatal
+      # (the script always exits 0) and main-only, so it can never block a
+      # release. The IndexNow key is public (hosted at /<key>.txt in public/).
+      - name: IndexNow ping
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: node scripts/indexnow-ping.mjs ophis.fi https://ophis.fi/
+
       # Supply-chain provenance (#438). main-only (matches the deploy step) and
       # AFTER it, so it can never block a release. Hashes exactly the deployed
       # bytes into a manifest, then attests it via SLSA build-provenance.
