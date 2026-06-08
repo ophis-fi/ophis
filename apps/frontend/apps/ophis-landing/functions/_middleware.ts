@@ -11,11 +11,20 @@
  * shared functions/_middleware.ts (which rewrites / -> /business/ for the swap
  * deploy). It is staged into the landing build by .github/workflows/landing-deploy.yml.
  */
-interface Env {
+interface MarkdownEnv {
   ASSETS: { fetch: (input: Request | string) => Promise<Response> }
 }
 
-export const onRequest: PagesFunction<Env> = async (context) => {
+// Explicit context type instead of `PagesFunction<Env>` so this file typechecks
+// under the landing's `astro check` (which scans this dir but has no
+// @cloudflare/workers-types). Cloudflare Pages still binds `onRequest` the same.
+interface PagesMiddlewareContext {
+  request: Request
+  next: () => Promise<Response>
+  env: MarkdownEnv
+}
+
+export async function onRequest(context: PagesMiddlewareContext): Promise<Response> {
   const { request, next, env } = context
   const accept = request.headers.get('accept') || ''
   const url = new URL(request.url)
