@@ -92,8 +92,8 @@ jobs:
           REACT_APP_REBATES_API: https://rebates.ophis.fi
           # Flat volume fee in bps (build-time flag, validated [1,50] client-side).
           # Empty/unset -> 0 -> fee OFF (current price-improvement model). Set to
-          # 10 to activate the flat 0.10% fee. MUST move in lockstep with the
-          # rebate-indexer REBATE_FLAT_FEE_BPS and the @ophis/sdk republish.
+          # 10 to activate the flat 0.10% fee. Move in lockstep with the @ophis/sdk
+          # republish + the static fee copy (docs/business/llms/tier all say 10 bps).
           REACT_APP_OPHIS_VOLUME_FEE_BPS: ${{ secrets.REACT_APP_OPHIS_VOLUME_FEE_BPS }}
           # Ophis fork: OP mainnet (chain 10) RPC URL. The default public
           # node fallback works but a private endpoint is preferred for

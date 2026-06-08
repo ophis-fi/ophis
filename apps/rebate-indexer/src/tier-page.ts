@@ -51,7 +51,7 @@ function fmtCycle(iso: string): string {
 
 export function renderTierPage(
   status: WalletStatus,
-  opts: { nextCycleIso: string; lastBatcherRunAt: string | null; flatFeeBps?: number },
+  opts: { nextCycleIso: string; lastBatcherRunAt: string | null },
 ): string {
   const meta = TIER_META[status.tier.name];
   const volume = fmtUsd(status.volume_30d_usd);
@@ -60,15 +60,12 @@ export function renderTierPage(
   const wallet = shortWallet(status.wallet);
   const nextCycle = fmtCycle(opts.nextCycleIso);
 
-  // Fee disclaimer, gated on the live fee model. When the flat volume fee is
-  // active (REBATE_FLAT_FEE_BPS set, mirrors the frontend REACT_APP_OPHIS_VOLUME_FEE_BPS),
-  // the old "price improvement only / never touch your principal" claim is false,
-  // so state the flat fee instead. Unset -> the current price-improvement model.
-  const flatBps = opts.flatFeeBps;
+  // Fee disclaimer for the live flat-fee model (activated alongside this copy).
+  // A flat 0.10% (10 bps) volume fee applies to every trade, so this de-claims
+  // the old "price improvement only / never touch your principal" wording. Kept
+  // in sync with the docs + frontend; rollback = revert the activation PR.
   const feeNote =
-    flatBps && flatBps > 0
-      ? `A flat ${(flatBps / 100).toFixed(2)}% (${flatBps} bps) fee applies to your trade volume; rebates return a share of it by tier.`
-      : 'Rebates apply to positive price improvement only and never touch your principal.';
+    'A flat 0.10% (10 bps) fee applies to your trade volume; rebates return a share of it by tier.';
 
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';
