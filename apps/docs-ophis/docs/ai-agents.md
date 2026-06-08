@@ -204,9 +204,9 @@ orders programmatically, build and sign a
 yourself. Four things must each be exactly right, every one fails **silently**
 (a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
 
-The helpers below live in **`@ophis/sdk`**, internal to the Ophis monorepo. It
-is not yet published to npm, so vendor the package (or copy the values from the
-call-outs) until it is.
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.0.1, public).
+Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
+if you prefer to vendor them.
 
 ### 1. Resolve the orderbook host from the chain ID
 
