@@ -46,6 +46,14 @@ export const OPHIS_VOLUME_BPS = readVolumeFeeBps()
 export const OPHIS_FLAT_VOLUME_FEE_ENABLED = OPHIS_VOLUME_BPS > 0
 
 /**
+ * Reduced rate for stablecoin-to-stablecoin swaps: a flat 1 bp (0.01%) instead
+ * of the standard OPHIS_VOLUME_BPS. Applied (in volumeFeeAtom) only when the
+ * flat fee is enabled AND both sides of a SAME-CHAIN trade are stablecoins.
+ * Capped at the base rate so it can never exceed the standard fee.
+ */
+export const OPHIS_STABLE_VOLUME_BPS = Math.min(1, OPHIS_VOLUME_BPS || 1)
+
+/**
  * The volumeFee-pipeline fee. It drives the quote DISPLAY and, via the
  * `ophisAppDataPartnerFee ?? volumeFee` precedence in AppDataUpdater, also the
  * on-chain appData fee WHEN the direct price-improvement object below is

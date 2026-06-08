@@ -373,6 +373,10 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           <span class="txt">a <b>flat 10 bps</b> fee on the volume of every trade, charged via CoW Protocol's CIP-75 volume policy (<code>volumeBps: 10</code>).</span>
         </div>
         <div class="feerow">
+          <span class="big cap">0.01%</span>
+          <span class="txt">Stablecoin-to-stablecoin swaps: a reduced <b>0.01% (1 bp)</b> on same-chain trades where both tokens are stablecoins.</span>
+        </div>
+        <div class="feerow">
           <span class="big zero">0bps</span>
           <span class="txt">no spread, no hidden markup, no surcharge beyond the flat 0.10%.</span>
         </div>
@@ -685,7 +689,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
             <strong>A flat 0.10% (10 bps) fee on trade volume</strong>, applied to every trade,
             charged via CoW Protocol's CIP-75 volume policy (<code>volumeBps: 10</code>). For
             example, a 1,000 USDC swap pays a 1 USDC fee. The rate is at or below comparable
-            aggregators (Matcha 10 bps, Velora 15 bps).
+            aggregators (Matcha 10 bps, Velora 15 bps). Stablecoin-to-stablecoin swaps: a reduced
+            0.01% (1 bp), on same-chain trades where both tokens are stablecoins.
           </p>
           <p>
             No spread, no hidden markup beyond the flat 0.10%. A share of the WETH fees is returned

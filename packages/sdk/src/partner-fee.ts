@@ -37,6 +37,19 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
 export const OPHIS_VOLUME_FEE_BPS = 10;
 
 /**
+ * Reduced rate for stablecoin-to-stablecoin swaps: a flat 1 bp (0.01%). The
+ * Ophis frontend applies this automatically for same-chain stable pairs. This
+ * SDK is chain-only (buildOphisAppDataPartnerFee takes no token context), so an
+ * integrator that wants parity should pass volumeBps:OPHIS_STABLE_VOLUME_FEE_BPS
+ * for stable-stable orders. Use ophisVolumeBpsForPair() to pick the right rate.
+ */
+export const OPHIS_STABLE_VOLUME_FEE_BPS = 1;
+
+/** Volume bps for a pair: 1 bp if both tokens are stablecoins, else the standard rate. */
+export const ophisVolumeBpsForPair = (isStablePair: boolean): number =>
+  isStablePair ? OPHIS_STABLE_VOLUME_FEE_BPS : OPHIS_VOLUME_FEE_BPS;
+
+/**
  * Chains where Ophis charges the CIP-75 partner fee — every chain its frontend
  * serves (restored all-chain model, 2026-05-27). Ophis-operated chains settle
  * on our own stack (100%, no CoW cut); CoW-hosted chains settle via api.cow.fi

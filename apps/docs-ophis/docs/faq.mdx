@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is simple: a flat 0.10% (10 bps) fee on trade volume, applied to every trade.",
+        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is simple: a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on stablecoin-to-stablecoin swaps.",
       },
     },
     {
@@ -103,8 +103,9 @@ Ophis uses batch auctions and a solver competition to settle every order
 at the best on-chain price, with [MEV protection](./architecture.md) by
 construction. The natural-language input lets you skip token-pickers
 entirely. And the [fee model](./fees.md) is simple: a flat 0.10% (10 bps)
-fee on trade volume, applied to every trade. For example, swap 1,000 USDC
-and the fee is 0.10% = 1 USDC.
+fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp)
+on stablecoin-to-stablecoin swaps. For example, swap 1,000 USDC and the
+fee is 0.10% = 1 USDC.
 
 ### Do I need to connect a wallet?
 

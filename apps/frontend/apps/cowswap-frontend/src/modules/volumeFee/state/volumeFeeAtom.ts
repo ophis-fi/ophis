@@ -1,5 +1,6 @@
 import { atom } from 'jotai'
 
+import { STABLECOINS } from '@cowprotocol/common-const'
 import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { walletInfoAtom } from '@cowprotocol/wallet'
@@ -13,7 +14,7 @@ import { tradeQuotesAtom } from 'modules/tradeQuote'
 
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
-import { OPHIS_FLAT_VOLUME_FEE_ENABLED } from 'ophis/partnerFeeDefault'
+import { OPHIS_FLAT_VOLUME_FEE_ENABLED, OPHIS_STABLE_VOLUME_BPS } from 'ophis/partnerFeeDefault'
 
 import { isCorrelatedTrade } from './isCorrelatedTrade'
 import { safeAppFeeAtom } from './safeAppFeeAtom'
@@ -36,6 +37,12 @@ export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
   // a Safe-App fee; otherwise enabling the flag inside a Safe App silently drops
   // the Ophis fee in favour of the Safe's recipient instead of charging flat bps. (Review P2)
   if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
+    // Stablecoin-to-stablecoin (same-chain) pairs pay the reduced flat rate
+    // (1 bp) instead of the standard volume fee. Same single-atom source, so
+    // quote display and on-chain appData stay in lockstep at the reduced rate.
+    if (widgetPartnerFee && get(isStableStableTradeAtom)) {
+      return { ...widgetPartnerFee, volumeBps: OPHIS_STABLE_VOLUME_BPS }
+    }
     return widgetPartnerFee
   }
 
@@ -63,6 +70,27 @@ const shouldSkipFeeAtom = atom<boolean>((get) => {
   }
 
   return isCorrelatedTrade(inputCurrencyAddress, outputCurrencyAddress, correlatedTokens)
+})
+
+/**
+ * True when BOTH sides of a SAME-CHAIN trade are stablecoins, so the reduced
+ * OPHIS_STABLE_VOLUME_BPS (1 bp) applies. Cross-chain (bridge) trades return
+ * false and keep the standard rate: a bridged output lives on another chain and
+ * is not covered by this chain's stablecoin set, and erring toward the standard
+ * fee avoids ever under-charging a non-stable bridge leg.
+ */
+const isStableStableTradeAtom = atom<boolean>((get) => {
+  const { chainId } = get(walletInfoAtom)
+  const { inputCurrency, outputCurrency } = get(derivedTradeStateAtom) || {}
+  const stablecoins = STABLECOINS[chainId]
+
+  if (!inputCurrency || !outputCurrency || !stablecoins) return false
+  if (inputCurrency.chainId !== outputCurrency.chainId) return false
+
+  const isInputStable = stablecoins.has(getAddressKey(getCurrencyAddress(inputCurrency)))
+  const isOutputStable = stablecoins.has(getAddressKey(getCurrencyAddress(outputCurrency)))
+
+  return isInputStable && isOutputStable
 })
 
 const widgetPartnerFeeAtom = atom<VolumeFee | undefined>((get) => {
