@@ -11,6 +11,18 @@ import { orderBookApi } from 'cowSdk'
 
 import { tradingSdk } from './tradingSdk'
 
+// Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
+// Bungee calls through the same-origin Cloudflare proxy (functions/api/bungee)
+// which injects the server-side `x-api-key` so the key never ships in the
+// bundle. Unset -> direct backend (affiliate-attribution only), unchanged.
+//
+// MUST be declared before getBungeeApiBase() is called below: the function
+// reads this `const`, and a `const` is in the temporal dead zone until its
+// declaration runs, so declaring it later would throw ReferenceError at import
+// (even with the flag OFF). getBungeeApiBase is a hoisted function declaration,
+// so it may stay below.
+const BUNGEE_DEDICATED_ENABLED = process.env.REACT_APP_BUNGEE_DEDICATED_ENABLED === 'true'
+
 const bungeeApiBase = getBungeeApiBase()
 
 // The Ophis affiliate ID rides the public `affiliate` header (rev-share
@@ -59,12 +71,6 @@ bridgingSdk.setAvailableProviders([
   acrossBridgeProvider.info.dappId,
   nearIntentsBridgeProvider.info.dappId,
 ])
-
-// Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
-// Bungee calls through the same-origin Cloudflare proxy (functions/api/bungee)
-// which injects the server-side `x-api-key` so the key never ships in the
-// bundle. Unset -> direct backend (affiliate-attribution only), unchanged.
-const BUNGEE_DEDICATED_ENABLED = process.env.REACT_APP_BUNGEE_DEDICATED_ENABLED === 'true'
 
 function getBungeeApiBase(): string | undefined {
   if (BUNGEE_DEDICATED_ENABLED && (isProd || isStaging || isBarn) && typeof window !== 'undefined') {
