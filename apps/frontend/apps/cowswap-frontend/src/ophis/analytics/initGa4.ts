@@ -11,9 +11,11 @@
  * (transport_url=/938g), covered by `connect-src 'self' https:`.
  *
  * Gated to the production host so preview (*.pages.dev) and localhost traffic
- * never reach the property. SPA route-change page_views are not yet wired (the
- * gtag('config') call sends the initial page_view); add that as a follow-up if
- * per-route analytics are needed.
+ * never reach the property. SPA route-change page_views ARE wired below: the
+ * config uses send_page_view:false and a PII-safe page_view is fired manually
+ * on init and on every hash/history route change. GA4 Enhanced Measurement only
+ * auto-tracks History API navigations, not the hash changes a HashRouter SPA
+ * emits, so without this the entire session would report a single page_view.
  *
  * Consent is REGION-SCOPED: analytics_storage is granted by default for
  * rest-of-world (so GA4 reports populate) and denied for the EEA/UK/CH region
@@ -90,8 +92,38 @@ export function initGa4(): void {
   document.head.appendChild(script)
 
   w.gtag('js', new Date())
-  w.gtag('config', GA4_MEASUREMENT_ID, { anonymize_ip: true })
+  // send_page_view:false: this is a HashRouter SPA, so page_view is sent
+  // manually (initial + per route change) by trackSpaPageViews below. The
+  // default single auto page_view would undercount the whole session to one view.
+  w.gtag('config', GA4_MEASUREMENT_ID, { anonymize_ip: true, send_page_view: false })
+
+  trackSpaPageViews(w.gtag)
 
   // Show the opt-in/opt-out banner (no-op once the visitor has chosen).
   mountConsentBanner()
+}
+
+// Collapse 0x-addresses (wallet/token/proxy) to a placeholder so page paths
+// aggregate by route template and no address is ever sent to GA4.
+function sanitizePath(pathAndHash: string): string {
+  return pathAndHash.replace(/0x[a-fA-F0-9]{40}/g, '0x_addr')
+}
+
+// Fire a PII-safe GA4 page_view on init and on every SPA route change.
+// HashRouter route changes emit `hashchange`; back/forward emit `popstate`.
+function trackSpaPageViews(gtag: (...args: unknown[]) => void): void {
+  let lastPath = ''
+  const send = (): void => {
+    const path = sanitizePath(location.pathname + location.hash)
+    if (path === lastPath) return
+    lastPath = path
+    gtag('event', 'page_view', {
+      page_path: path,
+      page_location: location.origin + path,
+      page_title: document.title,
+    })
+  }
+  send() // initial view (config no longer auto-sends it)
+  window.addEventListener('hashchange', send)
+  window.addEventListener('popstate', send)
 }
