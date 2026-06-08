@@ -39,6 +39,10 @@ ignore = [
     "RUSTSEC-2024-0384",
     # paste — unmaintained / archived upstream. Tracked CoW#3338.
     "RUSTSEC-2024-0436",
+    # proc-macro-error2 — unmaintained (author-confirmed; it was itself a fork
+    # of the unmaintained proc-macro-error). Transitive build-time macro dep,
+    # no maintained drop-in yet; not a vulnerability. RUSTSEC-2026-0173.
+    "RUSTSEC-2026-0173",
 ]
 
 # ---------------------------------------------------------------------------
