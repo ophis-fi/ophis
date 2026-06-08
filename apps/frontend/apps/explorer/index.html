@@ -5,6 +5,7 @@
   <meta charset="utf-8" />
   <title>Ophis Explorer</title>
   <meta name="description" content="Ophis Explorer is a blockchain explorer for Ophis, the intent-based DEX aggregator." />
+  <link rel="canonical" href="https://explorer.ophis.fi/" />
   <base href="/" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
 
@@ -26,12 +27,42 @@
 
   <meta property="og:image" content="https://ophis.fi/og-image.png" />
   <meta property="og:url" content="https://explorer.ophis.fi/" />
+  <meta property="og:site_name" content="Ophis" />
 
   <!-- Twitter media tags -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:site" content="@ophis_fi" />
+  <meta name="twitter:site" content="@ophisfi" />
   <meta name="twitter:title" content="Ophis Explorer" />
+  <meta name="twitter:description" content="Browse orders, trades, settlement batches, and solver competition for Ophis, the intent-based DEX aggregator." />
   <meta name="twitter:image" content="https://ophis.fi/og-image.png" />
+
+  <!-- Structured data: static in the shell so crawlers see it without
+       executing the SPA. application/ld+json is a data block, not subject to
+       CSP script-src. -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://ophis.fi/#organization",
+          "name": "Ophis",
+          "url": "https://ophis.fi",
+          "logo": "https://explorer.ophis.fi/android-chrome-512x512.png",
+          "sameAs": ["https://github.com/ophis-fi/ophis", "https://x.com/ophisfi"]
+        },
+        {
+          "@type": "WebApplication",
+          "name": "Ophis Explorer",
+          "url": "https://explorer.ophis.fi/",
+          "applicationCategory": "FinanceApplication",
+          "operatingSystem": "Web",
+          "description": "Blockchain explorer for Ophis, the intent-based DEX aggregator. Browse orders, trades, settlement batches, and solver competition on Optimism.",
+          "isPartOf": { "@id": "https://ophis.fi/#organization" }
+        }
+      ]
+    }
+  </script>
 
 </head>
 
