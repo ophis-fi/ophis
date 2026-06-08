@@ -21,12 +21,30 @@ is handled by allowlist eviction, not by treating it as a fund-loss event.
 
 ## Restore (outline)
 
-1. If the key may be compromised, **evict the old EOA first** via the Safe
-   (see [`allowlist-governance-runbook.md`](./allowlist-governance-runbook.md)).
-2. Retrieve the encrypted USB from the off-site bundle, mount it, and place the
+Branch on whether the key may have been **compromised**.
+
+**Key NOT compromised** (you only lost the host; the off-site backup stayed
+encrypted / air-gapped):
+
+1. Retrieve the encrypted USB from the off-site bundle, mount it, and place the
    `CURRENT` key at the signing user's key path.
-3. Re-render the driver config and bring the driver up; verify it signs and the
-   healthcheck returns 200.
+2. Re-render the driver config and bring the driver up; verify it signs and the
+   healthcheck returns 200. The same EOA is still allowlisted, so it settles.
+
+**Key MAY be compromised** (host was unencrypted at rest, or you cannot prove the
+backup stayed air-gapped) — do **NOT** reinstall the old USB key. Its EOA is
+being evicted; restoring it lets the driver sign but it can never settle, so
+provision a **fresh** key instead:
+
+1. **Evict the old EOA** from the solver allowlist via the Safe
+   (`AllowListGuardian.removeSolver`, instant — see
+   [`allowlist-governance-runbook.md`](./allowlist-governance-runbook.md)).
+2. **Generate a fresh submitter key** (new EOA), fund it with a small gas float,
+   and back it up to a new encrypted USB.
+3. **Add the fresh EOA** to the allowlist via the 24h timelock path and point the
+   driver at the fresh key. Retire the old USB copy.
+4. Bring the driver up and verify. Until the fresh EOA is allowlisted (after the
+   24h delay) the protocol intentionally cannot settle — that is the safe state.
 
 Exact paths, the volume name, the key-file location, and the passphrase-storage
 detail are in `submitter-pk-backup-runbook.private.md` (off-site bundle).
