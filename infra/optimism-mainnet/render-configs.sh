@@ -158,7 +158,7 @@ if [[ ! "$OPHIS_DRIVER_SUBMITTER_KEY" =~ ^0x[a-fA-F0-9]{64}$ ]]; then
   echo "ERROR: PK from $OPHIS_SUBMITTER_KEY_PATH not a 32-byte hex." >&2
   echo "       Run ./infra/tier1-pk-isolation-setup.sh first," >&2
   echo "       OR if this is a DR-target machine, set up the ophis-driver" >&2
-  echo "       user and PK file per docs/operations/disaster-recovery-runbook.private.md." >&2
+  echo "       user and PK file per docs/operations/disaster-recovery-runbook.md." >&2
   exit 5
 fi
 export OPHIS_DRIVER_SUBMITTER_KEY
@@ -557,7 +557,7 @@ if command -v tmutil >/dev/null 2>&1; then
     echo "      of driver.toml was made BEFORE this script's Tier-1.5 upgrade,"
     echo "      the snapshots may still contain the old PK literal. Tier-1.5 does"
     echo "      not scrub them retroactively — that requires either:"
-    echo "        (a) Rotating the submitter EOA (see founder-bus-factor.private.md §4.2)"
+    echo "        (a) Rotating the submitter EOA (see allowlist-governance-runbook.md)"
     echo "        (b) sudo tmutil deletelocalsnapshots / (wipes ALL APFS snapshots)"
     echo "      Plus checking Time Machine retention if enabled."
     echo ""
