@@ -23,14 +23,14 @@
 # Threat-model notes:
 #   - Local backup is on the SAME SSD as the live db → does NOT protect
 #     against SSD/host failure. That's why the optional remote upload
-#     matters for true DR (see docs/operations/disaster-recovery-runbook.private.md).
+#     matters for true DR (see docs/operations/disaster-recovery-runbook.md).
 #   - Local backup is mode 0600 owner scep. Postgres dump format -Fc
 #     (compressed binary, with pg_dump's own structure) — not human-
 #     readable but trivially decompressed. Treat as semi-sensitive
 #     (contains orderbook / partner-fee data; no PKs).
 #   - The dump file does NOT contain the driver-submitter PK — that's
 #     in /Users/ophis-driver/.config/submitter.key, separate runbook
-#     (submitter-pk-backup-runbook.private.md).
+#     (submitter-pk-backup-runbook.md).
 
 set -euo pipefail
 umask 077
@@ -172,7 +172,7 @@ if [[ -n "${OPHIS_PG_REMOTE_BACKUP_CMD:-}" ]]; then
   fi
 else
   log "OPHIS_PG_REMOTE_BACKUP_CMD not set — local-only backup. See"
-  log "  docs/operations/disaster-recovery-runbook.private.md for cloud setup."
+  log "  docs/operations/disaster-recovery-runbook.md for cloud setup."
 fi
 
 # Retention: delete local dumps older than $LOCAL_RETENTION_DAYS.

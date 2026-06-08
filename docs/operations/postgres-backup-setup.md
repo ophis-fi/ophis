@@ -2,7 +2,7 @@
 
 **Audience:** operator (Clement / successor) enabling the daily Postgres backup.
 **Last updated:** 2026-05-20.
-**Related:** `docs/operations/disaster-recovery-runbook.private.md` (Step 5)
+**Related:** `docs/operations/disaster-recovery-runbook.md` (Step 5)
 
 ## What this does
 
@@ -60,20 +60,20 @@ Local-only backups do NOT survive a Mac mini failure — that's the whole point 
 brew install backblaze-b2
 
 # 2. Create a B2 account at backblaze.com, generate an Application Key
-#    with capability: writeFiles on a NEW bucket named ophis-backups.
+#    with capability: writeFiles on a NEW bucket named YOUR_BUCKET.
 b2 account authorize <KEY_ID> <APP_KEY>
 
 # 3. Verify
 b2 bucket list
 
 # 4. Add lifecycle policy to delete old uploads (30 days)
-b2 bucket update ophis-backups allPrivate \
+b2 bucket update YOUR_BUCKET allPrivate \
   --lifecycleRules '[{"fileNamePrefix":"","daysFromUploadingToHiding":30,"daysFromHidingToDeleting":1}]'
 
 # 5. Edit ~/Library/LaunchAgents/ai.ophis.postgres-backup.plist
 #    Add inside <key>EnvironmentVariables</key><dict>:
 #      <key>OPHIS_PG_REMOTE_BACKUP_CMD</key>
-#      <string>b2 file upload --quiet ophis-backups - op-$(date +%Y-%m-%d).pgdump</string>
+#      <string>b2 file upload --quiet YOUR_BUCKET - op-$(date +%Y-%m-%d).pgdump</string>
 #    NOTE: b2 reads auth from $HOME/.b2_account_info — make sure the
 #    LaunchAgent's user can read that file (it's chmod 600 by default).
 
@@ -104,22 +104,14 @@ If you want zero cloud spend, write a separate weekly job that copies the local 
 
 ## Restore procedure
 
-Documented at length in `docs/operations/disaster-recovery-runbook.private.md` Step 5. Quick version:
+The full restore is in [`disaster-recovery-runbook.md`](./disaster-recovery-runbook.md)
+(Step 6) and the operator-local DR runbook kept in the off-site recovery bundle.
 
-```bash
-# Local restore (use most recent dump)
-LATEST=$(ls -t ~/.local/state/ophis/pg-backups/op-*.pgdump | head -1)
-BASENAME=$(basename "$LATEST")
-docker cp "$LATEST" "optimism-mainnet-db-1:/tmp/$BASENAME"
-docker exec -u postgres optimism-mainnet-db-1 \
-  pg_restore -d ophis -U ophis --clean --if-exists "/tmp/$BASENAME"
-
-# Remote restore from B2
-LATEST_REMOTE=$(b2 ls --json ophis-backups | jq -r 'sort_by(.uploadTimestamp) | reverse | .[0].fileName')
-b2 file download "b2://ophis-backups/$LATEST_REMOTE" /tmp/restore.pgdump
-docker cp /tmp/restore.pgdump optimism-mainnet-db-1:/tmp/restore.pgdump
-docker exec -u postgres optimism-mainnet-db-1 pg_restore -d ophis -U ophis --clean --if-exists /tmp/restore.pgdump
-```
+High level: copy the most recent dump into the orderbook database container and
+`pg_restore --clean --if-exists` it; for an off-site recovery, pull the latest
+dump from the encrypted backup store first. The exact container/database names,
+local paths, and backup-store/bucket specifics are operator-local (off-site
+bundle), not in this repo.
 
 ## Verifying backup health (do quarterly)
 
