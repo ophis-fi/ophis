@@ -26,14 +26,37 @@ import type { PartnerFee } from '@cowprotocol/widget-lib'
 export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as const
 
 /**
- * Legacy volume-bps default — kept at 0 so the existing volumeFee
- * pipeline emits no partnerFee on the UI side and nothing is deducted
- * from the displayed quote. The actual on-chain fee is configured via
- * `OPHIS_DEFAULT_APP_DATA_PARTNER_FEE` below and written into the
- * appData metadata directly.
+ * FLAG-GATED FEE MODEL. Default OFF = the current price-improvement model
+ * (zero behavior change). Set `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer
+ * in [1, 50] to switch the LIVE fee to a FLAT volume fee of that many bps
+ * (e.g. 10 = 0.10%, at/below Matcha's 10 bps). Default unset/0 = unchanged.
+ *
+ * Why <=50: the OP self-hosted backend's CIP-75 Volume policy bypasses the
+ * per-order cap (app_data.rs) and is bounded only by the autopilot global
+ * `max_partner_fee` (100 bps); 50 keeps us well under it and at/under the
+ * competitor floor (Matcha 10, Velora 15).
+ */
+function readVolumeFeeBps(): number {
+  const raw = Number(process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS)
+  return Number.isInteger(raw) && raw >= 1 && raw <= 50 ? raw : 0
+}
+/** Flat-volume-fee bps when the flag is enabled (0 = flag off). */
+export const OPHIS_VOLUME_BPS = readVolumeFeeBps()
+/** True when the flat-volume-fee flag is set; flips the model below + in the appData atom. */
+export const OPHIS_FLAT_VOLUME_FEE_ENABLED = OPHIS_VOLUME_BPS > 0
+
+/**
+ * The volumeFee-pipeline fee. It drives the quote DISPLAY and, via the
+ * `ophisAppDataPartnerFee ?? volumeFee` precedence in AppDataUpdater, also the
+ * on-chain appData fee WHEN the direct price-improvement object below is
+ * suppressed (which `injectedWidgetAppDataPartnerFeeAtom` does iff the flag is
+ * on). Default 0 keeps the volumeFee pipeline silent so the price-improvement
+ * `OPHIS_DEFAULT_APP_DATA_PARTNER_FEE` carries the on-chain fee. When the flag
+ * is on, display and on-chain both read this single value, so they stay in
+ * lockstep with no hidden or double charge.
  */
 export const OPHIS_DEFAULT_PARTNER_FEE: PartnerFee = {
-  bps: 0,
+  bps: OPHIS_FLAT_VOLUME_FEE_ENABLED ? OPHIS_VOLUME_BPS : 0,
   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 }
 

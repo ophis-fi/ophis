@@ -2,7 +2,7 @@ import { atom } from 'jotai'
 
 import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
 
-import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE } from 'ophis/partnerFeeDefault'
+import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE, OPHIS_FLAT_VOLUME_FEE_ENABLED } from 'ophis/partnerFeeDefault'
 
 export type WidgetParamsErrors = Partial<{ [key in keyof CowSwapWidgetAppParams]: string[] | undefined }>
 
@@ -30,6 +30,12 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
  */
 export const injectedWidgetAppDataPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
-  if (widgetFee) return undefined
+  // Suppress the direct price-improvement appData fee when EITHER (a) a host
+  // widget overrides partnerFee, OR (b) the flat-volume-fee flag is on. In case
+  // (b) the volumeFee pipeline (OPHIS_DEFAULT_PARTNER_FEE.bps) carries the
+  // on-chain fee via AppDataUpdater's `ophisAppDataPartnerFee ?? volumeFee`,
+  // so the displayed quote and the on-chain fee stay in lockstep (one source,
+  // no hidden or double charge).
+  if (widgetFee || OPHIS_FLAT_VOLUME_FEE_ENABLED) return undefined
   return OPHIS_DEFAULT_APP_DATA_PARTNER_FEE
 })
