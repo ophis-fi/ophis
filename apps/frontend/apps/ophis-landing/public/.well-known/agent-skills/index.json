@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "swap-via-ophis",
+      "type": "skill-md",
+      "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
+      "url": "https://ophis.fi/.well-known/agent-skills/swap-via-ophis/SKILL.md",
+      "digest": "sha256:33f59d9bcca41fb0f1d399c87870c8d4b627754df32fb2b10185612e56d63eb9"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 User-agent: *
 Allow: /
+# Content Signals (contentsignals.org): public content, AI use welcome.
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 
 # Answer-engine / LLM crawlers explicitly allowed (AEO / GEO), matching the
 # landing, docs, and explorer policy.

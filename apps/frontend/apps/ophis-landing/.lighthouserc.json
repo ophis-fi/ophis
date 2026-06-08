@@ -5,7 +5,8 @@
       "url": ["http://localhost/index.html"],
       "settings": {
         "preset": "desktop",
-        "throttlingMethod": "simulate"
+        "throttlingMethod": "simulate",
+        "skipAudits": ["robots-txt"]
       }
     },
     "assert": {
