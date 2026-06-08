@@ -1,7 +1,7 @@
 ---
 id: fees
 title: Fees & rebates
-description: Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade.
+description: Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade. Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp).
 sidebar_label: Fees & rebates
 sidebar_position: 3
 ---
@@ -14,6 +14,8 @@ Ophis charges a **flat 0.10% (10 bps) fee on trade volume**. It applies to
 ## How it works
 
 - A **flat 0.10% (10 bps) fee** is applied to the volume of every trade.
+- **Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp).** This applies
+  when both tokens are stablecoins and the swap stays on the same chain.
 - The fee is a fixed share of the trade amount, so it scales directly with the
   size of your swap and is the same on every order.
 - Solver competition still works in your favour: solvers compete to beat the
@@ -32,6 +34,9 @@ volume**:
 
 The fee is **0.10% of the 1,000 USDC traded**, so on a 1,000 USDC swap the fee is
 **1 USDC**. The same 0.10% rate applies to every trade, no matter the size.
+
+Stablecoin-to-stablecoin swaps get the reduced rate: a 1,000 USDC to USDT
+stablecoin swap pays 0.01% = **0.10 USDC**.
 
 ## How it's collected
 

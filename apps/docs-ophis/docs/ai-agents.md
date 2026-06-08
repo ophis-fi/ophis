@@ -237,6 +237,13 @@ field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
 serializer, **never** `keccak256(JSON.stringify(doc))`. JSON key order isn't
 stable, so the hash won't match what solvers expect.
 
+Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp): same-chain pairs
+where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
+`{ volumeBps: 10, recipient }`. The `@ophis/sdk` exposes
+`OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
+to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
+so integrators pass `isStablePair` based on their own token classification.
+
 ```typescript
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
 import { keccak256, toUtf8Bytes } from 'ethers';

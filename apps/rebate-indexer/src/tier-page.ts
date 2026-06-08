@@ -65,7 +65,7 @@ export function renderTierPage(
   // the old "price improvement only / never touch your principal" wording. Kept
   // in sync with the docs + frontend; rollback = revert the activation PR.
   const feeNote =
-    'A flat 0.10% (10 bps) fee applies to your trade volume; rebates return a share of it by tier.';
+    'A flat 0.10% (10 bps) fee applies to your trade volume (0.01% on stablecoin pairs); rebates return a share of it by tier.';
 
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';
