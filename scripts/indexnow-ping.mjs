@@ -42,17 +42,28 @@ const body = {
   urlList: urls,
 }
 
+// Bound the request: if IndexNow accepts the connection but stalls, an
+// unbounded fetch would hang the deploy step past `continue-on-error` until the
+// runner/network timeout, delaying or skipping later steps (e.g. build
+// provenance). Abort after 10s.
+const controller = new AbortController()
+const timeout = setTimeout(() => controller.abort(), 10_000)
+
 try {
   const res = await fetch('https://api.indexnow.org/indexnow', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify(body),
+    signal: controller.signal,
   })
   // 200 = accepted, 202 = accepted pending validation. Anything else is logged
   // but never fails the deploy.
   console.log(`IndexNow ${host}: HTTP ${res.status} for ${urls.length} url(s)`)
 } catch (err) {
-  console.error(`IndexNow ${host}: ping failed (non-fatal):`, err?.message ?? err)
+  const reason = controller.signal.aborted ? 'timed out after 10s' : err?.message ?? err
+  console.error(`IndexNow ${host}: ping failed (non-fatal):`, reason)
+} finally {
+  clearTimeout(timeout)
 }
 
 process.exit(0)
