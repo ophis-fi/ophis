@@ -2,7 +2,7 @@
 
 > Ophis is an intent-based, MEV-protected DEX aggregator built for the agent era. Describe a trade in natural language; Ophis parses the intent, fetches a best-execution quote, and batch-settles it MEV-protected on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Autonomous agents can trade through a public MCP server.
 
-Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price: an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On the Ophis-operated chains, namely Optimism (10, live) plus MegaETH (4326) and HyperEVM (999) whose orderbooks are currently paused but whose Ophis settlement contracts are deployed, settlement uses Ophis's own GPv2Settlement (NOT CoW's canonical address). Agents MUST resolve the per-chain settlement domain (and orderbook host) via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing on those chains; signing against CoW's canonical address there yields a domain the deployed contract rejects.
+Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price: an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On Optimism (chain 10), the live Ophis network, settlement uses Ophis's own GPv2Settlement at a non-canonical address (NOT CoW's canonical address). Agents MUST resolve the per-chain settlement domain (and orderbook host) via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address yields a domain the deployed contract rejects.
 
 ## For agents
 
