@@ -33,6 +33,8 @@ risk here; this only protects the solver float and settlement integrity.
    from the off-site bundle for the host-specific commands.
 4. **Restore the signing user + submitter PK** from the encrypted off-site USB
    (see [`submitter-pk-backup-runbook.md`](./submitter-pk-backup-runbook.md)).
+   If Step 0 applied (possible compromise), do **not** restore the old key —
+   follow that runbook's compromised-key branch to provision a **fresh** EOA.
 5. **Restore the `.env` files** from the off-site bundle.
 6. **Restore Postgres** from the latest off-site dump (see
    [`postgres-backup-setup.md`](./postgres-backup-setup.md), Restore).

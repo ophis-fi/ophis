@@ -39,6 +39,13 @@ jobs:
         run: |
           mkdir -p /tmp/echidna-out
           chmod 0777 /tmp/echidna-out
+          # The TOB toolbox runs as the (non-root) `ethsec` user, and
+          # crytic-compile writes its `crytic-export/` into the CWD (/work).
+          # On current runner images the checked-out contracts dir is not
+          # writable by that container user, so make the mounted dir
+          # world-writable here (ephemeral CI checkout) — otherwise the
+          # compile step dies with `PermissionError: ... 'crytic-export'`.
+          chmod 0777 "${WORKSPACE}/contracts"
           # Same digest-pinned TOB image as security.yml's Slither job.
           # Run from the contracts root (/work), NOT cd echidna: the harnesses
           # import `../src/...`, which must fall inside solc's allow-paths
