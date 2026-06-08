@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ophis Explorer is a single-page app whose deep pages (orders, trades,
+     addresses, transactions) are dynamic and per-entity. Only the stable
+     entry point is listed here; per-entity pages are reachable by crawl and
+     internal links but are not enumerable in a static sitemap. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://explorer.ophis.fi/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
