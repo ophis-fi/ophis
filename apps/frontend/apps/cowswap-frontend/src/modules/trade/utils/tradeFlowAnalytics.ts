@@ -6,6 +6,8 @@ import { UiOrderType } from '@cowprotocol/types'
 import { CowSwapAnalyticsCategory } from 'common/analytics/types'
 import { USER_SWAP_REJECTED_ERROR } from 'common/utils/getSwapErrorMessage'
 
+import { trackGa4Event } from 'ophis/analytics/track'
+
 export interface TradeFlowAnalyticsContext {
   account: string | null
   recipient?: string | null
@@ -47,6 +49,13 @@ export function useTradeFlowAnalytics(): TradeFlowAnalytics {
     return {
       trade(context: TradeFlowAnalyticsContext) {
         sendTradeAnalytics('Send', context.orderType, context.marketLabel, undefined, context.isBridgeOrder)
+        // GA4 funnel conversion, in parallel with the GTM event. PII-safe:
+        // order type + market symbols + bridge flag only, never an address.
+        trackGa4Event('swap_initiated', {
+          order_type: context.orderType,
+          token_pair: context.marketLabel,
+          is_bridge: !!context.isBridgeOrder,
+        })
       },
       sign(context: TradeFlowAnalyticsContext) {
         const { marketLabel, orderType } = context

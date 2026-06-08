@@ -147,6 +147,8 @@ const config: Config = {
   themeConfig: {
     image: 'img/og-image.png',
     metadata: [
+      { name: 'twitter:site', content: '@ophisfi' },
+      { property: 'og:locale', content: 'en_US' },
       {
         name: 'description',
         content:
