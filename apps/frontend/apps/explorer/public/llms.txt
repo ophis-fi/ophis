@@ -1,0 +1,24 @@
+# Ophis Explorer
+
+> Ophis Explorer is the public blockchain explorer for Ophis, an intent-based DEX aggregator (a CoW Protocol fork) live on Optimism mainnet. It surfaces orders, trades, settlement batches, and solver competition for Ophis.
+
+## What you can look up
+
+- Orders and their status (open, filled, expired, cancelled).
+- Trades and the on-chain settlement transaction that filled them.
+- Per-address activity: the orders and trades for a given wallet.
+- Solver competition: which solver won a batch and the price it returned.
+
+## Key facts
+
+- Ophis settles on Optimism mainnet (chain 10) via its own GPv2Settlement at 0x310784c7FCE12d578dA6f53460777bAc9718B859, bytecode-identical to CoW's audited contract but deployed at a non-canonical address (not CoW's canonical 0x9008D19f58AAbD9eD0D60971565AA8510560ab41).
+- Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price; they can never settle below the signed limit.
+- 0% protocol fee on ordinary trades. Ophis earns only on positive-slippage rebates when a solver beats the quoted price.
+- Non-custodial: every order is signed by the user's own wallet.
+
+## Links
+
+- [Swap](https://swap.ophis.fi/): the Ophis trading app.
+- [Docs](https://docs.ophis.fi/): protocol design, Intent API reference, SDK, security audits.
+- [Landing](https://ophis.fi/): product overview and the natural-language intent input.
+- [Source](https://github.com/ophis-fi/ophis): full source code.
