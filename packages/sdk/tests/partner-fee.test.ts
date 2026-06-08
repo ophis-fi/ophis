@@ -4,6 +4,8 @@ import {
   buildOphisAppDataPartnerFee,
   OPHIS_PARTNER_FEE_RECIPIENT,
   OPHIS_VOLUME_FEE_BPS,
+  OPHIS_STABLE_VOLUME_FEE_BPS,
+  ophisVolumeBpsForPair,
   OPHIS_FEE_CHAIN_IDS,
 } from '@ophis/sdk';
 
@@ -41,6 +43,12 @@ describe('@ophis/sdk partner fee defaults', () => {
 
   it('exposes the flat volume-fee constant matching the live config', () => {
     expect(OPHIS_VOLUME_FEE_BPS).toBe(10);
+  });
+
+  it('charges a reduced 1 bp on stablecoin-to-stablecoin pairs', () => {
+    expect(OPHIS_STABLE_VOLUME_FEE_BPS).toBe(1);
+    expect(ophisVolumeBpsForPair(true)).toBe(1);
+    expect(ophisVolumeBpsForPair(false)).toBe(OPHIS_VOLUME_FEE_BPS);
   });
 
   it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + CoW-hosted incl. Sepolia)', () => {

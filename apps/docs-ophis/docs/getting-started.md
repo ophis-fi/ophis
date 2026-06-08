@@ -63,8 +63,11 @@ For the full lifecycle, see [How it works](./architecture.md).
 
 ## Supported networks
 
-Ophis surfaces **11 EVM chains** as source / destination in the network
-selector:
+Ophis surfaces **11 EVM chains** as full source _and_ destination in the
+network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
+Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, and Polygon (plus the
+Sepolia testnet). On any of these you can both pay from and receive into
+your EVM wallet.
 
 | | | |
 | --- | --- | --- |
@@ -73,10 +76,12 @@ selector:
 | Ink | Linea | Optimism |
 | Plasma | Polygon | |
 
-Plus **Solana** and **Bitcoin** as cross-chain _destinations_ via
-[NEAR Intents](https://near.org/intents), trade from any EVM source
-chain to those networks without a second wallet. You paste a destination
-address and sign with your EVM wallet; NEAR Intents brokers the bridge.
+In addition, **Solana** and **Bitcoin** are available as cross-chain
+_destinations only_ via [NEAR Intents](https://near.org/intents): trade
+from any EVM source chain to those networks without a second wallet. They
+are not source chains, you cannot start a swap from a Solana or Bitcoin
+balance. You paste a destination address and sign with your EVM wallet;
+NEAR Intents brokers the bridge.
 
 236 tokens are recognised across stablecoins, ETH/BTC pegs, DeFi
 blue-chips, AI/RWA, memes, and gaming.
