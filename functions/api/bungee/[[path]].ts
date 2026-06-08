@@ -30,11 +30,14 @@
 interface Env {
   /** Bungee dedicated-integrator API key (Cloudflare Pages runtime secret). */
   BUNGEE_API?: string
-  /** Upstream Bungee host. Default = the standard backend (keyless-safe). */
+  /** Upstream Bungee host override. Default = the dedicated backend. */
   BUNGEE_BACKEND?: string
 }
 
-const DEFAULT_BACKEND = 'https://backend.bungee.exchange'
+// Bungee's dedicated-integrator host (confirmed in their API-access docs). The
+// proxy is only reached when the dedicated tier is enabled, so it targets the
+// dedicated backend by default; override with BUNGEE_BACKEND if Bungee changes it.
+const DEFAULT_BACKEND = 'https://dedicated-backend.bungee.exchange'
 
 // Forward only safe request headers; the `affiliate` id arrives from the SDK
 // and is public, so it is passed through. Hop-by-hop / host / cookie headers

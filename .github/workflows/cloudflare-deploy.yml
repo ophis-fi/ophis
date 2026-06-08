@@ -197,6 +197,25 @@ jobs:
           sys.stdout.write('EOF_CF_MSG\n')
           PY
 
+      # Sync the Bungee dedicated-integrator API key into the `greg` Pages
+      # project as a RUNTIME secret (read by functions/api/bungee). Bridges the
+      # GitHub secret to Cloudflare so the key never enters the browser bundle.
+      # Idempotent, gated on the secret being set, timeout-guarded, and
+      # continue-on-error so it can never block the frontend deploy. Only used
+      # once REACT_APP_BUNGEE_DEDICATED_ENABLED routes traffic through the proxy.
+      - name: sync BUNGEE_API to Pages runtime secret
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUNGEE_API: ${{ secrets.BUNGEE_API }}
+        run: |
+          if [ -n "$BUNGEE_API" ]; then
+            printf '%s' "$BUNGEE_API" | timeout 90 npx --yes wrangler@4 pages secret put BUNGEE_API --project-name greg
+          else
+            echo "BUNGEE_API not set; skipping Pages runtime secret sync."
+          fi
+
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0  # v4.0.0
         with:
