@@ -14,9 +14,9 @@ Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed inte
 
 - [Swap app](https://swap.ophis.fi/): the trading interface: start from a natural-language intent.
 - [Docs](https://docs.ophis.fi/): protocol design, Intent API reference, SDK, security audits.
-- [SDK](https://github.com/ophis-fi/ophis/tree/main/packages/sdk): `@ophis/sdk`: agent-safety helpers for building bounded CoW orders on Ophis (correct per-chain settlement domain, CIP-75 partner fee, receiver pinning).
+- [SDK](https://github.com/ophis-fi/ophis/tree/main/packages/sdk): `@ophis/sdk`: agent-safety helpers for building bounded CoW orders on Ophis (correct per-chain settlement domain, flat volume partner fee, receiver pinning).
 
 ## Optional
 
 - [GitHub](https://github.com/ophis-fi/ophis): full source.
-- Fee model: CIP-75 price-improvement (25% of execution that beats the quote, capped at 0.5% of volume). Ordinary trades that do not beat the quote pay nothing.
+- Fee model: a flat 0.10% (10 bps) fee on trade volume, applied to every trade (e.g. swap 1,000 USDC, fee = 0.10% = 1 USDC).

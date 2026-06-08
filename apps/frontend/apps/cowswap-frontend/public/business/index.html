@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ophis for Business, non-custodial intent routing for desks &amp; integrators</title>
-<meta name="description" content="Ophis for desks, treasuries, and integrators. Non-custodial intent routing, MEV-protected execution, audit references inherited from CoW Protocol's GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. 0% on ordinary trades; 25% of price improvement, capped at 0.5% of volume.">
+<meta name="description" content="Ophis for desks, treasuries, and integrators. Non-custodial intent routing, MEV-protected execution, audit references inherited from CoW Protocol's GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. A flat 0.10% (10 bps) fee on trade volume, with a share returned monthly as volume-tier rebates.">
 <link rel="canonical" href="https://business.ophis.fi">
 
 <meta property="og:type" content="website">
@@ -298,8 +298,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <span class="lab">Destinations via NEAR Intents</span>
       </div>
       <div class="c">
-        <span class="num"><b>0%</b> &rarr; 25%</span>
-        <span class="lab">Ordinary trades free; 25% of price improvement</span>
+        <span class="num"><b>0.10%</b></span>
+        <span class="lab">Flat fee on trade volume</span>
       </div>
     </div>
   </div>
@@ -358,32 +358,27 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
 <section id="economics">
   <div class="wrap">
     <div class="eyebrow reveal">Economics</div>
-    <h2 class="reveal">A fee that only ever touches the upside.</h2>
+    <h2 class="reveal">A flat fee, at or below the aggregators.</h2>
     <p class="lede reveal">
-      Ophis charges nothing on the principal of a trade. The only fee is a capped share of price
-      improvement, the difference between the quote you accepted and what a solver actually
-      delivered. Half of the WETH fees collected flows back to active traders as monthly rebates.
+      Ophis charges a flat 0.10% (10 bps) fee on the volume of every trade, at or below comparable
+      aggregators (Matcha 10 bps, Velora 15 bps). Half of the WETH fees collected flows back to
+      active traders as monthly rebates.
     </p>
 
     <div class="econ reveal">
       <div class="panel">
-        <div class="ttl">Fee, on price improvement only</div>
+        <div class="ttl">Fee, flat on trade volume</div>
         <div class="feerow">
-          <span class="big zero">0%</span>
-          <span class="txt">on every trade that fills at the quoted rate. <b>No flat protocol fee, no spread, never your principal.</b></span>
+          <span class="big take">0.10%</span>
+          <span class="txt">a <b>flat 10 bps</b> fee on the volume of every trade, charged via CoW Protocol's CIP-75 volume policy (<code>volumeBps: 10</code>).</span>
         </div>
         <div class="feerow">
-          <span class="big take">25%</span>
-          <span class="txt">of any <b>price improvement</b> when a solver beats the quote you accepted (CIP-75 <code>priceImprovementBps: 2500</code>).</span>
-        </div>
-        <div class="feerow">
-          <span class="big cap">0.5%</span>
-          <span class="txt">hard cap on the fee as a share of trade volume (<code>maxVolumeBps: 50</code>), whatever the improvement.</span>
+          <span class="big zero">0bps</span>
+          <span class="txt">no spread, no hidden markup, no surcharge beyond the flat 0.10%.</span>
         </div>
         <div class="example">
-          Quote <b>0.300 ETH</b> &rarr; solver delivers <b>0.303 ETH</b><br>
-          improvement <b>0.003 ETH</b>, fee 25% = <b>0.00075 ETH</b><br>
-          you receive <span class="plus">0.30225 ETH</span>, above your quote.
+          Swap <b>1,000 USDC</b>, fee = 0.10% = <b>1 USDC</b>.<br>
+          A share returns to you monthly as <span class="plus">volume-tier rebates</span>.
         </div>
       </div>
 
@@ -687,16 +682,16 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <summary>What is your fee structure?</summary>
         <div class="body">
           <p>
-            <strong>0% on ordinary trades.</strong> Ophis charges nothing on the principal value of
-            a swap, and the fee never touches your principal. The only fee is <strong>25% of price
-            improvement</strong>: when a solver beats the quote you accepted, Ophis takes a quarter
-            of that surplus via CoW Protocol's CIP-75 mechanism, hard-capped at <strong>0.5% of
-            trade volume</strong>. If your order fills at the quoted rate, the fee is 0%.
+            <strong>A flat 0.10% (10 bps) fee on trade volume</strong>, applied to every trade,
+            charged via CoW Protocol's CIP-75 volume policy (<code>volumeBps: 10</code>). For
+            example, a 1,000 USDC swap pays a 1 USDC fee. The rate is at or below comparable
+            aggregators (Matcha 10 bps, Velora 15 bps).
           </p>
           <p>
-            No flat protocol fee, no hidden spreads. The full breakdown and the rebate tiers are in
-            the <a href="https://docs.ophis.fi/fees">fees documentation</a>. Partner-tier terms are
-            handled per agreement.
+            No spread, no hidden markup beyond the flat 0.10%. A share of the WETH fees is returned
+            monthly to active wallets as volume-tier rebates. The full breakdown and the rebate
+            tiers are in the <a href="https://docs.ophis.fi/fees">fees documentation</a>.
+            Partner-tier terms are handled per agreement.
           </p>
         </div>
       </details>

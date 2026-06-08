@@ -8,8 +8,7 @@ export {
   ophisDefaultPartnerFee,
   buildOphisAppDataPartnerFee,
   OPHIS_PARTNER_FEE_RECIPIENT,
-  OPHIS_PRICE_IMPROVEMENT_BPS,
-  OPHIS_MAX_VOLUME_BPS,
+  OPHIS_VOLUME_FEE_BPS,
   OPHIS_FEE_CHAIN_IDS,
   type OphisPartnerFee,
 } from './partner-fee.js';

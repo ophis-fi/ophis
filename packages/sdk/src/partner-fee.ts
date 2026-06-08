@@ -1,7 +1,8 @@
 /**
  * Ophis's partner-fee configuration injected into every order routed through
  * Ophis.fi. Surfaced via cow-sdk's appData `metadata.partnerFee` using the
- * CIP-75 PRICE-IMPROVEMENT policy, paid out by CoW DAO weekly in WETH. See:
+ * CIP-75 VOLUME policy (a flat fee on trade volume), paid out by CoW DAO weekly
+ * in WETH. See:
  *   - https://docs.cow.fi/governance/fees/partner-fee
  *   - docs/development/specs/2026-05-03-ophis-design-amendment.md
  *
@@ -25,18 +26,15 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;
 
 /**
- * Price-improvement fee: Ophis takes 25% (2500 bps) of any execution that
- * beats the quote shown to the user. Ordinary trades that don't beat the quote
- * pay nothing. The backend rejects values above this at app-data validation
- * (`MAX_PARTNER_FEE_BPS`).
+ * Flat volume fee: Ophis takes a flat 10 bps (0.10%) of trade volume, at or
+ * below comparable aggregators (Matcha 10 bps, Velora 15 bps). Charged via the
+ * CIP-75 VOLUME policy. The backend caps the volume policy at
+ * `MAX_PARTNER_VOLUME_BPS` (50 bps), so 10 sits well under the ceiling.
+ *
+ * Must match the frontend flag value `REACT_APP_OPHIS_VOLUME_FEE_BPS` when the
+ * flat fee is live; republish this SDK in lockstep with any change.
  */
-export const OPHIS_PRICE_IMPROVEMENT_BPS = 2500;
-
-/**
- * Hard ceiling on the fee as a fraction of trade volume (CIP-75 `maxVolumeBps`):
- * 50 bps (0.5%). Protects large trades; backend caps this at `MAX_PARTNER_VOLUME_BPS`.
- */
-export const OPHIS_MAX_VOLUME_BPS = 50;
+export const OPHIS_VOLUME_FEE_BPS = 10;
 
 /**
  * Chains where Ophis charges the CIP-75 partner fee — every chain its frontend
@@ -74,10 +72,8 @@ const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
 export const OPHIS_FEE_CHAIN_IDS: readonly number[] = Object.freeze([...FEE_CHAIN_IDS]);
 
 export interface OphisPartnerFee {
-  /** Share of price improvement over the user's quote, in bps (2500 = 25%). */
-  readonly priceImprovementBps: number;
-  /** Hard cap on the fee as a fraction of trade volume, in bps (50 = 0.5%). */
-  readonly maxVolumeBps: number;
+  /** Flat fee as a fraction of trade volume, in bps (10 = 0.10%). */
+  readonly volumeBps: number;
   readonly recipient: `0x${string}`;
 }
 
@@ -89,8 +85,7 @@ export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undef
   assertValidChainId(chainId);
   if (!FEE_CHAIN_ID_SET.has(chainId)) return undefined;
   return {
-    priceImprovementBps: OPHIS_PRICE_IMPROVEMENT_BPS,
-    maxVolumeBps: OPHIS_MAX_VOLUME_BPS,
+    volumeBps: OPHIS_VOLUME_FEE_BPS,
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   };
 };
@@ -98,9 +93,10 @@ export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undef
 /**
  * Builds the exact value for a CoW order's `appData.metadata.partnerFee`, or
  * `undefined` on chains where Ophis charges no fee. Use this instead of
- * hand-assembling the object — it guarantees the CIP-75 price-improvement shape
- * `{ priceImprovementBps, maxVolumeBps, recipient }`, NOT the flat
- * `{ bps, recipient }` widget shape (mixing them is a silent 100x fee error).
+ * hand-assembling the object: it guarantees the CIP-75 VOLUME shape
+ * `{ volumeBps, recipient }` (a flat fee on trade volume), NOT the
+ * price-improvement `{ priceImprovementBps, maxVolumeBps, recipient }` shape.
+ * Mixing the two shapes is a silent magnitude error.
  *
  * @example
  *   const partnerFee = buildOphisAppDataPartnerFee(10);
