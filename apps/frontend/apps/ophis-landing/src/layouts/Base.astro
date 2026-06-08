@@ -179,6 +179,11 @@ const {
        so .nav / .bg-orbs / .reveal-up rules silently miss the components
        in src/components/. -->
   <style is:global>@import '../styles/global.css';</style>
+
+  <!-- WebMCP: expose Ophis's parse-intent + open-swap tools to in-browser AI
+       agents (navigator.modelContext). External script, covered by
+       script-src 'self', so no inline CSP hash is needed. -->
+  <script is:inline src="/webmcp.js" defer></script>
 </head>
 <body>
   <div class="bg-orbs" aria-hidden="true"></div>
