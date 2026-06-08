@@ -60,6 +60,13 @@ export function renderTierPage(
   const wallet = shortWallet(status.wallet);
   const nextCycle = fmtCycle(opts.nextCycleIso);
 
+  // Fee disclaimer for the live flat-fee model (activated alongside this copy).
+  // A flat 0.10% (10 bps) volume fee applies to every trade, so this de-claims
+  // the old "price improvement only / never touch your principal" wording. Kept
+  // in sync with the docs + frontend; rollback = revert the activation PR.
+  const feeNote =
+    'A flat 0.10% (10 bps) fee applies to your trade volume; rebates return a share of it by tier.';
+
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';
   if (next) {
@@ -160,7 +167,7 @@ export function renderTierPage(
       <a class="ghost" href="https://docs.ophis.fi/fees">How rebates work</a>
     </div>
 
-    <p class="foot">Tiers are based on rolling 30-day volume. Rebates apply to positive price improvement only and never touch your principal. This page is informational and not a guarantee of any payout amount.</p>
+    <p class="foot">Tiers are based on rolling 30-day volume. ${feeNote} This page is informational and not a guarantee of any payout amount.</p>
   </main>
 </body>
 </html>`;

@@ -30,7 +30,7 @@ import {
 
 const orderbook = getOphisOrderbookUrl(10);          // https://optimism-mainnet.ophis.fi
 const domain = getOphisOrderDomain(10);               // { name, version, chainId, verifyingContract }
-const partnerFee = buildOphisAppDataPartnerFee(10);   // { priceImprovementBps, maxVolumeBps, recipient }
+const partnerFee = buildOphisAppDataPartnerFee(10);   // { volumeBps, recipient }
 
 assertReceiverIsOwner(owner, order.receiver);         // throws if proceeds would leave the account
 ```

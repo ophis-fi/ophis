@@ -20,13 +20,13 @@ front-ends and aggregators.
 | **How you trade** | Natural language, e.g. "swap 100 USDC for ETH on Base" | Token picker (signed intents) | Token picker | Token picker |
 | **Cross-chain destinations** | Solana and Bitcoin, live (via NEAR Intents) | Solana live (via NEAR Intents); no Bitcoin | EVM and Solana | EVM only |
 | **Agent access** | Public natural-language `/api/intent` (no key) plus a hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |
-| **Fee model** | 0% on ordinary trades; 25% of price improvement, capped at 0.5% of volume; never your principal | ~50% of surplus / quote improvement, capped near 1% of volume, plus a small volume fee on some orders | ~0.25% on most pairs, 0.05% on stablecoin pairs (Matcha Auto); 0.10% flat on select chains (Scroll, Mantle, Monad, Linea) | 0.15% (15 bps) interface fee on most swaps; 0.01% (1 bps) on stablecoin pairs |
+| **Fee model** | Flat 0.10% (10 bps) on trade volume, applied to every trade | ~50% of surplus / quote improvement, capped near 1% of volume, plus a small volume fee on some orders | ~0.25% on most pairs, 0.05% on stablecoin pairs (Matcha Auto); 0.10% flat on select chains (Scroll, Mantle, Monad, Linea) | 0.15% (15 bps) interface fee on most swaps; 0.01% (1 bps) on stablecoin pairs |
 
 The shared CoW Protocol foundation means execution quality, MEV protection, and
 custody are on par with CoW Swap. What Ophis adds on top is the natural-language
 front door, an agent-first API surface, Solana and Bitcoin as cross-chain
-destinations (Bitcoin remains unique among these front-ends), and a fee that takes
-25% of price improvement, capped at 0.5% of volume.
+destinations (Bitcoin remains unique among these front-ends), and a flat 0.10%
+(10 bps) fee on trade volume that applies to every trade.
 
 :::note
 

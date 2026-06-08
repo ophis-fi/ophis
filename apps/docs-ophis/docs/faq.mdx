@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is price-improvement-only: 0% on ordinary trades, with only a small, capped share of any positive slippage when a solver beats your quote. Your principal is never touched.",
+        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is simple: a flat 0.10% (10 bps) fee on trade volume, applied to every trade.",
       },
     },
     {
@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Via the CoW Protocol CIP-75 priceImprovementBps field in the order's appData, taken from the trade output at settlement.",
+        text: "Via the CoW Protocol partner-fee field in the order's appData, set to the volume shape { volumeBps: 10, recipient }, taken from the trade output at settlement.",
       },
     },
     {
@@ -102,9 +102,9 @@ export const faqLd = {
 Ophis uses batch auctions and a solver competition to settle every order
 at the best on-chain price, with [MEV protection](./architecture.md) by
 construction. The natural-language input lets you skip token-pickers
-entirely. And the [fee model](./fees.md) is price-improvement-only: 0% on
-ordinary trades, with 25% of any price improvement when a solver beats your
-quote, capped at 0.5% of the trade. Your principal is never touched.
+entirely. And the [fee model](./fees.md) is simple: a flat 0.10% (10 bps)
+fee on trade volume, applied to every trade. For example, swap 1,000 USDC
+and the fee is 0.10% = 1 USDC.
 
 ### Do I need to connect a wallet?
 
@@ -145,9 +145,9 @@ on-chain, so no solver can fill it worse than the price you accepted.
 
 ### How are partner fees collected?
 
-Via the CoW Protocol CIP-75 `priceImprovementBps` field in the order's
-`appData`, taken from the trade output at settlement. Full detail on the
-[Fees & rebates](./fees.md) page.
+Via the CoW Protocol partner-fee field in the order's `appData`, set to the
+volume shape `{ volumeBps: 10, recipient }`, taken from the trade output at
+settlement. Full detail on the [Fees & rebates](./fees.md) page.
 
 ### Is Ophis open source?
 

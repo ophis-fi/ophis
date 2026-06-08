@@ -1,58 +1,53 @@
 ---
 id: fees
 title: Fees & rebates
-description: Ophis charges nothing on ordinary trades, and 25% of price improvement (capped at 0.5% of volume) only when a solver beats your quote. Your principal is never touched.
+description: Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade.
 sidebar_label: Fees & rebates
 sidebar_position: 3
 ---
 
 # Fees & rebates
 
-Ophis charges a fee on **price improvement only**: the difference between the
-quote you were shown and the price a solver actually delivered. On trades that
-fill at the quoted rate, the fee is **0%**. There is no flat protocol fee, and
-the fee never touches your principal.
+Ophis charges a **flat 0.10% (10 bps) fee on trade volume**. It applies to
+**every trade**, regardless of how the order fills.
 
 ## How it works
 
-- **0% fee** on every trade that fills at the quoted rate.
-- When a solver **beats your quote**, Ophis keeps **25% of the improvement**,
-  hard-capped at **0.5% of the trade**, never a share of your principal.
-- You always come out **ahead of the quote you accepted**: the fee applies only
-  to that improvement, is capped, and never touches your principal.
+- A **flat 0.10% (10 bps) fee** is applied to the volume of every trade.
+- The fee is a fixed share of the trade amount, so it scales directly with the
+  size of your swap and is the same on every order.
+- Solver competition still works in your favour: solvers compete to beat the
+  quote you were shown, and any improvement they find flows back to you.
 
 ## A worked example
 
-Say you ask to swap 1,000 USDC for ETH and Ophis quotes you **0.30 ETH**.
-Solvers compete, and the winning solver delivers **0.303 ETH**:
+Say you swap **1,000 USDC** for ETH. The flat fee is **0.10% of the trade
+volume**:
 
 | | Amount |
 | --- | --- |
-| Quoted output | 0.300 ETH |
-| Executed output | 0.303 ETH |
-| Price improvement | 0.003 ETH |
-| Ophis fee (25% of the improvement) | 0.00075 ETH |
-| **You receive** | **0.30225 ETH** (above your 0.300 ETH quote) |
+| Trade volume | 1,000 USDC |
+| Fee rate | 0.10% (10 bps) |
+| Ophis fee | 1 USDC |
 
-The fee is **25% of the 0.003 ETH a solver found**, never your principal, and it
-can never exceed **0.5% of the trade**. If the solver had only matched the quote,
-the fee would be 0.
+The fee is **0.10% of the 1,000 USDC traded**, so on a 1,000 USDC swap the fee is
+**1 USDC**. The same 0.10% rate applies to every trade, no matter the size.
 
 ## How it's collected
 
-The fee uses CoW Protocol's **CIP-75** partner-fee model: `priceImprovementBps:
-2500` (25% of the improvement) with `maxVolumeBps: 50` (the 0.5%-of-volume cap),
-written into the order's `appData` and taken from the trade output at settlement.
+The fee uses CoW Protocol's partner-fee model: `volumeBps: 10` (0.10% of trade
+volume), written into the order's `appData` and taken from the trade output at
+settlement.
 
 For the protocol-level details, see
-[CIP-75: Partner incentive alignment](https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253).
+[CoW Protocol partner fees](https://docs.cow.fi/cow-protocol/reference/core/intro-to-batch-auctions).
 
 :::note[Positive-slippage rebates]
 
-Because the fee applies only to improvement, ordinary trades stay free, and the
-upside of solver competition flows back to traders. Each month, **50% of the WETH
-fees accrued to the Ophis fee Safe** is paid out as rebates, split across active
-wallets in proportion to their **30-day volume weighted by tier**:
+A large share of the fee flows back to traders through volume-tier rebates. Each
+month, **50% of the WETH fees accrued to the Ophis fee Safe** is paid out as
+rebates, split across active wallets in proportion to their **30-day volume
+weighted by tier**:
 
 | Tier | 30-day volume | Weight |
 | --- | --- | --- |

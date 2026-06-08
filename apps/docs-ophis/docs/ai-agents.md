@@ -228,14 +228,14 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The partner fee is a CIP-75 **price-improvement** fee written into the order's
-`appData` at `metadata.partnerFee`. Use the price-improvement shape
-`{ priceImprovementBps, maxVolumeBps, recipient }`, **not** the flat
-`{ bps, recipient }` widget shape: the two shapes use different denominators, so
-slotting a price-improvement value into a flat volume `bps` field is a silent
-magnitude error. Hash the appData with cow-sdk's deterministic serializer,
-**never** `keccak256(JSON.stringify(doc))`. JSON key order isn't stable, so the
-hash won't match what solvers expect.
+The partner fee is a flat 0.10% (10 bps) fee on trade volume, applied to every
+trade, written into the order's `appData` at `metadata.partnerFee`. Use the
+CIP-75 **volume** shape `{ volumeBps: 10, recipient }`, **not** the
+price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
+the two shapes use different denominators, so slotting a value into the wrong
+field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
+serializer, **never** `keccak256(JSON.stringify(doc))`. JSON key order isn't
+stable, so the hash won't match what solvers expect.
 
 ```typescript
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
@@ -248,8 +248,8 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain (no fee charged).
 const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> the Ophis CIP-75 partner-fee fragment for this chain
-//    (or `undefined` on chains where Ophis charges no fee)
+// -> the Ophis flat-volume partner-fee fragment { volumeBps: 10, recipient }
+//    for this chain (or `undefined` on chains where Ophis charges no fee)
 
 const metadataApi = new MetadataApi();
 const doc = await metadataApi.generateAppDataDoc({
