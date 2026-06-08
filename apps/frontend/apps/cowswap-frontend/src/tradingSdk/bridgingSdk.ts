@@ -60,7 +60,17 @@ bridgingSdk.setAvailableProviders([
   nearIntentsBridgeProvider.info.dappId,
 ])
 
+// Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
+// Bungee calls through the same-origin Cloudflare proxy (functions/api/bungee)
+// which injects the server-side `x-api-key` so the key never ships in the
+// bundle. Unset -> direct backend (affiliate-attribution only), unchanged.
+const BUNGEE_DEDICATED_ENABLED = process.env.REACT_APP_BUNGEE_DEDICATED_ENABLED === 'true'
+
 function getBungeeApiBase(): string | undefined {
+  if (BUNGEE_DEDICATED_ENABLED && (isProd || isStaging || isBarn) && typeof window !== 'undefined') {
+    return `${window.location.origin}/api/bungee`
+  }
+
   if (isProd || isDev || isStaging || isBarn) {
     return 'https://backend.bungee.exchange'
   }
