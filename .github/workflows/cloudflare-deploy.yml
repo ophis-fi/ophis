@@ -106,10 +106,14 @@ jobs:
           # staging endpoints.
           REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi|greg-etm\.pages\.dev)$
           # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
-          # the Ophis Safe). The dedicated API key is intentionally NOT built
-          # into the frontend bundle (Bungee requires it server-side); it stays
-          # a repo secret for a future Cloudflare Function proxy.
+          # the Ophis Safe). The dedicated API key (BUNGEE_API) is intentionally
+          # NOT built into the bundle (Bungee requires it server-side); it is a
+          # Cloudflare Pages RUNTIME secret read by functions/api/bungee.
           REACT_APP_BUNGEE_AFFILIATE_ID: ${{ secrets.REACT_APP_BUNGEE_AFFILIATE_ID }}
+          # Build flag (default OFF/empty) to route Bungee through the dedicated
+          # proxy. Set to 'true' only after BUNGEE_API is a CF Pages runtime
+          # secret + the dedicated host/feeBps are confirmed. Empty -> OFF.
+          REACT_APP_BUNGEE_DEDICATED_ENABLED: ${{ secrets.REACT_APP_BUNGEE_DEDICATED_ENABLED }}
           # Cloudflare Turnstile site key for the /contact form widget. PUBLIC
           # value (rendered to the browser as a `sitekey` attr) — safe to
           # inline in the bundle. The matching SECRET is NOT a CI secret: it
