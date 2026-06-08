@@ -20,6 +20,8 @@ import styled from 'styled-components/macro'
 
 import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
 
+import { trackGa4Event } from 'ophis/analytics/track'
+
 declare global {
   interface Window {
     turnstile?: {
@@ -238,6 +240,9 @@ export function ContactPage(): ReactNode {
       })
       if (res.ok) {
         setStatus('success')
+        // Conversion signal: a partner/contact lead was submitted. request_type
+        // is a non-PII category; name/email/telegram/message are never sent.
+        trackGa4Event('generate_lead', { method: 'contact_form', lead_type: requestType || 'general' })
         setName('')
         setEmail('')
         setTelegram('')
