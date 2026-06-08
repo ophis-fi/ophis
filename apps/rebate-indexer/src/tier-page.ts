@@ -51,7 +51,7 @@ function fmtCycle(iso: string): string {
 
 export function renderTierPage(
   status: WalletStatus,
-  opts: { nextCycleIso: string; lastBatcherRunAt: string | null },
+  opts: { nextCycleIso: string; lastBatcherRunAt: string | null; flatFeeBps?: number },
 ): string {
   const meta = TIER_META[status.tier.name];
   const volume = fmtUsd(status.volume_30d_usd);
@@ -59,6 +59,16 @@ export function renderTierPage(
   const next = status.next_tier;
   const wallet = shortWallet(status.wallet);
   const nextCycle = fmtCycle(opts.nextCycleIso);
+
+  // Fee disclaimer, gated on the live fee model. When the flat volume fee is
+  // active (REBATE_FLAT_FEE_BPS set, mirrors the frontend REACT_APP_OPHIS_VOLUME_FEE_BPS),
+  // the old "price improvement only / never touch your principal" claim is false,
+  // so state the flat fee instead. Unset -> the current price-improvement model.
+  const flatBps = opts.flatFeeBps;
+  const feeNote =
+    flatBps && flatBps > 0
+      ? `A flat ${(flatBps / 100).toFixed(2)}% (${flatBps} bps) fee applies to your trade volume; rebates return a share of it by tier.`
+      : 'Rebates apply to positive price improvement only and never touch your principal.';
 
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';
@@ -160,7 +170,7 @@ export function renderTierPage(
       <a class="ghost" href="https://docs.ophis.fi/fees">How rebates work</a>
     </div>
 
-    <p class="foot">Tiers are based on rolling 30-day volume. Rebates apply to positive price improvement only and never touch your principal. This page is informational and not a guarantee of any payout amount.</p>
+    <p class="foot">Tiers are based on rolling 30-day volume. ${feeNote} This page is informational and not a guarantee of any payout amount.</p>
   </main>
 </body>
 </html>`;

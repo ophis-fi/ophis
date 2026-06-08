@@ -9,6 +9,17 @@ import { renderTierPage } from './tier-page.js';
 import { logger } from './logger.js';
 
 /**
+ * Flat volume fee in bps for the /tier disclaimer copy. MUST be kept in lockstep
+ * with the frontend build-time REACT_APP_OPHIS_VOLUME_FEE_BPS. Validated integer
+ * in [1,50]; unset/invalid -> undefined -> the /tier page keeps the
+ * price-improvement disclaimer (the flat fee is OFF). Read once at module load.
+ */
+const REBATE_FLAT_FEE_BPS: number | undefined = (() => {
+  const raw = Number(process.env.REBATE_FLAT_FEE_BPS);
+  return Number.isInteger(raw) && raw >= 1 && raw <= 50 ? raw : undefined;
+})();
+
+/**
  * Constant-time bearer-token check for admin-only endpoints.
  *
  * `/batches`, `/batches/:id`, and `/status` expose the full rebate ledger
@@ -268,6 +279,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       const html = renderTierPage(status, {
         nextCycleIso: nextFirstOfMonth().toISOString(),
         lastBatcherRunAt: batcherRows[0]?.last ?? null,
+        flatFeeBps: REBATE_FLAT_FEE_BPS,
       });
       return reply
         .type('text/html; charset=utf-8')

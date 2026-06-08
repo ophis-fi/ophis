@@ -13,7 +13,7 @@
 
 - Ophis settles on Optimism mainnet (chain 10) via its own GPv2Settlement at 0x310784c7FCE12d578dA6f53460777bAc9718B859, bytecode-identical to CoW's audited contract but deployed at a non-canonical address (not CoW's canonical 0x9008D19f58AAbD9eD0D60971565AA8510560ab41).
 - Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price; they can never settle below the signed limit.
-- 0% protocol fee on ordinary trades. Ophis earns only on positive-slippage rebates when a solver beats the quoted price.
+- Flat 0.10% (10 bps) protocol fee on trade volume, applied to every trade.
 - Non-custodial: every order is signed by the user's own wallet.
 
 ## Links

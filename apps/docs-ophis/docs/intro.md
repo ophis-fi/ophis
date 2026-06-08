@@ -34,9 +34,9 @@ swap 100 USDC for ETH on Base
 - **Self-custodial.** Ophis never holds funds. Every order is signed by
   your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
   from the allowlisted solver set.
-- **Free for ordinary trades.** 0% protocol fee on standard swaps. Ophis
-  earns only when a solver beats your quoted price (positive-slippage
-  capture); if execution doesn't beat the quote, you pay nothing extra.
+- **Flat, transparent fee.** A flat 0.10% (10 bps) fee on trade volume
+  applies to every trade. Example: swap 1,000 USDC and the fee is 0.10%,
+  or 1 USDC. No tiers, no surprises.
 - **Open.** The full frontend, intent-parser proxy, and infra runbooks
   are public.
 
@@ -46,7 +46,7 @@ swap 100 USDC for ETH on Base
 | --- | --- |
 | [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
 | [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
-| [Fees & rebates](./fees.md) | The price-improvement fee model and how rebates accrue. |
+| [Fees & rebates](./fees.md) | The flat 0.10% (10 bps) fee model and how rebates accrue. |
 | [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |
 | [AI agent integration](./ai-agents.md) | Wire the intent API into LangChain, AutoGPT, or your own agent. |
 | [Security & audits](./audits.md) | Custody model, settlement contracts, and audit posture. |
