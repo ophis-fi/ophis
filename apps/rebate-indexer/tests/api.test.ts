@@ -4,16 +4,22 @@ import { type FastifyInstance } from 'fastify';
 // Mock the db module so buildApiServer can be imported without a real DATABASE_URL.
 // The /health and rate-limit tests exercise the HTTP layer only.
 vi.mock('../src/db/index.js', () => ({
-  sql: Object.assign(
-    async () => [],
-    {
-      unsafe: async () => [],
-    }
-  ),
+  sql: Object.assign(async () => [], {
+    unsafe: async () => [],
+  }),
   db: {
-    select: () => ({ from: () => ({ orderBy: () => ({ limit: async () => [] }), where: async () => [] }) }),
+    select: () => ({
+      from: (table: unknown) => ({
+        orderBy: () => ({ limit: async () => [] }),
+        where: async () =>
+          table === 'rebateBatches' ? [{ id: 1, status: 'proposed' }] : [{ batchId: 1 }],
+      }),
+    }),
   },
-  schema: {},
+  schema: {
+    rebateBatches: 'rebateBatches',
+    rebateBatchEntries: 'rebateBatchEntries',
+  },
 }));
 
 // Also mock tierer so /tier/:wallet doesn't need DB.
@@ -26,6 +32,7 @@ let app: FastifyInstance | undefined;
 afterEach(async () => {
   await app?.close();
   app = undefined;
+  delete process.env.REBATE_INDEXER_ADMIN_TOKEN;
 });
 
 // Must import AFTER vi.mock() calls above are hoisted.
@@ -69,3 +76,55 @@ test('/health exposes the fetcher + pipeline liveness fields', async () => {
   expect(body).toHaveProperty('last_batcher_run_at');
   expect(body).toHaveProperty('pending_batches');
 });
+
+test.each(['/status', '/batches', '/batches/1'])(
+  '%s requires configured admin auth',
+  async (url) => {
+    app = await buildApiServer();
+    const res = await app.inject({ method: 'GET', url });
+    expect(res.statusCode).toBe(503);
+    expect(JSON.parse(res.body)).toMatchObject({ error: 'admin auth not configured' });
+  },
+);
+
+// Synthetic, zero-entropy placeholders built at runtime (never as a literal
+// `Bearer <token>` string) so secret scanners don't flag them. Both are >=
+// ADMIN_TOKEN_MIN_LEN (32) chars; the "wrong" one differs from the configured
+// one so assertAdminAuth returns 401.
+const TEST_ADMIN_TOKEN = 'x'.repeat(40);
+const WRONG_ADMIN_TOKEN = 'y'.repeat(40);
+
+test.each(['/status', '/batches', '/batches/1'])(
+  '%s rejects missing and wrong admin bearer tokens',
+  async (url) => {
+    process.env.REBATE_INDEXER_ADMIN_TOKEN = TEST_ADMIN_TOKEN;
+    app = await buildApiServer();
+
+    const missing = await app.inject({ method: 'GET', url });
+    expect(missing.statusCode).toBe(401);
+    expect(JSON.parse(missing.body)).toMatchObject({ error: 'unauthorized' });
+
+    const wrong = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: `Bearer ${WRONG_ADMIN_TOKEN}` },
+    });
+    expect(wrong.statusCode).toBe(401);
+    expect(JSON.parse(wrong.body)).toMatchObject({ error: 'unauthorized' });
+  },
+);
+
+test.each(['/status', '/batches', '/batches/1'])(
+  '%s allows the exact configured admin bearer token',
+  async (url) => {
+    process.env.REBATE_INDEXER_ADMIN_TOKEN = TEST_ADMIN_TOKEN;
+    app = await buildApiServer();
+
+    const res = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: `Bearer ${TEST_ADMIN_TOKEN}` },
+    });
+    expect(res.statusCode).toBe(200);
+  },
+);
