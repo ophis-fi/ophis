@@ -5,16 +5,17 @@
  * gamification language that implies a backend that does not exist yet.
  * Reviewed by Codex pre-merge (2026-05-23):
  *   - No fabricated XP / Level / Rank — those imply live scoring.
- *   - No "Current tier" — that implies eligibility was computed; we
- *     show "Default framework tier" while the volume indexer is offline.
+ *   - No "Current tier" — that implied eligibility wasn't computed at the
+ *     time; the rebate-indexer has since gone live (rebates.ophis.fi) and
+ *     the swap page shows the real TierChip.
  *   - No placeholder partner cards — they look like inventory. A single
  *     Callout(planned) replaces them.
  *   - Identity surfaces ONLY what's verifiable from the wallet itself
  *     (address, chain, optional ENS, optional wallet name). No inferred
  *     activity, no leaderboard.
  *
- * Real backend (volume indexer, tier auto-progression, partner perks) is
- * targeted for Q3 2026.
+ * The volume indexer + tier computation shipped 2026-05/06 (rebate-indexer,
+ * rebates.ophis.fi); partner perks remain unbuilt.
  *
  * AGENTS.md compliance (post-Codex GitHub bot audit):
  *   - Named export (no default).
@@ -121,9 +122,9 @@ export function ProfilePage(): ReactNode {
 
       <Section id="contact" title="Found a gap?">
         <p>
-          This page intentionally avoids fabricating data while the underlying indexer is being
-          built. If you&apos;re routing material volume and want eligibility tracked before the
-          public launch, reach out via the{' '}
+          Volume tiers and rebates are computed by the live rebate indexer; your current tier is
+          shown on the swap page. If you&apos;re routing material volume and want a closer look at
+          eligibility, reach out via the{' '}
           <TextLink href="https://business.ophis.fi" external>
             business page
           </TextLink>

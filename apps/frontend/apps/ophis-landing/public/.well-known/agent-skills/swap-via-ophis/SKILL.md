@@ -48,7 +48,7 @@ All endpoints are public and require no API key or authentication.
 ## Fees
 
 A flat 0.10% (10 bps) fee on trade volume, with a reduced 0.01% (1 bp) on
-stablecoin-to-stablecoin swaps. A share of fees is returned monthly to active
+same-chain stablecoin-to-stablecoin swaps. A share of fees is returned monthly to active
 wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and `ophisVolumeBpsForPair(isStablePair)`.

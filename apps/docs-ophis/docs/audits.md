@@ -29,9 +29,9 @@ Orders settle through a batch auction in which every trade clears at the same
 uniform price. This eliminates the common MEV vectors structurally, not as a
 best-effort mitigation:
 
-- **No front-running** — there is no pending-order mempool race to win.
-- **No sandwiching** — the protocol does not reorder trades for value.
-- **No priority-gas auction** — execution order within a batch is not for sale.
+- **No front-running**: there is no pending-order mempool race to win.
+- **No sandwiching**: the protocol does not reorder trades for value.
+- **No priority-gas auction**: execution order within a batch is not for sale.
 
 When the winning settlement transaction is broadcast, its calldata is briefly
 visible in the public mempool like any transaction. This neither reorders nor
@@ -41,15 +41,15 @@ outcome regardless.
 ## Smart contracts
 
 Ophis runs its **own deployment** of CoW Protocol's GPv2 settlement stack on
-Optimism. The contracts that hold or move value are **immutable** — they have
+Optimism. The contracts that hold or move value are **immutable**: they have
 no admin, no owner, and no proxy, so no operator (and no compromise of Ophis's
 backend or frontend) can upgrade, pause, or re-point them:
 
 | Contract | Address (Optimism) | Property |
 | --- | --- | --- |
-| `GPv2Settlement` | `0x310784c7FCE12d578dA6f53460777bAc9718B859` | Immutable — no admin/proxy |
-| `GPv2VaultRelayer` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | Immutable — only ever honors the Settlement above |
-| `CoWSwapEthFlow` | `0x764fE4aa1FF493cf39931c7923C8ff5837596504` | Immutable — native-ETH sells (see below) |
+| `GPv2Settlement` | `0x310784c7FCE12d578dA6f53460777bAc9718B859` | Immutable, no admin/proxy |
+| `GPv2VaultRelayer` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | Immutable, only ever honors the Settlement above |
+| `CoWSwapEthFlow` | `0x764fE4aa1FF493cf39931c7923C8ff5837596504` | Immutable, native-ETH sells (see below) |
 
 The core settlement contract is CoW Protocol's audited code, so CoW's
 settlement audits apply to it directly:
@@ -68,7 +68,7 @@ transfer) and the partner-fee settlement-buffer handling.
 Selling native ETH is placed as an **on-chain order** to the immutable
 `CoWSwapEthFlow` contract, which is constructor-wired to the Settlement and
 WETH. These orders carry the same signed limit price and receiver as any other
-order, and they are **refundable by you on-chain after the order expires** — so
+order, and they are **refundable by you on-chain after the order expires**, so
 even if no solver ever settles it, you reclaim your ETH directly from the
 contract without trusting any operator.
 
@@ -78,13 +78,13 @@ The only mutable on-chain surface is the **solver allowlist** (which addresses
 are permitted to settle batches). It is governed conservatively:
 
 - Adding a solver, or changing the allowlist's manager or implementation, flows
-  through an on-chain **24-hour TimelockController** — every such change is
+  through an on-chain **24-hour TimelockController**: every such change is
   publicly visible and delayed a full day before it can take effect.
 - The timelock's proposer and executor is a **2-of-3 multisig** (Gnosis Safe,
   hardware-wallet signers); the deployer's admin rights were renounced and the
   timelock self-administers.
 - A misbehaving solver can be **evicted in a single transaction** by the
-  multisig — fast removal is allowed; only additions and upgrades are delayed.
+  multisig: fast removal is allowed; only additions and upgrades are delayed.
 
 | Contract | Address (Optimism) |
 | --- | --- |
@@ -96,14 +96,14 @@ are permitted to settle batches). It is governed conservatively:
 Authority is split and held in **multisigs, not single keys**:
 
 - The **protocol multisig** and the **partner-fee multisig** are each a
-  **2-of-3 Gnosis Safe** with hardware-wallet signers — no single key can move
+  **2-of-3 Gnosis Safe** with hardware-wallet signers: no single key can move
   governance or fees.
 - The only single-key components are non-custodial operational hot wallets (the
   solver that signs settlements carries a small gas float, never a treasury, and
-  can only call `settle()` within your signed limits — it cannot drain wallets).
+  can only call `settle()` within your signed limits: it cannot drain wallets).
 
 The partner-fee multisig (`0x858f0F5eE954846D47155F5203c04aF1819eCeF8`) holds
-only collected protocol fees, kept entirely separate from trader funds — which
+only collected protocol fees, kept entirely separate from trader funds, which
 Ophis never custodies. See [Fees & rebates](./fees.md) for how the fee is
 calculated.
 
@@ -116,7 +116,7 @@ calculated.
   no-shell account, restrictive permissions, rendered to RAM at runtime), not in
   plaintext alongside the application.
 - On-chain state is read through a **multi-source RPC consensus** layer that
-  **fails closed** — if the sources disagree or are unavailable, the driver
+  **fails closed**: if the sources disagree or are unavailable, the driver
   stops rather than acting on an unverified view.
 - The frontends ship with a strict **Content-Security-Policy**, are deployed
   from a **branch-protected, SHA-pinned CI pipeline** with **signed build

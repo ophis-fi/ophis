@@ -14,7 +14,7 @@ npm install @ophis/sdk
 
 - **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism is self-hosted at `optimism-mainnet.ophis.fi`, **not** `api.cow.fi`; getting this wrong silently bypasses the Ophis solver and partner fee.
 - **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (the OP settlement is non-canonical, so the cow-sdk default is wrong there).
-- **`buildOphisAppDataPartnerFee(chainId)`** — the exact CIP-75 price-improvement fragment for `appData.metadata.partnerFee`.
+- **`buildOphisAppDataPartnerFee(chainId)`** — the exact CIP-75 volume-fee fragment (`{ volumeBps, recipient }`) for `appData.metadata.partnerFee`.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
 - **`assignTier`**, **`ophisDefaults`**, and the partner-fee constants.
 

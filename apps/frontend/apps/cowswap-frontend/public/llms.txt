@@ -1,13 +1,13 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on stablecoin-to-stablecoin swaps. Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-protected**: orders settle off-chain via a batch auction; sandwich attacks are structurally absent, not best-effort.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Flat, transparent fee**: a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on stablecoin-to-stablecoin swaps. Example: swap 1,000 USDC, fee = 0.10% = 1 USDC.
+- **Flat, transparent fee**: a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. Example: swap 1,000 USDC, fee = 0.10% = 1 USDC.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
 ## Routes
