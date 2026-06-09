@@ -14,9 +14,24 @@
  * backend, which works keyless); set it to the dedicated backend once the
  * dedicated integrator is confirmed with Bungee.
  *
+ * ACCESS CONTROLS (audit 2026-06-09 — this is a public CF Pages endpoint, and
+ * "same-origin" is a deployment fact, not an enforcement; curl can hit it
+ * directly, and once BUNGEE_API is set every accepted request spends Ophis's
+ * dedicated-tier quota):
+ *   - Method allowlist: GET/POST only (the bridging SDK uses nothing else).
+ *   - Path allowlist: /api/v1/bungee(-manual)/... only — the two API roots the
+ *     SDK is configured with in bridgingSdk.ts. Everything else 404s without
+ *     touching the upstream.
+ *   - Origin gate: browsers send Origin on cross-origin requests and on all
+ *     POSTs; a present-but-unrecognized Origin is rejected. (Absent Origin —
+ *     same-origin GETs, curl — passes, like /api/intent; the rate limit is the
+ *     backstop for non-browser callers.)
+ *   - Per-IP rate limit: KV-backed sliding window (OPHIS_RATELIMIT, shared
+ *     namespace with /api/intent under a distinct key prefix), per-isolate
+ *     in-memory fallback when KV is unbound/unavailable.
+ *
  * Routing: CF Pages catch-all. /api/bungee/<rest> -> ${BUNGEE_BACKEND}/<rest>,
- * method + query + body forwarded verbatim. Same-origin (called only from
- * swap.ophis.fi), so no CORS handling is needed.
+ * method + query + body forwarded verbatim.
  *
  * ACTIVATION (not live until all of):
  *   1. BUNGEE_API set as a Cloudflare Pages runtime secret (NOT just a GitHub
@@ -24,7 +39,11 @@
  *   2. BUNGEE_BACKEND set to the confirmed dedicated host (if it differs).
  *   3. The frontend built with REACT_APP_BUNGEE_DEDICATED_ENABLED=true so the
  *      SDK routes through this proxy.
- *   4. A live bridge-quote test confirming the fee accrues to the Safe.
+ *   4. Verify the access controls above are active on the deployed function:
+ *      a DELETE, a /api/v1/other path, and a forged-Origin POST must all be
+ *      rejected, and >RATE_LIMIT_MAX_REQUESTS requests/min from one IP must
+ *      429 — BEFORE the key is set.
+ *   5. A live bridge-quote test confirming the fee accrues to the Safe.
  */
 
 interface Env {
@@ -32,6 +51,8 @@ interface Env {
   BUNGEE_API?: string
   /** Upstream Bungee host override. Default = the dedicated backend. */
   BUNGEE_BACKEND?: string
+  /** KV namespace shared with /api/intent — distributed per-IP rate limit. */
+  OPHIS_RATELIMIT?: KVNamespace
 }
 
 // Bungee's dedicated-integrator host (confirmed in their API-access docs). The
@@ -44,12 +65,122 @@ const DEFAULT_BACKEND = 'https://dedicated-backend.bungee.exchange'
 // are intentionally dropped.
 const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'affiliate']
 
+// The two upstream API roots the bridging SDK is configured with
+// (bridgingSdk.ts: apiBaseUrl=/api/v1/bungee, manualApiBaseUrl=/api/v1/bungee-manual).
+const ALLOWED_PATH_RE = /^\/api\/v1\/bungee(-manual)?(\/|$)/
+
+const ALLOWED_METHODS = new Set(['GET', 'POST'])
+
+// Mirrors functions/api/intent.ts ALLOWED_ORIGINS — the hosts this Pages
+// project serves. Reject only a PRESENT non-allowlisted Origin: same-origin
+// GET fetches legitimately omit the header.
+const ALLOWED_ORIGINS = new Set<string>([
+  'https://ophis.fi',
+  'https://swap.ophis.fi',
+  'https://business.ophis.fi',
+  'https://greg-etm.pages.dev',
+])
+const ALLOWED_ORIGIN_SUFFIXES = ['.greg-etm.pages.dev', '.greg.pages.dev']
+
+function isAllowedOrigin(origin: string): boolean {
+  if (ALLOWED_ORIGINS.has(origin)) return true
+  try {
+    const url = new URL(origin)
+    return ALLOWED_ORIGIN_SUFFIXES.some((suffix) => url.host.endsWith(suffix))
+  } catch {
+    return false
+  }
+}
+
+// Sliding-window per-IP rate limit. More generous than /api/intent's 30/min:
+// bridge quoting legitimately polls (quote refresh while the form is open),
+// and the guarded resource is third-party API quota, not a metered LLM call.
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX_REQUESTS = 120
+const RATE_LIMIT_MAX_KEYS = 1024
+// Distinct prefix so entries never collide with /api/intent's `rl:` keys in
+// the shared OPHIS_RATELIMIT namespace.
+const RATE_LIMIT_KEY_PREFIX = 'bungee:rl:'
+
+async function checkRateLimitKV(kv: KVNamespace, ip: string): Promise<boolean> {
+  const now = Date.now()
+  const cutoff = now - RATE_LIMIT_WINDOW_MS
+  const key = `${RATE_LIMIT_KEY_PREFIX}${ip}`
+  const raw = await kv.get(key)
+  let timestamps: number[] = []
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) timestamps = parsed.filter((t) => typeof t === 'number' && t > cutoff)
+    } catch {
+      timestamps = []
+    }
+  }
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) return false
+  timestamps.push(now)
+  await kv.put(key, JSON.stringify(timestamps), { expirationTtl: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000) * 2 })
+  return true
+}
+
+// Per-isolate fallback (KV unbound or erroring): coarse but better than open.
+const isolateHits = new Map<string, number[]>()
+
+function checkRateLimitIsolate(ip: string): boolean {
+  const now = Date.now()
+  const cutoff = now - RATE_LIMIT_WINDOW_MS
+  if (isolateHits.size > RATE_LIMIT_MAX_KEYS) isolateHits.clear()
+  const timestamps = (isolateHits.get(ip) ?? []).filter((t) => t > cutoff)
+  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
+    isolateHits.set(ip, timestamps)
+    return false
+  }
+  timestamps.push(now)
+  isolateHits.set(ip, timestamps)
+  return true
+}
+
+async function checkRateLimit(env: Env, ip: string): Promise<boolean> {
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      return await checkRateLimitKV(env.OPHIS_RATELIMIT, ip)
+    } catch {
+      return checkRateLimitIsolate(ip)
+    }
+  }
+  return checkRateLimitIsolate(ip)
+}
+
+function jsonError(status: number, error: string, extraHeaders?: Record<string, string>): Response {
+  return new Response(JSON.stringify({ success: false, error }), {
+    status,
+    headers: { 'content-type': 'application/json', ...extraHeaders },
+  })
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, env } = context
   const url = new URL(request.url)
 
+  if (!ALLOWED_METHODS.has(request.method)) {
+    return jsonError(405, 'method not allowed', { allow: 'GET, POST' })
+  }
+
+  const origin = request.headers.get('origin')
+  if (origin && !isAllowedOrigin(origin)) {
+    return jsonError(403, 'origin not allowed')
+  }
+
   // Strip the /api/bungee prefix to recover the upstream path.
   const rest = url.pathname.replace(/^\/api\/bungee/, '') || '/'
+  if (!ALLOWED_PATH_RE.test(rest)) {
+    return jsonError(404, 'unknown bungee api path')
+  }
+
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (!(await checkRateLimit(env, ip))) {
+    return jsonError(429, 'too many requests', { 'retry-after': '30' })
+  }
+
   const backend = (env.BUNGEE_BACKEND || DEFAULT_BACKEND).replace(/\/+$/, '')
   const upstream = `${backend}${rest}${url.search}`
 
@@ -70,10 +201,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   try {
     upstreamResp = await fetch(upstream, init)
   } catch {
-    return new Response(JSON.stringify({ success: false, error: 'bungee upstream unreachable' }), {
-      status: 502,
-      headers: { 'content-type': 'application/json' },
-    })
+    return jsonError(502, 'bungee upstream unreachable')
   }
 
   // Pass through status + body; only forward content-type (no upstream secrets/headers).

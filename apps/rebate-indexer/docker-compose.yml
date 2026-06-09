@@ -37,6 +37,13 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BATCHER_PROPOSE_ENABLED: ${BATCHER_PROPOSE_ENABLED:-true}
       REBATE_INDEXER_ADMIN_TOKEN: ${REBATE_INDEXER_ADMIN_TOKEN}
+      # Money-path mode flags (audit 2026-06-09): without these pass-throughs a
+      # .env flip silently no-ops — the container never saw the variables at all.
+      # Defaults preserve live behavior (POOL mode, no conversion, no basis seed).
+      REBATE_DIRECT_MODE: ${REBATE_DIRECT_MODE:-false}
+      REBATE_CONVERT_ENABLED: ${REBATE_CONVERT_ENABLED:-false}
+      REBATE_FEE_BASIS_WEI: ${REBATE_FEE_BASIS_WEI:-}
+      REBATE_MAX_TRADE_USD: ${REBATE_MAX_TRADE_USD:-}
     ports:
       - "8080:8080"
 
