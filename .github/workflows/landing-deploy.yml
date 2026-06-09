@@ -92,23 +92,16 @@ jobs:
           # ophis.fi serves /api/intent as the canonical alias of
           # swap.ophis.fi/api/intent, using the SAME shared, hardened handler
           # (functions/api/intent.ts). Copy ONLY functions/api/ into the deploy
-          # bucket — deliberately NOT the SHARED functions/_middleware.ts (which
-          # rewrites / -> /business/ for the swap deploy). CF Pages picks up
-          # functions/ adjacent to the deployed root.
+          # bucket — deliberately NOT functions/_middleware.ts — so the landing
+          # stays static (only /api/* invokes a Pages Function; every other route
+          # is served from cache with no function on the hot path). CF Pages
+          # picks up functions/ adjacent to the deployed root.
           if [ -d functions/api ]; then
             mkdir -p apps/frontend/apps/ophis-landing/dist/functions/api
             cp -R functions/api/. apps/frontend/apps/ophis-landing/dist/functions/api/
+            echo "staged functions:"
+            find apps/frontend/apps/ophis-landing/dist/functions -type f
           fi
-          # Stage the LANDING-LOCAL middleware (markdown-for-agents content
-          # negotiation only; NOT the shared swap middleware). It returns the
-          # curated /llms.txt as text/markdown on Accept: text/markdown and calls
-          # next() for everything else, so normal browser traffic is unchanged.
-          if [ -f apps/frontend/apps/ophis-landing/functions/_middleware.ts ]; then
-            mkdir -p apps/frontend/apps/ophis-landing/dist/functions
-            cp apps/frontend/apps/ophis-landing/functions/_middleware.ts apps/frontend/apps/ophis-landing/dist/functions/_middleware.ts
-          fi
-          echo "staged functions:"
-          find apps/frontend/apps/ophis-landing/dist/functions -type f 2>/dev/null || true
 
       - name: wrangler pages deploy
         if: github.ref == 'refs/heads/main'
