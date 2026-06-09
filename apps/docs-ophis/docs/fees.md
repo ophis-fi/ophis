@@ -18,8 +18,18 @@ Ophis charges a **flat 0.10% (10 bps) fee on trade volume**. It applies to
   when both tokens are stablecoins and the swap stays on the same chain.
 - The fee is a fixed share of the trade amount, so it scales directly with the
   size of your swap and is the same on every order.
-- Solver competition still works in your favour: solvers compete to beat the
-  quote you were shown, and any improvement they find flows back to you.
+
+## Surplus stays with you
+
+Solvers compete to fill your order, and any execution that beats the quote you
+signed (the **surplus**, or price improvement) is returned to you in full. You
+see it on the order completion screen as the extra you received beyond the
+quote.
+
+Ophis charges a flat fee on volume and **takes no share of your surplus**. A
+surplus-based or price-improvement fee would skim a cut of that upside; Ophis
+does not. Your only cost is the flat volume fee, so every basis point a solver
+wins beyond your quote is yours to keep.
 
 ## A worked example
 
