@@ -8,6 +8,9 @@ named phase tags for major milestones.
 
 ## [Unreleased]
 
+### Changed
+- Rebate pool resized from 50% to 21.25% of net WETH fees (`POOL_SPLIT_BPS` 5000 → 2125) so the protocol retains ~55% of gross blended after CoW's hosted-chain cut. Tier weights and the pari-mutuel distribution are unchanged; only the pool size shrinks.
+
 ### Added
 - Issue + PR templates, `CODEOWNERS`, README badges, custom social preview ([#315]).
 - Org-level profile README at [`ophis-fi/.github`](https://github.com/ophis-fi/.github).

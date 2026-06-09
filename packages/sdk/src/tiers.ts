@@ -33,7 +33,7 @@ export const TIERS: readonly Tier[] = [
 TIERS.forEach((tier) => Object.freeze(tier));
 Object.freeze(TIERS);
 
-export const POOL_SPLIT_BPS = 5_000;
+export const POOL_SPLIT_BPS = 2_125;
 
 export function assignTier(volume_30d_usd: number): Tier {
   if (volume_30d_usd < 0) throw new Error('assignTier: volume must be non-negative');
