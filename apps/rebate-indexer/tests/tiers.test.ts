@@ -20,8 +20,8 @@ describe('TIERS table', () => {
     ]);
   });
 
-  it('POOL_SPLIT_BPS is 5000 (50%)', () => {
-    expect(POOL_SPLIT_BPS).toBe(5_000);
+  it('POOL_SPLIT_BPS is 2125 (21.25%)', () => {
+    expect(POOL_SPLIT_BPS).toBe(2_125);
   });
 });
 

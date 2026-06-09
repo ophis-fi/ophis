@@ -498,7 +498,7 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       'direct-mode accrual basis',
     );
     // Persist the recomputed distributable so /status, /batches and the reconciler
-    // report this direct cycle's real pool (newFees), not the stale 50%-of-balance
+    // report this direct cycle's real pool (newFees), not the stale pool-split-of-balance
     // value written at insert. Direct-mode only (gated); POOL rows keep their pool. (P2-2)
     await db.update(schema.rebateBatches).set({ poolWethWei: distributable }).where(eq(schema.rebateBatches.id, batchId));
   }

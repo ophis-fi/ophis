@@ -224,11 +224,11 @@ describe('direct-mode accrual basis', () => {
     await expect(runBatcher(JUN)).rejects.toThrow(/malformed/i);
   });
 
-  it('persists the direct distributable into pool_weth_wei, not the stale 50% (P2-2)', async () => {
+  it('persists the direct distributable into pool_weth_wei, not the stale pool-split (P2-2)', async () => {
     const sql = await getSql();
     await seedBatch(sql, MAY, 'executed', 9n * ONE);
     await seedWallet(sql, 'aa'.repeat(20), 100_000); // gold
-    mockBalanceWei = 10n * ONE; // distributable = 10 - 9 = 1 WETH (50%-of-balance would be 5)
+    mockBalanceWei = 10n * ONE; // distributable = 10 - 9 = 1 WETH (pool-split-of-balance would be 2.125)
     const r = await runBatcher(JUN);
     expect(r.status).toBe('proposed');
     const [row] = await sql<{ p: string }[]>`SELECT pool_weth_wei::text AS p FROM rebate_batches WHERE cycle_month = ${'2026-06-01'}`;

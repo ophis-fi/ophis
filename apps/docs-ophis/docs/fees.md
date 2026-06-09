@@ -50,7 +50,7 @@ For the protocol-level details, see
 :::note[Positive-slippage rebates]
 
 A large share of the fee flows back to traders through volume-tier rebates. Each
-month, **50% of the WETH fees accrued to the Ophis fee Safe** is paid out as
+month, **21.25% of the WETH fees accrued to the Ophis fee Safe** is paid out as
 rebates, split across active wallets in proportion to their **30-day volume
 weighted by tier**:
 
