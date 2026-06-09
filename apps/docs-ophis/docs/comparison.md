@@ -72,7 +72,9 @@ The four projects price trades on different models:
 - **Ophis**: a flat **0.10% (10 bps)** on trade volume, applied to every trade.
   Same-chain stablecoin-to-stablecoin swaps pay a reduced **0.01% (1 bp)**;
   cross-chain trades pay the standard rate. The rate is knowable before you
-  trade and does not depend on execution outcome.
+  trade and does not depend on execution outcome. Because the fee is a fixed
+  share of volume, it never touches your **surplus**: any price improvement a
+  solver finds beyond your quote is returned to you in full, with no cut taken.
 - **CoW Swap**: a **surplus-based** model. The fee is taken as a share of the
   price improvement (surplus) a solver finds beyond your quote, so the cost
   depends on how the batch fills and is not a fixed percentage of volume.
