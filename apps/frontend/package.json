@@ -85,6 +85,7 @@
       "cookie": "^0.7.0",
       "es5-ext": "^0.10.63",
       "ip": "^2.0.1",
+      "shell-quote": "^1.8.4",
       "rollup": "^4.59.0",
       "yauzl": "^3.2.1",
       "follow-redirects": "^1.16.0",
