@@ -26,8 +26,13 @@ export const TIERS: readonly Tier[] = [
   { name: 'platinum',  min_usd: 1_000_000, rebate_pct: 0.50 },
 ] as const;
 
-/** Share of the Safe's WETH balance that becomes the monthly rebate pool. */
-export const POOL_SPLIT_BPS = 5_000;
+/**
+ * Share of the Safe's net WETH balance that becomes the monthly rebate pool.
+ * 2125 bps = 21.25% (resized from 5000/50% on 2026-06-09 so the protocol retains
+ * ~55% of gross blended, after CoW's 25% cut on hosted chains). Tier WEIGHTS are
+ * unchanged — this resizes the pot only, not how it is distributed.
+ */
+export const POOL_SPLIT_BPS = 2_125;
 
 export function assignTier(volume_30d_usd: number): Tier {
   if (volume_30d_usd < 0) {
