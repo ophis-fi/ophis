@@ -6,7 +6,9 @@
  * tests/tiers.test.ts asserts the two stay in sync by importing both modules
  * and comparing their exports.
  *
- * Any time TIERS or POOL_SPLIT_BPS changes, change BOTH places in the same PR.
+ * Any time TIERS or POOL_SPLIT_BPS changes, change ALL THREE mirrors
+ * (rebate-indexer, sdk, cowswap-frontend) in the same PR.
+ * scripts/check-tier-invariant.sh is a hard CI gate that enforces all three.
  */
 export interface Tier {
   readonly name: 'none' | 'bronze' | 'silver' | 'gold' | 'palladium' | 'platinum';
