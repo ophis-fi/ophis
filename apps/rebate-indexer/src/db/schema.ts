@@ -82,9 +82,12 @@ export const rebateBatches = pgTable('rebate_batches', {
   poolWethWei: uint256('pool_weth_wei').notNull(),
   // DIRECT-mode accrual basis (REBATE_DIRECT_MODE, migration 0004): the Safe WETH
   // balance level already accounted for as of this cycle, so the NEXT cycle rebates
-  // only (current balance - this) = the new fees + any deferred (quarantined)
-  // rebate. Set on direct-mode proposed (= balance - rebates OWED, incl.
-  // quarantined) and no_recipients (= full balance) rows; NULL on POOL-mode /
+  // only (current balance - this) = the new fees. Set on direct-mode proposed
+  // rows as balance - rebates PAID to good recipients (P2-4, PR #454: a
+  // quarantined recipient's unpaid rebate stays in the Safe BELOW the basis and
+  // is NOT redistributed — it is alerted for manual retry, never folded back
+  // into a later cycle's delta) and on no_recipients rows (= full balance);
+  // NULL on POOL-mode /
   // failed / computing rows. The next-cycle read takes the latest row with status
   // IN ('executed','no_recipients') — it deliberately ignores 'proposed' (basis is
   // optimistic until the payout settles) and 'failed' (reverted, never paid); a

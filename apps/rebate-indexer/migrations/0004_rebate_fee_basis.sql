@@ -5,10 +5,14 @@
 -- the most recent cycle that set it. Ophis's retained profit therefore accumulates
 -- IN THE FEE SAFE and is never re-rebated (no second vault, no sweep).
 --
--- Set when a direct-mode cycle proposes (= balance - rebates OWED, including any
--- quarantined recipient, so a deferred rebate stays above the basis and re-enters
--- next cycle's delta) or records no_recipients (= the full balance, since the new
--- fees are kept as profit). Left NULL on failed/computing rows and on every POOL-
+-- Set when a direct-mode cycle proposes (= balance - rebates PAID to good
+-- recipients; per P2-4 / PR #454 a quarantined recipient's unpaid rebate stays
+-- in the Safe BELOW the basis and is NOT redistributed — it is alerted for
+-- manual retry) or records no_recipients (= the full balance, since the new
+-- fees are kept as profit).
+-- (Comment corrected 2026-06-09: previously described the pre-P2-4 owed-
+-- inclusive semantics. The migration runner tracks applied files by NAME only,
+-- so this comment-only edit never re-runs the DDL.) Left NULL on failed/computing rows and on every POOL-
 -- mode cycle. The "previous basis" read takes the most recent ACCOUNTED row
 -- (WHERE status IN ('executed','no_recipients') AND fee_basis_weth_wei IS NOT NULL
 -- ORDER BY id DESC LIMIT 1) — it ignores optimistic 'proposed' and reverted
