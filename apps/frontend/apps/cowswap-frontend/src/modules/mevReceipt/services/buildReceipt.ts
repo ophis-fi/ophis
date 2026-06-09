@@ -11,8 +11,9 @@ const extractPartnerFee = (fullAppData: string | null): PartnerFeeInfo | null =>
     // Ophis appData, so any other shape falls through to null rather than
     // being guessed at — this receipt is not a generic CoW partner-fee parser.
     //
-    // CIP-75 price-improvement model — what Ophis writes on the chains it
-    // operates. Checked before the volume branch: a PI appData carries no
+    // CIP-75 price-improvement model — the legacy Ophis shape (flag-off
+    // fallback + historical orders settled before the 2026-06-08 flat-fee
+    // flip). Checked before the volume branch: a PI appData carries no
     // volumeBps, so the pre-fix `volumeBps ?? bps` path returned null and the
     // receipt under-reported a real 25%-of-improvement fee as "(none)".
     if (typeof pf.priceImprovementBps === 'number' && typeof pf.maxVolumeBps === 'number') {
@@ -23,7 +24,8 @@ const extractPartnerFee = (fullAppData: string | null): PartnerFeeInfo | null =>
         recipient: pf.recipient,
       }
     }
-    // Legacy flat-volume model (widget overrides, older appData).
+    // Flat-volume model — what Ophis writes in production since the
+    // 2026-06-08 flag flip (also: widget overrides, `bps` legacy alias).
     const volumeBps = pf.volumeBps ?? pf.bps
     if (typeof volumeBps !== 'number') return null
     return { type: 'volume', volumeBps, recipient: pf.recipient }

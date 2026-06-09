@@ -29,8 +29,9 @@
 Ophis is a fork of CoW Protocol — orderbook, autopilot, driver, and baseline
 solver — running under Ophis-controlled settlement contracts, fronted by a
 rebranded CoW Swap UI with a natural-language intent layer. Orders are gasless,
-MEV-protected, batch-settled limit orders; users pay a fee only on price
-improvement (CIP-75 `priceImprovementBps`, capped by `maxVolumeBps`).
+MEV-protected, batch-settled limit orders; users pay a flat 0.10% (10 bps) fee
+on trade volume (CIP-75 `volumeBps`), reduced to 0.01% (1 bp) on same-chain
+stablecoin-to-stablecoin swaps.
 
 ## Status
 

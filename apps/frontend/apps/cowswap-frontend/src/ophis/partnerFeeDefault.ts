@@ -9,8 +9,10 @@
  * Strategy: per CIP-75 (passed Nov 2025), CoW Protocol partners can choose
  * between three monetisation models — `volumeBps` (flat), `surplusBps`
  * (% of on-chain surplus), or `priceImprovementBps` (% of execution that
- * beats the quote). Ophis runs price-improvement so users only pay when
- * we beat the quote we showed them.
+ * beats the quote). Ophis runs the FLAT volumeBps model in production
+ * (REACT_APP_OPHIS_VOLUME_FEE_BPS=10 is set at build time, see
+ * cloudflare-deploy.yml); the price-improvement object below is only the
+ * flag-off fallback.
  *
  * - https://docs.cow.fi/governance/fees/partner-fee
  * - https://forum.cow.fi/t/cip-75-partner-incentive-alignment/3253
@@ -20,16 +22,17 @@ import type { PartnerFee } from '@cowprotocol/widget-lib'
 
 /**
  * Recipient — Safe multisig on Gnosis (CREATE2-deterministic, same address
- * resolves on all 10 CoW chains). Threshold 1-of-1 at deploy; upgrade to
- * ≥2-of-N before significant accrual.
+ * resolves on all 10 CoW chains). Threshold 2-of-3 (verified on-chain on
+ * Optimism: getThreshold=2, three owners).
  */
 export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as const
 
 /**
- * FLAG-GATED FEE MODEL. Default OFF = the current price-improvement model
- * (zero behavior change). Set `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer
- * in [1, 50] to switch the LIVE fee to a FLAT volume fee of that many bps
- * (e.g. 10 = 0.10%, at/below Matcha's 10 bps). Default unset/0 = unchanged.
+ * FLAG-GATED FEE MODEL. Default OFF = the legacy price-improvement model
+ * (the fallback only — PRODUCTION RUNS WITH THE FLAG ON). Set
+ * `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer in [1, 50] to switch the
+ * LIVE fee to a FLAT volume fee of that many bps (prod sets 10 = 0.10% via
+ * a GH repo secret consumed in cloudflare-deploy.yml).
  *
  * Why <=50: the OP self-hosted backend's CIP-75 Volume policy bypasses the
  * per-order cap (app_data.rs) and is bounded only by the autopilot global

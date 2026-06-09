@@ -50,7 +50,7 @@ Examples of what we consider in scope (non-exhaustive):
 
 - Settlement-contract logic flaws in `contracts/src/` (GPv2Settlement, GPv2AllowListAuthentication, GPv2VaultRelayer).
 - Ophis-specific backend crates (`poison-recovery`, `retry-helper`, `configs`, settlement-state-machine in `driver`).
-- Partner-fee economic exploits (CIP-75 `priceImprovementBps` / `maxVolumeBps` paths).
+- Partner-fee economic exploits: the live CIP-75 `volumeBps` path (flat volume fee, recipient allowlist, backend fee clamping) and the legacy `priceImprovementBps` / `maxVolumeBps` fallback path.
 - Key custody compromise paths.
 - Frontend signing-path flaws under `apps/frontend/apps/cowswap-frontend/src/ophis/`.
 - eRPC consensus posture bypass (e.g. a configuration that lets a single-upstream answer be trusted for a critical method).

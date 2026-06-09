@@ -35,8 +35,8 @@ pub const MAX_PARTNER_VOLUME_BPS: u64 = 50;
 ///
 /// **Entries:**
 /// - `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` — Ophis partner-fee Safe
-///   (3/3 multisig across ETH/OP/MegaETH; CIP-75 partner-fee receiver for the
-///   "CoW Swap" appCode integration).
+///   (2-of-3 multisig, threshold verified on-chain; CIP-75 partner-fee
+///   receiver for the "CoW Swap" appCode integration).
 ///
 /// **Adding entries:** new partners must be onboarded through this constant
 /// after the partner-fee Safe address is independently verified (multisig

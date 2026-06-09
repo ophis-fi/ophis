@@ -16,10 +16,10 @@
  * zones — every claim below is source-verified, not recalled):
  *   - Parser model: functions/api/intent.ts → LIBERTAI_MODEL = 'qwen3.6-27b'.
  *     Framed as "currently" (implementation detail, drift-prone).
- *   - Fee framing mirrors the /learn copy (0% ordinary, a small capped share of
- *     price improvement). The exact caps live in app_data.rs
- *     (MAX_PARTNER_FEE_BPS / MAX_PARTNER_VOLUME_BPS) and are intentionally NOT
- *     surfaced in user copy (fee discretion, review item #14).
+ *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (flat 0.10%
+ *     volume fee, 0.01% on stablecoin pairs — live since the volume-fee flag
+ *     shipped). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
+ *     packages/sdk/src/partner-fee.ts. Update all fee copy together.
  *   - Chain count "11" mirrors SORTED_CHAIN_IDS (libs/common-const/chainInfo.ts).
  *     Update both together if the chain set changes (known drift source).
  *   - Solana/Bitcoin = destination-only (in SORTED_DST_CHAIN_IDS, NOT
@@ -177,7 +177,7 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Partner fee</RowTh>
               <Td>CIP-75 framework</Td>
-              <Td>0% base · capped price-improvement share · allow-listed recipient</Td>
+              <Td>Flat 0.10% on volume · 0.01% on same-chain stablecoin pairs · allow-listed recipient</Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -192,7 +192,7 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Cross-chain</RowTh>
-              <Td>&mdash;</Td>
+              <Td>None</Td>
               <Td>NEAR Intents → Solana / Bitcoin destinations</Td>
               <Td>
                 <Badge tone="beta">Ophis</Badge>
@@ -233,20 +233,21 @@ export function ProtocolPage(): ReactNode {
       <Section
         id="fees"
         title="Fees"
-        intro="Ophis charges nothing on ordinary trades. It takes a share only of price improvement, execution that beats the quote you were shown, and that share is bounded by protocol-enforced CIP-75 caps."
+        intro="Ophis charges a flat 0.10% (10 bps) fee on trade volume, written into your order as a CIP-75 partner fee and taken from the trade output at settlement. Same-chain stablecoin-to-stablecoin swaps pay 0.01% (1 bp)."
       >
         <FeatureGrid minCardWidth="200px" gap="12px">
-          <MetricCard label="Ordinary trades" value="0%" sublabel="when execution does not beat your quote" />
+          <MetricCard label="All trades" value="0.10%" sublabel="flat fee on trade volume (10 bps)" />
           <MetricCard
-            label="Price improvement"
-            value="capped"
-            sublabel="a small share of execution that beats your quote, never your principal"
+            label="Stablecoin pairs"
+            value="0.01%"
+            sublabel="same-chain stablecoin-to-stablecoin swaps (1 bp)"
           />
         </FeatureGrid>
         <p>
-          The price-improvement share is bounded by CIP-75 validation, with a hard ceiling on the share of trade
-          volume that protects large trades. Values above the cap are rejected at app-data validation as a
-          protocol-level violation.
+          The fee is written into your order as a CIP-75 partner fee. Its recipient is checked against an
+          allowlist at app-data validation, and the fee level is bounded by an operator-set protocol ceiling
+          enforced by the backend. A share of collected fees flows back to traders each month as volume-tier
+          rebates; see the fee policy below for the current split.
         </p>
         <KeyValueList
           items={[
