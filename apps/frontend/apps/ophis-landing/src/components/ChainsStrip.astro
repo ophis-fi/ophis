@@ -36,7 +36,7 @@ const passes = [false, true]
         {passes.map((isClone) => chains.map((c) => (
           <div class="chain" aria-hidden={isClone ? 'true' : undefined} data-clone={isClone ? '' : undefined}>
             {c.logo && (
-              <img class="chain-logo" src={c.logo} alt="" width="20" height="20" loading="lazy" decoding="async">
+              <img class="chain-logo" src={c.logo} alt={isClone ? '' : `${c.name}`} width="20" height="20" loading="lazy" decoding="async">
             )}
             {!c.logo && c.svg === 'bitcoin' && (
               <svg class="chain-logo" viewBox="0 0 32 32" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
