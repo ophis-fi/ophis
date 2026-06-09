@@ -70,8 +70,9 @@ you named. Bitcoin as a destination is, among these four, unique to Ophis.
 The four projects price trades on different models:
 
 - **Ophis**: a flat **0.10% (10 bps)** on trade volume, applied to every trade.
-  Stablecoin-to-stablecoin swaps pay a reduced **0.01% (1 bp)**. The rate is
-  knowable before you trade and does not depend on execution outcome.
+  Same-chain stablecoin-to-stablecoin swaps pay a reduced **0.01% (1 bp)**;
+  cross-chain trades pay the standard rate. The rate is knowable before you
+  trade and does not depend on execution outcome.
 - **CoW Swap**: a **surplus-based** model. The fee is taken as a share of the
   price improvement (surplus) a solver finds beyond your quote, so the cost
   depends on how the batch fills and is not a fixed percentage of volume.
@@ -90,7 +91,7 @@ makes the gap visible:
 | Matcha | **2.50 USDC** (0.25%) | Lower tier on some chains |
 | Velora | **1.50 USDC** (0.15%) | 1 bp on stablecoin pairs |
 
-On a stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges **0.10 USDC**
+On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges **0.10 USDC**
 (0.01%), Matcha **0.50 USDC** (0.05%), and Velora **0.10 USDC** (0.01%). The
 takeaway is not that one number is always lowest, it is that the Ophis fee is
 **flat and predictable**: you know the cost before you sign, independent of how
@@ -135,9 +136,9 @@ settlement foundation.
 | **How you trade** | Natural language, e.g. "swap 100 USDC for ETH on Base" | Token picker (signed intents) | Token picker | Token picker |
 | **Settlement** | CoW Protocol batch auctions (shared foundation) | CoW Protocol batch auctions | 0x aggregation / RFQ | Aggregation across DEXs |
 | **Cross-chain scope** | 11 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
-| **Fee model** | Flat 0.10% (10 bps) on trade volume; 0.01% (1 bp) on stablecoin-to-stablecoin pairs | Surplus-based: a share of price improvement, not a fixed % of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
+| **Fee model** | Flat 0.10% (10 bps) on trade volume; 0.01% (1 bp) on same-chain stablecoin-to-stablecoin pairs | Surplus-based: a share of price improvement, not a fixed % of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
 | **Agent API** | Public `POST /api/intent` (no key) + hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |
-| **Rebates** | 50% of WETH fees paid back monthly as volume-tier rebates | Not applicable | Not applicable | Not applicable |
+| **Rebates** | 21.25% of WETH fees paid back monthly as volume-tier rebates | Not applicable | Not applicable | Not applicable |
 | **MEV protection** | Yes (batch auctions) | Yes (batch auctions) | Partial / route-dependent | Partial / route-dependent |
 
 ## Read next

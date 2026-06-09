@@ -19,4 +19,4 @@ Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed inte
 ## Optional
 
 - [GitHub](https://github.com/ophis-fi/ophis): full source.
-- Fee model: a flat 0.10% (10 bps) fee on trade volume, applied to every trade (e.g. swap 1,000 USDC, fee = 0.10% = 1 USDC), with a reduced 0.01% (1 bp) on stablecoin-to-stablecoin swaps.
+- Fee model: a flat 0.10% (10 bps) fee on trade volume, applied to every trade (e.g. swap 1,000 USDC, fee = 0.10% = 1 USDC), with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.

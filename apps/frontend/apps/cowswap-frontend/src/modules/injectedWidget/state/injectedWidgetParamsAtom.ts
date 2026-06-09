@@ -17,16 +17,16 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
 })
 
 /**
- * Ophis price-improvement partner-fee shape, written directly into
- * appData.metadata.partnerFee. Bypasses the volumeFee pipeline (which
- * only handles the `volumeBps` shape) so we can ship CIP-75's
- * priceImprovementBps mode without refactoring every fee-display
- * component upstream.
+ * LEGACY Ophis price-improvement partner-fee shape, written directly into
+ * appData.metadata.partnerFee when the flat-volume-fee flag is OFF (it is
+ * ON in production since 2026-06-08, so this atom returns undefined there).
+ * Bypasses the volumeFee pipeline (which only handles the `volumeBps`
+ * shape) so the CIP-75 priceImprovementBps fallback works without
+ * refactoring every fee-display component upstream.
  *
  * If a host widget overrides `partnerFee` in injectedWidgetParamsAtom,
- * we honour that override (legacy volume-fee shape) and skip the
- * Ophis on-chain config so widget consumers retain their own fee
- * behaviour.
+ * we honour that override (volume-fee shape) and skip the Ophis on-chain
+ * config so widget consumers retain their own fee behaviour.
  */
 export const injectedWidgetAppDataPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
