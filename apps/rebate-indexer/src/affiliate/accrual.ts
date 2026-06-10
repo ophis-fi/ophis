@@ -46,8 +46,8 @@ export async function buildAffiliateReferrers(
       SUM(t.value_usd)::text           AS volume_usd
     FROM referrals r
     JOIN trades t ON t.wallet = r.referred_wallet
-    WHERE t.block_timestamp >= ${monthStart}
-      AND t.block_timestamp <  ${monthEnd}
+    WHERE t.block_timestamp >= ${monthStart.toISOString()}
+      AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.block_timestamp >= r.bound_at
       AND t.value_usd IS NOT NULL
     GROUP BY r.referrer_wallet, t.chain_id
