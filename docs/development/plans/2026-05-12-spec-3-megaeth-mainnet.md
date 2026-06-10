@@ -228,7 +228,7 @@ git commit -m "feat(megaeth-mainnet): scaffold infra/megaeth-mainnet/ from testn
 /opt/homebrew/bin/rsync -az --delete \
   --exclude='node_modules' --exclude='.env' \
   infra/megaeth-mainnet/ \
-  root@45.144.209.26:24014:/srv/ophis/infra/megaeth-mainnet/
+  root@REDACTED_ORIGIN_IP:24014:/srv/ophis/infra/megaeth-mainnet/
 ```
 
 (Adjust SSH command for the actual key location; `~/.ssh/ophis-rebates-deploy -p 24014` per Spec 1 runbook.)
@@ -236,7 +236,7 @@ git commit -m "feat(megaeth-mainnet): scaffold infra/megaeth-mainnet/ from testn
 - [ ] **Step 2: Create `.env` on VM with mainnet secrets**
 
 ```bash
-ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@45.144.209.26 'cat > /srv/ophis/infra/megaeth-mainnet/.env <<EOF
+ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@REDACTED_ORIGIN_IP 'cat > /srv/ophis/infra/megaeth-mainnet/.env <<EOF
 POSTGRES_USER=greg
 POSTGRES_PASSWORD=<generated>
 POSTGRES_DB=postgres
@@ -251,13 +251,13 @@ chmod 600 /srv/ophis/infra/megaeth-mainnet/.env'
 - [ ] **Step 3: Bring up stack**
 
 ```bash
-ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@45.144.209.26 'cd /srv/ophis/infra/megaeth-mainnet && docker compose -f docker-compose.mainnet.yml up -d'
+ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@REDACTED_ORIGIN_IP 'cd /srv/ophis/infra/megaeth-mainnet && docker compose -f docker-compose.mainnet.yml up -d'
 ```
 
 - [ ] **Step 4: Verify containers up + db healthy**
 
 ```bash
-ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@45.144.209.26 'docker ps --filter "name=megaeth-mainnet" --format "table {{.Names}}\t{{.Status}}"'
+ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@REDACTED_ORIGIN_IP 'docker ps --filter "name=megaeth-mainnet" --format "table {{.Names}}\t{{.Status}}"'
 ```
 
 Expect 5 containers, db healthy.
@@ -265,7 +265,7 @@ Expect 5 containers, db healthy.
 - [ ] **Step 5: Verify no 429s / no errors in driver logs for 5 minutes**
 
 ```bash
-ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@45.144.209.26 'docker logs megaeth-mainnet-driver-1 --since 5m 2>&1 | grep -ciE "error|warn|429"'
+ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@REDACTED_ORIGIN_IP 'docker logs megaeth-mainnet-driver-1 --since 5m 2>&1 | grep -ciE "error|warn|429"'
 ```
 
 Count should be near 0.
@@ -280,7 +280,7 @@ Count should be near 0.
 - [ ] **Step 1: Create the named tunnel from the VM**
 
 ```bash
-ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@45.144.209.26 'cloudflared tunnel create ophis-megaeth-mainnet'
+ssh -p 24014 -i ~/.ssh/ophis-rebates-deploy root@REDACTED_ORIGIN_IP 'cloudflared tunnel create ophis-megaeth-mainnet'
 ```
 
 Note the tunnel UUID returned.

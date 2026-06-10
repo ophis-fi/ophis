@@ -55,7 +55,7 @@ Branch A locked: Clement is Aleph's CMO; compute on Aleph is free for him. Spec 
                                 │ HTTP localhost:8545
                                 │
    Aleph VM (vm4.alephvision.eu, EXISTING)
-   45.144.209.26:24014
+   REDACTED_ORIGIN_IP:24014
    └── infra/optimism-mainnet/   [NEW: this spec]
          orderbook + autopilot + driver + baseline + db
          node-url = http://<vm-greg-op-mainnet.internal>:8545

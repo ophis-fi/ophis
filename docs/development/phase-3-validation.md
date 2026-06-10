@@ -138,11 +138,11 @@ Two changes since the original 2026-05-04 Phase 3 validation:
   from the tree. Pools and contracts on Linea Sepolia are abandoned in
   place.
 
-- **VM migration.** The Phase 3 hosting VM at `149.86.227.106:24019` is
+- **VM migration.** The Phase 3 hosting VM at `REDACTED_ORIGIN_IP_OLD:24019` is
   dead (TCP connection refused, instance presumed reclaimed by Aleph).
   Spec 1 revives the multi-chain backend by co-tenanting the
   optimism-sepolia and megaeth-testnet stacks onto the existing rebates
-  VM at `vm4.alephvision.eu` (`45.144.209.26:24014`). Same SSH context as
+  VM at `vm4.alephvision.eu` (`REDACTED_ORIGIN_IP:24014`). Same SSH context as
   the rebate-indexer; chains exposed via per-chain named Cloudflare
   Tunnels (`optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`)
   instead of the rotating `*.trycloudflare.com` quick-tunnels Phase 3 used.
