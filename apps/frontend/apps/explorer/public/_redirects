@@ -1,0 +1,3 @@
+# Serve a real image for legacy /favicon.ico probes; the SPA catch-all otherwise
+# returns index.html (HTML) for /favicon.ico. Modern clients use the <link rel=icon> PNGs.
+/favicon.ico  /favicon-light-mode.png  200
