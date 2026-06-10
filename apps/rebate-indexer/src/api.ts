@@ -7,6 +7,46 @@ import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { logger } from './logger.js';
+import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
+import { FEE_SHARE_BPS, type AffiliateKind } from './affiliate/rates.js';
+
+// Bounds on the cycle window for a referrer's current-month affiliate stats.
+function currentCycleWindow(now: Date): { start: Date; end: Date } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return { start, end };
+}
+
+// Referrer's effective tier + active codes + this-cycle referred volume/count.
+// Shared by GET /affiliate/:wallet (public) and POST /partner (signature-gated).
+async function getReferrerStats(referrer: `0x${string}`, now: Date) {
+  const buf = Buffer.from(referrer.slice(2), 'hex');
+  const codes = await sql<{ code: string; kind: string; active: boolean }[]>`
+    SELECT code, kind, active FROM ref_codes WHERE referrer_wallet = ${buf} ORDER BY created_at
+  `;
+  const isPartner = codes.some((c) => c.active && c.kind === 'partner');
+  const kind: AffiliateKind = isPartner ? 'partner' : 'regular';
+  const { start, end } = currentCycleWindow(now);
+  const [agg] = await sql<{ referred_count: string; volume_usd: string | null }[]>`
+    SELECT
+      COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
+      COALESCE(SUM(t.value_usd), 0)::text     AS volume_usd
+    FROM referrals r
+    LEFT JOIN trades t
+      ON t.wallet = r.referred_wallet
+      AND t.block_timestamp >= ${start} AND t.block_timestamp < ${end}
+      AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+    WHERE r.referrer_wallet = ${buf}
+  `;
+  return {
+    wallet: referrer,
+    kind,
+    rateOfNetFeePct: FEE_SHARE_BPS[kind] / 100, // 8 or 12
+    activeCodes: codes.filter((c) => c.active).map((c) => c.code),
+    referredCount: agg ? parseInt(agg.referred_count, 10) : 0,
+    currentCycleVolumeUsd: agg && agg.volume_usd ? parseFloat(agg.volume_usd) : 0,
+  };
+}
 
 /**
  * Constant-time bearer-token check for admin-only endpoints.
@@ -312,6 +352,132 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (!batch) return reply.code(404).send({ error: 'not found' });
     const entries = await db.select().from(schema.rebateBatchEntries).where(eq(schema.rebateBatchEntries.batchId, id));
     return { batch, entries };
+  });
+
+  // ─── Affiliate / Partner program ─────────────────────────────────────────
+
+  // Bind a referred wallet to a referral code. PUBLIC + rate-limited. Enforces:
+  // code must exist+active; no self-referral; NET-NEW only (a wallet with prior
+  // Ophis trades is rejected — can't farm existing volume); FIRST-BIND-WINS
+  // (ON CONFLICT DO NOTHING is idempotent + lifetime). Also registers the wallet
+  // in tracked_wallets so the fetcher indexes its future trades.
+  app.post<{ Body: { referredWallet?: string; code?: string } }>('/ref/bind', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const referred = String(req.body?.referredWallet ?? '').toLowerCase();
+    const code = String(req.body?.code ?? '');
+    if (!/^0x[0-9a-f]{40}$/.test(referred)) return reply.code(400).send({ error: 'invalid referredWallet' });
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    const referredBuf = Buffer.from(referred.slice(2), 'hex');
+
+    return sql.begin(async (tx) => {
+      const [rc] = await tx<{ referrer_hex: string; active: boolean }[]>`
+        SELECT encode(referrer_wallet, 'hex') AS referrer_hex, active FROM ref_codes WHERE code = ${code}
+      `;
+      if (!rc || !rc.active) return reply.code(400).send({ error: 'invalid or inactive code' });
+      if (`0x${rc.referrer_hex}` === referred) return reply.code(400).send({ error: 'cannot refer your own wallet' });
+
+      const existing = await tx`SELECT 1 FROM referrals WHERE referred_wallet = ${referredBuf} LIMIT 1`;
+      if (existing.length > 0) return { bound: true, alreadyBound: true }; // first-bind-wins, idempotent
+
+      const prior = await tx`SELECT 1 FROM trades WHERE wallet = ${referredBuf} LIMIT 1`;
+      if (prior.length > 0) return reply.code(409).send({ error: 'wallet is not net-new (has prior trade history)' });
+
+      await tx`
+        INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new)
+        VALUES (${referredBuf}, ${code}, decode(${rc.referrer_hex}, 'hex'), true)
+        ON CONFLICT (referred_wallet) DO NOTHING
+      `;
+      await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf}) ON CONFLICT (wallet) DO NOTHING`;
+      return { bound: true, alreadyBound: false };
+    });
+  });
+
+  // Resolve a referral code (frontend validation before binding). PUBLIC.
+  app.get<{ Params: { code: string } }>('/ref/:code', {
+    config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const code = req.params.code;
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    const [rc] = await sql<{ kind: string; active: boolean }[]>`
+      SELECT kind, active FROM ref_codes WHERE code = ${code}
+    `;
+    if (!rc) return { exists: false };
+    return { exists: true, kind: rc.kind, active: rc.active };
+  });
+
+  // A referrer's own affiliate stats (referred count, this-cycle volume, tier+rate).
+  // PUBLIC + wallet-scoped: returns only aggregate performance for the queried wallet
+  // (no per-referee detail, no PII). The sensitive Partner detail is sig-gated below.
+  app.get<{ Params: { wallet: string } }>('/affiliate/:wallet', {
+    config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const raw = req.params.wallet.toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    reply.header('vary', 'Origin');
+    return getReferrerStats(raw as `0x${string}`, new Date());
+  });
+
+  // Partner dashboard data — WHITELIST + SIGNATURE gated. POST (not GET) so the
+  // signature never lands in a URL/access log. The caller must (a) be a whitelisted
+  // partner (own an ACTIVE partner-kind code) and (b) prove ownership by signing the
+  // partnerAuth message. One partner can never read another's data: the recovered
+  // signer must equal the requested wallet.
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/partner', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const wallet = String(req.body?.wallet ?? '').toLowerCase();
+    const issued = Number(req.body?.issued);
+    const signature = String(req.body?.signature ?? '');
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+
+    const auth = await verifyPartnerAuth({ address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    if (!auth.ok) return reply.code(401).send({ error: auth.reason });
+
+    // Whitelist: the signer must hold an ACTIVE partner code.
+    const buf = Buffer.from(auth.address.slice(2), 'hex');
+    const [partner] = await sql`SELECT 1 FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'partner' AND active = true LIMIT 1`;
+    if (!partner) return reply.code(403).send({ error: 'not a whitelisted partner' });
+
+    const stats = await getReferrerStats(auth.address, new Date());
+    // Partner detail: their bound referees' addresses + each one's cycle volume.
+    const referees = await sql<{ wallet_hex: string; bound_at: Date; volume_usd: string | null }[]>`
+      SELECT encode(r.referred_wallet, 'hex') AS wallet_hex, r.bound_at,
+             COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
+      FROM referrals r
+      LEFT JOIN trades t ON t.wallet = r.referred_wallet AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+      WHERE r.referrer_wallet = ${buf}
+      GROUP BY r.referred_wallet, r.bound_at
+      ORDER BY r.bound_at DESC
+      LIMIT 500
+    `;
+    return {
+      ...stats,
+      referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, lifetimeVolumeUsd: x.volume_usd ? parseFloat(x.volume_usd) : 0 })),
+    };
+  });
+
+  // Seed / manage referral codes — ADMIN-token gated. Used to whitelist partners
+  // (kind='partner') from the gitignored roster and to mint regular codes. Revoke
+  // by re-posting with active=false (existing bindings stay lifetime).
+  app.post<{ Body: { code?: string; referrerWallet?: string; kind?: string; active?: boolean } }>('/admin/ref-codes', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    if (!assertAdminAuth(req, reply)) return reply;
+    const code = String(req.body?.code ?? '');
+    const referrer = String(req.body?.referrerWallet ?? '').toLowerCase();
+    const kind = String(req.body?.kind ?? '');
+    const active = req.body?.active ?? true;
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    if (!/^0x[0-9a-f]{40}$/.test(referrer)) return reply.code(400).send({ error: 'invalid referrerWallet' });
+    if (kind !== 'regular' && kind !== 'partner') return reply.code(400).send({ error: 'kind must be regular or partner' });
+    await sql`
+      INSERT INTO ref_codes (code, referrer_wallet, kind, active)
+      VALUES (${code}, decode(${referrer.slice(2)}, 'hex'), ${kind}, ${active})
+      ON CONFLICT (code) DO UPDATE SET active = ${active}
+    `;
+    return { ok: true, code, kind, active };
   });
 
   // Rate-limit 404s too — otherwise an attacker hitting random paths
