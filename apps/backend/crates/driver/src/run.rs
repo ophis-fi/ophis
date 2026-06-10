@@ -77,6 +77,7 @@ async fn run_with(args: cli::Args, addr_sender: Option<oneshot::Sender<SocketAdd
                 solver::Account::PrivateKey(_) => "private_key",
                 solver::Account::Kms(_) => "kms",
                 solver::Account::Address(_) => "address",
+                solver::Account::PolicyGuarded { .. } => "policy_guarded",
             };
             // Solver display address comes from the Account::address()
             // accessor — public address only, no key material.
