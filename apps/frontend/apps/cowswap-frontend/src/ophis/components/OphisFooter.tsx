@@ -71,6 +71,9 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
             <li>
               <styledEl.InternalLink to="/profile">Profile</styledEl.InternalLink>
             </li>
+            <li>
+              <styledEl.InternalLink to="/leaderboard">Leaderboard</styledEl.InternalLink>
+            </li>
           </styledEl.ColList>
         </div>
 

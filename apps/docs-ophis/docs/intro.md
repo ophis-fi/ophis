@@ -47,6 +47,7 @@ swap 100 USDC for ETH on Base
 | [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
 | [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
 | [Fees & rebates](./fees.md) | The flat 0.10% (10 bps) fee model and how rebates accrue. |
+| [Affiliate program](./affiliate.md) | Share a referral code, earn 8% of the net fee on every trade your referrals route. |
 | [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |
 | [AI agent integration](./ai-agents.md) | Wire the intent API into LangChain, AutoGPT, or your own agent. |
 | [Security & audits](./audits.md) | Custody model, settlement contracts, and audit posture. |

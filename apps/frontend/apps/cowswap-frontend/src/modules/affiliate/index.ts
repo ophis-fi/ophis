@@ -35,21 +35,30 @@ export { REF_CODE_MIN_LENGTH } from './config/affiliateProgram.const'
 // signing hook consumed by the /affiliate and /partner pages.
 export { RefCodeCaptureUpdater } from './updaters/RefCodeCaptureUpdater'
 export { useOphisAffiliateSign } from './hooks/useOphisAffiliateSign'
+// Folded into the Profile page (Phase C restructure, 2026-06-11). PUBLIC
+// regular-8% affiliate dashboard body (mint code + share link + referred
+// totals). No partner-tier surface here.
+export { OphisAffiliateDashboard } from './containers/OphisAffiliateDashboard'
 export {
   AffiliateApiError,
   REBATES_API,
   bindRefCode,
   createRefCode,
   getAffiliateStats,
+  getLeaderboard,
   getPartnerDashboard,
+  getRankStatus,
   lookupRefCode,
 } from './lib/ophisAffiliateApi'
 export type {
   AffiliateKind,
   AffiliateSignedAction,
   AffiliateStats,
+  LeaderboardEntry,
+  LeaderboardResponse,
   PartnerDashboard,
   PartnerReferee,
+  RankStatus,
   RefBindResponse,
   RefCodeCreateResponse,
   RefLookupResponse,
