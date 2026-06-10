@@ -85,7 +85,7 @@ order-level MEV vectors by construction:
 | **Intent-parser proxy** | A Cloudflare Pages Function in front of LibertAI Qwen 3.6 27B. See [Intent API](./intent-api.md). |
 | **Self-hosted orderbook & solver** | On Optimism, Ophis runs its own CoW Protocol orderbook (`optimism-mainnet.ophis.fi`) and operates the solver. CoW-aligned chains use `api.cow.fi` and CoW's solver network. |
 | **Settlement contracts** | CoW Protocol's `GPv2Settlement` (unchanged code), deployed and operated by Ophis on Optimism, alongside Ophis-specific allowlist + fee-handling contracts. See [Security & audits](./audits.md). |
-| **Rebate indexer** | Indexes positive-slippage rebates that accrue to traders. See [Fees & rebates](./fees.md). |
+| **Rebate indexer** | Indexes volume-tier rebates that accrue to traders. See [Fees & rebates](./fees.md). |
 
 ## Cross-chain via NEAR Intents
 

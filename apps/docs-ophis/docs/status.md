@@ -45,6 +45,6 @@ Solana and Bitcoin are supported as **destinations** via
 ## Incidents
 
 Operational incidents and maintenance are announced on
-[x.com/ophis_fi](https://x.com/ophis_fi). The canonical source of truth for what
+[x.com/ophisfi](https://x.com/ophisfi). The canonical source of truth for what
 is deployed is the [`ophis-fi/ophis`](https://github.com/ophis-fi/ophis)
 repository.

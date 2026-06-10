@@ -55,9 +55,9 @@ volume), written into the order's `appData` and taken from the trade output at
 settlement.
 
 For the protocol-level details, see
-[CoW Protocol partner fees](https://docs.cow.fi/cow-protocol/reference/core/intro-to-batch-auctions).
+[CoW Protocol batch auctions](https://docs.cow.fi/cow-protocol/reference/core/auctions).
 
-:::note[Positive-slippage rebates]
+:::note[Volume-tier rebates]
 
 A large share of the fee flows back to traders through volume-tier rebates. Each
 month, **21.25% of the WETH fees accrued to the Ophis fee Safe** is paid out as
