@@ -19,7 +19,7 @@ Deploy Ophis's CoW-based settlement stack to MegaETH mainnet:
 1. Deploy the canonical CoW contracts (`GPv2Settlement`, `GPv2VaultRelayer`, `AllowListAuthentication`) under Ophis's own deployer + salt — same CREATE2-deterministic address pattern as testnet (`0x0864b65F…Bfce`).
 2. Deploy supporting contracts (`Balances`, `Signatures`, `HooksTrampoline`).
 3. **Route through Kumbaya** — MegaETH's dominant DEX (~$53M TVL, UniswapV3 fork). No Ophis V2 deploy. No bootstrap pool seeding. Ophis routes orders through existing Kumbaya liquidity.
-4. Stand up the CoW services stack (orderbook + autopilot + driver + baseline) as a new co-tenant on vm4 (`45.144.209.26:24014`).
+4. Stand up the CoW services stack (orderbook + autopilot + driver + baseline) as a new co-tenant on vm4 (`REDACTED_ORIGIN_IP:24014`).
 5. Wire `megaeth.ophis.fi` via a new Cloudflare tunnel.
 6. Smoke-test end-to-end with an actual on-chain settlement transaction (mainnet RPC has headroom for the broadcast, unlike Spec 1's testnet RPC).
 
@@ -50,7 +50,7 @@ Deploy Ophis's CoW-based settlement stack to MegaETH mainnet:
 Co-tenant on the existing rebates VM, mirroring Spec 1's pattern:
 
 ```
-                Aleph VM (45.144.209.26:24014)
+                Aleph VM (REDACTED_ORIGIN_IP:24014)
                 /srv/ophis/
                 ├── apps/rebate-indexer/         [running]
                 ├── infra/optimism/              [running, Spec 1]
