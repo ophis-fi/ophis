@@ -5,6 +5,8 @@ import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth } from './batcher.js';
 import { reconcileBatches } from './batch/reconcile.js';
 import { deliverMonthlyReport } from './affiliate/deliverReport.js';
+import { runAffiliatePayout, reconcileAffiliateBatches } from './affiliate/payout.js';
+import { resolveAffiliatePayoutEnabled } from './affiliate/payoutPlan.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
@@ -50,6 +52,9 @@ async function runPipelineSteps(): Promise<void> {
   try {
     const rec = await reconcileBatches({ chainId: 100 });
     log.info(rec, 'reconcile complete');
+    // Same nightly heal for affiliate batches (separate table, same Safe service).
+    const arec = await reconcileAffiliateBatches({ chainId: 100 });
+    log.info(arec, 'affiliate reconcile complete');
   } catch (err) {
     log.error({ err }, 'reconcile failed (non-fatal; observability only)');
     await alerts.alert('reconcile', `Nightly batch reconciliation failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
@@ -95,10 +100,22 @@ async function runPipelineSteps(): Promise<void> {
           topRecipient: 'see /batches/' + result.batchId,
         });
       }
+      // Affiliate payout — runs AFTER the rebate batcher (it reads this cycle's
+      // rebate pool for the double-spend guard) and is independently flag-gated
+      // (AFFILIATE_PAYOUT_ENABLED, default OFF). A separate Safe MultiSend at the
+      // next free nonce; execution still needs the 2-of-3 signature. Wrapped so a
+      // payout failure never blocks the report or the heartbeat.
+      if (resolveAffiliatePayoutEnabled()) {
+        try {
+          await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+        } catch (err) {
+          log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+        }
+      }
     }
-    // Monthly settlement report — runs AFTER the batcher so it reads this cycle's
-    // rebate batch. Self-contained + fire-and-forget (alerts on failure, never
-    // throws), so a report hiccup can never block the heartbeat below.
+    // Monthly settlement report — runs AFTER the batcher + affiliate payout so it
+    // reflects this cycle's numbers. Self-contained + fire-and-forget (alerts on
+    // failure, never throws), so a report hiccup can never block the heartbeat below.
     await deliverMonthlyReport({ rpcUrl: gnosisRpc() });
   }
 
