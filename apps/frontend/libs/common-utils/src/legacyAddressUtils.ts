@@ -7,7 +7,7 @@ import { JsonRpcProvider, JsonRpcSigner } from '@ethersproject/providers'
 
 import { t } from '@lingui/core/macro'
 
-import { getExplorerOrderLink } from './explorer'
+import { getExplorerBaseUrl, getExplorerOrderLink } from './explorer'
 
 /**
  * Environment variable to override the block explorer URL.
@@ -116,10 +116,10 @@ export function getEtherscanLink(chainId: SupportedChainId, type: BlockExplorerL
   }
 }
 
-export function getExplorerLabel(chainId: SupportedChainId, type: BlockExplorerLinkType, data?: string): string {
-  const explorerTitle = CHAIN_INFO[chainId].explorerTitle
-
-  return isCowOrder(type, data) ? t`View on Explorer` : t`View on` + ` ${explorerTitle}`
+export function getExplorerLabel(_chainId: SupportedChainId, type: BlockExplorerLinkType, data?: string): string {
+  // All links now point at the Ophis explorer (explorer.ophis.fi), for both CoW
+  // orders and tx/address links, so the label no longer names a native scanner.
+  return isCowOrder(type, data) ? t`View on Explorer` : t`View on Ophis Explorer`
 }
 
 // TODO: Add proper return type annotation
@@ -136,8 +136,17 @@ export function shortenOrderId(orderId: string): string {
 
 // eslint-disable-next-line complexity
 function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplorerLinkType, base?: string): string {
-  // Allow override via environment variable for local development (e.g., Otterscan)
-  const basePath = BLOCK_EXPLORER_URL_OVERRIDE || base || CHAIN_INFO[chainId]?.explorer
+  // Prefer the Ophis explorer (explorer.ophis.fi) per-chain base over the chain's
+  // native scanner. getExplorerBaseUrl throws for unsupported chains, so fall back
+  // to CHAIN_INFO.explorer. The env override and an explicit `base` (bridge
+  // networks) still win.
+  let ophisBase: string | undefined
+  try {
+    ophisBase = getExplorerBaseUrl(chainId as SupportedChainId)
+  } catch {
+    ophisBase = CHAIN_INFO[chainId]?.explorer
+  }
+  const basePath = BLOCK_EXPLORER_URL_OVERRIDE || base || ophisBase
 
   if (!basePath) return ''
 
@@ -145,7 +154,8 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
     case 'transaction':
       return `${basePath}/tx/${data}`
     case 'token':
-      return `${basePath}/token/${data}`
+      // The Ophis explorer has no token page; route to the address view.
+      return `${basePath}/address/${data}`
     case 'block':
       return `${basePath}/block/${data}`
     case 'token-transfer':

@@ -57,6 +57,42 @@ export interface PartnerDashboard extends AffiliateStats {
   referees: PartnerReferee[]
 }
 
+/**
+ * GET /tier/:wallet (JSON path; the same route serves an HTML tier page for
+ * Accept: text/html). The rebate RANK = the volume-keyed tier from
+ * apps/rebate-indexer/src/tiers.ts. `nextTier`/`nextThresholdUsd`/`toNextUsd`
+ * are null at the top tier (platinum). `position` is the 1-based leaderboard
+ * rank by 30-day volume, null if the wallet has no indexed volume.
+ */
+export interface RankStatus {
+  wallet: string
+  tier: string
+  volume30dUsd: number
+  rebatePct: number
+  nextTier: string | null
+  nextThresholdUsd: number | null
+  toNextUsd: number | null
+  position: number | null
+}
+
+/** One row of GET /leaderboard. `wallet` is the full lowercase 0x address. */
+export interface LeaderboardEntry {
+  rank: number
+  wallet: string
+  tier: string
+  volume30dUsd: number
+  volumeTotalUsd: number
+  affiliateCount: number
+  referredVolumeUsd: number
+}
+
+/** GET /leaderboard?limit=N (PUBLIC, sorted by volume30dUsd desc) */
+export interface LeaderboardResponse {
+  updatedAt: string
+  total: number
+  entries: LeaderboardEntry[]
+}
+
 export type AffiliateSignedAction = 'Partner Dashboard access' | 'create referral code'
 
 export interface SignedRequestBody {
@@ -120,10 +156,27 @@ export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateRes
   }).then((res) => parseJson<RefCodeCreateResponse>(res))
 }
 
+export function getLeaderboard(limit = 100): Promise<LeaderboardResponse> {
+  return fetch(`${REBATES_API}/leaderboard?limit=${encodeURIComponent(String(limit))}`).then((res) =>
+    parseJson<LeaderboardResponse>(res),
+  )
+}
+
 export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
   return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(wallet.toLowerCase())}`).then((res) =>
     parseJson<AffiliateStats>(res),
   )
+}
+
+/**
+ * GET /rank/:wallet returns the machine-readable RankStatus payload (tier,
+ * 30d volume, progress to next tier, leaderboard position). Used by the
+ * Profile rank chip. 404 (no volume yet) is handled by the caller as Unranked.
+ */
+export function getRankStatus(wallet: string): Promise<RankStatus> {
+  return fetch(`${REBATES_API}/rank/${encodeURIComponent(wallet.toLowerCase())}`, {
+    headers: { accept: 'application/json' },
+  }).then((res) => parseJson<RankStatus>(res))
 }
 
 export function getPartnerDashboard(body: SignedRequestBody): Promise<PartnerDashboard> {

@@ -489,6 +489,42 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { ok: true, code, kind, active };
   });
 
+  // ─── Leaderboard & Ranking ───────────────────────────────────────────────
+
+  app.get<{ Querystring: { limit?: string } }>('/leaderboard', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
+    },
+  }, async (req, reply) => {
+    const { getLeaderboard } = await import('./leaderboard.js');
+    let limit = 100;
+    if (req.query.limit) {
+      const parsed = parseInt(req.query.limit, 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 100) {
+        return reply.code(400).send({ error: 'limit must be between 1 and 100' });
+      }
+      limit = parsed;
+    }
+    reply.header('vary', 'Origin');
+    reply.header('cache-control', 'public, max-age=60');
+    const leaderboard = await getLeaderboard(limit);
+    return leaderboard;
+  });
+
+  app.get<{ Params: { wallet: string } }>('/rank/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
+    },
+  }, async (req, reply) => {
+    const { getRankInfo } = await import('./leaderboard.js');
+    const raw = req.params.wallet.toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    reply.header('vary', 'Origin');
+    const rankInfo = await getRankInfo(raw as `0x${string}`);
+    if (!rankInfo) return reply.code(404).send({ error: 'wallet not found' });
+    return rankInfo;
+  });
+
   // Rate-limit 404s too — otherwise an attacker hitting random paths
   // bypasses the limiter entirely (CodeQL js/missing-rate-limiting).
   app.setNotFoundHandler(
