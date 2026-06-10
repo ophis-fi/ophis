@@ -18,6 +18,7 @@ import { CorrelatedTokensUpdater } from 'entities/correlatedTokens'
 import { ThemeConfigUpdater } from 'theme/ThemeConfigUpdater'
 import { TradingSdkUpdater } from 'tradingSdk/TradingSdkUpdater'
 
+import { RefCodeCaptureUpdater } from 'modules/affiliate'
 import { BalancesDevtools, CommonPriorityBalancesAndAllowancesUpdater } from 'modules/balancesAndAllowances'
 import { PendingBridgeOrdersUpdater, BridgingEnabledUpdater } from 'modules/bridge'
 import { BalancesCombinedUpdater } from 'modules/combinedBalances'
@@ -139,6 +140,9 @@ export function Updaters(): ReactNode {
       <BridgeOrdersCleanUpdater />
       <PendingBridgeOrdersUpdater />
       <LastTimePriceUpdateResetUpdater />
+
+      {/* Ophis native affiliate: capture ?ref=CODE and bind on wallet connect. */}
+      <RefCodeCaptureUpdater />
     </>
   )
 }

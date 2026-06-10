@@ -147,7 +147,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // CORS — the swap page (ophis.fi + *.pages.dev) calls /tier directly.
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
-    const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://greg.pages.dev', 'https://ophis.pages.dev'];
+    const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi', 'https://greg.pages.dev', 'https://ophis.pages.dev'];
     if (origin && allowed.includes(origin)) {
       reply.header('access-control-allow-origin', origin);
       reply.header('vary', 'origin');
