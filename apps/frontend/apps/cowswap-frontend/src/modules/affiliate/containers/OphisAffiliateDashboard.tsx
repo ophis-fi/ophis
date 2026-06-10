@@ -19,7 +19,7 @@ import { ReactNode, useCallback, useEffect, useState } from 'react'
 
 import { useCopyClipboard } from '@cowprotocol/common-hooks'
 
-import { Callout, InlineCode, KeyValueList, MetricCard, Section, TextLink } from 'ophis/ds'
+import { Callout, InlineCode, KeyValueList, MetricCard, Section } from 'ophis/ds'
 
 import { ActionButton, GhostButton, MetricRow, ShareRow } from 'pages/Affiliate/Affiliate.styled'
 
