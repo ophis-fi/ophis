@@ -34,7 +34,7 @@ export function RwaConsentModal(props: RwaConsentModalProps): ReactNode {
               <styledEl.TokenSymbol>{token.symbol}</styledEl.TokenSymbol>
               {token.name && (
                 <>
-                  <styledEl.TokenNameDivider>—</styledEl.TokenNameDivider>
+                  <styledEl.TokenNameDivider>·</styledEl.TokenNameDivider>
                   <styledEl.TokenName>{token.name}</styledEl.TokenName>
                 </>
               )}

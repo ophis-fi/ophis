@@ -43,7 +43,7 @@ export const Search: React.FC<SearchProps> = (props) => {
         value={query}
         onChange={(e): void => setQuery(e.target.value.trim())}
         placeholder={placeHolderText}
-        aria-label="Search the GP explorer for orders, batches and transactions"
+        aria-label="Search Ophis Explorer for orders, batches and transactions"
       />
       <Placeholder isActive={showPlaceholder}>{placeHolderText}</Placeholder>
     </Wrapper>

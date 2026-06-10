@@ -130,7 +130,7 @@ The code unique to Ophis is open source and auditable end to end:
 | --- | --- |
 | **Frontend** | A fork of the CoW Swap frontend with the natural-language intent layer. |
 | **Intent-parser proxy** | A Cloudflare Pages Function in front of LibertAI Qwen 3.6 27B; the model key is held server-side. See the [Intent API](./intent-api.md). |
-| **Rebate indexer** | Indexes the positive-slippage rebates that accrue to traders. See [Fees & rebates](./fees.md). |
+| **Rebate indexer** | Indexes the volume-tier rebates that accrue to traders. See [Fees & rebates](./fees.md). |
 
 Source: [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
 

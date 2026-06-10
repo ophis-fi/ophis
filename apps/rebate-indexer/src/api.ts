@@ -147,35 +147,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // CORS — the swap page (ophis.fi + *.pages.dev) calls /tier directly.
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
-    const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi', 'https://greg.pages.dev', 'https://ophis.pages.dev'];
+    const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi', 'https://greg.pages.dev'];
     if (origin && allowed.includes(origin)) {
       reply.header('access-control-allow-origin', origin);
       reply.header('vary', 'origin');
     }
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
-
-  // RFC 9116 disclosure path (rebates.ophis.fi is this Fastify service, not a
-  // Pages static host) — closes the Cloudflare scan security.txt finding here too.
-  app.get('/.well-known/security.txt', {
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-  }, async (_req, reply) => {
-    reply
-      .header('content-type', 'text/plain; charset=utf-8')
-      .header('cache-control', 'public, max-age=86400')
-      .send(
-        [
-          '# Ophis security disclosure',
-          '# Full policy: https://github.com/ophis-fi/ophis/blob/main/SECURITY.md',
-          'Contact: mailto:clement@aleph.cloud',
-          'Expires: 2027-06-05T00:00:00.000Z',
-          'Preferred-Languages: en',
-          'Canonical: https://rebates.ophis.fi/.well-known/security.txt',
-          'Policy: https://github.com/ophis-fi/ophis/blob/main/SECURITY.md',
-          '',
-        ].join('\n'),
-      );
-  });
 
   app.get('/health', {
     config: {

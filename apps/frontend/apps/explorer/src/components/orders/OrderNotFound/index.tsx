@@ -137,7 +137,7 @@ export const OrderAddressNotFound: React.FC = (): React.ReactNode => {
           <SearchContent>
             <Search searchString={wasRedirected ? '' : searchString} submitSearchImmediatly={!wasRedirected} />
             <span>or</span>
-            <Support href="https://discord.com/invite/cowprotocol" target="_blank" rel="noopener noreferrer">
+            <Support href="https://discord.gg/ophis" target="_blank" rel="noopener noreferrer">
               Get Support
               <img src={SupportIcon} alt="Support icon" />
             </Support>
@@ -146,7 +146,7 @@ export const OrderAddressNotFound: React.FC = (): React.ReactNode => {
       </Content>
       {showLinkData && (
         <LinkData>
-          This is not a CoW Protocol transaction. See it on <BlockExplorerLink {...data} />
+          This is not an Ophis transaction. See it on <BlockExplorerLink {...data} />
         </LinkData>
       )}
     </Wrapper>

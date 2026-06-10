@@ -8,6 +8,6 @@
   "api": { "type": "openapi", "url": "https://ophis.fi/openapi.json", "is_user_authenticated": false },
   "mcp": { "type": "streamable-http", "url": "https://mcp.ophis.fi/mcp" },
   "logo_url": "https://ophis.fi/ophis-claw-saffron.svg",
-  "contact_url": "https://swap.ophis.fi/contact",
-  "legal_info_url": "https://swap.ophis.fi/legal"
+  "contact_url": "https://swap.ophis.fi/#/contact",
+  "legal_info_url": "https://swap.ophis.fi/#/legal"
 }
