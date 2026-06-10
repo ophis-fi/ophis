@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { assignTier, TIERS } from '../src/tiers.js';
 import { 
   getNextTierInfo,

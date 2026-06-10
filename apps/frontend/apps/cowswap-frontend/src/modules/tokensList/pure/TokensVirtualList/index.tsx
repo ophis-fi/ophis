@@ -1,7 +1,6 @@
 import { ReactNode, useCallback, useMemo } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
-import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { VirtualItem } from '@tanstack/react-virtual'
 
@@ -36,7 +35,6 @@ export function TokensVirtualList({
     areTokensFromBridge,
   } = useTokenListContext()
   const { values: balances } = selectTokenContext.balancesState
-  const { isYieldEnabled } = useFeatureFlags()
   const { hideRecentTokens, hideFavoriteTokens } = useInjectedWidgetParams()
 
   const sortedTokens = useMemo(() => sortTokensByBalance(tokensToDisplay, balances), [tokensToDisplay, balances])
