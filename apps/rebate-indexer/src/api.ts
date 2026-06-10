@@ -367,7 +367,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const referred = String(req.body?.referredWallet ?? '').toLowerCase();
     const code = String(req.body?.code ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(referred)) return reply.code(400).send({ error: 'invalid referredWallet' });
-    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     const referredBuf = Buffer.from(referred.slice(2), 'hex');
 
     return sql.begin(async (tx) => {
@@ -398,7 +398,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const code = req.params.code;
-    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     const [rc] = await sql<{ kind: string; active: boolean }[]>`
       SELECT kind, active FROM ref_codes WHERE code = ${code}
     `;
@@ -500,7 +500,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const referrer = String(req.body?.referrerWallet ?? '').toLowerCase();
     const kind = String(req.body?.kind ?? '');
     const active = req.body?.active ?? true;
-    if (!/^[A-Za-z0-9_-]{4,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     if (!/^0x[0-9a-f]{40}$/.test(referrer)) return reply.code(400).send({ error: 'invalid referrerWallet' });
     if (kind !== 'regular' && kind !== 'partner') return reply.code(400).send({ error: 'kind must be regular or partner' });
     await sql`
