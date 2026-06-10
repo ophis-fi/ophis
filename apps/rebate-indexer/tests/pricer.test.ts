@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // priceTrade prices non-reference tokens via CoW's native_price oracle; mock it so
 // these stay pure unit tests (no network).
-vi.mock('../src/cow/client.js', () => ({ nativePrice: vi.fn() }));
+vi.mock('../src/cow/client.js', () => ({ nativePrice: vi.fn(), OPTIMISM_CHAIN_ID: 10 }));
 
 import { priceTrade } from '../src/pricer.js';
 import { nativePrice } from '../src/cow/client.js';
