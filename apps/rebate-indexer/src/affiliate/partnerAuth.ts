@@ -19,15 +19,23 @@ export const PARTNER_SIG_MAX_AGE_SEC = 300;
 const CLOCK_SKEW_SEC = 60;
 
 /**
- * The exact message the wallet signs. Namespaced by the app string so a signature
- * captured for another Ophis flow cannot be replayed here, and vice-versa.
- * Address is lowercased for a stable, case-insensitive comparison.
+ * The exact message the wallet signs. Namespaced by the app + ACTION string so a
+ * signature captured for one Ophis flow (e.g. dashboard access) cannot be replayed
+ * for another (e.g. minting a code), and vice-versa. Address is lowercased for a
+ * stable, case-insensitive comparison.
  */
+export function buildSignedActionMessage(action: string, address: string, issuedSec: number): string {
+  return `Ophis ${action}\nAddress: ${address.toLowerCase()}\nIssued: ${issuedSec}`;
+}
+
+/** Partner-dashboard access message (back-compat wrapper). */
 export function buildPartnerAuthMessage(address: string, issuedSec: number): string {
-  return `Ophis Partner Dashboard access\nAddress: ${address.toLowerCase()}\nIssued: ${issuedSec}`;
+  return buildSignedActionMessage('Partner Dashboard access', address, issuedSec);
 }
 
 export interface PartnerAuthInput {
+  /** The action being authorized (namespaces the signature). Defaults to dashboard access. */
+  readonly action?: string;
   /** The address the caller claims to be (and the dashboard they request). */
   readonly address: string;
   /** Unix seconds embedded in the signed message. */
@@ -70,7 +78,7 @@ export async function verifyPartnerAuth(input: PartnerAuthInput): Promise<Partne
     return { ok: false, reason: 'invalid signature' };
   }
 
-  const message = buildPartnerAuthMessage(address, issued);
+  const message = buildSignedActionMessage(input.action ?? 'Partner Dashboard access', address, issued);
   let recovered: string;
   try {
     recovered = await recoverMessageAddress({ message, signature });

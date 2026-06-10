@@ -406,6 +406,37 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { exists: true, kind: rc.kind, active: rc.active };
   });
 
+  // Self-serve REGULAR code creation. SIGNATURE-gated (the signer proves wallet
+  // ownership, so a code can only be minted for the wallet that signed). Idempotent:
+  // returns the wallet's existing active regular code if any, else mints a
+  // deterministic one. Partner codes are NOT self-serve (admin-seeded only).
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/ref/codes', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const wallet = String(req.body?.wallet ?? '').toLowerCase();
+    const issued = Number(req.body?.issued);
+    const signature = String(req.body?.signature ?? '');
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+    const auth = await verifyPartnerAuth({ action: 'create referral code', address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    if (!auth.ok) return reply.code(401).send({ error: auth.reason });
+
+    const buf = Buffer.from(auth.address.slice(2), 'hex');
+    const [existing] = await sql<{ code: string }[]>`
+      SELECT code FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'regular' AND active = true LIMIT 1
+    `;
+    if (existing) return { code: existing.code, kind: 'regular', created: false };
+    // Deterministic, address-derived code: unique per wallet, collision-free across
+    // wallets, and stable on retry (ON CONFLICT (code) makes the mint idempotent).
+    const code = `oph${auth.address.slice(2, 10)}`;
+    await sql`
+      INSERT INTO ref_codes (code, referrer_wallet, kind, active)
+      VALUES (${code}, ${buf}, 'regular', true)
+      ON CONFLICT (code) DO NOTHING
+    `;
+    return { code, kind: 'regular', created: true };
+  });
+
   // A referrer's own affiliate stats (referred count, this-cycle volume, tier+rate).
   // PUBLIC + wallet-scoped: returns only aggregate performance for the queried wallet
   // (no per-referee detail, no PII). The sensitive Partner detail is sig-gated below.
