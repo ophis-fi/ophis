@@ -118,4 +118,3 @@ export function decodeMultiSendCalldata(calldata: Hex): InnerCall[] {
   return calls;
 }
 
-export { sliceHex };                                                   // re-export so tests can decode for debugging

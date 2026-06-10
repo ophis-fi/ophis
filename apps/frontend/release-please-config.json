@@ -22,14 +22,6 @@
       "package-name": "@cowprotocol/explorer",
       "release-type": "node"
     },
-    "apps/cow-fi": {
-      "package-name": "@cowprotocol/cow-fi",
-      "release-type": "node"
-    },
-    "apps/widget-configurator": {
-      "package-name": "@cowprotocol/widget-configurator",
-      "release-type": "node"
-    },
     "libs/events": {
       "package-name": "@cowprotocol/events",
       "release-type": "node"

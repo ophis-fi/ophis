@@ -97,7 +97,7 @@ contract GPv2AllowListAuthentication is
     /// @dev Set the manager for this contract.
     ///
     /// This method can be called by the current manager (if they want to to
-    /// reliquish the role and give it to another address) or the contract
+    /// relinquish the role and give it to another address) or the contract
     /// owner (i.e. the proxy admin).
     ///
     /// **WARNING — single-step transfer (typo-risk)**: this function changes
