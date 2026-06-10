@@ -92,9 +92,17 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
       SELECT
         w.wallet,
         w.volume_30d_usd,
-        w.volume_total_usd,
+        -- the wallets matview is a 30-day rolling view; all-time volume is
+        -- aggregated from the trades table.
+        COALESCE(tv.volume_total_usd, w.volume_30d_usd) AS volume_total_usd,
         encode(w.wallet, 'hex') AS wallet_hex
       FROM wallets w
+      LEFT JOIN (
+        SELECT wallet, SUM(value_usd) AS volume_total_usd
+        FROM trades
+        WHERE value_usd IS NOT NULL
+        GROUP BY wallet
+      ) tv ON tv.wallet = w.wallet
       WHERE w.volume_30d_usd > 0
       ORDER BY w.volume_30d_usd DESC
       LIMIT ${limit}
