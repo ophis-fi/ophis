@@ -25,6 +25,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
+      # Join the tailnet as an ephemeral, tagged CI node so the deploy reaches the
+      # VM over Tailscale (tailnet IP, sshd port 22) instead of the public IP/port.
+      # This lets us close public SSH on the box. Requires the TS_AUTHKEY secret
+      # (ephemeral, pre-authorized, tag:ci) and the ALEPH_REBATES_SSH_HOST/PORT
+      # secrets pointed at the tailnet host (100.115.232.82) and port 22.
+      - name: Connect to Tailscale (ephemeral CI node)
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          tags: tag:ci
+
       - name: rsync source to Aleph VM
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ALEPH_REBATES_SSH_KEY }}
