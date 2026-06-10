@@ -72,7 +72,7 @@ export async function deliverMonthlyReport(deps: { rpcUrl: string; now?: Date })
     const volRows = await sql<{ chain_id: number; vol: string }[]>`
       SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol
       FROM trades
-      WHERE block_timestamp >= ${start} AND block_timestamp < ${end} AND value_usd IS NOT NULL
+      WHERE block_timestamp >= ${start.toISOString()} AND block_timestamp < ${end.toISOString()} AND value_usd IS NOT NULL
       GROUP BY chain_id
     `;
     const volumeByChain = new Map<number, number>(volRows.map((r) => [r.chain_id, parseFloat(r.vol)]));
