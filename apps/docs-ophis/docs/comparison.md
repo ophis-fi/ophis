@@ -99,6 +99,19 @@ takeaway is not that one number is always lowest, it is that the Ophis fee is
 **flat and predictable**: you know the cost before you sign, independent of how
 the order fills.
 
+### Surplus goes back to you, in full
+
+Both Ophis and CoW Swap run batch auctions where solvers compete to **beat** the
+price you signed. The extra value a solver finds beyond your quote is the
+**surplus** (price improvement). On this point Ophis is at **exact parity with
+CoW Protocol**: surplus belongs to the trader.
+
+The difference is **where each project takes its cut**. CoW Swap's fee is itself
+**surplus-based**: it keeps a share of that price improvement. Ophis runs a
+**flat volume fee instead**, so it takes **zero** cut of surplus. Every basis
+point a solver wins beyond your quote is returned to you in full, on top of the
+known flat fee. You are never charged a price-improvement fee on Ophis.
+
 ### Agent-first API
 
 Every front-end here exposes some programmatic surface, but they target different
@@ -139,6 +152,7 @@ settlement foundation.
 | **Settlement** | CoW Protocol batch auctions (shared foundation) | CoW Protocol batch auctions | 0x aggregation / RFQ | Aggregation across DEXs |
 | **Cross-chain scope** | 11 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
 | **Fee model** | Flat 0.10% (10 bps) on trade volume; 0.01% (1 bp) on same-chain stablecoin-to-stablecoin pairs | Surplus-based: a share of price improvement, not a fixed % of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
+| **Surplus (price improvement)** | 100% returned to the trader; Ophis takes **zero** cut (flat volume fee, not a surplus fee) | 100% returned to the trader, but the fee itself is a share of that surplus | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
 | **Agent API** | Public `POST /api/intent` (no key) + hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |
 | **Rebates** | 21.25% of WETH fees paid back monthly as volume-tier rebates | Not applicable | Not applicable | Not applicable |
 | **MEV protection** | Yes (batch auctions) | Yes (batch auctions) | Partial / route-dependent | Partial / route-dependent |

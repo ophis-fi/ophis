@@ -49,6 +49,14 @@ const ProfilePage = lazy(() =>
     default: m.ProfilePage,
   })),
 )
+// Public rebate leaderboard (Phase C, 2026-06-11): ranked wallet rows by
+// 30-day volume from GET rebates.ophis.fi/leaderboard. Works with no wallet
+// connected. AGENTS.md-compliant lazy pattern — see ProfilePage above.
+const LeaderboardPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_leaderboard" */ 'pages/Leaderboard').then((m) => ({
+    default: m.LeaderboardPage,
+  })),
+)
 // Phase A3 tail (2026-05-23): orientation/navigation hub page.
 // AGENTS.md-compliant lazy pattern — see ProfilePage above.
 const LearnPage = lazy(() =>
@@ -70,14 +78,11 @@ const ContactPage = lazy(() =>
     default: m.ContactPage,
   })),
 )
-// Native affiliate program (rebates.ophis.fi). Self-serve /affiliate page +
-// whitelist/signature-gated /partner dashboard. AGENTS.md-compliant lazy
-// pattern — see ProfilePage above.
-const AffiliatePage = lazy(() =>
-  import(/* webpackChunkName: "ophis_affiliate" */ 'pages/Affiliate').then((m) => ({
-    default: m.AffiliatePage,
-  })),
-)
+// Native affiliate program (rebates.ophis.fi). The self-serve affiliate
+// dashboard now lives folded into the Profile page (Phase C restructure,
+// 2026-06-11), so /affiliate redirects to /profile below. The
+// whitelist/signature-gated /partner dashboard remains its own page.
+// AGENTS.md-compliant lazy pattern — see ProfilePage above.
 const PartnerPage = lazy(() =>
   import(/* webpackChunkName: "ophis_partner" */ 'pages/Partner').then((m) => ({
     default: m.PartnerPage,
@@ -152,7 +157,10 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
   { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalRedirect /> },
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
-  { route: RoutesEnum.AFFILIATE, element: <AffiliatePage /> },
+  // /affiliate dashboard folded into /profile (Phase C restructure). Redirect
+  // any in-app or bookmarked hit. `replace` keeps it out of history.
+  { route: RoutesEnum.AFFILIATE, element: <Navigate to={RoutesEnum.PROFILE} replace /> },
+  { route: RoutesEnum.LEADERBOARD, element: <LeaderboardPage /> },
   { route: RoutesEnum.PARTNER, element: <PartnerPage /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
   { route: RoutesEnum.PROTOCOL, element: <ProtocolPage /> },

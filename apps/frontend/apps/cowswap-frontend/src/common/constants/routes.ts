@@ -44,10 +44,15 @@ export const Routes = {
   // Ophis: '/profile' = wallet-aware trader identity page (Phase C1).
   // Replaces the upstream `/profile → /account` redirect alias.
   PROFILE: '/profile',
-  // Ophis: '/affiliate' = self-serve affiliate page (mint a referral code,
-  // see your tier + referred volume). Calls the native rebate-indexer API
-  // directly (rebates.ophis.fi), not CoW's BFF.
+  // Ophis: '/affiliate' = self-serve affiliate dashboard. The dashboard body
+  // now lives folded into '/profile' (Phase C restructure, 2026-06-11); this
+  // route redirects to '/profile'. Kept so old links + the ?ref share copy
+  // resolve. Calls the native rebate-indexer API (rebates.ophis.fi).
   AFFILIATE: '/affiliate',
+  // Ophis: '/leaderboard' = public rebate leaderboard, ranked wallet rows by
+  // 30-day volume from GET rebates.ophis.fi/leaderboard. Public (no wallet
+  // needed); the connected wallet's own row is highlighted.
+  LEADERBOARD: '/leaderboard',
   // Ophis: '/partner' = whitelist + signature gated partner dashboard.
   // Partner stats + referee table only render after a successful signed
   // POST /partner against the rebate-indexer API.
