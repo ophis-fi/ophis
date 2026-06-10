@@ -34,7 +34,7 @@ async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     FROM referrals r
     LEFT JOIN trades t
       ON t.wallet = r.referred_wallet
-      AND t.block_timestamp >= ${start} AND t.block_timestamp < ${end}
+      AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
     WHERE r.referrer_wallet = ${buf}
   `;
