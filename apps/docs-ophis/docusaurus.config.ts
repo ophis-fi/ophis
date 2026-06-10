@@ -92,7 +92,7 @@ const config: Config = {
         '@type': 'Organization',
         name: 'Ophis',
         url: 'https://ophis.fi',
-        logo: 'https://docs.ophis.fi/img/og-image.png',
+        logo: 'https://docs.ophis.fi/img/ophis-icon.svg',
         sameAs: ['https://github.com/ophis-fi/ophis', 'https://x.com/ophisfi'],
       }),
     },

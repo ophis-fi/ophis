@@ -9,7 +9,7 @@
 
 ## Reference
 
-- [Introduction](https://docs.ophis.fi/intro)
+- [Introduction](https://docs.ophis.fi/)
 - [Getting started](https://docs.ophis.fi/getting-started)
 - [Architecture](https://docs.ophis.fi/architecture)
 - [Fees & rebates](https://docs.ophis.fi/fees)

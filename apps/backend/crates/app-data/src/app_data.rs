@@ -18,8 +18,8 @@ pub const EMPTY: &str = "{}";
 
 /// CIP-75 hard cap on `surplusBps` and `priceImprovementBps` partner-fee fields.
 /// Values above this are a protocol-level violation and rejected at validation
-/// time. Mirror the value in `apps/backend/crates/autopilot/src/domain/fee/mod.rs`
-/// for defense-in-depth.
+/// time. This is the single source of truth: `autopilot/src/domain/fee/mod.rs`
+/// imports this constant to re-clamp bps as defense-in-depth.
 pub const MAX_PARTNER_FEE_BPS: u64 = 2500;
 
 /// CIP-75 hard cap on `maxVolumeBps` for `Surplus` and `PriceImprovement`
