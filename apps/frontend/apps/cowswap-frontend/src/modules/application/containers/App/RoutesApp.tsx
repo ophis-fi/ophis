@@ -70,6 +70,19 @@ const ContactPage = lazy(() =>
     default: m.ContactPage,
   })),
 )
+// Native affiliate program (rebates.ophis.fi). Self-serve /affiliate page +
+// whitelist/signature-gated /partner dashboard. AGENTS.md-compliant lazy
+// pattern — see ProfilePage above.
+const AffiliatePage = lazy(() =>
+  import(/* webpackChunkName: "ophis_affiliate" */ 'pages/Affiliate').then((m) => ({
+    default: m.AffiliatePage,
+  })),
+)
+const PartnerPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_partner" */ 'pages/Partner').then((m) => ({
+    default: m.PartnerPage,
+  })),
+)
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
 const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
@@ -139,6 +152,8 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.PLAY_MEVSLICER, element: <MevSlicer /> },
   { route: RoutesEnum.INSTITUTIONAL, element: <InstitutionalRedirect /> },
   { route: RoutesEnum.PROFILE, element: <ProfilePage /> },
+  { route: RoutesEnum.AFFILIATE, element: <AffiliatePage /> },
+  { route: RoutesEnum.PARTNER, element: <PartnerPage /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
   { route: RoutesEnum.PROTOCOL, element: <ProtocolPage /> },
   { route: RoutesEnum.CONTACT, element: <ContactPage /> },

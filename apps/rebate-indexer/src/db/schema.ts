@@ -139,3 +139,75 @@ export const pipelineRuns = pgTable('pipeline_runs', {
 
 // `wallets` is a MATERIALIZED VIEW (not modelled as a drizzle table) —
 // created by the raw SQL migration 0000_init.sql. Query via `sql\`SELECT … FROM wallets\``.
+
+// ─── Affiliate / Partner program (migration 0005) ───────────────────────────
+// Deliberately SEPARATE from the rebate tables above so rebate and affiliate
+// recipient addresses + amounts are never mixed. Same payout Safe, distinct
+// proposal + reconciliation. See migrations/0005_affiliate.sql for the contract.
+
+// Referral codes. Partner codes (kind='partner') are operator-seeded and their
+// referrer_wallet IS the partner-dashboard whitelist; regular codes are self-served.
+export const refCodes = pgTable(
+  'ref_codes',
+  {
+    code: text('code').primaryKey(),
+    referrerWallet: bytea('referrer_wallet').notNull(),
+    kind: text('kind').notNull(), // 'regular' | 'partner' (CHECK in SQL)
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    referrerIdx: index('ref_codes_referrer_idx').on(t.referrerWallet),
+  }),
+);
+
+// One referrer per referred wallet (PK), first-bind-wins, lifetime. net_new records
+// the wallet had no prior Ophis trades at bind time (bind rejects non-net-new).
+export const referrals = pgTable(
+  'referrals',
+  {
+    referredWallet: bytea('referred_wallet').primaryKey(),
+    code: text('code')
+      .notNull()
+      .references(() => refCodes.code),
+    referrerWallet: bytea('referrer_wallet').notNull(),
+    netNew: boolean('net_new').notNull(),
+    boundAt: timestamp('bound_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    referrerIdx: index('referrals_referrer_idx').on(t.referrerWallet),
+    codeIdx: index('referrals_code_idx').on(t.code),
+  }),
+);
+
+// Affiliate payout batches — separate from rebate_batches; same monthly cadence + Safe.
+export const affiliateBatches = pgTable('affiliate_batches', {
+  id: serial('id').primaryKey(),
+  cycleMonth: date('cycle_month').notNull().unique(),
+  totalOwedWei: uint256('total_owed_wei').notNull(),
+  wethUsdPrice: numeric('weth_usd_price', { precision: 20, scale: 4 }),
+  status: text('status').notNull(),
+  safeProposalHash: bytea('safe_proposal_hash'),
+  safeTxHash: bytea('safe_tx_hash'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const affiliateBatchEntries = pgTable(
+  'affiliate_batch_entries',
+  {
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => affiliateBatches.id),
+    referrerWallet: bytea('referrer_wallet').notNull(),
+    kind: text('kind').notNull(),
+    referredVolumeUsd: numeric('referred_volume_usd', { precision: 20, scale: 4 }).notNull(),
+    owedWei: uint256('owed_wei').notNull(),
+    paidWei: uint256('paid_wei'),
+    status: text('status').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.batchId, t.referrerWallet] }),
+    referrerIdx: index('affiliate_entries_referrer_idx').on(t.referrerWallet),
+  }),
+);

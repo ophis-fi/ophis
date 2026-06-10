@@ -4,7 +4,8 @@ import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'cow-client' });
 
-// chainId → CoW API path segment. Source: https://docs.cow.fi/cow-protocol/reference/apis/orderbook
+// chainId → CoW API path segment on the SHARED hosted orderbook (api.cow.fi).
+// Source: https://docs.cow.fi/cow-protocol/reference/apis/orderbook
 const COW_API_PATH: Readonly<Record<number, string>> = {
   1:        'mainnet',
   100:      'xdai',
@@ -19,9 +20,27 @@ const COW_API_PATH: Readonly<Record<number, string>> = {
   11155111: 'sepolia',
 };
 
-export const SUPPORTED_CHAIN_IDS = Object.keys(COW_API_PATH).map(Number);
+// Optimism (chain 10) is the SOVEREIGN Ophis backend — its own self-hosted CoW
+// orderbook at optimism-mainnet.ophis.fi (NOT api.cow.fi). It speaks the identical
+// /api/vN/... surface but at the host ROOT (no /{network}/ path segment), so it
+// needs its own base URL. Override the host with OP_ORDERBOOK_URL (e.g. the local
+// colima backend in dev). Adding it to SUPPORTED_CHAIN_IDS makes the fetcher index
+// OP trades exactly like the hosted chains.
+export const OPTIMISM_CHAIN_ID = 10;
+const OP_ORDERBOOK_BASE = (process.env.OP_ORDERBOOK_URL ?? 'https://optimism-mainnet.ophis.fi').replace(/\/+$/, '');
+
+export const SUPPORTED_CHAIN_IDS = [...Object.keys(COW_API_PATH).map(Number), OPTIMISM_CHAIN_ID];
 
 const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
+
+// Resolve the orderbook URL prefix (everything before `/api/vN/...`) for a chain.
+// Hosted chains: `${api.cow.fi}/{network}`. Optimism: the sovereign host root.
+function orderbookBase(chainId: number): string {
+  if (chainId === OPTIMISM_CHAIN_ID) return OP_ORDERBOOK_BASE;
+  const path = COW_API_PATH[chainId];
+  if (!path) throw new Error(`unsupported chain ${chainId}`);
+  return `${BASE_URL}/${path}`;
+}
 
 // Bound every CoW request so a stalled API can't hang a caller — the batcher
 // runs conversion (#360) while holding a Postgres advisory lock, so an
@@ -51,8 +70,7 @@ export interface ListTradesParams {
 }
 
 export async function listTrades(p: ListTradesParams): Promise<CowTrade[]> {
-  const path = COW_API_PATH[p.chainId];
-  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
+  const base = orderbookBase(p.chainId);
   const q = new URLSearchParams();
   if (p.owner) q.set('owner', p.owner);
   q.set('offset', String(p.offset ?? 0));
@@ -63,15 +81,13 @@ export async function listTrades(p: ListTradesParams): Promise<CowTrade[]> {
   // trades (the fetcher would spin forever holding its advisory lock). v2 honors
   // offset/limit; the loop's "offset += returned; stop when < limit" matches its
   // documented pagination protocol exactly.
-  const url = `${BASE_URL}/${path}/api/v2/trades?${q}`;
+  const url = `${base}/api/v2/trades?${q}`;
   log.debug({ url }, 'GET trades');
   return fetchJson(url, z.array(CowTrade));
 }
 
 export async function getOrder(chainId: number, uid: `0x${string}`): Promise<CowOrder> {
-  const path = COW_API_PATH[chainId];
-  if (!path) throw new Error(`unsupported chain ${chainId}`);
-  const url = `${BASE_URL}/${path}/api/v1/orders/${uid}`;
+  const url = `${orderbookBase(chainId)}/api/v1/orders/${uid}`;
   log.debug({ url }, 'GET order');
   return fetchJson(url, CowOrder);
 }
@@ -84,9 +100,7 @@ export async function getOrder(chainId: number, uid: `0x${string}`): Promise<Cow
  * caller leaves value_usd NULL to retry next run (the same fail-safe as before).
  */
 export async function nativePrice(chainId: number, token: `0x${string}`): Promise<number> {
-  const path = COW_API_PATH[chainId];
-  if (!path) throw new Error(`unsupported chain ${chainId}`);
-  const url = `${BASE_URL}/${path}/api/v1/token/${token}/native_price`;
+  const url = `${orderbookBase(chainId)}/api/v1/token/${token}/native_price`;
   log.debug({ url }, 'GET native_price');
   return (await fetchJson(url, NativePriceResponse)).price;
 }
@@ -112,9 +126,7 @@ export interface SellQuoteParams {
  * CoW the order will be made valid on-chain via `setPreSignature` (Safe flow).
  */
 export async function getSellQuote(p: SellQuoteParams): Promise<QuoteResponse> {
-  const path = COW_API_PATH[p.chainId];
-  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
-  const url = `${BASE_URL}/${path}/api/v1/quote`;
+  const url = `${orderbookBase(p.chainId)}/api/v1/quote`;
   const body = {
     sellToken: p.sellToken,
     buyToken: p.buyToken,
@@ -154,9 +166,7 @@ export interface PresignOrderParams {
  * buyAmount, and a longer validTo.
  */
 export async function placePresignOrder(p: PresignOrderParams): Promise<`0x${string}`> {
-  const path = COW_API_PATH[p.chainId];
-  if (!path) throw new Error(`unsupported chain ${p.chainId}`);
-  const url = `${BASE_URL}/${path}/api/v1/orders`;
+  const url = `${orderbookBase(p.chainId)}/api/v1/orders`;
   const q = p.quote;
   const body = {
     sellToken: q.sellToken,
@@ -198,9 +208,7 @@ export async function getOpenOrders(
   owner: `0x${string}`,
   signal?: AbortSignal,
 ): Promise<AccountOrder[]> {
-  const path = COW_API_PATH[chainId];
-  if (!path) throw new Error(`unsupported chain ${chainId}`);
-  const url = `${BASE_URL}/${path}/api/v1/account/${owner}/orders?limit=250&offset=0`;
+  const url = `${orderbookBase(chainId)}/api/v1/account/${owner}/orders?limit=250&offset=0`;
   log.debug({ url }, 'GET account orders');
   const orders = await fetchJson(url, z.array(AccountOrder), { signal });
   // 'presignaturePending' is the state of a freshly-placed presign order awaiting
