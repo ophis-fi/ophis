@@ -4,6 +4,7 @@ import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth } from './batcher.js';
 import { reconcileBatches } from './batch/reconcile.js';
+import { deliverMonthlyReport } from './affiliate/deliverReport.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
@@ -95,6 +96,10 @@ async function runPipelineSteps(): Promise<void> {
         });
       }
     }
+    // Monthly settlement report — runs AFTER the batcher so it reads this cycle's
+    // rebate batch. Self-contained + fire-and-forget (alerts on failure, never
+    // throws), so a report hiccup can never block the heartbeat below.
+    await deliverMonthlyReport({ rpcUrl: gnosisRpc() });
   }
 
   // Durable nightly-completion heartbeat — LAST, so a row means the whole
