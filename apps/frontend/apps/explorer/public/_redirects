@@ -2,8 +2,8 @@
 # returns index.html (HTML) for /favicon.ico. Modern clients use the <link rel=icon> PNGs.
 /favicon.ico  /favicon-light-mode.png  200
 
-# Vite copies the app's own package.json into the build root, which would
-# otherwise be served verbatim and disclose dependency names + versions.
-# CF Pages _redirects are always followed regardless of whether a static
-# asset matches, so this 404s the path even though the file exists in dist.
-/package.json  /404  404
+# Note: /package.json (a leaked Vite build artifact) is NOT handled here. A
+# _redirects 404 rewrite to a non-existent target is not a supported Cloudflare
+# Pages mechanism; the file is instead deleted from the explorer build output in
+# the deploy workflow (drop leaked artifacts (explorer)), so there is no asset
+# to serve.

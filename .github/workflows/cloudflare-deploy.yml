@@ -154,6 +154,10 @@ jobs:
           find apps/frontend/build/cowswap -name '*.js.map' -type f -delete
           echo "remaining map files (none expected):"
           find apps/frontend/build/cowswap -name '*.map' -type f | head
+          # Vite emits the app package.json into the build root; served verbatim
+          # it leaks dependency names + versions. The Pages middleware already
+          # 404s it, but deleting the file is the belt: no asset to serve at all.
+          rm -f apps/frontend/build/cowswap/package.json
 
       - name: stage Pages Functions into build output
         # CF Pages picks up `functions/` adjacent to the deployed root.
@@ -268,6 +272,18 @@ jobs:
           # our own orderbook there). All api.cow.fi slugs verified live.
           REACT_APP_ORDER_BOOK_URLS: '{"1":"https://api.cow.fi/mainnet","100":"https://api.cow.fi/xdai","42161":"https://api.cow.fi/arbitrum_one","8453":"https://api.cow.fi/base","137":"https://api.cow.fi/polygon","43114":"https://api.cow.fi/avalanche","56":"https://api.cow.fi/bnb","59144":"https://api.cow.fi/linea","57073":"https://api.cow.fi/ink","9745":"https://api.cow.fi/plasma","11155111":"https://api.cow.fi/sepolia","10":"https://optimism-mainnet.ophis.fi","4326":"https://megaeth-mainnet.ophis.fi","999":"https://hyperevm.ophis.fi"}'
         run: pnpx nx run explorer:build --skip-nx-cache
+
+      - name: drop leaked artifacts (explorer)
+        # The explorer build root also receives a copy of the app package.json
+        # (dependency + version disclosure). Explorer is a Functions-less Pages
+        # project, so there is no middleware to 404 it; removing the file from
+        # the build output is the supported, reliable way to keep it off the
+        # deploy (a _redirects 404 rewrite to a non-existent target is not a
+        # supported Cloudflare Pages mechanism).
+        run: |
+          rm -f apps/frontend/build/explorer/package.json
+          echo "explorer build root after cleanup:"
+          ls apps/frontend/build/explorer | head
 
       - name: deploy explorer to Cloudflare Pages
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0  # v4.0.0
