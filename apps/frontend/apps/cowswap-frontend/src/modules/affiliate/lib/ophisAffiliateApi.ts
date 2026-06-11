@@ -93,7 +93,12 @@ export interface LeaderboardResponse {
   entries: LeaderboardEntry[]
 }
 
-export type AffiliateSignedAction = 'Partner Dashboard access' | 'create referral code'
+export type AffiliateSignedAction =
+  | 'Partner Dashboard access'
+  | 'create referral code'
+  // Bind is per-code, so the action string carries the code itself. The
+  // backend rebuilds `bind referral code <code>` and byte-matches it.
+  | `bind referral code ${string}`
 
 export interface SignedRequestBody {
   wallet: string
@@ -140,11 +145,25 @@ export function lookupRefCode(code: string): Promise<RefLookupResponse> {
   )
 }
 
-export function bindRefCode(referredWallet: string, code: string): Promise<RefBindResponse> {
+/**
+ * Body for POST /ref/bind. The bind is signature-gated: the referred wallet
+ * must prove control of its address by `personal_sign`-ing
+ * `Ophis bind referral code <code>\nAddress: <referredWallet lowercased>\nIssued: <issued>`
+ * (built via `buildAffiliateSignMessage('bind referral code ' + code, ...)`).
+ * `referredWallet` doubles as the recovered signer the backend checks.
+ */
+export interface RefBindRequestBody {
+  referredWallet: string
+  code: string
+  issued: number
+  signature: string
+}
+
+export function bindRefCode(body: RefBindRequestBody): Promise<RefBindResponse> {
   return fetch(`${REBATES_API}/ref/bind`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ referredWallet, code }),
+    body: JSON.stringify(body),
   }).then((res) => parseJson<RefBindResponse>(res))
 }
 

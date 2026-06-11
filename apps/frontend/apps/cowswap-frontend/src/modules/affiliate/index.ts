@@ -59,6 +59,7 @@ export type {
   PartnerDashboard,
   PartnerReferee,
   RankStatus,
+  RefBindRequestBody,
   RefBindResponse,
   RefCodeCreateResponse,
   RefLookupResponse,
