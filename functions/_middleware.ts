@@ -64,6 +64,17 @@ const BUSINESS_SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
 
+  // Vite copies the app's own package.json into the deploy root. Served
+  // verbatim it discloses dependency names + versions (an info-leak that
+  // helps target known-CVE deps). This middleware runs before static asset
+  // serving, so 404 the path on every host of this deploy (swap + business).
+  if (url.pathname === '/package.json') {
+    return new Response('Not found', {
+      status: 404,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+    })
+  }
+
   // Retired static docs: 301 the old apex /docs path to the new portal.
   if (
     (url.hostname === 'ophis.fi' || url.hostname === 'www.ophis.fi') &&

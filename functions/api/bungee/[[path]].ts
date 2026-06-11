@@ -71,6 +71,12 @@ const ALLOWED_PATH_RE = /^\/api\/v1\/bungee(-manual)?(\/|$)/
 
 const ALLOWED_METHODS = new Set(['GET', 'POST'])
 
+// Cap proxied request bodies. Bungee bridge quote/build payloads are small JSON
+// (well under a few KB); a 64 KB ceiling blocks abusive oversized POSTs from
+// spending Ophis's dedicated-tier quota or upstream bandwidth. Enforced against
+// both the declared content-length and the actual bytes read.
+const MAX_REQUEST_BODY_BYTES = 64 * 1024
+
 // Mirrors functions/api/intent.ts ALLOWED_ORIGINS — the hosts this Pages
 // project serves. Reject only a PRESENT non-allowlisted Origin: same-origin
 // GET fetches legitimately omit the header.
@@ -176,9 +182,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // literal `/../` and `/./` in pathname but keeps %2f/%5c (encoded slash and
   // backslash) verbatim, so an allowlisted prefix like
   // /api/v1/bungee/..%2f..%2fx could decode upstream and escape the bungee
-  // prefix on the (fixed) backend host. Legit Bungee paths never contain encoded
-  // separators; query params live in url.search and are appended separately.
-  if (/%2f|%5c/i.test(rest)) {
+  // prefix on the (fixed) backend host. We also reject %2e (encoded dot): the
+  // URL parser leaves it verbatim, so /api/v1/bungee/%2e%2e/x could decode to
+  // /api/v1/bungee/../x upstream and escape even without an encoded slash.
+  // Legit Bungee paths never contain encoded separators or dots; query params
+  // live in url.search and are appended separately.
+  if (/%2e|%2f|%5c/i.test(rest)) {
     return jsonError(404, 'unknown bungee api path')
   }
   if (!ALLOWED_PATH_RE.test(rest)) {
@@ -203,7 +212,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   const init: RequestInit = { method: request.method, headers }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    init.body = await request.arrayBuffer()
+    // Reject oversized bodies. Fast path: trust a declared content-length when
+    // present. Backstop: measure the actual bytes (header may be absent/wrong)
+    // before forwarding upstream.
+    const declaredLen = Number(request.headers.get('content-length'))
+    if (Number.isFinite(declaredLen) && declaredLen > MAX_REQUEST_BODY_BYTES) {
+      return jsonError(413, 'request body too large')
+    }
+    const body = await request.arrayBuffer()
+    if (body.byteLength > MAX_REQUEST_BODY_BYTES) {
+      return jsonError(413, 'request body too large')
+    }
+    init.body = body
   }
 
   let upstreamResp: Response
