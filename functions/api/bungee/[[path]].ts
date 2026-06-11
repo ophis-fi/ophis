@@ -172,6 +172,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   // Strip the /api/bungee prefix to recover the upstream path.
   const rest = url.pathname.replace(/^\/api\/bungee/, '') || '/'
+  // Reject encoded path traversal before the allowlist check. `URL` normalizes
+  // literal `/../` and `/./` in pathname but keeps %2f/%5c (encoded slash and
+  // backslash) verbatim, so an allowlisted prefix like
+  // /api/v1/bungee/..%2f..%2fx could decode upstream and escape the bungee
+  // prefix on the (fixed) backend host. Legit Bungee paths never contain encoded
+  // separators; query params live in url.search and are appended separately.
+  if (/%2f|%5c/i.test(rest)) {
+    return jsonError(404, 'unknown bungee api path')
+  }
   if (!ALLOWED_PATH_RE.test(rest)) {
     return jsonError(404, 'unknown bungee api path')
   }
