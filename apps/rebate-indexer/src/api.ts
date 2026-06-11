@@ -470,7 +470,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // Seed / manage referral codes — ADMIN-token gated. Used to whitelist partners
   // (kind='partner') from the gitignored roster and to mint regular codes. Revoke
   // by re-posting with active=false (existing bindings stay lifetime).
-  app.post<{ Body: { code?: string; referrerWallet?: string; kind?: string; active?: boolean } }>('/admin/ref-codes', {
+  app.post<{ Body: { code?: string; referrerWallet?: string; payoutWallet?: string | null; kind?: string; active?: boolean } }>('/admin/ref-codes', {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     if (!assertAdminAuth(req, reply)) return reply;
@@ -481,12 +481,26 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     if (!/^0x[0-9a-f]{40}$/.test(referrer)) return reply.code(400).send({ error: 'invalid referrerWallet' });
     if (kind !== 'regular' && kind !== 'partner') return reply.code(400).send({ error: 'kind must be regular or partner' });
+    // Optional payout redirect (migration 0007). Absent/null => NULL column => pay to
+    // referrer_wallet. When present it is validated EXACTLY like referrerWallet and
+    // stored as a Buffer; it only moves where the WETH goes, never the identity.
+    const rawPayout = req.body?.payoutWallet;
+    let payoutBuf: Buffer | null = null;
+    if (rawPayout !== undefined && rawPayout !== null && rawPayout !== '') {
+      const payout = String(rawPayout).toLowerCase();
+      if (!/^0x[0-9a-f]{40}$/.test(payout)) return reply.code(400).send({ error: 'invalid payoutWallet' });
+      payoutBuf = Buffer.from(payout.slice(2), 'hex');
+    }
     await sql`
-      INSERT INTO ref_codes (code, referrer_wallet, kind, active)
-      VALUES (${code}, decode(${referrer.slice(2)}, 'hex'), ${kind}, ${active})
-      ON CONFLICT (code) DO UPDATE SET active = ${active}
+      INSERT INTO ref_codes (code, referrer_wallet, payout_wallet, kind, active)
+      VALUES (${code}, decode(${referrer.slice(2)}, 'hex'), ${payoutBuf}, ${kind}, ${active})
+      ON CONFLICT (code) DO UPDATE SET
+        referrer_wallet = EXCLUDED.referrer_wallet,
+        payout_wallet = EXCLUDED.payout_wallet,
+        kind = EXCLUDED.kind,
+        active = EXCLUDED.active
     `;
-    return { ok: true, code, kind, active };
+    return { ok: true, code, kind, active, payoutWallet: payoutBuf ? `0x${payoutBuf.toString('hex')}` : null };
   });
 
   // ─── Leaderboard & Ranking ───────────────────────────────────────────────

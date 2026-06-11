@@ -6,6 +6,12 @@ export interface AffiliateReferrer {
   readonly kind: AffiliateKind;
   /** chainId -> referred USD volume on that chain in the cycle (post-bound_at). */
   readonly volumeByChain: ReadonlyMap<number, number>;
+  /**
+   * Optional payout redirect (migration 0007). When set, the WETH transfer goes here
+   * instead of referrer_wallet; referrer_wallet stays the identity for credit/cap.
+   * null/undefined => pay to referrer_wallet (backward-compatible default).
+   */
+  readonly payoutWallet?: `0x${string}` | null;
 }
 
 /** What a referrer is owed for one cycle. owedWei is the WETH actually paid. */
@@ -16,6 +22,8 @@ export interface AffiliateOwed {
   readonly referredVolumeUsd: number;
   readonly owedUsd: number;
   readonly owedWei: bigint;
+  /** Carried through from AffiliateReferrer; null => pay to referrer_wallet. */
+  readonly payoutWallet?: `0x${string}` | null;
 }
 
 /**
@@ -90,6 +98,7 @@ export function computeAffiliate(
       referredVolumeUsd: countedVolumeUsd,
       owedUsd,
       owedWei,
+      payoutWallet: r.payoutWallet ?? null,
     });
   }
 

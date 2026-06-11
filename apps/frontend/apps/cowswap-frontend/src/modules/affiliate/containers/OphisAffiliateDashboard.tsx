@@ -9,8 +9,13 @@
  * current-cycle referred volume; lets them mint a regular referral code
  * (signed) and copy a shareable ?ref link.
  *
- * PUBLIC affiliate program = the REGULAR 8% tier only. The partner /
- * friends-and-family tier is NOT surfaced here.
+ * PARTNER-AWARE: when GET /affiliate/:wallet reports `kind === 'partner'` for
+ * the connected wallet, this renders the read-only PartnerAffiliateSummary
+ * (status, rate, assigned code + share link, referred totals, link to the
+ * signature-gated /#/partner breakdown) INSTEAD of the regular mint-a-code
+ * flow. Partners already have a code, so the mint action is never offered to
+ * them. Everything below the partner branch is the REGULAR 8% self-serve tier
+ * only; the friends-and-family tier is NOT surfaced here.
  *
  * AGENTS.md compliance: named export (no default), shared chrome reused from
  * the Affiliate page's styled module.
@@ -25,6 +30,8 @@ import { ActionButton, GhostButton, MetricRow, ShareRow } from 'pages/Affiliate/
 
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'
 import { type AffiliateStats, AffiliateApiError, createRefCode, getAffiliateStats } from '../lib/ophisAffiliateApi'
+
+import { PartnerAffiliateSummary } from './PartnerAffiliateSummary'
 
 const SHARE_ORIGIN = 'https://swap.ophis.fi'
 
@@ -113,6 +120,15 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   }, [account, sign])
 
   const activeCode = stats?.activeCodes?.[0]
+
+  // Partner-aware branch: a connected wallet whose own public stats report
+  // kind === 'partner' gets the read-only partner summary, NOT the regular
+  // mint-a-code flow (partners already have an assigned code). This only ever
+  // renders for the connected wallet's own data, so a non-partner wallet never
+  // sees partner UI. We still defer to the shared loading/error handling below.
+  if (!loading && !loadError && stats?.kind === 'partner') {
+    return <PartnerAffiliateSummary stats={stats} />
+  }
 
   return (
     <>
