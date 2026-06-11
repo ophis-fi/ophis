@@ -212,18 +212,38 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   const init: RequestInit = { method: request.method, headers }
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    // Reject oversized bodies. Fast path: trust a declared content-length when
-    // present. Backstop: measure the actual bytes (header may be absent/wrong)
-    // before forwarding upstream.
+    // Cap the request body at MAX_REQUEST_BODY_BYTES. Fast path: reject an
+    // oversized DECLARED content-length before reading anything. Then stream the
+    // body and abort the moment the running total crosses the cap, so an absent
+    // or lying content-length cannot force a large payload into Worker memory.
+    // This is a true ingress cap, not a buffer-everything-then-measure check.
     const declaredLen = Number(request.headers.get('content-length'))
     if (Number.isFinite(declaredLen) && declaredLen > MAX_REQUEST_BODY_BYTES) {
       return jsonError(413, 'request body too large')
     }
-    const body = await request.arrayBuffer()
-    if (body.byteLength > MAX_REQUEST_BODY_BYTES) {
-      return jsonError(413, 'request body too large')
+    if (request.body) {
+      const reader = request.body.getReader()
+      const chunks: Uint8Array[] = []
+      let total = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+        total += value.byteLength
+        if (total > MAX_REQUEST_BODY_BYTES) {
+          await reader.cancel()
+          return jsonError(413, 'request body too large')
+        }
+        chunks.push(value)
+      }
+      const merged = new Uint8Array(total)
+      let offset = 0
+      for (const chunk of chunks) {
+        merged.set(chunk, offset)
+        offset += chunk.byteLength
+      }
+      init.body = merged
     }
-    init.body = body
   }
 
   let upstreamResp: Response
