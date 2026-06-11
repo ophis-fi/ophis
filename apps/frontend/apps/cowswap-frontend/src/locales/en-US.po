@@ -894,6 +894,10 @@ msgstr "pools available to get yield on your assets!"
 msgid "Confirm"
 msgstr "Confirm"
 
+#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
+msgid "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
+msgstr "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
+
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Unsupported token"
@@ -1062,6 +1066,10 @@ msgstr "creating"
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/AirdropHookApp/index.tsx
 msgid "Claimable amount"
 msgstr "Claimable amount"
+
+#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
+msgid "⚡ Max rebate"
+msgstr "⚡ Max rebate"
 
 #: apps/cowswap-frontend/src/modules/affiliate/containers/AffiliateTraderCodeInfo.tsx
 #: apps/cowswap-frontend/src/modules/affiliate/pure/AffiliateTraderModal/AffiliateTradeCodeForm.tsx
@@ -1985,7 +1993,6 @@ msgstr "days"
 msgid "This hook is compatible with {compatibleWith}."
 msgstr "This hook is compatible with {compatibleWith}."
 
-#: apps/cowswap-frontend/src/common/pure/NetworksList/ActiveRowLinks/ActiveRowLinks.pure.tsx
 #: apps/cowswap-frontend/src/modules/bridge/pure/BridgeActivitySummary/BridgeStepRow.tsx
 #: apps/cowswap-frontend/src/modules/bridge/pure/BridgeActivitySummary/index.tsx
 #: apps/cowswap-frontend/src/modules/orders/containers/BridgingSuccessNotification/index.tsx
@@ -2042,16 +2049,6 @@ msgstr "The time before your total TWAP order ends."
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/ClaimGnoHookApp/index.tsx
 msgid "Unsupported network. Please change to Gnosis Chain"
 msgstr "Unsupported network. Please change to Gnosis Chain"
-
-#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-msgid ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Ophis: https://swap.ophis.fi"
-msgstr ""
-"Did you know? {benefit}\n"
-"\n"
-"Start swapping on Ophis: https://swap.ophis.fi"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/DebugPanel/index.tsx
 msgid "Debug Step:"
@@ -2857,17 +2854,6 @@ msgstr "Share on X"
 msgid "Total claimable rewards:"
 msgstr "Total claimable rewards:"
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
-#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
-msgid ""
-"I just {actionWord} an extra {surplus} on Ophis.\n"
-"\n"
-"Intent-based swaps with MEV protection. https://swap.ophis.fi"
-msgstr ""
-"I just {actionWord} an extra {surplus} on Ophis.\n"
-"\n"
-"Intent-based swaps with MEV protection. https://swap.ophis.fi"
-
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/index.tsx
 msgid "Connected with"
 msgstr "Connected with"
@@ -3329,6 +3315,17 @@ msgstr "Start bridging"
 #: apps/cowswap-frontend/src/modules/swap/pure/SmartContractReceiverWarning/index.tsx
 msgid "Confirm this is the correct address and that it exists on this chain."
 msgstr "Confirm this is the correct address and that it exists on this chain."
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+#: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/SurplusModal.tsx
+msgid ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection. https://swap.ophis.fi"
+msgstr ""
+"I just {actionWord} an extra {surplus} on Ophis.\n"
+"\n"
+"Intent-based swaps with MEV protection. https://swap.ophis.fi"
 
 #: apps/cowswap-frontend/src/modules/tokensList/pure/ImportListModal/index.tsx
 msgid "Import at your own risk"
@@ -5047,6 +5044,16 @@ msgstr "Swap completed"
 #: apps/cowswap-frontend/src/modules/tokensList/pure/LpTokenLists/index.tsx
 msgid "Pool"
 msgstr "Pool"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/helpers.ts
+msgid ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis: https://swap.ophis.fi"
+msgstr ""
+"Did you know? {benefit}\n"
+"\n"
+"Start swapping on Ophis: https://swap.ophis.fi"
 
 #: apps/cowswap-frontend/src/modules/trade/pure/UnlockWidgetScreen/index.tsx
 msgid "Learn more about <0>{orderType} orders ↗</0>"

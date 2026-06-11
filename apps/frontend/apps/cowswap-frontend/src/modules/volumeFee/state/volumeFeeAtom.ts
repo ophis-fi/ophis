@@ -15,6 +15,7 @@ import { tradeQuotesAtom } from 'modules/tradeQuote'
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
 import { OPHIS_FLAT_VOLUME_FEE_ENABLED, OPHIS_STABLE_VOLUME_BPS } from 'ophis/partnerFeeDefault'
+import { OPHIS_BOOSTED_VOLUME_BPS, isBoostedToken } from 'ophis/boostedTokens'
 
 import { isCorrelatedTrade } from './isCorrelatedTrade'
 import { safeAppFeeAtom } from './safeAppFeeAtom'
@@ -37,6 +38,12 @@ export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
   // a Safe-App fee; otherwise enabling the flag inside a Safe App silently drops
   // the Ophis fee in favour of the Safe's recipient instead of charging flat bps. (Review P2)
   if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
+    // Boosted-token trades (the ALEPH flagship) pay the reduced "max rebate" rate
+    // when EITHER side is a boosted token, REGARDLESS of the trader's volume tier.
+    // Same single-atom source so quote display and on-chain appData stay in lockstep.
+    if (widgetPartnerFee && get(isBoostedTradeAtom)) {
+      return { ...widgetPartnerFee, volumeBps: OPHIS_BOOSTED_VOLUME_BPS }
+    }
     // Stablecoin-to-stablecoin (same-chain) pairs pay the reduced flat rate
     // (1 bp) instead of the standard volume fee. Same single-atom source, so
     // quote display and on-chain appData stay in lockstep at the reduced rate.
@@ -70,6 +77,28 @@ const shouldSkipFeeAtom = atom<boolean>((get) => {
   }
 
   return isCorrelatedTrade(inputCurrencyAddress, outputCurrencyAddress, correlatedTokens)
+})
+
+/**
+ * True when EITHER side of a SAME-CHAIN trade is a boosted token (the ALEPH
+ * flagship), so the reduced OPHIS_BOOSTED_VOLUME_BPS "max rebate" rate applies
+ * regardless of the trader's volume tier. Cross-chain (bridge) trades return
+ * false and keep the standard rate (a bridged leg's fee placement is ambiguous).
+ * Exported so the swap-box badge can show when a boost is active.
+ */
+export const isBoostedTradeAtom = atom<boolean>((get) => {
+  const { inputCurrency, outputCurrency } = get(derivedTradeStateAtom) || {}
+
+  if (!inputCurrency || !outputCurrency) return false
+  if (inputCurrency.chainId !== outputCurrency.chainId) return false
+  // Key the lookup on the TRADE's chain (not the connected wallet's): the boost must
+  // match the actual tokens even if the wallet is momentarily on a different chain.
+  const chainId = inputCurrency.chainId
+
+  return (
+    isBoostedToken(chainId, getCurrencyAddress(inputCurrency)) ||
+    isBoostedToken(chainId, getCurrencyAddress(outputCurrency))
+  )
 })
 
 /**
