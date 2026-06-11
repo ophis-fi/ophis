@@ -65,9 +65,12 @@ export function computeTierProgress(
 }
 
 /**
- * 60-second in-memory cache for leaderboard data.
+ * 60-second in-memory cache. Holds the full top-MAX_LEADERBOARD snapshot; each
+ * request's `limit` slices that snapshot, so the cache is limit-independent (a
+ * small first request can't pin a truncated result, nor a large one over-serve).
  */
-let leaderboardCache: { data: LeaderboardResponse; expiresAt: number } | null = null;
+const MAX_LEADERBOARD = 100;
+let leaderboardCache: { entries: LeaderboardEntry[]; updatedAt: string; expiresAt: number } | null = null;
 
 /**
  * Fetch leaderboard entries from the database.
@@ -104,7 +107,7 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
         GROUP BY wallet
       ) tv ON tv.wallet = w.wallet
       WHERE w.volume_30d_usd > 0
-      ORDER BY w.volume_30d_usd DESC
+      ORDER BY w.volume_30d_usd DESC, w.wallet ASC
       LIMIT ${limit}
     ),
     affiliate_counts AS (
@@ -127,7 +130,7 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
       COALESCE(ac.referred_volume_usd, '0') AS referred_volume_usd
     FROM wallet_volumes wv
     LEFT JOIN affiliate_counts ac ON ac.referrer_wallet = wv.wallet
-    ORDER BY wv.volume_30d_usd DESC
+    ORDER BY wv.volume_30d_usd DESC, wv.wallet ASC
   `;
 
   return rows.map((row, idx) => {
@@ -150,24 +153,17 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
  */
 export async function getLeaderboard(limit: number): Promise<LeaderboardResponse> {
   const now = Date.now();
-  if (leaderboardCache && leaderboardCache.expiresAt > now) {
-    return leaderboardCache.data;
+  if (!leaderboardCache || leaderboardCache.expiresAt <= now) {
+    const entries = await fetchLeaderboardEntries(MAX_LEADERBOARD);
+    leaderboardCache = {
+      entries,
+      updatedAt: new Date().toISOString(),
+      expiresAt: now + 60_000, // 60 seconds
+    };
   }
 
-  const entries = await fetchLeaderboardEntries(limit);
-  const total = entries.length;
-  const response: LeaderboardResponse = {
-    updatedAt: new Date().toISOString(),
-    total,
-    entries,
-  };
-
-  leaderboardCache = {
-    data: response,
-    expiresAt: now + 60_000, // 60 seconds
-  };
-
-  return response;
+  const entries = leaderboardCache.entries.slice(0, limit);
+  return { updatedAt: leaderboardCache.updatedAt, total: entries.length, entries };
 }
 
 /**
@@ -220,7 +216,7 @@ export async function getRankInfo(wallet: `0x${string}`): Promise<RankInfo | nul
   let position: number | null = null;
   const rankRows = await sql<{ position: string }[]>`
     WITH ranked AS (
-      SELECT wallet, ROW_NUMBER() OVER (ORDER BY volume_30d_usd DESC) AS position
+      SELECT wallet, ROW_NUMBER() OVER (ORDER BY volume_30d_usd DESC, wallet ASC) AS position
       FROM wallets
       WHERE volume_30d_usd > 0
     )
