@@ -6,7 +6,6 @@ import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 
 import { useAdvancedOrdersDerivedState } from 'modules/advancedOrders'
-import { AffiliateTraderRewardsRow, useIsRewardsRowEnabled } from 'modules/affiliate'
 import {
   TradeConfirmation,
   TradeConfirmModal,
@@ -76,7 +75,6 @@ const getConfirmModalConfig = (): {
 export function TwapConfirmModal() {
   const confirmModalConfig = getConfirmModalConfig()
   const { account } = useWalletInfo()
-  const isRewardsRowEnabled = useIsRewardsRowEnabled()
   const { allowsOffchainSigning } = useWalletDetails()
   const commonTradeConfirmContext = useCommonTradeConfirmContext()
   const {
@@ -163,7 +161,6 @@ export function TwapConfirmModal() {
                 }}
               />
             )}
-            {isRewardsRowEnabled && <AffiliateTraderRewardsRow />}
             <DividerHorizontal />
             <TwapConfirmDetails
               startTime={twapOrder?.startTime}

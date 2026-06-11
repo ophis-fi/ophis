@@ -1,7 +1,5 @@
 import { lazy, ReactNode, Suspense, useEffect } from 'react'
 
-import { useFeatureFlags } from '@cowprotocol/common-hooks'
-
 import { OphisPageLoader } from 'ophis/components'
 import { IntentLanding } from 'ophis/components/intent'
 import { Navigate, Route, Routes } from 'react-router'
@@ -90,9 +88,6 @@ const PartnerPage = lazy(() =>
 )
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
-const AccountAffiliateTrader = lazy(
-  () => import(/* webpackChunkName: "affiliate_trader" */ 'pages/Account/AffiliateTrader'),
-)
 const AccountNotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
 
 /**
@@ -178,8 +173,6 @@ const lazyRoutes: LazyRouteProps[] = [
 ]
 
 export function RoutesApp(): ReactNode {
-  const { isAffiliateProgramEnabled } = useFeatureFlags()
-
   return (
     <Routes>
       {/*Account*/}
@@ -188,9 +181,6 @@ export function RoutesApp(): ReactNode {
             token features Ophis doesn't have). Removed; /account now lands on Tokens. */}
         <Route path={RoutesEnum.ACCOUNT} element={<Navigate to={RoutesEnum.ACCOUNT_TOKENS} replace />} />
         <Route path={RoutesEnum.ACCOUNT_TOKENS} element={<AccountTokensOverview />} />
-        {isAffiliateProgramEnabled && (
-          <Route path={RoutesEnum.ACCOUNT_AFFILIATE_TRADER} element={<AccountAffiliateTrader />} />
-        )}
         <Route path="*" element={<AccountNotFound />} />
       </Route>
 

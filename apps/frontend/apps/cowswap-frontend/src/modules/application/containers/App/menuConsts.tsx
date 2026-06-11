@@ -1,6 +1,6 @@
 import { ACCOUNT_PROXY_LABEL } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
-import { BadgeType, BadgeTypes, MenuItem, ProductVariant } from '@cowprotocol/ui'
+import { BadgeType, MenuItem, ProductVariant } from '@cowprotocol/ui'
 
 import { i18n, MessageDescriptor } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
@@ -26,23 +26,13 @@ type UntranslatedMenuItem = {
   }>
 }
 
-const ACCOUNT_ITEM = (chainId: SupportedChainId, isAffiliateProgramEnabled: boolean): UntranslatedMenuItem => ({
+const ACCOUNT_ITEM = (chainId: SupportedChainId): UntranslatedMenuItem => ({
   label: msg`Account`,
   children: [
     {
       href: '/account',
       label: msg`Overview`,
     },
-    ...(isAffiliateProgramEnabled
-      ? [
-          {
-            href: Routes.ACCOUNT_AFFILIATE_TRADER,
-            label: msg`My Rewards`,
-            badge: msg`New`,
-            badgeType: BadgeTypes.ALERT,
-          },
-        ]
-      : []),
     {
       href: '/account/tokens',
       label: msg`Tokens`,
@@ -94,12 +84,8 @@ const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
   ],
 })
 
-export const NAV_ITEMS = (
-  chainId: SupportedChainId,
-  isAffiliateProgramEnabled: boolean,
-  isSolversEnabled: boolean,
-): MenuItem[] => {
-  const _ACCOUNT_ITEM = ACCOUNT_ITEM(chainId, isAffiliateProgramEnabled)
+export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean): MenuItem[] => {
+  const _ACCOUNT_ITEM = ACCOUNT_ITEM(chainId)
   const accountItem: MenuItem = {
     label: i18n._(_ACCOUNT_ITEM.label),
     children: _ACCOUNT_ITEM.children.map(({ href, label, badge, badgeType }) => ({

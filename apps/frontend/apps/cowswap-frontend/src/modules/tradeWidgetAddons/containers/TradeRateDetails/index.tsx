@@ -2,7 +2,6 @@ import { useMemo, useState, useCallback, ReactNode } from 'react'
 
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
-import { AffiliateTraderRewardsRow, useIsRewardsRowEnabled } from 'modules/affiliate'
 import { useBridgeQuoteAmounts } from 'modules/bridge'
 import {
   getTotalCosts,
@@ -56,7 +55,6 @@ export function TradeRateDetails({
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const swapReceiveAmountInfo = useGetSwapReceiveAmountInfo()
   const shouldPayGas = useShouldPayGas()
-  const isRewardsRowEnabled = useIsRewardsRowEnabled()
   const bridgeQuoteAmounts = useBridgeQuoteAmounts()
   const { error: quoteError } = useTradeQuote()
 
@@ -100,7 +98,6 @@ export function TradeRateDetails({
         showTotalRow
       />
       {slippageRow} {/* Always show slippage inside accordion */}
-      {isRewardsRowEnabled && <AffiliateTraderRewardsRow />}
       <RowDeadline deadline={deadline} />
       <RowQuoteId quoteId={quoteId} isVerified={quoteVerified} expiration={quoteExpiration} />
     </>

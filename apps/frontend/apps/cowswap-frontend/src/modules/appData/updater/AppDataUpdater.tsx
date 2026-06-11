@@ -3,7 +3,7 @@ import React from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { affiliateTraderSavedCodeAtom, useIsRefCodeExpired } from 'modules/affiliate'
+import { affiliateTraderSavedCodeAtom } from 'modules/affiliate'
 import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useReplacedOrderUid } from 'modules/trade/state/alternativeOrder'
@@ -47,7 +47,6 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
-  const isRefCodeExpired = useIsRefCodeExpired()
 
   if (!chainId) return null
 
@@ -62,7 +61,7 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
       volumeFee={ophisAppDataPartnerFee ?? volumeFee}
       replacedOrderUid={replacedOrderUid}
       userConsent={userConsent}
-      refCode={isRefCodeExpired ? undefined : refCode}
+      refCode={refCode}
     />
   )
 })
