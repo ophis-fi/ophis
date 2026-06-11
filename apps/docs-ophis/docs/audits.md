@@ -1,12 +1,23 @@
 ---
 id: audits
 title: Security & audits
-description: Ophis is non-custodial and MEV-protected by construction, settling through immutable CoW Protocol contracts, with solver governance behind a 2-of-3 multisig and a 24-hour timelock.
+description: Ophis is non-custodial and MEV-protected, settling through immutable CoW Protocol contracts, with governance via a 2-of-3 multisig and a 24-hour timelock.
 sidebar_label: Security & audits
 sidebar_position: 1
 ---
 
 # Security & audits
+
+:::note[TL;DR]
+
+Ophis is non-custodial: no order moves without your wallet signature, and a solver
+can never exceed your signed sell amount, receiver, or limit price. Trades settle
+through immutable CoW Protocol contracts that have no admin, owner, or proxy, and
+are MEV-protected by construction via uniform-price batch auctions. The only
+mutable surface is the solver allowlist, governed by a 2-of-3 multisig behind a
+24-hour timelock.
+
+:::
 
 Ophis is built so that the protocol **cannot move your funds without your
 signature**, and so that execution is fair by construction rather than by

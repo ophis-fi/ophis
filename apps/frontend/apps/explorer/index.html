@@ -26,6 +26,8 @@
 
   <meta property="og:image" content="https://ophis.fi/og-image.png" />
   <meta property="og:image:alt" content="Ophis Explorer: orders, trades, settlement batches, and solver competition." />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:url" content="https://explorer.ophis.fi/" />
   <meta property="og:site_name" content="Ophis" />
   <meta property="og:locale" content="en_US" />
@@ -54,12 +56,60 @@
         },
         {
           "@type": "WebApplication",
+          "@id": "https://explorer.ophis.fi/#webapp",
           "name": "Ophis Explorer",
           "url": "https://explorer.ophis.fi/",
           "applicationCategory": "FinanceApplication",
           "operatingSystem": "Web",
           "description": "Blockchain explorer for Ophis, the intent-based DEX aggregator. Browse orders, trades, settlement batches, and solver competition on Optimism.",
           "isPartOf": { "@id": "https://ophis.fi/#organization" }
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://explorer.ophis.fi/#faq",
+          "isPartOf": { "@id": "https://explorer.ophis.fi/#webapp" },
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is Ophis?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Ophis is an intent-based DEX aggregator and a CoW Protocol fork, live on Optimism mainnet. Trades are gasless, off-chain, EIP-712-signed intents that solvers compete to fill, and they are settled on-chain and MEV-protected through CoW Protocol batch auctions. Ophis also reaches Solana and Bitcoin destinations via NEAR Intents across 11 EVM chains."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What does the Ophis Explorer show?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The explorer surfaces orders and their status, trades and the on-chain settlement transaction that filled them, per-address activity for any wallet, and solver competition: which solver won a batch and the price it returned."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What fees does Ophis charge?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade. Same-chain stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp). The fee is on volume only and takes no share of price improvement."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How are orders filled?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Each order is a signed intent with a hard limit price. Solvers compete in a batch auction to fill it, and the winning solver settles the trade on-chain at a uniform clearing price. Any surplus, meaning price improvement beyond the signed quote, is returned to the trader in full."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Who holds custody of funds on Ophis?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Ophis is non-custodial. Every order is signed by the user's own wallet, and funds never leave the user's control until the on-chain settlement executes the trade they signed."
+              }
+            }
+          ]
         }
       ]
     }

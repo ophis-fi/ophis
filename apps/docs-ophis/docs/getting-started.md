@@ -6,6 +6,50 @@ sidebar_label: Getting started
 sidebar_position: 1
 ---
 
+import Head from '@docusaurus/Head';
+
+{/* HowTo schema.org structured data for AEO / answer engines, built from the
+    three-step intent flow described below. JSON.stringify handles all
+    quote/apostrophe escaping at build time. A type=application/ld+json block is
+    inert data (not executed JS), so it is not governed by script-src. */}
+export const howToLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: 'How to make your first swap on Ophis',
+  description:
+    'Ophis turns a natural-language sentence into a settled, MEV-protected swap in three steps: intent parsing, a solver auction, and on-chain batch settlement.',
+  totalTime: 'PT2M',
+  supply: [
+    { '@type': 'HowToSupply', name: 'An EVM wallet' },
+    { '@type': 'HowToSupply', name: 'A token balance to swap from on a supported chain' },
+  ],
+  tool: [{ '@type': 'HowToTool', name: 'Ophis at ophis.fi' }],
+  step: [
+    {
+      '@type': 'HowToStep',
+      name: 'Intent: parse the request',
+      url: 'https://docs.ophis.fi/getting-started#1--intent-parse-the-request',
+      text: 'Open ophis.fi, connect your wallet, and type the swap as a plain sentence such as swap 100 USDC for ETH on Base. An open LLM extracts the sell token, buy token, amount, and chain into a structured order and pre-fills the swap form. Ophis is non-custodial and charges a flat 0.10% (10 bps) fee on trade volume, or 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.',
+    },
+    {
+      '@type': 'HowToStep',
+      name: 'Auction: solver competition',
+      url: 'https://docs.ophis.fi/getting-started#2--auction-solver-competition',
+      text: 'Review the quote and sign the order with your wallet. The signed order is broadcast to a batch auction where solvers compete to find the best path: an on-chain DEX, a peer-to-peer match in the same batch, or a cross-chain route.',
+    },
+    {
+      '@type': 'HowToStep',
+      name: 'Settle: on-chain, MEV-protected',
+      url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
+      text: 'The winning solver settles your order in a batch where every trade clears at the same uniform price, via CoW Protocol batch auctions, so there is no front-running, no sandwiching, and no priority-gas auction. 100% of any price surplus goes to you, the trader.',
+    },
+  ],
+};
+
+<Head>
+  <script type="application/ld+json">{JSON.stringify(howToLd)}</script>
+</Head>
+
 # Getting started
 
 Ophis turns a sentence into a settled, MEV-protected swap. There's no

@@ -4,10 +4,12 @@ import { mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Media } from '@cowprotocol/ui'
 
 import { Helmet } from 'react-helmet'
+import { useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { subgraphApiSDK } from '../../../cowSdk'
 import { useNetworkId } from '../../../state/network'
+import { NETWORK_PREFIXES } from '../../../state/network/const'
 import { Search } from '../../components/common/Search'
 import { StatsSummaryCardsWidget } from '../../components/SummaryCardsWidget'
 import { TokensTableWidget } from '../../components/TokensTableWidget'
@@ -60,6 +62,12 @@ const SummaryWrapper = styled.section`
   }
 `
 
+// Home renders at every network prefix (/, /optimism/, /arbitrum/, ...), so the
+// same search page is reachable under many URLs. Point search engines at one
+// canonical home and noindex the network-prefixed variants. Mirrors the
+// canonical + prefixed-path noindex pattern on the Solvers page.
+const HOME_CANONICAL_URL = 'https://explorer.ophis.fi/'
+
 const SHOW_TOKENS_TABLE: Record<SupportedChainId, boolean> = {
   ...mapSupportedNetworks(false), // Default to false for all networks
   [SupportedChainId.MAINNET]: true, // Only show tokens table for mainnet
@@ -73,6 +81,12 @@ const SHOW_TOKENS_TABLE: Record<SupportedChainId, boolean> = {
 
 export const Home: React.FC = () => {
   const networkId = useNetworkId() ?? undefined
+  const { pathname } = useLocation()
+  const [, firstPathSegment, secondPathSegment] = pathname.split('/')
+  const isPrefixedHomePath =
+    firstPathSegment.length > 0 &&
+    NETWORK_PREFIXES.split('|').includes(firstPathSegment) &&
+    !secondPathSegment
 
   // LaunchDarkly removed (Ophis fork). Statically OFF: this preserves the prior
   // live behavior (CoW's LD context never resolved isTheGraphEnabled, so it was
@@ -88,6 +102,8 @@ export const Home: React.FC = () => {
     <Wrapper>
       <Helmet>
         <title>{APP_TITLE}</title>
+        <link rel="canonical" href={HOME_CANONICAL_URL} />
+        {isPrefixedHomePath && <meta name="robots" content="noindex,follow" />}
       </Helmet>
       <h1>Search on Ophis Explorer</h1>
       <Search className="home" />
