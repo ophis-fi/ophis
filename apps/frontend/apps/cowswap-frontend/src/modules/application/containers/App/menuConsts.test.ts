@@ -36,7 +36,6 @@ jest.mock('./menuConsts.utils', () => ({
 
 jest.mock('common/constants/routes', () => ({
   Routes: {
-    ACCOUNT_AFFILIATE_PARTNER: '/account/affiliate/partner',
     ACCOUNT_AFFILIATE_TRADER: '/account/affiliate/trader',
     PLAY_COWRUNNER: '/play/cowrunner',
     PLAY_MEVSLICER: '/play/mevslicer',

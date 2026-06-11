@@ -24,7 +24,6 @@ export const Routes = {
   ACCOUNT: '/account',
   ACCOUNT_TOKENS: '/account/tokens',
   ACCOUNT_TOKENS_SINGLE: '/account/tokens/:address',
-  ACCOUNT_AFFILIATE_PARTNER: '/account/affiliate',
   ACCOUNT_AFFILIATE_TRADER: '/account/my-rewards',
   ABOUT: '/about',
   // Ophis: '/legal' is the single consolidated legal route (Terms + Privacy
