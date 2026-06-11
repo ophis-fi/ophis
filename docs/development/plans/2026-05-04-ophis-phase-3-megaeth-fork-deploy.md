@@ -29,7 +29,7 @@
 |---|---|---|
 | **D1** | Deployer EOA — fresh wallet vs reuse Phase-1 driver-submitter `0x00f98b…502F` | **Generate a fresh dedicated EOA** (`ophis-megaeth-deployer` Keychain entry). Cleaner audit trail; deployer has admin rights on the auth contract until Phase 3.x transfers to a Safe. |
 | **D2** | Settlement-contract authority (initial owner of `GPv2AllowListAuthentication`) | **Same EOA as D1** for Stage 1 testnet (low value, easy to manage). For mainnet, transfer ownership to the existing Phase-2.5 Gnosis Safe `0x858f0F5e…CeF8` after deploy. |
-| **D3** | Driver-submitter EOA on MegaETH (the EOA that signs settle() txs) | **Reuse Phase-1 driver-submitter** `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (Keychain `ophis-driver-submitter`). Lazy-fund on MegaETH testnet, then mainnet. The auth contract's `addSolver(...)` call adds it to our allowlist. |
+| **D3** | Driver-submitter EOA on MegaETH (the EOA that signs settle() txs) | **Reuse Phase-1 driver-submitter** `0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F` (Keychain `<keychain-service>`). Lazy-fund on MegaETH testnet, then mainnet. The auth contract's `addSolver(...)` call adds it to our allowlist. |
 | **D4** | MegaETH foundation grant application | **DEFERRED** (Clement 2026-05-04) — only apply once production is fully live: real domain, real brand, app validated by real users, contracts deployed and stable. Task 11 keeps the **draft template** in the plan so we don't lose context, but submission moves to Phase 4+ once "production-ready" is true. |
 
 ---
@@ -141,7 +141,7 @@ MEGAETH_MAINNET_EXPLORER=
 OPHIS_MEGAETH_DEPLOYER_ADDRESS=<DEPLOYER_ADDR from Step 4>
 
 # --- Driver submitter (reuse Phase 1) ---
-# Private key in macOS Keychain entry `ophis-driver-submitter`.
+# Private key in macOS Keychain entry `<keychain-service>`.
 OPHIS_DRIVER_SUBMITTER_ADDRESS=0x00f98b5776eb0f6a8c0c925ddF51f9Ade8a1502F
 
 # --- Ophis-deployed contract addresses (filled after Tasks 4-5) ---

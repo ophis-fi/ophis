@@ -123,7 +123,7 @@ For each chain (HL, OP, MegaETH):
 11. Restart driver. Verify metrics: `solutions{result="success"}` continues, no `mempool_submission{result="failure"}` spike.
 12. Watch ≥1 settle land successfully.
 13. From Safe: `removeSolver(0x92B9bE5e…1A1B1)`.
-14. Rotate Keychain entry `ophis-driver-submitter-2026-05-14` to an inert value (or delete).
+14. Rotate Keychain entry `<keychain-service>` to an inert value (or delete).
 
 ### Phase 4: Hardening (1 week)
 
@@ -148,13 +148,13 @@ For each chain (HL, OP, MegaETH):
 
 Phase 1a (setup, no production change):
 1. `sudo dscl . -create /Users/ophis-driver` (UID 502, GroupID 1000, no shell, home `/Users/ophis-driver`).
-2. `sudo security add-generic-password -a ophis-driver -s ophis-driver-submitter-2026-05-14 -w <PK> /Users/ophis-driver/Library/Keychains/login.keychain-db` — copy the PK into a Keychain accessible only to the new user.
+2. `sudo security add-generic-password -a ophis-driver -s <keychain-service> -w <PK> /Users/ophis-driver/Library/Keychains/login.keychain-db` — copy the PK into a Keychain accessible only to the new user.
 3. `chmod 700 /Users/ophis-driver` so user `scep` can't read its files.
 4. Verify: `sudo -u scep cat /Users/ophis-driver/Library/Keychains/login.keychain-db` fails with permission denied.
 
 Phase 1b (driver migration):
 5. Update launchd plist (`~/Library/LaunchAgents/ai.ophis.driver.plist` or the docker-compose equivalent) to run the driver container as `ophis-driver`.
-6. Container start script reads PK via `security find-generic-password -s ophis-driver-submitter-2026-05-14 -w` and exports to driver env. PK never persists to host disk.
+6. Container start script reads PK via `security find-generic-password -s <keychain-service> -w` and exports to driver env. PK never persists to host disk.
 7. Delete the existing plaintext `OPHIS_DRIVER_SUBMITTER_KEY` line from `~/greg/infra/<chain>-mainnet/.env`. The render-configs.sh expects this var; update it to fail-loudly if absent and source from Keychain at render time too.
 8. Verify on Sepolia first, then 1 settle per mainnet chain.
 

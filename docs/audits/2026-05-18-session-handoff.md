@@ -60,7 +60,7 @@ Partner-fee Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (CIP-75 rebate rec
 - ❌ `/Library/Keychains/ophis-driver.keychain-db` NOT created yet
 - ❌ `/etc/ophis-driver-keychain.pass` NOT created yet
 - ❌ PK NOT copied into system keychain yet
-- ✅ PK still in scep's login keychain at service `ophis-driver-submitter-2026-05-14` (unchanged, original)
+- ✅ PK still in scep's login keychain at service `<keychain-service>` (unchanged, original)
 
 **After macOS update, to resume:**
 

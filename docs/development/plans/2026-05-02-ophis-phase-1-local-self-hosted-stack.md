@@ -669,7 +669,7 @@ Capture the address and private key. Save to macOS Keychain:
 ```bash
 DRIVER_PK=<paste>
 DRIVER_ADDR=<paste>
-security add-generic-password -a "ophis-driver-submitter" -s "ophis-driver-submitter" -w "$DRIVER_PK" -U
+security add-generic-password -a "<keychain-service>" -s "<keychain-service>" -w "$DRIVER_PK" -U
 ```
 
 Update `infra/local/.env`:
