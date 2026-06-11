@@ -4,13 +4,35 @@ These `GPv2AllowListAuthentication*.json` artifacts were regenerated to describe
 the live two-step-manager implementation on Optimism (they previously described
 the pre-upgrade impl `0xFAB54856…`).
 
-On-chain state (Optimism mainnet, verified 2026-05-26):
+On-chain state (Optimism mainnet, verified 2026-06-11):
 
 | | Address |
 |---|---|
 | Proxy | `0xAAA13bC6C1A505ccE6B4BF262fdDf4c703B9BD70` |
 | Implementation | `0x59eE2de83b559e5cC2Afb930F29abeA3dBB4cc9D` |
-| Manager | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
+| Manager | `0x327F8894caEd538525c3956Fcd694b374B26B6fC` (AllowListGuardian) |
+| Owner / proxy admin | `0x8fEe42897a0113BbeC86e4caCCaC5787D7AEC373` (TimelockController, 24h) |
+
+## Manager governance (updated 2026-06-11)
+
+The `Manager` is the **AllowListGuardian** `0x327F…B6fC`, not a single key. This
+is the result of the governance migration in PR #442 (executed 2026-06-05);
+before it, an earlier snapshot of this file listed the protocol Safe
+`0xe049…01cF` in the `Manager` row, which has since caused stale-state security
+flags. The live model, re-verified on-chain 2026-06-11:
+
+- **Slow path** (`addSolver`, `setManager`, `setGuardian`, `upgradeTo`): only the
+  proxy `owner()`, a 24h `TimelockController` `0x8fEe…C373`, can call. Its sole
+  proposer and executor is the 2-of-3 protocol Safe
+  `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` (Safe v1.4.1, threshold 2). Every
+  solver addition or upgrade therefore waits a mandatory 24 hours.
+- **Fast path** (`removeSolver`): the Guardian, whose `guardian()` is that same
+  2-of-3 Safe, can evict a compromised solver instantly (no delay).
+
+`0xe049…01cF` is the 2-of-3 protocol Safe, **not** an externally-owned key.
+Pointing `Manager` back at the bare Safe would be a regression (it removes the
+24h delay on solver additions and upgrades). The authoritative, on-chain-matching
+governance doc is `docs/operations/allowlist-governance-runbook.md`.
 
 ## How they were regenerated
 
