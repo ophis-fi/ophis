@@ -28,6 +28,8 @@ export const OPHIS_BOOSTED_VOLUME_BPS = 1
 export const OPHIS_BOOSTED_TOKENS: Partial<Record<SupportedChainId, ReadonlySet<string>>> = {
   // ALEPH (Aleph Cloud) - Ethereum mainnet.
   [SupportedChainId.MAINNET]: new Set(['0x27702a26126e0b3702af63ee09ac4d1a084ef628']),
+  // ALEPH (Aleph Cloud) - Base.
+  [SupportedChainId.BASE]: new Set(['0xc0fbc4967259786c743361a5885ef49380473dcf']),
 }
 
 /** True if `address` (any case) is a boosted token on `chainId`. */
