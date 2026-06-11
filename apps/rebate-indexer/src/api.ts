@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { eq, desc } from 'drizzle-orm';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
@@ -334,29 +334,79 @@ export async function buildApiServer(): Promise<FastifyInstance> {
 
   // ─── Affiliate / Partner program ─────────────────────────────────────────
 
-  // Bind a referred wallet to a referral code. PUBLIC + rate-limited. Enforces:
-  // code must exist+active; no self-referral; NET-NEW only (a wallet with prior
-  // Ophis trades is rejected — can't farm existing volume); FIRST-BIND-WINS
-  // (ON CONFLICT DO NOTHING is idempotent + lifetime). Also registers the wallet
-  // in tracked_wallets so the fetcher indexes its future trades.
-  app.post<{ Body: { referredWallet?: string; code?: string } }>('/ref/bind', {
+  // Bind a referred wallet to a referral code. PUBLIC + rate-limited.
+  // SIGNATURE-gated: the caller must prove control of `referredWallet` by signing
+  // the bind message (same mechanism as /ref/codes) so nobody can bind a wallet
+  // they don't own and steal attribution. Enforces: code must exist+active; no
+  // self-referral; no CIRCULAR referrals (referred cannot be an ancestor of the
+  // referrer); NET-NEW only (a wallet with prior Ophis trades is rejected — can't
+  // farm existing volume); FIRST-BIND-WINS (ON CONFLICT DO NOTHING is idempotent +
+  // lifetime). Also registers the wallet in tracked_wallets so the fetcher indexes
+  // its future trades.
+  app.post<{ Body: { referredWallet?: string; code?: string; issued?: number; signature?: string } }>('/ref/bind', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const referred = String(req.body?.referredWallet ?? '').toLowerCase();
-    const code = String(req.body?.code ?? '');
+    // Codes are canonical LOWERCASE (mint + admin-seed store lowercase). Normalize
+    // here so a case-folded URL/share-link code (the frontend display-uppercases)
+    // still matches the case-sensitive PK lookup AND the signed message (the client
+    // signs the lowercased code). Without this every URL bind silently 400s.
+    const code = String(req.body?.code ?? '').toLowerCase();
+    const issued = Number(req.body?.issued);
+    const signature = String(req.body?.signature ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(referred)) return reply.code(400).send({ error: 'invalid referredWallet' });
-    if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
-    const referredBuf = Buffer.from(referred.slice(2), 'hex');
+    if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
+    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+
+    // Prove the caller controls `referred` before any DB work. verifyPartnerAuth
+    // rebuilds `Ophis bind referral code <code>\nAddress: <referred>\nIssued: <issued>`,
+    // recovers the signer, checks it equals `referred`, and enforces the replay window.
+    const auth = await verifyPartnerAuth({
+      action: 'bind referral code ' + code,
+      address: referred,
+      issued,
+      signature: signature as `0x${string}`,
+      nowSec: Math.floor(Date.now() / 1000),
+    });
+    if (!auth.ok) return reply.code(401).send({ error: auth.reason });
+
+    // Use the recovered, verified address so the stored referred_wallet is the
+    // proven signer, not the raw body field.
+    const referredBuf = Buffer.from(auth.address.slice(2), 'hex');
 
     return sql.begin(async (tx) => {
+      // Serialize all binds with a global advisory lock so the cycle check below
+      // sees a COMMITTED view. Without it two concurrent binds (A->B and B->A) both
+      // read pre-commit state, both pass the cycle probe, and create a reciprocal
+      // referral cycle. Binds are infrequent (one per wallet, rate-limited 20/min),
+      // so global serialization is negligible. The lock auto-releases at tx end.
+      await tx`SELECT pg_advisory_xact_lock(528491)`;
+
       const [rc] = await tx<{ referrer_hex: string; active: boolean }[]>`
         SELECT encode(referrer_wallet, 'hex') AS referrer_hex, active FROM ref_codes WHERE code = ${code}
       `;
       if (!rc || !rc.active) return reply.code(400).send({ error: 'invalid or inactive code' });
-      if (`0x${rc.referrer_hex}` === referred) return reply.code(400).send({ error: 'cannot refer your own wallet' });
+      if (`0x${rc.referrer_hex}` === auth.address) return reply.code(400).send({ error: 'cannot refer your own wallet' });
 
       const existing = await tx`SELECT 1 FROM referrals WHERE referred_wallet = ${referredBuf} LIMIT 1`;
       if (existing.length > 0) return { bound: true, alreadyBound: true }; // first-bind-wins, idempotent
+
+      // Reject ALL cycles, not just direct self-referral: binding referred=X to a
+      // code owned by referrer=Y is invalid if X is an ANCESTOR of Y in the referral
+      // graph (walking referrer links upward from Y eventually reaches X), which
+      // would close a loop. Walk ancestors of Y; if X appears, refuse.
+      const referrerBuf = Buffer.from(rc.referrer_hex, 'hex'); // Y
+      const cycle = await tx`
+        WITH RECURSIVE ancestors AS (
+          SELECT referrer_wallet FROM referrals WHERE referred_wallet = ${referrerBuf}
+          UNION
+          SELECT r.referrer_wallet FROM referrals r
+            JOIN ancestors a ON r.referred_wallet = a.referrer_wallet
+        )
+        SELECT 1 FROM ancestors WHERE referrer_wallet = ${referredBuf} LIMIT 1
+      `;
+      if (cycle.length > 0) return reply.code(400).send({ error: 'circular referral not allowed' });
 
       const prior = await tx`SELECT 1 FROM trades WHERE wallet = ${referredBuf} LIMIT 1`;
       if (prior.length > 0) return reply.code(409).send({ error: 'wallet is not net-new (has prior trade history)' });
@@ -375,8 +425,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.get<{ Params: { code: string } }>('/ref/:code', {
     config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
   }, async (req, reply) => {
-    const code = req.params.code;
-    if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    const code = req.params.code.toLowerCase(); // codes are canonical lowercase
+    if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     const [rc] = await sql<{ kind: string; active: boolean }[]>`
       SELECT kind, active FROM ref_codes WHERE code = ${code}
     `;
@@ -386,8 +436,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
 
   // Self-serve REGULAR code creation. SIGNATURE-gated (the signer proves wallet
   // ownership, so a code can only be minted for the wallet that signed). Idempotent:
-  // returns the wallet's existing active regular code if any, else mints a
-  // deterministic one. Partner codes are NOT self-serve (admin-seeded only).
+  // returns the wallet's existing active regular code if any, else mints a fresh
+  // RANDOM one. Partner codes are NOT self-serve (admin-seeded only).
   app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/ref/codes', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
@@ -395,6 +445,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const issued = Number(req.body?.issued);
     const signature = String(req.body?.signature ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
     if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
     const auth = await verifyPartnerAuth({ action: 'create referral code', address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
@@ -404,15 +455,38 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       SELECT code FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'regular' AND active = true LIMIT 1
     `;
     if (existing) return { code: existing.code, kind: 'regular', created: false };
-    // Deterministic, address-derived code: unique per wallet, collision-free across
-    // wallets, and stable on retry (ON CONFLICT (code) makes the mint idempotent).
-    const code = `oph${auth.address.slice(2, 10)}`;
-    await sql`
-      INSERT INTO ref_codes (code, referrer_wallet, kind, active)
-      VALUES (${code}, ${buf}, 'regular', true)
-      ON CONFLICT (code) DO NOTHING
-    `;
-    return { code, kind: 'regular', created: true };
+    // RANDOM, unguessable code. The existing-active-code lookup above guarantees
+    // idempotency, so a non-deterministic code is safe. A 48-bit random suffix makes
+    // collisions negligible; the retry loop covers the astronomically rare clash. An
+    // attacker can no longer vanity-grind and pre-create a victim's code because it
+    // is unpredictable (the old `oph<address[2:10]>` was only 32 address-derived bits
+    // and inserted with ON CONFLICT DO NOTHING while still claiming created:true).
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = 'oph' + randomBytes(6).toString('hex'); // 48-bit random
+      try {
+        const inserted = await sql<{ code: string }[]>`
+          INSERT INTO ref_codes (code, referrer_wallet, kind, active)
+          VALUES (${candidate}, ${buf}, 'regular', true)
+          ON CONFLICT (code) DO NOTHING
+          RETURNING code
+        `;
+        if (inserted.length > 0) return { code: candidate, created: true };
+        // Empty RETURNING = the random code collided on the PK (astronomically
+        // rare); retry with a fresh candidate.
+      } catch (err) {
+        // A concurrent mint for THIS wallet won the (referrer_wallet, kind) WHERE
+        // active partial unique index (not the code PK, so ON CONFLICT (code) does
+        // not catch it). Return the code the other request just created.
+        if ((err as { code?: string })?.code === '23505') {
+          const [winner] = await sql<{ code: string }[]>`
+            SELECT code FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'regular' AND active = true LIMIT 1
+          `;
+          if (winner) return { code: winner.code, kind: 'regular', created: false };
+        }
+        throw err;
+      }
+    }
+    return reply.code(500).send({ error: 'could not allocate a referral code, please retry' });
   });
 
   // A referrer's own affiliate stats (referred count, this-cycle volume, tier+rate).
@@ -439,6 +513,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const issued = Number(req.body?.issued);
     const signature = String(req.body?.signature ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
     if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
     const auth = await verifyPartnerAuth({ address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
@@ -474,11 +549,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     if (!assertAdminAuth(req, reply)) return reply;
-    const code = String(req.body?.code ?? '');
+    const code = String(req.body?.code ?? '').toLowerCase(); // codes are canonical lowercase
     const referrer = String(req.body?.referrerWallet ?? '').toLowerCase();
     const kind = String(req.body?.kind ?? '');
     const active = req.body?.active ?? true;
-    if (!/^[A-Za-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
+    if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     if (!/^0x[0-9a-f]{40}$/.test(referrer)) return reply.code(400).send({ error: 'invalid referrerWallet' });
     if (kind !== 'regular' && kind !== 'partner') return reply.code(400).send({ error: 'kind must be regular or partner' });
     // Optional payout redirect (migration 0007). Absent/null => NULL column => pay to
