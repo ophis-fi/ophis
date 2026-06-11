@@ -1,0 +1,11 @@
+-- Partner payout wallet (2026-06-11).
+--
+-- A partner's referrer_wallet is their IDENTITY: it earns the referral credit, gates
+-- the /partner dashboard whitelist, and keys every owed computation. This adds an
+-- OPTIONAL, separate payout_wallet that ONLY redirects where the WETH payout is
+-- actually sent. NULL (the default, and the value for every existing row) means pay
+-- to referrer_wallet exactly as before — backward-compatible and fail-safe.
+--
+-- The transfer recipient becomes COALESCE(payout_wallet, referrer_wallet); identity
+-- (credit / dashboard / whitelist) stays keyed on referrer_wallet and is NOT changed.
+ALTER TABLE ref_codes ADD COLUMN IF NOT EXISTS payout_wallet BYTEA;
