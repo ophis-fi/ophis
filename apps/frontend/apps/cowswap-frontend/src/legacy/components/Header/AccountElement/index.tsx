@@ -6,7 +6,6 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 import ReactDOM from 'react-dom'
 
 import { useToggleAccountModal } from 'modules/account'
-import { AffiliateTraderHeaderButton, useShouldShowAffiliateTraderHeaderButton } from 'modules/affiliate'
 import {
   NotificationBell,
   NotificationSidebar,
@@ -37,7 +36,6 @@ interface NotificationSidebarPortalProps {
 export function AccountElement({ className }: AccountElementProps): ReactNode {
   const { account } = useWalletInfo()
   const toggleAccountModal = useToggleAccountModal()
-  const shouldShowAffiliateTraderHeaderButton = useShouldShowAffiliateTraderHeaderButton()
   const unreadNotificationsCount = useUnreadSidebarNotificationsCount()
   const { isDismissed, dismiss } = useNotificationAlertDismissal()
   const { areTelegramNotificationsEnabled } = useFeatureFlags()
@@ -80,12 +78,7 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
   return (
     <>
       <Wrapper className={className} active={!!account} ref={wrapperRef}>
-        <AffiliateTraderHeaderButton />
-        <Web3Status
-          joinedLeft={shouldShowAffiliateTraderHeaderButton}
-          onClick={() => account && toggleAccountModal()}
-          hideConnectButton={!account}
-        />
+        <Web3Status onClick={() => account && toggleAccountModal()} hideConnectButton={!account} />
         {account && <TierChip wallet={account as `0x${string}`} />}
         {account && (
           <NotificationAlertPopover

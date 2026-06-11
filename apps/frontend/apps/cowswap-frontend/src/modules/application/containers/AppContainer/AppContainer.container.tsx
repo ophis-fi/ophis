@@ -3,7 +3,6 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import styled from 'styled-components/macro'
 
 import { initPixelAnalytics, useAnalyticsReporter, useCowAnalytics, WebVitalsAnalytics } from '@cowprotocol/analytics'
-import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
@@ -17,7 +16,6 @@ import { Link, useLocation } from 'react-router'
 import { URLWarning } from 'legacy/components/Header/URLWarning'
 
 import { OrdersPanel } from 'modules/account'
-import { AffiliateTraderModal } from 'modules/affiliate'
 import { useInjectedWidgetMetaData } from 'modules/injectedWidget'
 import { useInitializeUtm } from 'modules/utm'
 
@@ -146,7 +144,6 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
   const { walletName } = useWalletDetails()
   const cowAnalytics = useCowAnalytics()
   const webVitals = useMemo(() => new WebVitalsAnalytics(cowAnalytics), [cowAnalytics])
-  const { isAffiliateProgramEnabled } = useFeatureFlags()
 
   useAnalyticsReporter({
     account,
@@ -226,8 +223,6 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
         </OphisBodyWrapper>
 
         <OphisFooter />
-
-        {isAffiliateProgramEnabled && <AffiliateTraderModal />}
       </styledEl.AppWrapper>
     </PageBackgroundContext.Provider>
   )

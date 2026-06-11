@@ -36,14 +36,13 @@ jest.mock('./menuConsts.utils', () => ({
 
 jest.mock('common/constants/routes', () => ({
   Routes: {
-    ACCOUNT_AFFILIATE_TRADER: '/account/affiliate/trader',
     PLAY_COWRUNNER: '/play/cowrunner',
     PLAY_MEVSLICER: '/play/mevslicer',
   },
 }))
 
 function getMoreItemHrefs(isSolversEnabled: boolean): string[] {
-  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, false, isSolversEnabled)
+  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled)
   const moreItem = navItems[navItems.length - 1]
 
   if (!moreItem?.children) {

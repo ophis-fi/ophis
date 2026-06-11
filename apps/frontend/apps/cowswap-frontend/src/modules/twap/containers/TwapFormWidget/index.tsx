@@ -7,7 +7,6 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 import { TradeType } from '@cowprotocol/widget-lib'
 
 import { useAdvancedOrdersDerivedState } from 'modules/advancedOrders'
-import { AffiliateTraderRewardsRow, useIsRewardsRowEnabled } from 'modules/affiliate'
 import { useInjectedWidgetDeadline } from 'modules/injectedWidget'
 import { useGetReceiveAmountInfo } from 'modules/trade'
 import { useTradeState } from 'modules/trade/hooks/useTradeState'
@@ -57,7 +56,6 @@ interface TwapFormWidget {
 // eslint-disable-next-line max-lines-per-function
 export function TwapFormWidget({ tradeWarnings }: TwapFormWidget): ReactNode {
   const { account } = useWalletInfo()
-  const isRewardsRowEnabled = useIsRewardsRowEnabled()
 
   const { numberOfPartsValue, deadline, customDeadline, isCustomDeadline } = useAtomValue(twapOrdersSettingsAtom)
 
@@ -175,7 +173,6 @@ export function TwapFormWidget({ tradeWarnings }: TwapFormWidget): ReactNode {
               fontSize={13}
               rightAlign
             />
-            {isRewardsRowEnabled && <AffiliateTraderRewardsRow />}
           </styledEl.FooterBox>
         </>
       )}
