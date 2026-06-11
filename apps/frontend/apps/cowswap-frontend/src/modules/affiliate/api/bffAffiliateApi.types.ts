@@ -32,22 +32,3 @@ export interface TraderStatsResponse {
   lastUpdatedAt: string
 }
 
-export interface PartnerStatsResponse {
-  affiliate_address: string
-  referrer_code: string
-  total_volume: number
-  trigger_volume: number
-  total_earned: number
-  paid_out: number
-  next_payout: number
-  left_to_next_reward: number
-  active_traders: number
-  total_traders: number
-  lastUpdatedAt: string
-}
-
-export interface PartnerCreateRequest {
-  code: string
-  walletAddress: string
-  signedMessage: string
-}

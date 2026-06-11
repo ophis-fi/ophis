@@ -21,7 +21,9 @@ export function AffiliateTraderHeaderButton(): ReactNode {
 
   const handleClick = useCallback((): void => {
     analytics.sendEvent({ category: 'affiliate', action: 'cta_clicked', label: 'header_refer' })
-    navigate(Routes.ACCOUNT_AFFILIATE_PARTNER)
+    // Ophis self-serve affiliate dashboard now lives folded into the Profile
+    // page (Phase C restructure). The old CoW partner page was removed.
+    navigate(Routes.PROFILE)
   }, [analytics, navigate])
 
   if (!shouldShowAffiliateTraderHeaderButton) {

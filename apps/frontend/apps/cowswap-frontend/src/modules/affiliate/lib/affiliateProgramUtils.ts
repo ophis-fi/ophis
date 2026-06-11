@@ -1,7 +1,6 @@
 import { DEFAULT_APP_CODE, SAFE_APP_CODE } from '@cowprotocol/common-const'
 import { formatLocaleNumber } from '@cowprotocol/common-utils'
 import { Address, areAddressesEqual, EnrichedOrder, OrderStatus } from '@cowprotocol/cow-sdk'
-import type { TypedDataField } from '@ethersproject/abstract-signer'
 
 import { i18n } from '@lingui/core'
 
@@ -23,19 +22,6 @@ import {
 
 const EMPTY_VALUE_LABEL = '-'
 
-const AFFILIATE_TYPED_DATA_DOMAIN = {
-  name: 'Ophis Affiliate',
-  version: '1',
-} as const
-
-const AFFILIATE_TYPED_DATA_TYPES: Record<string, TypedDataField[]> = {
-  AffiliateCode: [
-    { name: 'walletAddress', type: 'address' },
-    { name: 'code', type: 'string' },
-    { name: 'chainId', type: 'uint256' },
-  ],
-}
-
 export type AppDataOrder = AppDataResponse & {
   apiAdditionalInfo?: AppDataResponse
 }
@@ -46,23 +32,7 @@ export type AppDataResponse = {
   document?: JsonRecord
 }
 
-type AffiliatePartnerTypedDataMsg = {
-  domain: typeof AFFILIATE_TYPED_DATA_DOMAIN
-  types: Record<string, TypedDataField[]>
-  message: TypedDataMsg
-}
-
 type JsonRecord = Record<string, object | string | number | boolean | null>
-
-type TypedDataMsg = { walletAddress: string; code: string; chainId: number }
-
-export function buildPartnerTypedData(message: TypedDataMsg): AffiliatePartnerTypedDataMsg {
-  return {
-    domain: AFFILIATE_TYPED_DATA_DOMAIN,
-    types: AFFILIATE_TYPED_DATA_TYPES,
-    message,
-  }
-}
 
 export function extractFullAppDataFromOrder(order: AppDataOrder): string | undefined {
   return extractFullAppDataFromResponse(order) || extractFullAppDataFromResponse(order.apiAdditionalInfo)
@@ -116,11 +86,6 @@ export function formatUsdcCompact(value?: number): string {
 export function formatUsdCompact(value?: number): string {
   const formatted = formatCompactNumber(value)
   return formatted === EMPTY_VALUE_LABEL ? EMPTY_VALUE_LABEL : `$${formatted}`
-}
-
-export function generateSuggestedCode(): string {
-  const suffix = randomDigits(6)
-  return `COW-${suffix}`
 }
 
 export function getAppDataHash(order: AppDataOrder): string | undefined {
@@ -179,13 +144,6 @@ export function getLocalTrades(account: Address | undefined, ordersState: Orders
   }
 
   return result
-}
-
-export function getPartnerRewardAmountLabel(
-  rewardAmount: number = PROGRAM_DEFAULTS.AFFILIATE_REWARD_AMOUNT,
-  revenueSplitAffiliatePct: number = PROGRAM_DEFAULTS.AFFILIATE_REVENUE_SPLIT_AFFILIATE_PCT,
-): string {
-  return formatUsdCompact(rewardAmount * (revenueSplitAffiliatePct / 100))
 }
 
 export function getProgressToNextReward(triggerVolume?: number, leftToNextReward?: number): number {
@@ -264,10 +222,6 @@ export function toValidDate(value: string | undefined): Date | null {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null
-}
-
-function randomDigits(length: number): string {
-  return `${Math.floor(Math.random() * Math.pow(10, length))}`.padStart(length, '0')
 }
 
 function readStringField(value: AppDataResponse | undefined, key: keyof AppDataResponse): string | undefined {

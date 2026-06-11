@@ -90,7 +90,6 @@ const PartnerPage = lazy(() =>
 )
 // Account
 const AccountTokensOverview = lazy(() => import(/* webpackChunkName: "tokens_overview" */ 'pages/Account/Tokens'))
-const AccountAffiliatePartner = lazy(() => import(/* webpackChunkName: "affiliate" */ 'pages/Account/AffiliatePartner'))
 const AccountAffiliateTrader = lazy(
   () => import(/* webpackChunkName: "affiliate_trader" */ 'pages/Account/AffiliateTrader'),
 )
@@ -189,9 +188,6 @@ export function RoutesApp(): ReactNode {
             token features Ophis doesn't have). Removed; /account now lands on Tokens. */}
         <Route path={RoutesEnum.ACCOUNT} element={<Navigate to={RoutesEnum.ACCOUNT_TOKENS} replace />} />
         <Route path={RoutesEnum.ACCOUNT_TOKENS} element={<AccountTokensOverview />} />
-        {isAffiliateProgramEnabled && (
-          <Route path={RoutesEnum.ACCOUNT_AFFILIATE_PARTNER} element={<AccountAffiliatePartner />} />
-        )}
         {isAffiliateProgramEnabled && (
           <Route path={RoutesEnum.ACCOUNT_AFFILIATE_TRADER} element={<AccountAffiliateTrader />} />
         )}
