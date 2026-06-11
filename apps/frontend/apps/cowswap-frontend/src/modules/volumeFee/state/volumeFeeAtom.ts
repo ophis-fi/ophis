@@ -87,11 +87,13 @@ const shouldSkipFeeAtom = atom<boolean>((get) => {
  * Exported so the swap-box badge can show when a boost is active.
  */
 export const isBoostedTradeAtom = atom<boolean>((get) => {
-  const { chainId } = get(walletInfoAtom)
   const { inputCurrency, outputCurrency } = get(derivedTradeStateAtom) || {}
 
   if (!inputCurrency || !outputCurrency) return false
   if (inputCurrency.chainId !== outputCurrency.chainId) return false
+  // Key the lookup on the TRADE's chain (not the connected wallet's): the boost must
+  // match the actual tokens even if the wallet is momentarily on a different chain.
+  const chainId = inputCurrency.chainId
 
   return (
     isBoostedToken(chainId, getCurrencyAddress(inputCurrency)) ||
