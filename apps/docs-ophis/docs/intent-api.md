@@ -6,6 +6,50 @@ sidebar_label: Intent API
 sidebar_position: 1
 ---
 
+import Head from '@docusaurus/Head';
+
+{/* HowTo schema.org structured data for AEO / answer engines, covering the
+    request / response / error-handling flow for POST /api/intent.
+    JSON.stringify handles all quote/apostrophe escaping at build time. A
+    type=application/ld+json block is inert data (not executed JS), so it is not
+    governed by script-src. */}
+export const howToLd = {
+  '@context': 'https://schema.org',
+  '@type': 'HowTo',
+  name: 'How to call the Ophis Intent API',
+  description:
+    'Turn a natural-language swap request into a structured ParsedIntent with the public Ophis Intent API: make the request, read the response, and handle errors.',
+  totalTime: 'PT3M',
+  tool: [
+    { '@type': 'HowToTool', name: 'An HTTP client such as curl' },
+    { '@type': 'HowToTool', name: 'The @ophis/sdk package on npm (optional)' },
+  ],
+  step: [
+    {
+      '@type': 'HowToStep',
+      name: 'Make the request',
+      url: 'https://docs.ophis.fi/intent-api#request',
+      text: 'Send POST /api/intent to https://ophis.fi with a JSON body { "text": "swap 100 USDC for ETH on Base" }. No API key is required. The text field is 1 to 280 characters. The endpoint is rate-limited to 30 requests per minute per IP; non-browser callers that omit the Origin header are allowed.',
+    },
+    {
+      '@type': 'HowToStep',
+      name: 'Read the response',
+      url: 'https://docs.ophis.fi/intent-api#response',
+      text: 'On success you get 200 OK with { "ok": true, "data": { "intent", "entities" } }. The intent is swap or unknown, and entities lists the recognised sellToken, buyToken, amount, and chain, each with value, raw, start, and end offsets. The endpoint only normalizes text: it never places, signs, or executes a trade, so order signing always happens in your own wallet.',
+    },
+    {
+      '@type': 'HowToStep',
+      name: 'Handle errors',
+      url: 'https://docs.ophis.fi/intent-api#errors',
+      text: 'Errors return { "ok": false, "error": { "code", "message" } }. Handle 400 BAD_INPUT for malformed text, 403 FORBIDDEN for a disallowed Origin, 429 RATE_LIMITED (honour the Retry-After header), and 500, 502, or 504 for upstream parser failures.',
+    },
+  ],
+};
+
+<Head>
+  <script type="application/ld+json">{JSON.stringify(howToLd)}</script>
+</Head>
+
 # Intent API
 
 The Intent API parses a free-form swap request into a structured

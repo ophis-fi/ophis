@@ -1,12 +1,15 @@
 ---
 id: affiliate
 title: Affiliate program
-description: Share an Ophis referral code and earn 8% of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH, on net-new wallets, for life.
+description: Share an Ophis referral code and earn 8% of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH on net-new wallets, for life.
 sidebar_label: Affiliate program
 sidebar_position: 4
 ---
 
 # Affiliate program
+
+The Ophis affiliate program is a referral scheme that pays you a share of the fee
+Ophis keeps whenever a wallet you referred trades, settled monthly in WETH.
 
 Share a referral code. Every time someone you refer trades on Ophis, **you earn a
 share of the fee Ophis keeps on that trade, for life.** It is paid in WETH, every
