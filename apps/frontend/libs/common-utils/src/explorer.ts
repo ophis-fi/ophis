@@ -32,11 +32,10 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     [ChainId.LINEA]: `${baseUrl}/linea`,
     [ChainId.PLASMA]: `${baseUrl}/plasma`,
     [ChainId.INK]: `${baseUrl}/ink`,
-    // Ophis fork: OP mainnet. CoW doesn't operate an explorer on OP, so
-    // we point at the Optimism block-explorer for tx-level links. Order-
-    // level URLs won't exist there but at least the function returns a
-    // string instead of throwing and crashing the React tree.
-    [10 as unknown as ChainId]: 'https://optimistic.etherscan.io',
+    // Ophis fork: OP mainnet. The Ophis explorer serves OP at /opt (its SDK
+    // points at the sovereign optimism-mainnet.ophis.fi orderbook), so OP
+    // order/tx/address links resolve there like every other chain (#99).
+    [10 as unknown as ChainId]: `${baseUrl}/opt`,
     // Ophis fork: MegaETH mainnet (chain 4326). Same rationale — Blockscout
     // has no /orders/ route, so order-level URLs fall back to the address
     // page (see getExplorerOrderLink below).
@@ -68,15 +67,14 @@ export function getExplorerBaseUrl(chainId: ChainId): string {
 export function getExplorerOrderLink(chainId: ChainId, orderId: UID): string {
   const baseUrl = getExplorerBaseUrl(chainId)
 
-  // Ophis fork on OP mainnet: we point at optimistic.etherscan.io but
-  // it has no /orders/ route, so the CoW-style URL would 404. Until
-  // explorer.ophis.fi is stood up (task #99) we degrade gracefully by
-  // linking to the order owner's Etherscan address page — they can
-  // see their swap arrive in their wallet. The CoW order UID encodes
-  // the owner address in bytes 32..52, so we extract it from the
-  // 110-char hex string (2 prefix + 64 hash + 40 owner + 8 validTo).
+  // MegaETH (4326) / HyperEVM (999) still point at Blockscout-flavored
+  // explorers with no /orders/ route, so the CoW-style URL would 404. We
+  // degrade gracefully by linking to the order owner's address page. The
+  // CoW order UID encodes the owner in bytes 32..52, extracted from the
+  // 114-char hex string (2 prefix + 64 hash + 40 owner + 8 validTo).
+  // OP (10) now has /orders/ on explorer.ophis.fi/opt, so it is NOT here.
   if (
-    ((chainId as number) === 10 || (chainId as number) === 4326 || (chainId as number) === 999) &&
+    ((chainId as number) === 4326 || (chainId as number) === 999) &&
     orderId.length === 114
   ) {
     const owner = '0x' + orderId.slice(66, 106)
