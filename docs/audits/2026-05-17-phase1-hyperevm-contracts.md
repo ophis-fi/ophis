@@ -84,7 +84,7 @@ If WHYPE diverges (fee-on-transfer, blacklist, paused state, slot mismatch, gas-
 
 ### [HIGH-3] Driver-submitter PK readable from any process running as user `scep`
 
-**Location:** `~/greg/infra/hyperevm-mainnet/rendered/driver.toml` (chmod 600) contains the plaintext PK. Source: `.env` (chmod 600) sourced by `render-configs.sh`, with a Keychain copy at `ophis-driver-submitter-2026-05-14`.
+**Location:** `~/greg/infra/hyperevm-mainnet/rendered/driver.toml` (chmod 600) contains the plaintext PK. Source: `.env` (chmod 600) sourced by `render-configs.sh`, with a Keychain copy at `<keychain-service>`.
 
 **Risk:** Submitter EOA `0xFB30…1bB5a` is the SOLE allowlisted solver-submitter. Stealing it = arbitrary settle dispatch. No on-chain slashing protects against rogue settles. Any local process running as `scep` (compromised npm postinstall, browser, dormant OpenClaw remnant) can read the rendered TOML or `.env`.
 
