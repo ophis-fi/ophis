@@ -106,7 +106,7 @@ describe('AffiliateTraderHeaderButton', () => {
     expect(screen.queryByRole('button', { name: 'Refer' })).toBeNull()
   })
 
-  it('navigates to the affiliate account page and tracks the click', () => {
+  it('navigates to the profile page and tracks the click', () => {
     renderComponent()
 
     fireEvent.click(screen.getByRole('button', { name: 'Refer' }))
@@ -116,6 +116,6 @@ describe('AffiliateTraderHeaderButton', () => {
       action: 'cta_clicked',
       label: 'header_refer',
     })
-    expect(navigate).toHaveBeenCalledWith(Routes.ACCOUNT_AFFILIATE_PARTNER)
+    expect(navigate).toHaveBeenCalledWith(Routes.PROFILE)
   })
 })

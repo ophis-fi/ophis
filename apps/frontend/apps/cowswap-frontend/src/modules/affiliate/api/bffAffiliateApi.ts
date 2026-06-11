@@ -3,13 +3,7 @@ import { BFF_BASE_URL } from '@cowprotocol/common-const'
 import { fetchWithRateLimit } from 'common/utils/fetch'
 import { wait } from 'common/utils/wait'
 
-import {
-  PartnerInfoResponse,
-  PartnerCreateRequest,
-  PartnerStatsResponse,
-  TraderInfoResponse,
-  TraderStatsResponse,
-} from './bffAffiliateApi.types'
+import { PartnerInfoResponse, TraderInfoResponse, TraderStatsResponse } from './bffAffiliateApi.types'
 
 import {
   AFFILIATE_API_TIMEOUT_MS,
@@ -96,25 +90,6 @@ class BffAffiliateApi {
     }
   }
 
-  async verifyCodeAvailability(code: string): Promise<boolean> {
-    const url = this.buildUrl(`ref-codes/${encodeURIComponent(code)}`)
-    const { response, text } = await this.fetchJsonResponse<TraderInfoResponse>(url)
-
-    if (response.status === 404) return true
-    if (response.ok || response.status === 403) return false
-
-    throw new ApiError(response.status, text)
-  }
-
-  async createCode(request: PartnerCreateRequest): Promise<PartnerInfoResponse> {
-    const url = this.buildUrl(`affiliate/${request.walletAddress}`)
-    const result = await this.fetchJsonResponse<PartnerInfoResponse>(url, {
-      method: 'POST',
-      body: JSON.stringify(request),
-    })
-    return unwrapOk(result, 'Affiliate response missing')
-  }
-
   async getTraderInfo(code: string): Promise<TraderInfoResponse | null> {
     const url = this.buildUrl(`ref-codes/${encodeURIComponent(code)}`)
     const { response, data, text } = await this.fetchJsonResponse<TraderInfoResponse>(url)
@@ -139,13 +114,6 @@ class BffAffiliateApi {
     throw new ApiError(response.status, text, data as ApiErrorPayload)
   }
 
-  async getAffiliateStats(account: string): Promise<PartnerStatsResponse | null> {
-    const url = this.buildUrl(`affiliate/affiliate-stats/${account}`)
-    const { response, data, text } = await this.fetchJsonResponse<PartnerStatsResponse>(url)
-    if (response.status === 404) return null
-    if (response.ok) return data ?? null
-    throw new ApiError(response.status, text, data as ApiErrorPayload)
-  }
 }
 
 export const bffAffiliateApi = new BffAffiliateApi(BFF_BASE_URL, AFFILIATE_API_TIMEOUT_MS)
