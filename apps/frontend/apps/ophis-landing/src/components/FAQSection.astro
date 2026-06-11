@@ -1,0 +1,158 @@
+---
+/**
+ * Visible FAQ accordion + matching FAQPage JSON-LD, both rendered from the SAME
+ * `faqs` array so the structured data always reflects user-visible content
+ * (Google requires FAQ markup to match what renders on the page; a JSON-LD-only
+ * FAQ is a guideline violation, see PR #555). Native <details>/<summary>, no JS.
+ *
+ * The JSON-LD <script> below is hashed by the postbuild CSP-hash check
+ * (scripts/check-csp-hashes.mjs hashes every inline <script> body, including
+ * application/ld+json data). Any edit to `faqs` changes the serialized JSON, so
+ * re-run `node scripts/check-csp-hashes.mjs --print` and update public/_headers.
+ *
+ * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
+ */
+const faqs: { q: string; a: string }[] = [
+  {
+    q: 'What is Ophis?',
+    a: 'Ophis is an intent-based, MEV-protected DEX aggregator built for the agent era. You describe a trade in natural language; Ophis parses the intent, fetches a best-execution quote, and batch-settles it on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. It is non-custodial and a CoW Protocol fork.',
+  },
+  {
+    q: 'What does Ophis charge?',
+    a: 'Ophis applies a flat 0.10% (10 bps) fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. The fee is on volume only and takes no cut of surplus: 100% of any price improvement a solver finds beyond your signed quote is returned to the trader. The public Intent API and the MCP server are free.',
+  },
+  {
+    q: 'Which chains does Ophis support?',
+    a: 'Ophis covers 11 EVM chains, with Optimism as the primary live network, and supports Solana and Bitcoin as destinations via NEAR Intents.',
+  },
+  {
+    q: 'How is Ophis different from CoW Swap?',
+    a: 'Ophis is a CoW Protocol fork focused on autonomous agents. It runs its own GPv2Settlement contract at a non-canonical address on its operated chains (for example Optimism), exposes a public MCP server and Intent API, ships the @ophis/sdk agent-safety helpers, and applies a flat 0.10% volume fee. Agents must resolve the per-chain settlement domain via the SDK or MCP before signing, because CoW canonical address yields a domain the deployed contract rejects.',
+  },
+  {
+    q: 'Is MEV protection guaranteed?',
+    a: 'Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
+  },
+  {
+    q: 'Who controls the keys, and is Ophis custodial?',
+    a: 'Ophis is non-custodial. Orders are gasless, off-chain, EIP-712-signed intents; the trader or agent signs with its own key and the keys never leave the signer. An agent signs a bounded capability with a hard limit price, not an arbitrary transaction.',
+  },
+  {
+    q: 'What is the Ophis MCP server?',
+    a: 'The Ophis MCP server at mcp.ophis.fi is a Streamable-HTTP Model Context Protocol server that lets AI agents trade. It exposes tools including parse_intent, get_quote, build_order, submit_order, lookup_tier, and list_chains. It is public, unauthenticated, and keyless: it never holds keys or signs, so the agent signs with its own key.',
+  },
+  {
+    q: 'How does an agent swap on Ophis?',
+    a: 'An agent parses a natural-language intent, gets a best-execution quote, and builds a bounded EIP-712 order with the receiver pinned to the owner using the @ophis/sdk or the MCP build_order tool. It signs the order locally with its own key, then submits the pre-signed order to the Ophis orderbook or via the MCP submit_order tool. The agent can also call the public Intent API at POST /api/intent, rate-limited to 30 requests per minute per IP.',
+  },
+]
+
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  '@id': 'https://ophis.fi/#faq',
+  mainEntity: faqs.map((f) => ({
+    '@type': 'Question',
+    name: f.q,
+    acceptedAnswer: { '@type': 'Answer', text: f.a },
+  })),
+}
+---
+
+<section class="faq" id="faq">
+  <div class="faq-inner">
+    <div class="label reveal-up" data-reveal>FAQ</div>
+    <h2 class="reveal-up section-bloom section-bloom--violet" data-reveal>
+      Questions, <span class="accent">answered.</span>
+    </h2>
+    <div class="faq-list stagger">
+      {
+        faqs.map((f) => (
+          <details class="faq-item reveal-up" data-reveal>
+            <summary>
+              <span class="faq-q">{f.q}</span>
+              <svg class="faq-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div class="faq-a">
+              <p>{f.a}</p>
+            </div>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<script type="application/ld+json" is:inline set:html={JSON.stringify(faqSchema)} />
+
+<style>
+  .faq { padding: 80px 56px; }
+  .faq-inner { max-width: 820px; margin: 0 auto; }
+  .label {
+    text-align: center;
+    font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ophis-saffron-60);
+    margin: 0 0 14px;
+  }
+  h2 {
+    text-align: center;
+    font-size: 40px;
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 50px;
+  }
+  .faq-list { display: flex; flex-direction: column; gap: 12px; }
+  .faq-item {
+    background: var(--ophis-surface);
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    overflow: hidden;
+  }
+  .faq-item summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 20px 24px;
+    cursor: pointer;
+    list-style: none;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ophis-fg, var(--cream));
+    transition: color 0.18s ease;
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary:hover { color: var(--ophis-saffron-60); }
+  .faq-item summary:focus-visible {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: -2px;
+  }
+  .faq-q { flex: 1; }
+  .faq-chevron {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    color: var(--ophis-fg-muted);
+    transition: transform 0.22s ease;
+  }
+  .faq-item[open] .faq-chevron { transform: rotate(180deg); }
+  .faq-a { padding: 0 24px 22px; }
+  .faq-a p {
+    margin: 0;
+    color: var(--ophis-fg-muted);
+    font-size: 15px;
+    line-height: 1.62;
+  }
+  @media (max-width: 720px) {
+    .faq { padding: 60px 24px; }
+    h2 { font-size: 32px; }
+    .faq-item summary { font-size: 16px; padding: 18px 20px; }
+    .faq-a { padding: 0 20px 20px; }
+  }
+</style>
