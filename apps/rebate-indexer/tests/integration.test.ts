@@ -104,7 +104,12 @@ describe('full nightly cycle', () => {
     expect(a.volume_30d_usd).toBeCloseTo(5000, 0);
     expect(b.tier.name).toBe('none');
     expect(b.volume_30d_usd).toBeCloseTo(2500, 0);
-  });
+    // Integration test: real Postgres container + msw HTTP + a 3-stage pipeline
+    // (fetch/price/score). The default 5s vitest timeout is too tight under loaded
+    // CI runners — and a timeout here leaves this test's async DB writes in flight,
+    // which then race the pruneStaleWallets test's TRUNCATE (they share wallet 'b')
+    // and flake it. 30s gives ample headroom.
+  }, 30_000);
 
   it('replay idempotency: running fetcher twice produces identical DB state', async () => {
     handlers.trades = [trade('0x' + '0d'.repeat(56), '0x' + 'a'.repeat(40))];
@@ -119,7 +124,7 @@ describe('full nightly cycle', () => {
     expect(snap2.length).toBe(snap1.length);
     expect(snap2.map((r: any) => r.trade_uid.toString('hex')))
       .toEqual(snap1.map((r: any) => r.trade_uid.toString('hex')));
-  });
+  }, 30_000); // integration: container + 2x fetcher — generous timeout (see above)
 });
 
 describe('pruneStaleWallets', () => {
@@ -157,5 +162,5 @@ describe('pruneStaleWallets', () => {
     expect(survivors.has('f'.repeat(40))).toBe(false);  // never attempted, 31d
 
     await sql`TRUNCATE trades, tracked_wallets`;
-  });
+  }, 30_000); // integration: container + prune over a fixtured wallet set
 });
