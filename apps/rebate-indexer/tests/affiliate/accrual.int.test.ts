@@ -52,8 +52,34 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(reg.kind).toBe('regular');
     expect(reg.volumeByChain.get(100)).toBe(500000); // out-of-window 999 excluded
     expect(reg.volumeByChain.get(10)).toBe(300000);
+    // No payout redirect seeded for the regular referrer => null (pay to identity).
+    expect(reg.payoutWallet).toBeNull();
     expect(par).toBeTruthy();
     expect(par.kind).toBe('partner');
     expect(par.volumeByChain.get(100)).toBe(5000000);
+    expect(par.payoutWallet).toBeNull();
+  });
+
+  it('threads payout_wallet (migration 0007): redirect set => payoutWallet, null => null', async () => {
+    const referrer = W('d00d');
+    const referred = W('e11e');
+    const payout = W('fa11ee');
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, payout_wallet, kind, active)
+      VALUES ('pay1', decode(${referrer},'hex'), decode(${payout},'hex'), 'partner', true)`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
+      VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
+    const now = new Date();
+    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
+    await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
+      VALUES (decode(${UID('f1')},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '123456', now())`;
+
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const refs = await buildAffiliateReferrers(start, end);
+    const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
+    expect(r).toBeTruthy();
+    // referrer_wallet stays the identity; payoutWallet carries the redirect.
+    expect(r.referrer_wallet).toBe(`0x${referrer}`);
+    expect(r.payoutWallet).toBe(`0x${payout}`);
   });
 });

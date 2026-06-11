@@ -86,10 +86,12 @@ export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ s
     status: 'computing',
   }).returning();
   if (!batch) throw new Error('failed to insert affiliate batch');
+  // The entry is keyed on the referrer IDENTITY (t.referrerWallet), NOT the on-chain
+  // recipient (t.to) — the two differ when a payout_wallet redirect is set.
   await db.insert(schema.affiliateBatchEntries).values(
     plan.transfers.map((t) => ({
       batchId: batch.id,
-      referrerWallet: t.to,
+      referrerWallet: t.referrerWallet,
       kind: t.kind,
       referredVolumeUsd: String(t.referredVolumeUsd),
       owedWei: t.amount,

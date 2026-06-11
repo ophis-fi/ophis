@@ -19,7 +19,10 @@ export function resolveAffiliatePayoutEnabled(): boolean {
 }
 
 export interface AffiliateTransfer {
+  /** The on-chain WETH recipient = COALESCE(payoutWallet, referrerWallet). */
   readonly to: `0x${string}`;
+  /** The referrer IDENTITY (== the affiliate_batch_entries key). MAY differ from `to`. */
+  readonly referrerWallet: `0x${string}`;
   readonly amount: bigint;
   readonly kind: 'regular' | 'partner';
   readonly referredVolumeUsd: number;
@@ -44,13 +47,20 @@ export function planAffiliatePayout(
   safeBalanceWei: bigint,
   rebatePoolWei: bigint,
 ): AffiliatePlan {
-  const valid = owed.filter((o) => o.owedWei > 0n && o.referrer_wallet.toLowerCase() !== ZERO_ADDRESS);
-  const totalOwedWei = valid.reduce((acc, o) => acc + o.owedWei, 0n);
+  // The RECIPIENT is the payout wallet when set, else the referrer wallet (identity).
+  // EXACTLY today's behavior when payoutWallet is null/undefined. We drop a transfer
+  // whose RESOLVED recipient is zero (it is the money path) — and still drop a
+  // zero-owed entry — so a bad redirect can never burn WETH.
+  const valid = owed
+    .map((o) => ({ owed: o, to: (o.payoutWallet ?? o.referrer_wallet) as `0x${string}` }))
+    .filter(({ owed: o, to }) => o.owedWei > 0n && to.toLowerCase() !== ZERO_ADDRESS);
+  const totalOwedWei = valid.reduce((acc, { owed: o }) => acc + o.owedWei, 0n);
   if (rebatePoolWei + totalOwedWei > safeBalanceWei) {
     return { transfers: [], totalOwedWei, blocked: true, reason: 'rebate pool + affiliate owed exceed the Safe WETH balance' };
   }
-  const transfers = valid.map((o) => ({
-    to: o.referrer_wallet,
+  const transfers = valid.map(({ owed: o, to }) => ({
+    to,
+    referrerWallet: o.referrer_wallet,
     amount: o.owedWei,
     kind: o.kind,
     referredVolumeUsd: o.referredVolumeUsd,

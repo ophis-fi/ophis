@@ -38,6 +38,24 @@ export async function buildAffiliateReferrers(
   monthEnd: Date,
 ): Promise<AffiliateReferrer[]> {
   const partners = await getPartnerReferrers();
+  // referrer -> payout redirect (migration 0007). A referrer may hold several codes;
+  // DISTINCT ON collapses them to ONE payout wallet, preferring an ACTIVE code and a
+  // partner code (a partner sets the redirect on their partner code), deterministically
+  // tie-broken by code. Only codes WITH a payout_wallet are considered; a referrer with
+  // none stays absent here => null => pay to referrer_wallet (identity). (Can't use
+  // MAX(bytea) — no such aggregate in Postgres; DISTINCT ON is the bytea-safe form.)
+  const payoutRows = await sql<{ referrer_hex: string; payout_hex: string }[]>`
+    SELECT DISTINCT ON (referrer_wallet)
+      encode(referrer_wallet, 'hex') AS referrer_hex,
+      encode(payout_wallet, 'hex')   AS payout_hex
+    FROM ref_codes
+    WHERE payout_wallet IS NOT NULL
+    ORDER BY referrer_wallet, active DESC, (kind = 'partner') DESC, code
+  `;
+  const payoutByReferrer = new Map<`0x${string}`, `0x${string}`>();
+  for (const row of payoutRows) {
+    payoutByReferrer.set(`0x${row.referrer_hex}` as `0x${string}`, `0x${row.payout_hex}` as `0x${string}`);
+  }
 
   const rows = await sql<{ referrer_hex: string; chain_id: number; volume_usd: string }[]>`
     SELECT
@@ -70,7 +88,8 @@ export async function buildAffiliateReferrers(
   const out: AffiliateReferrer[] = [];
   for (const [referrer, volumeByChain] of byReferrer) {
     const kind: AffiliateKind = partners.has(referrer) ? 'partner' : 'regular';
-    out.push({ referrer_wallet: referrer, kind, volumeByChain });
+    const payoutWallet = payoutByReferrer.get(referrer) ?? null;
+    out.push({ referrer_wallet: referrer, kind, volumeByChain, payoutWallet });
   }
   return out;
 }

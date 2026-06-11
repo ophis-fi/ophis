@@ -152,6 +152,10 @@ export const refCodes = pgTable(
   {
     code: text('code').primaryKey(),
     referrerWallet: bytea('referrer_wallet').notNull(),
+    // Optional payout redirect (migration 0007). NULL => pay to referrer_wallet.
+    // referrer_wallet stays the IDENTITY (credit / whitelist); only the WETH
+    // transfer recipient becomes COALESCE(payout_wallet, referrer_wallet).
+    payoutWallet: bytea('payout_wallet'),
     kind: text('kind').notNull(), // 'regular' | 'partner' (CHECK in SQL)
     active: boolean('active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
