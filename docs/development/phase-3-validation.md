@@ -142,7 +142,7 @@ Two changes since the original 2026-05-04 Phase 3 validation:
   dead (TCP connection refused, instance presumed reclaimed by Aleph).
   Spec 1 revives the multi-chain backend by co-tenanting the
   optimism-sepolia and megaeth-testnet stacks onto the existing rebates
-  VM at `vm4.alephvision.eu` (`REDACTED_ORIGIN_IP:24014`). Same SSH context as
+  VM at `vm4.alephvision.eu` (`REDACTED_ORIGIN_IP:<ssh-port>`). Same SSH context as
   the rebate-indexer; chains exposed via per-chain named Cloudflare
   Tunnels (`optimism-sepolia.ophis.fi`, `megaeth-testnet.ophis.fi`)
   instead of the rotating `*.trycloudflare.com` quick-tunnels Phase 3 used.

@@ -94,7 +94,7 @@ External dependencies:
 
 | Name | Purpose |
 |---|---|
-| `ophis-driver-submitter` | PK for 0x92B9…A1B1 (settles on-chain) |
+| `<keychain-service>` | PK for 0x92B9…A1B1 (settles on-chain) |
 | `okx-api-key` | OKX OnchainOS auth |
 | `okx-secret-key` | OKX HMAC signing |
 | `okx-project-id` | OKX project identifier |
@@ -112,7 +112,7 @@ cd /path/to/greg/infra/optimism-mainnet
 # 1. First-time setup: copy template and fill in secrets
 cp .env.example .env
 # Edit .env, populate from Keychain:
-#   OPHIS_DRIVER_SUBMITTER_KEY=$(security find-generic-password -s ophis-driver-submitter -w)
+#   OPHIS_DRIVER_SUBMITTER_KEY=$(security find-generic-password -s <keychain-service> -w)
 #   OKX_*  from corresponding Keychain entries
 #   POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
 
@@ -165,7 +165,7 @@ docker compose up -d --build
 
 **Fix**:
 ```bash
-echo "OPHIS_DRIVER_SUBMITTER_KEY=$(security find-generic-password -s ophis-driver-submitter -w)" >> .env
+echo "OPHIS_DRIVER_SUBMITTER_KEY=$(security find-generic-password -s <keychain-service> -w)" >> .env
 docker compose up -d driver
 ```
 
@@ -292,7 +292,7 @@ docker exec -it postgres psql -U ophis -c "ALTER USER ophis PASSWORD '${NEW}';" 
 
 This is the hardest rotation — the new EOA must be allowlisted on-chain via the protocol Safe. Procedure:
 
-1. Generate new keypair: `cast wallet new` → save PK to Keychain as `ophis-driver-submitter`, note address
+1. Generate new keypair: `cast wallet new` → save PK to Keychain as `<keychain-service>`, note address
 2. Fund new EOA with ~0.05 OP ETH
 3. Via the protocol Safe (2-of-3), propose + execute: `AllowListAuthentication.addSolver(NEW_ADDR)`
 4. Update autopilot.toml `[[drivers]] address = "NEW_ADDR"`
