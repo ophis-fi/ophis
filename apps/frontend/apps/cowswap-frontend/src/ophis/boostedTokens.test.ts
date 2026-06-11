@@ -3,6 +3,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { isBoostedToken, OPHIS_BOOSTED_VOLUME_BPS } from './boostedTokens'
 
 const ALEPH_MAINNET = '0x27702a26126e0B3702af63Ee09aC4d1A084EF628' // checksummed
+const ALEPH_BASE = '0xc0Fbc4967259786C743361a5885ef49380473dCF' // checksummed
 const USDC_MAINNET = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 
 describe('isBoostedToken (ALEPH flagship)', () => {
@@ -12,12 +13,22 @@ describe('isBoostedToken (ALEPH flagship)', () => {
     expect(isBoostedToken(SupportedChainId.MAINNET, ALEPH_MAINNET.toUpperCase())).toBe(true)
   })
 
+  it('matches ALEPH on Base, case-insensitively', () => {
+    expect(isBoostedToken(SupportedChainId.BASE, ALEPH_BASE)).toBe(true)
+    expect(isBoostedToken(SupportedChainId.BASE, ALEPH_BASE.toLowerCase())).toBe(true)
+  })
+
   it('does NOT match a non-boosted token (USDC)', () => {
     expect(isBoostedToken(SupportedChainId.MAINNET, USDC_MAINNET)).toBe(false)
   })
 
   it('does NOT match ALEPH on a chain where it is not configured', () => {
+    expect(isBoostedToken(SupportedChainId.ARBITRUM_ONE, ALEPH_MAINNET)).toBe(false)
+  })
+
+  it('does NOT match one chain ALEPH address on the OTHER chain (per-chain addresses differ)', () => {
     expect(isBoostedToken(SupportedChainId.BASE, ALEPH_MAINNET)).toBe(false)
+    expect(isBoostedToken(SupportedChainId.MAINNET, ALEPH_BASE)).toBe(false)
   })
 
   it('handles undefined / empty addresses', () => {
