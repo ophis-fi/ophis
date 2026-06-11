@@ -54,7 +54,7 @@
         { "@type": "Question", "name": "What is the Ophis fee structure?", "acceptedAnswer": { "@type": "Answer", "text": "A flat 0.10% (10 bps) fee on trade volume, applied to every trade (for example, a 1,000 USDC swap pays a 1 USDC fee), at or below comparable aggregators such as Matcha (10 bps) and Velora (15 bps). Same-chain stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp). No spread or hidden markup; a share of the WETH fees is returned monthly to active wallets as volume-tier rebates." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
-        { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee." } },
+        { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
         { "@type": "Question", "name": "Do you have references or case studies?", "acceptedAnswer": { "@type": "Answer", "text": "Not yet; Ophis is pre-launch in commercial terms. Specific partner integrations are listed only after a signed agreement exists. Ophis does not publish anonymous trusted-by claims." } }
       ]
     }
@@ -473,18 +473,18 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
     </p>
 
     <div class="chains reveal">
-      <div class="chip"><img src="/logos/chain-ethereum.png" alt="Ethereum logo"><span class="name">Ethereum</span></div>
-      <div class="chip"><img src="/logos/chain-arbitrum.jpg" alt="Arbitrum logo"><span class="name">Arbitrum</span></div>
-      <div class="chip"><img src="/logos/chain-optimism.png" alt="Optimism logo"><span class="name">Optimism</span></div>
-      <div class="chip"><img src="/logos/chain-base.png" alt="Base logo"><span class="name">Base</span></div>
-      <div class="chip"><img src="/logos/chain-polygon.png" alt="Polygon logo"><span class="name">Polygon</span></div>
-      <div class="chip"><img src="/logos/chain-bnb.png" alt="BNB Chain logo"><span class="name">BNB Chain</span></div>
-      <div class="chip"><img src="/logos/chain-avalanche.png" alt="Avalanche logo"><span class="name">Avalanche</span></div>
-      <div class="chip"><img src="/logos/chain-gnosis.png" alt="Gnosis logo"><span class="name">Gnosis</span></div>
-      <div class="chip"><img src="/logos/chain-linea.jpg" alt="Linea logo"><span class="name">Linea</span></div>
+      <div class="chip"><img src="/logos/chain-ethereum.png" alt=""><span class="name">Ethereum</span></div>
+      <div class="chip"><img src="/logos/chain-arbitrum.jpg" alt=""><span class="name">Arbitrum</span></div>
+      <div class="chip"><img src="/logos/chain-optimism.png" alt=""><span class="name">Optimism</span></div>
+      <div class="chip"><img src="/logos/chain-base.png" alt=""><span class="name">Base</span></div>
+      <div class="chip"><img src="/logos/chain-polygon.png" alt=""><span class="name">Polygon</span></div>
+      <div class="chip"><img src="/logos/chain-bnb.png" alt=""><span class="name">BNB Chain</span></div>
+      <div class="chip"><img src="/logos/chain-avalanche.png" alt=""><span class="name">Avalanche</span></div>
+      <div class="chip"><img src="/logos/chain-gnosis.png" alt=""><span class="name">Gnosis</span></div>
+      <div class="chip"><img src="/logos/chain-linea.jpg" alt=""><span class="name">Linea</span></div>
       <div class="chip"><img src="/logos/chain-ink.svg?v=1" alt="Ink logo"><span class="name">Ink</span></div>
       <div class="chip"><img src="/logos/chain-plasma.svg?v=1" alt="Plasma logo"><span class="name">Plasma</span></div>
-      <div class="chip"><img src="/logos/token-sol.svg" alt="Solana logo"><span class="name">Solana</span><span class="via">via NEAR</span></div>
+      <div class="chip"><img src="/logos/token-sol.svg" alt=""><span class="name">Solana</span><span class="via">via NEAR</span></div>
       <div class="chip"><img src="/logos/token-btc.svg" alt="Bitcoin logo"><span class="name">Bitcoin</span><span class="via">via NEAR</span></div>
     </div>
     <p style="margin-top: 20px; font-size: 13px; color: var(--muted-2);">

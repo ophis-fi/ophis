@@ -14,7 +14,7 @@ import { tradeQuotesAtom } from 'modules/tradeQuote'
 
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
-import { OPHIS_FLAT_VOLUME_FEE_ENABLED, OPHIS_STABLE_VOLUME_BPS } from 'ophis/partnerFeeDefault'
+import { OPHIS_FLAT_VOLUME_FEE_ENABLED, OPHIS_PARTNER_FEE_RECIPIENT, OPHIS_STABLE_VOLUME_BPS } from 'ophis/partnerFeeDefault'
 import { OPHIS_BOOSTED_VOLUME_BPS, isBoostedToken } from 'ophis/boostedTokens'
 
 import { isCorrelatedTrade } from './isCorrelatedTrade'
@@ -38,17 +38,26 @@ export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
   // a Safe-App fee; otherwise enabling the flag inside a Safe App silently drops
   // the Ophis fee in favour of the Safe's recipient instead of charging flat bps. (Review P2)
   if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
-    // Boosted-token trades (the ALEPH flagship) pay the reduced "max rebate" rate
-    // when EITHER side is a boosted token, REGARDLESS of the trader's volume tier.
-    // Same single-atom source so quote display and on-chain appData stay in lockstep.
-    if (widgetPartnerFee && get(isBoostedTradeAtom)) {
-      return { ...widgetPartnerFee, volumeBps: OPHIS_BOOSTED_VOLUME_BPS }
-    }
-    // Stablecoin-to-stablecoin (same-chain) pairs pay the reduced flat rate
-    // (1 bp) instead of the standard volume fee. Same single-atom source, so
-    // quote display and on-chain appData stay in lockstep at the reduced rate.
-    if (widgetPartnerFee && get(isStableStableTradeAtom)) {
-      return { ...widgetPartnerFee, volumeBps: OPHIS_STABLE_VOLUME_BPS }
+    // The reduced-rate branches below rewrite the fee bps, so they must only ever
+    // touch OPHIS'S OWN partner fee. If a host integrator embeds this widget with
+    // their own partnerFee (a different recipient), leave it intact rather than
+    // silently overriding their configured fee with an Ophis rate.
+    if (
+      widgetPartnerFee &&
+      widgetPartnerFee.recipient.toLowerCase() === OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
+    ) {
+      // Boosted-token trades (the ALEPH flagship) pay the reduced "max rebate" rate
+      // when EITHER side is a boosted token, REGARDLESS of the trader's volume tier.
+      // Same single-atom source so quote display and on-chain appData stay in lockstep.
+      if (get(isBoostedTradeAtom)) {
+        return { ...widgetPartnerFee, volumeBps: OPHIS_BOOSTED_VOLUME_BPS }
+      }
+      // Stablecoin-to-stablecoin (same-chain) pairs pay the reduced flat rate (1 bp)
+      // instead of the standard volume fee. Same single-atom source, so quote display
+      // and on-chain appData stay in lockstep at the reduced rate.
+      if (get(isStableStableTradeAtom)) {
+        return { ...widgetPartnerFee, volumeBps: OPHIS_STABLE_VOLUME_BPS }
+      }
     }
     return widgetPartnerFee
   }
