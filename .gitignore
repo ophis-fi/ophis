@@ -34,7 +34,7 @@ docs/security/*.local.md
 
 # Private affiliate program data — Super VIP roster, per-deal negotiated rates,
 # live invite codes. Invite-only and confidential; never public. Operator only.
-docs/affiliate/*.private.md
+docs/affiliate/
 
 # Superpowers brainstorming session artifacts (visual companion)
 .superpowers/
