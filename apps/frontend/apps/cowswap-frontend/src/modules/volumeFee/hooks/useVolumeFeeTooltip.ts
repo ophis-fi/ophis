@@ -5,6 +5,9 @@ import { t } from '@lingui/core/macro'
 
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
+import { OPHIS_BOOSTED_VOLUME_BPS } from 'ophis/boostedTokens'
+
+import { isBoostedTradeAtom } from '../state/volumeFeeAtom'
 import { safeAppFeeAtom } from '../state/safeAppFeeAtom'
 
 export interface VolumeFeeTooltip {
@@ -14,6 +17,7 @@ export interface VolumeFeeTooltip {
 
 export function useVolumeFeeTooltip(): VolumeFeeTooltip {
   const safeAppFee = useAtomValue(safeAppFeeAtom)
+  const isBoosted = useAtomValue(isBoostedTradeAtom)
   const widgetParams = useInjectedWidgetParams()
 
   return useMemo(() => {
@@ -23,9 +27,17 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
         label: t`Safe App License Fee`,
       }
 
+    // Boosted-token flagship (e.g. ALEPH): surface the "max rebate" tag at the fee
+    // row whenever a boost is active, so the reduced rate is visible in the swap box.
+    if (isBoosted)
+      return {
+        content: t`This token gets the maximum Ophis rebate: a reduced ${OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier.`,
+        label: t`⚡ Max rebate`,
+      }
+
     return {
       content: widgetParams.content?.feeTooltipMarkdown,
       label: widgetParams.content?.feeLabel || t`Partner fee`,
     }
-  }, [safeAppFee, widgetParams])
+  }, [safeAppFee, isBoosted, widgetParams])
 }
