@@ -256,6 +256,7 @@ test('/ref/codes mints a RANDOM code matching /^oph[0-9a-f]{12}$/', async () => 
   expect(res.statusCode).toBe(200);
   const body = JSON.parse(res.body);
   expect(body.created).toBe(true);
+  expect(body.kind).toBe('regular'); // fresh mints carry kind, like the idempotent branch
   expect(body.code).toMatch(/^oph[0-9a-f]{12}$/);
 });
 

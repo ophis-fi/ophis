@@ -470,7 +470,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
           ON CONFLICT (code) DO NOTHING
           RETURNING code
         `;
-        if (inserted.length > 0) return { code: candidate, created: true };
+        if (inserted.length > 0) return { code: candidate, kind: 'regular', created: true };
         // Empty RETURNING = the random code collided on the PK (astronomically
         // rare); retry with a fresh candidate.
       } catch (err) {
