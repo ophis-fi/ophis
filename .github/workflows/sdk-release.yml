@@ -36,8 +36,29 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      # Bind the published version to the reviewed tag: the sdk-v<x.y.z> tag
+      # suffix must equal packages/sdk/package.json `version`. The tag is read
+      # from the GITHUB_REF_NAME env var (never interpolated into the shell) to
+      # avoid expression injection.
+      - name: verify tag matches package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          PKG_VERSION="$(node -p "require('./packages/sdk/package.json').version")"
+          TAG_VERSION="${TAG#sdk-v}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $TAG (version $TAG_VERSION) != package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+          echo "tag matches package version $PKG_VERSION"
+
+      # --ignore-scripts: do NOT run third-party dependency lifecycle scripts
+      # during install in this token-bearing publish job (pnpm 9 runs them by
+      # default). The @ophis/sdk build is invoked explicitly below, so disabling
+      # dependency install scripts is safe and removes a supply-chain code-exec
+      # surface on the runner that holds NPM_TOKEN.
       - name: install
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: build
         run: pnpm --filter @ophis/sdk build
@@ -45,7 +66,11 @@ jobs:
       - name: test
         run: pnpm --filter @ophis/sdk test
 
+      # --ignore-scripts here too: dist/ is already built explicitly above, so
+      # publish must NOT re-run prepublishOnly (tsc) inside this step where
+      # NODE_AUTH_TOKEN is in env. Publishing the pre-built artifact with no
+      # lifecycle scripts removes the last untrusted-code window next to the token.
       - name: publish
-        run: pnpm --filter @ophis/sdk publish --no-git-checks --access public --provenance
+        run: pnpm --filter @ophis/sdk publish --no-git-checks --access public --provenance --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
