@@ -156,16 +156,24 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.options('*', async (_req, reply) => reply.code(204).send());
 
   // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
-  // per-wallet /tier HTML page). None of it is meant for search indexing, and
-  // Google was crawling the bare host root and flagging it 404 (GSC, 2026-06).
-  // Tell crawlers to stay off the whole host. Permissive rate limit: robots.txt
-  // is fetched freely by crawlers and is harmless.
+  // per-wallet /tier HTML page). Google was crawling the bare host root and
+  // flagging it 404 (GSC, 2026-06). Fix: redirect the root to the public rebate
+  // explainer (so the flagged URL stops 404ing), and keep the API/tier sub-paths
+  // out of the index. robots ALLOWS exactly `/` (so crawlers can see+follow the
+  // 301) but disallows everything else; `Allow: /$` wins by longest-match over
+  // `Disallow: /` for the root only.
+  app.get('/', {
+    config: {
+      rateLimit: { max: 200, timeWindow: '1 minute' },
+    },
+  }, async (_req, reply) => reply.code(301).redirect('https://docs.ophis.fi/affiliate'));
+
   app.get('/robots.txt', {
     config: {
       rateLimit: { max: 200, timeWindow: '1 minute' },
     },
   }, async (_req, reply) =>
-    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\n'),
+    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\n'),
   );
 
   app.get('/health', {

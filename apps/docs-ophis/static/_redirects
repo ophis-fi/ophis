@@ -5,10 +5,17 @@
 /api      /intent-api   301
 /api/     /intent-api   301
 
-# /institutional and /brand are NOT docs pages: they are swap-app HashRouter
-# routes (swap.ophis.fi/#/institutional, /#/brand). Google indexed stale
+# /institutional and /brand are NOT docs pages. Google indexed stale
 # docs.ophis.fi/{institutional,brand} URLs from old links and flagged them 404
-# (GSC, 2026-06). 301 them to their real homes on the swap app. (If CF drops the
-# fragment, the target still resolves to the live swap home, so never a 404.)
-/institutional   https://swap.ophis.fi/#/institutional   301
-/brand           https://swap.ophis.fi/#/brand           301
+# (GSC, 2026-06). 301 them to the real destinations. CF Pages treats /x and /x/
+# as distinct sources, so cover both forms (like /api above).
+#
+# /institutional: the swap route redirects to business.ophis.fi anyway
+# (RoutesApp InstitutionalRedirect -> window.location), so point crawlers
+# straight at the crawlable business host instead of the SPA shell.
+/institutional    https://business.ophis.fi       301
+/institutional/   https://business.ophis.fi       301
+# /brand: a real swap-app HashRouter page (#/brand); no crawlable equivalent.
+# Worst case CF drops the fragment and it lands on the live swap home (never 404).
+/brand            https://swap.ophis.fi/#/brand   301
+/brand/           https://swap.ophis.fi/#/brand   301
