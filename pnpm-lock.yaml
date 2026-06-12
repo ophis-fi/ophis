@@ -175,7 +175,7 @@ importers:
   packages/widget-react:
     dependencies:
       '@cowprotocol/widget-react':
-        specifier: ^3.1.1
+        specifier: 3.1.1
         version: 3.1.1(ajv@8.20.0)(cross-fetch@3.2.0(encoding@0.1.13))(encoding@0.1.13)(multiformats@14.0.0)(react@19.2.6)
       '@ophis/sdk':
         specifier: workspace:*
