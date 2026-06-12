@@ -11,7 +11,11 @@ that defaults the iframe host to `swap.ophis.fi`, tags orders with the Ophis
 npm install @ophis/widget-react react react-dom
 ```
 
-Requires **React 19** (the wrapped `@cowprotocol/widget-react` pins React 19).
+Requires **React 19** (this wrapper accepts `^19.1.2`, i.e. React 19 at 19.1.2 or
+newer). Note the wrapped `@cowprotocol/widget-react@3.1.1` declares an *exact*
+`react: 19.1.2` peer, so under strict peer-dependency handling only React 19.1.2
+avoids a peer warning from that upstream package; any other 19.x (above or below)
+can warn. Default npm/yarn treat this as a warning, not an install failure.
 
 ## Use it
 
@@ -54,6 +58,14 @@ Use [`@cowprotocol/widget-lib`](https://www.npmjs.com/package/@cowprotocol/widge
 directly and pass `baseUrl: 'https://swap.ophis.fi'`, `appCode: 'Ophis'`, and the
 partner fee from [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk)
 (`buildOphisAppDataPartnerFee`). See the [integration guide](https://docs.ophis.fi/widget).
+
+## Footprint
+
+This package is a thin wrapper, but installing it pulls in `@cowprotocol/widget-react`
+and its full transitive tree (the CoW SDK plus an IPFS/libp2p/multiformats stack and
+an HTTP client). If your bundle is size-sensitive, the iframe embed only needs the
+URL: use [`@cowprotocol/widget-lib`](https://www.npmjs.com/package/@cowprotocol/widget-lib)
+directly (see [Vanilla JS](#vanilla-js--no-react) above) for a lighter footprint.
 
 ## License
 
