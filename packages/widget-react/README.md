@@ -11,11 +11,13 @@ that defaults the iframe host to `swap.ophis.fi`, tags orders with the Ophis
 npm install @ophis/widget-react react react-dom
 ```
 
-Requires **React 19** (this wrapper accepts `^19.1.2`, i.e. React 19 at 19.1.2 or
-newer). Note the wrapped `@cowprotocol/widget-react@3.1.1` declares an *exact*
-`react: 19.1.2` peer, so under strict peer-dependency handling only React 19.1.2
-avoids a peer warning from that upstream package; any other 19.x (above or below)
-can warn. Default npm/yarn treat this as a warning, not an install failure.
+Requires **React exactly 19.1.2**. The wrapped `@cowprotocol/widget-react@3.1.1`
+declares an *exact* `react: 19.1.2` peer, so this wrapper mirrors it rather than
+advertising broader 19.x support the underlying widget would reject. Default
+npm/yarn treat a peer mismatch as a warning; strict installers (pnpm,
+`--strict-peer-deps`) will fail. If you're on a different React, use the
+[Vanilla JS](#vanilla-js--no-react) path below (`@cowprotocol/widget-lib` has no
+React peer) until upstream loosens its pin.
 
 ## Use it
 
