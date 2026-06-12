@@ -20,9 +20,21 @@ export const REBATES_API = process.env.REACT_APP_REBATES_API || 'https://rebates
  * Abort a request that stalls (e.g. a hung CORS preflight or an unresponsive
  * backend) so the UI fails fast instead of spinning forever. The timeout was
  * defined in config but never wired into a fetch before.
+ *
+ * `AbortSignal.timeout` is not available on every target in the production
+ * browserslist (e.g. iOS Safari 15.x), where calling it would throw before
+ * `fetch` is even reached, surfacing as a network failure for partner-dashboard,
+ * code-creation, and bind requests. Feature-detect it and fall back to an
+ * `AbortController` + `setTimeout` so the request still fires and still times out
+ * on those browsers.
  */
 function timeoutSignal(): AbortSignal {
-  return AbortSignal.timeout(AFFILIATE_API_TIMEOUT_MS)
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(AFFILIATE_API_TIMEOUT_MS)
+  }
+  const controller = new AbortController()
+  setTimeout(() => controller.abort(), AFFILIATE_API_TIMEOUT_MS)
+  return controller.signal
 }
 
 export type AffiliateKind = 'regular' | 'partner'
