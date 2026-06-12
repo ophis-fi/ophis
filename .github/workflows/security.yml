@@ -254,6 +254,15 @@ jobs:
               # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
               # already pinned to latest 2.0.1. (audit 2026-06)
               'GHSA-2p57-rm9w-gvfp',
+              # esbuild <0.28.1 Deno-install RCE via NPM_CONFIG_REGISTRY: a
+              # vite/tsx BUILD-TIME dep, never shipped in the browser bundle.
+              # Cannot bump on the frontend: 0.28.x drops the legacy-target
+              # destructuring transform the CoW browserslist build needs (nx
+              # build fails), and 0.28.1 is blocked by the 7-day minimumReleaseAge
+              # soak. Re-evaluate when vite is upgraded to a line whose esbuild
+              # keeps the legacy transform, or when the build target is
+              # modernized. (audit 2026-06)
+              'GHSA-gv7w-rqvm-qjhr',
           }
           def ghsa(url):
               return (url or '').rstrip('/').split('/')[-1]
