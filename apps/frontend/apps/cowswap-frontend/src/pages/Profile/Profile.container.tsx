@@ -30,6 +30,7 @@ import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 import { Callout, InlineCode, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
 
 import { OphisAffiliateDashboard } from 'modules/affiliate'
+import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { ProfileActions } from './ProfileActions.pure'
 import { ProfileRank } from './ProfileRank.container'
@@ -80,10 +81,10 @@ export function ProfilePage(): ReactNode {
         ) : (
           <Callout tone="info" title="Connect a wallet">
             <p>
-              Use the <strong>Connect</strong> button in the header (top-right) to link a wallet.
-              Your address, rank, and referral code will appear here. Identity is read from the
-              wallet, not stored by Ophis.
+              Connect a wallet to see your address, rank, and referral code. Identity is read from
+              the wallet, not stored by Ophis.
             </p>
+            <ConnectWalletCta />
           </Callout>
         )}
       </Section>

@@ -82,4 +82,29 @@ describe('PartnerPage referee-table truncation note', () => {
     expect(screen.queryByText(/No referees yet/i)).toBeNull()
     expect(screen.queryByText(/most recently bound of/i)).toBeNull()
   })
+
+  it('renders the partner referral code, share link, and share actions', async () => {
+    getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
+
+    await renderAndLoad()
+
+    // activeCodes[0] is 'ophispartner' in the fixture; it was previously absent
+    // from this page, so a partner could not get their link here.
+    expect(screen.getByText('ophispartner')).toBeTruthy()
+    expect(screen.getByText('https://swap.ophis.fi/?ref=ophispartner')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /copy share link/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /share on x/i })).toBeTruthy()
+  })
+
+  it('shows the how-it-works steps when there are no referees yet', async () => {
+    getPartnerDashboardMock.mockResolvedValue(makeDashboard(0, 0))
+
+    await renderAndLoad()
+
+    expect(screen.getByText(/how the program works/i)).toBeTruthy()
+    // the bare one-liner is replaced by the 3-step guide
+    expect(
+      screen.queryByText('No referees yet. Share your code to start referring wallets.'),
+    ).toBeNull()
+  })
 })
