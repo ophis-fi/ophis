@@ -116,7 +116,10 @@ export function RefCodeCaptureUpdater(): ReactNode {
           markRefBound({ wallet: account, code })
           return
         }
-        console.debug('[RefCodeCaptureUpdater] ref bind failed (non-blocking):', error)
+        // Transient (5xx / network / CORS / timeout): left un-marked for a later
+        // retry. warn (not debug) so a persistent backend/transport break — e.g.
+        // the CORS-preflight outage that blocked every bind — is visible in logs.
+        console.warn('[RefCodeCaptureUpdater] ref bind failed (non-blocking, will retry):', error)
       })
       .finally(() => {
         if (inFlightKeyRef.current === key) inFlightKeyRef.current = undefined
