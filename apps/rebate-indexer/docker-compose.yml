@@ -53,7 +53,14 @@ services:
       # flipped; the monthly report still shows affiliate owed regardless).
       AFFILIATE_PAYOUT_ENABLED: ${AFFILIATE_PAYOUT_ENABLED:-false}
     ports:
-      - "8080:8080"
+      # Bind to loopback only. Caddy reaches the indexer over the compose network
+      # (reverse_proxy indexer:8080) and the deploy health-check curls
+      # localhost:8080 on the host, so loopback is sufficient. Publishing on
+      # 0.0.0.0 let an off-host caller hit :8080 directly, bypassing Caddy: with
+      # Docker's bridge masquerade the source presented as the trusted gateway IP
+      # (172.17.0.1), so Fastify trusted a spoofable X-Forwarded-For and the
+      # per-IP rate limiter could be evaded or poisoned. Loopback closes that path.
+      - "127.0.0.1:8080:8080"
 
   caddy:
     image: caddy:2-alpine
