@@ -111,7 +111,9 @@ export interface RankStatus {
   position: number | null
 }
 
-/** One row of GET /leaderboard. `wallet` is the full lowercase 0x address. */
+/** One row of GET /leaderboard. `wallet` is the TRUNCATED display address
+ *  (0xXXXX...XXXX), not the full address: the public endpoint truncates it so it
+ *  cannot be used to enumerate full trader addresses. */
 export interface LeaderboardEntry {
   rank: number
   wallet: string

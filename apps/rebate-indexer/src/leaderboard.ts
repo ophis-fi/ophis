@@ -1,8 +1,19 @@
 import { TIERS, assignTier, type Tier } from './tiers.js';
 
+/**
+ * Truncated display form of an address (0xXXXX...XXXX). The public /leaderboard
+ * returns this instead of the full address so the endpoint cannot be used to
+ * enumerate full trader addresses (deanonymization). The frontend identifies its
+ * own row by truncating the connected wallet the same way.
+ */
+export function truncateWallet(addr: string): string {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
 export interface LeaderboardEntry {
   rank: number;
-  wallet: `0x${string}`;
+  /** Truncated display form (0xXXXX...XXXX), NOT the full address (privacy). */
+  wallet: string;
   tier: string;
   volume30dUsd: number;
   volumeTotalUsd: number;
@@ -138,7 +149,7 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
     const tier = assignTier(volume30d);
     return {
       rank: idx + 1,
-      wallet: `0x${row.wallet_hex}` as `0x${string}`,
+      wallet: truncateWallet(`0x${row.wallet_hex}`),
       tier: tier.name,
       volume30dUsd: volume30d,
       volumeTotalUsd: parseFloat(row.volume_total_usd),
