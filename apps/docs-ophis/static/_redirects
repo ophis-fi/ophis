@@ -4,3 +4,11 @@
 # /api was a dead path (404). The Intent API reference lives at /intent-api.
 /api      /intent-api   301
 /api/     /intent-api   301
+
+# /institutional and /brand are NOT docs pages: they are swap-app HashRouter
+# routes (swap.ophis.fi/#/institutional, /#/brand). Google indexed stale
+# docs.ophis.fi/{institutional,brand} URLs from old links and flagged them 404
+# (GSC, 2026-06). 301 them to their real homes on the swap app. (If CF drops the
+# fragment, the target still resolves to the live swap home, so never a 404.)
+/institutional   https://swap.ophis.fi/#/institutional   301
+/brand           https://swap.ophis.fi/#/brand           301
