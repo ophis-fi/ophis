@@ -653,7 +653,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
 
   // ─── Leaderboard & Ranking ───────────────────────────────────────────────
 
-  app.get<{ Querystring: { limit?: string } }>('/leaderboard', {
+  app.get<{ Querystring: { limit?: string; self?: string } }>('/leaderboard', {
     config: {
       rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
     },
@@ -667,9 +667,25 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       }
       limit = parsed;
     }
+    // Optional self-identification: the connected wallet (full address) so the
+    // response can mark its own row (isSelf). Validated to a 0x-address shape;
+    // any malformed value is ignored (the leaderboard is still returned, unmarked).
+    let self: string | undefined;
+    if (req.query.self) {
+      const raw = req.query.self.toLowerCase();
+      if (/^0x[0-9a-f]{40}$/.test(raw)) self = raw;
+    }
     reply.header('vary', 'Origin');
-    reply.header('cache-control', 'public, max-age=60');
-    const leaderboard = await getLeaderboard(limit);
+    if ('self' in req.query) {
+      // Any request carrying `self` is caller-specific (isSelf), so it must never
+      // be served from a shared cache to a different wallet. Keyed on the PRESENCE
+      // of the param (not its truthiness/validity) so even `?self=` or a malformed
+      // value can't slip a caller-tagged URL into a shared cache.
+      reply.header('cache-control', 'private, no-store');
+    } else {
+      reply.header('cache-control', 'public, max-age=60');
+    }
+    const leaderboard = await getLeaderboard(limit, self);
     return leaderboard;
   });
 

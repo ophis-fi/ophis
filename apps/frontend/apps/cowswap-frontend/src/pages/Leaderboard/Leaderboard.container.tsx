@@ -54,8 +54,11 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
         <Num>{entry.rank}</Num>
       </Td>
       <Td>
-        {/* entry.wallet is already truncated by the API (privacy); render as-is. */}
-        <Num>{entry.wallet}</Num>
+        {/* The API already truncates wallets for privacy. truncateAddress is
+            idempotent on the 0xXXXX...XXXX form, so re-applying it is
+            defense-in-depth against deploy skew (frontend live before the
+            indexer, or an older REBATES_API that still returns full addresses). */}
+        <Num>{truncateAddress(entry.wallet)}</Num>
         {isSelf && <YouTag>you</YouTag>}
       </Td>
       <Td>{tierLabel(entry.tier)}</Td>
@@ -74,37 +77,39 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
 
 export function LeaderboardPage(): ReactNode {
   const { account } = useWalletInfo()
-  // The /leaderboard returns TRUNCATED addresses (privacy), so identify the
-  // connected wallet's own row by truncating it the same way the API does.
-  const selfShort = account ? truncateAddress(account.toLowerCase()) : undefined
 
-  const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null)
-  const [loading, setLoading] = useState(true)
+  // The loaded leaderboard PLUS the account it was fetched for. Tying the two
+  // together means self-marking is honoured only while the loaded data matches
+  // the currently-connected account: during an account-change refetch the public
+  // list keeps showing (no flicker), but no stale row is marked "you", and a slow
+  // or failed refetch can't leave a previous wallet highlighted.
+  const [data, setData] = useState<{ entries: LeaderboardEntry[]; account: string | undefined } | null>(null)
   const [loadError, setLoadError] = useState(false)
 
+  // Refetch when the connected account changes: with a wallet connected we pass
+  // `self` so the backend marks the own row (isSelf) within the same snapshot.
+  // The truncated wallet string is NOT used to identify self (it can collide).
   useEffect(() => {
     const signal = { cancelled: false }
-    setLoading(true)
     setLoadError(false)
-    getLeaderboard(100)
+    getLeaderboard(100, account)
       .then((res) => {
-        if (!signal.cancelled) setEntries(res.entries)
+        if (!signal.cancelled) setData({ entries: res.entries, account })
       })
       .catch(() => {
         if (!signal.cancelled) setLoadError(true)
       })
-      .finally(() => {
-        if (!signal.cancelled) setLoading(false)
-      })
     return () => {
       signal.cancelled = true
     }
-  }, [])
+  }, [account])
 
-  // The connected wallet's own entry, if it's in the returned page.
+  // Self state is valid only when the loaded data was fetched for the CURRENT
+  // account (not a stale snapshot from a previously-connected wallet).
+  const selfResolved = !!data && data.account === account
   const selfEntry = useMemo(
-    () => (selfShort && entries ? entries.find((e) => e.wallet === selfShort) : undefined),
-    [selfShort, entries],
+    () => (selfResolved ? data!.entries.find((e) => e.isSelf) : undefined),
+    [selfResolved, data],
   )
 
   return (
@@ -135,21 +140,23 @@ export function LeaderboardPage(): ReactNode {
       )}
 
       <Section id="leaderboard" title="Leaderboard">
-        {loading ? (
-          <p>Loading the leaderboard...</p>
-        ) : loadError ? (
-          <Callout tone="warning" title="Could not load the leaderboard">
-            <p>The rebate service did not respond. Refresh the page to try again.</p>
-          </Callout>
-        ) : !entries || entries.length === 0 ? (
+        {data === null ? (
+          loadError ? (
+            <Callout tone="warning" title="Could not load the leaderboard">
+              <p>The rebate service did not respond. Refresh the page to try again.</p>
+            </Callout>
+          ) : (
+            <p>Loading the leaderboard...</p>
+          )
+        ) : data.entries.length === 0 ? (
           <Callout tone="info" title="No ranked traders yet">
             <p>Once wallets start routing volume, the top traders will appear here.</p>
           </Callout>
         ) : (
           <>
-            {selfShort && !selfEntry && (
+            {account && selfResolved && !selfEntry && (
               <p>
-                Your wallet isn&apos;t in the top {entries.length} yet. Route more volume to climb
+                Your wallet isn&apos;t in the top {data.entries.length} yet. Route more volume to climb
                 the board.
               </p>
             )}
@@ -165,11 +172,11 @@ export function LeaderboardPage(): ReactNode {
                 </Tr>
               </Thead>
               <Tbody>
-                {entries.map((entry) => (
+                {data.entries.map((entry) => (
                   <LeaderboardRow
                     key={entry.rank}
                     entry={entry}
-                    isSelf={!!selfShort && entry.wallet === selfShort}
+                    isSelf={selfResolved && !!entry.isSelf}
                   />
                 ))}
               </Tbody>

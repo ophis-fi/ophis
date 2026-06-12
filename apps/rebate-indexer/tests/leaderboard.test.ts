@@ -4,6 +4,7 @@ import {
   getNextTierInfo,
   computeTierProgress,
   truncateWallet,
+  markSelf,
   type LeaderboardEntry,
 } from '../src/leaderboard.js';
 
@@ -124,6 +125,48 @@ describe('truncateWallet (leaderboard address privacy)', () => {
     expect(t).toBe('0xaaaa...aaaa');
     expect(t).not.toBe(full);
     expect(t.length).toBeLessThan(full.length);
+  });
+});
+
+describe('markSelf (collision-free self-identification)', () => {
+  const base = { tier: 'gold', volume30dUsd: 100, volumeTotalUsd: 100, affiliateCount: 0, referredVolumeUsd: 0 };
+  // Two DISTINCT full addresses that collide on the truncated display form
+  // (same first-4 + last-2 bytes, different middle).
+  const fullA = 'aaaa' + 'c'.repeat(32) + 'bbbb';
+  const fullB = 'aaaa' + 'd'.repeat(32) + 'bbbb';
+  const entryA = { rank: 1, wallet: truncateWallet(`0x${fullA}`), walletHexFull: fullA, ...base };
+  const entryB = { rank: 2, wallet: truncateWallet(`0x${fullB}`), walletHexFull: fullB, ...base };
+
+  it('marks ONLY the true full-address match, even when truncated forms collide', () => {
+    // Precondition: the two distinct addresses share a truncated display form.
+    expect(entryA.wallet).toBe(entryB.wallet);
+    const out = markSelf([entryA, entryB], `0x${fullA}`);
+    expect(out[0]!.isSelf).toBe(true);
+    // The collision row is NOT mislabelled "you" (the bug a string match had).
+    expect(out[1]!.isSelf).toBe(false);
+  });
+
+  it('never serializes the server-only walletHexFull', () => {
+    const out = markSelf([entryA], `0x${fullA}`);
+    expect('walletHexFull' in out[0]!).toBe(false);
+    expect(out[0]!.wallet).toBe('0xaaaa...bbbb');
+  });
+
+  it('returns the public entries unchanged (no isSelf) when self is null', () => {
+    const out = markSelf([entryA, entryB], null);
+    expect(out[0]!.isSelf).toBeUndefined();
+    expect(out[1]!.isSelf).toBeUndefined();
+    expect('walletHexFull' in out[0]!).toBe(false);
+  });
+
+  it('matches case-insensitively for a checksummed/upper-cased self address', () => {
+    const out = markSelf([entryA], `0x${fullA}`.toUpperCase());
+    expect(out[0]!.isSelf).toBe(true);
+  });
+
+  it('marks nobody when the connected wallet is absent from the snapshot', () => {
+    const out = markSelf([entryA, entryB], `0x${'e'.repeat(40)}`);
+    expect(out.some((e) => e.isSelf)).toBe(false);
   });
 });
 
