@@ -46,6 +46,10 @@ Consequences for rotation:
   chain** (the constant is one address used on all of them).
 - **Sweep the Settlement buffer** as part of rotation; do not assume settled
   fees are already in the old Safe.
+- The recipient is also emitted by the **public `@ophis/sdk`**, so external
+  integrators keep emitting the old address until they upgrade. The old recipient
+  stays allowlisted through a migration window before it is removed (a planned
+  rotation waits for the cutoff; a compromise forces it early).
 
 ## When to rotate
 
@@ -56,13 +60,26 @@ Consequences for rotation:
 
 ## Pre-flight
 
-1. **Same address on every fee chain.** The app/SDK/backend use one recipient on
-   all chains. Stand up the replacement so the **same address is controllable on
-   Optimism + Gnosis + Ethereum** (and any other fee chain): either a
-   CREATE2-deterministic Safe with a deployment plan proving the address resolves
-   and is owned on each chain, or an EOA you control everywhere. Do **not** reuse
-   a single-chain Safe address globally, fees on the other chains would go to an
-   address with no Safe deployed.
+1. **Same address on every fee-emitting chain.** The app/SDK/backend use one
+   recipient on every chain where the partner-fee gate fires, not just OP. Do
+   **not** assume three chains: **enumerate the current set** from
+   `OPHIS_FEE_CHAIN_IDS` in `packages/sdk/src/partner-fee.ts` (the frontend gate
+   `shouldEmitOphisPartnerFee` mirrors it):
+
+   ```bash
+   grep -A5 'FEE_CHAIN_IDS = \[' packages/sdk/src/partner-fee.ts
+   ```
+
+   Today that is the Ophis-operated chains `10, 4326, 999` (Optimism live;
+   MegaETH `4326` + HyperEVM `999` paused) plus the CoW-hosted mainnets
+   `1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144` (and Sepolia
+   `11155111`, testnet). The replacement must be controllable at the **same
+   address on every chain where a fee actually settles**: a CREATE2-deterministic
+   Safe with a deployment plan proving the address resolves and is owned on each
+   chain, or an EOA you control everywhere. Do **not** reuse a single-chain Safe
+   address globally, fees on the other chains would go to an address with no Safe
+   deployed. (The current Safe is verified 2-of-3 on OP + Gnosis + Ethereum; any
+   other chain in the set that is live must be verified the same way.)
 2. **EIP-55 checksum** the new address before touching any file (strict EIP-55
    crashes the frontend at init, the 2026-05-17 incident):
 
@@ -137,16 +154,17 @@ migration; it documents the Safe at seed time).
    (`infra/optimism-mainnet/scripts/sweep-to-safe.sh`). If the old Safe is
    compromised, sweep with `SAFE=<new-address>` instead so the buffer goes
    straight to the replacement.
-2. **Allowlist the new recipient + redeploy the OP backend.** Add the new
-   address to `PARTNER_FEE_RECIPIENT_ALLOWLIST` (raw bytes). Keep the old entry
-   for now so in-flight orders are not rejected mid-rotation. Redeploy the OP
-   backend (app-data validation + autopilot). New orders carrying the new
-   recipient are now accepted.
-3. **Update injection + custody + accounting + env + docs** to the new address
-   in every file from the grep above (frontend/SDK trio, invariant `CANONICAL`,
-   sweep config, drift monitor, rebate, live `.env`, docs). Byte-exact EIP-55 in
-   the TS/JSON/sh/sol files; the raw-byte form in Rust.
-4. **Local gates:**
+2. **One reviewed change adds (does not yet replace) the recipient.** In a single
+   PR, update every file from the grep above: **add** the new address to
+   `PARTNER_FEE_RECIPIENT_ALLOWLIST` (raw bytes) **while keeping the old entry**
+   (so in-flight and not-yet-migrated orders stay accepted), and flip the
+   injection / custody / accounting / env / docs (frontend/SDK trio, invariant
+   `CANONICAL`, sweep config, drift monitor, rebate, live `.env`, docs).
+   Byte-exact EIP-55 in the TS/JSON/sh/sol files; the raw-byte form in Rust.
+   **Do not hot-patch the production allowlist out of band.** The allowlist is the
+   enforcement boundary, so widening it must go through review like any other
+   recipient change, that auditability is the whole point of the constant.
+3. **Local gates:**
 
    ```bash
    bash scripts/check-partner-fee-invariant.sh            # exit 0
@@ -155,19 +173,35 @@ migration; it documents the Safe at seed time).
    pnpm -C packages/sdk test
    ```
 
-5. **PR** with pre-merge Codex + all security tools (treat as an external-API /
+4. **PR** with pre-merge Codex + all security tools (treat as an external-API /
    on-chain-config change). The `Partner-fee cross-workspace invariant` gate runs
    in CI.
-6. **Merge, then deploy in order:** OP backend (if not already from step 2) →
-   frontend (swap.ophis.fi) → republish `@ophis/sdk` (bump patch;
-   `npm-ophis-token` Keychain) → redeploy/restart the rebate-indexer
+5. **Merge, then deploy backend-first.** The reviewed OP backend (allowlist now
+   holds **both** old + new) → frontend (swap.ophis.fi) → republish `@ophis/sdk`
+   (bump patch; `npm-ophis-token` Keychain) → redeploy/restart the rebate-indexer
    (`ophis-rebates-vm`) → update the deployed sweep config + the cron drift
-   monitor.
-7. **Drain the transition.** Once orders signed before the FE redeploy have all
-   settled, **remove the old recipient** from `PARTNER_FEE_RECIPIENT_ALLOWLIST`
-   and redeploy the OP backend, so only the new Safe is accepted.
-8. **Secure the old Safe.** If it was compromised, its remaining balance is a
-   separate Safe transaction handled by the signers, out of scope of this code
+   monitor. Backend-first means a new-recipient order is accepted the instant the
+   frontend starts emitting it, while the old recipient keeps working throughout.
+6. **Integrator migration window (planned rotations, do not skip).** `@ophis/sdk`
+   is a **public npm package**; external agents build their own orders with
+   `buildOphisAppDataPartnerFee` and keep emitting the **old** recipient until
+   they upgrade. Announce the new recipient and a deprecation cutoff for the old
+   one, and **monitor for orders still carrying the old recipient** (appData
+   recipient in the orderbook / autopilot logs). Keep the old recipient
+   allowlisted for the whole window.
+7. **Retire the old recipient (second reviewed change).** Open a second PR that
+   **removes** the old address from `PARTNER_FEE_RECIPIENT_ALLOWLIST`, merge it,
+   and redeploy the OP backend so only the new Safe is accepted. Timing depends on
+   the trigger:
+   - **Planned rotation:** wait until the migration cutoff has passed and
+     old-recipient orders have stopped. Removing it earlier rejects not-yet-migrated
+     SDK integrators.
+   - **Compromise:** the old Safe is hostile, so every order still paying it is a
+     loss. Retire the old recipient **as soon as the new path is live** (step 5),
+     accepting that in-flight and un-migrated orders are rejected until clients
+     upgrade. Communicate the forced cutoff urgently.
+8. **Secure the old Safe.** If it was compromised, moving its remaining balance is
+   a separate Safe transaction handled by the signers, out of scope of this code
    rotation.
 
 ## Verify
