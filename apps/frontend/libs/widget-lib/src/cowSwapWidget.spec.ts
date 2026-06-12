@@ -34,7 +34,7 @@ describe('createCowSwapWidget', () => {
 
     dispatchInterceptWindowOpen('/faq', undefined, iframe)
 
-    expect(window.open).toHaveBeenCalledWith('https://swap.cow.fi/faq', '_blank', 'noopener')
+    expect(window.open).toHaveBeenCalledWith('https://swap.ophis.fi/faq', '_blank', 'noopener')
   })
 
   it('accepts messages from a custom widget baseUrl origin', () => {
@@ -77,7 +77,7 @@ function createWidget(baseUrl?: string, extraParams?: Partial<CowSwapWidgetParam
   })
 }
 
-function dispatchInterceptWindowOpen(href: string, origin = 'https://swap.cow.fi', iframe: HTMLIFrameElement): void {
+function dispatchInterceptWindowOpen(href: string, origin = 'https://swap.ophis.fi', iframe: HTMLIFrameElement): void {
   const event = new MessageEvent('message', {
     origin,
     source: iframe.contentWindow,

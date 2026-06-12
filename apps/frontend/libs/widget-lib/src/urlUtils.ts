@@ -30,7 +30,7 @@ function handleInvalidWidgetBaseUrl(detail: string, throwIfInvalid: boolean): st
 
 /**
  * Normalizes `baseUrl` for the widget iframe `src` and rejects unsafe values.
- * - Omits or blank `baseUrl` → production default (https://swap.cow.fi).
+ * - Omits or blank `baseUrl` → production default (https://swap.ophis.fi).
  * - Allows `https:` for any host (self-hosted / staging).
  * - Allows `http:` only on local dev loopback hostnames.
  * @param throwIfInvalid Overrides {@link SHOULD_THROW_IF_INVALID_URL} (e.g. for unit tests).
