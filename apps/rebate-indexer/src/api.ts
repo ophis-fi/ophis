@@ -144,13 +144,25 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     }),
   });
 
-  // CORS — the swap page (ophis.fi + *.pages.dev) calls /tier directly.
+  // CORS — the swap page (ophis.fi + *.pages.dev) calls /tier directly, and the
+  // affiliate/partner pages issue SIGNED POSTs to /partner, /ref/bind, /ref/codes.
+  // Those POSTs send `content-type: application/json` (a non-safelisted header),
+  // which forces the browser to send a CORS PREFLIGHT (OPTIONS) first. The browser
+  // only sends the real POST if that preflight response echoes the requested method
+  // in Access-Control-Allow-Methods AND `content-type` in Access-Control-Allow-Headers.
+  // Setting allow-origin alone (the old behaviour) passed simple GETs but silently
+  // blocked every signed POST -> the partner dashboard failed with a network error.
+  // Set the full preflight allowance for allowed origins (harmless on actual
+  // GET/POST responses; load-bearing on the OPTIONS 204).
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
     const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi', 'https://greg.pages.dev'];
     if (origin && allowed.includes(origin)) {
       reply.header('access-control-allow-origin', origin);
-      reply.header('vary', 'origin');
+      reply.header('access-control-allow-methods', 'GET, POST, OPTIONS');
+      reply.header('access-control-allow-headers', 'content-type, accept');
+      reply.header('access-control-max-age', '600');
+      reply.header('vary', 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
     }
   });
   app.options('*', async (_req, reply) => reply.code(204).send());

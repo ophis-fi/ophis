@@ -128,3 +128,40 @@ test.each(['/status', '/batches', '/batches/1'])(
     expect(res.statusCode).toBe(200);
   },
 );
+
+// CORS preflight regression guard. The signed POSTs (/partner, /ref/bind,
+// /ref/codes) send content-type: application/json -> a non-safelisted header
+// that forces a browser preflight. If the preflight response omits
+// Allow-Methods / Allow-Headers, the browser blocks the real POST and the
+// partner dashboard fails with an opaque network error. These tests lock in
+// that the preflight echoes both for allowed origins (and nothing for others).
+test.each(['/partner', '/ref/bind', '/ref/codes'])(
+  'OPTIONS %s preflight from an allowed origin echoes Allow-Methods (POST) + Allow-Headers (content-type)',
+  async (url) => {
+    app = await buildApiServer();
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url,
+      headers: {
+        origin: 'https://swap.ophis.fi',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type',
+      },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(res.headers['access-control-allow-origin']).toBe('https://swap.ophis.fi');
+    expect(String(res.headers['access-control-allow-methods'])).toContain('POST');
+    expect(String(res.headers['access-control-allow-headers']).toLowerCase()).toContain('content-type');
+  },
+);
+
+test('OPTIONS preflight from a DISALLOWED origin sets no CORS headers', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'OPTIONS',
+    url: '/partner',
+    headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' },
+  });
+  expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  expect(res.headers['access-control-allow-methods']).toBeUndefined();
+});
