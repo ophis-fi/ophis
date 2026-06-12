@@ -30,10 +30,12 @@
 
 Say `swap 100 USDC for ETH on Base` and Ophis resolves the tokens, chain, and
 amount, then fills the order through a competitive solver auction that settles
-on-chain. It is a self-hosted fork of [CoW Protocol](https://cow.fi) (orderbook,
-autopilot, driver, and baseline solver) running under Ophis-controlled
-settlement contracts, fronted by a rebranded CoW Swap UI with a natural-language
-intent layer.
+on-chain. It is a fork of [CoW Protocol](https://cow.fi) (orderbook, autopilot,
+driver, and baseline solver) with a natural-language intent layer over a
+rebranded CoW Swap UI. On Optimism, Ophis runs the whole stack under its own
+settlement contracts and keeps the full fee; on the other supported chains
+(Ethereum, Base, Arbitrum, and more) it routes through CoW Protocol's hosted
+network.
 
 What that buys you on every trade:
 
@@ -50,7 +52,8 @@ What that buys you on every trade:
   (1 bp) on same-chain stablecoin pairs, with a share returned monthly as WETH
   rebates plus an 8% referral on trades you bring.
 
-**Live on Optimism** (chain 10) with its own self-hosted settlement and solver.
+**Live across the CoW-supported chains**, with its own self-hosted settlement and
+solver on Optimism (chain 10).
 
 ## Quickstart: the Intent API
 
@@ -144,15 +147,27 @@ ingestion. Full guide: [docs.ophis.fi/ai-agents](https://docs.ophis.fi/ai-agents
 
 ## Status
 
+Ophis settles across two kinds of chains.
+
+**Ophis-operated** (self-hosted orderbook, solver, and settlement; Ophis keeps the
+full fee):
+
 | Chain | Chain ID | Status |
 |---|---|---|
 | Optimism | 10 | **Live**: settlement, solver, partner fee |
 | HyperEVM | 999 | Contracts deployed, stack paused |
 | MegaETH | 4326 | Contracts deployed, stack paused |
 
-The frontend targets only the live chain set. Cross-chain destinations (Solana,
-Bitcoin) are surfaced via NEAR Intents. Canonical contract addresses and the
-disclosure policy live in [`SECURITY.md`](SECURITY.md).
+**CoW-hosted** (orders route through CoW Protocol's settlement and solver network,
+with the partner fee disbursed by CoW): Ethereum, Base, Arbitrum, Polygon, BNB,
+Gnosis, Avalanche, Linea, and the other CoW-supported chains, all live.
+
+The two have different settlement contracts and orderbook hosts, so resolve them
+per chain via `@ophis/sdk` or the MCP `list_chains` tool rather than assuming.
+Full live status: [docs.ophis.fi/status](https://docs.ophis.fi/status).
+Cross-chain destinations (Solana, Bitcoin) are surfaced via NEAR Intents.
+Canonical contract addresses and the disclosure policy live in
+[`SECURITY.md`](SECURITY.md).
 
 ## Architecture
 
@@ -196,13 +211,21 @@ Root workspace (pnpm 9, Node 20.19+ or 22.12+, turborepo):
 
 ```sh
 pnpm install
-pnpm build
+pnpm build      # JS/TS packages and apps
 ```
 
-The root workspace covers `packages/*`, `apps/backend`, `apps/rebate-indexer`,
-`apps/mcp-server`, and `infra/rpc`. `apps/frontend` and `apps/docs-ophis` are
-self-contained pnpm workspaces with their own lockfiles, deliberately excluded
-from the root. Build them from inside their own directory (see each app's README):
+`pnpm build` covers the JS/TS members: `packages/*`, `apps/rebate-indexer`,
+`apps/mcp-server`, and `infra/rpc`. The Rust backend (`apps/backend`) is a
+**Cargo** workspace, not a pnpm package, so `pnpm build` does not compile it;
+build and test it with Cargo:
+
+```sh
+cd apps/backend && cargo build && cargo test
+```
+
+`apps/frontend` and `apps/docs-ophis` are self-contained pnpm workspaces with
+their own lockfiles, deliberately excluded from the root. Build them from inside
+their own directory (see each app's README):
 
 ```sh
 cd apps/frontend   && pnpm install --frozen-lockfile && pnpm run build:cowswap
