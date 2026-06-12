@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { assignTier, TIERS } from '../src/tiers.js';
-import { 
+import {
   getNextTierInfo,
   computeTierProgress,
+  truncateWallet,
   type LeaderboardEntry,
 } from '../src/leaderboard.js';
 
@@ -95,7 +96,7 @@ describe('LeaderboardEntry structure', () => {
   it('has required fields', () => {
     const entry: LeaderboardEntry = {
       rank: 1,
-      wallet: '0x' + 'a'.repeat(40) as `0x${string}`,
+      wallet: '0xaaaa...aaaa', // truncated display form, not the full address
       tier: 'bronze',
       volume30dUsd: 25_000,
       volumeTotalUsd: 100_000,
@@ -103,12 +104,26 @@ describe('LeaderboardEntry structure', () => {
       referredVolumeUsd: 50_000,
     };
     expect(entry.rank).toBe(1);
-    expect(entry.wallet).toBe('0x' + 'a'.repeat(40));
+    expect(entry.wallet).toBe('0xaaaa...aaaa');
     expect(entry.tier).toBe('bronze');
     expect(entry.volume30dUsd).toBe(25_000);
     expect(entry.volumeTotalUsd).toBe(100_000);
     expect(entry.affiliateCount).toBe(5);
     expect(entry.referredVolumeUsd).toBe(50_000);
+  });
+});
+
+describe('truncateWallet (leaderboard address privacy)', () => {
+  it('returns the 0xXXXX...XXXX display form', () => {
+    expect(truncateWallet('0x0494f503912c101bfd76b88e4f5d8a33de284d1a')).toBe('0x0494...4d1a');
+  });
+
+  it('never exposes the full address (the leaderboard deanon fix)', () => {
+    const full = '0x' + 'a'.repeat(40);
+    const t = truncateWallet(full);
+    expect(t).toBe('0xaaaa...aaaa');
+    expect(t).not.toBe(full);
+    expect(t.length).toBeLessThan(full.length);
   });
 });
 

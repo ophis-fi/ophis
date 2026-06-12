@@ -54,7 +54,8 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
         <Num>{entry.rank}</Num>
       </Td>
       <Td>
-        <Num>{truncateAddress(entry.wallet)}</Num>
+        {/* entry.wallet is already truncated by the API (privacy); render as-is. */}
+        <Num>{entry.wallet}</Num>
         {isSelf && <YouTag>you</YouTag>}
       </Td>
       <Td>{tierLabel(entry.tier)}</Td>
@@ -73,7 +74,9 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
 
 export function LeaderboardPage(): ReactNode {
   const { account } = useWalletInfo()
-  const self = account?.toLowerCase()
+  // The /leaderboard returns TRUNCATED addresses (privacy), so identify the
+  // connected wallet's own row by truncating it the same way the API does.
+  const selfShort = account ? truncateAddress(account.toLowerCase()) : undefined
 
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null)
   const [loading, setLoading] = useState(true)
@@ -100,8 +103,8 @@ export function LeaderboardPage(): ReactNode {
 
   // The connected wallet's own entry, if it's in the returned page.
   const selfEntry = useMemo(
-    () => (self && entries ? entries.find((e) => e.wallet.toLowerCase() === self) : undefined),
-    [self, entries],
+    () => (selfShort && entries ? entries.find((e) => e.wallet === selfShort) : undefined),
+    [selfShort, entries],
   )
 
   return (
@@ -144,7 +147,7 @@ export function LeaderboardPage(): ReactNode {
           </Callout>
         ) : (
           <>
-            {self && !selfEntry && (
+            {selfShort && !selfEntry && (
               <p>
                 Your wallet isn&apos;t in the top {entries.length} yet. Route more volume to climb
                 the board.
@@ -164,9 +167,9 @@ export function LeaderboardPage(): ReactNode {
               <Tbody>
                 {entries.map((entry) => (
                   <LeaderboardRow
-                    key={entry.wallet}
+                    key={entry.rank}
                     entry={entry}
-                    isSelf={!!self && entry.wallet.toLowerCase() === self}
+                    isSelf={!!selfShort && entry.wallet === selfShort}
                   />
                 ))}
               </Tbody>
