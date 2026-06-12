@@ -105,6 +105,7 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
               activeCodes: [res.code],
               referredCount: 0,
               currentCycleVolumeUsd: 0,
+              lifetimeReferredVolumeUsd: 0,
             },
       )
       setCreateState('idle')

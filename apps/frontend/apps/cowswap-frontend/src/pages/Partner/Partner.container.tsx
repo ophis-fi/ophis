@@ -169,8 +169,8 @@ export function PartnerPage(): ReactNode {
               <MetricCard label="Referred wallets" value={data.referredCount} />
               <MetricCard
                 label="Referred volume"
-                value={formatUsd(data.currentCycleVolumeUsd)}
-                sublabel="this cycle"
+                value={formatUsd(data.lifetimeReferredVolumeUsd)}
+                sublabel="lifetime"
               />
             </MetricRow>
           </Section>
