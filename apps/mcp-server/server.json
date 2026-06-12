@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "fi.ophis/mcp",
   "title": "Ophis MCP",
-  "description": "Agent-facing tools for the Ophis intent-based DEX: parse swap intents, fetch best-execution quotes, build bounded ready-to-sign CoW orders, relay pre-signed orders, and look up fee-rebate tiers. Keyless and unauthenticated: the server never holds keys or signs; build_order pins the order receiver to the owner.",
+  "description": "Agent tools for the Ophis intent-based DEX: parse, quote, build, relay orders, look up fee tiers.",
   "version": "0.0.1",
   "websiteUrl": "https://ophis.fi",
   "repository": {
