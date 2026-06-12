@@ -1,7 +1,7 @@
 # Ophis domains — Cloudflare setup runbook
 
 Steps and ready-to-run snippets for migrating the four `ophis.*` domains
-from Gandi LiveDNS to Cloudflare and wiring them to the `greg-etm` Pages
+from Gandi LiveDNS to Cloudflare and wiring them to the `greg` Pages
 project.
 
 | Domain | Role | Status |
@@ -73,13 +73,13 @@ Verify with `dig NS ophis.fi +short`.
 ## Phase 3 — Wire `ophis.fi` to the Pages project
 
 Add `ophis.fi` and `www.ophis.fi` (optional) as custom domains on the
-`greg-etm` Pages project. Pages will provision a TLS certificate via
+`greg` Pages project. Pages will provision a TLS certificate via
 Cloudflare's edge.
 
 ```bash
 for host in ophis.fi www.ophis.fi; do
   curl -sS -X POST \
-    "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/greg-etm/domains" \
+    "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/greg/domains" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$host\"}"
@@ -204,7 +204,8 @@ Expected: `HTTP/2 301` followed by `location: https://ophis.fi/some/path?q=1`.
 - [ ] Redirects: `curl -sIL https://ophis.xyz/anything` → 301 to `https://ophis.fi/anything`
 - [ ] `https://ophis.fi/api/intent` accepts requests with `Origin: https://ophis.fi`
   (Origin allow-list update lives in `functions/api/intent.ts`)
-- [x] Dropped legacy `https://greg.pages.dev` from the Origin allow-lists
+- [x] Dropped the legacy `greg-etm.pages.dev` domain and the non-canonical
+  `.pages.dev` preview origins from the Origin allow-lists
   (done 2026-06-12: removed from `functions/api/intent.ts`,
   `functions/api/bungee`, and the rebate-indexer CORS list; no traffic remained)
 - [x] Canonical user-facing domain is `https://swap.ophis.fi`
