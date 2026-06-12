@@ -84,9 +84,10 @@ const ALLOWED_ORIGINS = new Set<string>([
   'https://ophis.fi',
   'https://swap.ophis.fi',
   'https://business.ophis.fi',
-  'https://greg-etm.pages.dev',
 ])
-const ALLOWED_ORIGIN_SUFFIXES = ['.greg-etm.pages.dev', '.greg.pages.dev']
+// No .pages.dev origins: the CF Pages project URL is non-canonical and not
+// allowlisted, forcing the ophis.fi custom domains as the only origins.
+const ALLOWED_ORIGIN_SUFFIXES: string[] = []
 
 function isAllowedOrigin(origin: string): boolean {
   if (ALLOWED_ORIGINS.has(origin)) return true

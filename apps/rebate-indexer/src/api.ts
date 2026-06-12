@@ -163,7 +163,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // GET/POST responses; load-bearing on the OPTIONS 204).
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
-    const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi', 'https://greg.pages.dev'];
+    const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi'];
     if (origin && allowed.includes(origin)) {
       reply.header('access-control-allow-origin', origin);
       reply.header('access-control-allow-methods', 'GET, POST, OPTIONS');

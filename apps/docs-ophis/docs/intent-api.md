@@ -74,7 +74,7 @@ wallet.
 
 | Control | Behaviour |
 | --- | --- |
-| **Origin allowlist** | Requests with a non-null `Origin` header are checked against `https://ophis.fi` and `https://swap.ophis.fi` plus Cloudflare Pages preview subdomains (`*.greg-etm.pages.dev` / `*.greg.pages.dev`). Browser calls from other origins get `403 FORBIDDEN`. |
+| **Origin allowlist** | Requests with a non-null `Origin` header are checked against `https://ophis.fi` and `https://swap.ophis.fi`. Browser calls from other origins get `403 FORBIDDEN`. |
 | **Non-browser callers** | curl and server-side scripts that omit `Origin` entirely are **allowed**, subject to the rate limit. This is the path agents use. |
 | **Rate limit** | 30 requests per IP per rolling 60-second window. Exceeding returns `429` with a `Retry-After` header. |
 | **Caching** | Identical normalized text (lowercased + trimmed) within an origin bucket is served from a 5-minute edge cache. Cache hits return the header `x-ophis-cache: hit` and don't consume an upstream model call. The rate-limit counter still increments on a cache hit. |
