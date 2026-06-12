@@ -352,7 +352,20 @@ jobs:
       # Pinned to a specific minor version for stable advisory-db fetch
       # semantics + config schema. Bump intentionally.
       - name: Install cargo-deny
-        run: cargo install --locked --version 0.19.6 cargo-deny
+        # Same transient-TLS guard as the cargo-audit install above: a dropped
+        # crates.io connection during `cargo install` fails the job on a pure
+        # network blip. Retry with backoff; a persistent failure still fails the
+        # job on the final attempt.
+        run: |
+          for attempt in 1 2 3; do
+            if cargo install --locked --version 0.19.6 cargo-deny; then
+              exit 0
+            fi
+            echo "::warning::cargo install cargo-deny failed (attempt ${attempt}/3); retrying after backoff"
+            sleep $((attempt * 15))
+          done
+          echo "::error::cargo install cargo-deny failed after 3 attempts"
+          exit 1
 
       - name: Run cargo deny (advisories + sources, strict)
         # Strict subset: advisories (CVEs) + sources (registry/git pins).
