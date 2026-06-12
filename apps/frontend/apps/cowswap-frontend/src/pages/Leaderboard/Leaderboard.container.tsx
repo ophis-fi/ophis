@@ -105,10 +105,15 @@ export function LeaderboardPage(): ReactNode {
   }, [account])
 
   // Self state is valid only when the loaded data was fetched for the CURRENT
-  // account (not a stale snapshot from a previously-connected wallet).
+  // account (not a stale snapshot from a previously-connected wallet). The `&&
+  // data` guard narrows the type without a non-null assertion (AGENTS.md).
   const selfResolved = !!data && data.account === account
+  // Whether this response actually carries backend self-marking. An older
+  // rebate-indexer (deploy skew) returns no `isSelf` field at all; in that case
+  // we must NOT claim the wallet is absent (every row would lack isSelf).
+  const selfMarkingAvailable = !!data && data.entries.some((e) => e.isSelf !== undefined)
   const selfEntry = useMemo(
-    () => (selfResolved ? data!.entries.find((e) => e.isSelf) : undefined),
+    () => (selfResolved && data ? data.entries.find((e) => e.isSelf) : undefined),
     [selfResolved, data],
   )
 
@@ -154,7 +159,7 @@ export function LeaderboardPage(): ReactNode {
           </Callout>
         ) : (
           <>
-            {account && selfResolved && !selfEntry && (
+            {account && selfResolved && selfMarkingAvailable && !selfEntry && (
               <p>
                 Your wallet isn&apos;t in the top {data.entries.length} yet. Route more volume to climb
                 the board.
