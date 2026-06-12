@@ -120,6 +120,9 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   }, [account, sign])
 
   const activeCode = stats?.activeCodes?.[0]
+  // Render the rate from the backend (8 is only a last-resort fallback before
+  // stats load), so the view tracks FEE_SHARE_BPS if the policy ever changes.
+  const rate = stats?.rateOfNetFeePct ?? 8
 
   // Partner-aware branch: a connected wallet whose own public stats report
   // kind === 'partner' gets the read-only partner summary, NOT the regular
@@ -142,10 +145,10 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
         ) : (
           <>
             <p>
-              Earn 8% of the fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
+              Earn {rate}% of the fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
             </p>
             <MetricRow>
-              <MetricCard label="Your rate" value="8%" sublabel="of the fee Ophis keeps" compact />
+              <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the fee Ophis keeps" compact />
               <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
               <MetricCard
                 label="Referred volume"

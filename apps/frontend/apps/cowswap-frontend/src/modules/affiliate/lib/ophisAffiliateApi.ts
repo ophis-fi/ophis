@@ -12,7 +12,18 @@
  * EIP-191), NOT `_signTypedData` (EIP-712, would not verify).
  */
 
+import { AFFILIATE_API_TIMEOUT_MS } from '../config/affiliateProgram.const'
+
 export const REBATES_API = process.env.REACT_APP_REBATES_API || 'https://rebates.ophis.fi'
+
+/**
+ * Abort a request that stalls (e.g. a hung CORS preflight or an unresponsive
+ * backend) so the UI fails fast instead of spinning forever. The timeout was
+ * defined in config but never wired into a fetch before.
+ */
+function timeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(AFFILIATE_API_TIMEOUT_MS)
+}
 
 export type AffiliateKind = 'regular' | 'partner'
 
@@ -134,7 +145,19 @@ export class AffiliateApiError extends Error {
 
 async function parseJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    throw new AffiliateApiError(res.status)
+    // Preserve the server's `{ error: ... }` reason. parseJson previously
+    // discarded it, leaving every failure a bare status with no message, so the
+    // UI could only ever show a generic error.
+    let message: string | undefined
+    try {
+      const body: unknown = await res.json()
+      if (body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string') {
+        message = (body as { error: string }).error
+      }
+    } catch {
+      // Non-JSON error body (e.g. a proxy/CORS error page): leave it undefined.
+    }
+    throw new AffiliateApiError(res.status, message)
   }
   return (await res.json()) as T
 }
@@ -164,6 +187,7 @@ export function bindRefCode(body: RefBindRequestBody): Promise<RefBindResponse> 
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: timeoutSignal(),
   }).then((res) => parseJson<RefBindResponse>(res))
 }
 
@@ -172,6 +196,7 @@ export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateRes
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: timeoutSignal(),
   }).then((res) => parseJson<RefCodeCreateResponse>(res))
 }
 
@@ -203,5 +228,6 @@ export function getPartnerDashboard(body: SignedRequestBody): Promise<PartnerDas
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
+    signal: timeoutSignal(),
   }).then((res) => parseJson<PartnerDashboard>(res))
 }

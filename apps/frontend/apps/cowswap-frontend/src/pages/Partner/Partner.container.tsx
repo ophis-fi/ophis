@@ -51,7 +51,7 @@ function formatDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-type AccessState = 'idle' | 'signing' | 'loading' | 'forbidden' | 'unauthorized' | 'rejected' | 'error'
+type AccessState = 'idle' | 'signing' | 'loading' | 'forbidden' | 'unauthorized' | 'rejected' | 'error' | 'network'
 
 export function PartnerPage(): ReactNode {
   const { account } = useWalletInfo()
@@ -85,8 +85,18 @@ export function PartnerPage(): ReactNode {
           setState('unauthorized')
           return
         }
+        // 400 / 409 / 429 / 5xx: a real server response. Keep the generic state
+        // but log the status + server message so it is diagnosable.
+        console.error('[PartnerPage] access failed:', error.status, error.message)
+        setState('error')
+        return
       }
-      setState('error')
+      // Not an API response at all: a CORS/network failure (TypeError "Failed to
+      // fetch") or a request timeout (DOMException). Surface a distinct message so
+      // a transport break is not mistaken for a server error (this is the class of
+      // failure the CORS-preflight bug produced).
+      console.error('[PartnerPage] access failed (network/transport):', error)
+      setState('network')
     }
   }, [account, sign])
 
@@ -137,6 +147,14 @@ export function PartnerPage(): ReactNode {
           {state === 'error' && (
             <Callout tone="warning" title="Could not load the dashboard">
               <p>Something went wrong. Please try again in a moment.</p>
+            </Callout>
+          )}
+          {state === 'network' && (
+            <Callout tone="warning" title="Could not reach the partner service">
+              <p>
+                A network or connection issue blocked the request. Check your connection and try
+                again in a moment.
+              </p>
             </Callout>
           )}
         </Section>
