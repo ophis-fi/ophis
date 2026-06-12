@@ -210,14 +210,16 @@ ophis/
 Root workspace (pnpm 9, Node 20.19+ or 22.12+, turborepo):
 
 ```sh
-pnpm install
-pnpm build      # JS/TS packages and apps
+pnpm install      # all root-workspace deps
+pnpm build        # builds members with a build step (currently @ophis/sdk)
+pnpm typecheck    # typechecks every member
+pnpm test         # runs the unit suites
 ```
 
-`pnpm build` covers the JS/TS members: `packages/*`, `apps/rebate-indexer`,
-`apps/mcp-server`, and `infra/rpc`. The Rust backend (`apps/backend`) is a
-**Cargo** workspace, not a pnpm package, so `pnpm build` does not compile it;
-build and test it with Cargo:
+Only `packages/sdk` has a build step today. `apps/rebate-indexer`,
+`apps/mcp-server`, and `infra/rpc` run directly (no `build` script) and are
+validated by `pnpm typecheck` and `pnpm test`. The Rust backend (`apps/backend`)
+is a **Cargo** workspace, not a pnpm package, so build and test it with Cargo:
 
 ```sh
 cd apps/backend && cargo build && cargo test
