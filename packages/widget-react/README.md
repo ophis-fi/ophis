@@ -11,6 +11,8 @@ that defaults the iframe host to `swap.ophis.fi`, tags orders with the Ophis
 npm install @ophis/widget-react react react-dom
 ```
 
+Requires **React 19** (the wrapped `@cowprotocol/widget-react` pins React 19).
+
 ## Use it
 
 ```tsx
