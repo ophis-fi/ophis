@@ -37,6 +37,7 @@ import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphis
 import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { ActionButton, MetricRow } from '../Affiliate/Affiliate.styled'
+import { PartnerEarnings, PartnerTraderRank, ReferredVolumeMetric } from './PartnerDashboardCards'
 import { PartnerEmptyReferees, PartnerReferralShare } from './PartnerReferralShare'
 
 function truncate(addr: string): string {
@@ -167,13 +168,22 @@ export function PartnerPage(): ReactNode {
             <MetricRow>
               <MetricCard label="Your rate" value={`${data.rateOfNetFeePct}%`} sublabel="of the fee Ophis keeps" />
               <MetricCard label="Referred wallets" value={data.referredCount} />
-              <MetricCard
-                label="Referred volume"
-                value={formatUsd(data.lifetimeReferredVolumeUsd)}
-                sublabel="lifetime"
+              <ReferredVolumeMetric
+                lifetimeUsd={data.lifetimeReferredVolumeUsd}
+                cycleUsd={data.currentCycleVolumeUsd}
               />
             </MetricRow>
+            <div style={{ marginTop: 12 }}>
+              <PartnerTraderRank account={account} />
+            </div>
           </Section>
+
+          <PartnerEarnings
+            estimatedCurrentCycleEarningsUsd={data.estimatedCurrentCycleEarningsUsd}
+            paidToDateWeth={data.paidToDateWeth}
+            paidToDateUsd={data.paidToDateUsd}
+            nextPayoutAt={data.nextPayoutAt}
+          />
 
           <Section id="link" title="Your referral link">
             <p>

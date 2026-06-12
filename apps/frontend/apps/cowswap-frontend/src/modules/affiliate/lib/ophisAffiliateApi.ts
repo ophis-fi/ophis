@@ -81,6 +81,16 @@ export interface PartnerReferee {
 /** POST /partner (whitelist + signature gated) */
 export interface PartnerDashboard extends AffiliateStats {
   referees: PartnerReferee[]
+  /**
+   * Earnings panel fields, added with a newer rebate-indexer. Optional so the
+   * frontend keeps typechecking and degrades gracefully if it deploys before
+   * the backend. estimatedCurrentCycleEarningsUsd is a volume-derived estimate
+   * (not a settled figure); paidToDate is exact, summed from executed batches.
+   */
+  estimatedCurrentCycleEarningsUsd?: number
+  paidToDateWeth?: number
+  paidToDateUsd?: number
+  nextPayoutAt?: string
 }
 
 /**

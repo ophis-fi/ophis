@@ -57,3 +57,21 @@ export function keepFractionBps(chainId: number): number {
 export function effectiveVolumeBps(kind: AffiliateKind, chainId: number): number {
   return (FEE_SHARE_BPS[kind] / 10_000) * GROSS_FEE_BPS * (keepFractionBps(chainId) / 10_000);
 }
+
+/**
+ * Volume-derived ESTIMATE of an affiliate's current-cycle earnings on a USD
+ * referred volume, for the dashboard. Mirrors the monthly accrual
+ * (volume * effectiveVolumeBps): the indexer covers only CoW-hosted chains, so
+ * use the hosted keep fraction. Regular affiliates are capped at
+ * REGULAR_VOL_CAP_USD / month; partners are uncapped. This is an estimate, not a
+ * settled figure: it overestimates stable-stable pairs (which pay 1 bp, not the
+ * 10 bp standard the indexer assumes) exactly as the monthly accrual does.
+ */
+export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): number {
+  if (!Number.isFinite(volumeUsd) || volumeUsd <= 0) return 0;
+  const cappedVolume = kind === 'regular' ? Math.min(volumeUsd, REGULAR_VOL_CAP_USD) : volumeUsd;
+  // Any non-Optimism chain id yields the hosted keep fraction (0.75); the
+  // indexer does not index Optimism, so all referred volume here is hosted.
+  const HOSTED_CHAIN_ID = 1;
+  return (cappedVolume * effectiveVolumeBps(kind, HOSTED_CHAIN_ID)) / 10_000;
+}

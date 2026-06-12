@@ -8,7 +8,7 @@ import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
-import { FEE_SHARE_BPS, type AffiliateKind } from './affiliate/rates.js';
+import { FEE_SHARE_BPS, estimateEarningsUsd, type AffiliateKind } from './affiliate/rates.js';
 
 // Bounds on the cycle window for a referrer's current-month affiliate stats.
 function currentCycleWindow(now: Date): { start: Date; end: Date } {
@@ -593,8 +593,24 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       ORDER BY r.bound_at DESC
       LIMIT 500
     `;
+    // Earnings panel figures. Estimated current-cycle earnings are volume-derived
+    // (the indexer has no per-trade fee); paid-to-date is exact, summed from the
+    // executed monthly Safe batches. Next payout is the 1st of next month, 02:00 UTC.
+    const estimatedCurrentCycleEarningsUsd = estimateEarningsUsd(stats.currentCycleVolumeUsd, stats.kind);
+    const [paid] = await sql<{ paid_weth: number; paid_usd: number }[]>`
+      SELECT
+        COALESCE(SUM(e.paid_wei::numeric) / 1e18, 0)::float8 AS paid_weth,
+        COALESCE(SUM((e.paid_wei::numeric / 1e18) * COALESCE(b.weth_usd_price, 0)), 0)::float8 AS paid_usd
+      FROM affiliate_batch_entries e
+      JOIN affiliate_batches b ON b.id = e.batch_id
+      WHERE e.referrer_wallet = ${buf} AND e.status = 'paid'
+    `;
     return {
       ...stats,
+      estimatedCurrentCycleEarningsUsd,
+      paidToDateWeth: paid?.paid_weth ?? 0,
+      paidToDateUsd: paid?.paid_usd ?? 0,
+      nextPayoutAt: nextFirstOfMonth().toISOString(),
       referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, lifetimeVolumeUsd: x.volume_usd ? parseFloat(x.volume_usd) : 0 })),
     };
   });
