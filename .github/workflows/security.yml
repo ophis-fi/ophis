@@ -312,7 +312,22 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install cargo-audit
-        run: cargo install --locked cargo-audit
+        # `cargo install` occasionally drops its crates.io TLS connection
+        # mid-download (curl [55] SSL_ERROR_SYSCALL while fetching a transitive
+        # dependency of cargo-audit's own toolchain), which fails the whole job
+        # on a pure network blip, not a real advisory. Retry with backoff so a
+        # single TLS drop does not fail CI; the final attempt still surfaces a
+        # genuine, persistent install failure.
+        run: |
+          for attempt in 1 2 3; do
+            if cargo install --locked cargo-audit; then
+              exit 0
+            fi
+            echo "::warning::cargo install cargo-audit failed (attempt ${attempt}/3); retrying after backoff"
+            sleep $((attempt * 15))
+          done
+          echo "::error::cargo install cargo-audit failed after 3 attempts"
+          exit 1
 
       - name: Run cargo audit
         # cargo audit's default: exits non-zero on vulnerabilities (HIGH/
