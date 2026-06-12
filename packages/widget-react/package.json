@@ -45,7 +45,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@cowprotocol/widget-react": "^3.1.1",
+    "@cowprotocol/widget-react": "3.1.1",
     "@ophis/sdk": "workspace:*"
   },
   "peerDependencies": {
