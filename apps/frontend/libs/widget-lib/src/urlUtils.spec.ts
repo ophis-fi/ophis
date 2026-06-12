@@ -6,15 +6,15 @@ const tradeType = TradeType.SWAP
 
 describe('sanitizeWidgetBaseUrl', () => {
   it('returns production default when baseUrl is omitted or blank', () => {
-    expect(sanitizeWidgetBaseUrl(undefined)).toBe('https://swap.cow.fi')
-    expect(sanitizeWidgetBaseUrl('')).toBe('https://swap.cow.fi')
-    expect(sanitizeWidgetBaseUrl('   ')).toBe('https://swap.cow.fi')
+    expect(sanitizeWidgetBaseUrl(undefined)).toBe('https://swap.ophis.fi')
+    expect(sanitizeWidgetBaseUrl('')).toBe('https://swap.ophis.fi')
+    expect(sanitizeWidgetBaseUrl('   ')).toBe('https://swap.ophis.fi')
   })
 
   it('when not throwing, logs and returns production default for invalid URL', () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => void 0)
 
-    expect(sanitizeWidgetBaseUrl('not a url')).toBe('https://swap.cow.fi')
+    expect(sanitizeWidgetBaseUrl('not a url')).toBe('https://swap.ophis.fi')
     expect(error).toHaveBeenCalledWith('[CoW Widget]', expect.stringMatching(/Not a valid URL/))
 
     error.mockRestore()
@@ -43,10 +43,10 @@ describe('sanitizeWidgetBaseUrl', () => {
   it('when not throwing, logs and returns default for disallowed URLs', () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => void 0)
 
-    expect(sanitizeWidgetBaseUrl('http://evil.com')).toBe('https://swap.cow.fi')
-    expect(sanitizeWidgetBaseUrl('https://user:pass@swap.cow.fi')).toBe('https://swap.cow.fi')
-    expect(sanitizeWidgetBaseUrl('javascript:alert(1)')).toBe('https://swap.cow.fi')
-    expect(sanitizeWidgetBaseUrl('data:text/html,<script>alert(1)</script>')).toBe('https://swap.cow.fi')
+    expect(sanitizeWidgetBaseUrl('http://evil.com')).toBe('https://swap.ophis.fi')
+    expect(sanitizeWidgetBaseUrl('https://user:pass@swap.cow.fi')).toBe('https://swap.ophis.fi')
+    expect(sanitizeWidgetBaseUrl('javascript:alert(1)')).toBe('https://swap.ophis.fi')
+    expect(sanitizeWidgetBaseUrl('data:text/html,<script>alert(1)</script>')).toBe('https://swap.ophis.fi')
     expect(error).toHaveBeenCalledTimes(4)
 
     error.mockRestore()
@@ -174,7 +174,7 @@ describe('buildWidgetUrlQuery', () => {
 
   it('includes locale in the iframe URL', () => {
     expect(buildWidgetUrl({ chainId, tradeType, locale: 'fr' })).toBe(
-      'https://swap.cow.fi/#/1/widget/swap/_/_?palette=null&lng=fr',
+      'https://swap.ophis.fi/#/1/widget/swap/_/_?palette=null&lng=fr',
     )
   })
 

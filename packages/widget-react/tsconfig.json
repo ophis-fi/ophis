@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "paths": {
+      "@ophis/widget-react": ["./src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*"]
+}
