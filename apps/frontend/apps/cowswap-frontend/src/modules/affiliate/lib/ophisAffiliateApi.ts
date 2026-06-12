@@ -54,7 +54,10 @@ export interface AffiliateStats {
   rateOfNetFeePct: number
   activeCodes: string[]
   referredCount: number
+  /** Referred volume in the current payout cycle (shown to regular affiliates). */
   currentCycleVolumeUsd: number
+  /** Lifetime referred volume since each referee bound (shown to partners). */
+  lifetimeReferredVolumeUsd: number
 }
 
 export interface PartnerReferee {

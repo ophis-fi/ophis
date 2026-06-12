@@ -27,14 +27,19 @@ async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   const isPartner = codes.some((c) => c.active && c.kind === 'partner');
   const kind: AffiliateKind = isPartner ? 'partner' : 'regular';
   const { start, end } = currentCycleWindow(now);
-  const [agg] = await sql<{ referred_count: string; volume_usd: string | null }[]>`
+  // Two referred-volume figures in one pass: this-cycle (shown to regular
+  // affiliates) and lifetime-since-bound (shown to partners). The cycle filter
+  // moves into a FILTER on the SUM so the lifetime SUM sees every post-bound trade.
+  const [agg] = await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
     SELECT
       COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
-      COALESCE(SUM(t.value_usd), 0)::text     AS volume_usd
+      COALESCE(SUM(t.value_usd) FILTER (
+        WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
+      ), 0)::text AS cycle_volume_usd,
+      COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
     FROM referrals r
     LEFT JOIN trades t
       ON t.wallet = r.referred_wallet
-      AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
     WHERE r.referrer_wallet = ${buf}
   `;
@@ -44,7 +49,9 @@ async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     rateOfNetFeePct: FEE_SHARE_BPS[kind] / 100, // 8 or 12
     activeCodes: codes.filter((c) => c.active).map((c) => c.code),
     referredCount: agg ? parseInt(agg.referred_count, 10) : 0,
-    currentCycleVolumeUsd: agg && agg.volume_usd ? parseFloat(agg.volume_usd) : 0,
+    currentCycleVolumeUsd: agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0,
+    // Partners display this (lifetime referred volume) instead of the cycle figure.
+    lifetimeReferredVolumeUsd: agg && agg.lifetime_volume_usd ? parseFloat(agg.lifetime_volume_usd) : 0,
   };
 }
 

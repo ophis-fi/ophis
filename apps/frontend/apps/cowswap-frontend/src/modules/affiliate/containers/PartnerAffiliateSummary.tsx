@@ -70,8 +70,8 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
           <MetricCard label="Referred wallets" value={stats.referredCount ?? 0} compact />
           <MetricCard
             label="Referred volume"
-            value={formatUsd(stats.currentCycleVolumeUsd ?? 0)}
-            sublabel="this cycle"
+            value={formatUsd(stats.lifetimeReferredVolumeUsd ?? 0)}
+            sublabel="lifetime"
             compact
           />
         </MetricRow>
