@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeAffiliate, type AffiliateReferrer } from '../../src/affiliate/computeAffiliate.js';
-import { OPTIMISM_CHAIN_ID } from '../../src/affiliate/rates.js';
+import { OPTIMISM_CHAIN_ID, estimateEarningsUsd } from '../../src/affiliate/rates.js';
 
 const wallet = (hex: string): `0x${string}` => (`0x${hex.padStart(40, '0')}`) as `0x${string}`;
 const HOSTED = 100; // Gnosis (any hosted chain — CoW takes 25%)
@@ -105,5 +105,29 @@ describe('computeAffiliate — matches the model doc earnings tables', () => {
       { referrer_wallet: wallet('a'), kind: 'regular', volumeByChain: new Map([[HOSTED, 100_000]]) },
     ];
     expect(() => computeAffiliate(ok, 0)).toThrow(/positive/);
+  });
+});
+
+describe('estimateEarningsUsd — dashboard current-cycle estimate (hosted-only)', () => {
+  it('partner is uncapped: $5M -> 0.9 bps -> $450 (matches the monthly accrual)', () => {
+    expect(estimateEarningsUsd(5_000_000, 'partner')).toBeCloseTo(450, 6);
+  });
+
+  it('regular under cap: $500k -> 0.6 bps -> $30', () => {
+    expect(estimateEarningsUsd(500_000, 'regular')).toBeCloseTo(30, 6);
+  });
+
+  it('regular caps at $1M/month: $5M -> $60, not $300', () => {
+    expect(estimateEarningsUsd(5_000_000, 'regular')).toBeCloseTo(60, 6);
+  });
+
+  it('partner $1M -> $90', () => {
+    expect(estimateEarningsUsd(1_000_000, 'partner')).toBeCloseTo(90, 6);
+  });
+
+  it('zero, negative, or non-finite volume -> 0', () => {
+    expect(estimateEarningsUsd(0, 'partner')).toBe(0);
+    expect(estimateEarningsUsd(-100, 'partner')).toBe(0);
+    expect(estimateEarningsUsd(Number.NaN, 'partner')).toBe(0);
   });
 });
