@@ -20,7 +20,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Callout, PageShell, Section, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
 
-import { type LeaderboardEntry, getLeaderboard } from 'modules/affiliate'
+import { type LeaderboardEntry, getLeaderboard, getRankStatus } from 'modules/affiliate'
 
 import { Num, SelfTr, YouTag } from './Leaderboard.styled'
 
@@ -54,8 +54,12 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
         <Num>{entry.rank}</Num>
       </Td>
       <Td>
-        {/* entry.wallet is already truncated by the API (privacy); render as-is. */}
-        <Num>{entry.wallet}</Num>
+        {/* The API already truncates wallets for privacy. truncateAddress is
+            idempotent on the 0xXXXX...XXXX form, so re-applying it here is
+            defense-in-depth: it preserves the privacy guarantee during deploy
+            skew (frontend live before the indexer, or an older REBATES_API that
+            still returns full addresses). */}
+        <Num>{truncateAddress(entry.wallet)}</Num>
         {isSelf && <YouTag>you</YouTag>}
       </Td>
       <Td>{tierLabel(entry.tier)}</Td>
@@ -74,13 +78,15 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
 
 export function LeaderboardPage(): ReactNode {
   const { account } = useWalletInfo()
-  // The /leaderboard returns TRUNCATED addresses (privacy), so identify the
-  // connected wallet's own row by truncating it the same way the API does.
-  const selfShort = account ? truncateAddress(account.toLowerCase()) : undefined
 
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  // The connected wallet's leaderboard RANK (1-based position) from /rank/:wallet.
+  // The public /leaderboard truncates addresses for privacy and truncated forms
+  // can collide across distinct addresses, so the connected row is identified by
+  // its unique rank, never by the (non-unique) truncated wallet string.
+  const [selfPosition, setSelfPosition] = useState<number | null>(null)
 
   useEffect(() => {
     const signal = { cancelled: false }
@@ -101,10 +107,34 @@ export function LeaderboardPage(): ReactNode {
     }
   }, [])
 
-  // The connected wallet's own entry, if it's in the returned page.
+  // Fetch the connected wallet's rank from /rank/:wallet. position is the unique
+  // 1-based leaderboard rank (same volume-desc, wallet-asc ordering as
+  // /leaderboard), or null when the wallet has no indexed volume.
+  useEffect(() => {
+    if (!account) {
+      setSelfPosition(null)
+      return
+    }
+    const signal = { cancelled: false }
+    setSelfPosition(null) // clear any stale rank when the account changes
+    getRankStatus(account)
+      .then((res) => {
+        if (!signal.cancelled) setSelfPosition(res.position)
+      })
+      .catch(() => {
+        // 404 (no indexed volume) or a transient error: treat as unranked.
+        if (!signal.cancelled) setSelfPosition(null)
+      })
+    return () => {
+      signal.cancelled = true
+    }
+  }, [account])
+
+  // The connected wallet's own entry, matched by unique rank (not the truncated
+  // wallet string, which can collide across distinct addresses).
   const selfEntry = useMemo(
-    () => (selfShort && entries ? entries.find((e) => e.wallet === selfShort) : undefined),
-    [selfShort, entries],
+    () => (selfPosition !== null && entries ? entries.find((e) => e.rank === selfPosition) : undefined),
+    [selfPosition, entries],
   )
 
   return (
@@ -147,7 +177,7 @@ export function LeaderboardPage(): ReactNode {
           </Callout>
         ) : (
           <>
-            {selfShort && !selfEntry && (
+            {account && !selfEntry && (
               <p>
                 Your wallet isn&apos;t in the top {entries.length} yet. Route more volume to climb
                 the board.
@@ -169,7 +199,7 @@ export function LeaderboardPage(): ReactNode {
                   <LeaderboardRow
                     key={entry.rank}
                     entry={entry}
-                    isSelf={!!selfShort && entry.wallet === selfShort}
+                    isSelf={selfPosition !== null && entry.rank === selfPosition}
                   />
                 ))}
               </Tbody>
