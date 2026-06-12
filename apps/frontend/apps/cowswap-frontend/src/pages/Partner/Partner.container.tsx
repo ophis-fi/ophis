@@ -34,8 +34,10 @@ import {
 } from 'ophis/ds'
 
 import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphisAffiliateSign } from 'modules/affiliate'
+import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { ActionButton, MetricRow } from '../Affiliate/Affiliate.styled'
+import { PartnerEmptyReferees, PartnerReferralShare } from './PartnerReferralShare'
 
 function truncate(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
@@ -111,10 +113,8 @@ export function PartnerPage(): ReactNode {
     >
       {!account ? (
         <Callout tone="info" title="Connect a wallet">
-          <p>
-            Use the <strong>Connect</strong> button in the header (top-right) to link your partner
-            wallet, then sign in below to load your dashboard.
-          </p>
+          <p>Connect your partner wallet, then sign in below to load your dashboard.</p>
+          <ConnectWalletCta>Connect Partner Wallet</ConnectWalletCta>
         </Callout>
       ) : !data ? (
         <Section id="access" title="Access your dashboard">
@@ -175,9 +175,18 @@ export function PartnerPage(): ReactNode {
             </MetricRow>
           </Section>
 
+          <Section id="link" title="Your referral link">
+            <p>
+              Share your code or link. When a net-new wallet trades on Ophis after using it, they
+              are bound to you, and you earn {data.rateOfNetFeePct}% of the net fee Ophis keeps on
+              their trades.
+            </p>
+            <PartnerReferralShare code={data.activeCodes[0]} />
+          </Section>
+
           <Section id="referees" title="Referees">
             {data.referees.length === 0 ? (
-              <p>No referees yet. Share your code to start referring wallets.</p>
+              <PartnerEmptyReferees rate={data.rateOfNetFeePct} />
             ) : (
               <>
                 <Table caption="Your referred wallets, bind date, and lifetime referred volume.">
