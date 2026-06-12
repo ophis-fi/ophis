@@ -19,6 +19,38 @@ export interface LeaderboardEntry {
   volumeTotalUsd: number;
   affiliateCount: number;
   referredVolumeUsd: number;
+  /**
+   * True only on the caller's own row, set when /leaderboard is queried with a
+   * `self` address. Present only when `self` was supplied. Matched on the FULL
+   * address server-side within the same snapshot, so it is collision-free (unlike
+   * the truncated `wallet`) and skew-free (unlike cross-referencing a live rank
+   * against this cached snapshot).
+   */
+  isSelf?: boolean;
+}
+
+/**
+ * Cached entry: a LeaderboardEntry plus the full lowercase wallet hex (no 0x),
+ * kept SERVER-SIDE only for self-matching. `walletHexFull` is stripped before the
+ * entry is serialized to a client, so the full address is never exposed.
+ */
+interface CachedLeaderboardEntry extends LeaderboardEntry {
+  walletHexFull: string;
+}
+
+/**
+ * Mark the caller's own row by FULL-address compare within a single snapshot,
+ * then strip the server-only `walletHexFull`. Pure (no I/O) so it is unit-tested
+ * directly. With `self` null, returns the public entries unchanged (no isSelf).
+ */
+export function markSelf(
+  entries: CachedLeaderboardEntry[],
+  self: string | null,
+): LeaderboardEntry[] {
+  const selfHex = self ? self.toLowerCase().replace(/^0x/, '') : null;
+  return entries.map(({ walletHexFull, ...entry }) =>
+    selfHex ? { ...entry, isSelf: walletHexFull === selfHex } : entry,
+  );
 }
 
 export interface LeaderboardResponse {
@@ -81,14 +113,14 @@ export function computeTierProgress(
  * small first request can't pin a truncated result, nor a large one over-serve).
  */
 const MAX_LEADERBOARD = 100;
-let leaderboardCache: { entries: LeaderboardEntry[]; updatedAt: string; expiresAt: number } | null = null;
+let leaderboardCache: { entries: CachedLeaderboardEntry[]; updatedAt: string; expiresAt: number } | null = null;
 
 /**
  * Fetch leaderboard entries from the database.
  * Computes: per-wallet 30d volume, total volume, affiliate count, referred volume.
  * Returns sorted by volume30dUsd descending with 1-based ranking.
  */
-async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[]> {
+async function fetchLeaderboardEntries(limit: number): Promise<CachedLeaderboardEntry[]> {
   // Import sql here to avoid module-level database connection during test setup
   const { sql } = await import('./db/index.js');
 
@@ -150,6 +182,9 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
     return {
       rank: idx + 1,
       wallet: truncateWallet(`0x${row.wallet_hex}`),
+      // Server-only: the full lowercase hex (no 0x) for collision-free
+      // self-matching. Stripped by markSelf() before serialization.
+      walletHexFull: row.wallet_hex.toLowerCase(),
       tier: tier.name,
       volume30dUsd: volume30d,
       volumeTotalUsd: parseFloat(row.volume_total_usd),
@@ -161,8 +196,13 @@ async function fetchLeaderboardEntries(limit: number): Promise<LeaderboardEntry[
 
 /**
  * Get the leaderboard with caching. Cache hits reset the 60s timer.
+ *
+ * `self` (optional, a full lowercase 0x address validated by the caller) marks
+ * the connected wallet's own row via markSelf(). The marking is applied per
+ * request AFTER the shared snapshot cache, so the cache stays shared and the
+ * full address is never cached or serialized.
  */
-export async function getLeaderboard(limit: number): Promise<LeaderboardResponse> {
+export async function getLeaderboard(limit: number, self?: string): Promise<LeaderboardResponse> {
   const now = Date.now();
   if (!leaderboardCache || leaderboardCache.expiresAt <= now) {
     const entries = await fetchLeaderboardEntries(MAX_LEADERBOARD);
@@ -173,7 +213,7 @@ export async function getLeaderboard(limit: number): Promise<LeaderboardResponse
     };
   }
 
-  const entries = leaderboardCache.entries.slice(0, limit);
+  const entries = markSelf(leaderboardCache.entries.slice(0, limit), self ?? null);
   return { updatedAt: leaderboardCache.updatedAt, total: entries.length, entries };
 }
 

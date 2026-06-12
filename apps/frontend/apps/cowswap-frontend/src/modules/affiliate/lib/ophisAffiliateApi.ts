@@ -122,6 +122,11 @@ export interface LeaderboardEntry {
   volumeTotalUsd: number
   affiliateCount: number
   referredVolumeUsd: number
+  /** True only on the connected wallet's own row, set by the backend when
+   *  /leaderboard is queried with `?self=<address>`. The backend matches on the
+   *  FULL address within one snapshot (collision-free), so the frontend must
+   *  identify itself by this flag, NOT by comparing the truncated `wallet`. */
+  isSelf?: boolean
 }
 
 /** GET /leaderboard?limit=N (PUBLIC, sorted by volume30dUsd desc) */
@@ -227,8 +232,16 @@ export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateRes
   }).then((res) => parseJson<RefCodeCreateResponse>(res))
 }
 
-export function getLeaderboard(limit = 100): Promise<LeaderboardResponse> {
-  return fetch(`${REBATES_API}/leaderboard?limit=${encodeURIComponent(String(limit))}`).then((res) =>
+/**
+ * GET /leaderboard?limit=N[&self=<address>]. When `self` (the connected wallet)
+ * is passed, the backend marks that wallet's own row with `isSelf: true` (matched
+ * on the full address within one snapshot). The self-marked response is
+ * caller-specific, so the backend returns it `private, no-store`.
+ */
+export function getLeaderboard(limit = 100, self?: string): Promise<LeaderboardResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (self) params.set('self', self.toLowerCase())
+  return fetch(`${REBATES_API}/leaderboard?${params.toString()}`).then((res) =>
     parseJson<LeaderboardResponse>(res),
   )
 }
