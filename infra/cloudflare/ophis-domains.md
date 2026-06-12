@@ -12,7 +12,9 @@ project.
 | `ophis.exchange` | Redirect → `ophis.fi` | already at Gandi (autorenew on, expires 2027-05-10) |
 
 Cloudflare account: `4761b41ef352631db0ed367fea98ffdc` (per memory).
-Pages project: `greg-etm` (canonical URL `https://greg-etm.pages.dev`).
+Pages project: `greg` (project URL `https://greg.pages.dev`; canonical
+user-facing domain `https://swap.ophis.fi`). The `.pages.dev` URL is the
+internal deploy target only and is not in any Origin allow-list.
 
 ---
 
@@ -86,9 +88,9 @@ done
 
 Pages will tell you which DNS records to create. Typically:
 
-- `ophis.fi` → `CNAME` to `greg-etm.pages.dev` (CF will flatten the apex
+- `ophis.fi` → `CNAME` to `greg.pages.dev` (CF will flatten the apex
   CNAME automatically since the zone lives on CF).
-- `www.ophis.fi` → `CNAME` to `greg-etm.pages.dev`.
+- `www.ophis.fi` → `CNAME` to `greg.pages.dev`.
 
 Add the records to the `ophis.fi` zone:
 
@@ -100,12 +102,12 @@ ZONE_FI=$(curl -sS -H "Authorization: Bearer $CF_API_TOKEN" \
 # Apex (CNAME-flattened by CF)
 curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_FI/dns_records" \
   -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"@","content":"greg-etm.pages.dev","proxied":true}'
+  -d '{"type":"CNAME","name":"@","content":"greg.pages.dev","proxied":true}'
 
 # www
 curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_FI/dns_records" \
   -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"www","content":"greg-etm.pages.dev","proxied":true}'
+  -d '{"type":"CNAME","name":"www","content":"greg.pages.dev","proxied":true}'
 ```
 
 Wait for the Pages domain to flip from `pending` → `active` (~5 min).
@@ -202,9 +204,10 @@ Expected: `HTTP/2 301` followed by `location: https://ophis.fi/some/path?q=1`.
 - [ ] Redirects: `curl -sIL https://ophis.xyz/anything` → 301 to `https://ophis.fi/anything`
 - [ ] `https://ophis.fi/api/intent` accepts requests with `Origin: https://ophis.fi`
   (Origin allow-list update lives in `functions/api/intent.ts`)
-- [ ] Drop legacy `https://greg-etm.pages.dev` from the Origin allow-list
-  after ~30 days of zero traffic on that hostname
-- [ ] Update memory entry `project_greg.md` with the new canonical URL
+- [x] Dropped legacy `https://greg.pages.dev` from the Origin allow-lists
+  (done 2026-06-12: removed from `functions/api/intent.ts`,
+  `functions/api/bungee`, and the rebate-indexer CORS list; no traffic remained)
+- [x] Canonical user-facing domain is `https://swap.ophis.fi`
 
 ## Notes
 

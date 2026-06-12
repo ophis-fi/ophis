@@ -130,15 +130,12 @@ const ALLOWED_ORIGINS = new Set<string>([
   // Without this entry that real user flow was 403'd (only null-origin
   // curl/MCP + the ophis.fi origin worked). Added 2026-05-29.
   'https://swap.ophis.fi',
-  // Legacy Pages URL — kept during the .pages.dev → ophis.fi transition,
-  // safe to drop once the custom domain has been live for a while and
-  // no traffic remains on the .pages.dev hostname.
-  'https://greg-etm.pages.dev',
-  // Cloudflare Pages preview deploys land at *.greg-etm.pages.dev or
-  // *.greg.pages.dev. Allow them by suffix in `isAllowedOrigin` below.
 ])
 
-const ALLOWED_ORIGIN_SUFFIXES = ['.greg-etm.pages.dev', '.greg.pages.dev']
+// No .pages.dev origins are allowlisted. Production traffic is the custom
+// domains above; the Cloudflare Pages project URL is non-canonical and
+// intentionally rejected here, forcing swap.ophis.fi as the only swap origin.
+const ALLOWED_ORIGIN_SUFFIXES: string[] = []
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false

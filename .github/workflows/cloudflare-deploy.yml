@@ -121,7 +121,7 @@ jobs:
           # production environment by lib/common-utils/environments.ts.
           # Without this, production runs as "local" env and defaults to
           # staging endpoints.
-          REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi|greg-etm\.pages\.dev)$
+          REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi)$
           # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
           # the Ophis Safe). The dedicated API key (BUNGEE_API) is intentionally
           # NOT built into the bundle (Bungee requires it server-side); it is a

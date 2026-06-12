@@ -4,18 +4,18 @@ This document captures everything needed to submit Ophis to the Safe app store, 
 
 ## Current app URL
 
-- **Vercel branch alias (always-latest main):** `https://greg-etm.pages.dev`
-- **Phase 2.5 will swap this for a real Ophis domain** (`greg.app`, one of the openletz domains, or whatever brand work picks).
+- **Canonical domain:** `https://swap.ophis.fi` (Cloudflare Pages custom domain
+  on the `greg` project; the `.pages.dev` deploy URL is internal-only).
 
 ## Manifest
 
-Served at `/manifest.json` on the deployment. Contents (verified 2026-05-03 against deploy `804274b1`):
+Served at `/manifest.json` on the deployment. Contents (`homepage_url` is the canonical `https://swap.ophis.fi`):
 
 ```json
 {
   "background_color": "#ffffff",
   "display": "standalone",
-  "homepage_url": "https://greg-etm.pages.dev",
+  "homepage_url": "https://swap.ophis.fi",
   "description": "Ophis — DCA and TWAP for power users on top of CoW Protocol. MEV-protected, gasless, multi-chain.",
   "iconPath": "/android-chrome-512x512.png",
   "icons": [
@@ -38,7 +38,7 @@ Served at `/manifest.json` on the deployment. Contents (verified 2026-05-03 agai
 Safe fetches the manifest cross-origin from `app.safe.global`. CORS must allow it.
 
 ```
-$ curl -sI https://greg-etm.pages.dev/manifest.json | grep -iE 'access-control|content-type'
+$ curl -sI https://swap.ophis.fi/manifest.json | grep -iE 'access-control|content-type'
 access-control-allow-origin: *
 content-type: application/json; charset=utf-8
 ```
@@ -50,7 +50,7 @@ content-type: application/json; charset=utf-8
 Safe iframes the app URL with `<iframe src="$appUrl" sandbox="...">`. Check for blocking response headers:
 
 ```
-$ curl -sI https://greg-etm.pages.dev/ | grep -iE 'x-frame|content-security-policy|frame-ancestors'
+$ curl -sI https://swap.ophis.fi/ | grep -iE 'x-frame|content-security-policy|frame-ancestors'
 (no output)
 ```
 
@@ -63,7 +63,7 @@ To visually confirm the iframe loads with cowswap's Safe SDK detecting the Safe 
 ```bash
 SAFE_APP_TEST_URL="https://app.safe.global/apps/open?safe=eth%3A0xfb1bffc9d739b8d520daf37df666da4c687191ea&appUrl=$(python3 -c "
 import urllib.parse
-print(urllib.parse.quote('https://greg-etm.pages.dev'))
+print(urllib.parse.quote('https://swap.ophis.fi'))
 ")"
 echo "$SAFE_APP_TEST_URL"
 # Open in browser; the Ophis UI should render inside Safe's iframe.
