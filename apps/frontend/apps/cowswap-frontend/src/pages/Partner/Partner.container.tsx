@@ -179,26 +179,39 @@ export function PartnerPage(): ReactNode {
             {data.referees.length === 0 ? (
               <p>No referees yet. Share your code to start referring wallets.</p>
             ) : (
-              <Table caption="Your referred wallets, bind date, and lifetime referred volume.">
-                <Thead>
-                  <Tr>
-                    <Th>Wallet</Th>
-                    <Th>Bound</Th>
-                    <Th>Lifetime volume</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {data.referees.map((referee) => (
-                    <Tr key={referee.wallet}>
-                      <Td>
-                        <InlineCode>{truncate(referee.wallet)}</InlineCode>
-                      </Td>
-                      <Td>{formatDate(referee.boundAt)}</Td>
-                      <Td>{formatUsd(referee.lifetimeVolumeUsd)}</Td>
+              <>
+                <Table caption="Your referred wallets, bind date, and lifetime referred volume.">
+                  <Thead>
+                    <Tr>
+                      <Th>Wallet</Th>
+                      <Th>Bound</Th>
+                      <Th>Lifetime volume</Th>
                     </Tr>
-                  ))}
-                </Tbody>
-              </Table>
+                  </Thead>
+                  <Tbody>
+                    {data.referees.map((referee) => (
+                      <Tr key={referee.wallet}>
+                        <Td>
+                          <InlineCode>{truncate(referee.wallet)}</InlineCode>
+                        </Td>
+                        <Td>{formatDate(referee.boundAt)}</Td>
+                        <Td>{formatUsd(referee.lifetimeVolumeUsd)}</Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+                {/* The /partner referees query is capped (ORDER BY bound_at DESC LIMIT N),
+                    so a partner with more referees than the cap sees a truncated table.
+                    referredCount is the un-capped total; the shown count is read from the
+                    array length so this note never hardcodes (or drifts from) the backend
+                    LIMIT. */}
+                {data.referredCount > data.referees.length && (
+                  <p style={{ marginTop: 8, opacity: 0.75, fontSize: '0.9em' }}>
+                    Showing the {data.referees.length} most recently bound of {data.referredCount}{' '}
+                    referees. Reach out to your Ophis contact for a full export.
+                  </p>
+                )}
+              </>
             )}
           </Section>
         </>
