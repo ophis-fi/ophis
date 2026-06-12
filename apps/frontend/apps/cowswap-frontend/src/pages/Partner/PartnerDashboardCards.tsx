@@ -38,12 +38,16 @@ export function PartnerTraderRank({ account }: { account: string }): ReactNode {
 
   useEffect(() => {
     const signal = { cancelled: false }
+    // Clear any prior wallet's rank up front so an account change never leaves a
+    // stale chip showing while the new fetch is in flight, or if it fails non-404.
+    setData(null)
     getRankStatus(account)
       .then((res) => {
         if (!signal.cancelled) setData(res)
       })
       .catch((error: unknown) => {
-        // 404 = no indexed volume yet: show Unranked. Any other error: stay hidden.
+        // 404 = no indexed volume yet: show Unranked. Any other error leaves data
+        // null (cleared above), so the chip stays hidden.
         if (!signal.cancelled && error instanceof AffiliateApiError && error.status === 404) {
           setData({
             wallet: account.toLowerCase(),

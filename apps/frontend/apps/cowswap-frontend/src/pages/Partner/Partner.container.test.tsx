@@ -1,10 +1,11 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import {
   type PartnerDashboard,
   type RankStatus,
+  AffiliateApiError,
   getPartnerDashboard,
   getRankStatus,
   useOphisAffiliateSign,
@@ -161,5 +162,25 @@ describe('PartnerPage referee-table truncation note', () => {
     await renderAndLoad()
 
     expect(await screen.findByText(/Trader rank:/i)).toBeTruthy()
+  })
+
+  it('clears the trader-rank chip when the account changes and the new fetch fails', async () => {
+    getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
+    // Account A resolves Gold; any other account's /rank fails with a non-404.
+    getRankStatusMock.mockImplementation((acct: string) =>
+      acct.toLowerCase() === ACCOUNT.toLowerCase()
+        ? Promise.resolve(GOLD_RANK)
+        : Promise.reject(new AffiliateApiError(500)),
+    )
+    const { rerender } = render(<PartnerPage />)
+    fireEvent.click(screen.getByRole('button', { name: /Access Partner Dashboard/i }))
+    await screen.findByText('Referees')
+    expect(await screen.findByText(/Trader rank: Gold/i)).toBeTruthy()
+
+    // Switch wallets: the new account's rank fetch fails, so the chip must clear
+    // rather than keep showing the prior wallet's rank.
+    useWalletInfoMock.mockReturnValue({ account: '0xdef0000000000000000000000000000000000002', chainId: 1 })
+    rerender(<PartnerPage />)
+    await waitFor(() => expect(screen.queryByText(/Trader rank:/i)).toBeNull())
   })
 })
