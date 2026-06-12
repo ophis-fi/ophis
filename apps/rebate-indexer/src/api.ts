@@ -27,22 +27,39 @@ async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   const isPartner = codes.some((c) => c.active && c.kind === 'partner');
   const kind: AffiliateKind = isPartner ? 'partner' : 'regular';
   const { start, end } = currentCycleWindow(now);
-  // Two referred-volume figures in one pass: this-cycle (shown to regular
-  // affiliates) and lifetime-since-bound (shown to partners). The cycle filter
-  // moves into a FILTER on the SUM so the lifetime SUM sees every post-bound trade.
-  const [agg] = await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
-    SELECT
-      COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
-      COALESCE(SUM(t.value_usd) FILTER (
-        WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-      ), 0)::text AS cycle_volume_usd,
-      COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
-    FROM referrals r
-    LEFT JOIN trades t
-      ON t.wallet = r.referred_wallet
-      AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
-    WHERE r.referrer_wallet = ${buf}
-  `;
+  // Referred-volume figures. Regular affiliates only ever display the
+  // current-cycle figure on the public, rate-limited /affiliate path, so for
+  // them the cycle window stays in the JOIN and the query scans only this
+  // cycle's trades. Partners display lifetime referred volume, so for them the
+  // JOIN widens to every post-bound trade and the cycle figure becomes a FILTER.
+  // Branching on kind keeps the common regular path off a full referee-history
+  // scan on every profile refresh.
+  const [agg] = isPartner
+    ? await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
+        SELECT
+          COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
+          COALESCE(SUM(t.value_usd) FILTER (
+            WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
+          ), 0)::text AS cycle_volume_usd,
+          COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
+        FROM referrals r
+        LEFT JOIN trades t
+          ON t.wallet = r.referred_wallet
+          AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+        WHERE r.referrer_wallet = ${buf}
+      `
+    : await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
+        SELECT
+          COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
+          COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
+          '0'::text AS lifetime_volume_usd
+        FROM referrals r
+        LEFT JOIN trades t
+          ON t.wallet = r.referred_wallet
+          AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
+          AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+        WHERE r.referrer_wallet = ${buf}
+      `;
   return {
     wallet: referrer,
     kind,
