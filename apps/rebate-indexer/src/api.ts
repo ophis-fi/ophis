@@ -155,6 +155,19 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
 
+  // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
+  // per-wallet /tier HTML page). None of it is meant for search indexing, and
+  // Google was crawling the bare host root and flagging it 404 (GSC, 2026-06).
+  // Tell crawlers to stay off the whole host. Permissive rate limit: robots.txt
+  // is fetched freely by crawlers and is harmless.
+  app.get('/robots.txt', {
+    config: {
+      rateLimit: { max: 200, timeWindow: '1 minute' },
+    },
+  }, async (_req, reply) =>
+    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\n'),
+  );
+
   app.get('/health', {
     config: {
       rateLimit: { max: 200, timeWindow: '1 minute' }, // permissive — uptime monitors hit this continuously
