@@ -68,12 +68,49 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.block_timestamp >= r.bound_at
       AND t.value_usd IS NOT NULL
+      -- appData-wins: exclude from the bind path EXACTLY the trades the appData
+      -- query below credits, so the two paths are complementary (no trade is
+      -- double-counted, none vanishes). That credit predicate is: an ACTIVE code
+      -- owned by someone OTHER than the trader. So a NULL/stale/inactive code OR a
+      -- self-owned code (where the appData path rejects the self-referral) is NOT
+      -- excluded here and correctly falls back to this wallet-bind path.
+      AND NOT (
+        t.appdata_ref_code IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM ref_codes rc
+          WHERE rc.code = t.appdata_ref_code AND rc.active AND rc.referrer_wallet <> t.wallet
+        )
+      )
     GROUP BY r.referrer_wallet, t.chain_id
   `;
 
-  // referrer -> (chainId -> volumeUsd)
+  // appData attribution: trades whose appData carries an ACTIVE referral code are
+  // credited to that code's owner directly (no wallet bind required) — this is how
+  // an agent builder's routed volume self-attributes. Self-referral (trader == code
+  // owner) earns nothing (rc.referrer_wallet <> t.wallet). Disjoint from the bind
+  // query above (which excludes exactly these trades), so no trade is double-counted.
+  // Folded into the SAME byReferrer map below, so the Regular $1M cap (applied per
+  // referrer in computeAffiliate) sees the COMBINED bind + appData volume.
+  const appdataRows = await sql<{ referrer_hex: string; chain_id: number; volume_usd: string }[]>`
+    SELECT
+      encode(rc.referrer_wallet, 'hex') AS referrer_hex,
+      t.chain_id                        AS chain_id,
+      SUM(t.value_usd)::text            AS volume_usd
+    FROM trades t
+    JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
+    WHERE t.appdata_ref_code IS NOT NULL
+      AND t.block_timestamp >= ${monthStart.toISOString()}
+      AND t.block_timestamp <  ${monthEnd.toISOString()}
+      AND t.value_usd IS NOT NULL
+      AND rc.referrer_wallet <> t.wallet
+    GROUP BY rc.referrer_wallet, t.chain_id
+  `;
+
+  // referrer -> (chainId -> volumeUsd). Both result sets are summed in; they cover
+  // disjoint trade sets, so adding per (referrer, chain) is correct (a referrer can
+  // earn bind volume AND appData volume on the same chain — both count).
   const byReferrer = new Map<`0x${string}`, Map<number, number>>();
-  for (const row of rows) {
+  for (const row of [...rows, ...appdataRows]) {
     const referrer = `0x${row.referrer_hex}` as `0x${string}`;
     const volume = parseFloat(row.volume_usd);
     if (!Number.isFinite(volume) || volume <= 0) continue;

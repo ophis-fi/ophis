@@ -46,6 +46,11 @@ export const trades = pgTable(
     appCode: text('app_code').notNull(),
     partnerFeeWei: uint256('partner_fee_wei'),
 
+    // Affiliate referral code from the order's appData (metadata.ophisReferrer.code),
+    // normalized + grammar-validated by the fetcher. NULL when the order carried no
+    // code. Accrual attributes such a trade to the code owner (migration 0009).
+    appdataRefCode: text('appdata_ref_code'),
+
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
 
