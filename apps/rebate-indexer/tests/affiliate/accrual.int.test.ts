@@ -82,4 +82,55 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(r.referrer_wallet).toBe(`0x${referrer}`);
     expect(r.payoutWallet).toBe(`0x${payout}`);
   });
+
+  it('attributes appData-tagged trades to the code owner (appData-wins, self-referral excluded, stale-code fallback)', async () => {
+    const refA = W('a99a'); // owner of an ACTIVE appData code
+    const refB = W('b99b'); // owner of an ACTIVE bind code + bound referees
+    const refC = W('c99c'); // owner of an INACTIVE code (should earn nothing)
+    const trader = W('d99d'); // unbound wallet, trades tagged with refA's code
+    const bound = W('e99e'); // bound to refB; also makes one appData-tagged trade
+    const stale = W('f99f'); // bound to refB; trades tagged with an INACTIVE code
+    const selfOwner = W('1a2b'); // bound to refB AND owns an active code; self-tags
+
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('appref1', decode(${refA},'hex'), 'regular', true)`;
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('bind1', decode(${refB},'hex'), 'regular', true)`;
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('dead1', decode(${refC},'hex'), 'regular', false)`;
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('selfown', decode(${selfOwner},'hex'), 'regular', true)`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${bound},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${stale},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${selfOwner},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
+
+    const now = new Date();
+    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
+    const ins = (uid: string, wallet: string, usd: string, ref: string | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${wallet},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${ref}, ${usd}, now())`;
+
+    await ins('a91', trader, '100000', 'appref1'); // unbound trader, tagged -> refA (direct)
+    await ins('a92', bound, '200000', null); //        bound wallet, untagged -> refB (bind)
+    await ins('a93', bound, '50000', 'appref1'); //     bound wallet, tagged ACTIVE -> refA (appData-wins, NOT refB)
+    await ins('a94', refA, '1000000', 'appref1'); //    refA's OWN wallet, tagged refA's code -> self-referral, NO credit
+    await ins('a95', stale, '30000', 'dead1'); //       bound wallet, tagged INACTIVE code -> falls back to refB (bind)
+    await ins('a96', selfOwner, '40000', 'selfown'); //  bound wallet self-tagging its OWN active code -> appData rejects (self-referral), so it must FALL BACK to refB's bind (not vanish)
+
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const refs = await buildAffiliateReferrers(start, end);
+
+    const a = refs.find((r) => r.referrer_wallet === `0x${refA}`);
+    const b = refs.find((r) => r.referrer_wallet === `0x${refB}`);
+    // refA: appData volume only (trader 100k + bound 50k); self-referral 1M excluded.
+    expect(a).toBeTruthy();
+    expect(a.volumeByChain.get(100)).toBe(150000);
+    // refB: bind volume only — untagged 200k + stale-inactive-code fallback 30k +
+    // selfOwner self-code fallback 40k = 270k. The active-non-self appData-tagged
+    // trade is appData-wins -> NOT double-counted here.
+    expect(b).toBeTruthy();
+    expect(b.volumeByChain.get(100)).toBe(270000);
+    // The INACTIVE code owner earns nothing (no active code, no bind).
+    expect(refs.find((r) => r.referrer_wallet === `0x${refC}`)).toBeFalsy();
+    // The self-tagging owner earns nothing for its own self-tagged trade (it went
+    // to its bind referrer refB, not to itself).
+    expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
+  });
 });

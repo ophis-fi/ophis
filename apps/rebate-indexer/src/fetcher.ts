@@ -29,6 +29,9 @@ export interface PendingTrade {
   sellAmount: bigint;
   buyAmount: bigint;
   appCode: AppCode;
+  /** Referral code from appData (metadata.ophisReferrer.code), normalized +
+   *  grammar-validated, or null when absent/malformed. */
+  appdataRefCode: string | null;
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
@@ -86,9 +89,20 @@ export async function fetchChainTrades(
       // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
       const order = await getOrder(chainId, t.orderUid as `0x${string}`);
       let appCode: string | undefined;
+      let appdataRefCode: string | null = null;
       try {
         const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
         appCode = meta?.appCode;
+        // Affiliate attribution: an order may carry metadata.ophisReferrer.code.
+        // appData is attacker-controllable, so keep the code ONLY if it matches
+        // the registry grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/); lowercase to
+        // match ref_codes. A malformed code is dropped to null (the trade then
+        // falls back to the wallet-bind path at accrual time).
+        const rawRef = meta?.metadata?.ophisReferrer?.code;
+        if (typeof rawRef === 'string') {
+          const code = rawRef.trim().toLowerCase();
+          if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
+        }
       } catch {
         appCode = undefined;
       }
@@ -125,6 +139,7 @@ export async function fetchChainTrades(
         sellAmount: BigInt(execSell),
         buyAmount: BigInt(execBuy),
         appCode,
+        appdataRefCode,
       });
     }
 
@@ -245,6 +260,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                 buyAmount: r.buyAmount,
                 appCode: r.appCode,
                 partnerFeeWei: null,
+                appdataRefCode: r.appdataRefCode,
               })),
             )
             .onConflictDoNothing();

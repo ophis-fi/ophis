@@ -16,6 +16,12 @@ export {
 } from './partner-fee.js';
 
 export {
+  normalizeOphisReferralCode,
+  buildOphisReferrerMetadata,
+  type OphisReferrerTag,
+} from './referral.js';
+
+export {
   getOphisOrderbookUrl,
   OPHIS_ORDERBOOK_URLS,
 } from './orderbook.js';

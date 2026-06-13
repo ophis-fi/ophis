@@ -16,6 +16,7 @@ import {
   getOphisOrderbookUrl,
   getOphisOrderDomain,
   buildOphisAppDataPartnerFee,
+  buildOphisReferrerMetadata,
   ophisOrderReceiver,
   assertReceiverIsOwner,
   ophisDefaultPartnerFee,
@@ -95,11 +96,16 @@ export interface OphisAppData {
  * from @ophis/sdk buildOphisAppDataPartnerFee) where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
  */
-export function buildOphisAppData(chainId: number, slippageBips?: number): OphisAppData {
+export function buildOphisAppData(chainId: number, slippageBips?: number, referrerCode?: string): OphisAppData {
   const partnerFee = buildOphisAppDataPartnerFee(chainId)
   const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' } }
   if (partnerFee) metadata.partnerFee = partnerFee
   if (slippageBips !== undefined) metadata.quote = { slippageBips }
+  // Affiliate attribution: tag the order with a referral code under
+  // metadata.ophisReferrer.code so the rebate indexer credits that code's owner
+  // for this trade's volume. buildOphisReferrerMetadata validates the grammar
+  // (throws on a malformed code) so a bad code fails the build, not silently.
+  if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode))
 
   const doc: Record<string, unknown> = { version: APP_DATA_VERSION, appCode: 'Ophis', metadata }
   const fullAppData = deterministicStringify(doc)
@@ -136,6 +142,12 @@ export interface BuildOrderParams {
    * the autonomous-agent drain vector, so it is loudly named and off by default.
    */
   unsafeCustomReceiver?: Address
+  /**
+   * Affiliate referral code to embed in appData (metadata.ophisReferrer.code).
+   * Credits that code's owner for this trade's volume. Validated against the
+   * registry grammar; an invalid code throws.
+   */
+  referrerCode?: string
 }
 
 export interface BuiltOrder {
@@ -190,7 +202,7 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
   // Hard guard immediately before the order is handed back for signing.
   assertReceiverIsOwner(owner, receiver, { allowCustomReceiver: p.unsafeCustomReceiver !== undefined })
 
-  const { fullAppData, appDataHash, partnerFee } = buildOphisAppData(chainId, p.slippageBips)
+  const { fullAppData, appDataHash, partnerFee } = buildOphisAppData(chainId, p.slippageBips, p.referrerCode)
   const validFor = p.validForSeconds ?? 1200
   if (!Number.isInteger(validFor) || validFor <= 0 || validFor > 60 * 60 * 24 * 365) {
     throw new Error(`build_order: validForSeconds must be a positive integer < 1 year, got ${validFor}`)

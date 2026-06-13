@@ -35,6 +35,10 @@ interface RateLimit {
 interface Env {
   OPHIS_MCP: DurableObjectNamespace
   MCP_RATE_LIMIT?: RateLimit
+  /** Optional server-wide default affiliate referral code. When set, build_order
+   *  embeds it in appData unless the call passes its own referrerCode. Lets an
+   *  operator attribute every order from their MCP instance to their own code. */
+  OPHIS_DEFAULT_REFERRER_CODE?: string
 }
 
 const SERVER_INFO = { name: 'ophis', version: '0.0.1' } as const
@@ -127,6 +131,10 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
             .string()
             .optional()
             .describe('DANGER: send proceeds to a non-owner address. The autonomous-agent drain vector — only set if intentional.'),
+          referrerCode: z
+            .string()
+            .optional()
+            .describe('Affiliate referral code to embed in appData (credits that code\'s owner for this trade). Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE if set. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
         },
       },
       async (a) => {
@@ -146,6 +154,9 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
                 partiallyFillable: a.partiallyFillable,
                 slippageBips: a.slippageBips,
                 unsafeCustomReceiver: a.unsafeCustomReceiver as Address | undefined,
+                // Per-call code wins; otherwise the server's configured default
+                // (so an operator can attribute all orders to their own code).
+                referrerCode: a.referrerCode ?? this.env.OPHIS_DEFAULT_REFERRER_CODE,
               },
               Math.floor(Date.now() / 1000),
             ),
