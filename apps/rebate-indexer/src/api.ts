@@ -19,7 +19,7 @@ function currentCycleWindow(now: Date): { start: Date; end: Date } {
 
 // Referrer's effective tier + active codes + this-cycle referred volume/count.
 // Shared by GET /affiliate/:wallet (public) and POST /partner (signature-gated).
-async function getReferrerStats(referrer: `0x${string}`, now: Date) {
+export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   const buf = Buffer.from(referrer.slice(2), 'hex');
   const codes = await sql<{ code: string; kind: string; active: boolean }[]>`
     SELECT code, kind, active FROM ref_codes WHERE referrer_wallet = ${buf} ORDER BY created_at
@@ -46,6 +46,13 @@ async function getReferrerStats(referrer: `0x${string}`, now: Date) {
         LEFT JOIN trades t
           ON t.wallet = r.referred_wallet
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+          -- appData-wins (mirror of accrual): exclude trades attributed via an
+          -- ACTIVE code owned by someone other than the trader, so bind volume
+          -- here + appData volume below are disjoint (no double-count). The
+          -- LEFT JOIN still preserves the referral row, so referredCount is intact.
+          AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
+            SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
+          ))
         WHERE r.referrer_wallet = ${buf}
       `
     : await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
@@ -58,17 +65,49 @@ async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           ON t.wallet = r.referred_wallet
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+          -- appData-wins (mirror of accrual): see the partner branch above.
+          AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
+            SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
+          ))
         WHERE r.referrer_wallet = ${buf}
       `;
+
+  // appData-attributed volume for THIS referrer (mirrors accrual's appData path):
+  // trades carrying one of this referrer's ACTIVE codes, owner != referrer (self-
+  // referral excluded). Disjoint from the bind agg above (which now excludes these
+  // trades), so summing the two does NOT double-count, and the displayed volume
+  // matches what the monthly payout actually accrues. referredCount stays bind-
+  // based (an appData tag credits volume; it does not create a bound referee).
+  const [appdataAgg] = await sql<{ cycle_volume_usd: string; lifetime_volume_usd: string }[]>`
+    SELECT
+      COALESCE(SUM(t.value_usd) FILTER (
+        WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
+      ), 0)::text AS cycle_volume_usd,
+      COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
+    FROM trades t
+    JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
+    WHERE rc.referrer_wallet = ${buf}
+      AND rc.referrer_wallet <> t.wallet
+      AND t.value_usd IS NOT NULL
+  `;
+
+  const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
+  const bindLifetime = agg && agg.lifetime_volume_usd ? parseFloat(agg.lifetime_volume_usd) : 0;
+  const appdataCycle = appdataAgg ? parseFloat(appdataAgg.cycle_volume_usd) : 0;
+  const appdataLifetime = appdataAgg ? parseFloat(appdataAgg.lifetime_volume_usd) : 0;
+
   return {
     wallet: referrer,
     kind,
     rateOfNetFeePct: FEE_SHARE_BPS[kind] / 100, // 8 or 12
     activeCodes: codes.filter((c) => c.active).map((c) => c.code),
     referredCount: agg ? parseInt(agg.referred_count, 10) : 0,
-    currentCycleVolumeUsd: agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0,
-    // Partners display this (lifetime referred volume) instead of the cycle figure.
-    lifetimeReferredVolumeUsd: agg && agg.lifetime_volume_usd ? parseFloat(agg.lifetime_volume_usd) : 0,
+    // Bind + appData volume (disjoint). Drives both the display and the partner
+    // earnings estimate, so the dashboard now matches the payout.
+    currentCycleVolumeUsd: bindCycle + appdataCycle,
+    // Partners display lifetime referred volume (bind + appData); regular never
+    // displays lifetime (stays 0, unchanged).
+    lifetimeReferredVolumeUsd: isPartner ? bindLifetime + appdataLifetime : 0,
   };
 }
 
@@ -588,6 +627,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
              COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
       FROM referrals r
       LEFT JOIN trades t ON t.wallet = r.referred_wallet AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+        -- appData-wins (mirror of the headline stats + accrual): exclude trades
+        -- attributed via an active code owned by someone other than the trader, so
+        -- each referee's shown bind volume matches the corrected headline + payout.
+        AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
+          SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
+        ))
       WHERE r.referrer_wallet = ${buf}
       GROUP BY r.referred_wallet, r.bound_at
       ORDER BY r.bound_at DESC

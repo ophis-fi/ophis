@@ -4,6 +4,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 let pg: StartedPostgreSqlContainer;
 let sql: any;
 let buildAffiliateReferrers: (s: Date, e: Date) => Promise<any[]>;
+let getReferrerStats: (w: `0x${string}`, now: Date) => Promise<any>;
 
 const W = (h: string) => h.padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
@@ -15,6 +16,7 @@ beforeAll(async () => {
   await runMigrations();
   ({ sql } = await import('../../src/db/index.js'));
   ({ buildAffiliateReferrers } = await import('../../src/affiliate/accrual.js'));
+  ({ getReferrerStats } = await import('../../src/api.js'));
 }, 180_000);
 afterAll(async () => { await sql?.end?.(); await pg?.stop(); });
 
@@ -132,5 +134,29 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     // The self-tagging owner earns nothing for its own self-tagged trade (it went
     // to its bind referrer refB, not to itself).
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
+  });
+
+  it('getReferrerStats: current-cycle volume = bind + appData, no double-count, referredCount bind-based', async () => {
+    const refS = W('5ec0'); // referrer owning an active code used for BOTH bind + appData
+    const boundW = W('b0c0'); // bound to refS; makes an untagged AND a tagged trade
+    const pureW = W('9c0c'); // unbound; trades tagged with refS's code (appData only)
+
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('scode', decode(${refS},'hex'), 'regular', true)`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundW},'hex'),'scode',decode(${refS},'hex'),true, now() - interval '40 days')`;
+    // Current-cycle trades (now()), so currentCycleWindow(new Date()) includes them.
+    const insNow = (uid: string, wallet: string, usd: string, ref: string | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${wallet},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${ref}, ${usd}, now())`;
+    await insNow('5a1', boundW, '100000', null); //  bound, untagged -> bind
+    await insNow('5a2', boundW, '40000', 'scode'); // bound, tagged active (owner refS <> trader) -> appData ONLY (excluded from bind)
+    await insNow('5a3', pureW, '25000', 'scode'); //  unbound, tagged -> appData
+
+    const stats = await getReferrerStats(`0x${refS}`, new Date());
+    expect(stats.kind).toBe('regular');
+    // bind 100k + appData (40k + 25k) = 165k. The bound+tagged 40k trade is counted
+    // ONCE (appData), not also in bind -> a double-count would show 205k.
+    expect(stats.currentCycleVolumeUsd).toBe(165000);
+    // referredCount stays bind-based: only boundW is a bound referee (pureW is appData-only).
+    expect(stats.referredCount).toBe(1);
   });
 });
