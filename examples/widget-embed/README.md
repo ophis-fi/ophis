@@ -1,4 +1,4 @@
-# Ophis swap widget — embed examples
+# Ophis swap widget: embed examples
 
 Drop a live, MEV-protected, intent-based swap into any site. Orders route
 through the Ophis solver network across 11 chains and carry the Ophis partner
@@ -10,7 +10,7 @@ Full guide: **[docs.ophis.fi/widget](https://docs.ophis.fi/widget)**
 ## Run the demo
 
 ```bash
-# from this folder — any static server works
+# from this folder: any static server works
 npx serve .
 # open http://localhost:3000/index.html
 ```
@@ -24,7 +24,7 @@ npx serve .
 | `snippets/react.tsx` | React | **Recommended.** `@ophis/widget-react` injects `baseUrl`, `appCode` and pins the fee recipient. |
 | `snippets/nextjs.tsx` | Next.js (App Router) | Same, loaded client-only (`ssr: false`). |
 | `snippets/vanilla.html` | Plain JS | `@cowprotocol/widget-lib` pointed at `swap.ophis.fi`. Full control, no framework. |
-| `snippets/iframe.html` | Raw iframe | Zero deps, quickest preview. No fee/theme/events — use the above for production. |
+| `snippets/iframe.html` | Raw iframe | Zero deps, quickest preview. No fee/theme/events; use the above for production. |
 
 ## Config you'll actually set
 
@@ -46,8 +46,8 @@ via `api.cow.fi`).
 ## One requirement on the host
 
 The widget loads `swap.ophis.fi` in an iframe on **your** origin, so the host
-must allow third-party framing — CSP `frame-ancestors *`, no `X-Frame-Options:
-SAMEORIGIN`. Ophis ships this. If you self-host an Ophis fork, set it too, or the
+must allow third-party framing (CSP `frame-ancestors *`, no `X-Frame-Options:
+SAMEORIGIN`). Ophis ships this. If you self-host an Ophis fork, set it too, or the
 iframe is blocked.
 
 Clickjacking is mitigated structurally: every fund-moving action (connect,
