@@ -1,0 +1,19 @@
+<!--
+  Quickest preview: a raw iframe of the Ophis widget route. Zero dependencies.
+
+  Caveat: a bare iframe does NOT carry a partner fee or theme/event wiring.
+  For fee attribution, theming, wallet-provider injection and ready/trade
+  events, use the widget-lib (vanilla.html) or React (react.tsx) snippet —
+  they build the widget URL and the postMessage channel for you.
+
+  Requires the host (swap.ophis.fi) to allow third-party framing
+  (CSP frame-ancestors *). Ophis ships this; a self-hosted fork must too.
+-->
+<iframe
+  src="https://swap.ophis.fi/#/1/widget/swap"
+  width="450"
+  height="640"
+  style="border: 0; border-radius: 16px"
+  title="Ophis swap"
+  allow="clipboard-read; clipboard-write; web-share"
+></iframe>

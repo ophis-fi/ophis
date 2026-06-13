@@ -80,11 +80,25 @@ createCowSwapWidget(container, {
 Pass a `theme` (`'light'` or `'dark'`) or a full palette object: see the
 upstream widget docs. The widget inherits the Ophis app styling by default.
 
+## Live demo + copy-paste snippets
+
+A runnable demo and one-file snippets for React, Next.js, vanilla JS and a raw
+iframe live in the repo at
+[`examples/widget-embed/`](https://github.com/ophis-fi/ophis/tree/main/examples/widget-embed).
+Run `npx serve .` in that folder and open `index.html` to see the widget
+embedded against a third-party origin.
+
 ## Notes
 
 - The widget is GPL-3.0, like the rest of Ophis.
-- Optimism orders settle on the Ophis self-hosted orderbook; CoW-hosted chains
-  (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea) route via
-  `api.cow.fi`. Host selection is handled inside the widget app.
+- Optimism orders settle on the Ophis self-hosted orderbook; the CoW-hosted
+  chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea,
+  Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
+  widget app — 11 chains in total.
+- **Self-hosting an Ophis fork?** The host must allow third-party framing — CSP
+  `frame-ancestors *` and no `X-Frame-Options: SAMEORIGIN` — or integrators'
+  iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is
+  mitigated structurally: every fund-moving action signs in a wallet popup
+  outside the frame.
 - For programmatic / agent integrations (no iframe), use the
   [AI agent guide](./ai-agents.md) and [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk) directly.

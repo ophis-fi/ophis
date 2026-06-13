@@ -23,10 +23,21 @@
 #   explicit allow-list is brittle and would routinely break on
 #   cowswap subtree pulls. Acceptable trade-off: still blocks
 #   mixed-content + non-HTTPS exfiltration.
-# - frame-ancestors 'self' permits same-origin iframes for the
-#   widget/Safe-app flow without allowing arbitrary third-party
-#   embeds. Loosen to specific wallet origins (e.g.
-#   https://app.safe.global) when widget embedding is promoted.
+# - frame-ancestors *: the Ophis swap surface is an EMBEDDABLE WIDGET
+#   (see docs/widget.md + @ophis/widget-react). Integrators load
+#   swap.ophis.fi in an iframe on their own origin, so third-party
+#   framing must be allowed. This matches the upstream CoW posture
+#   (swap.cow.fi ships frame-ancestors *; the widget is the product).
+#   Clickjacking is mitigated structurally, NOT by frame-busting:
+#   every value-moving action (connect, token approval, order
+#   signature) completes only via a wallet-rendered popup OUTSIDE the
+#   frame, showing the real tx/typed-data — a redress overlay cannot
+#   forge it. In-frame-only state (slippage, theme) moves no funds.
+#   The widget<->host channel is separately origin-gated by the
+#   postMessage transport (libs/iframe-transport), not by CSP.
+#   NOTE: because this is a hash-routed SPA (one origin, '#/.../widget'
+#   route), CF _headers cannot scope framing to the widget path alone;
+#   the whole swap app is therefore embeddable, as it is for CoW.
 # - object-src 'none' kills <embed>/<object>/<applet>.
 # - upgrade-insecure-requests forces any plain-http URL the bundle
 #   contains to be fetched over HTTPS.
@@ -36,13 +47,17 @@
 # resource is blocked, add its origin to the matching directive.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' https://challenges.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; frame-ancestors 'self'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self' https://formspree.io; object-src 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval' https://challenges.cloudflare.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self' https:; frame-ancestors *; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self' https://formspree.io; object-src 'none'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
-  # Belt-and-braces with CSP frame-ancestors 'self' (above): the legacy
-  # X-Frame-Options is the only clickjacking control some older embedding
-  # contexts honour. SAMEORIGIN is the analogue of frame-ancestors 'self'. (audit P3)
-  X-Frame-Options: SAMEORIGIN
+  # NO X-Frame-Options: the swap surface is an embeddable widget and must
+  # load cross-origin on integrator sites. X-Frame-Options cannot express
+  # an open/any-origin allowance (only DENY / SAMEORIGIN), and a browser
+  # that honours a stale SAMEORIGIN here would BLOCK the very embedding the
+  # widget exists for. Framing control is therefore expressed solely by the
+  # CSP `frame-ancestors *` directive above (the modern, sole successor to
+  # XFO); clickjacking is mitigated structurally by out-of-frame wallet
+  # signing, as documented in the Notes block. (supersedes audit P3)
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), midi=(), interest-cohort=()
   Cross-Origin-Opener-Policy: same-origin-allow-popups
