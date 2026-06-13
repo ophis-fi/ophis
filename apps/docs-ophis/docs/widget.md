@@ -94,9 +94,9 @@ embedded against a third-party origin.
 - Optimism orders settle on the Ophis self-hosted orderbook; the CoW-hosted
   chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea,
   Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
-  widget app — 11 chains in total.
-- **Self-hosting an Ophis fork?** The host must allow third-party framing — CSP
-  `frame-ancestors *` and no `X-Frame-Options: SAMEORIGIN` — or integrators'
+  widget app, 11 chains in total.
+- **Self-hosting an Ophis fork?** The host must allow third-party framing (CSP
+  `frame-ancestors *`, no `X-Frame-Options: SAMEORIGIN`), or integrators'
   iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is
   mitigated structurally: every fund-moving action signs in a wallet popup
   outside the frame.
