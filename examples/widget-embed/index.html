@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embed Ophis — live widget demo</title>
+    <link rel="icon" href="https://ophis.fi/favicon.ico" />
+    <style>
+      :root {
+        --bg: #0e0c08;
+        --panel: #161208;
+        --ink: #f3ede0;
+        --muted: #a59b86;
+        --saffron: #f4b53f;
+        --line: #2a2316;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background: radial-gradient(1200px 600px at 80% -10%, #1d1708 0%, var(--bg) 60%);
+        color: var(--ink);
+        font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        min-height: 100vh;
+      }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+      header { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+      header img { width: 40px; height: 40px; }
+      h1 { font-size: 28px; margin: 0; letter-spacing: -0.02em; }
+      .tag { color: var(--saffron); font-weight: 600; }
+      p.lede { color: var(--muted); max-width: 620px; margin: 6px 0 32px; }
+      .grid { display: grid; grid-template-columns: 470px 1fr; gap: 28px; align-items: start; }
+      @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+      #ophis-widget { min-height: 640px; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
+      .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 14px; }
+      pre { margin: 0; padding: 16px; background: #0b0905; border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8dcc2; }
+      .chains { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+      .chip { font-size: 12px; color: var(--ink); border: 1px solid var(--line); background: #110d06; border-radius: 999px; padding: 3px 10px; }
+      .note { font-size: 12.5px; color: var(--muted); margin-top: 14px; }
+      a { color: var(--saffron); }
+      .err { display: none; border: 1px solid #5a2a1a; background: #1c0f08; color: #ffb38a; border-radius: 12px; padding: 14px 16px; font-size: 13px; margin-top: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <img src="https://ophis.fi/ophis-claw-saffron.svg" alt="Ophis" />
+        <h1>Embed <span class="tag">Ophis</span></h1>
+      </header>
+      <p class="lede">
+        A live, MEV-protected, intent-based swap on 11 chains — dropped into any
+        site with a few lines. This page embeds the real widget below.
+      </p>
+
+      <div class="grid">
+        <div>
+          <div id="ophis-widget"></div>
+          <div id="frame-error" class="err">
+            The widget could not load. If you are running this against a host that
+            still sends <code>frame-ancestors 'self'</code> / <code>X-Frame-Options: SAMEORIGIN</code>,
+            third-party embedding is blocked. Deploy the framing change in this PR
+            (or point <code>baseUrl</code> at a host that allows embedding) and reload.
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <h2>The whole integration</h2>
+            <pre><code>import { createCowSwapWidget }
+  from '@cowprotocol/widget-lib'
+
+createCowSwapWidget(el, {
+  params: {
+    baseUrl: 'https://swap.ophis.fi',
+    appCode: 'MyDapp-via-Ophis',
+    partnerFee: {
+      bps: 10, // 0.10%
+      recipient:
+        '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+    },
+    tradeType: 'swap',
+    sell: { asset: 'ETH' },
+    buy:  { asset: 'USDC' },
+    theme: 'dark',
+  },
+})</code></pre>
+            <p class="note">
+              React? <code>npm i @ophis/widget-react</code> →
+              <code>&lt;OphisWidget /&gt;</code> injects <code>baseUrl</code>,
+              <code>appCode</code> and pins the fee recipient for you. Full guide:
+              <a href="https://docs.ophis.fi/widget">docs.ophis.fi/widget</a>.
+            </p>
+            <div class="chains" aria-label="supported chains">
+              <span class="chip">Ethereum</span>
+              <span class="chip">Optimism</span>
+              <span class="chip">Base</span>
+              <span class="chip">Arbitrum</span>
+              <span class="chip">Polygon</span>
+              <span class="chip">Avalanche</span>
+              <span class="chip">BNB Chain</span>
+              <span class="chip">Gnosis</span>
+              <span class="chip">Linea</span>
+              <span class="chip">Plasma</span>
+              <span class="chip">Ink</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      // Pinned versions keep the demo reproducible. Bump alongside the repo's
+      // @cowprotocol/widget-lib dependency.
+      import { createCowSwapWidget } from 'https://esm.sh/@cowprotocol/widget-lib@4.2.0'
+
+      const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+
+      try {
+        createCowSwapWidget(document.getElementById('ophis-widget'), {
+          params: {
+            baseUrl: 'https://swap.ophis.fi',
+            appCode: 'Ophis-Widget-Demo',
+            partnerFee: { bps: 10, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+            tradeType: 'swap',
+            sell: { asset: 'ETH' },
+            buy: { asset: 'USDC' },
+            width: '450px',
+            height: '640px',
+            theme: 'dark',
+          },
+        })
+      } catch (err) {
+        // Surface the framing/load failure instead of a silent blank box.
+        console.error('Ophis widget failed to mount:', err)
+        document.getElementById('frame-error').style.display = 'block'
+      }
+    </script>
+  </body>
+</html>
