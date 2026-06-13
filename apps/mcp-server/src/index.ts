@@ -39,6 +39,10 @@ interface Env {
    *  embeds it in appData unless the call passes its own referrerCode. Lets an
    *  operator attribute every order from their MCP instance to their own code. */
   OPHIS_DEFAULT_REFERRER_CODE?: string
+  /** Rebate-indexer base URL. submit_order pings {base}/tier/<owner> to register
+   *  a referrer-tagged order's owner for indexing (so the affiliate is actually
+   *  credited). Defaults to the production indexer. */
+  OPHIS_REBATES_API?: string
 }
 
 const SERVER_INFO = { name: 'ophis', version: '0.0.1' } as const
@@ -202,17 +206,42 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       },
       async (a) => {
         try {
-          return ok(
-            await submitOrder({
-              chainId: a.chainId,
-              order: a.order as never,
-              signature: a.signature,
-              signingScheme: a.signingScheme,
-              from: a.from as Address,
-              fullAppData: a.fullAppData,
-              allowCustomReceiver: a.allowCustomReceiver,
-            }),
-          )
+          const result = await submitOrder({
+            chainId: a.chainId,
+            order: a.order as never,
+            signature: a.signature,
+            signingScheme: a.signingScheme,
+            from: a.from as Address,
+            fullAppData: a.fullAppData,
+            allowCustomReceiver: a.allowCustomReceiver,
+          })
+          // The order was accepted by the orderbook (a real, signed order). If it
+          // carries an affiliate referral code, register the owner so the rebate
+          // indexer (which fetches trades per tracked wallet) actually indexes
+          // this trade and credits the referrer — otherwise a pure agent-routed
+          // wallet that never visits the swap UI would never be fetched. Best
+          // effort + fire-and-forget: a registration failure must NOT fail the
+          // already-relayed order. Gated on a referral tag so untagged orders do
+          // not grow tracked_wallets, and only after a successful relay so a bogus
+          // submit cannot register arbitrary wallets.
+          try {
+            const ref = (JSON.parse(a.fullAppData) as { metadata?: { ophisReferrer?: { code?: unknown } } })
+              ?.metadata?.ophisReferrer?.code
+            if (typeof ref === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a.from)) {
+              const base = this.env.OPHIS_REBATES_API ?? 'https://rebates.ophis.fi'
+              // AWAIT (not fire-and-forget): a bare background fetch in a Durable
+              // Object can be cancelled once the response returns, making the
+              // registration unreliable. Await it so it actually completes, bounded
+              // by a short timeout and fully swallowed so it can never delay-fail or
+              // fail the already-relayed order.
+              await fetch(`${base}/tier/${a.from.toLowerCase()}`, {
+                signal: AbortSignal.timeout(2500),
+              }).catch(() => {})
+            }
+          } catch {
+            // Malformed fullAppData: skip registration, the order still succeeded.
+          }
+          return ok(result)
         } catch (e) {
           return fail(e)
         }
