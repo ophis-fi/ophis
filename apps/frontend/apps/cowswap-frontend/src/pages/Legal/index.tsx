@@ -215,7 +215,8 @@ export default function LegalPage(): ReactNode {
           For any personal data processed through the Service, the controller within the meaning
           of the EU General Data Protection Regulation (Regulation (EU) 2016/679,{' '}
           <strong>&quot;GDPR&quot;</strong>) is the operator identified in{' '}
-          section 8 (Commit Media S.à r.l., Luxembourg). For any data-related request, use{' '}
+          section 8 (Commit Media S.à r.l., Luxembourg). For any data-related request, email{' '}
+          <TextLink href="mailto:contact@ophis.fi">contact@ophis.fi</TextLink> or use{' '}
           <TextLink href="/contact">the contact form</TextLink>.
         </p>
 
@@ -332,8 +333,10 @@ export default function LegalPage(): ReactNode {
           (GDPR arts. 15 to 22). As stated above, the operator does not intentionally collect
           account-registration data or identity documents; however, pseudonymous wallet addresses
           and IP metadata at the CDN layer may qualify as personal data depending on linkability.
-          To exercise a right, use <TextLink href="/contact">the contact form</TextLink> with
-          enough detail to identify the data in question. You also have the right to lodge a
+          To exercise a right, email{' '}
+          <TextLink href="mailto:contact@ophis.fi">contact@ophis.fi</TextLink> or use{' '}
+          <TextLink href="/contact">the contact form</TextLink> with enough detail to identify
+          the data in question. You also have the right to lodge a
           complaint with a supervisory authority, in Luxembourg the{' '}
           <TextLink href="https://cnpd.public.lu" external>
             Commission nationale pour la protection des données (CNPD)
@@ -347,8 +350,9 @@ export default function LegalPage(): ReactNode {
       <Section id="operator" title="8. Operator (legal entity)">
         <Callout tone="info">
           The Service is provided by Commit Media S.à r.l., a private limited-liability company
-          governed by the laws of the Grand Duchy of Luxembourg. The operator is identified below
-          for transparency and contact purposes.
+          governed by the laws of the Grand Duchy of Luxembourg. The operator is identified below;
+          its registered office is on record in the Luxembourg trade register (RCS) under the
+          number shown.
         </Callout>
         <KeyValueList
           items={[
@@ -358,10 +362,6 @@ export default function LegalPage(): ReactNode {
               value: 'Société à responsabilité limitée (private limited-liability company)',
             },
             {
-              label: 'Registered office',
-              value: '147, route de Thionville, L-2616 Luxembourg, Grand Duchy of Luxembourg',
-            },
-            {
               label: 'Trade register',
               value: 'Luxembourg Business Registers (RCS Luxembourg), no. B276192',
             },
@@ -369,7 +369,8 @@ export default function LegalPage(): ReactNode {
               label: 'Contact',
               value: (
                 <>
-                  Via <TextLink href="/contact">the contact form</TextLink> (general, legal, and
+                  <TextLink href="mailto:contact@ophis.fi">contact@ophis.fi</TextLink> or via{' '}
+                  <TextLink href="/contact">the contact form</TextLink> (general, legal, and
                   data-protection matters).
                 </>
               ),
