@@ -50,6 +50,11 @@ export { useResetFavoriteTokens } from './hooks/tokens/favorite/useResetFavorite
 export { useToggleFavoriteToken } from './hooks/tokens/favorite/useToggleFavoriteToken'
 export { useTokensByAddressMap } from './hooks/tokens/useTokensByAddressMap'
 export { useTokensByAddressMapForChain } from './hooks/tokens/useTokensByAddressMapForChain'
+export {
+  useTokenForChainBySymbol,
+  useTokenForChainMapBySymbol,
+  symbolToAddressResolver,
+} from './hooks/tokens/useTokenForChainBySymbol'
 export { useTokenBySymbolOrAddress } from './hooks/tokens/useTokenBySymbolOrAddress'
 export { useTokenByAddress } from './hooks/tokens/useTokenByAddress'
 export { useTryFindToken } from './hooks/tokens/useTryFindToken'

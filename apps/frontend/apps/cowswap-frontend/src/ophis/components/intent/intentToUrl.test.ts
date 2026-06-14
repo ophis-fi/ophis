@@ -66,3 +66,48 @@ describe('intentToUrl', () => {
     expect(url).toBe('/8453/swap')
   })
 })
+
+describe('intentToUrl with a token resolver', () => {
+  const USDC_ADDR = '0xA0b86991c6218b36c1d19d4a2e9Eb0cE3606eB48'
+  const ETH_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
+  const resolve = (symbol: string): string | null =>
+    (({ USDC: USDC_ADDR, ETH: ETH_SENTINEL }) as Record<string, string>)[symbol] ?? null
+
+  it('emits resolved addresses in place of symbols', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 0, end: 4 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 5, end: 8 },
+      ]),
+      resolve,
+    )
+    expect(url).toBe(`/swap/${USDC_ADDR}/${ETH_SENTINEL}`)
+  })
+
+  it('falls back to the bare symbol when the resolver returns null', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 0, end: 4 },
+        { type: 'buyToken', value: 'MOONPIG', raw: 'moonpig', start: 5, end: 12 },
+      ]),
+      resolve,
+    )
+    expect(url).toBe(`/swap/${USDC_ADDR}/MOONPIG`)
+  })
+
+  it('keeps the _ placeholder for a missing sell token', () => {
+    const url = intentToUrl(make([{ type: 'buyToken', value: 'ETH', raw: 'eth', start: 0, end: 3 }]), resolve)
+    expect(url).toBe(`/swap/_/${ETH_SENTINEL}`)
+  })
+
+  it('resolves alongside a chain segment', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'chain', value: 'base', raw: 'base', start: 0, end: 4 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 5, end: 9 },
+      ]),
+      resolve,
+    )
+    expect(url).toBe(`/8453/swap/${USDC_ADDR}`)
+  })
+})

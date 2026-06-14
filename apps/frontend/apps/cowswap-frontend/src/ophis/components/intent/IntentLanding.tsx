@@ -11,6 +11,9 @@
  */
 import { ReactNode, useCallback, useMemo, useState } from 'react'
 
+import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { symbolToAddressResolver, useTokenForChainMapBySymbol } from '@cowprotocol/tokens'
+import { useWalletInfo } from '@cowprotocol/wallet'
 import { Link, useNavigate } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
 
@@ -18,6 +21,7 @@ import { CosmicStarfield } from '../CosmicStarfield'
 import { OphisFooter } from '../OphisFooter'
 import { OphisHeader } from '../OphisHeader'
 
+import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
 import { IntentInput } from './IntentInput'
 import { intentToUrl } from './intentToUrl'
@@ -322,11 +326,26 @@ export function IntentLanding(): ReactNode {
   const navigate = useNavigate()
   const parseState = useIntentParse(text)
   const ready = isReadyToSubmit(parseState.parsed)
+  const { chainId: envChainId } = useWalletInfo()
+
+  // Resolve recognised symbols to on-chain addresses for the URL's TARGET chain:
+  // the chain named in the intent if any, else the connected/default chain (the
+  // chain the swap form opens on). Building the symbol map for that one chain at
+  // render lets handleSubmit resolve several symbols synchronously (hooks can't
+  // run per-symbol inside a callback). An address in the URL fills the form
+  // reliably (no ambiguous-symbol reset); a symbol that doesn't resolve (target
+  // list not loaded, or genuinely unknown) falls back to the bare symbol.
+  const targetChainId = useMemo(() => {
+    const chainEntity = parseState.parsed?.entities.find((e) => e.type === 'chain')
+    const parsedChainId = chainEntity ? chainSlugToId(chainEntity.value) : undefined
+    return (parsedChainId ?? envChainId) as SupportedChainId
+  }, [parseState.parsed, envChainId])
+  const symbolMap = useTokenForChainMapBySymbol(targetChainId)
 
   const handleSubmit = useCallback(() => {
     if (!ready || !parseState.parsed) return
-    navigate(intentToUrl(parseState.parsed))
-  }, [navigate, parseState.parsed, ready])
+    navigate(intentToUrl(parseState.parsed, symbolToAddressResolver(symbolMap)))
+  }, [navigate, parseState.parsed, ready, symbolMap])
 
   const helper = useMemo(
     () => helperText(text, parseState.status, parseState.parsed, parseState.errorCode, parseState.errorMessage),

@@ -32,6 +32,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint || echo "no lint targets yet"
       - run: pnpm typecheck || echo "no typecheck targets yet"
+      # Hard gate (no `|| echo` fallback): the /api/intent recognition +
+      # injection-safety validators are now the SOLE filter between the LLM and
+      # the swap UI (the fixed token allow-list was removed), so a regression
+      # here is a prompt-injection risk. Runs on Node's built-in test runner via
+      # type-stripping — zero extra deps.
+      - run: pnpm test:functions
 
   sdk:
     name: packages/sdk
