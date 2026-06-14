@@ -1,10 +1,12 @@
 <!--
   Quickest preview: a raw iframe of the Ophis widget route. Zero dependencies.
 
-  Caveat: a bare iframe does NOT carry a partner fee or theme/event wiring.
-  For fee attribution, theming, wallet-provider injection and ready/trade
-  events, use the widget-lib (vanilla.html) or React (react.tsx) snippet —
-  they build the widget URL and the postMessage channel for you.
+  Caveat: a bare iframe injects no params, so the app applies the Ophis DEFAULT
+  partner fee (users are still charged), and you get NO host control over the
+  fee config/attribution, theming, or ready/trade events. For host-controlled
+  fee, theming, wallet-provider injection and events, use the widget-lib
+  (vanilla.html) or React (react.tsx) snippet: they build the widget URL and
+  the postMessage channel for you.
 
   Requires the host (swap.ophis.fi) to allow third-party framing
   (CSP frame-ancestors *). Ophis ships this; a self-hosted fork must too.
