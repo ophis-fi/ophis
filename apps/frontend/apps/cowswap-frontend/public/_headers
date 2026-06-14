@@ -15,6 +15,16 @@
 #   (src/ophis/analytics/initGa4.ts), not an inline snippet, so no
 #   'unsafe-inline' is needed. GA4 beacons to *.google-analytics.com
 #   are already covered by `connect-src https:`.
+#   KNOWN + INTENTIONAL (do NOT "fix" by loosening script-src): once
+#   gtag.js runs (production host only, since initGa4 is gated to
+#   swap.ophis.fi), Google's own gtag code injects a couple of RUNTIME
+#   inline <script>s, which this CSP correctly blocks. That surfaces as
+#   ~2 benign, intermittent CSP console errors on swap.ophis.fi. They are
+#   accepted on purpose: GA4 core measurement is unaffected (dataLayer +
+#   first-party beacons via the /938g Tag Gateway still flow), and the
+#   blocked scripts are non-essential gtag internals. Adding 'unsafe-inline'
+#   would gut the policy, and hashing Google's inline scripts is a
+#   maintenance treadmill (the hashes rotate whenever gtag updates).
 # - style-src includes 'unsafe-inline' because styled-components
 #   injects runtime style tags. Standard practice.
 # - connect-src and img-src use the broad `https:` / `wss:` schemes
