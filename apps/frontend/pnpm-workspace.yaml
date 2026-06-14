@@ -15,3 +15,7 @@ minimumReleaseAgeExclude:
   # Security patches: bypass soak for CVE fixes
   - astro
   - '@astrojs/*'
+  # NOTE: esbuild 0.28.1 (the GHSA-gv7w-rqvm-qjhr fix) is intentionally NOT
+  # excluded here. A package-name exclude would permanently bypass the soak for
+  # every future esbuild publish; instead 0.28.1 is already pinned in the
+  # committed lockfile, so frozen-lockfile installs use it without re-resolving.

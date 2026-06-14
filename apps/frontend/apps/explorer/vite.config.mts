@@ -15,6 +15,7 @@ import { loadConfig } from './loadConfig'
 import { version as APP_VERSION } from './package.json'
 
 import { getReactProcessEnv } from '../../tools/getReactProcessEnv'
+import { OPHIS_BUILD_TARGET } from '../../tools/viteBuildTarget'
 
 const CONFIG = loadConfig()
 
@@ -36,6 +37,13 @@ export default defineConfig(({ mode }) => {
       CONFIG,
       VERSION: `'${APP_VERSION}'`,
       CONTRACT_VERSION: `'${CONTRACT_VERSION}'`,
+    },
+
+    // Pin the browser target so the vite 6 -> 7 upgrade does not raise the
+    // explorer's baseline and drop older Safari / wallet webviews from the
+    // order-detail and deep-link flows. Shared with cowswap-frontend.
+    build: {
+      target: OPHIS_BUILD_TARGET,
     },
 
     server: {

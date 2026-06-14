@@ -17,6 +17,7 @@ import * as path from 'path'
 
 import { formatChunkFileName } from '../../tools/formatChunkFileName'
 import { getReactProcessEnv } from '../../tools/getReactProcessEnv'
+import { OPHIS_BUILD_TARGET } from '../../tools/viteBuildTarget'
 import { robotsPlugin } from '../../tools/vite-plugins/robotsPlugin'
 
 // eslint-disable-next-line @typescript-eslint/no-restricted-imports
@@ -200,6 +201,10 @@ export default defineConfig(({ mode }) => {
       assetsInlineLimit: 0, // prevent inlining assets
       assetsDir: 'static', // All assets go to /static/ directory
       sourcemap: true,
+      // Shared with explorer; pins the vite 6 -> 7 upgrade to the old browser
+      // baseline. safari14.1 (not safari14) because esbuild 0.28 can't lower
+      // the Safari 14.0 destructuring bug. See ../../tools/viteBuildTarget.
+      target: OPHIS_BUILD_TARGET,
       rollupOptions: {
         output: {
           // Remove hash for font files to enable preloading
