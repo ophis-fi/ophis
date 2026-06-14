@@ -200,6 +200,11 @@ export default defineConfig(({ mode }) => {
       assetsInlineLimit: 0, // prevent inlining assets
       assetsDir: 'static', // All assets go to /static/ directory
       sourcemap: true,
+      // Vite 7 raised the default build target (baseline-widely-available =
+      // Chrome 107 / Safari 16). Pin to Vite 6's old 'modules' default so the
+      // vite 6 -> 7 migration does not silently drop older Safari or in-app
+      // wallet webviews that traders use.
+      target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari14'],
       rollupOptions: {
         output: {
           // Remove hash for font files to enable preloading
