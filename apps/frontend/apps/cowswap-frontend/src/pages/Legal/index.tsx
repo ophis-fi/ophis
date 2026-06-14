@@ -204,8 +204,10 @@ export default function LegalPage(): ReactNode {
         <Callout tone="success" title="In short">
           Ophis does not intentionally collect account-registration data, identity documents, or
           KYC. Your wallet address is pseudonymous; we don&#39;t link it to off-chain identity.
-          We use Sentry for anonymized error telemetry. No advertising cookies. Note that
-          pseudonymous data + IP addresses may still qualify as personal data under GDPR.
+          We use Sentry for anonymized error telemetry and Google Analytics 4 for aggregate usage
+          analytics that is consent-governed: off by default in the EEA, UK, and Switzerland until
+          you opt in, on by default elsewhere. No advertising cookies. Note that pseudonymous data
+          + IP addresses may still qualify as personal data under GDPR.
         </Callout>
 
         <h3>7.1. Data controller</h3>
@@ -213,8 +215,7 @@ export default function LegalPage(): ReactNode {
           For any personal data processed through the Service, the controller within the meaning
           of the EU General Data Protection Regulation (Regulation (EU) 2016/679,{' '}
           <strong>&quot;GDPR&quot;</strong>) is the operator identified in{' '}
-          <TextLink href="/legal#operator">section 8</TextLink> (Commit Media S.à r.l.,
-          Luxembourg). For any data-related request, use{' '}
+          section 8 (Commit Media S.à r.l., Luxembourg). For any data-related request, use{' '}
           <TextLink href="/contact">the contact form</TextLink>.
         </p>
 
@@ -241,13 +242,22 @@ export default function LegalPage(): ReactNode {
           Sentry can be blocked locally via browser settings; the Service continues to function.
         </p>
 
-        <h3>7.4. Cookies + localStorage</h3>
+        <h3>7.4. Cookies, local storage, and analytics</h3>
         <p>
           The Service uses first-party <InlineCode>localStorage</InlineCode> for strictly
           necessary single-page-app state (chain selection, recent tokens, intent-input history,
-          wallet connection state). These are essential to provide the interface you request and,
-          under the ePrivacy Directive (2002/58/EC), do not require prior consent. No third-party
-          advertising cookies are set, and no first-party tracking cookies are set.
+          wallet connection state, and your analytics-consent choice). Under the ePrivacy Directive
+          (2002/58/EC), strictly necessary storage does not require prior consent.
+        </p>
+        <p>
+          The Service also uses Google Analytics 4 (Google Ireland Ltd.) for aggregate usage
+          analytics, loaded first-party from <InlineCode>swap.ophis.fi</InlineCode>. Analytics
+          storage is governed by Google Consent Mode v2 and is region-scoped: it is denied by
+          default for visitors in the EEA, the United Kingdom, and Switzerland (the Service runs
+          cookieless there until you opt in via the on-page consent banner) and granted by default
+          elsewhere. Your choice is stored in first-party <InlineCode>localStorage</InlineCode>{' '}
+          under the key <InlineCode>ophis_consent</InlineCode> and can be changed at any time. No
+          advertising cookies are set, and no cross-site advertising tracking is performed.
         </p>
 
         <h3>7.5. Third-party services</h3>
@@ -274,6 +284,13 @@ export default function LegalPage(): ReactNode {
             <strong>Google Fonts</strong> (Fraunces, Plus Jakarta Sans, JetBrains Mono served from{' '}
             <InlineCode>fonts.googleapis.com</InlineCode> + <InlineCode>fonts.gstatic.com</InlineCode>).
             Receives IP + user agent on first page load.{' '}
+            <TextLink href="https://policies.google.com/privacy" external>
+              policy
+            </TextLink>
+          </li>
+          <li>
+            <strong>Google Analytics 4</strong> (Google Ireland Ltd., aggregate usage analytics,
+            consent-governed and region-scoped as described in 7.4).{' '}
             <TextLink href="https://policies.google.com/privacy" external>
               policy
             </TextLink>
@@ -330,9 +347,8 @@ export default function LegalPage(): ReactNode {
       <Section id="operator" title="8. Operator (legal entity)">
         <Callout tone="info">
           The Service is provided by Commit Media S.à r.l., a private limited-liability company
-          governed by the laws of the Grand Duchy of Luxembourg. The identification below is
-          published in accordance with Article 5 of Directive 2000/31/EC on electronic commerce,
-          as transposed by the Luxembourg law of 14 August 2000.
+          governed by the laws of the Grand Duchy of Luxembourg. The operator is identified below
+          for transparency and contact purposes.
         </Callout>
         <KeyValueList
           items={[
@@ -362,8 +378,7 @@ export default function LegalPage(): ReactNode {
         />
         <p>
           The operator is not a financial institution and does not provide regulated financial
-          services; it makes the Service software available as described in{' '}
-          <TextLink href="/legal#non-custodial">section 3</TextLink>.
+          services; it makes the Service software available as described in section 3.
         </p>
       </Section>
 
