@@ -134,7 +134,6 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
       <styledEl.BottomBar>
         <span>© Ophis 2026</span>
         <styledEl.BottomLinks>
-          <styledEl.SmallLink to="/legal">Terms</styledEl.SmallLink>
           <styledEl.SmallLink to="/legal#privacy">Privacy</styledEl.SmallLink>
           <styledEl.SmallLink to="/brand">Brand kit</styledEl.SmallLink>
         </styledEl.BottomLinks>
