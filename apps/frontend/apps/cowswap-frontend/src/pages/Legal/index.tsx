@@ -1,25 +1,20 @@
 /**
- * Legal — Terms of Service + Privacy Policy + Cookies + Legal Entity
- * + Dispute Resolution.
+ * Legal: Terms of Service + Privacy Policy + Cookies + Operator
+ * disclosure + Dispute resolution.
  *
- * Phase A3 rebuild (PR #249, 2026-05-23). Replaces the 2026-05-22
- * vibe-coded implementation. Uses ONLY ds/ primitives.
+ * Finalized 2026-06-14. Replaces the earlier "pending counsel" draft.
+ * Grounding (Luxembourg + EU):
+ *   - Privacy: GDPR (Reg. (EU) 2016/679) + ePrivacy (Dir. 2002/58/EC).
+ *   - Operator disclosure: e-commerce Dir. 2000/31/EC art. 5, transposed by
+ *     the Luxembourg law of 14 August 2000 on electronic commerce.
+ *   - Not-a-financial-service framing: MiCA (Reg. (EU) 2023/1114).
+ *   - Governing law: Luxembourg law + courts of the District of Luxembourg,
+ *     subject to mandatory EU consumer-protection carve-outs.
  *
- * Important framing per the Codex 2026-05-23 design review:
- *   - Legal pages have a higher evidentiary bar than About.
- *   - Each section labels claims as live / draft where applicable.
- *   - Operator facts are separated from product claims via KeyValueList.
- *   - Plain-English summaries precede legal text inside Callouts so the
- *     reader can scan the page without reading every clause.
- *
- * This page is NOT a substitute for lawyer-reviewed terms. Sections
- * marked Badge tone='draft' are placeholders that need legal review
- * before any volume routes through ophis.fi in jurisdictions with
- * consumer-protection enforcement (EU, UK). The operator-entity
- * disclosure section (§ 8) is intentionally generic — specific
- * identifiers (legal name, registered office, RCS / VAT numbers,
- * trade authorisation, legal representative) are provided on request
- * for formal contractual / regulatory / dispute-resolution matters.
+ * Operator entity is identified by its regulatory facts only (legal name,
+ * form, registered office, RCS number, contact channel). Nothing here
+ * describes the entity's business, and no personal data of its officers is
+ * published.
  */
 import { ReactNode, useEffect } from 'react'
 
@@ -53,19 +48,13 @@ export default function LegalPage(): ReactNode {
       width="medium"
       eyebrow="Legal"
       title="Terms, Privacy & Disclosures"
-      lede="A working draft pending review by qualified legal counsel. Plain-language summaries sit above the legal language where helpful; governing law and jurisdiction are in § Dispute resolution."
+      lede="Effective and last updated 14 June 2026. Plain-language summaries sit above the legal language where helpful; the operator is identified in section 8 and governing law is in section 9."
     >
-      <Callout tone="warning" title="Draft, pending legal counsel">
-        This page is a working draft pending review by qualified legal counsel and is subject to
-        revision. All sections, including the operator disclosure and the governing-law clause,
-        may change before launch in jurisdictions with consumer-protection enforcement. Where the
-        plain-language summaries and the operative terms differ, the operative terms govern.
-      </Callout>
-
-      <Callout tone="info" title="Plain-language summaries, non-binding">
-        Each section opens with a plain-language summary in a colored Callout box. These summaries
-        are for convenience only and have no legal effect; the operative terms are the paragraph
-        text outside the summary boxes.
+      <Callout tone="info" title="How to read this page">
+        Each section opens with a plain-language summary in a colored box. Those summaries are for
+        convenience only and have no legal effect; the operative terms are the paragraph text
+        outside the boxes, and they govern if the two differ. Nothing on this page is legal, tax,
+        or financial advice, and using Ophis is not a recommendation to trade.
       </Callout>
 
       {/* ─────────────────────────────────────────────────────────── */}
@@ -99,22 +88,31 @@ export default function LegalPage(): ReactNode {
 
       {/* ─────────────────────────────────────────────────────────── */}
 
-      <Section id="non-custodial" title="3. Non-custodial nature of the Service">
+      <Section id="non-custodial" title="3. Software, not a financial service">
         <Callout tone="success" title="In short">
-          Ophis never holds your funds. Your wallet signs orders; the blockchain executes them.
-          We cannot move your tokens, freeze your account, or recover lost keys.
+          Ophis is a software interface. It never holds your funds: your wallet signs orders and
+          the blockchain executes them. The operator cannot move your tokens, freeze your account,
+          or recover lost keys, and does not provide financial services or act as your counterparty.
         </Callout>
         <p>
-          The Service is a frontend interface to permissionless on-chain DEX-aggregation
-          protocols (principally CoW Protocol). Orders are signed locally by your wallet and
-          broadcast off-chain to a network of competing solvers; settlement occurs on-chain via
-          the GPv2 Settlement contract under an allow-listed solver set Ophis maintains on
-          supported chains.
+          The Service is a non-custodial frontend (a software tool) to permissionless on-chain
+          DEX-aggregation protocols (principally CoW Protocol). Orders are signed locally by your
+          wallet and broadcast off-chain to a network of competing solvers; settlement occurs
+          on-chain via the GPv2 Settlement contract under an allow-listed solver set Ophis maintains
+          on supported chains.
         </p>
         <p>
-          The operator of the Service (see § Operator) does <strong>not</strong> take custody of
-          your funds at any point. The operator cannot reverse transactions, recover lost private
-          keys, or freeze accounts.
+          The operator (see section 8) does <strong>not</strong> take custody of your funds at any
+          point, does not execute trades on your behalf, and is not a counterparty to your
+          transactions. It cannot reverse transactions, recover lost private keys, or freeze
+          accounts.
+        </p>
+        <p>
+          The operator provides software only. It does <strong>not</strong> provide investment,
+          brokerage, dealing, portfolio-management, custody, exchange, transfer, payment, or
+          electronic-money services, and is not authorised or registered as a regulated financial
+          entity (including as a crypto-asset service provider under Regulation (EU) 2023/1114
+          (MiCA)). See the FAQ below.
         </p>
       </Section>
 
@@ -140,7 +138,7 @@ export default function LegalPage(): ReactNode {
             the operator.
           </li>
         </ul>
-             </Section>
+      </Section>
 
       {/* ─────────────────────────────────────────────────────────── */}
 
@@ -157,10 +155,17 @@ export default function LegalPage(): ReactNode {
           DATA, TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW.
         </p>
         <p>
-          To the maximum extent permitted by applicable law (including consumer-protection
-          provisions of your jurisdiction of residence), the operator&#39;s aggregate liability
-          arising from your use of the Service is limited to a cap to be determined by qualified
-          legal counsel.{' '}
+          To the maximum extent permitted by applicable law, the operator&#39;s aggregate
+          liability arising from or relating to your use of the Service is limited to the total
+          amount of Service fees you paid through the Service during the twelve (12) months
+          immediately preceding the event giving rise to the claim.
+        </p>
+        <p>
+          Nothing in these Terms excludes or limits any liability that cannot be excluded or
+          limited under applicable Luxembourg or European Union law, including mandatory
+          consumer-protection provisions of an EU consumer&#39;s country of residence and liability
+          for gross negligence, wilful misconduct, or death or personal injury caused by
+          negligence.{' '}
         </p>
       </Section>
 
@@ -203,17 +208,29 @@ export default function LegalPage(): ReactNode {
           pseudonymous data + IP addresses may still qualify as personal data under GDPR.
         </Callout>
 
-        <h3>7.1. What we collect</h3>
+        <h3>7.1. Data controller</h3>
+        <p>
+          For any personal data processed through the Service, the controller within the meaning
+          of the EU General Data Protection Regulation (Regulation (EU) 2016/679,{' '}
+          <strong>&quot;GDPR&quot;</strong>) is the operator identified in{' '}
+          <TextLink href="/legal#operator">section 8</TextLink> (Commit Media S.à r.l.,
+          Luxembourg). For any data-related request, use{' '}
+          <TextLink href="/contact">the contact form</TextLink>.
+        </p>
+
+        <h3>7.2. What we collect, and the legal basis</h3>
         <p>
           The Service does not intentionally collect account-registration data, identity
           documents, or know-your-customer (KYC) information. Wallet addresses are pseudonymous
           public-blockchain identifiers and are transmitted during normal operation; the
-          operator does not link them to off-chain identity. Note that under EU law (GDPR),
-          pseudonymous identifiers and IP addresses may still qualify as personal data when
-          linkable to a natural person.
+          operator does not link them to off-chain identity. Under GDPR, pseudonymous identifiers
+          and IP addresses may still qualify as personal data when linkable to a natural person.
+          Where the operator processes such data, the legal basis is its legitimate interest
+          (GDPR art. 6(1)(f)) in operating, securing, and improving the Service, and, where
+          applicable, the necessity of processing to provide the Service you request.
         </p>
 
-        <h3>7.2. Telemetry (Sentry)</h3>
+        <h3>7.3. Telemetry (Sentry)</h3>
         <p>
           The Service uses{' '}
           <TextLink href="https://sentry.io" external>
@@ -224,14 +241,16 @@ export default function LegalPage(): ReactNode {
           Sentry can be blocked locally via browser settings; the Service continues to function.
         </p>
 
-        <h3>7.3. Cookies + localStorage</h3>
+        <h3>7.4. Cookies + localStorage</h3>
         <p>
-          The Service uses first-party <InlineCode>localStorage</InlineCode> for SPA state (chain
-          selection, recent tokens, intent-input history, wallet connection state). No
-          third-party advertising cookies are set. No first-party tracking cookies are set.
+          The Service uses first-party <InlineCode>localStorage</InlineCode> for strictly
+          necessary single-page-app state (chain selection, recent tokens, intent-input history,
+          wallet connection state). These are essential to provide the interface you request and,
+          under the ePrivacy Directive (2002/58/EC), do not require prior consent. No third-party
+          advertising cookies are set, and no first-party tracking cookies are set.
         </p>
 
-        <h3>7.4. Third-party services</h3>
+        <h3>7.5. Third-party services</h3>
         <p>
           When you use the Service, your browser makes requests to the following third parties.
           Each has its own privacy policy. The operator has no special relationship with these
@@ -289,17 +308,20 @@ export default function LegalPage(): ReactNode {
           </li>
         </ul>
 
-        <h3>7.5. Your rights (GDPR, if applicable)</h3>
+        <h3>7.6. Your rights (GDPR)</h3>
         <p>
-          If you are a resident of the European Economic Area, you have the right to access,
-          rectify, restrict, port, or object to processing of personal data the operator holds
-          about you. As stated above, the operator does not intentionally collect account-
-          registration data or identity documents; however, pseudonymous wallet addresses + IP
-          metadata at the CDN layer may qualify as personal data depending on linkability. For
-          requests, reach the operator via the contact channel on{' '}
-          <TextLink href="/contact">the contact form</TextLink> with sufficient
-          detail to identify the data in question. For Sentry telemetry deletion, contact
-          Sentry directly per its policy.
+          If you are in the European Economic Area, you have the right to access, rectify, erase,
+          restrict, port, or object to processing of personal data the operator holds about you
+          (GDPR arts. 15 to 22). As stated above, the operator does not intentionally collect
+          account-registration data or identity documents; however, pseudonymous wallet addresses
+          and IP metadata at the CDN layer may qualify as personal data depending on linkability.
+          To exercise a right, use <TextLink href="/contact">the contact form</TextLink> with
+          enough detail to identify the data in question. You also have the right to lodge a
+          complaint with a supervisory authority, in Luxembourg the{' '}
+          <TextLink href="https://cnpd.public.lu" external>
+            Commission nationale pour la protection des données (CNPD)
+          </TextLink>
+          . For Sentry telemetry deletion, you may also contact Sentry directly under its policy.
         </p>
       </Section>
 
@@ -307,45 +329,53 @@ export default function LegalPage(): ReactNode {
 
       <Section id="operator" title="8. Operator (legal entity)">
         <Callout tone="info">
-          The Service is operated by a Luxembourg-incorporated consultancy company registered
-          with the Luxembourg Business Registers (RCS). Full entity details, including the
-          registered legal name, registered office, RCS / VAT numbers, trade authorisation
-          reference, NACE classification, and legal representative, are provided on request
-          for formal contractual, regulatory, or dispute-resolution matters.
+          The Service is provided by Commit Media S.à r.l., a private limited-liability company
+          governed by the laws of the Grand Duchy of Luxembourg. The identification below is
+          published in accordance with Article 5 of Directive 2000/31/EC on electronic commerce,
+          as transposed by the Luxembourg law of 14 August 2000.
         </Callout>
         <KeyValueList
           items={[
-            { label: 'Jurisdiction', value: 'Grand Duchy of Luxembourg' },
-            { label: 'Legal form', value: 'Limited-liability company (Société à responsabilité limitée)' },
+            { label: 'Operator', value: 'Commit Media S.à r.l.' },
             {
-              label: 'Registry',
-              value: 'Luxembourg Business Registers (RCS), entity number on request',
+              label: 'Legal form',
+              value: 'Société à responsabilité limitée (private limited-liability company)',
             },
             {
-              label: 'Activity classification',
-              value: 'Management consultancy / head-office activities',
+              label: 'Registered office',
+              value: '147, route de Thionville, L-2616 Luxembourg, Grand Duchy of Luxembourg',
             },
             {
-              label: 'Entity details (full)',
+              label: 'Trade register',
+              value: 'Luxembourg Business Registers (RCS Luxembourg), no. B276192',
+            },
+            {
+              label: 'Contact',
               value: (
                 <>
-                  Available on request for formal arrangements, reach out via the contact
-                  section on <TextLink href="/contact">the contact form</TextLink>.
+                  Via <TextLink href="/contact">the contact form</TextLink> (general, legal, and
+                  data-protection matters).
                 </>
               ),
             },
           ]}
         />
+        <p>
+          The operator is not a financial institution and does not provide regulated financial
+          services; it makes the Service software available as described in{' '}
+          <TextLink href="/legal#non-custodial">section 3</TextLink>.
+        </p>
       </Section>
 
       {/* ─────────────────────────────────────────────────────────── */}
 
       <Section id="dispute-resolution" title="9. Governing law + dispute resolution">
         <p>
-          These terms are governed by the laws of the Grand Duchy of Luxembourg. Any dispute
-          arising from your use of the Service shall be submitted to the exclusive jurisdiction
-          of the competent courts of the District of Luxembourg, without prejudice to any
-          mandatory consumer-protection provisions of your jurisdiction of residence.{' '}
+          These Terms are governed by the laws of the Grand Duchy of Luxembourg. Any dispute
+          arising from or relating to your use of the Service shall be submitted to the exclusive
+          jurisdiction of the competent courts of the District of Luxembourg, without prejudice to
+          any mandatory consumer-protection provisions and jurisdiction rules that apply to an EU
+          consumer in their country of residence.{' '}
         </p>
       </Section>
 
@@ -353,9 +383,10 @@ export default function LegalPage(): ReactNode {
 
       <Section id="changes" title="10. Changes to these terms">
         <p>
-          The operator may revise these Terms at any time. Material changes will be reflected via
-          an updated <InlineCode>Last updated</InlineCode> date here. Continued
-          use of the Service after a revision constitutes acceptance of the revised Terms.
+          The operator may revise these Terms at any time. Material changes will be reflected in
+          the <InlineCode>Effective and last updated</InlineCode> date at the top of this page.
+          Continued use of the Service after a revision constitutes acceptance of the revised
+          Terms.
         </p>
       </Section>
 
@@ -365,13 +396,14 @@ export default function LegalPage(): ReactNode {
         <AccordionGroup>
           <Accordion summary="Is Ophis a regulated financial-services entity?">
             <p>
-              The operator is a Luxembourg-incorporated consultancy company providing
-              a non-custodial software interface to permissionless on-chain protocols. As of the
-              date of this page, the operator is not registered as a regulated investment
-              firm, payment institution, e-money institution, virtual-asset service provider, or
-              equivalent in Luxembourg or other EU jurisdictions. Whether the Service falls
-              under any specific financial-services regime in a given jurisdiction is being
-              reviewed by counsel.            </p>
+              No. The operator, Commit Media S.à r.l., makes available a non-custodial software
+              interface to permissionless on-chain protocols. It does not provide investment,
+              brokerage, dealing, custody, exchange, transfer, payment, or electronic-money
+              services, and it is not authorised or registered as an investment firm, payment
+              institution, electronic-money institution, or crypto-asset service provider (CASP)
+              under Regulation (EU) 2023/1114 (MiCA) or any equivalent regime. Using Ophis is not
+              the provision of a financial service to you.
+            </p>
           </Accordion>
           <Accordion summary="Do you collect KYC?">
             <p>
@@ -390,9 +422,12 @@ export default function LegalPage(): ReactNode {
           </Accordion>
           <Accordion summary="Can I request deletion of my data under GDPR?">
             <p>
-              The operator does not collect personal identifying information from Service users
-              and has no PII to delete. For Sentry telemetry deletion, contact Sentry directly
-              under their own privacy policy.
+              The operator does not collect identity documents or account-registration data and
+              generally holds no directly identifying information about Service users. Where you
+              believe the operator holds personal data about you, you may exercise your GDPR
+              rights via <TextLink href="/contact">the contact form</TextLink>, and you may lodge
+              a complaint with the Luxembourg CNPD. For Sentry telemetry deletion, contact Sentry
+              directly under its own privacy policy.
             </p>
           </Accordion>
           <Accordion summary="How do I report a security issue?">
