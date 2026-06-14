@@ -117,6 +117,30 @@ test('amount: a numeric amount derived from raw is accepted, junk is not', () =>
   assert.equal(intent.isValidEntity(ent('amount', '999', '100', text), text), false)
 })
 
+// --- WORD BOUNDARY: a token raw must be a whole token, not a substring of a word ---
+
+test('boundary: a symbol that is only a substring of a larger word is rejected', () => {
+  // "base" inside "database", "ar" inside "car", "op" inside "shop" - the user
+  // never typed these tokens; the substring includes() check alone would admit them.
+  assert.equal(intent.isValidEntity(ent('buyToken', 'BASE', 'base', 'I keep my funds in a database'), 'I keep my funds in a database'), false)
+  assert.equal(intent.isValidEntity(ent('sellToken', 'AR', 'ar', 'I bought a car today'), 'I bought a car today'), false)
+  assert.equal(intent.isValidEntity(ent('buyToken', 'OP', 'op', 'I went to the shop'), 'I went to the shop'), false)
+})
+
+test('boundary: a standalone token is still accepted, and not blocked by another word containing it', () => {
+  assert.equal(intent.isValidEntity(ent('sellToken', 'OP', 'op', 'swap op for usdc'), 'swap op for usdc'), true)
+  // "eth" appears standalone AND inside "ethereum"; the standalone occurrence admits it.
+  assert.equal(intent.isValidEntity(ent('sellToken', 'ETH', 'eth', 'send eth not on ethereum prose'), 'send eth not on ethereum prose'), true)
+  // multi-word alias raw stays valid
+  assert.equal(intent.isValidEntity(ent('buyToken', 'USDC', 'usd coin', 'swap eth for usd coin'), 'swap eth for usd coin'), true)
+})
+
+test('boundary: an ASCII symbol embedded in a non-ASCII word is rejected', () => {
+  // "op" buried inside a Unicode-letter word must not count as the OP token.
+  const text = 'gm αopβ frens'
+  assert.equal(intent.isValidEntity(ent('buyToken', 'OP', 'op', text), text), false)
+})
+
 // --- isPlausibleTokenSymbol: shape + stop-word predicate ---
 
 test('isPlausibleTokenSymbol accepts real ticker shapes', () => {

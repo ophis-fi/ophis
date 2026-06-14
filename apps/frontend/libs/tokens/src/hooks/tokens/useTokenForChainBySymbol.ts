@@ -2,22 +2,77 @@ import { useMemo } from 'react'
 
 import { getAddress } from '@ethersproject/address'
 
-import { NATIVE_CURRENCIES, TokenWithLogo, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import {
+  NATIVE_CURRENCIES,
+  NATIVE_CURRENCY_ADDRESS,
+  TokenWithLogo,
+  WRAPPED_NATIVE_CURRENCIES,
+} from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { TokenInfo } from '@cowprotocol/types'
 
-import { useTokensByAddressMapForChain } from './useTokensByAddressMapForChain'
+import { useAtomValue } from 'jotai'
+
+import { allListsSourcesAtom, listsStatesByChainAtom } from '../../state/tokenLists/tokenListsStateAtom'
 import { TokensByAddress } from '../../state/tokens/allTokensAtom'
+import { ListState } from '../../types'
+
+/**
+ * Is a list active for the user? Mirrors listsEnabledStateAtom: the explicit
+ * user toggle (`isEnabled`) if set, otherwise the list's `enabledByDefault`
+ * (which `ListState` does not carry, so it is supplied via the source map). A
+ * source absent from the map is treated as default-off, matching `!!enabledByDefault`.
+ */
+function isListEnabled(list: ListState, enabledByDefaultBySource: Record<string, boolean>): boolean {
+  return typeof list.isEnabled === 'boolean' ? list.isEnabled : !!enabledByDefaultBySource[list.source]
+}
+
+/**
+ * Priority-ordered by-address token map for a chain, built directly from the
+ * chain's list states. Unlike useTokensByAddressMapForChain (which filters only
+ * `deleted` lists), this HONORS the list's active state the same way the swap
+ * form's active-token map does (isEnabled ?? enabledByDefault), so the intent
+ * resolver never emits a token from a list the user disabled OR from a
+ * default-off list the UI treats as inactive. Mirrors the primitive's other
+ * rules: first-writer-wins per address in priority order, skip the native
+ * sentinel, and only keep tokens whose chainId matches.
+ */
+export function enabledTokensByAddressForChain(
+  chainLists: Record<string, ListState | 'deleted'> | undefined,
+  chainId: number,
+  enabledByDefaultBySource: Record<string, boolean> = {},
+): TokensByAddress {
+  if (!chainLists) return {}
+
+  const sortedLists = Object.values(chainLists)
+    .filter(
+      (ls): ls is ListState => ls !== 'deleted' && !!ls.list?.tokens && isListEnabled(ls, enabledByDefaultBySource),
+    )
+    .sort((a, b) => (a.priority ?? Number.MAX_SAFE_INTEGER) - (b.priority ?? Number.MAX_SAFE_INTEGER))
+
+  const map: TokensByAddress = {}
+  const nativeKey = NATIVE_CURRENCY_ADDRESS.toLowerCase()
+  for (const ls of sortedLists) {
+    for (const token of ls.list.tokens) {
+      if (token.chainId !== chainId) continue
+      const key = token.address.toLowerCase()
+      if (map[key] || key === nativeKey) continue
+      map[key] = TokenWithLogo.fromToken(token as TokenInfo, token.logoURI)
+    }
+  }
+  return map
+}
 
 /**
  * Build a `lowercaseSymbol -> TokenWithLogo` map from a by-address token map.
  *
- * The input is the priority-ordered by-address map from
- * useTokensByAddressMapForChain (its value-iteration order is priority order,
- * first writer wins per address), so iterating its values and taking the FIRST
- * token per symbol yields the canonical (highest-priority) token for that
- * symbol, mirroring how the swap form resolves an ambiguous symbol.
+ * The input is a priority-ordered by-address map (here enabledTokensByAddressForChain;
+ * its value-iteration order is priority order, first writer wins per address), so
+ * iterating its values and taking the FIRST token per symbol yields the canonical
+ * (highest-priority) token for that symbol, mirroring how the swap form resolves
+ * an ambiguous symbol.
  *
- * `native` and `wrapped` are injected because useTokensByAddressMapForChain
+ * `native` and `wrapped` are injected because that by-address map
  * deliberately skips the native-currency sentinel address: without re-injecting
  * NATIVE_CURRENCIES[chainId] / WRAPPED_NATIVE_CURRENCIES[chainId], "ETH"/"HYPE"
  * (and on some chains "WETH") would never resolve. Native wins its own symbol
@@ -79,12 +134,16 @@ export function symbolToAddressResolver(bySymbol: Record<string, TokenWithLogo>)
  * list is loaded, not just the active one.
  */
 export function useTokenForChainMapBySymbol(chainId: SupportedChainId | undefined): Record<string, TokenWithLogo> {
-  const byAddress = useTokensByAddressMapForChain(chainId)
+  const listsStatesByChain = useAtomValue(listsStatesByChainAtom)
+  const listsSources = useAtomValue(allListsSourcesAtom)
 
   return useMemo(() => {
     if (!chainId) return {}
+    const enabledByDefaultBySource: Record<string, boolean> = {}
+    for (const src of listsSources) enabledByDefaultBySource[src.source] = !!src.enabledByDefault
+    const byAddress = enabledTokensByAddressForChain(listsStatesByChain[chainId], chainId, enabledByDefaultBySource)
     return tokenBySymbolMap(byAddress, NATIVE_CURRENCIES[chainId], WRAPPED_NATIVE_CURRENCIES[chainId])
-  }, [byAddress, chainId])
+  }, [listsStatesByChain, listsSources, chainId])
 }
 
 /**

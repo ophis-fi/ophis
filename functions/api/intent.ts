@@ -256,10 +256,14 @@ Rules:
   ticker you emit MUST be evidenced verbatim in the user's text (the
   symbol itself, or one of the documented aliases below); never invent
   a token the user did not name.
-- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth" -> WETH.
-  "lido staked eth" -> STETH. "wrapped btc" -> WBTC. "bitcoin"/"btc" -> BTC.
-  "uniswap" -> UNI. "aave" -> AAVE. "chainlink" -> LINK. "polygon"
-  (the token) -> MATIC. "solana" (token) -> SOL. "cardano" -> ADA.
+- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth"/"wrapped ether" -> WETH.
+  "lido staked eth"/"staked eth" -> STETH. "wrapped btc"/"wrapped bitcoin" -> WBTC.
+  "coinbase wrapped btc"/"coinbase wrapped bitcoin" -> CBBTC.
+  "bitcoin"/"btc" -> BTC. "tether" -> USDT.
+  "usd coin" -> USDC. "uniswap" -> UNI. "aave" -> AAVE. "maker" -> MKR.
+  "lido" -> LDO. "chainlink" -> LINK. "polygon" (the token) -> MATIC.
+  "solana" (token) -> SOL. "cardano" -> ADA. "dogecoin" -> DOGE.
+  "shiba inu" -> SHIB.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
 - Chain canonical values: lowercase slugs. Allowed (mirrors SORTED_CHAIN_IDS in the FE — chains the NetworkSelector actually surfaces):
     ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon
@@ -403,6 +407,29 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * A token `raw` must appear in the text as a WHOLE token, not as a substring
+ * buried inside a larger word. With the fixed token allow-list removed, the
+ * raw-in-text guard in isValidEntity is a boundary-less `includes()`, so a
+ * plausible 2-3 char symbol could otherwise be "evidenced" by an unrelated word
+ * (AR in "car", OP in "shop", BASE in "database") and pre-fill the wrong asset.
+ * Require the raw to be bounded by non-alphanumerics (or string edges) somewhere
+ * in the text - offset-independent, mirroring the chain branch's boundary guard.
+ */
+function rawIsWholeWord(text: string, raw: string): boolean {
+  const r = raw.trim()
+  if (r.length === 0) return false
+  try {
+    // Unicode-aware boundaries (\p{L}\p{N} under the `u` flag) so an ASCII
+    // symbol can't be anchored to a substring inside a non-ASCII word either
+    // (e.g. "op" buried in "αopβ"). escapeRegExp keeps the pattern
+    // valid under `u`; the try/catch fails CLOSED (reject) on any regex error.
+    return new RegExp('(?<![\\p{L}\\p{N}])' + escapeRegExp(r) + '(?![\\p{L}\\p{N}])', 'iu').test(text)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Reduce a chain `raw` span to the bare chain term for derivation + context
  * matching. The model may wrap the term in punctuation ("(Base)", "Base.") or
  * prefix an article ("an L1", "the Base") because raw need only be an exact
@@ -529,7 +556,11 @@ export function isValidEntity(e: unknown, text: string): e is Entity {
   // replaced the old fixed allow-list so long-tail symbols are no longer dropped;
   // it adds no injection surface because both raw-anchored checks still run.
   if (o.type === 'sellToken' || o.type === 'buyToken') {
-    return isPlausibleTokenSymbol(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
+    return (
+      isPlausibleTokenSymbol(o.value) &&
+      valueDerivesFromRaw('token', o.value, o.raw) &&
+      rawIsWholeWord(text, o.raw)
+    )
   }
   if (o.type === 'chain') {
     // Reduce the raw span to the bare chain term (strip surrounding punctuation

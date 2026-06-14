@@ -2,7 +2,8 @@ import { getAddress } from '@ethersproject/address'
 
 import { NATIVE_CURRENCY_ADDRESS, TokenWithLogo } from '@cowprotocol/common-const'
 
-import { symbolToAddressResolver, tokenBySymbolMap } from './useTokenForChainBySymbol'
+import { enabledTokensByAddressForChain, symbolToAddressResolver, tokenBySymbolMap } from './useTokenForChainBySymbol'
+import { ListState } from '../../types'
 
 // Real mainnet addresses, intentionally lowercased so the checksum step is exercised.
 const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
@@ -20,6 +21,61 @@ function byAddress(...tokens: TokenWithLogo[]): Record<string, TokenWithLogo> {
   for (const t of tokens) m[t.address.toLowerCase()] = t
   return m
 }
+
+function tokenInfo(address: string, symbol: string, chainId = 1) {
+  return { chainId, address, symbol, decimals: 18, name: symbol }
+}
+function listState(tokens: ReturnType<typeof tokenInfo>[], priority: number, isEnabled?: boolean): ListState {
+  return { source: `s${priority}`, priority, isEnabled, list: { tokens } } as unknown as ListState
+}
+
+describe('enabledTokensByAddressForChain', () => {
+  it('builds a by-address map for the chain, keyed lowercase', () => {
+    const m = enabledTokensByAddressForChain({ a: listState([tokenInfo(USDC, 'USDC')], 0, true) }, 1)
+    expect(m[USDC.toLowerCase()]?.symbol).toBe('USDC')
+  })
+
+  it('skips a list the user disabled, so a lower-priority enabled list wins', () => {
+    const DIS = '0x1111111111111111111111111111111111111111'
+    const chainLists = {
+      hi: listState([tokenInfo(DIS, 'USDC')], 0, false), // higher priority but DISABLED
+      lo: listState([tokenInfo(USDC, 'USDC')], 1, true), // lower priority but ENABLED
+    }
+    const m = enabledTokensByAddressForChain(chainLists, 1)
+    expect(m[DIS.toLowerCase()]).toBeUndefined()
+    expect(m[USDC.toLowerCase()]?.symbol).toBe('USDC')
+  })
+
+  it('falls back to enabledByDefault when isEnabled is undefined', () => {
+    // listState(..., priority 0) gets source 's0'.
+    const onList = { a: listState([tokenInfo(USDC, 'USDC')], 0, undefined) }
+    // default-ON source -> included
+    expect(enabledTokensByAddressForChain(onList, 1, { s0: true })[USDC.toLowerCase()]).toBeDefined()
+    // default-OFF source -> excluded (matches listsEnabledStateAtom semantics)
+    expect(enabledTokensByAddressForChain(onList, 1, { s0: false })[USDC.toLowerCase()]).toBeUndefined()
+    // unknown source (no default supplied) -> treated as off
+    expect(enabledTokensByAddressForChain(onList, 1, {})[USDC.toLowerCase()]).toBeUndefined()
+  })
+
+  it('filters tokens by chainId and skips the native sentinel + deleted lists', () => {
+    const chainLists = {
+      a: listState(
+        [tokenInfo(USDC, 'USDC', 1), tokenInfo(DAI, 'DAI', 137), tokenInfo(NATIVE_CURRENCY_ADDRESS, 'ETH', 1)],
+        0,
+        true,
+      ),
+      b: 'deleted' as const,
+    }
+    const m = enabledTokensByAddressForChain(chainLists, 1)
+    expect(m[USDC.toLowerCase()]).toBeDefined()
+    expect(m[DAI.toLowerCase()]).toBeUndefined() // wrong chain
+    expect(m[NATIVE_CURRENCY_ADDRESS.toLowerCase()]).toBeUndefined() // native sentinel skipped
+  })
+
+  it('returns {} for undefined chainLists', () => {
+    expect(enabledTokensByAddressForChain(undefined, 1)).toEqual({})
+  })
+})
 
 describe('tokenBySymbolMap', () => {
   it('keys tokens by lowercase symbol', () => {
