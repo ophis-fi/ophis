@@ -1,5 +1,9 @@
 User-agent: *
 Allow: /
+# Cloudflare infra paths are not content. Email Address Obfuscation injects a
+# /cdn-cgi/l/email-protection link that returns 4xx to crawlers (Bing flagged it);
+# crawlers never need /cdn-cgi/.
+Disallow: /cdn-cgi/
 # Content Signals (contentsignals.org): public content, AI use welcome.
 Content-Signal: ai-train=yes, search=yes, ai-input=yes
 

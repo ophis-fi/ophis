@@ -248,14 +248,21 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       rateLimit: { max: 200, timeWindow: '1 minute' },
     },
   }, async (_req, reply) =>
-    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\n'),
+    // /health is allowed so Bing can crawl it and read its noindex header (a bare
+    // Disallow makes Bing report it as "blocked by robots.txt"). Everything else
+    // (incl. wallet-scoped /tier) stays disallowed for privacy + crawl budget.
+    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\nAllow: /health\n'),
   );
 
   app.get('/health', {
     config: {
       rateLimit: { max: 200, timeWindow: '1 minute' }, // permissive — uptime monitors hit this continuously
     },
-  }, async () => {
+  }, async (_req, reply) => {
+    // Crawlable (robots.txt allows /health) but kept OUT of the search index via a
+    // noindex header, so Bing reads it instead of reporting "blocked by robots" and
+    // never indexes the operational JSON. X-Robots-Tag applies to non-HTML responses.
+    reply.header('X-Robots-Tag', 'noindex');
     // last_fetch       = MAX(trades.fetched_at): advances only when a NEW Ophis
     //                    trade is inserted, so it is STALE during any quiet
     //                    period and is NOT a fetcher-liveness signal on its own.
