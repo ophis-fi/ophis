@@ -9,6 +9,8 @@ import {
   listChains,
   APP_DATA_VERSION,
   ORDER_TYPED_DATA_TYPES,
+  extractQuoteAmounts,
+  assertLimitWithinSlippage,
 } from '../src/ophis.js'
 
 const OWNER = '0x931e9f531cdd4835Def0dEDE1452BA8aFbe5ff9b' as const
@@ -107,11 +109,12 @@ describe('buildOrder', () => {
     expect(() => buildOrder({ ...base, sellAmount: max, buyAmount: max }, NOW)).not.toThrow()
   })
 
-  it('caps slippageBips at 50% (rejects absurd declared slippage) — but does NOT price-check the limit', () => {
+  it('caps slippageBips at 50%; the PURE lib does not itself price-check (the MCP handler does)', () => {
     expect(() => buildOrder({ ...base, slippageBips: 5001 }, NOW)).toThrow()
     expect(() => buildOrder({ ...base, slippageBips: 5000 }, NOW)).not.toThrow()
-    // slippageBips is advisory: build_order has no trusted quote, so a "min out = 1"
-    // limit is accepted (the caller/signer owns the limit; the receiver is pinned).
+    // buildOrder stays PURE (no network/quote): a "min out = 1" limit passes the lib.
+    // Slippage is ENFORCED against a server-fetched quote in the MCP build_order
+    // handler (getQuote + assertLimitWithinSlippage), which is tested via those units.
     expect(() => buildOrder({ ...base, buyAmount: '1', slippageBips: 100 }, NOW)).not.toThrow()
   })
 })
@@ -180,5 +183,47 @@ describe('listChains', () => {
     expect(tradeable.map((c) => c.chainId)).not.toContain(999)
     // Every tradeable chain has a real orderbook URL (no dead-ends).
     expect(tradeable.every((c) => typeof c.orderbookUrl === 'string')).toBe(true)
+  })
+})
+
+describe('extractQuoteAmounts', () => {
+  it('extracts sell/buy atoms from a CoW quote response', () => {
+    expect(extractQuoteAmounts({ quote: { sellAmount: '1000000', buyAmount: '250000000000000' } })).toEqual({
+      sellAmount: '1000000',
+      buyAmount: '250000000000000',
+    })
+  })
+
+  it('returns null for missing or malformed amounts', () => {
+    expect(extractQuoteAmounts(null)).toBeNull()
+    expect(extractQuoteAmounts({})).toBeNull()
+    expect(extractQuoteAmounts({ quote: {} })).toBeNull()
+    expect(extractQuoteAmounts({ quote: { sellAmount: '1.5', buyAmount: '1' } })).toBeNull()
+    expect(extractQuoteAmounts({ quote: { sellAmount: 1000000, buyAmount: '1' } })).toBeNull()
+  })
+})
+
+describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
+  const fair = { sellAmount: '1000000', buyAmount: '250000000000000' }
+
+  it('accepts a sell min-out within slippage of the quote', () => {
+    expect(() => assertLimitWithinSlippage('sell', '1000000', fair.buyAmount, fair, 100)).not.toThrow()
+    const floor = ((250000000000000n * 9900n) / 10000n).toString() // exactly 1% below
+    expect(() => assertLimitWithinSlippage('sell', '1000000', floor, fair, 100)).not.toThrow()
+  })
+
+  it('rejects a sell min-out below the slippage floor (the "min out = 1" attack)', () => {
+    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair, 100)).toThrow()
+  })
+
+  it('accepts a buy max-in within slippage and rejects one above', () => {
+    expect(() => assertLimitWithinSlippage('buy', fair.sellAmount, '250000000000000', fair, 100)).not.toThrow()
+    expect(() => assertLimitWithinSlippage('buy', '100000000000', '250000000000000', fair, 100)).toThrow()
+  })
+
+  it('defaults to the 50% cap when slippageBips is omitted', () => {
+    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair)).toThrow() // >50% below
+    const out40 = ((250000000000000n * 6000n) / 10000n).toString() // 40% below -> within 50% default
+    expect(() => assertLimitWithinSlippage('sell', '1000000', out40, fair)).not.toThrow()
   })
 })

@@ -24,6 +24,8 @@ import {
   submitOrder,
   lookupTier,
   listChains,
+  extractQuoteAmounts,
+  assertLimitWithinSlippage,
   type Address,
 } from './ophis.js'
 
@@ -114,7 +116,7 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       'build_order',
       {
         description:
-          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%) and recorded in appData but is ADVISORY — build_order does not price-check the limit, so set sellAmount/buyAmount from get_quote yourself. Sign `order` as EIP-712 with `signing`, then call submit_order.",
+          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%, default = the cap) and ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched — retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
         inputSchema: {
           chainId: z.number().int(),
           owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
@@ -136,8 +138,27 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
             .nonnegative()
             .optional()
             .describe(
-              'Max accepted slippage in bips; capped at 5000 (50%); recorded in appData metadata. ADVISORY: build_order does NOT price-check the limit against a quote, so YOU must set sane sellAmount/buyAmount (call get_quote and apply slippage). Fund safety: the receiver is always pinned to the owner.',
+              'Max accepted slippage in bips; capped at 5000 (50%, the default bound); recorded in appData. ENFORCED: build_order fetches a live quote and rejects a limit worse than this vs the quote. Fund safety: the receiver is always pinned to the owner.',
             ),
+          // Retired fields (#611 -> #612 -> #613): slippage was briefly bounded against
+          // a CALLER-supplied reference, which is fakeable on a no-auth tool. It is now
+          // enforced server-side against a live quote, so these are gone. Reject them
+          // explicitly — the raw shape would otherwise strip them, leaving an old client
+          // falsely believing its guard ran. (reviewer P2)
+          referenceBuyAmount: z
+            .any()
+            .optional()
+            .refine((v) => v === undefined, {
+              message:
+                'referenceBuyAmount was removed — slippage is now enforced server-side against a live quote. Remove it (optionally set slippageBips).',
+            }),
+          referenceSellAmount: z
+            .any()
+            .optional()
+            .refine((v) => v === undefined, {
+              message:
+                'referenceSellAmount was removed — slippage is now enforced server-side against a live quote. Remove it (optionally set slippageBips).',
+            }),
           // SECURITY (#608 review): no custom-receiver field is exposed on this
           // public, no-auth tool. The receiver is unconditionally pinned to the
           // owner so a prompt-injected agent cannot build an order that drains to
@@ -152,29 +173,55 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       },
       async (a) => {
         try {
-          return ok(
-            buildOrder(
-              {
-                chainId: a.chainId,
-                owner: a.owner as Address,
-                sellToken: a.sellToken as Address,
-                buyToken: a.buyToken as Address,
-                sellAmount: a.sellAmount,
-                buyAmount: a.buyAmount,
-                kind: a.kind,
-                validForSeconds: a.validForSeconds,
-                feeAmount: a.feeAmount,
-                partiallyFillable: a.partiallyFillable,
-                slippageBips: a.slippageBips,
-                // unsafeCustomReceiver intentionally NOT forwarded — see the schema
-                // note above; buildOrder therefore pins the receiver to the owner.
-                // Per-call code wins; otherwise the server's configured default
-                // (so an operator can attribute all orders to their own code).
-                referrerCode: a.referrerCode ?? this.env.OPHIS_DEFAULT_REFERRER_CODE,
-              },
-              Math.floor(Date.now() / 1000),
-            ),
+          const built = buildOrder(
+            {
+              chainId: a.chainId,
+              owner: a.owner as Address,
+              sellToken: a.sellToken as Address,
+              buyToken: a.buyToken as Address,
+              sellAmount: a.sellAmount,
+              buyAmount: a.buyAmount,
+              kind: a.kind,
+              validForSeconds: a.validForSeconds,
+              feeAmount: a.feeAmount,
+              partiallyFillable: a.partiallyFillable,
+              slippageBips: a.slippageBips,
+              // unsafeCustomReceiver intentionally NOT forwarded — see the schema
+              // note above; buildOrder therefore pins the receiver to the owner.
+              // Per-call code wins; otherwise the server's configured default
+              // (so an operator can attribute all orders to their own code).
+              referrerCode: a.referrerCode ?? this.env.OPHIS_DEFAULT_REFERRER_CODE,
+            },
+            Math.floor(Date.now() / 1000),
           )
+          // Enforce slippage against a TRUSTED, server-fetched quote (NOT a caller
+          // value — a caller-supplied reference is fakeable on this no-auth tool;
+          // reviewer P1). FAIL CLOSED: if we cannot fetch AND parse a live quote we
+          // cannot bound the limit, so reject (the agent retries) rather than emit
+          // an unverified "bounded" order. This also rejects un-quoteable routes
+          // (no liquidity / 4xx) instead of silently bypassing the check.
+          let quote: unknown
+          try {
+            quote = await getQuote({
+              chainId: a.chainId,
+              sellToken: a.sellToken as Address,
+              buyToken: a.buyToken as Address,
+              kind: a.kind,
+              amount: a.kind === 'sell' ? a.sellAmount : a.buyAmount,
+              from: a.owner as Address,
+            })
+          } catch (qe) {
+            throw new Error(
+              `build_order: could not fetch a live quote to verify slippage (${(qe as Error)?.message ?? qe}); retry shortly`,
+            )
+          }
+          const fair = extractQuoteAmounts(quote)
+          if (!fair) {
+            throw new Error('build_order: the quote response was unusable, so slippage could not be verified; retry shortly')
+          }
+          // Throws (-> rejected) if the limit is worse than slippageBips (default 50% cap).
+          assertLimitWithinSlippage(a.kind, a.sellAmount, a.buyAmount, fair, a.slippageBips)
+          return ok(built)
         } catch (e) {
           return fail(e)
         }
