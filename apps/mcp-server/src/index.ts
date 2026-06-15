@@ -114,7 +114,7 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       'build_order',
       {
         description:
-          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); to make it ENFORCED (not advisory), also pass the get_quote amount as referenceBuyAmount (kind 'sell') or referenceSellAmount (kind 'buy') and build_order rejects a limit worse than that. Sign `order` as EIP-712 with `signing`, then call submit_order.",
+          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%) and recorded in appData but is ADVISORY — build_order does not price-check the limit, so set sellAmount/buyAmount from get_quote yourself. Sign `order` as EIP-712 with `signing`, then call submit_order.",
         inputSchema: {
           chainId: z.number().int(),
           owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
@@ -136,19 +136,7 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
             .nonnegative()
             .optional()
             .describe(
-              'Max accepted slippage in bips; CAPPED at 5000 (50%). Recorded in appData, and ENFORCED against the reference amount below when you supply it.',
-            ),
-          referenceBuyAmount: z
-            .string()
-            .optional()
-            .describe(
-              "kind 'sell' only: the quote's buyAmount (fair out, from get_quote). When set, build_order rejects a buyAmount below the slippage floor — pass it to make slippage enforced, not advisory.",
-            ),
-          referenceSellAmount: z
-            .string()
-            .optional()
-            .describe(
-              "kind 'buy' only: the quote's sellAmount (fair in, from get_quote). When set, build_order rejects a sellAmount above the slippage ceiling — pass it to make slippage enforced, not advisory.",
+              'Max accepted slippage in bips; capped at 5000 (50%); recorded in appData metadata. ADVISORY: build_order does NOT price-check the limit against a quote, so YOU must set sane sellAmount/buyAmount (call get_quote and apply slippage). Fund safety: the receiver is always pinned to the owner.',
             ),
           // SECURITY (#608 review): no custom-receiver field is exposed on this
           // public, no-auth tool. The receiver is unconditionally pinned to the
@@ -178,8 +166,6 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
                 feeAmount: a.feeAmount,
                 partiallyFillable: a.partiallyFillable,
                 slippageBips: a.slippageBips,
-                referenceBuyAmount: a.referenceBuyAmount,
-                referenceSellAmount: a.referenceSellAmount,
                 // unsafeCustomReceiver intentionally NOT forwarded — see the schema
                 // note above; buildOrder therefore pins the receiver to the owner.
                 // Per-call code wins; otherwise the server's configured default
