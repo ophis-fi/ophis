@@ -54,6 +54,56 @@ groups:
           summary: "OP eRPC proxy scrape failing for >3m"
           description: "Prometheus cannot reach rpc-proxy:4001/metrics. All upstream provider routing has stopped — everything downstream will start failing. Restart rpc-proxy container."
 
+  - name: ophis-op-host-resources
+    interval: 30s
+    rules:
+      # The 2026-06-15 outage: the Colima VM disk /dev/vdb1 (/var/lib/docker:
+      # Postgres data + container logs) filled to 100%, wedging Postgres in an
+      # ENOSPC checkpoint crash-loop and 500ing /quote + /auction. The app-level
+      # up{} alerts stayed green (healthchecks hit stateless routes), so disk
+      # exhaustion was invisible. These alerts page BEFORE Postgres dies. Filter
+      # fstype="ext4" so the virtiofs Mac-host share at /Users/scep is ignored;
+      # max by(device) dedupes the /dev/vdb1 -> /var/lib/docker bind.
+      - alert: OphisOpHostDiskLow
+        expr: |
+          max by (device) (
+            1 - (
+              node_filesystem_avail_bytes{job="node-exporter", fstype="ext4"}
+              / node_filesystem_size_bytes{job="node-exporter", fstype="ext4"}
+            )
+          ) > 0.80
+        for: 10m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "Colima VM disk {{ $labels.device }} >80% full"
+          description: "A VM ext4 filesystem is over 80% used. The docker data disk /dev/vdb1 (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). Check `colima ssh -- df -h`; find the hogs with `colima ssh -- sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm)."
+      - alert: OphisOpHostDiskCritical
+        expr: |
+          max by (device) (
+            1 - (
+              node_filesystem_avail_bytes{job="node-exporter", fstype="ext4"}
+              / node_filesystem_size_bytes{job="node-exporter", fstype="ext4"}
+            )
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "Colima VM disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
+          description: "A VM ext4 filesystem is over 90% used. Postgres (OP + megaeth share this disk) will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). Runbook: infra/optimism-mainnet/README.md, 'disk full -> Postgres crash-loop'."
+      - alert: OphisOpNodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 10m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "node-exporter scrape failing for >10m, disk alerting is blind"
+          description: "Prometheus cannot reach node-exporter:9100. The disk-exhaustion alerts (OphisOpHostDisk*) cannot fire while this is down. Check `docker compose ps node-exporter` on the Mac mini."
+
   - name: ophis-op-settlement-health
     interval: 30s
     rules:

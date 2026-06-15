@@ -61,6 +61,13 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 30s
 
+  # node-exporter on the Colima VM: host filesystem + memory metrics, so the
+  # disk-exhaustion alerts (OphisOpHostDisk*) can fire before Postgres ENOSPCs.
+  - job_name: node-exporter
+    static_configs:
+      - targets: [node-exporter:9100]
+    scrape_interval: 30s
+
   - job_name: prometheus
     static_configs:
       - targets: [localhost:9090]
