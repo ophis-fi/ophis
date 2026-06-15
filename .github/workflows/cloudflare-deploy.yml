@@ -74,7 +74,10 @@ jobs:
           FORMSPREE_DEPLOY_KEY: ${{ secrets.FORMSPREE_DEPLOY_KEY }}
         run: |
           if [ -n "$FORMSPREE_DEPLOY_KEY" ]; then
-            npx --yes @formspree/cli@latest deploy -k "$FORMSPREE_DEPLOY_KEY"
+            # Pinned exact (was @formspree/cli@latest): this step carries the
+            # Formspree deploy key, so a floating tag must not pull a compromised
+            # future release. Bump deliberately.
+            npx --yes @formspree/cli@0.9.6 deploy -k "$FORMSPREE_DEPLOY_KEY"
           else
             echo "FORMSPREE_DEPLOY_KEY not set; skipping Formspree form deploy."
           fi
@@ -232,7 +235,10 @@ jobs:
           BUNGEE_API: ${{ secrets.BUNGEE_API }}
         run: |
           if [ -n "$BUNGEE_API" ]; then
-            printf '%s' "$BUNGEE_API" | timeout 90 npx --yes wrangler@4 pages secret put BUNGEE_API --project-name greg
+            # Pinned exact (was wrangler@4 floating tag): this step carries the CF
+            # API token + the BUNGEE_API secret, so it must not pull a compromised
+            # future 4.x release. Bump deliberately.
+            printf '%s' "$BUNGEE_API" | timeout 90 npx --yes wrangler@4.100.0 pages secret put BUNGEE_API --project-name greg
           else
             echo "BUNGEE_API not set; skipping Pages runtime secret sync."
           fi

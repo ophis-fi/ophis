@@ -114,8 +114,10 @@ jobs:
         run: |
           # cloudflare/wrangler-action installs wrangler via `pnpm add` which
           # fails with ERR_PNPM_ADDING_TO_ROOT in our pnpm workspace. Bypass by
-          # calling wrangler directly via npx.
-          npx --yes wrangler@4 pages deploy apps/frontend/apps/ophis-landing/dist \
+          # calling wrangler directly via npx, PINNED exact (was the wrangler@4
+          # floating tag) so this token-bearing step can't pull a compromised
+          # future 4.x release. Bump deliberately.
+          npx --yes wrangler@4.100.0 pages deploy apps/frontend/apps/ophis-landing/dist \
             --project-name=ophis-landing \
             --branch=main \
             --commit-message="$COMMIT_MSG"
