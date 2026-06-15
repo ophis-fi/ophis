@@ -206,6 +206,32 @@ docker compose logs migrations
 - DB volume corrupt → `docker compose down -v && docker compose up -d` (loses data)
 - Migrations failed → rebuild migrations target: `docker compose up -d --build --force-recreate migrations`
 
+### `/quote`+`/auction` 500 but `/version`+`native_price` 200 — disk full → Postgres crash-loop
+
+**2026-06-15 incident.** DB-backed endpoints (POST `/quote`, GET `/auction`, `/solver_competition/latest`) return InternalServerError(500)/timeout while stateless ones (`/version`, `/token/<addr>/native_price`) stay 200. Root cause: the Colima Docker VM disk filled to 100%, wedging `optimism-mainnet-db-1` (and `megaeth-mainnet-db-1`, same VM disk) in an end-of-recovery checkpoint PANIC loop (`could not write ... replorigin_checkpoint.tmp: No space left on device`), so Postgres rejects every connection. The disk was filled by UNBOUNDED container json logs: the eRPC `rpc-proxy` log at `logLevel: info` (one line per RPC request AND response) grew to 44G. DB data itself was tiny (~67MB) and intact — a disk victim, not corruption.
+
+**Diagnose** (the host Mac disk looks fine; the full disk is INSIDE the Colima VM):
+```bash
+docker exec optimism-mainnet-db-1 df -h /var/lib/postgresql/data   # /dev/vdb1 at 100%?
+docker exec optimism-mainnet-db-1 pg_isready                       # "rejecting connections"?
+colima ssh -- sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'
+```
+
+**Fix** (least-destructive first; truncating json.log does NOT stop the container or touch DB data — never `rm` it):
+```bash
+# 1. free space by truncating the runaway log(s) in-place inside the VM
+colima ssh -- sudo truncate -s 0 /var/lib/docker/containers/<id>/<id>-json.log
+# 2. the wedged DB does NOT self-heal; restart it (data is consistent, redo replays cleanly)
+docker exec optimism-mainnet-db-1 df -h /var/lib/postgresql/data   # confirm Avail > 0 first
+docker restart optimism-mainnet-db-1 megaeth-mainnet-db-1
+docker exec optimism-mainnet-db-1 pg_isready                       # "accepting connections"
+```
+
+**Prevent recurrence**:
+- eRPC `logLevel` is now `warn` (was `info`) in `configs/erpc.yaml.tmpl` — kills the per-request firehose at the source while still surfacing `ErrConsensusDispute`/`ErrUpstreamsExhausted`.
+- Add log rotation so no container can refill the disk: set the Colima VM `/etc/docker/daemon.json` `"log-opts": {"max-size": "50m", "max-file": "3"}`, or a per-service `logging:` block in `docker-compose.yml`. Takes effect on container recreate (next `compose-up.sh`).
+- The orderbook/driver healthchecks hit stateless routes, so they reported "healthy" through the whole outage — consider a disk-free alert in `observability/`.
+
 ### OKX solver returns no quotes for any pair
 
 **Possible causes**:

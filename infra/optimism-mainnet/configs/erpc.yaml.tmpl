@@ -77,7 +77,7 @@
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/10
 
-logLevel: info
+logLevel: warn  # was info; info logs 1 line/RPC req+resp -> filled the docker-VM disk (2026-06-15 incident). warn still surfaces consensus disputes / upstream-exhausted.
 
 projects:
   - id: main
