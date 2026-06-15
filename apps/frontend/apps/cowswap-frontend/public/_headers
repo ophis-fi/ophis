@@ -2,6 +2,11 @@
 # Audit follow-up F2 (2026-05-10): Content-Security-Policy + transport
 # security headers for the Ophis SPA. Applies to every path.
 #
+# CSP POSTURE DECISION: the three broad directives (frame-ancestors *,
+# script-src 'unsafe-eval', connect-src/img-src https:) are deliberate,
+# reviewed-and-accepted tradeoffs with documented revisit triggers — see
+# docs/operations/csp-posture.md before tightening or loosening them.
+#
 # Notes:
 # - script-src: 'self' + 'wasm-unsafe-eval' + 'unsafe-eval'. The
 #   'unsafe-eval' is needed because cowswap's token-list validator
