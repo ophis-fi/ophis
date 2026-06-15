@@ -226,4 +226,20 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
     const out40 = ((250000000000000n * 6000n) / 10000n).toString() // 40% below -> within 50% default
     expect(() => assertLimitWithinSlippage('sell', '1000000', out40, fair)).not.toThrow()
   })
+
+  it('widens the bound by the CIP-75 partner fee so legit fee-chain orders are not false-rejected', () => {
+    // A signed order on a fee chain is net of the partner fee: with 50 bips slippage
+    // and a 10 bips partner fee, the legit min-out sits ~60 bips below the raw quote.
+    const out60 = ((250000000000000n * (10000n - 60n)) / 10000n).toString()
+    // Without the partner fee (bound = 50 bips) the 60-bips-below limit is rejected...
+    expect(() => assertLimitWithinSlippage('sell', '1000000', out60, fair, 50)).toThrow()
+    // ...but passing partnerFeeBps = 10 widens the bound to 60 bips and it passes.
+    expect(() => assertLimitWithinSlippage('sell', '1000000', out60, fair, 50, 10)).not.toThrow()
+    // Symmetric on the buy side: a max-in 60 bips above the quote needs the fee allowance.
+    const in60 = ((1000000n * (10000n + 60n)) / 10000n).toString()
+    expect(() => assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50)).toThrow()
+    expect(() => assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50, 10)).not.toThrow()
+    // The fee allowance does NOT rescue the "min out = 1" attack (still way past the band).
+    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair, 50, 10)).toThrow()
+  })
 })

@@ -624,8 +624,14 @@ export function extractQuoteAmounts(quoteResponse: unknown): { sellAmount: strin
  * MAX_SLIPPAGE_BIPS, default = the cap) vs a TRUSTED quote. `fair` MUST come from a
  * server-fetched quote, never from the caller (a caller-supplied reference is
  * fakeable on the public no-auth tool — reviewer P1). Throws on a violation.
- * - kind 'sell': caller buyAmount (min out) must be >= fair.buyAmount * (1 - slip).
- * - kind 'buy':  caller sellAmount (max in) must be <= fair.sellAmount * (1 + slip).
+ * - kind 'sell': caller buyAmount (min out) must be >= fair.buyAmount * (1 - bound).
+ * - kind 'buy':  caller sellAmount (max in) must be <= fair.sellAmount * (1 + bound).
+ *
+ * `partnerFeeBps` (the CIP-75 partner fee embedded in the order) WIDENS the bound: on
+ * fee chains the signed amounts are net of that fee, so the legit limit sits roughly
+ * `partnerFeeBps` further from the raw quote. Without this allowance a correctly-built
+ * fee-chain order would be false-rejected (reviewer P1). It only loosens the floor, so
+ * it never lets a worse-than-(slippage+fee) limit through.
  */
 export function assertLimitWithinSlippage(
   kind: 'sell' | 'buy',
@@ -633,8 +639,10 @@ export function assertLimitWithinSlippage(
   buyAmount: string,
   fair: { sellAmount: string; buyAmount: string },
   slippageBips?: number,
+  partnerFeeBps = 0,
 ): void {
-  const bips = Math.min(slippageBips ?? MAX_SLIPPAGE_BIPS, MAX_SLIPPAGE_BIPS)
+  const slip = Math.min(slippageBips ?? MAX_SLIPPAGE_BIPS, MAX_SLIPPAGE_BIPS)
+  const bips = Math.min(slip + Math.max(0, Math.trunc(partnerFeeBps)), 10_000)
   const bound = BigInt(bips)
   if (kind === 'sell') {
     // Ceiling division: round the min-out floor UP so we never accept a limit one
