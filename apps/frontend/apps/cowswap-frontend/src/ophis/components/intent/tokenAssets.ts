@@ -61,7 +61,9 @@ const TOKEN_LOGO_EXT: Record<string, 'png' | 'jpg' | 'svg'> = {
   // ─────────────────────────────────────────────────────────────────
   // P3 phase 2 additions (2026-05-11) — logos sourced from CoinGecko
   // top-1500 by market cap, self-hosted under /logos/. 62 new entries
-  // matching the TOKEN_VALUES expansion in functions/api/intent.ts.
+  // for common DEX-traded tokens. Logo coverage is a hint only: the intent
+  // parser at functions/api/intent.ts no longer gates on a fixed symbol
+  // list, so a recognised symbol missing here just renders a text-only chip.
   // ─────────────────────────────────────────────────────────────────
   // Stablecoins
   USDS: 'png', BUSD: 'jpg',

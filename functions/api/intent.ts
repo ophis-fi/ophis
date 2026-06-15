@@ -248,14 +248,22 @@ Rules:
     Memes:         PEPE, SHIB, DOGE, BONK, WIF, FLOKI, BRETT, MOG,
                    MEW, POPCAT, TURBO, GIGA
     Gaming:        SAND, MANA, AXS, GALA, APE, ENJ, CHZ
-  If you recognise a symbol not listed but commonly traded on DEXes
-  (e.g. ATOM, NEAR, RUNE, OSMO, KAVA, WAVES, ROSE), emit it. The
-  client filters unknown symbols out — better to emit a recognisable
-  token than to omit it.
-- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth" -> WETH.
-  "lido staked eth" -> STETH. "wrapped btc" -> WBTC. "bitcoin"/"btc" -> BTC.
-  "uniswap" -> UNI. "aave" -> AAVE. "chainlink" -> LINK. "polygon"
-  (the token) -> MATIC. "solana" (token) -> SOL. "cardano" -> ADA.
+  Emit the UPPERCASE ticker for ANY crypto token the user names,
+  including long-tail, low-cap, or newly launched tokens you are not
+  certain about (e.g. ATOM, NEAR, RUNE, OSMO, GROK, MOONPIG). The swap
+  UI resolves each symbol against its live on-chain token list, so it
+  is better to emit the symbol the user wrote than to omit it. The
+  ticker you emit MUST be evidenced verbatim in the user's text (the
+  symbol itself, or one of the documented aliases below); never invent
+  a token the user did not name.
+- Common aliases: "ether"/"ethers" -> ETH. "wrapped eth"/"wrapped ether" -> WETH.
+  "lido staked eth"/"staked eth" -> STETH. "wrapped btc"/"wrapped bitcoin" -> WBTC.
+  "coinbase wrapped btc"/"coinbase wrapped bitcoin" -> CBBTC.
+  "bitcoin"/"btc" -> BTC. "tether" -> USDT.
+  "usd coin" -> USDC. "uniswap" -> UNI. "aave" -> AAVE. "maker" -> MKR.
+  "lido" -> LDO. "chainlink" -> LINK. "polygon" (the token) -> MATIC.
+  "solana" (token) -> SOL. "cardano" -> ADA. "dogecoin" -> DOGE.
+  "shiba inu" -> SHIB.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
 - Chain canonical values: lowercase slugs. Allowed (mirrors SORTED_CHAIN_IDS in the FE — chains the NetworkSelector actually surfaces):
     ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon
@@ -282,68 +290,6 @@ const json = (body: IntentResponse, status = 200, extraHeaders: Record<string, s
       ...extraHeaders,
     },
   })
-
-// Source-of-truth allow-list for tokens the parser will surface to the UI.
-// The LibertAI prompt is encouraged to emit *any* DEX-traded token symbol;
-// this set is the post-LLM filter. Symbols missing here are silently dropped
-// (the LLM may emit them but `filterParsedIntent` strips them). Adding a
-// symbol here does NOT guarantee the cowswap upstream can resolve it to an
-// on-chain address — that's a separate token-list concern in apps/frontend.
-//
-// Categorisation is for human readability only; canonical lookup is the Set
-// membership check in `isValidEntity`. Keep entries UPPERCASE.
-//
-// Updated 2026-05-11 (P3): expanded from 146 to 236 to improve intent-parser
-// coverage on long-tail symbols. Curated against tokens with active EVM-DEX
-// liquidity per CoinGecko top-volume snapshot. Logo coverage in
-// apps/frontend/.../tokenAssets.ts remains a separate concern — symbols added
-// here without a logo render as text-only chips (graceful degradation).
-const TOKEN_VALUES = new Set([
-  // Stablecoins
-  'USDC', 'USDT', 'DAI', 'FRAX', 'LUSD', 'SUSD', 'GUSD', 'TUSD',
-  'USDP', 'USDE', 'PYUSD', 'GHO', 'FDUSD', 'EURC', 'MIM', 'CRVUSD',
-  'USDS', 'SUSDS', 'SDAI', 'USDR', 'AGEUR', 'BUSD',
-  // ETH-pegs + LSTs/LRTs
-  'ETH', 'WETH', 'STETH', 'WSTETH', 'RETH', 'CBETH', 'SFRXETH',
-  'EZETH', 'RSETH',
-  'METH', 'EETH', 'WEETH', 'PUFETH', 'OSETH', 'SWETH', 'ETHX',
-  'WBETH', 'ANKRETH', 'OETH',
-  // BTC-pegs
-  'WBTC', 'TBTC', 'CBBTC', 'BTCB', 'BTC',
-  // Native L1/L2
-  'BNB', 'MATIC', 'ARB', 'OP', 'AVAX', 'APT', 'SUI', 'NEAR', 'ATOM',
-  'FIL', 'HBAR', 'ICP', 'ALGO', 'ROSE', 'TON', 'SEI', 'INJ', 'RUNE',
-  'OSMO', 'MNT', 'IMX', 'TRX', 'LTC', 'BCH', 'ETC', 'XRP', 'ADA',
-  'SOL', 'DOT', 'KSM', 'XMR', 'XLM', 'FLOW', 'VET', 'HNT', 'AR',
-  'FLR', 'TIA', 'TAO', 'CRO', 'CFX', 'FTM', 'CELO', 'KAVA', 'STX',
-  'WAVES', 'ZEC', 'DASH', 'QNT', 'ICX', 'ZIL', 'ASTR', 'LSK',
-  // DeFi blue-chips
-  'UNI', 'AAVE', 'MKR', 'LDO', 'COMP', 'CRV', 'SUSHI', 'SNX', 'BAL',
-  'GNO', 'YFI', '1INCH', 'LINK', 'FXS', 'RPL', 'PENDLE', 'ENS',
-  'EIGEN', 'GRT', 'JUP', 'JTO', 'PYTH', 'GMX', 'AERO', 'VELO', 'KAS',
-  'DYM', 'CAKE', 'OCEAN', 'NMR', 'RLC', 'BAND', 'ZRX', 'PRIME', 'RON',
-  'NEXO', 'STRK', 'METIS',
-  'ENA', 'MORPHO', 'RDNT', 'JOE', 'SWELL', 'ORDI', 'USUAL', 'RBN',
-  'DYDX', 'BICO', 'KNC', 'SDT', 'MAGIC', 'QUICK', 'MASK', 'OGN',
-  'BAT', 'LRC', 'GMT', 'WOO', 'GLM', 'CFG', 'ALCX', 'LPT', 'HOT',
-  'CVX', 'AMP', 'RSR', 'POLY', 'OMG', 'STORJ', 'BNT', 'ANT', 'ANKR',
-  'KEEP', 'MTL', 'AUDIO', 'CHR', 'SUPER', 'MAV', 'CKB', 'ADX', 'REQ',
-  'ELF', 'ATA',
-  // AI / DePIN / RWA
-  'FET', 'RNDR', 'ARKM', 'AKT', 'ONDO', 'ETHFI', 'IO', 'WLD',
-  'VIRTUAL', 'AIXBT', 'AI16Z', 'GRASS', 'NOS', 'IPOR', 'MOBILE',
-  'IOTX', 'TFUEL',
-  // Memes
-  'PEPE', 'SHIB', 'DOGE', 'BONK', 'WIF', 'FLOKI', 'BRETT', 'MOG',
-  'MEW', 'POPCAT', 'TURBO', 'GIGA',
-  'TOSHI', 'NEIRO', 'GOAT', 'PNUT', 'MOODENG', 'DEGEN', 'MICHI',
-  'TRUMP', 'ZRO', 'BABYDOGE',
-  // Gaming
-  'SAND', 'MANA', 'AXS', 'GALA', 'APE', 'ENJ', 'CHZ', 'JASMY',
-  'BEAM', 'PIXEL', 'PORTAL', 'ALICE', 'VOXEL',
-  // Other
-  'STG', 'RAD',
-])
 
 // Mirrors SORTED_CHAIN_IDS in apps/frontend/libs/common-const/src/chainInfo.ts —
 // the actual chains the NetworkSelector surfaces in production. If a chain
@@ -389,6 +335,16 @@ const TOKEN_ALIASES: Record<string, string> = {
   polygon: 'MATIC',
   solana: 'SOL',
   cardano: 'ADA',
+  // High-value full-name mentions (the bare ticker still matches directly via
+  // the alnum===value check, so only multi-word / non-ticker names need entries).
+  'usd coin': 'USDC',
+  'staked eth': 'STETH',
+  'coinbase wrapped btc': 'CBBTC',
+  'coinbase wrapped bitcoin': 'CBBTC',
+  maker: 'MKR',
+  lido: 'LDO',
+  dogecoin: 'DOGE',
+  'shiba inu': 'SHIB',
   // Full chain NAMES that are also token names — listed so the token sense
   // derives ("swap optimism for usdc" -> OP). The chain sense always requires
   // on/via/using context (see the chain branch of isValidEntity).
@@ -451,6 +407,29 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * A token `raw` must appear in the text as a WHOLE token, not as a substring
+ * buried inside a larger word. With the fixed token allow-list removed, the
+ * raw-in-text guard in isValidEntity is a boundary-less `includes()`, so a
+ * plausible 2-3 char symbol could otherwise be "evidenced" by an unrelated word
+ * (AR in "car", OP in "shop", BASE in "database") and pre-fill the wrong asset.
+ * Require the raw to be bounded by non-alphanumerics (or string edges) somewhere
+ * in the text - offset-independent, mirroring the chain branch's boundary guard.
+ */
+function rawIsWholeWord(text: string, raw: string): boolean {
+  const r = raw.trim()
+  if (r.length === 0) return false
+  try {
+    // Unicode-aware boundaries (\p{L}\p{N} under the `u` flag) so an ASCII
+    // symbol can't be anchored to a substring inside a non-ASCII word either
+    // (e.g. "op" buried in "αopβ"). escapeRegExp keeps the pattern
+    // valid under `u`; the try/catch fails CLOSED (reject) on any regex error.
+    return new RegExp('(?<![\\p{L}\\p{N}])' + escapeRegExp(r) + '(?![\\p{L}\\p{N}])', 'iu').test(text)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Reduce a chain `raw` span to the bare chain term for derivation + context
  * matching. The model may wrap the term in punctuation ("(Base)", "Base.") or
  * prefix an article ("an L1", "the Base") because raw need only be an exact
@@ -501,6 +480,36 @@ function inChainContext(text: string, term: string): boolean {
   return new RegExp(pattern, 'i').test(text)
 }
 
+// Swap-grammar words the LLM occasionally mis-tags as a token. They pass the
+// ticker SHAPE check (short, uppercase) but are never tradable tickers, so this
+// set drops them. It is a QUALITY filter, NOT a security control: the two real
+// injection defenses (raw-in-text in isValidEntity + valueDerivesFromRaw) run
+// unconditionally, so a stop word can only ever reach here if the user literally
+// typed it. None of these collide with a live DEX ticker (GET Protocol is the
+// lone near-miss and is far rarer than the verb "get"; UX wins). Tune from logs.
+const TOKEN_STOP_WORDS = new Set<string>([
+  'SWAP', 'FOR', 'AND', 'THE', 'WITH', 'FROM', 'INTO', 'TO', 'ON', 'VIA',
+  'USING', 'BUY', 'SELL', 'WANT', 'GET', 'TRADE', 'CONVERT', 'EXCHANGE',
+  'MY', 'SOME', 'ALL', 'AN', 'OF',
+])
+
+/**
+ * Recognition gate for token symbols. Replaced the former hardcoded 236-entry
+ * allow-list (`TOKEN_VALUES`), which silently dropped every long-tail or newly
+ * launched token a user typed. A `value` is a plausible token when it has a
+ * ticker SHAPE (2-12 chars of [A-Z0-9], with at least one letter) and is not a
+ * swap-grammar stop word. This is the ONLY residual quality filter; injection
+ * safety is enforced separately and unconditionally by the raw-in-text check in
+ * isValidEntity and by valueDerivesFromRaw, so any `value` admitted here is
+ * still required to be verbatim-evidenced in the user's text. The frontend token
+ * list is the authoritative arbiter of whether the symbol resolves to an
+ * on-chain address; a plausible-but-unknown symbol simply yields an empty swap
+ * field (graceful degradation), never a crash.
+ */
+export function isPlausibleTokenSymbol(v: string): boolean {
+  return /^[A-Z0-9]{2,12}$/.test(v) && /[A-Z]/.test(v) && !TOKEN_STOP_WORDS.has(v)
+}
+
 /**
  * The canonical `value` must DERIVE from the `raw` substring: either `raw`
  * normalizes to `value` (the model emitted the symbol/slug/number itself) or
@@ -509,7 +518,7 @@ function inChainContext(text: string, term: string): boolean {
  * user's text — an injected response can't anchor a fabricated allow-listed
  * value (e.g. USDC) to an unrelated `raw` like a space or "for". (Codex P2.)
  */
-function valueDerivesFromRaw(kind: 'token' | 'chain' | 'amount', value: string, raw: string): boolean {
+export function valueDerivesFromRaw(kind: 'token' | 'chain' | 'amount', value: string, raw: string): boolean {
   const k = rawKey(raw)
   const alnum = k.replace(/[^a-z0-9]/g, '')
   if (kind === 'token') {
@@ -526,7 +535,7 @@ function valueDerivesFromRaw(kind: 'token' | 'chain' | 'amount', value: string, 
   return WORD_NUMBERS[k] === value
 }
 
-function isValidEntity(e: unknown, text: string): e is Entity {
+export function isValidEntity(e: unknown, text: string): e is Entity {
   if (!e || typeof e !== 'object') return false
   const o = e as Record<string, unknown>
   if (typeof o.value !== 'string' || typeof o.raw !== 'string') return false
@@ -540,12 +549,18 @@ function isValidEntity(e: unknown, text: string): e is Entity {
   // sometimes off-by-one and the frontend (IntentInput.expandRange) re-anchors
   // them — but a `raw` that isn't in the text at all is a hallucination, dropped.
   if (o.raw.length === 0 || !text.toLowerCase().includes(o.raw.toLowerCase())) return false
-  // `value` must be allow-listed AND actually derive from `raw` (Codex P2):
-  // raw-in-text + value-derives-from-raw ⇒ the value is genuinely evidenced in
-  // the user's text, so an injected response can't anchor a fabricated
-  // allow-listed value to an unrelated `raw`.
+  // `value` must be a plausibly-shaped ticker AND actually derive from `raw`
+  // (Codex P2): raw-in-text + value-derives-from-raw ⇒ the value is genuinely
+  // evidenced in the user's text, so an injected response can't anchor a
+  // fabricated token to an unrelated `raw`. The shape gate (isPlausibleTokenSymbol)
+  // replaced the old fixed allow-list so long-tail symbols are no longer dropped;
+  // it adds no injection surface because both raw-anchored checks still run.
   if (o.type === 'sellToken' || o.type === 'buyToken') {
-    return TOKEN_VALUES.has(o.value) && valueDerivesFromRaw('token', o.value, o.raw)
+    return (
+      isPlausibleTokenSymbol(o.value) &&
+      valueDerivesFromRaw('token', o.value, o.raw) &&
+      rawIsWholeWord(text, o.raw)
+    )
   }
   if (o.type === 'chain') {
     // Reduce the raw span to the bare chain term (strip surrounding punctuation
@@ -588,7 +603,7 @@ function isValidEntity(e: unknown, text: string): e is Entity {
  * the frontend only sees entities it can render. Returns null if the
  * top-level shape itself is wrong.
  */
-function filterParsedIntent(d: unknown, text: string): ParsedIntent | null {
+export function filterParsedIntent(d: unknown, text: string): ParsedIntent | null {
   if (!d || typeof d !== 'object') return null
   const o = d as Record<string, unknown>
   if (o.intent !== 'swap' && o.intent !== 'unknown') return null
