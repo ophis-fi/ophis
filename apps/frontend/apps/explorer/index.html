@@ -71,6 +71,9 @@
 </head>
 
 <body>
+  <!-- Visually-hidden primary heading for SEO/AEO crawlers; the SPA renders into
+       #root with no visible h1. Kept outside #root so React never touches it. -->
+  <h1 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">Ophis Explorer: intent-based DEX order and settlement explorer</h1>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
