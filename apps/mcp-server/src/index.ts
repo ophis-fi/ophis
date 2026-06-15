@@ -129,8 +129,27 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
             .string()
             .describe("In atoms. kind 'sell': the MINIMUM you accept (slippage-adjusted DOWN from the quote). kind 'buy': the EXACT amount you want to receive."),
           kind: z.enum(['sell', 'buy']),
-          validForSeconds: z.number().int().positive().optional().describe('Order lifetime (default 1200 = 20 min).'),
-          feeAmount: z.string().optional().describe('Signed feeAmount in atoms (default "0" — CoW fee is in surplus).'),
+          validForSeconds: z
+            .number()
+            .int()
+            .min(60)
+            .optional()
+            .describe(
+              'Order lifetime in seconds (default 1200 = 20 min; minimum 60). The enforced live-quote fetch can consume several seconds, so very short lifetimes would return a near-expired order the orderbook rejects.',
+            ),
+          // feeAmount must be 0 on this public tool: Ophis orders take the fee from
+          // surplus + the CIP-75 appData partner fee, never a signed feeAmount. CoW
+          // accounting treats a signed feeAmount as ADDITIONAL sell-token spend that
+          // the slippage check does not cover, so a non-zero fee is a fleecing vector
+          // on a no-auth tool. Reject it explicitly rather than silently strip it. (reviewer P1)
+          feeAmount: z
+            .string()
+            .optional()
+            .refine((v) => v === undefined || v === '0', {
+              message:
+                'feeAmount must be omitted or "0" — Ophis orders take the fee from surplus + the appData partner fee; a non-zero signed feeAmount is not accepted on this tool.',
+            })
+            .describe('Signed feeAmount in atoms. Must be omitted or "0" on this tool (the fee is taken from surplus + the appData partner fee).'),
           partiallyFillable: z.boolean().optional(),
           slippageBips: z
             .number()
@@ -219,8 +238,11 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
           if (!fair) {
             throw new Error('build_order: the quote response was unusable, so slippage could not be verified; retry shortly')
           }
-          // Throws (-> rejected) if the limit is worse than slippageBips (default 50% cap).
-          assertLimitWithinSlippage(a.kind, a.sellAmount, a.buyAmount, fair, a.slippageBips)
+          // Throws (-> rejected) if the limit is worse than slippageBips (default 50%
+          // cap). The CIP-75 partner fee embedded in THIS order widens the bound: a
+          // fee-chain order signs amounts net of that fee, so without the allowance a
+          // correctly-built order would be false-rejected. (reviewer P1)
+          assertLimitWithinSlippage(a.kind, a.sellAmount, a.buyAmount, fair, a.slippageBips, built.partnerFee?.volumeBps ?? 0)
           return ok(built)
         } catch (e) {
           return fail(e)
