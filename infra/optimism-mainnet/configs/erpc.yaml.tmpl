@@ -405,40 +405,6 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: drpc-op
-        # TEMPORARY (2026-06-15): load-spread upstream added during the
-        # ophis-self-op outage (Aleph account ran out of credits -> the op-node
-        # VM was deallocated). drpc + nodies are independent free operators that,
-        # together with publicnode, keep 2-of-N quorum while the self-hosted node
-        # is down. REMOVE both once ophis-self-op is funded/restored.
-        # agreementThreshold stays 2 (no security downgrade).
-        endpoint: https://optimism.drpc.org
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 8s
-            retry:
-              maxAttempts: 3
-              delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
-              jitter: 50ms
-
-      - id: nodies-op
-        # TEMPORARY (2026-06-15): see drpc-op above. Pocket Network gateway
-        # (decentralized, independent infra; adds quorum capacity + diversity).
-        endpoint: https://op-pokt.nodies.app
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 8s
-            retry:
-              maxAttempts: 3
-              delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
-              jitter: 50ms
-
       - id: tenderly-op
         # Non-CF anchor (Google Cloud DNS). Tenderly's public gateway
         # has no documented rate cap; we measured ~270ms first-byte
