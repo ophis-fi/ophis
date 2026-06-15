@@ -114,7 +114,7 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       'build_order',
       {
         description:
-          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is PINNED to the owner (proceeds cannot leave the account) unless unsafeCustomReceiver is set. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). Sign `order` as EIP-712 with `signing`, then call submit_order.",
+          "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). Sign `order` as EIP-712 with `signing`, then call submit_order.",
         inputSchema: {
           chainId: z.number().int(),
           owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
@@ -131,10 +131,12 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
           feeAmount: z.string().optional().describe('Signed feeAmount in atoms (default "0" — CoW fee is in surplus).'),
           partiallyFillable: z.boolean().optional(),
           slippageBips: z.number().int().nonnegative().optional().describe('Recorded in appData metadata.'),
-          unsafeCustomReceiver: z
-            .string()
-            .optional()
-            .describe('DANGER: send proceeds to a non-owner address. The autonomous-agent drain vector — only set if intentional.'),
+          // SECURITY (#608 review): no custom-receiver field is exposed on this
+          // public, no-auth tool. The receiver is unconditionally pinned to the
+          // owner so a prompt-injected agent cannot build an order that drains to
+          // a third party. The @ophis/sdk buildOrder still supports a custom
+          // receiver for authenticated/programmatic use; it is intentionally not
+          // surfaced here.
           referrerCode: z
             .string()
             .optional()
@@ -157,7 +159,8 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
                 feeAmount: a.feeAmount,
                 partiallyFillable: a.partiallyFillable,
                 slippageBips: a.slippageBips,
-                unsafeCustomReceiver: a.unsafeCustomReceiver as Address | undefined,
+                // unsafeCustomReceiver intentionally NOT forwarded — see the schema
+                // note above; buildOrder therefore pins the receiver to the owner.
                 // Per-call code wins; otherwise the server's configured default
                 // (so an operator can attribute all orders to their own code).
                 referrerCode: a.referrerCode ?? this.env.OPHIS_DEFAULT_REFERRER_CODE,
@@ -198,10 +201,10 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
           signingScheme: z.enum(['eip712', 'ethsign']).optional(),
           from: z.string().describe('The owner address that signed.'),
           fullAppData: z.string().describe('The fullAppData string returned by build_order.'),
-          allowCustomReceiver: z
-            .boolean()
-            .optional()
-            .describe('Required (true) to relay an order whose receiver is not the owner. Default refuses — drain guard.'),
+          // SECURITY (#608 review): no allowCustomReceiver field — submit_order
+          // unconditionally refuses to relay an order whose receiver is not the
+          // owner (drain guard), so even an externally-built custom-receiver order
+          // signed by the owner cannot be relayed through this public endpoint.
         },
       },
       async (a) => {
@@ -213,7 +216,8 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
             signingScheme: a.signingScheme,
             from: a.from as Address,
             fullAppData: a.fullAppData,
-            allowCustomReceiver: a.allowCustomReceiver,
+            // allowCustomReceiver intentionally NOT forwarded — submitOrder defaults
+            // to refusing any non-owner receiver (drain guard). See the schema note.
           })
           // The order was accepted by the orderbook (a real, signed order). If it
           // carries an affiliate referral code, register the owner so the rebate
@@ -289,7 +293,8 @@ const INFO = {
   tools: ['parse_intent', 'get_quote', 'build_order', 'submit_order', 'lookup_tier', 'list_chains'],
   docs: 'https://docs.ophis.fi/',
   source: 'https://github.com/ophis-fi/ophis',
-  security: 'Holds no private keys. build_order pins the order receiver to the owner; the agent signs locally.',
+  security:
+    'Holds no private keys. The order receiver is unconditionally pinned to the owner (no custom-receiver option is exposed): build_order only builds owner-receiver orders and submit_order refuses to relay any non-owner-receiver order. The agent signs locally.',
 } as const
 
 // Abuse caps for the public, unauthenticated endpoint (audit finding #1/#2):

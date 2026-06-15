@@ -97,9 +97,12 @@ const ipBuckets = new Map<string, number[]>()
 // KV has no atomic increment, so concurrent cache-miss requests can read the
 // same value and all pass (under-count under burst). The AUTHORITATIVE flood
 // cap is the Cloudflare edge Rate-Limiting rule on /api/intent (atomic, enforced
-// before this function even runs); this in-function counter is defense-in-depth
-// for the common case and a fallback if the edge rule is ever removed. Counts
-// only cache-MISS calls (a cache hit makes no LibertAI call).
+// before this function even runs): block at >20 req / 10s / colo per IP. That
+// rule's exact config + how to verify/reapply it is documented in
+// docs/operations/api-intent-rate-limit.md (the repo source of truth). This
+// in-function counter is defense-in-depth for the common case and a fallback if
+// the edge rule is ever removed. Counts only cache-MISS calls (a cache hit makes
+// no LibertAI call).
 const GLOBAL_LLM_CALLS_PER_MIN = 600
 const GLOBAL_RL_KEY_PREFIX = 'grl:'
 
