@@ -58,4 +58,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@4 deploy
+        # Run the lockfile-pinned local wrangler (apps/mcp-server devDep ^4.95.0,
+        # installed by the frozen-lockfile step above) instead of the floating
+        # `npx wrangler@4` tag. This step carries the deploy token, so it must not
+        # fetch a compromised future 4.x release; dependabot tracks the pin via package.json.
+        run: pnpm exec wrangler deploy
