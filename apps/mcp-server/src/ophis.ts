@@ -136,12 +136,11 @@ export interface BuildOrderParams {
   /** feeAmount in the signed order. CoW market orders sign 0 (fee is in surplus). */
   feeAmount?: string
   partiallyFillable?: boolean
-  /** Max accepted slippage in bips, capped at 5000 (50%); recorded in appData
-   * metadata. NOTE: NOT enforced against a price oracle. build_order has no
-   * trusted quote (a caller-supplied reference would be fakeable on this public
-   * no-auth tool), so the limit amounts are the caller/signer's responsibility.
-   * Fund safety comes from the unconditionally-pinned receiver (proceeds can only
-   * reach the owner) plus CoW returning surplus to the trader. */
+  /** Max accepted slippage in bips, capped at 5000 (50%); recorded in appData.
+   * The pure buildOrder does not itself price-check (no network); the MCP
+   * build_order HANDLER enforces this against a server-fetched quote
+   * (getQuote + assertLimitWithinSlippage). Fund safety also rests on the
+   * unconditionally-pinned receiver (proceeds can only reach the owner). */
   slippageBips?: number
   /**
    * Opt in to a non-owner receiver. The proceeds leave the account — this is
@@ -592,20 +591,67 @@ function assertFeeAtoms(amount: string, label: string): void {
 }
 
 /**
- * Cap slippageBips at MAX_SLIPPAGE_BIPS (50%). build_order does NOT enforce the
- * signed limit against a price oracle: it has no trusted quote, and a
- * CALLER-supplied reference is fakeable on this public no-auth tool (a
- * prompt-injected agent would pass buyAmount:"1", reference:"1") — so it is not a
- * trust boundary (reviewer P1). The limit amounts are the caller/signer's
- * responsibility; fund safety comes from the unconditionally-pinned receiver
- * (proceeds can only reach the owner) plus CoW returning surplus to the trader.
- * A real slippage guard would require build_order to fetch + bound against a
- * trusted quote here (a network dependency); tracked as a follow-up.
+ * Cap slippageBips at MAX_SLIPPAGE_BIPS (50%). This PURE builder does not itself
+ * price-check the limit (no network). The real slippage guard lives in the MCP
+ * build_order HANDLER, which fetches a TRUSTED quote (getQuote) and calls
+ * assertLimitWithinSlippage — a caller-supplied reference was rejected as fakeable
+ * on the no-auth tool (reviewer P1). Fund safety also rests on the
+ * unconditionally-pinned receiver (proceeds can only reach the owner).
  */
 function assertSlippageCap(p: BuildOrderParams): void {
   const slip = p.slippageBips
   if (slip !== undefined && (!Number.isInteger(slip) || slip < 0 || slip > MAX_SLIPPAGE_BIPS)) {
     throw new Error(`slippageBips must be an integer in [0, ${MAX_SLIPPAGE_BIPS}] (<=50%), got ${slip}`)
+  }
+}
+
+/**
+ * Extract the fair sell/buy atoms from a getQuote() response. CoW `/api/v1/quote`
+ * returns `{ quote: { sellAmount, buyAmount, feeAmount, ... }, ... }`. Returns null
+ * if the shape is unexpected (caller then treats slippage as unverified).
+ */
+export function extractQuoteAmounts(quoteResponse: unknown): { sellAmount: string; buyAmount: string } | null {
+  const quote = (quoteResponse as { quote?: { sellAmount?: unknown; buyAmount?: unknown } } | null | undefined)?.quote
+  if (!quote) return null
+  const { sellAmount, buyAmount } = quote
+  if (typeof sellAmount !== 'string' || typeof buyAmount !== 'string') return null
+  if (!/^[0-9]+$/.test(sellAmount) || !/^[0-9]+$/.test(buyAmount)) return null
+  return { sellAmount, buyAmount }
+}
+
+/**
+ * Enforce that the caller's signed limit is no worse than `slippageBips` (capped at
+ * MAX_SLIPPAGE_BIPS, default = the cap) vs a TRUSTED quote. `fair` MUST come from a
+ * server-fetched quote, never from the caller (a caller-supplied reference is
+ * fakeable on the public no-auth tool — reviewer P1). Throws on a violation.
+ * - kind 'sell': caller buyAmount (min out) must be >= fair.buyAmount * (1 - slip).
+ * - kind 'buy':  caller sellAmount (max in) must be <= fair.sellAmount * (1 + slip).
+ */
+export function assertLimitWithinSlippage(
+  kind: 'sell' | 'buy',
+  sellAmount: string,
+  buyAmount: string,
+  fair: { sellAmount: string; buyAmount: string },
+  slippageBips?: number,
+): void {
+  const bips = Math.min(slippageBips ?? MAX_SLIPPAGE_BIPS, MAX_SLIPPAGE_BIPS)
+  const bound = BigInt(bips)
+  if (kind === 'sell') {
+    // Ceiling division: round the min-out floor UP so we never accept a limit one
+    // atom below the true slippage floor (an at-reference limit still passes).
+    const minOut = (BigInt(fair.buyAmount) * (10_000n - bound) + 9_999n) / 10_000n
+    if (BigInt(buyAmount) < minOut) {
+      throw new Error(
+        `build_order: buyAmount (min out) ${buyAmount} is below the ${bips}-bips slippage floor ${minOut} vs the live quote out ${fair.buyAmount}. Raise buyAmount or slippageBips.`,
+      )
+    }
+  } else {
+    const maxIn = (BigInt(fair.sellAmount) * (10_000n + bound)) / 10_000n
+    if (BigInt(sellAmount) > maxIn) {
+      throw new Error(
+        `build_order: sellAmount (max in) ${sellAmount} exceeds the ${bips}-bips slippage ceiling ${maxIn} vs the live quote in ${fair.sellAmount}. Lower sellAmount or raise slippageBips.`,
+      )
+    }
   }
 }
 
