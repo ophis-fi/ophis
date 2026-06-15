@@ -54,9 +54,43 @@ in-function counters still apply but the atomic edge cap is gone — restore it.
 ## (Re)apply
 
 Edge rate-limiting rules are managed via the Cloudflare API (this account does
-not use Terraform for CF zones). To recreate the rule, PUT the `http_ratelimit`
-entrypoint ruleset for the zone with a single rule whose body is the JSON above
-(`action: "block"`, the `ratelimit` block, and the `/api/intent` expression).
+not use Terraform for CF zones).
+
+> **DANGER — do NOT `PUT` the phase entrypoint with only this rule.** A `PUT` to
+> `/rulesets/{id}` (or the `.../phases/http_ratelimit/entrypoint`) **replaces the
+> entire rule list**; any other rules in the `http_ratelimit` phase would be
+> silently deleted, disabling unrelated edge protections. See
+> <https://developers.cloudflare.com/ruleset-engine/rulesets-api/update/#risk-of-replacing-all-rules>.
+
+Use the **single-rule** endpoints, which preserve the rest of the phase. First
+get the ruleset id (and confirm what is already there):
+
+```sh
+CF=$(security find-generic-password -s cloudflare-api-token -w)   # never echo it
+ZID=dd7588af506387891f094a4927e11d7a
+RS=$(curl -s -H "Authorization: Bearer $CF" \
+  "https://api.cloudflare.com/client/v4/zones/$ZID/rulesets/phases/http_ratelimit/entrypoint")
+echo "$RS" | jq '.result.id, [.result.rules[] | {id, description}]'
+RSID=$(echo "$RS" | jq -r '.result.id')
+```
+
+- **Rule missing →** add it (appends, keeps existing rules):
+
+  ```sh
+  curl -s -X POST -H "Authorization: Bearer $CF" -H 'content-type: application/json' \
+    "https://api.cloudflare.com/client/v4/zones/$ZID/rulesets/$RSID/rules" \
+    --data @rule.json        # rule.json = the JSON object from "The rule" above
+  ```
+
+- **Rule present but drifted →** patch just that rule by its id (from the GET):
+
+  ```sh
+  curl -s -X PATCH -H "Authorization: Bearer $CF" -H 'content-type: application/json' \
+    "https://api.cloudflare.com/client/v4/zones/$ZID/rulesets/$RSID/rules/<RULE_ID>" \
+    --data @rule.json
+  unset CF
+  ```
+
 Keep the description string stable so the verify step's `contains` match holds.
 
 > Changing the threshold/period: update the JSON here in the same change so the
