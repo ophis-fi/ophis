@@ -136,18 +136,13 @@ export interface BuildOrderParams {
   /** feeAmount in the signed order. CoW market orders sign 0 (fee is in surplus). */
   feeAmount?: string
   partiallyFillable?: boolean
-  /** Max accepted slippage in bips, capped at 5000 (50%). Advisory metadata UNLESS
-   * a reference amount (below) is supplied, in which case it is ENFORCED. */
+  /** Max accepted slippage in bips, capped at 5000 (50%); recorded in appData
+   * metadata. NOTE: NOT enforced against a price oracle. build_order has no
+   * trusted quote (a caller-supplied reference would be fakeable on this public
+   * no-auth tool), so the limit amounts are the caller/signer's responsibility.
+   * Fund safety comes from the unconditionally-pinned receiver (proceeds can only
+   * reach the owner) plus CoW returning surplus to the trader. */
   slippageBips?: number
-  /**
-   * The fair quote amounts (from get_quote), used to ENFORCE that the signed
-   * limit is no worse than `slippageBips` (default: the 50% cap). For kind
-   * 'sell' supply `referenceBuyAmount` (the quoted buyAmount); for kind 'buy'
-   * supply `referenceSellAmount` (the quoted sellAmount). When omitted, the
-   * limit is not bounded against a price reference (caller's responsibility).
-   */
-  referenceSellAmount?: string
-  referenceBuyAmount?: string
   /**
    * Opt in to a non-owner receiver. The proceeds leave the account — this is
    * the autonomous-agent drain vector, so it is loudly named and off by default.
@@ -205,7 +200,7 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
   assertAtoms(p.sellAmount, 'sellAmount')
   assertAtoms(p.buyAmount, 'buyAmount')
   if (p.feeAmount !== undefined) assertFeeAtoms(p.feeAmount, 'feeAmount')
-  assertSlippageBounds(p)
+  assertSlippageCap(p)
 
   const receiver = ophisOrderReceiver(
     owner,
@@ -597,36 +592,20 @@ function assertFeeAtoms(amount: string, label: string): void {
 }
 
 /**
- * Cap slippageBips and — when the caller supplies the fair quote amount — ENFORCE
- * that the signed limit is no worse than the declared slippage (default: the 50%
- * cap). This turns slippageBips from advisory metadata into an actual bound and
- * blocks a crafted "min out = 1" / "max in = huge" order from being built. The
- * receiver is already pinned to the owner, so the residual risk this closes is the
- * owner signing a self-fleecing limit (surplus lost to the solver). (#608 review)
+ * Cap slippageBips at MAX_SLIPPAGE_BIPS (50%). build_order does NOT enforce the
+ * signed limit against a price oracle: it has no trusted quote, and a
+ * CALLER-supplied reference is fakeable on this public no-auth tool (a
+ * prompt-injected agent would pass buyAmount:"1", reference:"1") — so it is not a
+ * trust boundary (reviewer P1). The limit amounts are the caller/signer's
+ * responsibility; fund safety comes from the unconditionally-pinned receiver
+ * (proceeds can only reach the owner) plus CoW returning surplus to the trader.
+ * A real slippage guard would require build_order to fetch + bound against a
+ * trusted quote here (a network dependency); tracked as a follow-up.
  */
-function assertSlippageBounds(p: BuildOrderParams): void {
+function assertSlippageCap(p: BuildOrderParams): void {
   const slip = p.slippageBips
   if (slip !== undefined && (!Number.isInteger(slip) || slip < 0 || slip > MAX_SLIPPAGE_BIPS)) {
     throw new Error(`slippageBips must be an integer in [0, ${MAX_SLIPPAGE_BIPS}] (<=50%), got ${slip}`)
-  }
-  const bound = BigInt(slip ?? MAX_SLIPPAGE_BIPS)
-  if (p.kind === 'sell' && p.referenceBuyAmount !== undefined) {
-    assertAtoms(p.referenceBuyAmount, 'referenceBuyAmount')
-    const minOut = (BigInt(p.referenceBuyAmount) * (10_000n - bound)) / 10_000n
-    if (BigInt(p.buyAmount) < minOut) {
-      throw new Error(
-        `buyAmount (min out) ${p.buyAmount} is below the ${bound}-bips slippage floor ${minOut} vs the quoted reference`,
-      )
-    }
-  }
-  if (p.kind === 'buy' && p.referenceSellAmount !== undefined) {
-    assertAtoms(p.referenceSellAmount, 'referenceSellAmount')
-    const maxIn = (BigInt(p.referenceSellAmount) * (10_000n + bound)) / 10_000n
-    if (BigInt(p.sellAmount) > maxIn) {
-      throw new Error(
-        `sellAmount (max in) ${p.sellAmount} exceeds the ${bound}-bips slippage ceiling ${maxIn} vs the quoted reference`,
-      )
-    }
   }
 }
 

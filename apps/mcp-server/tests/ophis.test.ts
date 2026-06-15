@@ -107,30 +107,12 @@ describe('buildOrder', () => {
     expect(() => buildOrder({ ...base, sellAmount: max, buyAmount: max }, NOW)).not.toThrow()
   })
 
-  it('caps slippageBips at 50% (rejects absurd declared slippage)', () => {
+  it('caps slippageBips at 50% (rejects absurd declared slippage) — but does NOT price-check the limit', () => {
     expect(() => buildOrder({ ...base, slippageBips: 5001 }, NOW)).toThrow()
     expect(() => buildOrder({ ...base, slippageBips: 5000 }, NOW)).not.toThrow()
-  })
-
-  it('enforces the min-out limit is within slippage of a provided quote reference (kind sell)', () => {
-    // base.buyAmount is the min-out; reference = the fair quoted out.
-    expect(() =>
-      buildOrder({ ...base, slippageBips: 100, referenceBuyAmount: base.buyAmount }, NOW),
-    ).not.toThrow()
-    // A min-out far below the reference implies far more than the declared 1% slippage.
-    expect(() =>
-      buildOrder({ ...base, buyAmount: '1', slippageBips: 100, referenceBuyAmount: base.buyAmount }, NOW),
-    ).toThrow()
-  })
-
-  it('enforces the max-in limit is within slippage of a provided quote reference (kind buy)', () => {
-    const buyBase = { ...base, kind: 'buy' as const } // sellAmount is the max-in
-    expect(() =>
-      buildOrder({ ...buyBase, slippageBips: 100, referenceSellAmount: buyBase.sellAmount }, NOW),
-    ).not.toThrow()
-    expect(() =>
-      buildOrder({ ...buyBase, sellAmount: '100000000000', slippageBips: 100, referenceSellAmount: '1000000' }, NOW),
-    ).toThrow()
+    // slippageBips is advisory: build_order has no trusted quote, so a "min out = 1"
+    // limit is accepted (the caller/signer owns the limit; the receiver is pinned).
+    expect(() => buildOrder({ ...base, buyAmount: '1', slippageBips: 100 }, NOW)).not.toThrow()
   })
 })
 
