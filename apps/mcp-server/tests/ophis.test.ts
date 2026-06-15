@@ -97,6 +97,41 @@ describe('buildOrder', () => {
     expect(() => buildOrder({ ...base, sellAmount: '0' }, NOW)).toThrow()
     expect(() => buildOrder({ ...base, sellAmount: '1.5' }, NOW)).toThrow()
   })
+
+  it('rejects amounts above uint256 max, accepts exactly max', () => {
+    const over = (2n ** 256n).toString()
+    const max = (2n ** 256n - 1n).toString()
+    expect(() => buildOrder({ ...base, sellAmount: over }, NOW)).toThrow()
+    expect(() => buildOrder({ ...base, buyAmount: over }, NOW)).toThrow()
+    expect(() => buildOrder({ ...base, feeAmount: over }, NOW)).toThrow()
+    expect(() => buildOrder({ ...base, sellAmount: max, buyAmount: max }, NOW)).not.toThrow()
+  })
+
+  it('caps slippageBips at 50% (rejects absurd declared slippage)', () => {
+    expect(() => buildOrder({ ...base, slippageBips: 5001 }, NOW)).toThrow()
+    expect(() => buildOrder({ ...base, slippageBips: 5000 }, NOW)).not.toThrow()
+  })
+
+  it('enforces the min-out limit is within slippage of a provided quote reference (kind sell)', () => {
+    // base.buyAmount is the min-out; reference = the fair quoted out.
+    expect(() =>
+      buildOrder({ ...base, slippageBips: 100, referenceBuyAmount: base.buyAmount }, NOW),
+    ).not.toThrow()
+    // A min-out far below the reference implies far more than the declared 1% slippage.
+    expect(() =>
+      buildOrder({ ...base, buyAmount: '1', slippageBips: 100, referenceBuyAmount: base.buyAmount }, NOW),
+    ).toThrow()
+  })
+
+  it('enforces the max-in limit is within slippage of a provided quote reference (kind buy)', () => {
+    const buyBase = { ...base, kind: 'buy' as const } // sellAmount is the max-in
+    expect(() =>
+      buildOrder({ ...buyBase, slippageBips: 100, referenceSellAmount: buyBase.sellAmount }, NOW),
+    ).not.toThrow()
+    expect(() =>
+      buildOrder({ ...buyBase, sellAmount: '100000000000', slippageBips: 100, referenceSellAmount: '1000000' }, NOW),
+    ).toThrow()
+  })
 })
 
 describe('submitOrder (relay guards — no network on the throw paths)', () => {
