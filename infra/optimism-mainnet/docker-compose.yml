@@ -483,6 +483,28 @@ services:
       retries: 3
       start_period: 15s
 
+  # node-exporter exposes the Colima VM host metrics (filesystem, memory) so
+  # Prometheus can alert on DISK EXHAUSTION. The 2026-06-15 outage: the VM disk
+  # /dev/vdb1 (/var/lib/docker = Postgres data + container logs) filled to 100%
+  # and wedged Postgres in an ENOSPC crash-loop, invisible to the app-level up{}
+  # alerts. Reads the VM /proc + /sys + rootfs read-only. Profile-gated like
+  # prometheus. The disk alert filters fstype="ext4" so the virtiofs Mac-host
+  # share at /Users/scep is ignored. No shell in the scratch image, so liveness
+  # is the prometheus up{job="node-exporter"} metric (see OphisOpNodeExporterDown).
+  node-exporter:
+    profiles: ["observability"]
+    image: prom/node-exporter:v1.8.2
+    restart: always
+    mem_limit: 128m
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host"
+    volumes:
+      - "/proc:/host/proc:ro"
+      - "/sys:/host/sys:ro"
+      - "/:/host:ro,rslave"
+
 volumes:
   postgres:
   prometheus-data:
