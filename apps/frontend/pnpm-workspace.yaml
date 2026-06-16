@@ -15,6 +15,10 @@ minimumReleaseAgeExclude:
   # Security patches: bypass soak for CVE fixes
   - astro
   - '@astrojs/*'
+  # form-data 2.5.6 is the GHSA-hmw2-7cc7-3qxx fix (v2 backport line, maintenance
+  # only). Name-excluded so the security patch resolves despite the soak window;
+  # the 2.5.x backport line is dormant so future-publish risk is negligible.
+  - form-data
   # NOTE: esbuild 0.28.1 (the GHSA-gv7w-rqvm-qjhr fix) is intentionally NOT
   # excluded here. A package-name exclude would permanently bypass the soak for
   # every future esbuild publish; instead 0.28.1 is already pinned in the
