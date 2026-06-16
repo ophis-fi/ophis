@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { startPg, stopPg } from '../fixtures/pgContainer.js';
 
 let pg: StartedPostgreSqlContainer;
 let sql: any;
@@ -10,15 +11,16 @@ const W = (h: string) => h.padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
 
 beforeAll(async () => {
-  pg = await new PostgreSqlContainer('postgres:16-alpine').start();
-  process.env.DATABASE_URL = pg.getConnectionUri();
+  const { container, connectionUri } = await startPg();
+  pg = container;
+  process.env.DATABASE_URL = connectionUri;
   const { runMigrations } = await import('../../src/db/migrate.js');
   await runMigrations();
   ({ sql } = await import('../../src/db/index.js'));
   ({ buildAffiliateReferrers } = await import('../../src/affiliate/accrual.js'));
   ({ getReferrerStats } = await import('../../src/api.js'));
 }, 180_000);
-afterAll(async () => { await sql?.end?.(); await pg?.stop(); });
+afterAll(async () => { await sql?.end?.(); await stopPg(pg); });
 
 describe('buildAffiliateReferrers — integration (catches the Date-param 500)', () => {
   it('aggregates referred volume by chain, post-bound_at, with correct tier', async () => {

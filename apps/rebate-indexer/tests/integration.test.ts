@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { runMigrations } from '../src/db/migrate.js';
 import { runScorer } from '../src/scorer.js';
+import { startPg, stopPg } from './fixtures/pgContainer.js';
 
 const COW = 'https://api.cow.fi';
 
@@ -58,8 +59,9 @@ const server = setupServer(
 );
 
 beforeAll(async () => {
-  pg = await new PostgreSqlContainer('postgres:16-alpine').start();
-  process.env.DATABASE_URL = pg.getConnectionUri();
+  const { container, connectionUri } = await startPg();
+  pg = container;
+  process.env.DATABASE_URL = connectionUri;
   process.env.COW_API_BASE = COW;
   server.listen();
   await runMigrations();
@@ -67,7 +69,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   server.close();
-  await pg.stop();
+  await stopPg(pg);
 });
 
 beforeEach(async () => {
