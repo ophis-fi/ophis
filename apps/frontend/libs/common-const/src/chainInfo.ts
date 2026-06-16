@@ -24,12 +24,18 @@ import {
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import { TokenWithLogo } from './types'
 
-// Ophis fork (2026-05-20): MegaETH (4326) and HyperEVM (999) chain
-// definitions removed from the frontend. Backend scaffolding for these
-// chains is preserved in `infra/megaeth-mainnet/` + `infra/hyperevm-mainnet/`
-// for future re-enablement. Removing them from the chain selectors,
-// orderbook routing, and RPC maps so users can't pick a chain we don't
-// actively operate.
+// Ophis fork (2026-05-20): MegaETH (4326) chain definition removed from the
+// frontend. Backend scaffolding is preserved in `infra/megaeth-mainnet/` for
+// future re-enablement. Removed from the chain selectors, orderbook routing,
+// and RPC maps so users can't pick a chain we don't actively operate.
+// HyperEVM (999) was re-enabled 2026-06-17 (see HYPEREVM_CHAIN_ID below).
+
+// Ophis fork: HyperEVM mainnet (chain 999) added at frontend layer. SDK does
+// not ship a ChainInfo. The native token on HyperEVM is HYPE (18 decimals).
+// The chain is commonly labeled "Hyperliquid" externally (CoinGecko, DefiLlama,
+// Debank), even though the EVM layer is called HyperEVM. Settlement and
+// VaultRelayer addresses are configured separately in cowProtocolContracts.ts.
+const HYPEREVM_CHAIN_ID = 999 as unknown as SupportedChainId
 
 export interface BaseChainInfo {
   readonly docs: HttpsString
@@ -164,7 +170,28 @@ export const CHAIN_INFO: ChainInfoMap = {
     urlAlias: 'opt',
     nativeCurrency: NATIVE_CURRENCIES[AdditionalTargetChainId.OPTIMISM],
   },
-  // MegaETH (4326) + HyperEVM (999) intentionally not in CHAIN_INFO —
+  // Ophis fork: HyperEVM mainnet (chain 999). Hand-rolled because the SDK
+  // does not (yet) ship a ChainInfo for HyperEVM. Industry-standard label is
+  // "Hyperliquid" — DefiLlama / CoinGecko / Debank all use that name even
+  // though the EVM layer is technically HyperEVM.
+  [HYPEREVM_CHAIN_ID]: {
+    docs: 'https://hyperliquid.gitbook.io/hyperliquid-docs' as HttpsString,
+    explorer: 'https://hyperevmscan.io' as HttpsString,
+    infoLink: 'https://hyperliquid.xyz' as HttpsString,
+    logo: {
+      light: 'https://app.hyperliquid.xyz/coins/HYPE_USDC.svg' as HttpsString,
+      dark: 'https://app.hyperliquid.xyz/coins/HYPE_USDC.svg' as HttpsString,
+    },
+    name: 'hyperevm',
+    addressPrefix: 'hl',
+    label: 'Hyperliquid',
+    eip155Label: 'Hyperliquid',
+    urlAlias: 'hl',
+    explorerTitle: 'HyperEVMScan',
+    color: '#97FBE4',
+    nativeCurrency: NATIVE_CURRENCIES[HYPEREVM_CHAIN_ID],
+  },
+  // MegaETH (4326) intentionally not in CHAIN_INFO —
   // see top-of-file comment for context (removed 2026-05-20).
 }
 
@@ -184,6 +211,8 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  HYPEREVM_CHAIN_ID,
   SupportedChainId.SEPOLIA,
 ]
 
@@ -203,6 +232,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM,
+  // Ophis fork: HyperEVM mainnet (chain 999)
+  HYPEREVM_CHAIN_ID as unknown as TargetChainId,
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
   SupportedChainId.SEPOLIA,

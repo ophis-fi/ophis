@@ -9,6 +9,7 @@ import {
   base,
   bsc,
   gnosis,
+  hyperEvm,
   ink,
   linea,
   mainnet,
@@ -28,9 +29,11 @@ import { createConfig, Transport } from 'wagmi'
 // and crashes with "Cannot read properties of undefined (reading 'id')"
 // at the `.id` deref a few lines later.
 //
-// The scrub purges any persisted state referencing 4326 or 999. Cost:
-// affected users get re-prompted to connect their wallet ONCE on next
-// load. Benefit: the SPA boots. Wallet reconnection re-populates the
+// The scrub purges any persisted state referencing 4326 (MegaETH, still
+// removed). HyperEVM (999) was re-enabled 2026-06-17 and is a valid chain
+// again, so it is NOT scrubbed — a legit 999 connection must survive cold
+// loads. Cost: affected users get re-prompted to connect their wallet ONCE
+// on next load. Benefit: the SPA boots. Wallet reconnection re-populates the
 // persisted state with a valid chainId.
 //
 // Idempotent: runs once per cold page load; no-op if storage already
@@ -39,14 +42,14 @@ import { createConfig, Transport } from 'wagmi'
 if (typeof window !== 'undefined') {
   try {
     const STORAGE_KEYS = ['wagmi.store', 'wagmi.cache', 'redux_localstorage_simple_user']
-    const stalePattern = /"chainId":\s*(?:4326|999)\b/
+    const stalePattern = /"chainId":\s*4326\b/
     for (const key of STORAGE_KEYS) {
       const raw = window.localStorage.getItem(key)
       if (raw && stalePattern.test(raw)) {
         window.localStorage.removeItem(key)
         // eslint-disable-next-line no-console
         console.warn(
-          `[ophis] purged stale persisted state at localStorage["${key}"] containing chainId 4326 or 999`,
+          `[ophis] purged stale persisted state at localStorage["${key}"] containing chainId 4326`,
         )
       }
     }
@@ -77,7 +80,9 @@ const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof
 // the array-build site so the next incomplete sweep can't repeat
 // this exact crash mode.
 const OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
-const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID]
+// Ophis fork: HyperEVM mainnet (chain 999) re-enabled 2026-06-17.
+const HYPEREVM_CHAIN_ID = 999 as unknown as SupportedChainId
+const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID, HYPEREVM_CHAIN_ID]
 
 const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.MAINNET]: mainnet,
@@ -92,6 +97,7 @@ const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.INK]: ink,
   [SupportedChainId.SEPOLIA]: sepolia,
   [OPTIMISM_CHAIN_ID]: optimism,
+  [HYPEREVM_CHAIN_ID]: hyperEvm,
 }
 
 // Defensive guard: `SUPPORTED_CHAINS[chainId]` returns undefined if the

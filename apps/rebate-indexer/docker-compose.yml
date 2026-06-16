@@ -49,6 +49,11 @@ services:
       # (the pricer reads ERC20 decimals on-chain to correct the OP native_price oracle).
       OP_ORDERBOOK_URL: ${OP_ORDERBOOK_URL:-https://optimism-mainnet.ophis.fi}
       OPTIMISM_RPC_URL: ${OPTIMISM_RPC_URL:-https://mainnet.optimism.io}
+      # HyperEVM (chain 999) — self-hosted Ophis backend. Orderbook + on-chain
+      # ERC20 decimals reads for the native_price 18-dec correction (same quirk as OP).
+      # Set HYPEREVM_RPC_URL to a private RPC to avoid public-node rate limits.
+      HYPEREVM_ORDERBOOK_URL: ${HYPEREVM_ORDERBOOK_URL:-https://hyperevm.ophis.fi}
+      HYPEREVM_RPC_URL: ${HYPEREVM_RPC_URL:-https://rpc.hyperliquid.xyz/evm}
       # Canonical Plasma archive RPC, staged for the future Plasma self-host. The
       # indexer prices Plasma via CoW's native_price oracle today (same as all
       # hosted chains), so this is unused at runtime — but per the audit note

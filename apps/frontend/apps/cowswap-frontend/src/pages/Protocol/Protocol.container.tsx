@@ -20,7 +20,7 @@
  *     volume fee, 0.01% on stablecoin pairs — live since the volume-fee flag
  *     shipped). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
  *     packages/sdk/src/partner-fee.ts. Update all fee copy together.
- *   - Chain count "11" mirrors SORTED_CHAIN_IDS (libs/common-const/chainInfo.ts).
+ *   - Chain count "12" mirrors SORTED_CHAIN_IDS (libs/common-const/chainInfo.ts).
  *     Update both together if the chain set changes (known drift source).
  *   - Solana/Bitcoin = destination-only (in SORTED_DST_CHAIN_IDS, NOT
  *     SORTED_CHAIN_IDS). No solver counts, no "best price" guarantees, no MEV
@@ -290,7 +290,8 @@ export function ProtocolPage(): ReactNode {
               {/* Count mirrors SORTED_CHAIN_IDS in libs/common-const/chainInfo.ts, update together. */}
               <RowTh scope="row">EVM source chains</RowTh>
               <Td>
-                11 production chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Polygon
+                12 production chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Polygon,
+                Hyperliquid
               </Td>
               <Td>
                 <Badge tone="live">Selectable</Badge>

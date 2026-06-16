@@ -6,17 +6,19 @@
 //   - Partner: 12% of net fee, UNCAPPED. Invite-only (whitelisted), was "Super VIP".
 //
 // Net fee = gross volume fee minus CoW DAO's protocol cut: CoW takes 25% on the
-// hosted chains, 0% on Optimism (sovereign Ophis backend). So Ophis keeps 75% on
-// hosted, 100% on OP.
+// hosted chains and 0% on the self-hosted (sovereign Ophis) backends — Optimism
+// (10) AND HyperEVM (999). So Ophis keeps 75% on hosted, 100% on the self-hosted
+// chains.
 //
 // DATA REALITY (grounding 2026-06-10): the indexer has NO per-trade fee
-// (trades.partnerFeeWei is always NULL) and indexes ONLY the 11 CoW-hosted chains
-// (Optimism is not indexed). So accrual is VOLUME-derived: a referrer earns
-// `referred_volume * effectiveVolumeBps(tier, chainId)`. This is identical to the
-// model doc's published rates because the rates were defined as bps-of-volume:
+// (trades.partnerFeeWei is always NULL). It indexes the CoW-hosted chains AND the
+// self-hosted chains (OP 10 + HyperEVM 999), all of which accrue. So accrual is
+// VOLUME-derived: a referrer earns `referred_volume * effectiveVolumeBps(tier,
+// chainId)`. This is identical to the model doc's published rates because the
+// rates were defined as bps-of-volume:
 //   effectiveVolumeBps = feeShare * GROSS_FEE_BPS * keepFraction(chain)
-//   Regular hosted = 0.08 * 10 * 0.75 = 0.60 bps   (OP = 0.08 * 10 * 1.00 = 0.80 bps)
-//   Partner hosted = 0.12 * 10 * 0.75 = 0.90 bps   (OP = 0.12 * 10 * 1.00 = 1.20 bps)
+//   Regular hosted = 0.08 * 10 * 0.75 = 0.60 bps   (self-hosted = 0.08 * 10 * 1.00 = 0.80 bps)
+//   Partner hosted = 0.12 * 10 * 0.75 = 0.90 bps   (self-hosted = 0.12 * 10 * 1.00 = 1.20 bps)
 
 export type AffiliateKind = 'regular' | 'partner';
 
@@ -38,14 +40,20 @@ export const COW_TAKE_BPS = 2500;
  *  Partner is uncapped. Volume past the cap earns zero (hard-stop, Clement 2026-06-10). */
 export const REGULAR_VOL_CAP_USD = 1_000_000;
 
-/** Optimism mainnet — the only chain where Ophis keeps the full fee (no CoW cut).
+/** Optimism mainnet — a self-hosted chain where Ophis keeps the full fee (no CoW cut).
  *  Not indexed yet, but the math is OP-ready so OP trades accrue correctly once fed. */
 export const OPTIMISM_CHAIN_ID = 10;
 
+/** HyperEVM mainnet — self-hosted Ophis backend, Ophis keeps the full fee. */
+export const HYPEREVM_CHAIN_ID = 999;
+
+/** Self-hosted (sovereign Ophis) chains where Ophis keeps the full fee — no CoW cut. */
+export const SELF_HOSTED_CHAIN_IDS: ReadonlySet<number> = new Set([OPTIMISM_CHAIN_ID, HYPEREVM_CHAIN_ID]);
+
 /** Fraction of the gross fee Ophis keeps after CoW's cut, scaled by 1e4.
- *  Optimism keeps 100% (10_000); every hosted chain keeps 75% (7_500). */
+ *  Self-hosted chains (OP, HyperEVM) keep 100% (10_000); every hosted chain keeps 75% (7_500). */
 export function keepFractionBps(chainId: number): number {
-  return chainId === OPTIMISM_CHAIN_ID ? 10_000 : 10_000 - COW_TAKE_BPS;
+  return SELF_HOSTED_CHAIN_IDS.has(chainId) ? 10_000 : 10_000 - COW_TAKE_BPS;
 }
 
 /**

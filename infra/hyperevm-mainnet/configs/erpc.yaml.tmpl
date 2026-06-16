@@ -9,7 +9,12 @@
 #                      after they raise public-tier limits.
 #   dRPC               11/20 = 55% (flake "intrinsic gas too high"). EXCLUDED.
 #   1RPC               finalized-tag silently stuck (drift +26 blocks). EXCLUDED.
-#   Alchemy free tier  monthly cap EXHAUSTED 2026-05-15. EXCLUDED.
+#   Alchemy             RE-ADDED 2026-06-17 as the highest-quality upstream
+#                      (paid/refreshed key; the 2026-05-15 free-tier cap that
+#                      forced its earlier exclusion no longer applies). Endpoint
+#                      is templated via ${HYPEREVM_MAINNET_RPC} (Alchemy brands
+#                      HyperEVM as "Hyperliquid": hyperliquid-mainnet.g.alchemy.com).
+#                      The 3 free public RPCs below stay as backup quorum members.
 #   Bloxroute/Thirdweb MEV-adjacent commercial RPC; solver eth_call leaks
 #                      trade intent. EXCLUDED — Bloxroute standard applied uniformly.
 #   Pocket Network     "decentralized P2P" misleading — Ophis's free-tier app
@@ -17,12 +22,21 @@
 #                      multi-node pool. EXCLUDED until app pins a known relay set.
 #   OnFinality         429 rate-limited on public tier; empty eth_call. EXCLUDED.
 #
-# Strategy (replace-not-expand; sharp-edges + adversarial review 2026-05-18):
-#  - Keep N=3 upstreams for the 2-of-3 consensus failsafe. The audit-required
-#    fork-view-poisoning guarantee is "attacker needs to compromise ≥2-of-N
-#    upstreams"; expanding N to 8 silently weakens that to "attacker needs
-#    ≥2-of-8" because eRPC's `maxParticipants: 3` does RANDOM sampling. Sybil-2
-#    attacker → 10.7% per-request poison rate with N=8 (was 0% with N=3).
+# Strategy (replace-not-expand; sharp-edges + adversarial review 2026-05-18;
+# Alchemy re-added 2026-06-17):
+#  - The 2-of-3 consensus failsafe still samples maxParticipants=3. The
+#    audit-required fork-view-poisoning guarantee is "attacker needs to
+#    compromise ≥2-of-N upstreams"; expanding N silently weakens that because
+#    eRPC's `maxParticipants: 3` does RANDOM sampling. Sybil-2 attacker → 10.7%
+#    per-request poison rate with N=8 (was 0% with N=3).
+#  - Alchemy (alchemy-hl) is re-added 2026-06-17 as a 4th, highest-quality
+#    upstream. This makes N=4 for the random-sampling pool: a Sybil-2 attacker
+#    who controls 2 of the 4 upstreams faces a non-zero (but small) per-request
+#    poison probability under maxParticipants=3 sampling. We accept that because
+#    Alchemy is a trusted, authenticated, paid provider (not a Sybil candidate)
+#    and the three free RPCs remain as honest-majority quorum members. Do NOT
+#    add further free/anonymous upstreams without bumping maxParticipants and
+#    re-running the Sybil math, or the invariant erodes.
 #  - Hypurrscan replaces HyperLend as the 3rd upstream. AWS-Tokyo backbone
 #    (distinct failure domain from purroof/Vultr and official/AWS-CloudFront),
 #    HL-native operator, no MEV-searcher overlap.
@@ -142,6 +156,25 @@ projects:
         statePollerDebounce: 1s
 
     upstreams:
+      # Alchemy (re-added 2026-06-17). Highest-quality upstream; authenticated +
+      # paid. Endpoint rendered from ${HYPEREVM_MAINNET_RPC} (Alchemy brands
+      # HyperEVM as "Hyperliquid": https://hyperliquid-mainnet.g.alchemy.com/v2/
+      # <ALCHEMY_API_KEY>). render-configs.sh's envsubst allowlist already
+      # includes ${HYPEREVM_MAINNET_RPC} + ${ALCHEMY_API_KEY}; no script change.
+      # The 3 free public RPCs below remain the backup quorum members.
+      - id: alchemy-hl
+        endpoint: ${HYPEREVM_MAINNET_RPC}
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
       - id: purroof-hl
         endpoint: https://rpc.purroofgroup.com
         failsafe:
