@@ -49,9 +49,11 @@ export function correctOpNativePrice(rawNp: number, decimals: number): number {
 // rejects a config where two chains share a token address, the tell-tale of a
 // copy-pasted placeholder. A chain with no verified USDC is left OUT entirely: its
 // trades then fail to price (value_usd NULL → excluded from the payout matview),
-// which under-counts (fail-safe) rather than mis-prices. (plasma/9745 was removed
-// for exactly this reason — it had reused Linea's USDC; re-add only with the real,
-// decimals-verified plasma USDC.)
+// which under-counts (fail-safe) rather than mis-prices. (plasma/9745 was once
+// removed for this reason — it had reused Linea's USDC — and was re-added 2026-06-16
+// with the real, decimals-verified USDT0 below: symbol + decimals read on-chain, and
+// CoW native_price confirmed serving plasma. Plasma is USDT-native, so its USD
+// reference is USDT0 rather than USDC.)
 const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: number }>> = {
   1:        { token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },  // USDC mainnet
   100:      { token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', decimals: 6 },  // USDC.e gnosis
@@ -64,6 +66,7 @@ const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: n
   57073:    { token: '0xf1815bd50389c46847f0bda824ec8da914045d14', decimals: 6 },  // USDC ink
   11155111: { token: '0xbe72e441bf55620febc26715db68d3494213d8cb', decimals: 18 }, // USDC sepolia (cow staging)
   10:       { token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC optimism (native; np decimals-corrected)
+  9745:     { token: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', decimals: 6 },  // USDT0 plasma (decimals-verified on-chain 2026-06-16; CoW native_price confirmed; USDT-native chain, no liquid USDC; replaces the removed Linea-placeholder)
 };
 
 // Per-trade rebate-volume contribution ceiling (USD). A trade's recorded value is
