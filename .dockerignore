@@ -1,0 +1,12 @@
+# Keep the build context small. The mcp-server stdio image only needs the root
+# workspace manifests, apps/mcp-server, and packages/sdk (do NOT exclude those).
+.git
+**/node_modules
+apps/frontend
+apps/backend
+contracts
+**/dist
+**/.turbo
+**/.wrangler
+**/.next
+*.log

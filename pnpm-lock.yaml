@@ -48,6 +48,9 @@ importers:
       agents:
         specifier: ^0.13.3
         version: 0.13.3(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/workers-types@4.20260529.1)(ai@6.0.193(zod@3.25.76))(react@19.2.6)(rolldown@1.0.3)(vite@7.3.5(@types/node@22.19.17)(tsx@4.21.0)(yaml@2.9.0))(zod@3.25.76)
+      tsx:
+        specifier: ^4.20.6
+        version: 4.21.0
       viem:
         specifier: ^2.48.8
         version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
@@ -58,6 +61,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20260529.1
         version: 4.20260529.1
+      '@types/node':
+        specifier: ^22.5.0
+        version: 22.19.17
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
