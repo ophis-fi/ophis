@@ -110,6 +110,21 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
     'ETH',
     'Ether',
   ),
+  // Native XPL on Plasma (chain 9745). Plasma IS a SupportedChainId, so the
+  // mapAllNetworks() spread above already creates this entry — but
+  // getTokenWithLogoFromNativeCurrency() hardcodes logoUrl=undefined and drops
+  // the SDK's native logo, leaving XPL with the single-letter fallback icon.
+  // Re-add it here with the SDK's canonical Plasma logo (the same asset the SDK
+  // exposes on nativeCurrency.logoUrl and the network badge already renders) so
+  // native XPL shows its real logo in the token selector and swap form.
+  [SupportedChainId.PLASMA]: new TokenWithLogo(
+    'https://files.cow.fi/cow-sdk/chains/images/plasma-logo.svg',
+    SupportedChainId.PLASMA,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'XPL',
+    'Plasma',
+  ),
 }
 
 export const WETH_MAINNET = WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET]
