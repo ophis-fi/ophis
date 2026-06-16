@@ -19,6 +19,12 @@ minimumReleaseAgeExclude:
   # only). Name-excluded so the security patch resolves despite the soak window;
   # the 2.5.x backport line is dormant so future-publish risk is negligible.
   - form-data
+  # dompurify 3.4.9+ is the GHSA-vxr8-fq34-vvx9 cluster fix (XSS); name-excluded
+  # so the security patch resolves despite the soak window.
+  - dompurify
+  # protobufjs 7.6.3+ is the GHSA-f38q-mgvj-vph7 fix (prototype pollution);
+  # name-excluded so the security patch resolves despite the soak window.
+  - protobufjs
   # NOTE: esbuild 0.28.1 (the GHSA-gv7w-rqvm-qjhr fix) is intentionally NOT
   # excluded here. A package-name exclude would permanently bypass the soak for
   # every future esbuild publish; instead 0.28.1 is already pinned in the
