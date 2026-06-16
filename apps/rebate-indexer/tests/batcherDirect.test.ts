@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { runMigrations } from '../src/db/migrate.js';
+import { startPg, stopPg } from './fixtures/pgContainer.js';
 
 // DIRECT-mode (REBATE_DIRECT_MODE) accrual-basis lifecycle, end-to-end against a
 // real Postgres. All of the batcher's external calls are HTTP — the WETH balance
@@ -101,8 +102,9 @@ async function seedBatch(sql: Sql, month: string, status: string, basisWei: bigi
 }
 
 beforeAll(async () => {
-  pg = await new PostgreSqlContainer('postgres:16-alpine').start();
-  process.env.DATABASE_URL = pg.getConnectionUri();
+  const { container, connectionUri } = await startPg();
+  pg = container;
+  process.env.DATABASE_URL = connectionUri;
   server.listen();
   await runMigrations();
   const sql = await getSql();
@@ -111,7 +113,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   server.close();
-  await pg?.stop();
+  await stopPg(pg);
 });
 
 beforeEach(async () => {
