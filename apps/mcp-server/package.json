@@ -14,17 +14,20 @@
     "dry-run": "wrangler deploy --dry-run --outdir=dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "start:stdio": "tsx src/standalone.ts",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@ophis/sdk": "workspace:*",
     "agents": "^0.13.3",
+    "tsx": "^4.20.6",
     "viem": "^2.48.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260529.1",
+    "@types/node": "^22.5.0",
     "typescript": "^5.9.3",
     "vite": "^7.0.0",
     "vitest": "^4.1.8",

@@ -10,7 +10,7 @@ overrides:
   '@babel/traverse': ^7.23.2
   '@openzeppelin/contracts': 3.4.2-solc-0.7
   undici: ^6.24.0
-  ws: ^8.20.1
+  ws: ^8.21.0
   tmp: ^0.2.6
   esbuild: ^0.28.1
   protobufjs: ^7.5.8
@@ -48,6 +48,9 @@ importers:
       agents:
         specifier: ^0.13.3
         version: 0.13.3(@babel/core@7.29.7)(@babel/runtime@7.29.7)(@cloudflare/workers-types@4.20260529.1)(ai@6.0.193(zod@3.25.76))(react@19.2.6)(rolldown@1.0.3)(vite@7.3.5(@types/node@22.19.17)(tsx@4.21.0)(yaml@2.9.0))(zod@3.25.76)
+      tsx:
+        specifier: ^4.20.6
+        version: 4.21.0
       viem:
         specifier: ^2.48.8
         version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
@@ -58,6 +61,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^4.20260529.1
         version: 4.20260529.1
+      '@types/node':
+        specifier: ^22.5.0
+        version: 22.19.17
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -2468,7 +2474,7 @@ packages:
   isows@1.0.7:
     resolution: {integrity: sha512-I1fSfDCZL5P0v33sVqeTDSpcstAg/N+wF5HS033mogOVIp4B+oHC7oOCsA3axAbBSGTJ8QubbNmnIRN/h8U7hg==}
     peerDependencies:
-      ws: ^8.20.1
+      ws: ^8.21.0
 
   it-all@3.0.11:
     resolution: {integrity: sha512-Gvqj6MO4GMLnFdtE68HZRpGBskNC+9+GQ+JevTGNYLyhjUuPhjDLU3jN1LpBemXJDW1bRSkczqA/qGyKlPKrcQ==}
@@ -3556,8 +3562,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  ws@8.20.1:
-    resolution: {integrity: sha512-It4dO0K5v//JtTXuPkfEOaI3uUN87iYPnqo/ZzqCoG3g8uhA66QUMs/SrM0YK7/NAu+r4LMh/9dq2A7k+rHs+w==}
+  ws@8.21.0:
+    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -5908,9 +5914,9 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  isows@1.0.7(ws@8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)):
+  isows@1.0.7(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)):
     dependencies:
-      ws: 8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
 
   it-all@3.0.11: {}
 
@@ -6074,7 +6080,7 @@ snapshots:
       sharp: 0.34.5
       undici: 6.25.0
       workerd: 1.20260526.1
-      ws: 8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
       youch: 4.1.0-beta.10
     transitivePeerDependencies:
       - bufferutil
@@ -6977,9 +6983,9 @@ snapshots:
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
-      isows: 1.0.7(ws@8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10))
+      isows: 1.0.7(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       ox: 0.14.20(typescript@5.9.3)(zod@3.25.76)
-      ws: 8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10)
+      ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -7098,7 +7104,7 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  ws@8.20.1(bufferutil@4.1.0)(utf-8-validate@5.0.10):
+  ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@5.0.10):
     optionalDependencies:
       bufferutil: 4.1.0
       utf-8-validate: 5.0.10
