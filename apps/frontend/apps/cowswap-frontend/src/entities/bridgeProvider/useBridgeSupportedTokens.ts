@@ -7,6 +7,7 @@ import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 import useSWR, { SWRResponse } from 'swr'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
+import { isDeprecatedBridgeToken } from './deprecatedBridgeToken'
 import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 
 export type BridgeSupportedToken = { tokens: TokenWithLogo[]; isRouteAvailable: boolean }
@@ -43,6 +44,13 @@ export function useBridgeSupportedTokens(
         const tokens = result.tokens.reduce<TokenWithLogo[]>((acc, token) => {
           if (!token || token.chainId === undefined || !token.address) {
             console.warn('[bridgeTokens] Ignoring malformed token', token)
+            return acc
+          }
+
+          // Hide aggregator-deprecated duplicates (NEAR Intents tags superseded
+          // routes with a "(DEPRECATED)" symbol, e.g. "XPL_(DEPRECATED)"); the
+          // current asset is always present alongside. See deprecatedBridgeToken.ts.
+          if (isDeprecatedBridgeToken(token)) {
             return acc
           }
 
