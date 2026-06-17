@@ -45,7 +45,7 @@ function getQuoteErrorTexts(): Record<QuoteApiErrorCodes, string> {
   }
 }
 
-function getBridgeQuoteErrorTexts(): Record<BridgeQuoteErrors, string> {
+export function getBridgeQuoteErrorTexts(): Record<BridgeQuoteErrors, string> {
   const DEFAULT_QUOTE_ERROR = getDefaultQuoteError()
 
   return {
@@ -57,7 +57,17 @@ function getBridgeQuoteErrorTexts(): Record<BridgeQuoteErrors, string> {
     [BridgeQuoteErrors.NO_INTERMEDIATE_TOKENS]: t`No routes found`,
     [BridgeQuoteErrors.NO_ROUTES]: t`No routes found`,
     [BridgeQuoteErrors.ONLY_SELL_ORDER_SUPPORTED]: t`Only "sell" orders are supported`,
-    [BridgeQuoteErrors.QUOTE_DOES_NOT_MATCH_DEPOSIT_ADDRESS]: t`Bridging deposit address is not verified! Please contact Ophis support!`,
+    // NEAR Intents deposit-address attestation failure. In practice this is dominated by a
+    // transient attestation-fetch hiccup: the attestation provably recovers the expected
+    // on-chain attestor (verified end-to-end 2026-06-17), the bridging SDK already prefers
+    // any other provider's valid quote (getBestQuote returns bestResult ?? bestError, so
+    // this only surfaces on an all-providers-failed poll), and quote polling self-heals on
+    // the next round. The same code also covers a genuine signer-mismatch, but that is
+    // equally non-actionable for the user. Either way this path yields NO executable quote
+    // and the trade button stays disabled, so we show a generic retry message instead of an
+    // alarming, non-actionable "contact support" prompt. This is copy-only: the safety guard
+    // lives in the SDK and rejects an unverified deposit address before any quote is returned.
+    [BridgeQuoteErrors.QUOTE_DOES_NOT_MATCH_DEPOSIT_ADDRESS]: DEFAULT_QUOTE_ERROR,
     [BridgeQuoteErrors.SELL_AMOUNT_TOO_SMALL]: t`Sell amount too small to bridge`,
   }
 }
