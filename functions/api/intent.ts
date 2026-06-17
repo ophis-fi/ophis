@@ -615,6 +615,84 @@ export function filterParsedIntent(d: unknown, text: string): ParsedIntent | nul
   return { intent: o.intent, entities }
 }
 
+// Deterministic chain fallback (2026-06-17). The LLM (qwen3.6-27b) intermittently
+// omits a chain the user explicitly named in routing context — most notably
+// "Optimism" (the chain-vs-token ambiguity with the OP token), which is also the
+// input placeholder. Without a chain entity the FE swap URL drops the chainId and
+// the trade silently opens on the default chain (a confusing mis-route the user
+// reported). This bounded, deterministic pass recovers the chain straight from the
+// user's text when the model missed it. It is the SAME closed domain (the 11
+// routable slugs + the documented aliases) and reuses the EXACT validation the LLM
+// path uses (isValidEntity -> CHAIN_VALUES + valueDerivesFromRaw + inChainContext),
+// so it can only ever emit a chain the user literally typed after on/via/using. It
+// reads the user text (not the model output), so it adds no prompt-injection
+// surface; if anything it is more trustworthy than the model.
+//
+// Longest term first so a multi-word alias ("arbitrum one", "binance smart chain")
+// is matched before its shorter forms.
+const CHAIN_TERMS: ReadonlyArray<{ term: string; value: string }> = [
+  ...Array.from(CHAIN_VALUES, (v) => ({ term: v, value: v })),
+  ...Object.entries(CHAIN_ALIASES).map(([term, value]) => ({ term, value })),
+].sort((a, b) => b.term.length - a.term.length)
+
+export function extractChainFromText(text: string, afterOffset: number): Entity | null {
+  // CONSERVATIVE on purpose (correctness audit 2026-06-17). This fallback fires
+  // precisely WHEN the model emitted no chain, which is exactly when the temperature-0
+  // model also DECLINES incidental "on <chain>" prose ("...gas paid on op", "...listed
+  // on binance"). Reusing inChainContext's offset-independent anchor would convert that
+  // judgement into a guaranteed mis-route (worse than the no-chain default = open on the
+  // user's current network). So we recover ONLY the routing directive that IMMEDIATELY
+  // follows the last swap operand: the chain's on/via/using clause must begin right at
+  // `afterOffset` (the end of the furthest token/amount entity), separated only by
+  // whitespace. A real "swap X for Y on Z" puts the chain directly after the operands;
+  // incidental prose ("...for eth, gas paid on op", "...for eth gas paid on op",
+  // "...usdc cheapest gas is on base") always has other words between the operand and
+  // the "on <chain>", so it is rejected. A miss is SAFE: the swap opens on the user's
+  // current/default network (status quo), never a wrong chain. Trailing words AFTER the
+  // chain are fine ("...on optimism right now"); multiple chains resolve to the one
+  // bound to the operands (the first routing directive after the tokens).
+  const tail = text.slice(afterOffset)
+  for (const { term, value } of CHAIN_TERMS) {
+    let m: RegExpExecArray | null
+    try {
+      // inChainContext's on/via/using anchor, but ADJACENCY-anchored to the start of the
+      // post-operand tail (^\s*), with the chain term captured. The `d` (hasIndices) flag
+      // exposes the capture-group offsets, which we shift by afterOffset to absolute
+      // positions in `text`. Fail CLOSED on any regex error (mirrors this file's posture).
+      m = new RegExp(
+        '^\\s*(?:on|via|using)\\s+[("\'\\[]?\\s*(?:the\\s+|an?\\s+)?(' + escapeRegExp(term) + ')(?![\\w-])',
+        'id',
+      ).exec(tail)
+    } catch {
+      continue
+    }
+    const span = m?.indices?.[1]
+    if (!span) continue
+    const start = afterOffset + span[0]
+    const end = afterOffset + span[1]
+    const entity: Entity = { type: 'chain', value, raw: text.slice(start, end), start, end }
+    // Defense-in-depth: emit only if it passes the same gate the LLM path uses.
+    if (isValidEntity(entity, text)) return entity
+  }
+  return null
+}
+
+/**
+ * Fallback-only chain recovery: if a swap intent has no chain entity but the user named
+ * a routable chain as the routing directive immediately after the swap operands, inject
+ * it. Anchored to the furthest token/amount entity so incidental "on <chain>" prose
+ * elsewhere in the sentence is ignored. Never overrides a chain the model emitted.
+ */
+export function injectMissingChain(parsed: ParsedIntent, text: string): ParsedIntent {
+  if (parsed.intent !== 'swap') return parsed
+  if (parsed.entities.some((e) => e.type === 'chain')) return parsed
+  // End of the last swap operand. With no operands yet, afterOffset 0 requires the text
+  // to START with the routing clause (harmless: a chain with no tokens cannot trade).
+  const afterOffset = parsed.entities.reduce((max, e) => (e.end > max ? e.end : max), 0)
+  const chain = extractChainFromText(text, afterOffset)
+  return chain ? { ...parsed, entities: [...parsed.entities, chain] } : parsed
+}
+
 function stripFences(s: string): string {
   // Tolerate the model wrapping output in ```json ... ``` despite the rule.
   const trimmed = s.trim()
@@ -791,13 +869,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ ok: false, error: { code: 'INVALID_JSON', message: 'model output was not JSON' } }, 502)
   }
 
-  const filtered = filterParsedIntent(parsed, text)
-  if (!filtered) {
+  const filteredBase = filterParsedIntent(parsed, text)
+  if (!filteredBase) {
     return json(
       { ok: false, error: { code: 'INVALID_JSON', message: 'model output failed schema validation' } },
       502,
     )
   }
+  // Recover a chain the model dropped (notably "Optimism") straight from the user
+  // text so the FE swap URL keeps the chainId instead of silently mis-routing to the
+  // default chain. Fallback-only: never overrides a chain the model already emitted.
+  const filtered = injectMissingChain(filteredBase, text)
 
   const successBody: IntentResponse = { ok: true, data: filtered }
   const successJson = JSON.stringify(successBody)
