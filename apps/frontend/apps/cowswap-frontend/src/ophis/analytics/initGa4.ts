@@ -81,15 +81,28 @@ export function initGa4(): void {
     /* localStorage blocked: keep the regional default */
   }
 
-  const script = document.createElement('script')
-  script.id = 'ophis-ga4'
-  script.async = true
-  // First-party via Cloudflare Google Tag Gateway (endpoint /938g on the ophis.fi
-  // zone). Same-origin path -> https://swap.ophis.fi/938g/...; the CF-served
-  // gtag.js carries transport_url=/938g so beacons are first-party too (beats
-  // ad-blockers). Covered by script-src 'self'; connect-src 'self' covers beacons.
-  script.src = `/938g/gtag/js?id=${GA4_MEASUREMENT_ID}`
-  document.head.appendChild(script)
+  // Perf: defer ONLY the ~506KB gtag.js download off the critical boot path
+  // (post-FCP). The window.gtag shim + dataLayer + consent commands above already
+  // ran synchronously, so the gtag('js'/'config') + page_view commands below, plus
+  // any early trackGa4Event() calls, queue into window.dataLayer and are drained in
+  // FIFO order once gtag.js loads. No analytics lost; only the script timing moves.
+  const injectGtag = (): void => {
+    if (document.getElementById('ophis-ga4')) return
+    const script = document.createElement('script')
+    script.id = 'ophis-ga4'
+    script.async = true
+    // First-party via Cloudflare Google Tag Gateway (endpoint /938g on the ophis.fi
+    // zone). Same-origin path -> https://swap.ophis.fi/938g/...; the CF-served
+    // gtag.js carries transport_url=/938g so beacons are first-party too (beats
+    // ad-blockers). Covered by script-src 'self'; connect-src 'self' covers beacons.
+    script.src = `/938g/gtag/js?id=${GA4_MEASUREMENT_ID}`
+    document.head.appendChild(script)
+  }
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(injectGtag, { timeout: 3000 })
+  } else {
+    window.addEventListener('load', () => window.setTimeout(injectGtag, 1), { once: true })
+  }
 
   w.gtag('js', new Date())
   // send_page_view:false: this is a HashRouter SPA, so page_view is sent

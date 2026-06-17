@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { MultiCallUpdater } from '@cowprotocol/multicall'
@@ -61,8 +61,29 @@ import { WidgetTokensUpdater } from 'common/updaters/WidgetTokensUpdater'
 
 import { FaviconAnimationUpdater } from './FaviconAnimationUpdater'
 
+/**
+ * Perf: defer the slow, non-critical CMS updaters (solvers / announcements /
+ * correlated-tokens, all hitting cms.cow.fi: ~1s of boot-window network chatter)
+ * off the critical first-paint path until the browser is idle. Each reads from a
+ * persisted localStorage atom that defaults to [], so the UI degrades gracefully
+ * (returning visitors keep their cached value) until the deferred fetch lands.
+ */
+function useDeferredMount(): boolean {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(() => setReady(true), { timeout: 3000 })
+      return () => window.cancelIdleCallback?.(id)
+    }
+    const t = window.setTimeout(() => setReady(true), 1500)
+    return () => window.clearTimeout(t)
+  }, [])
+  return ready
+}
+
 export function Updaters(): ReactNode {
   const { account } = useWalletInfo()
+  const deferred = useDeferredMount()
 
   const { standaloneMode } = useInjectedWidgetParams()
   const { isGeoBlockEnabled, isYieldEnabled, isRwaGeoblockEnabled } = useFeatureFlags()
@@ -106,8 +127,9 @@ export function Updaters(): ReactNode {
       <OrderProgressStateUpdater />
       <ProgressBarExecutingOrdersUpdater />
       <OrderProgressEventsUpdater />
-      <SolversInfoUpdater />
-      <AnnouncementsUpdater />
+      {/* deferred to idle: post-trade solver cosmetics + CoW announcement banner (cms.cow.fi) */}
+      {deferred && <SolversInfoUpdater />}
+      {deferred && <AnnouncementsUpdater />}
       <SurplusInvalidationListenerUpdater />
       <BridgingEnabledUpdater />
       <FaviconAnimationUpdater />
@@ -136,7 +158,8 @@ export function Updaters(): ReactNode {
       <VampireAttackUpdater />
       <BalancesCombinedUpdater />
       <BalancesDevtools />
-      <CorrelatedTokensUpdater />
+      {/* deferred to idle: feeds the fee-waiver path; persisted atom keeps it revenue-safe (cms.cow.fi) */}
+      {deferred && <CorrelatedTokensUpdater />}
       <BridgeOrdersCleanUpdater />
       <PendingBridgeOrdersUpdater />
       <LastTimePriceUpdateResetUpdater />
