@@ -110,13 +110,38 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
 const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10])
 
 /**
- * Gates the on-chain Ophis price-improvement partner-fee value by chain. Returns
- * `undefined` on VOLUME-only chains (the PI shape would be rejected at ingress
- * there) so the caller falls through to the volumeFee pipeline; pass-through on
- * every other chain. This is the testable seam that stops the frontend emitting
- * appData the OP backend rejects when the flat-volume flag is off.
+ * A CIP-75 VOLUME-policy appData partner fee at the OP non-stable floor, used on
+ * VOLUME-only chains when the price-improvement fallback would otherwise be
+ * emitted. The recipient is the canonical Ophis Safe. `volumeBps` equals the
+ * backend's non-stable floor, so the order is accepted (>= floor) for every pair
+ * (stable pairs floor at 1 bp, which 10 also clears). This is the safe value the
+ * backend will neither reject nor let ride free.
  */
-export function ophisAppDataPartnerFeeForChain<T>(raw: T | undefined, chainId: number | undefined): T | undefined {
-  if (chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)) return undefined
+const OPHIS_OP_FLOOR_VOLUME_FEE = {
+  volumeBps: BACKEND_NON_STABLE_FLOOR_BPS,
+  recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+} as const
+
+/**
+ * Gates the on-chain Ophis partner-fee value by chain. On VOLUME-only chains
+ * (Optimism today) the self-hosted backend REJECTS the price-improvement shape
+ * at ingress AND lets an ABSENT partner fee ride free, so neither suppress-to-
+ * nothing nor the PI shape is acceptable there:
+ *   - when the PI fallback would be emitted (flat-volume flag OFF), return a
+ *     floor VOLUME fee instead, so the order charges >= the floor (never free,
+ *     never rejected);
+ *   - when `raw` is undefined (flag ON), return undefined so the caller falls
+ *     through to the volumeFee pipeline, which carries the proper 10/1 bps.
+ * On every other (CoW-hosted) chain, pass `raw` through unchanged (the PI shape
+ * is valid there). This is the testable seam that stops the frontend submitting
+ * a free OR rejectable order on OP.
+ */
+export function ophisAppDataPartnerFeeForChain<T>(
+  raw: T | undefined,
+  chainId: number | undefined,
+): T | typeof OPHIS_OP_FLOOR_VOLUME_FEE | undefined {
+  if (chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)) {
+    return raw === undefined ? undefined : OPHIS_OP_FLOOR_VOLUME_FEE
+  }
   return raw
 }

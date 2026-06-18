@@ -86,9 +86,12 @@ compare_sets "OPTIMISM_STABLECOINS" \
   "$(rust_addr_set "$APP_DATA" OPTIMISM_STABLECOINS)"
 
 # 2. OPTIMISM_BOOSTED_TOKENS (OP / chain 10 only): frontend boostedTokens.ts <-> backend.
-# Frontend keys the per-chain map by `[SupportedChainId.OPTIMISM]: new Set([...])`
-# (one line per chain, per the file's documented convention); no OP entry today.
-fe_boosted_op="$(grep -E 'SupportedChainId\.OPTIMISM\]' "$BOOSTED_TS" | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f' | sort -u || true)"
+# The per-chain map keys OP either by the enum (`[SupportedChainId.OPTIMISM]`) or
+# by the numeric-cast style the repo also uses elsewhere (e.g. tokens.ts STABLECOINS
+# uses `[10 as unknown as SupportedChainId]`), or a bare `[10]`. Match all three so
+# an OP boosted entry added in any of them is seen (one line per chain, per the
+# file's documented convention); no OP entry today.
+fe_boosted_op="$(grep -E '\[(SupportedChainId\.OPTIMISM|10( as [^]]*)?)\]' "$BOOSTED_TS" | grep -oE '0x[0-9a-fA-F]{40}' | tr 'A-F' 'a-f' | sort -u || true)"
 compare_sets "OPTIMISM_BOOSTED_TOKENS (OP)" \
   "$fe_boosted_op" \
   "$(rust_addr_set "$APP_DATA" OPTIMISM_BOOSTED_TOKENS)"

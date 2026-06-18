@@ -35,10 +35,15 @@ describe('partnerFeeDefault', () => {
     expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.maxVolumeBps).toBe(50)
   })
 
-  describe('ophisAppDataPartnerFeeForChain (price-improvement suppression on self-hosted chains)', () => {
-    it('suppresses the price-improvement fallback on Optimism (10), the Volume-only self-hosted chain', () => {
-      // The OP backend rejects the PI shape at ingress; emitting it would 400.
-      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 10)).toBeUndefined()
+  describe('ophisAppDataPartnerFeeForChain (Volume-only handling on self-hosted chains)', () => {
+    it('emits a floor Volume fee on Optimism (10) instead of the rejected PI shape (never the PI shape, never nothing)', () => {
+      // The OP backend rejects the PI shape at ingress AND lets an absent fee
+      // ride free; on OP we must emit a floor (10 bps) Volume fee so the order
+      // is charged >= the floor.
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 10)).toEqual({
+        volumeBps: 10,
+        recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT,
+      })
     })
 
     it('passes the price-improvement fallback through on CoW-hosted chains (e.g. mainnet 1, base 8453)', () => {
