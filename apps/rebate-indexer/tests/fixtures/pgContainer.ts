@@ -17,7 +17,11 @@ import postgres from 'postgres';
  */
 export async function startPg(): Promise<{ container: StartedPostgreSqlContainer; connectionUri: string }> {
   const container = await new PostgreSqlContainer('postgres:16-alpine').withStartupTimeout(120_000).start();
-  const connectionUri = container.getConnectionUri().replace('//localhost:', '//127.0.0.1:');
+  // Force IPv4: "localhost" can resolve to ::1 where the mapped container port is not
+  // bound. getConnectionUri() yields `postgresql://user:pass@localhost:PORT/db`, so the host
+  // follows "@" (not "//") - match both forms (Codex 2026-06-18: the old '//localhost:'
+  // replace was a no-op against the user:pass URI and never forced IPv4).
+  const connectionUri = container.getConnectionUri().replace(/(\/\/|@)localhost:/, '$1127.0.0.1:');
   const probe = postgres(connectionUri, { max: 1, connect_timeout: 5, idle_timeout: 1, onnotice: () => {} });
   try {
     let lastErr: unknown;
