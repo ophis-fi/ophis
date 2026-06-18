@@ -157,3 +157,177 @@ test('isPlausibleTokenSymbol rejects stop words and bad shapes', () => {
     assert.equal(intent.isPlausibleTokenSymbol(s), false, `bad shape ${JSON.stringify(s)} should drop`)
   }
 })
+
+// --- DETERMINISTIC CHAIN FALLBACK (2026-06-17) ---
+// The model (qwen3.6-27b) sometimes omits a chain the user named in routing
+// context — notably "Optimism" (chain-vs-token ambiguity with the OP token, and
+// the input placeholder). injectMissingChain recovers it from the user text without
+// overriding a chain the model did emit. Recovery is ANCHORED to the swap operands:
+// the chain must be the on/via/using directive immediately after the last token, so
+// incidental "on <chain>" prose is NOT recovered (correctness audit 2026-06-17).
+
+// Drive the REAL path: build a swap intent with the given token/amount operands (so
+// the post-operand anchor is exercised), inject, and return the recovered chain.
+function recover(text: string, tokens: ReadonlyArray<[EntityType, string, string]>): string | null {
+  const entities = tokens.map(([t, v, r]) => ent(t, v, r, text))
+  const out = intent.injectMissingChain({ intent: 'swap' as const, entities }, text)
+  return out.entities.find((e) => e.type === 'chain')?.value ?? null
+}
+// "...usdc for eth ..." — eth (buy) is the operand the chain follows.
+const UE: ReadonlyArray<[EntityType, string, string]> = [
+  ['sellToken', 'USDC', 'usdc'],
+  ['buyToken', 'ETH', 'eth'],
+]
+
+test('chain-fallback: recovers "on Optimism" the model dropped', () => {
+  assert.equal(recover('trade 100 USDC for ETH on Optimism', UE), 'optimism')
+  assert.equal(recover('swap 100 usdc for eth on optimism', UE), 'optimism') // the input placeholder
+})
+
+test('chain-fallback: recovers the "op" alias in routing context', () => {
+  assert.equal(recover('swap usdc for eth on op', UE), 'optimism')
+})
+
+test('chain-fallback: recovers other routable chains + aliases', () => {
+  assert.equal(recover('swap 100 usdc for eth on base', UE), 'base')
+  assert.equal(
+    recover('buy 1 eth with usdc on arbitrum', [
+      ['buyToken', 'ETH', 'eth'],
+      ['sellToken', 'USDC', 'usdc'],
+    ]),
+    'arbitrum',
+  )
+  assert.equal(
+    recover('trade dai for usdt on bsc', [
+      ['sellToken', 'DAI', 'dai'],
+      ['buyToken', 'USDT', 'usdt'],
+    ]),
+    'bnb',
+  )
+  assert.equal(recover('swap usdc for eth using an l1', UE), 'ethereum')
+})
+
+test('chain-fallback: tolerates trailing network/chain word, punctuation, and filler', () => {
+  assert.equal(recover('swap usdc for eth on the base network', UE), 'base')
+  assert.equal(recover('trade 100 usdc for eth on optimism.', UE), 'optimism')
+  assert.equal(recover('swap usdc for eth on op mainnet', UE), 'optimism')
+  assert.equal(recover('swap usdc for eth on optimism right now', UE), 'optimism') // filler AFTER chain ok
+})
+
+test('chain-fallback: a thousands-separator comma in the amount is irrelevant', () => {
+  assert.equal(
+    recover('swap 1,000 usdc for eth on optimism', [
+      ['amount', '1000', '1,000'],
+      ['sellToken', 'USDC', 'usdc'],
+      ['buyToken', 'ETH', 'eth'],
+    ]),
+    'optimism',
+  )
+})
+
+// ANCHORED GATE (audit 2026-06-17): recovery fires only when the LLM declined a
+// chain, which is also when the model correctly drops incidental "on <chain>" PROSE.
+// Anchoring to the operand means prose with words between the token and the chain
+// (with OR without a comma) is rejected. These pin that surface.
+
+test('chain-fallback: does NOT recover incidental prose with a comma clause', () => {
+  assert.equal(recover('swap 100 usdc for eth, gas paid on op', UE), null)
+  assert.equal(recover('swap usdc for eth, cheapest fees on base right now', UE), null)
+  assert.equal(recover('bridge then swap usdc for eth, listed on binance first', UE), null)
+  assert.equal(recover('i want to swap usdc for eth, i saw it trending on polygon', UE), null)
+})
+
+test('chain-fallback: does NOT recover incidental COMMA-FREE prose (operand anchor)', () => {
+  assert.equal(recover('swap 100 usdc for eth gas paid on op', UE), null)
+  assert.equal(
+    recover('buy eth with usdc cheapest gas is on base', [
+      ['buyToken', 'ETH', 'eth'],
+      ['sellToken', 'USDC', 'usdc'],
+    ]),
+    null,
+  )
+  assert.equal(recover('swap usdc for eth like everyone does on base', UE), null)
+})
+
+test('chain-fallback: does NOT recover a non-adjacent chain (deferred to the model/default)', () => {
+  assert.equal(
+    recover('buy 1 eth on arbitrum with usdc', [
+      ['buyToken', 'ETH', 'eth'],
+      ['sellToken', 'USDC', 'usdc'],
+    ]),
+    null,
+  )
+})
+
+test('chain-fallback: multiple chains resolve to the one bound to the operands (first)', () => {
+  assert.equal(recover('swap usdc for eth on base or on optimism', UE), 'base')
+  assert.equal(recover('swap usdc for eth on optimism or on base', UE), 'optimism')
+})
+
+test('chain-fallback: a bare chain mention (no on/via/using) recovers nothing', () => {
+  assert.equal(recover('swap optimism for usdc', [['buyToken', 'USDC', 'usdc']]), null)
+  assert.equal(recover('100 base for usdc', [['buyToken', 'USDC', 'usdc']]), null)
+})
+
+test('chain-fallback: unsupported/unknown chains recover nothing', () => {
+  assert.equal(recover('swap usdc for eth on solana', UE), null)
+  assert.equal(recover('swap usdc for eth on megaeth', UE), null)
+})
+
+test('chain-fallback: a hyphenated suffix does not mis-match the chain (on base-fee)', () => {
+  assert.equal(recover('swap usdc for eth on base-fee', UE), null)
+})
+
+test('injectMissingChain: ignores a manipulated model offset (anchors from the text, not entity.end)', () => {
+  // Codex 2026-06-18: isValidEntity does not exact-validate offsets, so a malicious or
+  // incorrect model `end` must NOT be able to move the operand anchor past incidental
+  // "on <chain>" prose and inject a chain from it.
+  const text = 'swap usdc for eth gas paid on op'
+  const parsed = {
+    intent: 'swap' as const,
+    entities: [
+      { type: 'sellToken' as const, value: 'USDC', raw: 'usdc', start: 5, end: 9 },
+      // buyToken "eth" with a LIED end (real "eth" is at 14..17); end:26 points just before
+      // " on op", which the OLD entity.end anchor would have used to inject `optimism`.
+      { type: 'buyToken' as const, value: 'ETH', raw: 'eth', start: 14, end: 26 },
+    ],
+  }
+  const out = intent.injectMissingChain(parsed, text)
+  assert.equal(
+    out.entities.some((e) => e.type === 'chain'),
+    false,
+  )
+})
+
+test('injectMissingChain: never overrides a chain the model already emitted', () => {
+  const text = 'swap usdc for eth on base'
+  const parsed = {
+    intent: 'swap' as const,
+    entities: [ent('buyToken', 'ETH', 'eth', text), ent('chain', 'base', 'base', text)],
+  }
+  const out = intent.injectMissingChain(parsed, text)
+  const chains = out.entities.filter((e) => e.type === 'chain')
+  assert.equal(chains.length, 1)
+  assert.equal(chains[0].value, 'base')
+})
+
+test('injectMissingChain: leaves a chainless intent unchanged when no chain is named', () => {
+  assert.equal(recover('swap 100 usdc for eth', UE), null)
+})
+
+test('injectMissingChain: is a strict no-op for a non-swap intent, even with a chain in text', () => {
+  const text = 'what is the gas on optimism'
+  const parsed = { intent: 'unknown' as const, entities: [] }
+  const out = intent.injectMissingChain(parsed, text)
+  assert.equal(out, parsed) // same reference, untouched
+})
+
+test('injectMissingChain: does not mutate its input', () => {
+  const text = 'trade 100 usdc for eth on optimism'
+  const entities = [ent('sellToken', 'USDC', 'usdc', text), ent('buyToken', 'ETH', 'eth', text)]
+  const parsed = { intent: 'swap' as const, entities }
+  const out = intent.injectMissingChain(parsed, text)
+  assert.equal(entities.length, 2) // original array untouched
+  assert.notEqual(out.entities, entities) // returns a new array
+  assert.equal(out.entities.find((e) => e.type === 'chain')?.value, 'optimism')
+})
