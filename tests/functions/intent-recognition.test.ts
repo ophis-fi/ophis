@@ -278,6 +278,27 @@ test('chain-fallback: a hyphenated suffix does not mis-match the chain (on base-
   assert.equal(recover('swap usdc for eth on base-fee', UE), null)
 })
 
+test('injectMissingChain: ignores a manipulated model offset (anchors from the text, not entity.end)', () => {
+  // Codex 2026-06-18: isValidEntity does not exact-validate offsets, so a malicious or
+  // incorrect model `end` must NOT be able to move the operand anchor past incidental
+  // "on <chain>" prose and inject a chain from it.
+  const text = 'swap usdc for eth gas paid on op'
+  const parsed = {
+    intent: 'swap' as const,
+    entities: [
+      { type: 'sellToken' as const, value: 'USDC', raw: 'usdc', start: 5, end: 9 },
+      // buyToken "eth" with a LIED end (real "eth" is at 14..17); end:26 points just before
+      // " on op", which the OLD entity.end anchor would have used to inject `optimism`.
+      { type: 'buyToken' as const, value: 'ETH', raw: 'eth', start: 14, end: 26 },
+    ],
+  }
+  const out = intent.injectMissingChain(parsed, text)
+  assert.equal(
+    out.entities.some((e) => e.type === 'chain'),
+    false,
+  )
+})
+
 test('injectMissingChain: never overrides a chain the model already emitted', () => {
   const text = 'swap usdc for eth on base'
   const parsed = {

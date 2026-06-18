@@ -686,9 +686,20 @@ export function extractChainFromText(text: string, afterOffset: number): Entity 
 export function injectMissingChain(parsed: ParsedIntent, text: string): ParsedIntent {
   if (parsed.intent !== 'swap') return parsed
   if (parsed.entities.some((e) => e.type === 'chain')) return parsed
-  // End of the last swap operand. With no operands yet, afterOffset 0 requires the text
-  // to START with the routing clause (harmless: a chain with no tokens cannot trade).
-  const afterOffset = parsed.entities.reduce((max, e) => (e.end > max ? e.end : max), 0)
+  // End of the last swap operand, derived from where each operand's `raw` actually
+  // appears in the USER TEXT - NOT the model's start/end, which isValidEntity does not
+  // exact-validate (it only requires raw-in-text). Anchoring on a model-supplied offset
+  // would let a manipulated/incorrect `end` move the anchor past incidental "on <chain>"
+  // prose and inject a chain from it (Codex 2026-06-18). lastIndexOf errs LATE (a repeated
+  // raw resolves to its final occurrence), which is the safe direction: a too-late anchor
+  // skips the chain (status quo), never injects on prose. With no operands, afterOffset 0
+  // requires the text to START with the routing clause (harmless: no tokens cannot trade).
+  const lowerText = text.toLowerCase()
+  let afterOffset = 0
+  for (const e of parsed.entities) {
+    const idx = lowerText.lastIndexOf(e.raw.toLowerCase())
+    if (idx >= 0) afterOffset = Math.max(afterOffset, idx + e.raw.length)
+  }
   const chain = extractChainFromText(text, afterOffset)
   return chain ? { ...parsed, entities: [...parsed.entities, chain] } : parsed
 }
