@@ -315,6 +315,10 @@ export interface QuoteParams {
   /** The trading account. Quotes are account-aware (balances/permits). */
   from: Address
   validForSeconds?: number
+  /** Absolute order expiry (unix seconds). When set, the quote is requested for this EXACT
+   *  validTo rather than a relative window, so the enforcement quote matches the signed
+   *  order's lifetime even across quote-fetch latency. Takes precedence over validForSeconds. */
+  validTo?: number
 }
 
 /** Fetches a quote from the chain's Ophis orderbook (`POST /api/v1/quote`). Returns the raw orderbook response. */
@@ -341,7 +345,10 @@ export async function getQuote(p: QuoteParams, fetchImpl: typeof fetch = fetch):
     onchainOrder: false,
     appData: fullAppData,
     appDataHash,
-    validFor: p.validForSeconds ?? 1200,
+    // Quote for the EXACT order lifetime when an absolute validTo is supplied: a relative
+    // validFor re-anchors to the orderbook's request-receive time (later than buildOrder's
+    // local now), so it would price a slightly longer-lived order than the one being signed.
+    ...(p.validTo !== undefined ? { validTo: p.validTo } : { validFor: p.validForSeconds ?? 1200 }),
   }
   const url = `${getOphisOrderbookUrl(chainId)}/api/v1/quote`
   const res = await timedFetch(

@@ -5,6 +5,7 @@ import {
   deterministicStringify,
   buildOphisAppData,
   buildOrder,
+  getQuote,
   submitOrder,
   listChains,
   APP_DATA_VERSION,
@@ -116,6 +117,55 @@ describe('buildOrder', () => {
     // Slippage is ENFORCED against a server-fetched quote in the MCP build_order
     // handler (getQuote + assertLimitWithinSlippage), which is tested via those units.
     expect(() => buildOrder({ ...base, buyAmount: '1', slippageBips: 100 }, NOW)).not.toThrow()
+  })
+})
+
+describe('getQuote (enforcement-quote lifetime)', () => {
+  const base = {
+    chainId: 10,
+    sellToken: USDC_OP,
+    buyToken: WETH_OP,
+    kind: 'sell' as const,
+    amount: '1000000',
+    from: OWNER,
+  }
+
+  // Stub fetch that snapshots the request body so we can assert what lifetime
+  // field the quote is requested for (validTo vs validFor) at the wire level.
+  function captureFetch() {
+    let captured: string | undefined
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      captured = init.body as string
+      return new Response(JSON.stringify({ quote: {} }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    return { fetchImpl, body: () => JSON.parse(captured ?? '{}') as Record<string, unknown> }
+  }
+
+  it('quotes for the EXACT absolute validTo when supplied; validForSeconds is ignored', async () => {
+    // This is the order-lifetime alignment the build_order handler relies on: the
+    // enforcement quote must describe the SAME order being signed, not a relative
+    // window that re-anchors to the orderbook's later request-receive time.
+    const cap = captureFetch()
+    await getQuote({ ...base, validTo: NOW + 60, validForSeconds: 999 }, cap.fetchImpl)
+    const body = cap.body()
+    expect(body.validTo).toBe(NOW + 60)
+    expect(body.validFor).toBeUndefined()
+  })
+
+  it('falls back to a relative validFor window when no validTo is given', async () => {
+    const cap = captureFetch()
+    await getQuote({ ...base, validForSeconds: 300 }, cap.fetchImpl)
+    const body = cap.body()
+    expect(body.validFor).toBe(300)
+    expect(body.validTo).toBeUndefined()
+  })
+
+  it('defaults validFor to 1200 when neither validTo nor validForSeconds is set', async () => {
+    const cap = captureFetch()
+    await getQuote(base, cap.fetchImpl)
+    const body = cap.body()
+    expect(body.validFor).toBe(1200)
+    expect(body.validTo).toBeUndefined()
   })
 })
 

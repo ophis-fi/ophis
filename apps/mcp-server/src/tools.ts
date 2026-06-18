@@ -235,11 +235,12 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             kind: a.kind,
             amount: a.kind === 'sell' ? a.sellAmount : a.buyAmount,
             from: a.owner as Address,
-            // Bound slippage against a quote for the SAME lifetime the order will use.
-            // Without this the enforcement quote fell back to the 1200s default while the
-            // signed order used the caller's validForSeconds, so a short-lived order could
-            // pass a band computed for a longer (differently priced) lifetime. (Codex 2026-06-18)
-            validForSeconds: a.validForSeconds,
+            // Bound slippage against a quote for the EXACT order being signed: pass the
+            // order's ABSOLUTE validTo (computed once in buildOrder above), not a relative
+            // window. A relative validFor would re-anchor to the orderbook's later request
+            // time, so a short-lived order could be priced against a slightly longer-lived
+            // (differently priced) order. (Codex 2026-06-18 + reviewer follow-up)
+            validTo: built.order.validTo,
           })
         } catch (qe) {
           throw new Error(
