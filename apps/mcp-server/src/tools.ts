@@ -61,6 +61,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   server.registerTool(
     'parse_intent',
     {
+      annotations: { title: 'Parse swap intent', readOnlyHint: true, openWorldHint: true },
       description:
         'Parse a plain-English swap request (e.g. "swap 100 USDC for ETH on Optimism") into a structured intent: { intent: "swap"|"unknown", entities: [{type: sellToken|buyToken|amount|chain, value, raw}] }. Backed by the live Ophis parser.',
       inputSchema: { text: z.string().min(1).max(280).describe('The natural-language swap request.') },
@@ -77,6 +78,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   server.registerTool(
     'get_quote',
     {
+      annotations: { title: 'Get swap quote', readOnlyHint: true, openWorldHint: true },
       description:
         "Fetch a best-execution quote from the chain's Ophis orderbook (use a chainId from list_chains' `tradeable`). Amounts are in atoms (smallest unit, uint256 decimal string). For kind='sell' the amount is the sell amount before fee; for kind='buy' it is the desired buy amount. Returns the orderbook quote (sellAmount/buyAmount/feeAmount/validTo). Before build_order, apply slippage to the limit side by kind: kind='sell' -> lower buyAmount (min out); kind='buy' -> raise sellAmount (max in).",
       inputSchema: {
@@ -118,6 +120,9 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   server.registerTool(
     'build_order',
     {
+      // Read-only: returns an unsigned order to sign locally (fetches a quote to
+      // enforce slippage); it never moves funds. submit_order is the write path.
+      annotations: { title: 'Build signable order', readOnlyHint: true, openWorldHint: true },
       description:
         "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%, default = the cap) and ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched — retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
       inputSchema: {
@@ -266,6 +271,10 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   server.registerTool(
     'submit_order',
     {
+      // The one write/effectful tool: relays a SIGNED order to the orderbook, which
+      // can execute a real on-chain trade. Receiver is pinned to the owner, so it is
+      // not a fund-drain vector, but it does change state -> destructive, not read-only.
+      annotations: { title: 'Submit signed order', readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       description:
         'Relay a PRE-SIGNED order to the chain\'s Ophis orderbook. Pass the exact `order` object and `fullAppData` from build_order, plus your EIP-712 `signature` and `from` (owner). The MCP holds no keys — it only forwards. Returns the order UID on success.',
       inputSchema: {
@@ -347,6 +356,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   server.registerTool(
     'lookup_tier',
     {
+      annotations: { title: 'Look up fee-rebate tier', readOnlyHint: true, openWorldHint: true },
       description:
         "Look up a wallet's Ophis fee-rebate tier and live status (30-day volume → bronze/silver/gold/platinum, rebate %). Returns the indexer status plus the static tier ladder.",
       inputSchema: { wallet: z.string().describe('Wallet address (0x...).') },
@@ -363,6 +373,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   server.registerTool(
     'list_chains',
     {
+      annotations: { title: 'List Ophis chains', readOnlyHint: true, openWorldHint: false },
       description:
         "List Ophis chains, split into `tradeable` (orderbook host is live — only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, e.g. MegaETH/HyperEVM — these throw). Each tradeable chain includes its orderbook host and GPv2Settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and partner-fee config. No input.",
       inputSchema: {},
