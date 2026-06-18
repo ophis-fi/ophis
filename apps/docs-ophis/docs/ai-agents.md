@@ -253,10 +253,16 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // missing/invalid one (a forgotten arg fails loud, not as a silent `undefined`).
 // It returns the metadata.partnerFee value on every chain in the SDK's
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
-// fork serves), or `undefined` on any other chain (no fee charged).
+// fork serves), or `undefined` on any other chain.
+//
+// On Optimism the fee is an ENFORCED FLOOR: the self-hosted backend rejects
+// (HTTP 400) any order to the Ophis fee recipient whose partner fee is below the
+// floor (10 bps, or 1 bp for a same-chain stablecoin pair), or that uses a
+// Surplus/PriceImprovement policy. Carry this fragment unchanged on OP: do not
+// lower the bps and do not drop the fee, or the order is rejected.
 const partnerFee = buildOphisAppDataPartnerFee(10);
 // -> the Ophis flat-volume partner-fee fragment { volumeBps: 10, recipient }
-//    for this chain (or `undefined` on chains where Ophis charges no fee)
+//    for this chain (enforced as a minimum on Optimism: at least the floor)
 
 const metadataApi = new MetadataApi();
 const doc = await metadataApi.generateAppDataDoc({

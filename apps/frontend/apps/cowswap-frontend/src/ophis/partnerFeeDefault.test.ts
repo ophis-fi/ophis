@@ -3,6 +3,8 @@ import {
   OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
   OPHIS_DEFAULT_PARTNER_FEE,
   ophisAppDataPartnerFeeForChain,
+  ophisVolumeOnlyFloorFee,
+  isVolumeOnlyChain,
 } from './partnerFeeDefault'
 
 /**
@@ -35,15 +37,12 @@ describe('partnerFeeDefault', () => {
     expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.maxVolumeBps).toBe(50)
   })
 
-  describe('ophisAppDataPartnerFeeForChain (Volume-only handling on self-hosted chains)', () => {
-    it('emits a floor Volume fee on Optimism (10) instead of the rejected PI shape (never the PI shape, never nothing)', () => {
-      // The OP backend rejects the PI shape at ingress AND lets an absent fee
-      // ride free; on OP we must emit a floor (10 bps) Volume fee so the order
-      // is charged >= the floor.
-      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 10)).toEqual({
-        volumeBps: 10,
-        recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT,
-      })
+  describe('ophisAppDataPartnerFeeForChain (PI suppression on self-hosted chains)', () => {
+    it('suppresses the PI fallback on Optimism (10) (returns undefined; the floor is carried by the volumeFee pipeline so display == charged)', () => {
+      // On OP the backend rejects the PI shape at ingress; the floor Volume fee is
+      // emitted from the single volumeFee source (ophisVolumeOnlyFloorFee) so the
+      // displayed fee and the appData fee match. The PI fallback is just suppressed.
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 10)).toBeUndefined()
     })
 
     it('passes the price-improvement fallback through on CoW-hosted chains (e.g. mainnet 1, base 8453)', () => {
@@ -64,6 +63,35 @@ describe('partnerFeeDefault', () => {
       expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, undefined)).toBe(
         OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
       )
+    })
+  })
+
+  describe('ophisVolumeOnlyFloorFee (single OP floor source for display + appData)', () => {
+    it('returns the 10 bps non-stable floor Volume fee on Optimism', () => {
+      expect(ophisVolumeOnlyFloorFee(10, false)).toEqual({
+        volumeBps: 10,
+        recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT,
+      })
+    })
+
+    it('returns the reduced 1 bp floor on Optimism for a stable / boosted pair', () => {
+      expect(ophisVolumeOnlyFloorFee(10, true)).toEqual({
+        volumeBps: 1,
+        recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT,
+      })
+    })
+
+    it('returns undefined off the Volume-only chains (CoW-hosted + no chain)', () => {
+      expect(ophisVolumeOnlyFloorFee(1, false)).toBeUndefined()
+      expect(ophisVolumeOnlyFloorFee(8453, true)).toBeUndefined()
+      expect(ophisVolumeOnlyFloorFee(undefined, false)).toBeUndefined()
+    })
+
+    it('isVolumeOnlyChain is true only for Optimism (10)', () => {
+      expect(isVolumeOnlyChain(10)).toBe(true)
+      expect(isVolumeOnlyChain(1)).toBe(false)
+      expect(isVolumeOnlyChain(8453)).toBe(false)
+      expect(isVolumeOnlyChain(undefined)).toBe(false)
     })
   })
 })

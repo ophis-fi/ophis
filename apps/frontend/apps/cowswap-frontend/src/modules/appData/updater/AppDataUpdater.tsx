@@ -46,12 +46,12 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // partnerFeeDefault.ts.
   const ophisAppDataPartnerFeeRaw = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
   const ophisAppDataPartnerFeeGated = shouldEmitOphisPartnerFee(chainId) ? ophisAppDataPartnerFeeRaw : undefined
-  // OP (and any future self-hosted chain) mandates the CIP-75 Volume policy: the
-  // backend rejects the price-improvement fallback at ingress AND lets an absent
-  // fee ride free. So on those chains ophisAppDataPartnerFeeForChain emits a
-  // floor Volume fee when the PI fallback would apply (flat-volume flag OFF), or
-  // undefined when the flag is ON (the volumeFee pipeline below carries the
-  // proper 10/1 bps). It never emits the PI shape or nothing on OP.
+  // OP (and any future self-hosted chain) mandates the CIP-75 Volume policy and
+  // rejects the price-improvement fallback at ingress, so suppress it there. The
+  // floor Volume fee for OP is carried by the volumeFee pipeline below
+  // (ophisVolumeOnlyFloorFee, surfaced via volumeFeeAtom) whether the flag is on
+  // or off, so the displayed fee and this on-chain appData fee come from the same
+  // source and never diverge. On CoW-hosted chains the PI shape passes through.
   const ophisAppDataPartnerFee = ophisAppDataPartnerFeeForChain(ophisAppDataPartnerFeeGated, chainId)
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()

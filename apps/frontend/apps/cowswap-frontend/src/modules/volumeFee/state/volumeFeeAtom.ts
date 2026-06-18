@@ -14,7 +14,12 @@ import { tradeQuotesAtom } from 'modules/tradeQuote'
 
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
-import { OPHIS_FLAT_VOLUME_FEE_ENABLED, OPHIS_PARTNER_FEE_RECIPIENT, OPHIS_STABLE_VOLUME_BPS } from 'ophis/partnerFeeDefault'
+import {
+  OPHIS_FLAT_VOLUME_FEE_ENABLED,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_STABLE_VOLUME_BPS,
+  ophisVolumeOnlyFloorFee,
+} from 'ophis/partnerFeeDefault'
 import { OPHIS_BOOSTED_VOLUME_BPS, isBoostedToken } from 'ophis/boostedTokens'
 
 import { isCorrelatedTrade } from './isCorrelatedTrade'
@@ -27,6 +32,12 @@ export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
   const safeAppFee = get(safeAppFeeAtom)
   const shouldSkipFee = get(shouldSkipFeeAtom)
 
+  // Correlated-token trades (e.g. a like-kind wrap) are fee-exempt by design on
+  // EVERY chain, matching CoW. On OP this means no Ophis fee is emitted OR
+  // displayed: the order carries no partnerFee, so it stays in sync and the
+  // backend floor does not apply (the floor only raises a PRESENT sub-floor fee,
+  // it does not force a fee onto a fee-exempt order). This is intentional, not the
+  // free-rider bypass the floor closes, so the OP floor branch below is skipped here.
   if (!widgetPartnerFee && shouldSkipFee) {
     return undefined
   }
@@ -62,8 +73,33 @@ export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
     return widgetPartnerFee
   }
 
+  // Flat-fee flag OFF: on a self-hosted Volume-only chain (Optimism) the backend
+  // enforces a fee FLOOR and would reject a sub-floor fee or let an ABSENT one
+  // ride free, so emit the floor Volume fee HERE (the single volumeFee source) so
+  // the displayed fee row and the on-chain appData fee stay in lockstep (the
+  // appData price-improvement fallback is suppressed on OP). The correlated-trade
+  // skip above still applies; a host integrator's own partnerFee (widgetPartnerFee)
+  // takes precedence and is left intact (handled by the final return).
+  if (!widgetPartnerFee) {
+    const opFloorFee = get(ophisOpFloorVolumeFeeAtom)
+    if (opFloorFee) return opFloorFee
+  }
+
   // Ophis Fee won't be enabled when in Widget mode, thus it takes precedence here
   return safeAppFee || widgetPartnerFee
+})
+
+/**
+ * The Ophis floor Volume fee on a self-hosted Volume-only chain (Optimism), or
+ * undefined off those chains. On OP the backend floors the fee, so the Ophis fee
+ * must be present at >= the floor regardless of the flat-volume flag; surfacing it
+ * from this single source keeps the displayed fee and the on-chain appData fee in
+ * lockstep. Reduced 1 bp rate for same-chain stable or boosted pairs.
+ */
+const ophisOpFloorVolumeFeeAtom = atom<VolumeFee | undefined>((get) => {
+  const { chainId } = get(walletInfoAtom)
+  const reducedRate = get(isStableStableTradeAtom) || get(isBoostedTradeAtom)
+  return ophisVolumeOnlyFloorFee(chainId, reducedRate)
 })
 
 const shouldSkipFeeAtom = atom<boolean>((get) => {

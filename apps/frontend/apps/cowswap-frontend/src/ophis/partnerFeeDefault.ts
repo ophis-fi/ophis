@@ -109,39 +109,45 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
  */
 const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10])
 
-/**
- * A CIP-75 VOLUME-policy appData partner fee at the OP non-stable floor, used on
- * VOLUME-only chains when the price-improvement fallback would otherwise be
- * emitted. The recipient is the canonical Ophis Safe. `volumeBps` equals the
- * backend's non-stable floor, so the order is accepted (>= floor) for every pair
- * (stable pairs floor at 1 bp, which 10 also clears). This is the safe value the
- * backend will neither reject nor let ride free.
- */
-const OPHIS_OP_FLOOR_VOLUME_FEE = {
-  volumeBps: BACKEND_NON_STABLE_FLOOR_BPS,
-  recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-} as const
+/** The OP non-stable floor (bps). The backend floors any Ophis Volume fee here. */
+export const OPHIS_NON_STABLE_VOLUME_BPS = BACKEND_NON_STABLE_FLOOR_BPS
+
+/** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism today). */
+export function isVolumeOnlyChain(chainId: number | undefined): boolean {
+  return chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)
+}
 
 /**
- * Gates the on-chain Ophis partner-fee value by chain. On VOLUME-only chains
- * (Optimism today) the self-hosted backend REJECTS the price-improvement shape
- * at ingress AND lets an ABSENT partner fee ride free, so neither suppress-to-
- * nothing nor the PI shape is acceptable there:
- *   - when the PI fallback would be emitted (flat-volume flag OFF), return a
- *     floor VOLUME fee instead, so the order charges >= the floor (never free,
- *     never rejected);
- *   - when `raw` is undefined (flag ON), return undefined so the caller falls
- *     through to the volumeFee pipeline, which carries the proper 10/1 bps.
- * On every other (CoW-hosted) chain, pass `raw` through unchanged (the PI shape
- * is valid there). This is the testable seam that stops the frontend submitting
- * a free OR rejectable order on OP.
+ * The Ophis floor VOLUME fee for a self-hosted Volume-only chain (Optimism), or
+ * `undefined` off those chains. On OP the backend enforces a fee FLOOR and would
+ * reject a sub-floor fee or let an ABSENT one ride free, so the Ophis fee must be
+ * present at >= the floor whether or not the flat-volume flag is on. This is the
+ * SINGLE source used for BOTH the displayed fee row and the on-chain appData fee
+ * (see volumeFeeAtom), so the two never diverge. `reducedRate` true (a same-chain
+ * stablecoin pair or a boosted token) floors at the reduced 1 bp; otherwise the
+ * 10 bps non-stable floor. Recipient is the canonical Ophis Safe.
  */
-export function ophisAppDataPartnerFeeForChain<T>(
-  raw: T | undefined,
+export function ophisVolumeOnlyFloorFee(
   chainId: number | undefined,
-): T | typeof OPHIS_OP_FLOOR_VOLUME_FEE | undefined {
-  if (chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)) {
-    return raw === undefined ? undefined : OPHIS_OP_FLOOR_VOLUME_FEE
+  reducedRate: boolean,
+): { volumeBps: number; recipient: typeof OPHIS_PARTNER_FEE_RECIPIENT } | undefined {
+  if (!isVolumeOnlyChain(chainId)) return undefined
+  return {
+    volumeBps: reducedRate ? OPHIS_STABLE_VOLUME_BPS : OPHIS_NON_STABLE_VOLUME_BPS,
+    recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   }
+}
+
+/**
+ * Gates the on-chain Ophis price-improvement partner-fee value by chain. On
+ * VOLUME-only chains (Optimism) the self-hosted backend REJECTS the PI shape at
+ * ingress, so suppress it (return `undefined`) and let the volumeFee pipeline
+ * carry the floor Volume fee instead (ophisVolumeOnlyFloorFee, surfaced via
+ * volumeFeeAtom) so the displayed fee and the on-chain appData fee stay in
+ * lockstep and the order is never free or rejected on OP. Pass `raw` through
+ * unchanged on every other (CoW-hosted) chain, where the PI shape is valid.
+ */
+export function ophisAppDataPartnerFeeForChain<T>(raw: T | undefined, chainId: number | undefined): T | undefined {
+  if (isVolumeOnlyChain(chainId)) return undefined
   return raw
 }
