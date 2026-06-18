@@ -235,6 +235,11 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             kind: a.kind,
             amount: a.kind === 'sell' ? a.sellAmount : a.buyAmount,
             from: a.owner as Address,
+            // Bound slippage against a quote for the SAME lifetime the order will use.
+            // Without this the enforcement quote fell back to the 1200s default while the
+            // signed order used the caller's validForSeconds, so a short-lived order could
+            // pass a band computed for a longer (differently priced) lifetime. (Codex 2026-06-18)
+            validForSeconds: a.validForSeconds,
           })
         } catch (qe) {
           throw new Error(
