@@ -30,8 +30,22 @@
     "cow-protocol",
     "cowswap",
     "dex",
+    "dex-aggregator",
     "defi",
-    "optimism"
+    "swap",
+    "intent",
+    "intent-based",
+    "mev-protection",
+    "gasless",
+    "eip-712",
+    "agent",
+    "ai-agent",
+    "mcp",
+    "web3",
+    "ethereum",
+    "optimism",
+    "base",
+    "arbitrum"
   ],
   "publishConfig": {
     "access": "public"

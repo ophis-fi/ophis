@@ -29,11 +29,21 @@
     "ophis",
     "cow-protocol",
     "cowswap",
+    "cowswap-widget",
     "widget",
     "swap-widget",
+    "defi-widget",
+    "embed",
+    "iframe",
     "react",
     "dex",
-    "defi"
+    "dex-aggregator",
+    "defi",
+    "swap",
+    "gasless",
+    "mev-protection",
+    "web3",
+    "ethereum"
   ],
   "publishConfig": {
     "access": "public"
