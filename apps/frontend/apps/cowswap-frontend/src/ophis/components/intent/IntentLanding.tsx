@@ -27,6 +27,7 @@ import { IntentInput } from './IntentInput'
 import { intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
+import { useWarmTargetChainLists } from './useWarmTargetChainLists'
 
 const Page = styled.main`
   width: 100vw;
@@ -341,6 +342,13 @@ export function IntentLanding(): ReactNode {
     return (parsedChainId ?? envChainId) as SupportedChainId
   }, [parseState.parsed, envChainId])
   const symbolMap = useTokenForChainMapBySymbol(targetChainId)
+  // Warm a CROSS-chain target's token lists so symbolMap resolves to addresses (not
+  // bare symbols) by the time the user clicks Continue. Only when the target differs
+  // from the connected chain: the connected chain's lists already load via
+  // TokensListsUpdater, and warming it would redundantly re-fetch (and, before the IDB
+  // store hydrates on mount, could override a returning user's list toggles on their
+  // active chain). Best-effort; degrades gracefully to the bare symbol on a miss.
+  useWarmTargetChainLists(targetChainId === envChainId ? undefined : targetChainId)
 
   const handleSubmit = useCallback(() => {
     if (!ready || !parseState.parsed) return
