@@ -25,12 +25,10 @@ minimumReleaseAgeExclude:
   # protobufjs 7.6.3+ is the GHSA-f38q-mgvj-vph7 fix (prototype pollution);
   # name-excluded so the security patch resolves despite the soak window.
   - protobufjs
-  # http-proxy-middleware 3.0.7 is the GHSA-gcq2-9pq2-cxqm fix and piscina 4.9.3
-  # is the GHSA-x9g3-xrwr-cwfg fix (both build-time devDeps via @nx/react and
-  # @swc/cli); name-excluded so the security patches resolve despite the soak.
-  - http-proxy-middleware
-  - piscina
-  # NOTE: esbuild 0.28.1 (the GHSA-gv7w-rqvm-qjhr fix) is intentionally NOT
-  # excluded here. A package-name exclude would permanently bypass the soak for
-  # every future esbuild publish; instead 0.28.1 is already pinned in the
-  # committed lockfile, so frozen-lockfile installs use it without re-resolving.
+  # NOTE: esbuild 0.28.1 (GHSA-gv7w-rqvm-qjhr), http-proxy-middleware 3.0.7
+  # (GHSA-gcq2-9pq2-cxqm, selective override on >=3.0.4 <3.0.7 so v2 consumers are
+  # untouched), and piscina 4.9.3 (GHSA-x9g3-xrwr-cwfg) are intentionally NOT
+  # name-excluded here. A package-name exclude would permanently bypass the soak
+  # for EVERY future publish of those packages; instead each fixed version is
+  # pinned in the committed lockfile, so frozen-lockfile installs use it without
+  # re-resolving (a non-frozen re-resolve will re-trip the soak, which is correct).

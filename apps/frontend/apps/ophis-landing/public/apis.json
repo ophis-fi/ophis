@@ -1,7 +1,7 @@
 {
   "aid": "fi.ophis:apis",
   "name": "Ophis",
-  "type": "INDEX",
+  "type": "Index",
   "description": "Ophis is an intent-based DEX aggregator with a natural-language layer. This APIs.json index lists its machine-readable APIs: the public Intent API (natural language to structured swap intent) and the keyless MCP server that lets AI agents quote, build, and relay non-custodial swaps.",
   "image": "https://ophis.fi/favicon.ico",
   "url": "https://ophis.fi/apis.json",
@@ -21,7 +21,7 @@
       "properties": [
         { "type": "Documentation", "url": "https://docs.ophis.fi/intent-api" },
         { "type": "OpenAPI", "url": "https://ophis.fi/openapi.json" },
-        { "type": "x-mcp", "url": "https://mcp.ophis.fi/mcp" }
+        { "type": "X-mcp", "url": "https://mcp.ophis.fi/mcp" }
       ],
       "contact": [{ "FN": "Ophis", "url": "https://ophis.fi", "email": "contact@ophis.fi" }]
     },
@@ -35,7 +35,7 @@
       "tags": ["MCP", "AI agents", "DeFi", "DEX"],
       "properties": [
         { "type": "Documentation", "url": "https://docs.ophis.fi/ai-agents" },
-        { "type": "x-mcp-server", "url": "https://mcp.ophis.fi/mcp" }
+        { "type": "X-mcp-server", "url": "https://mcp.ophis.fi/mcp" }
       ],
       "contact": [{ "FN": "Ophis", "url": "https://ophis.fi", "email": "contact@ophis.fi" }]
     }
