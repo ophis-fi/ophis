@@ -61,6 +61,35 @@ describe('useWarmTargetChainLists', () => {
     })
   })
 
+  it('does NOT override a list the user toggled while the warm fetch was in flight (race)', async () => {
+    // Codex 2026-06-18: cold-check passes -> fetch starts -> user disables a Base list ->
+    // fetch resolves. The warm must re-check and skip, not re-enable the user's disabled list.
+    let resolveFetch: () => void = () => undefined
+    mockFetchTokenList.mockImplementation(
+      (src: { source: string }) => new Promise((res) => { resolveFetch = () => res(makeList(src.source)) }),
+    )
+    const store = createStore()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    store.set(listsStatesByChainAtom, {} as any) // cold
+
+    renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) })
+    await waitFor(() => expect(mockFetchTokenList).toHaveBeenCalled()) // fetch started (slot was cold)
+
+    // User disables a Base list mid-fetch.
+    store.set(listsStatesByChainAtom, {
+      [BASE]: { 'user-pick': { source: 'user-pick', isEnabled: false, list: { name: 'u', tokens: [] } } },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    await new Promise((r) => setTimeout(r, 0)) // let the hook re-render so its latest-ref updates
+
+    resolveFetch() // fetch resolves AFTER the user's toggle
+    await new Promise((r) => setTimeout(r, 30))
+
+    const slot = (await store.get(listsStatesByChainAtom))[BASE]
+    expect(Object.keys(slot)).toEqual(['user-pick']) // warm did NOT add its lists
+    expect((slot['user-pick'] as { isEnabled?: boolean }).isEnabled).toBe(false) // toggle preserved
+  })
+
   it('skips a chain whose lists are already loaded (no fetch, no override)', async () => {
     const store = createStore()
     store.set(listsStatesByChainAtom, {

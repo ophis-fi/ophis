@@ -37,6 +37,10 @@ export function useWarmTargetChainLists(chainId: SupportedChainId | undefined): 
   const listsStatesByChain = useAtomValue(listsStatesByChainAtom)
   const upsertLists = useSetAtom(upsertListsAtom)
   const requested = useRef<Set<number>>(new Set())
+  // Always-fresh view of the per-chain lists, so the async upsert below can re-check the
+  // slot at RESOLVE time (the effect closure's value is stale by then). Updated each render.
+  const latestByChain = useRef(listsStatesByChain)
+  latestByChain.current = listsStatesByChain
 
   useEffect(() => {
     if (!chainId || requested.current.has(chainId)) return
@@ -51,6 +55,11 @@ export function useWarmTargetChainLists(chainId: SupportedChainId | undefined): 
 
     Promise.allSettled(sources.map(fetchTokenList))
       .then((results) => {
+        // Re-check at WRITE time: if the user toggled a list (or the chain otherwise
+        // loaded) while we were fetching, do NOT override their state (Codex 2026-06-18).
+        const current = latestByChain.current[chainId]
+        if (current && Object.keys(current).length > 0) return
+
         const lists = results
           .filter((result): result is PromiseFulfilledResult<ListState> => result.status === 'fulfilled')
           .map((result) => ({ ...result.value, isEnabled: true }))
