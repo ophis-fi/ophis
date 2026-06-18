@@ -162,6 +162,14 @@ full fee):
 with the partner fee disbursed by CoW): Ethereum, Base, Arbitrum, Polygon, BNB,
 Gnosis, Avalanche, Linea, and the other CoW-supported chains, all live.
 
+On **BNB Smart Chain (BSC, chain ID 56)** Ophis is live: orders placed through Ophis
+(`SupportedChainId.BNB` in [`cowSdk.ts`](apps/frontend/apps/cowswap-frontend/src/cowSdk.ts),
+mapped from the `bnb` slug in [`chainMap.ts`](apps/frontend/apps/cowswap-frontend/src/ophis/components/intent/chainMap.ts))
+settle on-chain through CoW Protocol's GPv2Settlement at
+`0x9008D19f58AAbD9eD0D60971565AA8510560ab41` on BSC, giving gasless, MEV-protected
+swaps with no Ophis-side custody. Ophis does not deploy its own settlement on BSC;
+BNB trades use CoW Protocol's canonical BSC deployment.
+
 The two have different settlement contracts and orderbook hosts, so resolve them
 per chain via `@ophis/sdk` or the MCP `list_chains` tool rather than assuming.
 Full live status: [docs.ophis.fi/status](https://docs.ophis.fi/status).
