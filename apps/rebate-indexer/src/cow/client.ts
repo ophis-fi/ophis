@@ -20,23 +20,41 @@ const COW_API_PATH: Readonly<Record<number, string>> = {
   11155111: 'sepolia',
 };
 
-// Optimism (chain 10) is the SOVEREIGN Ophis backend — its own self-hosted CoW
-// orderbook at optimism-mainnet.ophis.fi (NOT api.cow.fi). It speaks the identical
-// /api/vN/... surface but at the host ROOT (no /{network}/ path segment), so it
-// needs its own base URL. Override the host with OP_ORDERBOOK_URL (e.g. the local
-// colima backend in dev). Adding it to SUPPORTED_CHAIN_IDS makes the fetcher index
-// OP trades exactly like the hosted chains.
+// Optimism (chain 10) and HyperEVM (999) are the SOVEREIGN Ophis backends — each
+// runs its own self-hosted CoW orderbook (optimism-mainnet.ophis.fi /
+// hyperevm.ophis.fi, NOT api.cow.fi). They speak the identical /api/vN/... surface
+// but at the host ROOT (no /{network}/ path segment), so each needs its own base
+// URL. Override per chain via env (OP_ORDERBOOK_URL / HYPEREVM_ORDERBOOK_URL — e.g.
+// the local colima backend in dev). Adding them to SUPPORTED_CHAIN_IDS makes the
+// fetcher index their trades exactly like the hosted chains.
 export const OPTIMISM_CHAIN_ID = 10;
-const OP_ORDERBOOK_BASE = (process.env.OP_ORDERBOOK_URL ?? 'https://optimism-mainnet.ophis.fi').replace(/\/+$/, '');
+export const HYPEREVM_CHAIN_ID = 999;
 
-export const SUPPORTED_CHAIN_IDS = [...Object.keys(COW_API_PATH).map(Number), OPTIMISM_CHAIN_ID];
+// Self-hosted (sovereign Ophis backend) chains: each runs its own CoW orderbook at
+// a host ROOT (no /{network}/ path segment), unlike the api.cow.fi shared hosts.
+// Override per chain via env for dev/local (e.g. the colima backend).
+const SELF_HOSTED_ORDERBOOK_BASE: Readonly<Record<number, string>> = {
+  [OPTIMISM_CHAIN_ID]: (process.env.OP_ORDERBOOK_URL ?? 'https://optimism-mainnet.ophis.fi').replace(/\/+$/, ''),
+  [HYPEREVM_CHAIN_ID]: (process.env.HYPEREVM_ORDERBOOK_URL ?? 'https://hyperevm.ophis.fi').replace(/\/+$/, ''),
+};
+
+export function isSelfHosted(chainId: number): boolean {
+  return chainId in SELF_HOSTED_ORDERBOOK_BASE;
+}
+
+export const SUPPORTED_CHAIN_IDS = [
+  ...Object.keys(COW_API_PATH).map(Number),
+  ...Object.keys(SELF_HOSTED_ORDERBOOK_BASE).map(Number),
+];
 
 const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 
 // Resolve the orderbook URL prefix (everything before `/api/vN/...`) for a chain.
-// Hosted chains: `${api.cow.fi}/{network}`. Optimism: the sovereign host root.
+// Hosted chains: `${api.cow.fi}/{network}`. Self-hosted (OP, HyperEVM): the
+// sovereign host root.
 function orderbookBase(chainId: number): string {
-  if (chainId === OPTIMISM_CHAIN_ID) return OP_ORDERBOOK_BASE;
+  const selfHosted = SELF_HOSTED_ORDERBOOK_BASE[chainId];
+  if (selfHosted) return selfHosted;
   const path = COW_API_PATH[chainId];
   if (!path) throw new Error(`unsupported chain ${chainId}`);
   return `${BASE_URL}/${path}`;

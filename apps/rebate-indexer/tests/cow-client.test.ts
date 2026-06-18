@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { CowTrade } from '../src/cow/types.js';
-import { nativePrice } from '../src/cow/client.js';
+import { nativePrice, isSelfHosted, SUPPORTED_CHAIN_IDS, HYPEREVM_CHAIN_ID } from '../src/cow/client.js';
 
 const fixturesDir = fileURLToPath(new URL('./fixtures', import.meta.url));
 
@@ -33,5 +33,34 @@ describe('nativePrice', () => {
     const ri = init as RequestInit | undefined;
     expect(ri?.body).toBeUndefined();
     expect(ri?.method ?? 'GET').toBe('GET');
+  });
+
+  it('routes HyperEVM (999) to the self-hosted orderbook HOST ROOT (no /{network}/ path)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ price: 1 }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    await nativePrice(HYPEREVM_CHAIN_ID, '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb');
+    const [url] = fetchSpy.mock.calls[0]!;
+    // orderbookBase(999) === 'https://hyperevm.ophis.fi' (default), so the URL is the
+    // sovereign host root + /api/v1/..., NOT api.cow.fi/{network}.
+    expect(String(url)).toBe(
+      'https://hyperevm.ophis.fi/api/v1/token/0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb/native_price',
+    );
+  });
+});
+
+describe('self-hosted chain routing', () => {
+  it('isSelfHosted is true for OP (10) and HyperEVM (999), false for hosted chains', () => {
+    expect(isSelfHosted(10)).toBe(true);
+    expect(isSelfHosted(HYPEREVM_CHAIN_ID)).toBe(true);
+    expect(isSelfHosted(999)).toBe(true);
+    expect(isSelfHosted(1)).toBe(false);
+    expect(isSelfHosted(100)).toBe(false);
+  });
+
+  it('SUPPORTED_CHAIN_IDS includes HyperEVM (999) alongside the hosted chains and OP', () => {
+    expect(SUPPORTED_CHAIN_IDS).toContain(999);
+    expect(SUPPORTED_CHAIN_IDS).toContain(10);
+    expect(SUPPORTED_CHAIN_IDS).toContain(1); // a hosted chain still present
   });
 });

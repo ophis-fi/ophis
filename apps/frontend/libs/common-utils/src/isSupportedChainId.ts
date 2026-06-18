@@ -13,7 +13,11 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 // FE list) had no matching entry → `find()` returned undefined → `.id`
 // threw → entire SPA crashed at boot with "Cannot read properties of
 // undefined (reading 'id')".
-const OPHIS_EXTRA_CHAINS = new Set<number>([10])
+//
+// HyperEVM (999) was re-enabled 2026-06-17 (backend self-hosted orderbook
+// live) and is now a primary supported chain at the FE layer, alongside OP.
+// MegaETH (4326) stays removed.
+const OPHIS_EXTRA_CHAINS = new Set<number>([10, 999])
 
 export function isSupportedChainId(chainId: number | undefined): chainId is SupportedChainId {
   return typeof chainId === 'number' && (chainId in SupportedChainId || OPHIS_EXTRA_CHAINS.has(chainId))

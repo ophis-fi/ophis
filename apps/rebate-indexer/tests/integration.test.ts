@@ -63,6 +63,13 @@ beforeAll(async () => {
   pg = container;
   process.env.DATABASE_URL = connectionUri;
   process.env.COW_API_BASE = COW;
+  // Self-hosted chains (OP=10, HyperEVM=999) use their own host ROOT, not COW_API_BASE,
+  // so the api.cow.fi catch-all above does NOT cover them. Point them at the mock host so
+  // the fetcher never reaches the real optimism-mainnet/hyperevm .ophis.fi endpoints
+  // (hermetic + fast; hyperevm.ophis.fi 502s while the backend is parked). Each resolves
+  // to `${COW}/<slug>/api/v2/trades`, matched by the `${COW}/:chain/...` catch-all.
+  process.env.OP_ORDERBOOK_URL = `${COW}/optimism`;
+  process.env.HYPEREVM_ORDERBOOK_URL = `${COW}/hyperevm`;
   server.listen();
   await runMigrations();
 }, 60_000);

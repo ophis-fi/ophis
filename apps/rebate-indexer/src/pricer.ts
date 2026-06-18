@@ -1,41 +1,69 @@
 import { createPublicClient, http, getAddress, parseAbi } from 'viem';
-import { nativePrice, OPTIMISM_CHAIN_ID } from './cow/client.js';
+import { nativePrice, isSelfHosted, HYPEREVM_CHAIN_ID } from './cow/client.js';
 import { logger } from './logger.js';
 import { alerts } from './telegram/alerter.js';
 
 const log = logger.child({ module: 'pricer' });
 
-// ─── Optimism native_price decimals correction ──────────────────────────────
-// The OP sovereign backend's native_price oracle treats EVERY token as 18
+// ─── Self-hosted native_price decimals correction ───────────────────────────
+// The self-hosted backends' native_price oracle treats EVERY token as 18
 // decimals, so a d-decimal token's price comes back inflated by exactly
-// 10^(18-d) (verified 2026-06-10: OP USDC/USDT 6-dec are 1e12 too large vs the
-// identical mainnet values; 18-dec DAI is correct). We recover the true per-atom
-// price by dividing out that factor, using each token's REAL on-chain decimals.
-const OP_ERC20_DECIMALS_ABI = parseAbi(['function decimals() view returns (uint8)']);
-const opDecimalsCache = new Map<string, number>();
-let opClient: ReturnType<typeof createPublicClient> | null = null;
-function getOpClient(): ReturnType<typeof createPublicClient> {
-  if (!opClient) {
-    const rpc = process.env.OPTIMISM_RPC_URL ?? 'https://mainnet.optimism.io';
-    opClient = createPublicClient({ transport: http(rpc) });
+// 10^(18-d). For OP this is EMPIRICALLY VERIFIED (2026-06-10: OP USDC/USDT
+// 6-dec are 1e12 too large vs the identical mainnet values; 18-dec DAI is
+// correct). For HyperEVM the same 18-decimal normalization is INFERRED from
+// CoW-fork code similarity (same orderbook + Driver-based estimator) and is
+// NOT yet measured — it MUST be empirically verified on backend bring-up
+// (probe a 6-dec token like USDT0 vs an 18-dec token like WHYPE on the live
+// HyperEVM orderbook; if 999 is NOT 18-dec-normalized, split it off this
+// correction branch). We recover the true per-atom price by dividing out that
+// factor, using each token's REAL on-chain decimals — read over the CORRECT
+// chain's RPC, never assuming OP.
+const ERC20_DECIMALS_ABI = parseAbi(['function decimals() view returns (uint8)']);
+// decimals cache keyed by `${chainId}:${token}` so identical addresses on
+// different chains (e.g. the USDT0 OFT shared across 9745/999) never collide.
+const decimalsCache = new Map<string, number>();
+const onchainClients = new Map<number, ReturnType<typeof createPublicClient>>();
+/** RPC endpoint for the on-chain ERC20 decimals() read, per self-hosted chain.
+ *  EXPLICIT per-chain map (env-overridable): a future self-hosted chain added to
+ *  SELF_HOSTED_ORDERBOOK_BASE without an entry here hard-throws rather than
+ *  silently reading OP decimals (which would mis-scale that chain's prices). */
+export function decimalsRpcFor(chainId: number): string {
+  const rpc: Record<number, string | undefined> = {
+    10: process.env.OPTIMISM_RPC_URL ?? 'https://mainnet.optimism.io',
+    [HYPEREVM_CHAIN_ID]: process.env.HYPEREVM_RPC_URL ?? 'https://rpc.hyperliquid.xyz/evm',
+  };
+  const url = rpc[chainId];
+  if (url === undefined) {
+    throw new Error(`no decimals RPC mapped for self-hosted chain ${chainId} (add it to decimalsRpcFor)`);
   }
-  return opClient;
+  return url;
 }
-async function opTokenDecimals(token: `0x${string}`): Promise<number> {
-  const key = token.toLowerCase();
-  const cached = opDecimalsCache.get(key);
+function getOnchainClient(chainId: number): ReturnType<typeof createPublicClient> {
+  let client = onchainClients.get(chainId);
+  if (!client) {
+    client = createPublicClient({ transport: http(decimalsRpcFor(chainId)) });
+    onchainClients.set(chainId, client);
+  }
+  return client;
+}
+async function opTokenDecimals(chainId: number, token: `0x${string}`): Promise<number> {
+  const key = `${chainId}:${token.toLowerCase()}`;
+  const cached = decimalsCache.get(key);
   if (cached !== undefined) return cached;
-  const d = await getOpClient().readContract({
+  const d = await getOnchainClient(chainId).readContract({
     address: getAddress(token),
-    abi: OP_ERC20_DECIMALS_ABI,
+    abi: ERC20_DECIMALS_ABI,
     functionName: 'decimals',
   });
   const dec = Number(d);
-  if (!Number.isInteger(dec) || dec < 0 || dec > 36) throw new Error(`bad decimals ${dec} for OP token ${token}`);
-  opDecimalsCache.set(key, dec);
+  if (!Number.isInteger(dec) || dec < 0 || dec > 36)
+    throw new Error(`bad decimals ${dec} for token ${token} on chain ${chainId}`);
+  decimalsCache.set(key, dec);
   return dec;
 }
-/** Recover the true per-atom native_price from the OP backend's 18-decimal-normalized value. */
+/** Recover the true per-atom native_price from a self-hosted backend's 18-decimal-normalized
+ *  value. The 18-decimal normalization is empirically verified for OP and INFERRED for
+ *  HyperEVM (from CoW-fork code similarity) pending empirical verification on backend bring-up. */
 export function correctOpNativePrice(rawNp: number, decimals: number): number {
   return rawNp / 10 ** (18 - decimals);
 }
@@ -47,13 +75,17 @@ export function correctOpNativePrice(rawNp: number, decimals: number): number {
 // pricing a trade against the wrong chain's stablecoin produces garbage USD that
 // pollutes a wallet's rebate volume. assertUsdReferenceSane() (called by runPricer)
 // rejects a config where two chains share a token address, the tell-tale of a
-// copy-pasted placeholder. A chain with no verified USDC is left OUT entirely: its
-// trades then fail to price (value_usd NULL → excluded from the payout matview),
-// which under-counts (fail-safe) rather than mis-prices. (plasma/9745 was once
-// removed for this reason — it had reused Linea's USDC — and was re-added 2026-06-16
-// with the real, decimals-verified USDT0 below: symbol + decimals read on-chain, and
-// CoW native_price confirmed serving plasma. Plasma is USDT-native, so its USD
-// reference is USDT0 rather than USDC.)
+// copy-pasted placeholder — EXCEPT for verified cross-chain OFTs (see the
+// KNOWN_SHARED_OFTS allowlist in assertUsdReferenceSane). A chain with no verified
+// USDC is left OUT entirely: its trades then fail to price (value_usd NULL →
+// excluded from the payout matview), which under-counts (fail-safe) rather than
+// mis-prices. (plasma/9745 was once removed for this reason — it had reused Linea's
+// USDC — and was re-added 2026-06-16 with the real, decimals-verified USDT0 below:
+// symbol + decimals read on-chain, and CoW native_price confirmed serving plasma.
+// Plasma is USDT-native, so its USD reference is USDT0 rather than USDC.)
+// NOTE: USDT0 is a LayerZero OFT deployed at the BYTE-IDENTICAL address on both
+// Plasma (9745) and HyperEVM (999) — a legitimately shared token by OFT design,
+// NOT a placeholder. It is exempted from the duplicate-address guard below.
 const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: number }>> = {
   1:        { token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },  // USDC mainnet
   100:      { token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', decimals: 6 },  // USDC.e gnosis
@@ -67,6 +99,7 @@ const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: n
   11155111: { token: '0xbe72e441bf55620febc26715db68d3494213d8cb', decimals: 18 }, // USDC sepolia (cow staging)
   10:       { token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC optimism (native; np decimals-corrected)
   9745:     { token: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', decimals: 6 },  // USDT0 plasma (decimals-verified on-chain 2026-06-16; CoW native_price confirmed; USDT-native chain, no liquid USDC; replaces the removed Linea-placeholder)
+  999:      { token: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', decimals: 6 },  // USDT0 HyperEVM (LayerZero OFT; decimals+symbol read on-chain 2026-06-17, chainId 0x3e7; SAME address as Plasma USDT0 by OFT design, NOT a placeholder; self-hosted, np decimals-corrected)
 };
 
 // Per-trade rebate-volume contribution ceiling (USD). A trade's recorded value is
@@ -94,9 +127,16 @@ export function resolveMaxTradeUsd(): number {
 // Fail fast if USD_REFERENCE contains a duplicate token address across chains —
 // the signature of a copy-pasted placeholder (e.g. the old plasma=Linea entry).
 export function assertUsdReferenceSane(): void {
+  // USDT0 (LayerZero OFT) is intentionally deployed at the SAME address on multiple
+  // chains (Plasma 9745, HyperEVM 999, …). It is a real shared token, not a copy-paste
+  // placeholder, so it is exempt from the duplicate-address heuristic below.
+  // Adding an address here requires re-verifying the token's on-chain decimals on EACH
+  // chain that shares it (an OFT can declare different decimals per deployment).
+  const KNOWN_SHARED_OFTS = new Set<string>(['0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb']);
   const seen = new Map<string, number>();
   for (const [chainId, ref] of Object.entries(USD_REFERENCE)) {
     const addr = ref.token.toLowerCase();
+    if (KNOWN_SHARED_OFTS.has(addr)) continue;
     const prev = seen.get(addr);
     if (prev !== undefined) {
       throw new Error(
@@ -153,12 +193,13 @@ export async function priceTrade(
   }
   let sellPrice = await nativePrice(row.chainId, row.sellToken);
   let refPrice = await getRefNativePrice(row.chainId, ref.token, refPriceCache);
-  // Optimism's native_price normalizes every token to 18 decimals — correct both
-  // sides back to true per-atom prices using each token's real decimals (ref's are
-  // known; the sell token's are read on-chain + cached). On the hosted chains the
-  // oracle is already per-atom, so no correction is applied.
-  if (row.chainId === OPTIMISM_CHAIN_ID) {
-    sellPrice = correctOpNativePrice(sellPrice, await opTokenDecimals(row.sellToken));
+  // The self-hosted CoW backends (OP, HyperEVM) normalize every token's native_price
+  // to 18 decimals — correct both sides back to true per-atom prices using each
+  // token's real decimals (ref's are known; the sell token's are read on-chain over
+  // the trade's OWN chain RPC + cached). On the hosted (api.cow.fi) chains the oracle
+  // is already per-atom, so no correction is applied.
+  if (isSelfHosted(row.chainId)) {
+    sellPrice = correctOpNativePrice(sellPrice, await opTokenDecimals(row.chainId, row.sellToken));
     refPrice = correctOpNativePrice(refPrice, ref.decimals);
   }
   // Reject non-finite OR non-positive prices on BOTH sides. A 0/negative native_price

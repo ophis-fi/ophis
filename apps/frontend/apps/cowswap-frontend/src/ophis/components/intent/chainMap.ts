@@ -23,6 +23,11 @@ export const CHAIN_SLUG_TO_ID: Record<string, number> = {
   bnb: 56,
   ink: 57073,
   plasma: 9745,
+  // HyperEVM (999) is deliberately NOT mapped here yet: the NLP parser gates chain
+  // entities on CHAIN_VALUES (functions/api/intent.ts), which omits hyperevm/hyperliquid,
+  // so those slugs are unreachable. Full NLP intent wiring for 999 (add the slugs to
+  // CHAIN_VALUES + SYSTEM_PROMPT in functions/api/intent.ts) is a follow-up for when the
+  // HL backend is live.
 }
 
 export function chainSlugToId(slug: string): number | undefined {
