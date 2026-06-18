@@ -101,6 +101,13 @@ The fee uses CoW Protocol's partner-fee model: `volumeBps: 10` (0.10% of trade
 volume), written into the order's `appData` and taken from the trade output at
 settlement.
 
+On the **Optimism self-hosted stack**, this rate is an **enforced minimum at
+settlement**, not just an interface default. The Ophis Optimism backend rejects
+any order to the Ophis fee recipient whose partner fee is below the floor (10 bps,
+or 1 bp for a same-chain stablecoin pair), so the rate is guaranteed on chain
+rather than relying on the frontend. On CoW-hosted chains the same 10 bps / 1 bp
+applies through the order's `appData`, validated by CoW's backend.
+
 For the protocol-level details, see
 [CoW Protocol batch auctions](https://docs.cow.fi/cow-protocol/reference/core/auctions).
 
