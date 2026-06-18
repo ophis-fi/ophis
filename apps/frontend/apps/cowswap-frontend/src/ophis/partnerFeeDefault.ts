@@ -29,19 +29,29 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
 
 /**
  * FLAG-GATED FEE MODEL. Default OFF = the legacy price-improvement model
- * (the fallback only — PRODUCTION RUNS WITH THE FLAG ON). Set
- * `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer in [1, 50] to switch the
- * LIVE fee to a FLAT volume fee of that many bps (prod sets 10 = 0.10% via
- * a GH repo secret consumed in cloudflare-deploy.yml).
+ * (the fallback only; PRODUCTION RUNS WITH THE FLAG ON). Set
+ * `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer in
+ * [BACKEND_NON_STABLE_FLOOR_BPS, 50] to switch the LIVE fee to a FLAT volume
+ * fee of that many bps (prod sets 10 = 0.10% via a GH repo secret consumed in
+ * cloudflare-deploy.yml).
  *
- * Why <=50: the OP self-hosted backend's CIP-75 Volume policy bypasses the
- * per-order cap (app_data.rs) and is bounded only by the autopilot global
+ * Lower bound: the OP self-hosted backend enforces a token-pair-aware MINIMUM
+ * partner fee to the Ophis recipient (app_data.rs `partner_fee_floor_bps`,
+ * checked at order ingress and re-clamped in the autopilot): 10 bps for any
+ * non-stable pair, 1 bp for same-chain stable pairs. A base rate below the
+ * non-stable floor would make the backend reject non-stable orders at ingress
+ * (PartnerFeeBelowFloor), so a sub-floor value disables the flag (fee model
+ * stays off) instead of building rejectable orders. Stable pairs are charged
+ * 1 bp separately via OPHIS_STABLE_VOLUME_BPS.
+ *
+ * Upper bound 50: a Volume fee is bounded above only by the autopilot global
  * `max_partner_fee` (100 bps); 50 keeps us well under it and at/under the
- * competitor floor (Matcha 10, Velora 15).
+ * competitor rate (Matcha 10, Velora 15).
  */
+const BACKEND_NON_STABLE_FLOOR_BPS = 10
 function readVolumeFeeBps(): number {
   const raw = Number(process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS)
-  return Number.isInteger(raw) && raw >= 1 && raw <= 50 ? raw : 0
+  return Number.isInteger(raw) && raw >= BACKEND_NON_STABLE_FLOOR_BPS && raw <= 50 ? raw : 0
 }
 /** Flat-volume-fee bps when the flag is enabled (0 = flag off). */
 export const OPHIS_VOLUME_BPS = readVolumeFeeBps()
@@ -88,3 +98,25 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
   maxVolumeBps: 50,
   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 } as const
+
+/**
+ * Chains whose self-hosted Ophis backend mandates the CIP-75 VOLUME policy and
+ * REJECTS Surplus/PriceImprovement partner fees at order ingress (app_data.rs
+ * `validate_partner_fees`). The price-improvement fallback above
+ * (OPHIS_DEFAULT_APP_DATA_PARTNER_FEE) must NEVER be emitted on these chains or
+ * ingress returns 400. Optimism (10) is the only self-hosted chain today;
+ * CoW-hosted chains validate via api.cow.fi and still accept the PI shape.
+ */
+const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10])
+
+/**
+ * Gates the on-chain Ophis price-improvement partner-fee value by chain. Returns
+ * `undefined` on VOLUME-only chains (the PI shape would be rejected at ingress
+ * there) so the caller falls through to the volumeFee pipeline; pass-through on
+ * every other chain. This is the testable seam that stops the frontend emitting
+ * appData the OP backend rejects when the flat-volume flag is off.
+ */
+export function ophisAppDataPartnerFeeForChain<T>(raw: T | undefined, chainId: number | undefined): T | undefined {
+  if (chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)) return undefined
+  return raw
+}

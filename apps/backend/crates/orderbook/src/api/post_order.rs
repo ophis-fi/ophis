@@ -274,6 +274,22 @@ impl IntoResponse for ValidationErrorWrapper {
             )
                 .into_response(),
 
+            ValidationError::PartnerFeeBelowFloor {
+                recipient,
+                bps,
+                floor,
+            } => (
+                StatusCode::BAD_REQUEST,
+                error(
+                    "PartnerFeeBelowFloor",
+                    &format!(
+                        "Volume partner fee {bps} bps to recipient {recipient:?} is below the \
+                         minimum {floor} bps required for this token pair."
+                    ),
+                ),
+            )
+                .into_response(),
+
             ValidationError::Other(err) => {
                 tracing::error!(?err, "ValidationErrorWrapper");
                 crate::api::internal_error_reply()

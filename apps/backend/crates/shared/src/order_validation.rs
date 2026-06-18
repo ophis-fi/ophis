@@ -9,7 +9,7 @@ use {
     account_balances::{self, BalanceFetching, TransferSimulationError},
     alloy::primitives::{Address, B256, U256},
     anyhow::{Result, anyhow},
-    app_data::{AppDataHash, Hook, Hooks, ValidatedAppData, Validator},
+    app_data::{AppDataHash, FeePolicy, Hook, Hooks, ValidatedAppData, Validator, partner_fee_floor_bps},
     async_trait::async_trait,
     bad_tokens::list_based::DenyListedTokens,
     balance_overrides::BalanceOverrideRequest,
@@ -157,6 +157,14 @@ pub enum ValidationError {
     TooManyLimitOrders,
     TooMuchGas,
     QuoteNotVerified,
+    /// A Volume partner fee to an allowlisted Ophis recipient is below the
+    /// minimum bps the OP backend accepts for the order's token pair. Closes the
+    /// fee-bypass where a fee to the Ophis recipient could be set near zero.
+    PartnerFeeBelowFloor {
+        recipient: Address,
+        bps: u64,
+        floor: u64,
+    },
     Other(anyhow::Error),
 }
 
@@ -229,6 +237,34 @@ fn validate_same_sell_and_buy_token(
         (SameTokensPolicy::AllowSell, OrderKind::Sell) => Ok(()),
         _ => Err(PartialValidationError::SameBuyAndSellToken),
     }
+}
+
+/// Enforce the OP token-pair-aware partner-fee floor on any Volume fee to an
+/// allowlisted recipient. `validate_app_data` already rejected non-allowlisted
+/// recipients and Surplus/PriceImprovement partner fees; this is the lower bound
+/// that closes the near-zero-fee bypass once the order's token pair is known.
+///
+/// Extracted as a free function so the floor decision is unit-testable without
+/// the full ingress mock harness. The autopilot applies the identical floor as
+/// defense-in-depth for paths that skip this validator (e.g. eth-flow).
+fn enforce_partner_fee_floor<'a>(
+    partner_fees: impl IntoIterator<Item = &'a app_data::PartnerFee>,
+    sell_token: Address,
+    buy_token: Address,
+) -> Result<(), ValidationError> {
+    for fee in partner_fees {
+        if let FeePolicy::Volume { bps } = &fee.policy {
+            let floor = partner_fee_floor_bps(sell_token, buy_token, fee.recipient);
+            if *bps < floor {
+                return Err(ValidationError::PartnerFeeBelowFloor {
+                    recipient: fee.recipient,
+                    bps: *bps,
+                    floor,
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -626,6 +662,22 @@ impl OrderValidating for OrderValidator {
         // Happens before signature verification because a miscalculated app data hash
         // by the API user would lead to being unable to validate the signature below.
         let app_data = self.validate_app_data(&order.app_data, &full_app_data_override)?;
+
+        // OP partner-fee floor: validate_app_data already rejected non-allowlisted
+        // recipients and Surplus/PriceImprovement partner fees; here, with the
+        // order's token pair in scope, enforce the token-pair-aware minimum bps on
+        // any Volume fee to an allowlisted (Ophis-controlled) recipient. This is the
+        // primary fix for the prior near-zero-fee bypass; the autopilot re-clamps as
+        // defense-in-depth for any path that skips this validator (e.g. eth-flow).
+        {
+            let data = order.data();
+            enforce_partner_fee_floor(
+                app_data.inner.protocol.partner_fee.iter(),
+                data.sell_token,
+                data.buy_token,
+            )?;
+        }
+
         let app_data_signer = app_data.inner.protocol.signer;
 
         let owner = order.verify_owner(domain_separator, app_data_signer)?;
@@ -1069,6 +1121,75 @@ mod tests {
         serde_json::json,
         signature_validator::MockSignatureValidating,
     };
+
+    // Ophis OP partner-fee recipient (CREATE2, same address on every chain).
+    const OPHIS: Address = address!("0x858f0F5eE954846D47155F5203c04aF1819eCeF8");
+
+    fn volume_fee(bps: u64) -> [app_data::PartnerFee; 1] {
+        [app_data::PartnerFee {
+            policy: FeePolicy::Volume { bps },
+            recipient: OPHIS,
+        }]
+    }
+
+    #[test]
+    fn partner_fee_floor_rejects_below_minimum_volume_fee() {
+        // Arbitrary non-stable OP token pair (WETH / OP) so the floor is the
+        // default 10 bps.
+        let weth = address!("0x4200000000000000000000000000000000000006");
+        let op = address!("0x4200000000000000000000000000000000000042");
+
+        // The original bypass: a near-zero fee to the Ophis recipient.
+        let err = enforce_partner_fee_floor(volume_fee(0).iter(), weth, op)
+            .expect_err("0 bps must be rejected against the 10 bps default floor");
+        assert!(matches!(
+            err,
+            ValidationError::PartnerFeeBelowFloor {
+                bps: 0,
+                floor: 10,
+                ..
+            }
+        ));
+
+        // Anything strictly below the floor is rejected.
+        assert!(matches!(
+            enforce_partner_fee_floor(volume_fee(9).iter(), weth, op),
+            Err(ValidationError::PartnerFeeBelowFloor { floor: 10, .. })
+        ));
+
+        // At and above the floor is accepted.
+        for bps in [10u64, 50, 100] {
+            assert!(
+                enforce_partner_fee_floor(volume_fee(bps).iter(), weth, op).is_ok(),
+                "{bps} bps should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn partner_fee_floor_is_one_bps_for_stable_pairs() {
+        // USDC native + USDT on Optimism → stable-stable, floor is 1 bps.
+        let usdc = address!("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+        let usdt = address!("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58");
+
+        // 1 bps is accepted on a stable pair (it would be rejected as < 10 on a
+        // non-stable pair).
+        assert!(enforce_partner_fee_floor(volume_fee(1).iter(), usdc, usdt).is_ok());
+
+        // Zero is still rejected, now against the 1 bps stable floor.
+        assert!(matches!(
+            enforce_partner_fee_floor(volume_fee(0).iter(), usdc, usdt),
+            Err(ValidationError::PartnerFeeBelowFloor { floor: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn partner_fee_floor_ignores_empty_fees() {
+        let weth = address!("0x4200000000000000000000000000000000000006");
+        let op = address!("0x4200000000000000000000000000000000000042");
+        let empty: [app_data::PartnerFee; 0] = [];
+        assert!(enforce_partner_fee_floor(empty.iter(), weth, op).is_ok());
+    }
 
     #[tokio::test]
     async fn pre_validate_err() {

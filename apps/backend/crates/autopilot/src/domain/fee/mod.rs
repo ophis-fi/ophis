@@ -13,7 +13,7 @@ use {
     },
     ::observe::metrics,
     alloy::primitives::{Address, U256},
-    app_data::{MAX_PARTNER_FEE_BPS, MAX_PARTNER_VOLUME_BPS, PARTNER_FEE_RECIPIENT_ALLOWLIST},
+    app_data::PARTNER_FEE_RECIPIENT_ALLOWLIST,
     chrono::{DateTime, Utc},
     configs::{
         autopilot::fee_policy::{
@@ -116,6 +116,26 @@ impl ProtocolFees {
         volume_fee_bucket_overrides: Vec<TokenBucketFeeOverride>,
         enable_sell_equals_buy_volume_fee: bool,
     ) -> Self {
+        // OP partner-fee floor invariant (defense-in-depth). `max_partner_fee` is
+        // the operator-set UPPER cap applied to every partner fee in
+        // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
+        // means every partner fee is an Ophis fee, and the token-pair floor
+        // (enforced at order ingress and re-clamped here) is at most
+        // OPHIS_DEFAULT_VOLUME_FEE_BPS. If the cap were configured below that floor,
+        // the cap would silently settle an allowlisted-recipient fee BELOW the
+        // floor on the eth-flow / on-chain path that skips ingress, reopening the
+        // bypass. Fail fast at startup rather than under-charge at settlement.
+        let cap = config.max_partner_fee.get();
+        let floor_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
+        let floor_factor = floor_bps as f64 / 10_000.0;
+        assert!(
+            cap >= floor_factor,
+            "max_partner_fee ({cap}) is below the OP partner-fee floor of {floor_bps} \
+             bps ({floor_factor}); the autopilot cap would settle Ophis fees below \
+             the enforced floor. Raise max_partner_fee in the autopilot fee-policy \
+             config."
+        );
+
         let volume_fee_policy = VolumeFeePolicy::new(
             volume_fee_bucket_overrides,
             None, // contained within FeePoliciesConfig; vol fee is passed in at callsite
@@ -175,21 +195,6 @@ impl ProtocolFees {
             *accumulated += value.min(cap - *accumulated);
 
             FeeFactor::new(f64::try_from(value.max(Decimal::ZERO).min(remaining_factor)).unwrap())
-        }
-
-        fn fee_factor_from_bps(bps: u64) -> FeeFactor {
-            let bps = u32::try_from(bps.min(u64::from(MAX_BPS) - 1))
-                .expect("value was clamped to range expected by FeeFactor: [0, 1)");
-            let factor = f64::from(bps) / f64::from(MAX_BPS);
-            FeeFactor::try_from(factor).expect("value was clamped to the required range")
-        }
-
-        // CIP-75 caps surplus/priceImprovement bps at MAX_PARTNER_FEE_BPS. The
-        // orderbook validator rejects out-of-cap orders at ingress; we re-clamp
-        // here as defense-in-depth against any path that bypasses validation
-        // (pre-existing DB rows, future call sites, etc.).
-        fn fee_factor_from_cip75_bps(bps: u64) -> FeeFactor {
-            fee_factor_from_bps(bps.min(MAX_PARTNER_FEE_BPS))
         }
 
         let max_partner_fee = match Decimal::try_from(max_partner_fee) {
@@ -270,6 +275,18 @@ impl ProtocolFees {
             .map(move |partner_fee| {
                 match partner_fee.policy {
                     app_data::FeePolicy::Volume { bps } => {
+                        // Defense-in-depth floor mirroring the orderbook ingress
+                        // validator: any path that skips ingress (eth-flow /
+                        // on-chain orders) or a stale DB row must still never settle
+                        // a Volume fee to an allowlisted recipient below the
+                        // token-pair-aware minimum. Clamp UP only — never reduce the
+                        // user's signed fee; this only raises anomalous sub-floor fees
+                        // that ingress should already have rejected.
+                        let bps = bps.max(app_data::partner_fee_floor_bps(
+                            order.data.sell_token,
+                            order.data.buy_token,
+                            partner_fee.recipient,
+                        ));
                         // Convert bps to decimal percentage
                         let fee_decimal = Decimal::from(bps) / Decimal::from(MAX_BPS);
                         // Create policy and update accumulator
@@ -277,49 +294,26 @@ impl ProtocolFees {
                             fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
                         Policy::Volume { factor }
                     }
-                    app_data::FeePolicy::Surplus {
-                        bps,
-                        max_volume_bps,
-                    } => {
-                        // Clamp max_volume_bps to CIP-75 cap before decimal conversion.
-                        let max_volume_bps = max_volume_bps.min(MAX_PARTNER_VOLUME_BPS);
-                        let fee_decimal = Decimal::from(max_volume_bps) / Decimal::from(MAX_BPS);
-
-                        // Compute max_volume_factor limited by the global volume cap.
-                        let max_volume_factor =
+                    // Ophis charges a Volume fee only. A Surplus or PriceImprovement
+                    // partner fee can only reach an allowlisted recipient here via a
+                    // path that skipped the orderbook ingress (which rejects those
+                    // variants) — i.e. eth-flow / on-chain orders or a stale DB row.
+                    // Those variants carry no enforced lower bound, so neutralize them
+                    // to a floor Volume fee (the token-pair minimum) instead of
+                    // honoring a potentially near-zero surplus fee. Defense-in-depth:
+                    // the normal order path never reaches this arm.
+                    app_data::FeePolicy::Surplus { .. }
+                    | app_data::FeePolicy::PriceImprovement { .. } => {
+                        let _ = &quote; // quote is unused for the neutralized fee
+                        let bps = app_data::partner_fee_floor_bps(
+                            order.data.sell_token,
+                            order.data.buy_token,
+                            partner_fee.recipient,
+                        );
+                        let fee_decimal = Decimal::from(bps) / Decimal::from(MAX_BPS);
+                        let factor =
                             fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
-
-                        let factor = fee_factor_from_cip75_bps(bps);
-
-                        Policy::Surplus {
-                            factor,
-                            max_volume_factor,
-                        }
-                    }
-                    app_data::FeePolicy::PriceImprovement {
-                        bps,
-                        max_volume_bps,
-                    } => {
-                        // Clamp max_volume_bps to CIP-75 cap before decimal conversion.
-                        let max_volume_bps = max_volume_bps.min(MAX_PARTNER_VOLUME_BPS);
-                        let fee_decimal = Decimal::from(max_volume_bps) / Decimal::from(MAX_BPS);
-
-                        // Compute max_volume_factor limited by the global volume cap.
-                        let max_volume_factor =
-                            fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
-
-                        let factor = fee_factor_from_cip75_bps(bps);
-
-                        Policy::PriceImprovement {
-                            factor,
-                            max_volume_factor,
-                            quote: Quote {
-                                sell_amount: quote.sell_amount.0,
-                                buy_amount: quote.buy_amount.0,
-                                fee: quote.fee.0,
-                                solver: quote.solver,
-                            },
-                        }
+                        Policy::Volume { factor }
                     }
                 }
             })
@@ -469,6 +463,31 @@ mod test {
     use {super::*, model::order::OrderMetadata};
 
     #[test]
+    #[should_panic(expected = "below the OP partner-fee floor")]
+    fn new_panics_when_max_partner_fee_below_floor() {
+        // A cap below the 10 bps non-stable floor would let the autopilot's
+        // upper cap settle an Ophis fee below the floor on the eth-flow path that
+        // skips ingress. The constructor must refuse to build (fail fast at boot).
+        let config = FeePoliciesConfig {
+            max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps floor
+            ..Default::default()
+        };
+        let _ = ProtocolFees::new(&config, vec![], false);
+    }
+
+    #[test]
+    fn new_accepts_max_partner_fee_at_or_above_floor() {
+        // Production default (100 bps) and a value just above the floor both build.
+        for factor in [0.002_f64, 0.01] {
+            let config = FeePoliciesConfig {
+                max_partner_fee: FeeFactor::new(factor),
+                ..Default::default()
+            };
+            let _ = ProtocolFees::new(&config, vec![], false);
+        }
+    }
+
+    #[test]
     fn test_get_partner_fee_valid_multiple_fees_not_capped() {
         // Scenario: Multiple partner fees, with valid values (not capped)
         let order = boundary::Order {
@@ -549,8 +568,12 @@ mod test {
     }
 
     #[test]
-    fn test_get_partner_fee_zero_bps() {
-        // Scenario: Partner fee with 0 bps should be filtered out
+    fn test_get_partner_fee_zero_bps_clamped_up_to_floor() {
+        // Scenario: a 0 bps Volume fee to the Ophis recipient is clamped UP to the
+        // token-pair floor by the defense-in-depth autopilot floor (mirrors the
+        // orderbook ingress validator). This closes the prior 0-fee bypass for any
+        // path that skips the off-chain ingress (eth-flow / on-chain orders, stale
+        // DB rows). The order's default token pair is non-stable -> the 10 bps floor.
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(
@@ -579,11 +602,12 @@ mod test {
         let max_partner_fee = 0.3; // 30%
         let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
 
-        // Expected: Empty vector since the only fee has 0 bps
+        // Expected: 0 bps clamped UP to the 10 bps floor (default tokens are
+        // non-stable; 10 bps = 0.001), never settling a sub-floor Volume fee.
         assert_eq!(
             result,
             vec![Policy::Volume {
-                factor: FeeFactor::try_from(0.0).unwrap(),
+                factor: FeeFactor::try_from(0.001).unwrap(),
             }]
         );
     }
@@ -872,7 +896,15 @@ mod test {
         );
     }
 
-    fn surplus_factor(bps: u64) -> FeeFactor {
+    // A Surplus or PriceImprovement partner fee to an allowlisted recipient can
+    // only reach the autopilot via a path that bypasses the orderbook ingress
+    // validator (eth-flow / on-chain orders, or a stale DB row) — the off-chain
+    // order path rejects those variants outright. Because they carry no enforced
+    // lower bound, the autopilot neutralizes them to a floor Volume fee (the
+    // token-pair minimum), so they can never be used to settle below the floor.
+    // These helpers return that neutralized Volume factor; the input bps is
+    // discarded by design.
+    fn neutralized_surplus_factor(bps: u64) -> FeeFactor {
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(format!(
@@ -892,12 +924,12 @@ mod test {
         };
         let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
         match policies.first().expect("expected at least one policy") {
-            Policy::Surplus { factor, .. } => *factor,
-            other => panic!("expected Policy::Surplus, got {other:?}"),
+            Policy::Volume { factor } => *factor,
+            other => panic!("expected neutralized Policy::Volume, got {other:?}"),
         }
     }
 
-    fn price_improvement_factor(bps: u64) -> FeeFactor {
+    fn neutralized_price_improvement_factor(bps: u64) -> FeeFactor {
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(format!(
@@ -917,97 +949,33 @@ mod test {
         };
         let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
         match policies.first().expect("expected at least one policy") {
-            Policy::PriceImprovement { factor, .. } => *factor,
-            other => panic!("expected Policy::PriceImprovement, got {other:?}"),
+            Policy::Volume { factor } => *factor,
+            other => panic!("expected neutralized Policy::Volume, got {other:?}"),
         }
     }
 
     #[test]
-    fn cip75_surplus_bps_factor_below_cap_unchanged() {
-        let expected = FeeFactor::try_from(0.25).unwrap();
-        assert_eq!(surplus_factor(2500), expected);
-        assert_eq!(surplus_factor(MAX_PARTNER_FEE_BPS), expected);
+    fn surplus_fee_to_allowlisted_recipient_neutralized_to_floor() {
+        // Default (non-stable) token pair, so the floor is
+        // OPHIS_DEFAULT_VOLUME_FEE_BPS (10 bps = 0.001). The surplus bps value is
+        // irrelevant: it is discarded and replaced by the token-pair floor, so a
+        // near-zero surplus fee on an eth-flow order can never be used to settle
+        // below the minimum. max_partner_fee = 1.0 here, so the cap never binds.
+        let floor = FeeFactor::try_from(0.001).unwrap();
+        assert_eq!(neutralized_surplus_factor(0), floor);
+        assert_eq!(neutralized_surplus_factor(1), floor);
+        assert_eq!(neutralized_surplus_factor(2500), floor);
+        assert_eq!(neutralized_surplus_factor(9999), floor);
+        assert_eq!(neutralized_surplus_factor(u64::MAX), floor);
     }
 
     #[test]
-    fn cip75_surplus_bps_factor_above_cap_clamped() {
-        let expected = FeeFactor::try_from(0.25).unwrap();
-        assert_eq!(surplus_factor(2501), expected);
-        assert_eq!(surplus_factor(9999), expected);
-        assert_eq!(surplus_factor(u64::MAX), expected);
-    }
-
-    #[test]
-    fn cip75_price_improvement_bps_factor_clamped() {
-        let expected = FeeFactor::try_from(0.25).unwrap();
-        assert_eq!(price_improvement_factor(2500), expected);
-        assert_eq!(price_improvement_factor(2501), expected);
-        assert_eq!(price_improvement_factor(9999), expected);
-        assert_eq!(price_improvement_factor(u64::MAX), expected);
-    }
-
-    #[test]
-    fn cip75_max_volume_bps_clamped_in_surplus_policy() {
-        let order = boundary::Order {
-            metadata: OrderMetadata {
-                full_app_data: Some(
-                    r#"{
-                        "metadata": {
-                            "partnerFee": [{
-                                "surplusBps": 2500,
-                                "maxVolumeBps": 999,
-                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
-                            }]
-                        }
-                    }"#
-                    .to_string(),
-                ),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
-        match policies.first().expect("expected one policy") {
-            Policy::Surplus {
-                max_volume_factor, ..
-            } => {
-                let expected = FeeFactor::try_from(0.005).unwrap();
-                assert_eq!(*max_volume_factor, expected);
-            }
-            other => panic!("expected Policy::Surplus, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn cip75_max_volume_bps_clamped_in_price_improvement_policy() {
-        let order = boundary::Order {
-            metadata: OrderMetadata {
-                full_app_data: Some(
-                    r#"{
-                        "metadata": {
-                            "partnerFee": [{
-                                "priceImprovementBps": 2500,
-                                "maxVolumeBps": 999,
-                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
-                            }]
-                        }
-                    }"#
-                    .to_string(),
-                ),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
-        match policies.first().expect("expected one policy") {
-            Policy::PriceImprovement {
-                max_volume_factor, ..
-            } => {
-                let expected = FeeFactor::try_from(0.005).unwrap();
-                assert_eq!(*max_volume_factor, expected);
-            }
-            other => panic!("expected Policy::PriceImprovement, got {other:?}"),
-        }
+    fn price_improvement_fee_to_allowlisted_recipient_neutralized_to_floor() {
+        let floor = FeeFactor::try_from(0.001).unwrap();
+        assert_eq!(neutralized_price_improvement_factor(0), floor);
+        assert_eq!(neutralized_price_improvement_factor(2500), floor);
+        assert_eq!(neutralized_price_improvement_factor(9999), floor);
+        assert_eq!(neutralized_price_improvement_factor(u64::MAX), floor);
     }
 
     #[test]
