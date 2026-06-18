@@ -9,8 +9,10 @@
  * SOURCE OF TRUTH for the live fee. Keep in sync with:
  *   - apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts
  *     (`OPHIS_DEFAULT_APP_DATA_PARTNER_FEE`; separate pnpm workspace, mirrored)
- *   - apps/backend/crates/app-data/src/app_data.rs caps
- *     (`MAX_PARTNER_FEE_BPS = 2500`, `MAX_PARTNER_VOLUME_BPS = 50`)
+ *   - apps/backend/crates/app-data/src/app_data.rs
+ *     (`OPHIS_DEFAULT_VOLUME_FEE_BPS = 10` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
+ *     the MINIMUM Volume bps the OP self-hosted backend accepts for a fee to the
+ *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot)
  *   - apps/frontend/.../appData/updater/shouldEmitOphisPartnerFee.ts (chain gate)
  */
 
@@ -28,8 +30,10 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
 /**
  * Flat volume fee: Ophis takes a flat 10 bps (0.10%) of trade volume, at or
  * below comparable aggregators (Matcha 10 bps, Velora 15 bps). Charged via the
- * CIP-75 VOLUME policy. The backend caps the volume policy at
- * `MAX_PARTNER_VOLUME_BPS` (50 bps), so 10 sits well under the ceiling.
+ * CIP-75 VOLUME policy. This is also the MINIMUM the OP self-hosted backend
+ * accepts for a non-stable pair to the Ophis recipient (the token-pair floor in
+ * app_data.rs); a lower value is rejected at order ingress. A Volume fee is
+ * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
  * Must match the frontend flag value `REACT_APP_OPHIS_VOLUME_FEE_BPS` when the
  * flat fee is live; republish this SDK in lockstep with any change.

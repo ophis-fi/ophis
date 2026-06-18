@@ -10,6 +10,8 @@ import { useReplacedOrderUid } from 'modules/trade/state/alternativeOrder'
 import { useUtm } from 'modules/utm'
 import { useVolumeFee } from 'modules/volumeFee'
 
+import { ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
+
 import { AppDataHooksUpdater } from './AppDataHooksUpdater'
 import { AppDataInfoUpdater, UseAppDataParams } from './AppDataInfoUpdater'
 import { shouldEmitOphisPartnerFee } from './shouldEmitOphisPartnerFee'
@@ -43,7 +45,11 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // not the recipient value; the recipient itself is the Ophis Safe via
   // partnerFeeDefault.ts.
   const ophisAppDataPartnerFeeRaw = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
-  const ophisAppDataPartnerFee = shouldEmitOphisPartnerFee(chainId) ? ophisAppDataPartnerFeeRaw : undefined
+  const ophisAppDataPartnerFeeGated = shouldEmitOphisPartnerFee(chainId) ? ophisAppDataPartnerFeeRaw : undefined
+  // OP (and any future self-hosted chain) mandates the CIP-75 Volume policy and
+  // rejects the price-improvement fallback at ingress; never emit it there. On
+  // those chains we fall through to the volumeFee pipeline below.
+  const ophisAppDataPartnerFee = ophisAppDataPartnerFeeForChain(ophisAppDataPartnerFeeGated, chainId)
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)

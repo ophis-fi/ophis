@@ -1,0 +1,74 @@
+name: backend CI
+
+# The backend (apps/backend) is a large Rust workspace (a CoW Protocol fork), so
+# compiling it is expensive. This workflow is PATH-SCOPED (like
+# rebate-indexer-ci.yml): it only runs when the Rust backend OR the frontend
+# OP-stablecoin source the drift test reads actually changes. Most PRs
+# (frontend, docs, infra) skip it entirely, so the cold compile is only paid
+# when it is relevant.
+#
+# REQUIRED-CHECK NOTE: because this is path-filtered, do NOT mark it a REQUIRED
+# status check in branch protection unless GitHub's "skipped -> success"
+# handling is on, or PRs that do not touch the backend would stall on a
+# never-running check (the same property rebate-indexer-ci.yml has).
+#
+# COST / FUTURE PERF: there is no Rust build cache yet (consistent with the
+# repo's other cargo jobs in security.yml). A backend PR cold-compiles the 4
+# crates' dependency graph (~10-20 min). If that becomes a bottleneck, add
+# `Swatinem/rust-cache@<pinned-sha>` (workspaces: apps/backend) after checkout:
+# a pure perf win, no correctness change.
+
+on:
+  pull_request:
+    paths:
+      - "apps/backend/**"
+      # The OPTIMISM_STABLECOINS drift test reads this frontend file, so a
+      # frontend-only stablecoin edit must still trigger the backend test.
+      - "apps/frontend/libs/common-const/src/tokens.ts"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/**"
+      - "apps/frontend/libs/common-const/src/tokens.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  floor-tests:
+    name: backend (cargo test, partner-fee floor crates)
+    runs-on: ubuntu-latest
+    # The OP partner-fee floor's RUNTIME enforcement lives in the Rust backend:
+    # the ingress floor (shared::order_validation::enforce_partner_fee_floor),
+    # the autopilot Volume clamp / Surplus-PI neutralization + the
+    # ProtocolFees::new startup assert (autopilot::domain::fee), the floor math +
+    # validate_partner_fees Volume-only rule + the OPTIMISM_STABLECOINS drift
+    # test (app-data), and the PartnerFeeBelowFloor to HTTP 400 mapping
+    # (orderbook). None of these ran in CI before (only cargo audit/deny + the
+    # grep-based floor-invariant gate covered the cross-workspace INPUTS). This
+    # job compiles and runs the LIB unit tests for exactly those crates so a
+    # floor-LOGIC regression fails a PR. Scoped to --lib of these 4 crates on
+    # purpose: the workspace's integration/e2e tests (tests/*, testcontainers, a
+    # running node) are #[ignore]d and out of scope; --lib skips them. The stable
+    # toolchain comes from apps/backend/rust-toolchain (rustup auto-installs).
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: cargo fetch (retry on transient registry blips)
+        working-directory: apps/backend
+        # Mirror the cargo-audit/deny resilience (security.yml): a dropped
+        # crates.io connection during dependency fetch must not red a PR on a
+        # network blip. Fetch with the lockfile, then test --offline so the build
+        # itself needs no network.
+        run: |
+          for attempt in 1 2 3; do
+            if cargo fetch --locked; then exit 0; fi
+            echo "::warning::cargo fetch failed (attempt ${attempt}/3); retrying after backoff"
+            sleep $((attempt * 15))
+          done
+          echo "::error::cargo fetch failed after 3 attempts"
+          exit 1
+      - name: cargo test (floor-enforcement crates, lib unit tests)
+        working-directory: apps/backend
+        run: cargo test --offline --locked --lib -p app-data -p shared -p autopilot -p orderbook

@@ -1,6 +1,6 @@
 use {
     crate::{AppDataHash, Hooks, app_data_hash::hash_full_app_data},
-    alloy_primitives::{Address, U256},
+    alloy_primitives::{Address, U256, address},
     anyhow::{Result, anyhow},
     bytes_hex::BytesHex,
     moka::sync::Cache,
@@ -15,17 +15,6 @@ use {
 
 /// The minimum valid empty app data JSON string.
 pub const EMPTY: &str = "{}";
-
-/// CIP-75 hard cap on `surplusBps` and `priceImprovementBps` partner-fee fields.
-/// Values above this are a protocol-level violation and rejected at validation
-/// time. This is the single source of truth: `autopilot/src/domain/fee/mod.rs`
-/// imports this constant to re-clamp bps as defense-in-depth.
-pub const MAX_PARTNER_FEE_BPS: u64 = 2500;
-
-/// CIP-75 hard cap on `maxVolumeBps` for `Surplus` and `PriceImprovement`
-/// partner-fee policies. The operator-set global `max_partner_fee` provides an
-/// additional ceiling enforced downstream at fee computation time.
-pub const MAX_PARTNER_VOLUME_BPS: u64 = 50;
 
 /// Allowlist of partner-fee recipient addresses that orders are permitted to
 /// route fees to. Closes audit Phase 2 finding C3 / adversarial F6: the
@@ -50,6 +39,76 @@ pub const PARTNER_FEE_RECIPIENT_ALLOWLIST: &[Address] = &[
         0xF1, 0x81, 0x9e, 0xCe, 0xF8,
     ]),
 ];
+
+/// The canonical Ophis partner-fee recipient (index 0 of the allowlist above),
+/// named so the per-recipient fee floor and the autopilot clamp can key on it.
+pub const OPHIS_PARTNER_FEE_RECIPIENT: Address =
+    address!("0x858f0F5eE954846D47155F5203c04aF1819eCeF8");
+
+/// Standard Ophis volume fee (0.10%) and the reduced same-chain-stablecoin /
+/// boosted rate (0.01%). These MUST stay in lockstep with the frontend
+/// (modules/volumeFee/state/volumeFeeAtom.ts + ophis/partnerFeeDefault.ts +
+/// ophis/boostedTokens.ts) and the SDK (packages/sdk/src/partner-fee.ts). They
+/// are the MINIMUM Volume bps the OP self-hosted backend will accept for a fee to
+/// an allowlisted recipient — closing the prior bypass where a Volume fee to the
+/// Ophis recipient could be set to 0 and still settle on our solver stack.
+pub const OPHIS_DEFAULT_VOLUME_FEE_BPS: u64 = 10;
+pub const OPHIS_STABLE_VOLUME_FEE_BPS: u64 = 1;
+
+/// Optimism (chain 10) stablecoin set, mirrored from the frontend
+/// `OPTIMISM_STABLECOINS` (libs/common-const/src/tokens.ts). A swap where BOTH
+/// tokens are in this set is a same-chain stable pair and floors at the reduced
+/// rate. Optimism is the ONLY self-hosted chain, so this is the only set the
+/// backend needs; CoW-hosted chains are validated by CoW and never reach here.
+/// Kept in sync with the frontend by the CI gate scripts/check-floor-invariant.sh
+/// (the hard gate, since the backend Rust suite does not run in CI) and, locally,
+/// by the `optimism_stablecoins_match_frontend_source_of_truth` unit test, so the
+/// floor never rejects a legitimate 1 bp stable order.
+const OPTIMISM_STABLECOINS: &[Address] = &[
+    address!("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"), // USDC (native)
+    address!("0x7F5c764cBc14f9669B88837ca1490cCa17c31607"), // USDC.e (bridged)
+    address!("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"), // USDT
+    address!("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"), // DAI
+];
+
+/// Optimism boosted-token set (mirrors the frontend `OPHIS_BOOSTED_TOKENS[10]`).
+/// Empty today (ALEPH is Mainnet/Base only); a swap where EITHER side is boosted
+/// floors at the reduced rate. Kept explicit so adding an OP boosted token to the
+/// frontend also requires updating the backend: the CI gate
+/// scripts/check-floor-invariant.sh diffs this set against the frontend
+/// `OPHIS_BOOSTED_TOKENS[SupportedChainId.OPTIMISM]` and fails on drift (the OP
+/// frontend entry must be a single-line `new Set([...])` per the gate's parser).
+const OPTIMISM_BOOSTED_TOKENS: &[Address] = &[];
+
+/// Non-stable base floor for an allowlisted recipient. The default Ophis
+/// recipient is held to the full rate; authorized partners get a lower agreed
+/// tier here, keyed on the RECIPIENT (the only field bound via the allowlist —
+/// never appCode/referrer, which are client-controlled). New partner tiers are
+/// added after the partner Safe is independently verified and allowlisted.
+fn recipient_base_floor_bps(_recipient: Address) -> u64 {
+    // Only the Ophis Safe is allowlisted today, held to the full 10 bps. A
+    // partner tier (e.g. Lagoon at 5 bps) is added as:
+    //   if recipient == LAGOON_PARTNER_FEE_RECIPIENT { 5 } else { 10 }
+    OPHIS_DEFAULT_VOLUME_FEE_BPS
+}
+
+/// Minimum Volume-policy bps the OP backend accepts for a partner fee to an
+/// allowlisted recipient, given the order's token pair. Same-chain stable pairs
+/// (both tokens OP stablecoins) or boosted pairs (either side boosted) floor at
+/// the reduced rate; everything else floors at the recipient's base tier. Keyed
+/// on on-chain token addresses and the allowlisted recipient (both
+/// non-spoofable), never on appData strings. Mirrors the frontend rate logic.
+pub fn partner_fee_floor_bps(sell_token: Address, buy_token: Address, recipient: Address) -> u64 {
+    let either_boosted = OPTIMISM_BOOSTED_TOKENS.contains(&sell_token)
+        || OPTIMISM_BOOSTED_TOKENS.contains(&buy_token);
+    let both_stable =
+        OPTIMISM_STABLECOINS.contains(&sell_token) && OPTIMISM_STABLECOINS.contains(&buy_token);
+    if either_boosted || both_stable {
+        OPHIS_STABLE_VOLUME_FEE_BPS
+    } else {
+        recipient_base_floor_bps(recipient)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedAppData {
@@ -342,27 +401,25 @@ fn validate_partner_fees(partner_fees: &PartnerFees) -> Result<()> {
                 recipient = fee.recipient,
             ));
         }
-        let (bps, max_volume_bps, kind) = match fee.policy {
-            FeePolicy::Surplus {
-                bps,
-                max_volume_bps,
-            } => (bps, max_volume_bps, "surplusBps"),
-            FeePolicy::PriceImprovement {
-                bps,
-                max_volume_bps,
-            } => (bps, max_volume_bps, "priceImprovementBps"),
+        // Ophis charges a CIP-75 VOLUME fee only. A fee to an allowlisted
+        // (Ophis-controlled) recipient using the Surplus or PriceImprovement
+        // policy is rejected outright: those variants carry no enforced lower
+        // bound, so accepting them would reopen the fee-bypass that the Volume
+        // floor closes (an attacker would just switch policy variant). The
+        // Volume minimum-bps floor is token-pair-aware and enforced in the order
+        // validator (which has the sell/buy tokens in scope) and re-applied as an
+        // upward clamp in the autopilot; nothing token-blind to check here. A
+        // Volume fee has no per-order upper cap at validation: it is bounded above
+        // only by the autopilot's operator-set global `max_partner_fee`.
+        match fee.policy {
+            FeePolicy::Surplus { .. } | FeePolicy::PriceImprovement { .. } => {
+                return Err(anyhow!(
+                    "partner fee to an Ophis-allowlisted recipient must use the \
+                     Volume policy; Surplus/PriceImprovement partner fees are not \
+                     accepted (no enforced lower bound)."
+                ));
+            }
             FeePolicy::Volume { .. } => continue,
-        };
-        if bps > MAX_PARTNER_FEE_BPS {
-            return Err(anyhow!(
-                "partner fee {kind} {bps} exceeds CIP-75 cap of {MAX_PARTNER_FEE_BPS} bps"
-            ));
-        }
-        if max_volume_bps > MAX_PARTNER_VOLUME_BPS {
-            return Err(anyhow!(
-                "partner fee maxVolumeBps {max_volume_bps} exceeds CIP-75 cap of \
-                 {MAX_PARTNER_VOLUME_BPS} bps"
-            ));
         }
     }
     Ok(())
@@ -791,16 +848,6 @@ mod tests {
                             {
                                 "volumeBps": 1000,
                                 "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
-                            },
-                            {
-                                "surplusBps": 100,
-                                "maxVolumeBps": 50,
-                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
-                            },
-                            {
-                                "priceImprovementBps": 100,
-                                "maxVolumeBps": 50,
-                                "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
                             }
                         ]
                     },
@@ -814,23 +861,12 @@ mod tests {
                         policy: FeePolicy::Volume { bps: 100 },
                         recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                     },
-                    // this one is using the new format
+                    // this one is using the new format. Surplus/PriceImprovement
+                    // entries were removed: they are now rejected for an
+                    // allowlisted recipient (see
+                    // surplus_and_price_improvement_rejected_for_allowlisted_recipient).
                     PartnerFee {
                         policy: FeePolicy::Volume { bps: 1000 },
-                        recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
-                    },
-                    PartnerFee {
-                        policy: FeePolicy::Surplus {
-                            bps: 100,
-                            max_volume_bps: 50
-                        },
-                        recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
-                    },
-                    PartnerFee {
-                        policy: FeePolicy::PriceImprovement {
-                            bps: 100,
-                            max_volume_bps: 50
-                        },
                         recipient: PARTNER_FEE_RECIPIENT_ALLOWLIST[0],
                     },
                 ]),
@@ -977,108 +1013,144 @@ mod tests {
     }
 
     #[test]
-    fn cip75_caps_accept_boundary_values() {
+    fn volume_policy_accepted_token_blind_at_validate() {
+        // validate() is token-blind: it accepts any Volume policy to the allowlisted
+        // recipient (the 9999 upper bound is bounded downstream by max_partner_fee).
+        // The token-pair-aware MINIMUM (10/1 bps) is enforced in the order validator,
+        // which has the sell/buy tokens; this layer must not reject Volume on bps.
         let validator = Validator::default();
-        let cases = [
-            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-            // Volume policies are not capped by CIP-75 surplus/price-improvement caps.
+        for policy in [
             r#"{ "volumeBps": 9999, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-            // Lower-bound is also accepted.
-            r#"{ "surplusBps": 0, "maxVolumeBps": 0, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-        ];
-        for policy in cases {
+            r#"{ "volumeBps": 10, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+            // 0 bps is accepted HERE (token-blind); the order validator floors it.
+            r#"{ "volumeBps": 0, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+        ] {
             let doc = partner_fee_json(policy);
             validator.validate(doc.as_bytes()).unwrap_or_else(|err| {
-                panic!("CIP-75-compliant policy was rejected: {policy} ({err:?})");
+                panic!("Volume policy was rejected at validate(): {policy} ({err:?})");
             });
         }
     }
 
     #[test]
-    fn cip75_caps_reject_surplus_bps_above_cap() {
+    fn surplus_and_price_improvement_rejected_for_allowlisted_recipient() {
+        // Ophis charges a Volume fee only. Surplus/PriceImprovement partner fees to
+        // an allowlisted recipient are rejected outright (they have no enforced lower
+        // bound, so accepting them would reopen the fee-bypass via policy-switching).
         let validator = Validator::default();
-        let doc = partner_fee_json(
-            r#"{ "surplusBps": 2501, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-        );
-        let err = validator.validate(doc.as_bytes()).unwrap_err();
-        assert!(
-            err.to_string().contains("surplusBps 2501 exceeds CIP-75 cap of 2500"),
-            "unexpected error: {err}"
-        );
+        for policy in [
+            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+            r#"{ "surplusBps": 0, "maxVolumeBps": 0, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+            r#"{ "priceImprovementBps": 100, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
+        ] {
+            let doc = partner_fee_json(policy);
+            let err = validator.validate(doc.as_bytes()).unwrap_err();
+            assert!(
+                err.to_string().contains("must use the Volume policy"),
+                "expected Volume-only rejection for {policy}, got: {err}"
+            );
+        }
     }
 
     #[test]
-    fn cip75_caps_reject_price_improvement_bps_above_cap() {
-        let validator = Validator::default();
-        let doc = partner_fee_json(
-            r#"{ "priceImprovementBps": 9999, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-        );
-        let err = validator.validate(doc.as_bytes()).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("priceImprovementBps 9999 exceeds CIP-75 cap of 2500"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn cip75_caps_reject_max_volume_bps_above_cap() {
-        let validator = Validator::default();
-        let surplus_doc = partner_fee_json(
-            r#"{ "surplusBps": 2500, "maxVolumeBps": 51, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-        );
-        let err = validator.validate(surplus_doc.as_bytes()).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("maxVolumeBps 51 exceeds CIP-75 cap of 50"),
-            "unexpected error: {err}"
-        );
-
-        let pi_doc = partner_fee_json(
-            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-        );
-        let err = validator.validate(pi_doc.as_bytes()).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("maxVolumeBps 100 exceeds CIP-75 cap of 50"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[test]
-    fn cip75_caps_reject_any_violating_entry_in_array() {
+    fn surplus_rejected_even_within_an_array_of_otherwise_valid_fees() {
         let validator = Validator::default();
         let doc = partner_fee_json(
             r#"[
                 { "volumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" },
-                { "surplusBps": 100, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" },
-                { "priceImprovementBps": 5000, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }
+                { "surplusBps": 100, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }
             ]"#,
         );
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
-            err.to_string()
-                .contains("priceImprovementBps 5000 exceeds CIP-75 cap of 2500"),
+            err.to_string().contains("must use the Volume policy"),
             "unexpected error: {err}"
         );
     }
 
     #[test]
-    fn recipient_allowlist_accepts_registered_safe() {
-        // The CIP-75 partner-fee Safe is the only registered recipient today;
-        // every cap-conformant policy variant with that recipient must pass.
+    fn recipient_allowlist_accepts_registered_safe_volume() {
+        // The Ophis partner-fee Safe is the only registered recipient today; a Volume
+        // policy with that recipient passes validate() (the bps floor is downstream).
         let validator = Validator::default();
-        for policy in [
+        let doc = partner_fee_json(
             r#"{ "volumeBps": 100, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-            r#"{ "surplusBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-            r#"{ "priceImprovementBps": 2500, "maxVolumeBps": 50, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#,
-        ] {
-            let doc = partner_fee_json(policy);
-            validator.validate(doc.as_bytes()).unwrap_or_else(|err| {
-                panic!("allowlisted recipient was rejected: {policy} ({err:?})");
-            });
-        }
+        );
+        validator.validate(doc.as_bytes()).unwrap_or_else(|err| {
+            panic!("allowlisted recipient with Volume policy was rejected: ({err:?})");
+        });
+    }
+
+    #[test]
+    fn partner_fee_floor_is_token_pair_aware() {
+        // Mirrors the frontend: same-chain stable pairs (both OP stablecoins) and
+        // boosted pairs floor at 1 bp; everything else floors at the recipient base
+        // rate (10 bps for the Ophis recipient). Keyed on on-chain token addresses
+        // (non-spoofable), closing the prior 0-fee bypass.
+        let usdc = address!("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+        let usdt = address!("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58");
+        let dai = address!("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1");
+        let weth = address!("0x4200000000000000000000000000000000000006"); // volatile
+        let r = OPHIS_PARTNER_FEE_RECIPIENT;
+
+        // stable <-> stable => reduced floor
+        assert_eq!(partner_fee_floor_bps(usdc, usdt, r), OPHIS_STABLE_VOLUME_FEE_BPS);
+        assert_eq!(partner_fee_floor_bps(dai, usdc, r), OPHIS_STABLE_VOLUME_FEE_BPS);
+        // any volatile leg => full default floor (this is the bypass the floor closes)
+        assert_eq!(partner_fee_floor_bps(weth, usdc, r), OPHIS_DEFAULT_VOLUME_FEE_BPS);
+        assert_eq!(partner_fee_floor_bps(usdc, weth, r), OPHIS_DEFAULT_VOLUME_FEE_BPS);
+        assert_eq!(partner_fee_floor_bps(weth, weth, r), OPHIS_DEFAULT_VOLUME_FEE_BPS);
+        // floor is never zero
+        assert!(partner_fee_floor_bps(weth, usdc, r) >= OPHIS_STABLE_VOLUME_FEE_BPS);
+    }
+
+    #[test]
+    fn optimism_stablecoins_match_frontend_source_of_truth() {
+        // The OP partner-fee floor charges 1 bp for stable-stable pairs using
+        // OPTIMISM_STABLECOINS. The frontend charges the matching 1 bp rate using
+        // its own OPTIMISM_STABLECOINS list (libs/common-const/src/tokens.ts). If
+        // the frontend adds a stablecoin and this Rust set is not updated, the
+        // ingress floor would reject legitimate 1 bp stable orders (floor stays at
+        // the 10 bp default). This drift guard reads the frontend source of truth
+        // and asserts the two sets are byte-for-byte identical.
+        let ts_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../frontend/libs/common-const/src/tokens.ts"
+        );
+        let source = std::fs::read_to_string(ts_path).unwrap_or_else(|e| {
+            panic!(
+                "could not read frontend tokens.ts at {ts_path} ({e}); the OP \
+                 stablecoin floor set must stay in sync with the frontend. If the \
+                 frontend moved, update this path."
+            )
+        });
+
+        // Isolate the `const OPTIMISM_STABLECOINS = [ ... ]` array literal.
+        let marker = "const OPTIMISM_STABLECOINS = [";
+        let start = source
+            .find(marker)
+            .expect("OPTIMISM_STABLECOINS array not found in frontend tokens.ts");
+        let rest = &source[start + marker.len()..];
+        let end = rest
+            .find(']')
+            .expect("unterminated OPTIMISM_STABLECOINS array in frontend tokens.ts");
+
+        // Extract single-quoted 0x-addresses (42 chars incl. prefix), lowercased.
+        let frontend: std::collections::BTreeSet<String> = rest[..end]
+            .split('\'')
+            .filter(|tok| tok.starts_with("0x") && tok.len() == 42)
+            .map(str::to_lowercase)
+            .collect();
+        let backend: std::collections::BTreeSet<String> = OPTIMISM_STABLECOINS
+            .iter()
+            .map(|a| format!("{a:#x}"))
+            .collect();
+
+        assert_eq!(
+            frontend, backend,
+            "Optimism stablecoin floor set drifted from the frontend source of \
+             truth. frontend={frontend:?} backend={backend:?}"
+        );
     }
 
     #[test]

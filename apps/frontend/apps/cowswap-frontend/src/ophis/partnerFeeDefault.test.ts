@@ -1,4 +1,9 @@
-import { OPHIS_PARTNER_FEE_RECIPIENT, OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE } from './partnerFeeDefault'
+import {
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
+  OPHIS_DEFAULT_PARTNER_FEE,
+  ophisAppDataPartnerFeeForChain,
+} from './partnerFeeDefault'
 
 /**
  * Cross-file drift guard (Phase 3 audit H1, Codex pre-PR MED-1).
@@ -28,5 +33,32 @@ describe('partnerFeeDefault', () => {
     // CIP-75 priceImprovementBps:2500 maxVolumeBps:50 — partner-fee spec.
     expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.priceImprovementBps).toBe(2500)
     expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.maxVolumeBps).toBe(50)
+  })
+
+  describe('ophisAppDataPartnerFeeForChain (price-improvement suppression on self-hosted chains)', () => {
+    it('suppresses the price-improvement fallback on Optimism (10), the Volume-only self-hosted chain', () => {
+      // The OP backend rejects the PI shape at ingress; emitting it would 400.
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 10)).toBeUndefined()
+    })
+
+    it('passes the price-improvement fallback through on CoW-hosted chains (e.g. mainnet 1, base 8453)', () => {
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 1)).toBe(
+        OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
+      )
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 8453)).toBe(
+        OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
+      )
+    })
+
+    it('passes through undefined (flag-on path already emits no PI fee) regardless of chain', () => {
+      expect(ophisAppDataPartnerFeeForChain(undefined, 10)).toBeUndefined()
+      expect(ophisAppDataPartnerFeeForChain(undefined, 1)).toBeUndefined()
+    })
+
+    it('passes through when chainId is undefined (AppDataUpdater bails on no chain anyway)', () => {
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, undefined)).toBe(
+        OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
+      )
+    })
   })
 })

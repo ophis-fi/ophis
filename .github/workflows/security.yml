@@ -39,6 +39,26 @@ jobs:
       - name: Check 3 source-of-truth files match canonical Safe address
         run: ./scripts/check-partner-fee-invariant.sh
 
+  floor-invariant:
+    name: OP partner-fee floor cross-workspace invariant
+    runs-on: ubuntu-latest
+    # 2026-06-18. The OP backend floors the CIP-75 Volume partner fee per token
+    # pair (app_data.rs partner_fee_floor_bps): 10 bps default, 1 bp for
+    # same-chain stable pairs (OPTIMISM_STABLECOINS) or boosted pairs
+    # (OPTIMISM_BOOSTED_TOKENS). The frontend + SDK charge the matching sets AND
+    # values from their OWN copies in separate pnpm workspaces (no shared
+    # import). Any drift makes the backend floor reject legitimate reduced-rate
+    # orders at ingress (PartnerFeeBelowFloor). A Rust unit test also guards the
+    # stablecoin set, but the backend Rust suite is NOT run in CI, so this pure
+    # grep/awk script is the actual hard gate for the cross-workspace inputs:
+    # the OPTIMISM_STABLECOINS set, the OP OPTIMISM_BOOSTED_TOKENS set, and the
+    # 10 / 1 floor values across backend + frontend + SDK. (It does NOT cover the
+    # floor-LOGIC Rust tests, which remain CI-unverified; see security.yml notes.)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check OP partner-fee floor inputs match across frontend + backend + SDK
+        run: ./scripts/check-floor-invariant.sh
+
   tier-invariant:
     name: Tier table cross-workspace invariant
     runs-on: ubuntu-latest
