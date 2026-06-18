@@ -2,6 +2,10 @@
 # workspace manifests, apps/mcp-server, and packages/sdk (do NOT exclude those).
 .git
 **/node_modules
+# Never copy secrets into the build context / image layers (defense-in-depth;
+# the Dockerfile copies only selected paths, but exclude env files globally).
+**/.env
+**/.env.*
 apps/frontend
 apps/backend
 contracts
