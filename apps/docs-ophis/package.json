@@ -52,9 +52,12 @@
     "overrides": {
       "@babel/core": "^7.29.6",
       "joi": "17.13.4",
-      "js-yaml": "^3.14.1",
+      "js-yaml": "^4.2.0",
       "launch-editor": "^2.14.1",
       "serialize-javascript": "^7.0.5"
+    },
+    "patchedDependencies": {
+      "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch"
     }
   }
 }
