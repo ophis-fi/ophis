@@ -27,7 +27,7 @@
       "underscore": "^1.12.1",
       "@babel/traverse": "^7.23.2",
       "@openzeppelin/contracts": "3.4.2-solc-0.7",
-      "undici": "^6.24.0",
+      "undici": "^6.27.0",
       "ws": "^8.21.0",
       "tmp": "^0.2.6",
       "esbuild": "^0.28.1",
