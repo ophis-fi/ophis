@@ -17,12 +17,13 @@ export const OPHIS_WIDGET_APP_CODE = 'Ophis';
 /**
  * The widget's `PartnerFee` type is `{ bps, recipient }` (FlexibleConfig).
  * The SDK exposes the fee as `{ volumeBps, recipient }`. We map volumeBps -> bps
- * here. `bps` is the volume fee in basis points; 10 = 0.10% (1 for same-chain
- * stable pairs, but the widget cannot know the pair ahead of time, so we default
- * to the standard rate and let same-chain-stable handling stay server-side).
+ * here. `bps` is the volume fee in basis points; 5 = 0.05% the @ophis/sdk partner
+ * rate (1 for same-chain stable pairs, but the widget cannot know the pair ahead
+ * of time, so we default to the standard rate and let same-chain-stable handling
+ * stay server-side).
  */
 export const OPHIS_WIDGET_PARTNER_FEE: NonNullable<CowSwapWidgetParams['partnerFee']> = {
-  bps: ophisVolumeBpsForPair(false), // 10 bps standard volume fee
+  bps: ophisVolumeBpsForPair(false), // 5 bps partner volume fee
   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 };
 

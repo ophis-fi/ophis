@@ -92,8 +92,8 @@ export interface OphisAppData {
 
 /**
  * Builds the Ophis appData document for a chain: appCode "Ophis", market
- * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, 10 bps,
- * from @ophis/sdk buildOphisAppDataPartnerFee) where Ophis charges one.
+ * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 5 bps
+ * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
  */
 export function buildOphisAppData(chainId: number, slippageBips?: number, referrerCode?: string): OphisAppData {
