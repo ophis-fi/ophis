@@ -11,6 +11,10 @@ describe('parseSince', () => {
   it('throws on garbage', () => {
     expect(() => parseSince('soon')).toThrow();
   });
+  it('rejects a zero-length window', () => {
+    expect(() => parseSince('0s')).toThrow();
+    expect(() => parseSince('0h')).toThrow();
+  });
 });
 
 describe('blockAtTimestamp', () => {

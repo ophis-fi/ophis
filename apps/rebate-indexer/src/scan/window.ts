@@ -2,6 +2,9 @@ export function parseSince(s: string): number {
   const m = /^(\d+)\s*([smhd])$/.exec(s.trim());
   if (!m) throw new Error(`bad --since '${s}'; use e.g. 48h, 2d, 90m, 30s`);
   const n = Number(m[1]);
+  // A zero-length window is a caller mistake: reject it rather than silently
+  // scanning a degenerate range.
+  if (n === 0) throw new Error(`--since must be > 0 (got '${s}')`);
   const mult = m[2] === 's' ? 1 : m[2] === 'm' ? 60 : m[2] === 'h' ? 3600 : 86400;
   return n * mult;
 }
