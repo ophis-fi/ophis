@@ -7,6 +7,7 @@ import {
 import {
   OPTIMISM_CHAIN_ID,
   estimateEarningsUsd,
+  estimateEarningsFromFeeBaseUsd,
   GROSS_FEE_BPS,
   type AffiliateKind,
 } from '../../src/affiliate/rates.js';
@@ -184,5 +185,36 @@ describe('estimateEarningsUsd — dashboard current-cycle UPPER BOUND (assumes r
     expect(estimateEarningsUsd(0, 'partner')).toBe(0);
     expect(estimateEarningsUsd(-100, 'partner')).toBe(0);
     expect(estimateEarningsUsd(Number.NaN, 'partner')).toBe(0);
+  });
+});
+
+describe('estimateEarningsFromFeeBaseUsd — fee-aware dashboard estimate (matches the payout)', () => {
+  // feeBase = volume * bps / 1e4.
+  const feeBase = (volumeUsd: number, bps: number) => (volumeUsd * bps) / 10_000;
+
+  it('SDK 5 bps partner $5M -> $225 (not the $450 retail upper bound)', () => {
+    expect(estimateEarningsFromFeeBaseUsd(feeBase(5_000_000, 5), 5_000_000, 'partner')).toBeCloseTo(225, 6);
+  });
+
+  it('retail 10 bps regular $1M -> $60 (matches the all-retail accrual)', () => {
+    expect(estimateEarningsFromFeeBaseUsd(feeBase(1_000_000, 10), 1_000_000, 'regular')).toBeCloseTo(60, 6);
+  });
+
+  it('stable 1 bp regular $1M -> $6', () => {
+    expect(estimateEarningsFromFeeBaseUsd(feeBase(1_000_000, 1), 1_000_000, 'regular')).toBeCloseTo(6, 6);
+  });
+
+  it('regular VOLUME cap at $1M applies proportionally: $5M @10bps -> $60, not $300', () => {
+    expect(estimateEarningsFromFeeBaseUsd(feeBase(5_000_000, 10), 5_000_000, 'regular')).toBeCloseTo(60, 6);
+  });
+
+  it('partner uncapped: $5M @10bps -> $450', () => {
+    expect(estimateEarningsFromFeeBaseUsd(feeBase(5_000_000, 10), 5_000_000, 'partner')).toBeCloseTo(450, 6);
+  });
+
+  it('zero / negative / non-finite fee base -> 0', () => {
+    expect(estimateEarningsFromFeeBaseUsd(0, 1_000_000, 'partner')).toBe(0);
+    expect(estimateEarningsFromFeeBaseUsd(-1, 1_000_000, 'partner')).toBe(0);
+    expect(estimateEarningsFromFeeBaseUsd(Number.NaN, 1_000_000, 'partner')).toBe(0);
   });
 });

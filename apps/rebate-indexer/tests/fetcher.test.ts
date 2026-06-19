@@ -117,6 +117,7 @@ describe('fetcher.fetchChainTrades', () => {
       sdk: mk(0x51), retail: mk(0x52), stable: mk(0x53),
       inflated: mk(0x54), absent: mk(0x55), arr: mk(0x56), zero: mk(0x57),
       decoy: mk(0x58), wrongRecipient: mk(0x59),
+      legacyBps: mk(0x5a), surplusNotVolume: mk(0x5b), piNotVolume: mk(0x5c),
     };
     handlers.trades.mockReturnValue(Object.values(uids).map((u) => sampleTrade(u, owner)));
     const withFee = (uid: string, pf: unknown) => ({
@@ -137,6 +138,12 @@ describe('fetcher.fetchChainTrades', () => {
         case uids.decoy: return withFee(uid, [{ volumeBps: 10, recipient: ATTACKER }, { volumeBps: 5, recipient: REC }]);
         // Fee paid to a non-Ophis recipient only -> not our fee -> null (retail default).
         case uids.wrongRecipient: return withFee(uid, { volumeBps: 5, recipient: ATTACKER });
+        // Legacy Volume shape { bps } (no volumeBps) -> backend maps to Volume -> read it.
+        case uids.legacyBps: return withFee(uid, { bps: 5, recipient: REC });
+        // A surplus / price-improvement policy is NOT a volume fee: the bare bps
+        // fallback is suppressed -> null (retail default).
+        case uids.surplusNotVolume: return withFee(uid, { surplusBps: 10, maxVolumeBps: 50, bps: 99, recipient: REC });
+        case uids.piNotVolume: return withFee(uid, { priceImprovementBps: 25, maxVolumeBps: 50, bps: 99, recipient: REC });
         default: return sampleOrder(uid, owner, 'ophis');
       }
     });
@@ -153,5 +160,8 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.zero]).toBeNull();
     expect(byUid[uids.decoy]).toBe(5); // decoy entry ignored; only the Ophis-recipient fee counts
     expect(byUid[uids.wrongRecipient]).toBeNull(); // fee not to Ophis -> not counted
+    expect(byUid[uids.legacyBps]).toBe(5); // legacy { bps } Volume shape read
+    expect(byUid[uids.surplusNotVolume]).toBeNull(); // surplus policy: bps fallback suppressed
+    expect(byUid[uids.piNotVolume]).toBeNull(); // price-improvement policy: bps fallback suppressed
   });
 });
