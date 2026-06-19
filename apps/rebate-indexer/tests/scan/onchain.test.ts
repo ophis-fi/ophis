@@ -106,16 +106,20 @@ describe('collectTradeLogs', () => {
     expect(calls).toEqual([[0n, 1999n], [2000n, 3999n], [4000n, 4500n]]);
   });
 
-  it('halves the chunk and retries on a getLogs error', async () => {
+  it('halves the chunk and retries on a getLogs error, then completes', async () => {
     let attempts = 0;
     const client = {
+      getBlockNumber: async () => 1000n,
+      getBlock: async () => ({ timestamp: 0n }),
       getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
         attempts += 1;
         if (toBlock - fromBlock > 500n) throw new Error('query returned more than 10000 results');
         return [];
       },
     } as unknown as LogClient;
-    await collectTradeLogs(client, 0n, 1000n, 2000n);
-    expect(attempts).toBeGreaterThan(1); // it backed off into smaller windows
+    // chunk 2000 over [0,1000]: fail[0,1999] -> fail[0,999] -> ok[0,499] -> ok[500,1000] = 4 attempts.
+    const result = await collectTradeLogs(client, 0n, 1000n, 2000n);
+    expect(attempts).toBeGreaterThanOrEqual(3); // backed off below the 500-span limit before succeeding
+    expect(result).toBeInstanceOf(Array);       // terminated successfully (did not throw)
   });
 });
