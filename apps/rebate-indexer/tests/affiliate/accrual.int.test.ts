@@ -180,6 +180,35 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(owed!.owedUsd).toBeCloseTo(15, 6);
   });
 
+  it('volume_fee_bps = 0 (rejected policy) credits ZERO; NULL still defaults to retail', async () => {
+    const ref = W('aa00');
+    const trader = W('aa11'); // unbound; appData-tagged with ref's code
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('zerofee', decode(${ref},'hex'), 'partner', true)`;
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const ins = (uid: string, usd: string, bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${trader},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', 'zerofee', ${usd}, ${bps}, now())`;
+    await ins('20f0', '100000', 0); //    rejected policy -> 0 fee -> credits zero
+    await ins('20f1', '100000', null); // unknown -> COALESCE to retail 10
+    await ins('20f2', '100000', 10); //   retail
+
+    // Accrual: the 0-fee bucket (grossBps 0) is filtered out, so it neither earns nor
+    // counts toward referred volume. NULL($100k->10) + retail($100k) accrue.
+    const refs = await buildAffiliateReferrers(start, end);
+    const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
+    const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${ref}`);
+    expect(owed).toBeTruthy();
+    // owed = 12% * 75% * (200k*10)/1e4 = 0.09 * 200 = $18 (the 0-fee $100k earns nothing).
+    expect(owed!.owedUsd).toBeCloseTo(18, 6);
+    expect(owed!.referredVolumeUsd).toBe(200000); // 0-fee trade's volume excluded
+
+    // Dashboard net fee = 0 + $75 + $75 = $150 (NOT $225 if 0 were treated as retail).
+    const stats = await getReferrerStats(`0x${ref}`, now);
+    expect(stats.currentCycleNetFeeUsd).toBeCloseTo(150, 4);
+  });
+
   it('volume_fee_bps backfill upsert (self-healing): fills a NULL backlog row, never clobbers a set rate', async () => {
     const uid = UID('ba5e');
     const w = W('ba5e');

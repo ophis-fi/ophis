@@ -9,7 +9,10 @@
 -- assumed gross rate over-credits the 5 bps SDK channel ~2x. The fee base must be
 -- the SUM of (value_usd * actual_bps) per trade, not (volume * a constant).
 --
--- NULL = unknown (historical rows, or an order with no readable volumeBps, e.g.
--- the legacy price-improvement shape). Accrual treats NULL as the legacy retail
--- rate via COALESCE(volume_fee_bps, 10), so historical accrual is unchanged.
+-- Three states (see src/db/schema.ts): N (1..10) = actual rate; 0 = examined, NO
+-- settled Ophis Volume fee (capped / surplus / price-improvement / wrong recipient)
+-- -> credited at zero; NULL = unknown (a pre-per-trade historical row or unparseable
+-- appData) -> accrual COALESCEs to the legacy retail rate, leaving historical
+-- accrual unchanged. 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, 10) keeps
+-- a 0 as 0 (no credit) but maps NULL to retail.
 ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume_fee_bps INTEGER;

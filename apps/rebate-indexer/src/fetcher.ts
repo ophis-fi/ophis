@@ -67,11 +67,21 @@ export interface PendingTrade {
  * [1, retail] (worst case = the legacy flat-retail assumption, never higher) and
  * only an entry paying the OPHIS recipient counts (a decoy entry is ignored).
  *
- * `partnerFee` may be a single object or an array (CoW allows multiple). When no
- * Ophis-recipient entry carries a usable Volume rate, returns null and accrual
- * COALESCEs to the retail rate — the same as the pre-per-trade behaviour.
+ * `partnerFee` may be a single object or an array (CoW allows multiple).
+ *
+ * RETURN VALUE distinguishes "examined" from "unknown" — they must NOT collapse,
+ * because accrual/dashboard SQL applies COALESCE(volume_fee_bps, GROSS_FEE_BPS) and
+ * would credit an unknown (NULL) at the retail default:
+ *   - a usable rate N (1..retail) when a settled Ophis flat Volume fee is found;
+ *   - 0 when the appData was examined and carries NO settled Ophis flat Volume fee
+ *     (capped / surplus / price-improvement / both-aliases / non-Ophis recipient /
+ *     absent). 0 is non-NULL, so COALESCE keeps it 0 and the trade is credited at
+ *     ZERO — not the retail default. This is the fix for { volumeBps: 5,
+ *     maxVolumeBps: 50 } being credited at 10 instead of 0.
+ * The caller reserves NULL for the genuinely UNKNOWN case (appData unparseable, or
+ * a pre-per-trade historical row), which COALESCEs to the retail rate.
  */
-function readVolumeFeeBps(meta: unknown): number | null {
+function readVolumeFeeBps(meta: unknown): number {
   const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const entries = Array.isArray(pf) ? pf : [pf];
   for (const e of entries) {
@@ -105,7 +115,9 @@ function readVolumeFeeBps(meta: unknown): number | null {
       return Math.min(raw, GROSS_FEE_BPS);
     }
   }
-  return null;
+  // Examined: no settled Ophis flat Volume fee on this order -> credit ZERO (NOT
+  // the retail default that a NULL/unknown would COALESCE to).
+  return 0;
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
@@ -174,7 +186,9 @@ export async function fetchChainTrades(
       try {
         const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
         appCode = meta?.appCode;
-        // Per-trade gross fee rate for fee-accurate accrual (clamped to [1, retail]).
+        // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no
+        // settled Ophis Volume fee. Stays NULL only on a parse failure below
+        // (unknown -> retail default at accrual).
         volumeFeeBps = readVolumeFeeBps(meta);
         // Affiliate attribution: an order may carry metadata.ophisReferrer.code.
         // appData is attacker-controllable, so keep the code ONLY if it matches

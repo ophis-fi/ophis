@@ -146,10 +146,10 @@ describe('fetcher.fetchChainTrades', () => {
         case uids.surplusNotVolume: return withFee(uid, { surplusBps: 10, maxVolumeBps: 50, bps: 99, recipient: REC });
         case uids.piNotVolume: return withFee(uid, { priceImprovementBps: 25, maxVolumeBps: 50, bps: 99, recipient: REC });
         // Capped { bps, maxVolumeBps } / { volumeBps, maxVolumeBps } are NOT flat Volume
-        // fees (the backend Errs on them) -> must not set a fee base -> null.
+        // fees (the backend Errs on them) -> credit zero (0), not the retail default.
         case uids.cappedBps: return withFee(uid, { bps: 5, maxVolumeBps: 50, recipient: REC });
         case uids.cappedVolumeBps: return withFee(uid, { volumeBps: 5, maxVolumeBps: 50, recipient: REC });
-        // Both volumeBps AND legacy bps present -> matches no backend Volume arm -> null.
+        // Both volumeBps AND legacy bps present -> matches no backend Volume arm -> 0.
         case uids.bothAliases: return withFee(uid, { volumeBps: 5, bps: 10, recipient: REC });
         default: return sampleOrder(uid, owner, 'ophis');
       }
@@ -162,16 +162,18 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.retail]).toBe(10);
     expect(byUid[uids.stable]).toBe(1);
     expect(byUid[uids.inflated]).toBe(10); // clamped to the retail ceiling: can't inflate the rebate base
-    expect(byUid[uids.absent]).toBeNull();
     expect(byUid[uids.arr]).toBe(5);
-    expect(byUid[uids.zero]).toBeNull();
     expect(byUid[uids.decoy]).toBe(5); // decoy entry ignored; only the Ophis-recipient fee counts
-    expect(byUid[uids.wrongRecipient]).toBeNull(); // fee not to Ophis -> not counted
     expect(byUid[uids.legacyBps]).toBe(5); // legacy { bps } Volume shape read
-    expect(byUid[uids.surplusNotVolume]).toBeNull(); // surplus policy: bps fallback suppressed
-    expect(byUid[uids.piNotVolume]).toBeNull(); // price-improvement policy: bps fallback suppressed
-    expect(byUid[uids.cappedBps]).toBeNull(); // { bps, maxVolumeBps } is not a flat Volume fee
-    expect(byUid[uids.cappedVolumeBps]).toBeNull(); // { volumeBps, maxVolumeBps } is not a flat Volume fee
-    expect(byUid[uids.bothAliases]).toBeNull(); // { volumeBps, bps } matches no backend Volume arm
+    // Examined but NO settled Ophis flat Volume fee -> 0 (credit zero), NOT null
+    // (which would COALESCE to the retail default and over-credit).
+    expect(byUid[uids.absent]).toBe(0); // Ophis recipient but no volumeBps/bps
+    expect(byUid[uids.zero]).toBe(0); // volumeBps:0 (< 1)
+    expect(byUid[uids.wrongRecipient]).toBe(0); // fee not to Ophis
+    expect(byUid[uids.surplusNotVolume]).toBe(0); // surplus policy, not a Volume fee
+    expect(byUid[uids.piNotVolume]).toBe(0); // price-improvement policy, not a Volume fee
+    expect(byUid[uids.cappedBps]).toBe(0); // { bps, maxVolumeBps } is not a flat Volume fee
+    expect(byUid[uids.cappedVolumeBps]).toBe(0); // { volumeBps, maxVolumeBps } is not a flat Volume fee
+    expect(byUid[uids.bothAliases]).toBe(0); // { volumeBps, bps } matches no backend Volume arm
   });
 });
