@@ -81,7 +81,7 @@ New module tree `apps/rebate-indexer/src/scan/`:
 | `sources/localDb.ts` | OP/self-hosted source: `docker exec <container> psql` join `trades→orders→app_data`, filter `appCode∈{ophis,greg}` and window → `Swap[]`. | docker, psql |
 | `sources/onchain.ts` | Hosted source: chunked `getLogs(Trade)` (≤2k blocks/call, retry+backoff) → viem `decodeEventLog` → dedup `orderUid` → rate-limited `getOrder` resolve → keep Ophis appCodes, window-filter by `creationDate` → `Swap[]`. | viem, `cow/client.ts` |
 | `enrich.ts` | Token `symbol`/`decimals` (token-list first, on-chain `erc20` fallback) + `notionalUsd` via `pricer.ts` `nativePrice`. | `pricer.ts`, `cow/client.ts` |
-| `report.ts` | Terminal table, JSON artifact `scan-<iso>.json`, Telegram summary string. | `telegram/alerter.ts` |
+| `report.ts` | Terminal table, JSON artifact (written **out-of-repo**, default `~/.ophis/scans/scan-<iso>.json`; `--json <path>` to override), Telegram summary string. | `telegram/alerter.ts` |
 | `cli.ts` (extend) | New subcommand: `pnpm cli scan --since 48h [--chains a,b] [--telegram] [--json <path>]`. | all of the above |
 | `cache.ts` | Persistent `orderUid → appCode\|null` cache (small JSON/sqlite file) so re-runs over overlapping windows skip re-resolving. | fs |
 
@@ -145,6 +145,7 @@ hosted-chain API volume by ~100×. Add only if resolve-every-fill proves too slo
 - Telegram: reuse `telegram/alerter.ts` `notify()`; `TELEGRAM_BOT_TOKEN` from Keychain `ophis-telegram-bot`,
   `TELEGRAM_CHAT_ID=735726338` (Clement DM). Secrets are read into env at process start, never echoed.
 - OP/self-hosted DB: `docker exec optimism-mainnet-db-1 psql -U ophis -d ophis` (runs on the Mac mini where docker lives).
+- Output files (JSON artifact + `orderUid→appCode` cache) default to `~/.ophis/` — **out-of-repo** so trader addresses never land in the public repo (see §11.1).
 
 ## 11. Security considerations
 
@@ -154,6 +155,14 @@ hosted-chain API volume by ~100×. Add only if resolve-every-fill proves too slo
   from Keychain into the process environment only.
 - appData is attacker-controllable: `refCode` is grammar-validated (`/^[a-z0-9_-]{3,64}$/`) exactly as
   the indexer does; `appCode` is checked against the fixed `APP_CODES` allowlist.
+
+### 11.1 Exposure & visibility (repo is PUBLIC: `ophis-fi/ophis`)
+
+| Axis | Exposed? | Why |
+|---|---|---|
+| **Runtime / network** | **No.** | The scan is a manual CLI command in `cli.ts` (a `process.argv` dispatcher, no network listener) and is **not** imported by the deployed entrypoint (`index.ts` → `startApi()`/cron). It registers zero HTTP routes, so it is unreachable via `rebates.ophis.fi`. Only a shell on the Mac mini (or SSH to the VM) can invoke it. |
+| **Source code** | **Public once pushed/merged.** | The module + this spec become world-readable on GitHub. Safe to open-source: it reads only public on-chain + public CoW data, holds no secrets, and the indexer's owner-scoping gap it closes is already inferable from existing public `fetcher.ts` comments. (Placement decision: keep in the public repo, inside the indexer.) |
+| **Output data** | **Private — must stay so.** | Terminal is local; Telegram DMs only chat `735726338`. The JSON artifact + the `orderUid→appCode` cache contain trader addresses and **must be written out-of-repo** (default under `~/.ophis/`), never inside the repo tree. Defense-in-depth: also add a `.scans/` ignore entry so a stray `--json` inside the tree can't be committed. |
 
 ## 12. Testing (vitest, TDD)
 
