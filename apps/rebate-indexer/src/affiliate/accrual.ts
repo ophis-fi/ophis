@@ -90,7 +90,10 @@ export async function buildAffiliateReferrers(
           WHERE rc.code = t.appdata_ref_code AND rc.active AND rc.referrer_wallet <> t.wallet
         )
       )
-    GROUP BY r.referrer_wallet, t.chain_id, COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+    -- Group by the gross_bps OUTPUT ALIAS, not a second COALESCE(...) literal: the
+    -- sql tag binds each interpolation as a distinct parameter, so repeating the
+    -- COALESCE here would be a different expression than the SELECT (Postgres 42803).
+    GROUP BY r.referrer_wallet, t.chain_id, gross_bps
   `;
 
   // appData attribution: trades whose appData carries an ACTIVE referral code are
@@ -115,7 +118,7 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.value_usd IS NOT NULL
       AND rc.referrer_wallet <> t.wallet
-    GROUP BY rc.referrer_wallet, t.chain_id, COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+    GROUP BY rc.referrer_wallet, t.chain_id, gross_bps
   `;
 
   // referrer -> "chainId:grossBps" -> bucket. Both result sets are summed in; they
