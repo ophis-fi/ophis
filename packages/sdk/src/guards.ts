@@ -39,3 +39,18 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 /** True for the zero address. CoW treats a zero/absent `receiver` as "send to the order owner". */
 export const isZeroAddress = (value: string): boolean => addressesEqual(value, ZERO_ADDRESS);
+
+/** Format-only bytes32 check (0x + 64 hex chars), e.g. an appData keccak hash. */
+export const isBytes32 = (value: unknown): value is `0x${string}` =>
+  typeof value === 'string' && /^0x[0-9a-fA-F]{64}$/.test(value);
+
+/**
+ * Asserts `value` is a 0x-prefixed 32-byte hex string; throws otherwise. Use to
+ * catch the common mistake of passing the full appData JSON (or a truncated
+ * hash) where the bytes32 appData hash is expected.
+ */
+export function assertBytes32(value: unknown, label = 'value'): asserts value is `0x${string}` {
+  if (!isBytes32(value)) {
+    throw new TypeError(`Ophis: ${label} must be a 0x-prefixed 32-byte hex string (bytes32), received ${String(value)}.`);
+  }
+}
