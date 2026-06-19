@@ -110,3 +110,64 @@ export async function classifyFills(
 
   return { swaps, ophisFound: swaps.length, unresolved };
 }
+
+// append: live chain driver
+import type { ChainConfig, ScanResult } from '../types.js';
+import { blockAtTimestamp, type BlockClient } from '../window.js';
+
+export interface LogClient extends BlockClient {
+  getLogs(a: {
+    address: `0x${string}`;
+    event: typeof TRADE_EVENT;
+    fromBlock: bigint;
+    toBlock: bigint;
+  }): Promise<DecodedTradeLog[]>;
+}
+
+const DEFAULT_CHUNK = 2_000n;
+const MIN_CHUNK = 100n;
+
+export async function collectTradeLogs(
+  client: LogClient,
+  fromBlock: bigint,
+  toBlock: bigint,
+  chunk: bigint = DEFAULT_CHUNK,
+): Promise<DecodedTradeLog[]> {
+  const out: DecodedTradeLog[] = [];
+  let start = fromBlock;
+  let size = chunk;
+  while (start <= toBlock) {
+    const end = start + size - 1n > toBlock ? toBlock : start + size - 1n;
+    try {
+      const logs = await client.getLogs({ address: SETTLEMENT_ADDRESS, event: TRADE_EVENT, fromBlock: start, toBlock: end });
+      out.push(...logs);
+      start = end + 1n;
+      if (size < chunk) size = chunk; // recover chunk size after a successful smaller window
+    } catch (err) {
+      if (size <= MIN_CHUNK) throw err; // genuinely failing, not a range/size limit
+      size = size / 2n > MIN_CHUNK ? size / 2n : MIN_CHUNK;
+    }
+  }
+  return out;
+}
+
+export async function scanHostedChain(
+  cfg: ChainConfig,
+  t0Sec: number,
+  deps: { client: LogClient } & ClassifyDeps,
+): Promise<ScanResult> {
+  const base: ScanResult['coverage'] = {
+    chainId: cfg.chainId, chainName: cfg.name, status: 'ok', fillsScanned: 0, ophisFound: 0, unresolved: 0,
+  };
+  try {
+    const fromBlock = await blockAtTimestamp(deps.client, t0Sec);
+    const head = await deps.client.getBlockNumber();
+    if (fromBlock > head) return { swaps: [], coverage: base };
+    const logs = await collectTradeLogs(deps.client, fromBlock, head);
+    const fills = fillsFromLogs(logs);
+    const { swaps, ophisFound, unresolved } = await classifyFills(cfg.chainId, cfg.name, fills, t0Sec, deps);
+    return { swaps, coverage: { ...base, fillsScanned: fills.length, ophisFound, unresolved } };
+  } catch (err) {
+    return { swaps: [], coverage: { ...base, status: 'degraded', error: err instanceof Error ? err.message : String(err) } };
+  }
+}

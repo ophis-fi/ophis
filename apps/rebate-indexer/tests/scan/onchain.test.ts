@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fillsFromLogs, classifyFills, type DecodedTradeLog } from '../../src/scan/sources/onchain.js';
+import { collectTradeLogs, type LogClient } from '../../src/scan/sources/onchain.js';
 import { CowOrder } from '../../src/cow/types.js';
 
 describe('CowOrder schema', () => {
@@ -87,5 +88,34 @@ describe('classifyFills', () => {
     expect(out.unresolved).toBe(1);
     expect(out.swaps).toHaveLength(0);
     expect(out.ophisFound).toBe(0);
+  });
+});
+
+describe('collectTradeLogs', () => {
+  it('chunks the block range and concatenates', async () => {
+    const calls: Array<[bigint, bigint]> = [];
+    const client = {
+      getBlockNumber: async () => 0n,
+      getBlock: async () => ({ timestamp: 0n }),
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        calls.push([fromBlock, toBlock]);
+        return [];
+      },
+    } as unknown as LogClient;
+    await collectTradeLogs(client, 0n, 4500n, 2000n);
+    expect(calls).toEqual([[0n, 1999n], [2000n, 3999n], [4000n, 4500n]]);
+  });
+
+  it('halves the chunk and retries on a getLogs error', async () => {
+    let attempts = 0;
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        attempts += 1;
+        if (toBlock - fromBlock > 500n) throw new Error('query returned more than 10000 results');
+        return [];
+      },
+    } as unknown as LogClient;
+    await collectTradeLogs(client, 0n, 1000n, 2000n);
+    expect(attempts).toBeGreaterThan(1); // it backed off into smaller windows
   });
 });
