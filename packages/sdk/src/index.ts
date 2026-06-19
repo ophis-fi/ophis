@@ -71,3 +71,17 @@ export {
   type EnrollOphisTraderOptions,
   type OphisOrderCreationOptions,
 } from './flow.js';
+
+export {
+  OPHIS_ETHFLOW_ADDRESSES,
+  isOphisEthFlowChain,
+  getOphisEthFlowAddress,
+  buildOphisEthFlowOrder,
+  ethFlowOrderToTuple,
+  ETHFLOW_CREATE_ORDER_ABI,
+  ETHFLOW_CREATE_ORDER_ABI_HUMAN,
+  type EthFlowOrderData,
+  type EthFlowOrderTuple,
+  type OphisEthFlowParams,
+  type OphisEthFlowOrder,
+} from './ethflow.js';
