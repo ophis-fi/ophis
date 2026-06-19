@@ -41,7 +41,8 @@ domain, the receiver pin, and the `sendOrder` wire shape. **The same code works 
 every served chain** because the helpers branch on `chainId` internally.
 
 ```ts
-import { OrderBookApi, MetadataApi, SigningScheme, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+import { OrderBookApi, MetadataApi, SigningScheme, SupportedChainId, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+import type { OrderCreation } from '@cowprotocol/cow-sdk';
 import { keccak256, toUtf8Bytes } from 'ethers';
 import {
   enrollOphisTrader,
@@ -52,15 +53,20 @@ import {
   getOphisVaultRelayer,
 } from '@ophis/sdk';
 
-// `owner` is the order owner + signer (your vault Safe, or a connected user EOA).
+// `owner` is the order owner. This guide signs with a smart-contract wallet (a
+// Safe via EIP-1271). For a connected EOA signer, see the note after the snippet.
+const signingScheme = SigningScheme.EIP1271; // SigningScheme.EIP712 for an EOA (see note)
 
 // 0. Register the wallet with the rebate indexer once, on wallet-connect. Without
 //    this the indexer never fetches its trades and the rebate never accrues.
 await enrollOphisTrader(owner);
 
-// 1. First sell of a token: approve it to the correct Vault Relayer. On Optimism
+// 1. One-time per sell token: approve it to the correct Vault Relayer. On Optimism
 //    getOphisVaultRelayer returns the Ophis relayer, NOT cow-sdk's canonical one.
-await sellToken.approve(getOphisVaultRelayer(chainId), amount); // one-time per token
+//    The approval must be sent BY the order owner: for a Safe owner submit it as a
+//    Safe transaction. Approving from a connected EOA sets the EOA's allowance, not
+//    the Safe's, so the relayer cannot pull the Safe's token and the first sell fails.
+await sellTokenAsOwner.approve(getOphisVaultRelayer(chainId), amount); // owner-executed, one-time per token
 
 // 2. appData: appCode 'ophis' + the partner fee + your referral code in one call.
 const doc = await new MetadataApi().generateAppDataDoc(
@@ -69,22 +75,27 @@ const doc = await new MetadataApi().generateAppDataDoc(
 const fullAppData = await stringifyDeterministic(doc); // never JSON.stringify
 const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32
 
-// 3. Build your quoted order, pin the receiver to the owner, sign appData = the hash.
+// 3. Build your quoted order, pin the receiver to the owner, sign appData = the hash
+//    with the scheme that matches the signer.
 const order = { ...quote, receiver: owner, appData: appDataHash };
-const signature = await signOrder(order, getOphisOrderDomain(chainId)); // EIP-1271 (Safe) or EIP-712 (EOA)
+const signature = await signOrder(order, getOphisOrderDomain(chainId), signingScheme);
 
-// 4. Submit against the right host; the wire shape (full appData string + appDataHash)
-//    and the receiver drain-guard are handled for you.
-const orderBookApi = new OrderBookApi({ chainId, baseUrls: { [chainId]: getOphisOrderbookUrl(chainId) } });
-await orderBookApi.sendOrder(buildOphisOrderCreation({
-  order,
-  owner,
-  fullAppData,
-  appDataHash,
-  signature,
-  signingScheme: SigningScheme.EIP1271, // SigningScheme.EIP712 for an EOA signer
-}));
+// 4. Submit against the right host. Optimism (10) is Ophis self-hosted and not in
+//    cow-sdk's SupportedChainId, so cast the chainId; the orderbook accepts it.
+const orderBookApi = new OrderBookApi({
+  chainId: chainId as SupportedChainId,
+  baseUrls: { [chainId]: getOphisOrderbookUrl(chainId) } as Record<SupportedChainId, string>,
+});
+// buildOphisOrderCreation is dependency-free, so it returns a plain object; cast it to
+// cow-sdk's OrderCreation for sendOrder (the wire shape already matches at runtime).
+await orderBookApi.sendOrder(
+  buildOphisOrderCreation({ order, owner, fullAppData, appDataHash, signature, signingScheme }) as unknown as OrderCreation,
+);
 ```
+
+For a **connected EOA** signer instead of a Safe: set `signingScheme =
+SigningScheme.EIP712`, produce a normal EIP-712 signature, and send the token
+approval from the EOA itself (not a Safe transaction).
 
 That is the whole integration. The sections below explain what each helper does
 per chain (Optimism is self-hosted, the others are CoW-hosted) and the lower-level
@@ -111,14 +122,16 @@ Optimism you also override the host and the settlement contract.
 ### 1. Point the orderbook at the Ophis host
 
 ```ts
-import { OrderBookApi } from '@cowprotocol/cow-sdk';
+import { OrderBookApi, SupportedChainId } from '@cowprotocol/cow-sdk';
 import { getOphisOrderbookUrl } from '@ophis/sdk';
 
 const orderBookApi = new OrderBookApi({
-  chainId: 10,
+  // Optimism (10) is Ophis self-hosted and not in cow-sdk's SupportedChainId, so
+  // cast it; the orderbook accepts it at runtime.
+  chainId: 10 as SupportedChainId,
   // optimism-mainnet.ophis.fi, NOT api.cow.fi. The CoW host does not serve
   // Ophis on Optimism: it would bypass our solver and charge no Ophis fee.
-  baseUrls: { 10: getOphisOrderbookUrl(10) },
+  baseUrls: { 10: getOphisOrderbookUrl(10) } as Record<SupportedChainId, string>,
 });
 ```
 
