@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { CACHED_CLASSES } from './types.js';
 import type { CachedClass, ScanCache } from './types.js';
 
 export function defaultCachePath(): string {
@@ -13,7 +14,9 @@ export async function loadCache(path: string = defaultCachePath()): Promise<Scan
     const raw = await readFile(path, 'utf8');
     const obj = JSON.parse(raw) as Record<string, CachedClass>;
     for (const [k, v] of Object.entries(obj)) {
-      if (v === 'ophis' || v === 'greg' || v === 'none') map.set(k.toLowerCase(), v);
+      // Validate against CACHED_CLASSES (single source of truth in types.ts) so a
+      // future APP_CODES addition doesn't silently drop valid cached entries.
+      if ((CACHED_CLASSES as readonly string[]).includes(v)) map.set(k.toLowerCase(), v as CachedClass);
     }
   } catch {
     // missing or corrupt -> start empty (the scan re-resolves; cache is an optimization)

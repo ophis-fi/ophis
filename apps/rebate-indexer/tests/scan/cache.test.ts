@@ -18,6 +18,16 @@ describe('loadCache', () => {
     expect(c2.get('0xbbb')).toBe('none');
     expect(c2.get('0xccc')).toBeUndefined();
   });
+  it('normalises keys to lower-case across get/set/save', async () => {
+    const p = tmp();
+    const c = await loadCache(p);
+    c.set('0xAAA', 'ophis');
+    expect(c.get('0xaaa')).toBe('ophis');
+    expect(c.get('0xAAA')).toBe('ophis');
+    await c.save();
+    const c2 = await loadCache(p);
+    expect(c2.get('0xAAA')).toBe('ophis');
+  });
   it('treats a missing file as empty', async () => {
     const c = await loadCache(join(tmpdir(), 'does-not-exist-12345', 'c.json'));
     expect(c.get('0xaaa')).toBeUndefined();
