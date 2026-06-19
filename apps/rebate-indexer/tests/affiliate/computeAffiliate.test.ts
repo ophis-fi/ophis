@@ -7,7 +7,7 @@ import {
 import {
   OPTIMISM_CHAIN_ID,
   estimateEarningsUsd,
-  estimateEarningsFromFeeBaseUsd,
+  estimateEarningsFromNetFeeUsd,
   GROSS_FEE_BPS,
   type AffiliateKind,
 } from '../../src/affiliate/rates.js';
@@ -188,33 +188,40 @@ describe('estimateEarningsUsd — dashboard current-cycle UPPER BOUND (assumes r
   });
 });
 
-describe('estimateEarningsFromFeeBaseUsd — fee-aware dashboard estimate (matches the payout)', () => {
-  // feeBase = volume * bps / 1e4.
-  const feeBase = (volumeUsd: number, bps: number) => (volumeUsd * bps) / 10_000;
+describe('estimateEarningsFromNetFeeUsd — fee-aware dashboard estimate (matches the payout)', () => {
+  // net fee = volume * bps / 1e4 * keepFraction; per-chain keep is applied upstream
+  // (SQL): hosted keeps 75%, Optimism 100%.
+  const HOSTED_KEEP = 0.75;
+  const OP_KEEP = 1.0;
+  const net = (volumeUsd: number, bps: number, keep: number) => ((volumeUsd * bps) / 10_000) * keep;
 
-  it('SDK 5 bps partner $5M -> $225 (not the $450 retail upper bound)', () => {
-    expect(estimateEarningsFromFeeBaseUsd(feeBase(5_000_000, 5), 5_000_000, 'partner')).toBeCloseTo(225, 6);
+  it('SDK 5 bps partner $5M hosted -> $225 (not the $450 retail upper bound)', () => {
+    expect(estimateEarningsFromNetFeeUsd(net(5_000_000, 5, HOSTED_KEEP), 5_000_000, 'partner')).toBeCloseTo(225, 6);
   });
 
-  it('retail 10 bps regular $1M -> $60 (matches the all-retail accrual)', () => {
-    expect(estimateEarningsFromFeeBaseUsd(feeBase(1_000_000, 10), 1_000_000, 'regular')).toBeCloseTo(60, 6);
+  it('retail 10 bps regular $1M hosted -> $60 (matches the all-retail accrual)', () => {
+    expect(estimateEarningsFromNetFeeUsd(net(1_000_000, 10, HOSTED_KEEP), 1_000_000, 'regular')).toBeCloseTo(60, 6);
   });
 
-  it('stable 1 bp regular $1M -> $6', () => {
-    expect(estimateEarningsFromFeeBaseUsd(feeBase(1_000_000, 1), 1_000_000, 'regular')).toBeCloseTo(6, 6);
+  it('stable 1 bp regular $1M hosted -> $6', () => {
+    expect(estimateEarningsFromNetFeeUsd(net(1_000_000, 1, HOSTED_KEEP), 1_000_000, 'regular')).toBeCloseTo(6, 6);
   });
 
-  it('regular VOLUME cap at $1M applies proportionally: $5M @10bps -> $60, not $300', () => {
-    expect(estimateEarningsFromFeeBaseUsd(feeBase(5_000_000, 10), 5_000_000, 'regular')).toBeCloseTo(60, 6);
+  it('Optimism keeps 100%: 5 bps partner $5M on OP -> $300 (vs $225 hosted)', () => {
+    expect(estimateEarningsFromNetFeeUsd(net(5_000_000, 5, OP_KEEP), 5_000_000, 'partner')).toBeCloseTo(300, 6);
   });
 
-  it('partner uncapped: $5M @10bps -> $450', () => {
-    expect(estimateEarningsFromFeeBaseUsd(feeBase(5_000_000, 10), 5_000_000, 'partner')).toBeCloseTo(450, 6);
+  it('regular VOLUME cap at $1M applies proportionally: $5M @10bps hosted -> $60, not $300', () => {
+    expect(estimateEarningsFromNetFeeUsd(net(5_000_000, 10, HOSTED_KEEP), 5_000_000, 'regular')).toBeCloseTo(60, 6);
   });
 
-  it('zero / negative / non-finite fee base -> 0', () => {
-    expect(estimateEarningsFromFeeBaseUsd(0, 1_000_000, 'partner')).toBe(0);
-    expect(estimateEarningsFromFeeBaseUsd(-1, 1_000_000, 'partner')).toBe(0);
-    expect(estimateEarningsFromFeeBaseUsd(Number.NaN, 1_000_000, 'partner')).toBe(0);
+  it('partner uncapped: $5M @10bps hosted -> $450', () => {
+    expect(estimateEarningsFromNetFeeUsd(net(5_000_000, 10, HOSTED_KEEP), 5_000_000, 'partner')).toBeCloseTo(450, 6);
+  });
+
+  it('zero / negative / non-finite net fee -> 0', () => {
+    expect(estimateEarningsFromNetFeeUsd(0, 1_000_000, 'partner')).toBe(0);
+    expect(estimateEarningsFromNetFeeUsd(-1, 1_000_000, 'partner')).toBe(0);
+    expect(estimateEarningsFromNetFeeUsd(Number.NaN, 1_000_000, 'partner')).toBe(0);
   });
 });

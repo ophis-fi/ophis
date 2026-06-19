@@ -56,14 +56,16 @@ export interface PendingTrade {
  *      flat-retail assumption, so the worst case equals prior behaviour and can
  *      never OVER-credit beyond it; an honest 5 bps SDK / 1 bp stable pair credits
  *      its real, lower rate.
- * Reads the VOLUME policy in either accepted shape: the CIP-75 `{ volumeBps }` OR
- * the legacy `{ bps }` (no surplusBps / priceImprovementBps). The OP backend's
- * app_data.rs deserializer maps BOTH to FeePolicy::Volume (a bare `bps` with no
- * other policy field is a Volume fee), so an SDK/widget/integrator order using
- * `{ bps: 5, recipient: OphisSafe }` must be read as 5 bps, not dropped to null
- * and over-credited at the retail default. A Surplus `{ surplusBps, ... }` or
- * price-improvement `{ priceImprovementBps, ... }` policy is NOT a volume fee, so
- * its presence suppresses the `bps` fallback.
+ * Reads the flat VOLUME policy in either accepted shape: CIP-75 `{ volumeBps }` OR
+ * the legacy `{ bps }`. Mirrors the OP backend's app_data.rs FeePolicyDeserializer
+ * EXACTLY: a fee is FeePolicy::Volume only when surplusBps, priceImprovementBps AND
+ * maxVolumeBps are ALL absent (a capped `{ bps, maxVolumeBps }` or a surplus /
+ * price-improvement policy is NOT settled as a flat Volume fee — the backend Errs
+ * on it). So an SDK/widget order `{ bps: 5, recipient: OphisSafe }` is read as 5,
+ * but `{ bps: 5, maxVolumeBps: 50 }` is NOT, since that fee base was never
+ * collected. appData is attacker-controllable, so the value is also CLAMPED to
+ * [1, retail] (worst case = the legacy flat-retail assumption, never higher) and
+ * only an entry paying the OPHIS recipient counts (a decoy entry is ignored).
  *
  * `partnerFee` may be a single object or an array (CoW allows multiple). When no
  * Ophis-recipient entry carries a usable Volume rate, returns null and accrual
@@ -78,21 +80,27 @@ function readVolumeFeeBps(meta: unknown): number | null {
       bps?: unknown;
       surplusBps?: unknown;
       priceImprovementBps?: unknown;
+      maxVolumeBps?: unknown;
       recipient?: unknown;
     };
     if (typeof entry?.recipient !== 'string' || entry.recipient.toLowerCase() !== OPHIS_FEE_RECIPIENT) {
       continue; // only the fee that actually pays the Ophis recipient counts
     }
-    // CIP-75 `volumeBps`, else the legacy `{ bps }` Volume shape (only when this is
-    // NOT a surplus / price-improvement policy — mirrors the backend deserializer).
-    let raw = entry.volumeBps;
+    // Not a flat Volume policy (surplus / price-improvement / capped) -> the backend
+    // does not settle a flat Volume fee for it, so it must not set a fee base.
     if (
-      raw === undefined &&
-      entry.surplusBps === undefined &&
-      entry.priceImprovementBps === undefined
+      entry.surplusBps !== undefined ||
+      entry.priceImprovementBps !== undefined ||
+      entry.maxVolumeBps !== undefined ||
+      // The backend's Volume arms are EITHER { volumeBps } XOR legacy { bps }: the
+      // volumeBps arm requires bps absent and vice versa. Both present matches no
+      // arm (the backend Errs), so it is not a settled Volume fee.
+      (entry.volumeBps !== undefined && entry.bps !== undefined)
     ) {
-      raw = entry.bps;
+      continue;
     }
+    // CIP-75 `volumeBps`, else the legacy `{ bps }` Volume shape.
+    const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
     if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
       return Math.min(raw, GROSS_FEE_BPS);
     }
