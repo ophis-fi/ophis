@@ -55,11 +55,13 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
 // partner rate. Decoupled from the backend floor (BACKEND_NON_STABLE_FLOOR_BPS).
 const OPHIS_FRONTEND_OP_VOLUME_BPS = 10
 // The OP self-hosted backend's MINIMUM non-stable Volume bps (mirrors
-// app_data.rs OPHIS_NON_STABLE_FLOOR_BPS = 4). Used ONLY as the cross-workspace
-// floor-invariant mirror (scripts/check-floor-invariant.sh), NOT the env bound:
-// partner integrations charge 5 bps (via @ophis/sdk) above this floor while
-// swap.ophis.fi keeps the 10 bps retail rate.
-const BACKEND_NON_STABLE_FLOOR_BPS = 4
+// app_data.rs OPHIS_NON_STABLE_FLOOR_BPS = 4). The cross-workspace floor-invariant
+// gate (scripts/check-floor-invariant.sh) greps this declaration to assert
+// floor(4) <= partner(5) <= retail(10). It is NOT the env bound: partner
+// integrations charge 5 bps (via @ophis/sdk) above this floor while swap.ophis.fi
+// keeps the 10 bps retail rate. Exported (not a bare local) so it documents the
+// mirrored backend floor for any consumer and is not flagged as an unused local.
+export const BACKEND_NON_STABLE_FLOOR_BPS = 4
 function readVolumeFeeBps(): number {
   // EXACT-STRING match against the retail rate, identical to the CI deploy guard's
   // byte compare (`[[ "$BPS" != "10" ]]` in cloudflare-deploy.yml). Using the raw
