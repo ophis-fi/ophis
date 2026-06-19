@@ -33,15 +33,33 @@ describe('parseLocalRows', () => {
 });
 
 describe('buildLocalQuery', () => {
-  it('filters by window and Ophis appCode', () => {
+  it('filters by window and Ophis appCode (case-insensitively)', () => {
     const q = buildLocalQuery('2026-06-17T00:00:00Z');
     expect(q).toContain("2026-06-17T00:00:00Z");
-    expect(q).toMatch(/appCode'\s*in\s*\('ophis','greg'\)/i);
+    // appCode is lower()-ed before the membership check so a capitalised "Ophis"
+    // on-chain appCode is still selected.
+    expect(q).toMatch(/lower\(.*->>'appCode'\)\s*in\s*\('ophis','greg'\)/i);
   });
-  it('aggregates tx_hash as max(encode(...)) not max(bytea) (no max(bytea) function in pg)', () => {
+  it('maps each trade to exactly ONE settlement via a LATERAL sub-select (no fan-out)', () => {
     const q = buildLocalQuery('2026-06-17T00:00:00Z');
-    expect(q).toContain('max(encode(s.tx_hash');
-    expect(q).not.toContain('encode(max(s.tx_hash');
+    // The fixed mapping: same block, settlement log_index AFTER the trade, first one.
+    expect(q).toMatch(/left join lateral/i);
+    expect(q).toContain('s.block_number = t.block_number');
+    expect(q).toContain('s.log_index > t.log_index');
+    expect(q).toMatch(/order by s\.log_index asc[\s\S]*limit 1/i);
+    // The old fan-out join (every trade x every settlement in the block) is gone.
+    expect(q).not.toMatch(/left join settlements\s+s\s+on\s+s\.block_number\s*=\s*t\.block_number/i);
+  });
+  it('windows on settlement time with a creation-time fallback (not creation_timestamp alone)', () => {
+    const q = buildLocalQuery('2026-06-17T00:00:00Z');
+    // Lower bound is on the settled time (settlement_executions.start_timestamp),
+    // falling back to creation_timestamp when settlement time is unavailable.
+    expect(q).toMatch(/coalesce\(stl\.settled_at,\s*o\.creation_timestamp\)\s*>=/i);
+    expect(q).toContain('settlement_executions');
+  });
+  it('falls the receiver back to the owner when orders.receiver is NULL', () => {
+    const q = buildLocalQuery('2026-06-17T00:00:00Z');
+    expect(q).toContain("encode(coalesce(o.receiver, o.owner),'hex')");
   });
 });
 

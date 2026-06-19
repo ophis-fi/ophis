@@ -15,6 +15,13 @@ describe('parseAppData', () => {
   it('rejects a non-Ophis appCode', () => {
     expect(parseAppData(fx('non-ophis-order.json')).appCode).toBeNull();
   });
+  it('matches appCode case-insensitively and canonicalises to lower-case', () => {
+    // The MCP server emits a capitalised "Ophis"; the scan must still recognise it.
+    expect(parseAppData('{"appCode":"Ophis"}').appCode).toBe('ophis');
+    expect(parseAppData('{"appCode":"OPHIS"}').appCode).toBe('ophis');
+    expect(parseAppData('{"appCode":"Greg"}').appCode).toBe('greg');
+    expect(parseAppData('{"appCode":"NotOphis"}').appCode).toBeNull();
+  });
   it('keeps a grammar-valid referral code, drops a bad one', () => {
     expect(parseAppData('{"appCode":"ophis","metadata":{"ophisReferrer":{"code":"Friend_01"}}}').refCode).toBe('friend_01');
     expect(parseAppData('{"appCode":"ophis","metadata":{"ophisReferrer":{"code":"a"}}}').refCode).toBeNull();

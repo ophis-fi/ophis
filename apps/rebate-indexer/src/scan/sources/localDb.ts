@@ -9,27 +9,54 @@ export type PsqlRunner = (container: string, sql: string) => Promise<string>;
 // The orderbook DB stores bytea columns; we hex-encode + prefix 0x in SQL. Join the
 // app_data document so we can filter on appCode without a second round-trip, and use
 // trades' executed amounts (summed across fills) for true settled volume.
+//
+// Trade -> settlement mapping (CoW orderbook schema): BOTH `trades` and
+// `settlements` are keyed by (block_number, log_index) and are reorg-safe event
+// rows. Within a settlement transaction the Settlement event is emitted AFTER its
+// Trade events, so a trade's settlement is the FIRST settlement in the SAME block
+// whose log_index is greater than the trade's. We map each trade to exactly that
+// one settlement via a LATERAL sub-select (this mirrors the upstream
+// crates/database/src/trades.rs SETTLEMENT_JOIN). The old
+// `left join settlements on s.block_number = t.block_number` fanned every trade
+// across every settlement in the block, multiplying sum(sell_amount)/sum(buy_amount)
+// by the settlement count and letting max(tx_hash) point at an unrelated settlement.
+//
+// Window: we filter on the SETTLEMENT time, not order creation. A limit/TWAP order
+// created before --since but settled inside the window must be counted. The
+// settlement timestamp comes from settlement_executions (joined by the settlement's
+// auction_id+solver); when it is unavailable we conservatively fall back to the
+// order's creation_timestamp (these are market orders that settle near-instantly,
+// so creation ~ settlement). Receiver: orders.receiver is NULL when the owner
+// receives the buy tokens, so we COALESCE to o.owner (the hosted path's
+// actual-recipient fallback).
 export function buildLocalQuery(t0Iso: string): string {
   return `
     select
-      to_char(o.creation_timestamp at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      to_char(max(coalesce(stl.settled_at, o.creation_timestamp)) at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'),
       '0x'||encode(o.uid,'hex'),
       '0x'||encode(o.owner,'hex'),
-      '0x'||encode(o.receiver,'hex'),
+      '0x'||encode(coalesce(o.receiver, o.owner),'hex'),
       '0x'||encode(o.sell_token,'hex'),
       '0x'||encode(o.buy_token,'hex'),
       sum(t.sell_amount)::text,
       sum(t.buy_amount)::text,
-      '0x'||max(encode(s.tx_hash,'hex')),
+      '0x'||max(stl.tx_hash_hex),
       convert_from(a.full_app_data,'UTF8')
     from trades t
       join orders o on o.uid = t.order_uid
       join app_data a on a.contract_app_data = o.app_data
-      left join settlements s on s.block_number = t.block_number
-    where o.creation_timestamp >= '${t0Iso}'::timestamptz
-      and convert_from(a.full_app_data,'UTF8')::jsonb->>'appCode' in ('ophis','greg')
+      left join lateral (
+        select encode(s.tx_hash,'hex') as tx_hash_hex, se.start_timestamp as settled_at
+        from settlements s
+        left join settlement_executions se on se.auction_id = s.auction_id and se.solver = s.solver
+        where s.block_number = t.block_number and s.log_index > t.log_index
+        order by s.log_index asc
+        limit 1
+      ) stl on true
+    where coalesce(stl.settled_at, o.creation_timestamp) >= '${t0Iso}'::timestamptz
+      and lower(convert_from(a.full_app_data,'UTF8')::jsonb->>'appCode') in ('ophis','greg')
     group by o.uid, o.creation_timestamp, o.owner, o.receiver, o.sell_token, o.buy_token, a.full_app_data
-    order by o.creation_timestamp desc;`;
+    order by max(coalesce(stl.settled_at, o.creation_timestamp)) desc;`;
 }
 
 export const dockerPsql: PsqlRunner = (container, sql) =>

@@ -34,9 +34,11 @@ const log = (orderUid: string, over: Partial<DecodedTradeLog['args']> = {}): Dec
 });
 
 describe('fillsFromLogs', () => {
-  it('dedups multiple fills of the same order', () => {
+  it('aggregates (sums) multiple in-window fills of the same order', () => {
     const fills = fillsFromLogs([log('0xuid1'), log('0xuid1'), log('0xuid2')]);
     expect(fills.map((f) => f.orderUid)).toEqual(['0xuid1', '0xuid2']);
+    expect(fills[0]!.sellAmount).toBe(82000000000000000n); // 2 x 41e15 summed
+    expect(fills[0]!.buyAmount).toBe(139854826n); // 2 x 69927413 summed
   });
 });
 
@@ -51,12 +53,17 @@ describe('classifyFills', () => {
   const nonOphis: CowOrder = { ...ophisOrder, uid: '0xuid2', fullAppData: fx('non-ophis-order.json') };
 
   const t0 = Math.floor(new Date('2026-06-17T00:00:00Z').getTime() / 1000);
+  // Every fixture log settles in block 100; we resolve that block to an in-window
+  // timestamp (later than t0) unless a test overrides the resolver.
+  const settledInWindow = t0 + 3600;
+  const okBlockTs = async (_b: bigint) => settledInWindow;
 
   it('keeps Ophis orders, drops non-Ophis, counts coverage', async () => {
     const cache = new Map<string, any>();
     const deps = {
       getOrder: async (_c: number, uid: `0x${string}`) => (uid === '0xuid1' ? ophisOrder : nonOphis),
       cache: { get: (u: string) => cache.get(u), set: (u: string, v: any) => cache.set(u, v), save: async () => {} },
+      getBlockTimestamp: okBlockTs,
     };
     const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1'), log('0xuid2')]), t0, deps);
     expect(out.ophisFound).toBe(1);
@@ -65,24 +72,106 @@ describe('classifyFills', () => {
     expect(out.swaps[0]!.appCode).toBe('ophis');
     expect(out.swaps[0]!.feeBps).toBe(10);
     expect(out.swaps[0]!.receiver).toBe('0x0494f503912c101bfd76b88e4f5d8a33de284d1a');
-    // negative-cached the non-Ophis uid
+    // tsUtc is the SETTLEMENT block time, not the order creationDate
+    expect(out.swaps[0]!.tsUtc).toBe(new Date(settledInWindow * 1000).toISOString());
+    // negative-cached the non-Ophis uid (its appData is a parseable object)
     expect(cache.get('0xuid2')).toBe('none');
   });
 
-  it('window-filters by creationDate', async () => {
-    const future = Math.floor(new Date('2026-06-19T00:00:00Z').getTime() / 1000);
+  it('recognises a capitalised "Ophis" appCode (case-insensitive)', async () => {
+    const capOrder = { ...ophisOrder, fullAppData: '{"appCode":"Ophis","metadata":{"partnerFee":{"volumeBps":10}}}' };
+    const deps = {
+      getOrder: async () => capOrder,
+      cache: { get: () => undefined, set: () => {}, save: async () => {} },
+      getBlockTimestamp: okBlockTs,
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.ophisFound).toBe(1);
+    expect(out.swaps[0]!.appCode).toBe('ophis'); // canonicalised to lower-case
+  });
+
+  it('reports the SUM of in-window fills, NOT the order lifetime executed total (TWAP straddle)', async () => {
+    // A TWAP order whose lifetime executedSellAmount (123e15) is larger than its
+    // in-window settlement: only TWO fills are in the fetched (window-bounded) logs.
+    // We must report the sum of those in-window fills (2 x 41e15), not the lifetime
+    // total, or an order that started filling before t0 over-pays.
+    const twapOrder = { ...ophisOrder, executedSellAmount: '123000000000000000', executedBuyAmount: '209782239' };
+    const deps = {
+      getOrder: async () => twapOrder,
+      cache: { get: () => undefined, set: () => {}, save: async () => {} },
+      getBlockTimestamp: okBlockTs,
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1'), log('0xuid1')]), t0, deps);
+    expect(out.swaps[0]!.sell.amount).toBe('82000000000000000'); // 2 in-window fills summed
+    expect(out.swaps[0]!.buy.amount).toBe('139854826');
+  });
+
+  it('reports a single in-window fill amount as-is', async () => {
     const deps = {
       getOrder: async () => ophisOrder,
       cache: { get: () => undefined, set: () => {}, save: async () => {} },
+      getBlockTimestamp: okBlockTs,
     };
-    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), future, deps);
-    expect(out.swaps).toHaveLength(0); // order is older than t0
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.swaps[0]!.sell.amount).toBe('41000000000000000');
+    expect(out.swaps[0]!.buy.amount).toBe('69927413');
+  });
+
+  it('window-filters by SETTLEMENT block time (not creationDate)', async () => {
+    // Order created at 2026-06-18 (well after t0) but its settlement block resolves
+    // BEFORE t0 -> dropped. (creationDate would have kept it; settlement time drops it.)
+    const deps = {
+      getOrder: async () => ophisOrder,
+      cache: { get: () => undefined, set: () => {}, save: async () => {} },
+      getBlockTimestamp: async () => t0 - 1,
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.swaps).toHaveLength(0);
+  });
+
+  it('counts (does NOT negative-cache) an order created before t0 but settled in-window', async () => {
+    // A limit order created long ago but settled now must be COUNTED. creationDate
+    // is before t0; settlement time is in-window.
+    const oldCreation = { ...ophisOrder, creationDate: '2025-01-01T00:00:00Z' };
+    const deps = {
+      getOrder: async () => oldCreation,
+      cache: { get: () => undefined, set: () => {}, save: async () => {} },
+      getBlockTimestamp: okBlockTs,
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.ophisFound).toBe(1);
+  });
+
+  it('does NOT negative-cache an order whose fullAppData is unresolved (null)', async () => {
+    const cache = new Map<string, any>();
+    const deps = {
+      getOrder: async () => ({ ...ophisOrder, fullAppData: null }),
+      cache: { get: (u: string) => cache.get(u), set: (u: string, v: any) => cache.set(u, v), save: async () => {} },
+      getBlockTimestamp: okBlockTs,
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.unresolved).toBe(1);          // retried next scan, not silently dropped
+    expect(out.swaps).toHaveLength(0);
+    expect(cache.get('0xuid1')).toBeUndefined(); // NOT poisoned
+  });
+
+  it('does NOT negative-cache an order whose fullAppData is unparsable', async () => {
+    const cache = new Map<string, any>();
+    const deps = {
+      getOrder: async () => ({ ...ophisOrder, fullAppData: '{not json' }),
+      cache: { get: (u: string) => cache.get(u), set: (u: string, v: any) => cache.set(u, v), save: async () => {} },
+      getBlockTimestamp: okBlockTs,
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.unresolved).toBe(1);
+    expect(cache.get('0xuid1')).toBeUndefined();
   });
 
   it('counts a fill as unresolved when getOrder throws', async () => {
     const deps = {
       getOrder: async () => { throw new Error('order aged out of CoW DB'); },
       cache: { get: () => undefined, set: () => {}, save: async () => {} },
+      getBlockTimestamp: okBlockTs,
     };
     const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
     expect(out.unresolved).toBe(1);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, statSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { loadCache } from '../../src/scan/cache.js';
 
 const tmp = () => join(mkdtempSync(join(tmpdir(), 'scan-')), 'c.json');
@@ -37,5 +37,15 @@ describe('loadCache', () => {
     writeFileSync(p, '{not json');
     const c = await loadCache(p);
     expect(c.get('0xaaa')).toBeUndefined();
+  });
+  it('writes the cache with owner-only (0600) permissions and leaves no temp file', async () => {
+    const p = tmp();
+    const c = await loadCache(p);
+    c.set('0xaaa', 'ophis');
+    await c.save();
+    // file is owner-only (mask off the type bits)
+    expect(statSync(p).mode & 0o777).toBe(0o600);
+    // the atomic rename leaves no .tmp turds behind in the target dir
+    expect(readdirSync(dirname(p)).filter((f) => f.endsWith('.tmp'))).toEqual([]);
   });
 });

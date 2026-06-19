@@ -19,9 +19,15 @@ export function parseAppData(fullAppData: string | null | undefined): AppDataInf
   } catch {
     return empty;
   }
+  // appCode is matched CASE-INSENSITIVELY: the Ophis MCP server emits a
+  // capitalised "Ophis" (see apps/mcp-server buildOphisAppData), while APP_CODES
+  // is canonical lower-case. We lower-case the on-chain value before the
+  // membership check and store the canonical lower-case code, so real Ophis
+  // fills are recognised (and not negative-cached as non-Ophis).
   const rawCode = (meta as { appCode?: unknown }).appCode;
-  const appCode = typeof rawCode === 'string' && (APP_CODES as readonly string[]).includes(rawCode)
-    ? (rawCode as AppCode)
+  const normCode = typeof rawCode === 'string' ? rawCode.toLowerCase() : null;
+  const appCode = normCode !== null && (APP_CODES as readonly string[]).includes(normCode)
+    ? (normCode as AppCode)
     : null;
 
   const metadata = (meta as { metadata?: Record<string, unknown> }).metadata ?? {};
