@@ -10,9 +10,10 @@ export const SCAN_CHAINS: readonly ChainConfig[] = [
 ];
 
 export function resolveRpcUrl(cfg: ChainConfig, apiKey: string): string {
-  if (cfg.kind !== 'rpc' || !cfg.alchemySubdomain) {
-    throw new Error(`chain ${cfg.name} is not an rpc chain`);
-  }
+  // ChainConfig is not a discriminated union, so kind:'rpc' does not statically
+  // guarantee alchemySubdomain. Check each independently for a precise message.
+  if (cfg.kind !== 'rpc') throw new Error(`chain ${cfg.name} is not an rpc chain`);
+  if (!cfg.alchemySubdomain) throw new Error(`rpc chain ${cfg.name} has no alchemySubdomain`);
   if (!apiKey) throw new Error('alchemy api key is empty');
   return `https://${cfg.alchemySubdomain}.g.alchemy.com/v2/${apiKey}`;
 }

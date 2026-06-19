@@ -12,7 +12,14 @@ describe('chains', () => {
   });
   it('builds an Alchemy URL without leaking the key into the host', () => {
     const eth = SCAN_CHAINS.find((c) => c.chainId === 1)!;
+    expect(eth).toBeDefined();
     expect(resolveRpcUrl(eth, 'SECRETKEY')).toBe('https://eth-mainnet.g.alchemy.com/v2/SECRETKEY');
+  });
+  it('resolveRpcUrl throws on a local-db chain and on an empty key', () => {
+    const op = SCAN_CHAINS.find((c) => c.chainId === 10)!;
+    const eth = SCAN_CHAINS.find((c) => c.chainId === 1)!;
+    expect(() => resolveRpcUrl(op, 'KEY')).toThrow();
+    expect(() => resolveRpcUrl(eth, '')).toThrow();
   });
   it('selectChains filters by name, defaults to all', () => {
     expect(selectChains(['ethereum']).map((c) => c.chainId)).toEqual([1]);
