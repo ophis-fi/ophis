@@ -121,12 +121,14 @@ impl ProtocolFees {
         // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
         // means every partner fee is an Ophis fee, and the token-pair floor
         // (enforced at order ingress and re-clamped here) is at most
-        // OPHIS_NON_STABLE_FLOOR_BPS. If the cap were configured below that floor,
-        // the cap would silently settle an allowlisted-recipient fee BELOW the
-        // floor on the eth-flow / on-chain path that skips ingress, reopening the
-        // bypass. Fail fast at startup rather than under-charge at settlement.
+        // OPHIS_DEFAULT_VOLUME_FEE_BPS, the 10 bps RETAIL rate the front-end emits.
+        // The cap must stay AT OR ABOVE the retail rate: a cap below it would
+        // silently cap a legitimate 10 bps retail order DOWN at settlement (and, a
+        // fortiori, could undercut the 4 bps floor on the eth-flow / on-chain path
+        // that skips ingress). Asserting cap >= retail covers both. Fail fast at
+        // startup rather than under-charge at settlement.
         let cap = config.max_partner_fee.get();
-        let floor_bps = app_data::OPHIS_NON_STABLE_FLOOR_BPS;
+        let floor_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
         let floor_factor = floor_bps as f64 / 10_000.0;
         assert!(
             cap >= floor_factor,
@@ -465,11 +467,12 @@ mod test {
     #[test]
     #[should_panic(expected = "below the OP partner-fee floor")]
     fn new_panics_when_max_partner_fee_below_floor() {
-        // A cap below the 4 bps non-stable floor would let the autopilot's
-        // upper cap settle an Ophis fee below the floor on the eth-flow path that
-        // skips ingress. The constructor must refuse to build (fail fast at boot).
+        // A cap below the 10 bps retail rate would let the autopilot's upper cap
+        // settle a legitimate retail order BELOW retail (and could undercut the
+        // floor on the eth-flow path that skips ingress). The constructor must
+        // refuse to build (fail fast at boot).
         let config = FeePoliciesConfig {
-            max_partner_fee: FeeFactor::new(0.0003), // 3 bps < 4 bps floor
+            max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps retail
             ..Default::default()
         };
         let _ = ProtocolFees::new(&config, vec![], false);
@@ -477,7 +480,7 @@ mod test {
 
     #[test]
     fn new_accepts_max_partner_fee_at_or_above_floor() {
-        // Production default (100 bps) and a value just above the floor both build.
+        // Production default (100 bps) and a value above the retail rate both build.
         for factor in [0.002_f64, 0.01] {
             let config = FeePoliciesConfig {
                 max_partner_fee: FeeFactor::new(factor),
