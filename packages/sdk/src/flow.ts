@@ -51,11 +51,11 @@ export interface OphisOrderMetadataOptions {
   readonly referralCode: string;
   /**
    * True ONLY for a same-chain stablecoin pair, which charges the reduced 1 bp
-   * rate instead of the standard 10 bps. You decide this; the SDK is chain-only
-   * and cannot detect the pair. Defaults to false. Setting it true for a pair
-   * that is not actually stable-stable undercharges: on the OP self-hosted
-   * backend the order is rejected at the 10 bps floor; on CoW-hosted chains it
-   * may silently settle (and rebate) at 1/10th. When in doubt, leave it false.
+   * rate instead of the standard 5 bps partner rate. You decide this; the SDK is
+   * chain-only and cannot detect the pair. Defaults to false. Setting it true for
+   * a pair that is not actually stable-stable undercharges: on the OP self-hosted
+   * backend the order still clears the 4 bps floor but undercharges; on CoW-hosted
+   * chains it may silently settle (and rebate) at a fifth. When in doubt, leave it false.
    */
   readonly isStablePair?: boolean;
   /**

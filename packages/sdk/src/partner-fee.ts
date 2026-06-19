@@ -94,7 +94,7 @@ const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
 export const OPHIS_FEE_CHAIN_IDS: readonly number[] = Object.freeze([...FEE_CHAIN_IDS]);
 
 export interface OphisPartnerFee {
-  /** Flat fee as a fraction of trade volume, in bps (10 = 0.10%). */
+  /** Flat fee as a fraction of trade volume, in bps (5 = 0.05%). */
   readonly volumeBps: number;
   readonly recipient: `0x${string}`;
 }
