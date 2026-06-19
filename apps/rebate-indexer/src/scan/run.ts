@@ -1,3 +1,4 @@
+import { redactSecrets } from './redact.js';
 import type { ChainConfig, Coverage, ScanResult, Swap } from './types.js';
 
 export interface RunArgs {
@@ -18,7 +19,7 @@ export async function runScan(args: RunArgs, deps: RunDeps): Promise<{ swaps: Sw
       } catch (err) {
         return {
           swaps: [],
-          coverage: { chainId: cfg.chainId, chainName: cfg.name, status: 'degraded', fillsScanned: 0, ophisFound: 0, unresolved: 0, error: err instanceof Error ? err.message : String(err) },
+          coverage: { chainId: cfg.chainId, chainName: cfg.name, status: 'degraded', fillsScanned: 0, ophisFound: 0, unresolved: 0, error: redactSecrets(err instanceof Error ? err.message : String(err)) },
         };
       }
     }),

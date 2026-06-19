@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process';
 import type { ChainConfig, ScanResult, Swap } from '../types.js';
 import { parseAppData } from '../appdata.js';
+import { redactSecrets } from '../redact.js';
 
 export type PsqlRunner = (container: string, sql: string) => Promise<string>;
 
@@ -71,6 +72,6 @@ export async function scanLocalDbChain(cfg: ChainConfig, t0Iso: string, run: Psq
     const swaps = parseLocalRows(tsv, cfg.chainId, cfg.name);
     return { swaps, coverage: { ...base, fillsScanned: swaps.length, ophisFound: swaps.length } };
   } catch (err) {
-    return { swaps: [], coverage: { ...base, status: 'degraded', error: err instanceof Error ? err.message : String(err) } };
+    return { swaps: [], coverage: { ...base, status: 'degraded', error: redactSecrets(err instanceof Error ? err.message : String(err)) } };
   }
 }

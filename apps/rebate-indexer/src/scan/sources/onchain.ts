@@ -3,6 +3,7 @@ import { parseAbiItem } from 'viem';
 import type { CowOrder } from '../../cow/types.js';
 import type { ChainConfig, ScanCache, ScanResult, Swap } from '../types.js';
 import { parseAppData } from '../appdata.js';
+import { redactSecrets } from '../redact.js';
 import { blockAtTimestamp, type BlockClient } from '../window.js';
 
 export const SETTLEMENT_ADDRESS = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as const;
@@ -169,6 +170,7 @@ export async function scanHostedChain(
     const { swaps, ophisFound, unresolved } = await classifyFills(cfg.chainId, cfg.name, fills, t0Sec, deps);
     return { swaps, coverage: { ...base, fillsScanned: fills.length, ophisFound, unresolved } };
   } catch (err) {
-    return { swaps: [], coverage: { ...base, status: 'degraded', error: err instanceof Error ? err.message : String(err) } };
+    // redact: viem RPC errors echo the URL, which embeds the Alchemy key in its path.
+    return { swaps: [], coverage: { ...base, status: 'degraded', error: redactSecrets(err instanceof Error ? err.message : String(err)) } };
   }
 }

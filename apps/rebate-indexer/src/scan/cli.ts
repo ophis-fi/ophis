@@ -1,4 +1,5 @@
 import { createPublicClient, http } from 'viem';
+import { redactSecrets } from './redact.js';
 import { selectChains, resolveRpcUrl } from './chains.js';
 import { parseSince } from './window.js';
 import { loadCache } from './cache.js';
@@ -84,6 +85,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err);
+  // Defense-in-depth: a stray viem error here would embed the Alchemy key in its URL.
+  console.error(redactSecrets(err instanceof Error ? (err.stack ?? err.message) : String(err)));
   process.exit(1);
 });
