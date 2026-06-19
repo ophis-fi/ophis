@@ -14,7 +14,8 @@
     "test:e2e": "vitest run tests/e2e",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "scan": "tsx src/scan/cli.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "^10.3.0",
