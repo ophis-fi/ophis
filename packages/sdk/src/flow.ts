@@ -26,6 +26,7 @@ import {
   type OphisPartnerFee,
 } from './partner-fee.js';
 import { buildOphisReferrerMetadata } from './referral.js';
+import { OPHIS_ORDERBOOK_URLS } from './orderbook.js';
 import { assertReceiverIsOwner } from './order.js';
 import { assertValidChainId, assertAddressLike, assertBytes32, addressesEqual } from './guards.js';
 
@@ -91,6 +92,12 @@ export interface OphisAppDataInput {
  * the rebate indexer silently drop the order, and you forfeit every rebate with
  * no error anywhere.
  *
+ * Hash the result with `generateAppDataDoc` + `stringifyDeterministic` +
+ * `keccak256` (the non-validating path the orderbook and indexer use). Do NOT run
+ * `validateAppDataDoc` / `getAppDataInfo` on the doc: `ophisReferrer` is an Ophis
+ * extension key, and CoW's strict app-data schema (additionalProperties: false)
+ * rejects it. The orderbook itself accepts it; only that local validator does not.
+ *
  * @example
  *   const doc = await new MetadataApi().generateAppDataDoc(
  *     buildOphisOrderMetadata({ chainId: 1, referralCode: 'yourcode' }),
@@ -98,11 +105,14 @@ export interface OphisAppDataInput {
  */
 export function buildOphisOrderMetadata(opts: OphisOrderMetadataOptions): OphisAppDataInput {
   const { chainId, referralCode, isStablePair = false, signer } = opts;
-  if (!isOphisFeeChain(chainId)) {
+  // Require BOTH a partner fee AND a live orderbook: OPHIS_FEE_CHAIN_IDS includes
+  // Ophis-operated chains whose orderbook is currently paused (no entry in
+  // OPHIS_ORDERBOOK_URLS), where a partner could build metadata but never submit.
+  if (!isOphisFeeChain(chainId) || OPHIS_ORDERBOOK_URLS[chainId] === undefined) {
     throw new Error(
-      `Ophis: chain ${chainId} is not served by Ophis (OPHIS_FEE_CHAIN_IDS), so no partner fee ` +
-        'or rebate applies there. Route it through your own venue, and only build an Ophis order ' +
-        'on a served chain.',
+      `Ophis: chain ${chainId} has no live Ophis orderbook, so you cannot submit an Ophis order ` +
+        'or earn a rebate there. Route it through your own venue, and only build an Ophis order on ' +
+        'a chain with a live orderbook (see getOphisOrderbookUrl).',
     );
   }
   const partnerFee: OphisPartnerFee = {
@@ -187,7 +197,7 @@ export interface OphisOrderCreationOptions {
    * (the value that was signed). `receiver` must already be set on it.
    */
   readonly order: Record<string, unknown>;
-  /** The order owner (the signer / from). The receiver is pinned to this. */
+  /** The order owner (the signer / `from`). The receiver is asserted against this, not rewritten. */
   readonly owner: `0x${string}`;
   /** The full deterministic appData JSON STRING (from stringifyDeterministic). */
   readonly fullAppData: string;
@@ -213,8 +223,10 @@ export interface OphisOrderCreationOptions {
  *    SUBMITTED with `appData` = the full JSON STRING and `appDataHash` = the hash.
  *    `OrderCreation` has no `fullAppData` field; sending the hash as `appData`
  *    uses a deprecated form the orderbook is phasing out.
- *  - the RECEIVER: pinned to the owner and written EXPLICITLY into the body (a
- *    drain guard), unless allowReceiver names a different destination.
+ *  - the RECEIVER: asserted to be the owner (a drain guard) and PRESERVED exactly
+ *    as signed. It is part of the signed order, so it is never rewritten; an
+ *    absent/zero receiver (which CoW resolves to the owner) is left as is. A
+ *    non-owner receiver throws unless allowReceiver names that exact destination.
  *
  * NOTE: for the rebate to accrue, `owner` must already have been registered via
  * `enrollOphisTrader` (the indexer never fetches an unenrolled wallet's trades).
@@ -232,31 +244,45 @@ export function buildOphisOrderCreation(opts: OphisOrderCreationOptions): Record
   // where the bytes32 hash belongs.
   assertBytes32(appDataHash, 'appDataHash');
 
+  // The order was SIGNED with appData = the bytes32 hash. If it carries a
+  // different appData, the signature is over a different payload and the orderbook
+  // would reject it; catch that mismatch here with a clear local error.
+  const signedAppData = order.appData;
+  if (signedAppData !== undefined && String(signedAppData).toLowerCase() !== appDataHash.toLowerCase()) {
+    throw new Error(
+      `Ophis: order.appData (${String(signedAppData)}) does not match appDataHash (${appDataHash}). ` +
+        'Sign the order with appData set to this hash before calling this builder.',
+    );
+  }
+
+  // The receiver is part of the SIGNED order; NEVER rewrite it. Changing it after
+  // signing (e.g. zero -> owner) produces a different EIP-712/1271 digest and the
+  // orderbook rejects the order. Only ASSERT it is safe and preserve what was signed.
   const rawReceiver = order.receiver as string | undefined;
-  let receiver: `0x${string}`;
   if (allowReceiver !== undefined) {
-    // Named opt-out: proceeds may go to allowReceiver, and order.receiver MUST
-    // equal it, so a stale or injected order.receiver still throws.
+    // Named opt-out: order.receiver MUST equal the authorized address, so a stale
+    // or injected order.receiver still throws.
     assertAddressLike(allowReceiver, 'allowReceiver');
     if (rawReceiver === undefined || !addressesEqual(rawReceiver, allowReceiver)) {
       throw new Error(
         `Ophis: order.receiver (${String(rawReceiver)}) does not match the authorized allowReceiver ${allowReceiver}. ` +
-          'Set order.receiver to the address you intend, or remove allowReceiver to pin proceeds to the owner.',
+          'Set and sign order.receiver as the address you intend before calling this builder.',
       );
     }
-    receiver = allowReceiver;
   } else {
-    // Default drain guard: a foreign receiver throws; absent/zero is fine.
+    // Default drain guard: a foreign receiver throws; absent/zero (CoW resolves it
+    // to the owner at settlement) is fine and is left exactly as signed.
     assertReceiverIsOwner(owner, rawReceiver);
-    receiver = owner; // write it explicitly: a proven pin, not just an asserted one.
   }
+
+  // Preserve the signed order (incl. its receiver); only set the submit-time wire
+  // fields. appData carries the full JSON string; appDataHash carries the hash.
   return {
     ...order,
     from: owner,
-    receiver, // explicit, never left for backend defaulting
     signingScheme,
     signature,
-    appData: fullAppData, // FULL JSON STRING, not the hash
+    appData: fullAppData,
     appDataHash,
   };
 }
