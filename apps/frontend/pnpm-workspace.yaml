@@ -26,10 +26,11 @@ minimumReleaseAgeExclude:
   # name-excluded so the security patch resolves despite the soak window.
   - protobufjs
   # NOTE: esbuild 0.28.1 (GHSA-gv7w-rqvm-qjhr), http-proxy-middleware 3.0.7
-  # (GHSA-64mm-vxmg-q3vj + GHSA-gcq2-9pq2-cxqm; as of 2026-06-19 ALL copies are
-  # forced to 3.0.7 via overrides, including the @nx/webpack v2 dev-only consumer,
-  # so the v2 advisory is fully cleared), and piscina 4.9.3 (GHSA-x9g3-xrwr-cwfg)
-  # are intentionally NOT name-excluded here. A package-name exclude would
+  # (GHSA-gcq2-9pq2-cxqm; selective override on >=3.0.4 <3.0.7 so the v2 consumers
+  # react-cosmos@7 + @nx/webpack are left untouched, since HPM v3 dropped the v2
+  # createProxyMiddleware(context, options) API that react-cosmos' httpProxy plugin
+  # uses; the remaining dev-only v2 advisory GHSA-64mm-vxmg-q3vj is accepted), and
+  # piscina 4.9.3 (GHSA-x9g3-xrwr-cwfg) are intentionally NOT name-excluded here. A package-name exclude would
   # permanently bypass the soak for EVERY future publish of those packages;
   # instead each fixed version is pinned in the committed lockfile, so
   # frozen-lockfile installs use it without re-resolving (a non-frozen re-resolve

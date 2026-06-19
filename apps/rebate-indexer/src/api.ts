@@ -220,7 +220,26 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
     const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi'];
-    if (origin && allowed.includes(origin)) {
+    // /tier/:wallet (wallet enrollment) and /ref/:code (code lookup) are PUBLIC,
+    // unauthenticated, idempotent, credential-free reads. Allow ANY browser origin
+    // so a partner web app can enroll wallets via @ophis/sdk's enrollOphisTrader on
+    // wallet-connect (the Ophis swap page is no longer the only browser caller).
+    // `*` is safe here precisely because these endpoints carry no cookies/auth, and
+    // the enrollment upsert already happens server-side regardless of CORS; the
+    // header only lets the browser READ the response. Credentialed POSTs (/partner,
+    // /ref/bind) keep the strict allow-list below.
+    // GET only: the enrollment/lookup call is a SIMPLE cross-origin GET (its
+    // only header is the safelisted `accept`), so no preflight is involved and
+    // the GET response just needs allow-origin. Crucially this does NOT match the
+    // OPTIONS preflights of the signed POST routes /ref/bind and /ref/codes (which
+    // also start with /ref/), so those keep falling through to the strict
+    // allow-list branch and still receive POST in Access-Control-Allow-Methods.
+    const isPublicRead =
+      req.method === 'GET' && (req.url.startsWith('/tier/') || req.url.startsWith('/ref/'));
+    if (isPublicRead) {
+      reply.header('access-control-allow-origin', '*');
+      reply.header('vary', 'Origin');
+    } else if (origin && allowed.includes(origin)) {
       reply.header('access-control-allow-origin', origin);
       reply.header('access-control-allow-methods', 'GET, POST, OPTIONS');
       reply.header('access-control-allow-headers', 'content-type, accept');

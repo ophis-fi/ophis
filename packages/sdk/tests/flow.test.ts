@@ -55,7 +55,13 @@ describe('buildOphisOrderMetadata', () => {
   });
 
   it('throws on a chain Ophis does not serve (never route a fee-less order by mistake)', () => {
-    expect(() => buildOphisOrderMetadata({ chainId: NON_FEE_CHAIN, referralCode: 'yourcode' })).toThrow(/not served/);
+    expect(() => buildOphisOrderMetadata({ chainId: NON_FEE_CHAIN, referralCode: 'yourcode' })).toThrow(/no live Ophis orderbook/);
+  });
+
+  it('throws on a fee chain whose orderbook is paused (in fee set but no live orderbook URL)', () => {
+    // 4326 / 999 are in OPHIS_FEE_CHAIN_IDS but absent from OPHIS_ORDERBOOK_URLS.
+    expect(() => buildOphisOrderMetadata({ chainId: 4326, referralCode: 'yourcode' })).toThrow(/no live Ophis orderbook/);
+    expect(() => buildOphisOrderMetadata({ chainId: 999, referralCode: 'yourcode' })).toThrow(/no live Ophis orderbook/);
   });
 
   it('throws on an invalid referral code (typo fails at build, not silently)', () => {
@@ -141,16 +147,25 @@ describe('buildOphisOrderCreation', () => {
     ).toThrow(/bytes32/);
   });
 
+  it('rejects a mismatch between the signed order.appData and appDataHash', () => {
+    const otherHash = ('0x' + 'b'.repeat(64)) as `0x${string}`;
+    expect(() =>
+      buildOphisOrderCreation({ ...base, order: { receiver: OWNER, appData: otherHash } }),
+    ).toThrow(/does not match appDataHash/);
+  });
+
   it('pins the receiver to the owner (drain guard) and rejects a foreign receiver', () => {
     expect(() => buildOphisOrderCreation({ ...base, order: { receiver: FOREIGN } })).toThrow(/receiver/);
   });
 
-  it('writes receiver = owner EXPLICITLY for an absent or zero receiver (proven, not just asserted)', () => {
+  it('PRESERVES the signed receiver, never rewriting zero/absent to owner (would break the signature)', () => {
+    // absent receiver stays absent (CoW resolves it to the owner at settlement)
     const b1 = buildOphisOrderCreation({ ...base, order: {} });
-    expect(b1.receiver).toBe(OWNER);
+    expect(b1.receiver).toBeUndefined();
+    // zero receiver is preserved exactly as signed
     const zero = '0x0000000000000000000000000000000000000000';
     const b2 = buildOphisOrderCreation({ ...base, order: { receiver: zero } });
-    expect(b2.receiver).toBe(OWNER);
+    expect(b2.receiver).toBe(zero);
   });
 
   it('allows a custom receiver only when NAMED via allowReceiver, and that name must match', () => {

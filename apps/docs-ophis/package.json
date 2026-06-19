@@ -51,7 +51,6 @@
   "pnpm": {
     "overrides": {
       "@babel/core": "^7.29.6",
-      "http-proxy-middleware@>=0.16.0 <3.0.6": "^3.0.6",
       "joi": "17.13.4",
       "js-yaml": "^4.2.0",
       "launch-editor": "^2.14.1",
