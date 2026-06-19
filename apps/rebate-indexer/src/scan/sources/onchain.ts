@@ -98,7 +98,7 @@ export async function classifyFills(
       orderUid: f.orderUid,
       txHash: f.txHash,
       owner: f.owner,
-      receiver: ((order as unknown as { receiver?: string }).receiver as `0x${string}`) ?? f.owner,
+      receiver: (order.receiver ?? f.owner) as `0x${string}`,
       sell: { token: f.sellToken, symbol: null, decimals: null, amount: f.sellAmount.toString() },
       buy: { token: f.buyToken, symbol: null, decimals: null, amount: f.buyAmount.toString() },
       appCode: info.appCode,

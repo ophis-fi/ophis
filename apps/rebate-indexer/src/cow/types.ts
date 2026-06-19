@@ -26,6 +26,11 @@ export const CowOrder = z.object({
   buyAmount: z.string(),
   appData: z.string(),                                                // IPFS-hash hex
   fullAppData: z.string().nullable().optional(),                      // JSON string, when CoW resolved it
+  // The order's funds recipient. For native-ETH (eth-flow) orders the on-chain
+  // `owner` is the eth-flow router, while `receiver` is the actual user; the scan
+  // surfaces `receiver`. zod strips unknown keys, so this MUST be declared or the
+  // API's receiver is silently dropped on parse. (nullable/optional = defensive.)
+  receiver: z.string().nullable().optional(),
   creationDate: z.string(),                                           // ISO 8601 (informational)
   status: z.string().optional(),                                      // 'fulfilled' | 'open' | 'cancelled' | 'expired' | ...
   // Total filled across ALL fills (surplus-inclusive on the buy side). We

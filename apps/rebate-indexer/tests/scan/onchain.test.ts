@@ -3,7 +3,18 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fillsFromLogs, classifyFills, type DecodedTradeLog } from '../../src/scan/sources/onchain.js';
-import type { CowOrder } from '../../src/cow/types.js';
+import { CowOrder } from '../../src/cow/types.js';
+
+describe('CowOrder schema', () => {
+  it('retains receiver through a zod parse (eth-flow attribution depends on it)', () => {
+    const parsed = CowOrder.parse({
+      uid: '0xuid', owner: '0xrouter', sellToken: '0xc02a', buyToken: '0xdac1',
+      sellAmount: '1', buyAmount: '1', appData: '0xhash',
+      receiver: '0x0494f503912c101bfd76b88e4f5d8a33de284d1a', creationDate: '2026-06-18T20:43:11Z',
+    });
+    expect(parsed.receiver).toBe('0x0494f503912c101bfd76b88e4f5d8a33de284d1a');
+  });
+});
 
 const fx = (f: string) => readFileSync(join(__dirname, 'fixtures', f), 'utf8');
 
