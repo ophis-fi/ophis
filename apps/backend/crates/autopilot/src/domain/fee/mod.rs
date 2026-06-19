@@ -121,12 +121,12 @@ impl ProtocolFees {
         // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
         // means every partner fee is an Ophis fee, and the token-pair floor
         // (enforced at order ingress and re-clamped here) is at most
-        // OPHIS_DEFAULT_VOLUME_FEE_BPS. If the cap were configured below that floor,
+        // OPHIS_NON_STABLE_FLOOR_BPS. If the cap were configured below that floor,
         // the cap would silently settle an allowlisted-recipient fee BELOW the
         // floor on the eth-flow / on-chain path that skips ingress, reopening the
         // bypass. Fail fast at startup rather than under-charge at settlement.
         let cap = config.max_partner_fee.get();
-        let floor_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
+        let floor_bps = app_data::OPHIS_NON_STABLE_FLOOR_BPS;
         let floor_factor = floor_bps as f64 / 10_000.0;
         assert!(
             cap >= floor_factor,
@@ -465,11 +465,11 @@ mod test {
     #[test]
     #[should_panic(expected = "below the OP partner-fee floor")]
     fn new_panics_when_max_partner_fee_below_floor() {
-        // A cap below the 10 bps non-stable floor would let the autopilot's
+        // A cap below the 4 bps non-stable floor would let the autopilot's
         // upper cap settle an Ophis fee below the floor on the eth-flow path that
         // skips ingress. The constructor must refuse to build (fail fast at boot).
         let config = FeePoliciesConfig {
-            max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps floor
+            max_partner_fee: FeeFactor::new(0.0003), // 3 bps < 4 bps floor
             ..Default::default()
         };
         let _ = ProtocolFees::new(&config, vec![], false);
@@ -573,7 +573,7 @@ mod test {
         // token-pair floor by the defense-in-depth autopilot floor (mirrors the
         // orderbook ingress validator). This closes the prior 0-fee bypass for any
         // path that skips the off-chain ingress (eth-flow / on-chain orders, stale
-        // DB rows). The order's default token pair is non-stable -> the 10 bps floor.
+        // DB rows). The order's default token pair is non-stable -> the 4 bps floor.
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(
@@ -602,12 +602,12 @@ mod test {
         let max_partner_fee = 0.3; // 30%
         let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
 
-        // Expected: 0 bps clamped UP to the 10 bps floor (default tokens are
-        // non-stable; 10 bps = 0.001), never settling a sub-floor Volume fee.
+        // Expected: 0 bps clamped UP to the 4 bps floor (default tokens are
+        // non-stable; 4 bps = 0.0004), never settling a sub-floor Volume fee.
         assert_eq!(
             result,
             vec![Policy::Volume {
-                factor: FeeFactor::try_from(0.001).unwrap(),
+                factor: FeeFactor::try_from(0.0004).unwrap(),
             }]
         );
     }
@@ -957,11 +957,11 @@ mod test {
     #[test]
     fn surplus_fee_to_allowlisted_recipient_neutralized_to_floor() {
         // Default (non-stable) token pair, so the floor is
-        // OPHIS_DEFAULT_VOLUME_FEE_BPS (10 bps = 0.001). The surplus bps value is
+        // OPHIS_NON_STABLE_FLOOR_BPS (4 bps = 0.0004). The surplus bps value is
         // irrelevant: it is discarded and replaced by the token-pair floor, so a
         // near-zero surplus fee on an eth-flow order can never be used to settle
         // below the minimum. max_partner_fee = 1.0 here, so the cap never binds.
-        let floor = FeeFactor::try_from(0.001).unwrap();
+        let floor = FeeFactor::try_from(0.0004).unwrap();
         assert_eq!(neutralized_surplus_factor(0), floor);
         assert_eq!(neutralized_surplus_factor(1), floor);
         assert_eq!(neutralized_surplus_factor(2500), floor);
@@ -971,7 +971,7 @@ mod test {
 
     #[test]
     fn price_improvement_fee_to_allowlisted_recipient_neutralized_to_floor() {
-        let floor = FeeFactor::try_from(0.001).unwrap();
+        let floor = FeeFactor::try_from(0.0004).unwrap();
         assert_eq!(neutralized_price_improvement_factor(0), floor);
         assert_eq!(neutralized_price_improvement_factor(2500), floor);
         assert_eq!(neutralized_price_improvement_factor(9999), floor);

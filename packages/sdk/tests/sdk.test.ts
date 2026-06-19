@@ -6,8 +6,8 @@ describe('@ophis/sdk defaults', () => {
     expect(ophisDefaults.chainId).toBe(10);
   });
 
-  it('uses the CIP-75 flat volume fee (10 bps), not the price-improvement model', () => {
-    expect(ophisDefaults.volumeBps).toBe(10);
+  it('uses the CIP-75 flat volume fee (5 bps partner rate), not the price-improvement model', () => {
+    expect(ophisDefaults.volumeBps).toBe(5);
     expect(ophisDefaults.volumeBps).toBe(OPHIS_VOLUME_FEE_BPS);
   });
 

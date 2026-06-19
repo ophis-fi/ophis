@@ -31,7 +31,7 @@ describe('deterministicStringify', () => {
 describe('buildOphisAppData', () => {
   it('embeds the CIP-75 partner fee on an Ophis fee chain (Optimism)', () => {
     const ad = buildOphisAppData(10)
-    expect(ad.partnerFee).toEqual({ volumeBps: 10, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' })
+    expect(ad.partnerFee).toEqual({ volumeBps: 5, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' })
     expect(ad.doc.version).toBe(APP_DATA_VERSION)
     expect(ad.fullAppData).toContain('partnerFee')
     expect(ad.fullAppData).toContain('Ophis')
@@ -217,7 +217,7 @@ describe('listChains', () => {
     expect(op?.ophisOperated).toBe(true)
     expect(op?.settlement).toBe(OPHIS_OP_SETTLEMENT)
     expect(op?.orderbookUrl).toBe('https://optimism-mainnet.ophis.fi')
-    expect(op?.partnerFee?.volumeBps).toBe(10)
+    expect(op?.partnerFee?.volumeBps).toBe(5)
   })
 
   it('puts Ethereum mainnet in tradeable with the canonical settlement', () => {
