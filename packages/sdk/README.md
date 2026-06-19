@@ -16,6 +16,8 @@ npm install @ophis/sdk
 - **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (the OP settlement is non-canonical, so the cow-sdk default is wrong there).
 - **`buildOphisAppDataPartnerFee(chainId)`** — the exact CIP-75 volume-fee fragment (`{ volumeBps, recipient }`) for `appData.metadata.partnerFee`.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
+- **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers that collapse the integration footguns into one call each: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), each trader wallet is enrolled with the rebate indexer, the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct.
+- **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Optimism the Ophis relayer is **not** cow-sdk's canonical one, so resolve it here.
 - **`assignTier`**, **`ophisDefaults`**, and the partner-fee constants.
 
 ## Example
