@@ -30,19 +30,19 @@
 
 import { assertValidChainId, assertAddressLike, assertBytes32, isZeroAddress, addressesEqual } from './guards.js';
 import { ophisOrderReceiver, type ReceiverOptions } from './order.js';
+import { OPHIS_PARTNER_FEE_RECIPIENT } from './partner-fee.js';
 
 /**
- * Ophis-deployed eth-flow contracts on the self-hosted / Ophis-operated chains.
- * These are NOT the canonical CoW addresses: they are wired to the Ophis
- * settlement, so a native-ETH sell on these chains MUST go to the Ophis address.
- *   - 10  Optimism: deployed 2026-06-07, indexed by the Ophis autopilot. VERIFIED LIVE.
- *   - 999 HyperEVM: deployed (PR #61) + sdk patch (PR #65).
- * MegaETH (4326) has NO eth-flow contract deployed and is intentionally absent
- * (native ETH unsupported there; the integrator must wrap to WETH).
+ * Ophis-deployed eth-flow contract on the self-hosted Optimism chain. This is
+ * NOT the canonical CoW address: it is wired to the Ophis OP settlement, so a
+ * native-ETH sell on Optimism MUST go to this address.
+ *   - 10 Optimism: deployed 2026-06-07, indexed by the Ophis autopilot. VERIFIED LIVE.
+ * Chains whose orderbook is not live (MegaETH 4326, HyperEVM 999) are intentionally
+ * ABSENT: getOphisOrderbookUrl throws there, so the documented eth-flow appData
+ * upload step could not complete. Native-ETH support must imply a live orderbook.
  */
 const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',
-  999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B',
 };
 
 /**
@@ -51,6 +51,12 @@ const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
  * Mirrors @cowprotocol/sdk-config `ETH_FLOW_ADDRESS`.
  */
 const CANONICAL_COW_ETHFLOW = '0xba3cb449bd2b4adddbc894d8697f5170800eadec' as const;
+
+/**
+ * The EIP-7528 native-token sentinel (0xEeee...EEeE). A CoW eth-flow buyToken
+ * must be a real ERC-20, never the native sentinel or the zero address.
+ */
+const NATIVE_TOKEN_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
 
 /**
  * CoW-hosted chains (cow-sdk `SupportedChainId` members) where the canonical
@@ -75,11 +81,13 @@ const buildEthFlowMap = (): Record<number, `0x${string}`> => {
 };
 
 /**
- * Frozen, immutable, null-prototype per-chain eth-flow address map. A chain
- * absent from this map does NOT support native-ETH via Ophis (the integrator
- * must wrap to WETH and use the ordinary `buildOphisOrderCreation` path).
+ * Frozen, immutable, null-prototype per-chain eth-flow address map. Typed
+ * `Partial` because most numeric chainIds are absent: a chain absent here does
+ * NOT support native-ETH via Ophis (wrap to WETH and use `buildOphisOrderCreation`).
+ * The key set is a subset of `OPHIS_ORDERBOOK_URLS`, so native-ETH support always
+ * implies a live orderbook to upload the appData to.
  */
-export const OPHIS_ETHFLOW_ADDRESSES: Readonly<Record<number, `0x${string}`>> = Object.freeze(buildEthFlowMap());
+export const OPHIS_ETHFLOW_ADDRESSES: Readonly<Partial<Record<number, `0x${string}`>>> = Object.freeze(buildEthFlowMap());
 
 /** True if Ophis supports native-ETH (eth-flow) on this chain. */
 export const isOphisEthFlowChain = (chainId: number): boolean => {
@@ -285,6 +293,15 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
   }
 
   assertAddressLike(buyToken, 'buyToken');
+  // The buyToken must be a real ERC-20. The native sentinel or the zero address
+  // produces an order solvers cannot settle against a token contract, stranding
+  // the user's committed ETH.
+  if (isZeroAddress(buyToken) || addressesEqual(buyToken, NATIVE_TOKEN_SENTINEL)) {
+    throw new Error(
+      `Ophis: buyToken must be a real ERC-20, not the native sentinel or zero address (received ${buyToken}). ` +
+        'To end up with native ETH, buy WETH and unwrap it after settlement.',
+    );
+  }
 
   // Pin the receiver to the taker by default; a non-owner receiver is a named,
   // deliberate opt-in (parity with the ERC-20 order.ts / flow.ts receiver guard).
@@ -305,6 +322,30 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
     throw new TypeError(
       'Ophis: fullAppData must be the non-empty appData JSON string (it must be uploaded to the orderbook ' +
         'so the partner fee is honored). Build it with buildOphisOrderMetadata + generateAppDataDoc.',
+    );
+  }
+
+  // The appData MUST actually carry the Ophis partner fee, or the native trade
+  // settles with NO Ophis fee (silent revenue loss). Dependency-free, so parse the
+  // JSON we were handed and require a positive fee to the Ophis recipient.
+  let parsedAppData: { metadata?: { partnerFee?: { recipient?: unknown; volumeBps?: unknown } } };
+  try {
+    parsedAppData = JSON.parse(fullAppData) as typeof parsedAppData;
+  } catch {
+    throw new Error(
+      'Ophis: fullAppData is not valid JSON. Build it with buildOphisOrderMetadata + generateAppDataDoc + stringifyDeterministic.',
+    );
+  }
+  const partnerFee = parsedAppData?.metadata?.partnerFee;
+  if (
+    typeof partnerFee?.recipient !== 'string' ||
+    !addressesEqual(partnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT) ||
+    typeof partnerFee.volumeBps !== 'number' ||
+    partnerFee.volumeBps <= 0
+  ) {
+    throw new Error(
+      `Ophis: fullAppData.metadata.partnerFee must charge a positive volumeBps to the Ophis recipient ` +
+        `${OPHIS_PARTNER_FEE_RECIPIENT}. Build the appData with buildOphisOrderMetadata so the native trade earns the fee.`,
     );
   }
 

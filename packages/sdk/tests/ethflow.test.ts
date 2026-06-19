@@ -8,16 +8,21 @@ import {
   ETHFLOW_CREATE_ORDER_ABI,
   type OphisEthFlowParams,
 } from '../src/ethflow.js';
+import { OPHIS_PARTNER_FEE_RECIPIENT } from '../src/partner-fee.js';
 
 const OWNER = '0x6D46e28aB34622d9A39d0F306a37a8dC270951aF' as const;
 const OTHER = '0x1111111111111111111111111111111111111111' as const;
 const BUY_TOKEN = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' as const; // USDC
 const APP_DATA_HASH = ('0x' + '11'.repeat(32)) as `0x${string}`;
-const FULL_APP_DATA = '{"appCode":"ophis","metadata":{}}';
+// A real appData carries metadata.partnerFee to the Ophis recipient.
+const FULL_APP_DATA = JSON.stringify({
+  appCode: 'ophis',
+  metadata: { partnerFee: { volumeBps: 10, recipient: OPHIS_PARTNER_FEE_RECIPIENT } },
+});
 const ZERO = '0x0000000000000000000000000000000000000000' as const;
+const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
 
 const OP_ETHFLOW = '0x764fE4aa1FF493cf39931c7923C8ff5837596504';
-const HYPEREVM_ETHFLOW = '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B';
 const CANONICAL = '0xba3cb449bd2b4adddbc894d8697f5170800eadec';
 
 const baseParams = (over: Partial<OphisEthFlowParams> = {}): OphisEthFlowParams => ({
@@ -34,44 +39,41 @@ const baseParams = (over: Partial<OphisEthFlowParams> = {}): OphisEthFlowParams 
 });
 
 describe('OPHIS_ETHFLOW_ADDRESSES', () => {
-  it('uses the Ophis-operated override for OP and HyperEVM, canonical for CoW-hosted', () => {
+  it('uses the Ophis-operated override for OP and canonical for CoW-hosted', () => {
     expect(OPHIS_ETHFLOW_ADDRESSES[10]).toBe(OP_ETHFLOW);
-    expect(OPHIS_ETHFLOW_ADDRESSES[999]).toBe(HYPEREVM_ETHFLOW);
     expect(OPHIS_ETHFLOW_ADDRESSES[1]).toBe(CANONICAL);
     expect(OPHIS_ETHFLOW_ADDRESSES[8453]).toBe(CANONICAL);
     expect(OPHIS_ETHFLOW_ADDRESSES[42161]).toBe(CANONICAL);
   });
 
-  it('does NOT include MegaETH (4326): no eth-flow contract deployed there', () => {
+  it('excludes chains with no live orderbook: MegaETH (4326) and HyperEVM (999)', () => {
     expect(OPHIS_ETHFLOW_ADDRESSES[4326]).toBeUndefined();
+    expect(OPHIS_ETHFLOW_ADDRESSES[999]).toBeUndefined();
   });
 
-  it('is frozen (cannot be mutated to redirect native-ETH funds)', () => {
+  it('is frozen with a null prototype (cannot be mutated or prototype-forged)', () => {
     expect(Object.isFrozen(OPHIS_ETHFLOW_ADDRESSES)).toBe(true);
+    expect(Object.getPrototypeOf(OPHIS_ETHFLOW_ADDRESSES)).toBeNull();
     expect(() => {
       // @ts-expect-error - readonly at the type level; assert runtime immutability too
       OPHIS_ETHFLOW_ADDRESSES[10] = ZERO;
     }).toThrow();
     expect(OPHIS_ETHFLOW_ADDRESSES[10]).toBe(OP_ETHFLOW);
   });
-
-  it('has a null prototype so a polluted Object.prototype cannot forge an address', () => {
-    expect(Object.getPrototypeOf(OPHIS_ETHFLOW_ADDRESSES)).toBeNull();
-  });
 });
 
 describe('isOphisEthFlowChain / getOphisEthFlowAddress', () => {
-  it('is true for supported chains, false for unsupported', () => {
+  it('is true for supported chains, false for unsupported (incl. 999/4326)', () => {
     expect(isOphisEthFlowChain(10)).toBe(true);
     expect(isOphisEthFlowChain(8453)).toBe(true);
-    expect(isOphisEthFlowChain(999)).toBe(true);
-    expect(isOphisEthFlowChain(4326)).toBe(false); // MegaETH disabled
+    expect(isOphisEthFlowChain(999)).toBe(false); // HyperEVM: no live orderbook
+    expect(isOphisEthFlowChain(4326)).toBe(false); // MegaETH
     expect(isOphisEthFlowChain(12345)).toBe(false); // unknown
   });
 
   it('returns the address or undefined', () => {
     expect(getOphisEthFlowAddress(10)).toBe(OP_ETHFLOW);
-    expect(getOphisEthFlowAddress(4326)).toBeUndefined();
+    expect(getOphisEthFlowAddress(999)).toBeUndefined();
   });
 
   it('throws on an invalid chainId', () => {
@@ -132,7 +134,13 @@ describe('buildOphisEthFlowOrder - happy path', () => {
 describe('buildOphisEthFlowOrder - fund-safety guards', () => {
   it('throws on a chain without native-ETH support (wrap to WETH instead)', () => {
     expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 4326 }))).toThrow(/native ETH is not supported/);
+    expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 999 }))).toThrow(/native ETH is not supported/);
     expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 12345 }))).toThrow(/native ETH is not supported/);
+  });
+
+  it('rejects a native-sentinel or zero buyToken (unsettleable, strands the ETH)', () => {
+    expect(() => buildOphisEthFlowOrder(baseParams({ buyToken: NATIVE_SENTINEL }))).toThrow(/real ERC-20/);
+    expect(() => buildOphisEthFlowOrder(baseParams({ buyToken: ZERO }))).toThrow(/real ERC-20/);
   });
 
   it('throws when the resolved receiver is zero (would send tokens to the eth-flow contract)', () => {
@@ -140,28 +148,39 @@ describe('buildOphisEthFlowOrder - fund-safety guards', () => {
     expect(() => buildOphisEthFlowOrder(baseParams({ unsafeCustomReceiver: ZERO }))).toThrow(/non-zero address/);
   });
 
-  it('throws when a supplied hasher does not match appDataHash (stale hash => fee drop)', () => {
-    const wrong = ('0x' + '22'.repeat(32)) as `0x${string}`;
-    expect(() => buildOphisEthFlowOrder(baseParams({ hashAppData: () => wrong }))).toThrow(/does not match/);
+  it('requires the appData to actually carry the Ophis partner fee', () => {
+    // valid JSON, hashes fine, but no partnerFee => would settle with no Ophis fee
+    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: '{"appCode":"ophis","metadata":{}}' }))).toThrow(
+      /partnerFee/,
+    );
+    // partnerFee to a different recipient
+    const wrongRecipient = JSON.stringify({ metadata: { partnerFee: { volumeBps: 10, recipient: OTHER } } });
+    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: wrongRecipient }))).toThrow(/Ophis recipient/);
+    // zero volumeBps (no actual fee)
+    const zeroFee = JSON.stringify({ metadata: { partnerFee: { volumeBps: 0, recipient: OPHIS_PARTNER_FEE_RECIPIENT } } });
+    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: zeroFee }))).toThrow(/partnerFee/);
+  });
+
+  it('rejects empty or non-JSON fullAppData', () => {
+    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: '' }))).toThrow(/fullAppData/);
+    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: 'not json' }))).toThrow(/valid JSON/);
+    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: undefined as unknown as string }))).toThrow(/fullAppData/);
   });
 
   it('throws when appDataHash is not bytes32', () => {
     expect(() => buildOphisEthFlowOrder(baseParams({ appDataHash: APP_DATA_HASH.slice(0, 40) as `0x${string}` }))).toThrow(
       /bytes32/,
     );
-    expect(() => buildOphisEthFlowOrder(baseParams({ appDataHash: FULL_APP_DATA as unknown as `0x${string}` }))).toThrow(
-      /bytes32/,
-    );
+  });
+
+  it('throws when a supplied hasher does not match appDataHash (stale hash => fee drop)', () => {
+    const wrong = ('0x' + '22'.repeat(32)) as `0x${string}`;
+    expect(() => buildOphisEthFlowOrder(baseParams({ hashAppData: () => wrong }))).toThrow(/does not match/);
   });
 
   it('throws on a non-address buyToken or owner', () => {
     expect(() => buildOphisEthFlowOrder(baseParams({ buyToken: 'USDC' as unknown as `0x${string}` }))).toThrow(/buyToken/);
     expect(() => buildOphisEthFlowOrder(baseParams({ owner: '0x123' as unknown as `0x${string}` }))).toThrow(/owner/);
-  });
-
-  it('requires a non-empty fullAppData (it must be uploaded for the fee to apply)', () => {
-    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: '' }))).toThrow(/fullAppData/);
-    expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: undefined as unknown as string }))).toThrow(/fullAppData/);
   });
 
   it('rejects non-bigint or non-positive amounts', () => {
