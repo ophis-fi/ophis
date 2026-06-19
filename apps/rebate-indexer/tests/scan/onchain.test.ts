@@ -46,7 +46,7 @@ describe('classifyFills', () => {
     appData: '0xhash', fullAppData: fx('mainnet-ophis-order.json'),
     creationDate: '2026-06-18T20:43:11Z', status: 'fulfilled',
     receiver: '0x0494f503912c101bfd76b88e4f5d8a33de284d1a',
-  } as unknown as CowOrder;
+  } as unknown as CowOrder; // short hex is fine for this unit test: only appCode/receiver/creationDate matter to classifyFills
   const nonOphis: CowOrder = { ...ophisOrder, uid: '0xuid2', fullAppData: fx('non-ophis-order.json') };
 
   const t0 = Math.floor(new Date('2026-06-17T00:00:00Z').getTime() / 1000);
@@ -60,6 +60,7 @@ describe('classifyFills', () => {
     const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1'), log('0xuid2')]), t0, deps);
     expect(out.ophisFound).toBe(1);
     expect(out.swaps).toHaveLength(1);
+    expect(out.swaps[0]!.orderUid).toBe('0xuid1'); // the non-Ophis 0xuid2 is excluded
     expect(out.swaps[0]!.appCode).toBe('ophis');
     expect(out.swaps[0]!.feeBps).toBe(10);
     expect(out.swaps[0]!.receiver).toBe('0x0494f503912c101bfd76b88e4f5d8a33de284d1a');
@@ -75,5 +76,16 @@ describe('classifyFills', () => {
     };
     const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), future, deps);
     expect(out.swaps).toHaveLength(0); // order is older than t0
+  });
+
+  it('counts a fill as unresolved when getOrder throws', async () => {
+    const deps = {
+      getOrder: async () => { throw new Error('order aged out of CoW DB'); },
+      cache: { get: () => undefined, set: () => {}, save: async () => {} },
+    };
+    const out = await classifyFills(1, 'ethereum', fillsFromLogs([log('0xuid1')]), t0, deps);
+    expect(out.unresolved).toBe(1);
+    expect(out.swaps).toHaveLength(0);
+    expect(out.ophisFound).toBe(0);
   });
 });
