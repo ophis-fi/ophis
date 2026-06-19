@@ -1,6 +1,12 @@
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode } from './cow/types.js';
+import { GROSS_FEE_BPS } from './affiliate/rates.js';
+import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
+
+// The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
+// base when it actually pays THIS recipient.
+const OPHIS_FEE_RECIPIENT = OPHIS_SAFE_ADDRESS.toLowerCase();
 
 const log = logger.child({ module: 'fetcher' });
 const PAGE_SIZE = 1_000;
@@ -32,6 +38,42 @@ export interface PendingTrade {
   /** Referral code from appData (metadata.ophisReferrer.code), normalized +
    *  grammar-validated, or null when absent/malformed. */
   appdataRefCode: string | null;
+  /** Gross volume-fee rate (bps) from appData metadata.partnerFee.volumeBps,
+   *  clamped to [1, GROSS_FEE_BPS]; null when absent/unreadable (accrual then
+   *  treats it as the legacy retail rate). */
+  volumeFeeBps: number | null;
+}
+
+/**
+ * Read the order's gross volume-fee rate (bps) from its appData and clamp it to
+ * [1, retail]. appData is attacker-controllable, so two guards apply:
+ *   1. RECIPIENT-MATCH: only an entry whose `recipient` is the Ophis Safe sets the
+ *      rate. A crafted array cannot put a decoy `{recipient: attacker, volumeBps:
+ *      10}` ahead of the real `{recipient: Ophis, volumeBps: 5}` to over-credit;
+ *      the decoy is ignored and the actual Ophis fee (5) is used.
+ *   2. CLAMP CEILING (retail): bounds any inflated claim to no more than the legacy
+ *      flat-retail assumption, so the worst case equals prior behaviour and can
+ *      never OVER-credit beyond it; an honest 5 bps SDK / 1 bp stable pair credits
+ *      its real, lower rate.
+ * `partnerFee` may be a single object or an array (CoW allows multiple). When no
+ * Ophis-recipient entry carries a usable integer volumeBps >= 1 (absent / the
+ * price-improvement shape / a non-Ophis recipient), returns null and accrual
+ * COALESCEs to the retail rate — the same as the pre-per-trade behaviour.
+ */
+function readVolumeFeeBps(meta: unknown): number | null {
+  const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
+  const entries = Array.isArray(pf) ? pf : [pf];
+  for (const e of entries) {
+    const entry = e as { volumeBps?: unknown; recipient?: unknown };
+    if (typeof entry?.recipient !== 'string' || entry.recipient.toLowerCase() !== OPHIS_FEE_RECIPIENT) {
+      continue; // only the fee that actually pays the Ophis recipient counts
+    }
+    const raw = entry.volumeBps;
+    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
+      return Math.min(raw, GROSS_FEE_BPS);
+    }
+  }
+  return null;
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
@@ -90,9 +132,12 @@ export async function fetchChainTrades(
       const order = await getOrder(chainId, t.orderUid as `0x${string}`);
       let appCode: string | undefined;
       let appdataRefCode: string | null = null;
+      let volumeFeeBps: number | null = null;
       try {
         const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
         appCode = meta?.appCode;
+        // Per-trade gross fee rate for fee-accurate accrual (clamped to [1, retail]).
+        volumeFeeBps = readVolumeFeeBps(meta);
         // Affiliate attribution: an order may carry metadata.ophisReferrer.code.
         // appData is attacker-controllable, so keep the code ONLY if it matches
         // the registry grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/); lowercase to
@@ -140,6 +185,7 @@ export async function fetchChainTrades(
         buyAmount: BigInt(execBuy),
         appCode,
         appdataRefCode,
+        volumeFeeBps,
       });
     }
 
@@ -261,6 +307,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                 appCode: r.appCode,
                 partnerFeeWei: null,
                 appdataRefCode: r.appdataRefCode,
+                volumeFeeBps: r.volumeFeeBps,
               })),
             )
             .onConflictDoNothing();

@@ -83,20 +83,26 @@ jobs:
           fi
 
       # The flat volume fee is the LIVE production fee model (10 bps since
-      # 2026-06-08, #508/#509). If the repo secret went missing or held garbage,
-      # readVolumeFeeBps() would silently fall back to 0 and the build would
-      # ship the LEGACY price-improvement fee while every public surface says
-      # 0.10% — a misrepresented production fee. Fail the deploy instead.
-      # (audit 2026-06-09)
+      # 2026-06-08, #508/#509). readVolumeFeeBps() now enables the flat fee ONLY
+      # when the secret equals EXACTLY the retail rate; any other value (missing,
+      # garbage, the 5 bps PARTNER rate, or a super-retail value) silently falls
+      # back to 0 and ships the LEGACY price-improvement fee while every public
+      # surface says 0.10%. So assert the secret is exactly the retail rate before
+      # the build, not merely "in [1,50]". (audit 2026-06-09, tightened 2026-06-19)
       - name: assert flat-fee flag is set and sane
         env:
           BPS: ${{ secrets.REACT_APP_OPHIS_VOLUME_FEE_BPS }}
+          # The one retail rate the front-end accepts. Mirrors
+          # OPHIS_FRONTEND_OP_VOLUME_BPS in
+          # apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts.
+          # Move both in lockstep if the retail rate ever changes.
+          RETAIL_BPS: '10'
         run: |
-          if ! [[ "$BPS" =~ ^[0-9]+$ ]] || (( BPS < 1 || BPS > 50 )); then
-            echo "::error::REACT_APP_OPHIS_VOLUME_FEE_BPS must be an integer in [1,50]; got '${BPS:-<unset>}'. The flat fee is the live model — an unset/garbage value silently reverts production to the legacy price-improvement fee. Fix the repo secret (expected: 10)."
+          if [[ "$BPS" != "$RETAIL_BPS" ]]; then
+            echo "::error::REACT_APP_OPHIS_VOLUME_FEE_BPS must equal the retail rate ${RETAIL_BPS}; got '${BPS:-<unset>}'. readVolumeFeeBps() enables the flat fee ONLY for exactly ${RETAIL_BPS} bps — any other value (incl. the 5 bps partner rate) silently reverts production to the legacy price-improvement fee. Fix the repo secret to ${RETAIL_BPS}."
             exit 1
           fi
-          echo "flat-fee flag OK (${BPS} bps)"
+          echo "flat-fee flag OK (${BPS} bps retail)"
 
       - name: build cowswap
         working-directory: apps/frontend
@@ -109,11 +115,12 @@ jobs:
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
           REACT_APP_REBATES_API: https://rebates.ophis.fi
-          # Flat volume fee in bps (build-time flag, validated [1,50] client-side
-          # AND asserted non-empty by the step above — this is the LIVE fee model;
-          # empty/unset would silently revert to the legacy price-improvement
-          # fallback). Move in lockstep with the @ophis/sdk republish + the static
-          # fee copy (docs/business/llms/tier all say 10 bps).
+          # Flat volume fee in bps (build-time flag). readVolumeFeeBps() enables the
+          # flat fee ONLY for EXACTLY the retail rate; the step above asserts the
+          # secret equals it before build (any other value, incl. the 5 bps partner
+          # rate, would silently revert to the legacy price-improvement fallback).
+          # Move in lockstep with the @ophis/sdk republish + the static fee copy
+          # (docs/business/llms/tier all say 10 bps).
           REACT_APP_OPHIS_VOLUME_FEE_BPS: ${{ secrets.REACT_APP_OPHIS_VOLUME_FEE_BPS }}
           # Ophis fork: OP mainnet (chain 10) RPC URL. The default public
           # node fallback works but a private endpoint is preferred for

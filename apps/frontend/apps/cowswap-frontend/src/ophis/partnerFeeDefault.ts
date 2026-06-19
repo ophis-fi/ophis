@@ -29,24 +29,24 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
 
 /**
  * FLAG-GATED FEE MODEL. Default OFF = the legacy price-improvement model
- * (the fallback only; PRODUCTION RUNS WITH THE FLAG ON). Set
- * `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer in
- * [BACKEND_NON_STABLE_FLOOR_BPS, 50] to switch the LIVE fee to a FLAT volume
- * fee of that many bps (prod sets 10 = 0.10% via a GH repo secret consumed in
- * cloudflare-deploy.yml).
+ * (the fallback only; PRODUCTION RUNS WITH THE FLAG ON). The flag enables ONLY
+ * when `REACT_APP_OPHIS_VOLUME_FEE_BPS` equals EXACTLY the retail rate
+ * OPHIS_FRONTEND_OP_VOLUME_BPS (10 = 0.10%, set via a GH repo secret consumed in
+ * cloudflare-deploy.yml). Any other value keeps the flag OFF.
  *
- * Lower bound: the OP self-hosted backend enforces a token-pair-aware MINIMUM
- * partner fee to the Ophis recipient (app_data.rs `partner_fee_floor_bps`,
- * checked at order ingress and re-clamped in the autopilot): 4 bps for any
- * non-stable pair, 1 bp for same-chain stable pairs. A base rate below the
- * non-stable floor would make the backend reject non-stable orders at ingress
- * (PartnerFeeBelowFloor), so a sub-floor value disables the flag (fee model
- * stays off) instead of building rejectable orders. Stable pairs are charged
- * 1 bp separately via OPHIS_STABLE_VOLUME_BPS.
- *
- * Upper bound 50: a Volume fee is bounded above only by the autopilot global
- * `max_partner_fee` (100 bps); 50 keeps us well under it and at/under the
- * competitor rate (Matcha 10, Velora 15).
+ * Why EXACTLY the retail rate (not a range):
+ *  - Sub-retail (e.g. the 5 bps partner rate): the front-end must NOT charge a
+ *    partner-tier fee to its own retail users. A sub-retail value disables the
+ *    flag; the OP path then charges the 10 bps retail via ophisVolumeOnlyFloorFee
+ *    and CoW-hosted chains use the price-improvement object. The deploy guard
+ *    rejects such a secret before build so production can never silently ship the
+ *    legacy fallback at the wrong rate.
+ *  - Super-retail (>10): if the front-end could emit a retail fee above 10, the
+ *    autopilot's operator cap (asserted `>= retail`) could silently clamp it down
+ *    at settlement. Pinning to exactly the retail rate keeps that assert sufficient.
+ *  - Stable pairs are charged 1 bp separately via OPHIS_STABLE_VOLUME_BPS; the OP
+ *    backend floor (4 bps non-stable, 1 bp stable) is enforced server-side and is
+ *    BELOW the retail rate, so it never gates the retail front-end.
  */
 // The Ophis front-end's RETAIL non-stable Volume rate (10 bps). swap.ophis.fi
 // charges this, and it is the LOWER BOUND for the env flag below: a build can
@@ -61,11 +61,20 @@ const OPHIS_FRONTEND_OP_VOLUME_BPS = 10
 // swap.ophis.fi keeps the 10 bps retail rate.
 const BACKEND_NON_STABLE_FLOOR_BPS = 4
 function readVolumeFeeBps(): number {
-  const raw = Number(process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS)
-  // Lower bound is the RETAIL rate, NOT the backend floor: a partner-tier env
-  // value (e.g. 5) must DISABLE the flag (the OP path then charges the 10 bps
-  // retail via ophisVolumeOnlyFloorFee) rather than make the front-end charge 5.
-  return Number.isInteger(raw) && raw >= OPHIS_FRONTEND_OP_VOLUME_BPS && raw <= 50 ? raw : 0
+  // EXACT-STRING match against the retail rate, identical to the CI deploy guard's
+  // byte compare (`[[ "$BPS" != "10" ]]` in cloudflare-deploy.yml). Using the raw
+  // string (not Number()) keeps the two gates equivalent: a malformed-but-coercible
+  // secret like '010' / '10.0' / '1e1' must NOT enable the flag here when CI would
+  // reject it, so neither gate is solely load-bearing. The flag enables ONLY for
+  // exactly the retail rate; a partner-tier value (5), a super-retail value, or any
+  // garbage DISABLES it (the OP path then charges the 10 bps retail via
+  // ophisVolumeOnlyFloorFee; CoW-hosted chains fall back to the price-improvement
+  // object). Pinning to exactly the retail rate is also what makes the autopilot
+  // startup assert (cap >= retail) provably sufficient: the front-end can never emit
+  // a retail fee ABOVE OPHIS_FRONTEND_OP_VOLUME_BPS, so the operator cap can never
+  // silently clamp a legitimate retail order down.
+  const raw = process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS
+  return raw === String(OPHIS_FRONTEND_OP_VOLUME_BPS) ? OPHIS_FRONTEND_OP_VOLUME_BPS : 0
 }
 /** Flat-volume-fee bps when the flag is enabled (0 = flag off). */
 export const OPHIS_VOLUME_BPS = readVolumeFeeBps()

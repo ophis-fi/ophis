@@ -116,26 +116,29 @@ impl ProtocolFees {
         volume_fee_bucket_overrides: Vec<TokenBucketFeeOverride>,
         enable_sell_equals_buy_volume_fee: bool,
     ) -> Self {
-        // OP partner-fee floor invariant (defense-in-depth). `max_partner_fee` is
+        // Ophis retail-rate cap invariant (defense-in-depth). `max_partner_fee` is
         // the operator-set UPPER cap applied to every partner fee in
         // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
-        // means every partner fee is an Ophis fee, and the token-pair floor
-        // (enforced at order ingress and re-clamped here) is at most
-        // OPHIS_DEFAULT_VOLUME_FEE_BPS, the 10 bps RETAIL rate the front-end emits.
-        // The cap must stay AT OR ABOVE the retail rate: a cap below it would
-        // silently cap a legitimate 10 bps retail order DOWN at settlement (and, a
-        // fortiori, could undercut the 4 bps floor on the eth-flow / on-chain path
-        // that skips ingress). Asserting cap >= retail covers both. Fail fast at
-        // startup rather than under-charge at settlement.
+        // means every partner fee is an Ophis fee. The HIGHEST rate any legitimate
+        // Ophis order carries is OPHIS_DEFAULT_VOLUME_FEE_BPS, the 10 bps RETAIL
+        // rate the front-end emits (the SDK partner rate is 5 bps and the stable
+        // rate 1 bp, both below it). The front-end pins its env to EXACTLY this
+        // retail rate (readVolumeFeeBps enables the flat fee only for that value),
+        // so no Ophis order can carry MORE than the retail rate; therefore
+        // `cap >= retail` is exactly sufficient — no super-retail order exists for
+        // the cap to wrongly pass. A cap below the retail rate would silently clamp
+        // a legitimate 10 bps retail order DOWN at settlement (and, a fortiori,
+        // could undercut the 4 bps floor on the eth-flow / on-chain path that skips
+        // ingress). Fail fast at startup rather than under-charge at settlement.
         let cap = config.max_partner_fee.get();
-        let floor_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
-        let floor_factor = floor_bps as f64 / 10_000.0;
+        let retail_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
+        let retail_factor = retail_bps as f64 / 10_000.0;
         assert!(
-            cap >= floor_factor,
-            "max_partner_fee ({cap}) is below the OP partner-fee floor of {floor_bps} \
-             bps ({floor_factor}); the autopilot cap would settle Ophis fees below \
-             the enforced floor. Raise max_partner_fee in the autopilot fee-policy \
-             config."
+            cap >= retail_factor,
+            "max_partner_fee ({cap}) is below the Ophis retail rate of {retail_bps} \
+             bps ({retail_factor}); the autopilot cap would settle a legitimate \
+             retail Ophis order below the rate the front-end charges. Raise \
+             max_partner_fee in the autopilot fee-policy config."
         );
 
         let volume_fee_policy = VolumeFeePolicy::new(
@@ -465,7 +468,7 @@ mod test {
     use {super::*, model::order::OrderMetadata};
 
     #[test]
-    #[should_panic(expected = "below the OP partner-fee floor")]
+    #[should_panic(expected = "below the Ophis retail rate")]
     fn new_panics_when_max_partner_fee_below_floor() {
         // A cap below the 10 bps retail rate would let the autopilot's upper cap
         // settle a legitimate retail order BELOW retail (and could undercut the
