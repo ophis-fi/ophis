@@ -1,3 +1,4 @@
+import { sql as dsql } from 'drizzle-orm';
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode } from './cow/types.js';
 import { GROSS_FEE_BPS } from './affiliate/rates.js';
@@ -55,20 +56,43 @@ export interface PendingTrade {
  *      flat-retail assumption, so the worst case equals prior behaviour and can
  *      never OVER-credit beyond it; an honest 5 bps SDK / 1 bp stable pair credits
  *      its real, lower rate.
+ * Reads the VOLUME policy in either accepted shape: the CIP-75 `{ volumeBps }` OR
+ * the legacy `{ bps }` (no surplusBps / priceImprovementBps). The OP backend's
+ * app_data.rs deserializer maps BOTH to FeePolicy::Volume (a bare `bps` with no
+ * other policy field is a Volume fee), so an SDK/widget/integrator order using
+ * `{ bps: 5, recipient: OphisSafe }` must be read as 5 bps, not dropped to null
+ * and over-credited at the retail default. A Surplus `{ surplusBps, ... }` or
+ * price-improvement `{ priceImprovementBps, ... }` policy is NOT a volume fee, so
+ * its presence suppresses the `bps` fallback.
+ *
  * `partnerFee` may be a single object or an array (CoW allows multiple). When no
- * Ophis-recipient entry carries a usable integer volumeBps >= 1 (absent / the
- * price-improvement shape / a non-Ophis recipient), returns null and accrual
+ * Ophis-recipient entry carries a usable Volume rate, returns null and accrual
  * COALESCEs to the retail rate — the same as the pre-per-trade behaviour.
  */
 function readVolumeFeeBps(meta: unknown): number | null {
   const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const entries = Array.isArray(pf) ? pf : [pf];
   for (const e of entries) {
-    const entry = e as { volumeBps?: unknown; recipient?: unknown };
+    const entry = e as {
+      volumeBps?: unknown;
+      bps?: unknown;
+      surplusBps?: unknown;
+      priceImprovementBps?: unknown;
+      recipient?: unknown;
+    };
     if (typeof entry?.recipient !== 'string' || entry.recipient.toLowerCase() !== OPHIS_FEE_RECIPIENT) {
       continue; // only the fee that actually pays the Ophis recipient counts
     }
-    const raw = entry.volumeBps;
+    // CIP-75 `volumeBps`, else the legacy `{ bps }` Volume shape (only when this is
+    // NOT a surplus / price-improvement policy — mirrors the backend deserializer).
+    let raw = entry.volumeBps;
+    if (
+      raw === undefined &&
+      entry.surplusBps === undefined &&
+      entry.priceImprovementBps === undefined
+    ) {
+      raw = entry.bps;
+    }
     if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
       return Math.min(raw, GROSS_FEE_BPS);
     }
@@ -119,11 +143,17 @@ export async function fetchChainTrades(
         // Lazily import sql + schema only when we have a real db instance.
         const { sql, schema } = await import('./db/index.js');
         const already = await deps.db
-          .select({ uid: schema.trades.tradeUid })
+          .select({ uid: schema.trades.tradeUid, volumeFeeBps: schema.trades.volumeFeeBps })
           .from(schema.trades)
           .where(sql`trade_uid = decode(${t.orderUid.slice(2)}, 'hex')`)
           .limit(1);
-        if (already.length > 0) continue;
+        // Skip only a row we've ALREADY enriched with its fee rate. A trade stored
+        // by the pre-per-trade code has volume_fee_bps = NULL; re-process it so the
+        // insert's onConflictDoUpdate can backfill the rate from appData — otherwise
+        // accrual defaults it to retail and over-credits a 5/1 bps order. Once
+        // populated it is skipped here (self-healing, one re-fetch per backlog row).
+        const row = already[0] as { volumeFeeBps: number | null } | undefined;
+        if (row && row.volumeFeeBps !== null) continue;
       }
 
       // Confirm appCode by fetching the order. We could store unfiltered trades and filter
@@ -310,7 +340,15 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                 volumeFeeBps: r.volumeFeeBps,
               })),
             )
-            .onConflictDoNothing();
+            // Backfill the fee rate on a re-encountered row, and ONLY when it is
+            // still NULL (a pre-per-trade backlog row). Never clobber an already
+            // enriched rate, and touch no other column — value_usd / priced_at /
+            // amounts stay as first indexed. New rows insert normally.
+            .onConflictDoUpdate({
+              target: schema.trades.tradeUid,
+              set: { volumeFeeBps: dsql`excluded.volume_fee_bps` },
+              setWhere: dsql`${schema.trades.volumeFeeBps} IS NULL`,
+            });
           inserted += rows.length;
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor

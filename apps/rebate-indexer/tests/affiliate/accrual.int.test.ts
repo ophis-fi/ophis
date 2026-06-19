@@ -180,6 +180,29 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(owed!.owedUsd).toBeCloseTo(15, 6);
   });
 
+  it('volume_fee_bps backfill upsert (self-healing): fills a NULL backlog row, never clobbers a set rate', async () => {
+    const uid = UID('ba5e');
+    const w = W('ba5e');
+    // Mirrors the fetcher's drizzle onConflictDoUpdate: set volume_fee_bps from the
+    // new row ONLY when the existing one is still NULL.
+    const upsert = (bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${uid},'hex'), 100, decode(${w},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '1000', ${bps}, now())
+      ON CONFLICT (trade_uid) DO UPDATE SET volume_fee_bps = EXCLUDED.volume_fee_bps WHERE trades.volume_fee_bps IS NULL`;
+    const read = async () =>
+      (await sql<{ volume_fee_bps: number | null; value_usd: string }[]>`
+        SELECT volume_fee_bps, value_usd::text FROM trades WHERE trade_uid = decode(${uid},'hex')`)[0];
+
+    await upsert(null); // first index by the pre-per-trade code: NULL bps
+    expect((await read())!.volume_fee_bps).toBeNull();
+    await upsert(5); //    re-fetch backfills the real rate
+    expect((await read())!.volume_fee_bps).toBe(5);
+    await upsert(10); //   a later re-fetch must NOT clobber the set rate
+    const final = await read();
+    expect(final!.volume_fee_bps).toBe(5);
+    expect(final!.value_usd).toBe('1000.0000'); // other columns untouched by the backfill
+  });
+
   it('getReferrerStats: current-cycle volume = bind + appData, no double-count, referredCount bind-based', async () => {
     const refS = W('5ec0'); // referrer owning an active code used for BOTH bind + appData
     const boundW = W('b0c0'); // bound to refS; makes an untagged AND a tagged trade
