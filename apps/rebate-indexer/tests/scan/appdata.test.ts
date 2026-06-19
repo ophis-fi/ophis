@@ -1,0 +1,26 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseAppData } from '../../src/scan/appdata.js';
+
+const fx = (f: string) => readFileSync(join(__dirname, 'fixtures', f), 'utf8');
+
+describe('parseAppData', () => {
+  it('extracts appCode + feeBps from a real Ophis order', () => {
+    const r = parseAppData(fx('mainnet-ophis-order.json'));
+    expect(r.appCode).toBe('ophis');
+    expect(r.feeBps).toBe(10);
+    expect(r.refCode).toBeNull();
+  });
+  it('rejects a non-Ophis appCode', () => {
+    expect(parseAppData(fx('non-ophis-order.json')).appCode).toBeNull();
+  });
+  it('keeps a grammar-valid referral code, drops a bad one', () => {
+    expect(parseAppData('{"appCode":"ophis","metadata":{"ophisReferrer":{"code":"Friend_01"}}}').refCode).toBe('friend_01');
+    expect(parseAppData('{"appCode":"ophis","metadata":{"ophisReferrer":{"code":"a"}}}').refCode).toBeNull();
+  });
+  it('is null-safe on missing/malformed input', () => {
+    expect(parseAppData(null)).toEqual({ appCode: null, refCode: null, feeBps: null });
+    expect(parseAppData('{not json')).toEqual({ appCode: null, refCode: null, feeBps: null });
+  });
+});
