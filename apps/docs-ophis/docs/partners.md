@@ -82,11 +82,11 @@ const partnerFee = {
 };
 
 const doc = await new MetadataApi().generateAppDataDoc({
-  appCode: 'YourApp',
+  appCode: 'ophis', // REQUIRED: 'ophis', NOT your app's name (see "attribution" below)
   metadata: { partnerFee, hooks: {} },
 });
 const fullAppData = await stringifyDeterministic(doc); // deterministic, never JSON.stringify
-const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32 -> order.appData
+const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32, signed as order.appData
 ```
 
 On Optimism the fee is an **enforced floor**. The backend rejects (HTTP 400) any
@@ -131,8 +131,14 @@ The Ophis Optimism orderbook supports the `eip1271` signing scheme, so a Safe
    `buyAmount`, `validTo`, `appData`, `feeAmount`, `kind`, `partiallyFillable`,
    `sellTokenBalance`, `buyTokenBalance`).
 2. Have the vault Safe produce the EIP-1271 signature (`isValidSignature`).
-3. `orderBookApi.sendOrder({ ...order, from: vaultSafe, signingScheme: 'eip1271',
-   signature })`.
+3. Submit with `orderBookApi.sendOrder({ ...order, from: vaultSafe, signingScheme:
+   SigningScheme.EIP1271, signature, appData: fullAppData, appDataHash })` (import
+   `SigningScheme` from `@cowprotocol/cow-sdk`).
+
+The order is **signed** with `appData` set to the bytes32 hash, but the **submit
+body** carries `appData` = the full JSON string and `appDataHash` = the hash.
+`OrderCreation` has no `fullAppData` field; sending the hash as `appData` with no
+`appDataHash` uses a deprecated form the orderbook is phasing out.
 
 Your tool already does steps like this against CoW Swap. The only deltas are the
 three overrides above (host, `verifyingContract`, `partnerFee`).
@@ -172,7 +178,7 @@ referral code and Ophis pays you monthly.
 import { ophisVolumeBpsForPair, OPHIS_PARTNER_FEE_RECIPIENT, buildOphisReferrerMetadata } from '@ophis/sdk';
 
 const doc = await new MetadataApi().generateAppDataDoc({
-  appCode: 'YourApp',
+  appCode: 'ophis', // REQUIRED: 'ophis', NOT your app's name (see below)
   metadata: {
     // Same partner-fee fragment as above: reduced 1 bp for a same-chain
     // stablecoin pair, else 10 bps. The rebate is on top of the fee.
@@ -188,6 +194,27 @@ credits your referred USD volume **across all served chains**, and pays out
 monthly in WETH from a single Gnosis Safe. Your code must exist before you tag
 orders with it. Higher tiers earn a larger share. See the
 [Affiliate program](./affiliate.md) for rates and tiers.
+
+:::warning Two requirements, or the rebate silently never accrues
+
+**1. `appCode` must be `'ophis'`**, not your app's name. The indexer only
+attributes orders carrying the Ophis appCode; an order with a custom appCode still
+settles and pays the fee, but earns no rebate, and there is no error anywhere. Your
+own identity is the referral code in `metadata.ophisReferrer.code`, a separate field
+from `appCode` (which records *which app* placed the order, always `'ophis'` here).
+
+**2. Each order-owner wallet must be registered with the indexer.** The indexer
+fetches trades per tracked owner (CoW's trades API cannot be enumerated globally),
+so a programmatic integrator that never loads the Ophis frontend must enroll every
+owner (vault Safe) once, with a public idempotent call:
+
+```bash
+curl https://rebates.ophis.fi/tier/<ownerAddress>
+```
+
+or ask us to register them. Until an owner is registered, its orders are never
+fetched and nothing accrues, even with the correct `appCode` and referral code.
+:::
 
 A future option for Optimism is an **enforced lower fee** at settlement (rather
 than a post-hoc rebate), via a signed fee credential. That is a separate,
