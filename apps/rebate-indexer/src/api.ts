@@ -60,6 +60,10 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
         LEFT JOIN trades t
           ON t.wallet = r.referred_wallet
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+          -- Exclude explicit 0-fee trades (no settled Ophis fee): they earn nothing
+          -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
+          -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
+          AND t.volume_fee_bps IS DISTINCT FROM 0
           -- appData-wins (mirror of accrual): exclude trades attributed via an
           -- ACTIVE code owned by someone other than the trader, so bind volume
           -- here + appData volume below are disjoint (no double-count). The
@@ -81,6 +85,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           ON t.wallet = r.referred_wallet
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+          AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
           -- appData-wins (mirror of accrual): see the partner branch above.
           AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
             SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
@@ -109,6 +114,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     WHERE rc.referrer_wallet = ${buf}
       AND rc.referrer_wallet <> t.wallet
       AND t.value_usd IS NOT NULL
+      AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
   `;
 
   const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;

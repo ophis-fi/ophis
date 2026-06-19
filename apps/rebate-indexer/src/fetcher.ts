@@ -46,34 +46,39 @@ export interface PendingTrade {
 }
 
 /**
- * Read the order's gross volume-fee rate (bps) from its appData and clamp it to
- * [1, retail]. appData is attacker-controllable, so two guards apply:
- *   1. RECIPIENT-MATCH: only an entry whose `recipient` is the Ophis Safe sets the
- *      rate. A crafted array cannot put a decoy `{recipient: attacker, volumeBps:
- *      10}` ahead of the real `{recipient: Ophis, volumeBps: 5}` to over-credit;
- *      the decoy is ignored and the actual Ophis fee (5) is used.
- *   2. CLAMP CEILING (retail): bounds any inflated claim to no more than the legacy
- *      flat-retail assumption, so the worst case equals prior behaviour and can
- *      never OVER-credit beyond it; an honest 5 bps SDK / 1 bp stable pair credits
- *      its real, lower rate.
- * Reads the flat VOLUME policy in either accepted shape: CIP-75 `{ volumeBps }` OR
- * the legacy `{ bps }`. Mirrors the OP backend's app_data.rs FeePolicyDeserializer
- * EXACTLY: a fee is FeePolicy::Volume only when surplusBps, priceImprovementBps AND
- * maxVolumeBps are ALL absent (a capped `{ bps, maxVolumeBps }` or a surplus /
- * price-improvement policy is NOT settled as a flat Volume fee — the backend Errs
- * on it). So an SDK/widget order `{ bps: 5, recipient: OphisSafe }` is read as 5,
- * but `{ bps: 5, maxVolumeBps: 50 }` is NOT, since that fee base was never
- * collected. appData is attacker-controllable, so the value is also CLAMPED to
- * [1, retail] (worst case = the legacy flat-retail assumption, never higher) and
- * only an entry paying the OPHIS recipient counts (a decoy entry is ignored).
+ * Read the order's gross volume-fee rate (bps) from its appData, recipient-guarded
+ * and clamped to [1, retail]. Classifies the Ophis partner fee against the backend
+ * app_data.rs FeePolicyDeserializer arms and returns one of THREE states (which
+ * must NOT collapse, because accrual/dashboard SQL applies
+ * COALESCE(volume_fee_bps, GROSS_FEE_BPS) and would credit a NULL at the retail
+ * default):
  *
- * `partnerFee` may be a single object or an array (CoW allows multiple). When no
- * Ophis-recipient entry carries a usable Volume rate, returns null and accrual
- * COALESCEs to the retail rate — the same as the pre-per-trade behaviour.
+ *   N (1..retail) -- a settled flat Volume fee to Ophis: CIP-75 `{ volumeBps }` or
+ *     legacy `{ bps }` with surplusBps/priceImprovementBps/maxVolumeBps all absent
+ *     (and not both aliases). Clamped to [1, retail] (a crafted appData can never
+ *     claim more than the legacy assumption). This is ~all production volume.
+ *
+ *   null -- a VALID Surplus `{ surplusBps, maxVolumeBps }` or PriceImprovement
+ *     `{ priceImprovementBps, maxVolumeBps }` fee to Ophis. Ophis DID collect a fee,
+ *     but this volume-derived indexer cannot compute a surplus/PI amount, so it is
+ *     UNKNOWN -> COALESCEs to the retail default and still earns a rebate (the
+ *     pre-per-trade behaviour) rather than being zeroed.
+ *
+ *   0 -- examined, NO settled Ophis fee at ALL: a non-Ophis recipient, an absent /
+ *     0-bps fee, or a backend-REJECTED shape (capped `{ volumeBps/bps, maxVolumeBps }`,
+ *     both aliases) that never settles. 0 is non-NULL, so COALESCE keeps it 0 and the
+ *     trade is credited at ZERO. This is the fix for `{ volumeBps: 5, maxVolumeBps:
+ *     50 }` being credited at the retail 10.
+ *
+ * appData is attacker-controllable, so a crafted array cannot use a decoy
+ * `{recipient: attacker, volumeBps: 10}` to over-credit: only Ophis-recipient
+ * entries are considered, and a real Volume fee is preferred over a surplus/PI one.
+ * The caller additionally leaves NULL for unparseable appData / pre-per-trade rows.
  */
 function readVolumeFeeBps(meta: unknown): number | null {
   const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const entries = Array.isArray(pf) ? pf : [pf];
+  let sawOphisNonVolumeFee = false; // a valid surplus / price-improvement Ophis fee
   for (const e of entries) {
     const entry = e as {
       volumeBps?: unknown;
@@ -86,26 +91,48 @@ function readVolumeFeeBps(meta: unknown): number | null {
     if (typeof entry?.recipient !== 'string' || entry.recipient.toLowerCase() !== OPHIS_FEE_RECIPIENT) {
       continue; // only the fee that actually pays the Ophis recipient counts
     }
-    // Not a flat Volume policy (surplus / price-improvement / capped) -> the backend
-    // does not settle a flat Volume fee for it, so it must not set a fee base.
-    if (
-      entry.surplusBps !== undefined ||
-      entry.priceImprovementBps !== undefined ||
-      entry.maxVolumeBps !== undefined ||
-      // The backend's Volume arms are EITHER { volumeBps } XOR legacy { bps }: the
-      // volumeBps arm requires bps absent and vice versa. Both present matches no
-      // arm (the backend Errs), so it is not a settled Volume fee.
-      (entry.volumeBps !== undefined && entry.bps !== undefined)
+    const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+    // Flat Volume arm: { volumeBps } XOR legacy { bps }, with surplusBps,
+    // priceImprovementBps AND maxVolumeBps ALL absent (mirrors the backend). Prefer
+    // a real Volume fee over a surplus/PI entry in a multi-entry array.
+    const isFlatVolume =
+      entry.surplusBps === undefined &&
+      entry.priceImprovementBps === undefined &&
+      entry.maxVolumeBps === undefined &&
+      !(entry.volumeBps !== undefined && entry.bps !== undefined);
+    if (isFlatVolume) {
+      const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
+      if (isInt(raw) && raw >= 1) {
+        return Math.min(raw, GROSS_FEE_BPS);
+      }
+    } else if (
+      // EXACT backend Surplus arm { surplusBps, maxVolumeBps } or PriceImprovement
+      // arm { priceImprovementBps, maxVolumeBps } (integers, mutually exclusive, no
+      // volumeBps/bps). A VALID such fee is a real Ophis fee on a CoW-hosted chain
+      // (CoW accepts CIP-75 Surplus/PI; only the OP sovereign backend rejects it),
+      // but the volume-derived indexer can't compute it -> defer to NULL (retail
+      // default) so it still earns. A MALFORMED surplus-ish shape (e.g. missing
+      // maxVolumeBps, non-integer, or mixed with volumeBps/bps) is backend-rejected
+      // (no settled fee) and must NOT get the retail default -> falls through to 0.
+      (isInt(entry.surplusBps) &&
+        isInt(entry.maxVolumeBps) &&
+        entry.priceImprovementBps === undefined &&
+        entry.volumeBps === undefined &&
+        entry.bps === undefined) ||
+      (isInt(entry.priceImprovementBps) &&
+        isInt(entry.maxVolumeBps) &&
+        entry.surplusBps === undefined &&
+        entry.volumeBps === undefined &&
+        entry.bps === undefined)
     ) {
-      continue;
+      sawOphisNonVolumeFee = true;
     }
-    // CIP-75 `volumeBps`, else the legacy `{ bps }` Volume shape.
-    const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
-    if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1) {
-      return Math.min(raw, GROSS_FEE_BPS);
-    }
+    // else: capped { volumeBps/bps, maxVolumeBps }, both-aliases, or a malformed
+    // surplus/PI shape -> backend Errs (no settled fee) -> not creditable; try next.
   }
-  return null;
+  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (retail default,
+  // still earns). Otherwise Ophis collected nothing -> 0 (credit zero).
+  return sawOphisNonVolumeFee ? null : 0;
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
@@ -174,7 +201,9 @@ export async function fetchChainTrades(
       try {
         const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
         appCode = meta?.appCode;
-        // Per-trade gross fee rate for fee-accurate accrual (clamped to [1, retail]).
+        // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no
+        // settled Ophis Volume fee. Stays NULL only on a parse failure below
+        // (unknown -> retail default at accrual).
         volumeFeeBps = readVolumeFeeBps(meta);
         // Affiliate attribution: an order may carry metadata.ophisReferrer.code.
         // appData is attacker-controllable, so keep the code ONLY if it matches
@@ -348,14 +377,17 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                 volumeFeeBps: r.volumeFeeBps,
               })),
             )
-            // Backfill the fee rate on a re-encountered row, and ONLY when it is
-            // still NULL (a pre-per-trade backlog row). Never clobber an already
-            // enriched rate, and touch no other column — value_usd / priced_at /
-            // amounts stay as first indexed. New rows insert normally.
+            // Backfill the fee rate on a re-encountered row ONLY to UPGRADE a still
+            // -NULL pre-per-trade backlog row to a POSITIVE rate. The `> 0` guard is
+            // load-bearing: a historical NULL whose appData yields 0 (no Ophis fee)
+            // or NULL (surplus/PI) must stay NULL (unknown -> retail) rather than be
+            // reclassified to 0 — re-fetching history must not change past accrual.
+            // Never clobber an enriched rate; touch no other column (value_usd /
+            // priced_at / amounts stay as first indexed). New rows insert normally.
             .onConflictDoUpdate({
               target: schema.trades.tradeUid,
               set: { volumeFeeBps: dsql`excluded.volume_fee_bps` },
-              setWhere: dsql`${schema.trades.volumeFeeBps} IS NULL`,
+              setWhere: dsql`${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0`,
             });
           inserted += rows.length;
         } catch (err) {

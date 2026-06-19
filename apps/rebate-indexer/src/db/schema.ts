@@ -46,12 +46,19 @@ export const trades = pgTable(
     appCode: text('app_code').notNull(),
     partnerFeeWei: uint256('partner_fee_wei'),
 
-    // Gross volume-fee rate (bps) read from the order's appData
-    // metadata.partnerFee.volumeBps, CLAMPED to [1, retail=10] by the fetcher
-    // (migration 0010). NULL = unknown -> accrual treats it as the legacy retail
-    // rate via COALESCE(volume_fee_bps, GROSS_FEE_BPS). This is the per-trade fee
-    // base that makes the SDK (5 bps) / retail (10 bps) / stable (1 bp) channels
-    // accrue their ACTUAL kept fee instead of one assumed rate.
+    // Gross volume-fee rate (bps) read from the order's appData by the fetcher,
+    // CLAMPED to [1, retail=10] (migration 0010). Three states:
+    //   N (1..10) = the actual per-trade flat Volume rate (SDK 5 / retail 10 / stable 1);
+    //   0         = examined, NO settled Ophis fee at all (a backend-rejected shape
+    //               like capped {volumeBps,maxVolumeBps} or both-aliases, a non-Ophis
+    //               recipient, an absent/0-bps fee) -> credited at ZERO;
+    //   NULL      = unknown -> COALESCEs to the legacy retail rate; covers a
+    //               pre-per-trade historical row, unparseable appData, OR a VALID
+    //               surplus/price-improvement Ophis fee this volume-derived indexer
+    //               cannot compute (so it still earns at the default rather than 0).
+    // 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, GROSS_FEE_BPS) keeps 0 as
+    // 0 (no credit) but maps NULL to retail. The self-healing backfill only upgrades
+    // NULL -> a POSITIVE rate, so re-fetching history never reclassifies it to 0.
     volumeFeeBps: integer('volume_fee_bps'),
 
     // Affiliate referral code from the order's appData (metadata.ophisReferrer.code),
