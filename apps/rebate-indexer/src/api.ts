@@ -11,7 +11,9 @@ import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
-  estimateEarningsFromFeeBaseUsd,
+  OPTIMISM_CHAIN_ID,
+  keepFractionBps,
+  estimateEarningsFromNetFeeUsd,
   type AffiliateKind,
 } from './affiliate/rates.js';
 
@@ -40,17 +42,19 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   // Branching on kind keeps the common regular path off a full referee-history
   // scan on every profile refresh.
   const [agg] = isPartner
-    ? await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_fee_weighted: string | null; lifetime_volume_usd: string | null }[]>`
+    ? await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_net_weighted: string | null; lifetime_volume_usd: string | null }[]>`
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_volume_usd,
-          -- Cycle fee base = SUM(value * actual bps) so the earnings estimate matches
-          -- the per-trade payout (NULL bps -> retail default, like accrual).
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})) FILTER (
+          -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
+          -- estimate matches the per-trade, per-chain payout: Optimism keeps 100%,
+          -- hosted 75% (NULL bps -> retail default, like accrual).
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+            * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-          ), 0)::text AS cycle_fee_weighted,
+          ), 0)::text AS cycle_net_weighted,
           COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
         FROM referrals r
         LEFT JOIN trades t
@@ -65,11 +69,12 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           ))
         WHERE r.referrer_wallet = ${buf}
       `
-    : await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_fee_weighted: string | null; lifetime_volume_usd: string | null }[]>`
+    : await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_net_weighted: string | null; lifetime_volume_usd: string | null }[]>`
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})), 0)::text AS cycle_fee_weighted,
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+            * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd
         FROM referrals r
         LEFT JOIN trades t
@@ -89,14 +94,15 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   // trades), so summing the two does NOT double-count, and the displayed volume
   // matches what the monthly payout actually accrues. referredCount stays bind-
   // based (an appData tag credits volume; it does not create a bound referee).
-  const [appdataAgg] = await sql<{ cycle_volume_usd: string; cycle_fee_weighted: string; lifetime_volume_usd: string }[]>`
+  const [appdataAgg] = await sql<{ cycle_volume_usd: string; cycle_net_weighted: string; lifetime_volume_usd: string }[]>`
     SELECT
       COALESCE(SUM(t.value_usd) FILTER (
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       ), 0)::text AS cycle_volume_usd,
-      COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})) FILTER (
+      COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+        * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
-      ), 0)::text AS cycle_fee_weighted,
+      ), 0)::text AS cycle_net_weighted,
       COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
     FROM trades t
     JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
@@ -109,12 +115,13 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   const bindLifetime = agg && agg.lifetime_volume_usd ? parseFloat(agg.lifetime_volume_usd) : 0;
   const appdataCycle = appdataAgg ? parseFloat(appdataAgg.cycle_volume_usd) : 0;
   const appdataLifetime = appdataAgg ? parseFloat(appdataAgg.lifetime_volume_usd) : 0;
-  // Cycle fee base (USD) = SUM(value * bps) / 1e4 across bind + appData (disjoint),
-  // matching the per-trade accrual. Drives the fee-aware earnings estimate so the
-  // dashboard no longer shows ~2x for a 5 bps SDK partner.
-  const bindFeeWeighted = agg && agg.cycle_fee_weighted ? parseFloat(agg.cycle_fee_weighted) : 0;
-  const appdataFeeWeighted = appdataAgg ? parseFloat(appdataAgg.cycle_fee_weighted) : 0;
-  const currentCycleFeeBaseUsd = (bindFeeWeighted + appdataFeeWeighted) / 10_000;
+  // Cycle NET fee (USD) = SUM(value * bps * keepFractionBps(chain)) / 1e8 across
+  // bind + appData (disjoint), matching the per-trade, per-chain accrual (OP keeps
+  // 100%, hosted 75%). The /1e8 unscales both the bps (1e4) and the keep bps (1e4).
+  // Drives the fee-aware earnings estimate (no ~2x for SDK; OP not understated 25%).
+  const bindNetWeighted = agg && agg.cycle_net_weighted ? parseFloat(agg.cycle_net_weighted) : 0;
+  const appdataNetWeighted = appdataAgg ? parseFloat(appdataAgg.cycle_net_weighted) : 0;
+  const currentCycleNetFeeUsd = (bindNetWeighted + appdataNetWeighted) / 100_000_000;
 
   return {
     wallet: referrer,
@@ -125,8 +132,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     // Bind + appData volume (disjoint). Drives both the display and the partner
     // earnings estimate, so the dashboard now matches the payout.
     currentCycleVolumeUsd: bindCycle + appdataCycle,
-    // Actual cycle fee base (Σ value*bps/1e4) for the fee-aware earnings estimate.
-    currentCycleFeeBaseUsd,
+    // Actual cycle NET fee (Σ value*bps*keep/1e8) for the fee-aware earnings estimate.
+    currentCycleNetFeeUsd,
     // Partners display lifetime referred volume (bind + appData); regular never
     // displays lifetime (stays 0, unchanged).
     lifetimeReferredVolumeUsd: isPartner ? bindLifetime + appdataLifetime : 0,
@@ -690,8 +697,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // tier share of the actual cycle fee base (Σ value*bps), so a 5 bps SDK partner
     // sees roughly what the payout pays, not ~2x. Paid-to-date is exact, summed from
     // the executed monthly Safe batches. Next payout is the 1st of next month, 02:00 UTC.
-    const estimatedCurrentCycleEarningsUsd = estimateEarningsFromFeeBaseUsd(
-      stats.currentCycleFeeBaseUsd,
+    const estimatedCurrentCycleEarningsUsd = estimateEarningsFromNetFeeUsd(
+      stats.currentCycleNetFeeUsd,
       stats.currentCycleVolumeUsd,
       stats.kind,
     );

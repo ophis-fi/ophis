@@ -118,6 +118,7 @@ describe('fetcher.fetchChainTrades', () => {
       inflated: mk(0x54), absent: mk(0x55), arr: mk(0x56), zero: mk(0x57),
       decoy: mk(0x58), wrongRecipient: mk(0x59),
       legacyBps: mk(0x5a), surplusNotVolume: mk(0x5b), piNotVolume: mk(0x5c),
+      cappedBps: mk(0x5d), cappedVolumeBps: mk(0x5e), bothAliases: mk(0x5f),
     };
     handlers.trades.mockReturnValue(Object.values(uids).map((u) => sampleTrade(u, owner)));
     const withFee = (uid: string, pf: unknown) => ({
@@ -144,6 +145,12 @@ describe('fetcher.fetchChainTrades', () => {
         // fallback is suppressed -> null (retail default).
         case uids.surplusNotVolume: return withFee(uid, { surplusBps: 10, maxVolumeBps: 50, bps: 99, recipient: REC });
         case uids.piNotVolume: return withFee(uid, { priceImprovementBps: 25, maxVolumeBps: 50, bps: 99, recipient: REC });
+        // Capped { bps, maxVolumeBps } / { volumeBps, maxVolumeBps } are NOT flat Volume
+        // fees (the backend Errs on them) -> must not set a fee base -> null.
+        case uids.cappedBps: return withFee(uid, { bps: 5, maxVolumeBps: 50, recipient: REC });
+        case uids.cappedVolumeBps: return withFee(uid, { volumeBps: 5, maxVolumeBps: 50, recipient: REC });
+        // Both volumeBps AND legacy bps present -> matches no backend Volume arm -> null.
+        case uids.bothAliases: return withFee(uid, { volumeBps: 5, bps: 10, recipient: REC });
         default: return sampleOrder(uid, owner, 'ophis');
       }
     });
@@ -163,5 +170,8 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.legacyBps]).toBe(5); // legacy { bps } Volume shape read
     expect(byUid[uids.surplusNotVolume]).toBeNull(); // surplus policy: bps fallback suppressed
     expect(byUid[uids.piNotVolume]).toBeNull(); // price-improvement policy: bps fallback suppressed
+    expect(byUid[uids.cappedBps]).toBeNull(); // { bps, maxVolumeBps } is not a flat Volume fee
+    expect(byUid[uids.cappedVolumeBps]).toBeNull(); // { volumeBps, maxVolumeBps } is not a flat Volume fee
+    expect(byUid[uids.bothAliases]).toBeNull(); // { volumeBps, bps } matches no backend Volume arm
   });
 });

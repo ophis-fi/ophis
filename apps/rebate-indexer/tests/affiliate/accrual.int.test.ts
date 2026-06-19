@@ -226,4 +226,20 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     // referredCount stays bind-based: only boundW is a bound referee (pureW is appData-only).
     expect(stats.referredCount).toBe(1);
   });
+
+  it('getReferrerStats net fee applies per-chain keep (real SQL): Optimism 100%, hosted 75%', async () => {
+    const ref = W('dd11'); // unique wallet (NB: W('b0b') and W('0b0b') collapse to the same addr)
+    const trader = W('dd22'); // unbound; trades tagged with ref's code (appData path, owner != ref)
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('netkeep', decode(${ref},'hex'), 'partner', true)`;
+    const insNow = (uid: string, chain: number, usd: string, bps: number) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), ${chain}, decode(${trader},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', 'netkeep', ${usd}, ${bps}, now())`;
+    await insNow('cef1', 100, '100000', 10); // hosted: net = 100000*10/1e4 * 0.75 = $75
+    await insNow('cef2', 10, '100000', 10); //  Optimism: net = 100000*10/1e4 * 1.00 = $100
+
+    const stats = await getReferrerStats(`0x${ref}`, new Date());
+    // Per-chain keep applied in SQL: $75 (hosted) + $100 (OP) = $175. A flat hosted-keep
+    // estimate would wrongly give $150, understating the OP half by 25%.
+    expect(stats.currentCycleNetFeeUsd).toBeCloseTo(175, 4);
+  });
 });

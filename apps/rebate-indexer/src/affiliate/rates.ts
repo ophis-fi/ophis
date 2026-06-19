@@ -85,24 +85,25 @@ export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): num
 
 /**
  * Fee-aware dashboard estimate of an affiliate's current-cycle earnings, from the
- * ACTUAL cycle fee base (feeBaseUsd = SUM(value * per-trade bps) / 1e4 on the
- * referrer's hosted volume). owed = feeShare * hostedKeep * feeBase, so it MATCHES
- * what the settled monthly accrual pays (a 5 bps SDK partner sees ~half of the old
- * retail-assumed figure, not 2x it). Regular caps on VOLUME at REGULAR_VOL_CAP_USD,
- * applied proportionally to the fee base (the dashboard estimate does not need the
- * accrual's exact least-valuable-first cap allocation). volumeUsd is the cycle
- * referred volume that produced feeBaseUsd, used only to compute the regular cap.
+ * ACTUAL cycle NET fee (netFeeUsd = SUM(value * per-trade bps * keepFraction(chain))
+ * / 1e8, with the per-chain CoW cut already applied at the SQL layer so Optimism
+ * volume keeps 100% and hosted volume 75%, matching the accrual). owed = feeShare *
+ * netFee, so it MATCHES what the settled monthly accrual pays (a 5 bps SDK partner
+ * sees ~half of the old retail-assumed figure, not 2x; OP volume is not understated
+ * by 25%). Regular caps on VOLUME at REGULAR_VOL_CAP_USD, applied proportionally to
+ * the net fee (the dashboard estimate does not need the accrual's exact
+ * least-valuable-first cap allocation). volumeUsd is the cycle referred volume that
+ * produced netFeeUsd, used only to compute the regular cap.
  */
-export function estimateEarningsFromFeeBaseUsd(
-  feeBaseUsd: number,
+export function estimateEarningsFromNetFeeUsd(
+  netFeeUsd: number,
   volumeUsd: number,
   kind: AffiliateKind,
 ): number {
-  if (!Number.isFinite(feeBaseUsd) || feeBaseUsd <= 0) return 0;
+  if (!Number.isFinite(netFeeUsd) || netFeeUsd <= 0) return 0;
   const cappedFraction =
     kind === 'regular' && Number.isFinite(volumeUsd) && volumeUsd > REGULAR_VOL_CAP_USD
       ? REGULAR_VOL_CAP_USD / volumeUsd
       : 1;
-  const HOSTED_CHAIN_ID = 1; // indexer covers only hosted chains; use the hosted keep fraction
-  return (FEE_SHARE_BPS[kind] / 10_000) * (keepFractionBps(HOSTED_CHAIN_ID) / 10_000) * feeBaseUsd * cappedFraction;
+  return (FEE_SHARE_BPS[kind] / 10_000) * netFeeUsd * cappedFraction;
 }
