@@ -18,6 +18,7 @@ npm install @ophis/sdk
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
 - **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers that collapse the integration footguns into one call each: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), each trader wallet is enrolled with the rebate indexer, the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct.
 - **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Optimism the Ophis relayer is **not** cow-sdk's canonical one, so resolve it here.
+- **`buildOphisEthFlowOrder`** / **`getOphisEthFlowAddress`** / **`isOphisEthFlowChain`** — sell **native ETH** through Ophis via the on-chain eth-flow `createOrder`, with the Ophis partner-fee appData embedded. Without this an integrator has to wrap to WETH first and Ophis is unavailable on native-ETH sells. The builder pins the receiver to the taker, hardcodes the eth-flow `feeAmount`/`msg.value` correctly, and (optionally) verifies the committed appData hash binds to the JSON you upload.
 - **`assignTier`**, **`ophisDefaults`**, and the partner-fee constants.
 
 ## Example

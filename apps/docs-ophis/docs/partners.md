@@ -296,6 +296,58 @@ A future option for Optimism is an **enforced lower fee** at settlement (rather
 than a post-hoc rebate), via a signed fee credential. That is a separate,
 not-yet-shipped capability; talk to us if you want it.
 
+## Selling native ETH (eth-flow)
+
+A CoW order sells an ERC-20 token, so selling **native ETH** needs the on-chain
+eth-flow path: the user calls the `CoWSwapEthFlow` contract's payable
+`createOrder`, which wraps the ETH to WETH and places the order on their behalf.
+`@ophis/sdk` builds that call for you with the Ophis partner fee embedded, so
+native-ETH sells route through Ophis instead of forcing the user to wrap first.
+
+`buildOphisEthFlowOrder` returns the eth-flow contract address, the `msg.value`,
+the order struct (as a ready-to-send tuple), the ABI, and the full appData you
+must upload. It pins the receiver to the taker, sets the eth-flow `feeAmount` and
+`value` correctly, and (when you pass a `hashAppData` function) refuses to build
+an order whose committed hash does not match the JSON you upload.
+
+```ts
+import { MetadataApi, OrderBookApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+import { keccak256, toUtf8Bytes } from 'ethers';
+import {
+  buildOphisOrderMetadata,
+  buildOphisEthFlowOrder,
+  isOphisEthFlowChain,
+  getOphisOrderbookUrl,
+} from '@ophis/sdk';
+
+// 0. Native ETH not supported on this chain? Wrap to WETH and use the order path above.
+if (!isOphisEthFlowChain(chainId)) throw new Error('wrap ETH to WETH first');
+
+// 1. Build the Ophis appData (partner fee + referral code), same as an ERC-20 order, and hash it.
+const doc = await new MetadataApi().generateAppDataDoc(
+  buildOphisOrderMetadata({ chainId, referralCode: 'yourcode', isStablePair }),
+);
+const fullAppData = await stringifyDeterministic(doc);
+const appDataHash = keccak256(toUtf8Bytes(fullAppData));
+
+// 2. Build the eth-flow order. `owner` is the taker; `buyToken` is what they receive.
+const built = buildOphisEthFlowOrder({
+  chainId, owner, buyToken, sellAmount, buyAmount,
+  fullAppData, appDataHash, validTo, quoteId,
+  hashAppData: (s) => keccak256(toUtf8Bytes(s)), // optional: fail closed on a hash mismatch
+});
+
+// 3. Upload the full appData so solvers honor the partner fee (the on-chain order
+//    only commits the hash), then call createOrder with the exact value.
+const orderBookApi = new OrderBookApi({ chainId, baseUrls: { [chainId]: getOphisOrderbookUrl(chainId) } });
+await orderBookApi.uploadAppData(appDataHash, built.appDataToUpload);
+// built.ethFlowContract + built.abi give you the contract; call with value === built.value:
+await ethFlow.createOrder(built.orderTuple, { value: built.value });
+```
+
+Native ETH is supported on Optimism, Base, and the other CoW-hosted chains.
+The order carries the Ophis partner fee exactly as an ERC-20 order does.
+
 ## Caveats
 
 - **Use the SDK path, not the widget.** The embed cannot carry a `partnerFee` or
