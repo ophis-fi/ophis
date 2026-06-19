@@ -10,9 +10,11 @@
  *   - apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts
  *     (`OPHIS_DEFAULT_APP_DATA_PARTNER_FEE`; separate pnpm workspace, mirrored)
  *   - apps/backend/crates/app-data/src/app_data.rs
- *     (`OPHIS_DEFAULT_VOLUME_FEE_BPS = 10` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
+ *     (`OPHIS_NON_STABLE_FLOOR_BPS = 4` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
  *     the MINIMUM Volume bps the OP self-hosted backend accepts for a fee to the
- *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot)
+ *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot.
+ *     This SDK's 5 bps partner rate clears that 4 bps floor; the front-end charges
+ *     the 10 bps retail rate, `OPHIS_DEFAULT_VOLUME_FEE_BPS`.)
  *   - apps/frontend/.../appData/updater/shouldEmitOphisPartnerFee.ts (chain gate)
  */
 
@@ -28,17 +30,20 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;
 
 /**
- * Flat volume fee: Ophis takes a flat 10 bps (0.10%) of trade volume, at or
- * below comparable aggregators (Matcha 10 bps, Velora 15 bps). Charged via the
- * CIP-75 VOLUME policy. This is also the MINIMUM the OP self-hosted backend
- * accepts for a non-stable pair to the Ophis recipient (the token-pair floor in
- * app_data.rs); a lower value is rejected at order ingress. A Volume fee is
+ * Partner volume fee: the @ophis/sdk default is a flat 5 bps (0.05%) of trade
+ * volume, below comparable aggregators (Matcha 10 bps, Velora 15 bps). This is
+ * the PARTNER (wholesale) rate that integrators routing through Ophis charge;
+ * the Ophis front-end (swap.ophis.fi) charges its own separate 10 bps RETAIL
+ * rate (apps/frontend/.../partnerFeeDefault.ts). The two are intentionally
+ * different. Charged via the CIP-75 VOLUME policy. The OP self-hosted backend
+ * floors a non-stable fee to the Ophis recipient at OPHIS_NON_STABLE_FLOOR_BPS
+ * (4 bps in app_data.rs), so 5 bps clears with 1 bp of headroom. A Volume fee is
  * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
- * Must match the frontend flag value `REACT_APP_OPHIS_VOLUME_FEE_BPS` when the
- * flat fee is live; republish this SDK in lockstep with any change.
+ * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor
+ * (4) <= this partner rate (5) <= front-end retail (10). Republish in lockstep.
  */
-export const OPHIS_VOLUME_FEE_BPS = 10;
+export const OPHIS_VOLUME_FEE_BPS = 5;
 
 /**
  * Reduced rate for stablecoin-to-stablecoin swaps: a flat 1 bp (0.01%). The

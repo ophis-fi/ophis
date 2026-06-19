@@ -3,7 +3,7 @@
 #
 # The OP self-hosted backend floors the CIP-75 Volume partner fee
 # (app_data.rs partner_fee_floor_bps):
-#   * OPHIS_DEFAULT_VOLUME_FEE_BPS (10 bps) for a non-stable, non-boosted pair,
+#   * OPHIS_NON_STABLE_FLOOR_BPS (4 bps) for a non-stable, non-boosted pair,
 #   * OPHIS_STABLE_VOLUME_FEE_BPS  (1 bp)   for a same-chain stable pair (both
 #     tokens in OPTIMISM_STABLECOINS) OR a boosted pair (either token in
 #     OPTIMISM_BOOSTED_TOKENS).
@@ -19,7 +19,7 @@
 # can check without compiling:
 #   1. OPTIMISM_STABLECOINS    address set (frontend tokens.ts        <-> backend)
 #   2. OPTIMISM_BOOSTED_TOKENS  OP address set (frontend boostedTokens.ts <-> backend)
-#   3. the floor VALUES 10 / 1             (backend <-> frontend <-> SDK)
+#   3. the tiered VALUES: floor (4) <= sdk-partner (5) <= retail (10), reduced 1 bp
 # It does NOT substitute for the floor-LOGIC tests, which stay CI-unverified; the
 # runtime code still enforces the floor regardless.
 #
@@ -104,11 +104,13 @@ decl_num() { # $1=file  $2=anchored declaration regex (must end in the numeric l
   grep -oE "$2"' [0-9]+' "$1" | grep -oE '[0-9]+$' | head -1
 }
 
-be_default="$(decl_num "$APP_DATA"      'pub const OPHIS_DEFAULT_VOLUME_FEE_BPS: u64 =')"
-be_stable="$(decl_num  "$APP_DATA"      'pub const OPHIS_STABLE_VOLUME_FEE_BPS: u64 =')"
-fe_default="$(decl_num  "$PARTNERFEE_TS" 'const BACKEND_NON_STABLE_FLOOR_BPS =')"
+be_floor="$(decl_num    "$APP_DATA"      'pub const OPHIS_NON_STABLE_FLOOR_BPS: u64 =')"
+be_retail="$(decl_num   "$APP_DATA"      'pub const OPHIS_DEFAULT_VOLUME_FEE_BPS: u64 =')"
+be_stable="$(decl_num   "$APP_DATA"      'pub const OPHIS_STABLE_VOLUME_FEE_BPS: u64 =')"
+fe_floor="$(decl_num    "$PARTNERFEE_TS" 'const BACKEND_NON_STABLE_FLOOR_BPS =')"
+fe_retail="$(decl_num   "$PARTNERFEE_TS" 'const OPHIS_FRONTEND_OP_VOLUME_BPS =')"
 fe_reduced="$(decl_num  "$BOOSTED_TS"    'const OPHIS_BOOSTED_VOLUME_BPS =')"
-sdk_default="$(decl_num "$SDK"           'export const OPHIS_VOLUME_FEE_BPS =')"
+sdk_partner="$(decl_num "$SDK"           'export const OPHIS_VOLUME_FEE_BPS =')"
 sdk_stable="$(decl_num  "$SDK"           'export const OPHIS_STABLE_VOLUME_FEE_BPS =')"
 
 check_value() { # $1=label $2=expected-nonempty ; remaining = actuals "name:val"
@@ -124,10 +126,26 @@ check_value() { # $1=label $2=expected-nonempty ; remaining = actuals "name:val"
   done
 }
 
-check_value "non-stable floor (10 bps)" \
-  "backend:$be_default" "frontend:$fe_default" "sdk:$sdk_default"
+# Tiered wholesale/retail model: the OP backend FLOOR (min accepted) sits below
+# the SDK PARTNER rate, which sits below the front-end RETAIL rate. The floor and
+# retail are each mirrored across backend<->frontend and must match exactly.
+check_value "non-stable FLOOR (backend <-> frontend)" \
+  "backend:$be_floor" "frontend:$fe_floor"
+check_value "non-stable RETAIL (backend <-> frontend)" \
+  "backend:$be_retail" "frontend:$fe_retail"
 check_value "reduced floor (1 bp)" \
   "backend:$be_stable" "sdk:$sdk_stable" "frontend-boosted:$fe_reduced"
+
+# Ordering invariant: floor <= sdk-partner <= retail (every value must parse).
+if [[ -n "$be_floor" && -n "$sdk_partner" && -n "$be_retail" ]]; then
+  if ! (( be_floor <= sdk_partner && sdk_partner <= be_retail )); then
+    echo "FAIL: tier ordering violated — need floor($be_floor) <= partner($sdk_partner) <= retail($be_retail)" >&2
+    fail=1
+  fi
+else
+  echo "FAIL: could not parse one of floor=$be_floor partner=$sdk_partner retail=$be_retail" >&2
+  fail=1
+fi
 
 if (( fail )); then
   echo "" >&2
@@ -137,8 +155,8 @@ if (( fail )); then
   exit 1
 fi
 
-echo "OK: partner-fee floor invariants hold:"
+echo "OK: partner-fee tiered-floor invariants hold:"
 echo "  - OPTIMISM_STABLECOINS match (frontend <-> backend)"
 echo "  - OPTIMISM_BOOSTED_TOKENS[OP] match (frontend <-> backend)"
-echo "  - floor values: non-stable=${be_default} bps, reduced=${be_stable} bp (backend/frontend/SDK agree)"
+echo "  - tiers: floor=${be_floor} bps <= partner(SDK)=${sdk_partner} bps <= retail=${be_retail} bps; reduced=${be_stable} bp"
 exit 0

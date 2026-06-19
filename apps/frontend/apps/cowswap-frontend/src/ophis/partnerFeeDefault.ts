@@ -37,7 +37,7 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
  *
  * Lower bound: the OP self-hosted backend enforces a token-pair-aware MINIMUM
  * partner fee to the Ophis recipient (app_data.rs `partner_fee_floor_bps`,
- * checked at order ingress and re-clamped in the autopilot): 10 bps for any
+ * checked at order ingress and re-clamped in the autopilot): 4 bps for any
  * non-stable pair, 1 bp for same-chain stable pairs. A base rate below the
  * non-stable floor would make the backend reject non-stable orders at ingress
  * (PartnerFeeBelowFloor), so a sub-floor value disables the flag (fee model
@@ -48,7 +48,13 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
  * `max_partner_fee` (100 bps); 50 keeps us well under it and at/under the
  * competitor rate (Matcha 10, Velora 15).
  */
-const BACKEND_NON_STABLE_FLOOR_BPS = 10
+// The OP self-hosted backend's MINIMUM non-stable Volume bps (mirrors
+// app_data.rs OPHIS_NON_STABLE_FLOOR_BPS). Decoupled from the retail rate the
+// front-end charges (OPHIS_FRONTEND_OP_VOLUME_BPS = 10 below): the floor only
+// bounds what the backend accepts, so partner integrations can charge 5 bps
+// (via @ophis/sdk) while swap.ophis.fi keeps 10 bps. Used as the env lower
+// bound and the cross-workspace floor-invariant mirror (check-floor-invariant.sh).
+const BACKEND_NON_STABLE_FLOOR_BPS = 4
 function readVolumeFeeBps(): number {
   const raw = Number(process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS)
   return Number.isInteger(raw) && raw >= BACKEND_NON_STABLE_FLOOR_BPS && raw <= 50 ? raw : 0
@@ -109,8 +115,17 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
  */
 const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10])
 
-/** The OP non-stable floor (bps). The backend floors any Ophis Volume fee here. */
-export const OPHIS_NON_STABLE_VOLUME_BPS = BACKEND_NON_STABLE_FLOOR_BPS
+/**
+ * The Ophis front-end's RETAIL non-stable Volume fee on Optimism (10 bps),
+ * DECOUPLED from the backend floor (BACKEND_NON_STABLE_FLOOR_BPS = 4 bps):
+ * swap.ophis.fi keeps charging the full 10 bps retail rate while partner
+ * integrations charge less (5 bps via @ophis/sdk); the backend floor (4) only
+ * sets the minimum it accepts. Cross-workspace invariant: floor (4) <= partner
+ * (5) <= retail (10), checked by scripts/check-floor-invariant.sh.
+ */
+const OPHIS_FRONTEND_OP_VOLUME_BPS = 10
+/** The OP non-stable RETAIL fee the front-end charges and writes on-chain. */
+export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_FRONTEND_OP_VOLUME_BPS
 
 /** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism today). */
 export function isVolumeOnlyChain(chainId: number | undefined): boolean {
