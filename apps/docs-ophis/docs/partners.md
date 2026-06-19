@@ -32,6 +32,64 @@ npm i @cowprotocol/cow-sdk @ophis/sdk
 does not bundle cow-sdk, so install both. No Ophis-side deployment is required:
 the Optimism orderbook and settlement already exist and are live.
 
+## Quick start: the high-level helpers (recommended)
+
+Since `@ophis/sdk` v0.1.0 the whole integration is a handful of helper calls that
+get the silent-failure details right for you: the correct `appCode`, the partner
+fee, your referral tag, wallet enrollment, the per-chain relayer / host / signing
+domain, the receiver pin, and the `sendOrder` wire shape. **The same code works on
+every served chain** because the helpers branch on `chainId` internally.
+
+```ts
+import { OrderBookApi, MetadataApi, SigningScheme, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+import { keccak256, toUtf8Bytes } from 'ethers';
+import {
+  enrollOphisTrader,
+  buildOphisOrderMetadata,
+  buildOphisOrderCreation,
+  getOphisOrderbookUrl,
+  getOphisOrderDomain,
+  getOphisVaultRelayer,
+} from '@ophis/sdk';
+
+// `owner` is the order owner + signer (your vault Safe, or a connected user EOA).
+
+// 0. Register the wallet with the rebate indexer once, on wallet-connect. Without
+//    this the indexer never fetches its trades and the rebate never accrues.
+await enrollOphisTrader(owner);
+
+// 1. First sell of a token: approve it to the correct Vault Relayer. On Optimism
+//    getOphisVaultRelayer returns the Ophis relayer, NOT cow-sdk's canonical one.
+await sellToken.approve(getOphisVaultRelayer(chainId), amount); // one-time per token
+
+// 2. appData: appCode 'ophis' + the partner fee + your referral code in one call.
+const doc = await new MetadataApi().generateAppDataDoc(
+  buildOphisOrderMetadata({ chainId, referralCode: 'yourcode', isStablePair, signer: owner }),
+);
+const fullAppData = await stringifyDeterministic(doc); // never JSON.stringify
+const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32
+
+// 3. Build your quoted order, pin the receiver to the owner, sign appData = the hash.
+const order = { ...quote, receiver: owner, appData: appDataHash };
+const signature = await signOrder(order, getOphisOrderDomain(chainId)); // EIP-1271 (Safe) or EIP-712 (EOA)
+
+// 4. Submit against the right host; the wire shape (full appData string + appDataHash)
+//    and the receiver drain-guard are handled for you.
+const orderBookApi = new OrderBookApi({ chainId, baseUrls: { [chainId]: getOphisOrderbookUrl(chainId) } });
+await orderBookApi.sendOrder(buildOphisOrderCreation({
+  order,
+  owner,
+  fullAppData,
+  appDataHash,
+  signature,
+  signingScheme: SigningScheme.EIP1271, // SigningScheme.EIP712 for an EOA signer
+}));
+```
+
+That is the whole integration. The sections below explain what each helper does
+per chain (Optimism is self-hosted, the others are CoW-hosted) and the lower-level
+primitives, if you would rather wire the steps yourself.
+
 ## Two cases: Optimism vs CoW-hosted chains
 
 Ophis serves two kinds of chain, and they differ only in **where the order is
