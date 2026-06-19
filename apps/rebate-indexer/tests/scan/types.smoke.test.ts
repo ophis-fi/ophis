@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { CACHED_CLASSES } from '../../src/scan/types.js';
 import type { Swap, Coverage } from '../../src/scan/types.js';
 
 describe('scan types', () => {
+  it('exports the cache-class tuple at runtime (module actually loads)', () => {
+    expect([...CACHED_CLASSES]).toEqual(['ophis', 'greg', 'none']);
+  });
+
   it('Swap and Coverage are usable shapes', () => {
     const s: Swap = {
       chainId: 1, chainName: 'ethereum', tsUtc: '2026-06-18T20:43:11Z',

@@ -1,4 +1,4 @@
-import type { AppCode } from '../cow/types.js';
+import { APP_CODES, type AppCode } from '../cow/types.js';
 
 export interface TokenLeg {
   token: `0x${string}`;
@@ -49,7 +49,10 @@ export interface ScanResult {
 }
 
 // orderUid -> classification. 'none' = resolved, confirmed NOT Ophis (negative cache).
-export type CachedClass = AppCode | 'none';
+// Runtime tuple (single source of truth) so cache.ts can validate cached values
+// without re-hardcoding the set, and so this module exports a real runtime value.
+export const CACHED_CLASSES = [...APP_CODES, 'none'] as const;
+export type CachedClass = (typeof CACHED_CLASSES)[number];
 export interface ScanCache {
   get(uid: string): CachedClass | undefined;
   set(uid: string, v: CachedClass): void;
