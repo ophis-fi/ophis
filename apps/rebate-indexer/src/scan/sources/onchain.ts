@@ -1,8 +1,9 @@
 // src/scan/sources/onchain.ts
 import { parseAbiItem } from 'viem';
 import type { CowOrder } from '../../cow/types.js';
-import type { ScanCache, Swap } from '../types.js';
+import type { ChainConfig, ScanCache, ScanResult, Swap } from '../types.js';
 import { parseAppData } from '../appdata.js';
+import { blockAtTimestamp, type BlockClient } from '../window.js';
 
 export const SETTLEMENT_ADDRESS = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as const;
 export const TRADE_EVENT = parseAbiItem(
@@ -111,9 +112,9 @@ export async function classifyFills(
   return { swaps, ophisFound: swaps.length, unresolved };
 }
 
-// append: live chain driver
-import type { ChainConfig, ScanResult } from '../types.js';
-import { blockAtTimestamp, type BlockClient } from '../window.js';
+// ---------------------------------------------------------------------------
+// Live chain driver: chunked getLogs + per-chain isolated scan.
+// ---------------------------------------------------------------------------
 
 export interface LogClient extends BlockClient {
   getLogs(a: {
