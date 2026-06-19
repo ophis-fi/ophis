@@ -125,13 +125,15 @@ Optimism you also override the host and the settlement contract.
 import { OrderBookApi, SupportedChainId } from '@cowprotocol/cow-sdk';
 import { getOphisOrderbookUrl } from '@ophis/sdk';
 
+// Optimism (10) is Ophis self-hosted and not in cow-sdk's SupportedChainId, so
+// cast it; the orderbook accepts it at runtime. Use the cast chainId as the
+// computed baseUrls key so the record type lines up.
+const opChainId = 10 as SupportedChainId;
 const orderBookApi = new OrderBookApi({
-  // Optimism (10) is Ophis self-hosted and not in cow-sdk's SupportedChainId, so
-  // cast it; the orderbook accepts it at runtime.
-  chainId: 10 as SupportedChainId,
+  chainId: opChainId,
   // optimism-mainnet.ophis.fi, NOT api.cow.fi. The CoW host does not serve
   // Ophis on Optimism: it would bypass our solver and charge no Ophis fee.
-  baseUrls: { 10: getOphisOrderbookUrl(10) } as Record<SupportedChainId, string>,
+  baseUrls: { [opChainId]: getOphisOrderbookUrl(10) } as Record<SupportedChainId, string>,
 });
 ```
 
