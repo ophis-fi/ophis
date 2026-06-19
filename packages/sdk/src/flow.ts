@@ -144,7 +144,12 @@ export async function enrollOphisTrader(
   opts: EnrollOphisTraderOptions = {},
 ): Promise<void> {
   assertAddressLike(wallet, 'wallet');
-  const host = (opts.host ?? OPHIS_REBATE_INDEXER_URL).replace(/\/+$/, '');
+  // Trim trailing slashes without a polynomial regex (a `/\/+$/` on uncontrolled
+  // input is a ReDoS sink); a single linear scan is safe.
+  const rawHost = opts.host ?? OPHIS_REBATE_INDEXER_URL;
+  let hostEnd = rawHost.length;
+  while (hostEnd > 0 && rawHost.charCodeAt(hostEnd - 1) === 47 /* '/' */) hostEnd--;
+  const host = rawHost.slice(0, hostEnd);
   // The wallet address is in the request path; require a secure host (allowing a
   // local dev host) so it is never leaked over plaintext or to an unintended
   // origin. host should be a trusted constant, never request-controlled input.
