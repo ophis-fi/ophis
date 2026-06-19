@@ -1,5 +1,4 @@
 import { createPublicClient, http } from 'viem';
-import { notify } from '../telegram/alerter.js';
 import { selectChains, resolveRpcUrl } from './chains.js';
 import { parseSince } from './window.js';
 import { loadCache } from './cache.js';
@@ -71,6 +70,11 @@ async function main(): Promise<void> {
 
   if (wantTelegram) {
     if (await loadTelegramEnv()) {
+      // Import alerter AFTER loadTelegramEnv() populates process.env. alerter.ts
+      // snapshots TOKEN/CHAT_ID at MODULE LOAD, so a static top-of-file import would
+      // capture them as undefined (they are set at runtime) and notify() would
+      // silently no-op. A dynamic import here loads the module post-env.
+      const { notify } = await import('../telegram/alerter.js');
       await notify(telegramSummary(swaps, coverage, windowLabel));
       console.log('Telegram: sent');
     } else {
