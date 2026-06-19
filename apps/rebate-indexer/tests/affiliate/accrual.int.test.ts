@@ -10,6 +10,12 @@ let getReferrerStats: (w: `0x${string}`, now: Date) => Promise<any>;
 const W = (h: string) => h.padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
 
+// Sum a referrer's referred volume on one chain across its (chain, bps) buckets.
+const volOnChain = (r: any, chain: number): number =>
+  (r.buckets as { chainId: number; volumeUsd: number }[])
+    .filter((b) => b.chainId === chain)
+    .reduce((s, b) => s + b.volumeUsd, 0);
+
 beforeAll(async () => {
   const { container, connectionUri } = await startPg();
   pg = container;
@@ -54,13 +60,13 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const par = refs.find((r) => r.referrer_wallet === `0x${partner}`);
     expect(reg).toBeTruthy();
     expect(reg.kind).toBe('regular');
-    expect(reg.volumeByChain.get(100)).toBe(500000); // out-of-window 999 excluded
-    expect(reg.volumeByChain.get(10)).toBe(300000);
+    expect(volOnChain(reg, 100)).toBe(500000); // out-of-window 999 excluded
+    expect(volOnChain(reg, 10)).toBe(300000);
     // No payout redirect seeded for the regular referrer => null (pay to identity).
     expect(reg.payoutWallet).toBeNull();
     expect(par).toBeTruthy();
     expect(par.kind).toBe('partner');
-    expect(par.volumeByChain.get(100)).toBe(5000000);
+    expect(volOnChain(par, 100)).toBe(5000000);
     expect(par.payoutWallet).toBeNull();
   });
 
@@ -125,17 +131,53 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const b = refs.find((r) => r.referrer_wallet === `0x${refB}`);
     // refA: appData volume only (trader 100k + bound 50k); self-referral 1M excluded.
     expect(a).toBeTruthy();
-    expect(a.volumeByChain.get(100)).toBe(150000);
+    expect(volOnChain(a, 100)).toBe(150000);
     // refB: bind volume only — untagged 200k + stale-inactive-code fallback 30k +
     // selfOwner self-code fallback 40k = 270k. The active-non-self appData-tagged
     // trade is appData-wins -> NOT double-counted here.
     expect(b).toBeTruthy();
-    expect(b.volumeByChain.get(100)).toBe(270000);
+    expect(volOnChain(b, 100)).toBe(270000);
     // The INACTIVE code owner earns nothing (no active code, no bind).
     expect(refs.find((r) => r.referrer_wallet === `0x${refC}`)).toBeFalsy();
     // The self-tagging owner earns nothing for its own self-tagged trade (it went
     // to its bind referrer refB, not to itself).
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
+  });
+
+  it('per-rate buckets (real SQL): volume_fee_bps splits (chain,bps); 5 bps earns half of 10 bps; NULL -> retail', async () => {
+    const referrer = W('a5a5');
+    const referred = W('c5c5');
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
+      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
+    const now = new Date();
+    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
+    // Same chain (100), three rates: 10 bps (retail), 5 bps (SDK), NULL (-> retail default).
+    const insFee = (uid: string, usd: string, bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
+    await insFee('e51', '100000', 10); // retail
+    await insFee('e52', '100000', 5); //  SDK -> half
+    await insFee('e53', '100000', null); // unknown -> COALESCE to 10
+
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const refs = await buildAffiliateReferrers(start, end);
+    const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
+    expect(r).toBeTruthy();
+    // The chain-100 volume splits into a 10-bps bucket (retail 100k + NULL-default 100k = 200k)
+    // and a 5-bps bucket (100k) — the real SQL GROUP BY on COALESCE(volume_fee_bps, 10).
+    const b10 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 10);
+    const b5 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 5);
+    expect(b10?.volumeUsd).toBe(200000);
+    expect(b5?.volumeUsd).toBe(100000);
+
+    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5)/1e4 = 0.06 * 250 = $15. The 5-bps
+    // $100k contributes half ($3) of what the 10-bps $100k does ($6).
+    const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
+    const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${referrer}`);
+    expect(owed).toBeTruthy();
+    expect(owed!.owedUsd).toBeCloseTo(15, 6);
   });
 
   it('getReferrerStats: current-cycle volume = bind + appData, no double-count, referredCount bind-based', async () => {

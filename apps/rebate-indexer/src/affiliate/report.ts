@@ -36,6 +36,10 @@ export interface ReportInput {
   readonly affiliate: readonly AffiliateOwed[];
   /** Total indexed Ophis volume this period, by chain (attribution view). */
   readonly volumeByChain: ReadonlyMap<number, number>;
+  /** Actual gross fee USD by chain (SUM(value * per-trade bps)/1e4); the implied
+   *  net fee is keepFraction(chain) of this. A chain absent here defaults to the
+   *  legacy retail rate on its volume. Optional for backward-compatible callers. */
+  readonly feeBaseByChain?: ReadonlyMap<number, number>;
 }
 
 export interface MonthlyReport {
@@ -72,13 +76,25 @@ export function assembleReport(input: ReportInput): MonthlyReport {
   const retainedWei = overflow ? 0n : input.safeWethBalanceWei - paidWei;
   const reconciliationOk = !overflow && rebateWei + affiliateWei + retainedWei === input.safeWethBalanceWei;
 
-  // Attribution: implied net fee from indexed volume (gross 10bps minus CoW cut per chain).
+  // Attribution: implied net fee from indexed volume = gross fee per chain
+  // (SUM(value * per-trade bps)) minus the CoW cut per chain. For volume-fee orders
+  // this reflects the real per-channel rates (retail 10 / SDK 5 / stable 1 bp), so
+  // the coverage reconciliation isn't inflated by assuming retail. APPROXIMATION for
+  // orders with no readable volumeBps (the price-improvement appData shape, or
+  // historical rows): those store NULL and fall back to the assumed retail rate
+  // here, so the implied fee is a heuristic, not exact, for non-volume-fee orders.
+  // This is the reconciliation/coverage view only, NOT the affiliate payout path.
   let totalVolumeUsd = 0;
   let impliedNetFeeUsd = 0;
   for (const [chainId, vol] of input.volumeByChain) {
     if (!Number.isFinite(vol) || vol <= 0) continue;
     totalVolumeUsd += vol;
-    impliedNetFeeUsd += (vol * GROSS_FEE_BPS * (keepFractionBps(chainId) / 10_000)) / 10_000;
+    const rawFee = input.feeBaseByChain?.get(chainId);
+    const grossFeeUsd =
+      typeof rawFee === 'number' && Number.isFinite(rawFee) && rawFee >= 0
+        ? rawFee
+        : (vol * GROSS_FEE_BPS) / 10_000;
+    impliedNetFeeUsd += grossFeeUsd * (keepFractionBps(chainId) / 10_000);
   }
   const safeBalanceUsd = weiToEth(input.safeWethBalanceWei) * input.wethUsdPrice;
   const coverageGapPct = impliedNetFeeUsd > 0 ? (safeBalanceUsd - impliedNetFeeUsd) / impliedNetFeeUsd : 0;

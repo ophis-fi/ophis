@@ -107,4 +107,51 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[fulfilledUid]!.buyAmount).toBe(8888n);
     expect(byUid[cancelledUid]!.sellAmount).toBe(500n); // partial settled volume of a cancelled order is counted
   });
+
+  it('extracts + clamps appData partnerFee.volumeBps per trade (5/10/1, inflated->retail, absent->null, array shape)', async () => {
+    const owner = '0xa'.padEnd(42, '0');
+    const REC = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8';
+    const mk = (n: number): string => '0x' + n.toString(16).padStart(112, '0');
+    const ATTACKER = '0x' + 'de'.repeat(20);
+    const uids = {
+      sdk: mk(0x51), retail: mk(0x52), stable: mk(0x53),
+      inflated: mk(0x54), absent: mk(0x55), arr: mk(0x56), zero: mk(0x57),
+      decoy: mk(0x58), wrongRecipient: mk(0x59),
+    };
+    handlers.trades.mockReturnValue(Object.values(uids).map((u) => sampleTrade(u, owner)));
+    const withFee = (uid: string, pf: unknown) => ({
+      ...sampleOrder(uid, owner, 'ophis'),
+      fullAppData: JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: pf } }),
+    });
+    handlers.order.mockImplementation((uid: string) => {
+      switch (uid) {
+        case uids.sdk: return withFee(uid, { volumeBps: 5, recipient: REC });
+        case uids.retail: return withFee(uid, { volumeBps: 10, recipient: REC });
+        case uids.stable: return withFee(uid, { volumeBps: 1, recipient: REC });
+        case uids.inflated: return withFee(uid, { volumeBps: 50, recipient: REC }); // crafted -> clamp to 10
+        case uids.absent: return withFee(uid, { recipient: REC }); // no volumeBps -> null (retail default at accrual)
+        case uids.arr: return withFee(uid, [{ volumeBps: 5, recipient: REC }]); // array partnerFee shape
+        case uids.zero: return withFee(uid, { volumeBps: 0, recipient: REC }); // <1 -> null
+        // DECOY: attacker entry first (higher bps), real Ophis entry second. Must
+        // ignore the decoy and use the Ophis-recipient rate (5).
+        case uids.decoy: return withFee(uid, [{ volumeBps: 10, recipient: ATTACKER }, { volumeBps: 5, recipient: REC }]);
+        // Fee paid to a non-Ophis recipient only -> not our fee -> null (retail default).
+        case uids.wrongRecipient: return withFee(uid, { volumeBps: 5, recipient: ATTACKER });
+        default: return sampleOrder(uid, owner, 'ophis');
+      }
+    });
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    const byUid = Object.fromEntries(rows.map((r) => [r.tradeUid, r.volumeFeeBps]));
+    expect(byUid[uids.sdk]).toBe(5);
+    expect(byUid[uids.retail]).toBe(10);
+    expect(byUid[uids.stable]).toBe(1);
+    expect(byUid[uids.inflated]).toBe(10); // clamped to the retail ceiling: can't inflate the rebate base
+    expect(byUid[uids.absent]).toBeNull();
+    expect(byUid[uids.arr]).toBe(5);
+    expect(byUid[uids.zero]).toBeNull();
+    expect(byUid[uids.decoy]).toBe(5); // decoy entry ignored; only the Ophis-recipient fee counts
+    expect(byUid[uids.wrongRecipient]).toBeNull(); // fee not to Ophis -> not counted
+  });
 });

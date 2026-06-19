@@ -46,6 +46,14 @@ export const trades = pgTable(
     appCode: text('app_code').notNull(),
     partnerFeeWei: uint256('partner_fee_wei'),
 
+    // Gross volume-fee rate (bps) read from the order's appData
+    // metadata.partnerFee.volumeBps, CLAMPED to [1, retail=10] by the fetcher
+    // (migration 0010). NULL = unknown -> accrual treats it as the legacy retail
+    // rate via COALESCE(volume_fee_bps, GROSS_FEE_BPS). This is the per-trade fee
+    // base that makes the SDK (5 bps) / retail (10 bps) / stable (1 bp) channels
+    // accrue their ACTUAL kept fee instead of one assumed rate.
+    volumeFeeBps: integer('volume_fee_bps'),
+
     // Affiliate referral code from the order's appData (metadata.ophisReferrer.code),
     // normalized + grammar-validated by the fetcher. NULL when the order carried no
     // code. Accrual attributes such a trade to the code owner (migration 0009).
