@@ -207,24 +207,29 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     // Dashboard net fee = 0 + $75 + $75 = $150 (NOT $225 if 0 were treated as retail).
     const stats = await getReferrerStats(`0x${ref}`, now);
     expect(stats.currentCycleNetFeeUsd).toBeCloseTo(150, 4);
+    // Displayed/cap volume EXCLUDES the 0-fee trade: $200k (NULL + retail), not $300k.
+    expect(stats.currentCycleVolumeUsd).toBe(200000);
   });
 
-  it('volume_fee_bps backfill upsert (self-healing): fills a NULL backlog row, never clobbers a set rate', async () => {
+  it('volume_fee_bps backfill upsert (self-healing): upgrades NULL to a POSITIVE rate only, never to 0, never clobbers a set rate', async () => {
     const uid = UID('ba5e');
     const w = W('ba5e');
-    // Mirrors the fetcher's drizzle onConflictDoUpdate: set volume_fee_bps from the
-    // new row ONLY when the existing one is still NULL.
+    // Mirrors the fetcher's drizzle onConflictDoUpdate: backfill ONLY when the stored
+    // row is NULL AND the new rate is POSITIVE (so a 0/NULL re-fetch of history can't
+    // reclassify it).
     const upsert = (bps: number | null) => sql`
       INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
       VALUES (decode(${uid},'hex'), 100, decode(${w},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '1000', ${bps}, now())
-      ON CONFLICT (trade_uid) DO UPDATE SET volume_fee_bps = EXCLUDED.volume_fee_bps WHERE trades.volume_fee_bps IS NULL`;
+      ON CONFLICT (trade_uid) DO UPDATE SET volume_fee_bps = EXCLUDED.volume_fee_bps WHERE trades.volume_fee_bps IS NULL AND EXCLUDED.volume_fee_bps > 0`;
     const read = async () =>
       (await sql<{ volume_fee_bps: number | null; value_usd: string }[]>`
         SELECT volume_fee_bps, value_usd::text FROM trades WHERE trade_uid = decode(${uid},'hex')`)[0];
 
     await upsert(null); // first index by the pre-per-trade code: NULL bps
     expect((await read())!.volume_fee_bps).toBeNull();
-    await upsert(5); //    re-fetch backfills the real rate
+    await upsert(0); //    re-fetch yields 0 (no Ophis fee) -> must NOT reclassify history
+    expect((await read())!.volume_fee_bps).toBeNull(); // stays NULL (-> retail), not 0
+    await upsert(5); //    re-fetch finds the real positive rate -> backfills
     expect((await read())!.volume_fee_bps).toBe(5);
     await upsert(10); //   a later re-fetch must NOT clobber the set rate
     const final = await read();

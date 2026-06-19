@@ -119,6 +119,7 @@ describe('fetcher.fetchChainTrades', () => {
       decoy: mk(0x58), wrongRecipient: mk(0x59),
       legacyBps: mk(0x5a), surplusNotVolume: mk(0x5b), piNotVolume: mk(0x5c),
       cappedBps: mk(0x5d), cappedVolumeBps: mk(0x5e), bothAliases: mk(0x5f),
+      malformedSurplus: mk(0x60), mixedSurplusVolume: mk(0x61),
     };
     handlers.trades.mockReturnValue(Object.values(uids).map((u) => sampleTrade(u, owner)));
     const withFee = (uid: string, pf: unknown) => ({
@@ -141,16 +142,20 @@ describe('fetcher.fetchChainTrades', () => {
         case uids.wrongRecipient: return withFee(uid, { volumeBps: 5, recipient: ATTACKER });
         // Legacy Volume shape { bps } (no volumeBps) -> backend maps to Volume -> read it.
         case uids.legacyBps: return withFee(uid, { bps: 5, recipient: REC });
-        // A surplus / price-improvement policy is NOT a volume fee: the bare bps
-        // fallback is suppressed -> null (retail default).
-        case uids.surplusNotVolume: return withFee(uid, { surplusBps: 10, maxVolumeBps: 50, bps: 99, recipient: REC });
-        case uids.piNotVolume: return withFee(uid, { priceImprovementBps: 25, maxVolumeBps: 50, bps: 99, recipient: REC });
+        // A VALID surplus / price-improvement Ophis fee: real fee, but the volume-
+        // derived indexer can't compute it -> null (retail default), NOT 0.
+        case uids.surplusNotVolume: return withFee(uid, { surplusBps: 10, maxVolumeBps: 50, recipient: REC });
+        case uids.piNotVolume: return withFee(uid, { priceImprovementBps: 2500, maxVolumeBps: 50, recipient: REC });
         // Capped { bps, maxVolumeBps } / { volumeBps, maxVolumeBps } are NOT flat Volume
         // fees (the backend Errs on them) -> credit zero (0), not the retail default.
         case uids.cappedBps: return withFee(uid, { bps: 5, maxVolumeBps: 50, recipient: REC });
         case uids.cappedVolumeBps: return withFee(uid, { volumeBps: 5, maxVolumeBps: 50, recipient: REC });
         // Both volumeBps AND legacy bps present -> matches no backend Volume arm -> 0.
         case uids.bothAliases: return withFee(uid, { volumeBps: 5, bps: 10, recipient: REC });
+        // MALFORMED surplus-ish shapes (backend-rejected) -> 0, NOT the retail default:
+        // missing maxVolumeBps, and surplus mixed with a volume rate.
+        case uids.malformedSurplus: return withFee(uid, { surplusBps: 10, recipient: REC });
+        case uids.mixedSurplusVolume: return withFee(uid, { surplusBps: 10, volumeBps: 5, maxVolumeBps: 50, recipient: REC });
         default: return sampleOrder(uid, owner, 'ophis');
       }
     });
@@ -165,15 +170,18 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.arr]).toBe(5);
     expect(byUid[uids.decoy]).toBe(5); // decoy entry ignored; only the Ophis-recipient fee counts
     expect(byUid[uids.legacyBps]).toBe(5); // legacy { bps } Volume shape read
-    // Examined but NO settled Ophis flat Volume fee -> 0 (credit zero), NOT null
-    // (which would COALESCE to the retail default and over-credit).
+    // A VALID surplus/PI Ophis fee -> null (real fee, can't compute -> retail default).
+    expect(byUid[uids.surplusNotVolume]).toBeNull();
+    expect(byUid[uids.piNotVolume]).toBeNull();
+    // NO settled Ophis fee at all -> 0 (credit zero), NOT null (which would COALESCE
+    // to the retail default and over-credit a fee that was never collected).
     expect(byUid[uids.absent]).toBe(0); // Ophis recipient but no volumeBps/bps
     expect(byUid[uids.zero]).toBe(0); // volumeBps:0 (< 1)
     expect(byUid[uids.wrongRecipient]).toBe(0); // fee not to Ophis
-    expect(byUid[uids.surplusNotVolume]).toBe(0); // surplus policy, not a Volume fee
-    expect(byUid[uids.piNotVolume]).toBe(0); // price-improvement policy, not a Volume fee
-    expect(byUid[uids.cappedBps]).toBe(0); // { bps, maxVolumeBps } is not a flat Volume fee
-    expect(byUid[uids.cappedVolumeBps]).toBe(0); // { volumeBps, maxVolumeBps } is not a flat Volume fee
-    expect(byUid[uids.bothAliases]).toBe(0); // { volumeBps, bps } matches no backend Volume arm
+    expect(byUid[uids.cappedBps]).toBe(0); // { bps, maxVolumeBps } rejected by backend
+    expect(byUid[uids.cappedVolumeBps]).toBe(0); // { volumeBps, maxVolumeBps } rejected
+    expect(byUid[uids.bothAliases]).toBe(0); // { volumeBps, bps } matches no backend arm
+    expect(byUid[uids.malformedSurplus]).toBe(0); // surplus w/o maxVolumeBps: rejected -> 0, not retail
+    expect(byUid[uids.mixedSurplusVolume]).toBe(0); // surplus + volume mixed: rejected -> 0
   });
 });
