@@ -38,6 +38,11 @@ describe('buildLocalQuery', () => {
     expect(q).toContain("2026-06-17T00:00:00Z");
     expect(q).toMatch(/appCode'\s*in\s*\('ophis','greg'\)/i);
   });
+  it('aggregates tx_hash as max(encode(...)) not max(bytea) (no max(bytea) function in pg)', () => {
+    const q = buildLocalQuery('2026-06-17T00:00:00Z');
+    expect(q).toContain('max(encode(s.tx_hash');
+    expect(q).not.toContain('encode(max(s.tx_hash');
+  });
 });
 
 describe('scanLocalDbChain', () => {

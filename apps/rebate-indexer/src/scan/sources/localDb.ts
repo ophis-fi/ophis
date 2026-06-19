@@ -19,7 +19,7 @@ export function buildLocalQuery(t0Iso: string): string {
       '0x'||encode(o.buy_token,'hex'),
       sum(t.sell_amount)::text,
       sum(t.buy_amount)::text,
-      '0x'||encode(max(s.tx_hash),'hex'),
+      '0x'||max(encode(s.tx_hash,'hex')),
       convert_from(a.full_app_data,'UTF8')
     from trades t
       join orders o on o.uid = t.order_uid
