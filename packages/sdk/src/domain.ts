@@ -85,3 +85,64 @@ export const getOphisOrderDomain = (chainId: number): OphisOrderDomain => ({
   chainId,
   verifyingContract: getOphisSettlementAddress(chainId),
 });
+
+/**
+ * GPv2VaultRelayer per chain: the contract a seller must `approve` their sell
+ * token to (it pulls the token at settlement). Mirrors the authoritative frontend
+ * map `COW_PROTOCOL_VAULT_RELAYER_ADDRESS` in
+ * apps/frontend/libs/common-utils/src/cowProtocolContracts.ts — keep in sync.
+ *
+ * CRITICAL: the Ophis-operated chains do NOT use CoW's canonical relayer. They run
+ * their own settlement + relayer, so on those chains approving the canonical
+ * `0xC92E8bdf…` relayer leaves the order unfillable (the deployed Ophis settlement
+ * pulls from the Ophis relayer, which never received the approval). cow-sdk only
+ * knows the canonical address, so resolve the relayer through getOphisVaultRelayer,
+ * never the cow-sdk default.
+ */
+
+/** CoW Protocol's canonical GPv2VaultRelayer (CREATE2-deterministic across official CoW chains). */
+const CANONICAL_COW_VAULT_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110' as const;
+
+/** Ophis-deployed GPv2VaultRelayer on Optimism (10) + MegaETH (4326) — same deterministic address. */
+const OPHIS_VAULT_RELAYER = '0x83847EaB41ad9ea43809ce71569eB2e9daF51830' as const;
+
+/** Ophis-deployed GPv2VaultRelayer on HyperEVM (999). */
+const OPHIS_HYPEREVM_VAULT_RELAYER = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205' as const;
+
+export const OPHIS_VAULT_RELAYER_ADDRESSES: Readonly<Partial<Record<number, `0x${string}`>>> = Object.freeze({
+  1: CANONICAL_COW_VAULT_RELAYER,
+  100: CANONICAL_COW_VAULT_RELAYER,
+  42161: CANONICAL_COW_VAULT_RELAYER,
+  8453: CANONICAL_COW_VAULT_RELAYER,
+  137: CANONICAL_COW_VAULT_RELAYER,
+  43114: CANONICAL_COW_VAULT_RELAYER,
+  56: CANONICAL_COW_VAULT_RELAYER,
+  59144: CANONICAL_COW_VAULT_RELAYER,
+  9745: CANONICAL_COW_VAULT_RELAYER,
+  57073: CANONICAL_COW_VAULT_RELAYER,
+  11155111: CANONICAL_COW_VAULT_RELAYER,
+  10: OPHIS_VAULT_RELAYER, // Optimism — Ophis self-hosted relayer (NOT canonical)
+  4326: OPHIS_VAULT_RELAYER, // MegaETH — same deterministic Ophis relayer (orderbook paused)
+  999: OPHIS_HYPEREVM_VAULT_RELAYER, // HyperEVM — Ophis relayer (orderbook paused)
+});
+
+/**
+ * Returns the GPv2VaultRelayer (the `approve` spender) for a chain. Throws on an
+ * invalid or unsupported chainId. Use this for the one-time sell-token approval:
+ * approving the canonical relayer on an Ophis-operated chain (e.g. Optimism)
+ * leaves first sells unfillable.
+ *
+ * @example
+ *   const relayer = getOphisVaultRelayer(10); // 0x83847EaB… on Optimism, NOT the canonical relayer
+ *   await sellToken.approve(relayer, amount);
+ */
+export const getOphisVaultRelayer = (chainId: number): `0x${string}` => {
+  assertValidChainId(chainId);
+  const address = OPHIS_VAULT_RELAYER_ADDRESSES[chainId];
+  if (!address) {
+    throw new Error(
+      `Ophis: no vault relayer for chainId ${chainId}. Supported: ${Object.keys(OPHIS_VAULT_RELAYER_ADDRESSES).join(', ')}.`,
+    );
+  }
+  return address;
+};

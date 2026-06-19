@@ -30,6 +30,8 @@ export {
   getOphisSettlementAddress,
   getOphisOrderDomain,
   OPHIS_SETTLEMENT_ADDRESSES,
+  getOphisVaultRelayer,
+  OPHIS_VAULT_RELAYER_ADDRESSES,
   type OphisOrderDomain,
 } from './domain.js';
 

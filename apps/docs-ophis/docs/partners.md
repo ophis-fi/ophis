@@ -147,13 +147,17 @@ three overrides above (host, `verifyingContract`, `partnerFee`).
 
 Before its first CoW **sell** of a given token, the order owner approves that
 token to the CoW **Vault Relayer** (the contract that pulls the sell token at
-settlement): mainnet and most CoW-hosted chains use `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110`,
-the Ophis-operated Optimism relayer is `0x83847EaB41ad9ea43809ce71569eB2e9daF51830`
-(resolve it per chain from cow-sdk's vault-relayer address). The `approve` moves no
-funds: it only lets the relayer pull the sell token when one of your signed orders
-settles. It is per token and one-time (approve a large or unlimited amount once to
-skip it on later trades), and it is the only on-chain transaction; the swaps
-themselves are gasless. This is standard CoW behaviour, not Ophis-specific.
+settlement). Resolve the relayer per chain with `getOphisVaultRelayer(chainId)`
+from `@ophis/sdk`: it returns the canonical `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110`
+on CoW-hosted chains and the Ophis-operated relayer `0x83847EaB41ad9ea43809ce71569eB2e9daF51830`
+on Optimism. **Do not use cow-sdk's relayer address on Optimism** (and the other
+Ophis-operated chains): cow-sdk only knows the canonical relayer, but the Ophis OP
+settlement pulls from the Ophis relayer, so an approval to the canonical address
+leaves first sells unfillable. The `approve` moves no funds: it only lets the
+relayer pull the sell token when one of your signed orders settles. It is per token
+and one-time (approve a large or unlimited amount once to skip it on later trades),
+and it is the only on-chain transaction; the swaps themselves are gasless. This is
+standard CoW behaviour, not Ophis-specific.
 
 :::
 

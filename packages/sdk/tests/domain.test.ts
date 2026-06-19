@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { getOphisSettlementAddress, getOphisOrderDomain, OPHIS_SETTLEMENT_ADDRESSES } from '@ophis/sdk';
+import {
+  getOphisSettlementAddress,
+  getOphisOrderDomain,
+  OPHIS_SETTLEMENT_ADDRESSES,
+  getOphisVaultRelayer,
+  OPHIS_VAULT_RELAYER_ADDRESSES,
+} from '@ophis/sdk';
 
 const CANONICAL = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41';
 const OPHIS_OP = '0x310784c7FCE12d578dA6f53460777bAc9718B859';
+const CANONICAL_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110';
+const OPHIS_OP_RELAYER = '0x83847EaB41ad9ea43809ce71569eB2e9daF51830';
 
 describe('getOphisSettlementAddress', () => {
   it('returns the Ophis-deployed OP settlement for chain 10, NOT the canonical CoW one', () => {
@@ -47,5 +55,32 @@ describe('getOphisOrderDomain', () => {
 
   it('OPHIS_SETTLEMENT_ADDRESSES is frozen', () => {
     expect(Object.isFrozen(OPHIS_SETTLEMENT_ADDRESSES)).toBe(true);
+  });
+});
+
+describe('getOphisVaultRelayer', () => {
+  it('returns the Ophis OP relayer for chain 10, NOT the canonical CoW relayer (the approval footgun)', () => {
+    expect(getOphisVaultRelayer(10)).toBe(OPHIS_OP_RELAYER);
+    expect(getOphisVaultRelayer(10)).not.toBe(CANONICAL_RELAYER);
+  });
+
+  it('returns the canonical CoW relayer for CoW-hosted chains', () => {
+    expect(getOphisVaultRelayer(1)).toBe(CANONICAL_RELAYER);
+    expect(getOphisVaultRelayer(8453)).toBe(CANONICAL_RELAYER);
+    expect(getOphisVaultRelayer(42161)).toBe(CANONICAL_RELAYER);
+  });
+
+  it('covers exactly the same chains as the settlement map (relayer + settlement stay paired)', () => {
+    expect(Object.keys(OPHIS_VAULT_RELAYER_ADDRESSES).sort()).toEqual(Object.keys(OPHIS_SETTLEMENT_ADDRESSES).sort());
+  });
+
+  it('throws on an unsupported / invalid chainId', () => {
+    expect(() => getOphisVaultRelayer(12345)).toThrow(/no vault relayer/);
+    // @ts-expect-error missing arg
+    expect(() => getOphisVaultRelayer()).toThrow(/positive integer/);
+  });
+
+  it('OPHIS_VAULT_RELAYER_ADDRESSES is frozen', () => {
+    expect(Object.isFrozen(OPHIS_VAULT_RELAYER_ADDRESSES)).toBe(true);
   });
 });
