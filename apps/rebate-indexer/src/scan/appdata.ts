@@ -13,7 +13,9 @@ export function parseAppData(fullAppData: string | null | undefined): AppDataInf
   if (!fullAppData) return empty;
   let meta: Record<string, unknown>;
   try {
-    meta = JSON.parse(fullAppData) as Record<string, unknown>;
+    const parsed = JSON.parse(fullAppData);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return empty;
+    meta = parsed as Record<string, unknown>;
   } catch {
     return empty;
   }
@@ -30,7 +32,7 @@ export function parseAppData(fullAppData: string | null | undefined): AppDataInf
     if (REF_RE.test(c)) refCode = c;
   }
   const rawBps = (metadata as { partnerFee?: { volumeBps?: unknown } }).partnerFee?.volumeBps;
-  const feeBps = typeof rawBps === 'number' && Number.isFinite(rawBps) ? rawBps : null;
+  const feeBps = typeof rawBps === 'number' && Number.isInteger(rawBps) && rawBps >= 0 && rawBps <= 10000 ? rawBps : null;
 
   return { appCode, refCode, feeBps };
 }

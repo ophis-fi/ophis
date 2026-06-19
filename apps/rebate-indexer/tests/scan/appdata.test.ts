@@ -23,4 +23,15 @@ describe('parseAppData', () => {
     expect(parseAppData(null)).toEqual({ appCode: null, refCode: null, feeBps: null });
     expect(parseAppData('{not json')).toEqual({ appCode: null, refCode: null, feeBps: null });
   });
+  it('returns empty for JSON that parses to a non-object', () => {
+    expect(parseAppData('null')).toEqual({ appCode: null, refCode: null, feeBps: null });
+    expect(parseAppData('[]')).toEqual({ appCode: null, refCode: null, feeBps: null });
+    expect(parseAppData('"string"')).toEqual({ appCode: null, refCode: null, feeBps: null });
+    expect(parseAppData('42')).toEqual({ appCode: null, refCode: null, feeBps: null });
+  });
+  it('bounds feeBps as a non-negative integer within 0-10000', () => {
+    expect(parseAppData('{"appCode":"ophis","metadata":{"partnerFee":{"volumeBps":10}}}').feeBps).toBe(10);
+    expect(parseAppData('{"appCode":"ophis","metadata":{"partnerFee":{"volumeBps":-5}}}').feeBps).toBeNull();
+    expect(parseAppData('{"appCode":"ophis","metadata":{"partnerFee":{"volumeBps":10.5}}}').feeBps).toBeNull();
+  });
 });
