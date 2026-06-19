@@ -46,6 +46,8 @@ export {
   assertAddressLike,
   addressesEqual,
   isZeroAddress,
+  isBytes32,
+  assertBytes32,
 } from './guards.js';
 
 export {
@@ -54,3 +56,16 @@ export {
   assignTier,
   type Tier,
 } from './tiers.js';
+
+export {
+  OPHIS_REBATE_INDEXER_URL,
+  isOphisFeeChain,
+  buildOphisOrderMetadata,
+  enrollOphisTrader,
+  buildOphisOrderCreation,
+  type OphisSigningScheme,
+  type OphisOrderMetadataOptions,
+  type OphisAppDataInput,
+  type EnrollOphisTraderOptions,
+  type OphisOrderCreationOptions,
+} from './flow.js';
