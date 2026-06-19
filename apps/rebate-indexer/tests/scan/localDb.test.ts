@@ -21,6 +21,15 @@ describe('parseLocalRows', () => {
   it('ignores blank lines', () => {
     expect(parseLocalRows('\n\n', 10, 'optimism')).toEqual([]);
   });
+  it('maps a 0x (no-settlement) txHash to null', () => {
+    const row = ['2026-06-18T20:36:27+00:00', '0xuid', '0xowner', '0xrecv', '0xsell', '0xbuy', '100', '200', '0x', '{"appCode":"ophis"}'].join('\t');
+    const [s] = parseLocalRows(row, 10, 'optimism');
+    expect(s!.txHash).toBeNull();
+    expect(s!.appCode).toBe('ophis');
+  });
+  it('skips a malformed short row (fewer than 10 columns)', () => {
+    expect(parseLocalRows('a\tb\tc', 10, 'optimism')).toEqual([]);
+  });
 });
 
 describe('buildLocalQuery', () => {

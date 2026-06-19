@@ -42,7 +42,9 @@ export function parseLocalRows(tsv: string, chainId: number, chainName: string):
   const out: Swap[] = [];
   for (const line of tsv.split('\n')) {
     if (!line.trim()) continue;
-    const [tsUtc, uid, owner, receiver, sellToken, buyToken, sellAmount, buyAmount, txHash, fullAppData] = line.split('\t');
+    const fields = line.split('\t');
+    if (fields.length < 10) continue; // malformed row; valid SQL output always has all 10 columns
+    const [tsUtc, uid, owner, receiver, sellToken, buyToken, sellAmount, buyAmount, txHash, fullAppData] = fields;
     const info = parseAppData(fullAppData);
     if (!info.appCode) continue; // defensive; the SQL already filtered
     out.push({
@@ -61,8 +63,11 @@ export function parseLocalRows(tsv: string, chainId: number, chainName: string):
 
 export async function scanLocalDbChain(cfg: ChainConfig, t0Iso: string, run: PsqlRunner = dockerPsql): Promise<ScanResult> {
   const base: ScanResult['coverage'] = { chainId: cfg.chainId, chainName: cfg.name, status: 'ok', fillsScanned: 0, ophisFound: 0, unresolved: 0 };
+  if (!cfg.dbContainer) {
+    return { swaps: [], coverage: { ...base, status: 'degraded', error: 'dbContainer not configured' } };
+  }
   try {
-    const tsv = await run(cfg.dbContainer!, buildLocalQuery(t0Iso));
+    const tsv = await run(cfg.dbContainer, buildLocalQuery(t0Iso));
     const swaps = parseLocalRows(tsv, cfg.chainId, cfg.name);
     return { swaps, coverage: { ...base, fillsScanned: swaps.length, ophisFound: swaps.length } };
   } catch (err) {
