@@ -35,7 +35,12 @@ const handlers = {
     sellAmount: '1000000000000000000',
     buyAmount:  '2500000000',
     appData: '0xabc',
-    fullAppData: JSON.stringify({ appCode: 'ophis' }),
+    // A legit Ophis order carries the partner fee, so it reads volume_fee_bps > 0 and counts
+    // toward the trader-volume matview (which now excludes fee-less recognized orders).
+    fullAppData: JSON.stringify({
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8', bps: 5 } },
+    }),
     creationDate: RECENT_ISO,
     status: 'fulfilled',
     executedSellAmount: '1000000000000000000',
@@ -165,4 +170,28 @@ describe('pruneStaleWallets', () => {
 
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000); // integration: container + prune over a fixtured wallet set
+});
+
+describe('wallets matview fee-gate', () => {
+  it('excludes recognized trades that paid no Ophis fee (volume_fee_bps = 0); keeps NULL and positive', async () => {
+    const { sql } = await import('../src/db/index.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    const wPos = 'a'.repeat(40); // volume_fee_bps = 5 -> counts
+    const wNull = 'b'.repeat(40); // NULL (un-backfilled legacy / surplus-PI) -> counts, never under-count a legit un-priced trade
+    const wZero = 'c'.repeat(40); // 0 (no Ophis fee, e.g. the 'ophis-fallback' / forged order) -> EXCLUDED
+    const ins = (uid: string, w: string, feeBps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps)
+      VALUES (decode(${uid.repeat(56)}, 'hex'), 100, decode(${w}, 'hex'), 1, ${RECENT_ISO}, decode(${'11'.repeat(20)}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis', 2500, ${feeBps})`;
+    await ins('a1', wPos, 5);
+    await ins('a2', wNull, null);
+    await ins('a3', wZero, 0);
+    await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
+    const counted = new Set(
+      (await sql<{ w: string }[]>`SELECT encode(wallet, 'hex') AS w FROM wallets`).map((r) => r.w),
+    );
+    expect(counted.has(wPos)).toBe(true); // positive fee counts
+    expect(counted.has(wNull)).toBe(true); // NULL kept: a legit un-backfilled trade is never under-counted
+    expect(counted.has(wZero)).toBe(false); // zero-fee recognized order excluded from the trader pool
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
 });
