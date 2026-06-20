@@ -524,9 +524,10 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <h3>Embed the widget</h3>
         <p>
           Drop the Ophis swap form into your app with the themed <code>@ophis/widget-react</code>
-          wrapper, which pins the Ophis host and your appCode for you, or the upstream
-          <code>@cowprotocol/widget-react</code> pointed at swap.ophis.fi so routing and attribution
-          stay with Ophis. Same MEV-protected, batch-auction settlement, in your branding. See
+          wrapper, which pins the Ophis host and applies the Ophis default appCode, or the upstream
+          <code>@cowprotocol/widget-react</code> pointed at swap.ophis.fi. With either, pass your own
+          <code>appCode</code> so orders are attributed to you rather than the Ophis default. Same
+          MEV-protected, batch-auction settlement, in your branding. See
           <a href="https://docs.ophis.fi/widget">docs.ophis.fi/widget</a>.
         </p>
         <div class="foot"><span class="badge partner">Available</span></div>
