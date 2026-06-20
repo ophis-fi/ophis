@@ -404,12 +404,12 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
 <section id="economics">
   <div class="wrap">
     <div class="eyebrow reveal">How partners win</div>
-    <h2 class="reveal">A revenue line no aggregator pays you, at no cost to your user.</h2>
+    <h2 class="reveal">A revenue line no aggregator pays you, with nothing added on top for your user.</h2>
     <p class="lede reveal">
       Most aggregators treat your routing volume as their margin. Ophis treats it as a partnership.
       Route through us and you share in the trading revenue your volume creates, with pricing built
-      into the quote rather than bolted on top, so your users feel nothing and you earn on every
-      trade. Commercial terms are set by agreement.
+      into the quote rather than bolted on top, so there is nothing added on top of the price your
+      users already see, and you earn on every trade. Commercial terms are set by agreement.
     </p>
 
     <div class="grid cols-3 reveal">
@@ -419,8 +419,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <p>
           Integrators receive a share of the trading revenue from the flow they route, paid monthly
           in WETH and attributed on-chain on a first-bind-wins basis. It is a recurring revenue line
-          that scales with your volume, not a one-off bounty, and it costs your users nothing because
-          pricing lives inside the quote.
+          that scales with your volume, not a one-off bounty, and because pricing lives inside the
+          quote, there is nothing added on top of what your users already see.
         </p>
         <div class="foot"><span class="badge partner">By agreement</span></div>
       </div>
@@ -524,8 +524,9 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <h3>Embed the widget</h3>
         <p>
           Drop the Ophis swap form into your app with the themed <code>@ophis/widget-react</code>
-          wrapper carrying your own appCode, or the upstream <code>@cowprotocol/widget-react</code>.
-          Same MEV-protected, batch-auction settlement, in your branding. See
+          wrapper, which pins the Ophis host and your appCode for you, or the upstream
+          <code>@cowprotocol/widget-react</code> pointed at swap.ophis.fi so routing and attribution
+          stay with Ophis. Same MEV-protected, batch-auction settlement, in your branding. See
           <a href="https://docs.ophis.fi/widget">docs.ophis.fi/widget</a>.
         </p>
         <div class="foot"><span class="badge partner">Available</span></div>
