@@ -3,5 +3,6 @@ packages:
   - "apps/backend"
   - "apps/rebate-indexer"
   - "apps/mcp-server"
+  - "apps/safe-app"
   - "infra/rpc"
 # apps/frontend is excluded — cowswap upstream ships its own package manager

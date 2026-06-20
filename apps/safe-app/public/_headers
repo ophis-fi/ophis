@@ -1,0 +1,7 @@
+# Cloudflare Pages headers (host at safe.ophis.fi).
+# Safe fetches /manifest.json cross-origin to register the app, so it MUST be CORS-open.
+/manifest.json
+  Access-Control-Allow-Origin: *
+# Allow the Safe interface to iframe the app.
+/*
+  Content-Security-Policy: frame-ancestors https://app.safe.global https://*.safe.global

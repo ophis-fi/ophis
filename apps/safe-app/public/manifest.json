@@ -1,0 +1,5 @@
+{
+  "name": "Ophis Swap",
+  "description": "Swap from your Safe treasury via Ophis (CoW Protocol). MEV-protected, surplus to the trader; orders carry the Ophis partner fee and your referral code.",
+  "iconPath": "ophis-icon.svg"
+}

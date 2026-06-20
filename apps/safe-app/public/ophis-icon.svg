@@ -1,0 +1,6 @@
+<!-- PLACEHOLDER. Replace with the real Ophis claw mark (https://ophis.fi/ophis-claw-saffron.svg). Square, >=128px. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Ophis">
+  <rect width="128" height="128" rx="28" fill="#0b0b0c"/>
+  <circle cx="64" cy="64" r="34" fill="none" stroke="#E8B23A" stroke-width="8"/>
+  <path d="M64 30 L64 64 L88 76" fill="none" stroke="#E8B23A" stroke-width="8" stroke-linecap="round"/>
+</svg>
