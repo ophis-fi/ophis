@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ophis for Business: intent routing for desks &amp; integrators</title>
-<meta name="description" content="Ophis for desks, treasuries, and integrators. Non-custodial intent routing, MEV-protected execution, audit references inherited from CoW Protocol's GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. A flat 0.10% (10 bps) fee on trade volume, with a share returned monthly as volume-tier rebates.">
+<meta name="description" content="Ophis for desks, treasuries, and integrators. Non-custodial intent routing, MEV-protected batch-auction execution, audit references inherited from CoW Protocol's GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. Competitive, benchmarked execution and a partner program that returns a share of trading revenue. Commercial terms by agreement.">
 <link rel="canonical" href="https://business.ophis.fi">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, integrators. Honest framing, audit-inherited contracts, public best-effort plus partner access by agreement.">
+<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, integrators. MEV-protected execution on CoW Protocol's audited GPv2 contracts. Competitive execution, a partner revenue share, commercial terms by agreement.">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta property="og:image:width" content="1920">
@@ -45,13 +45,13 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement on CoW Protocol's audited GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. A flat 0.10% (10 bps) fee on trade volume, 0.01% (1 bp) on stablecoin pairs, with a share returned monthly as volume-tier rebates."
+      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement on CoW Protocol's audited GPv2 contracts. 11 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. Competitive, benchmarked execution, with a partner program that returns a share of trading revenue to integrators and rewards active traders. Commercial terms by agreement."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
-        { "@type": "Question", "name": "What is the Ophis fee structure?", "acceptedAnswer": { "@type": "Answer", "text": "A flat 0.10% (10 bps) fee on trade volume, applied to every trade (for example, a 1,000 USDC swap pays a 1 USDC fee), at or below comparable aggregators such as Matcha (10 bps) and Velora (15 bps). Same-chain stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp). No spread or hidden markup; a share of the WETH fees is returned monthly to active wallets as volume-tier rebates." } },
+        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Execution is benchmarked to be competitive with leading aggregators, and pricing is built into the quote rather than added on top. Commercial terms, including the partner revenue share, are set by agreement and tailored to your volume and integration. Partners earn a share of trading revenue, paid in WETH and attributed on-chain, and active traders earn pooled volume-tier rewards. Reach out with your use case and target volume to discuss terms." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
         { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
@@ -308,7 +308,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
   </a>
   <nav>
     <a href="#why">Why</a>
-    <a href="#economics">Economics</a>
+    <a href="#economics">Partners</a>
     <a href="#chains">Chains</a>
     <a href="#integration">Integration</a>
     <a href="#api">API</a>
@@ -326,8 +326,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
     <h1 class="rise">Execution infrastructure for <em>desks &amp; integrators</em>.</h1>
     <p class="sub rise d1">
       Non-custodial intent routing with MEV-protected, uniform-price settlement on CoW Protocol's
-      audited GPv2 contracts. Lean and honest: public best-effort access today, partner agreements
-      when you need more, and no claims we cannot keep.
+      audited GPv2 contracts. Competitive, benchmarked execution, a partner program that pays you a
+      share of the trading revenue you drive, and commercial terms set by agreement.
     </p>
     <div class="ctas rise d2">
       <a class="btn primary" href="https://swap.ophis.fi/#/contact">Talk to us →</a>
@@ -344,8 +344,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <span class="lab">Destinations via NEAR Intents</span>
       </div>
       <div class="c">
-        <span class="num"><b>0.10%</b></span>
-        <span class="lab">Flat fee on trade volume</span>
+        <span class="num"><b>Revenue</b> share</span>
+        <span class="lab">Partners earn on volume they drive</span>
       </div>
     </div>
   </div>
@@ -403,61 +403,67 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
 <!-- ───────── ECONOMICS ───────── -->
 <section id="economics">
   <div class="wrap">
-    <div class="eyebrow reveal">Economics</div>
-    <h2 class="reveal">A flat fee, at or below the aggregators.</h2>
+    <div class="eyebrow reveal">How partners win</div>
+    <h2 class="reveal">A revenue line no aggregator pays you, at no cost to your user.</h2>
     <p class="lede reveal">
-      Ophis charges a flat 0.10% (10 bps) fee on the volume of every trade, at or below comparable
-      aggregators (Matcha 10 bps, Velora 15 bps). A share of the WETH fees collected flows back to
-      active traders as monthly rebates.
+      Most aggregators treat your routing volume as their margin. Ophis treats it as a partnership.
+      Route through us and you share in the trading revenue your volume creates, with pricing built
+      into the quote rather than bolted on top, so your users feel nothing and you earn on every
+      trade. Commercial terms are set by agreement.
     </p>
 
-    <div class="econ reveal">
-      <div class="panel">
-        <div class="ttl">Fee, flat on trade volume</div>
-        <div class="feerow">
-          <span class="big take">0.10%</span>
-          <span class="txt">a <b>flat 10 bps</b> fee on the volume of every trade, charged via CoW Protocol's CIP-75 volume policy (<code>volumeBps: 10</code>).</span>
-        </div>
-        <div class="feerow">
-          <span class="big cap">0.01%</span>
-          <span class="txt">Stablecoin-to-stablecoin swaps: a reduced <b>0.01% (1 bp)</b> on same-chain trades where both tokens are stablecoins.</span>
-        </div>
-        <div class="feerow">
-          <span class="big zero">0bps</span>
-          <span class="txt">no spread, no hidden markup, no surcharge beyond the flat 0.10%.</span>
-        </div>
-        <div class="feerow">
-          <span class="big take">Floor</span>
-          <span class="txt">on our <b>self-hosted Optimism</b> stack the 10 bps / 1 bp is an <b>enforced minimum at settlement</b>, not just a UI default: the backend rejects any order priced below the floor, so the rate is guaranteed on chain.</span>
-        </div>
-        <div class="feerow">
-          <span class="big zero">100%</span>
-          <span class="txt">of any <b>surplus</b> (price improvement beyond your quote) is yours. The flat fee is on volume only and never takes a cut of your surplus, unlike a surplus-based fee model.</span>
-        </div>
-        <div class="example">
-          Swap <b>1,000 USDC</b>, fee = 0.10% = <b>1 USDC</b>.<br>
-          A share returns to you monthly as <span class="plus">volume-tier rebates</span>.
-        </div>
+    <div class="grid cols-3 reveal">
+      <div class="card">
+        <span class="idx">01</span>
+        <h3>Earn on the volume you drive</h3>
+        <p>
+          Integrators receive a share of the trading revenue from the flow they route, paid monthly
+          in WETH and attributed on-chain on a first-bind-wins basis. It is a recurring revenue line
+          that scales with your volume, not a one-off bounty, and it costs your users nothing because
+          pricing lives inside the quote.
+        </p>
+        <div class="foot"><span class="badge partner">By agreement</span></div>
       </div>
+      <div class="card">
+        <span class="idx">02</span>
+        <h3>Reward your active traders</h3>
+        <p>
+          Beyond the integrator share, active end-traders earn pooled, volume-tier rewards paid in
+          WETH. It is a built-in loyalty mechanism that gives your most engaged users a reason to
+          keep their flow on your integration, with no incentive budget required from you.
+        </p>
+        <div class="foot"><span class="badge live">Live</span></div>
+      </div>
+      <div class="card">
+        <span class="idx">03</span>
+        <h3>Make your token the cheapest safe trade</h3>
+        <p>
+          For ecosystem and token launches, Ophis can run a boost: we step aside on the economics so
+          your pair becomes the most competitive MEV-protected route available, while you or your
+          chain fund the token-side rewards. Ophis brings the rails and stands as the named venue.
+          Scope and terms by agreement.
+        </p>
+        <div class="foot"><span class="badge partner">By agreement</span></div>
+      </div>
+    </div>
 
-      <div class="panel">
-        <div class="ttl">Rebate tiers, by 30-day volume</div>
-        <table class="tier">
-          <thead><tr><th>Tier</th><th>30-day volume</th><th>Rebate weight</th></tr></thead>
-          <tbody>
-            <tr><td class="nm">Bronze</td><td>$20,000+</td><td class="pct">10%</td></tr>
-            <tr><td class="nm">Silver</td><td>$50,000+</td><td class="pct">15%</td></tr>
-            <tr><td class="nm">Gold</td><td>$100,000+</td><td class="pct">25%</td></tr>
-            <tr><td class="nm">Palladium</td><td>$500,000+</td><td class="pct">35%</td></tr>
-            <tr><td class="nm">Platinum</td><td>$1,000,000+</td><td class="pct">50%</td></tr>
-          </tbody>
-        </table>
-        <p class="pool">
-          Each month, <b>21.25% of the WETH fees accrued to the Ophis fee Safe</b> is paid out as
-          rebates, split across active wallets in proportion to their 30-day volume weighted by
-          tier. Wallets below $20,000 of 30-day volume are unranked and do not share in the pool.
-          (Fees collected in other tokens are not currently part of the pool.) A higher tier
-          raises your weight in the split; your current tier is shown on the swap page.
+    <div class="grid cols-2 reveal" style="margin-top: 16px;">
+      <div class="card">
+        <h3>Pricing is in the quote, not on top</h3>
+        <p>
+          Where aggregators commonly add their cut on top of the quote, Ophis builds its economics
+          into the price your user already sees. The result is execution benchmarked to be
+          competitive with leading aggregators, with a partner revenue share layered on top of, not
+          subtracted from, what you would otherwise earn. The detailed commercial terms are shared
+          directly with partners under agreement.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Terms scoped to your integration</h3>
+        <p>
+          Integrations are scoped commercially to the volume you bring and the user relationship you
+          own. We size the arrangement to your flow and your integration. Start the conversation and
+          we will tailor it to your desk.
         </p>
       </div>
     </div>
@@ -509,40 +515,39 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
     <div class="eyebrow reveal">Integration paths</div>
     <h2 class="reveal">Three ways to put Ophis in front of users.</h2>
     <p class="lede reveal">
-      All three settle through CoW Protocol's MEV-protected batch auction. The direct UI and
-      Intent API carry Ophis's full routing and multi-chain coverage; choose by how much of the
-      interface you want to own.
+      All three settle through CoW Protocol's MEV-protected batch auction. Choose by how much of the
+      interface you want to own, and by whether you want to earn the partner revenue share.
     </p>
 
     <div class="grid cols-3 reveal">
       <div class="card">
-        <h3>Direct use</h3>
+        <h3>Embed the widget</h3>
         <p>
-          Operators trade via the web UI at <code>swap.ophis.fi</code>. Wallet connect via
-          MetaMask, WalletConnect v2, Coinbase Wallet, Safe, or any EIP-1193 provider. No code
-          required.
-        </p>
-        <div class="foot"><span class="badge live">Live</span></div>
-      </div>
-      <div class="card">
-        <h3>Intent API</h3>
-        <p>
-          Call <code>POST /api/intent</code> from your bot or agent and Ophis returns a structured
-          order ready to sign, settled on the CoW Protocol orderbook. Public rate limit 30
-          req/min/IP; partner-tier quotas by agreement.
-        </p>
-        <div class="foot"><span class="badge live">Live</span></div>
-      </div>
-      <div class="card">
-        <h3>Embeddable widget</h3>
-        <p>
-          Embed the Ophis swap form in your app with the same MEV-protected,
-          batch-auction settlement. Use <code>@ophis/widget-react</code>, a thin wrapper
-          that pins the Ophis host, appCode and partner-fee recipient, or the upstream
-          <code>@cowprotocol/widget-react</code> pointed at swap.ophis.fi. See
+          Drop the Ophis swap form into your app with the themed <code>@ophis/widget-react</code>
+          wrapper carrying your own appCode, or the upstream <code>@cowprotocol/widget-react</code>.
+          Same MEV-protected, batch-auction settlement, in your branding. See
           <a href="https://docs.ophis.fi/widget">docs.ophis.fi/widget</a>.
         </p>
         <div class="foot"><span class="badge partner">Available</span></div>
+      </div>
+      <div class="card">
+        <h3>Build with the SDK</h3>
+        <p>
+          Call Ophis from your bot, agent, or backend with the dependency-free
+          <code>@ophis/sdk</code> across 11 chains, native ETH included. The SDK path carries your
+          referral code, so this is the route that earns the partner revenue share on the flow you
+          send.
+        </p>
+        <div class="foot"><span class="badge live">Live</span></div>
+      </div>
+      <div class="card">
+        <h3>Direct use</h3>
+        <p>
+          Point operators at <code>swap.ophis.fi</code> for immediate, no-code access. Wallet
+          connect via MetaMask, WalletConnect v2, Coinbase Wallet, Safe, or any EIP-1193 provider.
+          Nothing to build.
+        </p>
+        <div class="foot"><span class="badge live">Live</span></div>
       </div>
     </div>
   </div>
@@ -552,8 +557,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
 <section style="padding: 0 24px;">
   <div class="cta-banner reveal">
     <div>
-      <h3>Partner access &amp; custom rate limits</h3>
-      <p>Material-volume routing, OTC partnership scope, or higher rate limits? We respond within one business day.</p>
+      <h3>Partner access &amp; revenue share</h3>
+      <p>Material-volume routing, an ecosystem boost, or an integration that earns you a share of trading revenue? Start the conversation and we respond within one business day.</p>
     </div>
     <a class="btn primary" href="https://swap.ophis.fi/#/contact">Discuss partner access →</a>
   </div>
@@ -702,8 +707,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <h3>What Ophis is</h3>
         <p>
           A non-custodial interface to the CoW Protocol settlement layer, with a plain-English
-          intent parser, a CIP-75 partner-fee mechanism, and cross-chain destination support via
-          NEAR Intents. Operated independently and open-source under GPL-3.0.
+          intent parser, a partner program that returns a share of trading revenue, and cross-chain
+          destination support via NEAR Intents. Operated independently and open-source under GPL-3.0.
         </p>
       </div>
       <div class="card">
@@ -741,20 +746,19 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
       </details>
 
       <details>
-        <summary>What is your fee structure?</summary>
+        <summary>How does Ophis price its service, and is execution competitive?</summary>
         <div class="body">
           <p>
-            <strong>A flat 0.10% (10 bps) fee on trade volume</strong>, applied to every trade,
-            charged via CoW Protocol's CIP-75 volume policy (<code>volumeBps: 10</code>). For
-            example, a 1,000 USDC swap pays a 1 USDC fee. The rate is at or below comparable
-            aggregators (Matcha 10 bps, Velora 15 bps). Stablecoin-to-stablecoin swaps: a reduced
-            0.01% (1 bp), on same-chain trades where both tokens are stablecoins.
+            Execution is benchmarked against leading aggregators and is designed to be competitive,
+            with the additional protection of MEV-safe, uniform-price batch settlement that public
+            mempool routes cannot offer. Pricing is built into the quote you already see rather than
+            added on top, which is how many aggregators handle it.
           </p>
           <p>
-            No spread, no hidden markup beyond the flat 0.10%. A share of the WETH fees is returned
-            monthly to active wallets as volume-tier rebates. The full breakdown and the rebate
-            tiers are in the <a href="https://docs.ophis.fi/fees">fees documentation</a>.
-            Partner-tier terms are handled per agreement.
+            Commercial terms are set by agreement and tailored to your volume and integration.
+            Partners earn a share of trading revenue, paid monthly in WETH and attributed on-chain.
+            Active traders earn pooled, volume-tier rewards. Tell us your use case and target volume
+            and we will put concrete terms in front of you.
           </p>
         </div>
       </details>
@@ -775,10 +779,11 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <summary>How do I integrate?</summary>
         <div class="body">
           <p>
-            Three paths, detailed above: (1) point your operators at
-            <a href="https://swap.ophis.fi">swap.ophis.fi</a> for direct use, (2) call
-            <code>POST /api/intent</code> from your bot or agent, or (3) embed the upstream CoW
-            Widget. Documentation at <a href="https://docs.ophis.fi">docs.ophis.fi</a>.
+            Three paths, detailed above: (1) embed the themed widget with your own appCode, (2)
+            build with the dependency-free <code>@ophis/sdk</code> from your bot, agent, or backend
+            (this is the path that earns the partner revenue share), or (3) point operators at
+            <a href="https://swap.ophis.fi">swap.ophis.fi</a> for direct, no-code use. Documentation
+            at <a href="https://docs.ophis.fi">docs.ophis.fi</a>.
           </p>
         </div>
       </details>
@@ -816,8 +821,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
   <div class="wrap" style="text-align: center;">
     <h2 class="reveal" style="margin: 0 auto;">Start the conversation.</h2>
     <p class="lede reveal" style="margin: 18px auto 30px;">
-      A response within one business day on substantive inquiries. We do not cold-pitch and we do
-      not chase. If our public model fits your desk, the conversation is short.
+      A response within one business day on substantive inquiries. If a competitive, MEV-protected
+      venue that pays you a share of the revenue you drive fits your desk, the conversation is short.
     </p>
     <a class="btn primary reveal" href="https://swap.ophis.fi/#/contact">Contact us →</a>
   </div>
@@ -852,7 +857,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
       <h4>Resources</h4>
       <ul>
         <li><a href="https://docs.ophis.fi">Docs</a></li>
-        <li><a href="https://docs.ophis.fi/fees">Fees</a></li>
+        <li><a href="https://docs.ophis.fi/widget">Integrate</a></li>
         <li><a href="https://swap.ophis.fi/#/learn">Learn</a></li>
         <li><a href="https://swap.ophis.fi/#/legal">Legal</a></li>
       </ul>
