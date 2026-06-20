@@ -53,6 +53,10 @@ export default defineConfig({
       { find: /^multiformats$/, replacement: 'multiformats-v9' },
     ],
   },
+  // Exclude the CoW packages from dev pre-bundling so the cowEthersV5 resolveId plugin governs
+  // their ethers imports in dev too (esbuild's optimizer would otherwise bundle them with the
+  // app's ethers v6, which they are not written for). Build already routes through the plugin.
+  optimizeDeps: { exclude: ['@cowprotocol/cow-sdk', '@cowprotocol/app-data'] },
   build: { outDir: 'dist', sourcemap: false },
   server: { cors: true, port: 5273 },
 });

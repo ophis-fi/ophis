@@ -22,7 +22,11 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
   const [buyToken, setBuyToken] = useState('');
   const [sellAmount, setSellAmount] = useState('');
   const [quote, setQuote] = useState<any>(null);
-  const [submitted, setSubmitted] = useState<{ orderUid: string; safeTxHash: string } | null>(null);
+  const [submitted, setSubmitted] = useState<{
+    orderUid: string;
+    safeTxHash: string;
+    enrollmentWarning?: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,14 +43,33 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
     if (!quote) return;
     setError(null); setBusy(true);
     try {
-      const { fullAppData, appDataHash } = await buildAppData(chainId, referral);
-      const order = assembleOrder(owner as `0x${string}`, quote, appDataHash);
-      setSubmitted(await submitOrder(sdk, chainId, owner as `0x${string}`, order, fullAppData, appDataHash));
+      const ownerAddr = owner as `0x${string}`;
+      const { fullAppData, appDataHash } = await buildAppData(chainId, ownerAddr, referral);
+      const order = assembleOrder(ownerAddr, quote, appDataHash);
+      setSubmitted(
+        await submitOrder(
+          sdk,
+          chainId,
+          ownerAddr,
+          order,
+          order.sellToken,
+          order.sellAmount,
+          fullAppData,
+          appDataHash,
+        ),
+      );
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
   if (submitted) {
-    return <OrderStatus chainId={chainId} orderUid={submitted.orderUid} safeTxHash={submitted.safeTxHash} />;
+    return (
+      <OrderStatus
+        chainId={chainId}
+        orderUid={submitted.orderUid}
+        safeTxHash={submitted.safeTxHash}
+        enrollmentWarning={submitted.enrollmentWarning}
+      />
+    );
   }
 
   const q = quote?.quote ?? quote;

@@ -1,11 +1,11 @@
-import { OPHIS_FEE_CHAIN_IDS } from '@ophis/sdk';
+import { OPHIS_ORDERBOOK_URLS } from '@ophis/sdk';
 
-// Gate the chain selector to the chains where the Ophis partner fee is enforced.
-// MegaETH/HyperEVM are paused (no live orderbook host) so they must stay excluded
-// regardless of any settlement-map presence.
+// Gate the chain selector to chains with a LIVE Ophis orderbook host. The fee-chain set
+// (OPHIS_FEE_CHAIN_IDS) is wider: it includes the Ophis-operated chains whose orderbook is
+// currently PAUSED (MegaETH 4326, HyperEVM 999) — those have a deployed settlement + fee config
+// but no live host, so an order there is accepted by metadata but can never be submitted. Gating
+// on OPHIS_ORDERBOOK_URLS (the live-host map, which omits 4326/999) is the correct admission test.
+// This mirrors buildOphisOrderMetadata's own `OPHIS_ORDERBOOK_URLS[chainId] === undefined` guard.
 export function isOphisFeeChain(chainId: number): boolean {
-  const ids = OPHIS_FEE_CHAIN_IDS as unknown;
-  if (ids instanceof Set) return ids.has(chainId);
-  if (Array.isArray(ids)) return (ids as number[]).includes(chainId);
-  return false;
+  return OPHIS_ORDERBOOK_URLS[chainId] !== undefined;
 }

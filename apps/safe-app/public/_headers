@@ -2,6 +2,12 @@
 # Safe fetches /manifest.json cross-origin to register the app, so it MUST be CORS-open.
 /manifest.json
   Access-Control-Allow-Origin: *
-# Allow the Safe interface to iframe the app.
+# Allow the Safe interface to iframe the app, plus a baseline CSP. One Content-Security-Policy
+# line only (Cloudflare Pages does not merge duplicate CSP headers under a path), so frame-ancestors
+# and the resource directives live together.
+#   - connect-src: the per-chain Ophis orderbook host (optimism-mainnet.ophis.fi + *.ophis.fi also
+#     covers the rebate indexer rebates.ophis.fi) and api.cow.fi for the CoW-hosted chains.
+#   - script-src 'self': no inline/eval scripts (Vite emits external bundles).
+#   - style-src 'unsafe-inline': the app uses inline React style objects.
 /*
-  Content-Security-Policy: frame-ancestors https://app.safe.global https://*.safe.global
+  Content-Security-Policy: frame-ancestors https://app.safe.global https://*.safe.global; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://optimism-mainnet.ophis.fi https://*.ophis.fi https://api.cow.fi; img-src 'self' data:; object-src 'none'; base-uri 'none'
