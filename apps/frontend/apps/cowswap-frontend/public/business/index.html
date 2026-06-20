@@ -55,7 +55,7 @@
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
         { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
-        { "@type": "Question", "name": "Do you have references or case studies?", "acceptedAnswer": { "@type": "Answer", "text": "Not yet; Ophis is pre-launch in commercial terms. Specific partner integrations are listed only after a signed agreement exists. Ophis does not publish anonymous trusted-by claims." } }
+        { "@type": "Question", "name": "Do you have references or case studies?", "acceptedAnswer": { "@type": "Answer", "text": "Specific partner integrations are listed only after a signed agreement exists. Ophis does not publish anonymous trusted-by claims." } }
       ]
     }
   ]
@@ -501,8 +501,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
       <div class="chip"><img src="/logos/token-btc.svg" alt="" aria-hidden="true"><span class="name">Bitcoin</span><span class="via">via NEAR</span></div>
     </div>
     <p style="margin-top: 20px; font-size: 13px; color: var(--muted-2);">
-      Sepolia testnet is available for integration testing, not listed here to keep the
-      production-coverage view honest.
+      Sepolia testnet is available for integration testing; this view lists production chains only.
     </p>
   </div>
 </section>
@@ -602,10 +601,11 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
 <section id="audits">
   <div class="wrap">
     <div class="eyebrow reveal">Security posture</div>
-    <h2 class="reveal">Honest about what has been reviewed, and by whom.</h2>
+    <h2 class="reveal">Security and review posture.</h2>
     <p class="lede reveal">
-      We do not claim certifications we do not hold. Below is the actual review history for the
-      routing and settlement components.
+      Settlement runs on CoW Protocol's audited GPv2 contracts. The Ophis-specific routing and
+      authentication components are reviewed with the tooling below, and external review and a bug
+      bounty are listed here as they go live.
     </p>
 
     <div class="grid cols-3 reveal">
@@ -631,9 +631,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
       <div class="card">
         <h3>Ongoing security work</h3>
         <p>
-          Additional external review and a formal bug bounty are on the roadmap. We will list them
-          here once operational, not before. For now, reach out to discuss security disclosure
-          paths.
+          Additional external review and a formal bug bounty are on the roadmap and will be listed
+          here as they go live. To discuss a security disclosure in the meantime, reach out.
         </p>
         <div class="foot"><span class="badge planned">Planned</span></div>
       </div>
@@ -649,8 +648,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
     <div class="eyebrow reveal">Access &amp; engagement</div>
     <h2 class="reveal">Public, partner, or institutional, by agreement.</h2>
     <p class="lede reveal">
-      Four engagement shapes, with honest framing about what each gives you and what it does not.
-      We do not sell features we cannot deliver.
+      Four engagement shapes, from open public access to institutional agreements, each scoped to
+      what it delivers.
     </p>
 
     <div class="grid cols-4 reveal">
@@ -701,7 +700,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
     <div class="eyebrow reveal">Operational boundaries</div>
     <h2 class="reveal">What Ophis is, and what it is not.</h2>
     <p class="lede reveal">
-      Explicit scope statements, so there are no surprises during integration discussions.
+      The boundaries of the service, stated up front for integration planning.
     </p>
 
     <div class="grid cols-2 reveal">
@@ -807,10 +806,9 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <summary>Do you have references or case studies?</summary>
         <div class="body">
           <p>
-            Not yet. Ophis is pre-launch in commercial terms. We list specific partner integrations
-            here only after a signed agreement exists; we do not publish anonymous "trusted by"
-            claims. If you would like to be an early reference partner, mention it in your first
-            email.
+            We list specific partner integrations here only after a signed agreement exists, and we
+            do not publish anonymous "trusted by" claims. If you would like to be a named reference
+            partner, mention it in your first email.
           </p>
         </div>
       </details>
