@@ -13,8 +13,15 @@ export async function getQuote(
   sellToken: string,
   buyToken: string,
   sellAmountBeforeFee: string,
+  appData: string,
+  appDataHash: string,
 ) {
   const api = ophisOrderBook(chainId);
+  // Quote WITH the Ophis appData (partner fee + referrer). The partner fee is encoded in
+  // appData, so a quote without it prices a NO-fee order: the returned buyAmount/feeAmount would
+  // overstate the user's proceeds and the slippage-adjusted limit would be derived from a price
+  // the fee path cannot reach (risking an unfillable order). Passing the same appData/appDataHash
+  // we later submit keeps the quote and the signed order consistent.
   return api.getQuote({
     from: owner,
     receiver: owner, // pin the receiver to the Safe
@@ -23,5 +30,7 @@ export async function getQuote(
     sellAmountBeforeFee,
     kind: OrderQuoteSideKindSell.SELL,
     signingScheme: SigningScheme.PRESIGN, // Safe = smart-contract wallet -> presign, never EIP-712
+    appData,
+    appDataHash,
   } as any);
 }

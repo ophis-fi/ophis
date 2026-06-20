@@ -24,8 +24,6 @@ export async function submitOrder(
   chainId: number,
   owner: `0x${string}`,
   order: QuotedOrder,
-  sellToken: string,
-  sellAmount: string,
   fullAppData: string,
   appDataHash: string,
 ): Promise<SubmitResult> {
@@ -63,30 +61,38 @@ export async function submitOrder(
   // 3) CoW settlement pulls the sell token via the GPv2VaultRelayer. On Ophis-operated chains
   //    that is the NON-canonical Ophis relayer (getOphisVaultRelayer, NOT cow-sdk's default), so a
   //    first-time seller whose Safe never approved it would have its order accepted but never
-  //    filled. If the Safe's current allowance for the relayer is below the sell amount, PREPEND an
-  //    ERC-20 approve into the SAME Safe execution so one signature does both (approve, presign).
+  //    filled. If the Safe's allowance for the relayer is below what settlement can pull, PREPEND
+  //    an ERC-20 approve into the SAME Safe execution so one signature does both (approve, presign).
+  //    The relayer pulls sellAmount + feeAmount, so size the allowance off the BEFORE-fee total,
+  //    not order.sellAmount (which is already net of the fee) — otherwise a Safe with no spare
+  //    allowance presigns an order that stays unfillable.
   const relayer = getOphisVaultRelayer(chainId);
+  const pullAmount = BigInt(order.sellAmount) + BigInt(order.feeAmount);
   const txs: { to: string; value: string; data: string }[] = [];
 
-  let needsApprove: boolean;
+  let currentAllowance: bigint | null;
   try {
     const allowanceData = ERC20_ALLOWANCE_IFACE.encodeFunctionData('allowance', [owner, relayer]);
-    const raw = await sdk.eth.call([{ to: sellToken, data: allowanceData }]);
-    const [allowance] = ERC20_ALLOWANCE_IFACE.decodeFunctionResult('allowance', raw) as unknown as [bigint];
-    needsApprove = allowance < BigInt(sellAmount);
+    const raw = await sdk.eth.call([{ to: order.sellToken, data: allowanceData }]);
+    [currentAllowance] = ERC20_ALLOWANCE_IFACE.decodeFunctionResult('allowance', raw) as unknown as [bigint];
   } catch (e) {
-    // If the allowance read fails (RPC hiccup, odd token), fall back to ALWAYS prepending an
-    // approve: an extra (idempotent) approve is harmless, a missing one leaves the order unfillable.
-    console.warn('[ophis] allowance read failed; prepending approve defensively:', (e as Error).message);
-    needsApprove = true;
+    // Allowance read failed (RPC hiccup, odd token): treat the current allowance as UNKNOWN and
+    // approve defensively below (a redundant approve is harmless; a missing one is unfillable).
+    console.warn('[ophis] allowance read failed; approving defensively:', (e as Error).message);
+    currentAllowance = null;
   }
 
-  if (needsApprove) {
-    // Least-privilege: approve exactly the sell amount (not MaxUint256) so a stale approval cannot
-    // be drained by a later compromise of the relayer. The cost is one approval per first sell of
-    // a token at/above this size.
-    const approveData = ERC20_APPROVE_IFACE.encodeFunctionData('approve', [relayer, sellAmount]);
-    txs.push({ to: sellToken, value: '0', data: approveData });
+  if (currentAllowance === null || currentAllowance < pullAmount) {
+    // USDT-style tokens REVERT on a non-zero -> non-zero approve; if the current allowance is
+    // non-zero (or unknown), reset it to 0 first. approve(0) is safe on every ERC-20, so doing it
+    // when the allowance is unknown is harmless. Without this, the batch's approve reverts and the
+    // following setPreSignature never executes, leaving the order unfillable.
+    if (currentAllowance === null || currentAllowance > 0n) {
+      txs.push({ to: order.sellToken, value: '0', data: ERC20_APPROVE_IFACE.encodeFunctionData('approve', [relayer, 0]) });
+    }
+    // Least-privilege: approve exactly what settlement can pull (not MaxUint256) so a stale
+    // approval cannot be drained by a later compromise of the relayer.
+    txs.push({ to: order.sellToken, value: '0', data: ERC20_APPROVE_IFACE.encodeFunctionData('approve', [relayer, pullAmount]) });
   }
   txs.push({ to: settlement, value: '0', data: setPreSignatureData });
 
