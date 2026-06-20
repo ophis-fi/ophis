@@ -226,10 +226,17 @@ export async function fetchChainTrades(
         volumeFeeBps = readVolumeFeeBps(meta);
         // Affiliate attribution. PREFERRED: an explicit metadata.ophisReferrer.code (the SDK/agent
         // path). appData is attacker-controllable, so keep the code ONLY if it matches the registry
-        // grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/); lowercase to match ref_codes. A malformed
-        // code is dropped to null (the trade then falls back to the wallet-bind path at accrual).
+        // grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/), lowercased to match ref_codes, AND only on a
+        // CONFIRMED positive Ophis Volume fee (volumeFeeBps > 0) — symmetric with the widget arm
+        // below. Without the fee gate, a surplus / price-improvement partnerFee shape to the Ophis
+        // recipient reads as NULL and would COALESCE to the retail default at accrual, letting a
+        // forged order credit a registered referrer with NO real volume fee. Ophis emitters never
+        // emit surplus/PI, so a NULL here means forge-or-unprocessed; a legit SDK order pins a flat
+        // volume bps (reads > 0). A malformed/ungated code is dropped to null (the trade then falls
+        // back to the wallet-bind path at accrual, which keeps its legacy NULL->retail COALESCE — it
+        // is signature-gated, not a forge surface).
         const rawRef = meta?.metadata?.ophisReferrer?.code;
-        if (typeof rawRef === 'string') {
+        if (typeof rawRef === 'string' && volumeFeeBps !== null && volumeFeeBps > 0) {
           const code = rawRef.trim().toLowerCase();
           if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
         }
@@ -246,8 +253,9 @@ export async function fetchChainTrades(
         // > 0 — verified). With the accrual gates (active registered code, self-referral excluded) a
         // forger can at most GIFT a registered referrer at their own fee expense, never steal.
         // ophisReferrer takes precedence (this only fires when appdataRefCode is still null).
-        // NOTE: the older ophisReferrer arm is NOT yet gated on volumeFeeBps > 0 (pre-existing, same
-        // surplus/PI-NULL property); tightening BOTH arms consistently is tracked as a follow-up.
+        // Both appData-attribution arms (this one and the ophisReferrer arm above) are now gated on
+        // volumeFeeBps > 0. The accrual wallet-bind path keeps its legacy NULL->retail COALESCE
+        // (signature-gated, not a forge surface); gating that too is a separate decision.
         if (
           appdataRefCode === null &&
           isAppCodeOfInterest(widgetAppCode) &&
