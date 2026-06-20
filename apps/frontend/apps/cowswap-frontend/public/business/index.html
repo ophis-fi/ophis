@@ -55,7 +55,7 @@
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
         { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
-        { "@type": "Question", "name": "Do you have references or case studies?", "acceptedAnswer": { "@type": "Answer", "text": "Specific partner integrations are listed only after a signed agreement exists. Ophis does not publish anonymous trusted-by claims." } }
+        { "@type": "Question", "name": "Do you have references or case studies?", "acceptedAnswer": { "@type": "Answer", "text": "Specific partner integrations are listed only after a signed agreement exists." } }
       ]
     }
   ]
@@ -806,9 +806,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <summary>Do you have references or case studies?</summary>
         <div class="body">
           <p>
-            We list specific partner integrations here only after a signed agreement exists, and we
-            do not publish anonymous "trusted by" claims. If you would like to be a named reference
-            partner, mention it in your first email.
+            We list specific partner integrations here only after a signed agreement exists. If you
+            would like to be a named reference partner, mention it in your first email.
           </p>
         </div>
       </details>
