@@ -31,6 +31,25 @@ const sampleOrder = (uid: string, owner: string, appCode = 'ophis') => ({
   executedBuyAmount: '2500000000',
 });
 
+// Build an order whose appData carries an arbitrary structure (for widget / referrer cases).
+const orderWithAppData = (uid: string, owner: string, appDataObj: object) => ({
+  uid,
+  owner,
+  sellToken: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1',
+  buyToken:  '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
+  sellAmount: '1000000000000000000',
+  buyAmount: '2500000000',
+  appData: '0xabc',
+  fullAppData: JSON.stringify(appDataObj),
+  creationDate: '2026-05-01T12:00:00Z',
+  status: 'fulfilled',
+  executedSellAmount: '1000000000000000000',
+  executedBuyAmount: '2500000000',
+});
+// A real Ophis Volume partner fee: recipient = the Ophis Safe + a flat volume bps (reads as
+// volumeFeeBps > 0), which the widget-fallback attribution now requires.
+const OPHIS_FEE = { recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8', bps: 5 };
+
 // Hoisted to the top level (vitest 4 warns — and will error in a future version —
 // if vi.hoisted() is nested inside describe()). It still executes before imports.
 const handlers = vi.hoisted(() => ({
@@ -86,6 +105,84 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows.map((r) => r.tradeUid).sort()).toEqual([upperUid, gregUid].sort());
     // stored normalized to lowercase so downstream grouping/typing stays consistent
     expect(rows.map((r) => r.appCode).sort()).toEqual(['greg', 'ophis']);
+  });
+
+  it('recognizes a widget order via metadata.widget.appCode and attributes the top-level appCode as the integrator referral', async () => {
+    // Widget embeds promote the integrator's appCode to the top level and demote 'ophis' to
+    // metadata.widget.appCode. The order must still be recognized, and the integrator earns via
+    // their top-level appCode (registered as a ref code).
+    const uid = '0x' + '2a'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'acme-dapp',
+      metadata: { widget: { appCode: 'ophis' }, partnerFee: OPHIS_FEE },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.appCode).toBe('ophis'); // stored as the matched Ophis code
+    expect(rows[0]!.appdataRefCode).toBe('acme-dapp');
+  });
+
+  it('prefers an explicit ophisReferrer over the widget top-level appCode', async () => {
+    const uid = '0x' + '2b'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'acme-dapp',
+      metadata: { widget: { appCode: 'ophis' }, ophisReferrer: { code: 'realref' }, partnerFee: OPHIS_FEE },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows[0]!.appdataRefCode).toBe('realref');
+  });
+
+  it('does not treat the reserved Ophis appCode as a referral for a non-overridden widget order', async () => {
+    const uid = '0x' + '2c'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'ophis', // integrator did not override -> Ophis default
+      metadata: { widget: { appCode: 'ophis' }, partnerFee: OPHIS_FEE },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows[0]!.appCode).toBe('ophis');
+    expect(rows[0]!.appdataRefCode).toBeNull();
+  });
+
+  it('recognizes a widget order but drops an invalid top-level appCode as the referral candidate', async () => {
+    const uid = '0x' + '2d'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'Acme Dapp!', // spaces + punctuation -> fails the ref-code grammar
+      metadata: { widget: { appCode: 'ophis' }, partnerFee: OPHIS_FEE },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1); // still recognized via widget.appCode
+    expect(rows[0]!.appCode).toBe('ophis');
+    expect(rows[0]!.appdataRefCode).toBeNull();
+  });
+
+  it('does NOT attribute the widget appCode when no real Ophis volume fee was paid (forged / zero-fee)', async () => {
+    // Security regression: a forged widget order (widget.appCode='ophis', top-level = a would-be
+    // registered code) carrying the Ophis recipient but NO volume bps reads as volumeFeeBps = 0, so
+    // the fallback must NOT attribute — a referral can't earn a share of a fee that was never paid.
+    const uid = '0x' + '2e'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'acme-dapp',
+      metadata: { widget: { appCode: 'ophis' }, partnerFee: { recipient: OPHIS_FEE.recipient } }, // recipient, no bps
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1); // recognized via widget.appCode (trader volume still tracked)
+    expect(rows[0]!.appCode).toBe('ophis');
+    expect(rows[0]!.appdataRefCode).toBeNull(); // no confirmed Ophis volume fee -> no integrator attribution
   });
 
   it('paginates until the API returns fewer than limit rows', async () => {
@@ -150,13 +247,13 @@ describe('fetcher.fetchChainTrades', () => {
         case uids.retail: return withFee(uid, { volumeBps: 10, recipient: REC });
         case uids.stable: return withFee(uid, { volumeBps: 1, recipient: REC });
         case uids.inflated: return withFee(uid, { volumeBps: 50, recipient: REC }); // crafted -> clamp to 10
-        case uids.absent: return withFee(uid, { recipient: REC }); // no volumeBps -> null (retail default at accrual)
+        case uids.absent: return withFee(uid, { recipient: REC }); // no volumeBps -> 0 (no Ophis fee; NOT retail default)
         case uids.arr: return withFee(uid, [{ volumeBps: 5, recipient: REC }]); // array partnerFee shape
-        case uids.zero: return withFee(uid, { volumeBps: 0, recipient: REC }); // <1 -> null
+        case uids.zero: return withFee(uid, { volumeBps: 0, recipient: REC }); // <1 -> 0
         // DECOY: attacker entry first (higher bps), real Ophis entry second. Must
         // ignore the decoy and use the Ophis-recipient rate (5).
         case uids.decoy: return withFee(uid, [{ volumeBps: 10, recipient: ATTACKER }, { volumeBps: 5, recipient: REC }]);
-        // Fee paid to a non-Ophis recipient only -> not our fee -> null (retail default).
+        // Fee paid to a non-Ophis recipient only -> not our fee -> 0 (NOT the retail default).
         case uids.wrongRecipient: return withFee(uid, { volumeBps: 5, recipient: ATTACKER });
         // Legacy Volume shape { bps } (no volumeBps) -> backend maps to Volume -> read it.
         case uids.legacyBps: return withFee(uid, { bps: 5, recipient: REC });
