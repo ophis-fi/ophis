@@ -91,7 +91,7 @@ export interface OphisAppData {
 }
 
 /**
- * Builds the Ophis appData document for a chain: appCode "Ophis", market
+ * Builds the Ophis appData document for a chain: appCode "ophis", market
  * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 5 bps
  * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
@@ -107,7 +107,9 @@ export function buildOphisAppData(chainId: number, slippageBips?: number, referr
   // (throws on a malformed code) so a bad code fails the build, not silently.
   if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode))
 
-  const doc: Record<string, unknown> = { version: APP_DATA_VERSION, appCode: 'Ophis', metadata }
+  // Lowercase 'ophis': the rebate indexer matches appCode case-sensitively against the lowercase
+  // APP_CODES set, so a capitalized appCode would drop the order (and its referral) from attribution.
+  const doc: Record<string, unknown> = { version: APP_DATA_VERSION, appCode: 'ophis', metadata }
   const fullAppData = deterministicStringify(doc)
   const appDataHash = keccak256(toBytes(fullAppData))
   return { doc, fullAppData, appDataHash, partnerFee }

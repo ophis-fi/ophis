@@ -7,7 +7,7 @@ export type OphisWidgetProps = CowSwapWidgetProps;
 
 /**
  * Ophis-branded swap widget. A thin wrapper over `<CowSwapWidget>` that injects
- * the Ophis defaults: iframe host `swap.ophis.fi`, `appCode: 'Ophis'`, and the
+ * the Ophis defaults: iframe host `swap.ophis.fi`, `appCode: 'ophis'`, and the
  * CIP-75 partner fee pinned to the Ophis Safe recipient. Everything else
  * (theme, tokens, provider, listeners, onReady) passes straight through.
  *

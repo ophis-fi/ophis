@@ -5,7 +5,14 @@ import { toKeccak256 } from 'common/utils/toKeccak256'
 
 import { AppDataInfo } from '../types'
 
-const DEFAULT_FULL_APP_DATA_OBJ = { version: LATEST_APP_DATA_VERSION, appCode: 'Ophis', metadata: {} }
+// NON-attributable fallback. This default is published as an order's appData only when buildAppData
+// fails (AppDataInfoUpdater's catch) or before the per-order appData is built — and it carries NO
+// partnerFee. The rebate indexer recognizes 'ophis'/'greg' case-insensitively (APP_CODES), so
+// tagging this no-fee doc 'ophis' would attribute trader volume that paid no Ophis fee. Use an
+// appCode OUTSIDE APP_CODES so a degraded/bootstrap order is never rebate-attributed (casing alone
+// can't achieve this — the indexer lowercases on read). Real orders are tagged 'ophis' via
+// REACT_APP_APP_CODE (useAppCode) in the appData built per order.
+const DEFAULT_FULL_APP_DATA_OBJ = { version: LATEST_APP_DATA_VERSION, appCode: 'ophis-fallback', metadata: {} }
 const DEFAULT_FULL_APP_DATA = JSON.stringify(DEFAULT_FULL_APP_DATA_OBJ)
 
 const APP_DATA_PER_ENV: Record<EnvironmentName, string> = {

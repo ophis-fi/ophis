@@ -53,7 +53,7 @@ const fee = buildOphisAppDataPartnerFee(10); // { volumeBps, recipient } on OP
 createCowSwapWidget(container, {
   params: {
     baseUrl: 'https://swap.ophis.fi', // the Ophis host
-    appCode: 'Ophis',
+    appCode: 'ophis',
     tradeType: 'swap',
     width: '450px',
     height: '640px',
@@ -70,7 +70,7 @@ createCowSwapWidget(container, {
 | Field | Default (via `@ophis/widget-react`) | Notes |
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
-| `appCode` | `Ophis` | Tags orders in appData. Set your own e.g. `"MyDapp-via-Ophis"`. |
+| `appCode` | `ophis` | Tags orders in appData. Set your own e.g. `"MyDapp-via-Ophis"`. |
 | `partnerFee.bps` | `10` (0.10%) | Same-chain stable pairs are reduced server-side. |
 | `partnerFee.recipient` | Ophis Safe | Always pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
