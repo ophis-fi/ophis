@@ -200,7 +200,14 @@ export async function fetchChainTrades(
       let volumeFeeBps: number | null = null;
       try {
         const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
-        appCode = meta?.appCode;
+        // Normalize appCode to lowercase BEFORE matching. Emitters have shipped mixed casing —
+        // the widget (OPHIS_WIDGET_APP_CODE), the MCP build_order doc, and the frontend appData
+        // fallback all tag 'Ophis' (capital) — and a case-SENSITIVE match against the lowercase
+        // APP_CODES would SILENTLY drop those orders, forfeiting their volume and any referral
+        // rebate with no error. Mirror the referral-code lowercasing just below; APP_CODES and
+        // the AppCode type are the lowercase forms, so the stored value stays type-correct.
+        const rawAppCode = meta?.appCode;
+        appCode = typeof rawAppCode === 'string' ? rawAppCode.toLowerCase() : undefined;
         // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no
         // settled Ophis Volume fee. Stays NULL only on a parse failure below
         // (unknown -> retail default at accrual).

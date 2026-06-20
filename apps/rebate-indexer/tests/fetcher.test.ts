@@ -70,6 +70,24 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows[0]!.blockTimestamp.toISOString()).toBe('2026-05-01T12:00:00.000Z');
   });
 
+  it('indexes Ophis orders regardless of appCode casing (case-insensitive; stores lowercase)', async () => {
+    // Regression: the widget/MCP and the frontend fallback emit appCode 'Ophis' (capital). A
+    // case-sensitive match would drop these orders and silently forfeit their rebates.
+    const upperUid = '0x' + '1c'.repeat(56);
+    const gregUid = '0x' + '1d'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(upperUid, owner), sampleTrade(gregUid, owner)]);
+    handlers.order.mockImplementation((uid: string) => uid === upperUid
+      ? sampleOrder(upperUid, owner, 'Ophis') // widget/MCP/frontend-fallback casing
+      : sampleOrder(gregUid, owner, 'GREG'));
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows.map((r) => r.tradeUid).sort()).toEqual([upperUid, gregUid].sort());
+    // stored normalized to lowercase so downstream grouping/typing stays consistent
+    expect(rows.map((r) => r.appCode).sort()).toEqual(['greg', 'ophis']);
+  });
+
   it('paginates until the API returns fewer than limit rows', async () => {
     const page1 = Array.from({ length: 1000 }, (_, i) => sampleTrade('0x' + i.toString(16).padStart(112, '0'), '0xa'.padEnd(42, '0')));
     const page2 = Array.from({ length: 17 },   (_, i) => sampleTrade('0x' + (1000 + i).toString(16).padStart(112, '0'), '0xa'.padEnd(42, '0')));
