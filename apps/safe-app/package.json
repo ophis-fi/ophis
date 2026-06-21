@@ -11,11 +11,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ophis/sdk": "workspace:*",
     "@cowprotocol/app-data": "^2.5.1",
     "@cowprotocol/cow-sdk": "^5.9.0",
-    "@safe-global/safe-apps-sdk": "^9.1.0",
+    "@ophis/sdk": "workspace:*",
     "@safe-global/safe-apps-react-sdk": "^4.7.2",
+    "@safe-global/safe-apps-sdk": "^9.1.0",
     "ethers": "^6.13.0",
     "ethers-v5": "npm:ethers@^5.7.2",
     "multiformats-v9": "npm:multiformats@^9.9.0",
@@ -27,6 +27,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "typescript": "^5.5.0",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vite-plugin-node-polyfills": "^0.28.0"
   }
 }

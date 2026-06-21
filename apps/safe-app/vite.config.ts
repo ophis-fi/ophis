@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // --- ethers v5 / v6 coexistence -------------------------------------------------------------
 // The @cowprotocol stack pinned by this app (cow-sdk@5, app-data@2, and transitively
@@ -39,7 +40,13 @@ function cowEthersV5(): Plugin {
 // Safe Apps are plain static SPAs loaded in an iframe by app.safe.global.
 // base must be '/', and manifest.json + assets are served from the app root.
 export default defineConfig({
-  plugins: [cowEthersV5(), react()],
+  // nodePolyfills supplies the Node globals + builtins (global, Buffer, process, util/stream, …)
+  // that the @cowprotocol app-data IPFS stack references at MODULE-INIT time. Without them the
+  // bundle throws "global is not defined" then "Cannot read properties of undefined (reading
+  // 'prototype')" in the browser and the app renders a BLANK page. Critically, typecheck + build +
+  // curl ALL pass — only loading it in a real browser surfaces this, so keep a browser smoke test
+  // in the loop. (enforce order: keep cowEthersV5's `pre` resolveId ahead of the polyfills.)
+  plugins: [cowEthersV5(), nodePolyfills(), react()],
   base: '/',
   resolve: {
     alias: [
