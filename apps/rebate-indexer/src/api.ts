@@ -6,6 +6,7 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
+import { renderStatsPage, type PublicStats } from './stats-page.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import {
@@ -308,9 +309,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     },
   }, async (_req, reply) =>
     // /health is allowed so Bing can crawl it and read its noindex header (a bare
-    // Disallow makes Bing report it as "blocked by robots.txt"). Everything else
-    // (incl. wallet-scoped /tier) stays disallowed for privacy + crawl budget.
-    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\nAllow: /health\n'),
+    // Disallow makes Bing report it as "blocked by robots.txt"). /stats is the
+    // public cumulative-proof page (indexable for discoverability). Everything
+    // else (incl. wallet-scoped /tier) stays disallowed for privacy + crawl budget.
+    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\nAllow: /health\nAllow: /stats\n'),
   );
 
   app.get('/health', {
@@ -459,6 +461,61 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         .send(html);
     }
     return status;
+  });
+
+  // PUBLIC cumulative stats: lifetime settled volume, trades, traders, and a
+  // per-chain breakdown, from the indexed `trades` table. Deliberately
+  // cumulative/lagging ONLY: it never exposes current-cycle 30d volume or the
+  // next-payout timing (those stay on the admin-only /status, where they are a
+  // front-runner timing signal). Cumulative lifetime totals are not gameable, so
+  // this is a safe public credibility/proof surface. JSON for API clients;
+  // a styled page for a browser (same content-negotiation as /tier).
+  app.get('/stats', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
+    },
+  }, async (req, reply) => {
+    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string }[]>`
+      SELECT
+        COALESCE(SUM(value_usd), 0)::text AS vol,
+        COUNT(*)::text                    AS trades,
+        COUNT(DISTINCT wallet)::text      AS traders,
+        COUNT(DISTINCT chain_id)::text    AS chains
+      FROM trades
+    `;
+    const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
+      SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n
+      FROM trades
+      GROUP BY chain_id
+      ORDER BY SUM(value_usd) DESC NULLS LAST, COUNT(*) DESC
+    `;
+    const t = totalsRows[0];
+    const stats: PublicStats = {
+      totalVolumeUsd: Number(t?.vol ?? '0'),
+      totalTrades: Number(t?.trades ?? '0'),
+      distinctTraders: Number(t?.traders ?? '0'),
+      chainsActive: Number(t?.chains ?? '0'),
+      byChain: byChainRows.map((r) => ({
+        chainId: r.chain_id,
+        volumeUsd: Number(r.vol ?? '0'),
+        trades: Number(r.n),
+      })),
+      generatedAt: new Date().toISOString(),
+    };
+
+    reply.header('vary', 'Origin, Accept');
+    const accept = req.headers.accept ?? '';
+    if (accept.includes('text/html')) {
+      return reply
+        .type('text/html; charset=utf-8')
+        .header('cache-control', 'public, max-age=300')
+        .header(
+          'content-security-policy',
+          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+        )
+        .send(renderStatsPage(stats));
+    }
+    return { ok: true, ...stats };
   });
 
   app.get('/batches', {

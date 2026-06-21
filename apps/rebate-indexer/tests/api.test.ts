@@ -60,6 +60,27 @@ test('404 handler returns 404 with JSON body', async () => {
   expect(JSON.parse(res.body)).toMatchObject({ error: 'not found' });
 });
 
+test('/stats returns public cumulative JSON for an API client', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/stats' });
+  expect(res.statusCode).toBe(200);
+  const body = JSON.parse(res.body);
+  expect(body.ok).toBe(true);
+  expect(body).toHaveProperty('totalVolumeUsd');
+  expect(body).toHaveProperty('totalTrades');
+  expect(body).toHaveProperty('distinctTraders');
+  expect(Array.isArray(body.byChain)).toBe(true);
+});
+
+test('/stats serves a styled HTML page to a browser (Accept: text/html)', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/stats', headers: { accept: 'text/html' } });
+  expect(res.statusCode).toBe(200);
+  expect(res.headers['content-type']).toContain('text/html');
+  expect(res.body).toContain('Settled, on-chain');
+  expect(res.headers['content-security-policy']).toBeDefined();
+});
+
 test('/health exposes the fetcher + pipeline liveness fields', async () => {
   app = await buildApiServer();
   const res = await app.inject({ method: 'GET', url: '/health' });
