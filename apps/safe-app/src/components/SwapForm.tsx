@@ -7,6 +7,7 @@ import { submitOrder } from '../lib/submit';
 import { resolveReferralCode } from '../lib/referral';
 import { getWethAddress } from '../lib/weth';
 import { isNativeEth } from '../lib/tokens';
+import { isSafeWalletLaunch } from '../lib/source';
 import { OrderStatus } from './OrderStatus';
 
 interface Props {
@@ -99,7 +100,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
     <main style={shell}>
       <h1>Ophis Swap</h1>
       <p style={{ color: '#666', marginTop: -8 }}>
-        Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}` : ''}
+        Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}
       </p>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
