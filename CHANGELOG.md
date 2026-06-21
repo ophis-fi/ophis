@@ -14,6 +14,7 @@ named phase tags for major milestones.
 ### Security
 - Bumped `shell-quote` to 1.8.4 (pnpm override) to resolve GHSA-w7jw-789q-3m8p (critical; transitive build-tool dep via `launch-editor`, not browser-reachable).
 - Extended the tier-table cross-workspace invariant CI gate to cover the cowswap-frontend mirror (now all three), with numeric normalization so `0.5`/`0.50` and `5_000`/`5000` no longer cause a false mismatch.
+- Triaged the 3 open Dependabot alerts surfaced by the agent-plugins dependency tree (#688). `bn.js` <4.12.3 (GHSA-378v-28hj-76wf, medium) fixed via SCOPED pnpm overrides (`number-to-bn>bn.js`, `ethjs-unit>bn.js` → `^4.12.3`) — scoped, not blanket, to avoid downgrading the ethers-v5 / web3-utils `bn.js@5.2.3` line (which a tree-wide override would break). `bigint-buffer@1.1.5` (GHSA-3gc7-fjrx-p6mg, high) and `elliptic@6.6.1` (GHSA-848j-6mx2-7j84, low) dismissed with reachability rationale: neither has an upstream patch, and both reach the tree only via the `@coinbase/agentkit` / `@goat-sdk` peer+dev dependencies, which the published `@ophis/*` packages do not bundle (their runtime closures are ethers-v6 / viem → `@noble`). The vulnerable Solana (`bigint-buffer.toBigIntLE`) and ethers-v5 (`elliptic` ECDSA) code paths are unreachable from any shipped artifact. Audit trail per CVE in the dismissal comments.
 
 ### Added
 - Issue + PR templates, `CODEOWNERS`, README badges, custom social preview ([#315]).
