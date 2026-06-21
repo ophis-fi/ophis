@@ -140,6 +140,28 @@ function isAppCodeOfInterest(code: string | undefined): code is AppCode {
 }
 
 /**
+ * Chains where Ophis runs its OWN dedicated eth-flow contract (NOT the shared
+ * canonical CoW eth-flow). On these, an eth-flow order's on-chain `owner` is this
+ * contract and the real trader is the order `receiver`. The contract is not shared,
+ * so querying it as an "owner" surfaces ONLY Ophis eth-flow trades, which we then
+ * attribute to the receiver. Mirrors apps/frontend/libs/common-const/src/common.ts
+ * OPHIS_ETHFLOW_OVERRIDES, kept in sync by hand (grep OPHIS_ETHFLOW_OVERRIDES).
+ * Paused chains are omitted, but for DIFFERENT reasons: MegaETH (4326) is a zero
+ * sentinel (no contract deployed), whereas HyperEVM (999) IS a real deployed
+ * eth-flow contract, omitted ONLY because the chain is strategically paused. When
+ * HyperEVM un-pauses (mirroring the FE un-pause), ADD 999 here or native-ETH HL
+ * rebates will silently never index. The shared canonical eth-flow on CoW-hosted
+ * chains (e.g. Base) is NOT here: scanning it would pull all CoW eth-flow traffic,
+ * impractical on the free API (tracked as a follow-up).
+ */
+const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
+  // Optimism: Ophis-deployed eth-flow (checksum 0x764fE4aa1FF493cf39931c7923C8ff5837596504, 2026-06-07)
+  10: '0x764fe4aa1ff493cf39931c7923c8ff5837596504',
+});
+/** Lowercased owner addresses for O(1) "is this an Ophis eth-flow contract" checks. */
+const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ETHFLOW_OWNER_BY_CHAIN));
+
+/**
  * Fetch one owner's Ophis-tagged trades on one chain.
  *
  * Why owner-scoped: CoW's `GET /api/v1/trades` CANNOT be enumerated globally —
@@ -288,10 +310,27 @@ export async function fetchChainTrades(
       const execBuy = order.executedBuyAmount ?? t.buyAmount;
       if (BigInt(execSell) === 0n) continue; // no settled volume (defensive; a /trades row implies a fill)
 
+      // eth-flow orders settle with owner = the eth-flow contract, NOT the trader.
+      // Attribute the trade to the order's `receiver` (the real trader) so native-ETH
+      // sells (the default OP path) earn the rebate instead of crediting the contract.
+      // Skip rather than mis-credit an eth-flow order with no usable receiver.
+      let wallet: `0x${string}`;
+      if (OPHIS_ETHFLOW_OWNERS.has(t.owner.toLowerCase())) {
+        const receiver = order.receiver?.trim().toLowerCase();
+        if (!receiver || !/^0x[0-9a-f]{40}$/.test(receiver)) continue;
+        // Defense in depth: never attribute back to an eth-flow contract (or the
+        // same owner). A degenerate order whose receiver is the router would
+        // otherwise re-introduce the exact mis-attribution this path fixes.
+        if (receiver === t.owner.toLowerCase() || OPHIS_ETHFLOW_OWNERS.has(receiver)) continue;
+        wallet = receiver as `0x${string}`;
+      } else {
+        wallet = t.owner as `0x${string}`;
+      }
+
       out.push({
         tradeUid: t.orderUid as `0x${string}`,
         chainId,
-        wallet: t.owner as `0x${string}`,
+        wallet,
         blockNumber: BigInt(t.blockNumber),
         // NOTE: order creationDate, not on-chain settlement time. Equal for
         // market orders (all Ophis flow today); a limit/TWAP order created long
@@ -391,7 +430,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
     const MAX_OWNERS_PER_RUN = 500;
-    const owners = await sql<{ wallet: string }[]>`
+    const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL OR last_fetched < now() - INTERVAL '6 hours'
@@ -402,46 +441,56 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC, last_fetched ASC NULLS FIRST, first_seen ASC
       LIMIT ${MAX_OWNERS_PER_RUN}
     `;
+    // Drop any Ophis eth-flow contract spam-registered via the public /tier
+    // endpoint: it is fetched separately as a synthetic owner below (attributing
+    // its trades to the receiver, not itself), so processing it as a tracked
+    // wallet would double-fetch chain 10 and inflate the `inserted` log count.
+    const owners = ownerRows.filter((o) => !OPHIS_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
+    // Upsert a batch of fetched trades. Shared by the tracked-wallet loop and the
+    // eth-flow synthetic-owner pass below so both apply identical backfill semantics.
+    const upsertTrades = async (rows: PendingTrade[]): Promise<number> => {
+      if (rows.length === 0) return 0;
+      await db
+        .insert(schema.trades)
+        .values(
+          rows.map((r) => ({
+            tradeUid: r.tradeUid,
+            chainId: r.chainId,
+            wallet: r.wallet,
+            blockNumber: r.blockNumber,
+            blockTimestamp: r.blockTimestamp,
+            sellToken: r.sellToken,
+            buyToken: r.buyToken,
+            sellAmount: r.sellAmount,
+            buyAmount: r.buyAmount,
+            appCode: r.appCode,
+            partnerFeeWei: null,
+            appdataRefCode: r.appdataRefCode,
+            volumeFeeBps: r.volumeFeeBps,
+          })),
+        )
+        // Backfill the fee rate on a re-encountered row ONLY to UPGRADE a still
+        // -NULL pre-per-trade backlog row to a POSITIVE rate. The `> 0` guard is
+        // load-bearing: a historical NULL whose appData yields 0 (no Ophis fee)
+        // or NULL (surplus/PI) must stay NULL (unknown -> retail) rather than be
+        // reclassified to 0 — re-fetching history must not change past accrual.
+        // Never clobber an enriched rate; touch no other column (value_usd /
+        // priced_at / amounts stay as first indexed). New rows insert normally.
+        .onConflictDoUpdate({
+          target: schema.trades.tradeUid,
+          set: { volumeFeeBps: dsql`excluded.volume_fee_bps` },
+          setWhere: dsql`${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0`,
+        });
+      return rows.length;
+    };
     for (const { wallet } of owners) {
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
           const rows = await fetchChainTrades(chainId, owner, dbDeps);
-          if (rows.length === 0) continue;
-          await db
-            .insert(schema.trades)
-            .values(
-              rows.map((r) => ({
-                tradeUid: r.tradeUid,
-                chainId: r.chainId,
-                wallet: r.wallet,
-                blockNumber: r.blockNumber,
-                blockTimestamp: r.blockTimestamp,
-                sellToken: r.sellToken,
-                buyToken: r.buyToken,
-                sellAmount: r.sellAmount,
-                buyAmount: r.buyAmount,
-                appCode: r.appCode,
-                partnerFeeWei: null,
-                appdataRefCode: r.appdataRefCode,
-                volumeFeeBps: r.volumeFeeBps,
-              })),
-            )
-            // Backfill the fee rate on a re-encountered row ONLY to UPGRADE a still
-            // -NULL pre-per-trade backlog row to a POSITIVE rate. The `> 0` guard is
-            // load-bearing: a historical NULL whose appData yields 0 (no Ophis fee)
-            // or NULL (surplus/PI) must stay NULL (unknown -> retail) rather than be
-            // reclassified to 0 — re-fetching history must not change past accrual.
-            // Never clobber an enriched rate; touch no other column (value_usd /
-            // priced_at / amounts stay as first indexed). New rows insert normally.
-            .onConflictDoUpdate({
-              target: schema.trades.tradeUid,
-              set: { volumeFeeBps: dsql`excluded.volume_fee_bps` },
-              setWhere: dsql`${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0`,
-            });
-          inserted += rows.length;
+          inserted += await upsertTrades(rows);
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
@@ -455,6 +504,23 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         await sql`UPDATE tracked_wallets SET last_fetched = now(), last_attempt_at = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       } else {
         await sql`UPDATE tracked_wallets SET last_attempt_at = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+      }
+    }
+
+    // eth-flow synthetic owners: eth-flow orders settle with owner = the Ophis
+    // eth-flow contract (not the trader), so they never appear under a tracked
+    // wallet's query above. Fetch each dedicated Ophis eth-flow contract as an
+    // owner on its own chain; fetchChainTrades attributes each trade to its
+    // receiver. Fixed addresses (one per override chain), so no tracked-wallet
+    // budget cost, and they are never added to tracked_wallets (fetched directly).
+    for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
+      const chainId = Number(chainIdStr);
+      if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
+      try {
+        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        inserted += await upsertTrades(rows);
+      } catch (err) {
+        log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }
     }
 

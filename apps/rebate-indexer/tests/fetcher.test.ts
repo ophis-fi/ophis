@@ -107,6 +107,72 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows.map((r) => r.appCode).sort()).toEqual(['greg', 'ophis']);
   });
 
+  // ---- eth-flow attribution: owner = the Ophis eth-flow contract, real trader = receiver ----
+  // Detection is owner-based (the Ophis eth-flow contract address), so it is chain-agnostic;
+  // these run on the mocked chain-100 endpoints to validate the attribution logic.
+  const OP_ETHFLOW = '0x764fe4aa1ff493cf39931c7923c8ff5837596504'; // Optimism Ophis eth-flow contract
+  const orderWithReceiver = (uid: string, owner: string, receiver: string | null, appCode = 'ophis') => ({
+    uid,
+    owner,
+    receiver,
+    sellToken: '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1',
+    buyToken: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
+    sellAmount: '1000000000000000000',
+    buyAmount: '2500000000',
+    appData: '0xabc',
+    fullAppData: JSON.stringify({ appCode, metadata: { partnerFee: OPHIS_FEE } }),
+    creationDate: '2026-05-01T12:00:00Z',
+    status: 'fulfilled',
+    executedSellAmount: '1000000000000000000',
+    executedBuyAmount: '2500000000',
+  });
+
+  it('attributes an eth-flow trade (owner = the Ophis eth-flow contract) to the order receiver, not the contract', async () => {
+    const uid = '0x' + 'e0'.repeat(56);
+    const user = '0xc'.padEnd(42, '0'); // the real trader (eth-flow receiver)
+    handlers.trades.mockReturnValue([sampleTrade(uid, OP_ETHFLOW)]);
+    handlers.order.mockImplementation(() => orderWithReceiver(uid, OP_ETHFLOW, user, 'ophis'));
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, OP_ETHFLOW as `0x${string}`, {});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.wallet).toBe(user); // attributed to the receiver, NOT the eth-flow contract
+    expect(rows[0]!.wallet).not.toBe(OP_ETHFLOW);
+  });
+
+  it('attributes a non-eth-flow trade to its on-chain owner (receiver ignored)', async () => {
+    const uid = '0x' + 'e1'.repeat(56);
+    const owner = '0xb'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockImplementation(() => orderWithReceiver(uid, owner, '0xc'.padEnd(42, '0'), 'ophis'));
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.wallet).toBe(owner); // a normal order keeps owner, ignores receiver
+  });
+
+  it('skips an eth-flow trade with no usable receiver rather than crediting the contract', async () => {
+    const uid = '0x' + 'e2'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(uid, OP_ETHFLOW)]);
+    handlers.order.mockImplementation(() => orderWithReceiver(uid, OP_ETHFLOW, null, 'ophis'));
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, OP_ETHFLOW as `0x${string}`, {});
+    expect(rows).toHaveLength(0); // no usable receiver -> skipped, the contract is never credited
+  });
+
+  it('skips an eth-flow trade whose receiver is itself an eth-flow contract (never re-credits the router)', async () => {
+    const uid = '0x' + 'e3'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(uid, OP_ETHFLOW)]);
+    // degenerate order with receiver == the eth-flow contract: must NOT attribute back to it
+    handlers.order.mockImplementation(() => orderWithReceiver(uid, OP_ETHFLOW, OP_ETHFLOW, 'ophis'));
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, OP_ETHFLOW as `0x${string}`, {});
+    expect(rows).toHaveLength(0);
+  });
+
   it('recognizes a widget order via metadata.widget.appCode and attributes the top-level appCode as the integrator referral', async () => {
     // Widget embeds promote the integrator's appCode to the top level and demote 'ophis' to
     // metadata.widget.appCode. The order must still be recognized, and the integrator earns via
