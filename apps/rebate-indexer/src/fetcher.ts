@@ -195,30 +195,74 @@ export async function fetchChainTrades(
       // at scoring time, but fetching the order resolves fullAppData (avoids storing trades
       // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
       const order = await getOrder(chainId, t.orderUid as `0x${string}`);
-      let appCode: string | undefined;
+      // The Ophis AppCode this order is recognized by (stored on the trade row); undefined = drop.
+      let appCode: AppCode | undefined;
       let appdataRefCode: string | null = null;
       let volumeFeeBps: number | null = null;
       try {
         const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
-        appCode = meta?.appCode;
+        const lower = (v: unknown): string | undefined => (typeof v === 'string' ? v.toLowerCase() : undefined);
+        // Normalize appCode to lowercase BEFORE matching. Emitters have shipped mixed casing —
+        // the widget (OPHIS_WIDGET_APP_CODE), the MCP build_order doc, and the frontend appData
+        // fallback all tag 'Ophis' (capital) — and a case-SENSITIVE match against the lowercase
+        // APP_CODES would SILENTLY drop those orders. Mirror the referral-code lowercasing below.
+        const topAppCode = lower(meta?.appCode);
+        // Widget embeds: the embedded app promotes the HOST app's appCode to the top-level
+        // appData.appCode and DEMOTES the official Ophis code to metadata.widget.appCode (see the
+        // frontend's useAppCodeWidgetAware). So an Ophis-backed widget order has topAppCode = the
+        // integrator's identifier (NOT 'ophis') and widget.appCode = 'ophis'. Recognize either,
+        // otherwise every widget order is silently dropped from Ophis attribution.
+        const widgetAppCode = lower(meta?.metadata?.widget?.appCode);
+        // Store the Ophis code that matched, so trades.appCode stays typed as AppCode; the
+        // integrator's top-level appCode is handled separately as a referral candidate below.
+        appCode = isAppCodeOfInterest(topAppCode)
+          ? topAppCode
+          : isAppCodeOfInterest(widgetAppCode)
+            ? widgetAppCode
+            : undefined;
         // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no
         // settled Ophis Volume fee. Stays NULL only on a parse failure below
         // (unknown -> retail default at accrual).
         volumeFeeBps = readVolumeFeeBps(meta);
-        // Affiliate attribution: an order may carry metadata.ophisReferrer.code.
-        // appData is attacker-controllable, so keep the code ONLY if it matches
-        // the registry grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/); lowercase to
-        // match ref_codes. A malformed code is dropped to null (the trade then
-        // falls back to the wallet-bind path at accrual time).
+        // Affiliate attribution. PREFERRED: an explicit metadata.ophisReferrer.code (the SDK/agent
+        // path). appData is attacker-controllable, so keep the code ONLY if it matches the registry
+        // grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/); lowercase to match ref_codes. A malformed
+        // code is dropped to null (the trade then falls back to the wallet-bind path at accrual).
         const rawRef = meta?.metadata?.ophisReferrer?.code;
         if (typeof rawRef === 'string') {
           const code = rawRef.trim().toLowerCase();
           if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
         }
+        // FALLBACK for WIDGET embeds, which CANNOT carry ophisReferrer (the CoW widget transport
+        // serializes only appCode). The integrator's only on-wire identifier is the top-level
+        // appCode, so for a widget-recognized order (widget.appCode is Ophis AND the top-level is
+        // NOT itself a reserved Ophis code) treat that top-level appCode as the referral candidate,
+        // GATED on a CONFIRMED positive Ophis Volume fee (volumeFeeBps > 0). That gate matters: a
+        // surplus / price-improvement partnerFee shape to the Ophis recipient reads as NULL here
+        // (the volume-derived indexer can't price it) and would otherwise COALESCE to the retail
+        // default at accrual — letting a FORGED widget order credit a registered referrer without a
+        // real volume fee. Requiring volumeFeeBps > 0 confines this NEW surface to a genuinely paid
+        // Ophis Volume fee (a legit @ophis widget pins recipient + a flat volume bps, so it reads
+        // > 0 — verified). With the accrual gates (active registered code, self-referral excluded) a
+        // forger can at most GIFT a registered referrer at their own fee expense, never steal.
+        // ophisReferrer takes precedence (this only fires when appdataRefCode is still null).
+        // NOTE: the older ophisReferrer arm is NOT yet gated on volumeFeeBps > 0 (pre-existing, same
+        // surplus/PI-NULL property); tightening BOTH arms consistently is tracked as a follow-up.
+        if (
+          appdataRefCode === null &&
+          isAppCodeOfInterest(widgetAppCode) &&
+          !isAppCodeOfInterest(topAppCode) &&
+          typeof topAppCode === 'string' &&
+          /^[a-z0-9_-]{3,64}$/.test(topAppCode) &&
+          volumeFeeBps !== null &&
+          volumeFeeBps > 0
+        ) {
+          appdataRefCode = topAppCode;
+        }
       } catch {
         appCode = undefined;
       }
-      if (!isAppCodeOfInterest(appCode)) continue;
+      if (appCode === undefined) continue; // not an Ophis-recognized order (top-level or widget)
 
       // Record settled volume from any order in a TERMINAL state, using the
       // order's EXECUTED amounts (total across fills, surplus-inclusive). This
