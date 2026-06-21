@@ -82,7 +82,10 @@ let APP_DATA_HASH: string | undefined
 
 function getAppDataHash(): string {
   if (!APP_DATA_HASH) {
-    APP_DATA_HASH = toKeccak256(JSON.stringify({ version: '1.6.0', appCode: 'Ophis', metadata: {} }))
+    // Synthetic appData for a FAKE order used only to gas-estimate a TWAP cancellation — it is
+    // never emitted to the orderbook, so this is not a rebate/attribution path. Kept lowercase
+    // 'ophis' purely for uniformity with the emitted appCode convention.
+    APP_DATA_HASH = toKeccak256(JSON.stringify({ version: '1.6.0', appCode: 'ophis', metadata: {} }))
   }
   return APP_DATA_HASH
 }

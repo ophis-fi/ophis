@@ -8,11 +8,12 @@ import type { CowSwapWidgetParams } from '@cowprotocol/widget-react';
 export const OPHIS_WIDGET_BASE_URL = 'https://swap.ophis.fi';
 
 /**
- * appCode that tags every order placed through the widget. Mirrors the
- * frontend default (`appCode: 'Ophis'` in cowswap-frontend appData) so widget
- * orders share the Ophis appData identity.
+ * appCode that tags every order placed through the widget. LOWERCASE 'ophis':
+ * the rebate indexer recognizes Ophis orders by a case-sensitive match against
+ * the lowercase APP_CODES set, so a capitalized appCode would drop the order from
+ * attribution. Mirrors the frontend default (`appCode: 'ophis'`).
  */
-export const OPHIS_WIDGET_APP_CODE = 'Ophis';
+export const OPHIS_WIDGET_APP_CODE = 'ophis';
 
 /**
  * The widget's `PartnerFee` type is `{ bps, recipient }` (FlexibleConfig).

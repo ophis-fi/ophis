@@ -34,7 +34,7 @@ describe('buildOphisAppData', () => {
     expect(ad.partnerFee).toEqual({ volumeBps: 5, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' })
     expect(ad.doc.version).toBe(APP_DATA_VERSION)
     expect(ad.fullAppData).toContain('partnerFee')
-    expect(ad.fullAppData).toContain('Ophis')
+    expect(ad.fullAppData).toContain('"appCode":"ophis"')
   })
 
   it('hash is keccak256 of the exact submitted string, and is deterministic', () => {

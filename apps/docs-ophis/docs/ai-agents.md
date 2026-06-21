@@ -266,7 +266,7 @@ const partnerFee = buildOphisAppDataPartnerFee(10);
 
 const metadataApi = new MetadataApi();
 const doc = await metadataApi.generateAppDataDoc({
-  appCode: 'Ophis',
+  appCode: 'ophis',
   metadata: {
     partnerFee,
     hooks: {}, // pin empty, appData hooks are arbitrary on-chain calls
