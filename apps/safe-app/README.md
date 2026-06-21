@@ -11,7 +11,7 @@ A Safe is a smart-contract wallet, so CoW uses the **presign** path, not an EIP-
 5. Propose `GPv2Settlement.setPreSignature(orderUid, true)` to the Safe queue (`to` = `getOphisSettlementAddress`; OP non-canonical `0x310784c7...`). Owners co-sign + execute; then the solver settles.
 
 ### Native ETH (wrap-in-batch, not eth-flow)
-Selling native ETH prepends `WETH.deposit{value}` to the approve + presign batch, in the SAME Safe execution (`lib/weth.ts`, `lib/submit.ts`): the Safe wraps its own ETH to WETH and the order sells WETH, so the order **owner stays the Safe** and the rebate attributes exactly as for any ERC-20 swap. CoW eth-flow is deliberately NOT used — its order owner is the eth-flow *contract*, which the owner-scoped indexer never fetches, so the Ophis fee would still be taken but the trader's rebate silently lost. WETH addresses come from cow-sdk's `WRAPPED_NATIVE_CURRENCIES`.
+Selling native ETH prepends `WETH.deposit{value}` to the approve + presign batch, in the SAME Safe execution (`lib/weth.ts`, `lib/submit.ts`): the Safe wraps its own ETH to WETH and the order sells WETH, so the order **owner stays the Safe** and the rebate attributes on **every** chain, exactly as for any ERC-20 swap. CoW eth-flow is deliberately NOT used: its order owner is the eth-flow *contract*, and the indexer only credits that where Ophis runs its own eth-flow contract and scans it (**OP only** today — it re-attributes to `order.receiver`); on the hosted chains the shared CoW eth-flow contract isn't scanned, so the fee is taken but the trader's rebate is lost. A Safe can batch, so it never needs eth-flow. WETH addresses come from cow-sdk's `WRAPPED_NATIVE_CURRENCIES`.
 
 ## Run
 ```
