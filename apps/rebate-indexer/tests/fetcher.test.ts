@@ -138,6 +138,47 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows[0]!.appdataRefCode).toBe('realref');
   });
 
+  it('does NOT attribute an ophisReferrer code when no real Ophis volume fee was paid (forged / zero-fee)', async () => {
+    // Symmetric with the widget-arm gate: a recognized order carrying ophisReferrer.code but NO
+    // volume bps reads as volumeFeeBps = 0, so the ophisReferrer arm must NOT attribute either —
+    // closing the surplus/PI-NULL retail-COALESCE forge on the explicit-referrer path too.
+    const uid = '0x' + '2f'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'ophis',
+      metadata: { ophisReferrer: { code: 'realref' }, partnerFee: { recipient: OPHIS_FEE.recipient } }, // recipient, no bps
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1); // recognized via top-level appCode (trader volume still tracked)
+    expect(rows[0]!.appCode).toBe('ophis');
+    expect(rows[0]!.appdataRefCode).toBeNull(); // ophisReferrer gated out by volumeFeeBps = 0
+  });
+
+  it('does NOT attribute an ophisReferrer code on a surplus/PI fee shape (volumeFeeBps = NULL — the accepted asymmetry)', async () => {
+    // The load-bearing NULL case: a valid surplus/price-improvement partnerFee to the Ophis
+    // recipient reads volumeFeeBps = NULL (the volume-derived indexer can't price it). Gate A
+    // intentionally DROPS it on the attribution path (Ophis never emits surplus/PI, so a NULL on a
+    // fresh order is forge-or-unprocessed), while the trader-volume matview KEEPS NULL. This pins
+    // that the explicit-referrer arm excludes NULL, not just 0.
+    const uid = '0x' + '30'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'ophis',
+      metadata: {
+        ophisReferrer: { code: 'realref' },
+        partnerFee: { surplusBps: 10, maxVolumeBps: 50, recipient: OPHIS_FEE.recipient }, // surplus/PI -> NULL
+      },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1); // recognized
+    expect(rows[0]!.volumeFeeBps).toBeNull(); // surplus/PI reads NULL
+    expect(rows[0]!.appdataRefCode).toBeNull(); // Gate A excludes NULL on the attribution path
+  });
+
   it('does not treat the reserved Ophis appCode as a referral for a non-overridden widget order', async () => {
     const uid = '0x' + '2c'.repeat(56);
     const owner = '0xa'.padEnd(42, '0');

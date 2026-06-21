@@ -35,7 +35,12 @@ const handlers = {
     sellAmount: '1000000000000000000',
     buyAmount:  '2500000000',
     appData: '0xabc',
-    fullAppData: JSON.stringify({ appCode: 'ophis' }),
+    // A legit Ophis order carries the partner fee, so it reads volume_fee_bps > 0 and counts
+    // toward the trader-volume matview (which now excludes fee-less recognized orders).
+    fullAppData: JSON.stringify({
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8', bps: 5 } },
+    }),
     creationDate: RECENT_ISO,
     status: 'fulfilled',
     executedSellAmount: '1000000000000000000',
@@ -165,4 +170,47 @@ describe('pruneStaleWallets', () => {
 
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000); // integration: container + prune over a fixtured wallet set
+});
+
+describe('wallets matview fee-gate', () => {
+  it('excludes recognized trades that paid no Ophis fee (volume_fee_bps = 0); keeps NULL and positive', async () => {
+    const { sql } = await import('../src/db/index.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    const wPos = 'a'.repeat(40); // volume_fee_bps = 5 -> counts
+    const wNull = 'b'.repeat(40); // NULL (un-backfilled legacy / surplus-PI) -> counts, never under-count a legit un-priced trade
+    const wZero = 'c'.repeat(40); // 0 (no Ophis fee, e.g. the 'ophis-fallback' / forged order) -> EXCLUDED
+    const ins = (uid: string, w: string, feeBps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps)
+      VALUES (decode(${uid.repeat(56)}, 'hex'), 100, decode(${w}, 'hex'), 1, ${RECENT_ISO}, decode(${'11'.repeat(20)}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis', 2500, ${feeBps})`;
+    await ins('a1', wPos, 5);
+    await ins('a2', wNull, null);
+    await ins('a3', wZero, 0);
+    await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
+    const counted = new Set(
+      (await sql<{ w: string }[]>`SELECT encode(wallet, 'hex') AS w FROM wallets`).map((r) => r.w),
+    );
+    expect(counted.has(wPos)).toBe(true); // positive fee counts
+    expect(counted.has(wNull)).toBe(true); // NULL kept: a legit un-backfilled trade is never under-counted
+    expect(counted.has(wZero)).toBe(false); // zero-fee recognized order excluded from the trader pool
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+});
+
+describe('migration 0011 wallets matview', () => {
+  it('recreates the matview POPULATED so reads never hit an unpopulated view (upgrade safety)', async () => {
+    // On an UPGRADE, index.ts serves the API (index.ts:11) BEFORE the async backfill reaches
+    // runScorer (index.ts:31). If 0011 left wallets WITH NO DATA, every /tier and /status read in
+    // that window would ERROR ("materialized view has not been populated"). So 0011 must populate
+    // the view in-migration. Re-run the ACTUAL migration file and assert it ends up populated.
+    const { sql } = await import('../src/db/index.js');
+    const { readFileSync } = await import('node:fs');
+    const migration = readFileSync(new URL('../migrations/0011_wallets_fee_gated.sql', import.meta.url), 'utf8');
+    // Replay inside a transaction, exactly as the migration runner does (migrate.ts sql.begin).
+    await sql.begin((tx) => tx.unsafe(migration));
+    const [row] = await sql<{ is_populated: boolean }[]>`
+      SELECT ispopulated AS is_populated FROM pg_matviews WHERE matviewname = 'wallets'`;
+    expect(row?.is_populated).toBe(true); // populated at creation -> readable immediately, scorer refreshes CONCURRENTLY
+    // A read must NOT throw (the WITH-NO-DATA bug raised "materialized view has not been populated").
+    await expect(sql`SELECT COUNT(*)::int AS n FROM wallets`).resolves.toBeDefined();
+  }, 30_000);
 });
