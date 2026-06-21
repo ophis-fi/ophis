@@ -1,12 +1,11 @@
 import { isAddressLike, isZeroAddress } from '@ophis/sdk';
 
-// EIP-7528 native-asset sentinel (== cow-sdk's ETH_ADDRESS). This app is ERC-20 only: a
-// native-ETH sell needs the on-chain eth-flow path (a separate contract + a value tx), which
-// the scaffold does not implement. Without an explicit guard, a sentinel/zero sell token flows
-// verbatim into the quote and then into the approval path (submit.ts), where the Safe is asked
-// to co-sign an approve() to a non-token plus a presign for an order that can never settle.
-// Reject it up front with a clear, actionable error instead. The SDK keeps this constant
-// module-private (ethflow.ts), so it is inlined here.
+// EIP-7528 native-asset sentinel (== cow-sdk's ETH_ADDRESS), inlined (the SDK keeps it private).
+// Native-ETH SELLS are supported via wrap-in-batch (weth.ts + submit.ts): the form maps a native
+// sell token to WETH BEFORE quoting, so the raw ERC-20 paths below never see the sentinel.
+// assertErc20Token therefore still REJECTS the sentinel/zero/malformed — it guards the genuine
+// ERC-20 paths (the BUY token, and order.sellToken at the approval, which is WETH after the wrap),
+// turning a stray native/zero address into a clear error instead of an unsettleable order.
 const NATIVE_TOKEN_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
 /**
@@ -19,4 +18,9 @@ export function assertErc20Token(addr: string, label: string): void {
   if (addr.toLowerCase() === NATIVE_TOKEN_SENTINEL.toLowerCase()) {
     throw new Error(`Native ETH is not supported by this app (${label}). Use WETH instead.`);
   }
+}
+
+/** True if `addr` is the native-asset sentinel — i.e. the user means native ETH (to be wrapped to WETH). */
+export function isNativeEth(addr: string): boolean {
+  return addr.trim().toLowerCase() === NATIVE_TOKEN_SENTINEL.toLowerCase();
 }

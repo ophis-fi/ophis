@@ -4,6 +4,7 @@ import { SigningScheme } from '@cowprotocol/cow-sdk';
 import { getOphisSettlementAddress, getOphisVaultRelayer, assertReceiverIsOwner } from '@ophis/sdk';
 import { ophisOrderBook } from './quote';
 import { assertErc20Token } from './tokens';
+import { WETH_DEPOSIT_IFACE } from './weth';
 import { enrollTrackedWallet } from './tracking';
 import type { QuotedOrder } from './order';
 
@@ -27,11 +28,16 @@ export async function submitOrder(
   order: QuotedOrder,
   fullAppData: string,
   appDataHash: string,
+  // True when the user is selling NATIVE ETH: prepend a WETH.deposit{value} so the Safe wraps its
+  // own ETH to WETH in the SAME execution, then sells WETH. order.sellToken is already WETH and the
+  // order owner stays the Safe, so the owner-scoped rebate indexer attributes it normally.
+  wrapNative = false,
 ): Promise<SubmitResult> {
   assertReceiverIsOwner(owner, order.receiver as `0x${string}`); // drain guard before any tx
   // Belt-and-suspenders: the approval path below targets order.sellToken, so it must be a real
-  // ERC-20 — never a native-ETH sentinel / zero address (which getQuote already rejects, but a
-  // degenerate quote echoing one back must not reach an approve() to a non-token).
+  // ERC-20 — never a native-ETH sentinel / zero address. For a wrapNative sell this is WETH (the
+  // form mapped native -> WETH before quoting); for an ERC-20 sell it's the token itself. Either
+  // way a degenerate quote echoing a sentinel/zero back must not reach an approve() to a non-token.
   assertErc20Token(order.sellToken, 'Sell token');
 
   const api = ophisOrderBook(chainId);
@@ -74,6 +80,14 @@ export async function submitOrder(
   const relayer = getOphisVaultRelayer(chainId);
   const pullAmount = BigInt(order.sellAmount) + BigInt(order.feeAmount);
   const txs: { to: string; value: string; data: string }[] = [];
+
+  // Native-ETH sell: wrap FIRST, in this same execution. order.sellToken is the WETH address (the
+  // quote was taken in WETH) and pullAmount = sellAmount + feeAmount is exactly the WETH settlement
+  // pulls, so deposit that much native ETH. The Safe must hold >= pullAmount native ETH; the wrap +
+  // the approve below + the presign all execute under ONE owner signature.
+  if (wrapNative) {
+    txs.push({ to: order.sellToken, value: pullAmount.toString(), data: WETH_DEPOSIT_IFACE.encodeFunctionData('deposit') });
+  }
 
   let currentAllowance: bigint | null;
   try {
