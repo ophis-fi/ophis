@@ -1,0 +1,32 @@
+{
+  "name": "@ophis/safe-app",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Ophis Swap as a Safe{Wallet} App: DAO treasuries swap via Ophis (CoW Protocol), orders carry the Ophis partner fee + referral code.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ophis/sdk": "workspace:*",
+    "@cowprotocol/app-data": "^2.5.1",
+    "@cowprotocol/cow-sdk": "^5.9.0",
+    "@safe-global/safe-apps-sdk": "^9.1.0",
+    "@safe-global/safe-apps-react-sdk": "^4.7.2",
+    "ethers": "^6.13.0",
+    "ethers-v5": "npm:ethers@^5.7.2",
+    "multiformats-v9": "npm:multiformats@^9.9.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.5.0",
+    "vite": "^7.0.0"
+  }
+}
