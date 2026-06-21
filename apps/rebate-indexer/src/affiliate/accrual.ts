@@ -77,12 +77,15 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.block_timestamp >= r.bound_at
       AND t.value_usd IS NOT NULL
-      -- appData-wins: exclude from the bind path EXACTLY the trades the appData
-      -- query below credits, so the two paths are complementary (no trade is
-      -- double-counted, none vanishes). That credit predicate is: an ACTIVE code
-      -- owned by someone OTHER than the trader. So a NULL/stale/inactive code OR a
-      -- self-owned code (where the appData path rejects the self-referral) is NOT
-      -- excluded here and correctly falls back to this wallet-bind path.
+      -- appData-wins: exclude from the bind path the trades the appData query below
+      -- can CLAIM — those carrying an ACTIVE code owned by someone OTHER than the
+      -- trader. A NULL/stale/inactive code OR a self-owned code is NOT excluded here
+      -- and correctly falls back to this wallet-bind path. NOTE: this exclusion is
+      -- bps-INDEPENDENT, while the appData arm now additionally requires
+      -- volume_fee_bps > 0. So an active-non-self-code trade with a NULL/0 fee is
+      -- excluded from BOTH arms (credited nowhere) until the self-healing backfill
+      -- confirms its fee — deliberate (forge-safe), NOT a bind fallback. No
+      -- double-count either way.
       AND NOT (
         t.appdata_ref_code IS NOT NULL
         AND EXISTS (
@@ -103,13 +106,23 @@ export async function buildAffiliateReferrers(
   // query above (which excludes exactly these trades), so no trade is double-counted.
   // Folded into the SAME byReferrer map below, so the Regular $1M cap (applied per
   // referrer in computeAffiliate) sees the COMBINED bind + appData volume.
+  //
+  // FEE GATE (appData arm only): require volume_fee_bps > 0 — a CONFIRMED Ophis Volume
+  // fee. appdata_ref_code is attacker-controllable, so this is the forge surface; the
+  // bind arm above is signature-gated and keeps its NULL->retail COALESCE for legacy
+  // pre-per-trade-tracking rows. Excluding NULL here (vs the bind arm) closes the
+  // surplus/PI-NULL -> retail-COALESCE forge at the money path, as a second line behind
+  // the fetcher's attribution gate. Ophis emitters never emit surplus/PI, so a NULL on
+  // an appData-attributed trade is forge-or-unconfirmed; a legit legacy NULL row is
+  // converged to a positive rate by the self-healing backfill and then credited. The
+  // dashboard's appData arm (api.ts) mirrors this exact > 0 gate so display == payout.
   const appdataRows = await sql<
     { referrer_hex: string; chain_id: number; gross_bps: number; volume_usd: string }[]
   >`
     SELECT
       encode(rc.referrer_wallet, 'hex')               AS referrer_hex,
       t.chain_id                                      AS chain_id,
-      COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})::int AS gross_bps,
+      t.volume_fee_bps::int                           AS gross_bps,
       SUM(t.value_usd)::text                          AS volume_usd
     FROM trades t
     JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
@@ -118,6 +131,7 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.value_usd IS NOT NULL
       AND rc.referrer_wallet <> t.wallet
+      AND t.volume_fee_bps > 0
     GROUP BY rc.referrer_wallet, t.chain_id, gross_bps
   `;
 

@@ -104,7 +104,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
       COALESCE(SUM(t.value_usd) FILTER (
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       ), 0)::text AS cycle_volume_usd,
-      COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+      COALESCE(SUM(t.value_usd * t.volume_fee_bps
         * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       ), 0)::text AS cycle_net_weighted,
@@ -114,7 +114,12 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     WHERE rc.referrer_wallet = ${buf}
       AND rc.referrer_wallet <> t.wallet
       AND t.value_usd IS NOT NULL
-      AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
+      -- appData arm requires a CONFIRMED fee (> 0), mirroring accrual's appData fee gate:
+      -- it is the attacker-controllable forge surface, so NULL (surplus/PI / unconfirmed)
+      -- is excluded here, unlike the bind arms above which keep NULL -> retail. Display
+      -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
+      -- since NULL is excluded.)
+      AND t.volume_fee_bps > 0
   `;
 
   const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
