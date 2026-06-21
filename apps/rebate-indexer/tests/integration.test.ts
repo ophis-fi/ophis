@@ -195,3 +195,22 @@ describe('wallets matview fee-gate', () => {
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000);
 });
+
+describe('migration 0011 wallets matview', () => {
+  it('recreates the matview POPULATED so reads never hit an unpopulated view (upgrade safety)', async () => {
+    // On an UPGRADE, index.ts serves the API (index.ts:11) BEFORE the async backfill reaches
+    // runScorer (index.ts:31). If 0011 left wallets WITH NO DATA, every /tier and /status read in
+    // that window would ERROR ("materialized view has not been populated"). So 0011 must populate
+    // the view in-migration. Re-run the ACTUAL migration file and assert it ends up populated.
+    const { sql } = await import('../src/db/index.js');
+    const { readFileSync } = await import('node:fs');
+    const migration = readFileSync(new URL('../migrations/0011_wallets_fee_gated.sql', import.meta.url), 'utf8');
+    // Replay inside a transaction, exactly as the migration runner does (migrate.ts sql.begin).
+    await sql.begin((tx) => tx.unsafe(migration));
+    const [row] = await sql<{ is_populated: boolean }[]>`
+      SELECT ispopulated AS is_populated FROM pg_matviews WHERE matviewname = 'wallets'`;
+    expect(row?.is_populated).toBe(true); // populated at creation -> readable immediately, scorer refreshes CONCURRENTLY
+    // A read must NOT throw (the WITH-NO-DATA bug raised "materialized view has not been populated").
+    await expect(sql`SELECT COUNT(*)::int AS n FROM wallets`).resolves.toBeDefined();
+  }, 30_000);
+});

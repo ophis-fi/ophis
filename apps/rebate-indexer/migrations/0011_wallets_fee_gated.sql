@@ -18,8 +18,14 @@
 --
 -- Postgres has no CREATE OR REPLACE for materialized views, so drop + recreate. The
 -- DROP cascades the wallets_pk unique index, which we recreate (REFRESH ...
--- CONCURRENTLY in scorer.ts requires it). Recreated WITH NO DATA; the next runScorer
--- sees ispopulated = false and does a non-concurrent initial refresh.
+-- CONCURRENTLY in scorer.ts requires it). Recreate POPULATED (no WITH NO DATA): on an
+-- UPGRADE the old wallets was already populated, and index.ts starts the API (line 11)
+-- BEFORE the async backfill reaches runScorer (line 31), so a WITH-NO-DATA view would
+-- make every /tier and /status read ERROR ("materialized view has not been populated")
+-- for the WHOLE initial fetch window. Populating in-migration (a one-time SUM over the
+-- 30-day trades, inside the migration's transaction) keeps the view readable the instant
+-- the API serves. ispopulated is then true, so the first runScorer does a CONCURRENT
+-- refresh (wallets_pk is present, required for CONCURRENTLY).
 --
 -- INVARIANT (keep in sync): "0 = no Ophis fee -> no credit; NULL = unknown -> retail
 -- default / kept" is encoded independently at five sites — fetcher.ts ophisReferrer arm
@@ -41,7 +47,6 @@ FROM trades
 WHERE block_timestamp > now() - INTERVAL '30 days'
   AND value_usd IS NOT NULL
   AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)  -- exclude only examined-0 (no Ophis fee)
-GROUP BY wallet
-WITH NO DATA;
+GROUP BY wallet;
 
 CREATE UNIQUE INDEX wallets_pk ON wallets (wallet);
