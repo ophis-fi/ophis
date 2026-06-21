@@ -11,8 +11,10 @@ export async function runScorer(): Promise<{ wallet_count: number }> {
   // Import db lazily so this module can be loaded without DATABASE_URL set.
   const { sql } = await import('./db/index.js');
   const t0 = Date.now();
-  // CONCURRENTLY requires the view to be populated first. Check if it has been seeded
-  // (it is created WITH NO DATA in 0000_init.sql) and do a non-concurrent initial refresh.
+  // CONCURRENTLY requires the view to be populated first. Since 0011 recreates `wallets`
+  // POPULATED, the steady-state first refresh is CONCURRENT. The non-concurrent branch
+  // remains for the still-unpopulated case (e.g. a partially-migrated DB where 0000 ran
+  // WITH NO DATA but 0011 has not yet applied).
   const seeded = await sql<{ is_populated: boolean }[]>`
     SELECT ispopulated AS is_populated FROM pg_matviews WHERE matviewname = 'wallets'
   `;
