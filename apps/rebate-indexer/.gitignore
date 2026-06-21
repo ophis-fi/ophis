@@ -5,3 +5,5 @@ dist/
 *.log
 pg_data/
 caddy_data/
+# scan artifacts (defense-in-depth; default output is ~/.ophis, out of repo)
+.scans/
