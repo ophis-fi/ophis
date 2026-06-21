@@ -1,0 +1,50 @@
+{
+  "name": "@ophis/plugin-goat",
+  "version": "0.1.0",
+  "description": "GOAT SDK plugin: let an AI agent swap ERC-20s via Ophis (CoW Protocol), with the Ophis partner fee + your referral code in appData so you earn the 8-12% rebate.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/plugin-goat"
+  },
+  "homepage": "https://docs.ophis.fi/ai-agents",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": ["ophis", "goat-sdk", "goat", "ai-agent", "agent", "swap", "cow-protocol", "defi", "rebate"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@ophis/agent-swap": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "peerDependencies": {
+    "@goat-sdk/core": "0.5.0",
+    "@goat-sdk/wallet-evm": "0.3.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@goat-sdk/core": "0.5.0",
+    "@goat-sdk/wallet-evm": "0.3.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.8",
+    "zod": "^3.23.0"
+  }
+}

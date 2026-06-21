@@ -1,0 +1,44 @@
+{
+  "name": "@ophis/agent-swap",
+  "version": "0.1.0",
+  "description": "Framework-agnostic core: execute an Ophis (CoW Protocol) ERC-20 swap from an AI agent's EOA wallet, carrying the Ophis partner fee + referrer code in appData so the integrator earns the rebate. Used by @ophis/plugin-goat and @ophis/agentkit-ophis.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/agent-swap"
+  },
+  "homepage": "https://docs.ophis.fi/ai-agents",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": ["ophis", "cow-protocol", "ai-agent", "agent", "swap", "defi", "eip-712", "rebate"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@cowprotocol/app-data": "^2.5.1",
+    "@cowprotocol/cow-sdk": "^5.9.0",
+    "@ophis/sdk": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.8"
+  }
+}
