@@ -6,7 +6,7 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, type PublicStats } from './stats-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from './stats-page.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import {
@@ -475,6 +475,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       rateLimit: { max: 60, timeWindow: '1 minute' }, // public
     },
   }, async (req, reply) => {
+    // Public production proof surface: restrict to the named mainnet chains so
+    // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
+    // the cumulative figures. A plain mutable copy for postgres-js array binding.
+    const chainIds = [...PRODUCTION_CHAIN_IDS];
     const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string }[]>`
       SELECT
         COALESCE(SUM(value_usd), 0)::text AS vol,
@@ -482,10 +486,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         COUNT(DISTINCT wallet)::text      AS traders,
         COUNT(DISTINCT chain_id)::text    AS chains
       FROM trades
+      WHERE chain_id = ANY(${chainIds})
     `;
     const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
       SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n
       FROM trades
+      WHERE chain_id = ANY(${chainIds})
       GROUP BY chain_id
       ORDER BY SUM(value_usd) DESC NULLS LAST, COUNT(*) DESC
     `;

@@ -39,6 +39,17 @@ const CHAIN_NAME: Record<number, string> = {
   59144: 'Linea',
 };
 
+/**
+ * The production mainnet chains this public surface may report. Derived from the
+ * CHAIN_NAME keys so the /stats SQL filter and the display-name map can never
+ * drift: every chain that can appear here has a name, and only named chains
+ * appear. Used to exclude testnet settlement dust (e.g. Sepolia 11155111) from
+ * the cumulative public proof figures.
+ */
+export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
+  Object.keys(CHAIN_NAME).map(Number),
+);
+
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
