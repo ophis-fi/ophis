@@ -1,0 +1,48 @@
+{
+  "name": "@ophis/agentkit-ophis",
+  "version": "0.1.0",
+  "description": "Coinbase AgentKit action provider: let an AI agent swap ERC-20s via Ophis (CoW Protocol), carrying the Ophis partner fee + your referral code so you earn the 8-12% rebate.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/agentkit-ophis"
+  },
+  "homepage": "https://docs.ophis.fi/ai-agents",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": ["ophis", "agentkit", "coinbase", "ai-agent", "agent", "swap", "cow-protocol", "defi", "rebate"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@ophis/agent-swap": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "peerDependencies": {
+    "@coinbase/agentkit": ">=0.10.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@coinbase/agentkit": "^0.10.4",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.8",
+    "zod": "^3.23.8"
+  }
+}
