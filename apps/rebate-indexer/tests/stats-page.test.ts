@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderStatsPage, type PublicStats } from '../src/stats-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from '../src/stats-page.js';
 
 const sample: PublicStats = {
   totalVolumeUsd: 1234567.89,
@@ -36,5 +36,17 @@ describe('renderStatsPage', () => {
 
   it('contains no em-dash (brand rule for served content)', () => {
     expect(renderStatsPage(sample)).not.toContain('—');
+  });
+});
+
+describe('PRODUCTION_CHAIN_IDS (public /stats allow-list)', () => {
+  it('lists exactly the 11 named mainnet chains', () => {
+    expect([...PRODUCTION_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
+      1, 10, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144,
+    ]);
+  });
+
+  it('excludes testnets (Sepolia 11155111) so dust never reaches the public surface', () => {
+    expect(PRODUCTION_CHAIN_IDS).not.toContain(11155111);
   });
 });
