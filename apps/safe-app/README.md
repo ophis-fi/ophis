@@ -21,10 +21,10 @@ Add `apps/safe-app` to `pnpm-workspace.yaml` if `apps/*` is not already globbed.
 Host at **safe.ophis.fi** (Cloudflare Pages, like swap.ophis.fi). Confirm `https://safe.ophis.fi/manifest.json` returns `Access-Control-Allow-Origin: *` (Safe fetches it cross-origin to register the app). Then submit to the Safe Apps registry (`safe-global/safe-apps-list` PR) and/or share the custom-app URL.
 
 ## Before production (TODOs)
-- [ ] Replace `public/ophis-icon.svg` with the real brand claw (https://ophis.fi/ophis-claw-saffron.svg).
-- [ ] Pin `@cowprotocol/cow-sdk` + React to the versions the fork resolves; confirm `OrderBookApi.getQuote/sendOrder/getOrder` signatures (this scaffold targets cow-sdk v5).
+- [x] Real brand claw at `public/ophis-icon.svg` (square viewBox).
+- [x] `@ophis/sdk` exports are surfaced from the package root and resolve — `typecheck` + `build` of this app run as a BLOCKING CI job (`.github/workflows/ci.yml`, `safe-app`); the cow-sdk v5 `OrderBookApi` signatures compile against the resolved version.
+- [x] Native-ETH / zero / malformed sell+buy tokens are REJECTED up front with a clear error (`lib/tokens.ts`, enforced in `quote.ts` and re-asserted before the approval in `submit.ts`). FULL native-ETH *support* still needs the eth-flow path (separate contract + value tx) and stays out of scope for this ERC-20-only app.
+- [ ] Pin `@cowprotocol/cow-sdk` + React to exact versions the fork resolves (the app compiles against cow-sdk v5; pin to lock it).
 - [ ] Confirm `VITE_OPHIS_REBATE_API` and that the indexer allows cross-origin `GET /tier/<safe>` from safe.ophis.fi (or move that call server-side).
-- [ ] Verify the `@ophis/sdk` exports used here are surfaced from the package root (`getOphisOrderbookUrl`, `getOphisSettlementAddress`, `buildOphisAppDataPartnerFee`, `buildOphisReferrerMetadata`, `normalizeOphisReferralCode`, `ophisOrderReceiver`, `assertReceiverIsOwner`, `OPHIS_FEE_CHAIN_IDS`).
 - [ ] Stable-pair detection for the 1bp tier (`ophisVolumeBpsForPair`); a real token picker; balance + decimals handling.
-- [ ] Native-ETH sells need the eth-flow path (separate contract + value tx) - this scaffold is ERC-20 only.
 - [ ] Multi-owner UX: `sdk.txs.send` only queues; make the latency until threshold owners execute explicit.

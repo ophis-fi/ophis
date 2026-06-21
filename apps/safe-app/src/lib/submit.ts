@@ -3,6 +3,7 @@ import type SafeAppsSDK from '@safe-global/safe-apps-sdk';
 import { SigningScheme } from '@cowprotocol/cow-sdk';
 import { getOphisSettlementAddress, getOphisVaultRelayer, assertReceiverIsOwner } from '@ophis/sdk';
 import { ophisOrderBook } from './quote';
+import { assertErc20Token } from './tokens';
 import { enrollTrackedWallet } from './tracking';
 import type { QuotedOrder } from './order';
 
@@ -28,6 +29,10 @@ export async function submitOrder(
   appDataHash: string,
 ): Promise<SubmitResult> {
   assertReceiverIsOwner(owner, order.receiver as `0x${string}`); // drain guard before any tx
+  // Belt-and-suspenders: the approval path below targets order.sellToken, so it must be a real
+  // ERC-20 — never a native-ETH sentinel / zero address (which getQuote already rejects, but a
+  // degenerate quote echoing one back must not reach an approve() to a non-token).
+  assertErc20Token(order.sellToken, 'Sell token');
 
   const api = ophisOrderBook(chainId);
 
