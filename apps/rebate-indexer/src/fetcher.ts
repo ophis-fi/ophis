@@ -162,6 +162,151 @@ const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Ob
 const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ETHFLOW_OWNER_BY_CHAIN));
 
 /**
+ * The SHARED canonical CoW eth-flow contracts (prod + barn), identical across all
+ * CoW-hosted chains (deployed at one CREATE2 address). Sourced from
+ * @cowprotocol/sdk-config ETH_FLOW_ADDRESS / BARN_ETH_FLOW_ADDRESS (see
+ * apps/frontend/patches/@cowprotocol__sdk-config@2.0.0.patch). Lowercased.
+ *
+ * The on-chain settle() decoder uses these so a native-ETH order on a hosted chain
+ * (e.g. Base) attributes to its `receiver` (the real trader), not the router. The
+ * CoW-API fetcher does NOT use them: it cannot enumerate a shared contract as an
+ * "owner" (that would pull all of CoW's eth-flow traffic), which is exactly the gap
+ * the decoder closes. Keep in sync with the SDK patch by hand (grep ETH_FLOW_ADDRESS).
+ */
+export const CANONICAL_COW_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
+  '0xba3cb449bd2b4adddbc894d8697f5170800eadec', // prod
+  '0xb37add6ac288bd3825a901cba6ec65a89f31b8cc', // barn
+]);
+
+/**
+ * The eth-flow owner set the ON-CHAIN settle() decoder passes to attributeOrder:
+ * the Ophis-dedicated contracts UNION the shared canonical CoW eth-flow contracts.
+ * The decoder discovers settlements blind, so it must recognise the shared contract
+ * (which the API fetcher never queries) to attribute a hosted-chain native-ETH order
+ * to its receiver rather than the router.
+ */
+export const DECODER_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
+  ...OPHIS_ETHFLOW_OWNERS,
+  ...CANONICAL_COW_ETHFLOW_OWNERS,
+]);
+
+/**
+ * PURE per-trade attribution: given a parsed appData document and the settled-trade
+ * context, classify it as an Ophis trade and build the PendingTrade row, or return
+ * null to drop it. This is the SINGLE money-path that BOTH the CoW-API fetcher and
+ * the on-chain settle() decoder produce trades through, so the recipient guard, the
+ * 3-state fee classification, the refcode grammar gates and the eth-flow receiver
+ * attribution are byte-identical regardless of source.
+ *
+ * Callers own SOURCE-specific pre-filters: the API path first checks the order is in
+ * a terminal status and derives executed amounts + creationDate; the decoder takes
+ * amounts from the Trade event and the timestamp from the block. A settled on-chain
+ * Trade event is terminal by construction, so there is no status check here.
+ *
+ * `ethFlowOwners` is the set of addresses that, when they are the order `owner`, mean
+ * an eth-flow order whose real trader is `receiver`. The API fetcher passes the
+ * narrow Ophis-dedicated set (default); the decoder passes that UNION the shared
+ * canonical CoW eth-flow contracts so hosted-chain native-ETH attributes correctly.
+ */
+export function attributeOrder(
+  meta: unknown,
+  ctx: {
+    owner: string;
+    receiver: string | null | undefined;
+    sellToken: `0x${string}`;
+    buyToken: `0x${string}`;
+    executedSell: bigint;
+    executedBuy: bigint;
+    tradeUid: `0x${string}`;
+    chainId: number;
+    blockNumber: bigint;
+    blockTimestamp: Date;
+  },
+  ethFlowOwners: ReadonlySet<string> = OPHIS_ETHFLOW_OWNERS,
+): PendingTrade | null {
+  let appCode: AppCode | undefined;
+  let appdataRefCode: string | null = null;
+  let volumeFeeBps: number | null = null;
+  try {
+    const m = meta as {
+      appCode?: unknown;
+      metadata?: { widget?: { appCode?: unknown }; ophisReferrer?: { code?: unknown } };
+    };
+    const lower = (v: unknown): string | undefined => (typeof v === 'string' ? v.toLowerCase() : undefined);
+    // Normalize appCode to lowercase BEFORE matching (emitters ship mixed casing:
+    // widget, MCP build_order, and the FE fallback all tag 'Ophis' capitalized).
+    const topAppCode = lower(m?.appCode);
+    // Widget embeds promote the HOST app's appCode to the top level and DEMOTE the
+    // Ophis code to metadata.widget.appCode. Recognize either, else widget orders drop.
+    const widgetAppCode = lower(m?.metadata?.widget?.appCode);
+    appCode = isAppCodeOfInterest(topAppCode)
+      ? topAppCode
+      : isAppCodeOfInterest(widgetAppCode)
+        ? widgetAppCode
+        : undefined;
+    // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no settled
+    // Ophis Volume fee. Stays NULL only on a parse failure (unknown -> retail default).
+    volumeFeeBps = readVolumeFeeBps(meta);
+    // PREFERRED affiliate attribution: explicit metadata.ophisReferrer.code (SDK/agent
+    // path). appData is attacker-controllable: keep ONLY if it matches the registry
+    // grammar, lowercased, AND only on a CONFIRMED positive Ophis Volume fee (>0) so a
+    // forged surplus/PI shape can't COALESCE to retail and credit a referrer for free.
+    const rawRef = m?.metadata?.ophisReferrer?.code;
+    if (typeof rawRef === 'string' && volumeFeeBps !== null && volumeFeeBps > 0) {
+      const code = rawRef.trim().toLowerCase();
+      if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
+    }
+    // FALLBACK for WIDGET embeds (cannot carry ophisReferrer; only appCode survives the
+    // CoW widget transport). The integrator's top-level appCode is the referral
+    // candidate when the order is widget-recognized and the top level is not itself a
+    // reserved Ophis code, GATED on volumeFeeBps > 0 (same forge guard as above).
+    if (
+      appdataRefCode === null &&
+      isAppCodeOfInterest(widgetAppCode) &&
+      !isAppCodeOfInterest(topAppCode) &&
+      typeof topAppCode === 'string' &&
+      /^[a-z0-9_-]{3,64}$/.test(topAppCode) &&
+      volumeFeeBps !== null &&
+      volumeFeeBps > 0
+    ) {
+      appdataRefCode = topAppCode;
+    }
+  } catch {
+    appCode = undefined;
+  }
+  if (appCode === undefined) return null; // not an Ophis-recognized order
+  if (ctx.executedSell === 0n) return null; // no settled volume (defensive)
+
+  // eth-flow orders settle with owner = the eth-flow contract, NOT the trader.
+  // Attribute to the order `receiver` (the real trader). Skip rather than mis-credit
+  // an eth-flow order with no usable receiver, and never attribute back to a router.
+  let wallet: `0x${string}`;
+  if (ethFlowOwners.has(ctx.owner.toLowerCase())) {
+    const receiver = ctx.receiver?.trim().toLowerCase();
+    if (!receiver || !/^0x[0-9a-f]{40}$/.test(receiver)) return null;
+    if (receiver === ctx.owner.toLowerCase() || ethFlowOwners.has(receiver)) return null;
+    wallet = receiver as `0x${string}`;
+  } else {
+    wallet = ctx.owner as `0x${string}`;
+  }
+
+  return {
+    tradeUid: ctx.tradeUid,
+    chainId: ctx.chainId,
+    wallet,
+    blockNumber: ctx.blockNumber,
+    blockTimestamp: ctx.blockTimestamp,
+    sellToken: ctx.sellToken,
+    buyToken: ctx.buyToken,
+    sellAmount: ctx.executedSell,
+    buyAmount: ctx.executedBuy,
+    appCode,
+    appdataRefCode,
+    volumeFeeBps,
+  };
+}
+
+/**
  * Fetch one owner's Ophis-tagged trades on one chain.
  *
  * Why owner-scoped: CoW's `GET /api/v1/trades` CANNOT be enumerated globally —
@@ -217,134 +362,47 @@ export async function fetchChainTrades(
       // at scoring time, but fetching the order resolves fullAppData (avoids storing trades
       // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
       const order = await getOrder(chainId, t.orderUid as `0x${string}`);
-      // The Ophis AppCode this order is recognized by (stored on the trade row); undefined = drop.
-      let appCode: AppCode | undefined;
-      let appdataRefCode: string | null = null;
-      let volumeFeeBps: number | null = null;
-      try {
-        const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
-        const lower = (v: unknown): string | undefined => (typeof v === 'string' ? v.toLowerCase() : undefined);
-        // Normalize appCode to lowercase BEFORE matching. Emitters have shipped mixed casing —
-        // the widget (OPHIS_WIDGET_APP_CODE), the MCP build_order doc, and the frontend appData
-        // fallback all tag 'Ophis' (capital) — and a case-SENSITIVE match against the lowercase
-        // APP_CODES would SILENTLY drop those orders. Mirror the referral-code lowercasing below.
-        const topAppCode = lower(meta?.appCode);
-        // Widget embeds: the embedded app promotes the HOST app's appCode to the top-level
-        // appData.appCode and DEMOTES the official Ophis code to metadata.widget.appCode (see the
-        // frontend's useAppCodeWidgetAware). So an Ophis-backed widget order has topAppCode = the
-        // integrator's identifier (NOT 'ophis') and widget.appCode = 'ophis'. Recognize either,
-        // otherwise every widget order is silently dropped from Ophis attribution.
-        const widgetAppCode = lower(meta?.metadata?.widget?.appCode);
-        // Store the Ophis code that matched, so trades.appCode stays typed as AppCode; the
-        // integrator's top-level appCode is handled separately as a referral candidate below.
-        appCode = isAppCodeOfInterest(topAppCode)
-          ? topAppCode
-          : isAppCodeOfInterest(widgetAppCode)
-            ? widgetAppCode
-            : undefined;
-        // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no
-        // settled Ophis Volume fee. Stays NULL only on a parse failure below
-        // (unknown -> retail default at accrual).
-        volumeFeeBps = readVolumeFeeBps(meta);
-        // Affiliate attribution. PREFERRED: an explicit metadata.ophisReferrer.code (the SDK/agent
-        // path). appData is attacker-controllable, so keep the code ONLY if it matches the registry
-        // grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/), lowercased to match ref_codes, AND only on a
-        // CONFIRMED positive Ophis Volume fee (volumeFeeBps > 0) — symmetric with the widget arm
-        // below. Without the fee gate, a surplus / price-improvement partnerFee shape to the Ophis
-        // recipient reads as NULL and would COALESCE to the retail default at accrual, letting a
-        // forged order credit a registered referrer with NO real volume fee. Ophis emitters never
-        // emit surplus/PI, so a NULL here means forge-or-unprocessed; a legit SDK order pins a flat
-        // volume bps (reads > 0). A malformed/ungated code is dropped to null (the trade then falls
-        // back to the wallet-bind path at accrual, which keeps its legacy NULL->retail COALESCE — it
-        // is signature-gated, not a forge surface).
-        const rawRef = meta?.metadata?.ophisReferrer?.code;
-        if (typeof rawRef === 'string' && volumeFeeBps !== null && volumeFeeBps > 0) {
-          const code = rawRef.trim().toLowerCase();
-          if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
-        }
-        // FALLBACK for WIDGET embeds, which CANNOT carry ophisReferrer (the CoW widget transport
-        // serializes only appCode). The integrator's only on-wire identifier is the top-level
-        // appCode, so for a widget-recognized order (widget.appCode is Ophis AND the top-level is
-        // NOT itself a reserved Ophis code) treat that top-level appCode as the referral candidate,
-        // GATED on a CONFIRMED positive Ophis Volume fee (volumeFeeBps > 0). That gate matters: a
-        // surplus / price-improvement partnerFee shape to the Ophis recipient reads as NULL here
-        // (the volume-derived indexer can't price it) and would otherwise COALESCE to the retail
-        // default at accrual — letting a FORGED widget order credit a registered referrer without a
-        // real volume fee. Requiring volumeFeeBps > 0 confines this NEW surface to a genuinely paid
-        // Ophis Volume fee (a legit @ophis widget pins recipient + a flat volume bps, so it reads
-        // > 0 — verified). With the accrual gates (active registered code, self-referral excluded) a
-        // forger can at most GIFT a registered referrer at their own fee expense, never steal.
-        // ophisReferrer takes precedence (this only fires when appdataRefCode is still null).
-        // Both appData-attribution arms (this one and the ophisReferrer arm above) are now gated on
-        // volumeFeeBps > 0. The accrual wallet-bind path keeps its legacy NULL->retail COALESCE
-        // (signature-gated, not a forge surface); gating that too is a separate decision.
-        if (
-          appdataRefCode === null &&
-          isAppCodeOfInterest(widgetAppCode) &&
-          !isAppCodeOfInterest(topAppCode) &&
-          typeof topAppCode === 'string' &&
-          /^[a-z0-9_-]{3,64}$/.test(topAppCode) &&
-          volumeFeeBps !== null &&
-          volumeFeeBps > 0
-        ) {
-          appdataRefCode = topAppCode;
-        }
-      } catch {
-        appCode = undefined;
-      }
-      if (appCode === undefined) continue; // not an Ophis-recognized order (top-level or widget)
 
-      // Record settled volume from any order in a TERMINAL state, using the
-      // order's EXECUTED amounts (total across fills, surplus-inclusive). This
-      // includes orders that partially filled and were then cancelled/expired:
-      // those fills are real settled CoW volume the rebate must count, and the
-      // executed amount is final once terminal. We skip only still-active orders
-      // (open/presignaturePending) — they may fill more and re-evaluate on a
-      // later run (they aren't stored, so not deduped out). Using the order's
-      // executed total (not a single fill) also prevents partial-fill/TWAP
-      // undercounting.
+      // Record settled volume only from orders in a TERMINAL state, using the order's
+      // EXECUTED amounts (total across fills, surplus-inclusive). Includes orders that
+      // partially filled then cancelled/expired (real settled CoW volume; the executed
+      // amount is final once terminal). Skip still-active orders (open/presignaturePending):
+      // they may fill more and re-evaluate on a later run. This status pre-filter is
+      // API-source-specific — an on-chain Trade event is terminal by construction.
       const isTerminal =
         order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired';
       if (!isTerminal) continue;
       const execSell = order.executedSellAmount ?? t.sellAmount;
       const execBuy = order.executedBuyAmount ?? t.buyAmount;
-      if (BigInt(execSell) === 0n) continue; // no settled volume (defensive; a /trades row implies a fill)
 
-      // eth-flow orders settle with owner = the eth-flow contract, NOT the trader.
-      // Attribute the trade to the order's `receiver` (the real trader) so native-ETH
-      // sells (the default OP path) earn the rebate instead of crediting the contract.
-      // Skip rather than mis-credit an eth-flow order with no usable receiver.
-      let wallet: `0x${string}`;
-      if (OPHIS_ETHFLOW_OWNERS.has(t.owner.toLowerCase())) {
-        const receiver = order.receiver?.trim().toLowerCase();
-        if (!receiver || !/^0x[0-9a-f]{40}$/.test(receiver)) continue;
-        // Defense in depth: never attribute back to an eth-flow contract (or the
-        // same owner). A degenerate order whose receiver is the router would
-        // otherwise re-introduce the exact mis-attribution this path fixes.
-        if (receiver === t.owner.toLowerCase() || OPHIS_ETHFLOW_OWNERS.has(receiver)) continue;
-        wallet = receiver as `0x${string}`;
-      } else {
-        wallet = t.owner as `0x${string}`;
+      let meta: unknown;
+      try {
+        meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
+      } catch {
+        continue; // unparseable appData -> not attributable
       }
 
-      out.push({
-        tradeUid: t.orderUid as `0x${string}`,
-        chainId,
-        wallet,
-        blockNumber: BigInt(t.blockNumber),
-        // NOTE: order creationDate, not on-chain settlement time. Equal for
-        // market orders (all Ophis flow today); a limit/TWAP order created long
-        // before it fills could land in the wrong 30-day window — tracked as a
-        // follow-up if non-market volume appears.
-        blockTimestamp: new Date(order.creationDate),
+      // Shared money-path attribution (same fn the on-chain decoder uses), so the
+      // recipient guard, 3-state fee, refcode gates and eth-flow handling are identical.
+      // block_timestamp = order creationDate (CoW settlement is near-instant and the
+      // rebate window is 30 days, so sub-minute skew is irrelevant; also avoids a
+      // per-chain RPC dependency). NOTE: for a limit/TWAP order created long before it
+      // fills this could land in the wrong 30-day window — tracked as a follow-up if
+      // non-market volume appears. The default (Ophis-dedicated) eth-flow owner set is
+      // correct here: the API path only ever queries those contracts as an owner.
+      const trade = attributeOrder(meta, {
+        owner: t.owner,
+        receiver: order.receiver,
         sellToken: t.sellToken as `0x${string}`,
         buyToken: t.buyToken as `0x${string}`,
-        sellAmount: BigInt(execSell),
-        buyAmount: BigInt(execBuy),
-        appCode,
-        appdataRefCode,
-        volumeFeeBps,
+        executedSell: BigInt(execSell),
+        executedBuy: BigInt(execBuy),
+        tradeUid: t.orderUid as `0x${string}`,
+        chainId,
+        blockNumber: BigInt(t.blockNumber),
+        blockTimestamp: new Date(order.creationDate),
       });
+      if (trade) out.push(trade);
     }
 
     if (page.length < PAGE_SIZE) break;
@@ -521,6 +579,25 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         inserted += await upsertTrades(rows);
       } catch (err) {
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
+      }
+    }
+
+    // On-chain settle() decoder (SUPPLEMENTAL source): closes the rebate gap for
+    // hosted-chain native-ETH (shared eth-flow) + contract-owner / EIP-1271 orders
+    // that the owner-scoped CoW-API fetch above structurally misses. Runs INSIDE
+    // this advisory lock so its per-chain cursor + upserts share the fetcher's
+    // critical section. OFF unless SETTLE_DECODER_CHAINS is set (Base-first). Reuses
+    // the same upsertTrades (PK-idempotent on trade_uid, so it can never double-count
+    // a trade the API fetcher already wrote).
+    if (process.env.SETTLE_DECODER_CHAINS) {
+      try {
+        const { runSettleDecoder } = await import('./cow/onchain.js');
+        inserted += await runSettleDecoder({
+          sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
+          upsertTrades,
+        });
+      } catch (err) {
+        log.error({ err }, 'settle-decoder pass failed');
       }
     }
 

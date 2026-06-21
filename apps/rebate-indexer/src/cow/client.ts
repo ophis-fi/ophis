@@ -35,7 +35,7 @@ const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 
 // Resolve the orderbook URL prefix (everything before `/api/vN/...`) for a chain.
 // Hosted chains: `${api.cow.fi}/{network}`. Optimism: the sovereign host root.
-function orderbookBase(chainId: number): string {
+export function orderbookBase(chainId: number): string {
   if (chainId === OPTIMISM_CHAIN_ID) return OP_ORDERBOOK_BASE;
   const path = COW_API_PATH[chainId];
   if (!path) throw new Error(`unsupported chain ${chainId}`);
