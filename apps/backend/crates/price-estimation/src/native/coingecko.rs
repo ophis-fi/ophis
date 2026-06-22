@@ -86,6 +86,10 @@ impl CoinGecko {
             Chain::Linea => "linea".to_string(),
             Chain::Plasma => "plasma".to_string(),
             Chain::Ink => "ink".to_string(),
+            // Verified 2026-06-22 via CoinGecko /asset_platforms: chain_identifier
+            // 130 -> id "unichain". Load-bearing: the v3-TWAP primary estimator is
+            // blind to Unichain's v4-native liquidity, so CoinGecko is the fallback.
+            Chain::Unichain => "unichain".to_string(),
             Chain::Sepolia
             | Chain::Goerli
             | Chain::Hardhat

@@ -46,6 +46,10 @@ fn chain_slug(chain_id: eth::ChainId) -> &'static str {
         // GET https://aggregator-api.kyberswap.com/hyperevm/api/v1/routes
         // returns real routes for WHYPE→USD₮0.
         eth::ChainId::HyperEvm => "hyperevm",
+        // KyberSwap slug for Unichain — verified live 2026-06-22:
+        // GET https://aggregator-api.kyberswap.com/unichain/api/v1/routes
+        // returns real Uniswap-v4 routes for USDC→WETH on chain 130.
+        eth::ChainId::Unichain => "unichain",
         // KyberSwap doesn't deploy on Gnosis / Goerli / Plasma / Ink in v1 —
         // panic clearly rather than silently picking a wrong slug.
         other => panic!("unsupported KyberSwap chain: {other:?}"),
