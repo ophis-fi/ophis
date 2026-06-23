@@ -133,7 +133,7 @@ cp -r "$FUNCTIONS_SRC" "$STAGE/functions"
 cat > "$STAGE/_routes.json" <<EOF
 {
   "version": 1,
-  "include": ["/", "/api/*"],
+  "include": ["/", "/api/*", "/sitemap.xml", "/robots.txt"],
   "exclude": []
 }
 EOF
