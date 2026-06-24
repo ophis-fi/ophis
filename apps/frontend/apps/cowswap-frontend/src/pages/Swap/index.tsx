@@ -12,6 +12,8 @@ import { PageTitle } from 'modules/application'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
 
+import { OphisTrending } from 'ophis/components'
+
 import { Routes } from 'common/constants/routes'
 import { HydrateAtom } from 'common/state/HydrateAtom'
 
@@ -33,6 +35,22 @@ const DcaCta = (
   </InlineBanner>
 )
 
+// The swap widget stays centered (margin auto); the Trending panel floats to its
+// right without affecting the widget's own (dynamic) sizing. Hidden on narrow
+// viewports by the panel's own media query.
+const SwapStage = styled.div`
+  position: relative;
+  width: 100%;
+`
+
+const TrendingFloat = styled.div`
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: 250px;
+  z-index: 1;
+`
+
 export function SwapPage(): ReactNode {
   const params = useParams()
   const { i18n } = useLingui()
@@ -47,7 +65,12 @@ export function SwapPage(): ReactNode {
       <PageTitle title={i18n._(PAGE_TITLES.SWAP)} />
 
       <SwapUpdaters />
-      <SwapWidget topContent={DcaCta} />
+      <SwapStage>
+        <SwapWidget topContent={DcaCta} />
+        <TrendingFloat>
+          <OphisTrending />
+        </TrendingFloat>
+      </SwapStage>
     </HydrateAtom>
   )
 }
