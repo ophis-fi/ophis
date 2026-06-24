@@ -29,7 +29,8 @@ minimumReleaseAgeExclude:
   # (GHSA-gcq2-9pq2-cxqm; selective override on >=3.0.4 <3.0.7 so the v2 consumers
   # react-cosmos@7 + @nx/webpack are left untouched, since HPM v3 dropped the v2
   # createProxyMiddleware(context, options) API that react-cosmos' httpProxy plugin
-  # uses; the remaining dev-only v2 advisory GHSA-64mm-vxmg-q3vj is accepted), and
+  # uses; the dev-only v2 advisory GHSA-64mm-vxmg-q3vj is now fixed by the 2.0.10 v2
+  # patch, pinned via the >=2.0.0 <2.0.10 override which keeps that v2 API), and
   # piscina 4.9.3 (GHSA-x9g3-xrwr-cwfg) are intentionally NOT name-excluded here. A package-name exclude would
   # permanently bypass the soak for EVERY future publish of those packages;
   # instead each fixed version is pinned in the committed lockfile, so
