@@ -39,8 +39,8 @@ const GECKO_NETWORK: Record<number, string> = {
 const TIMEOUT_MS = 7000
 const MAX_TOKENS = 6
 const MIN_LIQUIDITY_USD = 20_000 // floor: keep "trending by real volume", not scams
-const FRESH_MS = 90_000 // serve cached data without re-fetching upstream for this long
-const STALE_TTL_SECONDS = 1800 // keep last-good in KV up to 30 min to ride out upstream rate-limits
+const FRESH_MS = 300_000 // serve cached data without re-fetching upstream for this long (5 min): trending-by-1h-volume changes slowly, so this is the main lever for cutting GeckoTerminal 429s
+const STALE_TTL_SECONDS = 3600 // keep last-good in KV up to 1h to ride out upstream rate-limits
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 90
 // Best-effort, per-isolate (not global): the real DoS/cost protection is the 60s
