@@ -13,3 +13,5 @@ export { OphisPageLoader } from './OphisPageLoader'
 export { ScrollToTop } from './ScrollToTop'
 
 export { OphisBeatMarket } from './BeatMarket/OphisBeatMarket'
+
+export { OphisTrending } from './Trending/OphisTrending'
