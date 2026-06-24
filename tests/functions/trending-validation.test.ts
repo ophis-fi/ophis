@@ -116,3 +116,25 @@ test('parse: empty / malformed upstream yields an empty list, never throws', () 
   assert.deepEqual(parseTrending(null), [])
   assert.deepEqual(parseTrending({ data: [], included: [] }), [])
 })
+
+test('parse: non-string token fields never throw (no isolate crash)', () => {
+  // A real upstream can surface a token whose symbol/name/image_url/address is not
+  // a string; none of these may reach .slice()/.includes() and throw.
+  const raw = {
+    data: [pool('t-weird'), pool('t-ok')],
+    included: [
+      { id: 't-weird', attributes: { address: 12345, symbol: 99, name: { x: 1 }, image_url: 42 } },
+      { id: 't-ok', attributes: { address: '0x' + 'c'.repeat(40), symbol: 'OK', name: 'Ok', image_url: GECKO_LOGO } },
+    ],
+  }
+  let out: ReturnType<typeof parseTrending> = []
+  assert.doesNotThrow(() => {
+    out = parseTrending(raw)
+  })
+  // The weird token (non-string address) is dropped; the good one survives with a safe logo.
+  assert.deepEqual(
+    out.map((t) => t.symbol),
+    ['OK'],
+  )
+  assert.equal(out[0]?.logo, GECKO_LOGO)
+})

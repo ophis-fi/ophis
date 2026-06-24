@@ -39,7 +39,8 @@ const GECKO_NETWORK: Record<number, string> = {
 const TIMEOUT_MS = 7000
 const MAX_TOKENS = 6
 const MIN_LIQUIDITY_USD = 20_000 // floor: keep "trending by real volume", not scams
-const CACHE_TTL_SECONDS = 60
+const FRESH_MS = 90_000 // serve cached data without re-fetching upstream for this long
+const STALE_TTL_SECONDS = 1800 // keep last-good in KV up to 30 min to ride out upstream rate-limits
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 90
 // Best-effort, per-isolate (not global): the real DoS/cost protection is the 60s
@@ -55,8 +56,8 @@ const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 const LOGO_HOST_SUFFIXES = ['.coingecko.com', '.geckoterminal.com']
 
 /** Return the logo URL only if it's an https URL on a trusted host; else null. */
-export function safeLogoUrl(raw: string | undefined): string | null {
-  if (!raw || raw.includes('missing')) return null
+export function safeLogoUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw || raw.includes('missing')) return null
   // Reject CSS/markup-dangerous characters up front: a real CDN logo URL never
   // contains them, and this keeps the value safe even if it's ever interpolated
   // somewhere other than an (already React-escaped) <img src>.
@@ -124,8 +125,12 @@ export function parseTrending(raw: unknown): TrendingToken[] {
   const tokensById = new Map<string, { address: string; symbol: string; name: string; logo: string | null }>()
   for (const inc of r.included ?? []) {
     const a = inc.attributes
-    if (inc.id && a?.address && ADDRESS_RE.test(a.address) && a.symbol) {
-      tokensById.set(inc.id, { address: a.address, symbol: a.symbol, name: a.name ?? a.symbol, logo: safeLogoUrl(a.image_url) })
+    if (inc.id && typeof a?.address === 'string' && ADDRESS_RE.test(a.address) && a.symbol) {
+      // Coerce to string defensively: a non-string symbol/name would otherwise throw
+      // at .slice() below and crash the whole request.
+      const symbol = String(a.symbol)
+      const name = a.name == null ? symbol : String(a.name)
+      tokensById.set(inc.id, { address: a.address, symbol, name, logo: safeLogoUrl(a.image_url) })
     }
   }
   const out: TrendingToken[] = []
@@ -153,7 +158,35 @@ export function parseTrending(raw: unknown): TrendingToken[] {
   return out
 }
 
+/** Fetch + parse trending tokens for a network. Throws on any upstream/parse failure. */
+async function fetchTrending(network: string): Promise<TrendingToken[]> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const upstream = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/${network}/trending_pools?include=base_token&page=1`,
+      // A User-Agent is required: Workers send none by default, and GeckoTerminal's
+      // edge intermittently rejects UA-less (bot-looking) requests.
+      { signal: controller.signal, headers: { accept: 'application/json', 'user-agent': 'OphisSwap/1.0 (+https://ophis.fi)' } },
+    )
+    if (!upstream.ok) throw new Error(`upstream ${upstream.status}`)
+    return parseTrending(await upstream.json())
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
+  // Absolute backstop: no code path may surface a platform 502. Any unexpected throw
+  // (anywhere below, incl. the runtime) becomes a clean JSON error the panel fails soft on.
+  try {
+    return await handleTrending(context)
+  } catch {
+    return json({ ok: false, error: { code: 'UPSTREAM', message: 'trending temporarily unavailable' } }, 502)
+  }
+}
+
+async function handleTrending(context: Parameters<PagesFunction<Env>>[0]): Promise<Response> {
   const { request, env } = context
   const origin = request.headers.get('origin')
   if (origin && !isAllowedOrigin(origin)) {
@@ -174,50 +207,50 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const network = GECKO_NETWORK[chainId]
   if (!network) return json({ ok: true, data: { network: '', tokens: [] } })
 
-  // KV cache (60s) — reuse the OPHIS_RATELIMIT namespace with a `trend:` prefix.
+  // Stale-while-revalidate. GeckoTerminal's keyless API rate-limits Cloudflare's
+  // SHARED egress IPs, so a naive TTL cache turns every transient upstream 429 (at the
+  // moment the cache lapses) into a user-facing failure. Instead we serve last-good data
+  // through upstream outages and only refresh in the background — a 429 becomes invisible.
   const cacheKey = `trend:${chainId}`
+  let cached: { at: number; body: TrendingResponse } | null = null
   if (env.OPHIS_RATELIMIT) {
     try {
-      const cached = await env.OPHIS_RATELIMIT.get(cacheKey)
-      if (cached) return new Response(cached, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-ophis-cache': 'hit' } })
+      const s = await env.OPHIS_RATELIMIT.get(cacheKey)
+      if (s) cached = JSON.parse(s)
     } catch {
-      // KV outage → fall through to a live fetch.
+      // KV miss/outage/parse → treat as no cache.
     }
   }
+  const now = Date.now()
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  let upstream: Response
-  try {
-    upstream = await fetch(
-      `https://api.geckoterminal.com/api/v2/networks/${network}/trending_pools?include=base_token&page=1`,
-      { signal: controller.signal, headers: { accept: 'application/json' } },
+  const persist = (body: TrendingResponse): void => {
+    if (!env.OPHIS_RATELIMIT) return
+    context.waitUntil(
+      env.OPHIS_RATELIMIT.put(cacheKey, JSON.stringify({ at: now, body }), { expirationTtl: STALE_TTL_SECONDS }).catch(() => {}),
     )
-  } catch (err: unknown) {
-    clearTimeout(timer)
-    const aborted = err instanceof Error && err.name === 'AbortError'
-    return json({ ok: false, error: { code: aborted ? 'TIMEOUT' : 'UPSTREAM', message: aborted ? 'trending timed out' : 'failed to reach trending source' } }, aborted ? 504 : 502)
   }
-  clearTimeout(timer)
-  if (!upstream.ok) return json({ ok: false, error: { code: 'UPSTREAM', message: `trending source returned ${upstream.status}` } }, 502)
 
-  let raw: unknown
+  // Fresh enough → serve straight from cache, no upstream call.
+  if (cached && now - cached.at < FRESH_MS) return json(cached.body, 200, { 'x-ophis-cache': 'fresh' })
+
+  // Stale or missing → refresh. parseTrending/fetch can throw; never let it escape.
+  let tokens: TrendingToken[] | null = null
   try {
-    raw = await upstream.json()
+    tokens = await fetchTrending(network)
   } catch {
-    return json({ ok: false, error: { code: 'UPSTREAM', message: 'trending source returned non-JSON' } }, 502)
+    tokens = null
   }
 
-  const body: TrendingResponse = { ok: true, data: { network, tokens: parseTrending(raw) } }
-  const out = JSON.stringify(body)
-  if (env.OPHIS_RATELIMIT) {
-    try {
-      await env.OPHIS_RATELIMIT.put(cacheKey, out, { expirationTtl: CACHE_TTL_SECONDS })
-    } catch {
-      // best-effort cache write
-    }
+  if (tokens) {
+    const body: TrendingResponse = { ok: true, data: { network, tokens } }
+    persist(body)
+    return json(body, 200, { 'x-ophis-cache': cached ? 'revalidated' : 'miss' })
   }
-  return new Response(out, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } })
+
+  // Refresh failed → ride out the outage on last-good data if we have it...
+  if (cached) return json(cached.body, 200, { 'x-ophis-cache': 'stale' })
+  // ...else cold + upstream down: empty list (panel hides), uncached so the next request retries.
+  return json({ ok: true, data: { network, tokens: [] } }, 200, { 'x-ophis-cache': 'empty' })
 }
 
 export const onRequest: PagesFunction<Env> = ({ request }) =>
