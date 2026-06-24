@@ -12,6 +12,12 @@ import {
   ORDER_TYPED_DATA_TYPES,
   extractQuoteAmounts,
   assertLimitWithinSlippage,
+  getBalances,
+  getGas,
+  getPortfolio,
+  getTokenChart,
+  expectedSurplus,
+  type Address,
 } from '../src/ophis.js'
 
 const OWNER = '0x931e9f531cdd4835Def0dEDE1452BA8aFbe5ff9b' as const
@@ -291,5 +297,141 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
     expect(() => assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50, 10)).not.toThrow()
     // The fee allowance does NOT rescue the "min out = 1" attack (still way past the band).
     expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair, 50, 10)).toThrow()
+  })
+})
+
+// --- agent data tools (balances / portfolio / gas / chart / surplus) --------
+
+/** Build a JSON Response for a mocked fetch. */
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+describe('getBalances / getGas / getPortfolio guards (no network)', () => {
+  it('rejects an invalid chainId', async () => {
+    await expect(getBalances({ chainId: 0, owner: OWNER })).rejects.toThrow(/invalid chainId/)
+  })
+
+  it('rejects more than 50 tokens', async () => {
+    const tokens = Array(51).fill(USDC_OP)
+    await expect(getBalances({ chainId: 10, owner: OWNER, tokens })).rejects.toThrow(/at most 50 tokens/)
+  })
+
+  it('rejects a chain with no public RPC (and no override)', async () => {
+    // 9745 (Plasma) has no built-in keyless RPC.
+    await expect(getBalances({ chainId: 9745, owner: OWNER })).rejects.toThrow(/no public RPC/)
+    await expect(getGas({ chainId: 9745 })).rejects.toThrow(/no public RPC/)
+  })
+
+  it('portfolio caps the chain count and filters unsupported chains without a network call', async () => {
+    await expect(getPortfolio({ owner: OWNER, chainIds: Array(13).fill(10) })).rejects.toThrow(/at most 12 chains/)
+    // An unsupported chain is filtered out -> no chains -> no RPC call.
+    const res = await getPortfolio({ owner: OWNER, chainIds: [9745] })
+    expect(res.chains).toEqual([])
+    expect(res.owner).toBe(OWNER)
+  })
+})
+
+describe('getTokenChart', () => {
+  it('throws on a chain GeckoTerminal does not map', async () => {
+    await expect(getTokenChart({ chainId: 9745, token: USDC_OP as Address })).rejects.toThrow(/no network mapping/)
+  })
+
+  it('resolves the deepest pool then returns parsed candles', async () => {
+    // A real-looking EVM pool address: the R1 guard rejects anything not isAddress.
+    const POOL = '0xc1738d90e2e26c35784a0d3e3d8a9f795074bca4'
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/ohlcv/')) {
+        return jsonResponse({ data: { attributes: { ohlcv_list: [[1_700_000_000, 1, 2, 0.5, 1.5, 1000]] } } })
+      }
+      if (String(url).includes('/pools')) {
+        return jsonResponse({ data: [{ attributes: { address: POOL } }] })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    const res = await getTokenChart({ chainId: 10, token: USDC_OP as Address, timeframe: 'day', limit: 1 }, fetchMock)
+    expect(res.network).toBe('optimism')
+    expect(res.pool).toBe(POOL)
+    expect(res.candles).toHaveLength(1)
+    expect(res.candles[0]).toEqual({ t: 1_700_000_000, o: 1, h: 2, l: 0.5, c: 1.5, v: 1000 })
+  })
+
+  it('rejects a non-EVM / malformed pool address from the upstream (R1 guard)', async () => {
+    const fetchMock = (async (url: string) => {
+      // A non-EVM (Solana-style) pool id that is not isAddress — must not be
+      // interpolated into the OHLCV URL.
+      if (String(url).includes('/pools')) {
+        return jsonResponse({ data: [{ attributes: { address: 'So11111111111111111111111111111111111111112' } }] })
+      }
+      throw new Error('OHLCV fetch must NOT run for an invalid pool address')
+    }) as unknown as typeof fetch
+
+    const res = await getTokenChart({ chainId: 10, token: USDC_OP as Address }, fetchMock)
+    expect(res.pool).toBeNull()
+    expect(res.candles).toEqual([])
+  })
+
+  it('returns empty candles when the token has no pool', async () => {
+    const fetchMock = (async () => jsonResponse({ data: [] })) as unknown as typeof fetch
+    const res = await getTokenChart({ chainId: 10, token: USDC_OP as Address }, fetchMock)
+    expect(res.pool).toBeNull()
+    expect(res.candles).toEqual([])
+  })
+})
+
+describe('expectedSurplus', () => {
+  it('computes beatBps when Ophis returns more than the reference', async () => {
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/api/v1/quote')) {
+        return jsonResponse({ quote: { sellAmount: '1000000', buyAmount: '600', feeAmount: '0' } })
+      }
+      if (String(url).includes('kyberswap.com')) {
+        return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    const res = await expectedSurplus(
+      { chainId: 10, sellToken: USDC_OP as Address, buyToken: WETH_OP as Address, sellAmount: '1000000', from: OWNER },
+      fetchMock,
+    )
+    expect(res.ophisBuyAmount).toBe('600')
+    expect(res.reference).toEqual({ name: 'kyberswap', buyAmount: '597' })
+    // (600 - 597) / 597 * 10000 ≈ 50 bps
+    expect(res.beatBps).toBe(50)
+  })
+
+  it('reports no reference on a chain without a KyberSwap slug', async () => {
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/api/v1/quote')) {
+        return jsonResponse({ quote: { sellAmount: '1000000', buyAmount: '600', feeAmount: '0' } })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    // 100 (Gnosis) is a tradeable Ophis chain but has no KyberSwap reference slug.
+    const res = await expectedSurplus(
+      { chainId: 100, sellToken: USDC_OP as Address, buyToken: WETH_OP as Address, sellAmount: '1000000', from: OWNER },
+      fetchMock,
+    )
+    expect(res.reference).toBeNull()
+    expect(res.beatBps).toBeNull()
+    expect(res.note).toMatch(/No reference aggregator/)
+  })
+
+  it('returns a null Ophis amount (not a throw) when the route is unquotable', async () => {
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/api/v1/quote')) return jsonResponse({ error: 'NoLiquidity' }, 400)
+      if (String(url).includes('kyberswap.com')) return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    const res = await expectedSurplus(
+      { chainId: 10, sellToken: USDC_OP as Address, buyToken: WETH_OP as Address, sellAmount: '1000000', from: OWNER },
+      fetchMock,
+    )
+    expect(res.ophisBuyAmount).toBeNull()
+    expect(res.beatBps).toBeNull()
   })
 })
