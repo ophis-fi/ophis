@@ -36,6 +36,8 @@ import { useRateInfoParams } from 'common/hooks/useRateInfoParams'
 import { CurrencyPreviewInfo } from 'common/pure/CurrencyAmountPreview'
 import { RateInfo } from 'common/pure/RateInfo'
 
+import { OphisBeatMarket } from 'ophis/components'
+
 import { useLabelsAndTooltips } from './useLabelsAndTooltips'
 
 import { buildSwapBridgeClickEvent, useSwapBridgeClickEventData } from '../../hooks/useSwapBridgeClickEvent'
@@ -178,6 +180,8 @@ export function SwapConfirmModal(props: SwapConfirmModalProps): ReactNode {
                     />
                   </TradeBasicConfirmDetails>
                 )}
+                {/* Ophis: beat-the-market savings on the confirm step (sell orders, positive only). */}
+                <OphisBeatMarket />
                 {restContent}
                 <HighFeeWarning readonlyMode />
               </>
