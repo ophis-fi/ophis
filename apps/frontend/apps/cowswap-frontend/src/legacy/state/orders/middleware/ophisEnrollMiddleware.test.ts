@@ -1,15 +1,14 @@
-import { AnyAction, Dispatch, MiddlewareAPI } from 'redux'
+import { AnyAction } from 'redux'
 import { instance, mock, resetCalls, when } from 'ts-mockito'
 
 import { ophisEnrollMiddleware } from './ophisEnrollMiddleware'
 
-import { AppState } from '../../index'
-
-const mockStore = mock<MiddlewareAPI<Dispatch, AppState>>()
 const nextMock = jest.fn()
 const actionMock = mock<AnyAction>()
 
-const dispatch = (): unknown => ophisEnrollMiddleware(instance(mockStore))(nextMock)(instance(actionMock))
+const dispatch = (): unknown => ophisEnrollMiddleware()(nextMock)(instance(actionMock))
+
+const flushMicrotasks = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('ophisEnrollMiddleware', () => {
   let fetchMock: jest.Mock
@@ -72,5 +71,17 @@ describe('ophisEnrollMiddleware', () => {
 
     expect(() => dispatch()).not.toThrow()
     expect(nextMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries on a later order when the server responds non-OK (e.g. 429/500)', async () => {
+    fetchMock.mockResolvedValue({ ok: false })
+    when(actionMock.type).thenReturn('order/addPendingOrder')
+    when(actionMock.payload).thenReturn({ chainId: 1, order: { owner: '0x3333333333333333333333333333333333333333' } })
+
+    dispatch()
+    await flushMicrotasks() // let the non-OK response drop the address from the set
+    dispatch()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

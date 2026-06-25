@@ -58,8 +58,15 @@ function enrollWallet(raw: string | null | undefined): void {
   if (enrolled.has(addr)) return
   enrolled.add(addr)
   // Fire-and-forget: enrollment must never block or throw into the trade flow.
-  // On failure, drop from the set so a later order can retry.
-  fetch(`${REBATES_API}/tier/${addr}`).catch(() => {
-    enrolled.delete(addr)
-  })
+  // On ANY failure — a network/CORS error OR a non-2xx response (e.g. a 429
+  // rate-limit or a transient 500, where `fetch` still resolves) — drop the
+  // address so a later order retries. Otherwise one transient error would
+  // permanently mask a wallet we are specifically trying not to miss.
+  fetch(`${REBATES_API}/tier/${addr}`)
+    .then((res) => {
+      if (!res.ok) enrolled.delete(addr)
+    })
+    .catch(() => {
+      enrolled.delete(addr)
+    })
 }
