@@ -25,6 +25,7 @@ import {
   getGas,
   getTokenChart,
   expectedSurplus,
+  resolveToken,
   type Address,
 } from './ophis.js'
 
@@ -522,6 +523,26 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             from: a.from as Address,
           }),
         )
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'resolve_token',
+    {
+      annotations: { title: 'Resolve token symbol to canonical address', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Resolve an ERC-20 token SYMBOL to its CANONICAL on-chain address from the trusted Ophis/CoW token list (the same curated list the swap UI uses). Use this BEFORE quoting or building so you never trade an address taken from chat, the web, or memory: a token can spoof the symbol \"USDC\" at a scam address, and this fails closed. Returns { found, ambiguous, canonical: {address, decimals, name} | null, matches: [...] }. found=false means no trusted match (do NOT guess: confirm any candidate with get_balances and the user). ambiguous=true means several trusted tokens share the symbol (e.g. native vs bridged); confirm which the user means. Native coins are not returned; resolve the wrapped symbol (e.g. WETH). Read-only.",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
+        symbol: z.string().min(1).max(20).describe('Token symbol to resolve, e.g. "USDC" or "WETH".'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(await resolveToken({ chainId: a.chainId, symbol: a.symbol }))
       } catch (e) {
         return fail(e)
       }
