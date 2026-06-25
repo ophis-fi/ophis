@@ -48,9 +48,12 @@ for (const file of walk(blogDir)) {
   if (isDraft(raw)) continue
   const body = stripCode(raw.replace(/^---\r?\n[\s\S]*?\r?\n---/, ''))
 
-  // Markdown images: ![alt](...) — alt is group 1.
-  for (const m of body.matchAll(/!\[([^\]]*)\]\([^)]*\)/g)) {
-    if (m[1].trim() === '') offenders.push({ file, snippet: m[0].slice(0, 80) })
+  // Empty-alt Markdown images: the alt is the FIRST bracket (`![ ]`); what follows
+  // is `(...)` for an inline image OR `[...]` for a reference image (full `![][id]`
+  // or collapsed `![][]`). Matching the empty/whitespace first-bracket catches all
+  // of them — inline AND reference-style. A non-empty alt never matches.
+  for (const m of body.matchAll(/!\[\s*\](?:\([^)]*\)|\[[^\]]*\])/g)) {
+    offenders.push({ file, snippet: m[0].slice(0, 80) })
   }
   // Raw HTML images: <img ...> without a non-empty alt.
   for (const m of body.matchAll(/<img\b[^>]*>/gi)) {
