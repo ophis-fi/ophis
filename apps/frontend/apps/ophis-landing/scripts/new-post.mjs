@@ -6,7 +6,7 @@
  * draft:true so it never publishes by accident) and a starter body, then prints
  * the preview + publish commands. Removes the boilerplate + schema-error risk.
  */
-import { writeFileSync, existsSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -29,14 +29,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const dir = resolve(__dirname, '../src/content/blog')
 mkdirSync(dir, { recursive: true })
 const file = resolve(dir, `${slug}.md`)
-if (existsSync(file)) {
-  console.error(`Already exists: ${file}`)
-  process.exit(1)
-}
 
 const today = new Date().toISOString().slice(0, 10)
 const body = `---
-title: "${title.replace(/"/g, '\\"')}"
+title: ${JSON.stringify(title)}
 description: "One-line summary, used for the SEO meta and the post-card blurb."
 pubDate: ${today}
 author: Ophis
@@ -56,7 +52,17 @@ Images: co-locate the file and reference it relatively so it is auto-optimized:
 build fails without it). Do not use em-dashes in the body.
 `
 
-writeFileSync(file, body)
+try {
+  // 'wx' = create exclusively: fails atomically if the file already exists, with
+  // no time-of-check/time-of-use race.
+  writeFileSync(file, body, { flag: 'wx' })
+} catch (err) {
+  if (err && err.code === 'EEXIST') {
+    console.error(`A post with that slug already exists: ${file}`)
+    process.exit(1)
+  }
+  throw err
+}
 console.log(`\n✓ Created src/content/blog/${slug}.md (draft)\n`)
 console.log('Next:')
 console.log('  1. Edit the file (set draft: false when ready).')
