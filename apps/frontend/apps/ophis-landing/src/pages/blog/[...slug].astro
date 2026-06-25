@@ -12,7 +12,9 @@ export async function getStaticPaths() {
 const { post } = Astro.props
 const { Content } = await render(post)
 
-const url = `https://ophis.fi/blog/${post.id}`
+// Trailing slash: CF Pages serves the directory-style route at /blog/<id>/ (it
+// 308-redirects the no-slash form), so the canonical must match the 200 URL.
+const url = `https://ophis.fi/blog/${post.id}/`
 const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(d)
 
 // Rough reading time from the raw markdown (≈200 wpm).

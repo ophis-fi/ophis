@@ -16,9 +16,10 @@ export const GET: APIRoute = async () => {
 
   const urls = [
     { loc: `${SITE}/`, changefreq: 'weekly', priority: '1.0' },
-    { loc: `${SITE}/blog`, changefreq: 'weekly', priority: '0.8' },
+    { loc: `${SITE}/blog/`, changefreq: 'weekly', priority: '0.8' },
     ...posts.map((p) => ({
-      loc: `${SITE}/blog/${p.id}`,
+      // Trailing slash to match the 200 URL CF Pages serves (no-slash 308s).
+      loc: `${SITE}/blog/${p.id}/`,
       lastmod: (p.data.updatedDate ?? p.data.pubDate).toISOString().slice(0, 10),
       changefreq: 'monthly',
       priority: '0.7',
