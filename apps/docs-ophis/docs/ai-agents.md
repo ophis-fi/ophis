@@ -13,6 +13,15 @@ accepts free-form natural language and returns structured JSON your agent
 can map directly to a pre-filled swap link. The agent does the parsing
 and routing; **the human always reviews and signs.**
 
+:::tip[New: the full walkthrough]
+
+For a narrative guide — including the MEV and key-safety pitfalls of letting an
+agent trade — read
+[How to let an AI agent swap tokens](https://ophis.fi/blog/let-an-ai-agent-swap-tokens)
+on the Ophis blog.
+
+:::
+
 ## MCP server (recommended)
 
 The fastest way to give an MCP-capable agent full Ophis access is the hosted
