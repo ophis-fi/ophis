@@ -6,7 +6,7 @@ test('nav renders logo (with SVG claw) + nav links + Trade CTA', async ({ page }
   // Logo should contain an inline SVG (the claw)
   await expect(page.locator('.nav .logo svg.logo-claw')).toBeVisible()
   const links = page.locator('.nav .nav-links a')
-  await expect(links).toHaveCount(5)
+  await expect(links).toHaveCount(6)
   await expect(page.locator('.nav .nav-cta')).toHaveText(/Trade/)
 })
 
@@ -39,8 +39,8 @@ test('mobile nav: hamburger opens the drawer; Escape closes it and restores scro
   // On mobile the burger replaces the (now-hidden) desktop links.
   await expect(burger).toBeVisible()
   await expect(page.locator('.nav .nav-links')).toBeHidden()
-  // Drawer mirrors the 5 links + the Trade CTA.
-  await expect(page.locator('#nav-drawer .nav-drawer-links a')).toHaveCount(6)
+  // Drawer mirrors the 6 links + the Trade CTA.
+  await expect(page.locator('#nav-drawer .nav-drawer-links a')).toHaveCount(7)
   // Open.
   await burger.click()
   await expect(burger).toHaveAttribute('aria-expanded', 'true')
