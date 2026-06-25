@@ -15,8 +15,8 @@ and routing; **the human always reviews and signs.**
 
 :::tip[New: the full walkthrough]
 
-For a narrative guide — including the MEV and key-safety pitfalls of letting an
-agent trade — read
+For a narrative guide, including the MEV and key-safety pitfalls of letting an
+agent trade, read
 [How to let an AI agent swap tokens](https://ophis.fi/blog/let-an-ai-agent-swap-tokens)
 on the Ophis blog.
 

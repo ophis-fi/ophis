@@ -11,7 +11,7 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
 const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(d)
 ---
 <Base
-  title="Blog — Ophis"
+  title="Ophis Blog"
   description="Engineering and product writing from Ophis: intent-based, MEV-protected swaps for the agent era. AI agents, rebates, and multi-chain DeFi."
   canonical="https://ophis.fi/blog"
 >
@@ -21,13 +21,13 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
       <p class="eyebrow">Ophis Blog</p>
       <h1>Writing for the <span class="accent">agent era</span></h1>
       <p class="lede">
-        Intent-based, MEV-protected swaps — and how to build on them. Notes on AI agents,
+        Intent-based, MEV-protected swaps, and how to build on them. Notes on AI agents,
         rebates, and multi-chain DeFi.
       </p>
     </header>
 
     {posts.length === 0 ? (
-      <p class="empty">No posts yet — check back soon.</p>
+      <p class="empty">No posts yet. Check back soon.</p>
     ) : (
       <ul class="post-list">
         {posts.map((post) => (

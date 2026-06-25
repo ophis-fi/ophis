@@ -136,7 +136,7 @@
          PerplexityBot are explicitly allowed in robots.txt). It lives OUTSIDE
          #root as a real, visible loading view with crawlable copy + internal
          links, and is REMOVED by /seo-fallback.js the moment React mounts into
-         #root — so JS clients and screen readers see only the app (no stale or
+         #root, so JS clients and screen readers see only the app (no stale or
          duplicate heading, no hidden-text/cloaking signal). This is the
          indexable surface for a client-rendered SPA with no SSR. The removal
          script is EXTERNAL because the CSP forbids inline <script> (see
@@ -156,15 +156,15 @@
       </style>
       <div class="wrap">
         <img src="/ophis-logo-full.svg" alt="Ophis" width="118" height="32" />
-        <h1>Ophis — the intent-based DEX aggregator with MEV-protected swaps</h1>
+        <h1>Ophis: the intent-based DEX aggregator with MEV-protected swaps</h1>
         <p>
           Describe a trade in plain language and Ophis routes you to a pre-filled order. A
           competitive solver network fills it MEV-protected in a batch auction, and you sign
-          with your own wallet — no custody, no front-running.
+          with your own wallet, no custody, no front-running.
         </p>
         <p>
           Built for the agent era: swap from an AI agent (MCP, GOAT, AgentKit), from a Gnosis
-          Safe, or via the embeddable widget and SDK — across Optimism, Base, Unichain, Plasma,
+          Safe, or via the embeddable widget and SDK, across Optimism, Base, Unichain, Plasma,
           Linea, Ink, BNB and HyperEVM. Integrators and agents earn a rebate on every swap they route.
         </p>
         <nav aria-label="Ophis">

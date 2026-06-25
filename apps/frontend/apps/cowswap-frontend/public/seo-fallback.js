@@ -37,8 +37,8 @@
   })
   obs.observe(root, { childList: true })
 
-  // Safety net: never leave the fallback covering the app if mount is unusual.
-  window.addEventListener('load', function () {
-    setTimeout(remove, 4000)
-  })
+  // Deliberately NO time-based removal: if the app never mounts (bundle, chunk,
+  // CSP, or network failure), the crawlable #ophis-seo content must PERSIST
+  // rather than be cleared into a blank #root. We only remove it once React has
+  // actually rendered children into #root (the MutationObserver above).
 })()
