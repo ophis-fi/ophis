@@ -4,7 +4,9 @@
  * Shows the trending tokens for the CURRENT chain (1h movers, from
  * useTrending → /api/trending → GeckoTerminal). Every row taps to PRE-FILL the
  * swap with that token as the buy side — nothing links out of the app. Glassy,
- * dismissible, hidden on narrow viewports and when there's nothing to show.
+ * dismissible, and hidden when there is nothing to show. Renders on every viewport
+ * (side-float on wide, stacked below the widget on narrow); the swap page only
+ * mounts it in the full app, never in injected-widget (partner iframe) mode.
  */
 import { ReactNode, useMemo, useState } from 'react'
 
