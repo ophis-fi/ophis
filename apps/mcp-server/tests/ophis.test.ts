@@ -387,7 +387,7 @@ describe('expectedSurplus', () => {
       if (String(url).includes('/api/v1/quote')) {
         return jsonResponse({ quote: { sellAmount: '1000000', buyAmount: '600', feeAmount: '0' } })
       }
-      if (String(url).startsWith('https://aggregator-api.kyberswap.com')) {
+      if (String(url).startsWith('https://aggregator-api.kyberswap.com/')) {
         return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
       }
       throw new Error(`unexpected url ${url}`)
@@ -424,7 +424,7 @@ describe('expectedSurplus', () => {
   it('returns a null Ophis amount (not a throw) when the route is unquotable', async () => {
     const fetchMock = (async (url: string) => {
       if (String(url).includes('/api/v1/quote')) return jsonResponse({ error: 'NoLiquidity' }, 400)
-      if (String(url).startsWith('https://aggregator-api.kyberswap.com')) return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
+      if (String(url).startsWith('https://aggregator-api.kyberswap.com/')) return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
 
