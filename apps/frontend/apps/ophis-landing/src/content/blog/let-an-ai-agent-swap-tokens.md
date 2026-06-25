@@ -4,6 +4,8 @@ description: "Agents can already pay. Swapping is the harder, riskier half. Here
 pubDate: 2026-06-25
 author: Ophis
 tags: [ai-agents, mcp, mev, defi, swaps]
+cover: ./let-an-ai-agent-swap-tokens.cover.png
+coverAlt: "Ophis: intent-based DEX aggregator for the agent era"
 ---
 
 2026 is the year AI agents got wallets. Giving an agent the ability to *pay* is
