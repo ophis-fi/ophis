@@ -43,6 +43,11 @@ export interface PendingTrade {
    *  clamped to [1, GROSS_FEE_BPS]; null when absent/unreadable (accrual then
    *  treats it as the legacy retail rate). */
   volumeFeeBps: number | null;
+  /** True when volumeFeeBps is authoritative (API row under the owner-allowlist, or an
+   *  on-chain-verified decoder row). False for a settle() decoder DISCOVERY row whose
+   *  volumeFeeBps is a provisional 0 — the API fetcher may still upgrade it to the real
+   *  verified fee; the money path never credits it (it stays at fee=0). */
+  feeVerified: boolean;
 }
 
 /**
@@ -303,6 +308,9 @@ export function attributeOrder(
     appCode,
     appdataRefCode,
     volumeFeeBps,
+    // API attribution runs under the owner-allowlist, so its fee is authoritative. The
+    // settle() decoder overrides this to false for a discovery (catalog-only) row.
+    feeVerified: true,
   };
 }
 
@@ -345,17 +353,25 @@ export async function fetchChainTrades(
         // Lazily import sql + schema only when we have a real db instance.
         const { sql, schema } = await import('./db/index.js');
         const already = await deps.db
-          .select({ uid: schema.trades.tradeUid, volumeFeeBps: schema.trades.volumeFeeBps })
+          .select({
+            uid: schema.trades.tradeUid,
+            volumeFeeBps: schema.trades.volumeFeeBps,
+            feeVerified: schema.trades.feeVerified,
+          })
           .from(schema.trades)
           .where(sql`trade_uid = decode(${t.orderUid.slice(2)}, 'hex')`)
           .limit(1);
-        // Skip only a row we've ALREADY enriched with its fee rate. A trade stored
-        // by the pre-per-trade code has volume_fee_bps = NULL; re-process it so the
-        // insert's onConflictDoUpdate can backfill the rate from appData — otherwise
-        // accrual defaults it to retail and over-credits a 5/1 bps order. Once
-        // populated it is skipped here (self-healing, one re-fetch per backlog row).
-        const row = already[0] as { volumeFeeBps: number | null } | undefined;
-        if (row && row.volumeFeeBps !== null) continue;
+        // Skip only a row we've ALREADY enriched AUTHORITATIVELY (fee_verified=true with
+        // a non-null rate). Re-process otherwise:
+        //  - a pre-per-trade row has volume_fee_bps = NULL -> backfill the rate from
+        //    appData (otherwise accrual defaults it to retail and over-credits a 5/1 bps
+        //    order);
+        //  - a settle() decoder DISCOVERY row has fee_verified=false (provisional 0) ->
+        //    write the real owner-allowlist-confirmed fee, so a trade the decoder
+        //    cataloged before its wallet was tracked is not left permanently at 0.
+        // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
+        const row = already[0] as { volumeFeeBps: number | null; feeVerified: boolean } | undefined;
+        if (row && row.volumeFeeBps !== null && row.feeVerified) continue;
       }
 
       // Confirm appCode by fetching the order. We could store unfiltered trades and filter
@@ -526,19 +542,26 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             partnerFeeWei: null,
             appdataRefCode: r.appdataRefCode,
             volumeFeeBps: r.volumeFeeBps,
+            feeVerified: r.feeVerified,
           })),
         )
-        // Backfill the fee rate on a re-encountered row ONLY to UPGRADE a still
-        // -NULL pre-per-trade backlog row to a POSITIVE rate. The `> 0` guard is
-        // load-bearing: a historical NULL whose appData yields 0 (no Ophis fee)
-        // or NULL (surplus/PI) must stay NULL (unknown -> retail) rather than be
-        // reclassified to 0 — re-fetching history must not change past accrual.
-        // Never clobber an enriched rate; touch no other column (value_usd /
-        // priced_at / amounts stay as first indexed). New rows insert normally.
+        // UPGRADE-only backfill on a re-encountered row, via two disjoint arms (a
+        // VERIFIED API write is the only thing that ever updates an existing row;
+        // never a downgrade, never a decoder clobber):
+        //  (1) self-heal a still-NULL pre-per-trade row to a POSITIVE rate. The `> 0`
+        //      is load-bearing: a historical NULL whose appData yields 0/NULL must STAY
+        //      NULL (unknown -> retail), so re-fetching history can't reclassify it.
+        //  (2) replace a settle() decoder DISCOVERY row (fee_verified=false, provisional
+        //      0) with the API's owner-allowlist-confirmed fee + fee_verified=true, at
+        //      whatever rate (0 or > 0).
+        // A decoder upsert carries excluded.fee_verified=false, so it satisfies NEITHER
+        // arm -> it can only INSERT a brand-new row and never overwrites an existing one.
+        // Touch no other column (value_usd / priced_at / amounts stay as first indexed).
         .onConflictDoUpdate({
           target: schema.trades.tradeUid,
-          set: { volumeFeeBps: dsql`excluded.volume_fee_bps` },
-          setWhere: dsql`${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0`,
+          set: { volumeFeeBps: dsql`excluded.volume_fee_bps`, feeVerified: dsql`excluded.fee_verified` },
+          setWhere: dsql`(${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0)
+                         OR (${schema.trades.feeVerified} = false AND excluded.fee_verified = true)`,
         });
       return rows.length;
     };

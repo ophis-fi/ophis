@@ -86,6 +86,20 @@ const DEFAULT_WINDOW = BigInt(process.env.SETTLE_SCAN_WINDOW ?? 2000);
  */
 export const FEE_VERIFICATION_IMPLEMENTED: boolean = false;
 
+/**
+ * DISCOVERY-ONLY mode (decoupled from FEE_VERIFICATION_IMPLEMENTED). When on, the
+ * decoder CATALOGS the trades it finds (volume_fee_bps forced to 0, fee_verified
+ * false) so they show in the public /stats counters and get picked up by the API
+ * fetcher once their wallet is tracked — but credits NO rebate. Because a forced-0
+ * row is excluded from every money path (the wallets matview, accrual > 0,
+ * computeAffiliate > 0), discovery carries no fee-forgery surface and does NOT need
+ * the on-chain fee verification the FEE-CREDITING path (FEE_VERIFICATION_IMPLEMENTED)
+ * still requires.
+ */
+export function isDiscoveryOnly(): boolean {
+  return process.env.SETTLE_DECODER_DISCOVERY_ONLY === 'true';
+}
+
 /** Chains the decoder runs on. Empty (the default) = OFF. */
 export function settleDecoderChains(): number[] {
   return (process.env.SETTLE_DECODER_CHAINS ?? '')
@@ -161,6 +175,7 @@ export async function decodeWindow(
   client: PublicClient,
   logs: TradeLog[],
   getOrderTotals: (chainId: number, uid: `0x${string}`) => Promise<OrderTotals | null> = defaultGetOrderTotals,
+  discoveryOnly = false,
 ): Promise<PendingTrade[]> {
   const rows: PendingTrade[] = [];
   const byTx = new Map<`0x${string}`, TradeLog[]>();
@@ -282,10 +297,21 @@ export async function decodeWindow(
       rows.push(trade);
     }
   }
+  if (discoveryOnly) {
+    // Catalog-only (DISCOVERY mode): never credit a decoder-derived fee. Force every
+    // row to a provisional, non-creditable 0 + mark it unverified, so it appears in
+    // /stats but is excluded from every money path (matview, accrual), and the API
+    // fetcher can later replace it with the owner-allowlist-confirmed fee (fetcher.ts
+    // upsert arm 2).
+    for (const r of rows) {
+      r.volumeFeeBps = 0;
+      r.feeVerified = false;
+    }
+  }
   return rows;
 }
 
-async function scanChain(chainId: number, deps: SettleDecoderDeps): Promise<number> {
+async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly: boolean): Promise<number> {
   // Misconfiguration guard: the resolver needs a CoW app_data endpoint for this
   // chain. A chain not served by the CoW API (a paused / sovereign-only chain) would
   // otherwise throw on every trade every run; skip it with one clear message.
@@ -343,7 +369,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps): Promise<numb
       }
       throw err; // genuine error -> abort chain (cursor not advanced -> re-scanned)
     }
-    const rows = await decodeWindow(chainId, client, logs);
+    const rows = await decodeWindow(chainId, client, logs, undefined, discoveryOnly);
     if (rows.length > 0) inserted += await deps.upsertTrades(rows);
     await writeCursor(chainId, to, deps.sql); // advance ONLY after the window's rows upsert
     from = to + 1n;
@@ -360,20 +386,27 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps): Promise<numb
 export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<number> {
   const chains = settleDecoderChains();
   if (chains.length === 0) return 0;
-  // B1 money-path safety gate: refuse to write any decoder-discovered trades until
-  // on-chain fee verification exists (see FEE_VERIFICATION_IMPLEMENTED). This makes
-  // setting SETTLE_DECODER_CHAINS prematurely a no-op rather than a forgery surface.
-  if (!FEE_VERIFICATION_IMPLEMENTED) {
+  const discoveryOnly = isDiscoveryOnly();
+  // Money-path safety gate. The FEE-CREDITING decoder stays HARD-DISABLED until on-chain
+  // fee verification exists (FEE_VERIFICATION_IMPLEMENTED) — that path credits
+  // volume_fee_bps from trader-controlled appData and would be a forgery surface (ToB
+  // B1). DISCOVERY-only is allowed through: it forces volume_fee_bps=0 + fee_verified
+  // false, which credits nothing (every money gate excludes 0), so it carries no
+  // forgery surface. Without either flag, setting SETTLE_DECODER_CHAINS is a no-op.
+  if (!FEE_VERIFICATION_IMPLEMENTED && !discoveryOnly) {
     log.error(
       { chains },
-      'settle-decoder: HARD-DISABLED pending on-chain fee verification (ToB B1); not writing. See DECODER-BUILD-SPEC.md',
+      'settle-decoder: HARD-DISABLED pending on-chain fee verification (ToB B1); not writing. Set SETTLE_DECODER_DISCOVERY_ONLY=true for catalog-only. See DECODER-BUILD-SPEC.md',
     );
     return 0;
+  }
+  if (discoveryOnly) {
+    log.info({ chains }, 'settle-decoder: DISCOVERY-ONLY — cataloging trades at volume_fee_bps=0 (no rebate credit)');
   }
   let inserted = 0;
   for (const chainId of chains) {
     try {
-      const n = await scanChain(chainId, deps);
+      const n = await scanChain(chainId, deps, discoveryOnly);
       if (n > 0) log.info({ chainId, inserted: n }, 'settle-decoder: chain scan complete');
       inserted += n;
     } catch (err) {

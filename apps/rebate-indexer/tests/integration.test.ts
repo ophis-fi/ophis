@@ -196,6 +196,64 @@ describe('wallets matview fee-gate', () => {
   }, 30_000);
 });
 
+describe('discovery-only decoder (fee_verified upsert arms)', () => {
+  it('API verified fee upgrades a decoder discovery row; a decoder write never downgrades a verified row', async () => {
+    const { sql } = await import('../src/db/index.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    // MIRRORS the upsert in src/fetcher.ts (upsertTrades): UPGRADE-only via two disjoint
+    // arms — (1) a still-NULL row -> a POSITIVE rate (self-heal), and (2) a settle()
+    // decoder DISCOVERY row (fee_verified=false) -> the API's verified fee. A decoder
+    // write (excluded.fee_verified=false) satisfies neither arm, so it can only INSERT
+    // and never overwrites an existing row. Keep in sync with the fetcher.
+    const upsert = (uid: string, w: string, fee: number | null, verified: boolean) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, fee_verified)
+      VALUES (decode(${uid.repeat(56)}, 'hex'), 100, decode(${w}, 'hex'), 1, ${RECENT_ISO}, decode(${'11'.repeat(20)}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis', 2500, ${fee}, ${verified})
+      ON CONFLICT (trade_uid) DO UPDATE
+        SET volume_fee_bps = excluded.volume_fee_bps, fee_verified = excluded.fee_verified
+        WHERE (trades.volume_fee_bps IS NULL AND excluded.volume_fee_bps > 0)
+           OR (trades.fee_verified = false AND excluded.fee_verified = true)`;
+    const read = async (uid: string): Promise<{ fee: number | null; v: boolean }> => {
+      const [r] = await sql<{ fee: number | null; v: boolean }[]>`
+        SELECT volume_fee_bps AS fee, fee_verified AS v FROM trades WHERE trade_uid = decode(${uid.repeat(56)}, 'hex')`;
+      return { fee: r?.fee == null ? null : Number(r.fee), v: r?.v ?? false };
+    };
+    // decoder discovery first (0, unverified) -> API confirms (10, verified): UPGRADE
+    await upsert('d1', 'a'.repeat(40), 0, false);
+    await upsert('d1', 'a'.repeat(40), 10, true);
+    expect(await read('d1')).toEqual({ fee: 10, v: true });
+    // API confirmed first (10, verified) -> decoder (0, unverified): NO DOWNGRADE
+    await upsert('d2', 'b'.repeat(40), 10, true);
+    await upsert('d2', 'b'.repeat(40), 0, false);
+    expect(await read('d2')).toEqual({ fee: 10, v: true });
+    // existing NULL self-heal preserved: NULL -> positive upgrades; NULL + 0 stays NULL
+    await upsert('d3', 'c'.repeat(40), null, true);
+    await upsert('d3', 'c'.repeat(40), 10, true);
+    expect((await read('d3')).fee).toBe(10);
+    await upsert('d4', 'd'.repeat(40), null, true);
+    await upsert('d4', 'd'.repeat(40), 0, true); // re-fetch yields 0 -> must NOT reclassify history
+    expect((await read('d4')).fee).toBeNull();
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+
+  it('a discovery row (fee=0) is EXCLUDED from the wallets matview but COUNTED by the /stats query', async () => {
+    const { sql } = await import('../src/db/index.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    const wDisc = 'e'.repeat(40);
+    // a decoder discovery row: volume_fee_bps = 0, fee_verified = false
+    await sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, fee_verified)
+      VALUES (decode(${'d5'.repeat(56)}, 'hex'), 100, decode(${wDisc}, 'hex'), 1, ${RECENT_ISO}, decode(${'11'.repeat(20)}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis', 2500, 0, false)`;
+    await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
+    const [inMatview] = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM wallets WHERE wallet = decode(${wDisc}, 'hex')`;
+    expect(Number(inMatview?.n ?? '0')).toBe(0); // money path (tier/rank/pool) excludes it
+    // mirrors api.ts:/stats (SUM(value_usd), COUNT(*) FROM trades, no fee filter)
+    const [stats] = await sql<{ n: string; vol: string }[]>`SELECT COUNT(*)::text AS n, COALESCE(SUM(value_usd),0)::text AS vol FROM trades WHERE chain_id = 100`;
+    expect(Number(stats?.n ?? '0')).toBe(1); // discovery visibility
+    expect(Number(stats?.vol ?? '0')).toBe(2500);
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+});
+
 describe('migration 0011 wallets matview', () => {
   it('recreates the matview POPULATED so reads never hit an unpopulated view (upgrade safety)', async () => {
     // On an UPGRADE, index.ts serves the API (index.ts:11) BEFORE the async backfill reaches

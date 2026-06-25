@@ -6,6 +6,7 @@ import {
   decodeWindow,
   settleDecoderChains,
   isRangeError,
+  isDiscoveryOnly,
   runSettleDecoder,
   FEE_VERIFICATION_IMPLEMENTED,
   type OrderTotals,
@@ -123,9 +124,11 @@ describe('B1 money-path safety gate', () => {
     expect(FEE_VERIFICATION_IMPLEMENTED).toBe(false);
   });
 
-  it('writes nothing even when SETTLE_DECODER_CHAINS is set', async () => {
+  it('writes nothing even when SETTLE_DECODER_CHAINS is set (and discovery-only is off)', async () => {
     const prev = process.env.SETTLE_DECODER_CHAINS;
+    const prevDisc = process.env.SETTLE_DECODER_DISCOVERY_ONLY;
     process.env.SETTLE_DECODER_CHAINS = '8453';
+    delete process.env.SETTLE_DECODER_DISCOVERY_ONLY; // fee-crediting path stays hard-disabled
     const upsertTrades = vi.fn(async () => {
       throw new Error('upsert must not be called while the decoder is hard-disabled');
     });
@@ -134,6 +137,20 @@ describe('B1 money-path safety gate', () => {
     expect(upsertTrades).not.toHaveBeenCalled();
     if (prev === undefined) delete process.env.SETTLE_DECODER_CHAINS;
     else process.env.SETTLE_DECODER_CHAINS = prev;
+    if (prevDisc !== undefined) process.env.SETTLE_DECODER_DISCOVERY_ONLY = prevDisc;
+  });
+});
+
+describe('isDiscoveryOnly', () => {
+  it('is true only when SETTLE_DECODER_DISCOVERY_ONLY === "true"', () => {
+    const prev = process.env.SETTLE_DECODER_DISCOVERY_ONLY;
+    process.env.SETTLE_DECODER_DISCOVERY_ONLY = 'true';
+    expect(isDiscoveryOnly()).toBe(true);
+    process.env.SETTLE_DECODER_DISCOVERY_ONLY = 'false';
+    expect(isDiscoveryOnly()).toBe(false);
+    delete process.env.SETTLE_DECODER_DISCOVERY_ONLY;
+    expect(isDiscoveryOnly()).toBe(false);
+    if (prev !== undefined) process.env.SETTLE_DECODER_DISCOVERY_ONLY = prev;
   });
 });
 
@@ -278,6 +295,23 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const rows = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
     expect(rows).toHaveLength(1);
     expect(rows[0]?.volumeFeeBps).toBe(0); // NOT null (null would COALESCE to retail in accrual)
+  });
+
+  it('discoveryOnly forces every row to a non-creditable 0 + fee_verified=false (catalog-only)', async () => {
+    const docA = ophisDoc(); // partnerFee volumeBps:10 -> a POSITIVE fee in normal mode
+    const hA = hashOf(docA);
+    stubAppDataApi({ [hA]: docA });
+    const calldata = encodeSettle([T0, T1], [mkTrade({ appData: hA, receiver: EOA })]);
+    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 })];
+    // normal mode: the real Ophis fee, marked verified (API-attribution default)
+    const normal = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
+    expect(normal[0]?.volumeFeeBps).toBe(10);
+    expect(normal[0]?.feeVerified).toBe(true);
+    // discovery-only: same trade, forced to a provisional 0 (credits nothing) + unverified
+    // (the API fetcher can later upgrade it to the owner-allowlist-confirmed fee).
+    const disc = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn(), true);
+    expect(disc[0]?.volumeFeeBps).toBe(0);
+    expect(disc[0]?.feeVerified).toBe(false);
   });
 
   it('aborts the window (throws) on a transient getTransaction failure (Codex #3)', async () => {
