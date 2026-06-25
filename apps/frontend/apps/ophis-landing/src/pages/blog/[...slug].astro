@@ -3,6 +3,7 @@ import Base from '../../layouts/Base.astro'
 import Nav from '../../components/Nav.astro'
 import Footer from '../../components/Footer.astro'
 import { getCollection, render } from 'astro:content'
+import { Image, getImage } from 'astro:assets'
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog', ({ data }) => !data.draft)
@@ -21,6 +22,14 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
 const words = (post.body ?? '').trim().split(/\s+/).filter(Boolean).length
 const readingMin = Math.max(1, Math.round(words / 200))
 
+// Per-post OG/social image: optimize the cover to the OG size (1280x640, matching
+// Base's hardcoded og:image:width/height) in a social-safe format. Fall back to the
+// shared default when a post has no cover. Absolute URL — scrapers need the origin.
+const SITE = 'https://ophis.fi'
+const ogImage = post.data.cover
+  ? new URL((await getImage({ src: post.data.cover, width: 1280, height: 640, format: 'jpeg' })).src, SITE).href
+  : `${SITE}/og-image.png`
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
@@ -36,7 +45,7 @@ const jsonLd = {
     // a bitmap publisher logo.
     logo: { '@type': 'ImageObject', url: 'https://ophis.fi/og-image.png' },
   },
-  image: 'https://ophis.fi/og-image.png',
+  image: ogImage,
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   ...(post.data.tags.length ? { keywords: post.data.tags.join(', ') } : {}),
 }
@@ -46,6 +55,7 @@ const jsonLd = {
   description={post.data.description}
   canonical={url}
   ogType="article"
+  image={ogImage}
 >
   <meta slot="head" property="article:published_time" content={post.data.pubDate.toISOString()} />
   {post.data.updatedDate && (
@@ -73,6 +83,16 @@ const jsonLd = {
           </ul>
         )}
       </header>
+      {post.data.cover && (
+        <Image
+          class="post-cover"
+          src={post.data.cover}
+          alt={post.data.coverAlt ?? ''}
+          widths={[480, 768, 1280]}
+          sizes="(max-width: 760px) 100vw, 720px"
+          loading="eager"
+        />
+      )}
       <div class="prose">
         <Content />
       </div>
@@ -150,6 +170,17 @@ const jsonLd = {
 
   /* ── Article body. The rendered Markdown HTML isn't scoped to this component,
         so target it with :global() under .prose. ─────────────────────────── */
+  .post-cover {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 1;
+    object-fit: cover;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    margin: 0 0 36px;
+  }
+
   .prose {
     font-size: 17.5px;
     line-height: 1.72;

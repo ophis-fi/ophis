@@ -3,6 +3,7 @@ import Base from '../../layouts/Base.astro'
 import Nav from '../../components/Nav.astro'
 import Footer from '../../components/Footer.astro'
 import { getCollection } from 'astro:content'
+import { Image } from 'astro:assets'
 
 const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
   (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime(),
@@ -33,6 +34,16 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
         {posts.map((post) => (
           <li class="post-card feat">
             <a class="post-link" href={`/blog/${post.id}`}>
+              {post.data.cover && (
+                <Image
+                  class="card-thumb"
+                  src={post.data.cover}
+                  alt=""
+                  widths={[400, 760]}
+                  sizes="(max-width: 760px) 100vw, 720px"
+                  loading="lazy"
+                />
+              )}
               <div class="post-meta">
                 <time datetime={post.data.pubDate.toISOString()}>{fmtDate(post.data.pubDate)}</time>
                 {post.data.tags.slice(0, 3).map((t) => <span class="tag">{t}</span>)}
@@ -105,6 +116,17 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
     outline-offset: 3px;
     border-radius: var(--ophis-radius);
   }
+  .card-thumb {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 1;
+    object-fit: cover;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius-sm);
+    margin-bottom: 16px;
+  }
+
   .post-meta {
     display: flex;
     flex-wrap: wrap;
