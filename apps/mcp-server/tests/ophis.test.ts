@@ -570,6 +570,26 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
     expect(res.canonical?.address).toBe(USDC_ETH)
   })
 
+  it('excludes the OP-stack legacy OVM_ETH placeholder (chain 10 "ETH" is not tradeable)', async () => {
+    const OVM_ETH = '0xDeadDeAddeAddEAddeadDEaDDEAdDeaDDeAD0000'
+    const mock = (async (url: string) => {
+      if (String(url).includes('optimism.tokenlist')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: OVM_ETH, symbol: 'ETH', decimals: 18, name: 'Ether' }] })
+      }
+      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 10, symbol: 'ETH' }, mock)
+    expect(res.found).toBe(false) // OVM_ETH filtered; the agent resolves WETH for native ETH
+  })
+
+  it('treats a malformed list (no tokens array) as unavailable, not as empty', async () => {
+    const mock = (async () => jsonResponse({ notTokens: [] })) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 1, symbol: 'USDC' }, mock)
+    expect(res.found).toBe(false)
+    expect(res.note).toMatch(/unavailable/i)
+  })
+
   it('rejects a mixed-case bad-checksum address (strict EIP-55, no silent re-checksum)', async () => {
     // USDC_ETH with one nibble case wrongly flipped: a valid hex address but an
     // invalid EIP-55 checksum. viem isAddress (strict) must reject it before getAddress.

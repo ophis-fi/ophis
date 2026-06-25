@@ -1133,6 +1133,15 @@ const NATIVE_SENTINELS = new Set<string>([
   '0x0000000000000000000000000000000000000000',
   '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
 ])
+// Per-chain non-tradeable placeholders the swap UI also filters (mirrors
+// apps/frontend/libs/tokens/src/utils/excludedListTokens.ts). The OP-stack legacy
+// OVM_ETH at 0xDead...0000 ships in Optimism's list with symbol "ETH" and shadows
+// native ETH; it is a dead pre-Bedrock placeholder, so resolving "ETH" to it would
+// route quotes/orders to a no-liquidity address. Scoped per chain (the same vanity
+// address can be a real token elsewhere), exactly as the frontend scopes it.
+const EXCLUDED_TOKENS_BY_CHAIN: Record<number, ReadonlySet<string>> = {
+  10: new Set<string>(['0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000']),
+}
 
 interface RawListToken {
   chainId?: unknown
@@ -1179,8 +1188,15 @@ async function loadCuratedTokenList(url: string, fetchImpl: typeof fetch): Promi
   }
   const res = await timedFetch(fetchImpl, url, { headers: { accept: 'application/json' } }, TOKEN_LIST_TIMEOUT_MS, 'resolve_token')
   if (!res.ok) throw new Error(`resolve_token: token list returned ${res.status}`)
-  const json = (await res.json()) as { tokens?: unknown[] }
-  const tokens = Array.isArray(json.tokens) ? json.tokens : []
+  const json = (await res.json()) as { tokens?: unknown }
+  // A trusted source that does not return a proper, sanely-sized tokens array is
+  // treated as UNAVAILABLE (throw), not an empty list. Returning [] would let a
+  // malformed priority-1 source look "loaded" so a lower-priority list wins (a
+  // partial view), and caching an oversized array would fail every retry for the
+  // whole TTL. Only a well-formed, bounded list is cached and returned.
+  if (!Array.isArray(json.tokens)) throw new Error('resolve_token: token list missing tokens array')
+  if (json.tokens.length > MAX_LIST_TOKENS) throw new Error('resolve_token: token list oversized')
+  const tokens = json.tokens
   if (useCache) tokenListCache.set(url, { at: now, tokens })
   return tokens
 }
@@ -1207,14 +1223,6 @@ export async function resolveToken(
       allSourcesLoaded = false
       continue
     }
-    if (tokens.length > MAX_LIST_TOKENS) {
-      // An oversized response cannot be fully/trustably consulted; treat the source as
-      // incomplete and fail closed below rather than resolve from a truncated view
-      // (which could hide a same-symbol token past the cap). Also bounds CPU: we do
-      // not iterate the oversized list at all.
-      allSourcesLoaded = false
-      continue
-    }
     for (const raw of tokens) {
       if (!raw || typeof raw !== 'object') continue // skip null / primitive entries
       const t = raw as RawListToken
@@ -1225,6 +1233,7 @@ export async function resolveToken(
       const address = getAddress(t.address) // EIP-55 checksum
       const key = address.toLowerCase()
       if (NATIVE_SENTINELS.has(key)) continue // native is not a tradeable ERC-20
+      if (EXCLUDED_TOKENS_BY_CHAIN[chainId]?.has(key)) continue // non-tradeable placeholder the swap UI also filters (e.g. OP-stack legacy OVM_ETH that shadows native ETH)
       if (seen.has(key)) continue // first writer wins across the priority-ordered lists
       if (typeof t.decimals !== 'number' || !Number.isInteger(t.decimals) || t.decimals < 0 || t.decimals > MAX_TOKEN_DECIMALS) continue
       seen.add(key)
