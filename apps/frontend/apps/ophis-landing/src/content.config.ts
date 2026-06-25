@@ -14,7 +14,10 @@ import { glob } from 'astro/loaders'
 // the post hero. Remote/hotlinked image URLs do NOT load (CSP img-src is 'self'
 // only) — always import images into the repo. `coverAlt` is the cover's alt text.
 const blog = defineCollection({
-  loader: glob({ pattern: '**/[^_]*.md', base: './src/content/blog' }),
+  // `[^_]*.md` skips underscore-prefixed FILENAMES; `!**/_*/**` also excludes
+  // anything inside an underscore-prefixed FOLDER (e.g. _drafts/), so both files
+  // and folders prefixed with `_` are truly ignored (matches the comment above).
+  loader: glob({ pattern: ['**/[^_]*.md', '!**/_*/**'], base: './src/content/blog' }),
   schema: ({ image }) =>
     z.object({
       title: z.string(),
