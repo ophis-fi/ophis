@@ -756,9 +756,15 @@ export async function buildApiServer(): Promise<FastifyInstance> {
              COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
       FROM referrals r
       LEFT JOIN trades t ON t.wallet = r.referred_wallet AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
-        -- appData-wins (mirror of the headline stats + accrual): exclude trades
-        -- attributed via an active code owned by someone other than the trader, so
-        -- each referee's shown bind volume matches the corrected headline + payout.
+        -- Mirror the headline stats + accrual bind arm so each referee's shown bind
+        -- volume == the corrected headline + payout:
+        --   (1) fee-gate out examined-0 trades. A settle() DISCOVERY row credits
+        --       nothing (volume_fee_bps=0), so it must not inflate a referee's shown
+        --       volume; NULL is KEPT (the retail-default bind semantics). Same
+        --       IS DISTINCT FROM 0 gate as the headline (the bind arm above).
+        AND t.volume_fee_bps IS DISTINCT FROM 0
+        --   (2) appData-wins: exclude trades attributed via an active code owned by
+        --       someone OTHER than the trader.
         AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
           SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
         ))
