@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "prebuild": "node scripts/tokens-to-css.mjs",
+    "new:post": "node scripts/new-post.mjs",
     "dev": "pnpm prebuild && astro dev",
     "build": "pnpm prebuild && astro build",
     "postbuild": "node scripts/check-csp-hashes.mjs",

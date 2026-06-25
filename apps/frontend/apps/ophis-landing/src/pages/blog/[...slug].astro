@@ -66,7 +66,7 @@ const jsonLd = {
   <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
 
   <Nav />
-  <main class="post">
+  <main id="main" tabindex="-1" class="post">
     <article>
       <a class="back" href="/blog">← All posts</a>
       <header class="post-header">
@@ -211,6 +211,11 @@ const jsonLd = {
     transition: border-color 120ms ease;
   }
   .prose :global(a:hover) { border-bottom-color: var(--ophis-saffron-60); }
+  .prose :global(a:focus-visible) {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
   .prose :global(strong) { color: var(--ophis-fg); font-weight: 600; }
   .prose :global(ul),
   .prose :global(ol) { margin: 0 0 20px; padding-left: 24px; }
