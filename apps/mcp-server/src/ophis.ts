@@ -1112,3 +1112,152 @@ export async function expectedSurplus(
     note,
   }
 }
+
+// --- resolve_token: symbol -> canonical address from the curated CoW token list ---
+//
+// The CoW-curated multi-chain list is the swap UI's priority-1 source for every
+// chain except Optimism (which uses the Optimism official list). We resolve ONLY
+// against these CURATED lists, never permissionless aggregator lists, so a miss is
+// FAIL-CLOSED: we return the genuinely-canonical token or nothing, never a
+// plausible-but-wrong scam token. The URLs are static constants; the caller's
+// chainId only selects which curated list to read, so no caller input ever reaches
+// the fetch URL (no SSRF). Every field of every list entry is untrusted and validated.
+const COW_TOKEN_LIST_URL = 'https://files.cow.fi/tokens/CowSwap.json'
+const OPTIMISM_TOKEN_LIST_URL = 'https://static.optimism.io/optimism.tokenlist.json'
+const TOKEN_LIST_TIMEOUT_MS = 10_000
+const MAX_TOKEN_DECIMALS = 36
+const TOKEN_LIST_CACHE_MS = 10 * 60 * 1000
+const MAX_LIST_TOKENS = 200_000 // bound CPU/memory on a hostile oversized list response
+// Native-coin sentinels are not tradeable ERC-20s; agents trade the wrapped token.
+const NATIVE_SENTINELS = new Set<string>([
+  '0x0000000000000000000000000000000000000000',
+  '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+])
+
+interface RawListToken {
+  chainId?: unknown
+  address?: unknown
+  symbol?: unknown
+  decimals?: unknown
+  name?: unknown
+}
+export interface ResolvedToken {
+  address: Address
+  symbol: string
+  decimals: number
+  name: string
+  source: string
+}
+export interface ResolveTokenResult {
+  chainId: number
+  query: string
+  found: boolean
+  ambiguous: boolean
+  canonical: ResolvedToken | null
+  matches: ResolvedToken[]
+  note: string
+}
+
+/** Curated token-list URLs to consult for a chain, in priority order (first wins). */
+function tokenListUrlsForChain(chainId: number): string[] {
+  // Optimism's swap-UI priority-1 is the Optimism official list; the CoW list is
+  // also consulted (it carries cross-chain majors), at lower priority.
+  if (chainId === 10) return [OPTIMISM_TOKEN_LIST_URL, COW_TOKEN_LIST_URL]
+  return [COW_TOKEN_LIST_URL]
+}
+
+// Per-isolate read cache of fetched lists. Only used for the real production fetch
+// (a mock fetchImpl, i.e. tests, bypasses it so test runs stay isolated).
+const tokenListCache = new Map<string, { at: number; tokens: unknown[] }>()
+
+async function loadCuratedTokenList(url: string, fetchImpl: typeof fetch): Promise<unknown[]> {
+  const useCache = fetchImpl === fetch
+  const now = Date.now()
+  if (useCache) {
+    const hit = tokenListCache.get(url)
+    if (hit && now - hit.at < TOKEN_LIST_CACHE_MS) return hit.tokens
+  }
+  const res = await timedFetch(fetchImpl, url, { headers: { accept: 'application/json' } }, TOKEN_LIST_TIMEOUT_MS, 'resolve_token')
+  if (!res.ok) throw new Error(`resolve_token: token list returned ${res.status}`)
+  const json = (await res.json()) as { tokens?: unknown[] }
+  const tokens = Array.isArray(json.tokens) ? json.tokens : []
+  if (useCache) tokenListCache.set(url, { at: now, tokens })
+  return tokens
+}
+
+export async function resolveToken(
+  p: { chainId: number; symbol: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<ResolveTokenResult> {
+  const chainId = assertChain(p.chainId)
+  const want = String(p.symbol).trim().toLowerCase()
+  if (!want) throw new Error('resolve_token: symbol must be a non-empty string')
+
+  const seen = new Set<string>()
+  const matches: ResolvedToken[] = []
+  let allSourcesLoaded = true
+  for (const url of tokenListUrlsForChain(chainId)) {
+    let tokens: unknown[]
+    try {
+      tokens = await loadCuratedTokenList(url, fetchImpl)
+    } catch {
+      // A trusted source was unavailable. We must NOT resolve from a PARTIAL view of
+      // the trusted sources: that could mask the higher-priority list or a same-symbol
+      // ambiguity it holds, weakening fail-closed. Record it and fail closed below.
+      allSourcesLoaded = false
+      continue
+    }
+    if (tokens.length > MAX_LIST_TOKENS) {
+      // An oversized response cannot be fully/trustably consulted; treat the source as
+      // incomplete and fail closed below rather than resolve from a truncated view
+      // (which could hide a same-symbol token past the cap). Also bounds CPU: we do
+      // not iterate the oversized list at all.
+      allSourcesLoaded = false
+      continue
+    }
+    for (const raw of tokens) {
+      if (!raw || typeof raw !== 'object') continue // skip null / primitive entries
+      const t = raw as RawListToken
+      // Every field is untrusted list data: validate types, never assume.
+      if (t.chainId !== chainId) continue
+      if (typeof t.symbol !== 'string' || t.symbol.toLowerCase() !== want) continue
+      if (typeof t.address !== 'string' || !isAddress(t.address)) continue
+      const address = getAddress(t.address) // EIP-55 checksum
+      const key = address.toLowerCase()
+      if (NATIVE_SENTINELS.has(key)) continue // native is not a tradeable ERC-20
+      if (seen.has(key)) continue // first writer wins across the priority-ordered lists
+      if (typeof t.decimals !== 'number' || !Number.isInteger(t.decimals) || t.decimals < 0 || t.decimals > MAX_TOKEN_DECIMALS) continue
+      seen.add(key)
+      matches.push({
+        address,
+        symbol: t.symbol,
+        decimals: t.decimals,
+        name: typeof t.name === 'string' ? t.name.slice(0, 80) : t.symbol,
+        source: url,
+      })
+    }
+  }
+
+  // Fail closed if any trusted source could not be consulted: never resolve on a
+  // partial view (it could hide the priority-1 answer or a same-symbol ambiguity).
+  if (!allSourcesLoaded) {
+    return {
+      chainId,
+      query: String(p.symbol),
+      found: false,
+      ambiguous: false,
+      canonical: null,
+      matches: [],
+      note: 'A trusted token source was temporarily unavailable, so resolution is incomplete. Do not trade on a partial result: retry, or confirm the address with get_balances (symbol and decimals) and the user.',
+    }
+  }
+
+  const found = matches.length > 0
+  const ambiguous = matches.length > 1
+  const note = !found
+    ? 'No canonical match in the trusted Ophis/CoW token list. Do not guess or accept an address from chat, the web, or memory: confirm any candidate with get_balances (symbol and decimals) and with the user before trading.'
+    : ambiguous
+      ? 'Multiple trusted tokens share this symbol (for example a native and a bridged version). Confirm with the user which address is intended before trading.'
+      : 'Resolved from the trusted Ophis/CoW token list.'
+  return { chainId, query: String(p.symbol), found, ambiguous, canonical: matches[0] ?? null, matches, note }
+}
