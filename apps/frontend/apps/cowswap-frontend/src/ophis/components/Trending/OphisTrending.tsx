@@ -6,7 +6,7 @@
  * swap with that token as the buy side — nothing links out of the app. Glassy,
  * dismissible, hidden on narrow viewports and when there's nothing to show.
  */
-import { ReactNode, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useMemo, useState } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -35,10 +35,6 @@ const Panel = styled.aside`
   backdrop-filter: blur(16px);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   color: ${({ theme }) => theme.text1};
-
-  @media (max-width: 1180px) {
-    display: none;
-  }
 `
 const Head = styled.div`
   display: flex;
@@ -205,33 +201,16 @@ function formatPrice(p: number): string {
   return `$${p.toPrecision(2)}`
 }
 
-// Mirrors the Panel's `@media (max-width: 1180px)` hide in JS so the panel also
-// stops polling /api/trending when it isn't shown (no off-screen network churn).
-function useIsNarrow(): boolean {
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 1180px)').matches,
-  )
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const mq = window.matchMedia('(max-width: 1180px)')
-    const onChange = (): void => setNarrow(mq.matches)
-    onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return narrow
-}
-
 export function OphisTrending(): ReactNode {
   const params = useParams()
   const chainId = Number(params.chainId)
   const inputCurrencyId = params.inputCurrencyId
   const tradeNavigate = useTradeNavigate()
   const [dismissed, setDismissed] = useState(false)
-  const isNarrow = useIsNarrow()
-  // Only poll when the panel can actually be shown.
-  const enabled = !dismissed && !isNarrow
-  const { tokens } = useTrending(enabled && Number.isInteger(chainId) && chainId > 0 ? chainId : undefined)
+  // Poll only while the panel can be shown (not dismissed). It now renders on every
+  // viewport (side-float on wide, stacked below the widget on narrow), so there is no
+  // viewport gate.
+  const { tokens } = useTrending(!dismissed && Number.isInteger(chainId) && chainId > 0 ? chainId : undefined)
 
   const visible = useMemo(
     // Don't show a row for the token already on the sell side.
@@ -239,7 +218,7 @@ export function OphisTrending(): ReactNode {
     [tokens, inputCurrencyId],
   )
 
-  if (!enabled || visible.length === 0) return null
+  if (dismissed || visible.length === 0) return null
 
   const onPick = (t: TrendingToken): void => {
     // Keep the current sell token; set the buy token to the trending one.
