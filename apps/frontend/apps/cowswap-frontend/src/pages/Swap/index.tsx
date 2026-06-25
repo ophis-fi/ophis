@@ -35,20 +35,29 @@ const DcaCta = (
   </InlineBanner>
 )
 
-// The swap widget stays centered (margin auto); the Trending panel floats to its
-// right without affecting the widget's own (dynamic) sizing. Hidden on narrow
-// viewports by the panel's own media query.
+// The swap widget stays centered (margin auto). On wide viewports the Trending
+// panel floats to its right without affecting the widget's own (dynamic) sizing;
+// on narrower viewports (where there is no room beside the widget) it drops into
+// normal flow, centered below the widget, instead of being hidden.
 const SwapStage = styled.div`
   position: relative;
   width: 100%;
 `
 
 const TrendingFloat = styled.div`
-  position: absolute;
-  top: 0;
-  left: 50%;
-  margin-left: 250px;
-  z-index: 1;
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+
+  @media (min-width: 1181px) {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    margin-left: 250px;
+    margin-top: 0;
+    display: block;
+    z-index: 1;
+  }
 `
 
 export function SwapPage(): ReactNode {
