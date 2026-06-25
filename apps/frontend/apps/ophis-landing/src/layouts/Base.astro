@@ -212,6 +212,7 @@ const {
   <script is:inline src="/webmcp.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <div class="bg-orbs" aria-hidden="true"></div>
   <Particles />
   <Sparks />
@@ -222,5 +223,31 @@ const {
     // micro-interactions). Additive + reduced-motion-gated; see gsap-anim.ts.
     import '../lib/gsap-anim.ts'
   </script>
+  <style>
+    /* Skip-link: hidden until keyboard-focused, then slides in. Lets keyboard +
+       screen-reader users jump past the nav straight to <main id="main">. */
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 9999;
+      transform: translateY(-150%);
+      padding: 10px 16px;
+      border-radius: var(--ophis-radius-sm);
+      background: var(--ophis-saffron-60);
+      color: var(--ophis-bg);
+      font: 600 14px/1 'Geist', system-ui, sans-serif;
+      text-decoration: none;
+      transition: transform 120ms ease;
+    }
+    .skip-link:focus {
+      transform: translateY(0);
+      outline: 2px solid var(--ophis-fg);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .skip-link { transition: none; }
+    }
+  </style>
 </body>
 </html>
