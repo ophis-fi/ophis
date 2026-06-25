@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { PAGE_TITLES, WRAPPED_NATIVE_CURRENCIES as WETH } from '@cowprotocol/common-const'
+import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -76,9 +77,14 @@ export function SwapPage(): ReactNode {
       <SwapUpdaters />
       <SwapStage>
         <SwapWidget topContent={DcaCta} />
-        <TrendingFloat>
-          <OphisTrending />
-        </TrendingFloat>
+        {/* Full app only. In an injected widget (partner iframe embeds) the panel is
+            not mounted at all, so it never renders in or resizes a partner embed and
+            never polls /api/trending from one. */}
+        {!isInjectedWidget() && (
+          <TrendingFloat>
+            <OphisTrending />
+          </TrendingFloat>
+        )}
       </SwapStage>
     </HydrateAtom>
   )
