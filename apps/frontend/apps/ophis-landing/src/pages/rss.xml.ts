@@ -22,8 +22,8 @@ export const GET: APIRoute = async () => {
     .map(
       (p) => `    <item>
       <title>${esc(p.data.title)}</title>
-      <link>${SITE}/blog/${p.id}</link>
-      <guid isPermaLink="true">${SITE}/blog/${p.id}</guid>
+      <link>${SITE}/blog/${p.id}/</link>
+      <guid isPermaLink="true">${SITE}/blog/${p.id}/</guid>
       <description>${esc(p.data.description)}</description>
       <pubDate>${p.data.pubDate.toUTCString()}</pubDate>
     </item>`,
@@ -41,7 +41,7 @@ export const GET: APIRoute = async () => {
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Ophis Blog</title>
-    <link>${SITE}/blog</link>
+    <link>${SITE}/blog/</link>
     <atom:link href="${SITE}/rss.xml" rel="self" type="application/rss+xml" />
     <description>Intent-based, MEV-protected swaps for the agent era. AI agents, rebates, and multi-chain DeFi.</description>
     <language>en</language>
