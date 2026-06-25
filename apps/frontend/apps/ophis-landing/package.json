@@ -7,7 +7,7 @@
     "prebuild": "node scripts/tokens-to-css.mjs",
     "new:post": "node scripts/new-post.mjs",
     "dev": "pnpm prebuild && astro dev",
-    "build": "pnpm prebuild && astro build",
+    "build": "pnpm prebuild && node scripts/check-blog-alt.mjs && astro build",
     "postbuild": "node scripts/check-csp-hashes.mjs",
     "preview": "astro preview",
     "typecheck": "astro check",
