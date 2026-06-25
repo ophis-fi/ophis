@@ -17,7 +17,7 @@
 import { decodeFunctionData, type PublicClient } from 'viem';
 import { TRADE_EVENT, SETTLE_FN, GPV2_SETTLEMENT } from './settleAbi.js';
 import { getRpcClient } from '../rpc/client.js';
-import { orderbookBase } from './client.js';
+import { orderbookBase, getOrder } from './client.js';
 import { resolveAppData } from './appDataResolver.js';
 import { attributeOrder, DECODER_ETHFLOW_OWNERS, type PendingTrade } from '../fetcher.js';
 import { logger } from '../logger.js';
@@ -60,17 +60,27 @@ const CONFIRMATIONS = BigInt(process.env.SETTLE_CONFIRMATIONS ?? 8);
 const DEFAULT_WINDOW = BigInt(process.env.SETTLE_SCAN_WINDOW ?? 2000);
 
 /**
- * MONEY-PATH SAFETY GATE (ToB review B1/F2). The decoder derives a trade's rebate
- * `volume_fee_bps` from appData the trader fully controls (content-addressed: the
- * re-hash guard proves the doc matches the on-chain hash, but the trader chose
- * both). Until the settlement's ACTUAL ERC-20 fee transfer to the Ophis Safe is
- * verified ON-CHAIN, a self-built "ophis"-tagged Base order could claim an Ophis fee
- * it never paid and farm rebates / dilute the trader pool — and the decoder removes
- * the API fetcher's owner-allowlist containment, widening that surface to every
- * settlement. So the decoder is HARD-disabled here, regardless of
- * SETTLE_DECODER_CHAINS, until that on-chain fee verification lands AND is
- * Codex-reviewed (the money-path rule needs Codex + Trail of Bits; Codex is the
- * second pass). Flip to true ONLY in the PR that adds + reviews fee verification.
+ * MONEY-PATH SAFETY GATE (ToB B1/F2 + Codex 2026-06-25 money-path pass). The decoder
+ * derives a trade's rebate `volume_fee_bps` from appData the trader fully controls
+ * (content-addressed: the re-hash guard proves the doc matches the on-chain hash, but
+ * the trader chose both), and it removes the API fetcher's owner-allowlist containment
+ * — so a self-built "ophis"-tagged order could try to claim a fee it never paid.
+ *
+ * WHAT THIS GATE NOW RELIES ON (be honest — this is NOT a per-trade on-chain
+ * fee-delta verification): CoW's Settlement contract ENFORCES the appData
+ * `partnerFee` on-chain at settlement (empirically proven 2026-06-21: a live Gnosis
+ * eth-flow trade retained exactly the 1 bp volume fee to the Ophis Safe), and CoW
+ * auto-pays the recipient Safe. So an enforced flat-VOLUME fee cannot be forged.
+ * The Codex 2026-06-25 pass closed the remaining gaps the volume-fee proof does NOT
+ * cover: surplus/PriceImprovement decoder rows now credit 0 (not retail; they can't
+ * be on-chain-verified by this volume indexer), partial fills use CoW's order total
+ * (no undercount), and transient RPC failures abort the window (no silent skip).
+ *
+ * Still NOT done (why the flag stays false): a per-trade read of the actual ERC-20
+ * fee delta the Settlement retained, as defence-in-depth against any path the
+ * flat-volume enforcement argument does not cover. Flip to true ONLY in the PR that
+ * either lands that per-trade fee-delta read OR records an explicit decision to rely
+ * on CoW's on-chain fee-enforcement guarantee — with a fresh Codex money-path review.
  * See ~/ophis-bd/roadmap/DECODER-BUILD-SPEC.md and the ToB report.
  * Exported so a tripwire test fails if it is flipped without the matching review.
  */
@@ -117,15 +127,40 @@ async function writeCursor(chainId: number, block: bigint, sql: SqlTag): Promise
   `;
 }
 
+/** The order's CoW-recorded executed totals (across ALL fills, surplus-inclusive). */
+export interface OrderTotals {
+  executedSell: bigint;
+  executedBuy: bigint;
+}
+
+/**
+ * Default order-total reader: CoW's executed amounts for an order UID. Used to
+ * count a partially-fillable order's FULL settled volume (not just the one fill the
+ * current Trade event carries), matching the API fetcher's order-total semantics so
+ * the two sources stay idempotent on the shared `orderUid` PK. Returns null if CoW
+ * has no executed amounts yet (caller keeps the per-fill event amount as a floor).
+ */
+async function defaultGetOrderTotals(chainId: number, uid: `0x${string}`): Promise<OrderTotals | null> {
+  const order = await getOrder(chainId, uid);
+  const sell = order.executedSellAmount;
+  const buy = order.executedBuyAmount;
+  if (sell == null || buy == null) return null;
+  return { executedSell: BigInt(sell), executedBuy: BigInt(buy) };
+}
+
 /**
  * Decode every Trade event in one block window into attributed PendingTrade rows.
- * Throws on a transient appData-resolver error so the caller does NOT advance the
- * cursor over a window it could not fully resolve (re-scanned next run, idempotent).
+ * THROWS on any TRANSIENT RPC failure (settlement-tx fetch, app-data resolve, order
+ * fetch, block fetch) so the caller does NOT advance the cursor over a window it
+ * could not fully resolve (re-scanned next run, idempotent). Only a genuinely
+ * undecodable settle() (a wrapper/router tx) is skipped, never an RPC error.
+ * `getOrderTotals` is injectable for tests; it defaults to a CoW getOrder read.
  */
 export async function decodeWindow(
   chainId: number,
   client: PublicClient,
   logs: TradeLog[],
+  getOrderTotals: (chainId: number, uid: `0x${string}`) => Promise<OrderTotals | null> = defaultGetOrderTotals,
 ): Promise<PendingTrade[]> {
   const rows: PendingTrade[] = [];
   const byTx = new Map<`0x${string}`, TradeLog[]>();
@@ -137,18 +172,27 @@ export async function decodeWindow(
   const blockTs = new Map<bigint, Date>();
 
   for (const [txHash, txLogs] of byTx) {
+    // Fetch the settlement tx SEPARATELY from decoding it: a TRANSIENT RPC failure
+    // here must ABORT the window (cursor not advanced -> re-scanned), NOT be swallowed
+    // as a permanent skip the way an undecodable-settle() legitimately is.
+    let tx: Awaited<ReturnType<PublicClient['getTransaction']>>;
+    try {
+      tx = await client.getTransaction({ hash: txHash });
+    } catch (err) {
+      log.warn({ chainId, txHash }, 'settle-decoder: getTransaction failed; aborting window (cursor not advanced)');
+      throw err;
+    }
     let tokens: readonly `0x${string}`[];
     let trades: readonly CalldataTrade[];
     try {
-      const tx = await client.getTransaction({ hash: txHash });
       const decoded = decodeFunctionData({ abi: [SETTLE_FN], data: tx.input });
       if (decoded.functionName !== 'settle') continue;
       const args = decoded.args as unknown as [readonly `0x${string}`[], readonly bigint[], readonly CalldataTrade[], unknown];
       tokens = args[0];
       trades = args[2];
     } catch {
-      // Not a direct settle() tx (e.g. settled via a wrapper/router) or fetch failed:
-      // skip the whole settlement. Safe (drops, never mis-attributes); coverage note.
+      // Not a direct settle() tx (e.g. settled via a wrapper/router): skip the whole
+      // settlement. Safe (drops, never mis-attributes); coverage note.
       log.debug({ chainId, txHash }, 'settle-decoder: tx not a decodable settle(); skipping');
       continue;
     }
@@ -206,7 +250,36 @@ export async function decodeWindow(
         },
         DECODER_ETHFLOW_OWNERS, // recognise the shared canonical eth-flow contract too
       );
-      if (trade) rows.push(trade);
+      if (!trade) continue;
+
+      // #1 (Codex money-path 2026-06-25): the decoder is allowlist-free over
+      // attacker-controlled appData. attributeOrder returns volumeFeeBps=null for a
+      // surplus/PriceImprovement Ophis fee (the API path defers that to the retail
+      // default via COALESCE, which is only safe behind the owner-allowlist). The
+      // decoder cannot verify the actual surplus/PI fee on-chain, so an attacker could
+      // tag a surplus fee to the Ophis Safe and engineer ~0 real surplus for full
+      // retail weighting. Credit 0 (no creditable Ophis fee) instead of null->retail.
+      if (trade.volumeFeeBps === null) trade.volumeFeeBps = 0;
+
+      // #2 (Codex money-path 2026-06-25): the Trade event carries ONE fill's amount,
+      // but a partially-fillable order settles across multiple events that all share
+      // this orderUid (the trade_uid PK) and the backfill-only upsert keeps only the
+      // first fill -> undercount. Use CoW's order TOTAL (across all fills) like the API
+      // fetcher, so the same orderUid carries the same total from either source
+      // (idempotent: no undercount, and no double-count vs the API path). A transient
+      // getOrder failure aborts the window; a null/zero total keeps the per-fill floor.
+      try {
+        const totals = await getOrderTotals(chainId, ev.orderUid);
+        if (totals && totals.executedSell > 0n) {
+          trade.sellAmount = totals.executedSell;
+          trade.buyAmount = totals.executedBuy;
+        }
+      } catch (err) {
+        log.warn({ chainId, uid: ev.orderUid }, 'settle-decoder: getOrder failed; aborting window (cursor not advanced)');
+        throw err;
+      }
+
+      rows.push(trade);
     }
   }
   return rows;

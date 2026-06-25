@@ -8,6 +8,7 @@ import {
   isRangeError,
   runSettleDecoder,
   FEE_VERIFICATION_IMPLEMENTED,
+  type OrderTotals,
 } from '../src/cow/onchain.js';
 import { attributeOrder, DECODER_ETHFLOW_OWNERS } from '../src/fetcher.js';
 import { OPHIS_SAFE_ADDRESS } from '../src/safe/addresses.js';
@@ -22,8 +23,18 @@ const OTHER = '0xcccc000000000000000000000000000000000003' as const;
 
 const ophisDoc = (extra: Record<string, unknown> = {}) =>
   JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: { volumeBps: 10, recipient: OPHIS }, ...extra } });
+// A VALID surplus/PriceImprovement Ophis fee — readVolumeFeeBps returns null for it
+// (the volume indexer can't price it); the DECODER must credit 0, not retail.
+const surplusDoc = () =>
+  JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: { surplusBps: 10, maxVolumeBps: 100, recipient: OPHIS } } });
 const nonOphisDoc = () => JSON.stringify({ appCode: 'someoneelse', metadata: {} });
 const hashOf = (doc: string) => keccak256(stringToHex(doc));
+
+// getOrderTotals mock: CoW order total per uid, or null to keep the per-fill floor.
+const totalsFn =
+  (byUid: Record<string, OrderTotals> = {}) =>
+  async (_chainId: number, uid: `0x${string}`): Promise<OrderTotals | null> =>
+    byUid[uid] ?? null;
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -226,12 +237,18 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
       mkLog({ owner: OTHER, sellToken: T1, buyToken: T0, sellAmount: 7_000n, buyAmount: 3_000n, orderUid: uid(3), logIndex: 2 }),
     ];
 
-    const rows = await decodeWindow(8453, mockClient(calldata), logs as never);
+    const rows = await decodeWindow(
+      8453,
+      mockClient(calldata),
+      logs as never,
+      totalsFn({ [uid(2)]: { executedSell: 50_000n, executedBuy: 90_000n } }),
+    );
     expect(rows).toHaveLength(2);
     const byUid = Object.fromEntries(rows.map((r) => [r.tradeUid, r]));
     expect(byUid[uid(1)]?.wallet).toBe(EOA);
+    expect(byUid[uid(1)]?.sellAmount).toBe(1_000n); // null order-total -> per-fill event floor
     expect(byUid[uid(2)]?.wallet).toBe(TRADER); // eth-flow attributed to receiver
-    expect(byUid[uid(2)]?.sellAmount).toBe(5_000n); // amounts from the Trade EVENT, not calldata
+    expect(byUid[uid(2)]?.sellAmount).toBe(50_000n); // order TOTAL (getOrder), not the single fill
     expect(byUid[uid(3)]).toBeUndefined(); // non-Ophis dropped
   });
 
@@ -246,9 +263,44 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
       mkLog({ owner: EOA, sellToken: T1, buyToken: T0, sellAmount: 1n, buyAmount: 2n, orderUid: uid(1), logIndex: 0 }), // mismatched
       mkLog({ owner: SHARED_ETHFLOW, sellToken: T0, buyToken: T1, sellAmount: 3n, buyAmount: 4n, orderUid: uid(2), logIndex: 1 }), // aligned
     ];
-    const rows = await decodeWindow(8453, mockClient(calldata), logs as never);
+    const rows = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
     expect(rows).toHaveLength(1);
     expect(rows[0]?.tradeUid).toBe(uid(2));
     expect(rows[0]?.wallet).toBe(TRADER);
+  });
+
+  it('credits a surplus/PI Ophis fee as 0, NOT retail (null->0 forgery guard, Codex #1)', async () => {
+    const doc = surplusDoc();
+    const h = hashOf(doc);
+    stubAppDataApi({ [h]: doc });
+    const calldata = encodeSettle([T0, T1], [mkTrade({ appData: h, receiver: EOA })]);
+    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 })];
+    const rows = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.volumeFeeBps).toBe(0); // NOT null (null would COALESCE to retail in accrual)
+  });
+
+  it('aborts the window (throws) on a transient getTransaction failure (Codex #3)', async () => {
+    stubAppDataApi({});
+    const badClient = {
+      getTransaction: vi.fn(async () => {
+        throw new Error('rpc 503');
+      }),
+      getBlock: vi.fn(async () => ({ timestamp: 1_700_000_000n })),
+    } as unknown as PublicClient;
+    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1n, buyAmount: 2n, orderUid: uid(1), logIndex: 0 })];
+    await expect(decodeWindow(8453, badClient, logs as never, totalsFn())).rejects.toThrow('rpc 503');
+  });
+
+  it('aborts the window (throws) on a transient getOrder failure (Codex #2/#3)', async () => {
+    const doc = ophisDoc();
+    const h = hashOf(doc);
+    stubAppDataApi({ [h]: doc });
+    const calldata = encodeSettle([T0, T1], [mkTrade({ appData: h, receiver: EOA })]);
+    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 })];
+    const failingTotals = async () => {
+      throw new Error('order 500');
+    };
+    await expect(decodeWindow(8453, mockClient(calldata), logs as never, failingTotals)).rejects.toThrow('order 500');
   });
 });
