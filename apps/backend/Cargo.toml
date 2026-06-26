@@ -94,7 +94,7 @@ observe = { path = "crates/observe" }
 opentelemetry = { version = "0.31", features = ["tracing"] }
 opentelemetry-http = { version = "0.31", default-features = false }  # disable internal-logging
 opentelemetry-otlp = "0.31"
-opentelemetry_sdk = "0.31"
+opentelemetry_sdk = "0.32"
 order-validation = { path = "crates/order-validation" }
 orderbook = { path = "crates/orderbook" }
 paste = "1.0"
