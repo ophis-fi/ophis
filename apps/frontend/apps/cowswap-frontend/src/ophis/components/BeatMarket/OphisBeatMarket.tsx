@@ -71,7 +71,7 @@ export function OphisBeatMarket(): ReactNode {
 
   return (
     <Wrapper>
-      <Headline>
+      <Headline title="Compared against a reference quote from a public market aggregator. For low-liquidity or volatile pairs the reference can be imprecise, so treat this as an estimate, not a guarantee.">
         {/* FiatAmount already prefixes "≈", so no extra "~" in the dollar branch;
             the percent-only fallback adds its own "~". */}
         You save{' '}
@@ -82,7 +82,7 @@ export function OphisBeatMarket(): ReactNode {
         ) : (
           <>~{percent}</>
         )}{' '}
-        vs. the best market route
+        vs. a market reference route
       </Headline>
       <Sub>
         Ophis <TokenAmount amount={ophisAmount} tokenSymbol={ophisAmount.currency} /> · market{' '}
