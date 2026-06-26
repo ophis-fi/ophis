@@ -1,8 +1,8 @@
 /**
  * In-app "Trending" panel for the swap page.
  *
- * Shows the trending tokens for the CURRENT chain (1h movers, from
- * useTrending → /api/trending → GeckoTerminal). Every row taps to PRE-FILL the
+ * Shows the trending tokens for the CURRENT chain (1h movers, from useTrending →
+ * GeckoTerminal directly in the browser; see geckoTerminal.ts). Every row taps to PRE-FILL the
  * swap with that token as the buy side — nothing links out of the app. Glassy,
  * dismissible, and hidden when there is nothing to show. Renders on every viewport
  * (side-float on wide, stacked below the widget on narrow); the swap page only
@@ -116,7 +116,7 @@ const Left = styled.span`
   flex: 1;
 `
 // The circle: a gradient + token initials always sit underneath; when the (host
-// allow-listed, see /api/trending) logo loads, the <img> covers them, and on error
+// allow-listed, see geckoTerminal.ts safeLogoUrl) logo loads, the <img> covers them, and on error
 // it hides itself to reveal the fallback. The logo is rendered as an <img src> (a
 // non-executable sink React escapes) — never interpolated into CSS — so an
 // attacker-chosen image_url can't break out into a style.
