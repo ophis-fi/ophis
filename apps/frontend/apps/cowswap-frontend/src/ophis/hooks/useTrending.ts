@@ -34,6 +34,11 @@ export function useTrending(chainId: number | undefined): TrendingState {
       return
     }
     let cancelled = false
+    // Chain changed (this effect re-ran) → drop the previous chain's tokens at once, so a
+    // stale row from the old chain can never be shown — or tapped, which would prefill the
+    // swap with a wrong-chain token address — while the new chain loads or if its fetch
+    // fails. The 45s poll below keeps the list across SAME-chain refreshes (no reset there).
+    setState({ status: 'loading', tokens: [] })
 
     const load = async (): Promise<void> => {
       abortRef.current?.abort()

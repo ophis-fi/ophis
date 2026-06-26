@@ -71,6 +71,11 @@ describe('parseTrending', () => {
     expect(parseTrending(42)).toEqual([])
     expect(parseTrending({})).toEqual([])
     expect(parseTrending({ data: [pool('missing')], included: [] })).toEqual([]) // pool refs a token not present
+    // non-array data/included, or null entries, must NOT throw (Codex review)
+    expect(parseTrending({ included: {}, data: [] })).toEqual([])
+    expect(parseTrending({ included: [null], data: [] })).toEqual([])
+    expect(parseTrending({ data: {} })).toEqual([])
+    expect(parseTrending({ data: [null], included: [] })).toEqual([])
   })
 
   it('coerces non-string symbol/name without throwing', () => {

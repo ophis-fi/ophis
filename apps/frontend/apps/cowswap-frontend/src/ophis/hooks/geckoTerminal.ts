@@ -70,20 +70,27 @@ export function parseTrending(raw: unknown): TrendingToken[] {
   // Total over any upstream shape: a non-object (null / primitive) yields [] rather
   // than throwing — parsing must fail soft, never crash, on a malformed response.
   const r = (raw && typeof raw === 'object' ? raw : {}) as {
-    data?: Array<{
-      attributes?: {
-        base_token_price_usd?: string
-        reserve_in_usd?: string
-        price_change_percentage?: { h1?: string }
-      }
-      relationships?: { base_token?: { data?: { id?: string } } }
-    }>
-    included?: Array<{ id?: string; attributes?: { address?: string; symbol?: string; name?: string; image_url?: string } }>
+    data?: Array<
+      | {
+          attributes?: {
+            base_token_price_usd?: string
+            reserve_in_usd?: string
+            price_change_percentage?: { h1?: string }
+          }
+          relationships?: { base_token?: { data?: { id?: string } } }
+        }
+      | null
+      | undefined
+    >
+    included?: Array<{ id?: string; attributes?: { address?: string; symbol?: string; name?: string; image_url?: string } } | null | undefined>
   }
   const tokensById = new Map<string, { address: string; symbol: string; name: string; logo: string | null }>()
-  for (const inc of r.included ?? []) {
-    const a = inc.attributes
-    if (inc.id && typeof a?.address === 'string' && ADDRESS_RE.test(a.address) && a.symbol) {
+  // Array.isArray + per-element optional chaining: a malformed body where `data` /
+  // `included` is a non-array, or contains null entries, yields [] rather than throwing
+  // (the parser's fail-soft contract — the hook also catches, but defence in depth).
+  for (const inc of Array.isArray(r.included) ? r.included : []) {
+    const a = inc?.attributes
+    if (inc?.id && typeof a?.address === 'string' && ADDRESS_RE.test(a.address) && a.symbol) {
       // Coerce to string defensively: a non-string symbol/name would otherwise throw
       // at .slice() below.
       const symbol = String(a.symbol)
@@ -93,13 +100,13 @@ export function parseTrending(raw: unknown): TrendingToken[] {
   }
   const out: TrendingToken[] = []
   const seen = new Set<string>()
-  for (const pool of r.data ?? []) {
-    const id = pool.relationships?.base_token?.data?.id
+  for (const pool of Array.isArray(r.data) ? r.data : []) {
+    const id = pool?.relationships?.base_token?.data?.id
     const tok = id ? tokensById.get(id) : undefined
     if (!tok || seen.has(tok.address)) continue
-    const price = Number(pool.attributes?.base_token_price_usd)
-    const liq = Number(pool.attributes?.reserve_in_usd)
-    const chg = Number(pool.attributes?.price_change_percentage?.h1)
+    const price = Number(pool?.attributes?.base_token_price_usd)
+    const liq = Number(pool?.attributes?.reserve_in_usd)
+    const chg = Number(pool?.attributes?.price_change_percentage?.h1)
     if (!Number.isFinite(price) || price <= 0) continue
     if (!Number.isFinite(liq) || liq < MIN_LIQUIDITY_USD) continue
     seen.add(tok.address)
