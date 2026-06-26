@@ -79,7 +79,7 @@ export function SwapPage(): ReactNode {
         <SwapWidget topContent={DcaCta} />
         {/* Full app only. In an injected widget (partner iframe embeds) the panel is
             not mounted at all, so it never renders in or resizes a partner embed and
-            never polls /api/trending from one. */}
+            never fetches GeckoTerminal from one. */}
         {!isInjectedWidget() && (
           <TrendingFloat>
             <OphisTrending />
