@@ -1,7 +1,6 @@
 import { GECKO_NETWORK, parseTrending, safeLogoUrl } from './geckoTerminal'
 
 const TOK_A = `0x${'a'.repeat(40)}`
-const TOK_B = `0x${'b'.repeat(40)}`
 
 const inc = (id: string, address: string, extra: Record<string, unknown> = {}) => ({
   id,
