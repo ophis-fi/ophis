@@ -117,15 +117,18 @@ const OpenSwapButton = styled(Link)`
   font-family: 'Geist', var(--cow-font-family-primary, system-ui);
   font-weight: 600;
   font-size: 14px;
-  background: rgba(245, 239, 230, 0.08);
-  border: 1px solid rgba(245, 239, 230, 0.22);
-  color: #f5efe6;
+  /* Saffron accent, shared with the hero "Swap directly" CTA: both mark the
+     direct, no-AI route into the swap, distinct from the gradient "Continue"
+     (natural-language intent) button. */
+  background: rgba(242, 166, 62, 0.14);
+  border: 1px solid rgba(242, 166, 62, 0.55);
+  color: #ffd9a8;
   text-decoration: none;
   backdrop-filter: blur(8px);
-  transition: background 140ms ease-out, border-color 140ms ease-out;
+  transition: background 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
   &:hover {
-    background: rgba(242, 166, 62, 0.18);
-    border-color: rgba(242, 166, 62, 0.55);
+    background: rgba(242, 166, 62, 0.24);
+    border-color: rgba(242, 166, 62, 0.85);
     color: #ffffff;
   }
 `
@@ -282,9 +285,67 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   }
 `
 
-// `Logo`, `HeaderRight`, and `SkipLink` ("Skip to manual swap") removed in
-// PR #234 task #4 CTA dedup — the 3-CTA pile-up was replaced with a single
-// primary "Continue →" and secondary "Open Trade →" header button.
+// Row holding the two parallel actions: the gradient "Continue" (parse the typed
+// intent with AI) and the saffron "Swap directly" (skip the AI, open the manual
+// swap). Side by side so it reads as a real choice; stacks on phones.
+const CtaRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  @media (max-width: 600px) {
+    flex-direction: column;
+    width: 100%;
+    gap: 12px;
+  }
+`
+
+// "Swap directly" — the saffron-accented sibling to Continue, sharing the saffron
+// treatment with the header "Open Trade" (same `/swap` destination) so visitors see
+// the natural-language input is optional, not required.
+const SwapDirectlyButton = styled(Link)`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 16px 30px;
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  background: rgba(242, 166, 62, 0.14);
+  border: 1px solid rgba(242, 166, 62, 0.55);
+  color: #ffd9a8;
+  backdrop-filter: blur(8px);
+  transition: background 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 80ms ease-out;
+  &:hover {
+    background: rgba(242, 166, 62, 0.24);
+    border-color: rgba(242, 166, 62, 0.85);
+    color: #ffffff;
+  }
+  &:active {
+    transform: translateY(1px);
+  }
+  &:focus-visible {
+    outline: 2px solid #f2a63e;
+    outline-offset: 3px;
+  }
+  @media (max-width: 600px) {
+    width: 100%;
+    max-width: 320px;
+    padding: 18px 28px;
+    font-size: 16px;
+  }
+`
+
+// The hero offers two parallel actions (CtaRow below): the gradient "Continue"
+// (AI intent parse) and the saffron "Swap directly" (skip the AI → manual swap),
+// which shares the saffron treatment with the header "Open Trade". Supersedes the
+// PR #234 single-CTA dedup, which had hidden the manual route too well — visitors
+// did not realise they were not forced to use the natural-language input.
 
 function isReadyToSubmit(parsed: ParsedIntent | null): boolean {
   if (!parsed || parsed.intent !== 'swap') return false
@@ -397,9 +458,14 @@ export function IntentLanding(): ReactNode {
 
         <IntentCarousel onPick={(t) => setText(t)} />
 
-        <ContinueButton type="button" onClick={handleSubmit} disabled={!ready} $active={ready} data-ophis-cta>
-          Continue →
-        </ContinueButton>
+        <CtaRow>
+          <ContinueButton type="button" onClick={handleSubmit} disabled={!ready} $active={ready} data-ophis-cta>
+            Continue →
+          </ContinueButton>
+          <SwapDirectlyButton to="/1/swap/_/_" data-ophis-cta>
+            Swap directly →
+          </SwapDirectlyButton>
+        </CtaRow>
       </Hero>
 
       <OphisFooter compact borderless />
