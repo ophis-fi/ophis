@@ -21,6 +21,8 @@ import { QuoteApiError } from 'api/cowProtocol/errors/QuoteError'
 import { NetworkCostsSuffix } from 'common/pure/NetworkCostsSuffix'
 import { RateInfoParams } from 'common/pure/RateInfo'
 
+import { OphisBeatMarket } from 'ophis/components'
+
 import { NetworkCostsTooltipSuffix } from '../../pure/NetworkCostsTooltipSuffix'
 import { RowDeadline } from '../RowDeadline'
 import { RowQuoteId } from '../RowQuoteId'
@@ -116,6 +118,9 @@ export function TradeRateDetails({
       >
         {accordionContent || defaultExpandedContent}
       </TradeTotalCostsDetails>
+
+      {/* Ophis: pre-trade "beat the market" savings vs an all-DEX aggregator (sell orders, positive only). */}
+      <OphisBeatMarket />
 
       {/* Show slippage outside accordion when prominent and accordion is closed (to avoid duplication) */}
       {shouldShowSlippageProminent && !isFeeDetailsOpen && (

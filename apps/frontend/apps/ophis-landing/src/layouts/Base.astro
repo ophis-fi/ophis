@@ -6,11 +6,17 @@ export interface Props {
   title?: string
   description?: string
   canonical?: string
+  /** og:type — 'website' for the landing, 'article' for blog posts. */
+  ogType?: string
+  /** Absolute URL of the social-share image (sized 1280x640 to match the meta dims). */
+  image?: string
 }
 const {
   title = 'Ophis: DEX aggregator for the agent era',
   description = 'Intent-based, MEV-protected, batch-settled swaps. Describe a trade in natural language; settle in one batch. Built for autonomous agents.',
   canonical = 'https://ophis.fi/',
+  ogType = 'website',
+  image = 'https://ophis.fi/og-image.png',
 } = Astro.props
 ---
 <!DOCTYPE html>
@@ -23,6 +29,7 @@ const {
   <meta name="description" content={description}>
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
   <link rel="canonical" href={canonical}>
+  <link rel="alternate" type="application/rss+xml" title="Ophis Blog" href="https://ophis.fi/rss.xml">
   <!-- Talent Protocol project domain verification (Base Builder Rewards funding). Static meta, not hashed by check-csp-hashes. -->
   <meta name="talentapp:project_verification" content="f58eca55904e18426387c05d555de0efa042eeb2a28f9f8d681f8949624dc64e81bbe409315f4aae7513418625c45bab40c4d051d9440288d856d8987c6c8651">
   <link rel="icon" type="image/svg+xml" href="/ophis-claw-saffron.svg">
@@ -31,11 +38,11 @@ const {
   <link rel="icon" href="/favicon.ico" sizes="any">
 
   <!-- Open Graph -->
-  <meta property="og:type" content="website">
+  <meta property="og:type" content={ogType}>
   <meta property="og:title" content={title}>
   <meta property="og:description" content={description}>
   <meta property="og:url" content={canonical}>
-  <meta property="og:image" content="https://ophis.fi/og-image.png">
+  <meta property="og:image" content={image}>
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
   <meta property="og:site_name" content="Ophis">
@@ -47,7 +54,7 @@ const {
   <meta name="twitter:site" content="@ophisfi">
   <meta name="twitter:title" content={title}>
   <meta name="twitter:description" content={description}>
-  <meta name="twitter:image" content="https://ophis.fi/og-image.png">
+  <meta name="twitter:image" content={image}>
 
   <link rel="preload" href="/fonts/geist-sans-variable.woff2" as="font" type="font/woff2" crossorigin>
 
@@ -67,10 +74,14 @@ const {
        src/components/SDKSection.astro. Same CSP-hash note as the @graph block above. -->
   <script type="application/ld+json" is:inline>{"@context":"https://schema.org","@type":"HowTo","@id":"https://ophis.fi/#howto-sdk","name":"Integrate the Ophis SDK","description":"Build, sign, and submit a bounded Ophis order from an autonomous agent using the @ophis/sdk agent-safety helpers.","totalTime":"PT30M","tool":[{"@type":"HowToTool","name":"@ophis/sdk"}],"step":[{"@type":"HowToStep","name":"Install the SDK","text":"Add the package with npm i @ophis/sdk. It is a dependency-free ESM helper library for building bounded Ophis orders.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Resolve the per-chain settlement domain","text":"Call getOphisOrderbookUrl(chainId) for the correct orderbook host and getOphisOrderDomain(chainId) for the EIP-712 signing domain with the right per-chain verifying contract. On Ophis-operated chains the settlement address is non-canonical, so cow-sdk's defaults are wrong.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Build a bounded order with the receiver pinned to the owner","text":"Construct the order with a hard limit price so it can never settle below the signed quote, and pin the receiver to the owner. Use assertReceiverIsOwner(owner, order.receiver): an unpinned receiver is the top drain vector for an automated signer.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Sign the EIP-712 order locally","text":"Sign the order against the resolved domain with the agent's own key. Keys never leave the signer; the agent signs a bounded capability, not an arbitrary transaction.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Submit the pre-signed order","text":"Relay the signed order to the resolved Ophis orderbook host, or hand it to the MCP submit_order tool at mcp.ophis.fi. The order settles MEV-protected through CoW Protocol batch auctions.","url":"https://ophis.fi/#sdk"}]}</script>
 
-  <!-- Returning-trader fast path. Runs synchronously before paint. Literal URL only. -->
+  <!-- Returning-trader fast path. Runs synchronously before paint. Literal URL only.
+       Path-gated to the landing root: a returning trader hitting "/" is bounced to
+       the app, but content routes (e.g. /blog/*) must NOT auto-redirect or the
+       reader never sees the page. Editing this body changes its sha256, so re-run
+       `node scripts/check-csp-hashes.mjs --print` and update public/_headers. -->
   <script is:inline>
     try {
-      if (localStorage.getItem('ophis_wallet_connected') === 'true') {
+      if (location.pathname === '/' && localStorage.getItem('ophis_wallet_connected') === 'true') {
         window.location.replace('https://swap.ophis.fi/');
       }
     } catch (e) { /* localStorage blocked: ignore */ }
@@ -182,6 +193,12 @@ const {
     }
   </script>
 
+  <!-- Per-page head extras (e.g. a blog post's article meta + BlogPosting
+       JSON-LD). Empty on the landing, so dist/index.html (and the inline-script
+       hashes the postbuild CSP check verifies) stay unchanged. JSON-LD passed
+       here is a non-executable data block, not subject to script-src. -->
+  <slot name="head" />
+
   <!-- Critical CSS slot -- Astro inlines /src/styles/global.css here.
        `is:global` is REQUIRED: without it, Astro scopes the @import via
        data-astro-cid-* attributes that match only Base.astro elements,
@@ -195,6 +212,7 @@ const {
   <script is:inline src="/webmcp.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <div class="bg-orbs" aria-hidden="true"></div>
   <Particles />
   <Sparks />
@@ -205,5 +223,31 @@ const {
     // micro-interactions). Additive + reduced-motion-gated; see gsap-anim.ts.
     import '../lib/gsap-anim.ts'
   </script>
+  <style>
+    /* Skip-link: hidden until keyboard-focused, then slides in. Lets keyboard +
+       screen-reader users jump past the nav straight to <main id="main">. */
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 9999;
+      transform: translateY(-150%);
+      padding: 10px 16px;
+      border-radius: var(--ophis-radius-sm);
+      background: var(--ophis-saffron-60);
+      color: var(--ophis-bg);
+      font: 600 14px/1 'Geist', system-ui, sans-serif;
+      text-decoration: none;
+      transition: transform 120ms ease;
+    }
+    .skip-link:focus {
+      transform: translateY(0);
+      outline: 2px solid var(--ophis-fg);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .skip-link { transition: none; }
+    }
+  </style>
 </body>
 </html>

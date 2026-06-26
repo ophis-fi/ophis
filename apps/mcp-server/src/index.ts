@@ -2,12 +2,17 @@
  * Ophis MCP server (Cloudflare Worker, Streamable HTTP at /mcp).
  *
  * Agent-facing tools for the Ophis DEX:
- *   parse_intent  — natural language -> structured swap intent (LibertAI Qwen)
- *   get_quote     — best-execution quote from the chain's Ophis orderbook
- *   build_order   — a bounded, ready-to-sign EIP-712 CoW order (receiver pinned)
- *   submit_order  — relay a PRE-SIGNED order to the orderbook (no keys held here)
- *   lookup_tier   — a wallet's fee-rebate tier/status
- *   list_chains   — supported chains + orderbook host + settlement contract
+ *   parse_intent     — natural language -> structured swap intent (LibertAI Qwen)
+ *   get_quote        — best-execution quote from the chain's Ophis orderbook
+ *   build_order      — a bounded, ready-to-sign EIP-712 CoW order (receiver pinned)
+ *   submit_order     — relay a PRE-SIGNED order to the orderbook (no keys held here)
+ *   lookup_tier      — a wallet's fee-rebate tier/status
+ *   list_chains      — supported chains + orderbook host + settlement contract
+ *   get_balances     — native + ERC-20 balances on one chain (public RPC multicall)
+ *   get_portfolio    — native + ERC-20 balances across many chains
+ *   get_gas          — current gas price for a chain (EIP-1559 + legacy)
+ *   get_token_chart  — token OHLCV history (keyless GeckoTerminal)
+ *   expected_surplus — Ophis vs all-DEX-aggregator beat-the-market bps
  *
  * The server holds NO private keys and never signs. build_order returns a
  * payload the calling agent signs with its own key. Public + unauthenticated:
@@ -49,9 +54,21 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
 
 const INFO = {
   name: 'Ophis MCP',
-  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers.',
+  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
   transport: { type: 'streamable-http', endpoint: '/mcp' },
-  tools: ['parse_intent', 'get_quote', 'build_order', 'submit_order', 'lookup_tier', 'list_chains'],
+  tools: [
+    'parse_intent',
+    'get_quote',
+    'build_order',
+    'submit_order',
+    'lookup_tier',
+    'list_chains',
+    'get_balances',
+    'get_portfolio',
+    'get_gas',
+    'get_token_chart',
+    'expected_surplus',
+  ],
   docs: 'https://docs.ophis.fi/',
   source: 'https://github.com/ophis-fi/ophis',
   security:

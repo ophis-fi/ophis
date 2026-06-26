@@ -12,6 +12,13 @@ import {
   ORDER_TYPED_DATA_TYPES,
   extractQuoteAmounts,
   assertLimitWithinSlippage,
+  getBalances,
+  getGas,
+  getPortfolio,
+  getTokenChart,
+  expectedSurplus,
+  resolveToken,
+  type Address,
 } from '../src/ophis.js'
 
 const OWNER = '0x931e9f531cdd4835Def0dEDE1452BA8aFbe5ff9b' as const
@@ -291,5 +298,329 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
     expect(() => assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50, 10)).not.toThrow()
     // The fee allowance does NOT rescue the "min out = 1" attack (still way past the band).
     expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair, 50, 10)).toThrow()
+  })
+})
+
+// --- agent data tools (balances / portfolio / gas / chart / surplus) --------
+
+/** Build a JSON Response for a mocked fetch. */
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+describe('getBalances / getGas / getPortfolio guards (no network)', () => {
+  it('rejects an invalid chainId', async () => {
+    await expect(getBalances({ chainId: 0, owner: OWNER })).rejects.toThrow(/invalid chainId/)
+  })
+
+  it('rejects more than 50 tokens', async () => {
+    const tokens = Array(51).fill(USDC_OP)
+    await expect(getBalances({ chainId: 10, owner: OWNER, tokens })).rejects.toThrow(/at most 50 tokens/)
+  })
+
+  it('rejects a chain with no public RPC (and no override)', async () => {
+    // 9745 (Plasma) has no built-in keyless RPC.
+    await expect(getBalances({ chainId: 9745, owner: OWNER })).rejects.toThrow(/no public RPC/)
+    await expect(getGas({ chainId: 9745 })).rejects.toThrow(/no public RPC/)
+  })
+
+  it('portfolio caps the chain count and filters unsupported chains without a network call', async () => {
+    await expect(getPortfolio({ owner: OWNER, chainIds: Array(13).fill(10) })).rejects.toThrow(/at most 12 chains/)
+    // An unsupported chain is filtered out -> no chains -> no RPC call.
+    const res = await getPortfolio({ owner: OWNER, chainIds: [9745] })
+    expect(res.chains).toEqual([])
+    expect(res.owner).toBe(OWNER)
+  })
+})
+
+describe('getTokenChart', () => {
+  it('throws on a chain GeckoTerminal does not map', async () => {
+    await expect(getTokenChart({ chainId: 9745, token: USDC_OP as Address })).rejects.toThrow(/no network mapping/)
+  })
+
+  it('resolves the deepest pool then returns parsed candles', async () => {
+    // A real-looking EVM pool address: the R1 guard rejects anything not isAddress.
+    const POOL = '0xc1738d90e2e26c35784a0d3e3d8a9f795074bca4'
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/ohlcv/')) {
+        return jsonResponse({ data: { attributes: { ohlcv_list: [[1_700_000_000, 1, 2, 0.5, 1.5, 1000]] } } })
+      }
+      if (String(url).includes('/pools')) {
+        return jsonResponse({ data: [{ attributes: { address: POOL } }] })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    const res = await getTokenChart({ chainId: 10, token: USDC_OP as Address, timeframe: 'day', limit: 1 }, fetchMock)
+    expect(res.network).toBe('optimism')
+    expect(res.pool).toBe(POOL)
+    expect(res.candles).toHaveLength(1)
+    expect(res.candles[0]).toEqual({ t: 1_700_000_000, o: 1, h: 2, l: 0.5, c: 1.5, v: 1000 })
+  })
+
+  it('rejects a non-EVM / malformed pool address from the upstream (R1 guard)', async () => {
+    const fetchMock = (async (url: string) => {
+      // A non-EVM (Solana-style) pool id that is not isAddress — must not be
+      // interpolated into the OHLCV URL.
+      if (String(url).includes('/pools')) {
+        return jsonResponse({ data: [{ attributes: { address: 'So11111111111111111111111111111111111111112' } }] })
+      }
+      throw new Error('OHLCV fetch must NOT run for an invalid pool address')
+    }) as unknown as typeof fetch
+
+    const res = await getTokenChart({ chainId: 10, token: USDC_OP as Address }, fetchMock)
+    expect(res.pool).toBeNull()
+    expect(res.candles).toEqual([])
+  })
+
+  it('returns empty candles when the token has no pool', async () => {
+    const fetchMock = (async () => jsonResponse({ data: [] })) as unknown as typeof fetch
+    const res = await getTokenChart({ chainId: 10, token: USDC_OP as Address }, fetchMock)
+    expect(res.pool).toBeNull()
+    expect(res.candles).toEqual([])
+  })
+})
+
+describe('expectedSurplus', () => {
+  it('computes beatBps when Ophis returns more than the reference', async () => {
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/api/v1/quote')) {
+        return jsonResponse({ quote: { sellAmount: '1000000', buyAmount: '600', feeAmount: '0' } })
+      }
+      if (String(url).startsWith('https://aggregator-api.kyberswap.com/')) {
+        return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    const res = await expectedSurplus(
+      { chainId: 10, sellToken: USDC_OP as Address, buyToken: WETH_OP as Address, sellAmount: '1000000', from: OWNER },
+      fetchMock,
+    )
+    expect(res.ophisBuyAmount).toBe('600')
+    expect(res.reference).toEqual({ name: 'kyberswap', buyAmount: '597' })
+    // (600 - 597) / 597 * 10000 ≈ 50 bps
+    expect(res.beatBps).toBe(50)
+  })
+
+  it('reports no reference on a chain without a KyberSwap slug', async () => {
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/api/v1/quote')) {
+        return jsonResponse({ quote: { sellAmount: '1000000', buyAmount: '600', feeAmount: '0' } })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    // 100 (Gnosis) is a tradeable Ophis chain but has no KyberSwap reference slug.
+    const res = await expectedSurplus(
+      { chainId: 100, sellToken: USDC_OP as Address, buyToken: WETH_OP as Address, sellAmount: '1000000', from: OWNER },
+      fetchMock,
+    )
+    expect(res.reference).toBeNull()
+    expect(res.beatBps).toBeNull()
+    expect(res.note).toMatch(/No reference aggregator/)
+  })
+
+  it('returns a null Ophis amount (not a throw) when the route is unquotable', async () => {
+    const fetchMock = (async (url: string) => {
+      if (String(url).includes('/api/v1/quote')) return jsonResponse({ error: 'NoLiquidity' }, 400)
+      if (String(url).startsWith('https://aggregator-api.kyberswap.com/')) return jsonResponse({ data: { routeSummary: { amountOut: '597' } } })
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+
+    const res = await expectedSurplus(
+      { chainId: 10, sellToken: USDC_OP as Address, buyToken: WETH_OP as Address, sellAmount: '1000000', from: OWNER },
+      fetchMock,
+    )
+    expect(res.ophisBuyAmount).toBeNull()
+    expect(res.beatBps).toBeNull()
+  })
+})
+
+describe('resolveToken (fail-closed canonical symbol resolution)', () => {
+  const USDC_ETH = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+  const WETH_ETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+  const list = (tokens: unknown[]) => (async () => jsonResponse({ tokens })) as unknown as typeof fetch
+
+  it('resolves a canonical token (case-insensitive) with checksummed address + decimals', async () => {
+    const res = await resolveToken(
+      { chainId: 1, symbol: 'usdc' },
+      list([
+        { chainId: 1, address: USDC_ETH.toLowerCase(), symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+        { chainId: 1, address: WETH_ETH, symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+      ]),
+    )
+    expect(res.found).toBe(true)
+    expect(res.ambiguous).toBe(false)
+    expect(res.canonical?.address).toBe(USDC_ETH) // EIP-55 checksummed from a lowercase input
+    expect(res.canonical?.decimals).toBe(6)
+    expect(res.matches).toHaveLength(1)
+  })
+
+  it('flags ambiguity when several trusted tokens share the symbol (first wins as canonical)', async () => {
+    const res = await resolveToken(
+      { chainId: 1, symbol: 'USDC' },
+      list([
+        { chainId: 1, address: USDC_ETH, symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+        { chainId: 1, address: ATTACKER, symbol: 'USDC', decimals: 6, name: 'Bridged USDC' },
+      ]),
+    )
+    expect(res.ambiguous).toBe(true)
+    expect(res.matches).toHaveLength(2)
+    expect(res.canonical?.address).toBe(USDC_ETH)
+    expect(res.note).toMatch(/confirm/i)
+  })
+
+  it('fails closed when no trusted token matches (no guessing)', async () => {
+    const res = await resolveToken(
+      { chainId: 1, symbol: 'TOTALLYSCAM' },
+      list([{ chainId: 1, address: USDC_ETH, symbol: 'USDC', decimals: 6, name: 'USD Coin' }]),
+    )
+    expect(res.found).toBe(false)
+    expect(res.canonical).toBeNull()
+    expect(res.matches).toEqual([])
+    expect(res.note).toMatch(/confirm/i)
+  })
+
+  it('skips every poisoned list entry (bad address, wrong chain, native sentinel, insane decimals)', async () => {
+    const res = await resolveToken(
+      { chainId: 1, symbol: 'USDC' },
+      list([
+        { chainId: 1, address: 'not-an-address', symbol: 'USDC', decimals: 6, name: 'bad addr' },
+        { chainId: 137, address: WETH_ETH, symbol: 'USDC', decimals: 6, name: 'wrong chain' },
+        { chainId: 1, address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', symbol: 'USDC', decimals: 18, name: 'native sentinel' },
+        { chainId: 1, address: WETH_ETH, symbol: 'USDC', decimals: 999, name: 'insane decimals' },
+        { chainId: 1, address: USDC_ETH, symbol: 'USDC', decimals: 6, name: 'USD Coin' }, // the only valid one
+      ]),
+    )
+    expect(res.found).toBe(true)
+    expect(res.matches).toHaveLength(1)
+    expect(res.canonical?.address).toBe(USDC_ETH)
+  })
+
+  it('throws on an empty symbol', async () => {
+    await expect(resolveToken({ chainId: 1, symbol: '   ' }, list([]))).rejects.toThrow(/non-empty/)
+  })
+
+  it('fails closed (not throws) when the token list is unreachable', async () => {
+    const errMock = (async () => jsonResponse({}, 500)) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 1, symbol: 'USDC' }, errMock)
+    expect(res.found).toBe(false)
+  })
+
+  it('builds the upstream URL from a STATIC constant, never from the caller chainId (no SSRF)', async () => {
+    let calledUrl = ''
+    const spy = (async (url: string) => {
+      calledUrl = String(url)
+      return jsonResponse({ tokens: [] })
+    }) as unknown as typeof fetch
+    await resolveToken({ chainId: 8453, symbol: 'USDC' }, spy)
+    expect(calledUrl).toBe('https://files.cow.fi/tokens/CowSwap.json')
+  })
+
+  it('consults the Optimism list first then the CoW list (priority order, ambiguity across lists)', async () => {
+    const opMock = (async (url: string) => {
+      if (String(url).includes('optimism.tokenlist')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: WETH_OP, symbol: 'WETH', decimals: 18, name: 'WETH (OP list)' }] })
+      }
+      if (String(url).includes('CowSwap')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: USDC_OP, symbol: 'WETH', decimals: 18, name: 'WETH (cow list)' }] })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 10, symbol: 'WETH' }, opMock)
+    expect(res.canonical?.address).toBe(WETH_OP) // Optimism list is priority-1
+    expect(res.ambiguous).toBe(true)
+    expect(res.matches).toHaveLength(2)
+  })
+
+  it('chain 10: fails closed if the Optimism (priority-1) list is unavailable', async () => {
+    const mock = (async (url: string) => {
+      if (String(url).includes('optimism.tokenlist')) return jsonResponse({}, 503) // OP list down
+      if (String(url).includes('CowSwap')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: USDC_OP, symbol: 'WETH', decimals: 18, name: 'WETH (cow)' }] })
+      }
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 10, symbol: 'WETH' }, mock)
+    expect(res.found).toBe(false) // must NOT present the lower-priority CoW match as canonical
+    expect(res.canonical).toBeNull()
+    expect(res.note).toMatch(/unavailable/i)
+  })
+
+  it('chain 10: fails closed if the CoW list is unavailable (ambiguity it holds is unknown)', async () => {
+    const mock = (async (url: string) => {
+      if (String(url).includes('optimism.tokenlist')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: WETH_OP, symbol: 'WETH', decimals: 18, name: 'WETH (OP)' }] })
+      }
+      if (String(url).includes('CowSwap')) return jsonResponse({}, 500) // CoW down
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 10, symbol: 'WETH' }, mock)
+    expect(res.found).toBe(false) // must NOT claim a non-ambiguous canonical from a partial view
+  })
+
+  it('skips null / primitive list entries without crashing', async () => {
+    const res = await resolveToken(
+      { chainId: 1, symbol: 'USDC' },
+      list([null, 'a string', 42, { chainId: 1, address: USDC_ETH, symbol: 'USDC', decimals: 6, name: 'USD Coin' }]),
+    )
+    expect(res.found).toBe(true)
+    expect(res.matches).toHaveLength(1)
+    expect(res.canonical?.address).toBe(USDC_ETH)
+  })
+
+  it('excludes the OP-stack legacy OVM_ETH placeholder (chain 10 "ETH" is not tradeable)', async () => {
+    const OVM_ETH = '0xDeadDeAddeAddEAddeadDEaDDEAdDeaDDeAD0000'
+    const mock = (async (url: string) => {
+      if (String(url).includes('optimism.tokenlist')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: OVM_ETH, symbol: 'ETH', decimals: 18, name: 'Ether' }] })
+      }
+      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 10, symbol: 'ETH' }, mock)
+    expect(res.found).toBe(false) // OVM_ETH filtered; the agent resolves WETH for native ETH
+  })
+
+  it('treats a malformed list (no tokens array) as unavailable, not as empty', async () => {
+    const mock = (async () => jsonResponse({ notTokens: [] })) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 1, symbol: 'USDC' }, mock)
+    expect(res.found).toBe(false)
+    expect(res.note).toMatch(/unavailable/i)
+  })
+
+  it('rejects a mixed-case bad-checksum address (strict EIP-55, no silent re-checksum)', async () => {
+    // USDC_ETH with one nibble case wrongly flipped: a valid hex address but an
+    // invalid EIP-55 checksum. viem isAddress (strict) must reject it before getAddress.
+    const badChecksum = '0xA0B86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+    const res = await resolveToken(
+      { chainId: 1, symbol: 'USDC' },
+      list([{ chainId: 1, address: badChecksum, symbol: 'USDC', decimals: 6, name: 'wrong checksum' }]),
+    )
+    expect(res.found).toBe(false)
+  })
+
+  it('returns found:false for an unknown positive chain (graceful, fail-closed)', async () => {
+    const res = await resolveToken(
+      { chainId: 123456, symbol: 'USDC' },
+      list([{ chainId: 1, address: USDC_ETH, symbol: 'USDC', decimals: 6, name: 'USD Coin' }]),
+    )
+    expect(res.found).toBe(false)
+  })
+
+  it('fails closed on an oversized list even with a valid match before the cap (no truncated view)', async () => {
+    // 200_001 entries (> MAX_LIST_TOKENS): a single object reference filled many times.
+    // Even though every entry is a valid USDC match, an oversized source is incomplete,
+    // so the result must be found:false rather than a canonical from a truncated view.
+    const huge = new Array(200_001).fill({ chainId: 1, address: USDC_ETH, symbol: 'USDC', decimals: 6, name: 'USD Coin' })
+    const res = await resolveToken({ chainId: 1, symbol: 'USDC' }, list(huge))
+    expect(res.found).toBe(false)
+    expect(res.note).toMatch(/unavailable/i)
+  })
+
+  it('throws on an invalid chainId (zero or non-integer)', async () => {
+    await expect(resolveToken({ chainId: 0, symbol: 'USDC' }, list([]))).rejects.toThrow(/invalid chainId/)
+    await expect(resolveToken({ chainId: 1.5, symbol: 'USDC' }, list([]))).rejects.toThrow(/invalid chainId/)
   })
 })

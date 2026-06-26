@@ -276,7 +276,10 @@ if (
  * In case of problems with the service worker cache we can urgently reset the cache.
  * Just set resetCacheInCaseOfEmergency to true and release a new version
  */
-const emergencyConfigUrl = 'https://raw.githubusercontent.com/cowprotocol/cowswap/configuration/config/emergency.json'
+// Ophis: first-party, same-origin emergency config (was the upstream CoW
+// raw.githubusercontent.com file — a third party that could trigger a per-visitor
+// SW/cache wipe). Served by this CF Pages deploy from public/emergency.json.
+const emergencyConfigUrl = '/emergency.json'
 
 async function deleteAllCaches() {
   return caches.keys().then((cacheNames) => {

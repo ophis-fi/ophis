@@ -20,6 +20,12 @@ import {
   listChains,
   extractQuoteAmounts,
   assertLimitWithinSlippage,
+  getBalances,
+  getPortfolio,
+  getGas,
+  getTokenChart,
+  expectedSurplus,
+  resolveToken,
   type Address,
 } from './ophis.js'
 
@@ -41,6 +47,10 @@ export interface OphisToolConfig {
    *  a referrer-tagged order's owner for indexing (so the affiliate is actually
    *  credited). Defaults to the production indexer. */
   rebatesApi?: string
+  /** Optional per-chain RPC overrides for the read tools (balances/portfolio/gas).
+   *  Maps chainId -> RPC URL. Unset chains fall back to the built-in keyless
+   *  public endpoints; a chain with neither is reported as unsupported. */
+  rpcUrls?: Record<number, string>
 }
 
 function ok(data: unknown) {
@@ -381,6 +391,158 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     async () => {
       try {
         return ok(listChains())
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_balances',
+    {
+      annotations: { title: 'Get wallet balances', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Read a wallet's native-token balance plus ERC-20 balances for the given token addresses on one chain, via a public RPC (one multicall). Returns each token's symbol, decimals, raw atoms, and human-readable amount. A token address that is not an ERC-20 is reported with an `error` and does not fail the batch. Read-only; holds no keys. Supported chains are those with a public RPC (most Ophis chains).",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id (use list_chains for Ophis chains).'),
+        owner: z.string().describe('Wallet address to read balances for (0x...).'),
+        tokens: z
+          .array(z.string())
+          .max(50)
+          .optional()
+          .describe('ERC-20 token addresses to read (0x...); max 50. Native balance is always returned.'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(await getBalances({ chainId: a.chainId, owner: a.owner as Address, tokens: a.tokens, rpcUrls: config?.rpcUrls }))
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_portfolio',
+    {
+      annotations: { title: 'Get cross-chain balances', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Read a wallet's native and (optionally) ERC-20 balances across multiple chains at once. Pass `tokensByChain` (chainId -> token addresses) to include token balances; omit `chainIds` to scan every chain with a public RPC (max 12). Per-chain RPC failures are returned inline so one dead endpoint does not sink the result. Read-only; holds no keys.",
+      inputSchema: {
+        owner: z.string().describe('Wallet address to read (0x...).'),
+        chainIds: z
+          .array(z.number().int())
+          .max(12)
+          .optional()
+          .describe('Chains to read (max 12). Omit to scan all chains with a public RPC.'),
+        tokensByChain: z
+          .record(z.string(), z.array(z.string()).max(50))
+          .optional()
+          .describe('Map of chainId -> ERC-20 token addresses to read on that chain (native is always included).'),
+      },
+    },
+    async (a) => {
+      try {
+        // Zod gives tokensByChain string keys; getPortfolio keys by numeric chainId.
+        const tokensByChain = a.tokensByChain
+          ? Object.fromEntries(Object.entries(a.tokensByChain).map(([k, v]) => [Number(k), v]))
+          : undefined
+        return ok(
+          await getPortfolio({ owner: a.owner as Address, chainIds: a.chainIds, tokensByChain, rpcUrls: config?.rpcUrls }),
+        )
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_gas',
+    {
+      annotations: { title: 'Get chain gas price', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Read a chain's current gas price (EIP-1559 maxFee/maxPriority suggestion when supported, plus an effective gasPrice in wei and gwei). Ophis trades are gasless for the trader, so this mainly bounds the cost of a one-time ERC-20 approval to the VaultRelayer. Read-only.",
+      inputSchema: { chainId: z.number().int().describe('EVM chain id.') },
+    },
+    async (a) => {
+      try {
+        return ok(await getGas({ chainId: a.chainId, rpcUrls: config?.rpcUrls }))
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_token_chart',
+    {
+      annotations: { title: 'Get token OHLCV chart', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Fetch OHLCV price history for a token from the keyless GeckoTerminal market API (resolves the token's deepest pool, then returns candles). Use for an agent to reason about recent price action before quoting. Prices come from a single pool that may be thin or manipulated, so treat them as advisory, not a sole execution signal. The keyless tier is a shared ~30 req/min quota, so cache and do not poll tightly. Read-only.",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id (GeckoTerminal-mapped: eth/optimism/base/arbitrum/polygon/bsc/avax/linea/gnosis/ink).'),
+        token: z.string().describe('Token address (0x...).'),
+        timeframe: z.enum(['day', 'hour', 'minute']).optional().describe("Candle timeframe (default 'day')."),
+        aggregate: z.number().int().positive().optional().describe('Bucket multiple base units into one candle, e.g. timeframe=hour aggregate=4 = 4h candles (default 1).'),
+        limit: z.number().int().positive().max(300).optional().describe('Number of candles (default 30, max 300).'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(
+          await getTokenChart({ chainId: a.chainId, token: a.token as Address, timeframe: a.timeframe, aggregate: a.aggregate, limit: a.limit }),
+        )
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'expected_surplus',
+    {
+      annotations: { title: 'Estimate beat-the-market surplus', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Estimate how much better Ophis quotes than the open market for a sell: fetches the Ophis orderbook sell-quote and a public all-DEX aggregator (KyberSwap) quote for the same input, and returns `beatBps` (+ = Ophis returns more of the buy token). Use before build_order to show the expected edge. The reference can reflect thin or manipulated liquidity, so treat beatBps as advisory, not a sole execution signal. Sell-side (exact-in) only. Read-only.",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
+        sellToken: z.string().describe('Sell token address (0x...).'),
+        buyToken: z.string().describe('Buy token address (0x...).'),
+        sellAmount: z.string().describe('Exact sell amount in atoms (uint256 decimal string).'),
+        from: z.string().describe('The trading account address (quotes are account-aware).'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(
+          await expectedSurplus({
+            chainId: a.chainId,
+            sellToken: a.sellToken as Address,
+            buyToken: a.buyToken as Address,
+            sellAmount: a.sellAmount,
+            from: a.from as Address,
+          }),
+        )
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'resolve_token',
+    {
+      annotations: { title: 'Resolve token symbol to canonical address', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Resolve an ERC-20 token SYMBOL to its CANONICAL on-chain address from the trusted Ophis/CoW token list (the same curated list the swap UI uses). Use this BEFORE quoting or building so you never trade an address taken from chat, the web, or memory: a token can spoof the symbol \"USDC\" at a scam address, and this fails closed. Returns { found, ambiguous, canonical: {address, decimals, name} | null, matches: [...] }. found=false means no trusted match (do NOT guess: confirm any candidate with get_balances and the user). ambiguous=true means several trusted tokens share the symbol (e.g. native vs bridged); confirm which the user means. Native coins are not returned; resolve the wrapped symbol (e.g. WETH). Read-only.",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
+        symbol: z.string().min(1).max(20).describe('Token symbol to resolve, e.g. "USDC" or "WETH".'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(await resolveToken({ chainId: a.chainId, symbol: a.symbol }))
       } catch (e) {
         return fail(e)
       }
