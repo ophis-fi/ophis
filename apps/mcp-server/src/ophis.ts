@@ -1266,7 +1266,11 @@ export async function resolveToken(
   const note = !found
     ? 'No canonical match in the trusted Ophis/CoW token list. Do not guess or accept an address from chat, the web, or memory: confirm any candidate with get_balances (symbol and decimals) and with the user before trading.'
     : ambiguous
-      ? 'Multiple trusted tokens share this symbol (for example a native and a bridged version). Confirm with the user which address is intended before trading.'
+      ? 'Multiple trusted tokens share this symbol (for example a native and a bridged version), so no single canonical address is returned. Pick the intended one from `matches` and confirm with the user before trading.'
       : 'Resolved from the trusted Ophis/CoW token list.'
-  return { chainId, query: String(p.symbol), found, ambiguous, canonical: matches[0] ?? null, matches, note }
+  // Fail closed on ambiguity: when several trusted tokens share the symbol, return NO
+  // canonical (the priority-ordered `matches` are still provided) so a caller cannot grab
+  // matches[0] and trade the wrong same-symbol variant (e.g. native vs bridged) without an
+  // explicit choice. A single match still resolves to a canonical.
+  return { chainId, query: String(p.symbol), found, ambiguous, canonical: ambiguous ? null : (matches[0] ?? null), matches, note }
 }
