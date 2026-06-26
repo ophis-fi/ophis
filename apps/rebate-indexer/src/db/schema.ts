@@ -61,6 +61,14 @@ export const trades = pgTable(
     // NULL -> a POSITIVE rate, so re-fetching history never reclassifies it to 0.
     volumeFeeBps: integer('volume_fee_bps'),
 
+    // True when volume_fee_bps is AUTHORITATIVE: an API row fetched under the
+    // owner-allowlist, or an on-chain-verified decoder row. False for a settle()
+    // decoder DISCOVERY row whose volume_fee_bps is a provisional 0 (catalog-only,
+    // credits nothing). Governs the fetcher backfill/skip logic ONLY (migration 0013);
+    // the money path keys on volume_fee_bps, never on this column. DEFAULT true so
+    // pre-0013 rows (all API-fetched) read as verified.
+    feeVerified: boolean('fee_verified').notNull().default(true),
+
     // Affiliate referral code from the order's appData (metadata.ophisReferrer.code),
     // normalized + grammar-validated by the fetcher. NULL when the order carried no
     // code. Accrual attributes such a trade to the code owner (migration 0009).

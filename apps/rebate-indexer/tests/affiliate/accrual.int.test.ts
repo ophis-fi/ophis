@@ -38,8 +38,8 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('reg1', decode(${referrer},'hex'), 'regular', true)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('par1', decode(${partner},'hex'), 'partner', true)`;
     // referrals bound a month ago
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred1},'hex'),'reg1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred2},'hex'),'par1',decode(${partner},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred1},'hex'),'reg1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred2},'hex'),'par1',decode(${partner},'hex'),true, now() - interval '90 days')`;
     // trades in the window
     const insTrade = (uid: string, wallet: string, chain: number, usd: string, ts: string) => sql`
       INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
@@ -77,7 +77,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO ref_codes (code, referrer_wallet, payout_wallet, kind, active)
       VALUES ('pay1', decode(${referrer},'hex'), decode(${payout},'hex'), 'partner', true)`;
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
-      VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
+      VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
     await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
@@ -106,9 +106,9 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('bind1', decode(${refB},'hex'), 'regular', true)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('dead1', decode(${refC},'hex'), 'regular', false)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('selfown', decode(${selfOwner},'hex'), 'regular', true)`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${bound},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${stale},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${selfOwner},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${bound},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '90 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${stale},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '90 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${selfOwner},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '90 days')`;
 
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
@@ -151,7 +151,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const referred = W('c5c5');
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
-      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
+      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
     // Same chain (100), three rates: 10 bps (retail), 5 bps (SDK), NULL (-> retail default).
@@ -225,7 +225,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const boundTrader = W('b0d7'); // bound to `binder`, but trades tagged with codeOwner's code
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('xcode', decode(${codeOwner},'hex'), 'regular', true)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('bcode', decode(${binder},'hex'), 'regular', true)`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundTrader},'hex'),'bcode',decode(${binder},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundTrader},'hex'),'bcode',decode(${binder},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
     const insFee = (uid: string, bps: number | null) => sql`
@@ -276,7 +276,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const pureW = W('9c0c'); // unbound; trades tagged with refS's code (appData only)
 
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('scode', decode(${refS},'hex'), 'regular', true)`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundW},'hex'),'scode',decode(${refS},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundW},'hex'),'scode',decode(${refS},'hex'),true, now() - interval '90 days')`;
     // Current-cycle trades (now()), so currentCycleWindow(new Date()) includes them.
     const insNow = (uid: string, wallet: string, usd: string, ref: string | null) => sql`
       INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
