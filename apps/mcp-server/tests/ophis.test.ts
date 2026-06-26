@@ -457,7 +457,7 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
     expect(res.matches).toHaveLength(1)
   })
 
-  it('flags ambiguity when several trusted tokens share the symbol (first wins as canonical)', async () => {
+  it('returns NO canonical (fail-closed) when several trusted tokens share the symbol', async () => {
     const res = await resolveToken(
       { chainId: 1, symbol: 'USDC' },
       list([
@@ -467,7 +467,8 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
     )
     expect(res.ambiguous).toBe(true)
     expect(res.matches).toHaveLength(2)
-    expect(res.canonical?.address).toBe(USDC_ETH)
+    expect(res.canonical).toBeNull() // ambiguous -> no single canonical; caller must choose from matches
+    expect(res.matches[0]?.address).toBe(USDC_ETH) // priority order is still preserved in matches
     expect(res.note).toMatch(/confirm/i)
   })
 
@@ -529,9 +530,10 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
     const res = await resolveToken({ chainId: 10, symbol: 'WETH' }, opMock)
-    expect(res.canonical?.address).toBe(WETH_OP) // Optimism list is priority-1
     expect(res.ambiguous).toBe(true)
+    expect(res.canonical).toBeNull() // ambiguous across lists -> fail-closed, no single canonical
     expect(res.matches).toHaveLength(2)
+    expect(res.matches[0]?.address).toBe(WETH_OP) // Optimism list is priority-1, still leads matches
   })
 
   it('chain 10: fails closed if the Optimism (priority-1) list is unavailable', async () => {
