@@ -48,21 +48,30 @@ has `deny_warnings`, so prefix with `FOUNDRY_DENY_WARNINGS=false`. The
 `--rpc-url`/`--account`.
 
 ```bash
+set -euo pipefail
 cd contracts
-RPC="$UNICHAIN_MAINNET_RPC"   # e.g. https://mainnet.unichain.org
+: "${UNICHAIN_MAINNET_RPC:?set UNICHAIN_MAINNET_RPC, e.g. https://mainnet.unichain.org}"
+RPC="$UNICHAIN_MAINNET_RPC"
 SAFE=0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF
 AUTH=0x1002E12f2e7f848b20fe572F92133E467a5D010C
+# FATAL chain gate: the migration batch (step 2) is hard-pinned to chain 130. A
+# wrong/unset RPC would deploy to the WRONG chain, pass every (chain-agnostic) 1b
+# read-back, then setManager on the real chain-130 Auth would point manager() at a
+# codeless address = permanent brick. Verify the chain FIRST.
+test "$(cast chain-id --rpc-url "$RPC")" = 130 || { echo "RPC is not chain 130 — ABORT" >&2; exit 1; }
 
-# 24h timelock, proposer = executor = the Safe.
+# 24h timelock, proposer = executor = the Safe. The Safe is inlined LITERALLY in the
+# array brackets (set -u also guards $VAR, but a literal removes the "[]" empty-set
+# brick risk entirely if the brackets are ever hand-edited).
 FOUNDRY_DENY_WARNINGS=false forge create --use 0.7.6 --evm-version istanbul \
   --rpc-url "$RPC" --account <deployer> \
   node_modules/@openzeppelin/contracts/access/TimelockController.sol:TimelockController \
-  --constructor-args 86400 "[$SAFE]" "[$SAFE]"        # -> TIMELOCK
+  --constructor-args 86400 "[0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF]" "[0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF]"   # -> TIMELOCK
 
 FOUNDRY_DENY_WARNINGS=false forge create --use 0.7.6 --evm-version istanbul \
   --rpc-url "$RPC" --account <deployer> \
   src/contracts/AllowListGuardian.sol:AllowListGuardian \
-  --constructor-args "$AUTH" <TIMELOCK> "$SAFE"       # -> GUARDIAN
+  --constructor-args 0x1002E12f2e7f848b20fe572F92133E467a5D010C <TIMELOCK> 0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF   # -> GUARDIAN
 
 # Renounce the deployer's admin role so ONLY the Safe (via the timelock) governs.
 cast send <TIMELOCK> "renounceRole(bytes32,address)" \
@@ -76,9 +85,19 @@ see the contract NatSpec). Prove BOTH that the timelock is live AND that the
 guardian is wired to the right contracts BEFORE the irreversible migration.
 Verify role membership by ENUMERATION (not `hasRole`) so an accidental extra or
 open (incl. `address(0)`) proposer/executor is caught — same rigor the OP runbook
-mandates for the rotate-Safe flow.
+mandates for the rotate-Safe flow. Run these AFTER step 1's deployer-admin
+renounce: pre-renounce, OZ grants `TIMELOCK_ADMIN_ROLE` to BOTH the deployer and
+the timelock (count 2), so `getRoleMember(ADMIN,0)` would be the deployer.
 
 ```bash
+# Chain + current custody re-check, on the SAME RPC the batch will use — do NOT
+# trust the multi-day-old snapshot. The Safe must STILL own both surfaces the
+# batch touches (the proxy's original owner in the deploy record was the gas
+# deployer 0xBeC5B03f..., later transferred to the Safe — re-confirm that holds).
+test "$(cast chain-id --rpc-url "$RPC")" = 130 || { echo "not chain 130 — ABORT" >&2; exit 1; }
+cast call "$AUTH" "owner()(address)" --rpc-url "$RPC"    # == $SAFE (0xe049...01cF) — Safe still controls the proxy admin
+cast call "$AUTH" "manager()(address)" --rpc-url "$RPC"  # == $SAFE — Safe still controls the manager role
+
 # Timelock: 24h delay + single-party (Safe-only) proposer + executor.
 cast call <TIMELOCK> "getMinDelay()(uint256)" --rpc-url "$RPC"   # >= 86400
 for ROLE_NAME in PROPOSER_ROLE EXECUTOR_ROLE; do
@@ -111,12 +130,46 @@ If any assertion fails, STOP — redeploy; do NOT migrate.
 
 ## 2. Migration — Safe TX batch (2-of-3, Safe Transaction Builder)
 
-Import `allowlist-migration-safe-batch.json` (this dir; fill `<TIMELOCK>` /
-`<GUARDIAN>` first), Tenderly-simulate, sign 2-of-3, execute. Order matters: set
-the manager while the Safe still controls it, THEN hand off the proxy admin.
+Fill `<GUARDIAN>` / `<TIMELOCK>` in `allowlist-migration-safe-batch.json` with the
+step-1-deployed, 1b-asserted addresses. Order matters: set the manager while the
+Safe still controls it, THEN hand off the proxy admin.
 
 1. `authenticator.setManager(GUARDIAN)` — to `0x1002E12f…`, arg = `<GUARDIAN>`
 2. `proxy.transferOwnership(TIMELOCK)` — to `0x1002E12f…`, arg = `<TIMELOCK>`
+
+**Pre-sign gate (HARD — run on the FILLED batch before signing).** Neither call
+zero-checks: `EIP173Proxy.transferOwnership` is a raw owner sstore (a zero/wrong
+owner makes `onlyOwner` permanently unsatisfiable = upgrade authority bricked) and
+`GPv2AllowListAuthentication.setManager` is a raw assignment (only the not-yet-
+installed Guardian zero-guards). Call 2 (`transferOwnership`) is the unguarded,
+IRREVERSIBLE leg. A placeholder/zero/valid-but-WRONG address bricks or backdoors
+governance permanently, so gate the exact bytes that will be signed:
+
+```bash
+B=allowlist-migration-safe-batch.json
+lc() { tr 'A-Z' 'a-z'; }
+# (a) no unfilled placeholder survived the edit.
+grep -q '<' "$B" && { echo "placeholders remain in $B — ABORT" >&2; exit 1; }
+# (b) the two address args EXACTLY equal the deployed GUARDIAN / TIMELOCK (a valid-
+#     but-wrong address bricks just as badly as a zero — assert exact equality).
+M=$(jq -r '.transactions[0].contractInputsValues.manager_' "$B" | lc)
+O=$(jq -r '.transactions[1].contractInputsValues.newOwner'  "$B" | lc)
+[ "$M" = "$(printf %s <GUARDIAN> | lc)" ] || { echo "tx0 manager_ != GUARDIAN — ABORT" >&2; exit 1; }
+[ "$O" = "$(printf %s <TIMELOCK> | lc)" ] || { echo "tx1 newOwner != TIMELOCK — ABORT" >&2; exit 1; }
+# (c) methods + targets are exactly what we intend.
+[ "$(jq -r '.transactions[0].contractMethod.name' "$B")" = setManager ]        || { echo "tx0 not setManager" >&2; exit 1; }
+[ "$(jq -r '.transactions[1].contractMethod.name' "$B")" = transferOwnership ] || { echo "tx1 not transferOwnership" >&2; exit 1; }
+for i in 0 1; do
+  [ "$(jq -r ".transactions[$i].to" "$B" | lc)" = 0x1002e12f2e7f848b20fe572f92133e467a5d010c ] || { echo "tx$i wrong target" >&2; exit 1; }
+done
+echo "batch pre-sign gate: PASS"
+```
+
+Then MANDATORY state-diff simulation (Tenderly, or `anvil --fork "$RPC"` + apply
+the batch): confirm post-sim `owner()==<TIMELOCK>` and `manager()==<GUARDIAN>`
+BEFORE the 2-of-3 signs. The batch is an atomic Safe multiSend, so a revert rolls
+back both calls — but a wrong-address that does NOT revert is the irreversible
+case the gate above exists to catch. Only then sign + execute.
 
 ## 3. Verify after execution (cast, Unichain RPC)
 
@@ -125,7 +178,16 @@ cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "manager()(address)" --rpc-
 cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "owner()(address)"   --rpc-url "$RPC"          # == TIMELOCK
 cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "pendingManager()(address)" --rpc-url "$RPC"   # == 0x0 (no dangling proposal)
 cast call <GUARDIAN> "guardian()(address)" --rpc-url "$RPC"                                         # == Safe
+cast call <GUARDIAN> "timelock()(address)" --rpc-url "$RPC"                                         # == <TIMELOCK> (self-consistent end-to-end)
+cast call <GUARDIAN> "authenticator()(address)" --rpc-url "$RPC"                                    # == 0x1002E12f...
 ```
+
+Then record the end-state so a future audit/stats run can't mis-flag the manager
+row: add `contracts/deployments/unichain-mainnet/NOTE-allowlist-upgrade.md`
+(mirror the OP one) noting Proxy `0x1002E12f...`, Impl `0x2Ddcc99c...`,
+`manager()==<GUARDIAN>`, `owner()==<TIMELOCK>`, the slow/fast-path model, and the
+regression warning: do NOT point `manager()` back at the bare Safe (it removes the
+24h delay).
 
 ## 4. Day-2 governance flows
 
