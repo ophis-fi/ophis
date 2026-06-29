@@ -1,6 +1,6 @@
 {
   "name": "@ophis/mcp-server",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Ophis MCP server — agent-facing tools to parse swap intents, fetch quotes, and build bounded, ready-to-sign CoW orders on the Ophis DEX. Holds no keys; build-only.",

@@ -23,19 +23,26 @@ every backing endpoint is already public, and the tools are read/build-only.
 | Tool | Purpose |
 |------|---------|
 | `parse_intent` | Plain-English swap request → structured intent (LibertAI Qwen via `swap.ophis.fi/api/intent`). |
+| `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis/CoW list; fails closed (anti-spoof). |
+| `list_chains` | Supported chains, orderbook hosts, settlement contracts, partner-fee config. |
 | `get_quote` | Best-execution quote from the chain's Ophis orderbook (`/api/v1/quote`). |
+| `expected_surplus` | Estimate price improvement versus a public aggregator (KyberSwap), in basis points. |
 | `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
 | `lookup_tier` | A wallet's fee-rebate tier + live status (`rebates.ophis.fi/tier/:wallet`). |
-| `list_chains` | Supported chains, orderbook hosts, settlement contracts, partner-fee config. |
+| `get_balances` | Native + ERC-20 balances for an address on one chain. |
+| `get_portfolio` | Native + ERC-20 balances across multiple chains. |
+| `get_gas` | Current gas price for a chain (informational; trades are gasless for the trader). |
+| `get_token_chart` | OHLCV price history for a token. |
 
 ## Typical agent flow
 
 ```
-parse_intent("swap 100 USDC for ETH on Optimism")
+parse_intent("swap 100 USDC for WETH on Optimism")
+  → resolve_token({ chainId, symbol }) for BOTH the sell and buy symbols   // canonical addresses, fails closed (anti-spoof); for a native-coin request like ETH, resolve the wrapped symbol (WETH)
   → get_quote({ chainId, sellToken, buyToken, kind:'sell', amount, from })
   → build_order({ chainId, owner, sellToken, buyToken, sellAmount, buyAmount /* slippage-adjusted */, kind })
-  → (agent signs `order` as EIP-712 with `signing`)
+  → (agent confirms with the user, then signs `order` as EIP-712 using `signing`)
   → submit_order({ chainId, order, signature, from, fullAppData })
 ```
 
