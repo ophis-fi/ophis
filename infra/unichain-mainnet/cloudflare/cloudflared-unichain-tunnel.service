@@ -1,0 +1,23 @@
+# Ophis Unichain orderbook — named Cloudflare Tunnel (unichain-mainnet.ophis.fi).
+# Install: cp to /etc/systemd/system/, then `systemctl enable --now cloudflared-unichain-tunnel`.
+# The connector token lives in a root-only EnvironmentFile so it is NOT visible
+# in `ps` or in this unit. See ophis-unichain-tunnel.md for provisioning.
+[Unit]
+Description=Ophis Unichain orderbook named Cloudflare Tunnel (unichain-mainnet.ophis.fi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# TUNNEL_TOKEN=... (root:0600). Written by step 4 of the runbook.
+EnvironmentFile=/etc/ophis/unichain-tunnel.env
+# --protocol http2: QUIC/UDP-7844 is blocked outbound on this VM (same as the
+# quick-tunnel service). Remote-managed config (config_src=cloudflare) means the
+# ingress lives in Cloudflare, so `run` needs no local config.yml.
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --protocol http2 run
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/opt/greg/cf-named-tunnel.log
+StandardError=append:/opt/greg/cf-named-tunnel.log
+
+[Install]
+WantedBy=multi-user.target
