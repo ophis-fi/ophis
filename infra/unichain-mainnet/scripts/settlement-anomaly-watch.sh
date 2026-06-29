@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Settlement anomaly watcher (#444) — Ophis Optimism mainnet.
+# Settlement anomaly watcher (#444) — Ophis Unichain mainnet (chain 130).
 #
 # READ-ONLY on-chain detection. Scans new blocks for GPv2Settlement activity and
 # alerts (Telegram) on the bounded backend worst case: quiet surplus/MEV skimming
@@ -18,8 +18,8 @@ umask 077
 [[ "${-}" == *x* ]] && { echo "REFUSING to run under set -x (secret hygiene)" >&2; exit 2; }
 
 RPC="${OPHIS_RPC:-http://localhost:4002/main/evm/130}"
-SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
-SUBMITTER="0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"   # the ONLY authorized solver/submitter EOA
+SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
+SUBMITTER="0x7A956C269a12f1B897367663b536EB5dd29f3fBb"   # the ONLY authorized solver/submitter EOA
 TRADE_TOPIC0="0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
 SETTLEMENT_TOPIC0="0x40338ce1a7c49204f0099533b1e9a7ee0a3d261f84974ab7af36105b8c4e9db4"
 # Tunables (env-overridable). Conservative defaults to avoid alert fatigue.
@@ -29,7 +29,7 @@ MAX_BLOCKS="${MAX_BLOCKS:-5000}"                             # per-run catch-up 
 TIP_LAG_BLOCKS="${TIP_LAG_BLOCKS:-8}"                         # stay behind head: fresh blocks fail eRPC consensus while indexers catch up
 FIRST_RUN_LOOKBACK="${FIRST_RUN_LOOKBACK:-50}"
 STATE_DIR="${STATE_DIR:-$HOME/.local/state/ophis/settlement-watch}"
-CURSOR="$STATE_DIR/op-cursor"
+CURSOR="$STATE_DIR/uni-cursor"
 LOGFILE="${LOGFILE:-$HOME/Library/Logs/ophis-settlement-anomaly-watch.log}"
 TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/unichain-mainnet/observability-rendered/telegram-token}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
@@ -47,7 +47,7 @@ alert() {  # alert <SEVERITY> <message>
   local token; token="$(< "$TELEGRAM_BOT_TOKEN_FILE")"
   curl -sm 10 -X POST "https://api.telegram.org/bot${token}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" \
-    --data-urlencode "text=[$1] Ophis OP settlement-watch: $2" >/dev/null 2>&1 \
+    --data-urlencode "text=[$1] Ophis Unichain settlement-watch: $2" >/dev/null 2>&1 \
     || log "WARN: telegram send failed"
 }
 die() { log "ERROR: $1"; exit "${2:-4}"; }   # exit WITHOUT advancing the cursor -> the window is re-scanned next run

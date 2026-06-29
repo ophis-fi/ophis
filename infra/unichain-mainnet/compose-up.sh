@@ -135,7 +135,10 @@ echo ""
 # its image gets rebuilt on every `--build` so a fresh container always
 # spawns. Listed here for completeness in case `--build` ever gets
 # stripped from the invocation.
-CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver kyberswap-solver)
+# okx-solver is STAGED (commented out in docker-compose.yml) — listing it here
+# would make `docker compose stop/up okx-solver` error ("no such service") and,
+# under `set -e`, abort the redeploy before configs apply (Codex #718 P1).
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot kyberswap-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
@@ -158,7 +161,8 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # Trailing `|| true` removed: if a service fails to stop/start, we
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
-  DOWNSTREAM=(driver orderbook autopilot okx-solver kyberswap-solver)
+  # okx-solver omitted: STAGED/commented in docker-compose.yml (see note above).
+  DOWNSTREAM=(driver orderbook autopilot kyberswap-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.

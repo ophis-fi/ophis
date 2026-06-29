@@ -116,11 +116,16 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-# Tier 1 PK isolation: refuse to render if .env still has the PK line.
+# Tier 1 PK isolation: refuse to render if .env sets a NON-EMPTY PK value.
 # (Env-var precedence from `source .env` would mask the ophis-driver file.)
-if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=" .env; then
-  echo "ERROR: .env still contains OPHIS_DRIVER_SUBMITTER_KEY — delete that line." >&2
-  echo "       Tier 1 moved the PK source to /Users/ophis-driver/.config/submitter.key." >&2
+# An empty `OPHIS_DRIVER_SUBMITTER_KEY=` line — as shipped in .env.example with
+# "LEAVE EMPTY here" — is harmless: `source` sets it to "" and the sudo-cat
+# below overwrites it from the key file. Matching only a populated value keeps
+# the sample .env copy-paste-renderable (Codex #718 P2).
+if grep -qE "^[[:space:]]*OPHIS_DRIVER_SUBMITTER_KEY=[^[:space:]]" .env; then
+  echo "ERROR: .env sets a non-empty OPHIS_DRIVER_SUBMITTER_KEY — remove the value." >&2
+  echo "       Tier 1 moved the PK source to /Users/ophis-driver/.config/submitter.key;" >&2
+  echo "       an inline value here would override it. Leave the line empty or delete it." >&2
   exit 4
 fi
 
@@ -585,9 +590,14 @@ if [[ -d observability ]]; then
     ln -sf "$TOKEN_RAM_FILE" "observability-rendered/telegram-token"
     echo "  rendered  observability/telegram-token  → RAM-disk (chmod 600)"
   else
+    # Clear any prior render so compose-up.sh — which enables the observability
+    # profile solely on observability-rendered/alertmanager.yml existing — does
+    # NOT start Alertmanager with a stale config + dangling token symlink after
+    # the token is removed or the RAM-disk is lost on reboot (Codex #718 P2).
+    rm -f observability-rendered/alertmanager.yml observability-rendered/telegram-token
     echo "  skip      observability/* — TELEGRAM_BOT_TOKEN not set in .env"
-    echo "            (prometheus + alertmanager containers will fail to start;"
-    echo "             that's intentional fail-closed behavior)"
+    echo "            (cleared any stale renders; prometheus + alertmanager stay"
+    echo "             down — intentional fail-closed behavior)"
   fi
 fi
 

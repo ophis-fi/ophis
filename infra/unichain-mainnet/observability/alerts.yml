@@ -428,17 +428,17 @@ groups:
       - alert: OphisUniBlockTimeDrift
         expr: |
           (
-            rate(last_block_number{job="autopilot"}[5m]) < 0.4
+            rate(last_block_number{job="autopilot"}[5m]) < 0.7
             or
-            rate(last_block_number{job="autopilot"}[5m]) > 0.7
+            rate(last_block_number{job="autopilot"}[5m]) > 1.3
           )
         for: 15m
         labels:
           severity: warning
           chain: base
         annotations:
-          summary: "OP effective block time drifted >25% from assumed 1s"
-          description: "OP block production rate is outside the 0.4-0.7 blocks/sec band (OP ~2s post-Bedrock) for 15min. submission-deadline=60 in autopilot.toml is now mistuned (either too long → stale quote / MEV window, or too short → mass settle timeouts). Recompute 60 × actual-block-time and update config."
+          summary: "Unichain effective block time drifted >30% from ~1s"
+          description: "Unichain block production rate is outside the 0.7-1.3 blocks/sec band (Unichain ~1s) for 15min. The autopilot solve/submission deadlines assume ~1s blocks; sustained drift means quotes go stale (rate too low) or settle deadlines clip (rate too high). Inspect the self-node + eRPC upstream sync, then re-tune the autopilot timing config for the observed block time."
 
       # Audit MEDIUM-5 paired alert: gas-price-cap was tightened 1000 → 5 gwei (PR #131).
       # Alert if OP basefee approaches the cap. Metric source: roadmap 1.6 /
@@ -446,14 +446,14 @@ groups:
       # observed block (Prom name: autopilot_maintenance_eth_basefee_wei).
       # Threshold: 1.5 gwei = 30 % of the 5 gwei cap set in #131. OP steady-state basefee is ~0.01 gwei so this fires only on genuine surges (e.g. an OP outage backlog clearing).
       - alert: OphisUniUnichainfeeApproachingCap
-        # `chain="optimism"` selector is defense-in-depth against future
-        # federated Prom (or someone copy-pasting this rule into the OP/
-        # MegaETH alerts.yml). The chain label is set via prometheus.yml's
-        # `external_labels: chain: base` so each chain's Prom only
-        # emits its own series — but pinning here means the rule wouldn't
-        # misfire on cross-chain series if the tenancy ever changes.
+        # No chain="..." selector: prometheus.yml external_labels are applied at
+        # alert-send / federation time, NOT during local rule evaluation, so the
+        # scraped autopilot_maintenance_eth_basefee_wei series carries no `chain`
+        # label and any chain="..." selector would match nothing — the alert would
+        # silently never fire (Codex #718 P2). This Prom is single-tenant (chain
+        # 130 only), so the bare metric selector is the correct, firing form.
         expr: |
-          autopilot_maintenance_eth_basefee_wei{chain="optimism"} > 1500000000
+          autopilot_maintenance_eth_basefee_wei > 1500000000
         for: 5m
         labels:
           severity: warning
@@ -480,7 +480,7 @@ groups:
       # must investigate. Non-zero rate is anomalous regardless of context.
       - alert: OphisUniGasPriceCapExceeded
         expr: |
-          increase(driver_gas_price_cap_exceeded{chain="optimism"}[5m]) > 0
+          increase(driver_gas_price_cap_exceeded[5m]) > 0
         for: 0m
         labels:
           severity: critical
@@ -508,7 +508,7 @@ groups:
       # TODO once metric producer lands: re-evaluate threshold.
       - alert: OphisUniEthFlowTransferFailed
         expr: |
-          increase(ethflow_eth_transfer_failed_total{chain="optimism"}[10m]) > 0
+          increase(ethflow_eth_transfer_failed_total[10m]) > 0
         for: 0m
         labels:
           severity: critical
