@@ -6,10 +6,13 @@ Guardian wrapper; the audited live AllowList impl is left untouched) and the
 **same** `contracts/src/contracts/AllowListGuardian.sol` (chain-agnostic — the
 authenticator/timelock/guardian are constructor args).
 
-**Status:** NOT YET DEPLOYED. Gated on (a) a gas-only deployer EOA funded on 130
-and (b) the 2-of-3 Safe signing the migration batch. Mandatory pre-deploy
-dual-review (Codex gpt-5.5 + Trail of Bits) per the money-path rule — this is an
-irreversible-ish mainnet governance change.
+**Status:** EXECUTED + ENFORCED on Unichain mainnet 2026-06-29. The AllowList
+`manager()` is the Guardian `0x4821A534…462e64` and the proxy `owner()` is the 24h
+Timelock `0xFC2A6a54…1065Ed` (verified on-chain post-migration: manager==Guardian,
+owner==Timelock, pendingManager==0). The 2-of-3 Safe signed the migration batch.
+The steps below are retained as the deploy/migration record and for re-running on
+another chain. Reviewed pre-deploy by Codex gpt-5.5 + Trail of Bits + a 6-lens
+ultracode workflow + an anvil fork-sim of the exact batch (all GO/SIGN).
 
 ## What changes
 
