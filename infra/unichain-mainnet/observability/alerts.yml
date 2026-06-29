@@ -79,7 +79,7 @@ groups:
           chain: unichain
         annotations:
           summary: "VM 51.158.205.9 disk {{ $labels.device }} >80% full"
-          description: "A VM ext4 filesystem is over 80% used. The docker data disk (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). SSH to the VM (`ssh root@51.158.205.9`) and run `df -h`; find the hogs with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm)."
+          description: "A VM ext4 filesystem is over 80% used. The docker data disk (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). SSH to the VM (`ssh -p 24005 root@51.158.205.9`) and run `df -h`; find the hogs with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm)."
       - alert: OphisUniHostDiskCritical
         expr: |
           max by (device) (
@@ -94,7 +94,7 @@ groups:
           chain: unichain
         annotations:
           summary: "VM 51.158.205.9 disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
-          description: "A VM ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: SSH to the VM (`ssh root@51.158.205.9`) and truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). Runbook: infra/unichain-mainnet/README.md, 'disk full -> Postgres crash-loop'."
+          description: "A VM ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: SSH to the VM (`ssh -p 24005 root@51.158.205.9`) and truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). Runbook: infra/unichain-mainnet/README.md, 'disk full -> Postgres crash-loop'."
       - alert: OphisUniNodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 10m
@@ -383,7 +383,7 @@ groups:
 
             For ophis-self-uni (op-reth on the VM 51.158.205.9, reached over
             Tailscale as ophis-uni-node:8545): SSH check op-node + op-reth sync.
-              ssh root@51.158.205.9 \
+              ssh -p 24005 root@51.158.205.9 \
                 'curl -s -H content-type:application/json \
                   -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
                   http://localhost:8545'

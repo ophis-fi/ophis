@@ -597,11 +597,21 @@ if [[ -d observability ]]; then
       TOKEN_TMP="${TOKEN_OUT}.tmp.$$"
       printf '%s' "$TELEGRAM_BOT_TOKEN" > "$TOKEN_TMP"
       chmod 600 "$TOKEN_TMP"
-      chown 65534:65534 "$TOKEN_TMP" 2>/dev/null \
-        || echo "  WARN: chown telegram-token to nobody failed — run render-configs as root on the VM" >&2
-      rm -f "$TOKEN_OUT"
-      mv -f "$TOKEN_TMP" "$TOKEN_OUT"
-      echo "  rendered  observability/telegram-token  → on-disk, owner nobody, chmod 600 (Linux VM)"
+      # Alertmanager runs as uid 65534 (nobody) and must own/read the token. The
+      # deploy user has sudo (used above for the tmpfs mount + PK read), so chown
+      # via sudo and FAIL CLOSED if it can't: installing a token nobody can't read
+      # would start the observability profile broken. On failure, clear the renders
+      # so the profile stays DOWN (compose-up gates on alertmanager.yml existing).
+      if sudo chown 65534:65534 "$TOKEN_TMP" 2>/dev/null; then
+        rm -f "$TOKEN_OUT"
+        mv -f "$TOKEN_TMP" "$TOKEN_OUT"
+        echo "  rendered  observability/telegram-token  → on-disk, owner nobody, chmod 600 (Linux VM)"
+      else
+        rm -f "$TOKEN_TMP" observability-rendered/alertmanager.yml observability-rendered/telegram-token
+        echo "  ERROR: could not chown telegram-token to uid 65534 (nobody); cleared" >&2
+        echo "         observability renders (profile stays down). Re-run render-configs.sh" >&2
+        echo "         with sudo on the VM to enable Telegram alerting." >&2
+      fi
     else
       TOKEN_RAM_FILE="${RAM_PK_MOUNT}/telegram-token"
       TOKEN_TMP="${TOKEN_RAM_FILE}.tmp.$$"
