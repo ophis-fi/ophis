@@ -1,0 +1,90 @@
+# Ophis — Unichain mainnet (chain 130) driver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# Baseline ships EMPTY on Unichain: no on-chain AMM liquidity sources are
+# configured. All routing goes through the KyberSwap aggregator solver
+# (OKX staged). Unichain's liquid liquidity is Uniswap V4, which the
+# aggregators route and the baseline UniV2 reader cannot read.
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "30000000"
+
+# Skip eth_createAccessList preflight. Post-eRPC the bare-call path is
+# 2-of-3 consensus-protected; same rationale as OP stack.
+disable-access-list-simulation = true
+
+[contracts]
+gp-v2-settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+weth = "0x4200000000000000000000000000000000000006"  # OP Stack predeploy on Unichain
+balances = "0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A"
+signatures = "0x5f315A204E7971fC29a66fef3a5773f6B0202fac"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# OKX covers all Unichain DEXes (including Uniswap V4), BUT it needs OKX Developer Portal
+# credentials (OKX_* env): free 60-day trial, then paid. Default bring-up is
+# zero-key, so OKX is STAGED. To enable: set OKX_* in .env, uncomment this block
+# AND the okx-solver service + its driver depends_on in docker-compose.yml.
+# [[solver]]
+# name = "okx"
+# endpoint = "http://okx-solver"
+# absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+# relative-slippage = "0.1"
+# account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[[solver]]
+name = "kyberswap"
+endpoint = "http://kyberswap-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# TODO verify Unichain support: Velora Augustus V6.2 is confirmed available on
+# Unichain via api.paraswap.io (network 130 probing), but the CoW solver crate's
+# dex::velora::VELORA_ROUTER_ALLOWLIST must include Unichain's Augustus V6.2
+# address before this solver can be enabled. Uncomment after that patch lands.
+# [[solver]]
+# name = "velora"
+# endpoint = "http://velora-solver"
+# absolute-slippage = "40000000000000000"
+# relative-slippage = "0.1"
+# account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[submission]
+# Unichain mainnet typical L2 gas price is 0.001-0.05 gwei (same order as OP).
+# 5 gwei cap is ~100x above realistic Unichain traffic. Same value as OP stack.
+gas-price-cap = "5000000000"
+
+# Submission mempools for Unichain mainnet — raced in parallel via select_ok.
+# Two independent operators here: PublicNode + Unichain Labs (the public RPC and
+# the sequencer are both Unichain Labs). A 3rd distinct relay would tighten the
+# anti-correlation floor (the OP stack uses 3); tracked as a resilience follow-up.
+[[submission.mempool]]
+url = "https://unichain-rpc.publicnode.com"
+
+[[submission.mempool]]
+url = "https://mainnet.unichain.org"
+
+[[submission.mempool]]
+url = "https://mainnet-sequencer.unichain.org"
+
+[liquidity]
+base-tokens = [
+  "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy on Unichain)
+  "0x078d782b760474a361dda0af3839290b0ef57ad6",  # USDC (canonical on Unichain, Circle-issued)
+]
+
+# NOTE: no [[liquidity.*]] AMM sources on Unichain, by design. The baseline
+# UniV2 reader has nothing to route; KyberSwap (+ staged OKX) cover all DEX
+# liquidity including Uniswap V4 (Unichain's deepest pools). The earlier
+# UniV2 + Sushi router entries were removed: both router addresses have ZERO
+# code on chain 130 (verified via eth_getCode against the node), so they
+# found no pools. To add a native V2 source later, first confirm the router
+# has code on 130 AND a true 0.30% fee (the reader panics on any other fee).

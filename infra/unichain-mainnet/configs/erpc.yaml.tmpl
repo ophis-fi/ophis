@@ -1,0 +1,158 @@
+# eRPC multi-provider proxy for Unichain mainnet (chain 130).
+#
+# Unichain DIVERGES from the Base scaffold: the autopilot HARD-requires
+# debug_traceTransaction (settlement decode, blockchain/mod.rs:112-142) and no
+# free public Unichain RPC serves it. So this stack runs a self-hosted op-reth
+# node (WS13) as the debug/trace leg, mirroring the OP self-node shape — NOT
+# the public-only Base shape.
+#
+# Three upstreams across independent failure domains:
+#   ophis-self-uni    ophis-uni-node:8545    self-hosted op-reth over Tailscale.
+#                                             The ONLY leg that serves debug_*/
+#                                             trace_* + full receipts. Also votes
+#                                             in the read consensus.
+#   unichain-public   mainnet.unichain.org   Unichain's own public node (reads).
+#   publicnode-uni    unichain-rpc.publicnode.com  PublicNode (independent operator).
+#
+# The two public legs cannot serve debug_*/trace_*; eRPC's unsupported-method
+# failover routes those to ophis-self-uni (the OP self-node pattern, which the
+# fail-closed CI guard models — no per-upstream ignoreMethods). If the self-node
+# is down, trace calls fail-closed -> the autopilot pauses settlement (safe).
+#
+# agreementThreshold: 2 (2-of-3 quorum) for read methods. A single hostile
+# upstream cannot satisfy quorum because the other 2 (distinct operators/DNS)
+# dispute it. Asserted by assert-erpc-failclosed.py in CI.
+#
+# Unichain block time is ~1s (faster than Base/OP ~2s) -> more tip-drift on
+# `latest`-tagged reads. preferBlockHeadLeader + enforceHighestBlock +
+# enforceNonNullTaggedBlocks handle it without loosening consensus; the state
+# poller is tightened below to track the faster tip.
+#
+# Endpoint exposed: http://rpc-proxy:4000/main/evm/130
+# WS13 TODO: ophis-uni-node must resolve to the self-node's Tailscale name/IP.
+
+logLevel: warn  # info logs 1 line/RPC req+resp — disk-fill risk (2026-06-15 OP incident)
+
+projects:
+  - id: main
+
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 130
+          integrity:
+            enforceHighestBlock: true
+            enforceNonNullTaggedBlocks: true
+        failsafe:
+          # === Block A: Deterministic-state methods (LOW threshold) ===
+          # Security-critical reads that gate solver behavior and settlement
+          # validity. 2-of-3 across independent failure domains.
+          # preferBlockHeadLeader breaks tip-drift ties among upstreams that
+          # DID respond — not a bypass (per OP eRPC audit rationale, PR #476).
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: preferBlockHeadLeader
+              lowParticipantsBehavior: returnError
+              punishMisbehavior:
+                disputeThreshold: 60
+                disputeWindow: 10m
+                sitOutPenalty: 5m
+
+          # === Block B: Tip-lag-sensitive observation methods (HIGH threshold) ===
+          # ~1s blocks => more tip-drift than Base/OP; disputeThreshold is kept
+          # high here so transient near-tip disagreement doesn't cordon a leg.
+          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: preferBlockHeadLeader
+              lowParticipantsBehavior: returnError
+              punishMisbehavior:
+                disputeThreshold: 100
+                disputeWindow: 10m
+                sitOutPenalty: 5m
+
+          # === eth_getTransactionReceipt: consensus, no punishMisbehavior ===
+          # Settlement-authoritative, but provider indexing lag varies near
+          # the tip (esp. the self-node at ~1s blocks). No punishment so a
+          # transiently slow upstream is not cordoned; fail-closed per-request
+          # via returnError (driver retries). Self-node receipt-lag carve-out.
+          - matchMethod: "eth_getTransactionReceipt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+
+          # === Block C: Catch-all retry (no consensus) ===
+          # Carries debug_*/trace_* — only ophis-self-uni serves these; the
+          # public legs don't support them, so eRPC fails over to the self-node.
+          - matchMethod: "*"
+            timeout:
+              duration: 30s   # debug_traceTransaction is heavier than a plain read
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+    # Unichain ~1s blocks: poll the tip faster than Base/OP's 5s/1s.
+    upstreamDefaults:
+      evm:
+        statePollerInterval: 2s
+        statePollerDebounce: 500ms
+
+    upstreams:
+      - id: ophis-self-uni
+        # Self-hosted op-reth (WS13) over Tailscale. THE debug/trace leg + a
+        # read-consensus voter. ophis-uni-node = the WS13 VM's Tailscale name.
+        endpoint: http://ophis-uni-node:8545
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: unichain-public
+        # Unichain's own public node. Reads only — cannot serve debug_/trace_.
+        endpoint: https://mainnet.unichain.org
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: publicnode-uni
+        # PublicNode — independent operator/DNS from Unichain Labs. Reads only.
+        # WS13 TODO: verify unichain-rpc.publicnode.com serves chain 130; if not,
+        # substitute another independent free Unichain public RPC.
+        endpoint: https://unichain-rpc.publicnode.com
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms

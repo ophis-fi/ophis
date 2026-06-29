@@ -1,0 +1,14 @@
+# Ophis — Unichain mainnet (chain 130) baseline solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# weth is the OP Stack predeploy address — same on Unichain as on Optimism.
+weth = "0x4200000000000000000000000000000000000006"
+base-tokens = [
+  "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy on Unichain)
+  "0x078d782b760474a361dda0af3839290b0ef57ad6",  # USDC (canonical on Unichain, Circle-issued)
+]
+max-hops = 2
+max-partial-attempts = 5
+native-token-price-estimation-amount = "1000000000000000"  # 0.001 ETH
