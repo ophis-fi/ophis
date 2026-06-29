@@ -28,8 +28,17 @@ on-chain 2026-06-29: proxy `manager()` == `owner()` == that Safe. After this:
 |---|---|
 | AllowList proxy | `0x1002E12f2e7f848b20fe572F92133E467a5D010C` |
 | Protocol Safe (proposer/executor/guardian) | `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` |
-| TimelockController (24h; proposer=executor=Safe) | `<TIMELOCK — fill after deploy>` |
-| AllowListGuardian (manager; guardian=Safe) | `<GUARDIAN — fill after deploy>` |
+| TimelockController (24h; proposer=executor=Safe) | `0xFC2A6a54122E6D0a598CAe7453DD61263c1065Ed` |
+| AllowListGuardian (manager; guardian=Safe) | `0x4821A534FB11ea4bb2f88d48B13A498A80462e64` |
+
+**Deployed 2026-06-29** (gas-only deployer `0x40a8D159Bdf9DD76d074cA6C6d949E0575ef9e7f`, now renounced of all authority):
+TimelockController tx `0x7f0e556792db269787e1a36257df72ea8dc37f067ae6bc832678f83679703fbb`;
+AllowListGuardian tx `0xf72a8d705566e6a9a9dbb992ff7109bbdc130420820d28998b0264cb7ef2b7c9`;
+admin renounce tx `0x3302335ccb463cc0ff4a8ca8f751a8cc596d323bb580773e4118bc698f4ce396`.
+All 11 pre-migration assertions + the batch pre-sign gate PASS, and an anvil
+fork-sim of the exact batch proved the end-state + security properties (SIGN).
+The migration batch `allowlist-migration-safe-batch.FILLED-130.json` awaits the
+2-of-3 Safe signature.
 
 ## 0. Prereq — gas-only deployer
 
