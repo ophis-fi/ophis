@@ -53,7 +53,7 @@ describe('@ophis/sdk partner fee defaults', () => {
 
   it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + CoW-hosted incl. Sepolia)', () => {
     expect([...OPHIS_FEE_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
-      1, 10, 56, 100, 137, 999, 4326, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
+      1, 10, 56, 100, 130, 137, 999, 4326, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
     ]);
   });
 
