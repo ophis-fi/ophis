@@ -69,19 +69,45 @@ cast send <TIMELOCK> "renounceRole(bytes32,address)" \
   $(cast keccak "TIMELOCK_ADMIN_ROLE") <deployer> --rpc-url "$RPC" --account <deployer>
 ```
 
-## 1b. Timelock liveness assertions (MANDATORY before migration)
+## 1b. Liveness + wiring assertions (MANDATORY before migration)
 
 The guardian has NO escape hatch if the timelock is broken (fail-safe by design;
-see the contract NatSpec). Prove the timelock is live BEFORE handing it authority:
+see the contract NatSpec). Prove BOTH that the timelock is live AND that the
+guardian is wired to the right contracts BEFORE the irreversible migration.
+Verify role membership by ENUMERATION (not `hasRole`) so an accidental extra or
+open (incl. `address(0)`) proposer/executor is caught — same rigor the OP runbook
+mandates for the rotate-Safe flow.
 
 ```bash
-cast call <TIMELOCK> "getMinDelay()(uint256)" --rpc-url "$RPC"                                  # >= 86400
-cast call <TIMELOCK> "hasRole(bytes32,address)(bool)" $(cast keccak "PROPOSER_ROLE") "$SAFE" --rpc-url "$RPC"  # true
-cast call <TIMELOCK> "hasRole(bytes32,address)(bool)" $(cast keccak "EXECUTOR_ROLE") "$SAFE" --rpc-url "$RPC"  # true
-cast call <TIMELOCK> "hasRole(bytes32,address)(bool)" $(cast keccak "TIMELOCK_ADMIN_ROLE") <deployer> --rpc-url "$RPC"  # false
+# Timelock: 24h delay + single-party (Safe-only) proposer + executor.
+cast call <TIMELOCK> "getMinDelay()(uint256)" --rpc-url "$RPC"   # >= 86400
+for ROLE_NAME in PROPOSER_ROLE EXECUTOR_ROLE; do
+  ROLE=$(cast keccak "$ROLE_NAME")
+  cast call <TIMELOCK> "getRoleMemberCount(bytes32)(uint256)" $ROLE --rpc-url "$RPC"       # == 1
+  cast call <TIMELOCK> "getRoleMember(bytes32,uint256)(address)" $ROLE 0 --rpc-url "$RPC"  # == $SAFE
+done
+# Admin self-administers (deployer renounced): the SOLE admin is the Timelock itself.
+ADMIN=$(cast keccak "TIMELOCK_ADMIN_ROLE")
+cast call <TIMELOCK> "getRoleMemberCount(bytes32)(uint256)" $ADMIN --rpc-url "$RPC"         # == 1
+cast call <TIMELOCK> "getRoleMember(bytes32,uint256)(address)" $ADMIN 0 --rpc-url "$RPC"    # == <TIMELOCK>
+
+# Guardian: constructor wiring. A swapped/typo'd arg would hand the Auth manager()
+# role to a wrapper that cannot govern the real allowlist — and the migration is
+# irreversible, so verify the immutables BEFORE step 2.
+cast call <GUARDIAN> "authenticator()(address)" --rpc-url "$RPC"  # == $AUTH (0x1002E12f...)
+cast call <GUARDIAN> "timelock()(address)" --rpc-url "$RPC"       # == <TIMELOCK>
+cast call <GUARDIAN> "guardian()(address)" --rpc-url "$RPC"       # == $SAFE (0xe049...01cF)
+
+# Proxy: no dangling two-step manager proposal. The Auth has a two-step
+# proposeManager/acceptManagership flow alongside setManager; a non-zero
+# pendingManager could acceptManagership() INSTANTLY (no timelock). The batch's
+# setManager(GUARDIAN) atomically clears pendingManager
+# (GPv2AllowListAuthentication.setManager L119-122), but assert it is already 0
+# so a fat-fingered/hostile proposeManager can't be left racing the migration.
+cast call "$AUTH" "pendingManager()(address)" --rpc-url "$RPC"    # == 0x0000...0000
 ```
 
-If any assertion fails, STOP — redeploy the timelock; do NOT migrate.
+If any assertion fails, STOP — redeploy; do NOT migrate.
 
 ## 2. Migration — Safe TX batch (2-of-3, Safe Transaction Builder)
 
@@ -95,9 +121,10 @@ the manager while the Safe still controls it, THEN hand off the proxy admin.
 ## 3. Verify after execution (cast, Unichain RPC)
 
 ```bash
-cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "manager()(address)" --rpc-url "$RPC"   # == GUARDIAN
-cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "owner()(address)"   --rpc-url "$RPC"   # == TIMELOCK
-cast call <GUARDIAN> "guardian()(address)" --rpc-url "$RPC"                                  # == Safe
+cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "manager()(address)" --rpc-url "$RPC"          # == GUARDIAN
+cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "owner()(address)"   --rpc-url "$RPC"          # == TIMELOCK
+cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C "pendingManager()(address)" --rpc-url "$RPC"   # == 0x0 (no dangling proposal)
+cast call <GUARDIAN> "guardian()(address)" --rpc-url "$RPC"                                         # == Safe
 ```
 
 ## 4. Day-2 governance flows
@@ -113,5 +140,16 @@ role surfaces; verify by ENUMERATION not `hasRole`).
   so incident response stays instant.
 - Single-party governance: the Safe is sole proposer/executor/canceller; the
   24h public delay is the only check (not prevention) — same posture as OP.
+- Day-2 manager changes go through `AllowListGuardian.setManager` ONLY (it
+  zero-checks the new manager and is 24h-timelocked). The proxy owner (the
+  Timelock) can also drive the raw `setManager`/`proposeManager` on the proxy
+  directly — also 24h-gated, but unguarded against `address(0)`; prefer the
+  Guardian path. The instant `removeSolver` stays via the Guardian (Safe).
+- The OZ TimelockController is the same `3.4.0-solc-0.7` as OP, so OP's
+  PoC-verified "no sub-24h `executeBatch` bypass" conclusion ports unchanged.
+  Re-verify if the OZ version ever differs.
+- Blast radius: the SAME 2-of-3 Safe `0xe049…01cF` is proposer/executor/guardian
+  on BOTH the OP and Unichain timelocks, so a 2-of-3 compromise reaches both
+  chains' slow paths (24h-delayed on each). Acknowledged; not a migration blocker.
 - Pre-deploy Codex + Trail of Bits review is mandatory; Tenderly-simulate the
   batch before signing.
