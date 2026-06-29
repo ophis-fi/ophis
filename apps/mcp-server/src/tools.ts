@@ -30,7 +30,7 @@ import {
 } from './ophis.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const SERVER_INFO = { name: 'ophis', version: '0.0.1' } as const
+export const SERVER_INFO = { name: 'ophis', version: '0.1.0' } as const
 
 /**
  * Runtime-supplied config for the tools. On the Worker these come from the DO
