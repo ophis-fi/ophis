@@ -129,22 +129,24 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
  * REJECTS Surplus/PriceImprovement partner fees at order ingress (app_data.rs
  * `validate_partner_fees`). The price-improvement fallback above
  * (OPHIS_DEFAULT_APP_DATA_PARTNER_FEE) must NEVER be emitted on these chains or
- * ingress returns 400. Optimism (10) is the only self-hosted chain today;
- * CoW-hosted chains validate via api.cow.fi and still accept the PI shape.
+ * ingress returns 400. Optimism (10) and Unichain (130) are the self-hosted
+ * chains today; CoW-hosted chains validate via api.cow.fi and still accept the
+ * PI shape.
  */
 const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 130])
 
 /** The OP non-stable RETAIL fee the front-end charges and writes on-chain (OPHIS_FRONTEND_OP_VOLUME_BPS = 10 bps, hoisted above). */
 export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_FRONTEND_OP_VOLUME_BPS
 
-/** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism today). */
+/** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism, Unichain today). */
 export function isVolumeOnlyChain(chainId: number | undefined): boolean {
   return chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)
 }
 
 /**
- * The Ophis floor VOLUME fee for a self-hosted Volume-only chain (Optimism), or
- * `undefined` off those chains. On OP the backend enforces a fee FLOOR and would
+ * The Ophis floor VOLUME fee for a self-hosted Volume-only chain (Optimism,
+ * Unichain), or `undefined` off those chains. On those chains the backend
+ * enforces a fee FLOOR and would
  * reject a sub-floor fee or let an ABSENT one ride free, so the Ophis fee must be
  * present at >= the floor whether or not the flat-volume flag is on. This is the
  * SINGLE source used for BOTH the displayed fee row and the on-chain appData fee
@@ -165,7 +167,7 @@ export function ophisVolumeOnlyFloorFee(
 
 /**
  * Gates the on-chain Ophis price-improvement partner-fee value by chain. On
- * VOLUME-only chains (Optimism) the self-hosted backend REJECTS the PI shape at
+ * VOLUME-only chains (Optimism, Unichain) the self-hosted backend REJECTS the PI shape at
  * ingress, so suppress it (return `undefined`) and let the volumeFee pipeline
  * carry the floor Volume fee instead (ophisVolumeOnlyFloorFee, surfaced via
  * volumeFeeAtom) so the displayed fee and the on-chain appData fee stay in
