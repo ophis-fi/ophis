@@ -83,6 +83,7 @@ pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 /// never take the address from a `/swap` or `/routes` response.
 const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
+    (130, UNICHAIN_MAINNET),
     (999, HYPEREVM_MAINNET),
 ];
 
@@ -119,6 +120,18 @@ const OPTIMISM_MAINNET: &[Address] = &[
 /// upstream verification.
 const HYPEREVM_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 (same CREATE2 address as OP).
+    address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+];
+
+/// Unichain mainnet (chain 130). KyberSwap-only at launch (baseline ships
+/// empty — no on-chain AMM liquidity sources; OKX/Velora are staged). When
+/// OKX or Velora are enabled on Unichain, append their router/spender here
+/// after upstream verification.
+const UNICHAIN_MAINNET: &[Address] = &[
+    // KyberSwap MetaAggregationRouterV2 — same CREATE2-deterministic address
+    // as OP/HL. Verified live 2026-06-29: KyberSwap's Unichain aggregator
+    // (aggregator-api.kyberswap.com/unichain) returns this exact router for
+    // real Uniswap-v4 routes on chain 130. Router == ERC-20 spender.
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 

@@ -55,6 +55,11 @@ fn min_balance_for(chain: Chain) -> u128 {
         Chain::HyperEvmTestnet => 10_000_000_000_000_000, // 0.01 HYPE testnet
         // MegaETH mainnet — native ETH; conservative 0.01 ETH = 10 mETH.
         Chain::MegaethMainnet => 10_000_000_000_000_000, // 0.01 ETH
+        // Unichain mainnet — OP-stack L2, native ETH, ~0.0005-0.05 gwei gas →
+        // ~3e-7 to 3e-5 ETH per settlement. 0.002 ETH = ~60+ settlements of
+        // headroom even at the high end (the 0.01 ETH default would false-alarm
+        // a healthily-funded submitter on this chain's cheap gas).
+        Chain::Unichain => 2_000_000_000_000_000, // 0.002 ETH
         // Anything else (Sepolia, Goerli, Base, Arbitrum, etc.): default.
         _ => DEFAULT_MIN_BALANCE_WEI,
     }
