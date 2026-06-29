@@ -30,7 +30,8 @@ const OPHIS_OP_ETH_FLOW: `0x${string}` = '0x764fE4aa1FF493cf39931c7923C8ff583759
 const OPHIS_UNICHAIN_CHAIN_ID = 130 as unknown as SupportedChainId
 const OPHIS_UNICHAIN_SETTLEMENT: `0x${string}` = '0x108A678716e5E1776036eF044CAB7064226F714E'
 const OPHIS_UNICHAIN_VAULT_RELAYER: `0x${string}` = '0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'
-// EthFlow not deployed on Unichain for Ophis; sentinel zero disables EthFlow UI.
+// EthFlow IS live on Unichain (deployed 2026-06-29): native-ETH selling routes
+// through this address. Do NOT zero it — that silently disables native-ETH orders.
 const OPHIS_UNICHAIN_ETH_FLOW: `0x${string}` = '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7'
 
 // Ophis fork: MegaETH mainnet (chain 4326) contract addresses
@@ -113,7 +114,7 @@ export const COW_PROTOCOL_ETH_FLOW_ADDRESS: AddressPerChain = {
     : (ETH_FLOW_ADDRESSES as AddressPerChain)),
   // ETH Flow not deployed on OP for Ophis; sentinel zero address disables EthFlow UI.
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_ETH_FLOW,
-  // ETH Flow not deployed on Unichain for Ophis; sentinel zero disables EthFlow UI.
+  // ETH Flow IS live on Unichain (2026-06-29): native-ETH sells via 0x38C0…F1D7.
   [OPHIS_UNICHAIN_CHAIN_ID]: OPHIS_UNICHAIN_ETH_FLOW,
   // ETH Flow not deployed on MegaETH for Ophis; sentinel zero disables EthFlow UI.
   [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_ETH_FLOW,
