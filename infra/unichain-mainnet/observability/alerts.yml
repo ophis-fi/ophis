@@ -8,10 +8,10 @@
 #
 # Naming convention: `OphisUni<Component><Symptom>` so that the metric
 # label `alertname` is unambiguous when fanned out across chains
-# (OphisUni, OphisUni, OphisMega prefixes — same rule set per chain).
+# (OphisOp, OphisUni, OphisMega prefixes — same rule set per chain).
 
 groups:
-  - name: ophis-op-availability
+  - name: ophis-uni-availability
     interval: 30s
     rules:
       - alert: OphisUniAutopilotDown
@@ -19,19 +19,19 @@ groups:
         for: 5m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP autopilot scrape failing for >5m"
-          description: "Prometheus cannot reach autopilot:9589/metrics. Auctions are not running. Check `docker compose ps autopilot` on the Mac mini."
+          summary: "Unichain autopilot scrape failing for >5m"
+          description: "Prometheus cannot reach autopilot:9589/metrics. Auctions are not running. Check `docker compose ps autopilot` on the VM 51.158.205.9."
 
       - alert: OphisUniDriverDown
         expr: up{job="driver"} == 0
         for: 5m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP driver scrape failing for >5m"
+          summary: "Unichain driver scrape failing for >5m"
           description: "Prometheus cannot reach driver:80/metrics. Solver competition has stopped. Check `docker compose ps driver`."
 
       - alert: OphisUniOrderbookDown
@@ -39,31 +39,32 @@ groups:
         for: 5m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP orderbook scrape failing for >5m"
-          description: "Prometheus cannot reach orderbook:9586/metrics. New orders may be failing to land. Check `docker compose ps orderbook` and confirm port 8300 accepts connections."
+          summary: "Unichain orderbook scrape failing for >5m"
+          description: "Prometheus cannot reach orderbook:9586/metrics. New orders may be failing to land. Check `docker compose ps orderbook` and confirm port 8400 accepts connections."
 
       - alert: OphisUniERPCDown
         expr: up{job="rpc-proxy"} == 0
         for: 3m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP eRPC proxy scrape failing for >3m"
+          summary: "Unichain eRPC proxy scrape failing for >3m"
           description: "Prometheus cannot reach rpc-proxy:4001/metrics. All upstream provider routing has stopped — everything downstream will start failing. Restart rpc-proxy container."
 
-  - name: ophis-op-host-resources
+  - name: ophis-uni-host-resources
     interval: 30s
     rules:
-      # The 2026-06-15 outage: the Colima VM disk /dev/vdb1 (/var/lib/docker:
+      # The 2026-06-15 OP outage: the docker data disk (/var/lib/docker:
       # Postgres data + container logs) filled to 100%, wedging Postgres in an
       # ENOSPC checkpoint crash-loop and 500ing /quote + /auction. The app-level
       # up{} alerts stayed green (healthchecks hit stateless routes), so disk
-      # exhaustion was invisible. These alerts page BEFORE Postgres dies. Filter
-      # fstype="ext4" so the virtiofs Mac-host share at /Users/scep is ignored;
-      # max by(device) dedupes the /dev/vdb1 -> /var/lib/docker bind.
+      # exhaustion was invisible. These alerts page BEFORE Postgres dies. This
+      # stack runs on the native-Linux VM 51.158.205.9 (Docker on Linux, not
+      # Colima). Filter fstype="ext4" so pseudo/overlay filesystems are ignored;
+      # max by(device) dedupes the underlying device -> /var/lib/docker mount.
       - alert: OphisUniHostDiskLow
         expr: |
           max by (device) (
@@ -75,10 +76,10 @@ groups:
         for: 10m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "Colima VM disk {{ $labels.device }} >80% full"
-          description: "A VM ext4 filesystem is over 80% used. The docker data disk /dev/vdb1 (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). Check `colima ssh -- df -h`; find the hogs with `colima ssh -- sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm)."
+          summary: "VM 51.158.205.9 disk {{ $labels.device }} >80% full"
+          description: "A VM ext4 filesystem is over 80% used. The docker data disk (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). SSH to the VM (`ssh -p 24005 root@51.158.205.9`) and run `df -h`; find the hogs with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm)."
       - alert: OphisUniHostDiskCritical
         expr: |
           max by (device) (
@@ -90,21 +91,21 @@ groups:
         for: 5m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "Colima VM disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
-          description: "A VM ext4 filesystem is over 90% used. Postgres (OP + megaeth share this disk) will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). Runbook: infra/unichain-mainnet/README.md, 'disk full -> Postgres crash-loop'."
+          summary: "VM 51.158.205.9 disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
+          description: "A VM ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: SSH to the VM (`ssh -p 24005 root@51.158.205.9`) and truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). Runbook: infra/unichain-mainnet/README.md, 'disk full -> Postgres crash-loop'."
       - alert: OphisUniNodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 10m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
           summary: "node-exporter scrape failing for >10m, disk alerting is blind"
-          description: "Prometheus cannot reach node-exporter:9100. The disk-exhaustion alerts (OphisUniHostDisk*) cannot fire while this is down. Check `docker compose ps node-exporter` on the Mac mini."
+          description: "Prometheus cannot reach node-exporter:9100. The disk-exhaustion alerts (OphisUniHostDisk*) cannot fire while this is down. Check `docker compose ps node-exporter` on the VM 51.158.205.9."
 
-  - name: ophis-op-settlement-health
+  - name: ophis-uni-settlement-health
     interval: 30s
     rules:
       - alert: OphisUniNoSettlements1h
@@ -120,10 +121,10 @@ groups:
         for: 5m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP: 0 successful settlements in 1h despite active auctions"
-          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and publicnode status; (3) driver-submitter wallet out of ETH — `cast balance 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 --rpc-url https://optimism-rpc.publicnode.com`."
+          summary: "Unichain: 0 successful settlements in 1h despite active auctions"
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance 0x7A956C269a12f1B897367663b536EB5dd29f3fBb --rpc-url https://mainnet.unichain.org`."
 
       - alert: OphisUniSettlementFailureRateHigh
         expr: |
@@ -135,15 +136,15 @@ groups:
         for: 10m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP settlement failure rate > 5% over 15m"
-          description: "More than 5% of OP settlement attempts are failing. Most likely causes: pool liquidity collapse, gas-price cap too tight, RPC provider issues. Inspect driver logs for revert reasons."
+          summary: "Unichain settlement failure rate > 5% over 15m"
+          description: "More than 5% of Unichain settlement attempts are failing. Most likely causes: pool liquidity collapse, gas-price cap too tight, RPC provider issues. Inspect driver logs for revert reasons."
 
       # Sharp-edges audit F3+F7 (2026-05-21): post-A1 mitigation the driver
-      # races 3 distinct mempools in parallel via select_ok (PublicNode +
-      # OP Foundation gateway + Tenderly). A single provider going down
-      # drives the per-attempt failure ratio to ~33% (1 of 3) while
+      # races 3 distinct mempools in parallel via select_ok (the self-node
+      # ophis-self-uni + Unichain Labs public + PublicNode). A single provider
+      # going down drives the per-attempt failure ratio to ~33% (1 of 3) while
       # end-to-end submission still succeeds — that should NOT page.
       # Threshold bumped 10% → 35% to ignore single-provider outages;
       # genuine multi-provider degradation (2 of 3 down or sustained
@@ -159,10 +160,10 @@ groups:
         for: 5m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP: >35% of mempool submissions failing over 15m"
-          description: "Aggregate mempool submission failure rate exceeds 35% across the 3 raced mempools (PublicNode, OP Foundation gateway, Tenderly). One single-provider outage typically pushes this to ~33% and select_ok still succeeds — this alert fires when ≥2 providers are degraded, which IS a genuine submission risk. Inspect `mempool_submission{mempool=...,result=...}` per-provider series to identify the failing operator(s). Causes: RPC provider degradation, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
+          summary: "Unichain: >35% of mempool submissions failing over 15m"
+          description: "Aggregate mempool submission failure rate exceeds 35% across the 3 raced mempools (ophis-self-uni self-node, Unichain Labs public, PublicNode). One single-provider outage typically pushes this to ~33% and select_ok still succeeds — this alert fires when ≥2 providers are degraded, which IS a genuine submission risk. Inspect `mempool_submission{mempool=...,result=...}` per-provider series to identify the failing operator(s). Causes: RPC provider degradation, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
 
       - alert: OphisUniSolverDropRateHigh
         expr: |
@@ -174,10 +175,10 @@ groups:
         for: 15m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP {{ $labels.solver }} dropping >50% of solutions over 15m"
-          description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on OP. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
+          summary: "Unichain {{ $labels.solver }} dropping >50% of solutions over 15m"
+          description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on Unichain. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
 
       # Codex audit follow-up (2026-05-20, task #116): simulation-revert
       # spike detection. The residual risk after restoring eth_call to
@@ -203,9 +204,9 @@ groups:
         for: 15m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP: simulation-revert rate >0.5/s sustained over 15m"
+          summary: "Unichain: simulation-revert rate >0.5/s sustained over 15m"
           description: "Driver is dropping >30 solutions/min due to simulation reverts. Most-likely causes (priority order): (1) hostile eRPC upstream feeding forged-pass sims that revert at broadcast — check `rpc_upstream_responses_total{result=\"misbehavior\"}` for anomalies and consider sit-out tightening; (2) solver bug introducing impossible routes — bisect by `solver` label; (3) chain congestion making gas estimates stale — check `eth_feeHistory` upstream latency. Driver logs filter: `grep 'SimulationRevert' on driver-1`."
 
       # Codex audit follow-up (2026-05-20 N3): the `OphisUniMatchedUnsettledGrowth`
@@ -216,7 +217,7 @@ groups:
       # REMOVED. Proper alert needs a metric tied to submitted-and-winning
       # settlements not observed on-chain; left as a roadmap item.
 
-  - name: ophis-op-erpc-consensus
+  - name: ophis-uni-erpc-consensus
     interval: 30s
     rules:
       # Codex Cyber post-merge recommendation (2026-05-18): track consensus
@@ -240,14 +241,14 @@ groups:
         for: 10m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP eRPC low-participants > 5/s on {{ $labels.category }} for 10m"
+          summary: "Unichain eRPC low-participants > 5/s on {{ $labels.category }} for 10m"
           description: |
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
-            elevation indicates one or more OP upstream(s) (publicnode / tenderly /
-            ophis-self-op) are slow or rate-limited.
+            elevation indicates one or more Unichain upstream(s) (unichain-public /
+            publicnode-uni / ophis-self-uni) are slow or rate-limited.
 
             Diagnose: `cast block-number --rpc-url <each upstream>` to find
             which one is unresponsive. Check rpc-proxy logs:
@@ -264,12 +265,12 @@ groups:
         for: 15m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
+          summary: "Unichain eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
           description: |
-            Upstream OP providers are returning DIFFERENT responses for the same
-            request — fork-view-poisoning suspect OR natural tip drift. 2-of-3
+            Upstream Unichain providers are returning DIFFERENT responses for the
+            same request — fork-view-poisoning suspect OR natural tip drift. 2-of-3
             consensus is failing because responses don't match.
 
             Sustained > 2/s is unusual: it means either (a) one of the 3
@@ -277,11 +278,12 @@ groups:
             specific request pattern is triggering deterministic disagreement
             (e.g., a `latest`-tag query that resolves to different blocks).
 
-            On OP, expect occasional disputes on tip queries (PR #71 trade-off).
-            Sustained elevation = investigate which upstream is drifting:
-              cast block-number --rpc-url https://optimism-rpc.publicnode.com
-              cast block-number --rpc-url https://optimism.gateway.tenderly.co
-              cast block-number --rpc-url http://100.77.53.81:8545
+            On Unichain's ~1s blocks, expect occasional disputes on tip queries
+            (more tip-drift than a 2s chain). Sustained elevation = investigate
+            which upstream is drifting:
+              cast block-number --rpc-url https://mainnet.unichain.org
+              cast block-number --rpc-url https://unichain-rpc.publicnode.com
+              cast block-number --rpc-url http://ophis-uni-node:8545
             and compare. Provider > 5 blocks behind the median should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
 
@@ -295,17 +297,17 @@ groups:
         for: 15m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP eRPC > 70% of consensus calls failing for 15m"
+          summary: "Unichain eRPC > 70% of consensus calls failing for 15m"
           description: |
-            More than half of all consensus operations on the OP eRPC proxy are
-            failing. This is a real availability incident — driver / autopilot /
+            More than half of all consensus operations on the Unichain eRPC proxy
+            are failing. This is a real availability incident — driver / autopilot /
             orderbook will stall, no new settlements can broadcast, in-flight
             settlements will revert.
 
-            Likely cause: 2 of 3 upstream OP providers simultaneously degraded
-            (rate-limit, outage, or DNS). PR #71 (timestamp ignore removed) can
+            Likely cause: 2 of 3 upstream Unichain providers simultaneously
+            degraded (rate-limit, outage, or DNS). Tip-drift on ~1s blocks can
             contribute extra disputes but should not push the overall failure
             rate above 50%.
 
@@ -361,15 +363,16 @@ groups:
       # alert (see above for why those were dropped). The block_head_lag
       # gauge is simpler than the stale_latest_block_total counter (which
       # is a per-category rate and harder to interpret). Threshold of 5
-      # blocks = ~10 seconds of OP block time = real lag, not microsecond drift.
+      # blocks = ~5 seconds of Unichain ~1s block time = real lag, not
+      # microsecond drift.
       - alert: OphisUniErpcUpstreamBlockHeadLagging
         expr: erpc_upstream_block_head_lag{network="evm:130"} > 5
         for: 15m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP eRPC upstream {{ $labels.upstream }} >5 blocks behind for 15m"
+          summary: "Unichain eRPC upstream {{ $labels.upstream }} >5 blocks behind for 15m"
           description: |
             The {{ $labels.upstream }} upstream has been more than 5 blocks
             behind the median for 15 minutes. This is the dominant root
@@ -378,18 +381,19 @@ groups:
             stale state, gets disputed, eventually gets cordoned by
             punishMisbehavior.
 
-            For ophis-self-op: SSH check op-node + op-reth sync.
-              ssh root@100.77.53.81 \
+            For ophis-self-uni (op-reth on the VM 51.158.205.9, reached over
+            Tailscale as ophis-uni-node:8545): SSH check op-node + op-reth sync.
+              ssh -p 24005 root@51.158.205.9 \
                 'curl -s -H content-type:application/json \
                   -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
                   http://localhost:8545'
             Expected `false` for healthy. If `{result: {...}}`, op-node
             is still bootstrapping.
 
-            For publicnode-op / tenderly-op: provider-side regression.
+            For unichain-public / publicnode-uni: provider-side regression.
             Consider hot-swap if sustained > 1h.
 
-  - name: ophis-op-latency
+  - name: ophis-uni-latency
     interval: 30s
     rules:
       - alert: OphisUniAuctionLatencyHigh
@@ -398,9 +402,9 @@ groups:
         for: 10m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP p95 auction-preprocessing > 5s"
+          summary: "Unichain p95 auction-preprocessing > 5s"
           description: "Auction preprocessing p95 above 5s for 10m. RPC reads (block fetch, balance reads) are slowing the auction loop. Likely RPC provider degradation — inspect eRPC proxy metrics for consensus failures."
 
       - alert: OphisUniSolveTimeBudgetExhausted
@@ -409,22 +413,21 @@ groups:
         for: 10m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP solvers receiving <1s of solve-time budget at p99"
+          summary: "Unichain solvers receiving <1s of solve-time budget at p99"
           description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
 
-  - name: ophis-op-chain-health
+  - name: ophis-uni-chain-health
     interval: 30s
     rules:
-      # Audit MEDIUM-9 (2026-05-17): submission-deadline=60 in autopilot.toml
-      # was tuned for OP's ~2s post-Bedrock block time. If OP ever bumps to 2s
-      # (testnet has done this before) or drops to 500ms (rumored
-      # optimization), 60 blocks becomes either too long (stale-quote/MEV
-      # window) or too short (mass settle timeouts). Detect block-time
-      # drift via the rate of advance of `last_block_number` — the Gauge
-      # exported by apps/backend/crates/ethrpc/src/block_stream.rs:329.
-      # `rate()` on a monotonic Gauge yields blocks/sec (≈ 1.0 on OP today).
+      # Audit MEDIUM-9 (2026-05-17): submission-deadline in autopilot.toml
+      # was tuned for Unichain's ~1s block time. If Unichain ever bumps to 2s
+      # or drops to 500ms, that block count becomes either too long
+      # (stale-quote/MEV window) or too short (mass settle timeouts). Detect
+      # block-time drift via the rate of advance of `last_block_number` — the
+      # Gauge exported by apps/backend/crates/ethrpc/src/block_stream.rs:329.
+      # `rate()` on a monotonic Gauge yields blocks/sec (≈ 1.0 on Unichain today).
       - alert: OphisUniBlockTimeDrift
         expr: |
           (
@@ -435,17 +438,18 @@ groups:
         for: 15m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
           summary: "Unichain effective block time drifted >30% from ~1s"
           description: "Unichain block production rate is outside the 0.7-1.3 blocks/sec band (Unichain ~1s) for 15min. The autopilot solve/submission deadlines assume ~1s blocks; sustained drift means quotes go stale (rate too low) or settle deadlines clip (rate too high). Inspect the self-node + eRPC upstream sync, then re-tune the autopilot timing config for the observed block time."
 
-      # Audit MEDIUM-5 paired alert: gas-price-cap was tightened 1000 → 5 gwei (PR #131).
-      # Alert if OP basefee approaches the cap. Metric source: roadmap 1.6 /
+      # Audit MEDIUM-5 paired alert: gas-price-cap is 5 gwei (driver.toml
+      # gas-price-cap = "5000000000", same value as the OP stack).
+      # Alert if Unichain basefee approaches the cap. Metric source: roadmap 1.6 /
       # task #142 — autopilot/src/maintenance.rs emits `eth_basefee_wei` per
       # observed block (Prom name: autopilot_maintenance_eth_basefee_wei).
-      # Threshold: 1.5 gwei = 30 % of the 5 gwei cap set in #131. OP steady-state basefee is ~0.01 gwei so this fires only on genuine surges (e.g. an OP outage backlog clearing).
-      - alert: OphisUniUnichainfeeApproachingCap
+      # Threshold: 1.5 gwei = 30 % of the 5 gwei cap. Unichain steady-state basefee is ~0.001-0.05 gwei so this fires only on genuine surges (e.g. a congestion backlog clearing).
+      - alert: OphisUniBasefeeApproachingCap
         # No chain="..." selector: prometheus.yml external_labels are applied at
         # alert-send / federation time, NOT during local rule evaluation, so the
         # scraped autopilot_maintenance_eth_basefee_wei series carries no `chain`
@@ -457,10 +461,10 @@ groups:
         for: 5m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP basefee at {{ $value | humanize }}wei sustained >5min — approaching 5 gwei gas_price_cap"
-          description: "Optimism basefee has exceeded 1.5 gwei for 5 consecutive minutes. The driver's gas_price_cap is 5 gwei (per #131). At ~3× headroom remaining a sustained spike risks settlement-broadcast rejection. Inspect: `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. Consider raising gas_price_cap or pausing solver if congestion sustained."
+          summary: "Unichain basefee at {{ $value | humanize }}wei sustained >5min — approaching 5 gwei gas_price_cap"
+          description: "Unichain basefee has exceeded 1.5 gwei for 5 consecutive minutes. The driver's gas_price_cap is 5 gwei. At ~3× headroom remaining a sustained spike risks settlement-broadcast rejection. Inspect: `cast basefee --rpc-url https://mainnet.unichain.org`. Consider raising gas_price_cap or pausing solver if congestion sustained."
 
       # Phase 4 audit F2 + sharp-edges audit F3 (2026-05-21): the driver
       # re-checks gas_price_cap on both submit and cancel paths AFTER RBF
@@ -484,12 +488,12 @@ groups:
         for: 0m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP driver gas_price_cap policy violated (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
-          description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override. If context='submit_settlement' the broadcast was ABORTED (settle tx is not on-chain); if context='cancel_settlement' the broadcast PROCEEDED anyway to avoid nonce-stuck (cancellation is 21k gas — bounded drain). Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine OP fee surge while a solver-override pushed past the cap; (3) repeated RBF bumps cascading above policy. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
+          summary: "Unichain driver gas_price_cap policy violated (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
+          description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override. If context='submit_settlement' the broadcast was ABORTED (settle tx is not on-chain); if context='cancel_settlement' the broadcast PROCEEDED anyway to avoid nonce-stuck (cancellation is 21k gas — bounded drain). Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine Unichain fee surge while a solver-override pushed past the cap; (3) repeated RBF bumps cascading above policy. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://mainnet.unichain.org`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
 
-  - name: ophis-op-ethflow
+  - name: ophis-uni-ethflow
     interval: 30s
     rules:
       # Audit HIGH-2 defense-in-depth (2026-05-18): WETH WETH9 parity
@@ -512,12 +516,12 @@ groups:
         for: 0m
         labels:
           severity: critical
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP EthFlow refund/transfer failed — investigate WETH or recipient state"
-          description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x5555…)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
+          summary: "Unichain EthFlow refund/transfer failed — investigate WETH or recipient state"
+          description: "EthFlow at 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7 emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x4200000000000000000000000000000000000006)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
 
-  - name: ophis-op-sanctions-oracle
+  - name: ophis-uni-sanctions-oracle
     interval: 30s
     rules:
       # F6 (2026-05-21 whole-repo audit, Codex Cyber HIGH closed):
@@ -551,7 +555,7 @@ groups:
         for: 5m
         labels:
           severity: warning
-          chain: base
+          chain: unichain
         annotations:
-          summary: "OP sanctions oracle (Chainalysis) sustained fetch failures — fail-open active"
+          summary: "Unichain sanctions oracle (Chainalysis) sustained fetch failures — fail-open active"
           description: "More than 5 Chainalysis fetch failures in 10m (stage={{ $labels.stage }}). The driver/orderbook is currently in fail-open posture: sanctioned addresses MAY be passing validation. Investigate Chainalysis oracle health (status.chainalysis.com), consider manually rotating to a backup oracle, OR shift to fail-closed by editing apps/backend/crates/order-validation/src/banned.rs to return Err on this path (requires rebuild + redeploy). Cross-reference: F6 in memory/2026-05-21-whole-repo-audit-pass.md."

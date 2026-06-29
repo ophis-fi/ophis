@@ -50,7 +50,7 @@ receivers:
         parse_mode: HTML
         send_resolved: true
         message: |
-          <b>🚨 [{{ .Status | toUpper }}] Ophis OP — {{ .CommonLabels.alertname }}</b>
+          <b>🚨 [{{ .Status | toUpper }}] Ophis Unichain — {{ .CommonLabels.alertname }}</b>
           {{ range .Alerts }}
           <b>Severity:</b> {{ .Labels.severity }}
           <b>Chain:</b> {{ .Labels.chain }}
@@ -67,7 +67,7 @@ receivers:
         parse_mode: HTML
         send_resolved: true
         message: |
-          <b>⚠️ [{{ .Status | toUpper }}] Ophis OP — {{ .CommonLabels.alertname }}</b>
+          <b>⚠️ [{{ .Status | toUpper }}] Ophis Unichain — {{ .CommonLabels.alertname }}</b>
           {{ range .Alerts }}
           <b>Severity:</b> {{ .Labels.severity }}
           <b>Summary:</b> {{ .Annotations.summary }}
@@ -75,11 +75,13 @@ receivers:
           {{ end }}
 
 inhibit_rules:
-  # When the autopilot is down, every settlement / latency rule will
-  # also fire because the data stream stops. Suppress the noise.
-  - source_matchers: [alertname=OphisOpAutopilotDown, severity=critical]
-    target_matchers: [severity=~"critical|warning", alertname!=OphisOpAutopilotDown]
+  # When autopilot or eRPC is down, the settlement + auction pipeline stops, so the
+  # settlement-health and latency alerts fire as a CONSEQUENCE. Suppress ONLY those
+  # downstream alerts — NEVER the infra/root-cause alerts (disk, node-exporter,
+  # driver/orderbook/eRPC-down), which may be the actual cause and must stay visible.
+  - source_matchers: [alertname=OphisUniAutopilotDown, severity=critical]
+    target_matchers: [severity=~"critical|warning", alertname=~"OphisUni(NoSettlements1h|SettlementFailureRateHigh|MempoolSubmissionFailing|SolverDropRateHigh|SimulationRevertSpike|AuctionLatencyHigh|SolveTimeBudgetExhausted)"]
     equal: [chain]
-  - source_matchers: [alertname=OphisOpERPCDown, severity=critical]
-    target_matchers: [severity=~"critical|warning", alertname!=OphisOpERPCDown]
+  - source_matchers: [alertname=OphisUniERPCDown, severity=critical]
+    target_matchers: [severity=~"critical|warning", alertname=~"OphisUni(NoSettlements1h|SettlementFailureRateHigh|MempoolSubmissionFailing|SolverDropRateHigh|SimulationRevertSpike|AuctionLatencyHigh|SolveTimeBudgetExhausted)"]
     equal: [chain]

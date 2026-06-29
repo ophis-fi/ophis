@@ -563,13 +563,20 @@ fi
 # in YAML) rather than env-var-injected, to avoid `docker inspect` env leak.
 if [[ -d observability ]]; then
   mkdir -p observability-rendered
+  # On the native-Linux VM the alertmanager container runs as uid "nobody" and
+  # must TRAVERSE this dir to read the (0644) alertmanager.yml + the token; umask
+  # 077 would leave it 0700 (untraversable by nobody). 0711 = traverse-only.
+  [[ "$(uname -s)" == "Linux" ]] && chmod 711 observability-rendered
   if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
     # Render alertmanager.yml.tmpl → observability-rendered/alertmanager.yml
     for tmpl in observability/*.yml.tmpl; do
       name="$(basename "$tmpl" .tmpl)"
       out_tmp="observability-rendered/${name}.tmp.$$"
       envsubst '${TELEGRAM_BOT_TOKEN}' < "$tmpl" > "$out_tmp"
-      chmod 600 "$out_tmp"
+      # alertmanager.yml is NON-secret (token via bot_token_file, not inline), so
+      # 0644 lets the alertmanager container (user "nobody") read it on the
+      # native-Linux VM where root-owned 0600 files are unreadable by nobody.
+      chmod 644 "$out_tmp"
       mv -f "$out_tmp" "observability-rendered/${name}"
       echo "  rendered  observability/$name"
     done
@@ -579,16 +586,43 @@ if [[ -d observability ]]; then
     # the bot token across rotations). A leaked bot token lets an
     # attacker DM Clement as the alert bot → phishing primitive against
     # the very operator who'd act on alerts.
-    TOKEN_RAM_FILE="${RAM_PK_MOUNT}/telegram-token"
-    TOKEN_TMP="${TOKEN_RAM_FILE}.tmp.$$"
-    printf '%s' "$TELEGRAM_BOT_TOKEN" > "$TOKEN_TMP"
-    chmod 600 "$TOKEN_TMP"
-    mv -f "$TOKEN_TMP" "$TOKEN_RAM_FILE"
-    # Symlink from observability-rendered/ so docker-compose's existing
-    # bind-mount path (./observability-rendered/telegram-token) keeps working.
-    rm -f "observability-rendered/telegram-token"
-    ln -sf "$TOKEN_RAM_FILE" "observability-rendered/telegram-token"
-    echo "  rendered  observability/telegram-token  → RAM-disk (chmod 600)"
+    # Token perms diverge by platform. Alertmanager runs as uid 65534 (nobody)
+    # and bind-mounts the token read-only. macOS/colima maps the container uid so
+    # it can read the RAM-disk 0600 token; the native-Linux VM cannot (nobody
+    # can't traverse the 0700 RAM-disk nor read a root-owned 0600 file). The
+    # RAM-disk rationale (Time Machine / Spotlight / APFS snapshots) is macOS-only,
+    # so on Linux render the token on-disk owned by the alertmanager uid.
+    if [[ "$(uname -s)" == "Linux" ]]; then
+      TOKEN_OUT="observability-rendered/telegram-token"
+      TOKEN_TMP="${TOKEN_OUT}.tmp.$$"
+      printf '%s' "$TELEGRAM_BOT_TOKEN" > "$TOKEN_TMP"
+      chmod 600 "$TOKEN_TMP"
+      # Alertmanager runs as uid 65534 (nobody) and must own/read the token. The
+      # deploy user has sudo (used above for the tmpfs mount + PK read), so chown
+      # via sudo and FAIL CLOSED if it can't: installing a token nobody can't read
+      # would start the observability profile broken. On failure, clear the renders
+      # so the profile stays DOWN (compose-up gates on alertmanager.yml existing).
+      if sudo chown 65534:65534 "$TOKEN_TMP" 2>/dev/null; then
+        rm -f "$TOKEN_OUT"
+        mv -f "$TOKEN_TMP" "$TOKEN_OUT"
+        echo "  rendered  observability/telegram-token  → on-disk, owner nobody, chmod 600 (Linux VM)"
+      else
+        rm -f "$TOKEN_TMP" observability-rendered/alertmanager.yml observability-rendered/telegram-token
+        echo "  ERROR: could not chown telegram-token to uid 65534 (nobody); cleared" >&2
+        echo "         observability renders (profile stays down). Re-run render-configs.sh" >&2
+        echo "         with sudo on the VM to enable Telegram alerting." >&2
+      fi
+    else
+      TOKEN_RAM_FILE="${RAM_PK_MOUNT}/telegram-token"
+      TOKEN_TMP="${TOKEN_RAM_FILE}.tmp.$$"
+      printf '%s' "$TELEGRAM_BOT_TOKEN" > "$TOKEN_TMP"
+      chmod 600 "$TOKEN_TMP"
+      mv -f "$TOKEN_TMP" "$TOKEN_RAM_FILE"
+      # Symlink so docker-compose's existing bind-mount path keeps working.
+      rm -f "observability-rendered/telegram-token"
+      ln -sf "$TOKEN_RAM_FILE" "observability-rendered/telegram-token"
+      echo "  rendered  observability/telegram-token  → RAM-disk (chmod 600, macOS)"
+    fi
   else
     # Clear any prior render so compose-up.sh — which enables the observability
     # profile solely on observability-rendered/alertmanager.yml existing — does
