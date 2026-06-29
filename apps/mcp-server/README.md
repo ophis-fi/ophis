@@ -38,8 +38,8 @@ every backing endpoint is already public, and the tools are read/build-only.
 ## Typical agent flow
 
 ```
-parse_intent("swap 100 USDC for ETH on Optimism")
-  → resolve_token({ chainId, symbol })   // canonical addresses, fails closed (anti-spoof)
+parse_intent("swap 100 USDC for WETH on Optimism")
+  → resolve_token({ chainId, symbol }) for BOTH the sell and buy symbols   // canonical addresses, fails closed (anti-spoof); for a native-coin request like ETH, resolve the wrapped symbol (WETH)
   → get_quote({ chainId, sellToken, buyToken, kind:'sell', amount, from })
   → build_order({ chainId, owner, sellToken, buyToken, sellAmount, buyAmount /* slippage-adjusted */, kind })
   → (agent confirms with the user, then signs `order` as EIP-712 using `signing`)

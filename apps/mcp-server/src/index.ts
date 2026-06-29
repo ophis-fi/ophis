@@ -54,10 +54,11 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
 
 const INFO = {
   name: 'Ophis MCP',
-  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
+  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, resolve token symbols to canonical addresses (anti-spoof), fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
   transport: { type: 'streamable-http', endpoint: '/mcp' },
   tools: [
     'parse_intent',
+    'resolve_token',
     'get_quote',
     'build_order',
     'submit_order',
