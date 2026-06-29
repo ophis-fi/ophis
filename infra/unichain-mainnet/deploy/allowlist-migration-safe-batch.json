@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "chainId": "130",
+  "createdAt": 0,
+  "meta": {
+    "name": "Ophis Unichain AllowList timelock migration (#442, chain 130)",
+    "description": "TEMPLATE — replace <GUARDIAN> and <TIMELOCK> with the deployed addresses (see timelock-governance-runbook.md) BEFORE importing into the Safe Transaction Builder. Two calls on the GPv2AllowListAuthentication proxy 0x1002E12f2e7f848b20fe572F92133E467a5D010C: (1) setManager(Guardian) while the Safe still controls it, then (2) transferOwnership(Timelock). Order matters. Tenderly-simulate before signing 2-of-3.",
+    "txBuilderVersion": "1.16.5",
+    "createdFromSafeAddress": "0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0x1002E12f2e7f848b20fe572F92133E467a5D010C",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "manager_", "type": "address" }
+        ],
+        "name": "setManager",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "manager_": "<GUARDIAN>"
+      }
+    },
+    {
+      "to": "0x1002E12f2e7f848b20fe572F92133E467a5D010C",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "newOwner", "type": "address" }
+        ],
+        "name": "transferOwnership",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "newOwner": "<TIMELOCK>"
+      }
+    }
+  ]
+}
