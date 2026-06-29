@@ -15,7 +15,7 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    chain: base
+    chain: unichain
     chain_id: "130"
     env: mainnet
     stack: ophis
