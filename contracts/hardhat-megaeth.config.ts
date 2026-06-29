@@ -101,6 +101,14 @@ const config = {
       // Ledger-signed. Connect device + open Ethereum app before running deploy.
       ledgerAccounts: [OPHIS_HW_WALLET],
     },
+    "unichain-mainnet": {
+      url: process.env.UNICHAIN_MAINNET_RPC ?? "https://mainnet.unichain.org",
+      chainId: 130,
+      // OP-Stack L2 (60M block gas, ~0.0005 gwei base fee) — standard gas, so the
+      // unknown-chain 25M auth-proxy default in 001_authenticator.ts is sufficient.
+      // Ledger-signed. Connect device + open Ethereum app before running deploy.
+      ledgerAccounts: [OPHIS_HW_WALLET],
+    },
     "katana-testnet": {
       url: process.env.KATANA_TESTNET_RPC ?? "https://rpc-bokuto.katanarpc.com",
       chainId: 737373,
@@ -151,6 +159,7 @@ const config = {
       "hyperevm-mainnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-sepolia": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-mainnet": OPHIS_HW_WALLET,
+      "unichain-mainnet": OPHIS_HW_WALLET,
       "katana-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "katana-mainnet": OPHIS_HW_WALLET,
       "mantle-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
@@ -174,6 +183,7 @@ const config = {
       "hyperevm-mainnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-sepolia": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-mainnet": OPHIS_HW_WALLET,
+      "unichain-mainnet": OPHIS_HW_WALLET,
       "katana-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "katana-mainnet": OPHIS_HW_WALLET,
       "mantle-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,

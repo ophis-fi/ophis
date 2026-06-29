@@ -1,0 +1,57 @@
+# Ophis — Unichain mainnet (chain 130) orderbook config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+eip1271-skip-creation-validation = false
+bind-address = "0.0.0.0:80"
+
+[shared]
+# node-url is a plain Url field (no %ENV deserializer), so it must be a literal
+# URL — an empty ${UNICHAIN_RPC_INTERNAL} renders to "" and fails TOML parse
+# ("relative URL without a base"). Point at the eRPC 2-of-3 proxy, same as the
+# OP stack's canonical orderbook.toml. The single-provider bypass
+# (UNICHAIN_RPC_INTERNAL) still applies to the driver via its ETHRPC env.
+node-url = "http://rpc-proxy:4000/main/evm/130"
+simulation-node-url = "http://rpc-proxy:4000/main/evm/130"
+
+# Override every contract address — Unichain mainnet (chain 130) needs explicit
+# Ophis-deployed addresses since upstream's contracts registry doesn't include
+# our deployments here. Fill after Phase-1 Ledger ceremony.
+[shared.contracts]
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+balances = "0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A"
+signatures = "0x5f315A204E7971fC29a66fef3a5773f6B0202fac"
+native-token = "0x4200000000000000000000000000000000000006"  # WETH (OP Stack predeploy on Unichain)
+hooks = "0x2FbB1e41fF4f9b707E4428EEC7F5AFAaC5D60810"
+# Balancer V2 Vault: canonical cross-chain address.
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+# Primary: on-chain Uniswap V3 TWAP (factory + init-code-hash are canonical
+# constants, same on Ethereum / Optimism / Unichain — see Uniswap V3 deployments
+# reference). Fallback: CoinGecko (Unichain is supported on CoinGecko).
+estimators = [
+  [
+    { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "CoinGecko" },
+  ],
+]
+
+[order-quoting]
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  # { name = "okx", url = "http://driver/okx" },  # STAGED, enable with the okx-solver service
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+  # { name = "velora", url = "http://driver/velora" },  # TODO verify Unichain support (CoW allowlist)
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
+
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"

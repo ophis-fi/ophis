@@ -1,0 +1,21 @@
+# Ophis — Unichain mainnet (chain 130) KyberSwap aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# KyberSwap aggregator supports Unichain (130). MetaAggregationRouterV2 deployed
+# at 0x6131B5fae19EA4f9D964eAc0408E4408b66337b5 on Unichain (KyberSwap docs,
+# supported-exchanges-and-networks). Operations started 2023-08-09.
+# No API key required for the free tier.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain. Fill after Phase-1 Ledger ceremony.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+# Use an explicit client-id so KyberSwap's per-client rate limit applies
+# to "ophis-unichain-mainnet" specifically rather than the shared anonymous bucket.
+client-id = "ophis-unichain-mainnet"

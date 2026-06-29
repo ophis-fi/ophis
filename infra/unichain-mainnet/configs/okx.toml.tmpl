@@ -1,0 +1,27 @@
+# Ophis — Unichain mainnet (chain 130) OKX aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# OKX DEX aggregator V6 supports Unichain (130) — confirmed via OKX's
+# get-supported-chains API endpoint and public documentation.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement contract on Unichain. Fill after Phase-1 Ledger ceremony.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+# Chain ID 130 = Unichain mainnet.
+chain-id = "130"
+
+# OKX V6 DEX Aggregator API endpoint (sell orders / exactIn).
+sell-orders-endpoint = "https://web3.okx.com/api/v6/dex/aggregator/"
+
+# OKX OnchainOS credentials — rendered from .env at deploy time.
+api-project-id = "${OKX_PROJECT_ID}"
+api-key = "${OKX_API_KEY}"
+api-secret-key = "${OKX_SECRET_KEY}"
+api-passphrase = "${OKX_PASSPHRASE}"
+
+price-impact-protection-percent = 1.0

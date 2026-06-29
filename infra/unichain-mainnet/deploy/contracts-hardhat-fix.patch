@@ -1,0 +1,22 @@
+diff --git a/contracts/package.json b/contracts/package.json
+index a7afcd43e..8fb1d5ed1 100644
+--- a/contracts/package.json
++++ b/contracts/package.json
+@@ -39,7 +39,7 @@
+     "tar": "^7.5.16",
+     "js-yaml": "^4.2.0",
+     "undici": "^6.27.0",
+-    "**/request/form-data": "^2.5.6"
++    "request>form-data": "^2.5.6"
+   },
+   "peerDependencies": {
+     "ethers": "^5.4.0"
+@@ -83,7 +83,7 @@
+     "ethereum-waffle": "^3.4.4",
+     "ethers": "^5.7.2",
+     "globby": "^11.0.4",
+-    "hardhat": "^2.13.1",
++    "hardhat": "^2.28.6",
+     "hardhat-deploy": "^0.11.26",
+     "hardhat-gas-reporter": "^1.0.9",
+     "prettier": "^2.8.7",

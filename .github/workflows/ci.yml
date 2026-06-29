@@ -128,3 +128,5 @@ jobs:
         run: python3 -m pip install --quiet --break-system-packages pyyaml
       - name: assert OP eRPC template stays 2-of-3-across-3 fail-closed
         run: python3 infra/optimism-mainnet/assert-erpc-failclosed.py infra/optimism-mainnet/configs/erpc.yaml.tmpl
+      - name: assert Unichain eRPC template stays 2-of-3-across-3 fail-closed
+        run: python3 infra/unichain-mainnet/assert-erpc-failclosed.py infra/unichain-mainnet/configs/erpc.yaml.tmpl

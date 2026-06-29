@@ -1,0 +1,557 @@
+# Ophis Unichain mainnet — Prometheus alert rules (chain 130).
+#
+# Severities:
+#   - critical: page Clement on Telegram immediately. Indicates the chain
+#     is not settling, RPC is down, or money/orders are at risk.
+#   - warning:  Telegram notify with no auto-page. Indicates degradation
+#     trending toward critical.
+#
+# Naming convention: `OphisUni<Component><Symptom>` so that the metric
+# label `alertname` is unambiguous when fanned out across chains
+# (OphisUni, OphisUni, OphisMega prefixes — same rule set per chain).
+
+groups:
+  - name: ophis-op-availability
+    interval: 30s
+    rules:
+      - alert: OphisUniAutopilotDown
+        expr: up{job="autopilot"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP autopilot scrape failing for >5m"
+          description: "Prometheus cannot reach autopilot:9589/metrics. Auctions are not running. Check `docker compose ps autopilot` on the Mac mini."
+
+      - alert: OphisUniDriverDown
+        expr: up{job="driver"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP driver scrape failing for >5m"
+          description: "Prometheus cannot reach driver:80/metrics. Solver competition has stopped. Check `docker compose ps driver`."
+
+      - alert: OphisUniOrderbookDown
+        expr: up{job="orderbook"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP orderbook scrape failing for >5m"
+          description: "Prometheus cannot reach orderbook:9586/metrics. New orders may be failing to land. Check `docker compose ps orderbook` and confirm port 8300 accepts connections."
+
+      - alert: OphisUniERPCDown
+        expr: up{job="rpc-proxy"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP eRPC proxy scrape failing for >3m"
+          description: "Prometheus cannot reach rpc-proxy:4001/metrics. All upstream provider routing has stopped — everything downstream will start failing. Restart rpc-proxy container."
+
+  - name: ophis-op-host-resources
+    interval: 30s
+    rules:
+      # The 2026-06-15 outage: the Colima VM disk /dev/vdb1 (/var/lib/docker:
+      # Postgres data + container logs) filled to 100%, wedging Postgres in an
+      # ENOSPC checkpoint crash-loop and 500ing /quote + /auction. The app-level
+      # up{} alerts stayed green (healthchecks hit stateless routes), so disk
+      # exhaustion was invisible. These alerts page BEFORE Postgres dies. Filter
+      # fstype="ext4" so the virtiofs Mac-host share at /Users/scep is ignored;
+      # max by(device) dedupes the /dev/vdb1 -> /var/lib/docker bind.
+      - alert: OphisUniHostDiskLow
+        expr: |
+          max by (device) (
+            1 - (
+              node_filesystem_avail_bytes{job="node-exporter", fstype="ext4"}
+              / node_filesystem_size_bytes{job="node-exporter", fstype="ext4"}
+            )
+          ) > 0.80
+        for: 10m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "Colima VM disk {{ $labels.device }} >80% full"
+          description: "A VM ext4 filesystem is over 80% used. The docker data disk /dev/vdb1 (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). Check `colima ssh -- df -h`; find the hogs with `colima ssh -- sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm)."
+      - alert: OphisUniHostDiskCritical
+        expr: |
+          max by (device) (
+            1 - (
+              node_filesystem_avail_bytes{job="node-exporter", fstype="ext4"}
+              / node_filesystem_size_bytes{job="node-exporter", fstype="ext4"}
+            )
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "Colima VM disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
+          description: "A VM ext4 filesystem is over 90% used. Postgres (OP + megaeth share this disk) will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). Runbook: infra/unichain-mainnet/README.md, 'disk full -> Postgres crash-loop'."
+      - alert: OphisUniNodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 10m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "node-exporter scrape failing for >10m, disk alerting is blind"
+          description: "Prometheus cannot reach node-exporter:9100. The disk-exhaustion alerts (OphisUniHostDisk*) cannot fire while this is down. Check `docker compose ps node-exporter` on the Mac mini."
+
+  - name: ophis-op-settlement-health
+    interval: 30s
+    rules:
+      - alert: OphisUniNoSettlements1h
+        # IntCounterVec `settlements{solver, result}` is monotonic. We want
+        # to alert when `result="success"` hasn't incremented in 1h despite
+        # auctions running (so we don't alert on quiet periods with no
+        # orders). Detect quiet vs. broken by checking that the auction
+        # loop IS ticking — autopilot exposes `auction_preprocessing` as a
+        # histogram that increments on every auction.
+        expr: |
+          increase(settlements{result="success"}[1h]) == 0
+          and on() increase(auction_preprocessing_count[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP: 0 successful settlements in 1h despite active auctions"
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and publicnode status; (3) driver-submitter wallet out of ETH — `cast balance 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 --rpc-url https://optimism-rpc.publicnode.com`."
+
+      - alert: OphisUniSettlementFailureRateHigh
+        expr: |
+          (
+            sum(rate(settlements{result!="success"}[15m]))
+            /
+            sum(rate(settlements[15m]))
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP settlement failure rate > 5% over 15m"
+          description: "More than 5% of OP settlement attempts are failing. Most likely causes: pool liquidity collapse, gas-price cap too tight, RPC provider issues. Inspect driver logs for revert reasons."
+
+      # Sharp-edges audit F3+F7 (2026-05-21): post-A1 mitigation the driver
+      # races 3 distinct mempools in parallel via select_ok (PublicNode +
+      # OP Foundation gateway + Tenderly). A single provider going down
+      # drives the per-attempt failure ratio to ~33% (1 of 3) while
+      # end-to-end submission still succeeds — that should NOT page.
+      # Threshold bumped 10% → 35% to ignore single-provider outages;
+      # genuine multi-provider degradation (2 of 3 down or sustained
+      # cap-rejection across all 3) still trips. To attribute the failure
+      # to a specific provider, drill down via `mempool_submission{mempool=...}`.
+      - alert: OphisUniMempoolSubmissionFailing
+        expr: |
+          (
+            sum(rate(mempool_submission{result!="success"}[15m]))
+            /
+            sum(rate(mempool_submission[15m]))
+          ) > 0.35
+        for: 5m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP: >35% of mempool submissions failing over 15m"
+          description: "Aggregate mempool submission failure rate exceeds 35% across the 3 raced mempools (PublicNode, OP Foundation gateway, Tenderly). One single-provider outage typically pushes this to ~33% and select_ok still succeeds — this alert fires when ≥2 providers are degraded, which IS a genuine submission risk. Inspect `mempool_submission{mempool=...,result=...}` per-provider series to identify the failing operator(s). Causes: RPC provider degradation, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
+
+      - alert: OphisUniSolverDropRateHigh
+        expr: |
+          (
+            sum by (solver) (rate(dropped_solutions[15m]))
+            /
+            sum by (solver) (rate(solutions[15m]) + rate(dropped_solutions[15m]))
+          ) > 0.50
+        for: 15m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP {{ $labels.solver }} dropping >50% of solutions over 15m"
+          description: "Solver `{{ $labels.solver }}` is dropping more than half its proposed solutions on OP. Likely cause: simulator reverts, slippage clip, settlement-balance issues. Check driver logs for `dropped_solutions{reason}` breakdown."
+
+      # Codex audit follow-up (2026-05-20, task #116): simulation-revert
+      # spike detection. The residual risk after restoring eth_call to
+      # consensus (task #115) is that a real attacker could still poison
+      # individual reads for the period before the misbehavior threshold
+      # kicks in. This alert catches the downstream effect: simulations
+      # that passed in eRPC but reverted on-chain (or that revert during
+      # sim).
+      - alert: OphisUniSimulationRevertSpike
+        # SimulationRevert: solution dropped because simulation reverted.
+        # Sustained >0.5/s = 30 in 60s = unusual under normal traffic
+        # (testnet baseline was <1/min from KyberSwap occasional misroutes).
+        # Threshold tuned to catch poisoning, not real-but-failing orders.
+        #
+        # Process-uptime gate (sharp-edges audit 2026-05-20 N3): driver
+        # hot-reloads cause a sim-replay burst against potentially-stale
+        # balance snapshots. Don't alert until the driver has been up
+        # for 5m to swallow that transient. Otherwise back-to-back
+        # restarts during a config roll would false-page Clement.
+        expr: |
+          sum(rate(dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
+          and on(instance) (time() - process_start_time_seconds{job="driver"}) > 300
+        for: 15m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP: simulation-revert rate >0.5/s sustained over 15m"
+          description: "Driver is dropping >30 solutions/min due to simulation reverts. Most-likely causes (priority order): (1) hostile eRPC upstream feeding forged-pass sims that revert at broadcast — check `rpc_upstream_responses_total{result=\"misbehavior\"}` for anomalies and consider sit-out tightening; (2) solver bug introducing impossible routes — bisect by `solver` label; (3) chain congestion making gas estimates stale — check `eth_feeHistory` upstream latency. Driver logs filter: `grep 'SimulationRevert' on driver-1`."
+
+      # Codex audit follow-up (2026-05-20 N3): the `OphisUniMatchedUnsettledGrowth`
+      # alert previously here used `gp_v2_autopilot_runloop_matched_unsettled`
+      # which increments for ranked NON-WINNING solution orders, not
+      # "broadcast but never landed". That's normal competition noise
+      # under healthy traffic — would alert constantly on launch.
+      # REMOVED. Proper alert needs a metric tied to submitted-and-winning
+      # settlements not observed on-chain; left as a roadmap item.
+
+  - name: ophis-op-erpc-consensus
+    interval: 30s
+    rules:
+      # Codex Cyber post-merge recommendation (2026-05-18): track consensus
+      # error rate after removing `ignoreFields:[timestamp]` (PR #71). Catches
+      # any unexpected availability regression on the consensus-protected
+      # methods. Split by error type so an operator can distinguish "providers
+      # diverging on response value" (dispute) from "providers not responding"
+      # (low_participants) at a glance.
+      #
+      # Source metric: erpc_consensus_errors_total — labels:
+      #   - error: dispute | low_participants | consensus_on_error
+      #   - category: eth_call | eth_getBlockByNumber | eth_getBlockByHash |
+      #               eth_getLogs | eth_getTransactionReceipt | eth_getTransactionByHash
+      #   - finality: finalized | unfinalized | realtime | unknown
+      #   - network: evm:130
+      - alert: OphisUniErpcConsensusLowParticipantsHigh
+        expr: |
+          sum by (category) (
+            rate(erpc_consensus_errors_total{network="evm:130",error="low_participants"}[5m])
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP eRPC low-participants > 5/s on {{ $labels.category }} for 10m"
+          description: |
+            eRPC is failing consensus because fewer than 2 of 3 upstreams respond
+            within the retry budget for `{{ $labels.category }}` requests. Sustained
+            elevation indicates one or more OP upstream(s) (publicnode / tenderly /
+            ophis-self-op) are slow or rate-limited.
+
+            Diagnose: `cast block-number --rpc-url <each upstream>` to find
+            which one is unresponsive. Check rpc-proxy logs:
+            `docker logs unichain-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
+
+            Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
+            (driver/orderbook poll ~5/s steady state).
+
+      - alert: OphisUniErpcConsensusDisputeHigh
+        expr: |
+          sum by (category) (
+            rate(erpc_consensus_errors_total{network="evm:130",error="dispute"}[5m])
+          ) > 5
+        for: 15m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
+          description: |
+            Upstream OP providers are returning DIFFERENT responses for the same
+            request — fork-view-poisoning suspect OR natural tip drift. 2-of-3
+            consensus is failing because responses don't match.
+
+            Sustained > 2/s is unusual: it means either (a) one of the 3
+            upstreams is on a fork / lagging behind the others, OR (b) a
+            specific request pattern is triggering deterministic disagreement
+            (e.g., a `latest`-tag query that resolves to different blocks).
+
+            On OP, expect occasional disputes on tip queries (PR #71 trade-off).
+            Sustained elevation = investigate which upstream is drifting:
+              cast block-number --rpc-url https://optimism-rpc.publicnode.com
+              cast block-number --rpc-url https://optimism.gateway.tenderly.co
+              cast block-number --rpc-url http://100.77.53.81:8545
+            and compare. Provider > 5 blocks behind the median should be
+            sit-out-penalized by eRPC's punishMisbehavior — verify.
+
+      - alert: OphisUniErpcConsensusFailureCritical
+        expr: |
+          (
+            sum(rate(erpc_consensus_errors_total{network="evm:130"}[5m]))
+            /
+            sum(rate(erpc_consensus_total{network="evm:130"}[5m]))
+          ) > 0.7
+        for: 15m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP eRPC > 70% of consensus calls failing for 15m"
+          description: |
+            More than half of all consensus operations on the OP eRPC proxy are
+            failing. This is a real availability incident — driver / autopilot /
+            orderbook will stall, no new settlements can broadcast, in-flight
+            settlements will revert.
+
+            Likely cause: 2 of 3 upstream OP providers simultaneously degraded
+            (rate-limit, outage, or DNS). PR #71 (timestamp ignore removed) can
+            contribute extra disputes but should not push the overall failure
+            rate above 50%.
+
+            Immediate actions:
+              1. Identify which upstreams are down via direct probe
+              2. Consider emergency hot-swap to a known-healthy provider
+                 (see project_ophis_roadmap.md section 3 reliability map)
+              3. Worst case: temporarily lower agreementThreshold to 1 (NOT
+                 audit-compliant — revert as soon as providers recover)
+
+      # ============================================================
+      # Per-upstream staleness — pairs with task #119
+      # (split disputeThreshold by method, configs/erpc.yaml.tmpl).
+      # The split lowered the critical-path threshold to 60 (Block A);
+      # block-head-lag surfaces the dominant root cause of dispute
+      # churn so the operator can fix the upstream instead of just
+      # raising the threshold.
+      # ============================================================
+
+      # ── Cordon alerts dropped (this PR / 2026-05-21) ────────────
+      #
+      # Two rules were previously here:
+      #   - OphisUniErpcUpstreamCordoned (== 1 gauge check)
+      #   - OphisUniErpcCordonMetricAbsent (absent() guard for renames)
+      #
+      # They were dropped after a false-positive caused by THIS PR's
+      # own success: removing eth_getTransactionReceipt from consensus
+      # eliminated the chronic-cordon source that kept
+      # `erpc_upstream_cordoned` "warm". eRPC initializes that series
+      # lazily — only after the first cordon event per upstream — so
+      # absence in steady-state operation is normal, not a problem.
+      #
+      # That makes `absent(erpc_upstream_cordoned)` indistinguishable
+      # from "metric renamed by version change" (the rename it was
+      # supposed to detect), and the == 1 gauge check is also unreliable
+      # because eRPC v0.0.64+ moved per-upstream punishment to a
+      # score-based system (`erpc_upstream_score_overall`,
+      # `erpc_consensus_upstream_punished_total`).
+      #
+      # Net replacement coverage:
+      #   - Real consensus failures still page via
+      #     OphisUniErpcConsensusLowParticipantsHigh / Dispute / Failure
+      #     (already in this file, lines ~185-262).
+      #   - Per-upstream sync-trouble surfaces via the BlockHeadLagging
+      #     alert below (unchanged).
+      #   - If a future eRPC ever drops the consensus metrics too,
+      #     OphisUniERPCDown (up{job="rpc-proxy"} == 0) still catches
+      #     a broken scrape — the actual visibility we cared about.
+      # ────────────────────────────────────────────────────────────
+
+      # `OphisUniErpcUpstreamBlockHeadLagging` — chronic-lag root-cause
+      # detector. Standalone signal — no longer paired with a Cordoned
+      # alert (see above for why those were dropped). The block_head_lag
+      # gauge is simpler than the stale_latest_block_total counter (which
+      # is a per-category rate and harder to interpret). Threshold of 5
+      # blocks = ~10 seconds of OP block time = real lag, not microsecond drift.
+      - alert: OphisUniErpcUpstreamBlockHeadLagging
+        expr: erpc_upstream_block_head_lag{network="evm:130"} > 5
+        for: 15m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP eRPC upstream {{ $labels.upstream }} >5 blocks behind for 15m"
+          description: |
+            The {{ $labels.upstream }} upstream has been more than 5 blocks
+            behind the median for 15 minutes. This is the dominant root
+            cause of dispute churn on Block A consensus methods (eth_call,
+            eth_getBalance) — the chronically-lagging upstream returns
+            stale state, gets disputed, eventually gets cordoned by
+            punishMisbehavior.
+
+            For ophis-self-op: SSH check op-node + op-reth sync.
+              ssh root@100.77.53.81 \
+                'curl -s -H content-type:application/json \
+                  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
+                  http://localhost:8545'
+            Expected `false` for healthy. If `{result: {...}}`, op-node
+            is still bootstrapping.
+
+            For publicnode-op / tenderly-op: provider-side regression.
+            Consider hot-swap if sustained > 1h.
+
+  - name: ophis-op-latency
+    interval: 30s
+    rules:
+      - alert: OphisUniAuctionLatencyHigh
+        expr: |
+          histogram_quantile(0.95, rate(auction_preprocessing_bucket[10m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP p95 auction-preprocessing > 5s"
+          description: "Auction preprocessing p95 above 5s for 10m. RPC reads (block fetch, balance reads) are slowing the auction loop. Likely RPC provider degradation — inspect eRPC proxy metrics for consensus failures."
+
+      - alert: OphisUniSolveTimeBudgetExhausted
+        expr: |
+          histogram_quantile(0.99, rate(remaining_solve_time_bucket{kind="dispatched"}[10m])) < 1.0
+        for: 10m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP solvers receiving <1s of solve-time budget at p99"
+          description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
+
+  - name: ophis-op-chain-health
+    interval: 30s
+    rules:
+      # Audit MEDIUM-9 (2026-05-17): submission-deadline=60 in autopilot.toml
+      # was tuned for OP's ~2s post-Bedrock block time. If OP ever bumps to 2s
+      # (testnet has done this before) or drops to 500ms (rumored
+      # optimization), 60 blocks becomes either too long (stale-quote/MEV
+      # window) or too short (mass settle timeouts). Detect block-time
+      # drift via the rate of advance of `last_block_number` — the Gauge
+      # exported by apps/backend/crates/ethrpc/src/block_stream.rs:329.
+      # `rate()` on a monotonic Gauge yields blocks/sec (≈ 1.0 on OP today).
+      - alert: OphisUniBlockTimeDrift
+        expr: |
+          (
+            rate(last_block_number{job="autopilot"}[5m]) < 0.7
+            or
+            rate(last_block_number{job="autopilot"}[5m]) > 1.3
+          )
+        for: 15m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "Unichain effective block time drifted >30% from ~1s"
+          description: "Unichain block production rate is outside the 0.7-1.3 blocks/sec band (Unichain ~1s) for 15min. The autopilot solve/submission deadlines assume ~1s blocks; sustained drift means quotes go stale (rate too low) or settle deadlines clip (rate too high). Inspect the self-node + eRPC upstream sync, then re-tune the autopilot timing config for the observed block time."
+
+      # Audit MEDIUM-5 paired alert: gas-price-cap was tightened 1000 → 5 gwei (PR #131).
+      # Alert if OP basefee approaches the cap. Metric source: roadmap 1.6 /
+      # task #142 — autopilot/src/maintenance.rs emits `eth_basefee_wei` per
+      # observed block (Prom name: autopilot_maintenance_eth_basefee_wei).
+      # Threshold: 1.5 gwei = 30 % of the 5 gwei cap set in #131. OP steady-state basefee is ~0.01 gwei so this fires only on genuine surges (e.g. an OP outage backlog clearing).
+      - alert: OphisUniUnichainfeeApproachingCap
+        # No chain="..." selector: prometheus.yml external_labels are applied at
+        # alert-send / federation time, NOT during local rule evaluation, so the
+        # scraped autopilot_maintenance_eth_basefee_wei series carries no `chain`
+        # label and any chain="..." selector would match nothing — the alert would
+        # silently never fire (Codex #718 P2). This Prom is single-tenant (chain
+        # 130 only), so the bare metric selector is the correct, firing form.
+        expr: |
+          autopilot_maintenance_eth_basefee_wei > 1500000000
+        for: 5m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP basefee at {{ $value | humanize }}wei sustained >5min — approaching 5 gwei gas_price_cap"
+          description: "Optimism basefee has exceeded 1.5 gwei for 5 consecutive minutes. The driver's gas_price_cap is 5 gwei (per #131). At ~3× headroom remaining a sustained spike risks settlement-broadcast rejection. Inspect: `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. Consider raising gas_price_cap or pausing solver if congestion sustained."
+
+      # Phase 4 audit F2 + sharp-edges audit F3 (2026-05-21): the driver
+      # re-checks gas_price_cap on both submit and cancel paths AFTER RBF
+      # bump + solver-override. Behaviour differs by context:
+      #
+      #   context="submit_settlement"  → driver ABORTS the broadcast (fail-closed).
+      #                                  Settle tx is 200-400k gas; drain is
+      #                                  significant; safer to fail loud.
+      #   context="cancel_settlement"  → driver LOGS + BROADCASTS ANYWAY.
+      #                                  Cancellation is 21k gas (bounded
+      #                                  ~$0.05 drain even at 1000 gwei) and
+      #                                  aborting would leave the original
+      #                                  settle tx stuck in-flight, blocking
+      #                                  the submitter EOA nonce for hours.
+      #
+      # Either way this counter increments and the alert fires — operator
+      # must investigate. Non-zero rate is anomalous regardless of context.
+      - alert: OphisUniGasPriceCapExceeded
+        expr: |
+          increase(driver_gas_price_cap_exceeded[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP driver gas_price_cap policy violated (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
+          description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override. If context='submit_settlement' the broadcast was ABORTED (settle tx is not on-chain); if context='cancel_settlement' the broadcast PROCEEDED anyway to avoid nonce-stuck (cancellation is 21k gas — bounded drain). Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine OP fee surge while a solver-override pushed past the cap; (3) repeated RBF bumps cascading above policy. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
+
+  - name: ophis-op-ethflow
+    interval: 30s
+    rules:
+      # Audit HIGH-2 defense-in-depth (2026-05-18): WETH WETH9 parity
+      # confirmed empirically (see docs/audits/2026-05-18-whype-weth9-parity.md)
+      # — every EthFlow assumption holds today. This alert is the canary for
+      # any future divergence: if the EthFlow contract ever emits
+      # EthTransferFailed (the explicit revert in _invalidateOrder L243-245
+      # when `payable(orderData.owner).call{value: refundAmount}` returns
+      # false), something downstream is broken — could be (a) a WETH upgrade
+      # changing withdraw semantics, (b) a malicious recipient with a
+      # gas-heavy fallback, (c) gas-griefing on a contract receiver.
+      #
+      # The metric expects the event to be exported as a counter — wire via
+      # a subgraph alerter, or have the rebate-indexer (which already
+      # listens for cow-fi events) tail EthFlow logs.
+      # TODO once metric producer lands: re-evaluate threshold.
+      - alert: OphisUniEthFlowTransferFailed
+        expr: |
+          increase(ethflow_eth_transfer_failed_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          chain: base
+        annotations:
+          summary: "OP EthFlow refund/transfer failed — investigate WETH or recipient state"
+          description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x5555…)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
+
+  - name: ophis-op-sanctions-oracle
+    interval: 30s
+    rules:
+      # F6 (2026-05-21 whole-repo audit, Codex Cyber HIGH closed):
+      # the sanctions-oracle (Chainalysis) fail-open behavior is
+      # INTENTIONAL — the alternative (block all orders on outage)
+      # is operationally worse. The pre-F6 posture promoted these
+      # errors from warn to error, but there was no Prometheus
+      # signal. This alert is the visibility layer.
+      #
+      # `stage` distinguishes:
+      #   - background_refresh: 60s-interval cache-expiry refresh task
+      #   - on_demand:          per-request fetch on cache miss
+      #
+      # Alert threshold: more than 5 failures in 10m. Single Chainalysis
+      # hiccups are benign; sustained non-zero indicates a genuine outage
+      # where the operator must decide whether to (a) shift to fail-closed
+      # via code change + rebuild, (b) page Chainalysis support, or (c)
+      # escalate to a manual block-list. Counter only — current code has
+      # no kill switch for runtime fail-closed; manual intervention req.
+      - alert: OphisUniSanctionsOracleFetchFailing
+        # Metric is scraped from orderbook, which sets namespace `gp_v2_api`
+        # at observe::metrics::setup_registry(...). Combined with subsystem
+        # `sanctions` and field `oracle_fetch_failed`, the full name is
+        # `gp_v2_api_sanctions_oracle_fetch_failed` — NO `_total` suffix.
+        # The Rust `prometheus` crate does NOT auto-append `_total`
+        # (unlike Prometheus convention). Caught during F6 stress-verify
+        # 2026-05-21 — previous expression queried `..._total` and would
+        # never have matched the actual scraped metric series.
+        expr: |
+          increase(gp_v2_api_sanctions_oracle_fetch_failed{job="orderbook"}[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          chain: base
+        annotations:
+          summary: "OP sanctions oracle (Chainalysis) sustained fetch failures — fail-open active"
+          description: "More than 5 Chainalysis fetch failures in 10m (stage={{ $labels.stage }}). The driver/orderbook is currently in fail-open posture: sanctioned addresses MAY be passing validation. Investigate Chainalysis oracle health (status.chainalysis.com), consider manually rotating to a backup oracle, OR shift to fail-closed by editing apps/backend/crates/order-validation/src/banned.rs to return Err on this path (requires rebuild + redeploy). Cross-reference: F6 in memory/2026-05-21-whole-repo-audit-pass.md."
