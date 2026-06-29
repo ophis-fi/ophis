@@ -132,7 +132,7 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
  * ingress returns 400. Optimism (10) is the only self-hosted chain today;
  * CoW-hosted chains validate via api.cow.fi and still accept the PI shape.
  */
-const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10])
+const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 130])
 
 /** The OP non-stable RETAIL fee the front-end charges and writes on-chain (OPHIS_FRONTEND_OP_VOLUME_BPS = 10 bps, hoisted above). */
 export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_FRONTEND_OP_VOLUME_BPS

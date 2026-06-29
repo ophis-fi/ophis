@@ -38,6 +38,8 @@ const AMOUNT_LIMIT: Record<SupportedChainId, number> = {
   [SupportedChainId.MAINNET]: 50_000, // $50,000 for mainnet
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 500,
+  // Ophis fork: Unichain mainnet (chain 130)
+  [130 as unknown as SupportedChainId]: 500,
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: 500,
   // Ophis fork: HyperEVM mainnet (chain 999)

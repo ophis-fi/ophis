@@ -37,6 +37,7 @@ import {
   USDT_INK,
   USDC_INK,
   USDC_OPTIMISM,
+  USDC_UNICHAIN,
   USDT0_HYPEREVM,
   NATIVE_CURRENCIES,
 } from '@cowprotocol/common-const'
@@ -130,6 +131,11 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
   [10 as unknown as SupportedChainId]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[10 as unknown as SupportedChainId],
     USDC_OPTIMISM,
+  ]),
+  // Ophis fork: Unichain mainnet (chain 130) favorites — WETH + USDC
+  [130 as unknown as SupportedChainId]: tokensListToMap([
+    WRAPPED_NATIVE_CURRENCIES[130 as unknown as SupportedChainId],
+    USDC_UNICHAIN,
   ]),
   // Ophis fork: MegaETH mainnet (chain 4326) favorites — native ETH + WETH.
   // USDT0 should be added once its canonical address is known (TBD post-deploy).

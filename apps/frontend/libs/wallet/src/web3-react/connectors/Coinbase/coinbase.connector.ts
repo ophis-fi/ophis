@@ -102,7 +102,11 @@ export class CoinbaseWallet extends Connector {
         // HyperEVM as of 2026-05-15 and rejects switches. Users on HyperEVM should
         // use MetaMask, WalletConnect, or another EIP-1193 wallet. Re-evaluate
         // periodically.
-        appChainIds: [...ALL_SUPPORTED_CHAIN_IDS, 10 as unknown as SupportedChainId],
+        appChainIds: [
+          ...ALL_SUPPORTED_CHAIN_IDS,
+          10 as unknown as SupportedChainId,
+          130 as unknown as SupportedChainId, // Ophis fork: Unichain
+        ],
         appLogoUrl: CowImage,
       })
 

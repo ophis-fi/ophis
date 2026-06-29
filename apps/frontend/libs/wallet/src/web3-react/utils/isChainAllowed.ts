@@ -12,6 +12,7 @@ import { ConnectionType } from '../../api/types'
 const OPHIS_ALL_SUPPORTED_CHAIN_IDS: SupportedChainId[] = [
   ...ALL_SUPPORTED_CHAIN_IDS,
   10 as unknown as SupportedChainId,
+  130 as unknown as SupportedChainId,
 ]
 
 const allowedChainsByWallet: Record<ConnectionType, SupportedChainId[]> = {

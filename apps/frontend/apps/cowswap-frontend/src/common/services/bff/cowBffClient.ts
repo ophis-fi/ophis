@@ -9,7 +9,7 @@ const log = console.debug
 // Ophis fork: chains not served by CoW's BFF — calls always 400.
 // Short-circuit to the empty response to avoid the network noise.
 // Chain 10 = OP Mainnet, chain 4326 = MegaETH Mainnet, chain 999 = HyperEVM Mainnet.
-const UNSUPPORTED_BFF_CHAINS = new Set<number>([10, 4326, 999])
+const UNSUPPORTED_BFF_CHAINS = new Set<number>([10, 130, 4326, 999])
 
 export class CoWBFFClient {
   constructor(private readonly baseUrl: string) {}

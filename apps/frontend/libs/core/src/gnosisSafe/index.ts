@@ -17,6 +17,8 @@ export const SAFE_TRANSACTION_SERVICE_URL: Record<SupportedChainId, HttpsString>
   [SupportedChainId.INK]: 'https://safe-transaction-ink.safe.global/api',
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'https://safe-transaction-optimism.safe.global/api',
+  // Ophis fork: Unichain mainnet (chain 130)
+  [130 as unknown as SupportedChainId]: 'https://safe-transaction-unichain.safe.global/api',
   // Ophis fork: MegaETH mainnet (chain 4326) — Safe Transaction Service is not
   // deployed for MegaETH. Empty string disables Safe-app features (createSafeApiKitInstance
   // returns null on falsy URL, so multisig flows degrade gracefully).

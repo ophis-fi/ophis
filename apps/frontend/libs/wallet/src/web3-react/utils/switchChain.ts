@@ -15,6 +15,9 @@ import {
   SupportedChainId,
   HttpsString,
 } from '@cowprotocol/cow-sdk'
+// Ophis fork: Unichain (130) isn't in the SDK chain set, so its RPC suggestion
+// comes from viem's `unichain` chain object.
+import { unichain } from 'viem/chains'
 import { Connector } from '@web3-react/types'
 
 // Ophis fork: MegaETH (4326) + HyperEVM (999) chain entries were removed
@@ -50,6 +53,8 @@ const WALLET_RPC_SUGGESTION: Record<SupportedChainId, HttpsString | null> = {
   [SupportedChainId.INK]: ink.rpcUrls.default.http[0],
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: optimism.rpcUrls.default.http[0],
+  // Ophis fork: Unichain (chain 130)
+  [130 as unknown as SupportedChainId]: unichain.rpcUrls.default.http[0] as HttpsString,
 }
 
 // TODO: Add proper return type annotation
@@ -71,7 +76,7 @@ export const switchChain = async (connector: Connector, chainId: SupportedChainI
       chainId,
       chainName: info.eip155Label,
       rpcUrls: getRpcUrls(chainId),
-      nativeCurrency: info.nativeCurrency,
+      nativeCurrency: { name: info.nativeCurrency.name, symbol: info.nativeCurrency.symbol, decimals: info.nativeCurrency.decimals },
       blockExplorerUrls: [info.explorer],
     }
     await connector.activate(addChainParameter)

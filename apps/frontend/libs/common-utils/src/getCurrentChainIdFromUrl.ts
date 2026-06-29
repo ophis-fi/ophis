@@ -22,9 +22,9 @@ export function getRawCurrentChainIdFromUrl(location = window.location): Support
 
   const chainId = +(urlChainIdMatch?.[1] || chainNameToIdMap[chainQueryParam || ''] || '')
 
-  // Ophis fork: chain 10 (Optimism) is supported at frontend layer even though
-  // the SDK enum doesn't include it as a primary SupportedChainId.
-  if (chainId && (chainId in SupportedChainId || chainId === 10)) return chainId as SupportedChainId
+  // Ophis fork: chains 10 (Optimism) and 130 (Unichain) are supported at frontend
+  // layer even though the SDK enum doesn't include them as primary SupportedChainId.
+  if (chainId && (chainId in SupportedChainId || chainId === 10 || chainId === 130)) return chainId as SupportedChainId
 
   return null
 }
