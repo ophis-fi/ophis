@@ -15,6 +15,8 @@ const INITIAL_TOKEN_LIST_PER_NETWORK: TokenListPerNetwork = {
   ...mapSupportedNetworks({}),
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: {},
+  // Ophis fork: Unichain mainnet (chain 130)
+  [130 as unknown as SupportedChainId]: {},
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: {},
   // Ophis fork: HyperEVM mainnet (chain 999)
@@ -35,6 +37,8 @@ const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: 'ink',
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'optimistic-ethereum',
+  // Ophis fork: Unichain mainnet (chain 130) — CoinGecko 'unichain' platform slug
+  [130 as unknown as SupportedChainId]: 'unichain',
   // Ophis fork: MegaETH mainnet (chain 4326) — CoinGecko has no MegaETH platform
   // slug yet; null disables remote token-list fetches gracefully.
   [4326 as unknown as SupportedChainId]: null,

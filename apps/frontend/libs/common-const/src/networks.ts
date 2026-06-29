@@ -31,6 +31,8 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [SupportedChainId.SEPOLIA]: (process.env['REACT_APP_NETWORK_URL_11155111'] as HttpsString) || undefined,
   // Ophis fork: OP mainnet (chain 10) added at frontend layer
   [10 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_10'] as HttpsString) || undefined,
+  // Ophis fork: Unichain (chain 130) added at frontend layer
+  [130 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_130'] as HttpsString) || undefined,
 }
 
 // Ophis fork (F1, 2026-05-20): defaults switched from Infura (which
@@ -58,6 +60,8 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.SEPOLIA]: { url: `https://ethereum-sepolia-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: OP mainnet default public RPC
   [10 as unknown as SupportedChainId]: { url: `https://optimism-rpc.publicnode.com`, usesInfura: false },
+  // Ophis fork: Unichain default public RPC
+  [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
 }
 
 /**
@@ -67,6 +71,8 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   ...mapSupportedNetworks(getRpcUrl),
   // Ophis fork: include OP mainnet (chain 10) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
   [10 as unknown as SupportedChainId]: getRpcUrl(10 as unknown as SupportedChainId),
+  // Ophis fork: include Unichain (chain 130) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
+  [130 as unknown as SupportedChainId]: getRpcUrl(130 as unknown as SupportedChainId),
 }
 
 function getRpcUrl(chainId: SupportedChainId): HttpsString {

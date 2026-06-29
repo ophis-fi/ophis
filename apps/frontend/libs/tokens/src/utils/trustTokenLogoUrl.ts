@@ -14,6 +14,8 @@ const chainIdToName: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: null, // As of now (2026/01/23), Ink is not on Trust Wallet assets repo
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'optimism',
+  // Ophis fork: Unichain mainnet (chain 130)
+  [130 as unknown as SupportedChainId]: 'unichain',
   // Ophis fork: MegaETH mainnet (chain 4326) — not on Trust Wallet assets repo
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: HyperEVM mainnet (chain 999) — not on Trust Wallet assets repo

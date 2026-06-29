@@ -39,7 +39,7 @@ function useWalletInfo(): WalletInfo {
   // Ophis fork: chain 10 (OP Mainnet) is supported at the frontend layer
   // even though the SDK enum doesn't include it. Chains 4326 (MegaETH)
   // and 999 (HyperEVM) were removed in PR #167 (2026-05-21).
-  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId) && chainId !== 10
+  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 130
 
   return useMemo(
     () => ({
