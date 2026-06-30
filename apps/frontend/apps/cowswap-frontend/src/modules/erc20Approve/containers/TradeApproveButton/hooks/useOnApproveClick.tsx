@@ -24,11 +24,15 @@ export function useOnApproveClick({
   return useCallback(async (): Promise<void> => {
     if (isPermitSupported && onApproveConfirm) {
       const isPermitSigned = await generatePermitToTrade()
+      // Only short-circuit when the permit actually signed; otherwise fall
+      // through to the on-chain approve below. Mirrors the useApproveAndSwap
+      // fix so a failed/rejected permit never leaves the CTA a silent no-op.
+      // (This hook is currently unused; aligned to prevent the dead-button bug
+      // from reappearing if it is ever wired up.)
       if (isPermitSigned) {
         onApproveConfirm()
+        return
       }
-
-      return
     }
 
     const toApprove = isPartialApproveEnabledByUser ? BigInt(amountToApprove.quotient.toString()) : MAX_APPROVE_AMOUNT

@@ -167,15 +167,18 @@ export const CHAIN_INFO: ChainInfoMap = {
   // Ophis fork: Unichain (chain 130). Not in the SDK's TargetChainId /
   // AdditionalTargetChainId enums, so the BaseChainInfo is constructed
   // literally here (mirrors the shape `mapChainInfoToBaseChainInfo` produces
-  // for the SDK chains). Unichain is an OP-Stack rollup; logo reuses the
-  // SDK ethereum/native ETH logo since there's no Unichain asset shipped.
+  // for the SDK chains). Unichain is an OP-Stack rollup; the logo is the
+  // official Unichain brand mark self-hosted at /logos/chain-unichain.svg
+  // (same-origin so it resolves on prod + preview + local; CSP img-src allows
+  // 'self'). Previously reused the SDK ethereum logo as a placeholder, which
+  // rendered the Ethereum diamond in the chain selector.
   [130 as unknown as SupportedChainId]: {
     docs: 'https://docs.unichain.org' as HttpsString,
     explorer: 'https://uniscan.xyz' as HttpsString,
     infoLink: 'https://www.unichain.org' as HttpsString,
     logo: {
-      light: mainnet.logo.light as HttpsString,
-      dark: mainnet.logo.dark as HttpsString,
+      light: '/logos/chain-unichain.svg' as HttpsString,
+      dark: '/logos/chain-unichain.svg' as HttpsString,
     },
     addressPrefix: 'uni',
     label: 'Unichain',
