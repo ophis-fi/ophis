@@ -156,7 +156,7 @@ selector can route to:
 
 ```
 ethereum  arbitrum  avalanche  base  bnb  gnosis
-ink  linea  optimism  plasma  polygon
+ink  linea  optimism  plasma  polygon  unichain
 ```
 
 ## Errors

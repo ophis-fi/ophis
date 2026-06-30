@@ -52,7 +52,7 @@ outcome regardless.
 ## Smart contracts
 
 Ophis runs its **own deployment** of CoW Protocol's GPv2 settlement stack on
-Optimism. The contracts that hold or move value are **immutable**: they have
+Optimism and Unichain. The contracts that hold or move value are **immutable**: they have
 no admin, no owner, and no proxy, so no operator (and no compromise of Ophis's
 backend or frontend) can upgrade, pause, or re-point them:
 
@@ -61,6 +61,12 @@ backend or frontend) can upgrade, pause, or re-point them:
 | `GPv2Settlement` | `0x310784c7FCE12d578dA6f53460777bAc9718B859` | Immutable, no admin/proxy |
 | `GPv2VaultRelayer` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | Immutable, only ever honors the Settlement above |
 | `CoWSwapEthFlow` | `0x764fE4aa1FF493cf39931c7923C8ff5837596504` | Immutable, native-ETH sells (see below) |
+
+| Contract | Address (Unichain) | Property |
+| --- | --- | --- |
+| `GPv2Settlement` | `0x108A678716e5E1776036eF044CAB7064226F714E` | Immutable, no admin/proxy |
+| `GPv2VaultRelayer` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` | Immutable, only ever honors the Settlement above |
+| `CoWSwapEthFlow` | `0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7` | Immutable, native-ETH sells (see below) |
 
 The core settlement contract is CoW Protocol's audited code, so CoW's
 settlement audits apply to it directly:

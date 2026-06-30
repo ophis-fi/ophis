@@ -223,7 +223,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Best-execution, MEV-protected trading across 11 EVM chains. © Ophis ${new Date().getFullYear()}.`,
+      copyright: `Best-execution, MEV-protected trading across 12 EVM chains. © Ophis ${new Date().getFullYear()}.`,
     },
     prism: {
       theme: prismThemes.oneLight,

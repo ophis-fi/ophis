@@ -104,7 +104,7 @@ import requests
 
 OPHIS = "https://ophis.fi"
 
-# The 11 EVM chains the Intent API can return, mapped to their chain IDs.
+# The 12 EVM chains the Intent API can return, mapped to their chain IDs.
 # Keep in sync with the API's supported-network list; build_deeplink()
 # raises on any future slug not listed here rather than misrouting it.
 CHAIN_SLUG_TO_ID = {
@@ -119,6 +119,7 @@ CHAIN_SLUG_TO_ID = {
     "arbitrum": 42161,
     "avalanche": 43114,
     "plasma": 9745,
+    "unichain": 130,
 }
 
 
@@ -219,12 +220,13 @@ if you prefer to vendor them.
 
 ### 1. Resolve the orderbook host from the chain ID
 
-:::danger[Optimism does not live on api.cow.fi]
+:::danger[Optimism and Unichain do not live on api.cow.fi]
 
-Optimism is the one chain that breaks the `api.cow.fi/<slug>` pattern. Ophis
-self-hosts its OP orderbook at `optimism-mainnet.ophis.fi`. Posting an OP order
-to `api.cow.fi/optimism-mainnet` (a host that does not serve Ophis) **silently
-bypasses the Ophis solver and zeroes the partner fee**.
+Optimism and Unichain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
+their orderbooks at `optimism-mainnet.ophis.fi` and `unichain-mainnet.ophis.fi`.
+Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
+Ophis) **silently bypasses the Ophis solver and zeroes the partner fee**. Resolve
+hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
 
 :::
 
@@ -291,9 +293,10 @@ CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
 `signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
 chains do **not** use CoW's canonical settlement.
 
-:::danger[The Optimism settlement is not the canonical CoW one]
+:::danger[The Optimism and Unichain settlements are not the canonical CoW one]
 
-On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, **not** the canonical
+On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, and on Unichain it is
+`0x108A678716e5E1776036eF044CAB7064226F714E`, **not** the canonical
 `0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
 order with the SDK default yields a domain separator the deployed contract
 rejects, every order fails. Build the domain from the chain ID instead.

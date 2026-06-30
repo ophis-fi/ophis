@@ -1,7 +1,7 @@
 ---
 id: partners
 title: Partner integration (SDK)
-description: Add Ophis as a swap route inside your own tool with @ophis/sdk plus cow-sdk. Works on Optimism (self-hosted) and every CoW-hosted chain, signs with a vault Safe via EIP-1271, and earns a cross-chain WETH rebate.
+description: Add Ophis as a swap route inside your own tool with @ophis/sdk plus cow-sdk. Works on Optimism and Unichain (self-hosted) and every CoW-hosted chain, signs with a vault Safe via EIP-1271, and earns a cross-chain WETH rebate.
 sidebar_label: Partner integration
 sidebar_position: 4
 ---
@@ -98,18 +98,18 @@ SigningScheme.EIP712`, produce a normal EIP-712 signature, and send the token
 approval from the EOA itself (not a Safe transaction).
 
 That is the whole integration. The sections below explain what each helper does
-per chain (Optimism is self-hosted, the others are CoW-hosted) and the lower-level
+per chain (Optimism and Unichain are self-hosted, the others are CoW-hosted) and the lower-level
 primitives, if you would rather wire the steps yourself.
 
-## Two cases: Optimism vs CoW-hosted chains
+## Two cases: self-hosted (Optimism, Unichain) vs CoW-hosted chains
 
 Ophis serves two kinds of chain, and they differ only in **where the order is
 posted** and **which settlement contract signs**:
 
-| | Optimism (self-hosted) | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
+| | Self-hosted (Optimism, Unichain) | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
 | --- | --- | --- |
-| Orderbook host | `optimism-mainnet.ophis.fi` (Ophis) | `api.cow.fi/<chain>` (cow-sdk default) |
-| Settlement (EIP-712 `verifyingContract`) | Ophis `0x310784c7FCE12d578dA6f53460777bAc9718B859` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default) |
+| Orderbook host | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`) | `api.cow.fi/<chain>` (cow-sdk default) |
+| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default) |
 | Partner fee | `buildOphisAppDataPartnerFee(chainId)` | `buildOphisAppDataPartnerFee(chainId)` |
 | Fee enforcement | Enforced floor at settlement | Carried in `appData`, validated by CoW |
 
@@ -222,8 +222,9 @@ Before its first CoW **sell** of a given token, the order owner approves that
 token to the CoW **Vault Relayer** (the contract that pulls the sell token at
 settlement). Resolve the relayer per chain with `getOphisVaultRelayer(chainId)`
 from `@ophis/sdk`: it returns the canonical `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110`
-on CoW-hosted chains and the Ophis-operated relayer `0x83847EaB41ad9ea43809ce71569eB2e9daF51830`
-on Optimism. **Do not use cow-sdk's relayer address on Optimism** (and the other
+on CoW-hosted chains and the Ophis-operated relayers (Optimism `0x83847EaB41ad9ea43809ce71569eB2e9daF51830`,
+Unichain `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb`) on the self-hosted chains.
+**Do not use cow-sdk's relayer address on Optimism or Unichain** (the
 Ophis-operated chains): cow-sdk only knows the canonical relayer, but the Ophis OP
 settlement pulls from the Ophis relayer, so an approval to the canonical address
 leaves first sells unfillable. The `approve` moves no funds: it only lets the
@@ -360,14 +361,14 @@ await orderBookApi.uploadAppData(appDataHash, built.appDataToUpload);
 await ethFlow.createOrder(built.orderTuple, { value: built.value });
 ```
 
-Native ETH is supported on Optimism, Base, and the other CoW-hosted chains.
+Native ETH is supported on Optimism, Unichain, Base, and the other CoW-hosted chains.
 The order carries the Ophis partner fee exactly as an ERC-20 order does.
 
 ## Caveats
 
 - **Use the SDK path, not the widget.** The embed cannot carry a `partnerFee` or
   a referral code.
-- **Optimism is the only self-hosted chain.** Other chains are CoW-hosted, where
+- **Optimism and Unichain are the self-hosted chains.** Other chains are CoW-hosted, where
   Ophis charges the fee but cannot enforce a floor or an on-chain discount.
 - **Do not use the `api.cow.fi` host on Optimism.** It silently bypasses the
   Ophis solver and charges no Ophis fee.
