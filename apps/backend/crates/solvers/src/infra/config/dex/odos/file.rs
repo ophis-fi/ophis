@@ -56,7 +56,12 @@ pub async fn load(path: &Path) -> super::Config {
             chain_id: config.chain_id,
             settlement_contract: base.contracts.settlement,
             referral_code: config.referral_code,
-            api_key: config.api_key,
+            // Treat an empty `api-key` as absent. The TOML renders the key from
+            // ${ODOS_API_KEY}; if that env var is unset, envsubst yields
+            // `api-key = ""`, which would otherwise send an empty `x-api-key`
+            // header (worse than the anonymous path). Coerce "" -> None so a
+            // missing key falls back cleanly to the anonymous tier.
+            api_key: config.api_key.filter(|k| !k.is_empty()),
             block_stream: base.block_stream.clone(),
         },
         base,

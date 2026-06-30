@@ -141,19 +141,21 @@ pub struct AssembleRequest {
 }
 
 /// Response envelope for `POST /sor/assemble`.
-#[serde_as]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssembleResponse {
-    /// The encoded router transaction.
+    /// The encoded router transaction. This is the ONLY field the solver reads
+    /// from the assemble response — the slippage floor is reconstructed from the
+    /// QUOTE's `out_amounts`, not from here.
+    ///
+    /// NOTE: `/sor/assemble` also returns `outputTokens`, but — unlike the
+    /// quote's `outAmounts` (a list of decimal strings) — it is a list of
+    /// `{tokenAddress, amount}` OBJECTS. A prior DTO modeled it as
+    /// `Vec<U256>`-from-string, which made the whole assemble response fail to
+    /// deserialize (and fall through to an empty `Api` error) the moment a real
+    /// route was assembled. Since the field is unused, it is simply dropped
+    /// here; with no `deny_unknown_fields`, serde ignores it.
     pub transaction: Transaction,
-    /// Optimistic output amounts (decimal strings), one per output token.
-    /// Same caveat as `QuoteResponse::out_amounts`: this is NOT the slippage
-    /// floor — it is the optimistic value. We never report it as the CoW buy
-    /// clearing amount.
-    #[serde_as(as = "Vec<serde_with::DisplayFromStr>")]
-    #[serde(default)]
-    pub output_tokens: Vec<U256>,
 }
 
 /// The encoded transaction returned by `/sor/assemble`.

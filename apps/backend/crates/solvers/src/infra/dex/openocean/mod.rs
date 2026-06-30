@@ -209,6 +209,23 @@ impl OpenOcean {
             // cross-check). See OPENOCEAN_ROUTER_ALLOWLIST docs.
             validate_router_allowlist(&data.to)?;
 
+            // RFQ EXCLUSION (defense in depth): we send `disableRfq=true`, but
+            // if the API still returns an RFQ-backed route it carries a non-zero
+            // off-chain `rfqDeadline`. Such a signed quote can EXPIRE before the
+            // deferred CoW settlement lands, so the calldata would revert at
+            // settle time — reject it rather than build a settlement-revert.
+            if data.rfq_deadline != 0 {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "OpenOcean returned an RFQ route (rfqDeadline {}) despite \
+                         disableRfq=true; refusing (expiry-revert risk under \
+                         deferred settlement)",
+                        data.rfq_deadline
+                    ),
+                });
+            }
+
             // Defensive: the response should be for the chain we asked for.
             // `chain_id` is best-effort (defaults to 0 if absent) so only
             // reject on an explicit non-zero mismatch.
@@ -328,10 +345,18 @@ impl OpenOcean {
             ("amount", amount_decimal),
             ("gasPrice", DEFAULT_GAS_PRICE_GWEI.to_string()),
             ("slippage", slippage_percent),
-            // RFQ EXCLUSION: `account` becomes the funds source AND the
-            // recipient encoded into the calldata. Pinning it to the
-            // Settlement contract keeps the calldata executable by the
-            // settlement (an arbitrary caller) when it lands later.
+            // RFQ EXCLUSION: OpenOcean can route through signed RFQ quotes that
+            // carry an off-chain `rfqDeadline`. Under CoW's DEFERRED settlement
+            // the winning solution lands seconds-to-minutes later, by which time
+            // an RFQ quote can have EXPIRED — the settlement would then revert.
+            // Disable RFQ routing at the source (and we also reject any response
+            // that still carries a non-zero rfqDeadline, below, as defense in
+            // depth in case the param is ignored).
+            ("disableRfq", "true".to_string()),
+            // `account` becomes the funds source AND the recipient encoded into
+            // the calldata. Pinning it to the Settlement contract keeps the
+            // calldata executable by the settlement (an arbitrary caller) when
+            // it lands later.
             ("account", format!("{:#x}", self.settlement_contract)),
         ];
 
