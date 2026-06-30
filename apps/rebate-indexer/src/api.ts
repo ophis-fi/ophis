@@ -13,6 +13,7 @@ import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
   OPTIMISM_CHAIN_ID,
+  SOVEREIGN_CHAIN_IDS,
   keepFractionBps,
   estimateEarningsFromNetFeeUsd,
   type AffiliateKind,
@@ -50,10 +51,10 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_volume_usd,
           -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
-          -- estimate matches the per-trade, per-chain payout: Optimism keeps 100%,
-          -- hosted 75% (NULL bps -> retail default, like accrual).
+          -- estimate matches the per-trade, per-chain payout: sovereign chains
+          -- (OP, Unichain) keep 100%, hosted 75% (NULL bps -> retail default, like accrual).
           COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
-            * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
+            * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_net_weighted,
           COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
@@ -79,7 +80,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
           COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
-            * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
+            * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd
         FROM referrals r
         LEFT JOIN trades t
@@ -106,7 +107,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       ), 0)::text AS cycle_volume_usd,
       COALESCE(SUM(t.value_usd * t.volume_fee_bps
-        * (CASE WHEN t.chain_id = ${OPTIMISM_CHAIN_ID} THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
+        * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       ), 0)::text AS cycle_net_weighted,
       COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
@@ -128,9 +129,10 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   const appdataCycle = appdataAgg ? parseFloat(appdataAgg.cycle_volume_usd) : 0;
   const appdataLifetime = appdataAgg ? parseFloat(appdataAgg.lifetime_volume_usd) : 0;
   // Cycle NET fee (USD) = SUM(value * bps * keepFractionBps(chain)) / 1e8 across
-  // bind + appData (disjoint), matching the per-trade, per-chain accrual (OP keeps
-  // 100%, hosted 75%). The /1e8 unscales both the bps (1e4) and the keep bps (1e4).
-  // Drives the fee-aware earnings estimate (no ~2x for SDK; OP not understated 25%).
+  // bind + appData (disjoint), matching the per-trade, per-chain accrual (sovereign
+  // OP/Unichain keep 100%, hosted 75%). The /1e8 unscales both the bps (1e4) and the
+  // keep bps (1e4). Drives the fee-aware earnings estimate (no ~2x for SDK; sovereign
+  // chains not understated 25%).
   const bindNetWeighted = agg && agg.cycle_net_weighted ? parseFloat(agg.cycle_net_weighted) : 0;
   const appdataNetWeighted = appdataAgg ? parseFloat(appdataAgg.cycle_net_weighted) : 0;
   const currentCycleNetFeeUsd = (bindNetWeighted + appdataNetWeighted) / 100_000_000;

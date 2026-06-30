@@ -3,9 +3,32 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { CowTrade } from '../src/cow/types.js';
-import { nativePrice } from '../src/cow/client.js';
+import {
+  nativePrice,
+  orderbookBase,
+  SUPPORTED_CHAIN_IDS,
+  OPTIMISM_CHAIN_ID,
+  UNICHAIN_CHAIN_ID,
+} from '../src/cow/client.js';
 
 const fixturesDir = fileURLToPath(new URL('./fixtures', import.meta.url));
+
+describe('SUPPORTED_CHAIN_IDS / orderbookBase — sovereign + hosted routing', () => {
+  it('includes the sovereign Ophis chains Optimism (10) and Unichain (130)', () => {
+    expect(SUPPORTED_CHAIN_IDS).toContain(OPTIMISM_CHAIN_ID);
+    expect(SUPPORTED_CHAIN_IDS).toContain(UNICHAIN_CHAIN_ID); // else 130 trades never index
+  });
+
+  it('routes each sovereign chain to its own self-hosted orderbook host root (NOT api.cow.fi)', () => {
+    expect(orderbookBase(OPTIMISM_CHAIN_ID)).toBe('https://optimism-mainnet.ophis.fi');
+    expect(orderbookBase(UNICHAIN_CHAIN_ID)).toBe('https://unichain-mainnet.ophis.fi');
+  });
+
+  it('routes hosted chains to api.cow.fi/{network} and throws on an unsupported chain', () => {
+    expect(orderbookBase(100)).toBe('https://api.cow.fi/xdai');
+    expect(() => orderbookBase(424_242)).toThrow(/unsupported chain/);
+  });
+});
 
 describe('CowTrade schema', () => {
   it('parses every entry in tests/fixtures/cow-trades.json', () => {
