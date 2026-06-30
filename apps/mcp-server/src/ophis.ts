@@ -722,6 +722,7 @@ const PUBLIC_RPCS: Record<number, string[]> = {
   10: ['https://optimism-rpc.publicnode.com', 'https://optimism.llamarpc.com'],
   56: ['https://bsc-rpc.publicnode.com', 'https://binance.llamarpc.com'],
   100: ['https://gnosis-rpc.publicnode.com'],
+  130: ['https://mainnet.unichain.org'],
   137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.llamarpc.com'],
   8453: ['https://base-rpc.publicnode.com', 'https://base.llamarpc.com'],
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.llamarpc.com'],
@@ -732,13 +733,13 @@ const PUBLIC_RPCS: Record<number, string[]> = {
 
 /** GeckoTerminal network slug per chain (for the keyless OHLCV market API). */
 const GECKO_NETWORK: Record<number, string> = {
-  1: 'eth', 10: 'optimism', 56: 'bsc', 100: 'xdai', 137: 'polygon_pos',
+  1: 'eth', 10: 'optimism', 56: 'bsc', 100: 'xdai', 130: 'unichain', 137: 'polygon_pos',
   8453: 'base', 42161: 'arbitrum', 43114: 'avax', 57073: 'ink', 59144: 'linea',
 }
 
 /** KyberSwap aggregator path-slug per chain (the public beat-the-market reference). */
 const KYBER_SLUG: Record<number, string> = {
-  1: 'ethereum', 10: 'optimism', 56: 'bsc', 137: 'polygon', 8453: 'base',
+  1: 'ethereum', 10: 'optimism', 130: 'unichain', 56: 'bsc', 137: 'polygon', 8453: 'base',
   42161: 'arbitrum', 43114: 'avalanche', 59144: 'linea',
 }
 
