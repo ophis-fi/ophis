@@ -31,11 +31,12 @@ The fastest way to give an MCP-capable agent full Ophis access is the hosted
 https://mcp.ophis.fi/mcp
 ```
 
-It speaks streamable-HTTP MCP and exposes eleven tools:
+It speaks streamable-HTTP MCP and exposes twelve tools:
 
 | Tool | What it does |
 | --- | --- |
 | `parse_intent` | Parse a natural-language request into a structured intent. |
+| `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis/CoW token list; fails closed (anti-spoof). Call this before quoting or building so you never trade against a spoofed address. |
 | `get_quote` | Fetch an executable quote for a parsed intent. |
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
