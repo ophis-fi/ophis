@@ -4,7 +4,7 @@
 
 ## Build with Ophis
 
-- [AI agent integration](https://docs.ophis.fi/ai-agents): hosted MCP server at https://mcp.ophis.fi/mcp (tools: parse_intent, get_quote, build_order, submit_order, lookup_tier, list_chains), plus Intent-API recipes for LangChain / AutoGPT / function-calling agents. The human always signs: the signature is the trust boundary.
+- [AI agent integration](https://docs.ophis.fi/ai-agents): hosted MCP server at https://mcp.ophis.fi/mcp (tools: parse_intent, get_quote, build_order, submit_order, lookup_tier, list_chains, get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus), plus Intent-API recipes for LangChain / AutoGPT / function-calling agents. The human always signs: the signature is the trust boundary.
 - [Intent API](https://docs.ophis.fi/intent-api): `POST https://ophis.fi/api/intent` with `{"text": "swap 100 USDC for ETH on Base"}` returns `{ok, data: {intent, entities}}`. OpenAPI spec: https://ophis.fi/openapi.json
 
 ## Fees
