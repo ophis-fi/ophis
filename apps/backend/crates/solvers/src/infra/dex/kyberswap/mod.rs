@@ -159,7 +159,7 @@ impl KyberSwap {
             // settlement calldata. See KYBERSWAP_ROUTER_ALLOWLIST docs.
             validate_router_allowlist(&routes_router)?;
 
-            let build = self
+            let (build, slippage_tolerance) = self
                 .build_route(routes.route_summary, order, slippage)
                 .await?;
 
@@ -218,7 +218,23 @@ impl KyberSwap {
                 },
                 output: eth::Asset {
                     token: order.buy,
-                    amount: build.amount_out,
+                    // Report the GUARANTEED slippage-floor output (== the
+                    // router's on-chain minReturnAmount), NOT the optimistic
+                    // quote `build.amount_out`. The CoW settlement pays the buy
+                    // side at exactly this clearing amount; if it exceeded what
+                    // the router actually realized, the buy-token transfer to
+                    // the receiver reverts (insufficient balance, empty data),
+                    // the solver's gas simulation fails, and the solution is
+                    // dropped as NoSolutions. On a chain where KyberSwap is the
+                    // only solver (Unichain has no on-chain AMM liquidity
+                    // sources by design) that zeroes EVERY auction, so orders
+                    // never settle. The router guarantees realized >=
+                    // minReturn, so paying minReturn always succeeds; any
+                    // positive slippage above it accrues to the Settlement
+                    // buffer (standard CoW surplus handling). The order's
+                    // signed buy-amount-min is enforced downstream, so a floor
+                    // below the limit is correctly filtered as NoSolution.
+                    amount: min_return_amount(build.amount_out, slippage_tolerance),
                 },
                 allowance: dex::Allowance {
                     spender: routes_router,
@@ -255,12 +271,16 @@ impl KyberSwap {
     }
 
     /// Step 2 — build the calldata for the route returned in step 1.
+    ///
+    /// Returns the build data together with the `slippage_tolerance` (bps) that
+    /// was sent to KyberSwap, so the caller can reconstruct the router's
+    /// on-chain `minReturnAmount` and report it as the guaranteed buy output.
     async fn build_route(
         &self,
         route_summary: dto::RouteSummary,
         _order: &dex::Order,
         slippage: &dex::Slippage,
-    ) -> Result<dto::BuildData, Error> {
+    ) -> Result<(dto::BuildData, u16), Error> {
         let slippage_bps = slippage.as_bps().ok_or(Error::InvalidSlippage)?;
         let slippage_tolerance = crate::infra::metrics::clamp_slippage_bps(
             crate::infra::metrics::Dex::KyberSwap,
@@ -292,7 +312,10 @@ impl KyberSwap {
             util::http::roundtrip!(<dto::BuildApiResponse, dto::ApiError>; request).await?;
 
         Self::handle_api_error(response.code, &response.message)?;
-        response.data.ok_or(Error::BuildFailed)
+        response
+            .data
+            .ok_or(Error::BuildFailed)
+            .map(|data| (data, slippage_tolerance))
     }
 
     /// Map KyberSwap error codes to the [`Error`] taxonomy.
@@ -319,6 +342,29 @@ impl KyberSwap {
                 reason: message.to_string(),
             },
         })
+    }
+}
+
+/// The router's guaranteed minimum output for a quoted `amount_out` and the
+/// `slippage_tolerance` (bps) sent to KyberSwap's `/route/build`.
+///
+/// KyberSwap bakes `minReturnAmount = amount_out * (10000 - slippage) / 10000`
+/// (floor) into the swap calldata and reverts on-chain if the realized output
+/// is below it. Reporting exactly this value as the CoW buy clearing amount
+/// means the settlement's buy-side payout can never exceed what the router
+/// actually delivered, so neither the on-chain buy transfer nor the solver's
+/// gas simulation can revert. Positive slippage above the floor accrues to the
+/// Settlement buffer (standard CoW surplus handling).
+fn min_return_amount(amount_out: U256, slippage_tolerance_bps: u16) -> U256 {
+    let bps = U256::from(10_000u64);
+    let keep = bps.saturating_sub(U256::from(slippage_tolerance_bps));
+    // Real token amounts are far below U256::MAX/10000 so the multiply cannot
+    // overflow; if it ever did, fall back to the (more conservative)
+    // divide-first form rather than returning the un-discounted optimistic
+    // amount (which is the bug this guards against).
+    match amount_out.checked_mul(keep) {
+        Some(scaled) => scaled / bps,
+        None => amount_out / bps * keep,
     }
 }
 
@@ -372,5 +418,41 @@ impl From<util::http::RoundtripError<dto::ApiError>> for Error {
                 },
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Mirrors the live-traced Unichain native-buy revert: the bug reported the
+    // optimistic quote (build.amount_out) as the buy clearing amount, which
+    // exceeded the router's realized output and reverted the settlement payout.
+    #[test]
+    fn min_return_amount_is_router_slippage_floor() {
+        let amount_out = U256::from(988_146_014_276_470u128);
+        // 100 bps (1%) slippage -> floor = amount_out * 9900 / 10000.
+        let floor = min_return_amount(amount_out, 100);
+        assert_eq!(
+            floor,
+            amount_out * U256::from(9_900u64) / U256::from(10_000u64)
+        );
+        // Strictly below the optimistic quote (the value that used to revert)...
+        assert!(floor < amount_out);
+        // ...and at/above this order's signed buy-amount-min, so the user's
+        // limit price still holds (floor 978264554133705 >= 973318255275485).
+        assert!(floor >= U256::from(973_318_255_275_485u128));
+    }
+
+    #[test]
+    fn min_return_amount_zero_slippage_is_identity() {
+        let a = U256::from(1_000_000_000u64);
+        assert_eq!(min_return_amount(a, 0), a);
+    }
+
+    #[test]
+    fn min_return_amount_full_slippage_is_zero() {
+        let a = U256::from(1_000_000_000u64);
+        assert_eq!(min_return_amount(a, 10_000), U256::ZERO);
     }
 }
