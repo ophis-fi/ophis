@@ -232,6 +232,21 @@ impl Lifi {
                 });
             }
 
+            // Defense in depth (mirrors openocean): the executable
+            // `transactionRequest.chainId` must also be our chain. `action` is
+            // the route metadata; `transactionRequest.chainId` is the chain the
+            // calldata actually targets. `chain_id` is best-effort (defaults to
+            // 0 if absent) so only reject on an explicit non-zero mismatch.
+            if tx.chain_id != 0 && tx.chain_id != self.chain_id {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "LI.FI transactionRequest.chainId {} != this solver's chain {}",
+                        tx.chain_id, self.chain_id
+                    ),
+                });
+            }
+
             // ERC-20 -> ERC-20 only. A non-zero native `value` means the route
             // expects ETH the settlement won't attach — refuse rather than build
             // a call that can only revert (the wrapped-settlement guard

@@ -123,6 +123,13 @@ pub struct Action {
 /// One step of a route. `step_type` is the discriminant — `"swap"` /
 /// `"protocol"` are same-chain-safe; `"cross"` / `"bridge"` are NOT (their
 /// calldata bridges funds and cannot be settled later by the Settlement).
+///
+/// FLATNESS ASSUMPTION: LI.FI's `includedSteps` is a FLAT array — every hop,
+/// including any bridge hop, is a top-level entry with its own `type` (bridges
+/// are not nested under swap steps). We therefore only read top-level
+/// `step_type`. Even if this upstream shape ever changed, a genuine bridge is
+/// necessarily cross-chain and is independently caught by the
+/// `action.fromChainId/toChainId` guard in `mod.rs::swap`.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Step {
     #[serde(rename = "type", default)]
