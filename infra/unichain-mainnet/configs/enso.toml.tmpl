@@ -1,0 +1,31 @@
+# Ophis — Unichain mainnet (chain 130) Enso aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# ENABLED on Unichain (2026-06-30). Enso Shortcuts /route (routingStrategy=router)
+# on chain 130. The EnsoRouter 0xF75584eF6673aD213a685a1B58Cc0330B8eA22Cf (the
+# route `tx.to` AND the ERC-20 approval target — routingStrategy=router pulls
+# tokenIn via the approval) is in BOTH the solver allowlist
+# (dex::enso::ENSO_ROUTER_ALLOWLIST) AND the driver allowlist
+# (custom_allowlist::UNICHAIN_MAINNET). The SELL output reports the GUARANTEED
+# minAmountOut floor directly — the #726 fix.
+#
+# KEYED: Enso requires a Bearer API key (NO anonymous tier — the module
+# fail-fasts at startup on an empty key). The key is a SECRET, rendered from
+# ${ENSO_API_KEY} in the gitignored VM .env (NEVER committed); enso.toml is in
+# render-configs.sh PK_BEARING_NAMES so the rendered copy lands on the RAM-disk.
+# The key authenticates / lifts rate limits only — never the funds path. A free,
+# no-KYC key is self-serve at developers.enso.build.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+# Free Enso Bearer API key, sent as the Authorization header. Rendered from the
+# gitignored VM .env; never hardcode a value here.
+api-key = "${ENSO_API_KEY}"

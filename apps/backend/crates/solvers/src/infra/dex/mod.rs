@@ -6,7 +6,9 @@ use {
 
 pub mod bitget;
 pub mod dodo;
+pub mod enso;
 pub mod kyberswap;
+pub mod lifi;
 pub mod odos;
 pub mod okx;
 pub mod openocean;
@@ -24,6 +26,8 @@ pub enum Dex {
     Odos(Box<odos::Odos>),
     OpenOcean(Box<openocean::OpenOcean>),
     Dodo(Box<dodo::Dodo>),
+    Lifi(Box<lifi::Lifi>),
+    Enso(Box<enso::Enso>),
 }
 
 impl Dex {
@@ -45,6 +49,8 @@ impl Dex {
             Dex::Odos(odos) => odos.swap(order, slippage).await?,
             Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
             Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
+            Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
+            Dex::Enso(enso) => enso.swap(order, slippage).await?,
         };
         Ok(swap)
     }
@@ -190,6 +196,28 @@ impl From<dodo::Error> for Error {
             dodo::Error::OrderNotSupported => Self::OrderNotSupported,
             dodo::Error::NotFound => Self::NotFound,
             dodo::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<lifi::Error> for Error {
+    fn from(err: lifi::Error) -> Self {
+        match err {
+            lifi::Error::OrderNotSupported => Self::OrderNotSupported,
+            lifi::Error::NotFound => Self::NotFound,
+            lifi::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<enso::Error> for Error {
+    fn from(err: enso::Error) -> Self {
+        match err {
+            enso::Error::OrderNotSupported => Self::OrderNotSupported,
+            enso::Error::NotFound => Self::NotFound,
+            enso::Error::RateLimited => Self::RateLimited,
             _ => Self::Other(Box::new(err)),
         }
     }

@@ -1,0 +1,25 @@
+# Ophis — Unichain mainnet (chain 130) LI.FI aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# ENABLED on Unichain (2026-06-30). LI.FI SAME-CHAIN DEX swaps on chain 130. The
+# LiFiDiamond 0x864b314D4C5a0399368609581d3E8933a63b9232 (the swap `tx.to` AND
+# the ERC-20 approval target — estimate.approvalAddress == tx.to) is in BOTH the
+# solver allowlist (dex::lifi::LIFI_ROUTER_ALLOWLIST) AND the driver allowlist
+# (custom_allowlist::UNICHAIN_MAINNET). The SELL output reports
+# estimate.toAmountMin (the GUARANTEED on-chain slippage floor) directly — the
+# #726 fix. Same-chain only: the module rejects any cross-chain/bridge route.
+# Keyless: LI.FI's public tier needs no API key (only the `integrator` param).
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+# LI.FI `integrator` string — REQUIRED by LI.FI (it 404s on quotes without one).
+# Partner attribution only; never touches the funds path. Defaults to "ophis".
+integrator = "ophis"
