@@ -12,6 +12,8 @@
 #   odos-solver:       9305
 #   openocean-solver:  9306
 #   dodo-solver:       9307
+#   lifi-solver:       9308
+#   enso-solver:       9309
 #   rpc-proxy (eRPC):  4002  (JSON-RPC); metrics on 4002+1 = 4003 internal
 #   prometheus:        9092
 #   alertmanager:      9095
@@ -213,6 +215,8 @@ services:
       odos-solver: { condition: service_healthy }
       openocean-solver: { condition: service_healthy }
       dodo-solver: { condition: service_healthy }
+      lifi-solver: { condition: service_healthy }
+      enso-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
@@ -416,6 +420,60 @@ services:
     command: ["dodo", "--config", "/dodo.toml"]
     ports:
       - "127.0.0.1:9307:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # LI.FI same-chain DEX aggregator solver — ENABLED on Unichain (2026-06-30).
+  # LiFiDiamond 0x864b314D…b9232 (router == approval target) allowlisted in both
+  # layers; SELL output = estimate.toAmountMin (guaranteed floor). Same-chain
+  # only (rejects bridge routes). Keyless. Seventh lane.
+  lifi-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/lifi.toml:/lifi.toml:ro
+    command: ["lifi", "--config", "/lifi.toml"]
+    ports:
+      - "127.0.0.1:9308:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Enso Shortcuts /route aggregator solver — ENABLED on Unichain (2026-06-30).
+  # EnsoRouter 0xF75584eF…22Cf (router == spender) allowlisted in both layers;
+  # SELL output = minAmountOut (guaranteed floor). KEYED (free Bearer key in
+  # .env; fail-fasts on empty key). Eighth lane.
+  enso-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/enso.toml:/enso.toml:ro
+    command: ["enso", "--config", "/enso.toml"]
+    ports:
+      - "127.0.0.1:9309:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

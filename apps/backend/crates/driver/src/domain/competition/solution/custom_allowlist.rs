@@ -124,10 +124,10 @@ const HYPEREVM_MAINNET: &[Address] = &[
 ];
 
 /// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +
-/// OKX. When a new aggregator is enabled on Unichain, append its router/spender
-/// here after upstream verification — the SOLVER-level allowlist is NOT
-/// sufficient: the driver independently rejects any non-allowlisted Custom
-/// target / spender.
+/// OKX + LI.FI + Enso. When a new aggregator is enabled on Unichain, append its
+/// router/spender here after upstream verification — the SOLVER-level allowlist
+/// is NOT sufficient: the driver independently rejects any non-allowlisted
+/// Custom target / spender.
 const UNICHAIN_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 — same CREATE2-deterministic address
     // as OP/HL. Verified live 2026-06-29: KyberSwap's Unichain aggregator
@@ -169,6 +169,16 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // router above. Verified 2026-06-30 (stable across 3 pairs, 1610 B); matches
     // the solver-level OKX_ROUTER_ALLOWLIST spender.
     address!("2e28281Cf3D58f475cebE27bec4B8a23dFC7782c"),
+    // LI.FI LiFiDiamond on Unichain (130) — BOTH the same-chain swap `tx.to` AND
+    // the ERC-20 approval target (estimate.approvalAddress == tx.to). Verified
+    // 2026-06-30 via li.quest/v1/quote + `eth_getCode` (254-byte EIP-2535 proxy);
+    // matches the solver-level LIFI_ROUTER_ALLOWLIST.
+    address!("864b314D4C5a0399368609581d3E8933a63b9232"),
+    // Enso EnsoRouter on Unichain (130) — the Shortcuts /route `tx.to`, which is
+    // ALSO the ERC-20 approval target (routingStrategy=router pulls tokenIn via
+    // the approval). Verified 2026-06-30 via authenticated Enso probe +
+    // `eth_getCode` (3313 B, stable across pairs); matches ENSO_ROUTER_ALLOWLIST.
+    address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
 ];
 
 /// Validation error from [`validate`] / [`validate_target`] /

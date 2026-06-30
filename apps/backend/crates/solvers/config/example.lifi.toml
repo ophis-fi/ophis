@@ -1,0 +1,20 @@
+node-url = "http://localhost:8545"
+
+[dex]
+# Chain ID. This LI.FI solver is verified on Unichain (130). It uses LI.FI
+# SAME-CHAIN DEX swaps only (fromChain == toChain == chain-id).
+chain-id = "130"
+
+# Optional: override the API endpoint (default https://li.quest/v1/):
+# endpoint = "https://li.quest/v1/"
+
+# LI.FI `integrator` string — REQUIRED by LI.FI (it 404s on quotes without one).
+# Partner attribution only; never touches the funds path. Defaults to "ophis".
+# integrator = "ophis"
+
+# NOTE: LI.FI is keyless on the public tier. exactIn / sell-only (buy/exactOut
+# returned as "no solution"). The GUARANTEED on-chain floor estimate.toAmountMin
+# is reported as the sell clearing amount, never the optimistic estimate.toAmount.
+# The module rejects any cross-chain/bridge route (only same-chain DEX swaps are
+# deferred-settlement-safe) and validates BOTH transactionRequest.to AND
+# estimate.approvalAddress against a static allowlist.

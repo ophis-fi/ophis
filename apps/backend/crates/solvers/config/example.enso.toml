@@ -1,0 +1,20 @@
+node-url = "http://localhost:8545"
+
+[dex]
+# Chain ID. This Enso solver is verified on Unichain (130). Enso keys its
+# /shortcuts/route endpoint by chainId.
+chain-id = "130"
+
+# Optional: override the API endpoint (default https://api.enso.build/api/v1/):
+# endpoint = "https://api.enso.build/api/v1/"
+
+# Enso API key (REQUIRED — Bearer auth, no anonymous tier). The solver fail-fasts
+# at startup on an empty key. It is a SECRET and never touches the funds path
+# (auth / rate-limit only) — render it from an env placeholder, never hardcode a
+# value. A free, no-KYC key is self-serve at developers.enso.build:
+# api-key = "${ENSO_API_KEY}"
+
+# NOTE: exactIn / sell-only (buy/exactOut returned as "no solution"). The
+# GUARANTEED on-chain floor minAmountOut is reported as the sell clearing amount,
+# never the optimistic amountOut. routingStrategy=router: tx.to is BOTH the call
+# target and the ERC-20 approval target, validated against a static allowlist.

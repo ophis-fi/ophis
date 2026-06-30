@@ -110,6 +110,18 @@ name = "dodo"
 url = "http://driver/dodo"
 address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
 
+# LI.FI same-chain aggregator — ENABLED on Unichain (keyless). 7th solver.
+[[drivers]]
+name = "lifi"
+url = "http://driver/lifi"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# Enso Shortcuts aggregator — ENABLED on Unichain (keyed). 8th solver.
+[[drivers]]
+name = "enso"
+url = "http://driver/enso"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
 [fee-policies]
 
 [database]
@@ -125,6 +137,8 @@ price-estimation-drivers = [
   { name = "odos", url = "http://driver/odos" },
   { name = "openocean", url = "http://driver/openocean" },
   { name = "dodo", url = "http://driver/dodo" },
+  { name = "lifi", url = "http://driver/lifi" },
+  { name = "enso", url = "http://driver/enso" },
 ]
 
 [price-estimation]

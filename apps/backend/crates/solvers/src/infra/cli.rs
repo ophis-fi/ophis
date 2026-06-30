@@ -78,4 +78,14 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve individual orders via the LI.FI aggregator API
+    Lifi {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve individual orders via the Enso aggregator API
+    Enso {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
 }

@@ -92,6 +92,26 @@ absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
+# LI.FI same-chain aggregator — ENABLED on Unichain (keyless). LiFiDiamond
+# 0x864b314D…b9232 allowlisted in both layers; SELL output = estimate.toAmountMin
+# (guaranteed floor); same-chain only. Seventh lane.
+[[solver]]
+name = "lifi"
+endpoint = "http://lifi-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# Enso Shortcuts aggregator — ENABLED on Unichain (keyed; free Bearer key).
+# EnsoRouter 0xF75584eF…22Cf (router == spender) allowlisted in both layers;
+# SELL output = minAmountOut (guaranteed floor). Eighth lane.
+[[solver]]
+name = "enso"
+endpoint = "http://enso-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
 [submission]
 # Unichain mainnet typical L2 gas price is 0.001-0.05 gwei (same order as OP).
 # 5 gwei cap is ~100x above realistic Unichain traffic. Same value as OP stack.

@@ -112,6 +112,24 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Lifi { config: path } => {
+            let config = config::dex::lifi::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Lifi(Box::new(
+                    dex::lifi::Lifi::try_new(config.lifi).expect("invalid LI.FI configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Enso { config: path } => {
+            let config = config::dex::enso::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Enso(Box::new(
+                    dex::enso::Enso::try_new(config.enso).expect("invalid Enso configuration"),
+                )),
+                config.base,
+            )))
+        }
     };
 
     crate::api::Api {
