@@ -3,6 +3,7 @@
 import { isAnyOf } from '@reduxjs/toolkit'
 import { AnyAction, Dispatch, Middleware, MiddlewareAPI } from 'redux'
 
+import { getIsBridgeOrder } from 'common/utils/getIsBridgeOrder'
 import { getCowSoundError, getCowSoundSend, getCowSoundSuccess } from 'modules/sounds'
 
 import { AppState } from '../../index'
@@ -56,7 +57,9 @@ export const soundMiddleware: Middleware<Record<string, unknown>, AppState> = (s
       cowSound = getCowSoundSend()
     }
   } else if (isFulfillOrderAction(action)) {
-    cowSound = getCowSoundSuccess()
+    if (_shouldPlayFulfilledOrderSound(action)) {
+      cowSound = getCowSoundSuccess()
+    }
   } else if (isBatchExpireOrderAction(action)) {
     if (_shouldPlayExpiredOrderSound(action.payload, store)) {
       cowSound = getCowSoundError()
@@ -79,6 +82,21 @@ export const soundMiddleware: Middleware<Record<string, unknown>, AppState> = (s
 function _shouldPlayPendingOrderSound(payload: AddPendingOrderParams): boolean {
   // Only play COW sound if added pending order is not hidden
   return !payload.order.isHidden
+}
+
+// Skip the success cue for bridge orders. When only the CoW (source-chain) leg
+// of a bridge order fills, the cross-chain transfer is still in flight, so it is
+// PendingBridgeOrdersUpdater that plays the success sound later, on
+// BridgeStatus.EXECUTED. Playing here as well would double the cue and even fire
+// it on a bridge that ultimately refunds. Mirrors appziMiddleware, which already
+// excludes bridge orders from its fulfillment hook. Play only when at least one
+// fulfilled order in the batch is a regular (non-bridge) order.
+function _shouldPlayFulfilledOrderSound(action: AnyAction): boolean {
+  if (!isBatchFulfillOrderAction(action)) {
+    return true
+  }
+
+  return action.payload.orders.some((order) => !getIsBridgeOrder(order))
 }
 
 function _shouldPlayExpiredOrderSound(
