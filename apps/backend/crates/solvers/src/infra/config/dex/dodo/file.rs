@@ -64,7 +64,13 @@ pub async fn load(path: &Path) -> super::Config {
             base_url: endpoint,
             chain_id: numeric_chain_id(config.chain_id),
             settlement_contract: base.contracts.settlement,
-            apikey: config.apikey,
+            // Treat an empty `apikey` as absent so the public-widget-key default
+            // (dodo::DEFAULT_APIKEY) still applies. `unwrap_or(DEFAULT)` in
+            // dodo::Dex::try_new only fires on `None`; a TOML that renders the
+            // key from an env placeholder yields `apikey = ""` via envsubst when
+            // the var is unset, and an empty string would otherwise be sent
+            // verbatim, defeating the default. Mirrors the Odos coercion.
+            apikey: config.apikey.filter(|k| !k.trim().is_empty()),
             block_stream: base.block_stream.clone(),
         },
         base,

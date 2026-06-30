@@ -543,6 +543,22 @@ while IFS= read -r f; do
       violating_files+=("$f (OKX api-secret-key)")
       continue
     fi
+    # OKX api-passphrase + api-project-id: arbitrary operator-chosen strings
+    # with no fixed value shape, so we match on the FIELD NAME with any
+    # non-empty quoted value rather than a value regex. Both render only from
+    # okx.toml (in PK_BEARING_NAMES -> a RAM-disk symlink skipped by `! -L`
+    # above), so this never trips on the legitimate render; it fail-closes only
+    # if a future template substitutes either OKX credential component into a
+    # non-RAM-disk file. Without these two patterns the leak-guard covered only
+    # 2 of the 4 OKX credential fields okx.toml.tmpl renders.
+    if grep -qE 'api-passphrase = "[^"]+"' "$f" 2>/dev/null; then
+      violating_files+=("$f (OKX api-passphrase)")
+      continue
+    fi
+    if grep -qE 'api-project-id = "[^"]+"' "$f" 2>/dev/null; then
+      violating_files+=("$f (OKX api-project-id)")
+      continue
+    fi
   fi
 done < <(find rendered -maxdepth 1 -type f \( -name "*.toml" -o -name "*.yaml" \))
 

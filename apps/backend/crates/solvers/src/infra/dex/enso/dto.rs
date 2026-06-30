@@ -83,12 +83,19 @@ fn u256_zero() -> U256 {
 // Errors
 // ---------------------------------------------------------------------------
 
-/// Error envelope returned by Enso on a non-2xx status. All fields optional —
-/// Enso's shape varies (`message`, `error`, `statusCode`).
+/// Error envelope returned by Enso on a non-2xx status (a NestJS-style
+/// `{ statusCode, message, error }`). `status_code` is intentionally REQUIRED
+/// (not defaulted): Enso includes it on every error body but not on a successful
+/// route response, so it discriminates a real error from a drifted success. Were
+/// every field defaulted, this struct would deserialize ANY JSON object
+/// (including a 2xx success whose success-DTO parse just failed), masking the
+/// real serde error as an empty `Api` error. Requiring `status_code` lets the
+/// field-naming serde error surface via `util::http::roundtrip_internal`
+/// instead. `message` / `error` stay optional because their human-message shape
+/// varies.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiError {
-    #[serde(default)]
     pub status_code: i64,
     #[serde(default)]
     pub message: String,
