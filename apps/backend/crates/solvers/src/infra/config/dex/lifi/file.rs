@@ -49,12 +49,23 @@ pub async fn load(path: &Path) -> super::Config {
     let (base, config) = file::load::<Config>(path).await;
     let endpoint = config.endpoint.unwrap_or_else(default_endpoint);
 
+    // Coerce an empty `integrator` back to the default. `#[serde(default)]` only
+    // fills the ABSENT case; a TOML that renders `integrator` from an env
+    // placeholder yields `integrator = ""` via envsubst when the var is unset,
+    // and LI.FI 404s every quote without a non-empty integrator: a silent,
+    // total lane outage that looks like "no routes" rather than a config error.
+    let integrator = if config.integrator.trim().is_empty() {
+        default_integrator()
+    } else {
+        config.integrator
+    };
+
     super::Config {
         lifi: lifi::Config {
             base_url: endpoint,
             chain_id: config.chain_id,
             settlement_contract: base.contracts.settlement,
-            integrator: config.integrator,
+            integrator,
             block_stream: base.block_stream.clone(),
         },
         base,

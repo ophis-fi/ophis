@@ -104,6 +104,23 @@ fn validate_dodo_address(addr: &Address, expected: &Address, role: &str) -> Resu
     }
 }
 
+/// Whether a DODO `RouteData.value` (a decimal or hex string) represents a
+/// NON-ZERO native amount. Empty / `"0"` / `"0x0"` / `"0x00"` / whitespace are
+/// zero; an unparseable/garbage shape has a non-`'0'` byte and is treated as
+/// non-zero, i.e. rejected fail-closed. Mirrors the LI.FI / Odos native-value
+/// guards so all three handle `"0x0"`, whitespace and decimal forms identically.
+/// A bare `value != "0"` compare wrongly accepts a hex-encoded zero and, more
+/// importantly, invites an inconsistent (possibly unsafe) copy on the next
+/// integration.
+fn dodo_value_is_nonzero(value: &str) -> bool {
+    let t = value.trim();
+    let digits = t
+        .strip_prefix("0x")
+        .or_else(|| t.strip_prefix("0X"))
+        .unwrap_or(t);
+    !digits.is_empty() && !digits.bytes().all(|b| b == b'0')
+}
+
 /// Bindings to the DODO route-service aggregator API.
 pub struct Dodo {
     client: super::Client,
@@ -185,11 +202,13 @@ impl Dodo {
             // non-zero native `value` means we'd be asked to send ETH the
             // settlement won't attach — refuse rather than build a call that
             // can only revert.
-            let value = route.value.trim();
-            if !value.is_empty() && value != "0" {
+            if dodo_value_is_nonzero(&route.value) {
                 return Err(Error::Api {
                     code: -1,
-                    reason: format!("DODO route requires non-zero native value {value}"),
+                    reason: format!(
+                        "DODO route requires non-zero native value {}",
+                        route.value.trim()
+                    ),
                 });
             }
 

@@ -192,9 +192,18 @@ pub struct Transaction {
 /// Odos error envelope. Both endpoints return `{"detail": "...", ...}` on
 /// failure (e.g. rate limit, no path). Some failures also carry a numeric
 /// `errorCode`.
+///
+/// `detail` is intentionally REQUIRED (not `#[serde(default)]`): Odos returns it
+/// on every error body but never on a successful quote/assemble response, so it
+/// discriminates a real error from a drifted success. If every field were
+/// defaulted, this struct would deserialize ANY JSON object (including a 2xx
+/// success body whose success-DTO parse just failed on one field), masking the
+/// real serde error as an empty `Api` error (the silent-NoSolution failure the
+/// Odos `outputTokens` fix was meant to kill). With `detail` required, a drifted
+/// 2xx success fails BOTH the success type and this error, so the field-naming
+/// serde error surfaces via `util::http::roundtrip_internal` instead.
 #[derive(Clone, Debug, Deserialize)]
 pub struct ApiError {
-    #[serde(default)]
     pub detail: String,
     #[serde(default, rename = "errorCode")]
     pub error_code: Option<i64>,
