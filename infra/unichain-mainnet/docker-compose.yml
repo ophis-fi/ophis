@@ -8,7 +8,10 @@
 #   baseline:          9301
 #   okx-solver:        9302
 #   kyberswap-solver:  9303
-#   velora-solver:     9304  (commented out pending CoW allowlist patch)
+#   velora-solver:     9304
+#   odos-solver:       9305
+#   openocean-solver:  9306
+#   dodo-solver:       9307
 #   rpc-proxy (eRPC):  4002  (JSON-RPC); metrics on 4002+1 = 4003 internal
 #   prometheus:        9092
 #   alertmanager:      9095
@@ -207,6 +210,9 @@ services:
       # okx-solver: { condition: service_healthy }  # STAGED: needs OKX_* creds (free 60-day trial, then paid)
       kyberswap-solver: { condition: service_healthy }
       velora-solver: { condition: service_healthy }
+      odos-solver: { condition: service_healthy }
+      openocean-solver: { condition: service_healthy }
+      dodo-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
@@ -326,6 +332,88 @@ services:
     command: ["velora", "--config", "/velora.toml"]
     ports:
       - "127.0.0.1:9304:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Odos SOR v2 aggregator solver — ENABLED on Unichain (verified 2026-06-30:
+  # Odos serves chain 130; OdosRouterV2 0x6409722F…46A1f3 is allowlisted in both
+  # the solver and driver allowlists). Keyless. Reports the reconstructed
+  # slippage floor as the SELL output. Third independent solver lane.
+  odos-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/odos.toml:/odos.toml:ro
+    command: ["odos", "--config", "/odos.toml"]
+    ports:
+      - "127.0.0.1:9305:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # OpenOcean V4 aggregator solver — ENABLED on Unichain (verified 2026-06-30:
+  # OpenOcean V4 serves chain 130; OpenOceanExchangeProxy 0x6352a56c…304e64 is
+  # allowlisted in both the solver and driver allowlists). Keyless. Reports
+  # data.minOutAmount (the guaranteed floor) as the SELL output. Fourth lane.
+  openocean-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/openocean.toml:/openocean.toml:ro
+    command: ["openocean", "--config", "/openocean.toml"]
+    ports:
+      - "127.0.0.1:9306:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # DODO route-service aggregator solver — ENABLED on Unichain (verified
+  # 2026-06-30: DODO serves chain 130; DODORouteProxy 0x89Ba4039…006f4D and
+  # DODOApproveProxy 0xf3d60Ba9…3462Dd are BOTH allowlisted in the solver and
+  # driver allowlists). Keyless (public widget key). Reports
+  # data.minReturnAmount (the guaranteed floor) as the SELL output. Fifth lane.
+  dodo-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/dodo.toml:/dodo.toml:ro
+    command: ["dodo", "--config", "/dodo.toml"]
+    ports:
+      - "127.0.0.1:9307:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

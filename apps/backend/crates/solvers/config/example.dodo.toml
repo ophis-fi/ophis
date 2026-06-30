@@ -1,0 +1,22 @@
+node-url = "http://localhost:8545"
+
+[dex]
+# Chain ID. This DODO route-service solver is verified on Unichain (130). DODO
+# selects the chain per-request via the chainId query parameter.
+chain-id = "130"
+
+# Optional: override the route-service endpoint (default is DODO's public
+# getdodoroute path; the chain is selected via the chainId query parameter):
+# endpoint = "https://api.dodoex.io/route-service/v2/widget/getdodoroute"
+
+# Optional: DODO API key. KEYLESS — defaults to DODO's PUBLIC widget key
+# (rate-limit / attribution only, no funds-moving authority) when unset. To
+# supply your OWN private key, render it from an env placeholder rather than
+# hardcoding a value, e.g.:
+# apikey = "${DODO_API_KEY}"
+
+# NOTE: DODO's route API is exactIn-only — buy (exactOut) orders are returned as
+# "no solution". The GUARANTEED `minReturnAmount` floor is reported as the sell
+# clearing amount, never the optimistic `resAmount`. The router (`to`,
+# DODORouteProxy) and the ERC-20 approval target (`targetApproveAddr`,
+# DODOApproveProxy) are validated against a static allowlist before use.

@@ -1,0 +1,27 @@
+# Ophis — Unichain mainnet (chain 130) Odos aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# ENABLED on Unichain (2026-06-30). Odos SOR v2 serves chain 130. The
+# OdosRouterV2 0x6409722F3a1C4486A3b1FE566cBDd5e9D946A1f3 (== ERC-20 spender —
+# Odos approves a single router) is in BOTH the solver allowlist
+# (dex::odos::ODOS_ROUTER_ALLOWLIST) AND the driver allowlist
+# (custom_allowlist::UNICHAIN_MAINNET). Odos exposes NO min-out field in its
+# quote, so the SELL output reports the reconstructed slippage FLOOR
+# (out_amount * (10000 - clamped_bps) / 10000) — the #726 buffer-siphon fix.
+# Keyless: anonymous (rate-limited) usage, no API key.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+# Odos referral code (optional — attribution / higher rate limits only, NEVER
+# touches the funds path). Keyless by default. To supply one without committing
+# a value, add ${ODOS_REFERRAL_CODE} to the envsubst allowlist in
+# render-configs.sh and uncomment (unquoted — it is a u64, not a string):
+# referral-code = ${ODOS_REFERRAL_CODE}

@@ -1,0 +1,20 @@
+node-url = "http://localhost:8545"
+
+[dex]
+# Chain ID. This OpenOcean v4 solver is verified on Unichain (130). OpenOcean
+# v4 keys its endpoints by numeric chain id.
+chain-id = "130"
+
+# Optional: override the API endpoint (default derived from chain-id above):
+#   https://open-api.openocean.finance/v4/{chain_id}/
+# endpoint = "https://open-api.openocean.finance/v4/130/"
+
+# Optional: OpenOcean `referrer` address for fee attribution. KEYLESS — leave
+# unset for no referral fee. If you set it, render it from an env placeholder
+# rather than hardcoding a value, e.g.:
+# referrer = "${OPENOCEAN_REFERRER}"
+
+# NOTE: OpenOcean's classic-swap API is exactIn-only — buy (exactOut) orders
+# are returned as "no solution". Amounts are sent to the API in human-decimal
+# token units (decimals sourced from the auction), and the GUARANTEED
+# `minOutAmount` floor is reported as the buy clearing amount.

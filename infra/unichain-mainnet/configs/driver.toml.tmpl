@@ -59,6 +59,38 @@ absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
+# Odos SOR v2 aggregator — ENABLED on Unichain (keyless). Router
+# 0x6409722F…46A1f3 (== spender) allowlisted in both the solver and driver
+# allowlists. Odos has no min-out field, so the SELL output is the reconstructed
+# slippage floor (the #726 fix). Third independent solver lane.
+[[solver]]
+name = "odos"
+endpoint = "http://odos-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# OpenOcean V4 aggregator — ENABLED on Unichain (keyless). Router
+# 0x6352a56c…304e64 (== spender) allowlisted in both allowlists. SELL output =
+# data.minOutAmount (the guaranteed floor). Fourth lane.
+[[solver]]
+name = "openocean"
+endpoint = "http://openocean-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# DODO route-service aggregator — ENABLED on Unichain (keyless). RouteProxy
+# 0x89Ba4039…006f4D + separate ApproveProxy 0xf3d60Ba9…3462Dd both allowlisted
+# in both allowlists. SELL output = data.minReturnAmount (the guaranteed floor).
+# Fifth lane.
+[[solver]]
+name = "dodo"
+endpoint = "http://dodo-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
 [submission]
 # Unichain mainnet typical L2 gas price is 0.001-0.05 gwei (same order as OP).
 # 5 gwei cap is ~100x above realistic Unichain traffic. Same value as OP stack.

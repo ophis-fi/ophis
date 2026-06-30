@@ -5,8 +5,11 @@ use {
 };
 
 pub mod bitget;
+pub mod dodo;
 pub mod kyberswap;
+pub mod odos;
 pub mod okx;
+pub mod openocean;
 pub mod simulator;
 pub mod velora;
 
@@ -18,6 +21,9 @@ pub enum Dex {
     Okx(Box<okx::Okx>),
     KyberSwap(Box<kyberswap::KyberSwap>),
     Velora(Box<velora::Velora>),
+    Odos(Box<odos::Odos>),
+    OpenOcean(Box<openocean::OpenOcean>),
+    Dodo(Box<dodo::Dodo>),
 }
 
 impl Dex {
@@ -36,6 +42,9 @@ impl Dex {
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
             Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage).await?,
             Dex::Velora(velora) => velora.swap(order, slippage).await?,
+            Dex::Odos(odos) => odos.swap(order, slippage).await?,
+            Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
+            Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
         };
         Ok(swap)
     }
@@ -145,6 +154,42 @@ impl From<velora::Error> for Error {
             // next auction iteration when /prices returns a fresh route.
             velora::Error::NotFound | velora::Error::RateChanged => Self::NotFound,
             velora::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<odos::Error> for Error {
+    fn from(err: odos::Error) -> Self {
+        match err {
+            odos::Error::OrderNotSupported => Self::OrderNotSupported,
+            odos::Error::NotFound => Self::NotFound,
+            odos::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<openocean::Error> for Error {
+    fn from(err: openocean::Error) -> Self {
+        match err {
+            openocean::Error::OrderNotSupported => Self::OrderNotSupported,
+            openocean::Error::NotFound => Self::NotFound,
+            // Missing token decimals is a permanent per-order reject (OpenOcean
+            // takes amounts in decimal units), not a transient — mirror bitget.
+            openocean::Error::MissingDecimals => Self::BadRequest,
+            openocean::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<dodo::Error> for Error {
+    fn from(err: dodo::Error) -> Self {
+        match err {
+            dodo::Error::OrderNotSupported => Self::OrderNotSupported,
+            dodo::Error::NotFound => Self::NotFound,
+            dodo::Error::RateLimited => Self::RateLimited,
             _ => Self::Other(Box::new(err)),
         }
     }

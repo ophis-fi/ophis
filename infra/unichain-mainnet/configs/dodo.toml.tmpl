@@ -1,0 +1,31 @@
+# Ophis — Unichain mainnet (chain 130) DODO aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# ENABLED on Unichain (2026-06-30). DODO route-service serves chain 130 via the
+# chainId query parameter. TWO contracts are involved and BOTH are in the solver
+# allowlist (dex::dodo::DODO_ROUTER_ALLOWLIST) AND the driver allowlist
+# (custom_allowlist::UNICHAIN_MAINNET):
+#   - DODORouteProxy   0x89Ba4039841587B0a4cFfDF17AEE30caCF006f4D  (router `to`)
+#   - DODOApproveProxy 0xf3d60Ba9e76459A7075E9676740347B7413462Dd  (ERC-20 spender)
+# The SELL output reports DODO's guaranteed data.minReturnAmount (the slippage
+# floor) — the #726 fix.
+#
+# Keyless: DODO's route-service uses a PUBLIC widget API key by default
+# (dodo::DEFAULT_APIKEY — rate-limit / attribution only, NO funds-moving
+# authority). Nothing secret is committed.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+# DODO API key (optional). Defaults to DODO's PUBLIC widget key when omitted. To
+# supply your OWN private key without committing it: add ${DODO_API_KEY} to the
+# envsubst allowlist in render-configs.sh, add dodo.toml to PK_BEARING_NAMES so
+# the rendered file lands on the RAM-disk, then uncomment:
+# apikey = "${DODO_API_KEY}"
