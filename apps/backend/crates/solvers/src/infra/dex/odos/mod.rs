@@ -122,6 +122,7 @@ pub struct Odos {
     chain_id: u64,
     settlement_contract: Address,
     referral_code: Option<u64>,
+    api_key: Option<String>,
 }
 
 pub struct Config {
@@ -136,10 +137,16 @@ pub struct Config {
     /// settlement and the output lands in its buffer.
     pub settlement_contract: Address,
 
-    /// Optional Odos referral code for higher rate limits / partner
-    /// attribution. Anonymous (rate-limited) usage leaves this `None`. Never
-    /// affects the funds path.
+    /// Optional Odos referral code for partner attribution / volume
+    /// monetization. Never affects the funds path.
     pub referral_code: Option<u64>,
+
+    /// Optional Odos API key, sent as the `x-api-key` header. The anonymous
+    /// tier is aggressively rate-limited (HTTP 429 even for a single solve), so
+    /// a free-plan key (2 RPS / 4k daily) is effectively required for the solver
+    /// to participate. Secret: rendered from `${ODOS_API_KEY}`, never committed.
+    /// Never affects the funds path — auth/rate-limit only.
+    pub api_key: Option<String>,
 
     /// Block stream used to attach the current block hash header so an egress
     /// proxy can cache responses per block.
@@ -164,7 +171,17 @@ impl Odos {
             chain_id: config.chain_id as u64,
             settlement_contract: config.settlement_contract,
             referral_code: config.referral_code,
+            api_key: config.api_key,
         })
+    }
+
+    /// Attaches the `x-api-key` auth header when a key is configured. Returns
+    /// the builder unchanged on the anonymous tier.
+    fn with_api_key(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.api_key {
+            Some(key) => request.header("x-api-key", key),
+            None => request,
+        }
     }
 
     pub async fn swap(
@@ -334,11 +351,12 @@ impl Odos {
             .join("sor/quote/v2")
             .map_err(|_| Error::RequestBuildFailed)?;
 
-        let request = self
-            .client
-            .request(reqwest::Method::POST, url)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .json(&body);
+        let request = self.with_api_key(
+            self.client
+                .request(reqwest::Method::POST, url)
+                .header(reqwest::header::CONTENT_TYPE, "application/json"),
+        );
+        let request = request.json(&body);
 
         let response: dto::QuoteResponse =
             util::http::roundtrip!(<dto::QuoteResponse, dto::ApiError>; request).await?;
@@ -362,11 +380,12 @@ impl Odos {
             .join("sor/assemble")
             .map_err(|_| Error::RequestBuildFailed)?;
 
-        let request = self
-            .client
-            .request(reqwest::Method::POST, url)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .json(&body);
+        let request = self.with_api_key(
+            self.client
+                .request(reqwest::Method::POST, url)
+                .header(reqwest::header::CONTENT_TYPE, "application/json"),
+        );
+        let request = request.json(&body);
 
         let response: dto::AssembleResponse =
             util::http::roundtrip!(<dto::AssembleResponse, dto::ApiError>; request).await?;
