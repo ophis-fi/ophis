@@ -69,30 +69,36 @@ const MAX_SLIPPAGE_BPS: u16 = 2000;
 ///
 /// **If DODO redeploys** (new router / approve proxy): add the new address here
 /// after independent verification — do NOT take it from a response unchecked.
-const DODO_ROUTER_ALLOWLIST: &[Address] = &[
-    // DODORouteProxy (router we call as `to`).
-    Address::new([
-        0x89, 0xBA, 0x40, 0x39, 0x84, 0x15, 0x87, 0xB0, 0xA4, 0xCF, 0xFD, 0xF1, 0x7A, 0xEE, 0x30,
-        0xCA, 0xCF, 0x00, 0x6F, 0x4D,
-    ]),
-    // DODOApproveProxy (ERC-20 approval target / allowance spender).
-    Address::new([
-        0xF3, 0xD6, 0x0B, 0xA9, 0xE7, 0x64, 0x59, 0xA7, 0x07, 0x5E, 0x96, 0x76, 0x74, 0x03, 0x47,
-        0xB7, 0x41, 0x34, 0x62, 0xDD,
-    ]),
-];
+/// DODORouteProxy on Unichain (130) — the router we call as the `to` of the
+/// settlement interaction.
+const DODO_ROUTE_PROXY: Address = Address::new([
+    0x89, 0xBA, 0x40, 0x39, 0x84, 0x15, 0x87, 0xB0, 0xA4, 0xCF, 0xFD, 0xF1, 0x7A, 0xEE, 0x30, 0xCA,
+    0xCF, 0x00, 0x6F, 0x4D,
+]);
 
-fn validate_router_allowlist(addr: &Address, role: &str) -> Result<(), Error> {
-    if DODO_ROUTER_ALLOWLIST.contains(addr) {
+/// DODOApproveProxy on Unichain (130) — the ERC-20 approval target the
+/// RouteProxy pulls the sell token through (the allowance spender).
+const DODO_APPROVE_PROXY: Address = Address::new([
+    0xF3, 0xD6, 0x0B, 0xA9, 0xE7, 0x64, 0x59, 0xA7, 0x07, 0x5E, 0x96, 0x76, 0x74, 0x03, 0x47, 0xB7,
+    0x41, 0x34, 0x62, 0xDD,
+]);
+
+/// Validates a DODO response address against the EXPECTED role-specific
+/// contract. ROLE-SPECIFIC, not a union: the router (`to`) must be the
+/// RouteProxy and the spender (`targetApproveAddr`) must be the ApproveProxy.
+/// A union check would accept a response that swapped the two fields (or pointed
+/// `to` at the ApproveProxy) — here that is rejected.
+fn validate_dodo_address(addr: &Address, expected: &Address, role: &str) -> Result<(), Error> {
+    if addr == expected {
         Ok(())
     } else {
         Err(Error::Api {
             code: -1,
             reason: format!(
-                "DODO returned non-allowlisted {role} address {addr:?}. Refusing to \
-                 build/approve. If this is a legitimate new DODO deployment, add it to \
-                 DODO_ROUTER_ALLOWLIST in crates/solvers/src/infra/dex/dodo/mod.rs after \
-                 independent verification."
+                "DODO returned address {addr:?} for the {role} but expected {expected:?}. \
+                 Refusing to build/approve. If this is a legitimate new DODO deployment, \
+                 update DODO_ROUTE_PROXY / DODO_APPROVE_PROXY in \
+                 crates/solvers/src/infra/dex/dodo/mod.rs after independent verification."
             ),
         })
     }
@@ -172,8 +178,8 @@ impl Dodo {
             // (`targetApproveAddr`) against the static allowlist BEFORE using
             // either. Fail fast on a poisoned edge so we never bake an
             // attacker-controlled call target or spender into the settlement.
-            validate_router_allowlist(&route.to, "router")?;
-            validate_router_allowlist(&route.target_approve_addr, "approve target")?;
+            validate_dodo_address(&route.to, &DODO_ROUTE_PROXY, "router")?;
+            validate_dodo_address(&route.target_approve_addr, &DODO_APPROVE_PROXY, "approve target")?;
 
             // ERC-20 -> ERC-20 only. The settlement holds wrapped tokens, so a
             // non-zero native `value` means we'd be asked to send ETH the
@@ -402,20 +408,26 @@ mod tests {
         assert_eq!(bps_to_percent_string(0), "0");
     }
 
-    /// Both DODO addresses observed live on chain 130 must be on the allowlist,
-    /// and a foreign address must be rejected.
+    /// Each DODO address must validate ONLY in its own role, a foreign address
+    /// must be rejected, AND a swapped response (router<->spender) must be
+    /// rejected — the role-specific guard's whole purpose.
     #[test]
-    fn allowlist_accepts_router_and_approve_target_rejects_other() {
-        let router = Address::new([
-            0x89, 0xBA, 0x40, 0x39, 0x84, 0x15, 0x87, 0xB0, 0xA4, 0xCF, 0xFD, 0xF1, 0x7A, 0xEE,
-            0x30, 0xCA, 0xCF, 0x00, 0x6F, 0x4D,
-        ]);
-        let approve = Address::new([
-            0xF3, 0xD6, 0x0B, 0xA9, 0xE7, 0x64, 0x59, 0xA7, 0x07, 0x5E, 0x96, 0x76, 0x74, 0x03,
-            0x47, 0xB7, 0x41, 0x34, 0x62, 0xDD,
-        ]);
-        assert!(validate_router_allowlist(&router, "router").is_ok());
-        assert!(validate_router_allowlist(&approve, "approve target").is_ok());
-        assert!(validate_router_allowlist(&Address::ZERO, "router").is_err());
+    fn role_specific_allowlist_rejects_swapped_and_foreign() {
+        // Correct roles accepted.
+        assert!(validate_dodo_address(&DODO_ROUTE_PROXY, &DODO_ROUTE_PROXY, "router").is_ok());
+        assert!(
+            validate_dodo_address(&DODO_APPROVE_PROXY, &DODO_APPROVE_PROXY, "approve target")
+                .is_ok()
+        );
+        // Foreign address rejected in either role.
+        assert!(validate_dodo_address(&Address::ZERO, &DODO_ROUTE_PROXY, "router").is_err());
+        // SWAPPED roles rejected (the union allowlist used to accept these).
+        assert!(
+            validate_dodo_address(&DODO_APPROVE_PROXY, &DODO_ROUTE_PROXY, "router").is_err()
+        );
+        assert!(
+            validate_dodo_address(&DODO_ROUTE_PROXY, &DODO_APPROVE_PROXY, "approve target")
+                .is_err()
+        );
     }
 }

@@ -83,6 +83,13 @@ pub struct SwapData {
     /// the response is for the chain we requested.
     #[serde(default)]
     pub chain_id: u64,
+
+    /// Off-chain expiry (unix seconds) of an RFQ-backed route; `0` for plain
+    /// AMM routes. We request `disableRfq=true`, but a non-zero value here means
+    /// the API returned an RFQ route anyway — the caller rejects it because such
+    /// a quote can expire before the deferred CoW settlement lands.
+    #[serde(default)]
+    pub rfq_deadline: i64,
 }
 
 fn u256_zero() -> U256 {
