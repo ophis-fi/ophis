@@ -145,6 +145,22 @@ fn pad_src_with_bps(src: U256, bps: u16) -> U256 {
     src.saturating_add(tolerance)
 }
 
+/// Velora's guaranteed minReceived for an exactIn (SELL) route: the router
+/// reverts unless it delivers at least `dest_amount * (10000 - slippage) /
+/// 10000` (floor). Reporting THAT as the CoW buy clearing amount (instead of
+/// the optimistic quoted `dest_amount`) keeps the settlement's buy payout <=
+/// the router's realized output, so neither the on-chain buy transfer nor the
+/// solver gas-sim can revert. Mirrors kyberswap's `min_return_amount` (#726).
+/// Floor-division (rounding DOWN) keeps this <= the router's own minReceived.
+fn velora_min_received(dest_amount: U256, slippage_bps: u16) -> U256 {
+    let bps = U256::from(10_000u64);
+    let keep = bps.saturating_sub(U256::from(slippage_bps));
+    match dest_amount.checked_mul(keep) {
+        Some(scaled) => scaled / bps,
+        None => dest_amount / bps * keep,
+    }
+}
+
 /// Assemble the validated [`dex::Swap`] from a Velora `priceRoute` and the
 /// built calldata. Pure (no I/O) so the side-dependent exactIn/exactOut
 /// invariants are unit-testable without the live API.
@@ -197,6 +213,15 @@ fn build_swap(
     // can pull, so a compromised API consuming the full approval skims only
     // from what the user already committed (bounded by their signed max-sell),
     // never from Settlement's shared transient buffer.
+    // Slippage clamped to Velora's cap — used for BOTH the exactOut BUY input
+    // pad and the exactIn SELL output floor below. MUST match the bps that
+    // build_transaction sends to Velora so our modeled amounts equal what the
+    // router enforces on-chain.
+    let clamped_bps = slippage
+        .as_bps()
+        .unwrap_or(MAX_SLIPPAGE_BPS)
+        .min(MAX_SLIPPAGE_BPS);
+
     let committed_input = match order.side {
         order::Side::Sell => {
             if prices.src_amount != order.amount.get() {
@@ -247,10 +272,6 @@ fn build_swap(
             // `allowance_within_sell_limit` on otherwise-valid routes.
             // div_ceil keeps it >= Velora's maxSrc so the allowance never
             // under-covers.
-            let clamped_bps = slippage
-                .as_bps()
-                .unwrap_or(MAX_SLIPPAGE_BPS)
-                .min(MAX_SLIPPAGE_BPS);
             pad_src_with_bps(prices.src_amount, clamped_bps)
         }
     };
@@ -266,7 +287,16 @@ fn build_swap(
         },
         output: eth::Asset {
             token: order.buy,
-            amount: prices.dest_amount,
+            // SELL (exactIn): the router only guarantees the slippage-floored
+            // minReceived, so report THAT as the buy clearing amount (same fix
+            // as kyberswap #726) — paying the optimistic dest_amount would
+            // exceed the router's realized output and revert the settlement
+            // buy transfer. BUY (exactOut): dest_amount is pinned to the
+            // order's exact buy amount the router delivers; unchanged.
+            amount: match order.side {
+                order::Side::Sell => velora_min_received(prices.dest_amount, clamped_bps),
+                order::Side::Buy => prices.dest_amount,
+            },
         },
         allowance: dex::Allowance {
             spender: router,
@@ -721,7 +751,9 @@ mod build_swap_tests {
         assert_eq!(swap.input.token, o.sell);
         assert_eq!(swap.input.amount, sell_amount);
         assert_eq!(swap.output.token, o.buy);
-        assert_eq!(swap.output.amount, dest_out);
+        // SELL output is now the slippage-floored minReceived (#726 pattern),
+        // not the optimistic dest_out: 180_000_000 * (10000 - 100bps) / 10000.
+        assert_eq!(swap.output.amount, U256::from(178_200_000_u128));
         assert_eq!(swap.allowance.spender, ROUTER);
         // Input is fixed → allowance is exactly the input, no slippage pad.
         assert_eq!(swap.allowance.amount.get(), sell_amount);
@@ -815,5 +847,26 @@ mod build_swap_tests {
 
         let err = build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![]).unwrap_err();
         assert!(matches!(err, Error::NotFound), "got {err:?}");
+    }
+
+    #[test]
+    fn velora_min_received_is_router_slippage_floor() {
+        let dest = U256::from(986_397_791_397_264_u128); // live chain-130 USDC->WETH quote
+        // 100 bps (1%) -> floor = dest * 9900 / 10000 (the router's minReceived).
+        let floor = velora_min_received(dest, 100);
+        assert_eq!(floor, dest * U256::from(9_900_u64) / U256::from(10_000_u64));
+        assert!(floor < dest); // strictly below the optimistic quote (the revert cause)
+    }
+
+    #[test]
+    fn velora_min_received_zero_slippage_is_identity() {
+        let a = U256::from(1_000_000_000_u64);
+        assert_eq!(velora_min_received(a, 0), a);
+    }
+
+    #[test]
+    fn velora_min_received_full_slippage_is_zero() {
+        let a = U256::from(1_000_000_000_u64);
+        assert_eq!(velora_min_received(a, 10_000), U256::ZERO);
     }
 }

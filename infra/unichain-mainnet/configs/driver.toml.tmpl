@@ -46,16 +46,18 @@ absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
-# TODO verify Unichain support: Velora Augustus V6.2 is confirmed available on
-# Unichain via api.paraswap.io (network 130 probing), but the CoW solver crate's
-# dex::velora::VELORA_ROUTER_ALLOWLIST must include Unichain's Augustus V6.2
-# address before this solver can be enabled. Uncomment after that patch lands.
-# [[solver]]
-# name = "velora"
-# endpoint = "http://velora-solver"
-# absolute-slippage = "40000000000000000"
-# relative-slippage = "0.1"
-# account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+# Velora (formerly ParaSwap) Augustus V6.2 aggregator — ENABLED on Unichain.
+# Verified 2026-06-30: api.velora.xyz serves network 130, VELORA_SUPPORTED_CHAINS
+# includes 130, and the live 130 route's router == the allowlisted Augustus V6.2
+# (0x6a000f20…001068). Reports the slippage-floored output (the #726 buffer-siphon
+# fix applied to velora's SELL path). Second independent solver so one bad bid
+# can't zero the auction.
+[[solver]]
+name = "velora"
+endpoint = "http://velora-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [submission]
 # Unichain mainnet typical L2 gas price is 0.001-0.05 gwei (same order as OP).

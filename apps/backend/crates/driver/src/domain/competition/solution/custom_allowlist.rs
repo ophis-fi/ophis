@@ -123,16 +123,21 @@ const HYPEREVM_MAINNET: &[Address] = &[
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 
-/// Unichain mainnet (chain 130). KyberSwap-only at launch (baseline ships
-/// empty — no on-chain AMM liquidity sources; OKX/Velora are staged). When
-/// OKX or Velora are enabled on Unichain, append their router/spender here
-/// after upstream verification.
+/// Unichain mainnet (chain 130). KyberSwap + Velora. (OKX still staged.) When a
+/// new aggregator is enabled on Unichain, append its router/spender here after
+/// upstream verification — the SOLVER-level allowlist is NOT sufficient: the
+/// driver independently rejects any non-allowlisted Custom target / spender.
 const UNICHAIN_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 — same CREATE2-deterministic address
     // as OP/HL. Verified live 2026-06-29: KyberSwap's Unichain aggregator
     // (aggregator-api.kyberswap.com/unichain) returns this exact router for
     // real Uniswap-v4 routes on chain 130. Router == ERC-20 spender.
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+    // Velora (ParaSwap) Augustus V6.2 — unified router AND tokenTransferProxy
+    // (== ERC-20 spender). Verified live 2026-06-30: api.velora.xyz network=130
+    // returns this exact contractAddress == tokenTransferProxy; matches the
+    // solver-level VELORA_ROUTER_ALLOWLIST. Same address on all Velora chains.
+    address!("6A000F20005980200259B80c5102003040001068"),
 ];
 
 /// Validation error from [`validate`] / [`validate_target`] /

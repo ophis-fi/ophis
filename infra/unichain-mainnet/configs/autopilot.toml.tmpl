@@ -89,14 +89,12 @@ name = "kyberswap"
 url = "http://driver/kyberswap"
 address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
 
-# TODO verify Unichain support: Velora Augustus V6.2 is confirmed supported on
-# Unichain per api.paraswap.io probing, but the CoW solver crate must have
-# Unichain's Augustus V6.2 address in dex::velora::VELORA_ROUTER_ALLOWLIST.
-# Uncomment once allowlist is patched.
-# [[drivers]]
-# name = "velora"
-# url = "http://driver/velora"
-# address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+# Velora aggregator — ENABLED on Unichain (verified 2026-06-30: api.velora.xyz
+# serves 130; live route router == allowlisted Augustus V6.2). 2nd solver.
+[[drivers]]
+name = "velora"
+url = "http://driver/velora"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
 
 [fee-policies]
 
@@ -109,7 +107,7 @@ price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
   # { name = "okx", url = "http://driver/okx" },  # STAGED, enable with the okx-solver service
   { name = "kyberswap", url = "http://driver/kyberswap" },
-  # { name = "velora", url = "http://driver/velora" },  # TODO verify Unichain support
+  { name = "velora", url = "http://driver/velora" },
 ]
 
 [price-estimation]
