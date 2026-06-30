@@ -84,6 +84,32 @@ services:
     image: postgres:16
     restart: always
     mem_limit: 2g
+    # synchronous_commit=off: UNLIKE the OP stack, the Unichain op-reth node is
+    # CO-LOCATED on this same host/disk (/dev/vda1). Its ~1s-block state-root
+    # writes saturate the disk's fsync IOPS, so with the default
+    # synchronous_commit=on every Postgres COMMIT blocked 5-18s on WALSync/
+    # WALWrite. That strangled the auction pipeline (the per-block
+    # "DELETE FROM auctions; INSERT" rewrite + last_indexed_blocks upsert took
+    # 15-20s), so auctions were built empty and orders EXPIRED before any
+    # settlement could land (2026-06-30 incident; 18s -> ~80ms after this flag).
+    #
+    # SAFE here: the orderbook DB is NOT the source of truth for funds — the
+    # on-chain GPv2Settlement is. Orders/quotes are reconstructable (users
+    # re-broadcast), the `auctions` table is ephemeral (rewritten every block),
+    # and the settlement indexer re-reads the chain idempotently by tx hash, so
+    # the submitter's on-chain nonce — not the DB — prevents double-settlement.
+    # The only crash (OS/host power-loss) exposure is losing recently-committed
+    # reconstructable metadata (the async-commit window: typically ~0.6s, but
+    # longer while the WAL writer is itself blocked under the same severe I/O
+    # stalls this flag mitigates); never funds, never integrity (this is NOT
+    # fsync=off, which we deliberately leave ON to preserve crash consistency).
+    #
+    # Durable fix tracked separately: move op-reth to its own VM/disk like the
+    # OP stack so the node and Postgres no longer share an fsync queue.
+    command:
+      - "postgres"
+      - "-c"
+      - "synchronous_commit=off"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
