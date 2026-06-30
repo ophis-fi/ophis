@@ -22,12 +22,18 @@ struct Config {
     /// Unichain (130) but the field is generic.
     chain_id: eth::ChainId,
 
-    /// Optional Odos referral code for higher rate limits / partner
-    /// attribution. Anonymous (rate-limited) usage leaves this unset. Never
-    /// affects the funds path. Rendered from an env placeholder in the TOML so
-    /// no value is hardcoded.
+    /// Optional Odos referral code for partner attribution / volume
+    /// monetization. Never affects the funds path.
     #[serde(default)]
     referral_code: Option<u64>,
+
+    /// Optional Odos API key, sent as the `x-api-key` header. The anonymous
+    /// tier is too rate-limited to participate, so a free-plan key is
+    /// effectively required. SECRET — render from `${ODOS_API_KEY}` (in the
+    /// gitignored VM .env), never hardcode a value. Never affects the funds
+    /// path (auth / rate-limit only).
+    #[serde(default)]
+    api_key: Option<String>,
 }
 
 fn default_endpoint() -> reqwest::Url {
@@ -50,6 +56,7 @@ pub async fn load(path: &Path) -> super::Config {
             chain_id: config.chain_id,
             settlement_contract: base.contracts.settlement,
             referral_code: config.referral_code,
+            api_key: config.api_key,
             block_stream: base.block_stream.clone(),
         },
         base,
