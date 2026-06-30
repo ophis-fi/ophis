@@ -42,11 +42,17 @@ estimators = [
 ]
 
 [order-quoting]
+# Keep this in sync with autopilot.toml.tmpl [order-quoting].price-estimation-drivers:
+# the public /quote estimator must use the SAME lanes as the auction, or a
+# pre-trade quote can be worse than what the order actually settles at.
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
-  # { name = "okx", url = "http://driver/okx" },  # STAGED, enable with the okx-solver service
+  { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
-  # { name = "velora", url = "http://driver/velora" },  # TODO verify Unichain support (CoW allowlist)
+  { name = "velora", url = "http://driver/velora" },
+  { name = "odos", url = "http://driver/odos" },
+  { name = "openocean", url = "http://driver/openocean" },
+  { name = "dodo", url = "http://driver/dodo" },
 ]
 
 [price-estimation]

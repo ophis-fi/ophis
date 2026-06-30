@@ -234,6 +234,22 @@ pub struct OkxCredentialsConfig {
 
 impl Okx {
     pub fn try_new(config: Config) -> Result<Self, CreationError> {
+        // Fail fast on empty credentials. `HeaderValue::from_str("")` is
+        // `Ok(empty)`, so without this an unset `${OKX_*}` render path would
+        // silently start an UNAUTHENTICATED lane (every solve 401s, per-auction
+        // latency + log noise). OKX has no anonymous tier — empty is a hard
+        // config error that should crash the solver at startup, not at runtime.
+        for (name, value) in [
+            ("api-key", &config.okx_credentials.api_key),
+            ("api-secret-key", &config.okx_credentials.api_secret_key),
+            ("api-passphrase", &config.okx_credentials.api_passphrase),
+            ("api-project-id", &config.okx_credentials.project_id),
+        ] {
+            if value.trim().is_empty() {
+                return Err(CreationError::EmptyCredential(name));
+            }
+        }
+
         let client = {
             let mut api_key =
                 reqwest::header::HeaderValue::from_str(&config.okx_credentials.api_key)?;
@@ -716,6 +732,11 @@ pub enum CreationError {
     Client(#[from] reqwest::Error),
     #[error("invalid price impact protection percent {0}, must be between 0.0 and 1.0")]
     InvalidPriceImpactProtection(f64),
+    #[error(
+        "OKX credential `{0}` is empty — the solver requires all four OKX_* \
+         credentials (no anonymous tier). Check the rendered okx.toml / the VM .env."
+    )]
+    EmptyCredential(&'static str),
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -62,11 +62,13 @@ async fn swap_buy_disabled() {
         sell_orders_signature_base_url: None,
         buy_orders_signature_base_url: None,
         chain_id: crate::domain::eth::ChainId::Mainnet,
+        // Dummy non-empty creds: this test exercises the buy-disabled path, not
+        // auth, but Okx::try_new now fail-fasts on empty credentials.
         okx_credentials: okx_dex::OkxCredentialsConfig {
-            project_id: String::new(),
-            api_key: String::new(),
-            api_secret_key: String::new(),
-            api_passphrase: String::new(),
+            project_id: "1".to_string(),
+            api_key: "1234".to_string(),
+            api_secret_key: "1234567890123456".to_string(),
+            api_passphrase: "pass".to_string(),
         },
         settlement_contract: address!("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
         block_stream: None,

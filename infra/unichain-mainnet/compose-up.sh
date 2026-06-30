@@ -135,14 +135,16 @@ echo ""
 # its image gets rebuilt on every `--build` so a fresh container always
 # spawns. Listed here for completeness in case `--build` ever gets
 # stripped from the invocation.
-# okx-solver is STAGED (commented out in docker-compose.yml) — listing it here
-# would make `docker compose stop/up okx-solver` error ("no such service") and,
-# under `set -e`, abort the redeploy before configs apply (Codex #718 P1).
-CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot kyberswap-solver)
+# All six aggregator solver lanes are now ENABLED and bind a rendered config
+# (rendered/<name>.toml), so each must be force-recreated on a config render —
+# otherwise a credential/endpoint rotation (e.g. the OKX renewal) leaves the
+# running solver pinned to the old mounted file (Docker only recreates on image/
+# config change, and render-configs.sh rewrites atomically via temp+mv).
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot \
+  kyberswap-solver velora-solver odos-solver openocean-solver dodo-solver okx-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
-  # Note: velora-solver is commented out pending CoW allowlist patch for Unichain
   # 2026-05-20 audit follow-up: the prior shape was
   #   `docker compose up -d --no-deps --force-recreate ${ALL_SERVICES[@]}`
   # which restarts every service in PARALLEL. Window of ~2-5s where
@@ -161,8 +163,8 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # Trailing `|| true` removed: if a service fails to stop/start, we
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
-  # okx-solver omitted: STAGED/commented in docker-compose.yml (see note above).
-  DOWNSTREAM=(driver orderbook autopilot kyberswap-solver)
+  DOWNSTREAM=(driver orderbook autopilot \
+    kyberswap-solver velora-solver odos-solver openocean-solver dodo-solver okx-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.
