@@ -4,9 +4,10 @@
 #   ./render-configs.sh
 #
 # Baseline ships EMPTY on Unichain: no on-chain AMM liquidity sources are
-# configured. All routing goes through the KyberSwap aggregator solver
-# (OKX staged). Unichain's liquid liquidity is Uniswap V4, which the
-# aggregators route and the baseline UniV2 reader cannot read.
+# configured. All routing goes through the six aggregator solver lanes
+# (KyberSwap, Velora, Odos, OpenOcean, DODO, OKX). Unichain's liquid liquidity
+# is Uniswap V4, which the aggregators route and the baseline UniV2 reader
+# cannot read.
 app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"
@@ -116,8 +117,9 @@ base-tokens = [
 ]
 
 # NOTE: no [[liquidity.*]] AMM sources on Unichain, by design. The baseline
-# UniV2 reader has nothing to route; KyberSwap (+ staged OKX) cover all DEX
-# liquidity including Uniswap V4 (Unichain's deepest pools). The earlier
+# UniV2 reader has nothing to route; the six aggregator lanes (KyberSwap,
+# Velora, Odos, OpenOcean, DODO, OKX) cover all DEX liquidity including Uniswap
+# V4 (Unichain's deepest pools). The earlier
 # UniV2 + Sushi router entries were removed: both router addresses have ZERO
 # code on chain 130 (verified via eth_getCode against the node), so they
 # found no pools. To add a native V2 source later, first confirm the router
