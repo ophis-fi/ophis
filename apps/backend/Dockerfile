@@ -12,8 +12,13 @@ ARG RUSTFLAGS=""
 # Install dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && \
     apt-get install -y git libssl-dev pkg-config build-essential
-# Install Rust toolchain
-RUN rustup install stable && rustup default stable
+# Install Rust toolchain. PINNED to an exact version (kept in sync with
+# rust-toolchain). Using `stable` here caused build breakage: when a new stable
+# was released while this layer was cached, the later `cargo build` triggered an
+# in-place `stable` channel UPDATE whose cross-overlay rename fails with
+# `Invalid cross-device link (os error 18)`. A fixed version is never updated
+# mid-build, so the EXDEV churn cannot recur.
+RUN rustup install 1.96.1 && rustup default 1.96.1
 
 # Copy and Build Code
 COPY . .

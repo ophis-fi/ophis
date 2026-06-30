@@ -1,4 +1,11 @@
 [toolchain]
-channel = "stable"
+# PINNED to an exact version (not `stable`) for reproducible builds. With
+# `channel = "stable"`, every cargo invocation re-resolved `stable` to the
+# latest release; when a new stable dropped while the Docker rustup layer was
+# cached, the in-build channel update did a cross-overlay rename that fails with
+# `Invalid cross-device link (os error 18)` and broke the image build. A fixed
+# version is never updated, so that cannot recur. Bump deliberately (and keep
+# the Dockerfile `rustup install <version>` line in sync) when upgrading Rust.
+channel = "1.96.1"
 components = ["clippy", "rustfmt"]
 profile = "minimal"
