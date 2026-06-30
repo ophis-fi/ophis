@@ -123,10 +123,11 @@ const HYPEREVM_MAINNET: &[Address] = &[
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 
-/// Unichain mainnet (chain 130). KyberSwap + Velora. (OKX still staged.) When a
-/// new aggregator is enabled on Unichain, append its router/spender here after
-/// upstream verification — the SOLVER-level allowlist is NOT sufficient: the
-/// driver independently rejects any non-allowlisted Custom target / spender.
+/// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO.
+/// (OKX still staged.) When a new aggregator is enabled on Unichain, append its
+/// router/spender here after upstream verification — the SOLVER-level allowlist
+/// is NOT sufficient: the driver independently rejects any non-allowlisted
+/// Custom target / spender.
 const UNICHAIN_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 — same CREATE2-deterministic address
     // as OP/HL. Verified live 2026-06-29: KyberSwap's Unichain aggregator
@@ -138,6 +139,25 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // returns this exact contractAddress == tokenTransferProxy; matches the
     // solver-level VELORA_ROUTER_ALLOWLIST. Same address on all Velora chains.
     address!("6A000F20005980200259B80c5102003040001068"),
+    // Odos OdosRouterV2 on Unichain (130) — the `to` of the assembled tx AND
+    // the ERC-20 spender (Odos approves a single router). Verified on-chain via
+    // `cast code` on chain 130; matches the solver-level ODOS_ROUTER_ALLOWLIST.
+    address!("6409722F3a1C4486A3b1FE566cBDd5e9D946A1f3"),
+    // OpenOcean OpenOceanExchangeProxy on Unichain (130) — router (`tx.to`) ==
+    // ERC-20 spender. Verified on-chain via `cast code` on chain 130; matches
+    // the solver-level OPENOCEAN_ROUTER_ALLOWLIST.
+    address!("6352a56caadC4F1E25CD6c75970Fa768A3304e64"),
+    // DODO DODORouteProxy on Unichain (130) — the router we call as `to`.
+    // Verified on-chain via `cast code` on chain 130; matches the solver-level
+    // DODO_ROUTER_ALLOWLIST. DODO uses a SEPARATE ERC-20 approval target
+    // (DODOApproveProxy, below) as the allowance spender — both must be
+    // allowlisted because the driver validates BOTH target and spender.
+    address!("89Ba4039841587B0a4cFfDF17AEE30caCF006f4D"),
+    // DODO DODOApproveProxy on Unichain (130) — the ERC-20 approval target
+    // (allowance spender, `targetApproveAddr`) the DODORouteProxy pulls the sell
+    // token through. Distinct from the router `to` above. Verified on-chain via
+    // `cast code`; matches the solver-level DODO_ROUTER_ALLOWLIST.
+    address!("f3d60Ba9e76459A7075E9676740347B7413462Dd"),
 ];
 
 /// Validation error from [`validate`] / [`validate_target`] /

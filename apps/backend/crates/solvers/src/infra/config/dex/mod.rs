@@ -1,7 +1,10 @@
 pub mod bitget;
+pub mod dodo;
 pub mod file;
 pub mod kyberswap;
+pub mod odos;
 pub mod okx;
+pub mod openocean;
 pub mod velora;
 
 use {

@@ -1,0 +1,26 @@
+# Ophis — Unichain mainnet (chain 130) OpenOcean V4 aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# ENABLED on Unichain (2026-06-30). OpenOcean V4 serves chain 130. The
+# OpenOceanExchangeProxy 0x6352a56caadC4F1E25CD6c75970Fa768A3304e64 (router
+# `tx.to` == ERC-20 spender) is in BOTH the solver allowlist
+# (dex::openocean::OPENOCEAN_ROUTER_ALLOWLIST) AND the driver allowlist
+# (custom_allowlist::UNICHAIN_MAINNET). The SELL output reports OpenOcean's
+# guaranteed data.minOutAmount (the slippage floor) — the #726 fix. Keyless:
+# the V4 quote/swap endpoints need no API key.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+# OpenOcean referrer address (optional — fee attribution only, NEVER the funds
+# path). Unset = no referral fee. To set one without committing a value, add
+# ${OPENOCEAN_REFERRER} to the envsubst allowlist in render-configs.sh and
+# uncomment:
+# referrer = "${OPENOCEAN_REFERRER}"
