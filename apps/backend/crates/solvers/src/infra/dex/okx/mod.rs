@@ -22,6 +22,30 @@ mod dto;
 /// Default OKX v6 DEX aggregator API endpoint (for sell orders - exactIn).
 pub const DEFAULT_SELL_ORDERS_ENDPOINT: &str = "https://web3.okx.com/api/v6/dex/aggregator/";
 
+/// Maximum slippage (in bps) we will ever send to OKX. Mirrors the cap the
+/// other aggregator lanes apply (kyberswap / velora / odos): an upstream-
+/// requested slippage above this is clamped so a degenerate config can't widen
+/// the router's enforced minReceived. The SAME clamped value is sent to OKX AND
+/// used to reconstruct the reported floor (below), so the two never diverge.
+const OKX_MAX_SLIPPAGE_BPS: u16 = 2000;
+
+/// The router's guaranteed minimum output for an optimistic `to_token_amount`
+/// and the slippage bps we sent to `/swap`. OKX returns NO explicit minReceived
+/// field, but it bakes `to_token_amount * (1 - slippage)` into the calldata as
+/// the on-chain minReturn, so this floor is exactly what the router enforces.
+/// Reporting THIS (not the optimistic `to_token_amount`) as the CoW buy
+/// clearing amount keeps the settlement payout <= realized output — the #726
+/// buffer-siphon / settlement-revert fix. Floor-division rounds DOWN, so the
+/// reported value is never above the router's own minReceived.
+fn okx_min_received(to_token_amount: U256, slippage_bps: u16) -> U256 {
+    let bps = U256::from(10_000u64);
+    let keep = bps.saturating_sub(U256::from(slippage_bps));
+    match to_token_amount.checked_mul(keep) {
+        Some(scaled) => scaled / bps,
+        None => to_token_amount / bps * keep,
+    }
+}
+
 const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 
 /// Allowlist of OKX DEX router (`tx.to`) + approve-spender (`dexContractAddress`)
@@ -60,6 +84,25 @@ const OKX_ROUTER_ALLOWLIST: &[(u64, Address, Address)] = &[
         Address::new([
             0x68, 0xD6, 0xB7, 0x39, 0xD2, 0x02, 0x00, 0x67, 0xD1, 0xe2, 0xF7, 0x13, 0xb9, 0x99,
             0xdA, 0x97, 0xE4, 0xd5, 0x48, 0x12,
+        ]),
+    ),
+    // Unichain mainnet (chain 130). Verified 2026-06-30 via authenticated OKX
+    // V6 probe (web3.okx.com/api/v6/dex/aggregator) + `eth_getCode` on
+    // https://mainnet.unichain.org: router + spender are STABLE across 3 token
+    // pairs (USDC->WETH, WETH->USDC, USDC->native) and both carry bytecode
+    // (router 24367 B, spender 1610 B).
+    (
+        130,
+        // Router (`tx.to` from /swap) — 0x6733Eb2E75B1625F1Fe5f18aD2cB2BaBDA510d19.
+        Address::new([
+            0x67, 0x33, 0xeb, 0x2e, 0x75, 0xb1, 0x62, 0x5f, 0x1f, 0xe5, 0xf1, 0x8a, 0xd2, 0xcb,
+            0x2b, 0xab, 0xda, 0x51, 0x0d, 0x19,
+        ]),
+        // Spender (`dexContractAddress` from /approve-transaction) —
+        // 0x2e28281Cf3D58f475cebE27bec4B8a23dFC7782c.
+        Address::new([
+            0x2e, 0x28, 0x28, 0x1c, 0xf3, 0xd5, 0x8f, 0x47, 0x5c, 0xeb, 0xe2, 0x7b, 0xec, 0x4b,
+            0x8a, 0x23, 0xdf, 0xc7, 0x78, 0x2c,
         ]),
     ),
     // Ethereum mainnet (chain 1). Documented from recorded OKX V5/V6
@@ -264,8 +307,21 @@ impl Okx {
         static ID: AtomicU64 = AtomicU64::new(0);
         let id = ID.fetch_add(1, atomic::Ordering::Relaxed);
 
+        // Clamp the slippage ONCE and reuse the same value for both the request
+        // and the reported floor (below). OKX bakes the slippage we send into
+        // the calldata's on-chain minReturn, so the floor MUST be reconstructed
+        // from the exact value sent — clamping one but not the other could
+        // report a floor above what the router enforces and revert the
+        // settlement payout.
+        let clamped_bps = crate::infra::metrics::clamp_slippage_bps(
+            crate::infra::metrics::Dex::Okx,
+            slippage.as_bps().unwrap_or(OKX_MAX_SLIPPAGE_BPS),
+            OKX_MAX_SLIPPAGE_BPS,
+        );
+        let slippage = dex::Slippage::from_bps(clamped_bps);
+
         let (swap_response, dex_contract_address) = self
-            .handle_api_requests(order, slippage)
+            .handle_api_requests(order, &slippage)
             .instrument(tracing::trace_span!("swap", id = %id))
             .await?;
 
@@ -334,7 +390,24 @@ impl Okx {
                     .to_token
                     .token_contract_address
                     .into(),
-                amount: swap_response.router_result.to_token_amount,
+                // SELL (exactIn): report the GUARANTEED router floor
+                // (to_token_amount discounted by the slippage we sent), NOT the
+                // optimistic quote. OKX has no explicit minReceived field; it
+                // enforces this floor on-chain via the calldata's minReturn.
+                // Reporting the optimistic value would let the CoW buy payout
+                // exceed realized output and revert the settlement (#726).
+                // `clamped_bps` == the slippage actually sent.
+                //
+                // BUY (exactOut): the output is the user's EXACT requested buy
+                // amount; slippage applies to the INPUT (the allowance pad
+                // above), not the output, so report to_token_amount unmodified.
+                amount: match order.side {
+                    order::Side::Sell => okx_min_received(
+                        swap_response.router_result.to_token_amount,
+                        clamped_bps,
+                    ),
+                    order::Side::Buy => swap_response.router_result.to_token_amount,
+                },
             },
             allowance: dex::Allowance {
                 spender: dex_contract_address.0,

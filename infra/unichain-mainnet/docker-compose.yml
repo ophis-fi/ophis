@@ -207,7 +207,7 @@ services:
     mem_limit: 2g
     depends_on:
       baseline: { condition: service_healthy }
-      # okx-solver: { condition: service_healthy }  # STAGED: needs OKX_* creds (free 60-day trial, then paid)
+      okx-solver: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
       velora-solver: { condition: service_healthy }
       odos-solver: { condition: service_healthy }
@@ -262,32 +262,34 @@ services:
       retries: 6
       start_period: 30s
 
-  # ── OKX solver: STAGED. Covers Aerodrome + all Unichain DEXes, but needs OKX_* creds
-  #    (free 60-day trial, then paid). Default bring-up is zero-key (baseline+kyber).
-  #    Enable: set OKX_* in .env, uncomment this service + its depends_on (above) +
-  #    the okx [[solver]] block in configs/driver.toml.tmpl.
-  # okx-solver:
-  #   image: local-baseline:latest
-  #   build:
-  #     context: ../../apps/backend
-  #     dockerfile: Dockerfile
-  #     target: solvers
-  #     args: *backend-build-args
-  #   restart: always
-  #   mem_limit: 1g
-  #   environment:
-  #     ADDR: 0.0.0.0:80
-  #   volumes:
-  #     - ./rendered/okx.toml:/okx.toml:ro
-  #   command: ["okx", "--config", "/okx.toml"]
-  #   ports:
-  #     - "127.0.0.1:9302:80"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 6
-  #     start_period: 30s
+  # OKX V6 DEX aggregator solver — ENABLED on Unichain (2026-06-30). Renewed
+  # OKX_* creds in .env; router 0x6733Eb2E…510d19 + spender 0x2e28281C…7782c
+  # allowlisted in both the solver and driver allowlists. SELL-only (no
+  # buy_orders_endpoint — avoids the U256::MAX buy-allowance footgun); the SELL
+  # output reports the reconstructed slippage floor (the #726 fix). Covers all
+  # Unichain DEXes (incl. Uniswap V4).
+  okx-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/okx.toml:/okx.toml:ro
+    command: ["okx", "--config", "/okx.toml"]
+    ports:
+      - "127.0.0.1:9302:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   kyberswap-solver:
     image: local-baseline:latest

@@ -74,15 +74,11 @@ name = "baseline"
 url = "http://driver/baseline"
 address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
 
-# OKX is STAGED (matches driver.toml): the okx-solver service is not running and
-# the driver exposes no /okx route, so the autopilot querying http://driver/okx
-# would fail per auction (latency + log noise). Uncomment here AND in driver.toml
-# + the order-quoting list below, and enable the okx-solver service, once OKX_*
-# creds are set.
-# [[drivers]]
-# name = "okx"
-# url = "http://driver/okx"
-# address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+# OKX V6 DEX aggregator — ENABLED on Unichain (2026-06-30, renewed OKX_* creds).
+[[drivers]]
+name = "okx"
+url = "http://driver/okx"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
 
 [[drivers]]
 name = "kyberswap"
@@ -123,7 +119,7 @@ read-url = "%DB_READ_URL"
 [order-quoting]
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
-  # { name = "okx", url = "http://driver/okx" },  # STAGED, enable with the okx-solver service
+  { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "velora", url = "http://driver/velora" },
   { name = "odos", url = "http://driver/odos" },

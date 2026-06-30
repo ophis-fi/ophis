@@ -28,16 +28,16 @@ absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
-# OKX covers all Unichain DEXes (including Uniswap V4), BUT it needs OKX Developer Portal
-# credentials (OKX_* env): free 60-day trial, then paid. Default bring-up is
-# zero-key, so OKX is STAGED. To enable: set OKX_* in .env, uncomment this block
-# AND the okx-solver service + its driver depends_on in docker-compose.yml.
-# [[solver]]
-# name = "okx"
-# endpoint = "http://okx-solver"
-# absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
-# relative-slippage = "0.1"
-# account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+# OKX V6 DEX aggregator — ENABLED on Unichain (2026-06-30, renewed OKX_* creds).
+# Covers all Unichain DEXes (incl. Uniswap V4). SELL-only (the solver leaves
+# buy_orders_endpoint unset). Router/spender allowlisted in both layers; SELL
+# output reports the slippage floor (#726 fix).
+[[solver]]
+name = "okx"
+endpoint = "http://okx-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [[solver]]
 name = "kyberswap"

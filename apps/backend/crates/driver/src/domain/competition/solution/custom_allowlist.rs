@@ -123,11 +123,11 @@ const HYPEREVM_MAINNET: &[Address] = &[
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 
-/// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO.
-/// (OKX still staged.) When a new aggregator is enabled on Unichain, append its
-/// router/spender here after upstream verification — the SOLVER-level allowlist
-/// is NOT sufficient: the driver independently rejects any non-allowlisted
-/// Custom target / spender.
+/// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +
+/// OKX. When a new aggregator is enabled on Unichain, append its router/spender
+/// here after upstream verification — the SOLVER-level allowlist is NOT
+/// sufficient: the driver independently rejects any non-allowlisted Custom
+/// target / spender.
 const UNICHAIN_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 — same CREATE2-deterministic address
     // as OP/HL. Verified live 2026-06-29: KyberSwap's Unichain aggregator
@@ -158,6 +158,17 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // token through. Distinct from the router `to` above. Verified on-chain via
     // `cast code`; matches the solver-level DODO_ROUTER_ALLOWLIST.
     address!("f3d60Ba9e76459A7075E9676740347B7413462Dd"),
+    // OKX DEX router on Unichain (130) — the `tx.to` returned by OKX V6 /swap.
+    // Distinct from the spender below (OKX V6 separates router and approval
+    // target). Verified 2026-06-30 via authenticated OKX V6 probe + `eth_getCode`
+    // (stable across 3 token pairs, 24367 B); matches the (130,...) entry in the
+    // solver-level OKX_ROUTER_ALLOWLIST.
+    address!("6733Eb2E75B1625F1Fe5f18aD2cB2BaBDA510d19"),
+    // OKX DEX spender on Unichain (130) — the `dexContractAddress` returned by
+    // OKX V6 /approve-transaction (the ERC-20 approval target). Separate from the
+    // router above. Verified 2026-06-30 (stable across 3 pairs, 1610 B); matches
+    // the solver-level OKX_ROUTER_ALLOWLIST spender.
+    address!("2e28281Cf3D58f475cebE27bec4B8a23dFC7782c"),
 ];
 
 /// Validation error from [`validate`] / [`validate_target`] /
