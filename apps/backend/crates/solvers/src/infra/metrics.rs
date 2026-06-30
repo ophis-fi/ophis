@@ -81,6 +81,7 @@ pub enum Dex {
     Odos,
     OpenOcean,
     Dodo,
+    Okx,
 }
 
 impl Dex {
@@ -91,6 +92,7 @@ impl Dex {
             Dex::Odos => "odos",
             Dex::OpenOcean => "openocean",
             Dex::Dodo => "dodo",
+            Dex::Okx => "okx",
         }
     }
 }
