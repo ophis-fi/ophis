@@ -3,16 +3,12 @@
 # TEMPLATE FILE. Render with envsubst at deploy time:
 #   ./render-configs.sh
 #
-# TODO verify Unichain support: Velora (formerly ParaSwap) Augustus V6.2 is
-# confirmed available on Unichain via api.paraswap.io (network 130) per
-# Velora developer documentation. However, the CoW solver crate's
-# dex::velora::VELORA_ROUTER_ALLOWLIST must include Unichain's Augustus V6.2
-# contract address before this service can route orders. The velora-solver
-# service is commented out in docker-compose.yml pending that allowlist patch.
-#
-# When re-enabling: verify the Augustus V6.2 address on Unichain (the canonical
-# CREATE2-deterministic address 0x6a000f20005980200259b80c5102003040001068
-# may apply — confirm via uniscan.xyz before adding to the allowlist).
+# ENABLED on Unichain (2026-06-30). Velora (formerly ParaSwap) Augustus V6.2
+# serves network 130 (verified live via api.velora.xyz). The Augustus V6.2
+# router 0x6A000F20005980200259B80c5102003040001068 (== tokenTransferProxy /
+# spender) is in BOTH the solver allowlist (dex::velora::VELORA_ROUTER_ALLOWLIST)
+# AND the driver allowlist (custom_allowlist::UNICHAIN_MAINNET). The velora SELL
+# output reports the slippage floor (the #726 fix). Second solver lane.
 
 node-url = "${UNICHAIN_MAINNET_RPC}"
 

@@ -206,7 +206,7 @@ services:
       baseline: { condition: service_healthy }
       # okx-solver: { condition: service_healthy }  # STAGED: needs OKX_* creds (free 60-day trial, then paid)
       kyberswap-solver: { condition: service_healthy }
-      # velora-solver: { condition: service_healthy }  # STAGED: needs Unichain Augustus V6.2 added to VELORA_ROUTER_ALLOWLIST
+      velora-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
@@ -306,32 +306,32 @@ services:
       retries: 6
       start_period: 30s
 
-  # TODO verify Unichain support: Velora Augustus V6.2 is confirmed on Unichain via
-  # api.paraswap.io, but the CoW solver crate's VELORA_ROUTER_ALLOWLIST must
-  # include Unichain's Augustus V6.2 address. Uncomment after that patch lands.
-  # Also uncomment the velora-solver depends_on in the driver service above.
-  # velora-solver:
-  #   image: local-baseline:latest
-  #   build:
-  #     context: ../../apps/backend
-  #     dockerfile: Dockerfile
-  #     target: solvers
-  #     args: *backend-build-args
-  #   restart: always
-  #   mem_limit: 1g
-  #   environment:
-  #     ADDR: 0.0.0.0:80
-  #   volumes:
-  #     - ./rendered/velora.toml:/velora.toml:ro
-  #   command: ["velora", "--config", "/velora.toml"]
-  #   ports:
-  #     - "127.0.0.1:9304:80"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 6
-  #     start_period: 30s
+  # Velora (formerly ParaSwap) Augustus V6.2 aggregator solver — ENABLED on
+  # Unichain (verified 2026-06-30: api.velora.xyz serves network 130, the live
+  # route's router == the allowlisted Augustus V6.2 0x6a000f20…001068, and
+  # VELORA_SUPPORTED_CHAINS includes 130). Second independent solver lane.
+  velora-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/velora.toml:/velora.toml:ro
+    command: ["velora", "--config", "/velora.toml"]
+    ports:
+      - "127.0.0.1:9304:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   prometheus:
     profiles: ["observability"]
