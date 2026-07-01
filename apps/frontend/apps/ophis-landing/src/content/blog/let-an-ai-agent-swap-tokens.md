@@ -53,16 +53,22 @@ server:
 https://mcp.ophis.fi/mcp
 ```
 
-It exposes six tools:
+It exposes twelve tools:
 
 | Tool | What it does |
 | --- | --- |
 | `parse_intent` | Parse a natural-language request into a structured intent. |
+| `resolve_token` | Resolve a token symbol to its canonical address from the trusted token list; fails closed (anti-spoof). |
 | `get_quote` | Fetch an executable quote for a parsed intent. |
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
 | `lookup_tier` | Look up a wallet's 30-day volume tier and rebate status. |
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
+| `get_balances` | Read a wallet's native and ERC-20 balances on one chain. |
+| `get_portfolio` | Read a wallet's token balances across multiple chains. |
+| `get_gas` | Fetch the current gas price for a chain. |
+| `get_token_chart` | Fetch a token's OHLCV price chart. |
+| `expected_surplus` | Estimate how much better an Ophis sell-quote beats the open market. |
 
 Point any MCP client (Claude, Cursor, or your own agent loop) at the URL:
 

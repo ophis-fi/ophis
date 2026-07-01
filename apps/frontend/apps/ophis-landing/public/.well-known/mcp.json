@@ -7,11 +7,17 @@
   "authentication": "none",
   "tools": [
     { "name": "parse_intent", "description": "Natural-language swap request -> structured intent (intent + entities)." },
+    { "name": "resolve_token", "description": "Resolve a token symbol to its canonical address from the trusted Ophis/CoW token list; fails closed (anti-spoof). Run before quoting/building." },
     { "name": "get_quote", "description": "Best-execution quote from the chain's Ophis orderbook." },
     { "name": "build_order", "description": "A bounded, ready-to-sign EIP-712 CoW order (receiver pinned to owner; correct per-chain settlement; CIP-75 partner fee)." },
     { "name": "submit_order", "description": "Relay a pre-signed order to the orderbook." },
     { "name": "lookup_tier", "description": "A wallet's fee-rebate tier and live status." },
-    { "name": "list_chains", "description": "Supported chains with orderbook host and settlement contract." }
+    { "name": "list_chains", "description": "Supported chains with orderbook host and settlement contract." },
+    { "name": "get_balances", "description": "A wallet's native and ERC-20 balances on one chain via a public RPC." },
+    { "name": "get_portfolio", "description": "A wallet's token balances across multiple chains." },
+    { "name": "get_gas", "description": "Current gas price for a chain." },
+    { "name": "get_token_chart", "description": "A token's OHLCV price chart." },
+    { "name": "expected_surplus", "description": "Estimate how much better an Ophis sell-quote beats the open market (beatBps)." }
   ],
   "documentation": "https://docs.ophis.fi/",
   "openapi": "https://ophis.fi/openapi.json",
