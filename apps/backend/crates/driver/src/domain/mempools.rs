@@ -253,7 +253,22 @@ impl Mempools {
                             // mempools' views of the network with the
                             // original settle pending. See cancel_all
                             // docstring for full rationale.
-                            if let Err(cancel_err) =
+                            //
+                            // But if the settlement landed right at the deadline
+                            // (nonce already mined-consumed on-chain), cancelling
+                            // is futile and only produces the spurious "nonce may
+                            // be stuck" error — skip it. See the sim-revert branch
+                            // below for the full rationale.
+                            if self.nonce_already_mined(mempool, signer, nonce).await {
+                                tracing::debug!(
+                                    settle_tx_hash = ?hash,
+                                    ?signer,
+                                    ?nonce,
+                                    "deadline exceeded but signer nonce already advanced on-chain — \
+                                     the tx at this nonce already resolved (settlement landed, or a \
+                                     prior cancel); skipping futile cancel_all"
+                                );
+                            } else if let Err(cancel_err) =
                                 self.cancel_all(final_gas_price, signer, nonce, "deadline_exceeded").await
                             {
                                 tracing::error!(
@@ -286,31 +301,56 @@ impl Mempools {
                         // Check if transaction still simulates
                         if let Err(err) = self.ethereum.estimate_gas(tx.clone()).await {
                             if err.is_revert() {
-                                tracing::info!(
-                                    settle_tx_hash = ?hash,
-                                    ?err,
-                                    "tx started failing in mempool, cancelling across all mempools"
-                                );
-                                // Phase 4 audit F4 (2026-05-21): same
-                                // cross-mempool cancel rationale as the
-                                // deadline branch — see cancel_all docstring.
-                                if let Err(cancel_err) =
-                                    self.cancel_all(final_gas_price, signer, nonce, "sim_revert").await
-                                {
-                                    tracing::error!(
-                                        ?cancel_err,
+                                // A re-sim revert here is AMBIGUOUS. Either the
+                                // settlement genuinely can no longer be mined (a
+                                // real failure — we must cancel to free the nonce),
+                                // OR it ALREADY LANDED under a different hash (an
+                                // RBF replacement, or a peer mempool's broadcast
+                                // that select_ok has not yet surfaced) and its
+                                // calldata now reverts against post-settlement
+                                // state. In that latter case the nonce is already
+                                // consumed on-chain, so cancel_all is FUTILE: every
+                                // mempool's replacement is rejected "nonce too low",
+                                // and the resulting "ALL mempools rejected -> nonce
+                                // may be stuck" error is a FALSE alarm for a
+                                // settlement that actually SUCCEEDED. Only cancel
+                                // when the nonce is not yet mined-consumed.
+                                if self.nonce_already_mined(mempool, signer, nonce).await {
+                                    tracing::debug!(
+                                        settle_tx_hash = ?hash,
                                         ?signer,
                                         ?nonce,
-                                        settle_tx_hash = ?hash,
-                                        "cancel_all after sim-revert returned Err on every mempool — \
-                                         signer nonce may be stuck across the entire stack"
+                                        "re-sim reverted but signer nonce already advanced on-chain \
+                                         — the tx at this nonce already resolved (settlement landed, \
+                                         or a prior cancel); skipping futile cancel_all"
                                     );
-                                    // Sharp-edges H1: see deadline branch above
-                                    // for the `cancel_all` sentinel rationale.
-                                    observe::metrics::get()
-                                        .submitter_cancellation_failed
-                                        .with_label_values(&["cancel_all", "sim_revert"])
-                                        .inc();
+                                } else {
+                                    tracing::info!(
+                                        settle_tx_hash = ?hash,
+                                        ?err,
+                                        "tx started failing in mempool, cancelling across all mempools"
+                                    );
+                                    // Phase 4 audit F4 (2026-05-21): same
+                                    // cross-mempool cancel rationale as the
+                                    // deadline branch — see cancel_all docstring.
+                                    if let Err(cancel_err) =
+                                        self.cancel_all(final_gas_price, signer, nonce, "sim_revert").await
+                                    {
+                                        tracing::error!(
+                                            ?cancel_err,
+                                            ?signer,
+                                            ?nonce,
+                                            settle_tx_hash = ?hash,
+                                            "cancel_all after sim-revert returned Err on every mempool — \
+                                             signer nonce may be stuck across the entire stack"
+                                        );
+                                        // Sharp-edges H1: see deadline branch above
+                                        // for the `cancel_all` sentinel rationale.
+                                        observe::metrics::get()
+                                            .submitter_cancellation_failed
+                                            .with_label_values(&["cancel_all", "sim_revert"])
+                                            .inc();
+                                    }
                                 }
                                 return Err(Error::SimulationRevert {
                                     submitted_at_block: submission_block,
@@ -361,6 +401,39 @@ impl Mempools {
             }
         }
         result
+    }
+
+    /// True if a transaction at `nonce` has already been MINED for `signer`
+    /// (the account's latest transaction count exceeds `nonce`), so the nonce
+    /// slot is filled on-chain — the settlement landed (possibly under a
+    /// different hash via RBF or a peer mempool's broadcast), or a prior cancel
+    /// did. When true, broadcasting another cancel at that nonce is futile: it
+    /// is rejected "nonce too low", and the resulting cancel_all failure is a
+    /// FALSE "nonce may be stuck" alarm for a settlement that actually
+    /// succeeded. Read at LATEST (mined) so a `pending` count can't mistake the
+    /// account's own un-mined submission for "already mined".
+    ///
+    /// Fail-safe: on lookup error returns `false` so the caller still cancels —
+    /// better a futile cancel than a missed one on a genuinely stuck tx.
+    async fn nonce_already_mined(
+        &self,
+        mempool: &infra::Mempool,
+        signer: eth::Address,
+        nonce: u64,
+    ) -> bool {
+        match mempool.get_mined_nonce(signer).await {
+            Ok(mined_count) => mined_count > nonce,
+            Err(err) => {
+                tracing::debug!(
+                    ?err,
+                    ?signer,
+                    ?nonce,
+                    "could not read mined nonce to suppress a futile cancel; \
+                     proceeding with cancel (fail-safe)"
+                );
+                false
+            }
+        }
     }
 
     /// Broadcast a cancellation transaction concurrently to ALL configured
