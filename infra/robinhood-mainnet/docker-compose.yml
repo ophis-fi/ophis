@@ -1,0 +1,314 @@
+# infra/robinhood-mainnet/docker-compose.yml - Ophis Robinhood Chain mainnet stack (chain 4663).
+# Cloned from infra/unichain-mainnet and adapted for Robinhood (Arbitrum Orbit).
+#
+# The self-hosted Nitro node runs in a SEPARATE compose project (./nitro/), and
+# the eRPC proxy reaches it over Tailscale as ophis-rbh-node:8547.
+#
+# Port allocation (all bind 127.0.0.1 only; offset from OP/HL/Unichain):
+#   db:                5440   (OP=5435, HL=5436, Uni=5439)
+#   orderbook:         8410
+#   driver:            8411
+#   baseline:          9310
+#   lifi-solver:       9311
+#   rpc-proxy (eRPC):  4003   (OP=4001, HL=4000, Uni=4002)
+#   prometheus:        9096
+#   alertmanager:      9097
+#   jaeger UI:         16688
+#   jaeger OTLP/gRPC:  4319
+#
+# External access is via Cloudflare Tunnel (robinhood-mainnet.ophis.fi), never
+# direct port exposure. Secrets come from ./.env (gitignored); addresses come
+# from the ceremony (FILL-IN-AFTER-DEPLOY.md).
+
+name: robinhood-mainnet
+
+x-backend-build-args: &backend-build-args
+  OPHIS_GIT_DESCRIBE: "${OPHIS_GIT_DESCRIBE:-}"
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    restart: always
+    mem_limit: 512m
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16688:16686"
+      - "127.0.0.1:4319:4317"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # eRPC 2-of-3 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs
+  # in the SEPARATE ./nitro compose project and publishes :8547 on the host;
+  # erpc.yaml's debug/trace leg targets ophis-rbh-node:8547, mapped to the host
+  # gateway here (Gate-2 pattern). Hardening follow-up: a shared external network.
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:latest
+    restart: always
+    mem_limit: 512m
+    extra_hosts:
+      - "ophis-rbh-node:host-gateway"
+    volumes:
+      - ./rendered/erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "127.0.0.1:4003:4000"
+
+  rpc-proxy-health:
+    image: busybox:stable-musl
+    restart: always
+    depends_on:
+      rpc-proxy: { condition: service_started }
+    command: ["sh", "-c", "while true; do sleep 30; done"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://rpc-proxy:4000/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16
+    restart: always
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: backend-migrations:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+
+  orderbook:
+    image: local-orderbook:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+      args: *backend-build-args
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/robinhood-mainnet/.env}
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+    volumes:
+      - ./rendered/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "127.0.0.1:8410:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  autopilot:
+    image: local-autopilot:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/robinhood-mainnet/.env}
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+    volumes:
+      - ./rendered/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+
+  driver:
+    image: local-driver:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+      args: *backend-build-args
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      baseline: { condition: service_healthy }
+      lifi-solver: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
+      ADDR: 0.0.0.0:80
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+    volumes:
+      - ./rendered/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "127.0.0.1:8411:80"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - |
+          bash -c '
+            exec 3<>/dev/tcp/127.0.0.1/80 || exit 1
+            printf "GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3
+            head -n 1 <&3 | grep -q " 200 "
+          '
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "127.0.0.1:9310:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # LI.FI same-chain aggregator - day-1's only supported lane on 4663. Keyless.
+  lifi-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/lifi.toml:/lifi.toml:ro
+    command: ["lifi", "--config", "/lifi.toml"]
+    ports:
+      - "127.0.0.1:9311:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.0.1
+    restart: always
+    mem_limit: 512m
+    user: "nobody"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.listen-address=0.0.0.0:9090"
+      - "--no-web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9096:9090"
+    depends_on:
+      driver: { condition: service_started }
+      autopilot: { condition: service_started }
+      orderbook: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  alertmanager:
+    profiles: ["observability"]
+    image: prom/alertmanager:v0.27.0
+    restart: always
+    mem_limit: 128m
+    user: "nobody"
+    volumes:
+      - ./observability-rendered/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./observability-rendered/telegram-token:/etc/alertmanager/telegram-token:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+    ports:
+      - "127.0.0.1:9097:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  node-exporter:
+    profiles: ["observability"]
+    image: prom/node-exporter:v1.8.2
+    restart: always
+    mem_limit: 128m
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host"
+    volumes:
+      - "/proc:/host/proc:ro"
+      - "/sys:/host/sys:ro"
+      - "/:/host:ro,rslave"
+
+volumes:
+  postgres:
+  prometheus-data:
+  alertmanager-data:

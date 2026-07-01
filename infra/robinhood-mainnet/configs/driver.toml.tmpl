@@ -1,0 +1,70 @@
+# Ophis - Robinhood Chain mainnet (chain 4663) driver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
+#
+# Baseline ships EMPTY on Robinhood day-1: the flagship liquidity is Uniswap V4
+# (stocks/stables), which the built-in UniV2/V3 baseline reader cannot route.
+# Day-1 routing is LiFi-only (the sole aggregator supporting 4663). A self-run
+# Uniswap V4 dex-solver (V4Quoter + UniversalRouter) is the planned 2nd lane.
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "30000000"
+
+# Skip eth_createAccessList preflight. Post-eRPC the bare-call path is 2-of-3
+# consensus-protected (subject to the RPC-independence GATE in erpc.yaml.tmpl).
+disable-access-list-simulation = true
+
+[contracts]
+gp-v2-settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
+weth = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
+balances = "__FILL_AFTER_DEPLOY_BALANCES__"
+signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# LI.FI same-chain aggregator - ENABLED (keyless). Day-1's only real liquidity
+# lane on 4663. SELL output reports estimate.toAmountMin (the guaranteed on-chain
+# floor). Same-chain only.
+#
+# *** CONFIG GATE (LiFi router allowlist) ***
+# On 4663 LiFi's swap router / approvalAddress is 0xB477751B76CF82d00a686A1232f5fCD772414Af3
+# (verified 2026-07-02), NOT the usual LiFiDiamond 0x864b31...b9232. The lane pins
+# a router == approvalAddress allowlist to the diamond, so
+# dex::lifi::LIFI_ROUTER_ALLOWLIST AND driver custom_allowlist::ROBINHOOD_MAINNET
+# MUST both include 0xB477751B... or every 4663 quote fails the same-chain safety
+# check. Verify the router per pair (not just WETH->USDG) before enabling in prod.
+[[solver]]
+name = "lifi"
+endpoint = "http://lifi-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[submission]
+# Robinhood L2 gas is ~0.02 gwei. 5 gwei cap is far above realistic traffic.
+gas-price-cap = "5000000000"
+
+# Submission mempools - raced in parallel. Both are Robinhood-operated (public
+# RPC + sequencer), so they share an operator failure domain; a 3rd independent
+# relay would tighten the anti-correlation floor (tracked as a resilience
+# follow-up, same posture as the Unichain first cut).
+[[submission.mempool]]
+url = "https://sequencer.mainnet.chain.robinhood.com"
+
+[[submission.mempool]]
+url = "https://rpc.mainnet.chain.robinhood.com"
+
+[liquidity]
+base-tokens = [
+  "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",  # WETH (Robinhood 4663)
+  "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",  # USDG (Paxos Global Dollar, 6 dec) - the canonical stable; NO official USDC on 4663
+]
+
+# NO [[liquidity.*]] AMM sources on 4663 by design. The baseline reader has
+# nothing to route (Uniswap here is V4, which it cannot read). Add a native V4
+# dex-solver as the 2nd lane rather than a baseline AMM source.

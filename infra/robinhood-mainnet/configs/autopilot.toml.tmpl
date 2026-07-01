@@ -1,0 +1,86 @@
+# Ophis - Robinhood Chain mainnet (chain 4663) autopilot config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
+node-url = "http://rpc-proxy:4000/main/evm/4663"
+simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
+
+native-price-timeout = "5s"
+
+[contracts]
+settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
+balances = "__FILL_AFTER_DEPLOY_BALANCES__"
+signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+native-token = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
+hooks = "__FILL_AFTER_DEPLOY_HOOKS__"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical; likely absent on 4663 (unused while baseline empty)
+
+[ethflow]
+# The sovereign Robinhood settlement is NOT in CoW's canonical contracts registry,
+# so index Settlement events from LATEST forward (no genesis backfill).
+skip-event-sync = true
+# EthFlow (native-ETH sells) is DEFERRED for day-1 (like Unichain's first cut).
+# Leave commented until CoWSwapEthFlow is deployed on 4663 and wired to the
+# Settlement + WETH 0x0Bd7...D73. Then uncomment and set the address + start block.
+# contracts = ["__FILL_AFTER_DEPLOY_ETHFLOW__"]
+# indexing-start = 0
+
+[logging]
+filter = "warn,autopilot=debug,shared=info,price_estimation=info"
+
+[current-block]
+# ORBIT: ~134ms blocks. 1s is the practical poll floor (matching the eRPC state
+# poller); tighter would hammer upstreams without helping (tip-drift is handled
+# by eRPC's preferBlockHeadLeader, not by the poll rate).
+poll-interval = "1s"
+
+[run-loop]
+solve-deadline = "20s"
+
+[[gas-estimators]]
+type = "Web3"
+
+[[gas-estimators]]
+type = "Alloy"
+
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
+
+# LI.FI same-chain aggregator - the ONLY lane that supports 4663 today (verified
+# 2026-07-02: li.quest/v1/chains lists 4663; live same-chain quote routes via
+# Fly.trade + Rialto). Second solver is a self-run Uniswap V4 dex-solver (follow-up).
+[[drivers]]
+name = "lifi"
+url = "http://driver/lifi"
+address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
+
+[fee-policies]
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[order-quoting]
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "lifi", url = "http://driver/lifi" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"
+
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+[native-price-estimation]
+# See the GATE in orderbook.toml.tmpl. CoinGecko first (authoritative), UniswapV3
+# (Robinhood-specific factory) fallback only; validate both before go-live.
+estimators = [
+  [ { type = "CoinGecko" } ],
+  [ { type = "UniswapV3", factory = "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" } ],
+]
+
+[native-price-estimation.cache]
+max-age = "20m"

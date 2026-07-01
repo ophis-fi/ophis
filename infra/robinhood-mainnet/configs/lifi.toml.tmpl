@@ -1,0 +1,28 @@
+# Ophis - Robinhood Chain mainnet (chain 4663) LI.FI aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
+#
+# LI.FI SAME-CHAIN DEX swaps on chain 4663. Day-1's only supported aggregator
+# (verified 2026-07-02: li.quest/v1/chains returns id:4663; a live same-chain
+# quote 0.2 WETH -> 325.72 USDG routed via Fly.trade + Rialto). Keyless: LI.FI's
+# public tier needs only the `integrator` param. SELL output reports
+# estimate.toAmountMin (the guaranteed on-chain floor). Same-chain only.
+#
+# *** CONFIG GATE (router allowlist) ***
+# On 4663 the swap `tx.to` AND approval target is
+# 0xB477751B76CF82d00a686A1232f5fCD772414Af3 (verified), NOT the usual LiFiDiamond
+# 0x864b31...b9232. Both dex::lifi::LIFI_ROUTER_ALLOWLIST and driver
+# custom_allowlist::ROBINHOOD_MAINNET must include it, or every quote fails the
+# router==approvalAddress same-chain check. Confirm per pair before prod enable.
+
+node-url = "${ROBINHOOD_MAINNET_RPC}"
+
+# Ophis-fork settlement on Robinhood. Filled AFTER the ceremony.
+settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
+
+[dex]
+chain-id = "4663"
+
+# LI.FI `integrator` string - REQUIRED (LI.FI 404s quotes without one). Partner
+# attribution only; never touches the funds path. Defaults to "ophis".
+integrator = "ophis"

@@ -1,0 +1,70 @@
+# infra/robinhood-mainnet/nitro/docker-compose.yml
+# Self-hosted Arbitrum Nitro node for Robinhood Chain (chainId 4663).
+#
+# SEPARATE compose project from the main CoW stack (../docker-compose.yml),
+# mirroring how the Unichain stack runs its op-reth node in /opt/unichain-node
+# beside the orderbook stack. The main stack's eRPC proxy reaches this node over
+# Tailscale as `ophis-rbh-node:8547`.
+#
+# Two hard prerequisites (see README.md): an Ethereum L1 execution RPC and an L1
+# beacon (blob) endpoint. Robinhood posts DA as EIP-4844 blobs (Rollup mode), so
+# the beacon endpoint is NOT optional.
+
+name: robinhood-nitro
+
+services:
+  nitro:
+    # Pin the fully-qualified tag (Arbitrum publishes vMAJOR.MINOR.PATCH-<sha>);
+    # v3.11 is a moving alias. Confirm the current tag on the Robinhood docs
+    # (docs.robinhood.com/chain/run-a-full-node) before deploy - they may bump it.
+    image: offchainlabs/nitro-node:v3.11
+    restart: always
+    stop_grace_period: 5m
+    # Nitro archive is memory-hungry; cap it so it can't OOM the host.
+    mem_limit: 24g
+    environment:
+      GOMEMLIMIT: 20GiB
+    volumes:
+      - nitro-data:/home/user/.arbitrum
+      # Canonical Robinhood chain-info JSON (see robinhood-chain-info.md). Pull
+      # the live file; do NOT hand-transcribe rollup/inbox addresses.
+      - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
+    command:
+      - --parent-chain.connection.url=${L1_EXECUTION_RPC:?set L1_EXECUTION_RPC in .env}
+      - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
+      - --chain.id=4663
+      - --chain.info-files=/config/robinhood-chain-info.json
+      # Low-latency tip via the Robinhood sequencer feed.
+      - --node.feed.input.url=wss://feed.mainnet.chain.robinhood.com
+      # Fast first sync. Swap for --init.url=<snapshot> if Robinhood publishes one.
+      - --init.latest=pruned
+      # RPC exposed to the eRPC proxy. debug/arb/arbtrace are LOAD-BEARING: the
+      # autopilot's debug_traceTransaction settlement decode depends on them.
+      - --http.addr=0.0.0.0
+      - --http.port=8547
+      - --http.api=net,web3,eth,debug,arb,arbtrace
+      - --http.corsdomain=*
+      - --http.vhosts=*
+      - --ws.addr=0.0.0.0
+      - --ws.port=8548
+      - --ws.api=net,web3,eth,arb
+      # Archive is OFF by default (Nitro archive is multi-TB). The autopilot only
+      # traces near-tip settlements, so a pruned node with debug enabled is the
+      # starting point. If trace calls on just-landed settlements return
+      # "state not available", add: --execution.caching.archive
+    ports:
+      # Bind to 127.0.0.1 only; the eRPC host reaches it over Tailscale (map the
+      # Tailscale name `ophis-rbh-node` -> this host). Never expose :8547 publicly.
+      - "127.0.0.1:8547:8547"   # HTTP JSON-RPC
+      - "127.0.0.1:8548:8548"   # WS JSON-RPC
+    healthcheck:
+      # Healthy = serves eth_blockNumber. (Trace-readiness is verified separately
+      # via the debug_traceTransaction check in README.md.)
+      test: ["CMD-SHELL", "wget -qO- --post-data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}' --header 'content-type: application/json' http://127.0.0.1:8547 | grep -q result || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15m   # first sync
+
+volumes:
+  nitro-data:

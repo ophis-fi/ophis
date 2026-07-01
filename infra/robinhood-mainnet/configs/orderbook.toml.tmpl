@@ -1,0 +1,67 @@
+# Ophis - Robinhood Chain mainnet (chain 4663) orderbook config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
+eip1271-skip-creation-validation = false
+bind-address = "0.0.0.0:80"
+
+[shared]
+# node-url is a plain Url field (no %ENV deserializer) => must be a literal URL;
+# an empty ${ROBINHOOD_RPC_INTERNAL} fails TOML parse. Point at the eRPC 2-of-3
+# proxy. The single-provider bypass (ROBINHOOD_RPC_INTERNAL) still applies to the
+# driver via its ETHRPC env.
+node-url = "http://rpc-proxy:4000/main/evm/4663"
+simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
+
+# Ophis-deployed sovereign contracts on Robinhood (chain 4663). Filled AFTER the
+# Phase-1 Ledger ceremony (see FILL-IN-AFTER-DEPLOY.md). render-configs.sh
+# refuses to render while any __FILL_AFTER_DEPLOY_*__ placeholder remains.
+[shared.contracts]
+settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
+balances = "__FILL_AFTER_DEPLOY_BALANCES__"
+signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+# ORBIT: WETH is chain-specific, NOT the OP-Stack 0x4200..0006 predeploy.
+native-token = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
+hooks = "__FILL_AFTER_DEPLOY_HOOKS__"
+# Balancer V2 Vault canonical address. NOTE: likely NOT deployed on 4663; harmless
+# while the baseline ships empty (never called). Verify + wire only if a native
+# Balancer source is ever added.
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[native-price-estimation]
+# *** GATE (native pricing on a 1-day-old chain) ***
+# Two open questions the operator MUST resolve before go-live:
+#   1. Does CoinGecko list Robinhood Chain (4663) in /api/v3/asset_platforms yet?
+#      A brand-new chain usually is NOT listed, so the CoinGecko leg returns
+#      nothing until it is.
+#   2. Do Uniswap V3 pools on 4663 hold real depth? Robinhood's flagship liquidity
+#      is Uniswap V4 (stocks/stables); the V3 factory below exists but its pools
+#      may be thin/empty, and per the 2026-07-02 audit an isolated/shallow V3 pool
+#      TWAP is cheaply manipulable. Order CoinGecko FIRST (authoritative) and treat
+#      UniswapV3 as fallback only; do not rely on a shallow V3 TWAP for fee/rebate
+#      valuation. If neither source is viable, a custom native-price source over
+#      Uniswap V4 (V4Quoter) is the durable answer.
+# ORBIT: the V3 factory is the Robinhood-specific address, NOT the canonical
+# 0x1F98431c... Verify V3 pool depth before trusting this leg.
+estimators = [
+  [ { type = "CoinGecko" } ],
+  [ { type = "UniswapV3", factory = "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" } ],
+]
+
+[order-quoting]
+# Day-1 LiFi-only (the sole aggregator that supports 4663). Keep this in sync
+# with autopilot.toml.tmpl [order-quoting].price-estimation-drivers.
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "lifi", url = "http://driver/lifi" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
+
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
