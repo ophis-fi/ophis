@@ -45,14 +45,20 @@ export const COW_TAKE_BPS = 2500;
  *  Partner is uncapped. Volume past the cap earns zero (hard-stop, Clement 2026-06-10). */
 export const REGULAR_VOL_CAP_USD = 1_000_000;
 
-/** Optimism mainnet — the only chain where Ophis keeps the full fee (no CoW cut).
- *  Not indexed yet, but the math is OP-ready so OP trades accrue correctly once fed. */
 export const OPTIMISM_CHAIN_ID = 10;
+export const UNICHAIN_CHAIN_ID = 130;
+
+/** Ophis-SOVEREIGN chains: Ophis runs its own orderbook + settlement, so there is
+ *  NO CoW DAO service-fee cut and Ophis keeps the full fee (100%). Optimism (10) and
+ *  Unichain (130) are sovereign; every CoW-hosted chain pays CoW's 25% cut (keeps 75%).
+ *  This set is the SINGLE source of truth for the keep fraction — keepFractionBps() and
+ *  the api.ts payout SQL both derive from it, so adding a sovereign chain is one edit. */
+export const SOVEREIGN_CHAIN_IDS: ReadonlySet<number> = new Set([OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID]);
 
 /** Fraction of the gross fee Ophis keeps after CoW's cut, scaled by 1e4.
- *  Optimism keeps 100% (10_000); every hosted chain keeps 75% (7_500). */
+ *  Sovereign chains keep 100% (10_000); every hosted chain keeps 75% (7_500). */
 export function keepFractionBps(chainId: number): number {
-  return chainId === OPTIMISM_CHAIN_ID ? 10_000 : 10_000 - COW_TAKE_BPS;
+  return SOVEREIGN_CHAIN_IDS.has(chainId) ? 10_000 : 10_000 - COW_TAKE_BPS;
 }
 
 /**

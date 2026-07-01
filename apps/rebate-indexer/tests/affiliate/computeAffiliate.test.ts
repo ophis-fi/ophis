@@ -6,11 +6,29 @@ import {
 } from '../../src/affiliate/computeAffiliate.js';
 import {
   OPTIMISM_CHAIN_ID,
+  UNICHAIN_CHAIN_ID,
+  SOVEREIGN_CHAIN_IDS,
+  keepFractionBps,
   estimateEarningsUsd,
   estimateEarningsFromNetFeeUsd,
   GROSS_FEE_BPS,
   type AffiliateKind,
 } from '../../src/affiliate/rates.js';
+
+describe('keepFractionBps — sovereign chains keep the full fee (no CoW cut)', () => {
+  it('Optimism (10) and Unichain (130) keep 100%; hosted chains keep 75%', () => {
+    expect(keepFractionBps(OPTIMISM_CHAIN_ID)).toBe(10_000);
+    expect(keepFractionBps(UNICHAIN_CHAIN_ID)).toBe(10_000); // Unichain is Ophis-sovereign, 0% CoW cut
+    expect(keepFractionBps(1)).toBe(7_500); // mainnet, CoW-hosted
+    expect(keepFractionBps(100)).toBe(7_500); // gnosis, CoW-hosted
+  });
+
+  it('SOVEREIGN_CHAIN_IDS is exactly {10, 130} — the single source of truth for the keep rate', () => {
+    expect([...SOVEREIGN_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 130]);
+    expect(SOVEREIGN_CHAIN_IDS.has(1)).toBe(false);
+    expect(SOVEREIGN_CHAIN_IDS.has(8453)).toBe(false);
+  });
+});
 
 const wallet = (hex: string): `0x${string}` => (`0x${hex.padStart(40, '0')}`) as `0x${string}`;
 const HOSTED = 100; // Gnosis (any hosted chain — CoW takes 25%)
@@ -57,6 +75,13 @@ describe('computeAffiliate — matches the model doc earnings tables (all-retail
 
   it('OP-ready: Regular $1M on Optimism -> 0.8 bps -> $80 (model: Regular OP $80/$1M)', () => {
     const r = computeAffiliate([retailRef(wallet('a'), 'regular', new Map([[OPTIMISM_CHAIN_ID, 1_000_000]]))], PRICE)[0]!;
+    expect(r.owedUsd).toBeCloseTo(80, 6);
+  });
+
+  it('Unichain is sovereign like OP: Regular $1M on Unichain -> 0.8 bps -> $80 (NOT $60 hosted)', () => {
+    // keepFractionBps(130)=100% -> 0.8 bps, identical to OP. If 130 fell through to the
+    // hosted 75% branch it would pay 0.6 bps -> $60, short-changing the trader 25%.
+    const r = computeAffiliate([retailRef(wallet('c'), 'regular', new Map([[UNICHAIN_CHAIN_ID, 1_000_000]]))], PRICE)[0]!;
     expect(r.owedUsd).toBeCloseTo(80, 6);
   });
 

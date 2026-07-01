@@ -11,7 +11,8 @@ import type { WalletStatus } from './tierer.js';
  * numeric, or drawn from the fixed TIERS enum, so there is no untrusted markup.
  *
  * Honesty (review item #17): the figures are this wallet's REAL indexed
- * Optimism volume + tier, and the payout line reflects the ACTUAL batcher
+ * cross-chain volume + tier (the wallets matview sums value_usd across every
+ * indexed chain, not just one), and the payout line reflects the ACTUAL batcher
  * state, so the page never implies a payout that has not happened.
  */
 
@@ -160,7 +161,7 @@ export function renderTierPage(
 
     ${progressHtml}
 
-    <div class="note">${payoutLine} Figures reflect your real on-chain Ophis trades on Optimism, refreshed daily.</div>
+    <div class="note">${payoutLine} Figures reflect your real on-chain Ophis trades across all supported chains, refreshed daily.</div>
 
     <div class="actions">
       <a class="primary" href="https://swap.ophis.fi/">Open the app</a>

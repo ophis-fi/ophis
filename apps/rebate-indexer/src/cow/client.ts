@@ -20,23 +20,26 @@ const COW_API_PATH: Readonly<Record<number, string>> = {
   11155111: 'sepolia',
 };
 
-// Optimism (chain 10) is the SOVEREIGN Ophis backend — its own self-hosted CoW
-// orderbook at optimism-mainnet.ophis.fi (NOT api.cow.fi). It speaks the identical
-// /api/vN/... surface but at the host ROOT (no /{network}/ path segment), so it
-// needs its own base URL. Override the host with OP_ORDERBOOK_URL (e.g. the local
-// colima backend in dev). Adding it to SUPPORTED_CHAIN_IDS makes the fetcher index
-// OP trades exactly like the hosted chains.
+// Optimism (chain 10) and Unichain (130) are SOVEREIGN Ophis backends — each runs its
+// own self-hosted CoW orderbook (optimism-mainnet.ophis.fi / unichain-mainnet.ophis.fi,
+// NOT api.cow.fi). They speak the identical /api/vN/... surface but at the host ROOT
+// (no /{network}/ path segment), so each needs its own base URL. Override the host with
+// OP_ORDERBOOK_URL / UNI_ORDERBOOK_URL (e.g. a local backend in dev). Adding a chain to
+// SUPPORTED_CHAIN_IDS makes the fetcher index its trades exactly like the hosted chains.
 export const OPTIMISM_CHAIN_ID = 10;
+export const UNICHAIN_CHAIN_ID = 130;
 const OP_ORDERBOOK_BASE = (process.env.OP_ORDERBOOK_URL ?? 'https://optimism-mainnet.ophis.fi').replace(/\/+$/, '');
+const UNI_ORDERBOOK_BASE = (process.env.UNI_ORDERBOOK_URL ?? 'https://unichain-mainnet.ophis.fi').replace(/\/+$/, '');
 
-export const SUPPORTED_CHAIN_IDS = [...Object.keys(COW_API_PATH).map(Number), OPTIMISM_CHAIN_ID];
+export const SUPPORTED_CHAIN_IDS = [...Object.keys(COW_API_PATH).map(Number), OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID];
 
 const BASE_URL = process.env.COW_API_BASE ?? 'https://api.cow.fi';
 
 // Resolve the orderbook URL prefix (everything before `/api/vN/...`) for a chain.
-// Hosted chains: `${api.cow.fi}/{network}`. Optimism: the sovereign host root.
+// Hosted chains: `${api.cow.fi}/{network}`. Sovereign chains: their own host root.
 export function orderbookBase(chainId: number): string {
   if (chainId === OPTIMISM_CHAIN_ID) return OP_ORDERBOOK_BASE;
+  if (chainId === UNICHAIN_CHAIN_ID) return UNI_ORDERBOOK_BASE;
   const path = COW_API_PATH[chainId];
   if (!path) throw new Error(`unsupported chain ${chainId}`);
   return `${BASE_URL}/${path}`;
