@@ -1,0 +1,157 @@
+# eRPC multi-provider proxy for Robinhood Chain mainnet (chain 4663).
+#
+# Robinhood Chain is an Arbitrum Orbit L2. Like Unichain, the autopilot HARD-
+# requires debug_traceTransaction (settlement decode) and the public RPC does NOT
+# serve it (verified 2026-07-02: rpc.mainnet.chain.robinhood.com exposes
+# net,web3,eth only). So this stack runs a self-hosted Nitro node (see ../nitro/)
+# as the debug/trace leg + a read-consensus voter.
+#
+# Three upstreams:
+#   ophis-self-rbh     ophis-rbh-node:8547    self-hosted Nitro over Tailscale.
+#                                             The ONLY leg that serves debug_*/
+#                                             arbtrace_* + full receipts. Also
+#                                             votes in the read consensus.
+#   robinhood-public   rpc.mainnet.chain.robinhood.com   Robinhood's public node (reads).
+#   robinhood-alchemy  robinhood-mainnet.g.alchemy.com   Alchemy (free key) (reads).
+#
+# The two public legs cannot serve debug_*/arbtrace_*; eRPC's unsupported-method
+# failover routes those to ophis-self-rbh. If the self-node is down, trace calls
+# fail-closed -> the autopilot pauses settlement (safe).
+#
+# *** GATE (RPC failure-domain independence) ***
+# Robinhood is a 1-day-old chain with THIN public-RPC diversity, and Robinhood's
+# own public RPC is Alchemy-provisioned per their docs - so robinhood-public and
+# robinhood-alchemy MAY share a failure domain (correlated). Until a third truly
+# independent free Robinhood RPC provider exists (or a SECOND self-hosted Nitro
+# node on a different host + L1 is added), treat consensus as effectively
+# 2-across-2 (self-node + one public domain). The fail-closed invariants
+# (2-of-3, lowParticipants:returnError) still hold and are asserted by
+# assert-erpc-failclosed.py in CI. Revisit EXPECTED_UPSTREAM_HOSTS + this file
+# when a third independent provider lands.
+#
+# Robinhood block time is ~134ms (far faster than Unichain's ~1s) -> heavy tip-
+# drift on `latest`-tagged reads. preferBlockHeadLeader + enforceHighestBlock +
+# enforceNonNullTaggedBlocks handle it without loosening consensus.
+#
+# Endpoint exposed: http://rpc-proxy:4000/main/evm/4663
+
+logLevel: warn  # info logs 1 line/RPC req+resp - disk-fill risk
+
+projects:
+  - id: main
+
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 4663
+          integrity:
+            enforceHighestBlock: true
+            enforceNonNullTaggedBlocks: true
+        failsafe:
+          # === Block A: Deterministic-state methods ===
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: preferBlockHeadLeader
+              lowParticipantsBehavior: returnError
+              punishMisbehavior:
+                disputeThreshold: 60
+                disputeWindow: 10m
+                sitOutPenalty: 5m
+
+          # === Block B: Tip-lag-sensitive observation methods ===
+          # ~134ms blocks => far more tip-drift than Unichain; disputeThreshold is
+          # kept high so transient near-tip disagreement doesn't cordon a leg.
+          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: preferBlockHeadLeader
+              lowParticipantsBehavior: returnError
+              punishMisbehavior:
+                disputeThreshold: 150
+                disputeWindow: 10m
+                sitOutPenalty: 5m
+
+          # === eth_getTransactionReceipt: consensus, no punishMisbehavior ===
+          - matchMethod: "eth_getTransactionReceipt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+
+          # === Block C: Catch-all retry (no consensus) ===
+          # Carries debug_*/arbtrace_* - only ophis-self-rbh serves these; the
+          # public legs don't support them, so eRPC fails over to the self-node.
+          - matchMethod: "*"
+            timeout:
+              duration: 30s   # debug_traceTransaction is heavier than a plain read
+            retry:
+              maxAttempts: 3
+              delay: 150ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+    # Robinhood ~134ms blocks: 1s is the practical floor for the state poller
+    # (polling every 134ms would hammer the upstreams); tip-drift is handled by
+    # preferBlockHeadLeader above, not by a faster poll.
+    upstreamDefaults:
+      evm:
+        statePollerInterval: 1s
+        statePollerDebounce: 300ms
+
+    upstreams:
+      - id: ophis-self-rbh
+        # Self-hosted Nitro node (../nitro/). THE debug/arbtrace leg + a read-
+        # consensus voter. ophis-rbh-node = the node host's Tailscale name; Nitro
+        # serves JSON-RPC on 8547 (NOT op-reth's 8545).
+        endpoint: http://ophis-rbh-node:8547
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: robinhood-public
+        # Robinhood's public node. Reads only - cannot serve debug_/arbtrace_.
+        endpoint: https://rpc.mainnet.chain.robinhood.com
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: robinhood-alchemy
+        # Alchemy (Robinhood's recommended provider; free-tier key). Reads only.
+        # ${ALCHEMY_API_KEY} is substituted by render-configs.sh. NOTE the GATE
+        # above: this may share a failure domain with robinhood-public.
+        endpoint: https://robinhood-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
