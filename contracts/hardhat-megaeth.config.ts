@@ -109,6 +109,20 @@ const config = {
       // Ledger-signed. Connect device + open Ethereum app before running deploy.
       ledgerAccounts: [OPHIS_HW_WALLET],
     },
+    "robinhood-mainnet": {
+      url:
+        process.env.ROBINHOOD_MAINNET_RPC ??
+        "https://rpc.mainnet.chain.robinhood.com",
+      chainId: 4663,
+      // Arbitrum Orbit (Nitro) L2. Unlike the OP-Stack chains above, ArbGas
+      // accounting adds an L1-calldata gas component and block gas limits are
+      // ~1.1B, so the unknown-chain 25M auth-proxy default in 001_authenticator.ts
+      // may be INSUFFICIENT — if the proxy deploy hits out-of-gas, set
+      // OPHIS_AUTH_PROXY_GAS_LIMIT (or rely on estimateGas). See
+      // infra/robinhood-mainnet/deploy/README.md.
+      // Ledger-signed. Connect device + open Ethereum app before running deploy.
+      ledgerAccounts: [OPHIS_HW_WALLET],
+    },
     "katana-testnet": {
       url: process.env.KATANA_TESTNET_RPC ?? "https://rpc-bokuto.katanarpc.com",
       chainId: 737373,
@@ -160,6 +174,7 @@ const config = {
       "optimism-sepolia": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-mainnet": OPHIS_HW_WALLET,
       "unichain-mainnet": OPHIS_HW_WALLET,
+      "robinhood-mainnet": OPHIS_HW_WALLET,
       "katana-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "katana-mainnet": OPHIS_HW_WALLET,
       "mantle-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
@@ -184,6 +199,7 @@ const config = {
       "optimism-sepolia": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "optimism-mainnet": OPHIS_HW_WALLET,
       "unichain-mainnet": OPHIS_HW_WALLET,
+      "robinhood-mainnet": OPHIS_HW_WALLET,
       "katana-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
       "katana-mainnet": OPHIS_HW_WALLET,
       "mantle-testnet": OPHIS_TESTNET_DEPLOYER_ADDRESS,
