@@ -49,6 +49,12 @@ services:
       # (the pricer reads ERC20 decimals on-chain to correct the OP native_price oracle).
       OP_ORDERBOOK_URL: ${OP_ORDERBOOK_URL:-https://optimism-mainnet.ophis.fi}
       OPTIMISM_RPC_URL: ${OPTIMISM_RPC_URL:-https://mainnet.optimism.io}
+      # Unichain (sovereign Ophis backend) indexing. Only the orderbook host is
+      # overridable: unlike OP, Unichain's native_price oracle is per-atom (no
+      # 18-dec normalization), so the pricer needs NO on-chain decimals read and
+      # thus no UNICHAIN_RPC_URL. The passthrough is required for a .env override
+      # (staging/failover) to reach the container at all (same audit note as above).
+      UNI_ORDERBOOK_URL: ${UNI_ORDERBOOK_URL:-https://unichain-mainnet.ophis.fi}
       # Canonical Plasma archive RPC, staged for the future Plasma self-host. The
       # indexer prices Plasma via CoW's native_price oracle today (same as all
       # hosted chains), so this is unused at runtime — but per the audit note

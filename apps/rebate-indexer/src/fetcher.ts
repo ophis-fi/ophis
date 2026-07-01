@@ -503,7 +503,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
     // be spammed with arbitrary addresses; without a cap, runFetcher would do
-    // (rows × 11 chains) CoW calls and amplify that into a self-DoS + CoW
+    // (rows × 12 chains) CoW calls and amplify that into a self-DoS + CoW
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.

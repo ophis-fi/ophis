@@ -40,9 +40,9 @@ describe('renderStatsPage', () => {
 });
 
 describe('PRODUCTION_CHAIN_IDS (public /stats allow-list)', () => {
-  it('lists exactly the 11 named mainnet chains', () => {
+  it('lists exactly the 12 named mainnet chains', () => {
     expect([...PRODUCTION_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
-      1, 10, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144,
+      1, 10, 56, 100, 130, 137, 8453, 9745, 42161, 43114, 57073, 59144,
     ]);
   });
 

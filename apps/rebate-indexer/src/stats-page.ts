@@ -30,6 +30,7 @@ const CHAIN_NAME: Record<number, string> = {
   10: 'Optimism',
   56: 'BNB Chain',
   100: 'Gnosis',
+  130: 'Unichain',
   137: 'Polygon',
   8453: 'Base',
   9745: 'Plasma',
@@ -72,7 +73,7 @@ export function renderStatsPage(s: PublicStats): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Ophis: settled volume and rebate stats</title>
-<meta name="description" content="Live, cumulative Ophis stats: settled volume, trades, and traders across 11 EVM chains, indexed on-chain.">
+<meta name="description" content="Live, cumulative Ophis stats: settled volume, trades, and traders across 12 EVM chains, indexed on-chain.">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#02000d;color:#f5efe6;font-family:"Geist",ui-sans-serif,system-ui,-apple-system,sans-serif;line-height:1.5;padding:48px 20px;-webkit-font-smoothing:antialiased}
@@ -111,7 +112,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <thead><tr><th>Chain</th><th class="num">Volume settled</th><th class="num">Trades</th></tr></thead>
   <tbody>${rows || '<tr><td colspan="3" style="color:#9b93b5">No settled volume indexed yet.</td></tr>'}</tbody>
 </table>
-<p class="note">MEV-protected, gasless, surplus returned to the trader, across 11 EVM chains with Solana and Bitcoin destinations. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">MEV-protected, gasless, surplus returned to the trader, across 12 EVM chains with Solana and Bitcoin destinations. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span>swap.ophis.fi</span><span>Updated ${updated}</span></div>
 </div></body></html>`;
 }
