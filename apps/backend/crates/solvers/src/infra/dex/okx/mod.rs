@@ -377,6 +377,30 @@ impl Okx {
             });
         }
 
+        // Token-integrity guard (Codex review, PR #745): input.token / output.token
+        // below are relabeled to the SIGNED order.sell / order.buy. If a compromised
+        // or hijacked OKX edge returned calldata that actually swaps to a DIFFERENT
+        // asset, relabeling output.token to order.buy would MASK the mismatch that
+        // into_dex_solution's token-pair check would otherwise reject — letting the
+        // Settlement pay the buy token out of the contract's OWN buffer (protocol
+        // inventory) instead of the realized swap output (a buffer-internalization
+        // drain, the output-side mirror of the input-side siphon above). Reject any
+        // echoed from/to token that does not match the signed order before relabeling.
+        if swap_response.router_result.from_token.token_contract_address != order.sell.0
+            || swap_response.router_result.to_token.token_contract_address != order.buy.0
+        {
+            return Err(Error::Api {
+                code: -1,
+                reason: format!(
+                    "OKX /swap echoed tokens ({:?} -> {:?}) != signed order ({:?} -> {:?})",
+                    swap_response.router_result.from_token.token_contract_address,
+                    swap_response.router_result.to_token.token_contract_address,
+                    order.sell.0,
+                    order.buy.0,
+                ),
+            });
+        }
+
         // Increasing returned gas by 50% according to the documentation:
         // https://web3.okx.com/build/dev-docs/wallet-api/dex-swap (gas field description in Response param)
         let gas = swap_response
