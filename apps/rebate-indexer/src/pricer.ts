@@ -67,6 +67,7 @@ const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: n
   11155111: { token: '0xbe72e441bf55620febc26715db68d3494213d8cb', decimals: 18 }, // USDC sepolia (cow staging)
   10:       { token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC optimism (native; np decimals-corrected)
   9745:     { token: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', decimals: 6 },  // USDT0 plasma (decimals-verified on-chain 2026-06-16; CoW native_price confirmed; USDT-native chain, no liquid USDC; replaces the removed Linea-placeholder)
+  130:      { token: '0x078d782b760474a361dda0af3839290b0ef57ad6', decimals: 6 },  // USDC unichain (native Circle USDC; symbol+decimals verified on-chain 2026-06-30). Unichain's sovereign native_price is PER-ATOM (verified: 6-dec USDC ~6.4e8, NOT 18-dec-normalized like OP's ~6.4e20), so NO correctOpNativePrice correction applies — it prices like the hosted chains.
 };
 
 // Per-trade rebate-volume contribution ceiling (USD). A trade's recorded value is

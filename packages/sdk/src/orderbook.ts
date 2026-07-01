@@ -23,6 +23,7 @@ export const OPHIS_ORDERBOOK_URLS: Readonly<Partial<Record<number, string>>> = O
   57073: 'https://api.cow.fi/ink',
   11155111: 'https://api.cow.fi/sepolia',
   10: 'https://optimism-mainnet.ophis.fi', // Ophis self-hosted OP orderbook (verified live)
+  130: 'https://unichain-mainnet.ophis.fi', // Ophis self-hosted Unichain orderbook (verified live)
 });
 
 /**

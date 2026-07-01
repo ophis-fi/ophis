@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { getOphisOrderbookUrl, OPHIS_ORDERBOOK_URLS } from '@ophis/sdk';
 
 describe('getOphisOrderbookUrl', () => {
-  it('returns the self-hosted Ophis host for Optimism (10), NOT api.cow.fi', () => {
+  it('returns the self-hosted Ophis host for Optimism (10) + Unichain (130), NOT api.cow.fi', () => {
     expect(getOphisOrderbookUrl(10)).toBe('https://optimism-mainnet.ophis.fi');
     expect(getOphisOrderbookUrl(10)).not.toContain('api.cow.fi');
+    expect(getOphisOrderbookUrl(130)).toBe('https://unichain-mainnet.ophis.fi');
+    expect(getOphisOrderbookUrl(130)).not.toContain('api.cow.fi');
   });
 
   it('returns api.cow.fi hosts for CoW-hosted chains (Gnosis slug is "xdai")', () => {

@@ -43,6 +43,7 @@ import { OPHIS_PARTNER_FEE_RECIPIENT } from './partner-fee.js';
  */
 const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',
+  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7', // Unichain — CoWSwapEthFlow (deployed 2026-06-29; verified on-chain, ToB+Verity reviewed)
 };
 
 /**

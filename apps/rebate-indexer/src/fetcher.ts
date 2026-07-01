@@ -162,6 +162,10 @@ function isAppCodeOfInterest(code: string | undefined): code is AppCode {
 const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
   // Optimism: Ophis-deployed eth-flow (checksum 0x764fE4aa1FF493cf39931c7923C8ff5837596504, 2026-06-07)
   10: '0x764fe4aa1ff493cf39931c7923c8ff5837596504',
+  // Unichain (130): Ophis-deployed eth-flow (checksum 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7,
+  // verified on-chain: EthFlow.cowSwapSettlement() == Ophis Unichain settlement, 2026-06-30). The
+  // chain is LIVE, so native-ETH sells must index here or their rebates silently never accrue.
+  130: '0x38c03729153bccf6a281daf41d7c6a14c543f1d7',
 });
 /** Lowercased owner addresses for O(1) "is this an Ophis eth-flow contract" checks. */
 const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ETHFLOW_OWNER_BY_CHAIN));
@@ -499,7 +503,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
     // be spammed with arbitrary addresses; without a cap, runFetcher would do
-    // (rows × 11 chains) CoW calls and amplify that into a self-DoS + CoW
+    // (rows × 12 chains) CoW calls and amplify that into a self-DoS + CoW
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
