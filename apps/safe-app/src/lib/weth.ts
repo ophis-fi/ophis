@@ -12,13 +12,21 @@ import { WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/cow-sdk';
 // never needs eth-flow.
 export const WETH_DEPOSIT_IFACE = new Interface(['function deposit() payable']);
 
+// Ophis-operated chains that cow-sdk's WRAPPED_NATIVE_CURRENCIES does not map (it tracks CoW's
+// supported set). Unichain (130) is an OP-Stack rollup whose canonical WETH is the 0x4200…0006
+// predeploy (the same address the autopilot/EthFlow native-token config and the frontend use).
+const OPHIS_WRAPPED_NATIVE: Record<number, string> = {
+  130: '0x4200000000000000000000000000000000000006', // Unichain WETH (OP-Stack predeploy)
+};
+
 /**
- * The wrapped-native token address (WETH/WMATIC/WXDAI/…) for `chainId`, from cow-sdk's canonical
- * map. Throws a clear error if the chain has no known wrapped-native token (native-ETH wrapping is
- * then unavailable there; ERC-20 swaps are unaffected).
+ * The wrapped-native token address (WETH/WMATIC/WXDAI/…) for `chainId`. Checks the Ophis-operated
+ * override first (chains cow-sdk does not map), then cow-sdk's canonical map. Throws a clear error if
+ * the chain has no known wrapped-native token (native-ETH wrapping is then unavailable there; ERC-20
+ * swaps are unaffected).
  */
 export function getWethAddress(chainId: number): string {
-  const weth = (WRAPPED_NATIVE_CURRENCIES as Record<number, string>)[chainId];
+  const weth = OPHIS_WRAPPED_NATIVE[chainId] ?? (WRAPPED_NATIVE_CURRENCIES as Record<number, string>)[chainId];
   if (!weth) {
     throw new Error(`Native-ETH selling is unavailable on chain ${chainId} (no known wrapped-native token).`);
   }
