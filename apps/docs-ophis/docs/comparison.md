@@ -53,7 +53,7 @@ sentence is an additional way in, and it is the path the agent API uses too.
 
 This is where the four front-ends differ most concretely:
 
-- **Ophis**: 11 EVM chains as source or destination, plus **Solana** and
+- **Ophis**: 12 EVM chains as source or destination, plus **Solana** and
   **Bitcoin** as cross-chain destinations.
 - **CoW Swap**: EVM chains plus **Solana** as a destination. No Bitcoin.
 - **Matcha**: EVM chains plus **Solana**.
@@ -135,7 +135,7 @@ tool. The same sentence a person types is the same sentence an agent posts.
 
 ## Trade-offs (honestly)
 
-Ophis runs its **own solver and orderbook on Optimism**, where its stack is
+Ophis runs its **own solver and orderbook on Optimism and Unichain**, where its stack is
 self-hosted; on the other chains it surfaces, it relies on CoW's hosted
 infrastructure and solver network. CoW's production solver network is **more
 mature and more battle-tested** than the Optimism-focused stack Ophis operates
@@ -150,7 +150,7 @@ settlement foundation.
 | --- | --- | --- | --- | --- |
 | **How you trade** | Natural language, e.g. "swap 100 USDC for ETH on Base" | Token picker (signed intents) | Token picker | Token picker |
 | **Settlement** | CoW Protocol batch auctions (shared foundation) | CoW Protocol batch auctions | 0x aggregation / RFQ | Aggregation across DEXs |
-| **Cross-chain scope** | 11 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
+| **Cross-chain scope** | 12 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
 | **Fee model** | Flat 0.10% (10 bps) on trade volume; 0.01% (1 bp) on same-chain stablecoin-to-stablecoin pairs | Surplus-based: a share of price improvement, not a fixed % of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
 | **Surplus (price improvement)** | 100% returned to the trader; Ophis takes **zero** cut (flat volume fee, not a surplus fee) | 100% returned to the trader, but the fee itself is a share of that surplus | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
 | **Agent API** | Public `POST /api/intent` (no key) + hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |

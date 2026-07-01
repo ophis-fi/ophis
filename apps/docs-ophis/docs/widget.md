@@ -91,10 +91,10 @@ embedded against a third-party origin.
 ## Notes
 
 - The widget is GPL-3.0, like the rest of Ophis.
-- Optimism orders settle on the Ophis self-hosted orderbook; the CoW-hosted
-  chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea,
-  Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
-  widget app, 11 chains in total.
+- Optimism and Unichain orders settle on the Ophis self-hosted orderbooks; the
+  CoW-hosted chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche,
+  Linea, Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
+  widget app, 12 chains in total.
 - **Self-hosting an Ophis fork?** The host must allow third-party framing (CSP
   `frame-ancestors *`, no `X-Frame-Options: SAMEORIGIN`), or integrators'
   iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is
