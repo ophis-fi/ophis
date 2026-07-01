@@ -352,6 +352,31 @@ impl Okx {
             &swap_response.tx.to,
         )?;
 
+        // Buffer-siphon guard (mirrors kyberswap/mod.rs:187, velora, odos, dodo,
+        // lifi, enso, openocean, bitget — the one lane that was missing it). For
+        // a SELL (exactIn) order the input is fixed by the signed order. A
+        // compromised/hijacked OKX edge could echo a larger `from_token_amount`,
+        // which we would turn into an inflated ERC-20 allowance below and an
+        // on-chain approval the (allowlisted) router uses to pull the Settlement
+        // contract's OWN buffer of the sold token — a direct loss of protocol
+        // funds. The framework's allowance_within_sell_limit only enforces the
+        // limit-price relation (O*S >= A*B), not A <= order.sell, so it does not
+        // close this. Fail fast rather than trust the echoed amount. (BUY /
+        // exactOut legitimately varies the input; it is bounded by the
+        // U256::MAX-allowance branch + the driver's 2^200 custom_allowlist cap.)
+        if order.side == order::Side::Sell
+            && swap_response.router_result.from_token_amount != order.amount.get()
+        {
+            return Err(Error::Api {
+                code: -1,
+                reason: format!(
+                    "OKX /swap returned from_token_amount {:?}, expected signed sell amount {:?}",
+                    swap_response.router_result.from_token_amount,
+                    order.amount.get()
+                ),
+            });
+        }
+
         // Increasing returned gas by 50% according to the documentation:
         // https://web3.okx.com/build/dev-docs/wallet-api/dex-swap (gas field description in Response param)
         let gas = swap_response
@@ -393,19 +418,17 @@ impl Okx {
                 calldata: swap_response.tx.data.clone(),
             }],
             input: eth::Asset {
-                token: swap_response
-                    .router_result
-                    .from_token
-                    .token_contract_address
-                    .into(),
+                // Trust the SIGNED order's sell token, never the API-echoed
+                // token (a hijacked response could otherwise redirect the
+                // approval/spend to an unrelated token). For SELL the amount is
+                // provably == order.amount.get() by the guard above; for BUY it
+                // is the computed exactOut input.
+                token: order.sell,
                 amount: swap_response.router_result.from_token_amount,
             },
             output: eth::Asset {
-                token: swap_response
-                    .router_result
-                    .to_token
-                    .token_contract_address
-                    .into(),
+                // Trust the SIGNED order's buy token, never the API-echoed one.
+                token: order.buy,
                 // SELL (exactIn): report the GUARANTEED router floor
                 // (to_token_amount discounted by the slippage we sent), NOT the
                 // optimistic quote. OKX has no explicit minReceived field; it
