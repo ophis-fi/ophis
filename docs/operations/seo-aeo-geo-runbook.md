@@ -171,6 +171,7 @@ https://challenges.cloudflare.com https://www.googletagmanager.com` (still **no
 
 ## Changelog
 
+- **2026-07-03 (swap Soft-404 root-cause fix):** Search Console reported swap.ophis.fi (and its hash routes) as Soft 404. Two causes fixed: (1) the SPA HTML fallback answered missing hashed-asset paths (deploy-propagation windows) with the one-year immutable header attached by path, so browsers and Googlebot cached HTML-as-JavaScript and every later render died at the static shell; functions/_middleware.ts now returns a real no-store 404 for asset-shaped paths that would fall back to HTML. (2) The crawler-visible shell ended with "Loading the app...", a textbook soft-404 trigger; replaced with a content line. After deploy: URL-inspect https://swap.ophis.fi/ in GSC and Request indexing. Hash-fragment rows (#/...) can never be indexed separately and inherit the root verdict; treat them as noise.
 - **2026-07-03 (SEO/AEO hygiene sweep):** swap `llms.txt` app-route links fixed
   to `swap.ophis.fi/#/...` (they pointed at the hash-less apex, so agents and AI
   crawlers following them landed on the wrong page), chain list refreshed to
