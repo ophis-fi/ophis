@@ -35,5 +35,6 @@ curl -X POST https://swap.ophis.fi/api/intent \
 ## Optional
 
 - [GitHub](https://github.com/ophis-fi/ophis): full source.
+- [Full docs text](https://docs.ophis.fi/llms-full.txt): the entire documentation concatenated into one file for LLM context windows.
 - Fee model: a flat 0.10% (10 bps) fee on trade volume, applied to every trade (e.g. swap 1,000 USDC, fee = 0.10% = 1 USDC), with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.
 - Surplus: any price improvement a solver finds beyond your signed quote is returned to the trader in full. The flat fee is on volume only and takes no cut of surplus.

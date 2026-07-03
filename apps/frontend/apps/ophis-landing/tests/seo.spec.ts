@@ -38,13 +38,32 @@ test('llms.txt follows the standard (H1 + summary blockquote) and links agent su
   expect(llms).toContain('https://swap.ophis.fi/api/intent')
 })
 
-test('index.html embeds schema.org JSON-LD (Organization / WebSite / SoftwareApplication) and is parseable', () => {
+// Collect every JSON-LD block on a page and flatten to the schema.org types it
+// declares (@graph nodes + standalone @type blocks).
+const ldTypes = (html: string): string[] =>
+  [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)].flatMap(
+    ([, body]) => {
+      const data = JSON.parse(body)
+      return (data['@graph'] ?? [data]).map((n: { '@type': string }) => n['@type'])
+    },
+  )
+
+test('index.html embeds schema.org JSON-LD (Organization/WebSite sitewide + SoftwareApplication/HowTo home-only) and is parseable', () => {
   const html = read('index.html')
-  const m = html.match(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/)
-  if (!m) throw new Error('JSON-LD <script> not found in index.html')
-  const data = JSON.parse(m[1])
-  const types = (data['@graph'] ?? []).map((n: { '@type': string }) => n['@type'])
-  expect(types).toEqual(expect.arrayContaining(['Organization', 'WebSite', 'SoftwareApplication']))
+  const types = ldTypes(html)
+  if (!types.length) throw new Error('JSON-LD <script> not found in index.html')
+  expect(types).toEqual(
+    expect.arrayContaining(['Organization', 'WebSite', 'SoftwareApplication', 'HowTo']),
+  )
   // robots meta present.
   expect(html).toMatch(/<meta name="robots" content="index, follow/)
+})
+
+test('content pages carry the sitewide Organization/WebSite JSON-LD but NOT the app schema', () => {
+  const types = ldTypes(read('blog/index.html'))
+  expect(types).toEqual(expect.arrayContaining(['Organization', 'WebSite']))
+  // The point of the homeSchema gate: a content page must not also declare the
+  // app schema or the SDK HowTo (semantic noise for answer engines).
+  expect(types).not.toContain('SoftwareApplication')
+  expect(types).not.toContain('HowTo')
 })

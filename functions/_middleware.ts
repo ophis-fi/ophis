@@ -44,8 +44,48 @@ const BUSINESS_ORIGIN = 'https://business.ophis.fi'
 // business.ophis.fi same-host robots.txt: points at its OWN sitemap (not
 // swap.ophis.fi's). No non-standard 'Host:' directive (a deprecated Yandex-only
 // extension, redundant with the Sitemap directive + rel=canonical).
+// Carries the same AI-crawler allowances + Content-Signal as the landing, swap,
+// and docs robots.txt (AEO/GEO posture must be consistent across hosts).
 const BUSINESS_ROBOTS = `User-agent: *
 Allow: /
+# Content Signals (contentsignals.org): public content, AI use welcome.
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
+
+# Answer-engine / LLM crawlers explicitly allowed (AEO / GEO), matching the
+# landing, swap, and docs policy.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
 Sitemap: ${BUSINESS_ORIGIN}/sitemap.xml
 `
 

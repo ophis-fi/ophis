@@ -10,6 +10,11 @@ export interface Props {
   ogType?: string
   /** Absolute URL of the social-share image (sized 1280x640 to match the meta dims). */
   image?: string
+  /** Home page only: also emit the SoftwareApplication + SDK HowTo JSON-LD.
+      Content pages (blog, 404) keep just Organization + WebSite, so a
+      BlogPosting page does not also declare the app schema and an unrelated
+      HowTo (semantic noise for answer engines). */
+  homeSchema?: boolean
 }
 const {
   title = 'Ophis: DEX aggregator for the agent era',
@@ -17,7 +22,14 @@ const {
   canonical = 'https://ophis.fi/',
   ogType = 'website',
   image = 'https://ophis.fi/og-image.png',
+  homeSchema = false,
 } = Astro.props
+
+// Home-only JSON-LD payloads (emitted below via set:html, the same pattern the
+// blog post template uses). JSON-LD is a non-executed data block: script-src
+// never applies and scripts/check-csp-hashes.mjs skips it, so no _headers hash.
+const appJsonLd = `{"@context":"https://schema.org","@type":"SoftwareApplication","@id":"https://ophis.fi/#software","name":"Ophis","applicationCategory":"FinanceApplication","applicationSubCategory":"Decentralized Exchange Aggregator","operatingSystem":"Web","url":"https://swap.ophis.fi/","description":"Intent-based, MEV-protected, batch-settled swaps on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Agent-accessible via an MCP server at mcp.ophis.fi.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://ophis.fi/#organization"}}`
+const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"https://ophis.fi/#howto-sdk","name":"Integrate the Ophis SDK","description":"Build, sign, and submit a bounded Ophis order from an autonomous agent using the @ophis/sdk agent-safety helpers.","totalTime":"PT30M","tool":[{"@type":"HowToTool","name":"@ophis/sdk"}],"step":[{"@type":"HowToStep","name":"Install the SDK","text":"Add the package with npm i @ophis/sdk. It is a dependency-free ESM helper library for building bounded Ophis orders.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Resolve the per-chain settlement domain","text":"Call getOphisOrderbookUrl(chainId) for the correct orderbook host and getOphisOrderDomain(chainId) for the EIP-712 signing domain with the right per-chain verifying contract. On Ophis-operated chains the settlement address is non-canonical, so cow-sdk's defaults are wrong.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Build a bounded order with the receiver pinned to the owner","text":"Construct the order with a hard limit price so it can never settle below the signed quote, and pin the receiver to the owner. Use assertReceiverIsOwner(owner, order.receiver): an unpinned receiver is the top drain vector for an automated signer.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Sign the EIP-712 order locally","text":"Sign the order against the resolved domain with the agent's own key. Keys never leave the signer; the agent signs a bounded capability, not an arbitrary transaction.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Submit the pre-signed order","text":"Relay the signed order to the resolved Ophis orderbook host, or hand it to the MCP submit_order tool at mcp.ophis.fi. The order settles MEV-protected through CoW Protocol batch auctions.","url":"https://ophis.fi/#sdk"}]}`
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -63,16 +75,15 @@ const {
        the observer (fail-open: a failed/absent reveal module leaves content
        visible). No head script needed. -->
 
-  <!-- schema.org structured data (Organization / WebSite / SoftwareApplication)
-       for SEO + answer-engine optimization. STATIC content only: the postbuild
-       CSP-hash check (scripts/check-csp-hashes.mjs) hashes this block, so any
-       edit must be followed by `node scripts/check-csp-hashes.mjs --print` and
-       an update to public/_headers. -->
-  <script type="application/ld+json" is:inline>{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://ophis.fi/#organization","name":"Ophis","url":"https://ophis.fi/","logo":"https://ophis.fi/ophis-claw-saffron.svg","description":"Intent-based, MEV-protected DEX aggregator built for the agent era.","sameAs":["https://github.com/ophis-fi/ophis"]},{"@type":"WebSite","@id":"https://ophis.fi/#website","url":"https://ophis.fi/","name":"Ophis","description":"Describe a trade in natural language; settle MEV-protected in one batch. Built for autonomous agents.","publisher":{"@id":"https://ophis.fi/#organization"},"inLanguage":"en"},{"@type":"SoftwareApplication","@id":"https://ophis.fi/#software","name":"Ophis","applicationCategory":"FinanceApplication","applicationSubCategory":"Decentralized Exchange Aggregator","operatingSystem":"Web","url":"https://swap.ophis.fi/","description":"Intent-based, MEV-protected, batch-settled swaps on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Agent-accessible via an MCP server at mcp.ophis.fi.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://ophis.fi/#organization"}}]}</script>
-
-  <!-- HowTo structured data: integrating the @ophis/sdk. Steps mirror
-       src/components/SDKSection.astro. Same CSP-hash note as the @graph block above. -->
-  <script type="application/ld+json" is:inline>{"@context":"https://schema.org","@type":"HowTo","@id":"https://ophis.fi/#howto-sdk","name":"Integrate the Ophis SDK","description":"Build, sign, and submit a bounded Ophis order from an autonomous agent using the @ophis/sdk agent-safety helpers.","totalTime":"PT30M","tool":[{"@type":"HowToTool","name":"@ophis/sdk"}],"step":[{"@type":"HowToStep","name":"Install the SDK","text":"Add the package with npm i @ophis/sdk. It is a dependency-free ESM helper library for building bounded Ophis orders.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Resolve the per-chain settlement domain","text":"Call getOphisOrderbookUrl(chainId) for the correct orderbook host and getOphisOrderDomain(chainId) for the EIP-712 signing domain with the right per-chain verifying contract. On Ophis-operated chains the settlement address is non-canonical, so cow-sdk's defaults are wrong.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Build a bounded order with the receiver pinned to the owner","text":"Construct the order with a hard limit price so it can never settle below the signed quote, and pin the receiver to the owner. Use assertReceiverIsOwner(owner, order.receiver): an unpinned receiver is the top drain vector for an automated signer.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Sign the EIP-712 order locally","text":"Sign the order against the resolved domain with the agent's own key. Keys never leave the signer; the agent signs a bounded capability, not an arbitrary transaction.","url":"https://ophis.fi/#sdk"},{"@type":"HowToStep","name":"Submit the pre-signed order","text":"Relay the signed order to the resolved Ophis orderbook host, or hand it to the MCP submit_order tool at mcp.ophis.fi. The order settles MEV-protected through CoW Protocol batch auctions.","url":"https://ophis.fi/#sdk"}]}</script>
+  <!-- schema.org structured data for SEO + answer-engine optimization.
+       Organization + WebSite are sitewide; SoftwareApplication + the SDK HowTo
+       are home-only (homeSchema, set:html consts in the frontmatter) so a blog
+       post does not also declare the app schema. JSON-LD is a non-executed
+       data block: script-src never applies and scripts/check-csp-hashes.mjs
+       skips it (see its header), so these blocks need no _headers hashes. -->
+  <script type="application/ld+json" is:inline>{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://ophis.fi/#organization","name":"Ophis","url":"https://ophis.fi/","logo":"https://ophis.fi/ophis-claw-saffron.svg","description":"Intent-based, MEV-protected DEX aggregator built for the agent era.","sameAs":["https://github.com/ophis-fi/ophis","https://x.com/ophisfi"]},{"@type":"WebSite","@id":"https://ophis.fi/#website","url":"https://ophis.fi/","name":"Ophis","description":"Describe a trade in natural language; settle MEV-protected in one batch. Built for autonomous agents.","publisher":{"@id":"https://ophis.fi/#organization"},"inLanguage":"en"}]}</script>
+  {homeSchema && <script type="application/ld+json" is:inline set:html={appJsonLd} />}
+  {homeSchema && <script type="application/ld+json" is:inline set:html={howToJsonLd} />}
 
   <!-- Returning-trader fast path. Runs synchronously before paint. Literal URL only.
        Path-gated to the landing root: a returning trader hitting "/" is bounced to

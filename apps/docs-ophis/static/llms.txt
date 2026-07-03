@@ -28,5 +28,6 @@ Worked examples:
 
 ## More
 
+- Full docs as a single file (for LLM context windows): https://docs.ophis.fi/llms-full.txt
 - App: https://swap.ophis.fi
 - Source: https://github.com/ophis-fi/ophis
