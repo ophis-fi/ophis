@@ -151,5 +151,27 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     rewritten.pathname = target
     return context.env.ASSETS.fetch(new Request(rewritten.toString(), context.request))
   }
+
+  // Never serve the SPA HTML fallback at asset-shaped paths. Pages' SPA
+  // fallback answers ANY missing path with index.html, and _headers applies
+  // cache rules BY PATH, so during a deploy-propagation window a missing
+  // hashed bundle (e.g. /static/index-<hash>.js) is served as text/html WITH
+  // the one-year immutable header. Browsers and Google's renderer then cache
+  // HTML-as-JavaScript ~forever: the app dies at the static shell for that
+  // client, which is exactly the "Soft 404" Google Search Console reports.
+  // A real, uncacheable 404 makes every client (and crawler) simply retry.
+  const assetLike =
+    url.pathname.startsWith('/static/') ||
+    (/\.[a-z0-9]{2,5}$/i.test(url.pathname) && !url.pathname.endsWith('.html'))
+  if (assetLike) {
+    const res = await context.next()
+    if (res.status === 200 && (res.headers.get('content-type') || '').includes('text/html')) {
+      return new Response('Not found', {
+        status: 404,
+        headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+      })
+    }
+    return res
+  }
   return context.next()
 }

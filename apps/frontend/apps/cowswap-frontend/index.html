@@ -176,7 +176,11 @@
           <a href="https://safe.ophis.fi/">Safe app</a>
           <a href="https://ophis.fi/blog">Blog</a>
         </nav>
-        <p class="hint">Loading the app…</p>
+        <!-- No "loading"-style wording here: search engines' soft-404
+             classifiers treat a page ending in "Loading…" as an error page,
+             and this block IS what a crawler sees when the JS render is slow
+             or fails. Keep it a complete, content-bearing line. -->
+        <p class="hint">Gasless swaps. A flat 0.10% fee. Volume rebates paid monthly in WETH.</p>
       </div>
     </div>
     <div id="root"></div>
