@@ -50,12 +50,37 @@ try {
     const id = basename(f).replace(/\.(md|mdx)$/, '')
     const slug = fm.slug || (id === 'intro' || id === 'index' ? '/' : `/${id}`)
     const title = fm.title || (body.match(/^#\s+(.+)$/m) || [])[1] || id
-    // Drop MDX import/export lines; keep the prose and code blocks verbatim.
-    body = body
-      .split('\n')
-      .filter((l) => !/^(import|export)\s/.test(l))
-      .join('\n')
-      .trim()
+    // Drop TOP-LEVEL MDX import/export statements only. Lines inside fenced
+    // code blocks are kept verbatim (code examples legitimately start with
+    // import/export), and a multi-line `export const x = {...}` block is
+    // skipped in full via brace balancing rather than leaving dangling text.
+    const kept = []
+    let inFence = false
+    let skipDepth = 0
+    for (const line of body.split('\n')) {
+      if (/^(```|~~~)/.test(line.trimStart())) {
+        inFence = !inFence
+        kept.push(line)
+        continue
+      }
+      if (inFence) {
+        kept.push(line)
+        continue
+      }
+      if (skipDepth > 0) {
+        skipDepth += (line.match(/{/g) || []).length - (line.match(/}/g) || []).length
+        if (skipDepth < 0) skipDepth = 0
+        continue
+      }
+      if (/^import\s/.test(line)) continue
+      if (/^export\s/.test(line)) {
+        const depth = (line.match(/{/g) || []).length - (line.match(/}/g) || []).length
+        if (depth > 0) skipDepth = depth
+        continue
+      }
+      kept.push(line)
+    }
+    body = kept.join('\n').trim()
     return { id, slug, title, body }
   })
   entries.sort((a, b) => {
