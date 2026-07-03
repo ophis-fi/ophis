@@ -122,6 +122,9 @@ const config: Config = {
         sitemap: {
           changefreq: 'weekly',
           priority: 0.5,
+          // /search is a utility page (local lunr search), not content; without
+          // this it was advertised as the sitemap's first URL.
+          ignorePatterns: ['/search'],
         },
       } satisfies Preset.Options,
     ],
