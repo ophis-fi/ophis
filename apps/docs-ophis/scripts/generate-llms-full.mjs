@@ -58,6 +58,7 @@ try {
     let inFence = false
     let skipDepth = 0
     let inHead = false
+    let inComment = false
     for (const line of body.split('\n')) {
       if (/^(```|~~~)/.test(line.trimStart())) {
         inFence = !inFence
@@ -77,6 +78,16 @@ try {
       }
       if (/^<Head[\s>]/.test(line.trimStart()) || line.trimStart() === '<Head>') {
         if (!line.includes('</Head>')) inHead = true
+        continue
+      }
+      // Top-level MDX JSX comments ({/* ... */}, possibly multi-line) are
+      // implementation notes for the schema plumbing, not content.
+      if (inComment) {
+        if (line.includes('*/}')) inComment = false
+        continue
+      }
+      if (line.trimStart().startsWith('{/*')) {
+        if (!line.includes('*/}')) inComment = true
         continue
       }
       if (skipDepth > 0) {
@@ -105,8 +116,10 @@ try {
   const head = `# Ophis Docs (full text)\n\n> The complete docs.ophis.fi corpus in one file, generated at build time for LLM context windows. Each section header carries the canonical per-page URL. Index: ${SITE}/llms.txt\n`
   const out = [
     head,
+    // Slashless non-root URLs: must match the Docusaurus sitemap + existing
+    // docs links exactly (one canonical URL variant for answer engines).
     ...entries.map(
-      (e) => `\n---\n\n# ${e.title}\nURL: ${SITE}${e.slug === '/' ? '/' : `${e.slug}/`}\n\n${e.body}\n`,
+      (e) => `\n---\n\n# ${e.title}\nURL: ${SITE}${e.slug === '/' ? '/' : e.slug}\n\n${e.body}\n`,
     ),
   ].join('')
   mkdirSync(join(ROOT, 'static'), { recursive: true })
