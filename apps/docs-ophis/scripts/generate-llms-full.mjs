@@ -57,6 +57,7 @@ try {
     const kept = []
     let inFence = false
     let skipDepth = 0
+    let inHead = false
     for (const line of body.split('\n')) {
       if (/^(```|~~~)/.test(line.trimStart())) {
         inFence = !inFence
@@ -65,6 +66,17 @@ try {
       }
       if (inFence) {
         kept.push(line)
+        continue
+      }
+      // Top-level MDX <Head>...</Head> blocks are per-page schema wiring
+      // (JSON-LD via Docusaurus Head), not content — drop them whole so the
+      // plain-text corpus carries no JSX wrappers or dangling identifiers.
+      if (inHead) {
+        if (line.includes('</Head>')) inHead = false
+        continue
+      }
+      if (/^<Head[\s>]/.test(line.trimStart()) || line.trimStart() === '<Head>') {
+        if (!line.includes('</Head>')) inHead = true
         continue
       }
       if (skipDepth > 0) {
