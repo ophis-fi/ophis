@@ -12,7 +12,7 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
 const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(d)
 ---
 <Base
-  title="Ophis Blog"
+  title="Ophis Blog: intent trading, MEV protection, AI agents"
   description="Engineering and product writing from Ophis: intent-based, MEV-protected swaps for the agent era. AI agents, rebates, and multi-chain DeFi."
   canonical="https://ophis.fi/blog/"
 >
@@ -38,7 +38,7 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
                 <Image
                   class="card-thumb"
                   src={post.data.cover}
-                  alt=""
+                  alt={post.data.coverAlt ?? `Cover image for: ${post.data.title}`}
                   widths={[400, 760]}
                   sizes="(max-width: 760px) 100vw, 720px"
                   loading="lazy"
