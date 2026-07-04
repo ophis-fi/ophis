@@ -307,7 +307,7 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     expect(e.routedVolumeUsd.total).toBe(1000); // discovery 9999 excluded
     expect(e.byChain.find((c) => c.chainId === 100)!.trades).toBe(1);
     expect(e.ophisFeeAccruedUsd.total).toBe(1); // 1000 * 10 / 10_000, gross
-    expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(1.875); // 1000 * 25 / 10_000 * 0.75 hosted keep
+    expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(2.5); // 1000 * 25 / 10_000, gross (hosted own-fee is not haircut)
     // The recipient is the VERIFIED row's, never the newer unverified discovery row's.
     expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`);
     await sql`TRUNCATE trades, tracked_wallets`;
