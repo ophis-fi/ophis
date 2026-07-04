@@ -350,6 +350,38 @@ How your fee reaches you depends on the chain:
   settlement and payout. If you plan to rely on hosted-chain own-fee flow,
   contact us and we will run the verification with your recipient address.
 
+### Sovereign own-fee onboarding (allowlisting)
+
+On Optimism and Unichain the settlement backend enforces a partner-fee recipient
+allowlist: it rejects the **entire order** if any `partnerFee` entry names a
+recipient that is not allowlisted. By default only the Ophis recipient is
+allowlisted, so your own-fee entry does not settle on these chains until your
+address is added. Own-fee stacking is not open by default on the sovereign
+chains; it is gated behind this one-time onboarding.
+
+To get your recipient allowlisted:
+
+1. **Send us your details** at [business.ophis.fi](https://business.ophis.fi):
+   your fee recipient address (a Safe is recommended), the sovereign chains you
+   want it on (Optimism 10, Unichain 130, or both), and your intended own-fee
+   rate.
+2. **Prove control of the address.** Sign a challenge message from the Safe
+   (or send a small on-chain transaction from it) so we can confirm you own the
+   recipient, and countersign a short fee agreement.
+3. **We allowlist it.** We add the address to the backend fee-recipient
+   allowlist and redeploy. This is a reviewed backend change on our side, not a
+   runtime toggle, so it is a short turnaround rather than instant.
+4. **Confirm and go live.** Once we confirm, preflight an order with the MCP
+   `validate_order` tool (it errors on a non-allowlisted sovereign recipient, so
+   a clean result means you are allowlisted), then submit. Your fee is charged at
+   settlement, accrues on-chain, and is swept to your address with no CoW service
+   fee and nothing between the contract and your wallet.
+
+**Before you are allowlisted:** a stacked own-fee entry to your address is
+rejected at ingress on Optimism and Unichain (`validate_order` flags it), so
+send only the Ophis base entry on those chains, or route own-fee volume through
+the CoW-hosted chains, until your recipient is live.
+
 ## Earning a rebate (the referral layer)
 
 Layer 2 is separate from the fee your users pay. The fee itself is set in
