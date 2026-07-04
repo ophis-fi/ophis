@@ -328,15 +328,6 @@ with the array shape above rather than using the helper.
 
 How your fee reaches you depends on the chain:
 
-- **Optimism and Unichain (Ophis-operated):** your recipient address is added
-  to the settlement backend's fee-recipient allowlist after verification
-  (multisig ownership proof plus a short agreement). The allowlist is enforced
-  in the backend, so onboarding a new recipient is a reviewed change to the
-  backend and a redeploy on our side, not a runtime toggle; it is manual today.
-  Once you are allowlisted, your fee is charged at settlement, accrues at the
-  settlement contract on-chain, and is swept to your address, with no CoW
-  service fee and no third party between the contract and your wallet.
-  [Contact us](https://business.ophis.fi) to start.
 - **CoW-hosted chains:** stacked fee entries are accepted and charged by CoW's
   production orderbooks (we verified this against live quotes in July 2026).
   Payouts flow through CoW Protocol's weekly partner-fee distribution under
@@ -345,42 +336,28 @@ How your fee reaches you depends on the chain:
   ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)).
   Whether CoW's service fee applies to a stacked non-Ophis recipient, and the
   end-to-end payout of that recipient, are what we are still verifying, so on
-  hosted chains do not assume the full own-fee reaches you until we confirm it.
-  The 100%-yours guarantee holds on Optimism and Unichain, where Ophis controls
-  settlement and payout. If you plan to rely on hosted-chain own-fee flow,
-  contact us and we will run the verification with your recipient address.
+  hosted chains do not assume the full own-fee reaches you until we confirm it
+  with your recipient address. This is where a third-party own-fee is chargeable
+  today.
+- **Optimism and Unichain (Ophis-operated):** a stacked own-fee to a
+  third-party recipient needs two things to be true, and only the first exists
+  today, so **sovereign own-fee to your own address is not yet available
+  end to end**:
+  1. *Ingress.* Your recipient must be on the backend fee-recipient allowlist or
+     the order is rejected. This is a manual, reviewed backend change plus a
+     redeploy.
+  2. *Payout.* The settlement contract collects all partner fees into a single
+     buffer that is swept to one Safe; there is no per-recipient split today, so
+     an allowlisted third-party recipient's fee is collected but accrues to the
+     Ophis Safe, not routed to that recipient. Per-recipient sovereign payout is
+     on the roadmap, not yet shipped.
 
-### Sovereign own-fee onboarding (allowlisting)
-
-On Optimism and Unichain the settlement backend enforces a partner-fee recipient
-allowlist: it rejects the **entire order** if any `partnerFee` entry names a
-recipient that is not allowlisted. By default only the Ophis recipient is
-allowlisted, so your own-fee entry does not settle on these chains until your
-address is added. Own-fee stacking is not open by default on the sovereign
-chains; it is gated behind this one-time onboarding.
-
-To get your recipient allowlisted:
-
-1. **Send us your details** at [business.ophis.fi](https://business.ophis.fi):
-   your fee recipient address (a Safe is recommended), the sovereign chains you
-   want it on (Optimism 10, Unichain 130, or both), and your intended own-fee
-   rate.
-2. **Prove control of the address.** Sign a challenge message from the Safe
-   (or send a small on-chain transaction from it) so we can confirm you own the
-   recipient, and countersign a short fee agreement.
-3. **We allowlist it.** We add the address to the backend fee-recipient
-   allowlist and redeploy. This is a reviewed backend change on our side, not a
-   runtime toggle, so it is a short turnaround rather than instant.
-4. **Confirm and go live.** Once we confirm, preflight an order with the MCP
-   `validate_order` tool (it errors on a non-allowlisted sovereign recipient, so
-   a clean result means you are allowlisted), then submit. Your fee is charged at
-   settlement, accrues on-chain, and is swept to your address with no CoW service
-   fee and nothing between the contract and your wallet.
-
-**Before you are allowlisted:** a stacked own-fee entry to your address is
-rejected at ingress on Optimism and Unichain (`validate_order` flags it), so
-send only the Ophis base entry on those chains, or route own-fee volume through
-the CoW-hosted chains, until your recipient is live.
+  The flat all-in Ophis fee and the 100%-of-price-improvement-returned
+  guarantees still hold on the sovereign chains: those are properties of the
+  base rail, not of a third-party own-fee. Until per-recipient payout ships, use
+  the CoW-hosted chains for your own fee (with the payout caveat above), and
+  [contact us](https://business.ophis.fi) to register interest in sovereign
+  per-recipient payout.
 
 ## Earning a rebate (the referral layer)
 

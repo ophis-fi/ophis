@@ -2,14 +2,26 @@
 
 How Ophis adds an integrator's own-fee recipient to the partner-fee allowlist on
 the sovereign chains (Optimism 10, Unichain 130), so their stacked `partnerFee`
-entry settles instead of being rejected at ingress.
+entry is not rejected at ingress.
+
+> IMPORTANT: allowlisting is only the INGRESS gate. It lets the order settle; it
+> does NOT route the fee to the partner. On the sovereign chains the fee policy
+> drops the recipient (`Policy::Volume { factor }` in
+> `apps/backend/crates/autopilot/src/domain/fee/policy.rs`) and the settlement
+> buffer is swept to a SINGLE Safe (`SweepSettlementBuffer.s.sol` /
+> `infra/*/scripts/sweep-to-safe.sh`, default the Ophis Safe), with no
+> per-recipient split. So an allowlisted third-party recipient's fee accrues to
+> the Ophis Safe, not to them. Do NOT tell a partner that allowlisting alone
+> means they receive their own fee on the sovereign chains: per-recipient payout
+> is a separate, not-yet-built path. Allowlist a third party only when there is a
+> reconciliation/payout arrangement, or for an Ophis-controlled recipient.
 
 Background: the self-hosted backend enforces `PARTNER_FEE_RECIPIENT_ALLOWLIST`
 in `apps/backend/crates/app-data/src/app_data.rs`. `validate_partner_fees`
 rejects the WHOLE order if any `partnerFee` recipient is not in that list, and by
 default only the Ophis Safe is listed. Adding a recipient is a code change plus a
-backend redeploy, not a runtime toggle. Partner-facing steps are in
-`apps/docs-ophis/docs/partners.md` (Sovereign own-fee onboarding).
+backend redeploy, not a runtime toggle. Partner-facing notes are in
+`apps/docs-ophis/docs/partners.md`.
 
 ## Prerequisites (do not skip verification)
 
@@ -31,12 +43,22 @@ backend redeploy, not a runtime toggle. Partner-facing steps are in
    cover the allowlist path).
 4. Open a PR. The change touches money-path validation, so it needs the standard
    review plus a Codex pass before merge.
-5. Deploy the backend (rebuild + redeploy the driver/autopilot on the sovereign
-   infra). The allowlist is compiled in, so it is live only after the redeploy.
-6. Confirm on-chain: preflight a test order with the recipient via the MCP
-   `validate_order` tool (a clean result means the recipient is now accepted),
-   or check that a small settled order routes the fee to the address.
-7. Notify the partner that their recipient is live on the requested chains.
+5. Deploy the backend. The allowlist is compiled in, so it is live only after a
+   redeploy of EVERY service that enforces it. That includes the ORDERBOOK
+   (ingress validation runs in the orderbook's `OrderValidator` via
+   `app_data_validator.validate(...)`, wired in
+   `apps/backend/crates/orderbook/src/run.rs`), not only the driver/autopilot. If
+   you redeploy only driver/autopilot, the live orderbook keeps the old compiled
+   allowlist and keeps rejecting the new recipient at ingress. Rebuild and
+   redeploy the whole backend image on the sovereign infra.
+6. Confirm on-chain with a test SETTLED order, not `validate_order`: the MCP
+   `validate_order` preflight errors on any non-Ophis recipient (it does not read
+   the backend allowlist), so it cannot confirm allowlisting. Submit a small
+   order carrying the recipient; if it is accepted at ingress (not rejected), the
+   allowlist is live.
+7. Notify the partner that their recipient is accepted at ingress. Remember this
+   does NOT mean their fee is routed to them (see the payout note at the top);
+   confirm the reconciliation/payout arrangement separately.
 
 ## Removing a recipient
 
