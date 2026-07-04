@@ -29,6 +29,11 @@ assertReceiverIsOwner(owner, order.receiver)`
         <a class="cta-secondary cta-primary" href="https://www.npmjs.com/package/@ophis/sdk" rel="noopener">npm i @ophis/sdk</a>
         <a class="cta-secondary" href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk" rel="noopener">Get the SDK on GitHub</a>
       </div>
+      <div class="mcp-line">
+        <span class="mcp-label">Or give an agent the whole toolset, keyless:</span>
+        <code>claude mcp add --transport http ophis https://mcp.ophis.fi/mcp</code>
+        <a href="https://docs.ophis.fi/ai-agents#connect-your-mcp-client" rel="noopener">Config for Cursor, Claude Desktop, VS Code, and OpenAI</a>
+      </div>
     </div>
     <div class="sdk-code reveal-up" data-reveal>
       <div class="code-frame">
@@ -76,6 +81,22 @@ assertReceiverIsOwner(owner, order.receiver)`
     line-height: 1.5;
   }
   .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .mcp-line { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; }
+  .mcp-label { color: var(--ophis-fg-muted); font-size: 13px; }
+  .mcp-line code {
+    display: block;
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-size: 12px;
+    color: var(--ophis-fg);
+    background: #111114;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius-sm);
+    padding: 10px 12px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .mcp-line a { color: var(--ophis-saffron-60); font-size: 13px; text-decoration: none; }
+  .mcp-line a:hover { text-decoration: underline; }
   .cta-secondary {
     color: var(--ophis-fg);
     padding: 12px 22px;
