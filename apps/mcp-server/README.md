@@ -30,6 +30,7 @@ every backing endpoint is already public, and the tools are read/build-only.
 | `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
 | `lookup_tier` | A wallet's fee-rebate tier + live status (`rebates.ophis.fi/tier/:wallet`). |
+| `get_integrator_earnings` | What an integrator's own-fee routing earned, by appCode: routed volume + own-fee + referral rebate paid-to-date, scoped to Ophis-operated chains (`rebates.ophis.fi/earnings/:appCode`). |
 | `get_balances` | Native + ERC-20 balances for an address on one chain. |
 | `get_portfolio` | Native + ERC-20 balances across multiple chains. |
 | `get_gas` | Current gas price for a chain (informational; trades are gasless for the trader). |

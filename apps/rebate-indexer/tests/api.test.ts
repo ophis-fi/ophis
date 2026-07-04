@@ -81,6 +81,36 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   expect(res.headers['content-security-policy']).toBeDefined();
 });
 
+test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, with no leak', async () => {
+  app = await buildApiServer();
+  // The mocked db returns [] for every query, so this exercises the route wiring +
+  // the empty-integrator shape (all-zero, disclaimer intact, registered false).
+  const res = await app.inject({ method: 'GET', url: '/earnings/acme-dapp' });
+  expect(res.statusCode).toBe(200);
+  const body = JSON.parse(res.body);
+  expect(body.ok).toBe(true);
+  expect(body.appCode).toBe('acme-dapp');
+  expect(typeof body.disclaimer).toBe('string');
+  expect(body.disclaimer).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
+  expect(body.sovereignChains).toEqual([10, 130]);
+  expect(body.routedVolumeUsd).toMatchObject({ total: 0, sovereign: 0, hosted: 0 });
+  expect(body.ownFeeAccruedUsd).toMatchObject({ sovereignGuaranteed: 0, hostedAccrued: 0 });
+  expect(body.referral.registered).toBe(false);
+  expect(Array.isArray(body.byChain)).toBe(true);
+  // Front-runner leak guard: no aggregate 30d / next-payout / current-cycle signals.
+  const lower = res.body.toLowerCase();
+  for (const forbidden of ['30d', 'nextpayout', 'next_batch', 'currentcycle', 'estimated']) {
+    expect(lower).not.toContain(forbidden);
+  }
+});
+
+test('/earnings/:appCode rejects an invalid appCode with 400', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/earnings/AB' }); // too short + fails grammar after lowercasing
+  expect(res.statusCode).toBe(400);
+  expect(JSON.parse(res.body)).toMatchObject({ error: 'invalid appCode' });
+});
+
 test('/health exposes the fetcher + pipeline liveness fields', async () => {
   app = await buildApiServer();
   const res = await app.inject({ method: 'GET', url: '/health' });

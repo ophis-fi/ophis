@@ -493,6 +493,43 @@ export async function lookupTier(wallet: Address, fetchImpl: typeof fetch = fetc
   return { wallet: w, indexer, tiers: TIERS }
 }
 
+/** Grammar for an integrator appCode / referral code (mirrors the rebate indexer). */
+const APP_CODE_RE = /^[a-z0-9_-]{3,64}$/
+
+export interface IntegratorEarnings {
+  appCode: string
+  /** The live earnings payload from the rebate indexer (rebates.ophis.fi/earnings/:appCode),
+   *  or an { error } wrapper when the indexer is unreachable / non-200. */
+  earnings: unknown
+}
+
+/**
+ * Looks up what an integrator's own-fee routing earned, by appCode, from the live
+ * rebate indexer's keyless GET /earnings/:appCode. The payload splits routed volume by
+ * chain and by sovereign (Optimism, Unichain) vs CoW-hosted, and reports the Ophis base
+ * fee, the integrator's OWN stacked fee, and the referral rebate paid-to-date with
+ * payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains; the
+ * response carries a `disclaimer` describing the CoW-hosted accrual. Read-only, keyless.
+ */
+export async function getIntegratorEarnings(appCode: string, fetchImpl: typeof fetch = fetch): Promise<IntegratorEarnings> {
+  const code = String(appCode).trim().toLowerCase()
+  if (!APP_CODE_RE.test(code)) throw new Error('get_integrator_earnings: appCode must be 3-64 chars of [a-z0-9_-]')
+  let earnings: unknown = null
+  try {
+    const res = await timedFetch(
+      fetchImpl,
+      `${REBATE_API}/earnings/${code}`,
+      { headers: { accept: 'application/json' } },
+      TIMEOUT_MS.rebate,
+      'get_integrator_earnings',
+    )
+    earnings = res.ok ? await res.json() : { error: `rebate indexer ${res.status}` }
+  } catch (e) {
+    earnings = { error: `rebate indexer unreachable: ${(e as Error).message}` }
+  }
+  return { appCode: code, earnings }
+}
+
 export interface ChainInfo {
   chainId: number
   name: string

@@ -1,7 +1,7 @@
 import { sql as dsql } from 'drizzle-orm';
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode } from './cow/types.js';
-import { GROSS_FEE_BPS } from './affiliate/rates.js';
+import { GROSS_FEE_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 
@@ -48,6 +48,64 @@ export interface PendingTrade {
    *  volumeFeeBps is a provisional 0 — the API fetcher may still upgrade it to the real
    *  verified fee; the money path never credits it (it stays at fee=0). */
   feeVerified: boolean;
+  /** The integrator's OWN flat-Volume fee rate (bps) from a NON-Ophis partnerFee
+   *  entry in appData, clamped to [1, OWN_FEE_MAX_BPS]; null when the order stacked no
+   *  such entry. Reporting-only (GET /earnings/:appCode) - NOT part of the Ophis money
+   *  path. See readOwnFee. */
+  ownFeeBps: number | null;
+  /** The integrator's own-fee recipient (lowercased 0x-address) that pairs with
+   *  ownFeeBps, for the "where it paid out" link; null when ownFeeBps is null. */
+  ownFeeRecipient: `0x${string}` | null;
+}
+
+/**
+ * Decode the integrator's OWN fee from a settled order's appData: the FIRST
+ * partnerFee entry whose recipient is NOT the Ophis Safe and which is a flat Volume
+ * fee ({ volumeBps } or legacy { bps }, integer >= 1, with no surplus/PI/cap shape).
+ * Integrators STACK their own recipient entry next to the Ophis base entry, so this
+ * is how the earnings endpoint attributes what an integrator's own routing earned.
+ *
+ * Reporting-only: this NEVER feeds the Ophis fee base, the rebate, or the affiliate
+ * accrual (those key on volume_fee_bps, the Ophis-recipient entry). appData is
+ * attacker-controllable, so the rate is clamped to OWN_FEE_MAX_BPS (a crafted entry
+ * cannot inflate the reported figure) and the recipient is shape-validated.
+ *
+ * Only flat Volume own-fees are decoded: a surplus/price-improvement own-fee is not
+ * priceable from volume alone, so it is left null (same limitation as the Ophis-fee
+ * classifier). This runs on EVERY chain - the fetcher resolves the full appData for
+ * every trade - so there is no hosted-chain attribution gap; only the paid/guaranteed
+ * labeling in earnings.ts is sovereign-scoped.
+ */
+function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | null {
+  const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
+  const entries = Array.isArray(pf) ? pf : [pf];
+  for (const e of entries) {
+    const entry = e as {
+      volumeBps?: unknown;
+      bps?: unknown;
+      surplusBps?: unknown;
+      priceImprovementBps?: unknown;
+      maxVolumeBps?: unknown;
+      recipient?: unknown;
+    };
+    if (typeof entry?.recipient !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(entry.recipient)) continue;
+    const recipient = entry.recipient.toLowerCase() as `0x${string}`;
+    if (recipient === OPHIS_FEE_RECIPIENT) continue; // the Ophis base fee -> volume_fee_bps, not own-fee
+    const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+    // Flat Volume arm: { volumeBps } XOR legacy { bps }, with surplusBps,
+    // priceImprovementBps AND maxVolumeBps ALL absent (mirrors readVolumeFeeBps).
+    const isFlatVolume =
+      entry.surplusBps === undefined &&
+      entry.priceImprovementBps === undefined &&
+      entry.maxVolumeBps === undefined &&
+      !(entry.volumeBps !== undefined && entry.bps !== undefined);
+    if (!isFlatVolume) continue;
+    const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
+    if (isInt(raw) && raw >= 1) {
+      return { bps: Math.min(raw, OWN_FEE_MAX_BPS), recipient };
+    }
+  }
+  return null;
 }
 
 /**
@@ -236,6 +294,7 @@ export function attributeOrder(
   let appCode: AppCode | undefined;
   let appdataRefCode: string | null = null;
   let volumeFeeBps: number | null = null;
+  let ownFee: { bps: number; recipient: `0x${string}` } | null = null;
   try {
     const m = meta as {
       appCode?: unknown;
@@ -256,6 +315,9 @@ export function attributeOrder(
     // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no settled
     // Ophis Volume fee. Stays NULL only on a parse failure (unknown -> retail default).
     volumeFeeBps = readVolumeFeeBps(meta);
+    // Integrator OWN-fee (a stacked NON-Ophis partnerFee entry). Reporting-only; never
+    // touches the Ophis money path. Independent of the affiliate attribution below.
+    ownFee = readOwnFee(meta);
     // PREFERRED affiliate attribution: explicit metadata.ophisReferrer.code (SDK/agent
     // path). appData is attacker-controllable: keep ONLY if it matches the registry
     // grammar, lowercased, AND only on a CONFIRMED positive Ophis Volume fee (>0) so a
@@ -315,6 +377,8 @@ export function attributeOrder(
     // API attribution runs under the owner-allowlist, so its fee is authoritative. The
     // settle() decoder overrides this to false for a discovery (catalog-only) row.
     feeVerified: true,
+    ownFeeBps: ownFee?.bps ?? null,
+    ownFeeRecipient: ownFee?.recipient ?? null,
   };
 }
 
@@ -547,6 +611,8 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             appdataRefCode: r.appdataRefCode,
             volumeFeeBps: r.volumeFeeBps,
             feeVerified: r.feeVerified,
+            ownFeeBps: r.ownFeeBps,
+            ownFeeRecipient: r.ownFeeRecipient,
           })),
         )
         // UPGRADE-only backfill on a re-encountered row, via two disjoint arms (a
@@ -561,9 +627,19 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         // A decoder upsert carries excluded.fee_verified=false, so it satisfies NEITHER
         // arm -> it can only INSERT a brand-new row and never overwrites an existing one.
         // Touch no other column (value_usd / priced_at / amounts stay as first indexed).
+        // own_fee_bps / own_fee_recipient ride the SAME two UPGRADE-only arms (never a
+        // standalone update): a self-healed pre-per-trade row or an upgraded decoder
+        // discovery row refreshes the reporting-only own-fee from the authoritative
+        // appData alongside the Ophis fee. A plain re-fetch of an already-verified row
+        // still matches neither arm, so a stable row's own-fee is not rewritten.
         .onConflictDoUpdate({
           target: schema.trades.tradeUid,
-          set: { volumeFeeBps: dsql`excluded.volume_fee_bps`, feeVerified: dsql`excluded.fee_verified` },
+          set: {
+            volumeFeeBps: dsql`excluded.volume_fee_bps`,
+            feeVerified: dsql`excluded.fee_verified`,
+            ownFeeBps: dsql`excluded.own_fee_bps`,
+            ownFeeRecipient: dsql`excluded.own_fee_recipient`,
+          },
           setWhere: dsql`(${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0)
                          OR (${schema.trades.feeVerified} = false AND excluded.fee_verified = true)`,
         });

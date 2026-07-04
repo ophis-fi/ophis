@@ -74,6 +74,20 @@ export const trades = pgTable(
     // code. Accrual attributes such a trade to the code owner (migration 0009).
     appdataRefCode: text('appdata_ref_code'),
 
+    // Integrator OWN-FEE (partner-fee stacking, migration 0014). CoW's partnerFee is
+    // an ARRAY; an integrator can stack their own recipient entry next to the Ophis
+    // base entry. These capture the FIRST non-Ophis flat-Volume entry so
+    // GET /earnings/:appCode can report what an integrator's own routing earned.
+    //   own_fee_bps       = the integrator's own flat Volume rate, clamped to
+    //                       [1, OWN_FEE_MAX_BPS]; NULL when no non-Ophis flat-Volume
+    //                       entry was present.
+    //   own_fee_recipient = the integrator's own-fee recipient (where it paid out);
+    //                       NULL when own_fee_bps is NULL.
+    // Decoded on EVERY chain (the fetcher has the full appData); only the
+    // paid/guaranteed labeling is sovereign-scoped (see src/earnings.ts).
+    ownFeeBps: integer('own_fee_bps'),
+    ownFeeRecipient: bytea('own_fee_recipient'),
+
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
 

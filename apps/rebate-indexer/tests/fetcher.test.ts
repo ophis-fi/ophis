@@ -406,4 +406,46 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.malformedSurplus]).toBe(0); // surplus w/o maxVolumeBps: rejected -> 0, not retail
     expect(byUid[uids.mixedSurplusVolume]).toBe(0); // surplus + volume mixed: rejected -> 0
   });
+
+  it('decodes the integrator OWN-fee from a stacked partnerFee array (the non-Ophis entry) and clamps it', async () => {
+    // Own-fee stacking: an integrator puts THEIR OWN recipient entry next to the Ophis
+    // base entry in the partnerFee array. The fetcher must decode that non-Ophis entry
+    // into ownFeeBps + ownFeeRecipient (reporting-only, for GET /earnings/:appCode)
+    // WITHOUT disturbing the Ophis fee (volumeFeeBps, read from the Ophis-recipient entry).
+    const owner = '0xa'.padEnd(42, '0');
+    const OPHIS = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'; // the Ophis Safe (base fee)
+    const INTEGRATOR = '0x' + 'c1'.repeat(20); // the integrator's own-fee recipient
+    const mk = (n: number): string => '0x' + n.toString(16).padStart(112, '0');
+    const uids = { stacked: mk(0x71), ophisOnly: mk(0x72), inflated: mk(0x73), single: mk(0x74) };
+    handlers.trades.mockReturnValue(Object.values(uids).map((u) => sampleTrade(u, owner)));
+    const withFee = (uid: string, pf: unknown) => ({
+      ...sampleOrder(uid, owner, 'ophis'),
+      fullAppData: JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: pf } }),
+    });
+    handlers.order.mockImplementation((uid: string) => {
+      switch (uid) {
+        // Ophis base entry + the integrator's stacked own entry -> own-fee 25 bps to INTEGRATOR.
+        case uids.stacked: return withFee(uid, [{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 25, recipient: INTEGRATOR }]);
+        // Only the Ophis entry -> no own-fee at all.
+        case uids.ophisOnly: return withFee(uid, [{ volumeBps: 10, recipient: OPHIS }]);
+        // A crafted huge own-fee is CLAMPED to OWN_FEE_MAX_BPS (1000) - appData is untrusted.
+        case uids.inflated: return withFee(uid, [{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 999999, recipient: INTEGRATOR }]);
+        // A single (non-array) non-Ophis entry is still decoded as the own-fee.
+        case uids.single: return withFee(uid, { volumeBps: 30, recipient: INTEGRATOR });
+        default: return sampleOrder(uid, owner, 'ophis');
+      }
+    });
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    const byUid = Object.fromEntries(rows.map((r) => [r.tradeUid, r]));
+    expect(byUid[uids.stacked]!.ownFeeBps).toBe(25);
+    expect(byUid[uids.stacked]!.ownFeeRecipient).toBe(INTEGRATOR.toLowerCase());
+    expect(byUid[uids.stacked]!.volumeFeeBps).toBe(10); // Ophis base fee unaffected by the own-fee decode
+    expect(byUid[uids.ophisOnly]!.ownFeeBps).toBeNull();
+    expect(byUid[uids.ophisOnly]!.ownFeeRecipient).toBeNull();
+    expect(byUid[uids.inflated]!.ownFeeBps).toBe(1000); // clamped to OWN_FEE_MAX_BPS
+    expect(byUid[uids.single]!.ownFeeBps).toBe(30);
+    expect(byUid[uids.single]!.ownFeeRecipient).toBe(INTEGRATOR.toLowerCase());
+  });
 });

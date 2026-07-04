@@ -7,6 +7,7 @@ import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from './stats-page.js';
+import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import {
@@ -524,6 +525,29 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         .send(renderStatsPage(stats));
     }
     return { ok: true, ...stats };
+  });
+
+  // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an
+  // integrator verify what their own-fee routing earned and where it paid out. Same
+  // keyless posture as /tier and /stats. Reports CUMULATIVE (lifetime) routed volume +
+  // fee accrual + EXACT paid-to-date referral share; the "guaranteed/paid" figures are
+  // scoped to the Ophis-operated chains (OP + Unichain), and CoW-hosted figures are
+  // labeled accrued-and-CoW-disbursed via the disclaimer (see src/earnings.ts).
+  //
+  // Deliberately mirrors the /stats security invariant: it NEVER exposes current-cycle
+  // 30d volume, an estimated current-cycle earning, or next-payout timing (front-runner
+  // signals kept on the admin-only /status and the sig-gated /partner).
+  app.get<{ Params: { appCode: string } }>('/earnings/:appCode', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public - matches /stats
+    },
+  }, async (req, reply) => {
+    const code = req.params.appCode.toLowerCase();
+    // Same grammar as a referral code (appdata_ref_code is the key): 3-64 [a-z0-9_-].
+    if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid appCode' });
+    reply.header('vary', 'Origin');
+    const earnings = await getIntegratorEarnings(code, new Date());
+    return { ok: true, ...earnings };
   });
 
   app.get('/batches', {
