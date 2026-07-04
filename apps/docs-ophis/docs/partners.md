@@ -330,20 +330,25 @@ How your fee reaches you depends on the chain:
 
 - **Optimism and Unichain (Ophis-operated):** your recipient address is added
   to the settlement backend's fee-recipient allowlist after verification
-  (multisig ownership proof plus a short agreement). Your fee is charged at
-  settlement, accrues at the settlement contract on-chain, and is swept to
-  your address. No CoW service fee applies, and there is no third party
-  between the settlement contract and your wallet. Onboarding is manual
-  today: [contact us](https://business.ophis.fi) and it is a config-plus-restart
-  on our side.
+  (multisig ownership proof plus a short agreement). The allowlist is enforced
+  in the backend, so onboarding a new recipient is a reviewed change to the
+  backend and a redeploy on our side, not a runtime toggle; it is manual today.
+  Once you are allowlisted, your fee is charged at settlement, accrues at the
+  settlement contract on-chain, and is swept to your address, with no CoW
+  service fee and no third party between the contract and your wallet.
+  [Contact us](https://business.ophis.fi) to start.
 - **CoW-hosted chains:** stacked fee entries are accepted and charged by CoW's
   production orderbooks (we verified this against live quotes in July 2026).
-  Payouts flow through CoW Protocol's weekly partner-fee distribution, which
-  applies CoW's 25% service fee and a 0.001 WETH payout minimum
+  Payouts flow through CoW Protocol's weekly partner-fee distribution under
+  CoW's terms, which include a service fee on partner fees (25% by default) and
+  a 0.001 WETH payout minimum
   ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)).
-  We are completing an end-to-end payout verification for stacked second
-  recipients; if you plan to rely on hosted-chain own-fee flow, contact us and
-  we will run the verification with your recipient address.
+  Whether CoW's service fee applies to a stacked non-Ophis recipient, and the
+  end-to-end payout of that recipient, are what we are still verifying, so on
+  hosted chains do not assume the full own-fee reaches you until we confirm it.
+  The 100%-yours guarantee holds on Optimism and Unichain, where Ophis controls
+  settlement and payout. If you plan to rely on hosted-chain own-fee flow,
+  contact us and we will run the verification with your recipient address.
 
 ## Earning a rebate (the referral layer)
 

@@ -66,22 +66,24 @@ Where the order settles still matters:
 
 A typical DEX or aggregator charges an interface fee of **0.25% to 0.30%** on
 most swaps. Ophis charges **0.10% (10 bps)** on volatile pairs and **0.01%
-(1 bp)** on same-chain stablecoin pairs; even at the CoW-hosted all-in rate
-(0.12% / 0.013%), the gap is what you keep on every trade.
+(1 bp)** on same-chain stablecoin pairs. The tables below are the all-in rate on
+**Optimism and Unichain**; on the CoW-hosted chains, use the all-in there
+(0.12% volatile / 0.013% stables) in the Ophis column, and the gap is still what
+you keep on every trade.
 
-### Volatile pair (e.g. USDC to ETH): 0.10% flat
+### Volatile pair (e.g. USDC to ETH), on Optimism / Unichain: 0.10% all-in
 
-| Trade size | AMM at 0.25% | AMM at 0.30% | Ophis (0.10%) | You save |
-| --- | --- | --- | --- | --- |
-| $10,000 | $25 | $30 | **$10** | **$15 to $20** |
-| $100,000 | $250 | $300 | **$100** | **$150 to $200** |
+| Trade size | AMM at 0.25% | AMM at 0.30% | Ophis (0.10%) | You save | Ophis on CoW-hosted (0.12%) | You save |
+| --- | --- | --- | --- | --- | --- | --- |
+| $10,000 | $25 | $30 | **$10** | **$15 to $20** | $12 | $13 to $18 |
+| $100,000 | $250 | $300 | **$100** | **$150 to $200** | $120 | $130 to $180 |
 
-### Same-chain stablecoin pair (e.g. USDC to USDT): 0.01% flat
+### Same-chain stablecoin pair (e.g. USDC to USDT), on Optimism / Unichain: 0.01% all-in
 
-| Trade size | AMM at 0.25% | AMM at 0.30% | Ophis (0.01%) | You save |
-| --- | --- | --- | --- | --- |
-| $10,000 | $25 | $30 | **$1** | **$24 to $29** |
-| $100,000 | $250 | $300 | **$10** | **$240 to $290** |
+| Trade size | AMM at 0.25% | AMM at 0.30% | Ophis (0.01%) | You save | Ophis on CoW-hosted (0.013%) | You save |
+| --- | --- | --- | --- | --- | --- | --- |
+| $10,000 | $25 | $30 | **$1** | **$24 to $29** | $1.30 | $23.70 to $28.70 |
+| $100,000 | $250 | $300 | **$10** | **$240 to $290** | $13 | $237 to $287 |
 
 The same flat rate applies to every trade, no matter the size, so the savings
 scale directly with your volume. On Optimism and Unichain, add the full price
