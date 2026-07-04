@@ -431,22 +431,26 @@ next-payout time (those stay on the signature-gated partner dashboard).
 ### What Ophis guarantees, and what accrues under CoW terms
 
 Only **Optimism (10)** and **Unichain (130)** are Ophis-operated, where Ophis controls
-settlement and payout end to end. On the CoW-hosted chains, partner fees are disbursed by
-CoW under CoW terms; Ophis neither pays nor guarantees them. So every figure is split
-**sovereign** (guaranteed) vs **hosted** (accrued at settlement, paid out by CoW under
-CoW terms, not guaranteed by Ophis). The response carries a top-level `disclaimer` saying
-exactly this.
+settlement end to end. On the CoW-hosted chains, partner fees are disbursed by CoW under
+CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
+**sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement, and
+Ophis pays the **referral rebate** from its Safe regardless of chain; it does **not** mean
+a third-party **own-fee** is routed to you on the sovereign chains (per-recipient sovereign
+payout is not yet built, so that own-fee accrues to the Ophis Safe today). The response
+carries a top-level `disclaimer` with the scope.
 
 Three earnings streams appear:
 
 - **Own-fee** (`ownFeeAccruedUsd`): the partner-fee entry you stack to **your own**
-  recipient in the appData `partnerFee` array, next to the Ophis base entry. This is your
-  direct earning. `sovereignGuaranteed` is settled by Ophis end to end;
-  `hostedAccrued` is the amount charged at settlement on CoW-hosted chains, where payout
-  runs through CoW's weekly partner distribution under CoW's terms. Ophis does not
-  guarantee it, and the end-to-end payout of a stacked second recipient on hosted chains
-  is still being verified (see [Charge your own fee](#charge-your-own-fee)), so treat
-  `hostedAccrued` as accrued, not paid.
+  recipient in the appData `partnerFee` array, next to the Ophis base entry. These figures
+  are the own-fee **charged** at settlement, not amounts guaranteed to reach you.
+  `sovereignGuaranteed` (the historical field name) is the own-fee charged on Optimism and
+  Unichain, but per-recipient sovereign payout is not yet built: that own-fee accrues to
+  the Ophis Safe, not routed to your address (see [Charge your own fee](#charge-your-own-fee)),
+  so it is not payable to a third party today. `hostedAccrued` is the own-fee charged on
+  CoW-hosted chains, where payout runs through CoW's weekly partner distribution under
+  CoW's terms (Ophis does not guarantee it, and the end-to-end payout of a stacked
+  recipient there is still being verified). Treat both as charged/accrued, not paid.
 - **Referral rebate** (`referral`): the monthly WETH rebate Ophis pays your wallet from
   the Gnosis Safe when your `appCode` is a registered referral code. `paidToDateWeth` /
   `paidToDateUsd` are **exact**, summed from already-executed Safe batches, and `payouts`
@@ -498,12 +502,13 @@ Three earnings streams appear:
 
 Agents can poll the same data through the Ophis MCP server's `get_integrator_earnings`
 tool (it calls this endpoint). The own-fee amount is decoded from settled appData on
-every chain, so the charged amount is attributed everywhere. What is sovereign-scoped
-is the guarantee: on Optimism and Unichain the own-fee is swept to you in full, while
-the hosted figure is the gross amount charged at settlement, paid out under CoW's terms.
-Whether CoW's service fee applies to a stacked non-Ophis recipient, and the end-to-end
-payout of that recipient, are still being verified, so treat the hosted own-fee as
-gross and not guaranteed.
+every chain, so the charged amount is attributed everywhere, but a charged amount is not
+a payout. On Optimism and Unichain a third-party own-fee is not routed to you today: it
+accrues to the Ophis Safe because per-recipient sovereign payout is not yet built. The
+hosted figure is the gross amount charged at settlement, paid out under CoW's terms;
+whether CoW's service fee applies to a stacked non-Ophis recipient, and the end-to-end
+payout of that recipient, are still being verified. Treat every own-fee figure as gross
+and not guaranteed.
 
 ## Selling native ETH (eth-flow)
 

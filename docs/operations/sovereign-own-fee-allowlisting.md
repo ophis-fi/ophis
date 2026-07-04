@@ -51,11 +51,19 @@ backend redeploy, not a runtime toggle. Partner-facing notes are in
    you redeploy only driver/autopilot, the live orderbook keeps the old compiled
    allowlist and keeps rejecting the new recipient at ingress. Rebuild and
    redeploy the whole backend image on the sovereign infra.
-6. Confirm on-chain with a test SETTLED order, not `validate_order`: the MCP
-   `validate_order` preflight errors on any non-Ophis recipient (it does not read
-   the backend allowlist), so it cannot confirm allowlisting. Submit a small
-   order carrying the recipient; if it is accepted at ingress (not rejected), the
-   allowlist is live.
+6. Confirm on-chain with a test SETTLED order, not `validate_order` and not just
+   ingress acceptance. `validate_order` errors on any non-Ophis recipient (it does
+   not read the backend allowlist). Ingress acceptance alone is also insufficient:
+   the two enforcement points use the SAME compiled allowlist but behave
+   differently, so a partial redeploy hides a gap. The orderbook rejects a
+   non-allowlisted recipient at ingress; the autopilot instead DROPS a
+   non-allowlisted partner-fee recipient and lets the order settle WITHOUT that
+   fee (defense in depth, `apps/backend/crates/autopilot/src/domain/fee/mod.rs`).
+   So if the orderbook was redeployed but the autopilot was not, a test order is
+   accepted at ingress yet settles charging no own-fee. Verify the fee policy was
+   actually APPLIED: check the settled trade's executed fee (or the autopilot
+   logs/metrics for the applied partner fee), not just that ingress did not
+   reject. This is why step 5 redeploys the WHOLE backend image.
 7. Notify the partner that their recipient is accepted at ingress. Remember this
    does NOT mean their fee is routed to them (see the payout note at the top);
    confirm the reconciliation/payout arrangement separately.
