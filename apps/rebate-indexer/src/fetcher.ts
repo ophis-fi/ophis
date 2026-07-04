@@ -868,11 +868,20 @@ export async function backfillOwnFee(
       log.warn({ err, chainId: r.chain_id, uid }, 'backfill-own-fee: getOrder failed; leaving unscanned to retry');
       continue;
     }
+    // Only a SUCCESSFULLY-PARSED real appData document is conclusive. A missing or
+    // malformed fullAppData is treated like the transient getOrder miss above:
+    // leave the row UNSCANNED so a later read that resolves the appData can still
+    // reveal a stacked own-fee. Stamping here would permanently drop the row on a
+    // transient app-data resolver miss and underreport historical own-fee.
+    if (!order.fullAppData) {
+      log.warn({ chainId: r.chain_id, uid }, 'backfill-own-fee: order has no fullAppData; leaving unscanned to retry');
+      continue;
+    }
     let meta: unknown;
     try {
-      meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
+      meta = JSON.parse(order.fullAppData);
     } catch {
-      await markScanned(r.uid_hex); // unparseable appData: it scanned, nothing to write
+      log.warn({ chainId: r.chain_id, uid }, 'backfill-own-fee: malformed fullAppData; leaving unscanned to retry');
       continue;
     }
     const own = readOwnFee(meta);

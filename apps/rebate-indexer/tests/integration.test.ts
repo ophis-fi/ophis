@@ -427,6 +427,39 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000);
 
+  it('leaves a row UNSCANNED on a missing/unresolved fullAppData so a later read still backfills it (connector P2)', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { backfillOwnFee } = await import('../src/fetcher.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    const INTEGRATOR = 'e5'.repeat(20);
+    await insertTrade(sql, { uid: 'a3', chain: 100, code: 'miss', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
+
+    // Run 1: the app-data resolver misses (null fullAppData). It must NOT be stamped
+    // scanned, or a transient miss would permanently drop a row that may carry own-fee.
+    const r1 = await backfillOwnFee(500, { getOrder: async () => ({ fullAppData: null }) });
+    expect(r1.updated).toBe(0);
+    const [s1] = await sql<{ scanned: string | null }[]>`
+      SELECT own_fee_scanned_at AS scanned FROM trades WHERE trade_uid = decode(${'a3'.repeat(56)}, 'hex')`;
+    expect(s1?.scanned).toBeNull(); // left unscanned to retry
+
+    // Run 2: the appData now resolves with a stacked own-fee; the still-queued row is
+    // re-selected and the own-fee is written.
+    let called = 0;
+    const r2 = await backfillOwnFee(500, {
+      getOrder: async () => {
+        called++;
+        return { fullAppData: JSON.stringify({ metadata: { partnerFee: [{ volumeBps: 5, recipient: OPHIS }, { volumeBps: 25, recipient: `0x${INTEGRATOR}` }] } }) };
+      },
+    });
+    expect(called).toBe(1); // re-selected, not dropped
+    expect(r2.updated).toBe(1);
+    const [aft] = await sql<{ own: number | null; scanned: string | null }[]>`
+      SELECT own_fee_bps AS own, own_fee_scanned_at AS scanned FROM trades WHERE trade_uid = decode(${'a3'.repeat(56)}, 'hex')`;
+    expect(aft?.own).toBe(25);
+    expect(aft?.scanned).not.toBeNull(); // now conclusively scanned
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+
   it('scans a surplus-fee row (volume_fee_bps NULL) and writes its stacked own-fee (finding #4)', async () => {
     const { sql } = await import('../src/db/index.js');
     const { backfillOwnFee } = await import('../src/fetcher.js');
