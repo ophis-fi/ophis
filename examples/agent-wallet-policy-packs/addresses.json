@@ -1,0 +1,27 @@
+{
+  "_comment": "Source of truth for the Ophis agent-wallet policy packs. CI (scripts/check-policy-pack-addresses.mjs, wired in .github/workflows/security.yml) diffs this table against @ophis/sdk OPHIS_SETTLEMENT_ADDRESSES and OPHIS_VAULT_RELAYER_ADDRESSES in packages/sdk/src/domain.ts, so the packs cannot silently drift when a chain is added or an address changes. Addresses are EIP-55 mixed-case and compared case-sensitively.",
+  "_scope": "The 12 live Ophis chains. Two further chains (4326 and 999) have settlement deployed but their orderbooks are paused, and Sepolia (11155111) is a testnet, so all three are intentionally excluded from the packs.",
+  "domain": {
+    "name": "Gnosis Protocol",
+    "version": "v2"
+  },
+  "canonical": {
+    "_note": "On these 10 chains Ophis uses CoW Protocol's canonical GPv2 contracts. The EIP-712 order domain is byte-identical to CoW Swap's, so a policy that allowlists this domain also authorizes CoW-native order flow on that chain. Only the two sovereign chains below carry an Ophis-exclusive domain.",
+    "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41",
+    "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110"
+  },
+  "chains": [
+    { "chainId": 1,     "name": "Ethereum",  "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 10,    "name": "Optimism",  "sovereign": true,  "settlement": "0x310784c7FCE12d578dA6f53460777bAc9718B859", "relayer": "0x83847EaB41ad9ea43809ce71569eB2e9daF51830" },
+    { "chainId": 56,    "name": "BNB Chain", "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 100,   "name": "Gnosis",    "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 130,   "name": "Unichain",  "sovereign": true,  "settlement": "0x108A678716e5E1776036eF044CAB7064226F714E", "relayer": "0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb" },
+    { "chainId": 137,   "name": "Polygon",   "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 8453,  "name": "Base",      "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 9745,  "name": "Plasma",    "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 42161, "name": "Arbitrum",  "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 43114, "name": "Avalanche", "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 57073, "name": "Ink",       "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" },
+    { "chainId": 59144, "name": "Linea",     "sovereign": false, "settlement": "0x9008D19f58AAbD9eD0D60971565AA8510560ab41", "relayer": "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" }
+  ]
+}

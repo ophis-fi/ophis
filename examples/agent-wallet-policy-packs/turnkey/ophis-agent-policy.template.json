@@ -1,0 +1,31 @@
+{
+  "_comment": "Ophis agent-wallet policy pack for Turnkey. Parameterized template: substitute the {{PLACEHOLDER}} values from ../addresses.json for your target chain, then create these as separate Turnkey policies on the sub-organization that holds the agent's key. Turnkey is deny-by-default and EFFECT_DENY overrides EFFECT_ALLOW, so this pack ALLOWS exactly two paths (the one-time approve and Ophis order signing) and adds two DENY guards. Attach it to a DEDICATED NON-ROOT API user for the agent; keep root credentials offline with your guardian. Schema: https://docs.turnkey.com/concepts/policies/language",
+  "_casing_warning": "Turnkey compares addresses as case-sensitive strings. The EIP-712 docs mandate LOWERCASE hex for eth.eip_712.* conditions (uppercase may be rejected), while the eth.tx.* examples use checksummed hex. This template uses _LOWERCASE placeholders for eip_712 conditions and checksummed placeholders for eth.tx conditions. Verify the exact casing Turnkey applies to each field against a real signed payload before you rely on it.",
+  "_abi_note": "eth.tx.contract_call_args['spender'] requires you to upload the token contract ABI to Turnkey so approve() is decoded. The arg key equals the ABI parameter name: canonical ERC-20 is approve(address spender,uint256 value) -> 'spender'/'value', but some tokens (e.g. WETH) name them 'guy'/'wad'. Confirm the names in the ABI you upload per token.",
+  "policies": [
+    {
+      "policyName": "Ophis {{CHAIN_NAME}}: allow approve() only to the vault relayer, only for allowlisted tokens",
+      "effect": "EFFECT_ALLOW",
+      "condition": "activity.type == 'ACTIVITY_TYPE_SIGN_TRANSACTION_V2' && eth.tx.chain_id == {{CHAIN_ID}} && eth.tx.value == 0 && eth.tx.function_name == 'approve' && eth.tx.contract_call_args['spender'] == '{{VAULT_RELAYER}}' && eth.tx.to in ['{{TOKEN_ALLOWLIST}}']",
+      "notes": "Optional bounded allowance: append  && eth.tx.contract_call_args['value'] <= {{MAX_APPROVE_AMOUNT_DECIMAL}}  (uint256 decimal, no quotes). Requires the token ABI uploaded so 'spender'/'value' decode. The eth.tx.* examples in Turnkey's docs use checksummed addresses; verify casing against a real payload."
+    },
+    {
+      "policyName": "Ophis {{CHAIN_NAME}}: allow signing an Ophis order only (domain + receiver + token set pinned)",
+      "effect": "EFFECT_ALLOW",
+      "condition": "activity.type == 'ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2' && activity.params.encoding == 'PAYLOAD_ENCODING_EIP712' && eth.eip_712.primary_type == 'Order' && eth.eip_712.domain.name == 'Gnosis Protocol' && eth.eip_712.domain.version == 'v2' && eth.eip_712.domain.chain_id == {{CHAIN_ID}} && eth.eip_712.domain.verifying_contract == '{{VERIFYING_CONTRACT_LOWERCASE}}' && eth.eip_712.message['receiver'] == '{{AGENT_WALLET_ADDRESS_LOWERCASE}}' && eth.eip_712.message['sellToken'] in ['{{TOKEN_ALLOWLIST_LOWERCASE}}'] && eth.eip_712.message['buyToken'] in ['{{TOKEN_ALLOWLIST_LOWERCASE}}']",
+      "notes": "verifying_contract is the Ophis settlement for this chain. On the 10 non-sovereign chains it equals the canonical GPv2 address (shared with CoW Swap); only Optimism and Unichain carry an Ophis-exclusive settlement. Addresses here MUST be lowercase per Turnkey's EIP-712 casing rule."
+    },
+    {
+      "policyName": "Ophis {{CHAIN_NAME}}: deny the pre-hashed NO_OP bypass of the order field checks",
+      "effect": "EFFECT_DENY",
+      "condition": "activity.type == 'ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2' && activity.params.hash_function == 'HASH_FUNCTION_NO_OP' && activity.params.encoding != 'PAYLOAD_ENCODING_EIP712'",
+      "notes": "MANDATORY companion. The eth.eip_712.* selectors are only populated when the caller submits structured typed data (PAYLOAD_ENCODING_EIP712). If the agent instead submits a pre-computed 32-byte digest with HASH_FUNCTION_NO_OP, Turnkey sees an opaque hash and the receiver/domain pins above cannot apply. This DENY closes that path. See https://www.turnkey.com/blog/hyperliquid-secure-eip-712-signing"
+    },
+    {
+      "policyName": "Ophis {{CHAIN_NAME}}: deny key/seed export by the agent user",
+      "effect": "EFFECT_DENY",
+      "condition": "activity.action == 'EXPORT'",
+      "notes": "Deny-by-default already blocks export for a non-root user; this makes it explicit. Only the offline guardian (root quorum) should ever export or migrate the key."
+    }
+  ]
+}

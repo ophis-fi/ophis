@@ -1,0 +1,143 @@
+{
+  "_comment": "Ophis agent-wallet policy pack for Privy (server wallets / session signers). Parameterized template: substitute the {{PLACEHOLDER}} values from ../addresses.json for your target chain, then attach the policy to the agent's wallet. Privy evaluates rules default-DENY: any method with no matching ALLOW rule is denied, and any matching DENY overrides an ALLOW. Do NOT add a catch-all { method: '*', action: 'DENY' } rule; it would evaluate on every call and override the ALLOW rules below. The implicit default already denies everything not explicitly allowed (exportPrivateKey, personal_sign, arbitrary contract calls, etc.). Schema: https://docs.privy.io/controls/policies/overview",
+  "version": "1.0",
+  "name": "Ophis-only agent wallet ({{CHAIN_NAME}})",
+  "chain_type": "ethereum",
+  "rules": [
+    {
+      "name": "Allow the one-time sell-token approval, spender pinned to the Ophis vault relayer",
+      "method": "eth_sendTransaction",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field_source": "ethereum_transaction",
+          "field": "chain_id",
+          "operator": "eq",
+          "value": "{{CHAIN_ID}}"
+        },
+        {
+          "field_source": "ethereum_transaction",
+          "field": "value",
+          "operator": "eq",
+          "value": "0x0"
+        },
+        {
+          "field_source": "ethereum_transaction",
+          "field": "to",
+          "operator": "in",
+          "value": ["{{TOKEN_ALLOWLIST}}"]
+        },
+        {
+          "field_source": "ethereum_calldata",
+          "field": "function_name",
+          "operator": "eq",
+          "value": "approve",
+          "abi": [
+            {
+              "name": "approve",
+              "type": "function",
+              "stateMutability": "nonpayable",
+              "inputs": [
+                { "name": "spender", "type": "address" },
+                { "name": "amount", "type": "uint256" }
+              ],
+              "outputs": [{ "name": "", "type": "bool" }]
+            }
+          ]
+        },
+        {
+          "field_source": "ethereum_calldata",
+          "field": "approve.spender",
+          "operator": "eq",
+          "value": "{{VAULT_RELAYER}}",
+          "abi": [
+            {
+              "name": "approve",
+              "type": "function",
+              "stateMutability": "nonpayable",
+              "inputs": [
+                { "name": "spender", "type": "address" },
+                { "name": "amount", "type": "uint256" }
+              ],
+              "outputs": [{ "name": "", "type": "bool" }]
+            }
+          ]
+        },
+        {
+          "_comment": "OPTIONAL bounded allowance. Delete this condition to permit an unlimited approve. {{MAX_APPROVE_AMOUNT}} is a uint256 hex string (e.g. 1000 USDC at 6 decimals = 0x3B9ACA00).",
+          "field_source": "ethereum_calldata",
+          "field": "approve.amount",
+          "operator": "lte",
+          "value": "{{MAX_APPROVE_AMOUNT}}",
+          "abi": [
+            {
+              "name": "approve",
+              "type": "function",
+              "stateMutability": "nonpayable",
+              "inputs": [
+                { "name": "spender", "type": "address" },
+                { "name": "amount", "type": "uint256" }
+              ],
+              "outputs": [{ "name": "", "type": "bool" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Allow signing Ophis orders only: correct domain, receiver pinned to self, tokens on the allowlist",
+      "method": "eth_signTypedData_v4",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "_comment": "Domain chainId is camelCase here (mirrors EIP-712), unlike chain_id on the transaction source.",
+          "field_source": "ethereum_typed_data_domain",
+          "field": "chainId",
+          "operator": "eq",
+          "value": "{{CHAIN_ID}}"
+        },
+        {
+          "_comment": "The Ophis settlement contract for this chain. On the 10 non-sovereign chains this equals the canonical GPv2 address, which is shared with CoW Swap; only Optimism and Unichain carry an Ophis-exclusive verifyingContract.",
+          "field_source": "ethereum_typed_data_domain",
+          "field": "verifyingContract",
+          "operator": "eq",
+          "value": "{{VERIFYING_CONTRACT}}"
+        },
+        {
+          "_comment": "Anti-exfiltration pin: proceeds can only be delivered to the agent's own account.",
+          "field_source": "ethereum_typed_data_message",
+          "field": "receiver",
+          "operator": "eq",
+          "value": "{{AGENT_WALLET_ADDRESS}}",
+          "typed_data": { "types": { "Order": "{{ORDER_TYPES_REF}}" }, "primary_type": "Order" }
+        },
+        {
+          "field_source": "ethereum_typed_data_message",
+          "field": "sellToken",
+          "operator": "in",
+          "value": ["{{TOKEN_ALLOWLIST}}"],
+          "typed_data": { "types": { "Order": "{{ORDER_TYPES_REF}}" }, "primary_type": "Order" }
+        },
+        {
+          "field_source": "ethereum_typed_data_message",
+          "field": "buyToken",
+          "operator": "in",
+          "value": ["{{TOKEN_ALLOWLIST}}"],
+          "typed_data": { "types": { "Order": "{{ORDER_TYPES_REF}}" }, "primary_type": "Order" }
+        }
+      ]
+    },
+    {
+      "name": "Never export the raw key material",
+      "method": "exportPrivateKey",
+      "action": "DENY",
+      "conditions": []
+    },
+    {
+      "name": "Never export the seed phrase",
+      "method": "exportSeedPhrase",
+      "action": "DENY",
+      "conditions": []
+    }
+  ]
+}
