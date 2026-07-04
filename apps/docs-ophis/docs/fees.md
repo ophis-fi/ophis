@@ -131,17 +131,20 @@ CoW-hosted chains).
 
 ## How it's collected
 
-The fee uses CoW Protocol's partner-fee model: `volumeBps: 10` (0.10% of trade
-volume), written into the order's `appData` and taken from the trade output at
-settlement.
+The fee uses CoW Protocol's partner-fee model: a `volumeBps` value written into
+the order's `appData` and taken from the trade output at settlement. The Ophis
+swap app writes `10` (0.10%) retail; the `@ophis/sdk` partner path writes `5`
+(0.05%), or `1` on same-chain stablecoin pairs.
 
-On the **Ophis-operated stacks (Optimism, Unichain)**, this rate is an
-**enforced minimum at settlement**, not just an interface default. The Ophis
-backend rejects any order to the Ophis fee recipient whose partner fee is below
-the floor, so the rate is guaranteed on chain rather than relying on the
-frontend. On CoW-hosted chains the same rate applies through the order's
-`appData`, validated by CoW's backend, and CoW's protocol fees (see the all-in
-table above) are charged by CoW on top.
+On the **Ophis-operated stacks (Optimism, Unichain)**, the backend also enforces
+an **anti-abuse minimum** at settlement, so a fee is guaranteed on chain rather
+than relying on the frontend: it rejects any order to the Ophis fee recipient
+whose partner fee falls below **4 bps** on a non-stable pair (or **1 bp** on a
+same-chain stablecoin pair). That floor sits below both the 5 bps partner rate
+and the 10 bps retail rate, so a normal SDK or app order clears it with room; it
+exists only to reject a fee set implausibly low. On CoW-hosted chains no floor is
+enforced, the same `appData` rate applies (validated by CoW's backend), and CoW's
+protocol fees (see the all-in table above) are charged by CoW on top.
 
 For the protocol-level details, see
 [CoW Protocol batch auctions](https://docs.cow.fi/cow-protocol/reference/core/auctions).

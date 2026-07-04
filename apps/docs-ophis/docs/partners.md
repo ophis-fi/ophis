@@ -277,9 +277,9 @@ An SDK integration earns on three layers, and all three numbers are published:
 2. **You earn a share of the fee Ophis keeps** on every trade you route: 8%
    on the self-serve tier, **12% on the partner tier** (uncapped referred
    volume; ask us to upgrade your code). Paid monthly in WETH, on-chain.
-3. **You can charge your own fee on top**, at any rate up to 100 bps, and
-   keep 100% of it. Ophis takes no cut of your fee. See
-   [Charge your own fee](#charge-your-own-fee) below.
+3. **You can charge your own fee on top** of an ERC-20 order, up to 95 bps
+   under the default 100 bps aggregate cap, and keep 100% of it. Ophis takes no
+   cut of your fee. See [Charge your own fee](#charge-your-own-fee) below.
 
 What layer 2 pays per **$1,000,000 of referred monthly volume** (non-stable,
 labeled estimates; exact value depends on chain mix):
@@ -316,8 +316,15 @@ const partnerFee = [
 ```
 
 Ophis takes **0% of your fee**: the 5 bps base is the entire cost of the rail.
-Per-entry fees are capped at 100 bps by the appData schema, and the aggregate
-across entries is capped at settlement (100 bps default).
+Each entry is capped at 100 bps by the appData schema, and the aggregate across
+entries is capped at settlement (100 bps default), so with the 5 bps base your
+own entry can go up to **95 bps** (higher only if a larger aggregate cap is
+arranged).
+
+The array applies to **ERC-20 orders**. A **native-ETH** sell built with the
+`buildOphisEthFlowOrder` helper carries the single Ophis base `partnerFee`
+entry; to add your own fee on a native-ETH order, build the appData manually
+with the array shape above rather than using the helper.
 
 How your fee reaches you depends on the chain:
 
