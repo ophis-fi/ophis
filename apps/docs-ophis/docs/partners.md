@@ -341,7 +341,11 @@ Three earnings streams appear:
 - **Own-fee** (`ownFeeAccruedUsd`): the partner-fee entry you stack to **your own**
   recipient in the appData `partnerFee` array, next to the Ophis base entry. This is your
   direct earning. `sovereignGuaranteed` is settled by Ophis end to end;
-  `hostedAccrued` accrues at settlement and is disbursed by CoW.
+  `hostedAccrued` is the amount charged at settlement on CoW-hosted chains, where payout
+  runs through CoW's weekly partner distribution under CoW's terms. Ophis does not
+  guarantee it, and the end-to-end payout of a stacked second recipient on hosted chains
+  is still being verified (see [Charge your own fee](#charge-your-own-fee)), so treat
+  `hostedAccrued` as accrued, not paid.
 - **Referral rebate** (`referral`): the monthly WETH rebate Ophis pays your wallet from
   the Gnosis Safe when your `appCode` is a registered referral code. `paidToDateWeth` /
   `paidToDateUsd` are **exact**, summed from already-executed Safe batches, and `payouts`

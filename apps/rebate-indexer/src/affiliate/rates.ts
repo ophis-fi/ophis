@@ -44,11 +44,13 @@ export const COW_TAKE_BPS = 2500;
 /** Defensive display ceiling on an integrator's decoded OWN-fee rate (bps), used
  *  by the fetcher when it reads a non-Ophis partnerFee entry from a settled order's
  *  appData (migration 0014). appData is attacker-controllable, so a crafted entry
- *  cannot inflate the reported own-fee above this bound; 1000 bps (10%) is well
- *  above any real integrator rate while keeping a forged figure finite. Unlike the
- *  Ophis fee (clamped to GROSS_FEE_BPS = 10), an integrator sets their OWN rate, so
- *  this ceiling is deliberately generous, not the retail rate. */
-export const OWN_FEE_MAX_BPS = 1000;
+ *  cannot inflate the reported own-fee above this bound. The ceiling is the appData
+ *  schema's per-entry maximum (100 bps): an entry above it does not validate, so a
+ *  SETTLED order (the only kind this fetcher reads) cannot carry a larger own-fee.
+ *  In practice the effective own-fee is at most 95 bps, since the aggregate of the
+ *  own entry plus the 5 bps Ophis base is capped at 100 bps by default; 100 is the
+ *  hard per-entry bound and the correct clamp. */
+export const OWN_FEE_MAX_BPS = 100;
 
 /** Hard cap on REFERRED VOLUME per referrer per calendar month, for Regular only.
  *  Partner is uncapped. Volume past the cap earns zero (hard-stop, Clement 2026-06-10). */
