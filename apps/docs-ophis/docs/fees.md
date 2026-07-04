@@ -56,7 +56,6 @@ skim a cut of that upside, and Ophis does not.
 Where the order settles still matters:
 
 - **Optimism and Unichain:** 100% of the price improvement is returned to you.
-  No venue we know of publishes a better improvement split.
 - **CoW-hosted chains:** CoW Protocol's own fee model retains 50% of the quote
   improvement (capped at 0.98% of volume) before the remainder is returned to
   you. That is an upstream protocol fee, not an Ophis fee, and it applies to

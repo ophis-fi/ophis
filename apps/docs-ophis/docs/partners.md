@@ -164,11 +164,14 @@ const fullAppData = await stringifyDeterministic(doc); // deterministic, never J
 const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32, signed as order.appData
 ```
 
-On Optimism the fee is an **enforced floor**. The backend rejects (HTTP 400) any
-order to the Ophis recipient whose partner fee is below the floor, or that uses a
-Surplus or PriceImprovement policy. The floor is **4 bps** on non-stable pairs
-(the 5 bps partner rate clears it with headroom) and **1 bp** on a same-chain
-stablecoin pair. Do not set the bps below that, and do not drop the fee.
+On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge is
+**5 bps** (1 bp on a same-chain stablecoin pair), the same as everywhere else.
+The backend additionally enforces an anti-abuse **minimum**: it rejects
+(HTTP 400) any order to the Ophis recipient whose fee falls below **4 bps** on a
+non-stable pair (or 1 bp on a stablecoin pair), or that uses a Surplus or
+PriceImprovement policy. That 4 bps is a floor the backend accepts, not a rate
+to target: charge the 5 bps partner rate, which clears it with headroom, and do
+not drop the fee.
 
 ### 3. Sign with the Ophis EIP-712 domain
 
@@ -257,9 +260,10 @@ if (OPHIS_FEE_CHAIN_IDS.includes(chainId)) {
 ```
 
 The fee recipient is one CREATE2-deterministic Safe on every chain, so the
-fragment is identical everywhere; only the host and settlement differ (and only
-on Optimism). CoW-hosted chains do not enforce the floor, so the 1 bp stable rate
-there is your choice, kept consistent with Optimism.
+fragment is identical everywhere; only the host and settlement differ, and only
+on the Ophis-operated chains (Optimism and Unichain). CoW-hosted chains do not
+enforce the floor, so the 1 bp stable rate there is your choice, kept consistent
+with the Ophis-operated chains.
 
 ## Partner economics: the three layers
 
@@ -273,7 +277,8 @@ An SDK integration earns on three layers, and all three numbers are published:
 2. **You earn a share of the fee Ophis keeps** on every trade you route: 8%
    on the self-serve tier, **12% on the partner tier** (uncapped referred
    volume; ask us to upgrade your code). Paid monthly in WETH, on-chain.
-3. **You can charge your own fee on top** and keep 100% of it. See
+3. **You can charge your own fee on top**, at any rate up to 100 bps, and
+   keep 100% of it. Ophis takes no cut of your fee. See
    [Charge your own fee](#charge-your-own-fee) below.
 
 What layer 2 pays per **$1,000,000 of referred monthly volume** (non-stable,
@@ -285,10 +290,15 @@ labeled estimates; exact value depends on chain mix):
 | Partner (12%) | 12% of the fee Ophis keeps | $45 to $60 in WETH |
 
 Layer 2 alone is not a business; it is a kicker. The business case for an
-operator is **layer 3**: your own fee, at whatever rate your users accept,
-minus the 5 bps base. A bot charging 85 bps keeps 80 bps of margin; for
-comparison, wallet swap products charge in the 85 to 90 bps range
+operator is **layer 3**: your own fee entry, charged on top of the 5 bps base.
+You keep 100% of your entry; the base is the only cost, and it is charged to
+the trade alongside your fee, not deducted from it. A bot that sets its own
+fee to 80 bps keeps the full 80 bps and its users pay 85 bps all-in (your 80
+plus the 5 bps base) on Optimism and Unichain, still under the roughly 85 to
+90 bps wallet swap products charge
 ([MetaMask Swaps charges 0.875%](https://support.metamask.io/trade/swap/user-guide-swaps/)).
+On CoW-hosted chains, add the upstream CoW Protocol fees from
+[Fees & rebates](./fees.md#the-all-in-cost-per-chain) to the user's all-in.
 
 ## Charge your own fee
 
@@ -300,8 +310,8 @@ address, next to the Ophis base entry:
 const partnerFee = [
   // Ophis base: the 5 bps partner rate (1 bp stable pairs)
   { recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: ophisVolumeBpsForPair(isStablePair) },
-  // Your fee, your address, your rate
-  { recipient: YOUR_FEE_ADDRESS, volumeBps: 85 },
+  // Your fee, your address, your rate (charged on top of the base)
+  { recipient: YOUR_FEE_ADDRESS, volumeBps: 80 },
 ];
 ```
 
@@ -330,9 +340,11 @@ How your fee reaches you depends on the chain:
 
 ## Earning a rebate (the referral layer)
 
-On CoW-hosted chains the fee cannot be lowered at settlement, so the layer-2
-partner benefit is delivered as a **post-hoc WETH rebate**: tag each order with
-your referral code and Ophis pays you monthly.
+Layer 2 is separate from the fee your users pay. The fee itself is set in
+`appData` at settlement (the 5 bps base, plus your own entry if you add one).
+The **referral share** of 8% or 12% is a distinct earning: it is a portion of
+the net fee Ophis keeps, paid back to you monthly in WETH. Tag each order with
+your referral code and Ophis pays it out each cycle.
 
 ```ts
 import { ophisVolumeBpsForPair, OPHIS_PARTNER_FEE_RECIPIENT, buildOphisReferrerMetadata } from '@ophis/sdk';

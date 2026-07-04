@@ -52,8 +52,9 @@ A flat 0.10% (10 bps) fee on trade volume on the swap app, with a reduced
 the SDK/MCP integration path carry a reduced 0.05% (5 bps) partner rate. On the
 Ophis-operated chains (Optimism, Unichain) the Ophis fee is the all-in cost and
 100% of price improvement is returned to the trader; on CoW-hosted chains CoW
-Protocol's own fees apply on top (a 0.02% volume fee plus 50% of quote
-improvement). Details: https://docs.ophis.fi/fees. A share of fees is returned
+Protocol's own fees apply on top (a 0.02% volume fee, 0.003% on correlated
+pairs, plus 50% of quote improvement, capped at 0.98% of volume). Details:
+https://docs.ophis.fi/fees. A share of fees is returned
 monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and `ophisVolumeBpsForPair(isStablePair)`.

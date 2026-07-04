@@ -273,12 +273,13 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On Optimism the fee is an ENFORCED FLOOR: the self-hosted backend rejects
-// (HTTP 400) any order to the Ophis fee recipient whose partner fee is below the
-// floor (4 bps non-stable, which the 5 bps partner rate clears, or 1 bp for a
-// same-chain stablecoin pair), or that uses a
-// Surplus/PriceImprovement policy. Carry this fragment unchanged on OP: do not
-// lower the bps and do not drop the fee, or the order is rejected.
+// On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge
+// is 5 bps (1 bp stable pairs). The backend also enforces an anti-abuse MINIMUM:
+// it rejects (HTTP 400) any order to the Ophis fee recipient whose fee is below
+// 4 bps non-stable (or 1 bp for a same-chain stablecoin pair), or that uses a
+// Surplus/PriceImprovement policy. The 4 bps is a floor the backend accepts, not
+// a rate to target. Carry this fragment unchanged: do not lower the bps and do
+// not drop the fee, or the order is rejected.
 const partnerFee = buildOphisAppDataPartnerFee(10);
 // -> the Ophis flat-volume partner-fee fragment { volumeBps: 5, recipient }
 //    for this chain (enforced as a minimum on Optimism: at least the floor)

@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is simple and published all-in: a flat 0.10% (10 bps) Ophis fee on trade volume (0.01% on same-chain stablecoin pairs). On the Ophis-operated chains Optimism and Unichain that is the entire cost and 100% of price improvement is returned to you; on CoW-hosted chains CoW Protocol's own fees apply on top (0.02% volume fee plus 50% of quote improvement).",
+        text: "Ophis uses batch auctions and a solver competition to settle every order at the best on-chain price, with MEV protection by construction. The natural-language input lets you skip token-pickers entirely. And the fee model is simple and published all-in: a flat 0.10% (10 bps) Ophis fee on trade volume (0.01% on same-chain stablecoin pairs). On the Ophis-operated chains Optimism and Unichain that is the entire cost and 100% of price improvement is returned to you; on CoW-hosted chains CoW Protocol's own fees apply on top (0.02% volume fee, 0.003% on correlated pairs, plus 50% of quote improvement, capped at 0.98% of volume).",
       },
     },
     {
@@ -108,8 +108,8 @@ on same-chain stablecoin-to-stablecoin swaps. On the Ophis-operated chains
 (Optimism, Unichain) that is the entire cost and 100% of price improvement
 is returned to you; on CoW-hosted chains CoW Protocol's own fees apply on
 top (0.02% volume fee, 0.003% on correlated pairs, plus 50% of quote
-improvement). For example, swap 1,000 USDC on Optimism and the fee is
-0.10% = 1 USDC, all-in.
+improvement, capped at 0.98% of volume). For example, swap 1,000 USDC on
+Optimism and the fee is 0.10% = 1 USDC, all-in.
 
 ### Do I need to connect a wallet?
 
