@@ -58,10 +58,13 @@ http_status() { # $1 = url -> echoes status code, or "ERR"
   fi
 }
 
-# Fetch a remote text file into a variable, or empty on failure. Isolated so
-# the pipefail-sensitive parsing below never sees curl in its pipeline.
-fetch_raw() { # $1 = url -> echoes body, or "" on any failure
-  $CURL -A "$UA" "$1" 2>/dev/null || true
+# Fetch a remote text file into a variable, or empty on failure. `--fail` makes
+# curl exit nonzero (empty body) on HTTP 4xx/5xx, so a renamed or deleted
+# upstream path yields "" -> ERR rather than a 404 page body that downstream
+# string checks could misread (e.g. as a "GONE" signal). Isolated so the
+# pipefail-sensitive parsing below never sees curl in its pipeline.
+fetch_raw() { # $1 = url -> echoes body, or "" on any failure (incl. 4xx/5xx)
+  $CURL --fail -A "$UA" "$1" 2>/dev/null || true
 }
 
 # cow-sdk: does the SupportedChainId enum block on main mention optimism/unichain?
@@ -69,13 +72,15 @@ sdk_signal() { # echoes e.g. "optimism=no unichain=no", or "ERR"
   local src block op un
   src=$(fetch_raw "https://raw.githubusercontent.com/cowprotocol/cow-sdk/main/packages/config/src/chains/types.ts")
   [[ -z "$src" ]] && { echo "ERR"; return; }
-  # Anchor on the REAL exported declaration: the file opens with a commented-out
-  # example enum of the same name, and the EvmChains enum legitimately lists
-  # OPTIMISM as a bridge target; both are false-positive traps. Strip line
-  # comments inside the block so an OPTIMISM mention in a comment cannot
-  # false-positive. awk consumes the whole var (printf into it cannot SIGPIPE
-  # because there is no early pipe exit here).
-  block=$(awk '/^export enum SupportedChainId/{f=1} f{sub(/\/\/.*/,""); print} f&&/^\}/{exit}' <<< "$src")
+  # Anchor on the REAL exported declaration, tolerant of leading whitespace or
+  # preceding tokens (upstream could reformat): match a line that contains
+  # "export enum SupportedChainId" and is NOT a line comment. The file opens with
+  # a commented-out example enum of the same name, and the EvmChains enum
+  # legitimately lists OPTIMISM as a bridge target; both are false-positive traps.
+  # Strip trailing line comments inside the block so a commented OPTIMISM mention
+  # cannot false-positive. awk consumes the whole var via here-string (no early
+  # pipe exit, so pipefail/SIGPIPE cannot fire).
+  block=$(awk '/export enum SupportedChainId/ && $0 !~ /^[[:space:]]*\/\//{f=1} f{sub(/\/\/.*/,""); print} f&&/^[[:space:]]*\}/{exit}' <<< "$src")
   [[ -z "$block" ]] && { echo "ERR"; return; }
   # grep -c always exits 0 here via the || 0 guard; count matches on the
   # comment-stripped block.
@@ -135,6 +140,7 @@ prev_of() { # $1 = key -> echoes the stored value ('' if none)
 }
 
 changes=""
+changed_keys=""
 if [[ -f "$STATE_FILE" ]]; then
   for k in $KEYS; do
     prev="$(prev_of "$k")"
@@ -144,31 +150,22 @@ if [[ -f "$STATE_FILE" ]]; then
     if [[ "$cur" != "ERR" && -n "$prev" && "$prev" != "ERR" && "$cur" != "$prev" ]]; then
       changes="${changes}- ${k}: ${prev} -> ${cur}
 "
+      changed_keys="${changed_keys} ${k}"
     fi
   done
 else
   echo "tripwire: first run, recording baseline (no alert)"
 fi
 
-# Persist current state atomically (keep last real value for keys now ERR).
-tmp="${STATE_FILE}.tmp.$$"
-{
-  for k in $KEYS; do
-    cur="$(cur_of "$k")"
-    if [[ "$cur" == "ERR" ]]; then
-      prev="$(prev_of "$k")"
-      [[ -n "$prev" ]] && printf '%s %s\n' "$k" "$prev"
-    else
-      printf '%s %s\n' "$k" "$cur"
-    fi
-  done
-  printf 'last_run %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-} > "$tmp"
-mv "$tmp" "$STATE_FILE"
+# --- alert on change (BEFORE persisting) ------------------------------------
+# The alert is attempted first so a delivery failure does NOT let the new state
+# be recorded as notified: alert_ok stays 0 and the persist step below keeps the
+# changed keys at their OLD value, so the next run re-detects and re-alerts. The
+# arrival signal is never silently lost to a transient keychain/Telegram failure.
 
-# --- alert on change --------------------------------------------------------
-
+alert_ok=1
 if [[ -n "$changes" ]]; then
+  alert_ok=0
   echo "tripwire: CHANGES DETECTED"
   printf '%s' "$changes"
   msg="COW ARRIVAL TRIPWIRE
@@ -189,15 +186,42 @@ Playbook: weight sovereign messaging to Unichain, re-check docs claims of only-v
     # The token-bearing URL is fed through curl's stdin config (-K -), so it
     # never appears in argv. The message and chat_id are not secret and stay on
     # the command line. curl reads only the `url` line from stdin.
-    printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$BOT_TOKEN" \
-      | $CURL -o /dev/null -X POST -K - \
+    # --fail: a non-2xx Telegram response (bad token, bad chat_id, API error)
+    # makes curl exit nonzero, so alert_ok stays 0 and the signal is preserved.
+    # Without it curl exits 0 on a 400 since the HTTP request itself completed.
+    if printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$BOT_TOKEN" \
+      | $CURL --fail -o /dev/null -X POST -K - \
           --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-          --data-urlencode "text=${msg}" \
-      || echo "tripwire: telegram send failed" >&2
+          --data-urlencode "text=${msg}"; then
+      alert_ok=1
+    else
+      echo "tripwire: telegram send failed; state kept so the change re-fires next run" >&2
+    fi
     BOT_TOKEN=""
   else
-    echo "tripwire: no telegram token in keychain; change logged only" >&2
+    echo "tripwire: no telegram token in keychain; state kept so the change re-fires when it can be sent" >&2
   fi
 else
   echo "tripwire: no changes ($(date '+%Y-%m-%d %H:%M'))"
 fi
+
+# --- persist state atomically -----------------------------------------------
+# Keep the last real value for keys currently ERR. If the alert did not send,
+# keep the OLD value for changed keys so the diff re-fires on the next run.
+tmp="${STATE_FILE}.tmp.$$"
+{
+  for k in $KEYS; do
+    cur="$(cur_of "$k")"
+    prev="$(prev_of "$k")"
+    if [[ $alert_ok -eq 0 && " $changed_keys " == *" $k "* ]]; then
+      # Unsent change: preserve the old value so the signal is not lost.
+      [[ -n "$prev" ]] && printf '%s %s\n' "$k" "$prev"
+    elif [[ "$cur" == "ERR" ]]; then
+      [[ -n "$prev" ]] && printf '%s %s\n' "$k" "$prev"
+    else
+      printf '%s %s\n' "$k" "$cur"
+    fi
+  done
+  printf 'last_run %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+} > "$tmp"
+mv "$tmp" "$STATE_FILE"
