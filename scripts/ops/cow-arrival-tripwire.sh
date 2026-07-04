@@ -45,30 +45,56 @@ mkdir -p "$(dirname "$STATE_FILE")"
 # --- collectors ------------------------------------------------------------
 
 http_status() { # $1 = url -> echoes status code, or "ERR"
-  $CURL -o /dev/null -w '%{http_code}' -A "$UA" "$1" 2>/dev/null || echo "ERR"
+  # Capture code and exit status separately so a failed probe yields exactly
+  # "ERR", never a concatenation like "000ERR" (curl prints 000 on failure AND
+  # exits nonzero). Only a clean 3-digit code passes through.
+  local code rc
+  code=$($CURL -o /dev/null -w '%{http_code}' -A "$UA" "$1" 2>/dev/null)
+  rc=$?
+  if [[ $rc -ne 0 || ! "$code" =~ ^[0-9]{3}$ || "$code" == "000" ]]; then
+    echo "ERR"
+  else
+    echo "$code"
+  fi
+}
+
+# Fetch a remote text file into a variable, or empty on failure. Isolated so
+# the pipefail-sensitive parsing below never sees curl in its pipeline.
+fetch_raw() { # $1 = url -> echoes body, or "" on any failure
+  $CURL -A "$UA" "$1" 2>/dev/null || true
 }
 
 # cow-sdk: does the SupportedChainId enum block on main mention optimism/unichain?
 sdk_signal() { # echoes e.g. "optimism=no unichain=no", or "ERR"
   local src block op un
-  src=$($CURL -A "$UA" "https://raw.githubusercontent.com/cowprotocol/cow-sdk/main/packages/config/src/chains/types.ts" 2>/dev/null) || { echo "ERR"; return; }
+  src=$(fetch_raw "https://raw.githubusercontent.com/cowprotocol/cow-sdk/main/packages/config/src/chains/types.ts")
   [[ -z "$src" ]] && { echo "ERR"; return; }
   # Anchor on the REAL exported declaration: the file opens with a commented-out
   # example enum of the same name, and the EvmChains enum legitimately lists
-  # OPTIMISM as a bridge target; both are false-positive traps.
-  block=$(printf '%s' "$src" | awk '/^export enum SupportedChainId/{f=1} f{print} f&&/^\}/{exit}')
+  # OPTIMISM as a bridge target; both are false-positive traps. Strip line
+  # comments inside the block so an OPTIMISM mention in a comment cannot
+  # false-positive. awk consumes the whole var (printf into it cannot SIGPIPE
+  # because there is no early pipe exit here).
+  block=$(awk '/^export enum SupportedChainId/{f=1} f{sub(/\/\/.*/,""); print} f&&/^\}/{exit}' <<< "$src")
   [[ -z "$block" ]] && { echo "ERR"; return; }
-  op=$(printf '%s' "$block" | grep -ci "optimism" || true)
-  un=$(printf '%s' "$block" | grep -ci "unichain" || true)
-  echo "optimism=$([[ $op -gt 0 ]] && echo YES || echo no) unichain=$([[ $un -gt 0 ]] && echo YES || echo no)"
+  # grep -c always exits 0 here via the || 0 guard; count matches on the
+  # comment-stripped block.
+  op=$(grep -ci "optimism" <<< "$block" || true)
+  un=$(grep -ci "unichain" <<< "$block" || true)
+  echo "optimism=$([[ ${op:-0} -gt 0 ]] && echo YES || echo no) unichain=$([[ ${un:-0} -gt 0 ]] && echo YES || echo no)"
 }
 
 # cowswap networks.ts: is the OPTIMISM bridge-only stub comment still there?
 stub_signal() { # echoes "present", "GONE", or "ERR"
-  local src
-  src=$($CURL -A "$UA" "https://raw.githubusercontent.com/cowprotocol/cowswap/main/libs/common-const/src/networks.ts" 2>/dev/null) || { echo "ERR"; return; }
+  local src hit
+  src=$(fetch_raw "https://raw.githubusercontent.com/cowprotocol/cowswap/main/libs/common-const/src/networks.ts")
   [[ -z "$src" ]] && { echo "ERR"; return; }
-  if printf '%s' "$src" | grep -qi "bridge-only"; then echo "present"; else echo "GONE"; fi
+  # Anchor to the OPTIMISM stub specifically: a line mentioning OPTIMISM that
+  # also says bridge-only (or "future migration"). A bridge-only comment about
+  # any other chain must not keep this "present". grep exit is captured, never
+  # in a pipefail pipeline.
+  hit=$(grep -iE 'optimism.*(bridge-only|future migration)|(bridge-only|future migration).*optimism' <<< "$src" || true)
+  if [[ -n "$hit" ]]; then echo "present"; else echo "GONE"; fi
 }
 
 # --- run checks ------------------------------------------------------------
@@ -153,14 +179,21 @@ ${changes}
 Read: barn 200 = staging up, launch imminent. api 200 = LAUNCHED. sdk_enum YES = sell-from support merged upstream. networks_stub GONE = frontend migration started.
 
 Playbook: weight sovereign messaging to Unichain, re-check docs claims of only-venue on the affected chain, and reassess the OP 100 percent fee-keep story."
-  # Token hygiene: read into a variable, never echo it, pass via
-  # --data-urlencode (not in the URL path where proxies/logs could see it
-  # beyond api.telegram.org itself, which requires it in the path by design).
+  # Token hygiene: the Telegram API requires the token in the URL path, but the
+  # URL must NOT appear in argv (visible via `ps` while curl runs). Pass it
+  # through a curl config on stdin (curl -K -), so the token stays out of the
+  # process command line, out of `set -x` (blocked above anyway), and out of any
+  # log. The token is read into a variable, never echoed, and cleared after use.
   BOT_TOKEN=$(security find-generic-password -s ophis-telegram-bot -w 2>/dev/null || true)
   if [[ -n "${BOT_TOKEN:-}" ]]; then
-    $CURL -o /dev/null -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-      --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-      --data-urlencode "text=${msg}" || echo "tripwire: telegram send failed" >&2
+    # The token-bearing URL is fed through curl's stdin config (-K -), so it
+    # never appears in argv. The message and chat_id are not secret and stay on
+    # the command line. curl reads only the `url` line from stdin.
+    printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$BOT_TOKEN" \
+      | $CURL -o /dev/null -X POST -K - \
+          --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+          --data-urlencode "text=${msg}" \
+      || echo "tripwire: telegram send failed" >&2
     BOT_TOKEN=""
   else
     echo "tripwire: no telegram token in keychain; change logged only" >&2
