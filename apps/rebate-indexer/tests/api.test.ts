@@ -81,7 +81,7 @@ test('/stats returns public cumulative JSON for an API client', async () => {
     solverCompetition: {
       sovereignChains: [
         { chainId: 10, solvers: 4 },
-        { chainId: 130, solvers: 9 },
+        { chainId: 130, solvers: 8 },
       ],
       hostedChains: 'CoW Protocol solver network',
     },

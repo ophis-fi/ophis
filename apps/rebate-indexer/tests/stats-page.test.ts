@@ -92,13 +92,13 @@ describe('renderStatsPage', () => {
 });
 
 describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', () => {
-  it('matches the sovereign driver configs: 4 solvers on Optimism, 9 on Unichain', () => {
+  it('matches the sovereign driver configs: 4 solvers on Optimism, 8 competing on Unichain', () => {
     // Counts mirror the [[solver]] blocks in
     // infra/optimism-mainnet/configs/driver.toml.tmpl and
     // infra/unichain-mainnet/configs/driver.toml.tmpl.
     expect(EXECUTION_FACTS.solverCompetition.sovereignChains).toEqual([
       { chainId: 10, solvers: 4 },
-      { chainId: 130, solvers: 9 },
+      { chainId: 130, solvers: 8 },
     ]);
   });
 

@@ -61,21 +61,24 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
  * Static execution-model facts served alongside the cumulative figures on the
  * public /stats JSON surface. Configuration facts only, no indexed data and no
  * timing signal, so they are safe to expose (see the current-cycle exclusion in
- * the header comment). Solver counts are the number of [[solver]] engine blocks
- * in the sovereign driver configs; update them when a solver is added or
- * removed there:
+ * the header comment). `solvers` is the number of engines that can actually BID
+ * per auction on each chain; update it when a solver is added or removed in the
+ * sovereign driver configs:
  *   - infra/optimism-mainnet/configs/driver.toml.tmpl  (4: baseline, okx,
- *     kyberswap, velora)
- *   - infra/unichain-mainnet/configs/driver.toml.tmpl  (9: baseline, okx,
- *     kyberswap, velora, odos, openocean, dodo, lifi, enso)
+ *     kyberswap, velora; baseline routes Sushi V2 there)
+ *   - infra/unichain-mainnet/configs/driver.toml.tmpl  (9 engine blocks, but the
+ *     baseline ships without on-chain AMM sources on Unichain and cannot bid, so
+ *     8 aggregators compete: okx, kyberswap, velora, odos, openocean, dodo,
+ *     lifi, enso)
  */
 export const EXECUTION_FACTS = {
   mevProtection: 'batch-auction',
   settlementModel: 'intent, uniform clearing price',
   solverCompetition: {
+    // solvers = engines that can bid (Unichain's baseline ships empty there).
     sovereignChains: [
       { chainId: 10, solvers: 4 },
-      { chainId: 130, solvers: 9 },
+      { chainId: 130, solvers: 8 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
@@ -143,8 +146,8 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 <ul class="gl">
   <li><strong>MEV-protected batch settlement</strong>Orders settle in batch auctions, not the public mempool. No sandwiching, no frontrunning of your order flow.</li>
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
-  <li><strong>Gasless execution</strong>Solvers pay the gas and costs settle inside the trade. No native gas token needed, and failed transactions cost you nothing.</li>
-  <li><strong>Solver competition on every order</strong>9 solvers compete per auction on Unichain and 4 on Optimism, where Ophis runs the full settlement stack. Other chains draw on CoW Protocol's solver network.</li>
+  <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
+  <li><strong>Solver competition on every order</strong>On Unichain, 8 aggregator solvers compete per auction (plus a baseline that ships without on-chain AMM sources there); on Optimism, 4 solvers compete, where Ophis runs the full settlement stack. Other chains draw on CoW Protocol's solver network.</li>
   <li class="wide"><strong>Where the price improvement goes</strong>On Optimism and Unichain, 100% of price improvement is returned to the trader, and the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
 </ul>
 <h2>Settled volume by chain</h2>

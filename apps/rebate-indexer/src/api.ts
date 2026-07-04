@@ -483,12 +483,16 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
     const chainIds = [...PRODUCTION_CHAIN_IDS];
-    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string }[]>`
+    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
       SELECT
         COALESCE(SUM(value_usd), 0)::text AS vol,
         COUNT(*)::text                    AS trades,
         COUNT(DISTINCT wallet)::text      AS traders,
-        COUNT(DISTINCT chain_id)::text    AS chains
+        COUNT(DISTINCT chain_id)::text    AS chains,
+        -- AVG ignores NULLs, so this is the average over PRICED trades only.
+        -- It avoids dividing priced volume by the all-trades count (which would
+        -- understate while some trades are still awaiting a price).
+        ROUND(AVG(value_usd)::numeric, 2)::text AS avg_trade
       FROM trades
       WHERE chain_id = ANY(${chainIds})
     `;
@@ -525,12 +529,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         )
         .send(renderStatsPage(stats));
     }
-    // Lifetime average trade size, derived from the same cumulative figures
-    // above (no extra signal, still lagging-only). Two decimals; null until
-    // the first trade is indexed.
-    const avgTradeUsd = stats.totalTrades > 0
-      ? Math.round((stats.totalVolumeUsd / stats.totalTrades) * 100) / 100
-      : null;
+    // Lifetime average trade size over PRICED trades only (SQL AVG ignores
+    // NULLs), so it is not skewed low by trades still awaiting a price. Null
+    // until at least one priced trade is indexed. Lagging-only, no extra signal.
+    const avgTradeUsd = t?.avg_trade != null ? Number(t.avg_trade) : null;
     return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
   });
 
