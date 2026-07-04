@@ -59,12 +59,15 @@ argument names.
 
 ```ts
 // Submit STRUCTURED typed data (encoding EIP712) so the policy can inspect the
-// fields. A pre-hashed digest (HASH_FUNCTION_NO_OP) is denied by the pack.
+// order fields. This is the ALLOWED path: encoding EIP712 with hashFunction
+// NO_OP means Turnkey does the EIP-712 hashing itself and applies no extra hash.
+// The pack's DENY guard only rejects NO_OP WITHOUT EIP712 encoding (an opaque
+// pre-hashed digest the field pins cannot inspect), so this call is permitted.
 const { r, s, v } = await turnkey.apiClient().signRawPayload({
   signWith: "0xAGENT...",
   payload: JSON.stringify({ domain: signing.domain, types: signing.types, primaryType: "Order", message: order }),
   encoding: "PAYLOAD_ENCODING_EIP712",
-  hashFunction: "HASH_FUNCTION_NO_OP", // the EIP712 encoder hashes per the spec
+  hashFunction: "HASH_FUNCTION_NO_OP", // with EIP712 encoding, Turnkey hashes per the spec
 });
 const signature = "0x" + r + s + v;
 ```
