@@ -87,6 +87,22 @@ const sdkSrc = readFileSync(rel(SDK_DOMAIN), 'utf8');
 const sdkSettlement = parseSdkMap(sdkSrc, 'OPHIS_SETTLEMENT_ADDRESSES');
 const sdkRelayer = parseSdkMap(sdkSrc, 'OPHIS_VAULT_RELAYER_ADDRESSES');
 
+// SDK-completeness: any chain the SDK maps that is not paused/testnet is a LIVE
+// chain the packs must cover. If the SDK adds one but EXPECTED_CHAIN_IDS (and
+// thus the per-chain checks below) does not know about it, catch it here rather
+// than passing silently, which is the exact SDK-only drift this gate must block.
+const sdkLiveChains = [...new Set([...Object.keys(sdkSettlement), ...Object.keys(sdkRelayer)].map(Number))].filter(
+  (id) => !FORBIDDEN_CHAIN_IDS.includes(id),
+);
+for (const id of sdkLiveChains) {
+  if (!EXPECTED_CHAIN_IDS.includes(id)) {
+    fail(
+      `SDK maps live chain ${id} but the pack check does not cover it. If chain ${id} went live, add it to ` +
+        `addresses.json, the collateral, and EXPECTED_CHAIN_IDS in the SAME PR.`,
+    );
+  }
+}
+
 const table = JSON.parse(readFileSync(rel(TABLE), 'utf8'));
 
 // --- Gate A: table <-> SDK -------------------------------------------------
