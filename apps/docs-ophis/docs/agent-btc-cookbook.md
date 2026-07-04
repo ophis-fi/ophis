@@ -61,8 +61,12 @@ const order = {
   receiver: deposit.depositAddress,
 };
 
-// 3. The agent signs `order` as EIP-712 and submits it (or relays it through
-//    the Ophis MCP submit_order tool). No gas token, no BTC-side wallet.
+// 3. The agent signs `order` as EIP-712 and submits it DIRECTLY to the
+//    orderbook. Note: the keyless MCP `submit_order` tool pins the receiver to
+//    the owner as a drain guard, so it will NOT relay this order (the receiver
+//    is the 1-Click deposit address, not the owner by design). Submit it to the
+//    chain's Ophis orderbook yourself. After the one-time sell-token approval,
+//    no further gas is needed on the source chain.
 ```
 
 See the [partner integration guide](./partners.md) for the exact order-build
@@ -71,13 +75,20 @@ path.
 
 ## Why an agent should care
 
-- **One signature, no gas juggling.** The agent does not fund a wallet on the
+- **One signature, minimal gas.** The agent does not fund a wallet on the
   destination chain and does no Bitcoin-side signing; it supplies a BTC address
-  to receive at and signs one intent on the source chain.
-- **Bounded.** The receiver is the deposit address bound to the agent's own BTC
-  address, and the limit price caps the fill. A prompt-injected agent cannot
-  redirect the BTC to an arbitrary address without changing the signed order,
-  which the agent controls.
+  to receive at and signs one intent on the source chain. The only on-chain gas
+  is the one-time sell-token approval to the vault relayer before the first
+  sell; after that the swap itself is gasless.
+- **Bounded, with one caveat.** The limit price caps the fill, and the signed
+  receiver cannot be mutated after the agent signs. But note the ordering: a
+  compromised or prompt-injected agent could request a 1-Click deposit address
+  bound to an ATTACKER's BTC address in step 1, and then the signed receiver
+  would correctly point at that attacker-bound deposit. The signature prevents
+  tampering after construction, not a bad destination chosen before it. For an
+  autonomous agent, enforce the destination out of band: an allowlist or
+  attestation that the BTC address (and thus the 1-Click deposit address) is one
+  the operator approved, checked in code before signing.
 - **Checkable.** Both legs are observable: the EVM settlement on chain and the
   NEAR Intents delivery. Nothing is custodial in between.
 

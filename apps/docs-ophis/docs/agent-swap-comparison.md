@@ -1,7 +1,7 @@
 ---
 id: agent-swap-comparison
 title: How does an AI agent swap safely
-description: A decision guide for giving an autonomous agent the ability to swap tokens, comparing key requirement, signing model, custody, MEV protection, limit-price guarantee, gas, chain coverage, and Bitcoin support across the agent-facing swap interfaces available in 2026.
+description: A guide to giving an autonomous agent the ability to swap tokens safely: the properties that bound an agent's worst case (keyless, machine-signable, hard limit price, MEV protection, gasless, native BTC) and how Ophis provides each.
 sidebar_label: How agents swap safely
 ---
 
@@ -10,7 +10,7 @@ sidebar_label: How agents swap safely
 If you are building an autonomous agent that needs to swap tokens, the question
 that matters is not "which venue has the best price" but "what is the worst
 thing that happens if the agent, or the model driving it, misbehaves." This page
-compares the agent-facing swap interfaces on exactly that axis.
+lays out the properties that bound that worst case and how Ophis provides each.
 
 The properties that decide safety for an agent:
 
@@ -27,27 +27,40 @@ The properties that decide safety for an agent:
 - **Gasless.** Does the agent need a native gas token on every chain, or does a
   solver pay the gas?
 
-## The comparison
+## How Ophis addresses each property
 
-Verified against each project's public documentation and live behavior as of
-July 2026. These move; re-check before relying on a specific row.
+- **Keyless to quote and build.** The Ophis MCP server at
+  `https://mcp.ophis.fi/mcp` needs no API key, OAuth, or signup: an agent quotes
+  and builds an order with no credential in its environment.
+- **Machine-signable.** `build_order` returns an EIP-712 order the agent signs
+  directly with its own key. There is no handoff to a human browser step.
+- **Bounded worst case.** The order carries a hard limit price and a pinned
+  receiver, so the maximum loss is known at signing time and it cannot settle
+  below the price the agent signed.
+- **MEV protection.** Orders settle in a batch auction at a uniform clearing
+  price, so there is no public pending transaction to sandwich, by construction
+  rather than best-effort.
+- **Gasless (after a one-time approval).** Solvers pay the settlement gas. The
+  one on-chain step is a single ERC-20 approval to the vault relayer before the
+  first sell of a token; after that, swaps need no native gas token.
+- **Reach.** 12 EVM chains as source or destination, plus native Bitcoin and
+  Solana as destinations through NEAR Intents.
 
-| | Keyless to quote/build | Machine-signable | Bounded worst case (hard limit price) | MEV-protected | Gasless | Native BTC destination |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Ophis** (MCP) | Yes, no key or signup | Yes, EIP-712 order | Yes, signed limit price | Yes, batch auction | Yes | Yes, via NEAR Intents |
-| 1inch (MCP) | No, registration / OAuth | Yes, Fusion intent | Yes (Fusion) | Yes (Fusion) | Yes (Fusion) | No |
-| OKX DEX (API) | No, API key | Calldata to sign/send | No, depends on execution | Partial / route-dependent | No | No |
-| Jupiter (API) | No, API key | Transaction to sign | Limit orders available | Partial / route-dependent | No | No |
-| deBridge (MCP) | Yes | No, hands off to a human dApp link | n/a | Route-dependent | No | No |
-| Base MCP (Coinbase) | Account / wallet setup | Via Base Account approvals | Depends on execution | Route-dependent | Sponsored on Base | No |
-| CoW Swap | No MCP | Yes, EIP-712 order (via SDK) | Yes, signed limit price | Yes, batch auction | Yes | No |
+## Where other venues sit
 
-The pattern: an intent order is the safest primitive for an agent because it is
-a **bounded capability**, a gasless EIP-712 signature with a hard limit price and
-a pinned receiver, not an arbitrary transaction. Its maximum loss is known at
-signing time and it cannot be settled below the price the agent signed. Among the
-interfaces above, Ophis is the one that is keyless to quote and build, returns a
-machine-signable intent, and reaches native Bitcoin.
+Other agent-facing swap interfaces (1inch, OKX, Jupiter, deBridge, Coinbase's
+Base MCP, and CoW Swap's SDK) each cover a subset of these properties, and their
+capabilities move quickly, so check each venue's current docs rather than trust
+a snapshot here. Two things are worth knowing when you compare:
+
+- The safest primitive for an autonomous agent is an **intent order**: a
+  gasless, limit-priced, receiver-pinned EIP-712 signature whose worst case is
+  known before signing, not an arbitrary transaction or router calldata. Ophis
+  and CoW Swap both use this batch-auction model; CoW Swap does not currently
+  publish an MCP server, and Ophis adds the keyless MCP and native Bitcoin.
+- Several venues offer keyless or gasless paths and slippage-bounded swaps; what
+  is specific to the batch-auction model is uniform-clearing-price MEV
+  protection and a hard signed limit that the settlement contract enforces.
 
 ## What "safe" does and does not mean here
 
@@ -64,7 +77,7 @@ pinned to itself.
 ## Try it
 
 Point any MCP client at `https://mcp.ophis.fi/mcp` (no key), or read the
-[AI agent integration guide](./ai-agents.md). To validate an order your agent
-built by hand before it signs, call the `validate_order` tool, which checks the
-appCode, orderbook host, EIP-712 domain, and receiver pin with no network round
-trip.
+[AI agent integration guide](./ai-agents.md). Prefer `build_order` to construct
+orders: it fetches a live quote, applies your slippage bound, pins the receiver
+to the owner, and embeds the partner fee, so the returned order is bounded
+before your agent signs it.
