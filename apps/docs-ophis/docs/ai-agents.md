@@ -54,6 +54,64 @@ locally; the signature is the trust boundary (see the warning below). A bare
 request without an `Accept: text/event-stream` header returns HTTP 406; that is
 the transport negotiating, not an outage.
 
+### Connect your MCP client
+
+The server is public and keyless, so there is nothing to sign up for. Copy the
+block for your client.
+
+**Claude Code** (one command):
+
+```bash
+claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
+```
+
+**Claude Desktop** (`claude_desktop_config.json`, via the `mcp-remote` bridge):
+
+```json
+{
+  "mcpServers": {
+    "ophis": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.ophis.fi/mcp"]
+    }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json`, or the project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "ophis": {
+      "url": "https://mcp.ophis.fi/mcp"
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "ophis": {
+      "type": "http",
+      "url": "https://mcp.ophis.fi/mcp"
+    }
+  }
+}
+```
+
+**OpenAI Agents SDK, LangChain, or any custom client**: point a
+streamable-HTTP MCP transport at `https://mcp.ophis.fi/mcp`. The
+[LangChain tool](#langchain-tool) and function-calling examples below show the
+call path without an MCP client at all.
+
+After connecting, ask the agent to "quote 100 USDC to ETH on Optimism" and it
+will call `resolve_token`, `get_quote`, and `build_order`; it returns a bounded
+order for you (or your wallet) to sign.
+
 If you'd rather make a single REST call than wire up the full toolset, use the
 [Intent API](./intent-api.md) directly, as shown next.
 
@@ -245,9 +303,12 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The partner fee is a flat 0.10% (10 bps) fee on trade volume, applied to every
-trade, written into the order's `appData` at `metadata.partnerFee`. Use the
-CIP-75 **volume** shape `{ volumeBps: 10, recipient }`, **not** the
+The partner fee for SDK and manual integrations is a flat 0.05% (5 bps) fee on
+trade volume (the Ophis swap app charges its own 0.10% retail rate), written into
+the order's `appData` at `metadata.partnerFee`. This section is for callers that
+build appData themselves; the keyless MCP `build_order` embeds this fee for you
+at the flat 5 bps rate (it does not apply the reduced stable-pair rate). Use the
+CIP-75 **volume** shape `{ volumeBps: 5, recipient }`, **not** the
 price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
 the two shapes use different denominators, so slotting a value into the wrong
 field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
@@ -256,7 +317,7 @@ stable, so the hash won't match what solvers expect.
 
 Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp): same-chain pairs
 where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
-`{ volumeBps: 10, recipient }`. The `@ophis/sdk` exposes
+`{ volumeBps: 5, recipient }`. The `@ophis/sdk` exposes
 `OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
 to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
 so integrators pass `isStablePair` based on their own token classification.
@@ -272,13 +333,15 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On Optimism the fee is an ENFORCED FLOOR: the self-hosted backend rejects
-// (HTTP 400) any order to the Ophis fee recipient whose partner fee is below the
-// floor (10 bps, or 1 bp for a same-chain stablecoin pair), or that uses a
-// Surplus/PriceImprovement policy. Carry this fragment unchanged on OP: do not
-// lower the bps and do not drop the fee, or the order is rejected.
+// On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge
+// is 5 bps (1 bp stable pairs). The backend also enforces an anti-abuse MINIMUM:
+// it rejects (HTTP 400) any order to the Ophis fee recipient whose fee is below
+// 4 bps non-stable (or 1 bp for a same-chain stablecoin pair), or that uses a
+// Surplus/PriceImprovement policy. The 4 bps is a floor the backend accepts, not
+// a rate to target. Carry this fragment unchanged: do not lower the bps and do
+// not drop the fee, or the order is rejected.
 const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> the Ophis flat-volume partner-fee fragment { volumeBps: 10, recipient }
+// -> the Ophis flat-volume partner-fee fragment { volumeBps: 5, recipient }
 //    for this chain (enforced as a minimum on Optimism: at least the floor)
 
 const metadataApi = new MetadataApi();

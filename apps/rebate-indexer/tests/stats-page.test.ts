@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from '../src/stats-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from '../src/stats-page.js';
 
 const sample: PublicStats = {
   totalVolumeUsd: 1234567.89,
@@ -36,6 +36,78 @@ describe('renderStatsPage', () => {
 
   it('contains no em-dash (brand rule for served content)', () => {
     expect(renderStatsPage(sample)).not.toContain('—');
+  });
+
+  it('is pure ASCII apart from that check (self-contained strict-CSP page)', () => {
+    // eslint-disable-next-line no-control-regex
+    expect(renderStatsPage(sample)).toMatch(/^[\x00-\x7F]*$/);
+  });
+
+  it('leads with the per-trade guarantees, then per-chain table, then lifetime totals, then docs links', () => {
+    const html = renderStatsPage(sample);
+    const hero = html.indexOf('MEV-protected batch settlement');
+    const byChain = html.indexOf('Settled volume by chain');
+    const lifetime = html.indexOf('Lifetime settled volume, cumulative');
+    const docs = html.indexOf('https://docs.ophis.fi/fees');
+    expect(hero).toBeGreaterThan(-1);
+    expect(byChain).toBeGreaterThan(hero);
+    expect(lifetime).toBeGreaterThan(byChain);
+    expect(docs).toBeGreaterThan(lifetime);
+  });
+
+  it('states every per-trade guarantee in the hero', () => {
+    const html = renderStatsPage(sample);
+    expect(html).toContain('MEV-protected batch settlement');
+    expect(html).toContain('Hard signed limit price');
+    expect(html).toContain('Gasless execution');
+    expect(html).toContain('Solver competition on every order');
+    expect(html).toContain('100% of price improvement is returned to the trader');
+  });
+
+  it('states the exact fee and improvement split for sovereign and hosted chains', () => {
+    const html = renderStatsPage(sample);
+    expect(html).toContain('the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs)');
+    expect(html).toContain('0.02% volume fee (0.003% on correlated pairs)');
+    expect(html).toContain('retains 50% of quote improvement upstream, capped at 0.98% of volume');
+  });
+
+  it('gives the lifetime totals their early-stage, on-chain-verifiable context line', () => {
+    const html = renderStatsPage(sample);
+    expect(html).toContain('lifetime totals since launch, not a rolling window');
+    expect(html).toContain('verifiable by anyone');
+  });
+
+  it('links the fee model and comparison docs in the footer', () => {
+    const html = renderStatsPage(sample);
+    expect(html).toContain('https://docs.ophis.fi/fees');
+    expect(html).toContain('https://docs.ophis.fi/comparison');
+  });
+
+  it('never leaks current-cycle 30d volume or payout timing (admin-only signals)', () => {
+    const html = renderStatsPage(sample);
+    expect(html).not.toMatch(/30[ -]?d/i);
+    expect(html).not.toMatch(/payout/i);
+    expect(html).not.toMatch(/rolling 30/i);
+  });
+});
+
+describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', () => {
+  it('matches the sovereign driver configs: 4 solvers on Optimism, 8 competing on Unichain', () => {
+    // Counts mirror the [[solver]] blocks in
+    // infra/optimism-mainnet/configs/driver.toml.tmpl and
+    // infra/unichain-mainnet/configs/driver.toml.tmpl.
+    expect(EXECUTION_FACTS.solverCompetition.sovereignChains).toEqual([
+      { chainId: 10, solvers: 4 },
+      { chainId: 130, solvers: 8 },
+    ]);
+  });
+
+  it('describes the settlement model and improvement split as static facts only', () => {
+    expect(EXECUTION_FACTS.mevProtection).toBe('batch-auction');
+    expect(EXECUTION_FACTS.settlementModel).toBe('intent, uniform clearing price');
+    expect(EXECUTION_FACTS.solverCompetition.hostedChains).toBe('CoW Protocol solver network');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toBe('100% of price improvement returned to the trader');
+    expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('CoW Protocol retains 50% of quote improvement upstream');
   });
 });
 

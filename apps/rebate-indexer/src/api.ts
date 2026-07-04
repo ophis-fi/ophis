@@ -6,7 +6,7 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from './stats-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
@@ -467,10 +467,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
 
   // PUBLIC cumulative stats: lifetime settled volume, trades, traders, and a
-  // per-chain breakdown, from the indexed `trades` table. Deliberately
-  // cumulative/lagging ONLY: it never exposes current-cycle 30d volume or the
-  // next-payout timing (those stay on the admin-only /status, where they are a
-  // front-runner timing signal). Cumulative lifetime totals are not gameable, so
+  // per-chain breakdown, from the indexed `trades` table, plus static
+  // execution-model facts (EXECUTION_FACTS) and the derived lifetime average
+  // trade size. Deliberately cumulative/lagging ONLY: it never exposes
+  // current-cycle 30d volume or the next-payout timing (those stay on the
+  // admin-only /status, where they are a front-runner timing signal).
+  // Cumulative lifetime totals and configuration facts are not gameable, so
   // this is a safe public credibility/proof surface. JSON for API clients;
   // a styled page for a browser (same content-negotiation as /tier).
   app.get('/stats', {
@@ -482,12 +484,16 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
     const chainIds = [...PRODUCTION_CHAIN_IDS];
-    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string }[]>`
+    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
       SELECT
         COALESCE(SUM(value_usd), 0)::text AS vol,
         COUNT(*)::text                    AS trades,
         COUNT(DISTINCT wallet)::text      AS traders,
-        COUNT(DISTINCT chain_id)::text    AS chains
+        COUNT(DISTINCT chain_id)::text    AS chains,
+        -- AVG ignores NULLs, so this is the average over PRICED trades only.
+        -- It avoids dividing priced volume by the all-trades count (which would
+        -- understate while some trades are still awaiting a price).
+        ROUND(AVG(value_usd)::numeric, 2)::text AS avg_trade
       FROM trades
       WHERE chain_id = ANY(${chainIds})
     `;
@@ -524,7 +530,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         )
         .send(renderStatsPage(stats));
     }
-    return { ok: true, ...stats };
+    // Lifetime average trade size over PRICED trades only (SQL AVG ignores
+    // NULLs), so it is not skewed low by trades still awaiting a price. Null
+    // until at least one priced trade is indexed. Lagging-only, no extra signal.
+    const avgTradeUsd = t?.avg_trade != null ? Number(t.avg_trade) : null;
+    return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
   });
 
   // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an

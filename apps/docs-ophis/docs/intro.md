@@ -34,9 +34,12 @@ swap 100 USDC for ETH on Base
 - **Self-custodial.** Ophis never holds funds. Every order is signed by
   your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
   from the allowlisted solver set.
-- **Flat, transparent fee.** A flat 0.10% (10 bps) fee on trade volume
-  applies to every trade. Example: swap 1,000 USDC and the fee is 0.10%,
-  or 1 USDC. No tiers, no surprises.
+- **Flat, transparent fee.** A flat 0.10% (10 bps) Ophis fee on trade
+  volume applies to every trade, 0.01% (1 bp) on same-chain stablecoin
+  pairs. Example: swap 1,000 USDC and the Ophis fee is 0.10%, or 1 USDC.
+  On the Ophis-operated chains (Optimism, Unichain) that is the all-in
+  cost; on CoW-hosted chains [CoW Protocol's own fees apply on
+  top](./fees.md).
 - **Open.** The full frontend, intent-parser proxy, and infra runbooks
   are public.
 

@@ -9,6 +9,12 @@
   "observability": {
     "enabled": true
   },
+  // Funnel telemetry dataset (Workers Analytics Engine, free plan). Each /mcp
+  // JSON-RPC call writes one privacy-preserving data point (tool name, a hashed
+  // consumer id, truncated UA, origin-or-not, chainId) so real quote/build
+  // consumers can be told apart from crawlers and health-checks. The write is
+  // non-blocking and swallowed; an unbound dataset is a no-op.
+  "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
   // McpAgent is a Durable Object. Each MCP session is one DO instance; our
   // tools are stateless (each call is independent) so the DO just holds the
   // Streamable-HTTP transport session — no app state is persisted.

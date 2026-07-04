@@ -41,7 +41,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Settle: on-chain, MEV-protected',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles your order in a batch where every trade clears at the same uniform price, via CoW Protocol batch auctions, so there is no front-running, no sandwiching, and no priority-gas auction. 100% of any price surplus goes to you, the trader.',
+      text: 'The winning solver settles your order in a batch where every trade clears at the same uniform price, via CoW Protocol batch auctions, so there is no front-running, no sandwiching, and no priority-gas auction. Ophis takes no cut of surplus: on the Ophis-operated chains (Optimism, Unichain) 100% of any price surplus goes to you, the trader; on CoW-hosted chains CoW Protocol retains 50% of quote improvement.',
     },
   ],
 };
