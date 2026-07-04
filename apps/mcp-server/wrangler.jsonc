@@ -14,13 +14,7 @@
   // consumer id, truncated UA, origin-or-not, chainId) so real quote/build
   // consumers can be told apart from crawlers and health-checks. The write is
   // non-blocking and swallowed; an unbound dataset is a no-op.
-  // DISABLED AGAIN: PR #762 re-added this binding and the deploy failed once more
-  // with Cloudflare [code: 10089] "You need to enable Analytics Engine", so
-  // Analytics Engine is still not enabled on the account. Kept off so mcp-deploy
-  // stays green and the worker keeps serving. TO RESTORE TELEMETRY: enable
-  // Analytics Engine at dash.cloudflare.com -> Workers & Pages -> Analytics
-  // Engine (one click, free plan), then un-comment this line and redeploy.
-  // "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
+  "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
   // McpAgent is a Durable Object. Each MCP session is one DO instance; our
   // tools are stateless (each call is independent) so the DO just holds the
   // Streamable-HTTP transport session — no app state is persisted.
