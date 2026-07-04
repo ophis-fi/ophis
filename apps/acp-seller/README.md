@@ -63,10 +63,15 @@ and never signs swap orders.
 ## Run
 
 ```bash
-cp .env.example .env   # fill in the values above (key from keychain at deploy)
 npm install
+cp .env.example .env   # fill in the values above (key from keychain at deploy)
 npm run start
 ```
+
+`npm run start` loads `apps/acp-seller/.env` automatically: the script runs
+`tsx --env-file=.env src/index.ts`, so the values are in `process.env` before
+the handler reads them. There is no `dotenv` dependency. `.env` is gitignored;
+never commit a real one.
 
 ## Files
 
@@ -74,6 +79,28 @@ npm run start
 - `src/buildOrder.ts`: the Ophis order-build bridge (orderbook quote plus
   `@ophis/sdk` helpers; reuses the documented SDK integration path).
 - `.env.example`: the required configuration.
+
+## ACP SDK
+
+This handler uses `@virtuals-protocol/acp-node` (the phase-based SDK) and its
+`AcpContractClientV2` client. The "V2" there is the ACP on-chain contract
+version, not the npm package version: `AcpContractClientV2` is exported from
+`@virtuals-protocol/acp-node`, not from a separate package.
+
+There is a distinct `@virtuals-protocol/acp-node-v2` package (a ground-up,
+event-driven rewrite around `AcpAgent` and `JobSession`). We do NOT use it: it
+is a different API that would mean rewriting the poll/accept/deliver loop. The
+verify was against the package README on GitHub
+(github.com/Virtual-Protocol/acp-node): `AcpContractClientV2`, `AcpClient`, and
+`AcpJobPhases` all live in `@virtuals-protocol/acp-node`.
+
+The dependency is pinned to `0.3.0-beta.40` (the current `latest` dist-tag). The
+package publishes only prereleases, so a caret range such as `^0.2.0` resolves
+to nothing and a caret over a prerelease can jump to an unrelated branch build;
+an exact pin keeps installs reproducible. Because acp-node ships a CommonJS
+bundle, `src/index.ts` reads the default-exported `AcpClient` class as
+`pkg.default` (a bare `import AcpClient from` binds to the module namespace under
+Node's ESM interop, not the class).
 
 ## Not done here
 

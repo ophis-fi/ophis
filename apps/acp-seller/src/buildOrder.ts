@@ -62,7 +62,35 @@ function minBuyAmount(quotedBuy: string, slippageBips: number): string {
   return out.toString()
 }
 
+/** Upper bound on accepted slippage (50%); anything higher is almost certainly a mistake. */
+export const MAX_SLIPPAGE_BIPS = 5000
+
+/**
+ * Decide whether a parsed request is actually fulfillable, BEFORE the buyer is
+ * asked to pay. A requirement can parse yet be unfulfillable: an unsupported
+ * chain (no live Ophis orderbook) or a non-finite / out-of-range slippage that
+ * would make BigInt(10_000 - slippageBips) throw or produce a nonsense bound.
+ * REQUEST and TRANSACTION both call this so they agree on what is accepted.
+ * Returns null when fulfillable, otherwise a human-readable reason.
+ */
+export function validateFulfillable(req: SwapRequest): string | null {
+  if (!getOphisOrderbookUrl(req.chainId)) {
+    return `chain ${req.chainId} has no live Ophis orderbook`
+  }
+  if (req.slippageBips !== undefined) {
+    const s = req.slippageBips
+    if (!Number.isInteger(s) || s < 0 || s > MAX_SLIPPAGE_BIPS) {
+      return `slippageBips must be an integer between 0 and ${MAX_SLIPPAGE_BIPS}`
+    }
+  }
+  return null
+}
+
 export async function buildSignableOrder(req: SwapRequest, nowSeconds: number): Promise<SignableOrder> {
+  // Guard here too so a direct caller cannot reach the quote/BigInt path with an
+  // unfulfillable request; REQUEST-phase acceptance uses the same check.
+  const problem = validateFulfillable(req)
+  if (problem) throw new Error(problem)
   const slippageBips = req.slippageBips ?? 100
   const orderbookUrl = getOphisOrderbookUrl(req.chainId)
   if (!orderbookUrl) throw new Error(`chain ${req.chainId} has no live Ophis orderbook`)
@@ -139,10 +167,14 @@ export async function buildSignableOrder(req: SwapRequest, nowSeconds: number): 
     signing: { domain: getOphisOrderDomain(req.chainId), types: ORDER_TYPES, primaryType: 'Order' },
     fullAppData,
     appDataHash,
+    // Template literal so orderbookUrl is interpolated to the real URL (the old
+    // single-quoted form emitted the ${...} token verbatim). Inner backticks
+    // around `order`/`signing` are escaped literals.
     note:
-      'Sign `order` as EIP-712 with `signing`, then POST { ...order, from, signingScheme: "eip712", ' +
-      'signature, appData: fullAppData, appDataHash } to `${orderbookUrl}/api/v1/orders`, ' +
-      'or relay it through the Ophis MCP submit_order tool. Ophis holds no keys.',
+      `Sign \`order\` as EIP-712 with \`signing\`, then POST ` +
+      `{ ...order, from, signingScheme: "eip712", signature, appData: fullAppData, appDataHash } ` +
+      `to ${orderbookUrl}/api/v1/orders, or relay it through the Ophis MCP submit_order tool. ` +
+      `Ophis holds no keys.`,
   }
 }
 
@@ -181,8 +213,9 @@ export function parseSwapRequirement(requirement: unknown): SwapRequest | null {
     buyToken: buyToken as `0x${string}`,
     sellAmount,
     owner: owner as `0x${string}`,
-    // isStablePair is intentionally not read from the (untrusted) requirement:
-    // the fee rate is set server-side by the SDK helper, not by the caller.
+    // No fee-selecting flag is read from the (untrusted) requirement: the fee
+    // rate is set server-side by the SDK helper, never by the caller, so a buyer
+    // cannot claim a cheaper rate to underpay.
     slippageBips: r.slippageBips !== undefined ? Number(r.slippageBips) : undefined,
   }
 }
