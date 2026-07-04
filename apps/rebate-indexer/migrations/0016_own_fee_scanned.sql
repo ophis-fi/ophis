@@ -1,0 +1,38 @@
+-- Persistent own-fee SCAN MARKER (fixes the backfill work-queue that never converged).
+--
+-- The own-fee backfill (backfillOwnFee) used own_fee_bps IS NULL as its work-queue
+-- state. That column is OVERLOADED: the normal insert path writes own_fee_bps = NULL
+-- for every trade that carries NO integrator own-fee (the vast majority). Those rows
+-- are indistinguishable from unscanned pre-0014 rows, so each backfill run re-selected
+-- the SAME oldest-500 no-own-fee rows, re-fetched them from the CoW API, wrote nothing,
+-- and returned updated:0 forever -- while permanently starving any real-own-fee rows
+-- sitting beyond the 500-row window. It never converged.
+--
+-- own_fee_scanned_at is a dedicated marker so the work-queue state is NO LONGER
+-- overloaded onto own_fee_bps. A row is a backfill candidate ONLY while this is NULL;
+-- the backfill stamps it (whether or not an own-fee was found), so every row is scanned
+-- at most once and the queue drains. The insert/upsert path also stamps it, so a
+-- freshly-indexed row is already marked scanned and never enters the backfill queue.
+--
+-- The invariant own_fee_bps IS NULL == "no flat own-fee recorded" is UNCHANGED: this
+-- column is ONLY a scanned-yet flag and never reclassifies a NULL own-fee to 0.
+--
+-- MARKER BACKFILL FOR EXISTING ROWS (conservative option, chosen deliberately):
+--   A row already carrying a NON-NULL own_fee_bps has, by construction, already been
+--   through an own-fee decode that found a fee, so it is DEFINITELY scanned -> stamp it
+--   (it never needs a re-fetch). Every other existing row keeps own_fee_scanned_at NULL.
+--   We CANNOT cleanly tell a genuinely-unscanned pre-0014 row from a post-0014 row that
+--   was scanned and simply had no own-fee (both have own_fee_bps IS NULL), so we leave
+--   the marker NULL for ALL of them and let the now-converging backfill scan each EXACTLY
+--   ONCE. That terminates correctly: a scanned no-own-fee row is stamped and leaves the
+--   queue permanently. Leaving these NULL is the SAFE choice -- a genuinely-unscanned
+--   pre-0014 row that stacked an own-fee is guaranteed one scan (never skipped), at the
+--   cost of a single one-time re-fetch for the ambiguous no-own-fee rows.
+--
+-- NULLABLE + no DB DEFAULT: an ALTER ... ADD COLUMN ... DEFAULT now() would stamp EVERY
+-- existing row (including the genuinely-unscanned ones), defeating the backfill. So the
+-- column is added bare and only the definitely-scanned rows are stamped explicitly below.
+-- Backward-compatible: /earnings and the public API do not read this column.
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS own_fee_scanned_at TIMESTAMPTZ;
+
+UPDATE trades SET own_fee_scanned_at = now() WHERE own_fee_bps IS NOT NULL AND own_fee_scanned_at IS NULL;

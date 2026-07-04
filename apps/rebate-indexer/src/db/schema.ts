@@ -88,6 +88,14 @@ export const trades = pgTable(
     ownFeeBps: integer('own_fee_bps'),
     ownFeeRecipient: bytea('own_fee_recipient'),
 
+    // Own-fee SCAN MARKER (migration 0016). NULL means the row has NOT yet been scanned
+    // for a stacked integrator own-fee; a timestamp means it has (whether or not one was
+    // found). This is the backfillOwnFee work-queue state. NEVER overload own_fee_bps
+    // for it (own_fee_bps IS NULL keeps meaning "no flat own-fee recorded"). The insert/
+    // upsert path stamps this so a freshly-indexed row never enters the backfill queue;
+    // the backfill stamps it so every row is scanned at most once and the queue drains.
+    ownFeeScannedAt: timestamp('own_fee_scanned_at', { withTimezone: true }),
+
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
 
