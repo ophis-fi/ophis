@@ -6,11 +6,12 @@ Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed inte
 
 ## Pricing
 
-- Flat fee: 0.10% (10 bps) on trade volume, applied to every trade.
+- Flat Ophis fee: 0.10% (10 bps) on trade volume on the swap app. SDK/MCP partner integrations charge a reduced 0.05% (5 bps) partner rate, and integrators can stack their own fee on top (see https://docs.ophis.fi/partners).
 - Stablecoin discount: 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.
-- Surplus: 100% of any price improvement a solver finds beyond your signed quote is returned to the trader. The fee is on volume only and takes no cut of surplus.
+- All-in cost per chain: on the Ophis-operated chains (Optimism, Unichain) the flat Ophis fee is the entire cost. On the 10 CoW-hosted chains, CoW Protocol charges its own fees on top: a 0.02% protocol volume fee (0.003% on correlated pairs) plus 50% of any quote improvement (capped at 0.98% of volume), making the fixed all-in there 0.12% standard / 0.013% stables. Sources: https://docs.cow.fi/governance/fees and https://docs.ophis.fi/fees.
+- Surplus: Ophis takes no cut of price improvement on any chain. On Optimism and Unichain, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement upstream before the remainder is returned.
 - APIs: the public MCP server and the Intent API are free. The Intent API is rate-limited to 30 requests per minute per IP.
-- Worked example: a 100,000 USDC trade pays 0.10% = 100 USDC in fee at 10 bps. The same 100,000 between two stablecoins on one chain pays 0.01% = 10 USDC at 1 bp.
+- Worked example: a 100,000 USDC trade pays 100 USDC all-in on Optimism/Unichain (0.10%), or 120 USDC fixed all-in on a CoW-hosted chain (0.12%). The same 100,000 between two stablecoins on one chain pays 10 USDC (Optimism/Unichain) or 13 USDC all-in (CoW-hosted).
 
 Intent API example (free, 30 req/min per IP):
 
@@ -36,5 +37,5 @@ curl -X POST https://swap.ophis.fi/api/intent \
 
 - [GitHub](https://github.com/ophis-fi/ophis): full source.
 - [Full docs text](https://docs.ophis.fi/llms-full.txt): the entire documentation concatenated into one file for LLM context windows.
-- Fee model: a flat 0.10% (10 bps) fee on trade volume, applied to every trade (e.g. swap 1,000 USDC, fee = 0.10% = 1 USDC), with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.
-- Surplus: any price improvement a solver finds beyond your signed quote is returned to the trader in full. The flat fee is on volume only and takes no cut of surplus.
+- Fee model: a flat 0.10% (10 bps) Ophis fee on trade volume (0.01% on same-chain stablecoin pairs), all-in on Optimism/Unichain. On CoW-hosted chains CoW Protocol adds a 0.02% volume fee (0.003% correlated) plus 50% of quote improvement, so the fixed all-in there is 0.12% / 0.013%.
+- Surplus: Ophis takes no cut of surplus anywhere. 100% of price improvement returned on Optimism/Unichain; on CoW-hosted chains CoW Protocol retains 50% of quote improvement upstream.

@@ -245,9 +245,10 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The partner fee is a flat 0.10% (10 bps) fee on trade volume, applied to every
-trade, written into the order's `appData` at `metadata.partnerFee`. Use the
-CIP-75 **volume** shape `{ volumeBps: 10, recipient }`, **not** the
+The partner fee for SDK/MCP integrations is a flat 0.05% (5 bps) fee on trade
+volume (the Ophis swap app charges its own 0.10% retail rate), written into the
+order's `appData` at `metadata.partnerFee`. Use the
+CIP-75 **volume** shape `{ volumeBps: 5, recipient }`, **not** the
 price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
 the two shapes use different denominators, so slotting a value into the wrong
 field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
@@ -256,7 +257,7 @@ stable, so the hash won't match what solvers expect.
 
 Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp): same-chain pairs
 where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
-`{ volumeBps: 10, recipient }`. The `@ophis/sdk` exposes
+`{ volumeBps: 5, recipient }`. The `@ophis/sdk` exposes
 `OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
 to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
 so integrators pass `isStablePair` based on their own token classification.
@@ -274,11 +275,12 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 //
 // On Optimism the fee is an ENFORCED FLOOR: the self-hosted backend rejects
 // (HTTP 400) any order to the Ophis fee recipient whose partner fee is below the
-// floor (10 bps, or 1 bp for a same-chain stablecoin pair), or that uses a
+// floor (4 bps non-stable, which the 5 bps partner rate clears, or 1 bp for a
+// same-chain stablecoin pair), or that uses a
 // Surplus/PriceImprovement policy. Carry this fragment unchanged on OP: do not
 // lower the bps and do not drop the fee, or the order is rejected.
 const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> the Ophis flat-volume partner-fee fragment { volumeBps: 10, recipient }
+// -> the Ophis flat-volume partner-fee fragment { volumeBps: 5, recipient }
 //    for this chain (enforced as a minimum on Optimism: at least the floor)
 
 const metadataApi = new MetadataApi();

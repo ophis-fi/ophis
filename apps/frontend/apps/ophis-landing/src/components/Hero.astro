@@ -16,6 +16,9 @@ const pillHref = 'https://github.com/ophis-fi/ophis/tree/main/packages/sdk'
       <a class="cta-primary" href="https://swap.ophis.fi/">Trade</a>
       <a class="cta-secondary" href="https://docs.ophis.fi" rel="noopener">Read docs</a>
     </div>
+    <p class="fee-proof reveal-up" data-reveal>
+      10 bps <a href="https://docs.ophis.fi/comparison" rel="noopener">all-in</a> on Optimism and Unichain, zero cut of your surplus.
+    </p>
   </div>
 </section>
 <script>
@@ -75,6 +78,19 @@ const pillHref = 'https://github.com/ophis-fi/ophis/tree/main/packages/sdk'
     margin: 0 0 36px;
   }
   .ctas { display: flex; gap: 12px; justify-content: center; }
+  .fee-proof {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ophis-fg-muted);
+    margin: 20px 0 0;
+  }
+  .fee-proof a {
+    color: var(--ophis-fg-muted);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 150ms ease;
+  }
+  .fee-proof a:hover { color: var(--ophis-saffron-60); }
   .cta-primary, .cta-secondary {
     padding: 13px 26px;
     border-radius: var(--ophis-radius-sm);

@@ -69,48 +69,57 @@ you named. Bitcoin as a destination is, among these four, unique to Ophis.
 
 The four projects price trades on different models:
 
-- **Ophis**: a flat **0.10% (10 bps)** on trade volume, applied to every trade.
-  Same-chain stablecoin-to-stablecoin swaps pay a reduced **0.01% (1 bp)**;
-  cross-chain trades pay the standard rate. The rate is knowable before you
-  trade and does not depend on execution outcome. Because the fee is a fixed
-  share of volume, it never touches your **surplus**: any price improvement a
-  solver finds beyond your quote is returned to you in full, with no cut taken.
-- **CoW Swap**: a **surplus-based** model. The fee is taken as a share of the
-  price improvement (surplus) a solver finds beyond your quote, so the cost
-  depends on how the batch fills and is not a fixed percentage of volume.
+- **Ophis**: a flat **0.10% (10 bps)** Ophis fee on trade volume, with a
+  reduced **0.01% (1 bp)** on same-chain stablecoin-to-stablecoin swaps. On
+  the **Ophis-operated chains (Optimism, Unichain)** that flat fee is the
+  **all-in cost**. On the 10 CoW-hosted chains, CoW Protocol's own fees apply
+  on top (a 0.02% protocol volume fee, 0.003% on correlated pairs, plus 50% of
+  any quote improvement, capped at 0.98% of volume), bringing the fixed all-in
+  to **0.12% / 0.013%** there. The fixed part is knowable before you trade.
+- **CoW Swap**: a **0.02% (2 bps)** protocol volume fee (0.003% on correlated
+  pairs) plus **50% of the quote improvement** a solver finds beyond your
+  quote (capped at 0.98% of volume), so part of the cost depends on how the
+  batch fills.
 - **Matcha**: a **tiered** model, roughly **0.25%** on most pairs and **0.05%**
   on stablecoin pairs.
 - **Velora**: a **15 bps (0.15%)** interface fee on most swaps, with a reduced
   **1 bp (0.01%)** on stablecoin pairs.
 
 A worked comparison on a **1,000 USDC** trade (non-stablecoin output, e.g. to ETH)
-makes the gap visible:
+makes the structure visible:
 
-| Front-end | Fee on 1,000 USDC | Notes |
+| Front-end | Fixed fee on 1,000 USDC | Improvement (surplus) split |
 | --- | --- | --- |
-| Ophis | **1.00 USDC** (0.10%) | Flat, known before you trade |
-| CoW Swap | Varies | Share of surplus, depends on the batch |
-| Matcha | **2.50 USDC** (0.25%) | Lower tier on some chains |
-| Velora | **1.50 USDC** (0.15%) | 1 bp on stablecoin pairs |
+| Ophis on Optimism / Unichain | **1.00 USDC** (0.10%) | **100% to you** |
+| Ophis on CoW-hosted chains | **1.20 USDC** (0.12% all-in) | 50% of quote improvement retained upstream by CoW Protocol |
+| CoW Swap | **0.20 USDC** (0.02%) | 50% of quote improvement retained by CoW Protocol |
+| Matcha | **2.50 USDC** (0.25%) | Positive slippage, route-dependent |
+| Velora | **1.50 USDC** (0.15%) | Positive slippage, route-dependent |
 
-On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges **0.10 USDC**
-(0.01%), Matcha **0.50 USDC** (0.05%), and Velora **0.10 USDC** (0.01%). The
-takeaway is not that one number is always lowest, it is that the Ophis fee is
-**flat and predictable**: you know the cost before you sign, independent of how
-the order fills.
+On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges
+**0.10 USDC** (0.01%) on Optimism and Unichain and **0.13 USDC** all-in on
+CoW-hosted chains, Matcha **0.50 USDC** (0.05%), and Velora **0.10 USDC**
+(0.01%). The takeaway is not that one number is always lowest. It is that the
+Ophis fee is **flat and published all-in per chain**, and that on the
+Ophis-operated chains no one takes any share of your price improvement.
 
-### Surplus goes back to you, in full
+### Where the surplus goes
 
 Both Ophis and CoW Swap run batch auctions where solvers compete to **beat** the
 price you signed. The extra value a solver finds beyond your quote is the
-**surplus** (price improvement). On this point Ophis is at **exact parity with
-CoW Protocol**: surplus belongs to the trader.
+**surplus** (price improvement).
 
-The difference is **where each project takes its cut**. CoW Swap's fee is itself
-**surplus-based**: it keeps a share of that price improvement. Ophis runs a
-**flat volume fee instead**, so it takes **zero** cut of surplus. Every basis
-point a solver wins beyond your quote is returned to you in full, on top of the
-known flat fee. You are never charged a price-improvement fee on Ophis.
+**Ophis itself takes zero cut of surplus on any chain**: its fee is flat on
+volume, never on improvement. Where the order settles decides the rest:
+
+- On **Optimism and Unichain** (the chains Ophis operates end to end), **100%
+  of the price improvement is returned to you**. Among the venues on this
+  page, that is the best published improvement split.
+- On the **10 CoW-hosted chains**, CoW Protocol's fee model retains **50% of
+  the quote improvement** (capped at 0.98% of volume) before the remainder is
+  returned. That upstream capture applies equally to CoW Swap itself and to
+  every front-end settling through CoW's hosted infrastructure, Ophis
+  included. You are never charged an *Ophis* price-improvement fee anywhere.
 
 ### Agent-first API
 
@@ -133,7 +142,7 @@ tool. The same sentence a person types is the same sentence an agent posts.
   predictable fee, and an agent-first API. It is the option built for
   English-in / order-out and for autonomous agents.
 
-## Trade-offs (honestly)
+## Trade-offs, stated plainly
 
 Ophis runs its **own solver and orderbook on Optimism and Unichain**, where its stack is
 self-hosted; on the other chains it surfaces, it relies on CoW's hosted
@@ -151,8 +160,8 @@ settlement foundation.
 | **How you trade** | Natural language, e.g. "swap 100 USDC for ETH on Base" | Token picker (signed intents) | Token picker | Token picker |
 | **Settlement** | CoW Protocol batch auctions (shared foundation) | CoW Protocol batch auctions | 0x aggregation / RFQ | Aggregation across DEXs |
 | **Cross-chain scope** | 12 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
-| **Fee model** | Flat 0.10% (10 bps) on trade volume; 0.01% (1 bp) on same-chain stablecoin-to-stablecoin pairs | Surplus-based: a share of price improvement, not a fixed % of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
-| **Surplus (price improvement)** | 100% returned to the trader; Ophis takes **zero** cut (flat volume fee, not a surplus fee) | 100% returned to the trader, but the fee itself is a share of that surplus | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
+| **Fee model** | Flat 0.10% (10 bps) Ophis fee; 0.01% (1 bp) stable pairs. All-in on Optimism/Unichain; +0.02% CoW protocol fee (0.003% correlated) on CoW-hosted chains = 0.12% / 0.013% all-in there | 0.02% protocol volume fee (0.003% correlated) + 50% of quote improvement, capped at 0.98% of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
+| **Surplus (price improvement)** | **100% to the trader on Optimism/Unichain**; on CoW-hosted chains CoW Protocol retains 50% of quote improvement upstream. Ophis itself takes zero cut anywhere | 50% of quote improvement retained (capped 0.98% of volume), remainder to the trader | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
 | **Agent API** | Public `POST /api/intent` (no key) + hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |
 | **Rebates** | 21.25% of WETH fees paid back monthly as volume-tier rebates | Not applicable | Not applicable | Not applicable |
 | **MEV protection** | Yes (batch auctions) | Yes (batch auctions) | Partial / route-dependent | Partial / route-dependent |
@@ -166,7 +175,9 @@ settlement foundation.
 :::note
 
 Competitor fee and chain details reflect each project's public documentation as of
-June 2026 and may change. Sources:
+July 2026 and may change. The CoW-hosted all-in figures were additionally
+verified against live production quotes (the quote API's `protocolFeeBps`
+field) on 2026-07-03. Sources:
 [CoW Protocol fees](https://docs.cow.fi/governance/fees),
 [Matcha fees](https://help.matcha.xyz/en/articles/3953360-are-there-any-fees-to-make-a-trade),
 [Velora UI fees](https://help.velora.xyz/en/articles/6554779-paraswap-ui-fees).
