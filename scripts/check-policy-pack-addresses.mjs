@@ -167,6 +167,39 @@ for (const f of PRESENCE_FILES) {
   }
 }
 
+// --- Gate C: per-CHAIN rows in the copy-paste table map to the CORRECT --------
+// address. Gate B only proves each address appears SOMEWHERE, so a row that pairs
+// the right chain with the WRONG (but valid, allowlisted-elsewhere) address would
+// pass B. Integrators paste per-chain, so a mis-paired row is the real hazard.
+// Parse the markdown table rows `| name | id | `settlement` | `relayer` |` and
+// verify each against addresses.json (which Gate A pins to the SDK).
+const ROW_RE = /^\|[^|]*\|\s*(\d+)\s*\|\s*`(0x[0-9a-fA-F]{40})`\s*\|\s*`(0x[0-9a-fA-F]{40})`\s*\|/;
+for (const f of PRESENCE_FILES) {
+  let content;
+  try {
+    content = readFileSync(rel(f), 'utf8');
+  } catch {
+    continue; // already reported by Gate B
+  }
+  for (const line of content.split('\n')) {
+    const m = line.match(ROW_RE);
+    if (!m) continue;
+    const chainId = Number(m[1]);
+    const [, , settlement, relayer] = m;
+    const row = tableById.get(chainId);
+    if (!row) {
+      fail(`${f} copy-paste table lists chain ${chainId} which is not in addresses.json`);
+      continue;
+    }
+    if (settlement !== row.settlement) {
+      fail(`${f} chain ${chainId} settlement in the copy-paste table is ${settlement} but addresses.json says ${row.settlement} (a mis-paired row an integrator would paste)`);
+    }
+    if (relayer !== row.relayer) {
+      fail(`${f} chain ${chainId} relayer in the copy-paste table is ${relayer} but addresses.json says ${row.relayer} (a mis-paired row an integrator would paste)`);
+    }
+  }
+}
+
 // --- Report ----------------------------------------------------------------
 if (errors.length > 0) {
   console.error('Policy-pack address check FAILED:\n');

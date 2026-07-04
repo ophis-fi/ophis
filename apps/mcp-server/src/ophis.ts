@@ -494,35 +494,46 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
           if (!volumeBpsOk) {
             errors.push(`${label}.volumeBps must be an integer in [1, 100], got ${JSON.stringify(fee.volumeBps)}.`)
           }
-          // Only the ENTRY that names the Ophis recipient is gated by the backend
-          // allowlist and Volume floor. A stacked second entry (an integrator's own
-          // fee to a different recipient) is allowed to differ and is left alone.
+          // The backend allowlist (app_data.rs validate_partner_fees) gates EVERY
+          // entry: it rejects the WHOLE order if ANY recipient is not in
+          // PARTNER_FEE_RECIPIENT_ALLOWLIST, which today holds only the Ophis Safe.
           const isOphisRecipient =
             recipientOk && ophisRecipient !== undefined && (fee.recipient as string).toLowerCase() === ophisRecipient
           if (isOphisRecipient) {
             ophisRecipientSeen = true
-            // Token-pair Volume floor, enforced ONLY on Ophis-operated chains (the OP
+            // Token-pair Volume floor, enforced ONLY on Ophis-operated chains (the
             // self-hosted backend applies partner_fee_floor_bps; CoW-hosted chains do
             // not). The preflight has no cheap stablecoin list, so it applies the
             // conservative non-stable floor and names the reduced stable-pair floor.
-            if (
-              ophisOperated &&
-              volumeBpsOk &&
-              typeof o?.sellToken === 'string' &&
-              typeof o?.buyToken === 'string' &&
-              (fee.volumeBps as number) < OPHIS_NON_STABLE_FLOOR_BPS
-            ) {
+            const tokensGiven = typeof o?.sellToken === 'string' && typeof o?.buyToken === 'string'
+            if (ophisOperated && volumeBpsOk && tokensGiven && (fee.volumeBps as number) < OPHIS_NON_STABLE_FLOOR_BPS) {
               errors.push(
                 `${label}.volumeBps ${fee.volumeBps} is below the Ophis ${OPHIS_NON_STABLE_FLOOR_BPS}-bps non-stable Volume floor on Ophis-operated chain ${chainId}: the self-hosted backend rejects a fee to the Ophis recipient under this floor. Same-chain stablecoin pairs floor at ${OPHIS_STABLE_VOLUME_FEE_BPS} bp; raise volumeBps to at least ${OPHIS_NON_STABLE_FLOOR_BPS} (or ${OPHIS_STABLE_VOLUME_FEE_BPS} for a same-chain stable pair).`,
               )
+            } else if (ophisOperated && volumeBpsOk && !tokensGiven && (fee.volumeBps as number) < OPHIS_NON_STABLE_FLOOR_BPS) {
+              // Tokens omitted, so the pair (and thus the exact floor) cannot be
+              // confirmed here; the backend still enforces it. Warn rather than
+              // silently pass, so omitting the tokens does not hide a floor breach.
+              warnings.push(
+                `${label}.volumeBps ${fee.volumeBps} may breach the Ophis Volume floor (${OPHIS_NON_STABLE_FLOOR_BPS} bps non-stable, ${OPHIS_STABLE_VOLUME_FEE_BPS} bp same-chain stable) on Ophis-operated chain ${chainId}; supply sellToken/buyToken so the preflight can confirm, or the backend may reject the order at ingress.`,
+              )
             }
+          } else if (recipientOk && ophisOperated) {
+            // A non-Ophis recipient on an Ophis-operated chain. validate_partner_fees
+            // rejects the ENTIRE order unless this address is independently
+            // allowlisted, so a stacked own-fee recipient is NOT accepted by default.
+            warnings.push(
+              `${label}.recipient ${fee.recipient} is not the Ophis recipient. On Ophis-operated chain ${chainId} the backend partner-fee allowlist rejects the whole order unless this address is in PARTNER_FEE_RECIPIENT_ALLOWLIST; an integrator own-fee recipient must be independently verified and allowlisted before it can settle on a sovereign chain (own-fee stacking is not open by default there).`,
+            )
           }
         })
         // The Ophis recipient MUST appear on a fee chain: the backend allowlist
         // (app_data.rs validate_partner_fees) rejects a partner fee whose recipient
         // is not the Ophis Safe, so a document carrying only a foreign recipient
-        // routes nothing to Ophis and is rejected at ingress. A well-formed extra
-        // entry (the integrator's own fee) is fine as long as the Ophis entry exists.
+        // routes nothing to Ophis and is rejected at ingress. A stacked foreign
+        // entry (an integrator's own fee) is NOT accepted by default either: it is
+        // warned about above, because the backend rejects the whole order unless
+        // that recipient is independently allowlisted.
         if (expected.partnerFee && !ophisRecipientSeen) {
           errors.push(
             `appData metadata.partnerFee has no entry paying the Ophis recipient ${expected.partnerFee.recipient} on fee chain ${chainId}: the backend partner-fee allowlist rejects a fee to any other recipient, so this order earns no Ophis fee and is rejected at ingress. Set the Ophis fee entry's recipient to ${expected.partnerFee.recipient}.`,
