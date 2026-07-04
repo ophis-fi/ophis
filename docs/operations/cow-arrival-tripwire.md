@@ -34,6 +34,7 @@ neither chain, stub comment present.
 ## Install (Mac mini, launchd, weekly)
 
 ```bash
+mkdir -p ~/bin ~/.local/state/ophis
 cp scripts/ops/cow-arrival-tripwire.sh ~/bin/cow-arrival-tripwire.sh
 chmod +x ~/bin/cow-arrival-tripwire.sh
 cat > ~/Library/LaunchAgents/com.ophis.cow-tripwire.plist <<'EOF'

@@ -142,11 +142,27 @@ prev_of() { # $1 = key -> echoes the stored value ('' if none)
   grep "^$1 " "$STATE_FILE" 2>/dev/null | head -1 | cut -d' ' -f2- || true
 }
 
+# The known-safe baseline per key (CoW has NOT arrived). Used as the comparison
+# fallback when a state file exists but a key is missing from it (e.g. a probe
+# failed during a prior partial baseline), so a key that was never recorded
+# still alerts if it is already 200/YES/GONE rather than being silently
+# re-baselined and missing the arrival signal.
+safe_baseline_of() { # $1 = key -> echoes its arrival-negative value
+  case "$1" in
+    api_optimism|api_unichain|barn_optimism|barn_unichain) echo "404" ;;
+    sdk_enum) echo "optimism=no unichain=no" ;;
+    networks_stub) echo "present" ;;
+  esac
+}
+
 changes=""
 changed_keys=""
 if [[ -f "$STATE_FILE" ]]; then
   for k in $KEYS; do
     prev="$(prev_of "$k")"
+    # No stored value for this key (partial prior baseline): compare against the
+    # known-safe baseline so an already-arrived signal is not silently accepted.
+    [[ -z "$prev" ]] && prev="$(safe_baseline_of "$k")"
     cur="$(cur_of "$k")"
     # Never alert on transitions into ERR (transient network noise); a
     # transition OUT of ERR only alerts if it differs from the last real value.
@@ -171,6 +187,15 @@ if [[ -n "$changes" ]]; then
   alert_ok=0
   echo "tripwire: CHANGES DETECTED"
   printf '%s' "$changes"
+  # Derive the affected chain(s) from the changed keys so the playbook points at
+  # the right chain rather than hardcoding Optimism/Unichain (a Unichain arrival
+  # signal must not tell ops to lean on Unichain). sdk_enum and networks_stub can
+  # touch either chain, so name both when they change.
+  affected=""
+  case "$changed_keys" in *api_optimism*|*barn_optimism*) affected="Optimism" ;; esac
+  case "$changed_keys" in *api_unichain*|*barn_unichain*) affected="${affected:+$affected and }Unichain" ;; esac
+  case "$changed_keys" in *sdk_enum*|*networks_stub*) affected="${affected:-Optimism and/or Unichain (check the diff)}" ;; esac
+  [[ -z "$affected" ]] && affected="the sovereign chains"
   msg="COW ARRIVAL TRIPWIRE
 
 Signals changed on CoW's side for the Ophis sovereign chains:
@@ -178,7 +203,7 @@ Signals changed on CoW's side for the Ophis sovereign chains:
 ${changes}
 Read: barn 200 = staging up, launch imminent. api 200 = LAUNCHED. sdk_enum YES = sell-from support merged upstream. networks_stub GONE = frontend migration started.
 
-Playbook: weight sovereign messaging to Unichain, re-check docs claims of only-venue on the affected chain, and reassess the OP 100 percent fee-keep story."
+Affected: ${affected}. Playbook: re-check only-venue claims and reassess the 100 percent fee-keep story for the affected chain, and weight sovereign messaging toward the chain NOT in the change above."
   # Token hygiene: the Telegram API requires the token in the URL path, but the
   # URL must NOT appear in argv (visible via `ps` while curl runs). Pass it
   # through a curl config on stdin (curl -K -), so the token stays out of the
