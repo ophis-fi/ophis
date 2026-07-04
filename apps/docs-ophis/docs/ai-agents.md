@@ -245,9 +245,11 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The partner fee for SDK/MCP integrations is a flat 0.05% (5 bps) fee on trade
-volume (the Ophis swap app charges its own 0.10% retail rate), written into the
-order's `appData` at `metadata.partnerFee`. Use the
+The partner fee for SDK and manual integrations is a flat 0.05% (5 bps) fee on
+trade volume (the Ophis swap app charges its own 0.10% retail rate), written into
+the order's `appData` at `metadata.partnerFee`. This section is for callers that
+build appData themselves; the keyless MCP `build_order` embeds this fee for you
+at the flat 5 bps rate (it does not apply the reduced stable-pair rate). Use the
 CIP-75 **volume** shape `{ volumeBps: 5, recipient }`, **not** the
 price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
 the two shapes use different denominators, so slotting a value into the wrong
