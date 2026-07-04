@@ -74,7 +74,17 @@ export const MAX_SLIPPAGE_BIPS = 5000
  * Returns null when fulfillable, otherwise a human-readable reason.
  */
 export function validateFulfillable(req: SwapRequest): string | null {
-  if (!getOphisOrderbookUrl(req.chainId)) {
+  // getOphisOrderbookUrl THROWS for an unsupported/invalid chain id (it asserts a
+  // valid chain and has no entry), it does not return a falsy value. Catch it so
+  // an unfulfillable requirement returns a clean reason and is rejected BEFORE
+  // payment, instead of throwing and skipping the graceful reject path.
+  let hasOrderbook = false
+  try {
+    hasOrderbook = Boolean(getOphisOrderbookUrl(req.chainId))
+  } catch {
+    hasOrderbook = false
+  }
+  if (!hasOrderbook) {
     return `chain ${req.chainId} has no live Ophis orderbook`
   }
   if (req.slippageBips !== undefined) {
