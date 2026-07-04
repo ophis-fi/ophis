@@ -7,8 +7,10 @@ sidebar_label: Native BTC for agents
 
 # Swap into native Bitcoin from an agent
 
-Among intent-based swap venues, Ophis is the one where **native Bitcoin** sits
-next to 12 EVM chains under a single gasless flow. This page shows how an agent
+Among intent-based batch-auction swap venues, Ophis packages a gasless,
+hard-limit path to **native Bitcoin** next to 12 EVM chains. The cross-chain
+rail (NEAR Intents) is shared by several venues; what Ophis packages is the
+keyless, bounded agent path onto it. This page shows how an agent
 or bot moves an EVM position into native BTC (or SOL) without holding a gas token
 on any chain and without handing custody to a bridge UI.
 
@@ -26,14 +28,17 @@ shape is:
    proceeds land at the NEAR Intents deposit address, and NEAR Intents brokers
    delivery to the agent's Bitcoin address.
 
-The agent signs once, on the source chain, and needs no BTC-side wallet and no
-gas token. The order is still a bounded intent: it cannot fill below the price
-the agent signed.
+The agent signs once, on the source chain. It supplies a destination Bitcoin
+address it controls, but signs nothing on the Bitcoin side and holds no gas
+token on any chain. The order is still a bounded intent: it cannot fill below
+the price the agent signed.
 
 ## Today vs the packaged tool
 
-The full BTC and SOL flow is live in the Ophis app today. A single keyless
-`swap_to_btc` / `swap_to_sol` MCP tool that wraps the two legs is on the roadmap;
+The BTC and SOL destination flow is live in the Ophis **web app** today, where a
+person composes it. For an **agent**, there is no single wrapped tool yet: a
+keyless `swap_to_btc` / `swap_to_sol` MCP tool that combines the two legs is on
+the roadmap, not shipped;
 until it ships, an agent composes the two calls directly:
 
 ```ts
@@ -67,8 +72,8 @@ path.
 ## Why an agent should care
 
 - **One signature, no gas juggling.** The agent does not fund a wallet on the
-  destination chain or hold BTC-side keys; it signs one intent on the source
-  chain.
+  destination chain and does no Bitcoin-side signing; it supplies a BTC address
+  to receive at and signs one intent on the source chain.
 - **Bounded.** The receiver is the deposit address bound to the agent's own BTC
   address, and the limit price caps the fill. A prompt-injected agent cannot
   redirect the BTC to an arbitrary address without changing the signed order,
