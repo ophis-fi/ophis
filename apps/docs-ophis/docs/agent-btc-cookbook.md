@@ -18,7 +18,7 @@ a bridge UI.
 ## The mechanism
 
 A Bitcoin address cannot receive an ERC-20, so the cross-chain leg runs through
-[NEAR Intents](https://near.org/intents), a non-custodial settlement layer. The
+[NEAR Intents](https://near.org/intents), a cross-chain settlement layer. The
 shape is:
 
 1. Ask NEAR Intents (its 1-Click flow) for a **deposit address** on the source
