@@ -19,7 +19,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'What does Ophis charge?',
-    a: 'Ophis applies a flat 0.10% (10 bps) fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. The fee is on volume only and takes no cut of surplus: 100% of any price improvement a solver finds beyond your signed quote is returned to the trader. The public Intent API and the MCP server are free.',
+    a: 'Ophis applies a flat 0.10% (10 bps) fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. The fee is on volume only: Ophis takes no cut of surplus on any chain. On its operated chains, Optimism and Unichain, that fee is the all-in cost and 100% of any price improvement a solver finds beyond your signed quote is returned to the trader; on CoW-hosted chains CoW Protocol adds its own fees on top: a 0.02% volume fee (0.003% on correlated pairs) plus 50% of quote improvement, capped at 0.98% of volume. The public Intent API and the MCP server are free.',
   },
   {
     q: 'Which chains does Ophis support?',

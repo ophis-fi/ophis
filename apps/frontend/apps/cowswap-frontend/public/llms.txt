@@ -1,14 +1,14 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); on the Ophis-operated chains Optimism and Unichain that is the all-in cost, while on CoW-hosted chains CoW Protocol's own fees apply on top (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-protected**: orders settle off-chain via a batch auction; sandwich attacks are structurally absent, not best-effort.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Flat, transparent fee**: a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. Example: swap 1,000 USDC, fee = 0.10% = 1 USDC.
-- **Surplus stays with the trader**: any execution that beats the signed quote (surplus / price improvement) is returned to the trader in full. The flat fee is on volume only and takes no share of surplus, unlike a surplus-based or price-improvement fee model.
+- **Flat, published-all-in fee**: a flat 0.10% (10 bps) Ophis fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. On Optimism and Unichain that is the entire cost (example: swap 1,000 USDC on Optimism, fee = 1 USDC all-in). On CoW-hosted chains, CoW Protocol adds a 0.02% protocol volume fee (0.003% on correlated pairs), making the fixed all-in 0.12% / 0.013% there.
+- **Surplus**: Ophis takes no share of price improvement on any chain. On Optimism and Unichain, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume) upstream before the remainder is returned.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
 ## Routes
@@ -27,7 +27,7 @@
 
 ## APIs
 
-- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Same-origin only (Origin allowlist enforced). Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
+- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Browser calls are Origin-allowlisted (ophis.fi, swap.ophis.fi); non-browser callers (curl, server-side scripts, agents) that omit the Origin header are allowed, subject to the rate limit. Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
 
 ## For AI agents
 
