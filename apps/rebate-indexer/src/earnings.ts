@@ -22,7 +22,7 @@
  * already-executed Safe batches. It never returns a 30d figure, an estimated
  * current-cycle earning, or a next-payout timestamp (those stay sig-gated on /partner).
  */
-import { SOVEREIGN_CHAIN_IDS, keepFractionBps } from './affiliate/rates.js';
+import { SOVEREIGN_CHAIN_IDS } from './affiliate/rates.js';
 import { CHAIN_NAME, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 
 // db (sql) is imported LAZILY inside getIntegratorEarnings so this module - and the
@@ -68,9 +68,11 @@ export interface EarningsChainRow {
   trades: number;
   /** Gross Ophis partner fee charged on this integrator's flow on this chain (info). */
   ophisFeeAccruedUsd: number;
-  /** The integrator's own stacked fee on this chain, NET of CoW's service-fee cut on
-   *  hosted chains (the amount the integrator actually receives). Sovereign chains
-   *  (Optimism, Unichain) keep 100%; hosted chains keep the hosted keep fraction. */
+  /** The GROSS integrator own-fee charged to their stacked recipient on this chain.
+   *  Ophis takes 0% of it. On Optimism/Unichain it is swept in full; on CoW-hosted
+   *  chains it pays out under CoW's terms (which may include a service fee on a
+   *  stacked recipient, not yet verified), so treat the hosted portion as gross and
+   *  not guaranteed. */
   ownFeeAccruedUsd: number;
 }
 
@@ -94,9 +96,11 @@ export interface IntegratorEarnings {
   routedVolumeUsd: { total: number; sovereign: number; hosted: number };
   /** Gross Ophis partner fee charged on this flow (informational, not the integrator's earning). */
   ophisFeeAccruedUsd: { total: number; sovereign: number; hosted: number };
-  /** The integrator's OWN stacked fee, as the amount the integrator RECEIVES.
-   *  sovereignGuaranteed is Ophis-controlled and kept in full (100%); hostedAccrued is
-   *  CoW-disbursed and NET of CoW's service-fee cut (the hosted keep fraction). */
+  /** The integrator's OWN stacked fee, GROSS (Ophis takes 0% of it).
+   *  sovereignGuaranteed is Ophis-controlled and swept in full; hostedAccrued is the
+   *  gross amount charged at settlement on CoW-hosted chains, disbursed under CoW's
+   *  terms (which may take a service fee on a stacked recipient, not yet verified),
+   *  so it is not guaranteed. */
   ownFeeAccruedUsd: {
     total: number;
     sovereignGuaranteed: number;
@@ -161,11 +165,13 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   const byChain: EarningsChainRow[] = input.byChain
     .map((c) => {
       const sovereign = SOVEREIGN_CHAIN_IDS.has(c.chainId);
-      // Own-fee is what the integrator RECEIVES: on CoW-hosted chains CoW takes a
-      // service-fee cut before disbursing partner fees, so scale by the hosted keep
-      // fraction (keepFractionBps). Sovereign chains keep 100% (keepFractionBps ==
-      // 10_000), so this is a no-op there. Ophis's own base fee stays GROSS (info).
-      const ownKeep = keepFractionBps(c.chainId) / 10_000;
+      // Own-fee is the GROSS amount charged to the integrator's stacked recipient
+      // at settlement. Ophis takes 0% of it. On Optimism/Unichain it is swept in
+      // full, so gross == received. On CoW-hosted chains payout runs through CoW's
+      // distribution under CoW's terms; whether CoW's service fee applies to a
+      // stacked non-Ophis recipient is not yet verified, so we report the gross
+      // charged amount and label hostedAccrued as unverified/not guaranteed rather
+      // than assuming a specific haircut (which would be an unverified deduction).
       return {
         chainId: c.chainId,
         chainName: CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`,
@@ -173,7 +179,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
         routedVolumeUsd: round(c.volumeUsd, 4),
         trades: c.trades,
         ophisFeeAccruedUsd: round(c.ophisFeeBase / BPS_DENOM),
-        ownFeeAccruedUsd: round((c.ownFeeBase / BPS_DENOM) * ownKeep),
+        ownFeeAccruedUsd: round(c.ownFeeBase / BPS_DENOM),
       };
     })
     // Largest routed volume first, then chain id for stable ordering.
@@ -252,8 +258,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       hostedAccrued: round(ownHosted),
       recipient: input.ownFeeRecipient,
       note:
-        `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders on every chain, reported as the amount you receive. ` +
-        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and kept in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, and is shown NET of CoW's service-fee cut (the hosted keep fraction). ` +
+        `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders, reported GROSS (Ophis takes 0% of it). ` +
+        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and swept to you in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, paid out under CoW's terms, which may take a service fee on a stacked recipient (not yet verified), so treat it as gross and not guaranteed. ` +
         `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included.`,
     },
     referral: {

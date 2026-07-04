@@ -396,9 +396,13 @@ Three earnings streams appear:
 ```
 
 Agents can poll the same data through the Ophis MCP server's `get_integrator_earnings`
-tool (it calls this endpoint). Own-fee is decoded from the settled appData on every chain,
-so there is no hosted-chain attribution gap; only the paid/guaranteed labeling is
-sovereign-scoped, as above.
+tool (it calls this endpoint). The own-fee amount is decoded from settled appData on
+every chain, so the charged amount is attributed everywhere. What is sovereign-scoped
+is the guarantee: on Optimism and Unichain the own-fee is swept to you in full, while
+the hosted figure is the gross amount charged at settlement, paid out under CoW's terms.
+Whether CoW's service fee applies to a stacked non-Ophis recipient, and the end-to-end
+payout of that recipient, are still being verified, so treat the hosted own-fee as
+gross and not guaranteed.
 
 ## Selling native ETH (eth-flow)
 

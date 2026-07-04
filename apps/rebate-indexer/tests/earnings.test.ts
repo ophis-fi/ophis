@@ -5,11 +5,12 @@ const NOW = new Date('2026-07-04T00:00:00.000Z');
 
 // A stacked-fee integrator with volume on both sovereign chains (OP 10, Unichain 130)
 // and one CoW-hosted chain (Base 8453). Fee bases are USD*bps (assembler / 10_000).
-// Own-fee is reported NET of CoW's service-fee cut on hosted chains (the hosted keep
-// fraction 0.75); sovereign chains keep 100%. The Ophis base fee stays GROSS (info):
-//   OP:       100k vol, ophis 10 bps -> $100, own 25 bps -> $250 (sovereign, 100%)
-//   Unichain:  50k vol, ophis 10 bps -> $50,  own 25 bps -> $125 (sovereign, 100%)
-//   Base:     200k vol, ophis 10 bps -> $200, own 30 bps -> $600 gross -> $450 net (hosted, 0.75)
+// Own-fee is reported GROSS (Ophis takes 0% of it); hosted own-fee pays out under
+// CoW's terms, which may take a service fee on a stacked recipient (not verified),
+// so the hosted figure is gross and not guaranteed. The Ophis base fee is also GROSS:
+//   OP:       100k vol, ophis 10 bps -> $100, own 25 bps -> $250 (sovereign, swept)
+//   Unichain:  50k vol, ophis 10 bps -> $50,  own 25 bps -> $125 (sovereign, swept)
+//   Base:     200k vol, ophis 10 bps -> $200, own 30 bps -> $600 gross (hosted, not guaranteed)
 const RECIPIENT = ('0x' + 'ab'.repeat(20)) as `0x${string}`;
 const fullInput: EarningsInput = {
   byChain: [
@@ -35,17 +36,17 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(e.sovereignChains).toEqual([10, 130]);
   });
 
-  it('scopes GUARANTEED own-fee to the sovereign chains and labels hosted as CoW-disbursed (net of CoW cut)', () => {
+  it('scopes GUARANTEED own-fee to the sovereign chains and labels hosted as gross, not guaranteed', () => {
     const e = assembleEarnings('acme-dapp', fullInput, NOW);
-    // sovereignGuaranteed = OP $250 + Unichain $125 = $375 (kept in full);
-    // hostedAccrued = Base $600 gross * 0.75 hosted keep = $450 (net of CoW's cut).
+    // sovereignGuaranteed = OP $250 + Unichain $125 = $375 (swept in full);
+    // hostedAccrued = Base $600 gross (not reduced by an unverified CoW cut).
     expect(e.ownFeeAccruedUsd.sovereignGuaranteed).toBe(375);
-    expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(450);
-    expect(e.ownFeeAccruedUsd.total).toBe(825);
-    // The hosted figure MUST carry the exact not-guaranteed labeling required by the scope constraint.
-    expect(e.ownFeeAccruedUsd.note).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
-    // ...and disclose that the hosted figure is net of CoW's service-fee cut.
-    expect(e.ownFeeAccruedUsd.note).toContain("NET of CoW's service-fee cut");
+    expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(600);
+    expect(e.ownFeeAccruedUsd.total).toBe(975);
+    // The hosted figure MUST carry the not-guaranteed labeling.
+    expect(e.ownFeeAccruedUsd.note).toContain('not guaranteed');
+    // ...and be disclosed as gross (Ophis takes 0% of the own-fee).
+    expect(e.ownFeeAccruedUsd.note).toContain('GROSS');
     expect(e.ownFeeAccruedUsd.recipient).toBe(RECIPIENT);
   });
 
@@ -65,7 +66,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(op.ownFeeAccruedUsd).toBe(250);
     expect(base.sovereign).toBe(false);
     expect(base.chainName).toBe('Base');
-    expect(base.ownFeeAccruedUsd).toBe(450); // $600 gross * 0.75 hosted keep fraction
+    expect(base.ownFeeAccruedUsd).toBe(600); // $600 gross (hosted own-fee reported gross, not guaranteed)
   });
 
   it('carries a top-level disclaimer naming the OP/Unichain vs CoW-hosted scoping', () => {
@@ -99,7 +100,7 @@ describe('assembleEarnings - referral share (Ophis-paid) and payout links', () =
     expect(e.referral.payouts).toEqual([]);
     expect(e.referral.note).toContain('not a registered referral code');
     // Own-fee is independent of registration, so it still reports.
-    expect(e.ownFeeAccruedUsd.total).toBe(825);
+    expect(e.ownFeeAccruedUsd.total).toBe(975);
   });
 });
 
