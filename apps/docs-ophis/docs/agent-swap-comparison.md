@@ -1,7 +1,7 @@
 ---
 id: agent-swap-comparison
 title: How does an AI agent swap safely
-description: A guide to giving an autonomous agent the ability to swap tokens safely: the properties that bound an agent's worst case (keyless, machine-signable, hard limit price, MEV protection, gasless, native BTC) and how Ophis provides each.
+description: "A guide to giving an autonomous agent the ability to swap tokens safely: the properties that bound an agent's worst case (keyless, machine-signable, hard limit price, MEV protection, gasless, native BTC) and how Ophis provides each."
 sidebar_label: How agents swap safely
 ---
 
