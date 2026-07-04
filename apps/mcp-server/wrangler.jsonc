@@ -14,7 +14,14 @@
   // consumer id, truncated UA, origin-or-not, chainId) so real quote/build
   // consumers can be told apart from crawlers and health-checks. The write is
   // non-blocking and swallowed; an unbound dataset is a no-op.
-  "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
+  // TEMPORARILY DISABLED: deploying this binding fails with Cloudflare API
+  // "You need to enable Analytics Engine" [code: 10089] because Analytics Engine
+  // is not yet enabled on the account. The worker code guards the binding
+  // (env.MCP_ANALYTICS is optional and gated by `if (env.MCP_ANALYTICS)`), so
+  // with the binding removed the funnel telemetry is a clean no-op and the
+  // worker deploys. RE-ENABLE this line after turning Analytics Engine on at
+  // dash.cloudflare.com -> Workers & Pages -> Analytics Engine, then redeploy.
+  // "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
   // McpAgent is a Durable Object. Each MCP session is one DO instance; our
   // tools are stateless (each call is independent) so the DO just holds the
   // Streamable-HTTP transport session — no app state is persisted.
