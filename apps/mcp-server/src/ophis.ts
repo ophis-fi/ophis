@@ -442,7 +442,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
       const partnerFee = metadata.partnerFee
       if (partnerFee === undefined) {
         warnings.push(
-          'appData metadata.partnerFee is absent: Ophis-operated chains enforce a partner-fee floor at order ingress, so the order may be rejected there. Use build_order, which embeds the correct partnerFee.',
+          'appData metadata.partnerFee is absent: the order carries no Ophis fee and earns no rebate or affiliate attribution. Ophis integrations normally embed it; use build_order, which adds the correct partnerFee for the chain.',
         )
       } else {
         const entries = Array.isArray(partnerFee) ? partnerFee : [partnerFee]
@@ -537,12 +537,13 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
     }
   }
 
-  // (8) Signed feeAmount must be 0, the same policy build_order enforces: the fee
-  // is taken from surplus plus the appData partner fee, and CoW accounting treats
-  // a signed feeAmount as ADDITIONAL sell-token spend no slippage check covers.
+  // (8) Signed feeAmount must be 0, the same policy build_order enforces: the
+  // Ophis fee is taken via the appData partner fee (from the trade output at
+  // settlement), not a signed feeAmount, and CoW accounting treats a signed
+  // feeAmount as ADDITIONAL sell-token spend no slippage check covers.
   if (o?.feeAmount !== undefined && o.feeAmount !== '0') {
     errors.push(
-      `order.feeAmount must be "0", got ${JSON.stringify(o.feeAmount)}: Ophis orders take the fee from surplus plus the appData partner fee; a non-zero signed feeAmount is additional sell-token spend that no slippage check covers.`,
+      `order.feeAmount must be "0", got ${JSON.stringify(o.feeAmount)}: Ophis orders take the fee via the appData partner fee, not a signed feeAmount; a non-zero signed feeAmount is additional sell-token spend that no slippage check covers.`,
     )
   }
 
