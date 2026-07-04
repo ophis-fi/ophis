@@ -17,6 +17,7 @@ import {
   buildOrder,
   submitOrder,
   lookupTier,
+  getIntegratorEarnings,
   listChains,
   extractQuoteAmounts,
   assertLimitWithinSlippage,
@@ -379,6 +380,29 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     async ({ wallet }) => {
       try {
         return ok(await lookupTier(wallet as Address))
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'get_integrator_earnings',
+    {
+      annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Look up what an integrator's own-fee routing earned, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
+      inputSchema: {
+        appCode: z
+          .string()
+          .min(3)
+          .max(64)
+          .describe('Your integrator appCode / referral code (3-64 chars of [a-z0-9_-]).'),
+      },
+    },
+    async ({ appCode }) => {
+      try {
+        return ok(await getIntegratorEarnings(appCode))
       } catch (e) {
         return fail(e)
       }

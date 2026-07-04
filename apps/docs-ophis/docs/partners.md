@@ -404,6 +404,98 @@ A future option for Optimism is an **enforced lower fee** at settlement (rather
 than a post-hoc rebate), via a signed fee credential. That is a separate,
 not-yet-shipped capability; talk to us if you want it.
 
+## Verifying your earnings: `GET /earnings/:appCode`
+
+A keyless, read-only endpoint on the rebate indexer lets you verify what your own
+routing earned and where it paid out. Look yourself up by the `appCode` you tag into
+appData: your **widget** top-level appCode, or your **SDK** `metadata.ophisReferrer.code`
+(the indexer stores either as the integrator identity).
+
+```bash
+curl https://rebates.ophis.fi/earnings/your-code
+```
+
+It reports **cumulative (lifetime)** figures only. To keep it safe as a public surface
+it never exposes a current-cycle 30-day volume, an estimated current-cycle earning, or a
+next-payout time (those stay on the signature-gated partner dashboard).
+
+### What Ophis guarantees, and what accrues under CoW terms
+
+Only **Optimism (10)** and **Unichain (130)** are Ophis-operated, where Ophis controls
+settlement and payout end to end. On the CoW-hosted chains, partner fees are disbursed by
+CoW under CoW terms; Ophis neither pays nor guarantees them. So every figure is split
+**sovereign** (guaranteed) vs **hosted** (accrued at settlement, paid out by CoW under
+CoW terms, not guaranteed by Ophis). The response carries a top-level `disclaimer` saying
+exactly this.
+
+Three earnings streams appear:
+
+- **Own-fee** (`ownFeeAccruedUsd`): the partner-fee entry you stack to **your own**
+  recipient in the appData `partnerFee` array, next to the Ophis base entry. This is your
+  direct earning. `sovereignGuaranteed` is settled by Ophis end to end;
+  `hostedAccrued` is the amount charged at settlement on CoW-hosted chains, where payout
+  runs through CoW's weekly partner distribution under CoW's terms. Ophis does not
+  guarantee it, and the end-to-end payout of a stacked second recipient on hosted chains
+  is still being verified (see [Charge your own fee](#charge-your-own-fee)), so treat
+  `hostedAccrued` as accrued, not paid.
+- **Referral rebate** (`referral`): the monthly WETH rebate Ophis pays your wallet from
+  the Gnosis Safe when your `appCode` is a registered referral code. `paidToDateWeth` /
+  `paidToDateUsd` are **exact**, summed from already-executed Safe batches, and `payouts`
+  lists each executed payout with its on-chain tx and a block-explorer link (your proof of
+  where it paid out).
+- **Ophis base fee** (`ophisFeeAccruedUsd`): informational, the Ophis fee charged on your
+  routed flow (not your earning).
+
+### Response shape
+
+```jsonc
+{
+  "ok": true,
+  "appCode": "your-code",
+  "generatedAt": "2026-07-04T09:00:00.000Z",
+  "sovereignChains": [10, 130],
+  "disclaimer": "Earnings on Optimism (10) and Unichain (130) are settled and paid by Ophis end to end. Figures on CoW-hosted chains are accrued at settlement, paid out by CoW under CoW terms; not guaranteed by Ophis. ...",
+  "routedVolumeUsd":   { "total": 350000, "sovereign": 150000, "hosted": 200000 },
+  "ophisFeeAccruedUsd": { "total": 350, "sovereign": 150, "hosted": 200 },
+  "ownFeeAccruedUsd": {
+    "total": 975,
+    "sovereignGuaranteed": 375,   // OP + Unichain: Ophis-controlled
+    "hostedAccrued": 600,         // CoW-hosted: disbursed by CoW under CoW terms
+    "recipient": "0xYourOwnFeeRecipient",
+    "note": "Own-fee is the partner-fee entry you stack to your own recipient ..."
+  },
+  "referral": {
+    "registered": true,
+    "paidToDateWeth": 1.5,
+    "paidToDateUsd": 4600,
+    "payouts": [
+      {
+        "cycleMonth": "2026-06",
+        "chainId": 100,
+        "chainName": "Gnosis",
+        "txHash": "0x...",
+        "explorerUrl": "https://gnosisscan.io/tx/0x...",
+        "amountWeth": 1.0
+      }
+    ],
+    "note": "Referral rebate Ophis pays your wallet monthly ... per referrer wallet."
+  },
+  "byChain": [
+    { "chainId": 10, "chainName": "Optimism", "sovereign": true, "routedVolumeUsd": 100000, "trades": 5, "ophisFeeAccruedUsd": 100, "ownFeeAccruedUsd": 250 },
+    { "chainId": 8453, "chainName": "Base", "sovereign": false, "routedVolumeUsd": 200000, "trades": 10, "ophisFeeAccruedUsd": 200, "ownFeeAccruedUsd": 600 }
+  ]
+}
+```
+
+Agents can poll the same data through the Ophis MCP server's `get_integrator_earnings`
+tool (it calls this endpoint). The own-fee amount is decoded from settled appData on
+every chain, so the charged amount is attributed everywhere. What is sovereign-scoped
+is the guarantee: on Optimism and Unichain the own-fee is swept to you in full, while
+the hosted figure is the gross amount charged at settlement, paid out under CoW's terms.
+Whether CoW's service fee applies to a stacked non-Ophis recipient, and the end-to-end
+payout of that recipient, are still being verified, so treat the hosted own-fee as
+gross and not guaranteed.
+
 ## Selling native ETH (eth-flow)
 
 A CoW order sells an ERC-20 token, so selling **native ETH** needs the on-chain

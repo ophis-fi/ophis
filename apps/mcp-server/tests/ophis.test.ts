@@ -18,6 +18,7 @@ import {
   getTokenChart,
   expectedSurplus,
   resolveToken,
+  getIntegratorEarnings,
   validateOrder,
   type Address,
 } from '../src/ophis.js'
@@ -780,5 +781,41 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
   it('throws on an invalid chainId (zero or non-integer)', async () => {
     await expect(resolveToken({ chainId: 0, symbol: 'USDC' }, list([]))).rejects.toThrow(/invalid chainId/)
     await expect(resolveToken({ chainId: 1.5, symbol: 'USDC' }, list([]))).rejects.toThrow(/invalid chainId/)
+  })
+})
+
+describe('getIntegratorEarnings (keyless indexer caller)', () => {
+  // Capture the URL the caller hits and return a canned earnings payload.
+  function captureFetch(payload: unknown, status = 200) {
+    let url: string | undefined
+    const fetchImpl = (async (u: string) => {
+      url = u
+      return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    return { fetchImpl, url: () => url }
+  }
+
+  it('lowercases the appCode and hits GET /earnings/:appCode, returning the indexer payload', async () => {
+    const cap = captureFetch({ ok: true, appCode: 'acme-dapp', disclaimer: 'x', routedVolumeUsd: { total: 0 } })
+    const res = await getIntegratorEarnings('Acme-Dapp', cap.fetchImpl)
+    expect(cap.url()).toBe('https://rebates.ophis.fi/earnings/acme-dapp')
+    expect(res.appCode).toBe('acme-dapp')
+    expect((res.earnings as { appCode: string }).appCode).toBe('acme-dapp')
+  })
+
+  it('wraps a non-200 indexer response in an { error } payload rather than throwing', async () => {
+    const cap = captureFetch({}, 503)
+    const res = await getIntegratorEarnings('acme-dapp', cap.fetchImpl)
+    expect((res.earnings as { error: string }).error).toContain('503')
+  })
+
+  it('rejects a malformed appCode before any network call', async () => {
+    let called = false
+    const fetchImpl = (async () => {
+      called = true
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await expect(getIntegratorEarnings('ab', fetchImpl)).rejects.toThrow(/appCode/)
+    expect(called).toBe(false)
   })
 })

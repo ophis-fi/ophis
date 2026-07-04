@@ -31,7 +31,7 @@ export interface PublicStats {
   generatedAt: string; // ISO
 }
 
-const CHAIN_NAME: Record<number, string> = {
+export const CHAIN_NAME: Record<number, string> = {
   1: 'Ethereum',
   10: 'Optimism',
   56: 'BNB Chain',

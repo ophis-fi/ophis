@@ -1,0 +1,29 @@
+-- Integrator OWN-FEE (partner-fee stacking).
+--
+-- CoW appData carries metadata.partnerFee as an ARRAY: an integrator can stack
+-- their OWN recipient entry next to the Ophis base entry. The fetcher already
+-- decodes the Ophis-recipient entry into volume_fee_bps (migration 0010). These
+-- two columns capture the FIRST non-Ophis flat-Volume entry -- the integrator's
+-- own fee -- so GET /earnings/:appCode can report what an integrator's own
+-- routing earned and where it paid out.
+--
+-- own_fee_bps: the integrator's own flat Volume rate (bps), decoded + clamped to
+--   [1, OWN_FEE_MAX_BPS] before storage (a crafted appData cannot inflate the
+--   reported figure; the clamp mirrors volume_fee_bps's ceiling on the Ophis fee).
+--   NULL when the settled appData carried no non-Ophis flat-Volume entry.
+-- own_fee_recipient: the integrator's own-fee recipient address (20-byte BYTEA),
+--   for the "where it paid out" link. NULL when own_fee_bps is NULL.
+--
+-- Both are NULLABLE and backfilled by the self-healing fetcher re-fetch (they
+-- ride the same UPGRADE-only upsert arms as volume_fee_bps), so pre-0014 rows
+-- converge on their next fetch and this migration is backward-compatible with no
+-- data rewrite.
+--
+-- SCOPING (see src/earnings.ts): the DECODE runs on EVERY chain -- the fetcher
+-- resolves the full appData for every trade regardless of chain, so no
+-- hosted-chain gap exists in the attribution itself. Only the PAID / GUARANTEED
+-- labeling is sovereign-only: Ophis controls settlement and payout end to end on
+-- Optimism (10) and Unichain (130), whereas on the CoW-hosted chains partner fees
+-- are disbursed by CoW under CoW terms and are not guaranteed by Ophis.
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS own_fee_bps INTEGER;
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS own_fee_recipient BYTEA;
