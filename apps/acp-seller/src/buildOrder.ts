@@ -2,18 +2,16 @@
  * Ophis order-build bridge for the ACP seller handler.
  *
  * Given a parsed swap request, this fetches a live quote from the chain's Ophis
- * orderbook, applies slippage to the limit side, embeds the Ophis partner fee,
- * pins the receiver to the buyer, and returns a bounded, ready-to-sign order.
- * It follows the documented @ophis/sdk integration path (docs.ophis.fi/partners)
- * and holds no keys: the buyer signs the returned order with its own key.
+ * orderbook, applies slippage to the limit side, embeds the Ophis partner fee via
+ * the @ophis/sdk helper, pins the receiver to the buyer, and returns a bounded,
+ * ready-to-sign order. It holds no keys: the buyer signs the returned order with
+ * its own key.
  */
 import { keccak256, toUtf8Bytes } from 'ethers'
 import {
   getOphisOrderbookUrl,
   getOphisOrderDomain,
   buildOphisAppDataPartnerFee,
-  ophisVolumeBpsForPair,
-  OPHIS_PARTNER_FEE_RECIPIENT,
   assertReceiverIsOwner,
 } from '@ophis/sdk'
 
@@ -25,8 +23,6 @@ export interface SwapRequest {
   sellAmount: string
   /** The buyer's own receiving address. The order receiver is pinned to it. */
   owner: `0x${string}`
-  /** Both tokens are same-chain stablecoins (selects the reduced 1 bp rate). */
-  isStablePair?: boolean
   /** Max accepted slippage in bips (default 100 = 1%). */
   slippageBips?: number
 }
@@ -71,17 +67,18 @@ export async function buildSignableOrder(req: SwapRequest, nowSeconds: number): 
   const orderbookUrl = getOphisOrderbookUrl(req.chainId)
   if (!orderbookUrl) throw new Error(`chain ${req.chainId} has no live Ophis orderbook`)
 
-  // 1. appData: appCode 'ophis' + the Ophis partner fee (5 bps SDK rate, 1 bp
-  //    same-chain stable). The buyer can add its own fee entry separately.
-  const partnerFee = {
-    recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-    volumeBps: ophisVolumeBpsForPair(Boolean(req.isStablePair)),
-  }
-  const appDataDoc = {
-    version: '1.4.0',
-    appCode: 'ophis',
-    metadata: { orderClass: { orderClass: 'market' }, partnerFee, ophisSource: { app: 'acp' } },
-  }
+  // 1. appData: appCode 'ophis' + the Ophis partner fee from the SDK helper (the
+  //    flat 5 bps partner rate). The reduced 1 bp stable rate is deliberately NOT
+  //    applied from a caller-supplied flag: that would let a buyer claim a stable
+  //    pair to underpay. Defaulting to the standard rate is always safe, and
+  //    matches the keyless MCP. The buyer can add its own fee entry separately.
+  const partnerFee = buildOphisAppDataPartnerFee(req.chainId)
+  const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' }, ophisSource: { app: 'acp' } }
+  if (partnerFee) metadata.partnerFee = partnerFee
+  const appDataDoc = { version: '1.4.0', appCode: 'ophis', metadata }
+  // Hash the exact string that will be submitted (the orderbook checks
+  // keccak256(submittedFullAppData) === order.appData; byte parity with cow-sdk
+  // is not required as long as the same string is submitted).
   const fullAppData = JSON.stringify(appDataDoc)
   const appDataHash = keccak256(toUtf8Bytes(fullAppData))
 
@@ -124,6 +121,10 @@ export async function buildSignableOrder(req: SwapRequest, nowSeconds: number): 
     buyAmount: minBuyAmount(q.buyAmount, slippageBips),
     validTo,
     appData: appDataHash,
+    // feeAmount is 0 by design: current CoW/Ophis orders take the fee from the
+    // trade output via the appData partner fee, not a signed feeAmount (the MCP
+    // build_order enforces the same). A non-zero signed feeAmount would be extra
+    // sell-token spend the slippage bound does not cover.
     feeAmount: '0',
     kind: 'sell',
     partiallyFillable: false,
@@ -180,7 +181,8 @@ export function parseSwapRequirement(requirement: unknown): SwapRequest | null {
     buyToken: buyToken as `0x${string}`,
     sellAmount,
     owner: owner as `0x${string}`,
-    isStablePair: Boolean(r.isStablePair),
+    // isStablePair is intentionally not read from the (untrusted) requirement:
+    // the fee rate is set server-side by the SDK helper, not by the caller.
     slippageBips: r.slippageBips !== undefined ? Number(r.slippageBips) : undefined,
   }
 }
