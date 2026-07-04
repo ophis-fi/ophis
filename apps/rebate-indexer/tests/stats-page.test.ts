@@ -66,7 +66,7 @@ describe('renderStatsPage', () => {
 
   it('states the exact fee and improvement split for sovereign and hosted chains', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('flat 0.10% Ophis fee is all-in (0.01% on stable pairs)');
+    expect(html).toContain('the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs)');
     expect(html).toContain('0.02% volume fee (0.003% on correlated pairs)');
     expect(html).toContain('retains 50% of quote improvement upstream, capped at 0.98% of volume');
   });

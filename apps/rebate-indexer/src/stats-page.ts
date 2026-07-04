@@ -145,7 +145,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
   <li><strong>Gasless execution</strong>Solvers pay the gas and costs settle inside the trade. No native gas token needed, and failed transactions cost you nothing.</li>
   <li><strong>Solver competition on every order</strong>9 solvers compete per auction on Unichain and 4 on Optimism, where Ophis runs the full settlement stack. Other chains draw on CoW Protocol's solver network.</li>
-  <li class="wide"><strong>Where the price improvement goes</strong>On Optimism and Unichain, 100% of price improvement is returned to the trader, and the flat 0.10% Ophis fee is all-in (0.01% on stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
+  <li class="wide"><strong>Where the price improvement goes</strong>On Optimism and Unichain, 100% of price improvement is returned to the trader, and the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
 </ul>
 <h2>Settled volume by chain</h2>
 <table>
