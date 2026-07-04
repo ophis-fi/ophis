@@ -54,6 +54,64 @@ locally; the signature is the trust boundary (see the warning below). A bare
 request without an `Accept: text/event-stream` header returns HTTP 406; that is
 the transport negotiating, not an outage.
 
+### Connect your MCP client
+
+The server is public and keyless, so there is nothing to sign up for. Copy the
+block for your client.
+
+**Claude Code** (one command):
+
+```bash
+claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
+```
+
+**Claude Desktop** (`claude_desktop_config.json`, via the `mcp-remote` bridge):
+
+```json
+{
+  "mcpServers": {
+    "ophis": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.ophis.fi/mcp"]
+    }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json`, or the project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "ophis": {
+      "url": "https://mcp.ophis.fi/mcp"
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "ophis": {
+      "type": "http",
+      "url": "https://mcp.ophis.fi/mcp"
+    }
+  }
+}
+```
+
+**OpenAI Agents SDK, LangChain, or any custom client**: point a
+streamable-HTTP MCP transport at `https://mcp.ophis.fi/mcp`. The
+[LangChain tool](#langchain-tool) and function-calling examples below show the
+call path without an MCP client at all.
+
+After connecting, ask the agent to "quote 100 USDC to ETH on Optimism" and it
+will call `resolve_token`, `get_quote`, and `build_order`; it returns a bounded
+order for you (or your wallet) to sign.
+
 If you'd rather make a single REST call than wire up the full toolset, use the
 [Intent API](./intent-api.md) directly, as shown next.
 
