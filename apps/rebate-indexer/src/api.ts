@@ -6,7 +6,7 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from './stats-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import {
@@ -466,10 +466,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
 
   // PUBLIC cumulative stats: lifetime settled volume, trades, traders, and a
-  // per-chain breakdown, from the indexed `trades` table. Deliberately
-  // cumulative/lagging ONLY: it never exposes current-cycle 30d volume or the
-  // next-payout timing (those stay on the admin-only /status, where they are a
-  // front-runner timing signal). Cumulative lifetime totals are not gameable, so
+  // per-chain breakdown, from the indexed `trades` table, plus static
+  // execution-model facts (EXECUTION_FACTS) and the derived lifetime average
+  // trade size. Deliberately cumulative/lagging ONLY: it never exposes
+  // current-cycle 30d volume or the next-payout timing (those stay on the
+  // admin-only /status, where they are a front-runner timing signal).
+  // Cumulative lifetime totals and configuration facts are not gameable, so
   // this is a safe public credibility/proof surface. JSON for API clients;
   // a styled page for a browser (same content-negotiation as /tier).
   app.get('/stats', {
@@ -523,7 +525,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         )
         .send(renderStatsPage(stats));
     }
-    return { ok: true, ...stats };
+    // Lifetime average trade size, derived from the same cumulative figures
+    // above (no extra signal, still lagging-only). Two decimals; null until
+    // the first trade is indexed.
+    const avgTradeUsd = stats.totalTrades > 0
+      ? Math.round((stats.totalVolumeUsd / stats.totalTrades) * 100) / 100
+      : null;
+    return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
   });
 
   app.get('/batches', {

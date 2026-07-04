@@ -66,10 +66,35 @@ test('/stats returns public cumulative JSON for an API client', async () => {
   expect(res.statusCode).toBe(200);
   const body = JSON.parse(res.body);
   expect(body.ok).toBe(true);
+  // Pre-existing fields: names and types must never change (public API compat).
   expect(body).toHaveProperty('totalVolumeUsd');
   expect(body).toHaveProperty('totalTrades');
   expect(body).toHaveProperty('distinctTraders');
   expect(Array.isArray(body.byChain)).toBe(true);
+  // Lifetime average trade size: null until the first trade (mocked db = empty).
+  expect(body).toHaveProperty('avgTradeUsd');
+  expect(body.avgTradeUsd).toBeNull();
+  // Static execution-model facts (configuration only, no indexed data).
+  expect(body.execution).toEqual({
+    mevProtection: 'batch-auction',
+    settlementModel: 'intent, uniform clearing price',
+    solverCompetition: {
+      sovereignChains: [
+        { chainId: 10, solvers: 4 },
+        { chainId: 130, solvers: 9 },
+      ],
+      hostedChains: 'CoW Protocol solver network',
+    },
+    improvementSplit: {
+      sovereign: '100% of price improvement returned to the trader',
+      hosted: 'CoW Protocol retains 50% of quote improvement upstream',
+    },
+  });
+  // Security invariant: the public JSON must never grow current-cycle 30d
+  // volume or next-payout timing fields (front-runner signals, admin-only).
+  for (const key of Object.keys(body)) {
+    expect(key).not.toMatch(/30d|payout|cycle/i);
+  }
 });
 
 test('/stats serves a styled HTML page to a browser (Accept: text/html)', async () => {
@@ -77,7 +102,7 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   const res = await app.inject({ method: 'GET', url: '/stats', headers: { accept: 'text/html' } });
   expect(res.statusCode).toBe(200);
   expect(res.headers['content-type']).toContain('text/html');
-  expect(res.body).toContain('Settled, on-chain');
+  expect(res.body).toContain('Every trade settles MEV-protected');
   expect(res.headers['content-security-policy']).toBeDefined();
 });
 
