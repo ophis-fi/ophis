@@ -217,10 +217,11 @@ describe('validateOrder (offline preflight)', () => {
     expect(r.errors.some((e) => /below the Ophis 4-bps non-stable Volume floor/i.test(e))).toBe(true)
   })
 
-  it('warns that a stacked non-Ophis partnerFee recipient is rejected by the backend allowlist on a sovereign chain', () => {
+  it('rejects a stacked non-Ophis partnerFee recipient (backend allowlist rejects the whole order)', () => {
     // The Ophis entry is present (so no missing-recipient error), but a stacked
     // own-fee entry to a foreign recipient makes the backend reject the WHOLE
-    // order unless that address is independently allowlisted.
+    // order unless that address is independently allowlisted. A caller that gates
+    // on valid must not sign it, so this is an error (valid=false), not a warning.
     const doc = JSON.stringify({
       version: APP_DATA_VERSION,
       appCode: 'ophis',
@@ -232,7 +233,8 @@ describe('validateOrder (offline preflight)', () => {
       },
     })
     const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
-    expect(r.warnings.some((w) => /not the Ophis recipient/i.test(w) && /allowlist/i.test(w) && w.includes(ATTACKER))).toBe(true)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /not the Ophis recipient/i.test(e) && /allowlist/i.test(e) && e.includes(ATTACKER))).toBe(true)
   })
 
   it('warns (does not silently pass) when the Ophis fee may breach the floor but the tokens are omitted', () => {

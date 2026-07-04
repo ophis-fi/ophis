@@ -181,11 +181,13 @@ for (const f of PRESENCE_FILES) {
   } catch {
     continue; // already reported by Gate B
   }
+  const seenChains = new Set();
   for (const line of content.split('\n')) {
     const m = line.match(ROW_RE);
     if (!m) continue;
     const chainId = Number(m[1]);
     const [, , settlement, relayer] = m;
+    seenChains.add(chainId);
     const row = tableById.get(chainId);
     if (!row) {
       fail(`${f} copy-paste table lists chain ${chainId} which is not in addresses.json`);
@@ -196,6 +198,18 @@ for (const f of PRESENCE_FILES) {
     }
     if (relayer !== row.relayer) {
       fail(`${f} chain ${chainId} relayer in the copy-paste table is ${relayer} but addresses.json says ${row.relayer} (a mis-paired row an integrator would paste)`);
+    }
+  }
+  // Completeness: a file that carries the address table must list EVERY live
+  // chain. Gate B only proves each unique literal appears somewhere, so a table
+  // that DROPS a chain sharing the canonical settlement/relayer (e.g. Base, which
+  // reuses the canonical GPv2 addresses) would still pass B and have nothing for
+  // Gate C to compare. Fail if any expected chain is absent from a file's table.
+  if (seenChains.size > 0) {
+    for (const chainId of EXPECTED_CHAIN_IDS) {
+      if (!seenChains.has(chainId)) {
+        fail(`${f} copy-paste table is missing a row for live chain ${chainId} (integrators paste per chain, so a dropped row leaves that chain uncovered)`);
+      }
     }
   }
 }

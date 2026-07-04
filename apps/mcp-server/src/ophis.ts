@@ -520,10 +520,14 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
             }
           } else if (recipientOk && ophisOperated) {
             // A non-Ophis recipient on an Ophis-operated chain. validate_partner_fees
-            // rejects the ENTIRE order unless this address is independently
-            // allowlisted, so a stacked own-fee recipient is NOT accepted by default.
-            warnings.push(
-              `${label}.recipient ${fee.recipient} is not the Ophis recipient. On Ophis-operated chain ${chainId} the backend partner-fee allowlist rejects the whole order unless this address is in PARTNER_FEE_RECIPIENT_ALLOWLIST; an integrator own-fee recipient must be independently verified and allowlisted before it can settle on a sovereign chain (own-fee stacking is not open by default there).`,
+            // rejects the ENTIRE order if ANY recipient is not allowlisted, and only
+            // the Ophis Safe is allowlisted by default. This preflight cannot see the
+            // backend allowlist, so it treats any non-Ophis recipient as rejected and
+            // ERRORS (not just warns): a caller that gates on valid must NOT sign an
+            // order the backend rejects at ingress. If the recipient is an already
+            // allowlisted partner Safe, submit directly to confirm.
+            errors.push(
+              `${label}.recipient ${fee.recipient} is not the Ophis recipient. On Ophis-operated chain ${chainId} the backend partner-fee allowlist rejects the whole order unless this address is in PARTNER_FEE_RECIPIENT_ALLOWLIST (only the Ophis recipient is allowlisted by default); an integrator own-fee recipient must be independently verified and allowlisted first. Own-fee stacking is not open by default on the sovereign chains.`,
             )
           }
         })
