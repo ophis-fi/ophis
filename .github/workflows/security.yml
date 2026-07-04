@@ -89,6 +89,27 @@ jobs:
       - name: Assert each chain's eRPC upstream IDs are suffixed and unique
         run: ./scripts/check-erpc-id-collisions.sh
 
+  policy-pack-address-invariant:
+    name: Agent-wallet policy-pack address invariant
+    runs-on: ubuntu-latest
+    # 2026-07-04. The Turnkey/Privy agent-wallet policy packs in
+    # examples/agent-wallet-policy-packs/ pin an agent key to the Ophis
+    # settlement + vault-relayer contracts per chain. Those addresses live in a
+    # hand-maintained table (addresses.json) that MUST stay byte-identical to
+    # OPHIS_SETTLEMENT_ADDRESSES / OPHIS_VAULT_RELAYER_ADDRESSES in
+    # packages/sdk/src/domain.ts. If a chain is added or an address rotated in
+    # the SDK but not the pack, a pack would authorize the wrong contract. This
+    # pure-Node check (no deps) is the hard gate; it also asserts the paused /
+    # testnet chains stay OUT of the packs and that the literals are present in
+    # the docs + README collateral.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+      - name: Diff policy-pack addresses against @ophis/sdk domain map
+        run: node scripts/check-policy-pack-addresses.mjs
+
   slither:
     name: Slither (Solidity)
     runs-on: ubuntu-latest
