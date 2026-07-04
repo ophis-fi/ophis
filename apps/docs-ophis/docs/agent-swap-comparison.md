@@ -79,5 +79,5 @@ pinned to itself.
 Point any MCP client at `https://mcp.ophis.fi/mcp` (no key), or read the
 [AI agent integration guide](./ai-agents.md). Prefer `build_order` to construct
 orders: it fetches a live quote, applies your slippage bound, pins the receiver
-to the owner, and embeds the partner fee, so the returned order is bounded
+to the owner, and embeds the flat 5 bps partner fee, so the returned order is bounded
 before your agent signs it.
