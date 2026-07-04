@@ -1,7 +1,7 @@
 ---
 id: agent-btc-cookbook
 title: Swap into native Bitcoin from an agent
-description: How an autonomous agent or bot moves an EVM position into native Bitcoin (or Solana) in one gasless intent through Ophis, using the NEAR Intents rail, with the agent holding no gas token on any chain.
+description: How an autonomous agent or bot moves an EVM position into native Bitcoin (or Solana) in one gasless intent through Ophis, using the NEAR Intents rail, after a one-time source-token approval and with no Bitcoin-side signing.
 sidebar_label: Native BTC for agents
 ---
 
@@ -11,8 +11,9 @@ Among intent-based batch-auction swap venues, Ophis packages a gasless,
 hard-limit path to **native Bitcoin** next to 12 EVM chains. The cross-chain
 rail (NEAR Intents) is shared by several venues; what Ophis packages is the
 keyless, bounded agent path onto it. This page shows how an agent
-or bot moves an EVM position into native BTC (or SOL) without holding a gas token
-on any chain and without handing custody to a bridge UI.
+or bot moves an EVM position into native BTC (or SOL) after a one-time
+source-token approval, with no Bitcoin-side signing and without clicking through
+a bridge UI.
 
 ## The mechanism
 
@@ -90,7 +91,9 @@ path.
   attestation that the BTC address (and thus the 1-Click deposit address) is one
   the operator approved, checked in code before signing.
 - **Checkable.** Both legs are observable: the EVM settlement on chain and the
-  NEAR Intents delivery. Nothing is custodial in between.
+  NEAR Intents delivery. The EVM leg is non-custodial (a signed intent settled
+  on-chain); the cross-chain delivery is brokered by NEAR Intents, so review its
+  settlement model for the guarantees on that leg.
 
 ## Caveats
 
