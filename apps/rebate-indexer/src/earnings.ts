@@ -22,7 +22,7 @@
  * already-executed Safe batches. It never returns a 30d figure, an estimated
  * current-cycle earning, or a next-payout timestamp (those stay sig-gated on /partner).
  */
-import { SOVEREIGN_CHAIN_IDS } from './affiliate/rates.js';
+import { SOVEREIGN_CHAIN_IDS, keepFractionBps } from './affiliate/rates.js';
 import { CHAIN_NAME, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 
 // db (sql) is imported LAZILY inside getIntegratorEarnings so this module - and the
@@ -68,7 +68,9 @@ export interface EarningsChainRow {
   trades: number;
   /** Gross Ophis partner fee charged on this integrator's flow on this chain (info). */
   ophisFeeAccruedUsd: number;
-  /** The integrator's own stacked fee on this chain. */
+  /** The integrator's own stacked fee on this chain, NET of CoW's service-fee cut on
+   *  hosted chains (the amount the integrator actually receives). Sovereign chains
+   *  (Optimism, Unichain) keep 100%; hosted chains keep the hosted keep fraction. */
   ownFeeAccruedUsd: number;
 }
 
@@ -92,7 +94,9 @@ export interface IntegratorEarnings {
   routedVolumeUsd: { total: number; sovereign: number; hosted: number };
   /** Gross Ophis partner fee charged on this flow (informational, not the integrator's earning). */
   ophisFeeAccruedUsd: { total: number; sovereign: number; hosted: number };
-  /** The integrator's OWN stacked fee. sovereignGuaranteed is Ophis-controlled; hostedAccrued is CoW-disbursed. */
+  /** The integrator's OWN stacked fee, as the amount the integrator RECEIVES.
+   *  sovereignGuaranteed is Ophis-controlled and kept in full (100%); hostedAccrued is
+   *  CoW-disbursed and NET of CoW's service-fee cut (the hosted keep fraction). */
   ownFeeAccruedUsd: {
     total: number;
     sovereignGuaranteed: number;
@@ -157,6 +161,11 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   const byChain: EarningsChainRow[] = input.byChain
     .map((c) => {
       const sovereign = SOVEREIGN_CHAIN_IDS.has(c.chainId);
+      // Own-fee is what the integrator RECEIVES: on CoW-hosted chains CoW takes a
+      // service-fee cut before disbursing partner fees, so scale by the hosted keep
+      // fraction (keepFractionBps). Sovereign chains keep 100% (keepFractionBps ==
+      // 10_000), so this is a no-op there. Ophis's own base fee stays GROSS (info).
+      const ownKeep = keepFractionBps(c.chainId) / 10_000;
       return {
         chainId: c.chainId,
         chainName: CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`,
@@ -164,7 +173,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
         routedVolumeUsd: round(c.volumeUsd, 4),
         trades: c.trades,
         ophisFeeAccruedUsd: round(c.ophisFeeBase / BPS_DENOM),
-        ownFeeAccruedUsd: round(c.ownFeeBase / BPS_DENOM),
+        ownFeeAccruedUsd: round((c.ownFeeBase / BPS_DENOM) * ownKeep),
       };
     })
     // Largest routed volume first, then chain id for stable ordering.
@@ -243,8 +252,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       hostedAccrued: round(ownHosted),
       recipient: input.ownFeeRecipient,
       note:
-        `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders on every chain. ` +
-        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}. ` +
+        `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders on every chain, reported as the amount you receive. ` +
+        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and kept in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, and is shown NET of CoW's service-fee cut (the hosted keep fraction). ` +
         `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included.`,
     },
     referral: {
@@ -275,9 +284,19 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
   const chainIds = [...PRODUCTION_CHAIN_IDS]; // mutable copy for postgres-js array binding
 
   // Per-chain: routed volume, trade count, the Ophis fee base (value*bps) and the
-  // integrator's own-fee base (value*bps). COALESCE(volume_fee_bps,0) is defensive:
-  // an appdata_ref_code is only ever set on a CONFIRMED positive Ophis fee, so these
-  // rows already have volume_fee_bps > 0, but a 0/NULL must never over-credit.
+  // integrator's own-fee base (value*bps).
+  //
+  // CONFIRMED-FEE PREDICATE (fee_verified = true AND volume_fee_bps > 0): the settle()
+  // decoder in discovery-only mode leaves rows with appdata_ref_code SET but
+  // volume_fee_bps = 0 and fee_verified = false (catalog-only, credits nothing on the
+  // money path). appdata_ref_code is attacker-controllable, so keying on it alone would
+  // let an unverified, self-crafted appData tag report bogus routed volume / own-fee on
+  // this public surface. Require the SAME confirmed-fee predicate the affiliate accrual
+  // appData arm uses (fee_verified guards discovery rows; volume_fee_bps > 0 is the
+  // affiliate arm's forge gate) so only verified, fee-paying rows are reported. A legit
+  // appdata_ref_code row always has volume_fee_bps > 0 (attributeOrder only tags a code
+  // on a confirmed positive Ophis fee), so no real row is dropped. COALESCE on the rate
+  // is now dead (predicate excludes 0/NULL) but stays as belt-and-suspenders.
   const chainRows = await sql<
     { chain_id: number; volume_usd: string; trades: string; ophis_fee_base: string; own_fee_base: string }[]
   >`
@@ -291,14 +310,23 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
     WHERE appdata_ref_code = ${code}
       AND value_usd IS NOT NULL
       AND chain_id = ANY(${chainIds})
+      AND fee_verified = true
+      AND volume_fee_bps > 0
     GROUP BY chain_id
   `;
 
   // Most recent own-fee recipient for this appCode (the "where it paid out" address).
+  // Mirror BOTH gates from the aggregate: the confirmed-fee predicate (so an unverified
+  // discovery row can't set the public recipient) AND the production-chain filter (so a
+  // later testnet row's recipient can't be returned while every amount is production-only).
   const [recip] = await sql<{ recipient: string }[]>`
     SELECT '0x' || encode(own_fee_recipient, 'hex') AS recipient
     FROM trades
-    WHERE appdata_ref_code = ${code} AND own_fee_recipient IS NOT NULL
+    WHERE appdata_ref_code = ${code}
+      AND own_fee_recipient IS NOT NULL
+      AND chain_id = ANY(${chainIds})
+      AND fee_verified = true
+      AND volume_fee_bps > 0
     ORDER BY block_timestamp DESC
     LIMIT 1
   `;

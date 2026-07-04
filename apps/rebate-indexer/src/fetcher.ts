@@ -776,3 +776,73 @@ export async function pruneStaleWallets(): Promise<{ pruned: number }> {
     lockConn.release();
   }
 }
+
+/** Injectable order reader for backfillOwnFee (tests stub it; prod uses getOrder). */
+export interface BackfillDeps {
+  getOrder?: (chainId: number, uid: `0x${string}`) => Promise<{ fullAppData?: string | null }>;
+}
+
+/**
+ * ONE-TIME, opt-in backfill of the reporting-only own-fee columns (migration 0014)
+ * onto rows indexed BEFORE 0014. The hot fetch loop SKIPS an already-verified row
+ * (fetchChainTrades line: volume_fee_bps non-null + fee_verified), and the upsert
+ * enriches only NULL-fee / unverified rows, so a VERIFIED pre-0014 trade never gets
+ * own_fee_bps / own_fee_recipient and GET /earnings/:appCode under-reports its
+ * historical own-fee. This re-resolves each such row's settled appData once and writes
+ * ONLY the own-fee columns via a TARGETED UPDATE (never volume_fee_bps / fee_verified),
+ * so the verified Ophis fee and its idempotence are untouched. The UPDATE re-checks
+ * own_fee_bps IS NULL so a concurrent write is never clobbered.
+ *
+ * Run OUT of band (the backfill-own-fee CLI command), never inside runFetcher: it
+ * re-fetches one order per scanned row, so it is not a per-run CoW load. Bounded by
+ * `limit`; a row with no stacked own-fee is left NULL and simply re-scanned on a later
+ * run (the pre-0014 backlog is finite and does not grow, so a few bounded runs drain it).
+ */
+export async function backfillOwnFee(
+  limit = 500,
+  deps: BackfillDeps = {},
+): Promise<{ scanned: number; updated: number }> {
+  const { sql } = await import('./db/index.js');
+  const fetchOrder = deps.getOrder ?? getOrder;
+  // Only VERIFIED, fee-paying rows still missing own_fee: exactly the pre-0014 gap.
+  const rows = await sql<{ uid_hex: string; chain_id: number }[]>`
+    SELECT encode(trade_uid, 'hex') AS uid_hex, chain_id
+    FROM trades
+    WHERE own_fee_bps IS NULL
+      AND fee_verified = true
+      AND volume_fee_bps IS NOT NULL
+    ORDER BY fetched_at ASC
+    LIMIT ${limit}
+  `;
+  let scanned = 0;
+  let updated = 0;
+  for (const r of rows) {
+    scanned++;
+    if (!SUPPORTED_CHAIN_IDS.includes(r.chain_id)) continue;
+    const uid = `0x${r.uid_hex}` as `0x${string}`;
+    let order: { fullAppData?: string | null };
+    try {
+      order = await fetchOrder(r.chain_id, uid);
+    } catch (err) {
+      log.warn({ err, chainId: r.chain_id, uid }, 'backfill-own-fee: getOrder failed; skipping row');
+      continue;
+    }
+    let meta: unknown;
+    try {
+      meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
+    } catch {
+      continue; // unparseable appData -> leave NULL
+    }
+    const own = readOwnFee(meta);
+    if (!own) continue; // no stacked own-fee entry -> genuinely NULL, nothing to write
+    const res = await sql`
+      UPDATE trades
+      SET own_fee_bps = ${own.bps},
+          own_fee_recipient = decode(${own.recipient.slice(2)}, 'hex')
+      WHERE trade_uid = decode(${r.uid_hex}, 'hex') AND own_fee_bps IS NULL
+    `;
+    updated += res.count ?? 0;
+  }
+  log.info({ scanned, updated }, 'backfill-own-fee complete');
+  return { scanned, updated };
+}

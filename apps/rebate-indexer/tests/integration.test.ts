@@ -272,3 +272,96 @@ describe('migration 0011 wallets matview', () => {
     await expect(sql`SELECT COUNT(*)::int AS n FROM wallets`).resolves.toBeDefined();
   }, 30_000);
 });
+
+describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
+  const OPHIS = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'; // the Ophis Safe (base fee)
+  const RECIP_A = 'a1'.repeat(20); // verified production own-fee recipient (hex, no 0x)
+  const RECIP_B = 'b2'.repeat(20); // unverified discovery own-fee recipient
+  const RECIP_Z = 'cc'.repeat(20); // testnet own-fee recipient
+
+  // Insert one trade with exactly the columns the earnings surface reads.
+  const insertTrade = (
+    sql: any,
+    o: {
+      uid: string; chain: number; code: string; feeBps: number | null; verified: boolean;
+      volumeUsd: number; ownFeeBps: number | null; ownRecipHex: string | null; ts: string;
+    },
+  ) => sql`
+    INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, fee_verified, appdata_ref_code, own_fee_bps, own_fee_recipient)
+    VALUES (decode(${o.uid.repeat(56)}, 'hex'), ${o.chain}, decode(${'ab'.repeat(20)}, 'hex'), 1, ${o.ts}, decode(${'11'.repeat(20)}, 'hex'), decode(${'22'.repeat(20)}, 'hex'), 1, 1, 'ophis', ${o.volumeUsd}, ${o.feeBps}, ${o.verified}, ${o.code}, ${o.ownFeeBps}, ${o.ownRecipHex ? Buffer.from(o.ownRecipHex, 'hex') : null})`;
+
+  const OLDER = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+  const NEWER = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+
+  it('excludes UNVERIFIED discovery rows (fee=0, fee_verified=false) that share the appCode tag', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { getIntegratorEarnings } = await import('../src/earnings.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    // Verified, fee-paying row -> counts. Discovery row (attacker-controllable appData
+    // tag, forced to volume_fee_bps=0 + fee_verified=false) -> MUST NOT count, even
+    // though it carries the same appdata_ref_code and a NEWER own-fee recipient.
+    await insertTrade(sql, { uid: 'e1', chain: 100, code: 'mycode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: 25, ownRecipHex: RECIP_A, ts: OLDER });
+    await insertTrade(sql, { uid: 'e2', chain: 100, code: 'mycode', feeBps: 0, verified: false, volumeUsd: 9999, ownFeeBps: 50, ownRecipHex: RECIP_B, ts: NEWER });
+
+    const e = await getIntegratorEarnings('mycode', new Date());
+    expect(e.routedVolumeUsd.total).toBe(1000); // discovery 9999 excluded
+    expect(e.byChain.find((c) => c.chainId === 100)!.trades).toBe(1);
+    expect(e.ophisFeeAccruedUsd.total).toBe(1); // 1000 * 10 / 10_000, gross
+    expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(1.875); // 1000 * 25 / 10_000 * 0.75 hosted keep
+    // The recipient is the VERIFIED row's, never the newer unverified discovery row's.
+    expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`);
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+
+  it('scopes the own-fee recipient lookup to production chains (a newer testnet row cannot set it)', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { getIntegratorEarnings } = await import('../src/earnings.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    // Production (Gnosis 100) row is OLDER; a verified Sepolia (11155111, testnet, not in
+    // PRODUCTION_CHAIN_IDS) row is NEWER. The aggregate already filters to production, so
+    // its recipient lookup must too, else the testnet recipient leaks as "where it paid out".
+    await insertTrade(sql, { uid: 'c1', chain: 100, code: 'chaincode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: 25, ownRecipHex: RECIP_A, ts: OLDER });
+    await insertTrade(sql, { uid: 'c2', chain: 11155111, code: 'chaincode', feeBps: 10, verified: true, volumeUsd: 500, ownFeeBps: 25, ownRecipHex: RECIP_Z, ts: NEWER });
+
+    const e = await getIntegratorEarnings('chaincode', new Date());
+    expect(e.routedVolumeUsd.total).toBe(1000); // testnet 500 excluded from amounts
+    expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`); // NOT the newer testnet recipient
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+
+  it('backfills own-fee columns on a verified pre-0014 row without rewriting the verified Ophis fee', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { backfillOwnFee } = await import('../src/fetcher.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    const INTEGRATOR = 'c1'.repeat(20); // the integrator's stacked own-fee recipient
+    // A verified, fee-paying row indexed BEFORE 0014: own_fee columns NULL.
+    await insertTrade(sql, { uid: 'f1', chain: 100, code: 'bfcode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
+    // An unverified discovery row must NOT be picked up by the backfill (it re-enriches
+    // via the fetcher's upsert arm 2, not here).
+    await insertTrade(sql, { uid: 'f2', chain: 100, code: 'bfcode', feeBps: 0, verified: false, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: NEWER });
+
+    // Stub the order read: a stacked partnerFee array (Ophis base + the integrator's own
+    // 25 bps entry). No network / msw needed.
+    const res = await backfillOwnFee(500, {
+      getOrder: async () => ({
+        fullAppData: JSON.stringify({
+          metadata: { partnerFee: [{ volumeBps: 5, recipient: OPHIS }, { volumeBps: 25, recipient: `0x${INTEGRATOR}` }] },
+        }),
+      }),
+    });
+    expect(res.updated).toBe(1); // only the verified NULL-own-fee row
+
+    const [f1] = await sql<{ own_bps: number | null; own_recip: string | null; fee: number | null; v: boolean }[]>`
+      SELECT own_fee_bps AS own_bps, encode(own_fee_recipient, 'hex') AS own_recip, volume_fee_bps AS fee, fee_verified AS v
+      FROM trades WHERE trade_uid = decode(${'f1'.repeat(56)}, 'hex')`;
+    expect(Number(f1?.own_bps)).toBe(25); // backfilled
+    expect(f1?.own_recip).toBe(INTEGRATOR); // recipient backfilled
+    expect(Number(f1?.fee)).toBe(10); // verified Ophis fee UNCHANGED
+    expect(f1?.v).toBe(true); // fee_verified UNCHANGED (idempotence preserved)
+
+    const [f2] = await sql<{ own_bps: number | null }[]>`
+      SELECT own_fee_bps AS own_bps FROM trades WHERE trade_uid = decode(${'f2'.repeat(56)}, 'hex')`;
+    expect(f2?.own_bps).toBeNull(); // discovery row untouched by the backfill
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+});

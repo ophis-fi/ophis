@@ -63,6 +63,7 @@ const INFO = {
     'build_order',
     'submit_order',
     'lookup_tier',
+    'get_integrator_earnings',
     'list_chains',
     'get_balances',
     'get_portfolio',

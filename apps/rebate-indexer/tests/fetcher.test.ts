@@ -428,8 +428,8 @@ describe('fetcher.fetchChainTrades', () => {
         case uids.stacked: return withFee(uid, [{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 25, recipient: INTEGRATOR }]);
         // Only the Ophis entry -> no own-fee at all.
         case uids.ophisOnly: return withFee(uid, [{ volumeBps: 10, recipient: OPHIS }]);
-        // A crafted huge own-fee is CLAMPED to OWN_FEE_MAX_BPS (100, the appData
-        // per-entry schema max) - appData is untrusted.
+        // A crafted huge own-fee is CLAMPED to OWN_FEE_MAX_BPS (95, the verified
+        // own-fee max under the 100 bps aggregate cap) - appData is untrusted.
         case uids.inflated: return withFee(uid, [{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 999999, recipient: INTEGRATOR }]);
         // A single (non-array) non-Ophis entry is still decoded as the own-fee.
         case uids.single: return withFee(uid, { volumeBps: 30, recipient: INTEGRATOR });
@@ -445,7 +445,7 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.stacked]!.volumeFeeBps).toBe(10); // Ophis base fee unaffected by the own-fee decode
     expect(byUid[uids.ophisOnly]!.ownFeeBps).toBeNull();
     expect(byUid[uids.ophisOnly]!.ownFeeRecipient).toBeNull();
-    expect(byUid[uids.inflated]!.ownFeeBps).toBe(100); // clamped to OWN_FEE_MAX_BPS (100)
+    expect(byUid[uids.inflated]!.ownFeeBps).toBe(95); // clamped to OWN_FEE_MAX_BPS (95)
     expect(byUid[uids.single]!.ownFeeBps).toBe(30);
     expect(byUid[uids.single]!.ownFeeRecipient).toBe(INTEGRATOR.toLowerCase());
   });

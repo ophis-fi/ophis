@@ -1,5 +1,5 @@
 import { runMigrations } from './db/migrate.js';
-import { runFetcher } from './fetcher.js';
+import { runFetcher, backfillOwnFee } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher } from './batcher.js';
@@ -21,6 +21,15 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     log.info({ inserted }, 'fetch complete');
     await runPricer();
     await runScorer();
+  },
+  // One-time backfill of the reporting-only own-fee columns (migration 0014) onto
+  // verified rows indexed before 0014. Re-fetches one order per scanned row, so it
+  // runs out of band, never in the nightly fetch. Optional --limit=<n> per run.
+  async ['backfill-own-fee'](args) {
+    const limitArg = args.find((a) => a.startsWith('--limit='))?.split('=')[1];
+    const limit = limitArg ? Number(limitArg) : 500;
+    const { scanned, updated } = await backfillOwnFee(Number.isFinite(limit) && limit > 0 ? limit : 500);
+    log.info({ scanned, updated }, 'backfill-own-fee complete');
   },
   // Register a wallet in the owner registry so the next fetch backfills it.
   async ['track-wallet'](args) {
