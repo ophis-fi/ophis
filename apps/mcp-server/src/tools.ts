@@ -26,6 +26,7 @@ import {
   getTokenChart,
   expectedSurplus,
   resolveToken,
+  validateOrder,
   type Address,
 } from './ophis.js'
 
@@ -232,6 +233,10 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             // Per-call code wins; otherwise the server's configured default
             // (so an operator can attribute all orders to their own code).
             referrerCode: a.referrerCode ?? config?.defaultReferrerCode,
+            // Server-set order-source tag (metadata.ophisSource.app) so the
+            // funnel can attribute settled volume to the MCP surface. Not a
+            // caller-controlled field: every order this tool builds is 'mcp'.
+            source: 'mcp',
           },
           Math.floor(Date.now() / 1000),
         )
@@ -543,6 +548,63 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     async (a) => {
       try {
         return ok(await resolveToken({ chainId: a.chainId, symbol: a.symbol }))
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'validate_order',
+    {
+      annotations: { title: 'Validate order preflight', readOnlyHint: true, openWorldHint: false },
+      description:
+        "Offline preflight for an order you built OUTSIDE build_order (no network call, no keys). Catches the documented silent-failure modes before you sign or submit: wrong appCode (settles but earns zero rebate), wrong orderbook host (api.cow.fi silently bypasses the Ophis stack on Ophis-operated chains), wrong EIP-712 domain (signing against CoW's canonical settlement on an Ophis-operated chain yields a domain the deployed contract rejects), appData hash mismatch (order.appData must equal keccak256 of the exact fullAppData string), an unpinned receiver (proceeds leaving the owner), an expired or non-zero-fee order, and malformed partnerFee entries. Pass whatever you have (chainId is required; owner, order, fullAppData, signingDomain, orderbookUrl are all optional and each is checked if present). Returns { valid, errors, warnings, expected } where `expected` echoes the correct per-chain orderbook host, settlement, EIP-712 domain, appCode, and partnerFee. Prefer build_order to construct orders; use this to verify externally-built ones.",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id the order is for (use list_chains `tradeable`).'),
+        owner: z.string().optional().describe('The signing account address; enables the receiver drain-guard check.'),
+        order: z
+          .object({
+            receiver: z.string().optional(),
+            appData: z.string().optional().describe('The signed bytes32 appData hash.'),
+            validTo: z.number().int().optional(),
+            sellAmount: z.string().optional(),
+            buyAmount: z.string().optional(),
+            sellToken: z.string().optional(),
+            buyToken: z.string().optional(),
+            feeAmount: z.string().optional(),
+            kind: z.string().optional(),
+          })
+          .optional()
+          .describe('The (partial) order about to be signed.'),
+        fullAppData: z.string().optional().describe('The exact appData JSON string that will be submitted with the order.'),
+        signingDomain: z
+          .object({
+            name: z.string().optional(),
+            version: z.string().optional(),
+            chainId: z.number().int().optional(),
+            verifyingContract: z.string().optional(),
+          })
+          .optional()
+          .describe('The EIP-712 domain the order will be signed against.'),
+        orderbookUrl: z.string().optional().describe('The orderbook base URL the order will be submitted to.'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(
+          validateOrder(
+            {
+              chainId: a.chainId,
+              owner: a.owner as Address | undefined,
+              order: a.order,
+              fullAppData: a.fullAppData,
+              signingDomain: a.signingDomain,
+              orderbookUrl: a.orderbookUrl,
+            },
+            Math.floor(Date.now() / 1000),
+          ),
+        )
       } catch (e) {
         return fail(e)
       }

@@ -18,6 +18,7 @@ import {
   getTokenChart,
   expectedSurplus,
   resolveToken,
+  validateOrder,
   type Address,
 } from '../src/ophis.js'
 
@@ -58,6 +59,112 @@ describe('buildOphisAppData', () => {
     const ad = buildOphisAppData(5)
     expect(ad.partnerFee).toBeUndefined()
     expect(ad.fullAppData).not.toContain('partnerFee')
+  })
+
+  it('embeds metadata.ophisSource.app only when a source is given, and it changes the hash', () => {
+    const without = buildOphisAppData(10)
+    const withSrc = buildOphisAppData(10, undefined, undefined, 'mcp')
+    expect(without.fullAppData).not.toContain('ophisSource')
+    expect(withSrc.fullAppData).toContain('"ophisSource":{"app":"mcp"}')
+    expect((withSrc.doc.metadata as Record<string, unknown>).ophisSource).toEqual({ app: 'mcp' })
+    // Distinct appData string => distinct signed hash.
+    expect(withSrc.appDataHash).not.toBe(without.appDataHash)
+    expect(withSrc.appDataHash).toBe(keccak256(toBytes(withSrc.fullAppData)))
+  })
+})
+
+describe('validateOrder (offline preflight)', () => {
+  it('passes a correct Optimism order and echoes the expected wiring', () => {
+    const ad = buildOphisAppData(10)
+    const r = validateOrder(
+      {
+        chainId: 10,
+        owner: OWNER,
+        order: { receiver: OWNER, appData: ad.appDataHash, validTo: NOW + 1200, feeAmount: '0' },
+        fullAppData: ad.fullAppData,
+        signingDomain: { name: 'Gnosis Protocol', version: 'v2', chainId: 10, verifyingContract: OPHIS_OP_SETTLEMENT },
+        orderbookUrl: 'https://optimism-mainnet.ophis.fi',
+      },
+      NOW,
+    )
+    expect(r.errors).toEqual([])
+    expect(r.valid).toBe(true)
+    expect(r.expected.settlement?.toLowerCase()).toBe(OPHIS_OP_SETTLEMENT.toLowerCase())
+    expect(r.expected.appCode).toBe('ophis')
+  })
+
+  it('rejects signing against CoW canonical settlement on an Ophis-operated chain', () => {
+    const r = validateOrder(
+      {
+        chainId: 10,
+        signingDomain: {
+          name: 'Gnosis Protocol',
+          version: 'v2',
+          chainId: 10,
+          verifyingContract: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
+        },
+      },
+      NOW,
+    )
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /canonical settlement/i.test(e) && e.includes(OPHIS_OP_SETTLEMENT))).toBe(true)
+  })
+
+  it('rejects api.cow.fi as the orderbook host on an Ophis-operated chain', () => {
+    const r = validateOrder({ chainId: 10, orderbookUrl: 'https://api.cow.fi/mainnet' }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /api\.cow\.fi/.test(e) && /bypass/i.test(e))).toBe(true)
+  })
+
+  it('flags an appData hash mismatch (the classic silent killer)', () => {
+    const ad = buildOphisAppData(10)
+    const r = validateOrder(
+      { chainId: 10, order: { appData: '0x' + '11'.repeat(32) }, fullAppData: ad.fullAppData },
+      NOW,
+    )
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /does not hash to order\.appData/.test(e))).toBe(true)
+  })
+
+  it('warns (not errors) on a non-ophis appCode', () => {
+    const doc = JSON.stringify({ version: APP_DATA_VERSION, appCode: 'notophis', metadata: {} })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.warnings.some((w) => /appCode/.test(w) && /zero rebate/i.test(w))).toBe(true)
+  })
+
+  it('errors when the receiver is not the owner (drain guard)', () => {
+    const r = validateOrder({ chainId: 10, owner: OWNER, order: { receiver: ATTACKER } }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /receiver/.test(e) && /drain guard/i.test(e))).toBe(true)
+  })
+
+  it('errors on an expired validTo', () => {
+    const r = validateOrder({ chainId: 10, order: { validTo: NOW - 1 } }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /expired/i.test(e))).toBe(true)
+  })
+
+  it('errors on a non-zero signed feeAmount', () => {
+    const r = validateOrder({ chainId: 10, order: { feeAmount: '1000' } }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /feeAmount/.test(e))).toBe(true)
+  })
+
+  it('errors on a partnerFee entry with out-of-range bps', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: [{ recipient: OWNER, volumeBps: 250 }] },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /volumeBps must be an integer in \[1, 100\]/.test(e))).toBe(true)
+  })
+
+  it('errors on a non-tradeable chain and lists tradeable ids', () => {
+    const r = validateOrder({ chainId: 999999 }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /not tradeable/.test(e))).toBe(true)
   })
 })
 
