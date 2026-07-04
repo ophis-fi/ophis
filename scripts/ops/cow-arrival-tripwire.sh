@@ -44,17 +44,20 @@ mkdir -p "$(dirname "$STATE_FILE")"
 
 # --- collectors ------------------------------------------------------------
 
-http_status() { # $1 = url -> echoes status code, or "ERR"
+http_status() { # $1 = url -> echoes "200", "404", or "ERR"
   # Capture code and exit status separately so a failed probe yields exactly
   # "ERR", never a concatenation like "000ERR" (curl prints 000 on failure AND
-  # exits nonzero). Only a clean 3-digit code passes through.
+  # exits nonzero). ONLY 200 (orderbook live) and 404 (not deployed) are the
+  # meaningful states this tripwire watches; every other code (403, 429, 5xx,
+  # 000) is transient or ambiguous and maps to ERR, so a flaky 500 or rate-limit
+  # cannot look like a state change and false-alert.
   local code rc
   code=$($CURL -o /dev/null -w '%{http_code}' -A "$UA" "$1" 2>/dev/null)
   rc=$?
-  if [[ $rc -ne 0 || ! "$code" =~ ^[0-9]{3}$ || "$code" == "000" ]]; then
-    echo "ERR"
-  else
+  if [[ $rc -eq 0 && ( "$code" == "200" || "$code" == "404" ) ]]; then
     echo "$code"
+  else
+    echo "ERR"
   fi
 }
 

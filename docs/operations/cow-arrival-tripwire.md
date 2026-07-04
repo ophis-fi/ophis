@@ -61,8 +61,9 @@ launchctl load ~/Library/LaunchAgents/com.ophis.cow-tripwire.plist
 ## When it fires
 
 1. Confirm manually (curl the endpoint / read the upstream commit).
-2. Weight all sovereign marketing toward the unaffected chain (Unichain has
-   zero CoW footprint as of July 2026).
+2. Weight all sovereign marketing toward the unaffected chain (as of July 2026
+   there is no CoW orderbook on Unichain: api and barn both 404, and the chain
+   is absent from the cow-sdk enum and the cowswap networks map).
 3. Sweep the docs for only-venue claims about the affected chain
    (`docs/comparison.md`, `stats-page`, business page, llms.txt files).
 4. Reassess the 100% fee-keep story for the affected chain; the fee keep
