@@ -27,9 +27,12 @@ import {
   getOphisOrderDomain,
   buildOphisAppDataPartnerFee,
   buildOphisReferrerMetadata,
+  normalizeOphisReferralCode,
   ophisOrderReceiver,
   assertReceiverIsOwner,
   ophisDefaultPartnerFee,
+  OPHIS_STABLE_VOLUME_FEE_BPS,
+  isZeroAddress,
   OPHIS_CHAIN_IDS,
   OPHIS_FEE_CHAIN_IDS,
   OPHIS_ORDERBOOK_URLS,
@@ -106,7 +109,12 @@ export interface OphisAppData {
  * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
  */
-export function buildOphisAppData(chainId: number, slippageBips?: number, referrerCode?: string): OphisAppData {
+export function buildOphisAppData(
+  chainId: number,
+  slippageBips?: number,
+  referrerCode?: string,
+  source?: string,
+): OphisAppData {
   const partnerFee = buildOphisAppDataPartnerFee(chainId)
   const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' } }
   if (partnerFee) metadata.partnerFee = partnerFee
@@ -116,6 +124,11 @@ export function buildOphisAppData(chainId: number, slippageBips?: number, referr
   // for this trade's volume. buildOphisReferrerMetadata validates the grammar
   // (throws on a malformed code) so a bad code fails the build, not silently.
   if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode))
+  // Order-source attribution under metadata.ophisSource.app, mirroring the
+  // ophisReferrer custom-metadata pattern (production orderbooks accept unknown
+  // metadata keys). Server-set by the integration surface (e.g. the MCP build_order
+  // handler passes 'mcp'), never caller-controlled.
+  if (source !== undefined) metadata.ophisSource = { app: source }
 
   // Lowercase 'ophis': the rebate indexer matches appCode case-sensitively against the lowercase
   // APP_CODES set, so a capitalized appCode would drop the order (and its referral) from attribution.
@@ -165,6 +178,11 @@ export interface BuildOrderParams {
    * registry grammar; an invalid code throws.
    */
   referrerCode?: string
+  /**
+   * Order-source tag to embed in appData (metadata.ophisSource.app), e.g. 'mcp'.
+   * Server-set by the integration surface, never exposed to callers.
+   */
+  source?: string
 }
 
 export interface BuiltOrder {
@@ -220,7 +238,7 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
   // Hard guard immediately before the order is handed back for signing.
   assertReceiverIsOwner(owner, receiver, { allowCustomReceiver: p.unsafeCustomReceiver !== undefined })
 
-  const { fullAppData, appDataHash, partnerFee } = buildOphisAppData(chainId, p.slippageBips, p.referrerCode)
+  const { fullAppData, appDataHash, partnerFee } = buildOphisAppData(chainId, p.slippageBips, p.referrerCode, p.source)
   const validFor = p.validForSeconds ?? 1200
   if (!Number.isInteger(validFor) || validFor <= 0 || validFor > 60 * 60 * 24 * 365) {
     throw new Error(`build_order: validForSeconds must be a positive integer < 1 year, got ${validFor}`)
@@ -253,6 +271,377 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
       "Sign `order` as EIP-712 typed data using `signing` (domain/types/primaryType='Order') with the owner key. " +
       'Then call submit_order with { chainId, order, signature, signingScheme: "eip712", from: owner, fullAppData }.',
   }
+}
+
+// --- validate_order: pure offline preflight --------------------------------
+
+/**
+ * CoW Protocol's canonical GPv2Settlement. On the Ophis-operated chains the
+ * deployed settlement is a DIFFERENT contract, so an EIP-712 domain built on
+ * this address there is rejected by the deployed contract (every signature
+ * fails validation). validateOrder names this failure mode explicitly.
+ */
+const COW_CANONICAL_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41'
+
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
+const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/
+
+/**
+ * Minimum non-stable Volume bps the Ophis self-hosted (OP-stack) backend accepts
+ * for a partner fee to the Ophis recipient: the anti-zero-bypass floor
+ * OPHIS_NON_STABLE_FLOOR_BPS in apps/backend/crates/app-data/src/app_data.rs.
+ * Same-chain stablecoin (or boosted) pairs floor at OPHIS_STABLE_VOLUME_FEE_BPS
+ * (1 bp) instead. This offline preflight has no cheap stablecoin list, so it
+ * applies the conservative non-stable floor and names the reduced stable-pair
+ * floor in the error. Not exported by the SDK (Rust-only constant), so it is
+ * mirrored here; keep in lockstep with app_data.rs.
+ */
+const OPHIS_NON_STABLE_FLOOR_BPS = 4
+
+/**
+ * Normalizes an orderbook base URL to `origin + pathname` (lowercased, a single
+ * trailing slash stripped) so two base URLs compare equal regardless of a
+ * trailing slash. Compared over the FULL base, not just the host: CoW serves
+ * every hosted chain under one host (api.cow.fi) and selects the chain by PATH
+ * (api.cow.fi/mainnet vs api.cow.fi/xdai), so a host-only check accepts the
+ * wrong chain's orderbook.
+ */
+function normalizeOrderbookBase(u: URL): string {
+  return (u.origin + u.pathname.replace(/\/+$/, '')).toLowerCase()
+}
+
+export interface ValidateOrderParams {
+  chainId: number
+  /** The signing account. Enables the receiver-pinning drain-guard check. */
+  owner?: string
+  /** The (partial) order about to be signed. `appData` is the signed bytes32 hash. */
+  order?: {
+    receiver?: string
+    appData?: string
+    validTo?: number
+    sellAmount?: string
+    buyAmount?: string
+    sellToken?: string
+    buyToken?: string
+    feeAmount?: string
+    kind?: string
+  }
+  /** The exact appData JSON string that will be submitted with the order. */
+  fullAppData?: string
+  /** The EIP-712 domain the order will be signed against. */
+  signingDomain?: { name?: string; version?: string; chainId?: number; verifyingContract?: string }
+  /** The orderbook base URL the order will be submitted to. */
+  orderbookUrl?: string
+}
+
+/** The correct per-chain wiring, echoed back so a caller can fix mismatches. */
+export interface ValidateOrderExpected {
+  chainId: number
+  orderbookUrl: string | null
+  settlement: Address | null
+  signingDomain: OphisOrderDomain | null
+  appCode: 'ophis'
+  partnerFee: OphisPartnerFee | null
+}
+
+export interface ValidateOrderResult {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+  expected: ValidateOrderExpected
+}
+
+/**
+ * Pure offline preflight for an order built OUTSIDE build_order. Collects every
+ * failure in one pass (errors = will not settle or will lose funds/attribution;
+ * warnings = settles but degraded) and echoes the correct per-chain wiring in
+ * `expected`. No network calls, no keys. The checks target the documented
+ * silent failure modes: wrong appCode, wrong orderbook host, wrong EIP-712
+ * domain, appData hash mismatch, unpinned receiver, expired validTo, non-zero
+ * signed feeAmount, malformed amounts. Reuses the same per-chain helpers as
+ * buildOrder (no duplicated constants).
+ */
+export function validateOrder(p: ValidateOrderParams, nowSeconds: number): ValidateOrderResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const chainId = p.chainId
+  const chainIdOk = typeof chainId === 'number' && Number.isInteger(chainId) && chainId > 0
+
+  // (1) The chain must be tradeable right now (same source of truth as list_chains).
+  const tradeableIds = listChains().tradeable.map((c) => c.chainId)
+  if (!chainIdOk) {
+    errors.push(`invalid chainId: ${chainId}. Tradeable chain ids: ${tradeableIds.join(', ')}.`)
+  } else if (!tradeableIds.includes(chainId)) {
+    errors.push(
+      `chainId ${chainId} is not tradeable on Ophis (no live orderbook host). Tradeable chain ids: ${tradeableIds.join(', ')}.`,
+    )
+  }
+
+  // (2) The correct wiring for this chain, via the same helpers buildOrder uses.
+  const settlement = (chainIdOk ? OPHIS_SETTLEMENT_ADDRESSES[chainId] : undefined) ?? null
+  const expected: ValidateOrderExpected = {
+    chainId,
+    orderbookUrl: (chainIdOk ? OPHIS_ORDERBOOK_URLS[chainId] : undefined) ?? null,
+    settlement,
+    signingDomain: settlement ? getOphisOrderDomain(chainId) : null,
+    appCode: 'ophis',
+    partnerFee: (chainIdOk ? buildOphisAppDataPartnerFee(chainId) : undefined) ?? null,
+  }
+  const ophisOperated = chainIdOk && new Set<number>(Object.values(OPHIS_CHAIN_IDS)).has(chainId)
+
+  // (3) EIP-712 signing domain, field by field against the correct per-chain domain.
+  if (p.signingDomain !== undefined && expected.signingDomain) {
+    const d = p.signingDomain
+    const exp = expected.signingDomain
+    if (d.name !== exp.name) {
+      errors.push(`signingDomain.name must be "${exp.name}", got ${JSON.stringify(d.name)}.`)
+    }
+    if (d.version !== exp.version) {
+      errors.push(`signingDomain.version must be "${exp.version}", got ${JSON.stringify(d.version)}.`)
+    }
+    if (d.chainId !== exp.chainId) {
+      errors.push(`signingDomain.chainId must be ${exp.chainId}, got ${d.chainId}.`)
+    }
+    const vc = d.verifyingContract
+    if (typeof vc !== 'string' || vc.toLowerCase() !== exp.verifyingContract.toLowerCase()) {
+      if (
+        typeof vc === 'string' &&
+        vc.toLowerCase() === COW_CANONICAL_SETTLEMENT.toLowerCase() &&
+        exp.verifyingContract.toLowerCase() !== COW_CANONICAL_SETTLEMENT.toLowerCase()
+      ) {
+        errors.push(
+          `signingDomain.verifyingContract is CoW Protocol's canonical settlement ${COW_CANONICAL_SETTLEMENT}, but chain ${chainId} is Ophis-operated and settles on Ophis's own deployed contract: signing against the canonical address produces an EIP-712 domain separator the deployed contract rejects, so every signature fails validation. Sign against ${exp.verifyingContract}.`,
+        )
+      } else {
+        errors.push(
+          `signingDomain.verifyingContract must be ${exp.verifyingContract} on chain ${chainId}, got ${JSON.stringify(vc)}.`,
+        )
+      }
+    }
+  }
+
+  // (4) Orderbook base URL. api.cow.fi does not serve the Ophis-operated chains,
+  // and CoW selects the hosted chain by PATH under one host, so this compares the
+  // FULL normalized base (origin + path), not just the host.
+  if (p.orderbookUrl !== undefined) {
+    let givenUrl: URL | null = null
+    try {
+      givenUrl = new URL(p.orderbookUrl)
+    } catch {
+      errors.push(`orderbookUrl is not a valid URL: ${JSON.stringify(p.orderbookUrl)}.`)
+    }
+    if (givenUrl !== null && expected.orderbookUrl) {
+      const givenHost = givenUrl.host.toLowerCase()
+      if (givenHost === 'api.cow.fi' && ophisOperated) {
+        errors.push(
+          `orderbookUrl points at api.cow.fi, but chain ${chainId} is Ophis-operated: that host does not serve the Ophis stack, so the order silently bypasses the Ophis solvers and partner fee. Submit to ${expected.orderbookUrl}.`,
+        )
+      } else if (normalizeOrderbookBase(givenUrl) !== normalizeOrderbookBase(new URL(expected.orderbookUrl))) {
+        errors.push(
+          `orderbookUrl ${p.orderbookUrl} is wrong for chain ${chainId}; the correct orderbook is ${expected.orderbookUrl}. CoW serves every hosted chain under api.cow.fi and selects the chain by path, so a matching host alone is not enough.`,
+        )
+      }
+    }
+  }
+
+  const o = p.order
+
+  // (5) fullAppData: parseability, appCode, partnerFee, referral code, hash link.
+  if (p.fullAppData !== undefined) {
+    let doc: Record<string, unknown> | null = null
+    try {
+      const parsed: unknown = JSON.parse(p.fullAppData)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        doc = parsed as Record<string, unknown>
+      } else {
+        errors.push('fullAppData must be a JSON object document; the orderbook rejects anything else.')
+      }
+    } catch {
+      errors.push('fullAppData is not valid JSON; the orderbook rejects unparseable appData.')
+    }
+    if (doc) {
+      if (doc.appCode !== 'ophis') {
+        warnings.push(
+          `appData appCode is ${JSON.stringify(doc.appCode)} instead of "ophis": the order still settles and pays the partner fee, but the rebate indexer attributes zero rebate/affiliate volume for it, silently. Use build_order or set appCode to "ophis".`,
+        )
+      }
+      const metadata = (doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : {}) as Record<string, unknown>
+      const partnerFee = metadata.partnerFee
+      if (partnerFee === undefined) {
+        warnings.push(
+          'appData metadata.partnerFee is absent: the order carries no Ophis fee and earns no rebate or affiliate attribution. Ophis integrations normally embed it; use build_order, which adds the correct partnerFee for the chain.',
+        )
+      } else {
+        const entries = Array.isArray(partnerFee) ? partnerFee : [partnerFee]
+        // The recipient the backend allowlist gates on (app_data.rs
+        // PARTNER_FEE_RECIPIENT_ALLOWLIST). Sourced from expected.partnerFee, the
+        // per-chain fee config already computed above via the same SDK helper
+        // buildOrder uses, so there is no second copy of the address here.
+        const ophisRecipient = expected.partnerFee?.recipient?.toLowerCase()
+        let ophisRecipientSeen = false
+        entries.forEach((entry: unknown, i: number) => {
+          const label = Array.isArray(partnerFee) ? `appData metadata.partnerFee[${i}]` : 'appData metadata.partnerFee'
+          const fee = (entry && typeof entry === 'object' ? entry : {}) as { recipient?: unknown; volumeBps?: unknown }
+          const recipientOk = typeof fee.recipient === 'string' && ADDRESS_RE.test(fee.recipient)
+          if (!recipientOk) {
+            errors.push(`${label}.recipient must be a 0x-prefixed 40-hex-char address, got ${JSON.stringify(fee.recipient)}.`)
+          }
+          const volumeBpsOk =
+            typeof fee.volumeBps === 'number' &&
+            Number.isInteger(fee.volumeBps) &&
+            fee.volumeBps >= 1 &&
+            fee.volumeBps <= 100
+          if (!volumeBpsOk) {
+            errors.push(`${label}.volumeBps must be an integer in [1, 100], got ${JSON.stringify(fee.volumeBps)}.`)
+          }
+          // Only the ENTRY that names the Ophis recipient is gated by the backend
+          // allowlist and Volume floor. A stacked second entry (an integrator's own
+          // fee to a different recipient) is allowed to differ and is left alone.
+          const isOphisRecipient =
+            recipientOk && ophisRecipient !== undefined && (fee.recipient as string).toLowerCase() === ophisRecipient
+          if (isOphisRecipient) {
+            ophisRecipientSeen = true
+            // Token-pair Volume floor, enforced ONLY on Ophis-operated chains (the OP
+            // self-hosted backend applies partner_fee_floor_bps; CoW-hosted chains do
+            // not). The preflight has no cheap stablecoin list, so it applies the
+            // conservative non-stable floor and names the reduced stable-pair floor.
+            if (
+              ophisOperated &&
+              volumeBpsOk &&
+              typeof o?.sellToken === 'string' &&
+              typeof o?.buyToken === 'string' &&
+              (fee.volumeBps as number) < OPHIS_NON_STABLE_FLOOR_BPS
+            ) {
+              errors.push(
+                `${label}.volumeBps ${fee.volumeBps} is below the Ophis ${OPHIS_NON_STABLE_FLOOR_BPS}-bps non-stable Volume floor on Ophis-operated chain ${chainId}: the self-hosted backend rejects a fee to the Ophis recipient under this floor. Same-chain stablecoin pairs floor at ${OPHIS_STABLE_VOLUME_FEE_BPS} bp; raise volumeBps to at least ${OPHIS_NON_STABLE_FLOOR_BPS} (or ${OPHIS_STABLE_VOLUME_FEE_BPS} for a same-chain stable pair).`,
+              )
+            }
+          }
+        })
+        // The Ophis recipient MUST appear on a fee chain: the backend allowlist
+        // (app_data.rs validate_partner_fees) rejects a partner fee whose recipient
+        // is not the Ophis Safe, so a document carrying only a foreign recipient
+        // routes nothing to Ophis and is rejected at ingress. A well-formed extra
+        // entry (the integrator's own fee) is fine as long as the Ophis entry exists.
+        if (expected.partnerFee && !ophisRecipientSeen) {
+          errors.push(
+            `appData metadata.partnerFee has no entry paying the Ophis recipient ${expected.partnerFee.recipient} on fee chain ${chainId}: the backend partner-fee allowlist rejects a fee to any other recipient, so this order earns no Ophis fee and is rejected at ingress. Set the Ophis fee entry's recipient to ${expected.partnerFee.recipient}.`,
+          )
+        }
+      }
+      if (metadata.ophisReferrer !== undefined) {
+        const code = (metadata.ophisReferrer as { code?: unknown } | null)?.code
+        if (typeof code !== 'string') {
+          errors.push(`appData metadata.ophisReferrer.code must be a string, got ${JSON.stringify(code)}.`)
+        } else {
+          // The rebate indexer TRIMS + LOWERCASES the code before matching
+          // (apps/rebate-indexer/src/fetcher.ts), so a non-canonical-but-normalizable
+          // code (e.g. "ACME-Bot_1" or one with surrounding spaces) IS creditable.
+          // Validate the NORMALIZED form via the same SDK helper (which trims,
+          // lowercases, then grammar-checks, mirroring the indexer); only error if the
+          // code cannot be normalized into a valid registry code at all.
+          try {
+            normalizeOphisReferralCode(code)
+          } catch (e) {
+            errors.push(`appData metadata.ophisReferrer.code ${JSON.stringify(code)} is invalid: ${(e as Error).message}`)
+          }
+        }
+      }
+    }
+  }
+
+  // (5b) The signed bytes32 must be the keccak256 of the EXACT submitted string.
+  if (o?.appData !== undefined && !BYTES32_RE.test(o.appData)) {
+    errors.push(`order.appData must be a 0x bytes32 hash (keccak256 of fullAppData), got ${JSON.stringify(o.appData)}.`)
+  } else if (o?.appData !== undefined && p.fullAppData !== undefined) {
+    const computed = keccak256(toBytes(p.fullAppData))
+    if (computed.toLowerCase() !== o.appData.toLowerCase()) {
+      errors.push(
+        `fullAppData does not hash to order.appData: keccak256(fullAppData) = ${computed} but order.appData = ${o.appData}. The orderbook hashes the EXACT submitted string, so any re-serialization (key order, whitespace, version bump) silently changes the hash and the orderbook rejects the order. Submit the byte-identical string that was hashed into the signed order.`,
+      )
+    }
+  }
+
+  // (6) Receiver pinning: undefined, zero, or the owner. Mirrors submit_order,
+  // which refuses to relay a non-owner receiver (the drain guard).
+  const ownerOk = p.owner !== undefined && ADDRESS_RE.test(p.owner)
+  if (p.owner !== undefined && !ownerOk) {
+    errors.push(`owner must be a 0x-prefixed 40-hex-char address, got ${JSON.stringify(p.owner)}.`)
+  }
+  if (o?.receiver !== undefined) {
+    if (!ADDRESS_RE.test(o.receiver)) {
+      errors.push(`order.receiver must be a 0x-prefixed 40-hex-char address, got ${JSON.stringify(o.receiver)}.`)
+    } else if (!isZeroAddress(o.receiver)) {
+      if (ownerOk) {
+        if (o.receiver.toLowerCase() !== (p.owner as string).toLowerCase()) {
+          errors.push(
+            `order.receiver ${o.receiver} is not the owner ${p.owner}: proceeds would leave the account (the receiver-pinning drain guard; submit_order refuses to relay this). Set receiver to the owner or the zero address.`,
+          )
+        }
+      } else {
+        warnings.push(
+          'order.receiver is set but no valid owner was given, so the receiver-pinning drain guard could not be checked; pass owner to verify proceeds return to the signing account.',
+        )
+      }
+    }
+  }
+
+  // (7) Lifetime sanity at nowSeconds.
+  if (o?.validTo !== undefined) {
+    const now = Math.floor(nowSeconds)
+    if (!Number.isInteger(o.validTo) || o.validTo <= 0 || o.validTo > 0xffffffff) {
+      errors.push(`order.validTo must be a uint32 unix timestamp, got ${o.validTo}.`)
+    } else if (o.validTo <= now) {
+      errors.push(`order.validTo ${o.validTo} is already expired (now = ${now}); the orderbook rejects expired orders.`)
+    } else if (o.validTo < now + 60) {
+      errors.push(
+        `order.validTo ${o.validTo} expires in ${o.validTo - now}s (under 60s): it will likely expire before settlement. Rebuild with a longer lifetime.`,
+      )
+    } else if (o.validTo > now + 7 * 24 * 3600) {
+      warnings.push(
+        `order.validTo ${o.validTo} is more than 7 days out: a long-lived limit can execute at a stale price. Confirm the lifetime is intentional.`,
+      )
+    }
+  }
+
+  // (8) Signed feeAmount must be 0, the same policy build_order enforces: the
+  // Ophis fee is taken via the appData partner fee (from the trade output at
+  // settlement), not a signed feeAmount, and CoW accounting treats a signed
+  // feeAmount as ADDITIONAL sell-token spend no slippage check covers.
+  if (o?.feeAmount !== undefined && o.feeAmount !== '0') {
+    errors.push(
+      `order.feeAmount must be "0", got ${JSON.stringify(o.feeAmount)}: Ophis orders take the fee via the appData partner fee, not a signed feeAmount; a non-zero signed feeAmount is additional sell-token spend that no slippage check covers.`,
+    )
+  }
+
+  // (9) Amounts must be positive uint256 decimal strings.
+  for (const [field, value] of [
+    ['sellAmount', o?.sellAmount],
+    ['buyAmount', o?.buyAmount],
+  ] as const) {
+    if (value !== undefined) {
+      try {
+        assertAtoms(value, `order.${field}`)
+      } catch (e) {
+        errors.push((e as Error).message)
+      }
+    }
+  }
+
+  // Light shape checks on the remaining order fields callers may pass.
+  for (const [field, value] of [
+    ['sellToken', o?.sellToken],
+    ['buyToken', o?.buyToken],
+  ] as const) {
+    if (value !== undefined && !ADDRESS_RE.test(value)) {
+      errors.push(`order.${field} must be a 0x-prefixed 40-hex-char address, got ${JSON.stringify(value)}.`)
+    }
+  }
+  if (o?.kind !== undefined && o.kind !== 'sell' && o.kind !== 'buy') {
+    errors.push(`order.kind must be "sell" or "buy", got ${JSON.stringify(o.kind)}.`)
+  }
+
+  return { valid: errors.length === 0, errors, warnings, expected }
 }
 
 // --- API callers (real endpoints, no mocks) --------------------------------
