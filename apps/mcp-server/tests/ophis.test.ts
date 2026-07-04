@@ -26,6 +26,8 @@ const OWNER = '0x931e9f531cdd4835Def0dEDE1452BA8aFbe5ff9b' as const
 const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' as const
 const WETH_OP = '0x4200000000000000000000000000000000000006' as const
 const ATTACKER = '0x000000000000000000000000000000000000dEaD' as const
+const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as const
+const OP_TOKEN = '0x4200000000000000000000000000000000000042' as const
 const OPHIS_OP_SETTLEMENT = '0x310784c7FCE12d578dA6f53460777bAc9718B859'
 const NOW = 1_900_000_000
 
@@ -165,6 +167,53 @@ describe('validateOrder (offline preflight)', () => {
     const r = validateOrder({ chainId: 999999 }, NOW)
     expect(r.valid).toBe(false)
     expect(r.errors.some((e) => /not tradeable/.test(e))).toBe(true)
+  })
+
+  it('rejects api.cow.fi/mainnet on Gnosis (100): host matches but the path is the wrong chain', () => {
+    // Gnosis is CoW-hosted at api.cow.fi/xdai. A host-only check would accept the
+    // mainnet path because both share the api.cow.fi host; the full-base compare
+    // catches the wrong-chain path.
+    const r = validateOrder({ chainId: 100, orderbookUrl: 'https://api.cow.fi/mainnet' }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /wrong for chain 100/.test(e) && /api\.cow\.fi\/xdai/.test(e))).toBe(true)
+  })
+
+  it('rejects a partnerFee whose recipient is not the allowlisted Ophis Safe (backend allowlist)', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: ATTACKER, volumeBps: 5 } },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /no entry paying the Ophis recipient/i.test(e) && e.includes(OPHIS_SAFE))).toBe(true)
+  })
+
+  it('accepts a referral code that is only creditable after the indexer trims + lowercases it', () => {
+    // "ACME-Bot_1" is not byte-for-byte canonical, but the rebate indexer normalizes
+    // (trim + lowercase) to "acme-bot_1" before matching, so it IS creditable.
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: {
+        partnerFee: { recipient: OPHIS_SAFE, volumeBps: 5 },
+        ophisReferrer: { code: 'ACME-Bot_1' },
+      },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.errors.some((e) => /ophisReferrer/.test(e))).toBe(false)
+    expect(r.valid).toBe(true)
+  })
+
+  it('rejects a 2 bps Ophis-recipient Volume fee below the non-stable floor on Optimism', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 2 } },
+    })
+    const r = validateOrder({ chainId: 10, order: { sellToken: WETH_OP, buyToken: OP_TOKEN }, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /below the Ophis 4-bps non-stable Volume floor/i.test(e))).toBe(true)
   })
 })
 

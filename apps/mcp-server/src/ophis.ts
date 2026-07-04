@@ -31,6 +31,7 @@ import {
   ophisOrderReceiver,
   assertReceiverIsOwner,
   ophisDefaultPartnerFee,
+  OPHIS_STABLE_VOLUME_FEE_BPS,
   isZeroAddress,
   OPHIS_CHAIN_IDS,
   OPHIS_FEE_CHAIN_IDS,
@@ -285,6 +286,30 @@ const COW_CANONICAL_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41'
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/
 
+/**
+ * Minimum non-stable Volume bps the Ophis self-hosted (OP-stack) backend accepts
+ * for a partner fee to the Ophis recipient: the anti-zero-bypass floor
+ * OPHIS_NON_STABLE_FLOOR_BPS in apps/backend/crates/app-data/src/app_data.rs.
+ * Same-chain stablecoin (or boosted) pairs floor at OPHIS_STABLE_VOLUME_FEE_BPS
+ * (1 bp) instead. This offline preflight has no cheap stablecoin list, so it
+ * applies the conservative non-stable floor and names the reduced stable-pair
+ * floor in the error. Not exported by the SDK (Rust-only constant), so it is
+ * mirrored here; keep in lockstep with app_data.rs.
+ */
+const OPHIS_NON_STABLE_FLOOR_BPS = 4
+
+/**
+ * Normalizes an orderbook base URL to `origin + pathname` (lowercased, a single
+ * trailing slash stripped) so two base URLs compare equal regardless of a
+ * trailing slash. Compared over the FULL base, not just the host: CoW serves
+ * every hosted chain under one host (api.cow.fi) and selects the chain by PATH
+ * (api.cow.fi/mainnet vs api.cow.fi/xdai), so a host-only check accepts the
+ * wrong chain's orderbook.
+ */
+function normalizeOrderbookBase(u: URL): string {
+  return (u.origin + u.pathname.replace(/\/+$/, '')).toLowerCase()
+}
+
 export interface ValidateOrderParams {
   chainId: number
   /** The signing account. Enables the receiver-pinning drain-guard check. */
@@ -395,23 +420,25 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
     }
   }
 
-  // (4) Orderbook host. api.cow.fi does not serve the Ophis-operated chains.
+  // (4) Orderbook base URL. api.cow.fi does not serve the Ophis-operated chains,
+  // and CoW selects the hosted chain by PATH under one host, so this compares the
+  // FULL normalized base (origin + path), not just the host.
   if (p.orderbookUrl !== undefined) {
-    let givenHost: string | null = null
+    let givenUrl: URL | null = null
     try {
-      givenHost = new URL(p.orderbookUrl).host.toLowerCase()
+      givenUrl = new URL(p.orderbookUrl)
     } catch {
       errors.push(`orderbookUrl is not a valid URL: ${JSON.stringify(p.orderbookUrl)}.`)
     }
-    if (givenHost !== null && expected.orderbookUrl) {
-      const expectedHost = new URL(expected.orderbookUrl).host.toLowerCase()
+    if (givenUrl !== null && expected.orderbookUrl) {
+      const givenHost = givenUrl.host.toLowerCase()
       if (givenHost === 'api.cow.fi' && ophisOperated) {
         errors.push(
           `orderbookUrl points at api.cow.fi, but chain ${chainId} is Ophis-operated: that host does not serve the Ophis stack, so the order silently bypasses the Ophis solvers and partner fee. Submit to ${expected.orderbookUrl}.`,
         )
-      } else if (givenHost !== expectedHost) {
+      } else if (normalizeOrderbookBase(givenUrl) !== normalizeOrderbookBase(new URL(expected.orderbookUrl))) {
         errors.push(
-          `orderbookUrl host ${givenHost} is wrong for chain ${chainId}; the correct orderbook is ${expected.orderbookUrl}.`,
+          `orderbookUrl ${p.orderbookUrl} is wrong for chain ${chainId}; the correct orderbook is ${expected.orderbookUrl}. CoW serves every hosted chain under api.cow.fi and selects the chain by path, so a matching host alone is not enough.`,
         )
       }
     }
@@ -446,35 +473,75 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
         )
       } else {
         const entries = Array.isArray(partnerFee) ? partnerFee : [partnerFee]
+        // The recipient the backend allowlist gates on (app_data.rs
+        // PARTNER_FEE_RECIPIENT_ALLOWLIST). Sourced from expected.partnerFee, the
+        // per-chain fee config already computed above via the same SDK helper
+        // buildOrder uses, so there is no second copy of the address here.
+        const ophisRecipient = expected.partnerFee?.recipient?.toLowerCase()
+        let ophisRecipientSeen = false
         entries.forEach((entry: unknown, i: number) => {
           const label = Array.isArray(partnerFee) ? `appData metadata.partnerFee[${i}]` : 'appData metadata.partnerFee'
           const fee = (entry && typeof entry === 'object' ? entry : {}) as { recipient?: unknown; volumeBps?: unknown }
-          if (typeof fee.recipient !== 'string' || !ADDRESS_RE.test(fee.recipient)) {
+          const recipientOk = typeof fee.recipient === 'string' && ADDRESS_RE.test(fee.recipient)
+          if (!recipientOk) {
             errors.push(`${label}.recipient must be a 0x-prefixed 40-hex-char address, got ${JSON.stringify(fee.recipient)}.`)
           }
-          if (
-            typeof fee.volumeBps !== 'number' ||
-            !Number.isInteger(fee.volumeBps) ||
-            fee.volumeBps < 1 ||
-            fee.volumeBps > 100
-          ) {
+          const volumeBpsOk =
+            typeof fee.volumeBps === 'number' &&
+            Number.isInteger(fee.volumeBps) &&
+            fee.volumeBps >= 1 &&
+            fee.volumeBps <= 100
+          if (!volumeBpsOk) {
             errors.push(`${label}.volumeBps must be an integer in [1, 100], got ${JSON.stringify(fee.volumeBps)}.`)
           }
+          // Only the ENTRY that names the Ophis recipient is gated by the backend
+          // allowlist and Volume floor. A stacked second entry (an integrator's own
+          // fee to a different recipient) is allowed to differ and is left alone.
+          const isOphisRecipient =
+            recipientOk && ophisRecipient !== undefined && (fee.recipient as string).toLowerCase() === ophisRecipient
+          if (isOphisRecipient) {
+            ophisRecipientSeen = true
+            // Token-pair Volume floor, enforced ONLY on Ophis-operated chains (the OP
+            // self-hosted backend applies partner_fee_floor_bps; CoW-hosted chains do
+            // not). The preflight has no cheap stablecoin list, so it applies the
+            // conservative non-stable floor and names the reduced stable-pair floor.
+            if (
+              ophisOperated &&
+              volumeBpsOk &&
+              typeof o?.sellToken === 'string' &&
+              typeof o?.buyToken === 'string' &&
+              (fee.volumeBps as number) < OPHIS_NON_STABLE_FLOOR_BPS
+            ) {
+              errors.push(
+                `${label}.volumeBps ${fee.volumeBps} is below the Ophis ${OPHIS_NON_STABLE_FLOOR_BPS}-bps non-stable Volume floor on Ophis-operated chain ${chainId}: the self-hosted backend rejects a fee to the Ophis recipient under this floor. Same-chain stablecoin pairs floor at ${OPHIS_STABLE_VOLUME_FEE_BPS} bp; raise volumeBps to at least ${OPHIS_NON_STABLE_FLOOR_BPS} (or ${OPHIS_STABLE_VOLUME_FEE_BPS} for a same-chain stable pair).`,
+              )
+            }
+          }
         })
+        // The Ophis recipient MUST appear on a fee chain: the backend allowlist
+        // (app_data.rs validate_partner_fees) rejects a partner fee whose recipient
+        // is not the Ophis Safe, so a document carrying only a foreign recipient
+        // routes nothing to Ophis and is rejected at ingress. A well-formed extra
+        // entry (the integrator's own fee) is fine as long as the Ophis entry exists.
+        if (expected.partnerFee && !ophisRecipientSeen) {
+          errors.push(
+            `appData metadata.partnerFee has no entry paying the Ophis recipient ${expected.partnerFee.recipient} on fee chain ${chainId}: the backend partner-fee allowlist rejects a fee to any other recipient, so this order earns no Ophis fee and is rejected at ingress. Set the Ophis fee entry's recipient to ${expected.partnerFee.recipient}.`,
+          )
+        }
       }
       if (metadata.ophisReferrer !== undefined) {
         const code = (metadata.ophisReferrer as { code?: unknown } | null)?.code
         if (typeof code !== 'string') {
           errors.push(`appData metadata.ophisReferrer.code must be a string, got ${JSON.stringify(code)}.`)
         } else {
-          // Reuse the SDK's referral grammar (the same validation build_order runs).
+          // The rebate indexer TRIMS + LOWERCASES the code before matching
+          // (apps/rebate-indexer/src/fetcher.ts), so a non-canonical-but-normalizable
+          // code (e.g. "ACME-Bot_1" or one with surrounding spaces) IS creditable.
+          // Validate the NORMALIZED form via the same SDK helper (which trims,
+          // lowercases, then grammar-checks, mirroring the indexer); only error if the
+          // code cannot be normalized into a valid registry code at all.
           try {
-            const normalized = normalizeOphisReferralCode(code)
-            if (normalized !== code) {
-              errors.push(
-                `appData metadata.ophisReferrer.code ${JSON.stringify(code)} is not in canonical form (expected ${JSON.stringify(normalized)}): the rebate indexer matches codes exactly, so this referral would not be credited.`,
-              )
-            }
+            normalizeOphisReferralCode(code)
           } catch (e) {
             errors.push(`appData metadata.ophisReferrer.code ${JSON.stringify(code)} is invalid: ${(e as Error).message}`)
           }
