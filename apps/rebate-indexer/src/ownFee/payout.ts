@@ -83,10 +83,11 @@ export interface OwnFeeProposeDeps {
   /** Read the Ophis Safe's WETH balance on `chainId` (default: on-chain balanceOf). */
   readonly readSafeWethBalanceWei?: (args: { chainId: number; rpcUrl: string; weth: `0x${string}` }) => Promise<bigint>;
   /**
-   * Read the next free Safe nonce on `chainId` ONCE per run (default: getNextSafeNonce for
-   * the Ophis Safe). The CALLER owns the nonce: it reads this once before the loop, then
-   * derives each subsequent catch-up proposal's nonce locally (+1), so no proposal outcome
-   * (including a post-send 'attempted' failure) can desync it into a re-read + collision. (Codex #474)
+   * Read the next free Safe nonce on `chainId` at most ONCE per run (default: getNextSafeNonce
+   * for the Ophis Safe). The CALLER owns the nonce: it reads this lazily, only when the first
+   * batch actually reaches proposal, then derives each subsequent catch-up proposal's nonce
+   * locally (+1), so no proposal outcome (including a post-send 'attempted' failure) can desync
+   * it into a re-read + collision. A run where every payable batch is BLOCKED never calls it. (Codex #474)
    */
   readonly getNextNonce?: (args: { chainId: number; rpcUrl: string }) => Promise<number>;
   /** Safe MultiSend proposer (default: proposeRebateBatch). */
@@ -142,8 +143,12 @@ export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: s
   const weth = WETH_BY_CHAIN[deps.chainId];
   if (!weth) throw new Error(`no WETH address for chain ${deps.chainId}`);
 
-  // The WETH/USD spot used to size owed WETH at accrual time. Fetched at most ONCE per run
-  // and reused for every month (memoized), so a fully-locked run never fetches a price.
+  // The FRESH WETH/USD spot used to size owed WETH at a month's FIRST accrual. Fetched at
+  // most ONCE per run and shared across every month that needs a fresh price (memoized), so
+  // a run that only re-accrues existing rows (or is fully locked) never fetches. Each month
+  // LOCKS its price at first accrual: a re-accrual of an existing unlocked back-month reuses
+  // that row's STORED weth_usd_price instead of this spot (see accrueOwnFeeMonth), so the
+  // owed WETH is deterministic and only moves when new trades change the USD volume.
   const fetchPrice = deps.fetchWethUsdPrice ?? defaultFetchWethUsdPrice;
   let pricePromise: Promise<number> | undefined;
   const getWethUsdPrice = () => (pricePromise ??= fetchPrice({ chainId: deps.chainId, weth }));
@@ -194,7 +199,18 @@ async function accrueOwnFeeMonth(
     return { status: 'locked', batchId: existing.id };
   }
 
-  const wethUsdPrice = await getWethUsdPrice();
+  // LOCK the month's WETH price at its FIRST accrual. An existing UNLOCKED row
+  // ('computed'/'no_recipients') is re-accrued at its OWN stored weth_usd_price, so a
+  // settled back-month with no new trades pays the SAME owed WETH on every later run
+  // (deterministic) and, even with new trades, the added volume is priced at the month's
+  // original spot -- never a later spot that only moved because ETH did. Only a month with
+  // NO row yet (a newly-accrued or missed month's first accrual, or the current settled
+  // month's first accrual) fetches the FRESH spot (memoized, so several brand-new months in
+  // one run share one network call). Existing rows never trigger or use the fetch. (Codex P2)
+  const wethUsdPrice =
+    existing && existing.wethUsdPrice != null
+      ? parseFloat(existing.wethUsdPrice)
+      : await getWethUsdPrice();
   const owed = await computeOwnFeeAccrual(deps.chainId, month.start, month.end, wethUsdPrice, allowlist);
   const totalOwedWei = owed.reduce((acc, o) => acc + o.owedWei, 0n);
   const status = owed.length > 0 ? 'computed' : 'no_recipients';
@@ -263,11 +279,14 @@ async function accrueOwnFeeMonth(
  * it is never re-picked (no double-pay).
  *
  * NONCE PINNING: a single run can propose MULTIPLE back-month batches. The CALLER owns the
- * nonce -- it reads getNextSafeNonce ONCE up front, then passes an explicit nonce to every
- * proposal and increments it locally after each SUBMITTED one (a 'proposed' OR a post-send
- * 'attempted', which may have consumed the nonce). It never re-reads getNextNonce between
- * proposals (which could race the Tx Service and hand out the SAME nonce twice), and no
- * proposal outcome can desync the counter. Same #360 spirit the fee conversion uses. (Codex #474)
+ * nonce -- it reads getNextSafeNonce at most ONCE, LAZILY, the first time a batch actually
+ * reaches proposal, then passes an explicit nonce to every proposal and increments it locally
+ * after each SUBMITTED one (a 'proposed' OR a post-send 'attempted', which may have consumed
+ * the nonce). It never re-reads getNextNonce between proposals (which could race the Tx Service
+ * and hand out the SAME nonce twice), and no proposal outcome can desync the counter. A run
+ * whose every payable batch is over-draw-BLOCKED never reads the nonce at all, so an
+ * underfunded run leaves its batches 'computed' + emits its BLOCKED alerts without throwing on
+ * an unrelated Tx Service lookup. Same #360 spirit the fee conversion uses. (Codex #474)
  */
 export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ checked: number; proposed: number; blocked: number; dryRun?: boolean }> {
   if (!SOVEREIGN_CHAIN_IDS.has(deps.chainId)) {
@@ -315,13 +334,17 @@ export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ c
   }
   let proposed = 0;
   let blocked = 0;
-  // CALLER OWNS THE NONCE: read the next free Safe nonce ONCE for this run, then pass an
-  // explicit nonce to every proposal and advance it locally. This never re-reads
-  // getNextNonce between proposals (where the Tx Service may not yet reflect a just-posted
-  // tx and could hand out a colliding nonce), so no proposal outcome can desync it. We are
-  // past the proposeEnabled + payable.length > 0 guards, so this read always applies. (Codex #474)
+  // CALLER OWNS THE NONCE, read LAZILY: the next free Safe nonce is read at most ONCE per
+  // run and ONLY the first time a batch actually reaches proposal (past the not-blocked +
+  // has-transfers checks). A run where every payable batch is over-draw-BLOCKED (or has no
+  // valid transfers) therefore never contacts the Safe Tx Service, so an underfunded run
+  // cannot throw on an unused nonce lookup before it emits its BLOCKED alerts + count. Once
+  // read, we pass an explicit nonce to every proposal and advance it locally (+1); we never
+  // re-read getNextNonce between proposals (where the Tx Service may not yet reflect a
+  // just-posted tx and could hand out a colliding nonce), so no proposal outcome can desync
+  // it. (Codex #474 caller-owned nonce; Codex P2 lazy read)
   const readNonce = deps.getNextNonce ?? defaultGetNextNonce;
-  let nextNonce = await readNonce({ chainId: deps.chainId, rpcUrl: deps.rpcUrl });
+  let nextNonce: number | undefined;
 
   for (const batch of payable) {
     const cycle = batch.cycleMonth.slice(0, 7);
@@ -348,8 +371,13 @@ export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ c
       continue;
     }
 
-    // Every proposal (including the first) takes the caller-owned nonce, so a post-send
+    // First batch that will REALLY be proposed: read the caller-owned nonce now (lazily,
+    // at most once). A fully-blocked run never reaches here, so getNextNonce is never
+    // called. After this every proposal takes the caller-owned nonce, so a post-send
     // failure can never leave the next batch to re-read a stale nonce and collide.
+    if (nextNonce === undefined) {
+      nextNonce = await readNonce({ chainId: deps.chainId, rpcUrl: deps.rpcUrl });
+    }
     const outcome = await proposeComputedBatch(batch, plan.transfers, deps, nextNonce);
     if (outcome === 'proposed') {
       proposed++;
