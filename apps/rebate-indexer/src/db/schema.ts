@@ -11,6 +11,7 @@ import {
   boolean,
   index,
   primaryKey,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 // uint256 stored as NUMERIC(78) — drizzle exposes string at the TS layer;
@@ -263,5 +264,51 @@ export const affiliateBatchEntries = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.batchId, t.referrerWallet] }),
     referrerIdx: index('affiliate_entries_referrer_idx').on(t.referrerWallet),
+  }),
+);
+
+// --- Sovereign integrator OWN-FEE payout (migration 0017) --------------------
+// Deliberately SEPARATE from BOTH the rebate and affiliate tables so rebate,
+// affiliate and own-fee recipient addresses + amounts are never mixed. UNLIKE
+// rebate/affiliate (Gnosis-only), own-fee pays on the SOVEREIGN chain the volume
+// routed on, so the batch carries chain_id and uniqueness is (cycle_month, chain_id).
+// See migrations/0017_own_fee_batches.sql for the contract.
+
+// One own-fee payout batch per (cycle month, chain). Column types mirror affiliate_batches.
+export const ownFeeBatches = pgTable(
+  'own_fee_batches',
+  {
+    id: serial('id').primaryKey(),
+    cycleMonth: date('cycle_month').notNull(),
+    chainId: integer('chain_id').notNull(),
+    totalOwedWei: uint256('total_owed_wei').notNull(),
+    wethUsdPrice: numeric('weth_usd_price', { precision: 20, scale: 4 }),
+    status: text('status').notNull(),
+    safeProposalHash: bytea('safe_proposal_hash'),
+    safeTxHash: bytea('safe_tx_hash'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    cycleChainUq: uniqueIndex('own_fee_batches_cycle_chain_uq').on(t.cycleMonth, t.chainId),
+  }),
+);
+
+// One row per own-fee recipient paid in a cycle+chain. Mirrors affiliate_batch_entries.
+export const ownFeeBatchEntries = pgTable(
+  'own_fee_batch_entries',
+  {
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => ownFeeBatches.id),
+    // The own_fee_recipient = the on-chain WETH payout address.
+    recipient: bytea('recipient').notNull(),
+    owedWei: uint256('owed_wei').notNull(),
+    paidWei: uint256('paid_wei'),
+    status: text('status').notNull().default('pending'),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.batchId, t.recipient] }),
+    recipientIdx: index('own_fee_entries_recipient_idx').on(t.recipient),
   }),
 );

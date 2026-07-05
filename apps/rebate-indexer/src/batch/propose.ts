@@ -1,6 +1,6 @@
 import SafeApiKit from '@safe-global/api-kit';
 import Safe from '@safe-global/protocol-kit';
-import { OPHIS_SAFE_ADDRESS, multiSendCallOnlyAddress, WETH_BY_CHAIN } from '../safe/addresses.js';
+import { OPHIS_SAFE_ADDRESS, multiSendCallOnlyAddress, WETH_BY_CHAIN, safeTxServiceUrl } from '../safe/addresses.js';
 import { buildRebateMultisend, type Transfer } from './multisend.js';
 import { logger } from '../logger.js';
 
@@ -54,7 +54,11 @@ export async function proposeRebateBatch(p: ProposeParams): Promise<ProposeResul
   });
   const proposerAddress = (await protocolKit.getSafeProvider().getSignerAddress()) as `0x${string}`;
 
-  const apiKit = new SafeApiKit({ chainId: BigInt(p.chainId) });
+  // The api-kit lacks a built-in Transaction Service URL for some chains (e.g. Unichain
+  // 130) and THROWS without one; pass the explicit URL there. Chains it knows (Gnosis
+  // 100, Optimism 10) get undefined and keep the built-in behavior unchanged.
+  const txServiceUrl = safeTxServiceUrl(p.chainId);
+  const apiKit = new SafeApiKit({ chainId: BigInt(p.chainId), ...(txServiceUrl ? { txServiceUrl } : {}) });
   // Use the next free nonce (counts already-queued Tx-Service txs, e.g. a same-run
   // #360 conversion proposal) so this payout doesn't collide at the same nonce.
   // For the normal case (nothing queued) this equals the on-chain nonce. (Codex #474)
