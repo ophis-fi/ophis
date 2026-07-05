@@ -192,7 +192,7 @@ impl Swap {
             if strict_output {
                 match simulator.gas_with_output(order.owner(), &self).await {
                     Ok(sim) => {
-                        if !self.output_delivery_proven(sim.realized_output, tokens) {
+                        if !self.output_delivery_proven(sim.realized_output) {
                             tracing::warn!(
                                 output = ?self.output,
                                 realized = ?sim.realized_output,
@@ -204,11 +204,10 @@ impl Swap {
                         sim.gas
                     }
                     Err(infra::dex::simulator::Error::SettlementContractIsOwner) => {
-                        // Cannot simulate; fail closed only when a buffer could
-                        // actually be drained by an unproven over-report.
-                        if self.buy_is_buffer_exposed(tokens) {
-                            return None;
-                        }
+                        // Cannot simulate (the owner would collide with the
+                        // settlement contract, e.g. a quote setup): no evidence
+                        // of under-delivery, so fall back to heuristic gas
+                        // rather than reject.
                         self.gas
                     }
                     Err(err) => {
@@ -233,7 +232,7 @@ impl Swap {
             if strict_output {
                 match simulator.gas_with_output(order.owner(), &self).await {
                     Ok(sim) => {
-                        if !self.output_delivery_proven(sim.realized_output, tokens) {
+                        if !self.output_delivery_proven(sim.realized_output) {
                             tracing::warn!(
                                 output = ?self.output,
                                 realized = ?sim.realized_output,
@@ -244,9 +243,8 @@ impl Swap {
                         }
                     }
                     Err(infra::dex::simulator::Error::SettlementContractIsOwner) => {
-                        if self.buy_is_buffer_exposed(tokens) {
-                            return None;
-                        }
+                        // Cannot simulate (quote-style owner setup): no evidence
+                        // of under-delivery, so do not reject.
                     }
                     Err(err) => {
                         tracing::warn!(?err, "strict output simulation failed");
@@ -368,8 +366,10 @@ impl Swap {
 
     /// Whether the buy (output) token is "buffer exposed": the settlement holds
     /// a balance of it that an inflated, unproven output could drain. Only such
-    /// tokens make the output-side siphon possible, so they gate the strict
-    /// MARKET simulation and the fail-closed handling of unprovable swaps.
+    /// tokens make the output-side siphon possible, so they gate whether the
+    /// strict MARKET output simulation runs (`strict_output_required`). An
+    /// unprovable (simulation-unavailable) swap is NOT rejected regardless of
+    /// buffer exposure -- see `output_delivery_proven`.
     pub fn buy_is_buffer_exposed(&self, tokens: &auction::Tokens) -> bool {
         tokens
             .get(&self.output.token)
@@ -415,22 +415,27 @@ impl Swap {
     }
 
     /// Given the realized output measured by the strict simulation, whether the
-    /// swap's reported output delivery is proven.
+    /// swap's reported output delivery has been DISPROVEN (returns false only on
+    /// a proven shortfall).
     ///
     /// - `Some(realized)`: the interactions themselves must deliver at least the
     ///   reported `output.amount`; a buffer-covered shortfall shows up as
-    ///   `realized < output.amount` and is rejected.
-    /// - `None`: the simulation could not run (e.g. balance set up by hooks).
-    ///   Fail CLOSED only when the buy token is buffer exposed, since only then
-    ///   could an unproven over-report drain the settlement buffer.
-    fn output_delivery_proven(
-        &self,
-        realized: Option<U256>,
-        tokens: &auction::Tokens,
-    ) -> bool {
+    ///   `realized < output.amount` and is rejected. This is the real guard and
+    ///   it runs for every normal, settle-able order (whose owner holds the sell
+    ///   token, so the Swapper simulation succeeds).
+    /// - `None`: the simulation could not run at all. The Swapper returns
+    ///   `gasUsed == 0` ONLY when the owner-address swapper lacks the sell
+    ///   balance, i.e. the owner is unfunded: a QUOTE (`from` is a zero/
+    ///   placeholder that holds no balance, and a quote never settles so cannot
+    ///   drain anything) or a hook-funded order. A normal drainable order always
+    ///   funds the owner, so it never lands here. We therefore have NO evidence
+    ///   of under-delivery and must NOT reject (rejecting `None` broke ALL
+    ///   /quote pricing for buffer-exposed buy tokens like USDC/WETH). The coarse
+    ///   reference ceiling remains the guard for the residual hook-funded case.
+    fn output_delivery_proven(&self, realized: Option<U256>) -> bool {
         match realized {
             Some(realized) => realized >= self.output.amount,
-            None => !self.buy_is_buffer_exposed(tokens),
+            None => true,
         }
     }
 }
@@ -771,23 +776,22 @@ mod output_guard_tests {
 
     #[test]
     fn delivery_proven_only_when_realized_meets_output() {
-        let t = tokens(&[(WETH, Some(UNIT_PRICE), 5)]);
         let swap = sell_swap(1_000, 1_000);
-        assert!(swap.output_delivery_proven(Some(U256::from(1_000u64)), &t));
-        assert!(swap.output_delivery_proven(Some(U256::from(1_500u64)), &t));
+        assert!(swap.output_delivery_proven(Some(U256::from(1_000u64))));
+        assert!(swap.output_delivery_proven(Some(U256::from(1_500u64))));
         // A buffer-covered shortfall surfaces as realized < output -> rejected.
-        assert!(!swap.output_delivery_proven(Some(U256::from(999u64)), &t));
+        assert!(!swap.output_delivery_proven(Some(U256::from(999u64))));
     }
 
     #[test]
-    fn delivery_unproven_fails_closed_only_when_buffer_exposed() {
+    fn delivery_unproven_never_rejects() {
+        // Regression for the /quote break: when the strict simulation cannot run
+        // (realized None -- the owner is unfunded, i.e. a quote or hook-funded
+        // order, never a normal drainable order), delivery is NOT disproven and
+        // MUST NOT be rejected, whether or not the buy token is buffer exposed.
+        // Rejecting None here 404'd every /quote for buffer-exposed buy tokens.
         let swap = sell_swap(1_000, 1_000);
-        // Simulation unavailable + buffer exposed -> fail closed (reject).
-        let exposed = tokens(&[(WETH, Some(UNIT_PRICE), 5)]);
-        assert!(!swap.output_delivery_proven(None, &exposed));
-        // Simulation unavailable + no buffer -> fail open (no drain possible).
-        let empty = tokens(&[(WETH, Some(UNIT_PRICE), 0)]);
-        assert!(swap.output_delivery_proven(None, &empty));
+        assert!(swap.output_delivery_proven(None)); // buffer exposure is irrelevant now
     }
 
     // --- into_solution gating: SELL guarded, exactOut BUY untouched ---
