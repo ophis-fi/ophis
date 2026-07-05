@@ -112,11 +112,14 @@ impl Dex {
         &'a self,
         auction: &'a auction::Auction,
     ) -> impl stream::Stream<Item = solution::Solution> + 'a {
+        // A quote auction never settles on chain; its owner is unfunded so the
+        // strict output simulation cannot run and must not reject on that basis.
+        let is_quote = matches!(auction.id, auction::Id::Quote);
         stream::iter(auction.orders.iter())
             .enumerate()
-            .map(|(i, order)| {
+            .map(move |(i, order)| {
                 let span = tracing::info_span!("solve", order = %order.uid);
-                self.solve_order(order, &auction.tokens, auction.gas_price)
+                self.solve_order(order, &auction.tokens, auction.gas_price, is_quote)
                     .map(move |solution| solution.map(|s| s.with_id(solution::Id(i as u64))))
                     .instrument(span)
             })
@@ -225,6 +228,7 @@ impl Dex {
         order: &order::Order,
         tokens: &auction::Tokens,
         gas_price: auction::GasPrice,
+        is_quote: bool,
     ) -> Option<solution::Solution> {
         let dex_order = self.fills.dex_order(order, tokens)?;
         let swap = self.try_solve(order, &dex_order, tokens).await?;
@@ -238,6 +242,7 @@ impl Dex {
                 &self.simulator,
                 self.gas_offset,
                 &self.output_guard,
+                is_quote,
             )
             .await
         else {

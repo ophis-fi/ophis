@@ -161,6 +161,11 @@ impl Swap {
         simulator: &infra::dex::Simulator,
         gas_offset: eth::Gas,
         output_guard: &OutputGuard,
+        // Whether this auction is a price quote (never settles). A quote's owner
+        // is unfunded, so the strict output simulation cannot run; a quote must
+        // NOT be rejected on that basis (it drains nothing), whereas a real
+        // (settle-able) solve is failed closed. See `output_delivery_proven`.
+        is_quote: bool,
     ) -> Option<solution::Solution> {
         let sell_side = order.side == order::Side::Sell;
 
@@ -192,7 +197,7 @@ impl Swap {
             if strict_output {
                 match simulator.gas_with_output(order.owner(), &self).await {
                     Ok(sim) => {
-                        if !self.output_delivery_proven(sim.realized_output) {
+                        if !self.output_delivery_proven(sim.realized_output, is_quote, tokens) {
                             tracing::warn!(
                                 output = ?self.output,
                                 realized = ?sim.realized_output,
@@ -204,11 +209,15 @@ impl Swap {
                         sim.gas
                     }
                     Err(infra::dex::simulator::Error::SettlementContractIsOwner) => {
-                        // Cannot simulate (the owner would collide with the
-                        // settlement contract, e.g. a quote setup): no evidence
-                        // of under-delivery, so fall back to heuristic gas
-                        // rather than reject.
-                        self.gas
+                        // Cannot simulate (owner collides with the settlement
+                        // contract). Same policy as an unprovable swap: accept a
+                        // quote or a non-buffer-exposed swap; fail closed on a
+                        // buffer-exposed real solve.
+                        if is_quote || !self.buy_is_buffer_exposed(tokens) {
+                            self.gas
+                        } else {
+                            return None;
+                        }
                     }
                     Err(err) => {
                         tracing::warn!(?err, "gas simulation failed");
@@ -232,7 +241,7 @@ impl Swap {
             if strict_output {
                 match simulator.gas_with_output(order.owner(), &self).await {
                     Ok(sim) => {
-                        if !self.output_delivery_proven(sim.realized_output) {
+                        if !self.output_delivery_proven(sim.realized_output, is_quote, tokens) {
                             tracing::warn!(
                                 output = ?self.output,
                                 realized = ?sim.realized_output,
@@ -243,8 +252,11 @@ impl Swap {
                         }
                     }
                     Err(infra::dex::simulator::Error::SettlementContractIsOwner) => {
-                        // Cannot simulate (quote-style owner setup): no evidence
-                        // of under-delivery, so do not reject.
+                        // Cannot simulate. Fail closed on a buffer-exposed real
+                        // solve; accept a quote or non-buffer-exposed swap.
+                        if !is_quote && self.buy_is_buffer_exposed(tokens) {
+                            return None;
+                        }
                     }
                     Err(err) => {
                         tracing::warn!(?err, "strict output simulation failed");
@@ -367,9 +379,9 @@ impl Swap {
     /// Whether the buy (output) token is "buffer exposed": the settlement holds
     /// a balance of it that an inflated, unproven output could drain. Only such
     /// tokens make the output-side siphon possible, so they gate whether the
-    /// strict MARKET output simulation runs (`strict_output_required`). An
-    /// unprovable (simulation-unavailable) swap is NOT rejected regardless of
-    /// buffer exposure -- see `output_delivery_proven`.
+    /// strict MARKET output simulation runs (`strict_output_required`) AND
+    /// whether an unprovable (simulation-unavailable) real SOLVE is rejected --
+    /// a quote is never rejected on that basis. See `output_delivery_proven`.
     pub fn buy_is_buffer_exposed(&self, tokens: &auction::Tokens) -> bool {
         tokens
             .get(&self.output.token)
@@ -425,17 +437,24 @@ impl Swap {
     ///   token, so the Swapper simulation succeeds).
     /// - `None`: the simulation could not run at all. The Swapper returns
     ///   `gasUsed == 0` ONLY when the owner-address swapper lacks the sell
-    ///   balance, i.e. the owner is unfunded: a QUOTE (`from` is a zero/
-    ///   placeholder that holds no balance, and a quote never settles so cannot
-    ///   drain anything) or a hook-funded order. A normal drainable order always
-    ///   funds the owner, so it never lands here. We therefore have NO evidence
-    ///   of under-delivery and must NOT reject (rejecting `None` broke ALL
-    ///   /quote pricing for buffer-exposed buy tokens like USDC/WETH). The coarse
-    ///   reference ceiling remains the guard for the residual hook-funded case.
-    fn output_delivery_proven(&self, realized: Option<U256>) -> bool {
+    ///   balance (owner unfunded at simulation time). Two disjoint cases land
+    ///   here: a QUOTE (`is_quote`; priced but never settled, so nothing can be
+    ///   drained -- accept it, since rejecting quotes 404'd all /quote pricing
+    ///   for buffer-exposed buy tokens), and a hook-funded SOLVE (owner funded
+    ///   later by pre-hooks, so it CAN settle and over-report). For a real solve
+    ///   we therefore fail CLOSED when the buy token is buffer exposed (drop the
+    ///   unprovable order) and only accept when no buffer could be drained. A
+    ///   normal drainable order always funds the owner, so the simulation runs
+    ///   and returns `Some`; it never lands here.
+    fn output_delivery_proven(
+        &self,
+        realized: Option<U256>,
+        is_quote: bool,
+        tokens: &auction::Tokens,
+    ) -> bool {
         match realized {
             Some(realized) => realized >= self.output.amount,
-            None => true,
+            None => is_quote || !self.buy_is_buffer_exposed(tokens),
         }
     }
 }
@@ -776,22 +795,29 @@ mod output_guard_tests {
 
     #[test]
     fn delivery_proven_only_when_realized_meets_output() {
+        let t = tokens(&[(WETH, Some(UNIT_PRICE), 5)]);
         let swap = sell_swap(1_000, 1_000);
-        assert!(swap.output_delivery_proven(Some(U256::from(1_000u64))));
-        assert!(swap.output_delivery_proven(Some(U256::from(1_500u64))));
+        // A run simulation (Some) is the real guard, independent of is_quote.
+        assert!(swap.output_delivery_proven(Some(U256::from(1_000u64)), false, &t));
+        assert!(swap.output_delivery_proven(Some(U256::from(1_500u64)), false, &t));
         // A buffer-covered shortfall surfaces as realized < output -> rejected.
-        assert!(!swap.output_delivery_proven(Some(U256::from(999u64))));
+        assert!(!swap.output_delivery_proven(Some(U256::from(999u64)), false, &t));
     }
 
     #[test]
-    fn delivery_unproven_never_rejects() {
-        // Regression for the /quote break: when the strict simulation cannot run
-        // (realized None -- the owner is unfunded, i.e. a quote or hook-funded
-        // order, never a normal drainable order), delivery is NOT disproven and
-        // MUST NOT be rejected, whether or not the buy token is buffer exposed.
-        // Rejecting None here 404'd every /quote for buffer-exposed buy tokens.
+    fn delivery_unproven_gated_by_quote_then_buffer() {
+        // Simulation unavailable (realized None: owner unfunded at sim time).
         let swap = sell_swap(1_000, 1_000);
-        assert!(swap.output_delivery_proven(None)); // buffer exposure is irrelevant now
+        let exposed = tokens(&[(WETH, Some(UNIT_PRICE), 5)]);
+        let empty = tokens(&[(WETH, Some(UNIT_PRICE), 0)]);
+        // QUOTE never settles -> accept regardless of buffer (fixes the /quote
+        // 404 regression: rejecting these broke all pricing for USDC/WETH).
+        assert!(swap.output_delivery_proven(None, true, &exposed));
+        assert!(swap.output_delivery_proven(None, true, &empty));
+        // Real SOLVE (e.g. hook-funded, CAN settle) -> fail closed on a
+        // buffer-exposed buy token; accept only when no buffer could be drained.
+        assert!(!swap.output_delivery_proven(None, false, &exposed));
+        assert!(swap.output_delivery_proven(None, false, &empty));
     }
 
     // --- into_solution gating: SELL guarded, exactOut BUY untouched ---
@@ -821,6 +847,7 @@ mod output_guard_tests {
                 &simulator(),
                 eth::Gas(U256::ZERO),
                 &guard(MarketOutputSimulation::BufferExposed, 0),
+                false,
             )
             .await;
         assert!(solution.is_none());
@@ -845,6 +872,7 @@ mod output_guard_tests {
                 &simulator(),
                 eth::Gas(U256::ZERO),
                 &guard(MarketOutputSimulation::BufferExposed, 0),
+                false,
             )
             .await;
         assert!(solution.is_some());
