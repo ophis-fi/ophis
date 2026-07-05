@@ -41,9 +41,13 @@ const BPS_DENOM = 10_000;
  */
 const AFFILIATE_PAYOUT_CHAIN_ID = 100;
 
-/** Block-explorer tx-URL builders for the chains a payout can land on. */
+/** Block-explorer tx-URL builders for the chains a payout can land on. Gnosis (100) is
+ *  the referral payout chain; Optimism (10) and Unichain (130) are the sovereign
+ *  own-fee payout chains. */
 const EXPLORER_TX_URL: Record<number, (txHash: string) => string> = {
   100: (tx) => `https://gnosisscan.io/tx/${tx}`,
+  10: (tx) => `https://optimistic.etherscan.io/tx/${tx}`,
+  130: (tx) => `https://uniscan.xyz/tx/${tx}`,
 };
 
 function explorerTxUrl(chainId: number, txHash: string): string | null {
@@ -107,6 +111,14 @@ export interface IntegratorEarnings {
     hostedAccrued: number;
     /** Most recent own-fee recipient seen on this integrator's flow (where it paid out). */
     recipient: `0x${string}` | null;
+    /** EXACT WETH actually paid to this integrator's own-fee recipient(s) from executed
+     *  Ophis Safe own-fee batches on the sovereign chains (Optimism/Unichain). Keyed on
+     *  the recipient address (own_fee_batch_entries.recipient), summed across executed
+     *  batches. Not an estimate; not a current-cycle figure. */
+    sovereignPaidToDateWeth: number;
+    sovereignPaidToDateUsd: number;
+    /** Per-payout links for the executed sovereign own-fee batches above. */
+    payouts: EarningsPayout[];
     note: string;
   };
   /** Referral rebate Ophis pays this integrator's wallet monthly (only if the appCode is a registered code). */
@@ -141,6 +153,15 @@ export interface EarningsPayoutInput {
   wethUsd: number | null;
 }
 
+/** Executed, paid SOVEREIGN own-fee batch entries whose recipient this appCode used. */
+export interface EarningsOwnFeePayoutInput {
+  cycleMonth: string; // 'YYYY-MM-DD' from own_fee_batches.cycle_month
+  chainId: number; // the sovereign chain the payout executed on (10 / 130)
+  txHash: `0x${string}`;
+  paidWei: string; // decimal string (uint256)
+  wethUsd: number | null;
+}
+
 export interface EarningsInput {
   byChain: EarningsChainInput[];
   /** Most recent own_fee_recipient seen for this appCode (0x, lowercased), or null. */
@@ -149,6 +170,9 @@ export interface EarningsInput {
   registered: boolean;
   /** Executed, paid affiliate batch entries for the code's referrer wallet. */
   payouts: EarningsPayoutInput[];
+  /** Executed, paid SOVEREIGN own-fee batch payouts to THIS appCode's recipient(s).
+   *  Optional (defaults to none) so existing callers/tests stay unchanged. */
+  ownFeePayouts?: EarningsOwnFeePayoutInput[];
 }
 
 const HOSTED_ACCRUAL_LABEL =
@@ -232,6 +256,33 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   }
   const paidToDateWeth = round(Number(paidWeiTotal) / 1e18);
 
+  // Sovereign own-fee paid-to-date: EXACT, summed from executed own-fee Safe batches on
+  // Optimism/Unichain. These land on the SOVEREIGN chain (not Gnosis), so each payout
+  // carries its own chainId + explorer. Same malformed-amount skip as the referral sum.
+  let ownPaidWeiTotal = 0n;
+  let ownPaidUsd = 0;
+  const ownFeePayouts: EarningsPayout[] = [];
+  for (const p of input.ownFeePayouts ?? []) {
+    let wei: bigint;
+    try {
+      wei = BigInt(p.paidWei);
+    } catch {
+      continue;
+    }
+    ownPaidWeiTotal += wei;
+    const weth = Number(wei) / 1e18;
+    if (p.wethUsd && Number.isFinite(p.wethUsd)) ownPaidUsd += weth * p.wethUsd;
+    ownFeePayouts.push({
+      cycleMonth: p.cycleMonth.slice(0, 7), // 'YYYY-MM'
+      chainId: p.chainId,
+      chainName: CHAIN_NAME[p.chainId] ?? `Chain ${p.chainId}`,
+      txHash: p.txHash,
+      explorerUrl: explorerTxUrl(p.chainId, p.txHash),
+      amountWeth: round(weth),
+    });
+  }
+  const sovereignPaidToDateWeth = round(Number(ownPaidWeiTotal) / 1e18);
+
   const disclaimer =
     `Earnings on Optimism (10) and Unichain (130) are settled and paid by Ophis end to end. ` +
     `Figures on CoW-hosted chains are ${HOSTED_ACCRUAL_LABEL}. ` +
@@ -257,10 +308,14 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       sovereignGuaranteed: round(ownSov),
       hostedAccrued: round(ownHosted),
       recipient: input.ownFeeRecipient,
+      sovereignPaidToDateWeth,
+      sovereignPaidToDateUsd: round(ownPaidUsd),
+      payouts: ownFeePayouts,
       note:
         `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders, reported GROSS (Ophis takes 0% of it). ` +
         `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and swept to you in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, paid out under CoW's terms, which may take a service fee on a stacked recipient (not yet verified), so treat it as gross and not guaranteed. ` +
-        `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included.`,
+        `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included. ` +
+        `sovereignPaidToDate is exact, summed from executed Ophis Safe own-fee batches on Optimism and Unichain; it is keyed on the recipient address, so if several integrators share one own-fee recipient the paid-to-date is attributed to each.`,
     },
     referral: {
       registered: input.registered,
@@ -374,6 +429,49 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
       }));
   }
 
+  // Sovereign own-fee paid-to-date. The own-fee ledger keys on the RECIPIENT address
+  // (own_fee_batch_entries.recipient), while this surface keys on appCode; bridge via the
+  // own_fee_recipient this appCode's verified sovereign trades carry, resolved in a
+  // server-side subquery (so no bytea array is bound from JS). Only EXECUTED batches with
+  // a landed tx and PAID entries are summed -- exact, already-settled, no timing leak.
+  // NOTE (documented in the response note): if two appCodes ever share one recipient, the
+  // paid-to-date is attributed to BOTH -- the ledger is recipient-keyed, not appCode-keyed.
+  const sovereignChainIds = [...SOVEREIGN_CHAIN_IDS]; // mutable copy for array binding
+  const ownFeePaidRows = await sql<
+    { cycle_month: string; chain_id: number; tx_hex: string | null; paid_wei: string; weth_usd: string | null }[]
+  >`
+    SELECT
+      b.cycle_month::text            AS cycle_month,
+      b.chain_id                     AS chain_id,
+      encode(b.safe_tx_hash, 'hex')  AS tx_hex,
+      e.paid_wei::text               AS paid_wei,
+      b.weth_usd_price::text         AS weth_usd
+    FROM own_fee_batch_entries e
+    JOIN own_fee_batches b ON b.id = e.batch_id
+    WHERE e.status = 'paid'
+      AND b.status = 'executed'
+      AND b.safe_tx_hash IS NOT NULL
+      AND e.recipient IN (
+        SELECT DISTINCT own_fee_recipient
+        FROM trades
+        WHERE appdata_ref_code = ${code}
+          AND own_fee_recipient IS NOT NULL
+          AND chain_id = ANY(${sovereignChainIds})
+          AND fee_verified = true
+          AND volume_fee_bps > 0
+      )
+    ORDER BY b.cycle_month
+  `;
+  const ownFeePayouts: EarningsOwnFeePayoutInput[] = ownFeePaidRows
+    .filter((r) => r.tx_hex && r.paid_wei)
+    .map((r) => ({
+      cycleMonth: r.cycle_month,
+      chainId: r.chain_id,
+      txHash: `0x${r.tx_hex}` as `0x${string}`,
+      paidWei: r.paid_wei,
+      wethUsd: r.weth_usd !== null ? parseFloat(r.weth_usd) : null,
+    }));
+
   const input: EarningsInput = {
     byChain: chainRows.map((r) => ({
       chainId: r.chain_id,
@@ -385,6 +483,7 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
     ownFeeRecipient: recip ? (recip.recipient.toLowerCase() as `0x${string}`) : null,
     registered: !!rc,
     payouts,
+    ownFeePayouts,
   };
 
   return assembleEarnings(code, input, now);
