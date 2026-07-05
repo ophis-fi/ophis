@@ -24,8 +24,11 @@ export const ZERO_ADDRESS_LOWER = '0x0000000000000000000000000000000000000000';
 /**
  * Lowercased 0x recipient addresses permitted to receive a sovereign own-fee payout.
  * INTENTIONALLY EMPTY. Add a third-party recipient ONLY after it is live in the backend
- * PARTNER_FEE_RECIPIENT_ALLOWLIST. Never the Ophis Safe, never the zero address
- * (assertOwnFeeRecipientsSane rejects both, at import time).
+ * PARTNER_FEE_RECIPIENT_ALLOWLIST. Every entry MUST be an all-lowercase 0x address:
+ * membership is checked by lowercasing the trade recipient and looking it up in this
+ * RAW set, so a checksummed (mixed-case) entry would silently never match. Never the
+ * Ophis Safe, never the zero address (assertOwnFeeRecipientsSane rejects all three, at
+ * import time).
  */
 export const SOVEREIGN_OWN_FEE_RECIPIENTS: ReadonlySet<string> = new Set<string>([
   // (empty)
@@ -33,24 +36,34 @@ export const SOVEREIGN_OWN_FEE_RECIPIENTS: ReadonlySet<string> = new Set<string>
 
 /**
  * Throw if the allowlist ever contains the Ophis Safe, the zero address, or a
- * non-lowercased/non-address entry. Fail-closed: a misconfigured set stops the payout
- * (and, at import time, every module that imports this one) rather than paying wrong.
+ * non-address / NON-LOWERCASE entry. Every entry MUST already be all-lowercase: the
+ * membership checks (isPayableOwnFeeRecipient + accrual) lowercase the trade recipient
+ * and look it up in this RAW set, so a checksummed (mixed-case) entry would silently
+ * never match and an onboarded partner would never be paid. We fail LOUD on such an
+ * entry (fail-closed spirit) instead of normalizing it silently. A misconfigured set
+ * stops the payout (and, at import time, every module that imports this one) rather
+ * than paying wrong.
  */
 export function assertOwnFeeRecipientsSane(
   set: ReadonlySet<string> = SOVEREIGN_OWN_FEE_RECIPIENTS,
 ): void {
   for (const raw of set) {
-    const a = raw.toLowerCase();
-    if (a === OPHIS_SAFE_LOWER) {
+    // Validate the RAW entry against the lowercase 0x-address shape FIRST (do NOT
+    // lowercase it before checking): a checksummed entry that we lowercased before
+    // validating would pass here yet never match at lookup. Reject it loudly so the
+    // operator switches to the all-lowercase form.
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) {
+      throw new Error(
+        `SOVEREIGN_OWN_FEE_RECIPIENTS entry must be an all-lowercase 0x address; got "${raw}". Use the lowercase form (a checksummed entry would never match the lowercased trade recipient).`,
+      );
+    }
+    if (raw === OPHIS_SAFE_LOWER) {
       throw new Error(
         'SOVEREIGN_OWN_FEE_RECIPIENTS must NEVER contain the Ophis Safe (own fee is swept TO it, not paid back out)',
       );
     }
-    if (a === ZERO_ADDRESS_LOWER) {
+    if (raw === ZERO_ADDRESS_LOWER) {
       throw new Error('SOVEREIGN_OWN_FEE_RECIPIENTS must NEVER contain the zero address');
-    }
-    if (!/^0x[0-9a-f]{40}$/.test(a)) {
-      throw new Error(`SOVEREIGN_OWN_FEE_RECIPIENTS entry is not a lowercased 0x address: ${raw}`);
     }
   }
 }

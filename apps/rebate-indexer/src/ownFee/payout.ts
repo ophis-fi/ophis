@@ -4,11 +4,11 @@ import { db, schema, sql } from '../db/index.js';
 import { SOVEREIGN_CHAIN_IDS } from '../affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
 import { priceTrade } from '../pricer.js';
-import { proposeRebateBatch } from '../batch/propose.js';
+import { proposeRebateBatch, getNextSafeNonce } from '../batch/propose.js';
 import { getProposalStatus, waitForExecution } from '../batch/poll.js';
 import { computeOwnFeeAccrual, type OwnFeeOwed } from './accrual.js';
 import { assertOwnFeeRecipientsSane, SOVEREIGN_OWN_FEE_RECIPIENTS } from './recipients.js';
-import { planOwnFeePayout, resolveOwnFeePayoutEnabled } from './payoutPlan.js';
+import { planOwnFeePayout } from './payoutPlan.js';
 import { notify, alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
 
@@ -32,11 +32,35 @@ export { resolveOwnFeePayoutEnabled, planOwnFeePayout } from './payoutPlan.js';
 /** Statuses at/after PROPOSAL: a batch here is LOCKED to accrual (never re-accrue). */
 const PROPOSED_STATUSES = ['proposing', 'proposed', 'executed', 'failed'] as const;
 
+/**
+ * How many recent settled months accrual catches up each run. Bounds the catch-up so a
+ * long-missed run re-accrues a fixed recent window (the current settled month plus the
+ * prior five) rather than every month since genesis. A month older than this window that
+ * was never accrued stays unaccrued (surfaced by ops, not silently re-created forever).
+ */
+const OWN_FEE_ACCRUAL_LOOKBACK_MONTHS = 6;
+
 /** The settled (previous) calendar month for a cron firing on the 1st of `now`. */
 function settledWindow(now: Date): { start: Date; end: Date; label: string } {
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   return { start, end, label: `${start.toISOString().slice(0, 10)}` }; // YYYY-MM-01
+}
+
+/**
+ * The recent settled (fully elapsed) months to (re)accrue this run, OLDEST first. The
+ * LAST element is settledWindow(now) (the current settled month); earlier elements are
+ * the preceding months within OWN_FEE_ACCRUAL_LOOKBACK_MONTHS, so a missed run is caught
+ * up in order. Each entry is the [start, end) UTC month bounds plus the YYYY-MM-01 label.
+ */
+function settledMonthsToAccrue(now: Date): { start: Date; end: Date; label: string }[] {
+  const months: { start: Date; end: Date; label: string }[] = [];
+  for (let i = OWN_FEE_ACCRUAL_LOOKBACK_MONTHS; i >= 1; i--) {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i + 1, 1));
+    months.push({ start, end, label: start.toISOString().slice(0, 10) });
+  }
+  return months;
 }
 
 // Injectable I/O so tests can exercise the ledger + proposal flow without a live chain or
@@ -58,6 +82,13 @@ export interface OwnFeeProposeDeps {
   readonly proposeEnabled: boolean;
   /** Read the Ophis Safe's WETH balance on `chainId` (default: on-chain balanceOf). */
   readonly readSafeWethBalanceWei?: (args: { chainId: number; rpcUrl: string; weth: `0x${string}` }) => Promise<bigint>;
+  /**
+   * Read the next free Safe nonce on `chainId` ONCE per run (default: getNextSafeNonce for
+   * the Ophis Safe). The CALLER owns the nonce: it reads this once before the loop, then
+   * derives each subsequent catch-up proposal's nonce locally (+1), so no proposal outcome
+   * (including a post-send 'attempted' failure) can desync it into a re-read + collision. (Codex #474)
+   */
+  readonly getNextNonce?: (args: { chainId: number; rpcUrl: string }) => Promise<number>;
   /** Safe MultiSend proposer (default: proposeRebateBatch). */
   readonly propose?: typeof proposeRebateBatch;
   /** Background finality poller (default: waitForExecution). */
@@ -69,26 +100,36 @@ async function defaultReadSafeWethBalanceWei(args: { chainId: number; rpcUrl: st
   return client.readContract({ address: args.weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
 }
 
+async function defaultGetNextNonce(args: { chainId: number; rpcUrl: string }): Promise<number> {
+  return getNextSafeNonce(args.chainId, OPHIS_SAFE_ADDRESS);
+}
+
 async function defaultFetchWethUsdPrice(args: { chainId: number; weth: `0x${string}` }): Promise<number> {
   return priceTrade({ tradeUid: `0x${'00'.repeat(56)}` as `0x${string}`, chainId: args.chainId, sellToken: args.weth, sellAmount: 10n ** 18n });
 }
 
 /**
- * PHASE A -- ACCRUAL. Always runs (flag-INDEPENDENT). Computes the settled-month owed per
- * allowlisted recipient on one sovereign chain and records a batch at status 'computed'
- * (recorded, NOT proposed) + its entries. Reads NO Safe balance and proposes NOTHING.
+ * PHASE A -- ACCRUAL. Always runs (flag-INDEPENDENT). Computes the owed per allowlisted
+ * recipient on one sovereign chain and records a batch at status 'computed' (recorded,
+ * NOT proposed) + its entries. Reads NO Safe balance and proposes NOTHING.
  *
- * Idempotency by status of any existing (cycle_month, chain_id) batch:
+ * CATCH-UP: it does NOT only accrue the single current settled month. It walks the recent
+ * settled months (OWN_FEE_ACCRUAL_LOOKBACK_MONTHS, oldest first) and (re)accrues each one
+ * that is NOT already locked, so a month that a transient price/DB failure or a late-priced
+ * trade left without a LOCKED batch is still caught up on a later run (the cron otherwise
+ * advances past it and never revisits it). Returns the CURRENT settled month's result.
+ *
+ * Idempotency, applied PER month by the status of its (cycle_month, chain_id) batch:
  *   - LOCKED (proposing/proposed/executed/failed) => it has been proposed; leave it
- *     UNTOUCHED (never re-accrue or double-pay). Returns 'locked'.
+ *     UNTOUCHED (never re-accrue or double-pay). Returns 'locked' for that month.
  *   - 'computed' or 'no_recipients' => re-accrue: recompute and REPLACE the owed + entries
  *     (picks up late-indexed trades before proposal), flipping status between 'computed'
  *     and 'no_recipients' as the owed set requires.
- *   - none => insert ('computed' when there are recipients, 'no_recipients' when empty).
+ *   - none => insert atomically ('computed' when there are recipients, 'no_recipients' when
+ *     empty). A BACK-month with nothing owed records NOTHING (see accrueOwnFeeMonth).
  */
 export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: string; batchId?: number }> {
   const now = deps.now ?? new Date();
-  const { start, end, label } = settledWindow(now);
   const allowlist = deps.allowlist ?? SOVEREIGN_OWN_FEE_RECIPIENTS;
 
   // Fail closed on a misconfigured allowlist (Ophis Safe / zero can never be paid).
@@ -101,6 +142,47 @@ export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: s
   const weth = WETH_BY_CHAIN[deps.chainId];
   if (!weth) throw new Error(`no WETH address for chain ${deps.chainId}`);
 
+  // The WETH/USD spot used to size owed WETH at accrual time. Fetched at most ONCE per run
+  // and reused for every month (memoized), so a fully-locked run never fetches a price.
+  const fetchPrice = deps.fetchWethUsdPrice ?? defaultFetchWethUsdPrice;
+  let pricePromise: Promise<number> | undefined;
+  const getWethUsdPrice = () => (pricePromise ??= fetchPrice({ chainId: deps.chainId, weth }));
+
+  // Walk the recent settled months oldest first; the last one is the current settled month
+  // whose result we return (back-compat with the single-month callers + tests).
+  const months = settledMonthsToAccrue(now);
+  let current: { status: string; batchId?: number } = { status: 'no_recipients' };
+  for (let i = 0; i < months.length; i++) {
+    const isCurrentSettled = i === months.length - 1;
+    const r = await accrueOwnFeeMonth(deps, months[i]!, allowlist, getWethUsdPrice, isCurrentSettled, now);
+    if (isCurrentSettled) current = r;
+  }
+  return current;
+}
+
+/**
+ * Accrue (or re-accrue) ONE settled month for one sovereign chain. Extracted so the
+ * catch-up loop applies the same idempotency rules to every month:
+ *   - LOCKED => leave untouched (never re-accrue); returns 'locked'.
+ *   - existing unlocked ('computed'/'no_recipients') => re-accrue: recompute and REPLACE
+ *     owed + entries ATOMICALLY (picks up a late-indexed trade before proposal).
+ *   - no row yet => insert the batch AND its entries in ONE transaction.
+ *
+ * `isCurrentSettled` distinguishes the current settled month (always recorded, even when
+ * empty, so a no-activity month still gets its 'no_recipients' ledger row, preserving the
+ * single-month behavior) from a BACK-month with nothing owed (recorded as NOTHING: a dead
+ * back-month has nothing to lose, and creating empty rows would litter the ledger and race
+ * a later real accrual for that month).
+ */
+async function accrueOwnFeeMonth(
+  deps: OwnFeeAccrualDeps,
+  month: { start: Date; end: Date; label: string },
+  allowlist: ReadonlySet<string>,
+  getWethUsdPrice: () => Promise<number>,
+  isCurrentSettled: boolean,
+  now: Date,
+): Promise<{ status: string; batchId?: number }> {
+  const label = month.label;
   const [existing] = await db
     .select()
     .from(schema.ownFeeBatches)
@@ -112,10 +194,8 @@ export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: s
     return { status: 'locked', batchId: existing.id };
   }
 
-  const fetchPrice = deps.fetchWethUsdPrice ?? defaultFetchWethUsdPrice;
-  const wethUsdPrice = await fetchPrice({ chainId: deps.chainId, weth });
-
-  const owed = await computeOwnFeeAccrual(deps.chainId, start, end, wethUsdPrice, allowlist);
+  const wethUsdPrice = await getWethUsdPrice();
+  const owed = await computeOwnFeeAccrual(deps.chainId, month.start, month.end, wethUsdPrice, allowlist);
   const totalOwedWei = owed.reduce((acc, o) => acc + o.owedWei, 0n);
   const status = owed.length > 0 ? 'computed' : 'no_recipients';
 
@@ -138,18 +218,31 @@ export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: s
     return { status, batchId: existing.id };
   }
 
-  const [batch] = await db
-    .insert(schema.ownFeeBatches)
-    .values({ cycleMonth: label, chainId: deps.chainId, totalOwedWei, wethUsdPrice: String(wethUsdPrice), status })
-    .returning();
-  if (!batch) throw new Error('failed to insert own-fee batch');
-  if (owed.length > 0) {
-    await db.insert(schema.ownFeeBatchEntries).values(
-      owed.map((o) => ({ batchId: batch.id, recipient: o.recipient, owedWei: o.owedWei, status: 'pending' })),
-    );
+  // No row yet. A BACK-month with nothing owed records NOTHING (nothing to lose; avoids
+  // littering the ledger with empty rows and racing a later real accrual for that month).
+  if (!isCurrentSettled && owed.length === 0) {
+    return { status: 'no_recipients' };
   }
+
+  // FIRST accrual for this month: insert the batch row AND its entries in ONE transaction,
+  // so a crash/failure between them can never leave a 'computed' batch with NO entries
+  // (which propose would treat as empty/zero and never re-accrue, since a row now exists).
+  // Mirrors the re-accrual path's atomicity above.
+  const batchId = await db.transaction(async (tx) => {
+    const [batch] = await tx
+      .insert(schema.ownFeeBatches)
+      .values({ cycleMonth: label, chainId: deps.chainId, totalOwedWei, wethUsdPrice: String(wethUsdPrice), status })
+      .returning();
+    if (!batch) throw new Error('failed to insert own-fee batch');
+    if (owed.length > 0) {
+      await tx.insert(schema.ownFeeBatchEntries).values(
+        owed.map((o) => ({ batchId: batch.id, recipient: o.recipient, owedWei: o.owedWei, status: 'pending' })),
+      );
+    }
+    return batch.id;
+  });
   log.info({ cycleMonth: label, chainId: deps.chainId, status, recipients: owed.length }, 'accrued own-fee batch');
-  return { status, batchId: batch.id };
+  return { status, batchId };
 }
 
 /**
@@ -159,12 +252,22 @@ export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: s
  * accumulated back-owed once it flips ON (the resume/catch-up).
  *
  * OVER-DRAW GUARD (replaces the old non-persisting 'blocked' path): read the chain Safe
- * WETH balance ONCE, then walk the batches keeping a running `remaining`. A batch whose
- * owed exceeds `remaining` is LEFT 'computed' (LOUD alert, no proposal) so it retries next
- * run once the Safe is funded -- and, because balance is only consumed by PROPOSED batches
- * in the same run, the queued (unsigned) proposals can never together exceed the balance.
+ * WETH balance ONCE, SUBTRACT the WETH already committed to OPEN own-fee proposals on this
+ * chain (a prior 'proposing'/'proposed' batch still holds its owed WETH in the Safe, so the
+ * raw balance double-counts it), then walk the batches keeping a running `remaining`. A
+ * batch whose owed exceeds `remaining` is LEFT 'computed' (LOUD alert, no proposal) so it
+ * retries next run once the Safe is funded -- and, because `remaining` starts net of the
+ * already-queued proposals and is only further consumed by batches PROPOSED in the same run,
+ * the queued (unsigned) proposals across BOTH runs can never together exceed the balance.
  * Each 'computed' batch is proposed AT MOST ONCE: once it flips to 'proposing'/'proposed'
  * it is never re-picked (no double-pay).
+ *
+ * NONCE PINNING: a single run can propose MULTIPLE back-month batches. The CALLER owns the
+ * nonce -- it reads getNextSafeNonce ONCE up front, then passes an explicit nonce to every
+ * proposal and increments it locally after each SUBMITTED one (a 'proposed' OR a post-send
+ * 'attempted', which may have consumed the nonce). It never re-reads getNextNonce between
+ * proposals (which could race the Tx Service and hand out the SAME nonce twice), and no
+ * proposal outcome can desync the counter. Same #360 spirit the fee conversion uses. (Codex #474)
  */
 export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ checked: number; proposed: number; blocked: number; dryRun?: boolean }> {
   if (!SOVEREIGN_CHAIN_IDS.has(deps.chainId)) {
@@ -190,9 +293,35 @@ export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ c
 
   const readBalance = deps.readSafeWethBalanceWei ?? defaultReadSafeWethBalanceWei;
   const balance = await readBalance({ chainId: deps.chainId, rpcUrl: deps.rpcUrl, weth });
-  let remaining = balance;
+
+  // RESERVE the WETH already committed to OPEN own-fee proposals on THIS chain. A prior
+  // batch left 'proposing'/'proposed' (queued in the Safe, not yet signed/executed) still
+  // holds its owed WETH in the Safe, so the raw on-chain balance double-counts it. Netting
+  // it out here stops THIS run proposing more against funds already earmarked for that
+  // queued tx (if both were later signed, the total would exceed the balance and executions
+  // would revert). remaining = balance - reservedForQueued (clamped at 0). (money-safety P2)
+  const [reservedRow] = await sql<{ reserved: string }[]>`
+    SELECT COALESCE(SUM(total_owed_wei), 0)::text AS reserved
+    FROM own_fee_batches
+    WHERE chain_id = ${deps.chainId} AND status IN ('proposing', 'proposed')
+  `;
+  const reservedForQueued = BigInt(reservedRow?.reserved ?? '0');
+  let remaining = balance > reservedForQueued ? balance - reservedForQueued : 0n;
+  if (reservedForQueued > 0n) {
+    log.info(
+      { chainId: deps.chainId, balanceWei: balance.toString(), reservedForQueuedWei: reservedForQueued.toString(), remainingWei: remaining.toString() },
+      'own-fee propose: reserved WETH already committed to queued (unsigned) own-fee proposals',
+    );
+  }
   let proposed = 0;
   let blocked = 0;
+  // CALLER OWNS THE NONCE: read the next free Safe nonce ONCE for this run, then pass an
+  // explicit nonce to every proposal and advance it locally. This never re-reads
+  // getNextNonce between proposals (where the Tx Service may not yet reflect a just-posted
+  // tx and could hand out a colliding nonce), so no proposal outcome can desync it. We are
+  // past the proposeEnabled + payable.length > 0 guards, so this read always applies. (Codex #474)
+  const readNonce = deps.getNextNonce ?? defaultGetNextNonce;
+  let nextNonce = await readNonce({ chainId: deps.chainId, rpcUrl: deps.rpcUrl });
 
   for (const batch of payable) {
     const cycle = batch.cycleMonth.slice(0, 7);
@@ -214,22 +343,27 @@ export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ c
       blocked++;
       log.error({ cycle, batchId: batch.id, chainId: deps.chainId, owed: plan.totalOwedWei.toString(), remaining: remaining.toString() }, 'own-fee batch BLOCKED (owed exceeds available Safe WETH)');
       await alerts
-        .alert('own-fee-payout', `Own-fee batch ${cycle} chain ${deps.chainId} BLOCKED: owed ${plan.totalOwedWei} > available Safe WETH ${remaining} wei. Left as 'computed'; fund the Safe and it proposes next run.`)
+        .alert('own-fee-payout', `Own-fee batch ${cycle} chain ${deps.chainId} BLOCKED: owed ${plan.totalOwedWei} > available Safe WETH ${remaining} wei (net of queued proposals). Left as 'computed'; fund the Safe and it proposes next run.`)
         .catch(() => {});
       continue;
     }
 
-    const outcome = await proposeComputedBatch(batch, plan.transfers, deps);
+    // Every proposal (including the first) takes the caller-owned nonce, so a post-send
+    // failure can never leave the next batch to re-read a stale nonce and collide.
+    const outcome = await proposeComputedBatch(batch, plan.transfers, deps, nextNonce);
     if (outcome === 'proposed') {
       proposed++;
       remaining -= plan.totalOwedWei;
+      nextNonce++;
     } else if (outcome === 'attempted') {
-      // Submit failed AFTER send: a proposal MAY be queued, so conservatively consume the
-      // balance (avoids a later batch this run over-drawing). Left 'proposing' for the
-      // reconciler; not counted as a clean propose.
+      // Submit failed AFTER send: a proposal MAY be queued at nextNonce, so conservatively
+      // consume BOTH the balance (avoids a later batch this run over-drawing) and the nonce
+      // (a later batch must not reuse it). Left 'proposing' for the reconciler; not a clean
+      // propose.
       remaining -= plan.totalOwedWei;
+      nextNonce++;
     }
-    // 'presubmit-failed' => nothing queued, batch stays 'computed', balance untouched.
+    // 'presubmit-failed' => nothing queued, batch stays 'computed', balance + nonce untouched.
   }
   return { checked: payable.length, proposed, blocked };
 }
@@ -240,11 +374,16 @@ export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ c
  * safe_proposal_hash -> fire-and-forget poll -> executed/failed. Entries stay 'pending'
  * until reconcile confirms execution. Never throws -- returns an outcome so one bad batch
  * cannot abort the rest of the run.
+ *
+ * `nonce` is the caller-owned Safe nonce for THIS proposal (always defined): the caller
+ * reads getNextSafeNonce once per run and advances it locally after each submitted proposal,
+ * so a same-run catch-up never collides even when the Tx Service lags. (#360, Codex #474)
  */
 async function proposeComputedBatch(
   batch: { id: number; cycleMonth: string; totalOwedWei: bigint },
   transfers: readonly { to: `0x${string}`; amount: bigint }[],
   deps: OwnFeeProposeDeps,
+  nonce: number,
 ): Promise<'proposed' | 'attempted' | 'presubmit-failed'> {
   const cycle = batch.cycleMonth.slice(0, 7);
   const propose = deps.propose ?? proposeRebateBatch;
@@ -256,6 +395,7 @@ async function proposeComputedBatch(
       rpcUrl: deps.rpcUrl,
       proposerPrivateKey: deps.proposerPrivateKey,
       transfers: transfers.map((t) => ({ to: t.to, amount: t.amount })),
+      nonce,
       onBeforeSubmit: async () => {
         await db.update(schema.ownFeeBatches).set({ status: 'proposing', updatedAt: new Date() }).where(eq(schema.ownFeeBatches.id, batch.id));
         submitAttempted = true;
@@ -285,7 +425,7 @@ async function proposeComputedBatch(
     .catch((err) => log.error({ err, batchId: batch.id }, 'own-fee polling failed'));
 
   await notify(`Own-fee payout ${cycle} (chain ${deps.chainId}) proposed: ${(Number(batch.totalOwedWei) / 1e18).toFixed(5)} WETH across ${transfers.length} recipient(s). Awaiting 2-of-3 signature.`);
-  log.info({ batchId: batch.id, chainId: deps.chainId, safeTxHash, recipients: transfers.length }, 'own-fee batch proposed');
+  log.info({ batchId: batch.id, chainId: deps.chainId, safeTxHash, nonce, recipients: transfers.length }, 'own-fee batch proposed');
   return 'proposed';
 }
 

@@ -40,6 +40,21 @@ describe('own-fee recipients allowlist (fail-closed)', () => {
     // A non-listed recipient is never payable.
     expect(isPayableOwnFeeRecipient(('0x' + 'bb'.repeat(20)) as `0x${string}`, bad)).toBe(false);
   });
+
+  it('rejects a CHECKSUMMED (mixed-case) entry LOUDLY; a lowercased one passes and matches (FIX 6)', () => {
+    // A checksummed (mixed-case) entry must fail LOUD at assert time: membership lowercases
+    // the trade recipient and looks it up in the RAW set, so a mixed-case entry would
+    // silently never match and an onboarded partner would never be paid.
+    const checksummed = ('0x' + 'Ab'.repeat(20)) as `0x${string}`; // valid length, mixed case
+    expect(() => assertOwnFeeRecipientsSane(new Set([checksummed]))).toThrow(/lowercase/i);
+    // The all-lowercase form passes the assert...
+    const lower = ('0x' + 'ab'.repeat(20)) as `0x${string}`;
+    expect(() => assertOwnFeeRecipientsSane(new Set([lower]))).not.toThrow();
+    // ...and actually matches the (lowercased) trade recipient regardless of the input case.
+    expect(isPayableOwnFeeRecipient(('0x' + 'AB'.repeat(20)) as `0x${string}`, new Set([lower]))).toBe(true);
+    // Whereas the checksummed form would silently never match (the bug this fix closes).
+    expect(isPayableOwnFeeRecipient(checksummed, new Set([checksummed]))).toBe(false);
+  });
 });
 
 describe('planOwnFeePayout - over-draw guard + transfer plan', () => {

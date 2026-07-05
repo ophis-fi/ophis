@@ -56,12 +56,19 @@ function insOwnFee(args: {
       ${args.ownBps}, decode(${args.recipient.slice(2)}, 'hex'), now(), now())`;
 }
 
-// Insert a pre-existing 'computed' batch + one entry directly (simulates a back-month a
-// flag-off run accrued but never proposed).
-async function seedComputedBatch(cycleMonth: string, chain: number, recipient: `0x${string}`, owedWei: bigint): Promise<number> {
+// Insert a pre-existing batch + one entry directly. Default status 'computed' simulates a
+// back-month a flag-off run accrued but never proposed; pass 'proposed' to simulate a
+// queued-but-unsigned batch whose owed WETH is still committed in the Safe.
+async function seedComputedBatch(
+  cycleMonth: string,
+  chain: number,
+  recipient: `0x${string}`,
+  owedWei: bigint,
+  status = 'computed',
+): Promise<number> {
   const [b] = await sql`
     INSERT INTO own_fee_batches (cycle_month, chain_id, total_owed_wei, weth_usd_price, status)
-    VALUES (${cycleMonth}, ${chain}, ${owedWei.toString()}, ${WETH_PRICE}, 'computed') RETURNING id`;
+    VALUES (${cycleMonth}, ${chain}, ${owedWei.toString()}, ${WETH_PRICE}, ${status}) RETURNING id`;
   await sql`
     INSERT INTO own_fee_batch_entries (batch_id, recipient, owed_wei, status)
     VALUES (${b.id}, decode(${recipient.slice(2)}, 'hex'), ${owedWei.toString()}, 'pending')`;
@@ -80,10 +87,11 @@ function proposeDeps(o: Record<string, unknown> = {}) {
     proposerPrivateKey: ('0x' + '11'.repeat(32)) as `0x${string}`,
     proposeEnabled: true,
     readSafeWethBalanceWei: async () => 10n ** 24n, // huge by default
+    getNextNonce: async () => 0, // injected so tests never hit the real Safe service
     propose: async (p: any) => {
       proposeCalls.push(p);
       await p.onBeforeSubmit?.();
-      return { safeTxHash: ('0x' + 'fe'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '00'.repeat(20)) as `0x${string}`, nonce: 0 };
+      return { safeTxHash: ('0x' + 'fe'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '00'.repeat(20)) as `0x${string}`, nonce: p.nonce ?? 0 };
     },
     waitForExecution: async () => ({ executed: false, isSuccessful: null, transactionHash: null }),
     ...o,
@@ -205,6 +213,55 @@ describe('accrueOwnFee - always records the ledger, flag-independent', () => {
   it('rejects a non-sovereign chain (defensive)', async () => {
     await expect(accrueOwnFee(accrueDeps({ chainId: 100 }))).rejects.toThrow(/not sovereign/);
   });
+
+  it('first-accrual insert is ATOMIC: an entries failure rolls back the batch row (FIX 3)', async () => {
+    await insOwnFee({ uid: 'af1', chain: 10, recipient: R1, usd: '100000', ownBps: 25 }); // owed 1e17
+    try {
+      // Force the entries insert to fail (no owed_wei is negative) so we can prove the batch
+      // insert, done in the SAME transaction, rolls back with it rather than orphaning a
+      // 'computed' batch that has NO entries (which would later propose an empty transfer or
+      // wedge, and never re-accrue because a row already exists).
+      await sql`ALTER TABLE own_fee_batch_entries ADD CONSTRAINT own_fee_entries_force_fail CHECK (owed_wei < 0)`;
+      await expect(accrueOwnFee(accrueDeps({ now }))).rejects.toThrow();
+      const [{ c }] = await sql`SELECT COUNT(*)::int AS c FROM own_fee_batches WHERE cycle_month = ${cycleLabel} AND chain_id = 10`;
+      expect(c).toBe(0); // atomic: NO orphan batch row left behind
+    } finally {
+      await sql`ALTER TABLE own_fee_batch_entries DROP CONSTRAINT IF EXISTS own_fee_entries_force_fail`;
+    }
+    // Fault removed: the next run re-accrues cleanly (the month was never lost).
+    const res = await accrueOwnFee(accrueDeps({ now }));
+    expect(res.status).toBe('computed');
+    const row = await batchRow();
+    expect(row.status).toBe('computed');
+    const [{ n }] = await sql`SELECT COUNT(*)::int AS n FROM own_fee_batch_entries WHERE batch_id = ${res.batchId}`;
+    expect(n).toBe(1);
+  });
+
+  it('catches up a MISSED prior settled month; never re-accrues a proposed month (FIX 5)', async () => {
+    // A trade for a PRIOR settled month (month-2) that a missed/failed first-of-month run
+    // never accrued. Later runs would previously skip it forever (the cron advances past it).
+    const back2Ts = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 15)).toISOString();
+    const back2Cycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)).toISOString().slice(0, 10);
+    await insOwnFee({ uid: 'cd1', chain: 10, recipient: R1, usd: '100000', ownBps: 25, ts: back2Ts }); // owed 1e17
+    const [{ before }] = await sql`SELECT COUNT(*)::int AS before FROM own_fee_batches WHERE cycle_month = ${back2Cycle} AND chain_id = 10`;
+    expect(before).toBe(0); // no batch yet (the run that should have made it was missed)
+
+    await accrueOwnFee(accrueDeps({ now })); // a later run within the lookback catches it up
+    const caught = await batchRow(10, back2Cycle);
+    expect(caught.status).toBe('computed');
+    expect(caught.owed).toBe((10n ** 17n).toString());
+
+    // A LOCKED ('proposed') prior month is NEVER re-accrued, even with more trades indexed.
+    const back3Cycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1)).toISOString().slice(0, 10);
+    const propId = await seedComputedBatch(back3Cycle, 10, R1, 10n ** 17n, 'proposed');
+    const back3Ts = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 15)).toISOString();
+    await insOwnFee({ uid: 'cd2', chain: 10, recipient: R1, usd: '500000', ownBps: 25, ts: back3Ts }); // would be 5e17 if re-accrued
+    await accrueOwnFee(accrueDeps({ now }));
+    const locked = await batchRow(10, back3Cycle);
+    expect(locked.status).toBe('proposed'); // untouched
+    expect(locked.owed).toBe((10n ** 17n).toString()); // NOT recomputed to 5e17
+    expect(propId).toBeGreaterThan(0);
+  });
 });
 
 describe('proposeOwnFeeBatches - gated proposal, back-month catch-up, over-draw guard', () => {
@@ -278,6 +335,93 @@ describe('proposeOwnFeeBatches - gated proposal, back-month catch-up, over-draw 
     expect(res.dryRun).toBe(true);
     expect(proposeCalls).toHaveLength(0);
     expect((await batchRow()).status).toBe('computed'); // untouched
+  });
+
+  it('RESERVES WETH already committed to a queued (proposed) batch, blocking an over-draw (FIX 2)', async () => {
+    // A prior 'proposed' back-month batch still holds its 8e17 owed WETH in the Safe.
+    const backCycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)).toISOString().slice(0, 10);
+    await seedComputedBatch(backCycle, 10, R1, 8n * 10n ** 17n, 'proposed');
+    // A new computed batch owing 5e17 for the current cycle.
+    await insOwnFee({ uid: 'be1', chain: 10, recipient: R1, usd: '500000', ownBps: 25 }); // owed 5e17
+    await accrueOwnFee(accrueDeps({ now }));
+
+    // Raw Safe balance is 1e18 -- which ALONE fits the new 5e17 batch. But 8e17 is reserved
+    // for the queued 'proposed' batch, so only 2e17 is truly available and the new batch
+    // (5e17 > 2e17) must be BLOCKED, not proposed against already-committed funds.
+    const balanceOneEth = { readSafeWethBalanceWei: async () => 10n ** 18n };
+    const blocked = proposeDeps(balanceOneEth);
+    const res = await proposeOwnFeeBatches(blocked.base as any);
+    expect(res).toMatchObject({ proposed: 0, blocked: 1 });
+    expect(blocked.proposeCalls).toHaveLength(0); // never proposed
+    expect((await batchRow()).status).toBe('computed'); // left computed, retries next run
+
+    // Control: once the queued batch is executed (no longer reserving WETH), the SAME 1e18
+    // balance now clears the 5e17 batch -- proving the reserve, not the raw balance, blocked it.
+    await sql`UPDATE own_fee_batches SET status = 'executed' WHERE cycle_month = ${backCycle} AND chain_id = 10`;
+    const funded = proposeDeps(balanceOneEth);
+    const res2 = await proposeOwnFeeBatches(funded.base as any);
+    expect(res2.proposed).toBe(1);
+    expect((await batchRow()).status).toBe('proposed');
+  });
+
+  it('reads getNextNonce ONCE and gives the two catch-up proposals nonces N then N+1 (FIX 4)', async () => {
+    // Two computed batches proposed in one run: current cycle (via accrual) + an older one.
+    await insOwnFee({ uid: 'ac1', chain: 10, recipient: R1, usd: '100000', ownBps: 25 });
+    await accrueOwnFee(accrueDeps({ now })); // current cycle, owed 1e17
+    const backCycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)).toISOString().slice(0, 10);
+    await seedComputedBatch(backCycle, 10, R1, 10n ** 17n); // back-month, owed 1e17
+
+    // The CALLER owns the nonce: it reads getNextNonce ONCE and derives each subsequent
+    // proposal locally (+1). Assert it is consulted exactly once and each proposal carries an
+    // EXPLICIT nonce (no re-read between them, which could race the Tx Service and collide).
+    const N = 5;
+    let getNextNonceCalls = 0;
+    const getNextNonce = async () => { getNextNonceCalls++; return N; };
+    const nonceCalls: any[] = [];
+    const propose = async (p: any) => {
+      nonceCalls.push(p);
+      await p.onBeforeSubmit?.();
+      return { safeTxHash: ('0x' + 'fe'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '00'.repeat(20)) as `0x${string}`, nonce: p.nonce };
+    };
+    const { base } = proposeDeps({ getNextNonce, propose });
+    const res = await proposeOwnFeeBatches(base as any);
+    expect(res.proposed).toBe(2);
+    expect(getNextNonceCalls).toBe(1); // read ONCE for the whole run
+    expect(nonceCalls).toHaveLength(2);
+    expect(nonceCalls[0].nonce).toBe(N);     // first proposal at N (explicit)
+    expect(nonceCalls[1].nonce).toBe(N + 1); // second derived locally, NO re-read
+  });
+
+  it('advances the nonce even when the FIRST proposal fails AFTER send (attempted); getNextNonce still read once (FIX 4)', async () => {
+    // Two computed batches; the OLDER (proposed first) fails AFTER send -> 'attempted', where
+    // the old previousNonce-based logic would leave the pin undefined and re-read for batch 2.
+    await insOwnFee({ uid: 'ad1', chain: 10, recipient: R1, usd: '100000', ownBps: 25 });
+    await accrueOwnFee(accrueDeps({ now })); // current cycle, owed 1e17
+    const backCycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)).toISOString().slice(0, 10);
+    await seedComputedBatch(backCycle, 10, R1, 10n ** 17n); // back-month, proposed FIRST (oldest)
+
+    const N = 9;
+    let getNextNonceCalls = 0;
+    const getNextNonce = async () => { getNextNonceCalls++; return N; };
+    const nonceCalls: any[] = [];
+    let call = 0;
+    const propose = async (p: any) => {
+      nonceCalls.push(p);
+      call++;
+      // Mark 'proposing' (submitAttempted) THEN throw on the first -> proposeComputedBatch
+      // returns 'attempted' (a proposal MAY be queued at nonce N).
+      await p.onBeforeSubmit?.();
+      if (call === 1) throw new Error('safe service dropped after send');
+      return { safeTxHash: ('0x' + 'fe'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '00'.repeat(20)) as `0x${string}`, nonce: p.nonce };
+    };
+    const { base } = proposeDeps({ getNextNonce, propose });
+    const res = await proposeOwnFeeBatches(base as any);
+    // The failed first batch is not a clean propose, but the SECOND still receives N+1.
+    expect(res.proposed).toBe(1);
+    expect(getNextNonceCalls).toBe(1); // still read ONCE
+    expect(nonceCalls).toHaveLength(2);
+    expect(nonceCalls[0].nonce).toBe(N);     // attempted, consumed N
+    expect(nonceCalls[1].nonce).toBe(N + 1); // offset advanced despite the failure
   });
 
   it('rejects a non-sovereign chain (defensive)', async () => {
