@@ -21,6 +21,17 @@ export interface ProposeParams {
    * manual-verification. If it throws, the submit is NOT attempted. (Codex P2)
    */
   readonly onBeforeSubmit?: () => Promise<void>;
+  /**
+   * Explicit Safe nonce for this proposal. When a single run proposes MULTIPLE Safe txs
+   * back-to-back (the own-fee catch-up can propose several back-month batches at once),
+   * each must take a DISTINCT nonce: the Safe Tx Service may not yet reflect a just-posted
+   * proposal, so a fresh getNextNonce read can race and hand the SAME nonce to the next
+   * one, and the two then invalidate each other. The caller pins each subsequent proposal
+   * to the prior one's nonce + 1 (the same #360 fee-conversion pattern that pins the
+   * conversion to payoutNonce + 1, Codex #474). Falls back to getNextNonce only when unset,
+   * so the single-proposal batcher / affiliate callers are unchanged.
+   */
+  readonly nonce?: number;
 }
 
 export interface ProposeResult {
@@ -33,6 +44,27 @@ export interface ProposeResult {
    * proposal — a same-nonce conversion could otherwise invalidate the payout. (Codex #474)
    */
   readonly nonce: number;
+}
+
+/**
+ * Build the Safe api-kit for a chain. The api-kit lacks a built-in Transaction Service URL
+ * for some chains (e.g. Unichain 130) and THROWS without one, so pass the explicit URL there;
+ * chains it knows (Gnosis 100, Optimism 10) get undefined and keep the built-in behavior.
+ */
+function makeApiKit(chainId: number): SafeApiKit {
+  const txServiceUrl = safeTxServiceUrl(chainId);
+  return new SafeApiKit({ chainId: BigInt(chainId), ...(txServiceUrl ? { txServiceUrl } : {}) });
+}
+
+/**
+ * The next free Safe nonce (counts already-queued Tx-Service txs). Exported so a caller
+ * proposing MULTIPLE Safe txs in one run reads it ONCE and derives each subsequent nonce
+ * locally (nonce + 1), rather than re-reading between proposals where the Tx Service may not
+ * yet reflect a just-posted tx and could hand out a colliding nonce. Reuses the same
+ * txService-aware api-kit construction as proposeRebateBatch. (Codex #474)
+ */
+export async function getNextSafeNonce(chainId: number, safeAddress: `0x${string}`): Promise<number> {
+  return Number(await makeApiKit(chainId).getNextNonce(safeAddress));
 }
 
 /**
@@ -54,15 +86,14 @@ export async function proposeRebateBatch(p: ProposeParams): Promise<ProposeResul
   });
   const proposerAddress = (await protocolKit.getSafeProvider().getSignerAddress()) as `0x${string}`;
 
-  // The api-kit lacks a built-in Transaction Service URL for some chains (e.g. Unichain
-  // 130) and THROWS without one; pass the explicit URL there. Chains it knows (Gnosis
-  // 100, Optimism 10) get undefined and keep the built-in behavior unchanged.
-  const txServiceUrl = safeTxServiceUrl(p.chainId);
-  const apiKit = new SafeApiKit({ chainId: BigInt(p.chainId), ...(txServiceUrl ? { txServiceUrl } : {}) });
-  // Use the next free nonce (counts already-queued Tx-Service txs, e.g. a same-run
-  // #360 conversion proposal) so this payout doesn't collide at the same nonce.
-  // For the normal case (nothing queued) this equals the on-chain nonce. (Codex #474)
-  const nonce = Number(await apiKit.getNextNonce(OPHIS_SAFE_ADDRESS));
+  const apiKit = makeApiKit(p.chainId);
+  // Use the caller-supplied nonce when given (a same-run catch-up owns the nonce: it reads
+  // getNextSafeNonce ONCE and passes an explicit nonce to every proposal, so they never
+  // collide even when the Tx Service has not yet reflected a just-posted proposal).
+  // Otherwise fall back to the next free nonce (counts already-queued Tx-Service txs, e.g. a
+  // same-run #360 conversion proposal); for the normal case that equals the on-chain nonce.
+  // The affiliate / rebate batcher callers pass no nonce, so their behavior is unchanged. (Codex #474)
+  const nonce = p.nonce ?? Number(await apiKit.getNextNonce(OPHIS_SAFE_ADDRESS));
   const safeTx = await protocolKit.createTransaction({
     transactions: [{ to: multiSend, value: '0', data: calldata, operation: 1 /* DELEGATECALL */ }],
     options: { nonce },
