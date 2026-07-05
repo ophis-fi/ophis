@@ -278,7 +278,7 @@ orders programmatically, build and sign a
 yourself. Four things must each be exactly right, every one fails **silently**
 (a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.2.2, public).
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.2.3, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 

@@ -418,20 +418,15 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <span class="idx">01</span>
         <h3>Your fee line, on-chain</h3>
         <p>
-          For an ERC-20 order, the appData <code>partnerFee</code> field accepts an array (via the
-          SDK or a manual appData build). You stack your own fee entry, with your recipient address
-          and your rate up to 95 bps under the default 100 bps aggregate cap, next to the 5 bps
-          Ophis base entry. Ophis takes 0% of your fee; the base is charged on top, not deducted.
-          A third-party own-fee is chargeable today on the CoW-hosted chains, where it pays out
-          through CoW Protocol's weekly partner distribution under CoW's terms, and we are
-          completing an end-to-end payout check for stacked recipients there. On Optimism and
-          Unichain the own-fee is charged into settlement and swept to the Ophis Safe, then paid
-          back to your recipient monthly in WETH from that Safe (Ophis takes 0% of it) once your
-          recipient is onboarded (allowlisted) and we enable and fund the payout for it. Native-ETH
-          orders use the eth-flow helper, which carries the single Ophis base entry; add your own
+          For an ERC-20 order, the appData <code>partnerFee</code> field accepts an array: you stack
+          your own fee entry (your recipient, up to 95 bps under the 100 bps cap) next to the 5 bps
+          Ophis base. Ophis takes 0% of your fee; the base is charged on top, not deducted. On
+          Optimism and Unichain your own-fee is paid to your recipient monthly in WETH from the
+          Ophis Safe once you are onboarded; on CoW-hosted chains it pays through CoW's weekly
+          distribution under CoW's terms. Native-ETH orders use the eth-flow helper; add your own
           fee via a manual appData build.
         </p>
-        <div class="foot"><span class="badge live">Live on CoW-hosted chains</span></div>
+        <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <span class="idx">02</span>

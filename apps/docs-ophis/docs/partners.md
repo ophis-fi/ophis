@@ -337,8 +337,7 @@ How your fee reaches you depends on the chain:
   Whether CoW's service fee applies to a stacked non-Ophis recipient, and the
   end-to-end payout of that recipient, are what we are still verifying, so on
   hosted chains do not assume the full own-fee reaches you until we confirm it
-  with your recipient address. This is where a third-party own-fee is chargeable
-  today.
+  with your recipient address.
 - **Optimism and Unichain (Ophis-operated):** a stacked own-fee to a
   third-party recipient is paid to you through a two-step onboarding, both of
   which Ophis now supports end to end:
