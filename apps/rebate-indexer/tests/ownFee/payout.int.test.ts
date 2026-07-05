@@ -262,6 +262,49 @@ describe('accrueOwnFee - always records the ledger, flag-independent', () => {
     expect(locked.owed).toBe((10n ** 17n).toString()); // NOT recomputed to 5e17
     expect(propId).toBeGreaterThan(0);
   });
+
+  it('re-accrues a back-month at its STORED price; a first-accrual month uses the fresh spot (price determinism, Codex P2)', async () => {
+    const P1 = 2500; // the back-month price LOCKED at its first accrual (== WETH_PRICE)
+    const P2 = 3000; // a later, DIFFERENT ETH spot for this run's fresh fetch
+
+    // Back-month (month-2): a pre-existing UNLOCKED 'computed' row locked at P1, WITH a
+    // matching trade so a re-accrual at the stored price reproduces the same owed.
+    const back2Cycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)).toISOString().slice(0, 10);
+    const back2Ts = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 15)).toISOString();
+    await insOwnFee({ uid: 'fa1', chain: 10, recipient: R1, usd: '100000', ownBps: 25, ts: back2Ts }); // owed 1e17 at P1
+    await seedComputedBatch(back2Cycle, 10, R1, 10n ** 17n); // seeds weth_usd_price = WETH_PRICE = P1
+
+    // Current settled month: a NEW trade with NO existing row -> first accrual fetches P2.
+    await insOwnFee({ uid: 'fa2', chain: 10, recipient: R1, usd: '100000', ownBps: 25 }); // current window
+
+    // Re-accrue with the spot moved to P2 and NO new trades for the back-month.
+    await accrueOwnFee(accrueDeps({ now, fetchWethUsdPrice: async () => P2 }));
+
+    // Back-month: UNCHANGED. Recomputed at the STORED P1 (not the P2 spot), so with no new
+    // trades the owed stays 1e17 and the row's price stays P1 -- the owed WETH is deterministic.
+    const back = await batchRow(10, back2Cycle);
+    expect(back.status).toBe('computed');
+    expect(back.owed).toBe((10n ** 17n).toString());
+    const [{ price: backPrice }] = await sql`SELECT weth_usd_price::float8 AS price FROM own_fee_batches WHERE cycle_month = ${back2Cycle} AND chain_id = 10`;
+    expect(backPrice).toBe(P1);
+
+    // Current settled month: NEW row priced at the fresh P2. owed = $250 / $3000 * 1e18 wei.
+    const cur = await batchRow();
+    expect(cur.status).toBe('computed');
+    const [{ price: curPrice }] = await sql`SELECT weth_usd_price::float8 AS price FROM own_fee_batches WHERE cycle_month = ${cycleLabel} AND chain_id = 10`;
+    expect(curPrice).toBe(P2);
+    const expectedCurOwed = (2_500_000n * 10n ** 18n) / 30_000_000n; // owedUsdFp * 1e18 / priceFp
+    expect(cur.owed).toBe(expectedCurOwed.toString());
+
+    // A NEW back-month trade DOES change the owed, but it is STILL priced at the stored P1,
+    // never the P2 spot (the added volume is priced at the month's original price).
+    await insOwnFee({ uid: 'fa3', chain: 10, recipient: R1, usd: '100000', ownBps: 25, ts: back2Ts }); // +$250 -> +1e17 at P1
+    await accrueOwnFee(accrueDeps({ now, fetchWethUsdPrice: async () => P2 }));
+    const back2 = await batchRow(10, back2Cycle);
+    expect(back2.owed).toBe((2n * 10n ** 17n).toString()); // owed doubled by the new trade
+    const [{ price: backPrice2 }] = await sql`SELECT weth_usd_price::float8 AS price FROM own_fee_batches WHERE cycle_month = ${back2Cycle} AND chain_id = 10`;
+    expect(backPrice2).toBe(P1); // price NOT bumped to P2
+  });
 });
 
 describe('proposeOwnFeeBatches - gated proposal, back-month catch-up, over-draw guard', () => {
@@ -422,6 +465,30 @@ describe('proposeOwnFeeBatches - gated proposal, back-month catch-up, over-draw 
     expect(nonceCalls).toHaveLength(2);
     expect(nonceCalls[0].nonce).toBe(N);     // attempted, consumed N
     expect(nonceCalls[1].nonce).toBe(N + 1); // offset advanced despite the failure
+  });
+
+  it('never reads getNextNonce when EVERY payable batch is BLOCKED (lazy nonce, Codex P2)', async () => {
+    // Two computed batches, both owing far more than the Safe holds -> both over-draw BLOCKED.
+    // The nonce read (which contacts the Safe Tx Service) must be LAZY: it fires only when a
+    // batch is actually proposed. With nothing proposed, an underfunded run must reach the end,
+    // return blocked>0 proposed=0 with its alerts, and NEVER call getNextNonce (so a Tx Service
+    // outage cannot make an underfunded run throw on a nonce it would never use).
+    await insOwnFee({ uid: 'ba9', chain: 10, recipient: R1, usd: '100000', ownBps: 25 }); // owed 1e17
+    await accrueOwnFee(accrueDeps());
+    const backCycle = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1)).toISOString().slice(0, 10);
+    await seedComputedBatch(backCycle, 10, R1, 2n * 10n ** 17n); // back-month, owed 2e17
+
+    let getNextNonceCalls = 0;
+    const getNextNonce = async () => { getNextNonceCalls++; return 0; };
+    // 1 wei Safe balance: below either owed, so planOwnFeePayout BLOCKS both batches.
+    const blocked = proposeDeps({ readSafeWethBalanceWei: async () => 1n, getNextNonce });
+    const res = await proposeOwnFeeBatches(blocked.base as any);
+    expect(res).toMatchObject({ checked: 2, proposed: 0, blocked: 2 });
+    expect(getNextNonceCalls).toBe(0); // NEVER read: no batch was actually proposed
+    expect(blocked.proposeCalls).toHaveLength(0);
+    // Both left 'computed' to retry once the Safe is funded (no wedge).
+    const [{ n }] = await sql`SELECT COUNT(*)::int AS n FROM own_fee_batches WHERE chain_id = 10 AND status = 'computed'`;
+    expect(n).toBe(2);
   });
 
   it('rejects a non-sovereign chain (defensive)', async () => {
