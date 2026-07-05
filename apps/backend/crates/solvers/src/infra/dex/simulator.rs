@@ -108,6 +108,107 @@ impl Simulator {
             eth::Gas(gas)
         })
     }
+
+    /// Simulate a single order DEX swap and, on top of the gas estimate,
+    /// measure the buy amount the swap interactions actually deliver into the
+    /// settlement. This is the output-side ground truth used to reject swaps
+    /// whose reported output the interactions do not truly deliver (a shortfall
+    /// that the settlement buffer would otherwise silently cover, draining it).
+    ///
+    /// The DEX calls are simulated NON-internalized, so a legitimate later
+    /// internalization can never hide an under-delivery.
+    pub async fn gas_with_output(
+        &self,
+        owner: Address,
+        swap: &dex::Swap,
+    ) -> Result<OutputSimulation, Error> {
+        if owner == self.settlement {
+            // we can't have both the settlement and swapper contracts at the
+            // same address
+            return Err(Error::SettlementContractIsOwner);
+        }
+
+        let swapper = Swapper::Instance::new(owner, self.web3.clone());
+        let overrides = StateOverridesBuilder::with_capacity(2)
+            // Setup up our trader code that actually executes the settlement
+            .append(
+                *swapper.address(),
+                AccountOverride {
+                    code: Some(Swapper::Swapper::DEPLOYED_BYTECODE.clone()),
+                    ..Default::default()
+                },
+            )
+            // Override the CoW protocol solver authenticator with one that
+            // allows any address to solve
+            .append(
+                self.authenticator,
+                AccountOverride {
+                    code: Some(
+                        AnyoneAuthenticator::AnyoneAuthenticator::DEPLOYED_BYTECODE.clone(),
+                    ),
+                    ..Default::default()
+                },
+            );
+
+        let swapper_calls_arg = swap
+            .calls
+            .iter()
+            .map(|call| Interaction {
+                target: call.to,
+                value: U256::ZERO,
+                callData: alloy::primitives::Bytes::copy_from_slice(&call.calldata),
+            })
+            .collect();
+        let sell = Asset {
+            token: swap.input.token.0,
+            amount: swap.input.amount,
+        };
+        let buy = Asset {
+            token: swap.output.token.0,
+            amount: swap.output.amount,
+        };
+        let allowance = Allowance {
+            spender: swap.allowance.spender,
+            amount: swap.allowance.amount.get(),
+        };
+        let ret = swapper
+            .swapEnsuringOutput(self.settlement, sell, buy, allowance, swapper_calls_arg)
+            .call()
+            .overrides(overrides)
+            .await?;
+
+        // `gasUsed == 0` means that the simulation was not possible (see
+        // `Swapper.sol`). In that case fall back to the heuristic gas and
+        // report the realized output as unknown, so delivery stays unproven.
+        Ok(if ret.gasUsed.is_zero() {
+            tracing::info!(
+                gas = ?swap.gas,
+                "could not simulate dex swap output; fall back to heuristic gas estimate"
+            );
+            OutputSimulation {
+                gas: swap.gas,
+                realized_output: None,
+            }
+        } else {
+            OutputSimulation {
+                gas: eth::Gas(ret.gasUsed),
+                realized_output: Some(ret.realizedOut),
+            }
+        })
+    }
+}
+
+/// The result of a strict output-delivery simulation.
+#[derive(Clone, Copy, Debug)]
+pub struct OutputSimulation {
+    /// Gas used by the simulated settlement, or the swap's heuristic gas when
+    /// the simulation was not possible.
+    pub gas: eth::Gas,
+    /// The buy amount the swap interactions actually delivered into the
+    /// settlement, measured from the settlement's buy-token balance delta.
+    /// `None` when the simulation could not be run, in which case the swap's
+    /// output delivery could not be proven.
+    pub realized_output: Option<U256>,
 }
 
 #[derive(Debug, thiserror::Error)]

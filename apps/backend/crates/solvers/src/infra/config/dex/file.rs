@@ -88,6 +88,62 @@ struct Config {
     /// contract buffers.
     #[serde(default = "default_internalize_interactions")]
     internalize_interactions: bool,
+
+    /// OUTPUT-side anti-siphon: the maximum factor by which a SELL swap's
+    /// reported output value may exceed its input value at the auction's
+    /// independent reference prices. A coarse tripwire that fails open on
+    /// missing prices; defaults to `2.0`.
+    #[serde(default = "default_max_output_reference_factor")]
+    #[serde_as(as = "serde_with::DisplayFromStr")]
+    max_output_reference_factor: BigDecimal,
+
+    /// OUTPUT-side anti-siphon: whether to run the strict output-delivery
+    /// simulation for SELL swaps (defaults to `true`).
+    #[serde(default = "default_strict_output_simulation")]
+    strict_output_simulation: bool,
+
+    /// OUTPUT-side anti-siphon: when to run the strict output-delivery
+    /// simulation for MARKET SELL swaps (defaults to `buffer-exposed`).
+    ///
+    /// TRUST ASSUMPTION: `buffer-exposed` decides via the auction's reported
+    /// `available_balance` for the buy token. If that figure is stale or
+    /// under-reports a settlement buffer that is actually non-empty on-chain,
+    /// AND the buy token has no auction reference price (the coarse ceiling
+    /// then no-ops too), a MARKET-SELL over-report goes unproven, bounded only
+    /// by the real buffer size. LIMIT sells are always strict and unaffected.
+    /// Set this to `all` on buffer-heavy chains where that trust is weak, to
+    /// simulate every MARKET sell regardless of the reported buffer.
+    #[serde(default)]
+    strict_market_output_simulation: MarketOutputSimulationMode,
+
+    /// OUTPUT-side anti-siphon: skip the strict MARKET output simulation for
+    /// orders below this native (wei) value (defaults to `0`, never skip).
+    #[serde(default)]
+    #[serde_as(as = "HexOrDecimalU256")]
+    market_output_simulation_min_native_value: eth::U256,
+}
+
+/// When to run the strict output-delivery simulation for MARKET SELL swaps.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum MarketOutputSimulationMode {
+    /// Never run the strict simulation for MARKET orders.
+    Off,
+    /// Run only when the buy token is buffer exposed.
+    #[default]
+    BufferExposed,
+    /// Always run for MARKET orders (subject to the min native value).
+    All,
+}
+
+impl From<MarketOutputSimulationMode> for crate::domain::dex::MarketOutputSimulation {
+    fn from(mode: MarketOutputSimulationMode) -> Self {
+        match mode {
+            MarketOutputSimulationMode::Off => Self::Off,
+            MarketOutputSimulationMode::BufferExposed => Self::BufferExposed,
+            MarketOutputSimulationMode::All => Self::All,
+        }
+    }
 }
 
 fn default_relative_slippage() -> BigDecimal {
@@ -125,6 +181,14 @@ fn default_gas_offset() -> eth::U256 {
 }
 
 fn default_internalize_interactions() -> bool {
+    true
+}
+
+fn default_max_output_reference_factor() -> BigDecimal {
+    BigDecimal::new(2.into(), 0) // 2.0x
+}
+
+fn default_strict_output_simulation() -> bool {
     true
 }
 
@@ -219,6 +283,13 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
         gas_offset: eth::Gas(config.gas_offset),
         block_stream,
         internalize_interactions: config.internalize_interactions,
+        output_guard: crate::domain::dex::OutputGuard {
+            max_output_reference_factor: config.max_output_reference_factor,
+            strict_output_simulation: config.strict_output_simulation,
+            strict_market_output_simulation: config.strict_market_output_simulation.into(),
+            market_output_simulation_min_native_value: config
+                .market_output_simulation_min_native_value,
+        },
     };
     (config, dex)
 }

@@ -37,4 +37,5 @@ pub struct Config {
     pub gas_offset: eth::Gas,
     pub block_stream: Option<CurrentBlockWatcher>,
     pub internalize_interactions: bool,
+    pub output_guard: crate::domain::dex::OutputGuard,
 }

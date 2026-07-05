@@ -50,6 +50,10 @@ pub struct Dex {
     /// Whether to internalize the solution interactions using the Settlement
     /// contract buffer.
     internalize_interactions: bool,
+
+    /// OUTPUT-side anti-siphon guards applied to every aggregator swap at the
+    /// `dex::Swap::into_solution` choke point.
+    output_guard: dex::OutputGuard,
 }
 
 /// The amount of time we aim the solver to finish before the final deadline is
@@ -76,6 +80,7 @@ impl Dex {
             rate_limiter,
             gas_offset: config.gas_offset,
             internalize_interactions: config.internalize_interactions,
+            output_guard: config.output_guard,
         }
     }
 
@@ -229,8 +234,10 @@ impl Dex {
                 order.clone(),
                 gas_price,
                 sell,
+                tokens,
                 &self.simulator,
                 self.gas_offset,
+                &self.output_guard,
             )
             .await
         else {
