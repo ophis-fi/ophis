@@ -4,17 +4,25 @@ How Ophis adds an integrator's own-fee recipient to the partner-fee allowlist on
 the sovereign chains (Optimism 10, Unichain 130), so their stacked `partnerFee`
 entry is not rejected at ingress.
 
-> IMPORTANT: allowlisting is only the INGRESS gate. It lets the order settle; it
-> does NOT route the fee to the partner. On the sovereign chains the fee policy
-> drops the recipient (`Policy::Volume { factor }` in
+> IMPORTANT: allowlisting is only the INGRESS gate. It lets the order settle and
+> the fee be charged; on its own it does NOT pay the fee back to the partner. On
+> the sovereign chains the fee policy drops any non-allowlisted recipient
+> (`Policy::Volume { factor }` in
 > `apps/backend/crates/autopilot/src/domain/fee/policy.rs`) and the settlement
 > buffer is swept to a SINGLE Safe (`SweepSettlementBuffer.s.sol` /
-> `infra/*/scripts/sweep-to-safe.sh`, default the Ophis Safe), with no
-> per-recipient split. So an allowlisted third-party recipient's fee accrues to
-> the Ophis Safe, not to them. Do NOT tell a partner that allowlisting alone
-> means they receive their own fee on the sovereign chains: per-recipient payout
-> is a separate, not-yet-built path. Allowlist a third party only when there is a
-> reconciliation/payout arrangement, or for an Ophis-controlled recipient.
+> `infra/*/scripts/sweep-to-safe.sh`, the Ophis Safe). Per-recipient payout back
+> OUT of that Safe is now BUILT (`apps/rebate-indexer/src/ownFee/`): the indexer
+> meters each allowlisted recipient's charged own-fee per settled trade and pays
+> it MONTHLY in WETH from the sovereign chain's Ophis Safe (a 2-of-3 Safe
+> MultiSend), taking 0% of it. So onboarding a recipient is now TWO ops steps:
+> (1) allowlist it in the backend (Step 1 below), then (2) enable + fund the
+> own-fee payout (Step 2 below). Both are gated: the payout also needs
+> `OWN_FEE_PAYOUT_ENABLED=true` (default OFF), the recipient in
+> `SOVEREIGN_OWN_FEE_RECIPIENTS`, and a funded Safe. Until ALL of those hold for a
+> recipient, its charged own-fee stays in the Ophis Safe. Do NOT tell a partner
+> they receive their own fee just because they are allowlisted. Onboard a third
+> party only when there is a payout arrangement, or for an Ophis-controlled
+> recipient.
 
 Background: the self-hosted backend enforces `PARTNER_FEE_RECIPIENT_ALLOWLIST`
 in `apps/backend/crates/app-data/src/app_data.rs`. `validate_partner_fees`
@@ -32,7 +40,7 @@ backend redeploy, not a runtime toggle. Partner-facing notes are in
 2. **Signed fee agreement** on file (rate, chains, recipient).
 3. **EIP-55 checksum** the address. Reject a non-checksummed or malformed value.
 
-## Steps
+## Step 1: allowlist the recipient (ingress)
 
 1. Add the checksummed address to `PARTNER_FEE_RECIPIENT_ALLOWLIST` in
    `apps/backend/crates/app-data/src/app_data.rs`. Keep the Ophis Safe at index 0.
@@ -64,12 +72,49 @@ backend redeploy, not a runtime toggle. Partner-facing notes are in
    actually APPLIED: check the settled trade's executed fee (or the autopilot
    logs/metrics for the applied partner fee), not just that ingress did not
    reject. This is why step 5 redeploys the WHOLE backend image.
-7. Notify the partner that their recipient is accepted at ingress. Remember this
-   does NOT mean their fee is routed to them (see the payout note at the top);
-   confirm the reconciliation/payout arrangement separately.
+7. Confirm the recipient is accepted at ingress AND that its fee is actually
+   charged (per step 6). Ingress acceptance is not payout, so do not tell the
+   partner they receive their fee yet. Proceed to Step 2 to enable and fund the
+   payout, in a SEPARATE deploy from this one: never enable the payout in the same
+   change that adds the backend allowlist.
+
+## Step 2: enable and fund the own-fee payout
+
+Step 1 only lets the fee be charged into the Ophis Safe. To pay it back to the
+recipient, enable the per-recipient payout in the rebate-indexer
+(`apps/rebate-indexer/src/ownFee/`). Order matters: never enable a recipient here
+before its Step 1 backend allowlist deploy is live on the sovereign chain.
+
+1. Add the recipient to `SOVEREIGN_OWN_FEE_RECIPIENTS` in
+   `apps/rebate-indexer/src/ownFee/recipients.ts`. This set is the payout
+   allowlist and must mirror the backend `PARTNER_FEE_RECIPIENT_ALLOWLIST` MINUS
+   the Ophis Safe. It fails closed: it must never contain the Ophis Safe or the
+   zero address (`assertOwnFeeRecipientsSane` throws at import time otherwise). Add
+   a recipient here ONLY AFTER its Step 1 backend allowlist deploy is live; adding
+   it here first would try to pay a fee the autopilot dropped (the Safe never
+   received it), so keep this set TRAILING the backend allowlist, never leading it.
+   Use the lowercased address.
+2. Set `OWN_FEE_PAYOUT_ENABLED=true` in the rebate-indexer environment. It
+   defaults to OFF; while OFF the monthly cron still ACCRUES (records what is owed
+   per recipient) but PROPOSES nothing. Flipping it ON later proposes every
+   un-proposed accrued batch, including back-months, so a recipient allowlisted
+   while the flag was OFF is paid what accrued once it is ON.
+3. Fund the sovereign chain's Ophis Safe with enough WETH to cover the owed
+   payout. The payout has an over-draw guard: if the Safe's WETH balance is short
+   it BLOCKS rather than proposing a partial or over-drawing batch. Top up before
+   the monthly cron runs.
+4. The monthly cron then accrues each recipient's charged own-fee (USD-valued from
+   routed volume, not exact per-token restitution) and proposes a WETH Safe
+   MultiSend from the sovereign chain's Ophis Safe. A 2-of-3 signer executes it,
+   the same path as the referral payout. Confirm the executed tx before telling
+   the partner it paid.
 
 ## Removing a recipient
 
-Reverse of step 1 (drop the address), same test + review + redeploy path. Removal
-takes effect only after the redeploy; there is no instant kill for a compiled-in
-allowlist entry, so treat additions as reviewed and deliberate.
+Drop the address from the backend `PARTNER_FEE_RECIPIENT_ALLOWLIST` (reverse of
+Step 1), same test + review + redeploy path, AND drop it from
+`SOVEREIGN_OWN_FEE_RECIPIENTS` in the rebate-indexer so no further own-fee is paid
+to it (to stop all sovereign own-fee payouts at once, set
+`OWN_FEE_PAYOUT_ENABLED=false`). Removal takes effect only after the redeploy;
+there is no instant kill for a compiled-in allowlist entry, so treat additions as
+reviewed and deliberate.

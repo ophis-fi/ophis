@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, integrators. MEV-protected execution on CoW Protocol's audited GPv2 contracts. 5 bps base rate for SDK and MCP integrations; charge your own fee on top and Ophis takes 0% of it (chargeable today on CoW-hosted chains, paid out under CoW's terms; per-recipient sovereign payout is on the roadmap).">
+<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, integrators. MEV-protected execution on CoW Protocol's audited GPv2 contracts. 5 bps base rate for SDK and MCP integrations; charge your own fee on top and Ophis takes 0% of it (chargeable today on CoW-hosted chains, paid out under CoW's terms; on the sovereign chains Optimism and Unichain it is paid to you monthly in WETH from the sovereign chain's Safe once you are onboarded and we enable it).">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta property="og:image:width" content="1920">
@@ -45,13 +45,13 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement on CoW Protocol's audited GPv2 contracts. 12 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. Integrations pay a 5 bps base rate (0.05% of volume); the SDK sets a reduced 1 bp on same-chain stablecoin pairs and the keyless MCP charges the flat 5 bps. Using the SDK or a manual appData build, integrators stack their own fee on top of ERC-20 orders, up to 95 bps under the default 100 bps aggregate cap, and Ophis takes 0% of it. A third-party own-fee is chargeable today on the CoW-hosted chains, paid out through CoW's weekly distribution under CoW's terms; per-recipient payout on the sovereign chains Optimism and Unichain is on the roadmap, not yet shipped. A referral layer pays 8% or 12% of the net fee Ophis keeps, monthly in WETH, on-chain, and active traders earn pooled volume-tier rewards."
+      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement on CoW Protocol's audited GPv2 contracts. 12 EVM chains plus Solana and Bitcoin destinations via NEAR Intents. Integrations pay a 5 bps base rate (0.05% of volume); the SDK sets a reduced 1 bp on same-chain stablecoin pairs and the keyless MCP charges the flat 5 bps. Using the SDK or a manual appData build, integrators stack their own fee on top of ERC-20 orders, up to 95 bps under the default 100 bps aggregate cap, and Ophis takes 0% of it. A third-party own-fee is chargeable today on the CoW-hosted chains, paid out through CoW's weekly distribution under CoW's terms; on the sovereign chains Optimism and Unichain it is paid to you monthly in WETH from the sovereign chain's Ophis Safe (Ophis takes 0% of it) once your recipient is onboarded (allowlisted) and we enable and fund the payout for it. A referral layer pays 8% or 12% of the net fee Ophis keeps, monthly in WETH, on-chain, and active traders earn pooled volume-tier rewards."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
-        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Integrations pay a 5 bps base rate: 0.05% of volume. The SDK sets a reduced 1 bp on same-chain stablecoin pairs; the keyless MCP charges the flat 5 bps base. The Ophis swap app charges 10 bps retail; on Optimism and Unichain that is all-in and 100% of price improvement is returned to the trader, while on CoW-hosted chains CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) plus 50% of quote improvement capped at 0.98% of volume. Using the SDK or a manual appData build, integrators charge their own fee on top of ERC-20 orders: the appData partnerFee field accepts an array, so you stack your own fee entry (your recipient address, your rate, up to 95 bps under the default 100 bps aggregate cap) next to the Ophis base entry, and Ophis takes 0% of your markup. Example: set your own rate to 80 bps on $1,000,000 of monthly volume and Ophis takes 0% of your $8,000 markup; the 5 bps base is charged on top, so your users pay 85 bps all-in (your 80 plus the 5 bps base); you receive that markup on the CoW-hosted chains today, not on the sovereign chains where it is charged but not yet routed to you. A third-party own-fee is chargeable today on the CoW-hosted chains, where payouts flow through CoW Protocol's weekly partner distribution under CoW's terms and an end-to-end payout check for stacked recipients is in progress, so do not assume the full own-fee reaches you until confirmed. On Optimism and Unichain the settlement buffer sweeps to a single Safe with no per-recipient split, so an allowlisted own-fee accrues to Ophis, not routed to you; per-recipient sovereign payout is on the roadmap, not yet shipped. For reference, MetaMask Swaps charges 0.875%. A referral layer pays 8% of the net fee Ophis keeps (self-serve, referred volume capped at $1M/month) or 12% (partner tier, uncapped, by contact), paid monthly in WETH, on-chain. Active traders earn pooled volume-tier rewards." } },
+        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Integrations pay a 5 bps base rate: 0.05% of volume. The SDK sets a reduced 1 bp on same-chain stablecoin pairs; the keyless MCP charges the flat 5 bps base. The Ophis swap app charges 10 bps retail; on Optimism and Unichain that is all-in and 100% of price improvement is returned to the trader, while on CoW-hosted chains CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) plus 50% of quote improvement capped at 0.98% of volume. Using the SDK or a manual appData build, integrators charge their own fee on top of ERC-20 orders: the appData partnerFee field accepts an array, so you stack your own fee entry (your recipient address, your rate, up to 95 bps under the default 100 bps aggregate cap) next to the Ophis base entry, and Ophis takes 0% of your markup. Example: set your own rate to 80 bps on $1,000,000 of monthly volume and Ophis takes 0% of your $8,000 markup; the 5 bps base is charged on top, so your users pay 85 bps all-in (your 80 plus the 5 bps base); you receive that markup on the CoW-hosted chains today, and on the sovereign chains Optimism and Unichain it is paid to you monthly in WETH from the sovereign chain's Safe once you are onboarded and we enable it. A third-party own-fee is chargeable today on the CoW-hosted chains, where payouts flow through CoW Protocol's weekly partner distribution under CoW's terms and an end-to-end payout check for stacked recipients is in progress, so do not assume the full own-fee reaches you until confirmed. On Optimism and Unichain the own-fee is charged into settlement and swept to the Ophis Safe, then paid back to your recipient monthly in WETH from that Safe (Ophis takes 0% of it) once your recipient is onboarded (allowlisted) and we enable and fund the payout for it. For reference, MetaMask Swaps charges 0.875%. A referral layer pays 8% of the net fee Ophis keeps (self-serve, referred volume capped at $1M/month) or 12% (partner tier, uncapped, by contact), paid monthly in WETH, on-chain. Active traders earn pooled volume-tier rewards." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
         { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
@@ -425,10 +425,11 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           A third-party own-fee is chargeable today on the CoW-hosted chains, where it pays out
           through CoW Protocol's weekly partner distribution under CoW's terms, and we are
           completing an end-to-end payout check for stacked recipients there. On Optimism and
-          Unichain the settlement buffer sweeps to a single Safe with no per-recipient split, so an
-          allowlisted own-fee accrues to Ophis, not yet routed to your address; per-recipient
-          sovereign payout is on the roadmap. Native-ETH orders use the eth-flow helper, which
-          carries the single Ophis base entry; add your own fee via a manual appData build.
+          Unichain the own-fee is charged into settlement and swept to the Ophis Safe, then paid
+          back to your recipient monthly in WETH from that Safe (Ophis takes 0% of it) once your
+          recipient is onboarded (allowlisted) and we enable and fund the payout for it. Native-ETH
+          orders use the eth-flow helper, which carries the single Ophis base entry; add your own
+          fee via a manual appData build.
         </p>
         <div class="foot"><span class="badge live">Live on CoW-hosted chains</span></div>
       </div>
@@ -479,8 +480,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           Worked example: your own rate <b>80 bps</b> on <b>$1,000,000</b> monthly volume.<br>
           Ophis takes <b>0%</b> of your <b>$8,000</b> markup. Your users pay <b>85 bps</b> all-in
           (your 80 plus the 5 bps base). You receive that markup on the CoW-hosted chains today,
-          paid out under CoW's terms; on the sovereign chains it is charged but not yet routed to
-          you (per-recipient payout is on the roadmap).<br>
+          paid out under CoW's terms; on the sovereign chains it is paid to you monthly in WETH from
+          the sovereign chain's Safe once you are onboarded and we enable it.<br>
           <span class="plus">For reference, <a href="https://support.metamask.io/trade/swap/user-guide-swaps/" target="_blank" rel="noopener noreferrer">MetaMask Swaps charges 0.875%</a>.</span>
         </div>
       </div>
@@ -507,13 +508,14 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
       <div class="card">
         <h3>Payouts on Optimism and Unichain</h3>
         <p>
-          On the chains Ophis operates, your recipient address can be added to the settlement
-          backend's fee-recipient allowlist after verification, but the settlement buffer is swept
-          to a single Safe with no per-recipient split today. An allowlisted own-fee is collected
-          but accrues to Ophis, not routed to your address, so a third-party own-fee is not yet
-          available end to end here; per-recipient sovereign payout is on the roadmap. The flat
-          all-in Ophis fee and 100%-of-price-improvement-returned still hold on these chains: those
-          are properties of the base rail, not of a third-party own-fee.
+          On the chains Ophis operates, your recipient address is added to the settlement backend's
+          fee-recipient allowlist after verification, then your own-fee is metered per settled trade
+          and paid to your recipient monthly in WETH from the sovereign chain's Ophis Safe, with
+          Ophis taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once your
+          recipient is onboarded (allowlisted) and we have enabled and funded it; amounts are
+          USD-valued from routed volume, not exact per-token restitution. The flat all-in Ophis fee
+          and 100%-of-price-improvement-returned still hold on these chains: those are properties of
+          the base rail, not of a third-party own-fee.
         </p>
       </div>
       <div class="card">
@@ -831,13 +833,15 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
             0% of your markup. Set your own rate to 80 bps on $1,000,000 of monthly volume and Ophis
             takes 0% of your $8,000 markup; the 5 bps base is charged on top, so your users pay 85 bps
             all-in. You receive that markup on the CoW-hosted chains today (under CoW terms); on the
-            sovereign chains it is charged but not yet routed to you. For reference, MetaMask Swaps charges 0.875%. A
+            sovereign chains Optimism and Unichain it is paid to you monthly in WETH from the
+            sovereign chain's Safe once you are onboarded and we enable it. For reference, MetaMask Swaps charges 0.875%. A
             third-party own-fee is chargeable today on the CoW-hosted chains, where it pays out
             through CoW Protocol's weekly partner distribution under CoW's terms and we are
             completing an end-to-end payout check for stacked recipients, so do not assume the full
-            own-fee reaches you until confirmed. On Optimism and Unichain the settlement buffer
-            sweeps to a single Safe with no per-recipient split, so an allowlisted own-fee accrues
-            to Ophis, not yet routed to you; per-recipient sovereign payout is on the roadmap. A referral layer
+            own-fee reaches you until confirmed. On Optimism and Unichain the own-fee is charged into
+            settlement and swept to the Ophis Safe, then paid back to your recipient monthly in WETH
+            from that Safe (Ophis takes 0% of it) once your recipient is onboarded (allowlisted) and
+            we enable and fund the payout for it. A referral layer
             pays 8% of the net fee Ophis keeps (self-serve, referred volume capped at $1M/month) or
             12% (partner tier, uncapped, contact us), paid monthly in WETH, on-chain. Active traders
             earn pooled, volume-tier rewards.

@@ -340,24 +340,21 @@ How your fee reaches you depends on the chain:
   with your recipient address. This is where a third-party own-fee is chargeable
   today.
 - **Optimism and Unichain (Ophis-operated):** a stacked own-fee to a
-  third-party recipient needs two things to be true, and only the first exists
-  today, so **sovereign own-fee to your own address is not yet available
-  end to end**:
-  1. *Ingress.* Your recipient must be on the backend fee-recipient allowlist or
-     the order is rejected. This is a manual, reviewed backend change plus a
-     redeploy.
-  2. *Payout.* The settlement contract collects all partner fees into a single
-     buffer that is swept to one Safe; there is no per-recipient split today, so
-     an allowlisted third-party recipient's fee is collected but accrues to the
-     Ophis Safe, not routed to that recipient. Per-recipient sovereign payout is
-     on the roadmap, not yet shipped.
+  third-party recipient is paid to you through a two-step onboarding, both of
+  which Ophis now supports end to end:
+  1. *Ingress (allowlisting).* Your recipient is added to the backend
+     fee-recipient allowlist, so your order settles and your fee is charged (a
+     reviewed backend change plus a redeploy; the onboarding step is below).
+  2. *Payout.* Ophis meters your charged own-fee per settled trade and pays it
+     to your recipient monthly in WETH from the sovereign chain's Ophis Safe,
+     taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once
+     you are allowlisted and we have enabled and funded it for your recipient;
+     amounts are USD-valued from routed volume, not exact per-token restitution.
 
   The flat all-in Ophis fee and the 100%-of-price-improvement-returned
-  guarantees still hold on the sovereign chains: those are properties of the
-  base rail, not of a third-party own-fee. Until per-recipient payout ships, use
-  the CoW-hosted chains for your own fee (with the payout caveat above), and
-  [contact us](https://business.ophis.fi) to register interest in sovereign
-  per-recipient payout.
+  guarantees also hold on the sovereign chains (base-rail properties). To turn on
+  your sovereign own-fee, [contact us](https://business.ophis.fi) and follow the
+  onboarding step below.
 
 ## Earning a rebate (the referral layer)
 
@@ -433,24 +430,31 @@ next-payout time (those stay on the signature-gated partner dashboard).
 Only **Optimism (10)** and **Unichain (130)** are Ophis-operated, where Ophis controls
 settlement end to end. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
-**sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement, and
-Ophis pays the **referral rebate** from its Safe regardless of chain; it does **not** mean
-a third-party **own-fee** is routed to you on the sovereign chains (per-recipient sovereign
-payout is not yet built, so that own-fee accrues to the Ophis Safe today). The response
-carries a top-level `disclaimer` with the scope.
+**sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis
+pays the **referral rebate** from its Safe regardless of chain, and it now also pays a
+stacked third-party **own-fee** monthly in WETH from the sovereign chain's Ophis Safe,
+taking 0% of it, once your recipient is onboarded (allowlisted) and we have enabled and
+funded the payout for it. No partner is onboarded for sovereign own-fee payout yet, so
+until we turn it on for your recipient the sovereign own-fee is charged and reported but
+not paid to your address. The response carries a top-level `disclaimer` with the scope.
 
 Three earnings streams appear:
 
 - **Own-fee** (`ownFeeAccruedUsd`): the partner-fee entry you stack to **your own**
-  recipient in the appData `partnerFee` array, next to the Ophis base entry. These figures
-  are the own-fee **charged** at settlement, not amounts guaranteed to reach you.
-  `sovereignGuaranteed` (the historical field name) is the own-fee charged on Optimism and
-  Unichain, but per-recipient sovereign payout is not yet built: that own-fee accrues to
-  the Ophis Safe, not routed to your address (see [Charge your own fee](#charge-your-own-fee)),
-  so it is not payable to a third party today. `hostedAccrued` is the own-fee charged on
-  CoW-hosted chains, where payout runs through CoW's weekly partner distribution under
-  CoW's terms (Ophis does not guarantee it, and the end-to-end payout of a stacked
-  recipient there is still being verified). Treat both as charged/accrued, not paid.
+  recipient in the appData `partnerFee` array, next to the Ophis base entry.
+  `sovereignGuaranteed` (the historical field name) is the own-fee **charged** on Optimism
+  and Unichain, and it is now paid to your recipient monthly in WETH from the sovereign
+  chain's Ophis Safe (Ophis takes 0% of it), once your recipient is onboarded (allowlisted)
+  and we have enabled and funded the payout for it (see [Charge your own fee](#charge-your-own-fee)).
+  `sovereignPaidToDateWeth` / `sovereignPaidToDateUsd` are the **exact** amounts already
+  paid to your recipient from executed Ophis Safe own-fee batches, and `payouts` lists each
+  executed sovereign own-fee batch with its on-chain tx and a block-explorer link (your
+  proof of where it paid out). Sovereign amounts are USD-valued from routed volume, not
+  exact per-token restitution. `hostedAccrued` is the own-fee charged on CoW-hosted chains,
+  where payout runs through CoW's weekly partner distribution under CoW's terms (Ophis does
+  not guarantee it, and the end-to-end payout of a stacked recipient there is still being
+  verified). Treat the accrued figures as charged/gross and the paid-to-date figures as the
+  amounts realized.
 - **Referral rebate** (`referral`): the monthly WETH rebate Ophis pays your wallet from
   the Gnosis Safe when your `appCode` is a registered referral code. `paidToDateWeth` /
   `paidToDateUsd` are **exact**, summed from already-executed Safe batches, and `payouts`
@@ -472,9 +476,21 @@ Three earnings streams appear:
   "ophisFeeAccruedUsd": { "total": 350, "sovereign": 150, "hosted": 200 },
   "ownFeeAccruedUsd": {
     "total": 975,
-    "sovereignGuaranteed": 375,   // OP + Unichain: Ophis-controlled
-    "hostedAccrued": 600,         // CoW-hosted: disbursed by CoW under CoW terms
+    "sovereignGuaranteed": 375,       // OP + Unichain: charged, paid monthly once onboarded + enabled
+    "hostedAccrued": 600,             // CoW-hosted: disbursed by CoW under CoW terms
     "recipient": "0xYourOwnFeeRecipient",
+    "sovereignPaidToDateWeth": 0.05,  // EXACT WETH paid from executed Ophis Safe own-fee batches
+    "sovereignPaidToDateUsd": 150,
+    "payouts": [
+      {
+        "cycleMonth": "2026-06",
+        "chainId": 10,
+        "chainName": "Optimism",
+        "txHash": "0x...",
+        "explorerUrl": "https://optimistic.etherscan.io/tx/0x...",
+        "amountWeth": 0.05
+      }
+    ],
     "note": "Own-fee is the partner-fee entry you stack to your own recipient ..."
   },
   "referral": {
@@ -501,14 +517,17 @@ Three earnings streams appear:
 ```
 
 Agents can poll the same data through the Ophis MCP server's `get_integrator_earnings`
-tool (it calls this endpoint). The own-fee amount is decoded from settled appData on
-every chain, so the charged amount is attributed everywhere, but a charged amount is not
-a payout. On Optimism and Unichain a third-party own-fee is not routed to you today: it
-accrues to the Ophis Safe because per-recipient sovereign payout is not yet built. The
-hosted figure is the gross amount charged at settlement, paid out under CoW's terms;
-whether CoW's service fee applies to a stacked non-Ophis recipient, and the end-to-end
-payout of that recipient, are still being verified. Treat every own-fee figure as gross
-and not guaranteed.
+tool (it calls this endpoint). The own-fee amount is decoded from settled appData on every
+chain, so the charged amount is attributed everywhere, but a charged amount is not itself a
+payout. On Optimism and Unichain a stacked third-party own-fee is now paid to your recipient
+monthly in WETH from the sovereign chain's Ophis Safe (Ophis takes 0% of it), once your
+recipient is onboarded (allowlisted) and we have enabled and funded the payout for it; the
+`sovereignPaidToDateWeth` / `sovereignPaidToDateUsd` and `payouts` fields report the exact
+sovereign amounts already paid and their on-chain txs. The hosted figure is the gross amount
+charged at settlement, paid out under CoW's terms; whether CoW's service fee applies to a
+stacked non-Ophis recipient, and the end-to-end payout of that recipient, are still being
+verified. Treat the charged figures as gross, and the sovereign paid-to-date figures as the
+amounts realized.
 
 ## Selling native ETH (eth-flow)
 
