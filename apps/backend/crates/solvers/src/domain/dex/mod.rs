@@ -222,8 +222,16 @@ impl Swap {
                         }
                     }
                     Err(err) => {
-                        tracing::warn!(?err, "gas simulation failed");
-                        return None;
+                        // A sim that reverts or errors follows the same policy as
+                        // SettlementContractIsOwner above: price a quote or a
+                        // non-buffer-exposed swap on heuristic gas rather than
+                        // dropping it; fail closed on a buffer-exposed real solve.
+                        tracing::warn!(?err, "strict output simulation errored");
+                        if is_quote || !self.buy_is_buffer_exposed(tokens) {
+                            self.gas
+                        } else {
+                            return None;
+                        }
                     }
                 }
             } else {
@@ -261,8 +269,14 @@ impl Swap {
                         }
                     }
                     Err(err) => {
-                        tracing::warn!(?err, "strict output simulation failed");
-                        return None;
+                        // A sim that reverts or errors follows the same policy as
+                        // SettlementContractIsOwner above: accept a quote or a
+                        // non-buffer-exposed swap; fail closed on a buffer-exposed
+                        // real solve.
+                        tracing::warn!(?err, "strict output simulation errored");
+                        if !is_quote && self.buy_is_buffer_exposed(tokens) {
+                            return None;
+                        }
                     }
                 }
             }
