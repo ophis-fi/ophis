@@ -325,6 +325,8 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     // Verified, fee-paying row -> counts. Discovery row (attacker-controllable appData
     // tag, forced to volume_fee_bps=0 + fee_verified=false) -> MUST NOT count, even
     // though it carries the same appdata_ref_code and a NEWER own-fee recipient.
+    // 'mycode' must be a REGISTERED ref_code, or the ownership binding zeroes the surface.
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('mycode', decode(${'ab'.repeat(20)}, 'hex'), 'regular', true) ON CONFLICT (code) DO NOTHING`;
     await insertTrade(sql, { uid: 'e1', chain: 100, code: 'mycode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: 25, ownRecipHex: RECIP_A, ts: OLDER });
     await insertTrade(sql, { uid: 'e2', chain: 100, code: 'mycode', feeBps: 0, verified: false, volumeUsd: 9999, ownFeeBps: 50, ownRecipHex: RECIP_B, ts: NEWER });
 
@@ -335,6 +337,7 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(2.5); // 1000 * 25 / 10_000, gross (hosted own-fee is not haircut)
     // The recipient is the VERIFIED row's, never the newer unverified discovery row's.
     expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`);
+    await sql`DELETE FROM ref_codes WHERE code = 'mycode'`;
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000);
 
@@ -345,12 +348,42 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     // Production (Gnosis 100) row is OLDER; a verified Sepolia (11155111, testnet, not in
     // PRODUCTION_CHAIN_IDS) row is NEWER. The aggregate already filters to production, so
     // its recipient lookup must too, else the testnet recipient leaks as "where it paid out".
+    // 'chaincode' must be a REGISTERED ref_code, or the ownership binding zeroes the surface.
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('chaincode', decode(${'ab'.repeat(20)}, 'hex'), 'regular', true) ON CONFLICT (code) DO NOTHING`;
     await insertTrade(sql, { uid: 'c1', chain: 100, code: 'chaincode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: 25, ownRecipHex: RECIP_A, ts: OLDER });
     await insertTrade(sql, { uid: 'c2', chain: 11155111, code: 'chaincode', feeBps: 10, verified: true, volumeUsd: 500, ownFeeBps: 25, ownRecipHex: RECIP_Z, ts: NEWER });
 
     const e = await getIntegratorEarnings('chaincode', new Date());
     expect(e.routedVolumeUsd.total).toBe(1000); // testnet 500 excluded from amounts
     expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`); // NOT the newer testnet recipient
+    await sql`DELETE FROM ref_codes WHERE code = 'chaincode'`;
+    await sql`TRUNCATE trades, tracked_wallets`;
+  }, 30_000);
+
+  it('returns all-zero for an UNREGISTERED appCode even with verified fee-paying trades (appData ownership binding)', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { getIntegratorEarnings } = await import('../src/earnings.js');
+    await sql`TRUNCATE trades, tracked_wallets`;
+    // A verified, fee-paying production trade tagged with an appCode that is NOT a
+    // registered ref_code. appdata_ref_code is attacker-controllable, so without the
+    // ref_codes ownership binding this would report attacker-controlled volume / fee /
+    // own-fee / recipient. The binding => empty (all-zero) response.
+    await insertTrade(sql, { uid: 'da', chain: 100, code: 'ghostcode', feeBps: 10, verified: true, volumeUsd: 5000, ownFeeBps: 25, ownRecipHex: RECIP_A, ts: OLDER });
+
+    const e = await getIntegratorEarnings('ghostcode', new Date());
+    expect(e.routedVolumeUsd.total).toBe(0);
+    expect(e.ophisFeeAccruedUsd.total).toBe(0);
+    expect(e.ownFeeAccruedUsd.total).toBe(0);
+    expect(e.ownFeeAccruedUsd.recipient).toBeNull();
+    expect(e.byChain).toEqual([]);
+
+    // Control: registering the SAME code surfaces the EXACT same trade, proving the
+    // ownership binding (not some other filter) gated it.
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('ghostcode', decode(${'ab'.repeat(20)}, 'hex'), 'regular', true) ON CONFLICT (code) DO NOTHING`;
+    const e2 = await getIntegratorEarnings('ghostcode', new Date());
+    expect(e2.routedVolumeUsd.total).toBe(5000);
+    expect(e2.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`);
+    await sql`DELETE FROM ref_codes WHERE code = 'ghostcode'`;
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000);
 

@@ -13,3 +13,4 @@
 /*
   Access-Control-Allow-Origin: *
   Content-Security-Policy: frame-ancestors https://app.safe.global https://*.safe.global; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://optimism-mainnet.ophis.fi https://*.ophis.fi https://api.cow.fi; img-src 'self' data:; object-src 'none'; base-uri 'none'
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

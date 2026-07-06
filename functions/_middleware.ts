@@ -149,7 +149,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (target && url.pathname === '/') {
     const rewritten = new URL(url)
     rewritten.pathname = target
-    return context.env.ASSETS.fetch(new Request(rewritten.toString(), context.request))
+    const res = await context.env.ASSETS.fetch(new Request(rewritten.toString(), context.request))
+    // Clickjacking hardening (LOW): business.ophis.fi is an institutional
+    // landing page, not an embeddable widget, so it must not inherit the swap
+    // widget's permissive 'frame-ancestors *' from the shared _headers. Deny
+    // framing outright on this host. swap.ophis.fi keeps the widget policy.
+    const businessRes = new Response(res.body, res)
+    businessRes.headers.set('content-security-policy', "frame-ancestors 'none'")
+    businessRes.headers.set('x-frame-options', 'DENY')
+    return businessRes
   }
 
   // Never serve the SPA HTML fallback at asset-shaped paths. Pages' SPA

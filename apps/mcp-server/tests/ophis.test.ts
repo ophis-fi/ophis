@@ -416,6 +416,11 @@ describe('listChains', () => {
     expect(op?.partnerFee?.volumeBps).toBe(5)
   })
 
+  it('names Unichain (130) with its real display name, not a chain-130 placeholder', () => {
+    const uni = listChains().tradeable.find((c) => c.chainId === 130)
+    expect(uni?.name).toBe('Unichain')
+  })
+
   it('puts Ethereum mainnet in tradeable with the canonical settlement', () => {
     const eth = listChains().tradeable.find((c) => c.chainId === 1)
     expect(eth?.ophisOperated).toBe(false)
@@ -467,10 +472,12 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
     expect(() => assertLimitWithinSlippage('buy', '100000000000', '250000000000000', fair, 100)).toThrow()
   })
 
-  it('defaults to the 50% cap when slippageBips is omitted', () => {
-    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair)).toThrow() // >50% below
-    const out40 = ((250000000000000n * 6000n) / 10000n).toString() // 40% below -> within 50% default
-    expect(() => assertLimitWithinSlippage('sell', '1000000', out40, fair)).not.toThrow()
+  it('defaults to a 100-bps (1%) backstop when slippageBips is omitted', () => {
+    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair)).toThrow() // far below the 1% floor
+    const floor = ((250000000000000n * 9900n) / 10000n).toString() // exactly 1% below -> within the default
+    expect(() => assertLimitWithinSlippage('sell', '1000000', floor, fair)).not.toThrow()
+    const below = ((250000000000000n * 9800n) / 10000n).toString() // 2% below -> past the 1% default
+    expect(() => assertLimitWithinSlippage('sell', '1000000', below, fair)).toThrow()
   })
 
   it('widens the bound by the CIP-75 partner fee so legit fee-chain orders are not false-rejected', () => {
@@ -519,6 +526,14 @@ describe('getBalances / getGas / getPortfolio guards (no network)', () => {
     const res = await getPortfolio({ owner: OWNER, chainIds: [9745] })
     expect(res.chains).toEqual([])
     expect(res.owner).toBe(OWNER)
+  })
+
+  it('caps the total token fan-out across all chains without a network call', async () => {
+    // 3 chains x 50 tokens = 150 total token reads, over the 100 cap.
+    const tokensByChain = { 10: Array(50).fill(USDC_OP), 8453: Array(50).fill(USDC_OP), 42161: Array(50).fill(USDC_OP) }
+    await expect(
+      getPortfolio({ owner: OWNER, chainIds: [10, 8453, 42161], tokensByChain }),
+    ).rejects.toThrow(/at most 100 token reads total/)
   })
 })
 

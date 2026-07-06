@@ -1,7 +1,7 @@
 /**
  * Ophis MCP server — standalone stdio entrypoint (plain Node ESM).
  *
- * Same six tools as the Cloudflare Worker (src/index.ts), exposed over a stdio
+ * Same 14 tools as the Cloudflare Worker (src/index.ts), exposed over a stdio
  * MCP transport so the server can run in a container (e.g. for the Glama.ai
  * registry) or be spawned directly by an MCP client. stdout is the MCP channel:
  * write NOTHING to it except protocol frames. Diagnostics go to stderr.

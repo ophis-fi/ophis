@@ -24,6 +24,22 @@ function settledWindow(now: Date): { start: Date; end: Date; label: string } {
   return { start, end, label: `${start.toISOString().slice(0, 10)}` }; // YYYY-MM-01
 }
 
+/**
+ * Total WETH (wei) already committed to OPEN affiliate proposals -- batches left
+ * 'proposing'/'proposed' (queued in the Safe, not yet signed/executed). Affiliate pays
+ * only from the single Gnosis Safe, so this sums across every open affiliate batch. The
+ * caller nets it out of the raw Safe balance before planning so a new cycle never proposes
+ * against funds already earmarked for a queued tx (the own-fee reserve class, #771).
+ */
+export async function sumQueuedAffiliateOwedWei(): Promise<bigint> {
+  const [reservedRow] = await sql<{ reserved: string }[]>`
+    SELECT COALESCE(SUM(total_owed_wei), 0)::text AS reserved
+    FROM affiliate_batches
+    WHERE status IN ('proposing', 'proposed')
+  `;
+  return BigInt(reservedRow?.reserved ?? '0');
+}
+
 export interface AffiliatePayoutDeps {
   readonly chainId: number;
   readonly rpcUrl: string;
@@ -65,11 +81,23 @@ export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ s
   const [rb] = await sql<{ pool: string }[]>`SELECT pool_weth_wei::text AS pool FROM rebate_batches ORDER BY id DESC LIMIT 1`;
   const rebatePoolWei = rb ? BigInt(rb.pool) : 0n;
 
-  const plan = planAffiliatePayout(owed, safeBalanceWei, rebatePoolWei);
+  // RESERVE the WETH already committed to OPEN affiliate proposals. A prior affiliate
+  // batch left 'proposing'/'proposed' (queued in the Safe, not yet signed/executed) still
+  // holds its owed WETH in the Safe, so the raw balanceOf double-counts it. Netting it out
+  // stops THIS cycle proposing against funds already earmarked for that queued tx (if both
+  // were later signed, the total would exceed the balance and executions would revert).
+  // available = balance - reserved (clamped at 0). Same class as the own-fee reserve (#771).
+  const reservedForQueuedWei = await sumQueuedAffiliateOwedWei();
+  const availableBalanceWei = safeBalanceWei > reservedForQueuedWei ? safeBalanceWei - reservedForQueuedWei : 0n;
+  if (reservedForQueuedWei > 0n) {
+    log.info({ safeBalanceWei: safeBalanceWei.toString(), reservedForQueuedWei: reservedForQueuedWei.toString(), availableBalanceWei: availableBalanceWei.toString() }, 'affiliate payout: reserved WETH already committed to queued (unsigned) affiliate proposals');
+  }
+
+  const plan = planAffiliatePayout(owed, availableBalanceWei, rebatePoolWei);
 
   if (plan.blocked) {
-    log.error({ cycleMonth: label, totalOwedWei: plan.totalOwedWei.toString(), rebatePoolWei: rebatePoolWei.toString(), safeBalanceWei: safeBalanceWei.toString() }, 'affiliate payout BLOCKED');
-    await alerts.alert('affiliate-payout', `Affiliate payout ${label} BLOCKED: ${plan.reason}. rebate ${rebatePoolWei} + affiliate ${plan.totalOwedWei} > Safe ${safeBalanceWei} wei. No proposal made; investigate.`).catch(() => {});
+    log.error({ cycleMonth: label, totalOwedWei: plan.totalOwedWei.toString(), rebatePoolWei: rebatePoolWei.toString(), safeBalanceWei: safeBalanceWei.toString(), reservedForQueuedWei: reservedForQueuedWei.toString(), availableBalanceWei: availableBalanceWei.toString() }, 'affiliate payout BLOCKED');
+    await alerts.alert('affiliate-payout', `Affiliate payout ${label} BLOCKED: ${plan.reason}. rebate ${rebatePoolWei} + affiliate ${plan.totalOwedWei} > available Safe WETH ${availableBalanceWei} wei (balance ${safeBalanceWei} net of queued ${reservedForQueuedWei}). No proposal made; investigate.`).catch(() => {});
     return { status: 'blocked' };
   }
   if (plan.transfers.length === 0) {

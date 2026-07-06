@@ -217,7 +217,7 @@ export interface BuiltOrder {
 /**
  * Builds a bounded, ready-to-sign CoW order on Ophis. Pins the receiver to the
  * owner (unless unsafeCustomReceiver is set), uses the correct per-chain
- * settlement contract (Optimism/MegaETH/HyperEVM are NON-canonical) and
+ * settlement contract (Optimism and Unichain are NON-canonical) and
  * orderbook host, and embeds the CIP-75 partner fee in appData. Pure — no
  * network, no keys.
  */
@@ -948,6 +948,7 @@ const CHAIN_NAMES: Record<number, string> = {
   10: 'Optimism',
   56: 'BNB Chain',
   100: 'Gnosis',
+  130: 'Unichain',
   137: 'Polygon',
   999: 'HyperEVM',
   4326: 'MegaETH',
@@ -1035,6 +1036,12 @@ const MAX_UINT256 = (1n << 256n) - 1n
 // reflects a mistake or a crafted self-fleecing order, not a real trade.
 const MAX_SLIPPAGE_BIPS = 5000
 
+// Enforced backstop when the caller OMITS slippageBips (100 bps = 1%). The prior
+// behaviour fell back to the 50% cap, so an omitted value let a limit up to 50%
+// worse than the live quote through silently. A caller that genuinely needs a
+// wider band must now ask for it explicitly (up to MAX_SLIPPAGE_BIPS).
+const DEFAULT_SLIPPAGE_BIPS = 100
+
 function assertAtoms(amount: string, label: string): void {
   if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount) || amount === '0') {
     throw new Error(`${label}: must be a positive integer string of atoms (wei-like), got "${amount}"`)
@@ -1081,7 +1088,8 @@ export function extractQuoteAmounts(quoteResponse: unknown): { sellAmount: strin
 
 /**
  * Enforce that the caller's signed limit is no worse than `slippageBips` (capped at
- * MAX_SLIPPAGE_BIPS, default = the cap) vs a TRUSTED quote. `fair` MUST come from a
+ * MAX_SLIPPAGE_BIPS; omitted defaults to DEFAULT_SLIPPAGE_BIPS = 100 bps / 1%) vs a
+ * TRUSTED quote. `fair` MUST come from a
  * server-fetched quote, never from the caller (a caller-supplied reference is
  * fakeable on the public no-auth tool — reviewer P1). Throws on a violation.
  * - kind 'sell': caller buyAmount (min out) must be >= fair.buyAmount * (1 - bound).
@@ -1101,7 +1109,7 @@ export function assertLimitWithinSlippage(
   slippageBips?: number,
   partnerFeeBps = 0,
 ): void {
-  const slip = Math.min(slippageBips ?? MAX_SLIPPAGE_BIPS, MAX_SLIPPAGE_BIPS)
+  const slip = Math.min(slippageBips ?? DEFAULT_SLIPPAGE_BIPS, MAX_SLIPPAGE_BIPS)
   const bips = Math.min(slip + Math.max(0, Math.trunc(partnerFeeBps)), 10_000)
   const bound = BigInt(bips)
   if (kind === 'sell') {
@@ -1300,6 +1308,13 @@ export interface PortfolioResult {
 
 const MAX_PORTFOLIO_CHAINS = 12
 
+// Hard cap on the TOTAL ERC-20 token reads fanned out across all chains in one
+// call. Each chain already costs a native-balance read plus one multicall, so the
+// chain cap bounds the base fan-out; this additionally bounds the token-driven
+// multicall subrequests so one unauthenticated POST cannot be amplified into an
+// unbounded number of upstream RPC subrequests.
+const MAX_PORTFOLIO_TOKENS_TOTAL = 100
+
 /**
  * Native + token balances for an owner across multiple chains. `tokensByChain`
  * maps a chainId to the token addresses to read on it (native is always
@@ -1314,6 +1329,12 @@ export async function getPortfolio(
     .filter((c) => PUBLIC_RPCS[c] || p.rpcUrls?.[c])
   if (chainIds.length > MAX_PORTFOLIO_CHAINS) {
     throw new Error(`get_portfolio: at most ${MAX_PORTFOLIO_CHAINS} chains per call, got ${chainIds.length}`)
+  }
+  // Bound the total token fan-out (across only the chains actually queried) so an
+  // unauthenticated caller cannot amplify one POST into unbounded upstream RPC hits.
+  const totalTokens = chainIds.reduce((sum, c) => sum + (p.tokensByChain?.[c]?.length ?? 0), 0)
+  if (totalTokens > MAX_PORTFOLIO_TOKENS_TOTAL) {
+    throw new Error(`get_portfolio: at most ${MAX_PORTFOLIO_TOKENS_TOTAL} token reads total across all chains, got ${totalTokens}`)
   }
   const chains = await Promise.all(
     chainIds.map(async (chainId) => {

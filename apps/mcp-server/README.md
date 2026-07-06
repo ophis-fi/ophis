@@ -35,6 +35,7 @@ every backing endpoint is already public, and the tools are read/build-only.
 | `get_portfolio` | Native + ERC-20 balances across multiple chains. |
 | `get_gas` | Current gas price for a chain (informational; trades are gasless for the trader). |
 | `get_token_chart` | OHLCV price history for a token. |
+| `validate_order` | Offline preflight for an externally-built order (no network, no keys): catches wrong appCode, orderbook host, EIP-712 domain, appData hash mismatch, unpinned receiver, and expired or non-zero-fee orders. |
 
 ## Typical agent flow
 
