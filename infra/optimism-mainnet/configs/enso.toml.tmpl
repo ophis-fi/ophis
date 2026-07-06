@@ -1,0 +1,48 @@
+# Ophis -- Optimism mainnet (chain 10) Enso aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# Mirrored from infra/unichain-mainnet/configs/enso.toml.tmpl and adapted for OP.
+# Enso Shortcuts /route (routingStrategy=router) serves chain 10 (verified
+# 2026-07-06: /api/v1/shortcuts/route?chainId=10 returns tx.to
+# 0xF75584eF6673aD213a685a1B58Cc0330B8eA22Cf -- the EnsoRouter, which is also the
+# ERC-20 approval target). The EnsoRouter is CREATE2-deterministic: the OP
+# address EQUALS the Unichain one, so it is ALREADY covered by the solver
+# allowlist (dex::enso::ENSO_ROUTER_ALLOWLIST) and needs only a driver-allowlist
+# (custom_allowlist::OPTIMISM_MAINNET) entry. The SELL output reports the
+# GUARANTEED minAmountOut floor directly -- the #726 fix.
+#
+# KEYED: Enso requires a Bearer API key (NO anonymous tier -- the module
+# fail-fasts at startup on an empty key). The key is a SECRET, rendered from
+# ${ENSO_API_KEY} in the gitignored .env -- enso.toml MUST be in render-configs.sh
+# PK_BEARING_NAMES so the rendered copy lands on the RAM-disk, and ${ENSO_API_KEY}
+# MUST be in the render-configs.sh envsubst list. The key lifts rate limits only;
+# it never touches the funds path. A free, no-KYC key is at developers.enso.build.
+
+# Reuses the existing OP DEX-solver node-url (configs/velora.toml,
+# configs/kyberswap.toml). Switch to the OP_MAINNET_RPC env var if you prefer
+# the okx.toml.tmpl style (that var is already in the envsubst list).
+node-url = "https://optimism-rpc.publicnode.com"
+
+# Ophis-fork settlement on Optimism. Without this override the solver framework
+# falls back to the canonical CoW address, bakes the wrong receiver into the swap
+# calldata, and settle() reverts with "transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
+# #775 output-side anti-siphon guards, FULLY ENABLED (2026-07-06). Two earlier
+# regressions had forced these off: (1) the OP native-price oracle mis-scaled
+# 6-decimal tokens (priced USDC ~1e12x too high), so the reference ceiling saw
+# a ~1e12 ratio and rejected every swap -- FIXED by the native-price decimals
+# fix; and (2) eth-flow (native-ETH) orders could not be output-simulated (the
+# eth-flow contract holds native ETH, not WETH, at sim time) -- FIXED: the
+# simulator now grants eth-flow owners the WETH balance via a state override.
+max-output-reference-factor = "5"
+strict-output-simulation = true
+
+[dex]
+chain-id = "10"
+
+# Free Enso Bearer API key, sent as the Authorization header. Rendered from the
+# gitignored .env; never hardcode a value here.
+api-key = "${ENSO_API_KEY}"

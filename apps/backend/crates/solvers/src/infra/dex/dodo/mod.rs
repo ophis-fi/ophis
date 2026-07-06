@@ -83,6 +83,19 @@ const DODO_APPROVE_PROXY: Address = Address::new([
     0x41, 0x34, 0x62, 0xDD,
 ]);
 
+/// DODORouteProxy on Optimism (10) -- the router `to` (per-chain; verified
+/// 2026-07-06). EIP-55 0x8b09DB11ea380d6454D2592D334FFC319ce6EF3E.
+const DODO_ROUTE_PROXY_OP: Address = Address::new([
+    0x8b, 0x09, 0xdb, 0x11, 0xea, 0x38, 0x0d, 0x64, 0x54, 0xd2, 0x59, 0x2d, 0x33, 0x4f, 0xfc, 0x31,
+    0x9c, 0xe6, 0xef, 0x3e,
+]);
+/// DODOApproveProxy on Optimism (10) -- the ERC-20 approval target (per-chain).
+/// EIP-55 0xa492d6eABcdc3E204676f15B950bBdD448080364.
+const DODO_APPROVE_PROXY_OP: Address = Address::new([
+    0xa4, 0x92, 0xd6, 0xea, 0xbc, 0xdc, 0x3e, 0x20, 0x46, 0x76, 0xf1, 0x5b, 0x95, 0x0b, 0xbd, 0xd4,
+    0x48, 0x08, 0x03, 0x64,
+]);
+
 /// Validates a DODO response address against the EXPECTED role-specific
 /// contract. ROLE-SPECIFIC, not a union: the router (`to`) must be the
 /// RouteProxy and the spender (`targetApproveAddr`) must be the ApproveProxy.
@@ -195,8 +208,15 @@ impl Dodo {
             // (`targetApproveAddr`) against the static allowlist BEFORE using
             // either. Fail fast on a poisoned edge so we never bake an
             // attacker-controlled call target or spender into the settlement.
-            validate_dodo_address(&route.to, &DODO_ROUTE_PROXY, "router")?;
-            validate_dodo_address(&route.target_approve_addr, &DODO_APPROVE_PROXY, "approve target")?;
+            // DODO deploys per-chain: pick the RouteProxy/ApproveProxy for the
+            // configured chain (10 = Optimism, else Unichain 130).
+            let (route_proxy, approve_proxy) = if self.chain_id == 10 {
+                (DODO_ROUTE_PROXY_OP, DODO_APPROVE_PROXY_OP)
+            } else {
+                (DODO_ROUTE_PROXY, DODO_APPROVE_PROXY)
+            };
+            validate_dodo_address(&route.to, &route_proxy, "router")?;
+            validate_dodo_address(&route.target_approve_addr, &approve_proxy, "approve target")?;
 
             // ERC-20 -> ERC-20 only. The settlement holds wrapped tokens, so a
             // non-zero native `value` means we'd be asked to send ETH the

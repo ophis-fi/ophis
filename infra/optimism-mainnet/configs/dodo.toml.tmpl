@@ -1,0 +1,49 @@
+# Ophis -- Optimism mainnet (chain 10) DODO route-service aggregator solver config.
+#
+# TEMPLATE FILE (kept as .tmpl for stack consistency; keyless, so envsubst is a
+# no-op). Render with ./render-configs.sh.
+#
+# Mirrored from infra/unichain-mainnet/configs/dodo.toml.tmpl and adapted for OP.
+# DODO route-service serves chain 10 via the chainId query param (verified
+# 2026-07-06: GET /route-service/v2/widget/getdodoroute?chainId=10 returns
+# status 200 with two contracts, BOTH deployed on OP and BOTH per-chain -- they
+# DIFFER from the Unichain pair, so they are allowlisted (chain 10) in BOTH the
+# solver allowlist (dex::dodo -- see the OP-specific consts + dodo_contracts()
+# chain resolver) AND the driver allowlist (custom_allowlist::OPTIMISM_MAINNET):
+#   - DODORouteProxy   0x8b09DB11ea380d6454D2592D334FFC319ce6EF3E  (router `to`)
+#   - DODOApproveProxy 0xa492d6eABcdc3E204676f15B950bBdD448080364  (ERC-20 spender)
+# The SELL output reports DODO's guaranteed data.minReturnAmount (the slippage
+# floor) -- the #726 fix.
+#
+# Keyless: DODO's route-service uses a PUBLIC widget API key by default
+# (dodo::DEFAULT_APIKEY -- rate-limit / attribution only, NO funds-moving
+# authority). Nothing secret is committed.
+
+# Reuses the existing OP DEX-solver node-url (configs/velora.toml,
+# configs/kyberswap.toml). Switch to the OP_MAINNET_RPC env var if you prefer
+# the okx.toml.tmpl style (that var is already in the envsubst list).
+node-url = "https://optimism-rpc.publicnode.com"
+
+# Ophis-fork settlement on Optimism. Without this override the solver framework
+# falls back to the canonical CoW address, bakes the wrong receiver into the swap
+# calldata, and settle() reverts with "transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
+# #775 output-side anti-siphon guards, FULLY ENABLED (2026-07-06). Two earlier
+# regressions had forced these off: (1) the OP native-price oracle mis-scaled
+# 6-decimal tokens (priced USDC ~1e12x too high), so the reference ceiling saw
+# a ~1e12 ratio and rejected every swap -- FIXED by the native-price decimals
+# fix; and (2) eth-flow (native-ETH) orders could not be output-simulated (the
+# eth-flow contract holds native ETH, not WETH, at sim time) -- FIXED: the
+# simulator now grants eth-flow owners the WETH balance via a state override.
+max-output-reference-factor = "5"
+strict-output-simulation = true
+
+[dex]
+chain-id = "10"
+
+# DODO API key (optional). Defaults to DODO's PUBLIC widget key when omitted. To
+# supply your OWN private key without committing it: add ${DODO_API_KEY} to the
+# envsubst list in render-configs.sh, add dodo.toml to PK_BEARING_NAMES so the
+# rendered file lands on the RAM-disk, then uncomment:
+# apikey = "${DODO_API_KEY}"

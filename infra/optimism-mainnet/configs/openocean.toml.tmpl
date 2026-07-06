@@ -1,0 +1,44 @@
+# Ophis -- Optimism mainnet (chain 10) OpenOcean V4 aggregator solver config.
+#
+# TEMPLATE FILE (kept as .tmpl for stack consistency; keyless, so envsubst is a
+# no-op). Render with ./render-configs.sh.
+#
+# Mirrored from infra/unichain-mainnet/configs/openocean.toml.tmpl and adapted
+# for OP. OpenOcean V4 serves chain 10 (verified 2026-07-06: GET /v4/10/swap
+# returns code 200, chainId 10, and data.to
+# 0x6352a56caadC4F1E25CD6c75970Fa768A3304e64 -- the OpenOceanExchangeProxy, router
+# == ERC-20 spender). The proxy is deterministic across chains: the OP address
+# EQUALS the Unichain one, so it is ALREADY covered by the solver allowlist
+# (dex::openocean::OPENOCEAN_ROUTER_ALLOWLIST) and needs only a driver-allowlist
+# (custom_allowlist::OPTIMISM_MAINNET) entry. The SELL output reports
+# data.minOutAmount (the guaranteed floor) -- the #726 fix. Keyless.
+
+# Reuses the existing OP DEX-solver node-url (configs/velora.toml,
+# configs/kyberswap.toml). Switch to the OP_MAINNET_RPC env var if you prefer
+# the okx.toml.tmpl style (that var is already in the envsubst list).
+node-url = "https://optimism-rpc.publicnode.com"
+
+# Ophis-fork settlement on Optimism. Without this override the solver framework
+# falls back to the canonical CoW address, bakes the wrong receiver into the swap
+# calldata, and settle() reverts with "transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
+# #775 output-side anti-siphon guards, FULLY ENABLED (2026-07-06). Two earlier
+# regressions had forced these off: (1) the OP native-price oracle mis-scaled
+# 6-decimal tokens (priced USDC ~1e12x too high), so the reference ceiling saw
+# a ~1e12 ratio and rejected every swap -- FIXED by the native-price decimals
+# fix; and (2) eth-flow (native-ETH) orders could not be output-simulated (the
+# eth-flow contract holds native ETH, not WETH, at sim time) -- FIXED: the
+# simulator now grants eth-flow owners the WETH balance via a state override.
+max-output-reference-factor = "5"
+strict-output-simulation = true
+
+[dex]
+# Chain ID 10 = Optimism mainnet. OpenOcean v4 keys its endpoints by numeric
+# chain id (base URL https://open-api.openocean.finance/v4/10/).
+chain-id = "10"
+
+# OpenOcean referrer address (optional -- fee attribution only, NEVER the funds
+# path). Unset = no referral fee. To set one without committing a value, add
+# ${OPENOCEAN_REFERRER} to the envsubst list in render-configs.sh and uncomment:
+# referrer = "${OPENOCEAN_REFERRER}"

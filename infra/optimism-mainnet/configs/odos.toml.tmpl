@@ -1,0 +1,48 @@
+# Ophis -- Optimism mainnet (chain 10) Odos SOR v2 aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# Mirrored from infra/unichain-mainnet/configs/odos.toml.tmpl and adapted for OP.
+# Odos SOR v2 serves chain 10 (verified 2026-07-06: api.odos.xyz/info/chains
+# includes 10; /info/contract-info/v2/10 returns routerAddress
+# 0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680 -- the OdosRouterV2, which is also
+# the ERC-20 spender). Odos deploys OdosRouterV2 PER CHAIN, so the OP router
+# DIFFERS from Unichain's 0x6409722F…; the OP address is allowlisted (chain 10)
+# in BOTH the solver allowlist (dex::odos::ODOS_ROUTER_ALLOWLIST) AND the driver
+# allowlist (custom_allowlist::OPTIMISM_MAINNET). Odos exposes NO min-out field,
+# so the SELL output reports the reconstructed slippage FLOOR -- the #726 fix.
+#
+# API KEY: the Odos anonymous tier is too rate-limited to participate (HTTP 429),
+# so a FREE-plan key (sent as the x-api-key header) is rendered from
+# ${ODOS_API_KEY} in the gitignored .env. The key is a SECRET -- odos.toml MUST be
+# in render-configs.sh PK_BEARING_NAMES so the rendered copy lands on the
+# RAM-disk, and ${ODOS_API_KEY} MUST be in the render-configs.sh envsubst list.
+# The key only lifts rate limits; it never touches the funds path.
+
+# Reuses the existing OP DEX-solver node-url (configs/velora.toml,
+# configs/kyberswap.toml). Switch to the OP_MAINNET_RPC env var if you prefer
+# the okx.toml.tmpl style (that var is already in the envsubst list).
+node-url = "https://optimism-rpc.publicnode.com"
+
+# Ophis-fork settlement on Optimism. Without this override the solver framework
+# falls back to the canonical CoW address, bakes the wrong receiver into the swap
+# calldata, and settle() reverts with "transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
+# #775 output-side anti-siphon guards, FULLY ENABLED (2026-07-06). Two earlier
+# regressions had forced these off: (1) the OP native-price oracle mis-scaled
+# 6-decimal tokens (priced USDC ~1e12x too high), so the reference ceiling saw
+# a ~1e12 ratio and rejected every swap -- FIXED by the native-price decimals
+# fix; and (2) eth-flow (native-ETH) orders could not be output-simulated (the
+# eth-flow contract holds native ETH, not WETH, at sim time) -- FIXED: the
+# simulator now grants eth-flow owners the WETH balance via a state override.
+max-output-reference-factor = "5"
+strict-output-simulation = true
+
+[dex]
+chain-id = "10"
+
+# Free-plan Odos API key, sent as the x-api-key header. Rendered from the
+# gitignored .env; never hardcode a value here.
+api-key = "${ODOS_API_KEY}"

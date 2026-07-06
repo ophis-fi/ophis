@@ -112,6 +112,24 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // `/approve-transaction` as `dexContractAddress` — the ERC-20
     // approval grantee. Verified 2026-05-18 alongside the router.
     address!("68D6B739D2020067D1e2F713b999dA97E4d54812"),
+    // Odos OdosRouterV2 on Optimism (10) -- router (tx.to) == ERC-20 spender.
+    // Per-chain; verified 2026-07-06 via api.odos.xyz + eth_getCode (14721 B).
+    address!("Ca423977156BB05b13A2BA3b76Bc5419E2fE9680"),
+    // Enso EnsoRouter on Optimism (10) -- tx.to == approval target.
+    // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
+    address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
+    // LI.FI LiFiDiamond on Optimism (10) -- tx.to == approvalAddress.
+    // Per-chain diamond; verified 2026-07-06 via li.quest (5176 B).
+    address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
+    // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
+    // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).
+    address!("6352a56caadC4F1E25CD6c75970Fa768A3304e64"),
+    // DODO DODORouteProxy on Optimism (10) -- the router tx.to. Per-chain.
+    // Verified 2026-07-06 via getdodoroute?chainId=10 (11202 B).
+    address!("8b09DB11ea380d6454D2592D334FFC319ce6EF3E"),
+    // DODO DODOApproveProxy on Optimism (10) -- ERC-20 approval target,
+    // distinct from the router above. Verified 2026-07-06 (2432 B).
+    address!("a492d6eABcdc3E204676f15B950bBdD448080364"),
 ];
 
 /// HyperEVM mainnet (chain 999). Only KyberSwap currently supports this

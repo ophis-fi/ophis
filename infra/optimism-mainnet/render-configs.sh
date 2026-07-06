@@ -382,13 +382,13 @@ fi
 
 # Templates that contain substituted SECRETS (after envsubst) MUST land
 # on the RAM-disk; everything else stays in ./rendered/ on disk. The
-# canonical list — covers both the submitter PK and the OKX
-# credentials (api-key + secret-key + passphrase). The post-render
+# canonical list covers the submitter PK, the OKX credentials (api-key +
+# secret-key + passphrase), and the Odos + Enso API keys. The post-render
 # assertion below scans all non-PK_BEARING files for both PK and
 # OKX-shaped secret literals, so a future template-edit that adds a
 # secret-substitution to a non-listed file will fail-closed before the
 # stack starts.
-PK_BEARING_NAMES=(driver.toml okx.toml)
+PK_BEARING_NAMES=(driver.toml okx.toml odos.toml enso.toml)
 
 is_pk_bearing() {
   local n="$1"
@@ -426,7 +426,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ODOS_API_KEY} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
