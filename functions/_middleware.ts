@@ -153,9 +153,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     // Clickjacking hardening (LOW): business.ophis.fi is an institutional
     // landing page, not an embeddable widget, so it must not inherit the swap
     // widget's permissive 'frame-ancestors *' from the shared _headers. Deny
-    // framing outright on this host. swap.ophis.fi keeps the widget policy.
+    // framing on this host WITHOUT dropping the rest of the shared CSP
+    // (default-src, script-src, object-src, base-uri, ...): rewrite ONLY the
+    // frame-ancestors directive, appending it if the header lacks one.
+    // swap.ophis.fi keeps the widget policy.
     const businessRes = new Response(res.body, res)
-    businessRes.headers.set('content-security-policy', "frame-ancestors 'none'")
+    const denyFrame = "frame-ancestors 'none'"
+    const existingCsp = res.headers.get('content-security-policy')
+    if (existingCsp) {
+      const nextCsp = /frame-ancestors[^;]*/i.test(existingCsp)
+        ? existingCsp.replace(/frame-ancestors[^;]*/i, denyFrame)
+        : `${existingCsp.replace(/;\s*$/, '')}; ${denyFrame}`
+      businessRes.headers.set('content-security-policy', nextCsp)
+    } else {
+      businessRes.headers.set('content-security-policy', denyFrame)
+    }
     businessRes.headers.set('x-frame-options', 'DENY')
     return businessRes
   }

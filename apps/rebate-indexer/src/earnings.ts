@@ -23,6 +23,7 @@
  * current-cycle earning, or a next-payout timestamp (those stay sig-gated on /partner).
  */
 import { SOVEREIGN_CHAIN_IDS } from './affiliate/rates.js';
+import { SOVEREIGN_OWN_FEE_RECIPIENTS } from './ownFee/recipients.js';
 import { CHAIN_NAME, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 
 // db (sql) is imported LAZILY inside getIntegratorEarnings so this module - and the
@@ -337,7 +338,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
  * mainnet chains (PRODUCTION_CHAIN_IDS) so testnet settlement dust never appears.
  * Keys on trades.appdata_ref_code - the integrator's own identifier (widget
  * top-level appCode or SDK ophisReferrer.code) - which is exactly what an integrator
- * queries with. Every trades-keyed arm is bound to a REGISTERED code (JOIN ref_codes),
+ * queries with. Every trades-keyed arm is bound to real ownership (isOwnedAppCode: a
+ * registered ref_codes referral code OR an allowlisted sovereign own-fee recipient),
  * mirroring the accrual money path, so an unregistered/attacker-supplied appCode
  * returns an all-zero response instead of attacker-controlled volume / fee / recipient.
  */
@@ -349,13 +351,15 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
   // Per-chain: routed volume, trade count, the Ophis fee base (value*bps) and the
   // integrator's own-fee base (value*bps).
   //
-  // OWNERSHIP BINDING (JOIN ref_codes rc ON rc.code = trades.appdata_ref_code): keying on
-  // appdata_ref_code alone attributes volume/fee/own-fee to whoever tagged that appCode,
-  // with NO binding to a registered owner. appdata_ref_code is attacker-controllable, so
-  // an UNREGISTERED, self-crafted appData tag could otherwise report attacker-controlled
-  // routed volume / fee / own-fee on this public surface. Scope to a REGISTERED code, the
-  // same way the accrual money path (affiliate/accrual.ts) joins ref_codes, so an
-  // unregistered appCode returns empty (all-zero) instead of forged data.
+  // OWNERSHIP BINDING (isOwnedAppCode): keying on appdata_ref_code alone attributes
+  // volume/fee/own-fee to whoever tagged that appCode, with NO binding to a registered
+  // owner. appdata_ref_code is attacker-controllable, so an unregistered self-crafted tag
+  // could otherwise report attacker-controlled data on this public surface. Bind to REAL
+  // ownership in EITHER program: a registered REFERRAL code (ref_codes) OR trades that
+  // carry an ALLOWLISTED sovereign OWN-FEE recipient. The own-fee program has its own
+  // registry keyed on the recipient address (SOVEREIGN_OWN_FEE_RECIPIENTS), NOT ref_codes,
+  // and the accrual money path scopes own-fee to that allowlist; gating solely on
+  // ref_codes would zero a real own-fee integrator that is not also a referral partner.
   //
   // CONFIRMED-FEE PREDICATE (fee_verified = true AND volume_fee_bps > 0): the settle()
   // decoder in discovery-only mode leaves rows with appdata_ref_code SET but
@@ -366,6 +370,19 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
   // appdata_ref_code row always has volume_fee_bps > 0 (attributeOrder only tags a code
   // on a confirmed positive Ophis fee), so no real row is dropped. COALESCE on the rate
   // is now dead (predicate excludes 0/NULL) but stays as belt-and-suspenders.
+  //
+  // An appCode is "owned" if it is a registered referral code OR (once onboarded) its
+  // trades carry an allowlisted own-fee recipient. SOVEREIGN_OWN_FEE_RECIPIENTS is empty
+  // today, so the own-fee arm is a no-op (own-fee integrators are not live yet) and the
+  // referral arm is the effective gate; the predicate becomes correct automatically once
+  // a recipient is onboarded, without re-zeroing that integrator's earnings.
+  const ownFeeRecipientBufs = [...SOVEREIGN_OWN_FEE_RECIPIENTS].map((a) =>
+    Buffer.from(a.slice(2), 'hex'),
+  );
+  const ownedByAllowlistedOwnFee = ownFeeRecipientBufs.length
+    ? sql`OR trades.own_fee_recipient = ANY(${ownFeeRecipientBufs})`
+    : sql``;
+  const isOwnedAppCode = sql`(EXISTS (SELECT 1 FROM ref_codes rc WHERE rc.code = ${code}) ${ownedByAllowlistedOwnFee})`;
   const chainRows = await sql<
     { chain_id: number; volume_usd: string; trades: string; ophis_fee_base: string; own_fee_base: string }[]
   >`
@@ -376,8 +393,8 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
       COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, 0)), 0)::text     AS ophis_fee_base,
       COALESCE(SUM(value_usd * own_fee_bps) FILTER (WHERE own_fee_bps IS NOT NULL), 0)::text AS own_fee_base
     FROM trades
-    JOIN ref_codes rc ON rc.code = trades.appdata_ref_code
     WHERE trades.appdata_ref_code = ${code}
+      AND ${isOwnedAppCode}
       AND value_usd IS NOT NULL
       AND chain_id = ANY(${chainIds})
       AND fee_verified = true
@@ -386,7 +403,7 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
   `;
 
   // Most recent own-fee recipient for this appCode (the "where it paid out" address).
-  // Mirror ALL gates from the aggregate: the ownership binding (JOIN ref_codes, so an
+  // Mirror ALL gates from the aggregate: the ownership binding (isOwnedAppCode, so an
   // unregistered appCode can't forge the public recipient), the confirmed-fee predicate
   // (so an unverified discovery row can't set the public recipient) AND the
   // production-chain filter (so a later testnet row's recipient can't be returned while
@@ -394,8 +411,8 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
   const [recip] = await sql<{ recipient: string }[]>`
     SELECT '0x' || encode(own_fee_recipient, 'hex') AS recipient
     FROM trades
-    JOIN ref_codes rc ON rc.code = trades.appdata_ref_code
     WHERE trades.appdata_ref_code = ${code}
+      AND ${isOwnedAppCode}
       AND own_fee_recipient IS NOT NULL
       AND chain_id = ANY(${chainIds})
       AND fee_verified = true
@@ -466,8 +483,8 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
       AND e.recipient IN (
         SELECT DISTINCT own_fee_recipient
         FROM trades
-        JOIN ref_codes rc ON rc.code = trades.appdata_ref_code
         WHERE trades.appdata_ref_code = ${code}
+          AND ${isOwnedAppCode}
           AND own_fee_recipient IS NOT NULL
           AND chain_id = ANY(${sovereignChainIds})
           AND fee_verified = true
