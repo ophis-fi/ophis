@@ -30,16 +30,6 @@ node-url = "https://optimism-rpc.publicnode.com"
 # calldata, and settle() reverts with "transfer amount exceeds balance".
 settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
 
-# #775 output-side anti-siphon guards, FULLY ENABLED (2026-07-06). Two earlier
-# regressions had forced these off: (1) the OP native-price oracle mis-scaled
-# 6-decimal tokens (priced USDC ~1e12x too high), so the reference ceiling saw
-# a ~1e12 ratio and rejected every swap -- FIXED by the native-price decimals
-# fix; and (2) eth-flow (native-ETH) orders could not be output-simulated (the
-# eth-flow contract holds native ETH, not WETH, at sim time) -- FIXED: the
-# simulator now grants eth-flow owners the WETH balance via a state override.
-max-output-reference-factor = "5"
-strict-output-simulation = true
-
 [dex]
 chain-id = "10"
 
