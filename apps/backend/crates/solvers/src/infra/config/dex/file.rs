@@ -92,7 +92,15 @@ struct Config {
     /// OUTPUT-side anti-siphon: the maximum factor by which a SELL swap's
     /// reported output value may exceed its input value at the auction's
     /// independent reference prices. A coarse tripwire that fails open on
-    /// missing prices; defaults to `2.0`.
+    /// missing prices; defaults to `25.0`.
+    ///
+    /// The default is deliberately loose. On the sovereign chains the native
+    /// reference price comes from a UniV3 self-pool TWAP that can misprice a
+    /// token by more than 2x (OP priced USDC >2x high, which made a tight 2.0
+    /// ceiling reject legitimate WETH->USDC sells so the orders expired). The
+    /// strict output SIMULATION is the ground-truth anti-siphon guard; this
+    /// ceiling only catches egregious (>25x) over-reports cheaply, so a wide
+    /// factor avoids false rejections without weakening real protection.
     #[serde(default = "default_max_output_reference_factor")]
     #[serde_as(as = "serde_with::DisplayFromStr")]
     max_output_reference_factor: BigDecimal,
@@ -185,7 +193,7 @@ fn default_internalize_interactions() -> bool {
 }
 
 fn default_max_output_reference_factor() -> BigDecimal {
-    BigDecimal::new(2.into(), 0) // 2.0x
+    BigDecimal::new(25.into(), 0) // 25.0x -- coarse tripwire; strict sim is the guard
 }
 
 fn default_strict_output_simulation() -> bool {

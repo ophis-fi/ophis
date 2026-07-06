@@ -23,7 +23,9 @@ pub struct OutputGuard {
     /// is worth more than this factor times its input at the auction's
     /// independent reference prices. Reference prices come from the CoW driver,
     /// never the aggregator. Fails open when either price is missing, so this
-    /// only catches egregious over-reports (default `2.0`).
+    /// only catches egregious over-reports (default `25.0`, loose because the
+    /// sovereign chains' native price oracle can misprice a token by >2x; the
+    /// strict output simulation is the ground-truth guard).
     pub max_output_reference_factor: BigDecimal,
     /// Whether to run the strict output-delivery simulation for SELL swaps.
     pub strict_output_simulation: bool,
