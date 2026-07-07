@@ -1,44 +1,17 @@
-import { createPublicClient, http, getAddress, parseAbi } from 'viem';
-import { nativePrice, OPTIMISM_CHAIN_ID } from './cow/client.js';
+import { nativePrice } from './cow/client.js';
 import { logger } from './logger.js';
 import { alerts } from './telegram/alerter.js';
 
 const log = logger.child({ module: 'pricer' });
 
-// ─── Optimism native_price decimals correction ──────────────────────────────
-// The OP sovereign backend's native_price oracle treats EVERY token as 18
-// decimals, so a d-decimal token's price comes back inflated by exactly
-// 10^(18-d) (verified 2026-06-10: OP USDC/USDT 6-dec are 1e12 too large vs the
-// identical mainnet values; 18-dec DAI is correct). We recover the true per-atom
-// price by dividing out that factor, using each token's REAL on-chain decimals.
-const OP_ERC20_DECIMALS_ABI = parseAbi(['function decimals() view returns (uint8)']);
-const opDecimalsCache = new Map<string, number>();
-let opClient: ReturnType<typeof createPublicClient> | null = null;
-function getOpClient(): ReturnType<typeof createPublicClient> {
-  if (!opClient) {
-    const rpc = process.env.OPTIMISM_RPC_URL ?? 'https://mainnet.optimism.io';
-    opClient = createPublicClient({ transport: http(rpc) });
-  }
-  return opClient;
-}
-async function opTokenDecimals(token: `0x${string}`): Promise<number> {
-  const key = token.toLowerCase();
-  const cached = opDecimalsCache.get(key);
-  if (cached !== undefined) return cached;
-  const d = await getOpClient().readContract({
-    address: getAddress(token),
-    abi: OP_ERC20_DECIMALS_ABI,
-    functionName: 'decimals',
-  });
-  const dec = Number(d);
-  if (!Number.isInteger(dec) || dec < 0 || dec > 36) throw new Error(`bad decimals ${dec} for OP token ${token}`);
-  opDecimalsCache.set(key, dec);
-  return dec;
-}
-/** Recover the true per-atom native_price from the OP backend's 18-decimal-normalized value. */
-export function correctOpNativePrice(rawNp: number, decimals: number): number {
-  return rawNp / 10 ** (18 - decimals);
-}
+// ─── OP native_price is per-atom (since the 2026-07-06 oracle fix) ───────────
+// The OP sovereign backend's native_price oracle USED to normalize every token
+// to 18 decimals, so a d-decimal token's value came back inflated by 10^(18-d)
+// and had to be corrected here. That backend oracle bug was fixed (removed the
+// double decimal shift); OP now returns true per-atom prices -- verified live
+// that OP USDC ~5.6e8 and WETH 1.0 MATCH Unichain -- so OP prices EXACTLY like
+// the hosted chains and NO correction is applied (removing it prevents a
+// 10^(sellDec-refDec) over-valuation of every non-6-decimal OP sell).
 
 // Stablecoin canonical pricing targets per chain. The pricer asks CoW for a quote
 // from the trade's sellToken to one of these and back-computes USD.
@@ -65,9 +38,9 @@ const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: n
   59144:    { token: '0x176211869ca2b568f2a7d4ee941e073a821ee1ff', decimals: 6 },  // USDC linea
   57073:    { token: '0xf1815bd50389c46847f0bda824ec8da914045d14', decimals: 6 },  // USDC ink
   11155111: { token: '0xbe72e441bf55620febc26715db68d3494213d8cb', decimals: 18 }, // USDC sepolia (cow staging)
-  10:       { token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC optimism (native; np decimals-corrected)
+  10:       { token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC optimism (native; np is per-atom since the 2026-07-06 oracle fix)
   9745:     { token: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', decimals: 6 },  // USDT0 plasma (decimals-verified on-chain 2026-06-16; CoW native_price confirmed; USDT-native chain, no liquid USDC; replaces the removed Linea-placeholder)
-  130:      { token: '0x078d782b760474a361dda0af3839290b0ef57ad6', decimals: 6 },  // USDC unichain (native Circle USDC; symbol+decimals verified on-chain 2026-06-30). Unichain's sovereign native_price is PER-ATOM (verified: 6-dec USDC ~6.4e8, NOT 18-dec-normalized like OP's ~6.4e20), so NO correctOpNativePrice correction applies — it prices like the hosted chains.
+  130:      { token: '0x078d782b760474a361dda0af3839290b0ef57ad6', decimals: 6 },  // USDC unichain (native Circle USDC; symbol+decimals verified on-chain 2026-06-30). Unichain's sovereign native_price is PER-ATOM (verified: 6-dec USDC ~6.4e8), as is OP's since the 2026-07-06 oracle fix, so NO decimals correction applies on either sovereign chain -- both price like the hosted chains.
 };
 
 // Per-trade rebate-volume contribution ceiling (USD). A trade's recorded value is
@@ -152,16 +125,10 @@ export async function priceTrade(
     // KNOWN ref.decimals (e.g. 6 for USDC.e); native_price carries no decimals field.
     return Number(row.sellAmount) / 10 ** ref.decimals;
   }
-  let sellPrice = await nativePrice(row.chainId, row.sellToken);
-  let refPrice = await getRefNativePrice(row.chainId, ref.token, refPriceCache);
-  // Optimism's native_price normalizes every token to 18 decimals — correct both
-  // sides back to true per-atom prices using each token's real decimals (ref's are
-  // known; the sell token's are read on-chain + cached). On the hosted chains the
-  // oracle is already per-atom, so no correction is applied.
-  if (row.chainId === OPTIMISM_CHAIN_ID) {
-    sellPrice = correctOpNativePrice(sellPrice, await opTokenDecimals(row.sellToken));
-    refPrice = correctOpNativePrice(refPrice, ref.decimals);
-  }
+  // Every supported chain (OP included, since the 2026-07-06 oracle fix) serves
+  // per-atom native_price, so no decimals correction is applied on any side.
+  const sellPrice = await nativePrice(row.chainId, row.sellToken);
+  const refPrice = await getRefNativePrice(row.chainId, ref.token, refPriceCache);
   // Reject non-finite OR non-positive prices on BOTH sides. A 0/negative native_price
   // is a "couldn't price" signal, not a genuine $0 — fail-safe to value_usd NULL
   // (retried next run) instead of PERMANENTLY recording $0, which would undercount the
