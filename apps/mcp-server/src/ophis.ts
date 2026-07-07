@@ -1168,7 +1168,10 @@ const PUBLIC_RPCS: Record<number, string[]> = {
   8453: ['https://base-rpc.publicnode.com', 'https://base.llamarpc.com'],
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.llamarpc.com'],
   43114: ['https://avalanche-c-chain-rpc.publicnode.com'],
-  57073: ['https://rpc-gel.inkonchain.com'],
+  // Ink: prefer the Ophis edge proxy (functions/api/rpc/ink) so a future
+  // dedicated Ink endpoint is shared with the frontend via one secret; fall
+  // back to the public node if the proxy is unreachable.
+  57073: ['https://swap.ophis.fi/api/rpc/ink', 'https://rpc-gel.inkonchain.com'],
   59144: ['https://linea-rpc.publicnode.com'],
 }
 

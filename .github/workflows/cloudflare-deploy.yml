@@ -127,6 +127,13 @@ jobs:
           # production. Add REACT_APP_NETWORK_URL_10 to GitHub repo secrets
           # to override.
           REACT_APP_NETWORK_URL_10: ${{ secrets.REACT_APP_NETWORK_URL_10 }}
+          # Ophis fork: Ink (chain 57073) reads route through the same-origin
+          # edge proxy (functions/api/rpc/ink) instead of straight to Ink's
+          # public node, so visitor IPs stay behind ophis.fi (same posture as
+          # the F1 move off Infura). Public URL, safe to inline. A fresh
+          # dedicated Ink endpoint drops in via the INK_RPC_URL Pages runtime
+          # secret with no rebuild.
+          REACT_APP_NETWORK_URL_57073: https://swap.ophis.fi/api/rpc/ink
           # Ophis fork: ensure the production build is detected as the
           # production environment by lib/common-utils/environments.ts.
           # Without this, production runs as "local" env and defaults to
