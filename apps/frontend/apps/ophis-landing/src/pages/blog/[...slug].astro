@@ -4,9 +4,10 @@ import Nav from '../../components/Nav.astro'
 import Footer from '../../components/Footer.astro'
 import { getCollection, render } from 'astro:content'
 import { Image, getImage } from 'astro:assets'
+import { isPublished } from '../../lib/posts'
 
 export async function getStaticPaths() {
-  const posts = await getCollection('blog', ({ data }) => !data.draft)
+  const posts = await getCollection('blog', isPublished)
   return posts.map((post) => ({ params: { slug: post.id }, props: { post } }))
 }
 
@@ -49,6 +50,58 @@ const jsonLd = {
   mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   ...(post.data.tags.length ? { keywords: post.data.tags.join(', ') } : {}),
 }
+
+// FAQPage structured data, parsed from the post's own "## FAQ" section (### question
+// followed by its answer paragraphs). Single-sourced from the visible markdown, so
+// the schema always matches on-page content (Google's FAQ requirement). Posts with
+// no FAQ section emit nothing.
+const stripMd = (s: string): string =>
+  s
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) -> text
+    .replace(/[*_`]/g, '') // bold / italic / inline-code markers
+    .replace(/\s+/g, ' ')
+    .trim()
+
+function faqPageSchema(body: string, pageUrl: string) {
+  const lines = body.split(/\r?\n/)
+  const start = lines.findIndex((l) => /^##\s+FAQ\s*$/i.test(l))
+  if (start === -1) return null
+  const items: { q: string; a: string }[] = []
+  let q: string | null = null
+  let answer: string[] = []
+  const flush = () => {
+    if (q) {
+      const a = stripMd(answer.join(' '))
+      if (a) items.push({ q: stripMd(q), a })
+    }
+    q = null
+    answer = []
+  }
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i]
+    if (/^##\s+/.test(line)) break // next H2 closes the FAQ section
+    const h3 = line.match(/^###\s+(.+?)\s*$/)
+    if (h3) {
+      flush()
+      q = h3[1]
+      continue
+    }
+    if (q) answer.push(line)
+  }
+  flush()
+  if (!items.length) return null
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    '@id': `${pageUrl}#faq`,
+    mainEntity: items.map((it) => ({
+      '@type': 'Question',
+      name: it.q,
+      acceptedAnswer: { '@type': 'Answer', text: it.a },
+    })),
+  }
+}
+const faqLd = faqPageSchema(post.body ?? '', url)
 ---
 <Base
   title={`${post.data.title} | Ophis`}
@@ -64,6 +117,7 @@ const jsonLd = {
   <meta slot="head" property="article:author" content={post.data.author} />
   {post.data.tags.map((t) => <meta slot="head" property="article:tag" content={t} />)}
   <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+  {faqLd && <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(faqLd)} />}
 
   <Nav />
   <main id="main" tabindex="-1" class="post">
