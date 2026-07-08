@@ -29,4 +29,10 @@ ignore = [
   # Inapplicable to Ophis: we use the `tracing` crate, never replace the
   # `log` global logger. Re-evaluate if rand publishes a patched 0.9.x.
   "RUSTSEC-2026-0097",
+
+  # proc-macro-error2 - Unmaintained (RUSTSEC-2026-0173)
+  # Author-confirmed unmaintained build-time macro dep; no maintained drop-in
+  # yet, not a vulnerability. Mirrors apps/backend/deny.toml, which already
+  # ignores it (this file had drifted out of sync).
+  "RUSTSEC-2026-0173",
 ]
