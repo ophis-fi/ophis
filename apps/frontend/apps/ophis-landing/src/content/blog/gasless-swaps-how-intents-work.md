@@ -103,7 +103,7 @@ Keeping native balances topped up on every chain it touches is an operational
 loop nobody wants to babysit, and spare ETH sitting in a hot agent wallet is
 added attack surface. An agent that signs orders instead of broadcasting
 transactions needs neither; the full integration pattern is in
-[how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/) and the [GOAT and AgentKit plugins](/blog/ai-agent-swaps-goat-agentkit/).
+[how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
 **Multichain traders.** Ophis settles on 12 chains: Ethereum, Optimism, BNB,
 Gnosis, Unichain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, and Linea.

@@ -34,7 +34,7 @@ Ophis supports twelve chains: Ethereum, Optimism, BNB, Gnosis, Unichain, Polygon
 | Ethereum, BNB, Gnosis, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea | CoW Protocol's, via api.cow.fi | CoW Protocol's canonical audited GPv2 contracts |
 | Optimism, Unichain | Ophis-operated (sovereign) | A bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address |
 
-On the ten hosted chains, an Ophis order is an order in CoW's orderbook, settled by the same contracts CoW Swap uses there. On [Optimism](/blog/how-to-swap-on-optimism/) and [Unichain](/blog/how-to-swap-on-unichain/), Ophis runs the stack itself: its own orderbook and its own settlement deployment. On Optimism that contract is 0x310784c7FCE12d578dA6f53460777bAc9718B859.
+On the ten hosted chains, an Ophis order is an order in CoW's orderbook, settled by the same contracts CoW Swap uses there. On Optimism and Unichain, Ophis runs the stack itself: its own orderbook and its own settlement deployment. On Optimism that contract is 0x310784c7FCE12d578dA6f53460777bAc9718B859.
 
 The practical consequence for anyone integrating: never hardcode api.cow.fi or the canonical settlement domain. Resolve the per-chain orderbook and signing domain with `@ophis/sdk` or the MCP `list_chains` tool. Signing against the wrong domain is the classic fork failure mode, and the tooling exists so you never have to guess.
 
@@ -46,7 +46,7 @@ The practical consequence for anyone integrating: never hardcode api.cow.fi or t
 
 **A flat, published fee.** The Ophis fee is 0.10% of trade volume on every trade, and 0.01% for same-chain stablecoin-to-stablecoin pairs. On Optimism and Unichain, where Ophis runs its own settlement, that is the entire cost and 100% of any price improvement beyond your signed quote is yours. On the ten chains that settle through CoW Protocol's canonical contracts, CoW Protocol's protocol fee applies on top, so the all-in cost is about 0.12% (about 0.013% on stable pairs) and half of any price improvement goes to the protocol; [docs.cow.fi](https://docs.cow.fi) has CoW Protocol's schedule. The Ophis schedule is in the [fee docs](https://docs.ophis.fi/fees).
 
-**Volume rebates.** A rolling 30-day volume tier refunds part of the fee, paid monthly in WETH from the fee Safe. The rebate pool is 21.25% of WETH fees, split by tier-weighted 30-day volume:
+**Volume rebates.** A rolling 30-day volume tier earns a share of a monthly WETH rebate pool paid from the fee Safe. The pool is 21.25% of WETH fees, split across qualifying wallets by tier-weighted 30-day volume:
 
 | Tier | 30-day volume | Rebate |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ Three reasons. First, an agent-first product: a keyless MCP server, an Intent AP
 
 ### What does a trade on Ophis cost?
 
-The Ophis fee is a flat 0.10% of volume, or 0.01% for same-chain stablecoin pairs, taken in the sell token; orders are gasless, so you need no native token. On Optimism and Unichain that is the whole cost and you keep 100% of any price improvement. On the ten chains that settle through CoW Protocol's contracts, CoW Protocol's protocol fee applies on top (all-in about 0.12%, or about 0.013% on stable pairs) and half of any price improvement goes to the protocol; see [docs.cow.fi](https://docs.cow.fi). Volume tiers rebate 10% to 50% of the Ophis fee back, paid monthly in WETH, with tier progress shown on the swap page.
+The Ophis fee is a flat 0.10% of volume, or 0.01% for same-chain stablecoin pairs, taken in the sell token; orders are gasless, so you need no native token. On Optimism and Unichain that is the whole cost and you keep 100% of any price improvement. On the ten chains that settle through CoW Protocol's contracts, CoW Protocol's protocol fee applies on top (all-in about 0.12%, or about 0.013% on stable pairs) and half of any price improvement goes to the protocol; see [docs.cow.fi](https://docs.cow.fi). Volume tiers (10% to 50% by 30-day volume) weight your share of a monthly WETH rebate pool, with tier progress shown on the swap page.
 
 ## Try it
 

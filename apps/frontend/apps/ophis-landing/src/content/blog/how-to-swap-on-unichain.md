@@ -57,7 +57,7 @@ For the full safety model (bounded orders, pinned receivers, and what to lock do
 
 ### Do I need ETH on Unichain to pay for gas?
 
-No. Orders are gasless (no native token needed): you sign a typed-data message, settlement happens in the solver's batch, and the fee is taken in the sell token. A wallet holding only the token you want to sell can trade.
+No. Orders are gasless (no native token needed): you sign a typed-data message, settlement happens in the solver's batch, and the fee is taken in the sell token. A wallet holding only the token you want to sell can trade, aside from a one-time on-chain approval the first time it sells a given token.
 
 ### What tokens can I trade on Unichain?
 
@@ -65,7 +65,7 @@ Solvers compete to fill the order you sign, so what matters in practice is the l
 
 ### Is there a fee?
 
-Yes. A flat 0.10% of trade volume, reduced to 0.01% for same-chain stablecoin-to-stablecoin pairs, charged in the sell token. It takes no share of surplus, and volume rebate tiers return 10% to 50% based on rolling 30-day volume, paid monthly in WETH.
+Yes. A flat 0.10% of trade volume, reduced to 0.01% for same-chain stablecoin-to-stablecoin pairs, charged in the sell token. It takes no share of surplus, and volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool.
 
 ### Can AI agents swap on Unichain?
 

@@ -117,7 +117,7 @@ position, and solvers hand back the value they find beyond your quote.
 Precisely this: when Ophis calls a swap MEV protected, it means the protection
 is structural, built from a batch auction, a uniform clearing price, and
 off-chain order flow. It is not a best-effort service scanning for attacks, and
-it does not depend on you configuring the right RPC. Orders are also [gasless](/blog/gasless-swaps-how-intents-work/)
+it does not depend on you configuring the right RPC. Orders are also gasless
 (no native token needed; the fee is taken in the sell token) and
 self-custodial (Ophis never holds funds; every order requires your EIP-712 or
 ERC-1271 signature).
@@ -127,7 +127,7 @@ on a schedule is a predictable, high-frequency target in a public mempool, and
 it has no wallet pop-up where a human might catch a bad fill. That case is
 covered in [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 For how the intent model stacks up against other swap architectures, see the
-[comparison page](https://docs.ophis.fi/comparison), or [Ophis vs CoW Swap](/blog/ophis-vs-cow-swap/).
+[comparison page](https://docs.ophis.fi/comparison).
 
 ## FAQ
 
@@ -151,8 +151,9 @@ wallet. You can sign a new order with a fresh quote whenever you like.
 ### Do I pay gas?
 
 No. The winning solver submits the settlement transaction and pays its gas; you
-only sign a message. You do not need the chain's native token at all, because
-the flat 0.10% fee is taken in the token you sell. More edge cases are covered
+only sign a message. Beyond a one-time approval the first time you sell a given
+token, you do not need the chain's native token, because the flat 0.10% fee is
+taken in the token you sell. More edge cases are covered
 in the [docs FAQ](https://docs.ophis.fi/faq).
 
 ### Does this work on all 12 chains?
