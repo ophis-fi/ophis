@@ -18,7 +18,10 @@
   <title>Page not found | Ophis</title>
   <meta name="description" content="The page you’re looking for doesn’t exist or has moved.">
   <meta name="robots" content="noindex, follow">
-  <link rel="canonical" href="https://ophis.fi/">
+  <!-- No rel=canonical: a noindex page must not also declare itself a duplicate of
+       another URL. Google ignores canonicals on 404-status responses anyway, and
+       if this shell is ever served 200 by a host misconfig the lone noindex is the
+       correct, non-contradictory signal. -->
   <link rel="icon" type="image/svg+xml" href="/ophis-claw-saffron.svg">
   <style>
     :root { color-scheme: dark; }

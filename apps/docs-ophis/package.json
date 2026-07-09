@@ -7,7 +7,7 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "build": "node scripts/generate-llms-full.mjs && docusaurus build",
+    "build": "node scripts/generate-llms-full.mjs && docusaurus build && node scripts/inject-csp-hashes.mjs",
     "swizzle": "docusaurus swizzle",
     "deploy": "node scripts/generate-llms-full.mjs && docusaurus deploy",
     "clear": "docusaurus clear",

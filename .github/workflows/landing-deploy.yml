@@ -28,7 +28,9 @@ on:
 
 permissions:
   contents: read
-  deployments: write
+  # deployments: write removed 2026-07 (audit): the deploy uses
+  # `wrangler pages deploy`, which does not touch the GitHub Deployments API,
+  # so the scope was dead weight.
   id-token: write # SLSA build provenance (#438)
   attestations: write # SLSA build provenance (#438)
 
@@ -82,6 +84,14 @@ jobs:
 
       - name: install
         working-directory: apps/frontend
+        # NOTE (audit, token-adjacent install): --ignore-scripts is deliberately
+        # NOT applied here. The apps/frontend build genuinely needs lifecycle
+        # scripts (patch-package cowswap patches + @swc/core / esbuild native
+        # binary linking), and the wrangler deploy step later in this job carries
+        # CLOUDFLARE_API_TOKEN. Proper hardening is the job split (secret-free
+        # build job -> artifact -> deploy job with tokens); tracked as future
+        # work rather than breaking the build. Exposure is bounded by
+        # --frozen-lockfile.
         run: pnpm install --frozen-lockfile
 
       - name: typecheck

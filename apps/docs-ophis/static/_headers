@@ -1,20 +1,29 @@
 # Cloudflare Pages headers for docs.ophis.fi (#435).
 # Docusaurus copies static/_headers to the build root, which CF Pages serves.
 #
-# CSP scope: this site loads ONLY same-origin assets, Google Tag Manager (GA4),
-# and Google Fonts; search is the offline lunr index (@easyops-cn local), so
-# connect stays same-origin. There are NO iframes, external images, <object>,
-# or eval in the build (verified against the built output), so this enforcing
-# policy blocks injected/external scripts, framing, object/embed, and base-uri
-# hijack without breaking the site.
+# CSP scope: this site loads ONLY same-origin assets (incl. the self-hosted
+# Geist woff2) and Google Tag Manager (GA4); search is the offline lunr index
+# (@easyops-cn local), so connect stays same-origin. There are NO iframes,
+# external images, <object>, or eval in the build (verified against the built
+# output), so this enforcing policy blocks injected/external scripts, framing,
+# object/embed, and base-uri hijack without breaking the site.
 #
-# script-src uses 'unsafe-inline' (NOT hashes) on purpose: Docusaurus emits
-# per-page inline scripts, so a hash allowlist would break pages on every
-# content change. 'wasm-unsafe-eval' is included narrowly (the bundle references
-# WebAssembly) and permits wasm only, never JS eval ('unsafe-eval' is absent).
+# script-src: the 'unsafe-inline' below is a FAIL-OPEN FALLBACK. The build
+# postbuild step scripts/inject-csp-hashes.mjs (wired into `pnpm build`) walks
+# the emitted build/**/*.html, computes the sha256 of every executable inline
+# script (Docusaurus theme bootstrap, gtag consent snippet, banner bootstrap)
+# and rewrites the DEPLOYED build/_headers to replace 'unsafe-inline' with that
+# hash list. Browsers ignore 'unsafe-inline' once a hash is present (CSP2+), so
+# if the postbuild is ever skipped the site still loads under the weaker policy
+# rather than breaking. JSON-LD blocks do not execute and need no hash.
+# 'wasm-unsafe-eval' is narrow (the bundle references WebAssembly) and permits
+# wasm only, never JS eval ('unsafe-eval' is absent).
+#
+# HSTS: the Cloudflare zone-level HSTS setting is authoritative; the line below
+# is a matching fallback if that setting is ever disabled.
 /*
-  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; upgrade-insecure-requests
-  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; frame-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

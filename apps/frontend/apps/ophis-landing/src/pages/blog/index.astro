@@ -31,7 +31,7 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
       <ul class="post-list">
         {posts.map((post) => (
           <li class="post-card feat">
-            <a class="post-link" href={`/blog/${post.id}`}>
+            <a class="post-link" href={`/blog/${post.id}/`}>
               {post.data.cover && (
                 <Image
                   class="card-thumb"

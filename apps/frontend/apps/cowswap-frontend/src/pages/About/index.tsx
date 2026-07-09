@@ -136,18 +136,18 @@ export default function AboutPage(): ReactNode {
       <Section id="audits" title="Security reviews">
         <p>
           The settlement layer uses CoW Protocol&#39;s GPv2 contracts, which carry upstream audit coverage by{' '}
-          <TextLink href="https://github.com/trailofbits/publications" external>
-            Trail of Bits
+          <TextLink href="https://github.com/cowprotocol/contracts" external>
+            G0 Group and Hacken
           </TextLink>{' '}
-          and G0 Group from the CoW Protocol launch period. The Ophis-specific surface, solver wiring, partner-fee
+          from the CoW Protocol launch period. The Ophis-specific surface, solver wiring, partner-fee
           plumbing, the driver-level Custom-interaction allowlist, and the OP-mainnet AllowList contract upgrade, was
           reviewed in May 2026 across multiple tooling passes. Findings are tracked in{' '}
           <InlineCode>docs/audits/</InlineCode>.
         </p>
         <FeatureGrid minCardWidth="200px" gap="12px">
           <FeatureCard title="GPv2 upstream">
-            CoW Protocol&#39;s settlement contracts audited by Trail of Bits and G0 Group on initial launch; Ophis runs
-            the same bytecode under its own AllowList. <Badge tone="audit">Inherited</Badge>
+            CoW Protocol&#39;s settlement contracts audited by G0 Group and Hacken on initial launch; Ophis runs the same
+            bytecode under its own AllowList. <Badge tone="audit">Inherited</Badge>
           </FeatureCard>
           <FeatureCard title="Slither">
             Strict-mode static analysis on all Ophis-deployed contract surfaces (settlement + AllowList + helpers).{' '}

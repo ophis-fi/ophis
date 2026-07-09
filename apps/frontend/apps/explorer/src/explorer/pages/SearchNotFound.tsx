@@ -12,6 +12,7 @@ const SearchNotFound = () => {
     <Wrapper>
       <Helmet>
         <title>Search not found - {APP_TITLE}</title>
+        <meta name="robots" content="noindex" />
       </Helmet>
       <OrderAddressNotFound />
     </Wrapper>

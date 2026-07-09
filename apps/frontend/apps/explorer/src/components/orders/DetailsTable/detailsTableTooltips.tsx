@@ -13,7 +13,7 @@ export const DetailsTableTooltips = {
     </span>
   ),
   toBridgeReceiver:
-    'This bridge provider uses special receiver address to bridge funds. This address is deterministic for a quote and has been verified by CoW Swap.',
+    'This bridge provider uses a special receiver address to bridge funds. This address is deterministic for a quote and has been verified by Ophis.',
   hash: 'The onchain settlement transaction for this order. Can be viewed on a block explorer.',
   appData:
     'The AppData hash for this order. It can denote encoded metadata with info on the app, environment and more, although not all interfaces follow the same pattern. Show more will try to decode that information.',

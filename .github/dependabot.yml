@@ -6,15 +6,24 @@
 #      commit SHAs (audit finding M3); without dependabot we'd never
 #      receive security patches to those actions. Weekly bumps land
 #      as PRs — review and merge as normal.
-#   2. npm (root): we don't currently have a root package.json; the
-#      monorepo's lockfile lives at apps/frontend/pnpm-lock.yaml.
-#      Dependabot supports `pnpm` as of 2024 via `package-ecosystem:
-#      npm` pointing at the lockfile directory.
+#   2. npm (apps/frontend): security-only on the heavy cowswap-frontend
+#      lockfile (its own pnpm workspace).
+#   3. npm (root): a root pnpm workspace DOES exist now (package.json +
+#      root pnpm-lock.yaml, ~10 importers incl. the npm-published
+#      @ophis/sdk and the money-path @ophis/rebate-indexer). Watched
+#      security-only to mirror the frontend's low-noise posture; the
+#      merge-blocking pnpm-audit job in security.yml is the hard gate.
+#   4. docker: base-image advisories for the three Dockerfiles
+#      (apps/backend, apps/rebate-indexer, apps/mcp-server). Docker is
+#      NOT in the repo's dependency graph, so repo-level Dependabot
+#      security updates never cover it. This is the only way those
+#      base images get bump PRs.
 #
 # Vendored upstream subtrees (apps/frontend/apps/cowswap-frontend/,
-# apps/backend/, contracts/) are intentionally excluded — bumping
-# their inner deps is a CoW-protocol concern, propagated via subtree
-# pulls, not by dependabot here.
+# apps/backend/, contracts/) are intentionally excluded from npm/cargo
+# version bumps: their inner deps are a CoW-protocol concern, propagated
+# via subtree pulls, not by dependabot here. cargo is compensated by the
+# cargo-audit / cargo-deny gates in security.yml.
 
 version: 2
 updates:
@@ -61,3 +70,66 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  # npm (root pnpm workspace).
+  # Security-only, mirroring the frontend's low-noise posture: no weekly
+  # version-bump churn, but Dependabot still opens PRs for direct-dependency
+  # security advisories on the root lockfile (covers @ophis/sdk +
+  # @ophis/rebate-indexer). The pnpm-audit job in security.yml is the gate.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(root)"
+    labels:
+      - dependencies
+    allow:
+      - dependency-type: direct
+        update-type: security
+    groups:
+      root-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Docker base images. Not in the dependency graph, so repo-level security
+  # updates never see these; this ecosystem is the ONLY automated coverage.
+  # Weekly digest/tag bumps land as PRs; review and merge as normal.
+  - package-ecosystem: docker
+    directory: /apps/backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /apps/rebate-indexer
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /apps/mcp-server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - dependencies
+      - docker
