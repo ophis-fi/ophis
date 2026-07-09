@@ -104,6 +104,11 @@ jobs:
             "set -e
              cd /srv/ophis/apps/rebate-indexer
              docker compose up -d --build
+             # up -d does NOT recreate caddy when only its bind-mounted Caddyfile
+             # changed (bind mounts are outside the compose config hash), so
+             # explicitly reload caddy to pick up Caddyfile edits; fall back to a
+             # container restart if the graceful reload is unavailable.
+             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || docker compose restart caddy
              docker compose ps
              # Wait for /health to return 200 before declaring success
              for i in 1 2 3 4 5 6 7 8 9 10; do
