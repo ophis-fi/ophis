@@ -16,7 +16,7 @@
  */
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
 import { useOphisAffiliateSign } from 'modules/affiliate'
@@ -83,8 +83,8 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   // re-emit of the SAME wallet must NOT reset it — otherwise the case-
   // insensitive checks elsewhere are moot because the reset already dropped
   // the validated reward, forcing a re-sign (Codex review). Keying the effect
-  // on the lowercased address makes a casing-only change a no-op.
-  const accountKey = account?.toLowerCase()
+  // on the canonical address key makes a casing-only change a no-op.
+  const accountKey = account ? getAddressKey(account) : undefined
   useEffect(() => {
     setClaim({ step: 'idle' })
   }, [accountKey])

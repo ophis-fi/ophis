@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+
 import { getWalletXp, WalletXp } from 'modules/affiliate'
 
 export interface WalletXpState {
@@ -32,9 +34,9 @@ export function useWalletXp(account: string | undefined): WalletXpState {
     setLoading(true)
     getWalletXp(account)
       .then((res) => {
-        // The endpoint echoes the queried wallet lowercased; accept only a
-        // response for the account this effect ran for.
-        if (!signal.cancelled && res.wallet === account.toLowerCase()) setData(res)
+        // The endpoint echoes the queried wallet; accept only a response for
+        // the account this effect ran for.
+        if (!signal.cancelled && areAddressesEqual(res.wallet, account)) setData(res)
       })
       .catch(() => {
         if (!signal.cancelled) setError(true)
@@ -52,7 +54,7 @@ export function useWalletXp(account: string | undefined): WalletXpState {
   // account while A's data is still in state (effects run after that render),
   // so a read-time match is what prevents B from ever deriving eligibility
   // from A's XP for that frame (Codex post-merge review).
-  const scopedData = data && account && data.wallet === account.toLowerCase() ? data : null
+  const scopedData = data && account && areAddressesEqual(data.wallet, account) ? data : null
 
   return { data: scopedData, loading, error }
 }

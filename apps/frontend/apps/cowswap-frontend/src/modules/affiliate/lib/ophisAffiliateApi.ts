@@ -12,6 +12,8 @@
  * EIP-191), NOT `_signTypedData` (EIP-712, would not verify).
  */
 
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import { AFFILIATE_API_TIMEOUT_MS } from '../config/affiliateProgram.const'
 
 export const REBATES_API = process.env.REACT_APP_REBATES_API || 'https://rebates.ophis.fi'
@@ -154,12 +156,14 @@ export interface SignedRequestBody {
 }
 
 /**
- * Build the EIP-191 message string the backend expects. Address is
- * lowercased and `issued` is whole seconds, both load-bearing for the
- * server-side `recoverMessageAddress` byte match.
+ * Build the EIP-191 message string the backend expects. Address is normalized
+ * to its canonical (lowercased) key and `issued` is whole seconds, both
+ * load-bearing for the server-side `recoverMessageAddress` byte match.
+ * getAddressKey returns the exact lowercase form, so this is byte-identical to
+ * the previous `.toLowerCase()` and preserves signature compatibility.
  */
 export function buildAffiliateSignMessage(action: AffiliateSignedAction, address: string, issuedSec: number): string {
-  return `Ophis ${action}\nAddress: ${address.toLowerCase()}\nIssued: ${issuedSec}`
+  return `Ophis ${action}\nAddress: ${getAddressKey(address)}\nIssued: ${issuedSec}`
 }
 
 export function nowIssuedSec(): number {
@@ -213,7 +217,7 @@ export interface WalletXp {
 }
 
 export function getWalletXp(wallet: string): Promise<WalletXp> {
-  return fetch(`${REBATES_API}/xp/${encodeURIComponent(wallet.toLowerCase())}`, {
+  return fetch(`${REBATES_API}/xp/${encodeURIComponent(getAddressKey(wallet))}`, {
     signal: timeoutSignal(),
   }).then((res) => parseJson<WalletXp>(res))
 }
@@ -258,14 +262,14 @@ export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateRes
  */
 export function getLeaderboard(limit = 100, self?: string): Promise<LeaderboardResponse> {
   const params = new URLSearchParams({ limit: String(limit) })
-  if (self) params.set('self', self.toLowerCase())
+  if (self) params.set('self', getAddressKey(self))
   return fetch(`${REBATES_API}/leaderboard?${params.toString()}`).then((res) =>
     parseJson<LeaderboardResponse>(res),
   )
 }
 
 export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
-  return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(wallet.toLowerCase())}`).then((res) =>
+  return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(getAddressKey(wallet))}`).then((res) =>
     parseJson<AffiliateStats>(res),
   )
 }
@@ -276,7 +280,7 @@ export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
  * Profile rank chip. 404 (no volume yet) is handled by the caller as Unranked.
  */
 export function getRankStatus(wallet: string): Promise<RankStatus> {
-  return fetch(`${REBATES_API}/rank/${encodeURIComponent(wallet.toLowerCase())}`, {
+  return fetch(`${REBATES_API}/rank/${encodeURIComponent(getAddressKey(wallet))}`, {
     headers: { accept: 'application/json' },
   }).then((res) => parseJson<RankStatus>(res))
 }

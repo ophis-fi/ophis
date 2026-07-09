@@ -30,6 +30,7 @@
  */
 import { ReactNode, useEffect, useRef } from 'react'
 
+import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useAtomValue, useSetAtom } from 'jotai'
@@ -100,7 +101,7 @@ export function RefCodeCaptureUpdater(): ReactNode {
     const code = savedCode.toLowerCase()
     if (isRefBound(account, code)) return
 
-    const key = `${account.toLowerCase()}:${code}`
+    const key = `${getAddressKey(account)}:${code}`
     if (inFlightKeyRef.current === key) return
     if (rejectedKeysRef.current.has(key)) return
     inFlightKeyRef.current = key
