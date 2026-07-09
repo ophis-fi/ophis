@@ -19,7 +19,7 @@
  * unsafe-inline policy rather than breaking. Idempotent: re-running strips any
  * previously injected hashes before recomputing.
  */
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, readdirSync, statSync } from 'fs'
 import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 import { dirname, resolve, join, relative } from 'path'
@@ -29,11 +29,21 @@ const root = resolve(__dirname, '..')
 const buildDir = resolve(root, 'build')
 const headersPath = resolve(buildDir, '_headers')
 
-if (!existsSync(headersPath)) {
-  console.error(
-    `inject-csp-hashes: ${relative(root, headersPath)} not found — run docusaurus build first.`,
-  )
-  process.exit(1)
+// Read _headers now and reuse the contents. Reading once (instead of an
+// existsSync pre-check followed by a later read/write) avoids a check-then-use
+// file race (CodeQL js/toctou-race): a missing file surfaces as an ENOENT on
+// this read with the same operator-facing message.
+let headersSource
+try {
+  headersSource = readFileSync(headersPath, 'utf8')
+} catch (err) {
+  if (err && err.code === 'ENOENT') {
+    console.error(
+      `inject-csp-hashes: ${relative(root, headersPath)} not found — run docusaurus build first.`,
+    )
+    process.exit(1)
+  }
+  throw err
 }
 
 function walkHtml(dir) {
@@ -86,7 +96,7 @@ if (hashes.size === 0) {
 const hashTokens = [...hashes].sort().map((h) => `'${h}'`)
 
 let replaced = 0
-const headers = readFileSync(headersPath, 'utf8').replace(
+const headers = headersSource.replace(
   /^(\s*Content-Security-Policy:\s*)(.+)$/gim,
   (_line, prefix, value) => {
     const directives = value
