@@ -200,6 +200,20 @@ export function lookupRefCode(code: string): Promise<RefLookupResponse> {
   )
 }
 
+/** GET /xp/:wallet — 1 XP per $1 of the wallet's own lifetime fee-bearing volume. */
+export interface WalletXp {
+  wallet: string
+  xp: number
+  lifetimeVolumeUsd: number
+  generatedAt: string
+}
+
+export function getWalletXp(wallet: string): Promise<WalletXp> {
+  return fetch(`${REBATES_API}/xp/${encodeURIComponent(wallet.toLowerCase())}`, {
+    signal: timeoutSignal(),
+  }).then((res) => parseJson<WalletXp>(res))
+}
+
 /**
  * Body for POST /ref/bind. The bind is signature-gated: the referred wallet
  * must prove control of its address by `personal_sign`-ing

@@ -18,6 +18,7 @@ export {
   getLeaderboard,
   getPartnerDashboard,
   getRankStatus,
+  getWalletXp,
   lookupRefCode,
 } from './lib/ophisAffiliateApi'
 export type {
@@ -34,4 +35,5 @@ export type {
   RefCodeCreateResponse,
   RefLookupResponse,
   SignedRequestBody,
+  WalletXp,
 } from './lib/ophisAffiliateApi'

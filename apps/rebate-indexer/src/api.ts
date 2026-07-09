@@ -924,6 +924,42 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return rankInfo;
   });
 
+  // PUBLIC per-wallet XP for the Cash Prize page: 1 XP per $1 of the wallet's
+  // own lifetime fee-bearing volume. Lifetime/cumulative only, so it sits in
+  // the same lagging, non-gameable category as /stats (per-wallet 30d volume
+  // is already public on /tier and /rank). Fee-gated exactly like the
+  // `wallets` matview (volume_fee_bps = 0 means examined-and-fee-free, which
+  // must not mint XP) and restricted to production chains so testnet dust
+  // never unlocks a perk. Unknown wallets get 200 with xp 0, not 404: the
+  // page treats "never traded" as zero progress, not an error.
+  app.get<{ Params: { wallet: string } }>('/xp/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
+    },
+  }, async (req, reply) => {
+    const raw = req.params.wallet.toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    const walletBuf = Buffer.from(raw.slice(2), 'hex');
+    const chainIds = [...PRODUCTION_CHAIN_IDS];
+    const rows = await sql<{ vol: string }[]>`
+      SELECT COALESCE(SUM(value_usd), 0)::text AS vol
+      FROM trades
+      WHERE wallet = ${walletBuf}
+        AND chain_id = ANY(${chainIds})
+        AND value_usd IS NOT NULL
+        AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
+    `;
+    const lifetimeVolumeUsd = Number(rows[0]?.vol ?? '0');
+    reply.header('vary', 'Origin');
+    reply.header('cache-control', 'public, max-age=60');
+    return {
+      wallet: raw,
+      xp: Math.floor(lifetimeVolumeUsd),
+      lifetimeVolumeUsd,
+      generatedAt: new Date().toISOString(),
+    };
+  });
+
   // Rate-limit 404s too — otherwise an attacker hitting random paths
   // bypasses the limiter entirely (CodeQL js/missing-rate-limiting).
   app.setNotFoundHandler(

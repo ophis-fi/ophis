@@ -13,7 +13,7 @@ import { PageTitle } from 'modules/application'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
 
-import { OphisTrending } from 'ophis/components'
+import { OphisTrending, ReferralCta } from 'ophis/components'
 
 import { Routes } from 'common/constants/routes'
 import { HydrateAtom } from 'common/state/HydrateAtom'
@@ -76,7 +76,7 @@ export function SwapPage(): ReactNode {
 
       <SwapUpdaters />
       <SwapStage>
-        <SwapWidget topContent={DcaCta} />
+        <SwapWidget topContent={<ReferralCta fallback={DcaCta} />} />
         {/* Full app only. In an injected widget (partner iframe embeds) the panel is
             not mounted at all, so it never renders in or resizes a partner embed and
             never fetches GeckoTerminal from one. */}
