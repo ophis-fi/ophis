@@ -36,8 +36,13 @@ import { useAtomValue, useSetAtom } from 'jotai'
 
 import { useAffiliateTraderCodeFromUrl } from '../hooks/useAffiliateTraderCodeFromUrl'
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'
+import { formatRefCode } from '../lib/affiliateProgramUtils'
 import { AffiliateApiError, bindRefCode } from '../lib/ophisAffiliateApi'
-import { affiliateTraderSavedCodeAtom, setAffiliateTraderSavedCodeAtom } from '../state/affiliateTraderSavedCodeAtom'
+import {
+  affiliatePendingRefCodeAtom,
+  affiliateTraderSavedCodeAtom,
+  setAffiliateTraderSavedCodeAtom,
+} from '../state/affiliateTraderSavedCodeAtom'
 import { isRefBoundAtom, markRefBoundAtom } from '../state/refBoundWalletsAtom'
 
 function isUserRejection(error: unknown): boolean {
@@ -53,10 +58,29 @@ export function RefCodeCaptureUpdater(): ReactNode {
   const markRefBound = useSetAtom(markRefBoundAtom)
   const signAffiliateAction = useOphisAffiliateSign(account)
 
-  // Capture ?ref=CODE from the URL → persist for this wallet bucket.
+  // Capture ?ref=CODE from the URL → persist for this wallet bucket, or into
+  // the wallet-independent pending slot when no wallet is connected yet.
   useAffiliateTraderCodeFromUrl((code) => {
     setSavedCode({ savedCode: code })
   })
+
+  // Promote a pre-connect captured code to the connecting wallet's bucket.
+  // The first wallet to connect claims the pending code; the backend still
+  // enforces net-new + first-bind-wins, so this only affects attribution
+  // of wallets that would otherwise carry no code at all. Re-validate the
+  // code shape on the way out: the pending slot is localStorage, which is
+  // user-editable and therefore a trust boundary.
+  const pendingCode = useAtomValue(affiliatePendingRefCodeAtom)
+  const setPendingCode = useSetAtom(affiliatePendingRefCodeAtom)
+
+  useEffect(() => {
+    if (!account || !pendingCode) return
+    const validated = formatRefCode(pendingCode)
+    if (validated) {
+      setSavedCode({ savedCode: validated })
+    }
+    setPendingCode(undefined)
+  }, [account, pendingCode, setSavedCode, setPendingCode])
 
   // Guard against duplicate in-flight binds for the same (wallet, code).
   const inFlightKeyRef = useRef<string | undefined>(undefined)
