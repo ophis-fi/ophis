@@ -96,12 +96,15 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   const accountRef = useRef(account)
   accountRef.current = account
 
-  // A wallet switch resets the mint state machine: without this, a stale
-  // in-flight create (guarded below) or a stale error/rejected state would
-  // leave the NEW wallet's mint button disabled or mislabeled.
+  // A GENUINE wallet switch resets the mint state machine (a stale in-flight
+  // create or error/rejected state would otherwise mislabel the new wallet's
+  // button). Key on the lowercased address so a checksum-only re-emit of the
+  // SAME wallet does NOT reset mid-signature -- otherwise the reset re-enables
+  // the button and the user can fire a duplicate createRefCode (Codex review).
+  const accountKey = account.toLowerCase()
   useEffect(() => {
     setCreateState('idle')
-  }, [account])
+  }, [accountKey])
 
   const onCreate = useCallback(async () => {
     // Pin the flow to the wallet that started it. If the account changes

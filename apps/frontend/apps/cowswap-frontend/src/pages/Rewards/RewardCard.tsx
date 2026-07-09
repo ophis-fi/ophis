@@ -78,11 +78,16 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   const accountRef = useRef(account)
   accountRef.current = account
 
-  // A wallet switch resets the claim machine: a validation belongs to the
-  // address that signed it, never to whichever address connects next.
+  // Normalized address key: a GENUINE wallet switch resets the claim machine
+  // (a validation belongs to the address that signed it), but a checksum-only
+  // re-emit of the SAME wallet must NOT reset it — otherwise the case-
+  // insensitive checks elsewhere are moot because the reset already dropped
+  // the validated reward, forcing a re-sign (Codex review). Keying the effect
+  // on the lowercased address makes a casing-only change a no-op.
+  const accountKey = account?.toLowerCase()
   useEffect(() => {
     setClaim({ step: 'idle' })
-  }, [account])
+  }, [accountKey])
 
   const isEligible = account !== undefined && xp !== null && xp >= perk.xpRequired
   // Compare addresses case-insensitively: a reconnect can re-emit the same
