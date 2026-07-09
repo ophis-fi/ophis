@@ -86,10 +86,10 @@ const PartnerPage = lazy(() =>
     default: m.PartnerPage,
   })),
 )
-// Cash Prize: partner perks unlocked with XP (lifetime volume, 1 XP per $1).
-const CashPrizePage = lazy(() =>
-  import(/* webpackChunkName: "ophis_cash_prize" */ 'pages/CashPrize').then((m) => ({
-    default: m.CashPrizePage,
+// Rewards: partner rewards unlocked with XP (lifetime volume, 1 XP per $1).
+const RewardsPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_rewards" */ 'pages/Rewards').then((m) => ({
+    default: m.RewardsPage,
   })),
 )
 // Account
@@ -162,7 +162,9 @@ const lazyRoutes: LazyRouteProps[] = [
   { route: RoutesEnum.AFFILIATE, element: <Navigate to={RoutesEnum.PROFILE} replace /> },
   { route: RoutesEnum.LEADERBOARD, element: <LeaderboardPage /> },
   { route: RoutesEnum.PARTNER, element: <PartnerPage /> },
-  { route: RoutesEnum.CASH_PRIZE, element: <CashPrizePage /> },
+  { route: RoutesEnum.REWARDS, element: <RewardsPage /> },
+  // '/cash-prize' shipped briefly before the Rewards rename; keep old links alive.
+  { route: RoutesEnum.CASH_PRIZE, element: <Navigate to={RoutesEnum.REWARDS} replace /> },
   { route: RoutesEnum.LEARN, element: <LearnPage /> },
   { route: RoutesEnum.PROTOCOL, element: <ProtocolPage /> },
   { route: RoutesEnum.CONTACT, element: <ContactPage /> },

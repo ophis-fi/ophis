@@ -76,7 +76,7 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
               <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
             </li>
             <li>
-              <styledEl.InternalLink to="/cash-prize">Cash Prize</styledEl.InternalLink>
+              <styledEl.InternalLink to="/rewards">Rewards</styledEl.InternalLink>
             </li>
             <li>
               <styledEl.InternalLink to="/leaderboard">Leaderboard</styledEl.InternalLink>
