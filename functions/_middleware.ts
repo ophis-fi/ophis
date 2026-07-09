@@ -20,6 +20,17 @@
  *    301-redirected to the new portal so old links and search results
  *    don't dead-end.
  *
+ * 4. business.ophis.fi shares this deploy's public/_headers, whose CSP sets
+ *    `frame-ancestors *` for the embeddable swap widget. The business landing
+ *    is not a widget, so finalizeResponse() re-scopes its framing to 'self'
+ *    (+ X-Frame-Options: SAMEORIGIN) on this host only, leaving swap.ophis.fi
+ *    untouched.
+ *
+ * 5. Non-*.ophis.fi hosts (greg-etm.pages.dev + its per-deploy preview
+ *    aliases) serve a byte-identical duplicate of the swap app;
+ *    finalizeResponse() adds X-Robots-Tag: noindex so they stay out of the
+ *    index while remaining crawlable (so the noindex is actually seen).
+ *
  * All other hostnames + paths flow through context.next() unchanged.
  */
 
@@ -101,6 +112,49 @@ const BUSINESS_SITEMAP = `<?xml version="1.0" encoding="UTF-8"?>
 </urlset>
 `
 
+// Cross-cutting response header transforms applied on the way out.
+//
+//  - business.ophis.fi shares this deploy (and its public/_headers) with the
+//    swap app, whose CSP sets `frame-ancestors *` DELIBERATELY so the swap
+//    surface can be embedded as a widget. The business landing is NOT a widget
+//    and hosts a partner contact form, so it must not be framable by arbitrary
+//    origins. Scope a restrictive framing policy to this host only: rewrite the
+//    inherited CSP `frame-ancestors` to 'self' and add X-Frame-Options:
+//    SAMEORIGIN. swap.ophis.fi (and its widget posture) is left untouched.
+//
+//  - Any host that does NOT end in ophis.fi is a *.pages.dev origin (the
+//    project's production alias greg-etm.pages.dev and its per-deploy preview
+//    hosts). Those serve a byte-identical copy of the swap app that
+//    self-canonicalizes to swap.ophis.fi; canonical is only a hint, so add
+//    X-Robots-Tag: noindex to keep the duplicate origin out of the index. We do
+//    NOT block via robots.txt: crawlers must stay allowed so they can SEE the
+//    noindex (a Disallow would leave the URL blocked-but-indexable).
+function finalizeResponse(res: Response, hostname: string): Response {
+  const restrictFraming = hostname === 'business.ophis.fi'
+  const noindex = !hostname.endsWith('ophis.fi')
+  if (!restrictFraming && !noindex) return res
+
+  const headers = new Headers(res.headers)
+  if (restrictFraming) {
+    const csp = headers.get('Content-Security-Policy')
+    if (csp) {
+      headers.set(
+        'Content-Security-Policy',
+        csp.replace(/frame-ancestors[^;]*/i, "frame-ancestors 'self'"),
+      )
+    }
+    headers.set('X-Frame-Options', 'SAMEORIGIN')
+  }
+  if (noindex) {
+    headers.set('X-Robots-Tag', 'noindex')
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  })
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
 
@@ -149,7 +203,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (target && url.pathname === '/') {
     const rewritten = new URL(url)
     rewritten.pathname = target
-    return context.env.ASSETS.fetch(new Request(rewritten.toString(), context.request))
+    const res = await context.env.ASSETS.fetch(new Request(rewritten.toString(), context.request))
+    return finalizeResponse(res, url.hostname)
   }
 
   // Never serve the SPA HTML fallback at asset-shaped paths. Pages' SPA
@@ -173,5 +228,5 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
     return res
   }
-  return context.next()
+  return finalizeResponse(await context.next(), url.hostname)
 }

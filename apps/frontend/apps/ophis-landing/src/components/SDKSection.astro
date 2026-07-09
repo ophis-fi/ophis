@@ -5,7 +5,7 @@ const code = `import {
   assertReceiverIsOwner,
 } from '@ophis/sdk'
 
-// The correct orderbook host per chain — Optimism is self-hosted,
+// The correct orderbook host per chain: Optimism is self-hosted,
 // not api.cow.fi; the wrong host silently bypasses Ophis.
 const orderbook = getOphisOrderbookUrl(/* chainId */ 10)
 
@@ -13,7 +13,7 @@ const orderbook = getOphisOrderbookUrl(/* chainId */ 10)
 // contract (cow-sdk's default is wrong on the Ophis-operated chains).
 const domain = getOphisOrderDomain(10)
 
-// Pin the receiver to the owner before signing — an unpinned
+// Pin the receiver to the owner before signing; an unpinned
 // receiver is the #1 drain vector for an automated signer.
 assertReceiverIsOwner(owner, order.receiver)`
 ---

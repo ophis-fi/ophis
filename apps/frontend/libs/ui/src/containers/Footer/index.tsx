@@ -99,10 +99,10 @@ const PRODUCT_LOGO_LINKS: {
 }[] = [
   {
     href: 'https://swap.ophis.fi/',
-    label: 'CoW Swap',
+    label: 'Ophis',
     productVariant: ProductVariant.CowSwap,
     external: true,
-    utmContent: 'product-cow-swap',
+    utmContent: 'product-ophis-swap',
   },
   {
     href: 'https://cow.fi/',
@@ -128,7 +128,7 @@ const PRODUCT_LOGO_LINKS: {
 ]
 
 const GLOBAL_FOOTER_DESCRIPTION =
-  'CoW DAO is an open collective of developers, market makers, and community contributors on a mission to protect users from the dangers of DeFi.'
+  'Ophis is an intent-based DEX aggregator that protects your swaps from MEV and settles them through batch auctions.'
 
 const GLOBAL_FOOTER_NAV_ITEMS: Array<NavItemProps> = [
   {
@@ -353,7 +353,7 @@ export const Footer = ({
         </>
       )}
       <FooterBottom maxWidth={maxWidth}>
-        <BottomText>&copy; CoW DAO - {new Date().getFullYear()}</BottomText>
+        <BottomText>&copy; Ophis - {new Date().getFullYear()}</BottomText>
         <FooterBottomLogos>
           {PRODUCT_LOGO_LINKS.map((product, index) => (
             <ProductLogo

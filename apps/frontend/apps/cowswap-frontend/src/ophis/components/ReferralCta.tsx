@@ -99,7 +99,8 @@ export function ReferralCta({ fallback = null }: ReferralCtaProps): ReactNode {
     <Pill>
       <OphieMark size={22} fill="saffron" ariaLabel="" />
       <Copy>
-        <strong>Refer friends, earn WETH.</strong> You get 8% of the fee on every trade they make, paid monthly.{' '}
+        <strong>Refer friends, earn WETH.</strong> You get 8% of the fee Ophis keeps on every trade they make, paid
+        monthly.{' '}
         <MintLink to="/profile">Mint your link &rarr;</MintLink>
       </Copy>
       <Dismiss

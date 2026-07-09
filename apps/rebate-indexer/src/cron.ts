@@ -37,6 +37,23 @@ function ownFeeRpc(chainId: number): string {
 }
 
 /**
+ * Global dry-run switch for the monthly Safe proposals (rebate batcher, affiliate
+ * payout, own-fee proposal). Default-ON (unset/''/'true'/'1' => propose) so live
+ * behavior is unchanged; 'false'/'0' => dry-run only. Any OTHER value THROWS
+ * (fail-loud) instead of silently proposing, so a typo like 'False'/'no'/'off'
+ * can never be misread as "propose real money". Same fail-loud parser shape as
+ * resolveDirectMode/resolveAffiliatePayoutEnabled/resolveOwnFeePayoutEnabled — this
+ * one just defaults ON rather than OFF. A money-path flag must never fail OPEN on an
+ * ambiguous value.
+ */
+export function resolveBatcherProposeEnabled(): boolean {
+  const raw = process.env.BATCHER_PROPOSE_ENABLED?.trim();
+  if (raw === undefined || raw === '' || raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  throw new Error(`BATCHER_PROPOSE_ENABLED must be 'true', '1', 'false', '0', or unset; got "${raw}"`);
+}
+
+/**
  * The full nightly pipeline. Runs sequentially. Called by the daily cron tick.
  * On the 1st of the month, batcher runs as the final step — never as a separate
  * cron entry, eliminating the race noted in the spec §"Safe batch flow → Step 1".
@@ -115,7 +132,7 @@ async function runPipelineSteps(): Promise<void> {
         log.error({ err, chainId }, 'own-fee accrual failed (non-fatal to the rest of the cycle)');
       }
     }
-    const proposeEnabled = process.env.BATCHER_PROPOSE_ENABLED !== 'false';
+    const proposeEnabled = resolveBatcherProposeEnabled();
     const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
     if (!proposerKey) {
       log.error('SAFE_PROPOSER_PRIVATE_KEY missing; skipping batcher');

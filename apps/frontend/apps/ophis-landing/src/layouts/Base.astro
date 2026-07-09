@@ -10,6 +10,10 @@ export interface Props {
   ogType?: string
   /** Absolute URL of the social-share image (sized 1280x640 to match the meta dims). */
   image?: string
+  /** Alt text for the social-share image. Defaults to a description of the shared
+      /og-image.png; blog posts pass their per-post cover alt so it matches the
+      actual per-post image. */
+  imageAlt?: string
   /** Home page only: also emit the SoftwareApplication + SDK HowTo JSON-LD.
       Content pages (blog, 404) keep just Organization + WebSite, so a
       BlogPosting page does not also declare the app schema and an unrelated
@@ -22,6 +26,7 @@ const {
   canonical = 'https://ophis.fi/',
   ogType = 'website',
   image = 'https://ophis.fi/og-image.png',
+  imageAlt = 'Ophis: an intent-based DEX aggregator. Describe a swap in natural language, a solver network fills it MEV-protected.',
   homeSchema = false,
 } = Astro.props
 
@@ -58,7 +63,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
   <meta property="og:image:width" content="1280">
   <meta property="og:image:height" content="640">
   <meta property="og:site_name" content="Ophis">
-  <meta property="og:image:alt" content="Ophis: an intent-based DEX aggregator. Describe a swap in natural language, a solver network fills it MEV-protected.">
+  <meta property="og:image:alt" content={imageAlt}>
   <meta property="og:locale" content="en_US">
 
   <!-- Twitter -->
@@ -67,6 +72,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
   <meta name="twitter:title" content={title}>
   <meta name="twitter:description" content={description}>
   <meta name="twitter:image" content={image}>
+  <meta name="twitter:image:alt" content={imageAlt}>
 
   <link rel="preload" href="/fonts/geist-sans-variable.woff2" as="font" type="font/woff2" crossorigin>
 

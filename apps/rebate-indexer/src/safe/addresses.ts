@@ -70,5 +70,5 @@ export function safeTxServiceUrl(chainId: number): string | undefined {
  * Verify against https://docs.cow.fi/cow-protocol/reference/contracts/core before
  * adding any non-canonical chain.
  */
-export const GPV2_SETTLEMENT = '0x9008D19f58AABD9eD0D60971565AA8510560ab41' as const;
+export const GPV2_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as const;
 export const GPV2_VAULT_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110' as const;

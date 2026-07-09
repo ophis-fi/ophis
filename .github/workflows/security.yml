@@ -1,15 +1,29 @@
 name: Security
 
-# Runs on every PR targeting main / docs/* / feat/* branches plus on
-# workflow_dispatch for ad-hoc runs.
+# Runs on every PR targeting main / docs/* / feat/* branches, on
+# workflow_dispatch for ad-hoc runs, and weekly on a Monday cron.
 #
-# Three jobs run in parallel:
-#   - slither             — Solidity static analysis (Trail of Bits)
-#   - pnpm-audit          — root-workspace JS/TS dep advisories
-#   - pnpm-audit-frontend — apps/frontend (separate workspace) dep advisories
-#   - cargo-audit         — Rust dep advisories
+# WHY the cron: new RUSTSEC/GHSA advisories are published against deps that
+# are already on main. Between PRs (or on a quiet week) a fresh HIGH/CRITICAL
+# went unnoticed until the next PR happened to open (the class behind the
+# repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
-# Each job blocks merge if it regresses against the 2026-05-13 audit baseline.
+# WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend) plus the
+# secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
+# tier / erpc / policy-pack) and Slither depend only on repo contents a PR
+# already exercised, so they are skipped on schedule via
+# `if: github.event_name != 'schedule'` to avoid noise on main.
+#
+# Jobs:
+#   - slither             Solidity static analysis (Trail of Bits)
+#   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree)
+#   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories
+#   - cargo-audit         Rust dep advisories
+#   - cargo-deny          Rust supply-chain (advisories + sources)
+#   - gitleaks            raw EVM-private-key secret scan
+#
+# Each advisory job blocks merge if it regresses against the audit baseline.
 
 on:
   pull_request:
@@ -18,6 +32,10 @@ on:
       - 'docs/**'
       - 'feat/**'
   workflow_dispatch:
+  schedule:
+    # Weekly Monday 05:00 UTC (codeql.yml runs at 04:00). Scheduled runs
+    # execute on main, where a failing advisory job alerts but blocks nothing.
+    - cron: '0 5 * * 1'
 
 # Default to read-only — fork PRs do not need write access. Audit
 # finding 2026-05-09 (matches ci.yml).
@@ -28,6 +46,9 @@ jobs:
   partner-fee-invariant:
     name: Partner-fee cross-workspace invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: depends only on repo contents a PR already
+    # exercised, so skip it on the weekly cron (advisory jobs only there).
+    if: github.event_name != 'schedule'
     # Phase 2.3 (2026-05-20). The Ophis partner-fee recipient is declared
     # as OPHIS_PARTNER_FEE_RECIPIENT in 3 source-of-truth files in
     # DIFFERENT pnpm workspaces (no shared-import option). PR #120 fixed
@@ -42,6 +63,8 @@ jobs:
   floor-invariant:
     name: OP partner-fee floor cross-workspace invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # 2026-06-18. The OP backend floors the CIP-75 Volume partner fee per token
     # pair (app_data.rs partner_fee_floor_bps): 10 bps default, 1 bp for
     # same-chain stable pairs (OPTIMISM_STABLECOINS) or boosted pairs
@@ -62,6 +85,8 @@ jobs:
   tier-invariant:
     name: Tier table cross-workspace invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # 2026-05-21 follow-up to the rebate-indexer audit; extended 2026-06-09 to
     # the frontend mirror. TIERS + POOL_SPLIT_BPS are mirrored across THREE files:
     # apps/rebate-indexer/src/tiers.ts (drives the batcher's actual WETH
@@ -79,6 +104,8 @@ jobs:
   erpc-id-collisions:
     name: eRPC upstream-ID cross-stack collision lint
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # Phase 2.6 (2026-05-20). Catches the cross-stack ID-naming
     # collision class. eRPC exports per-upstream Prometheus metrics
     # labeled by `id:`. If two stacks share an upstream id, the same
@@ -92,6 +119,8 @@ jobs:
   policy-pack-address-invariant:
     name: Agent-wallet policy-pack address invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # 2026-07-04. The Turnkey/Privy agent-wallet policy packs in
     # examples/agent-wallet-policy-packs/ pin an agent key to the Ophis
     # settlement + vault-relayer contracts per chain. Those addresses live in a
@@ -113,6 +142,11 @@ jobs:
   slither:
     name: Slither (Solidity)
     runs-on: ubuntu-latest
+    # Skip on the weekly cron: Slither's findings only change when the
+    # (vendored, frozen) contracts change, which a PR already exercises, so
+    # it is not a time-sensitive advisory job. Only cargo-audit, cargo-deny,
+    # pnpm-audit, pnpm-audit-frontend, and gitleaks run on schedule.
+    if: github.event_name != 'schedule'
     # Runs Trail of Bits' eth-security-toolbox container (digest-pinned
     # for reproducibility). The container ships slither 0.11.4, foundry,
     # and solc-select with 0.7.6 pre-installed. Earlier pip-only setups
@@ -209,6 +243,14 @@ jobs:
   pnpm-audit:
     name: pnpm audit (JS/TS deps)
     runs-on: ubuntu-latest
+    # Audits the FULL root workspace tree, NOT --prod. --prod scopes to
+    # dependencies + optionalDependencies only, which SKIPS the build/test
+    # devDependencies that compile and test the npm-PUBLISHED packages
+    # (@ophis/sdk, @ophis/agent-swap, @ophis/plugin-goat, @ophis/agentkit-ophis,
+    # @ophis/widget-react) and are therefore a supply-chain surface (audit
+    # 2026-06 P2, same principle the sibling pnpm-audit-frontend job documents).
+    # Uses the frontend job's fail-closed gate. Documented non-reachable
+    # advisories with no fix are ignored below; keep that list TIGHT.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
@@ -221,31 +263,82 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Run pnpm audit --prod
+      - name: Run pnpm audit (root workspace, incl. devDependencies)
         run: |
-          # --prod skips devDeps; we care about runtime CVEs.
-          # `|| true` because pnpm audit exits non-zero on ANY advisory.
-          pnpm audit --prod --json > /tmp/pnpm-audit.json || true
+          # FULL tree, NOT --prod: the root devDependencies build and test the
+          # npm-published @ophis packages, so an advisory in that toolchain must
+          # block. `|| true` because pnpm audit exits non-zero on ANY advisory;
+          # the python step below decides what actually blocks (HIGH/CRITICAL).
+          pnpm audit --json > /tmp/pnpm-audit.json || true
           cat /tmp/pnpm-audit.json
 
-      - name: Block on HIGH or CRITICAL advisories
+      - name: Block on NEW HIGH or CRITICAL advisories
         run: |
           python3 - <<'PYEOF'
           import json, sys
+          # Documented advisories with no upstream fix. Keep TIGHT -- every entry
+          # needs a written justification.
+          IGNORE = {
+              # bigint-buffer Buffer Overflow via toBigIntLE() (HIGH). Reaches the
+              # tree ONLY through @coinbase/agentkit (a devDep satisfying
+              # agentkit-ophis's peer dep) -> @solana/spl-token ->
+              # buffer-layout-utils. The Solana spl-token path is unreachable for
+              # Ophis, dev/test-only, not in any published tarball, and NO patched
+              # release exists (patched '<0.0.0'). (audit 2026-07)
+              'GHSA-3gc7-fjrx-p6mg',
+          }
+          # NB: elliptic (CVE-2025-14505) is npm-severity LOW with no fixed
+          # release, so it never enters the HIGH/CRITICAL block path below and
+          # needs no IGNORE entry. uuid CVE-2026-41907 (moderate) is FIXED by the
+          # root pnpm override '@metamask/utils>uuid': '^11.1.1' in package.json.
+          def ghsa(url):
+              return (url or '').rstrip('/').split('/')[-1]
           with open('/tmp/pnpm-audit.json') as f:
               d = json.load(f)
-          advisories = d.get('advisories', {})
-          blocking = []
-          for k, adv in advisories.items():
-              sev = adv.get('severity', '')
-              if sev in ('high', 'critical'):
-                  blocking.append(f"{adv.get('module_name','?')} (sev={sev}, advisory={k}): {adv.get('title','?')}")
+
+          blocking, ignored, shape = [], [], None
+          # Shape A (npm-v6 / current pnpm): advisories = { id: {severity, module_name, url, title} }
+          adv = d.get('advisories')
+          if isinstance(adv, dict):
+              shape = 'advisories'
+              for k, a in adv.items():
+                  if a.get('severity') not in ('high', 'critical'):
+                      continue
+                  g = ghsa(a.get('url')) or str(k)
+                  rec = f"{a.get('module_name','?')} (sev={a.get('severity')}, {g}): {a.get('title','?')}"
+                  (ignored if g in IGNORE else blocking).append(rec)
+          # Shape B (npm-v7): vulnerabilities = { name: {severity, via: [{url,title}|str]} }
+          vuln = d.get('vulnerabilities')
+          if isinstance(vuln, dict) and vuln:
+              shape = shape or 'vulnerabilities'
+              for name, a in vuln.items():
+                  if a.get('severity') not in ('high', 'critical'):
+                      continue
+                  gs = [ghsa(v.get('url')) for v in (a.get('via') or []) if isinstance(v, dict)]
+                  gs = [g for g in gs if g]
+                  rec = f"{name} (sev={a.get('severity')}, {','.join(gs) or '?'})"
+                  # Ignore only if EVERY contributing advisory is allow-listed.
+                  (ignored if gs and all(g in IGNORE for g in gs) else blocking).append(rec)
+
+          # Fail CLOSED: never silently pass on an unrecognized/empty audit shape.
+          meta_v = (d.get('metadata') or {}).get('vulnerabilities') or {}
+          meta_hc = (meta_v.get('high') or 0) + (meta_v.get('critical') or 0)
+          if shape is None:
+              print("ERROR: unrecognized pnpm audit JSON (no advisories/vulnerabilities) -- failing closed.", file=sys.stderr)
+              sys.exit(1)
+          if meta_hc > 0 and not blocking and not ignored:
+              print(f"ERROR: metadata reports {meta_hc} high/critical but parser matched none "
+                    f"(shape='{shape}' mismatch?) -- failing closed.", file=sys.stderr)
+              sys.exit(1)
+
+          for i in ignored:
+              print(f"IGNORED (documented non-reachable): {i}")
           if blocking:
-              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories")
+              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories in the root workspace")
               for b in blocking:
                   print(f"  - {b}")
               sys.exit(1)
-          print(f"OK -- {len(advisories)} total advisories, none HIGH/CRITICAL")
+          print(f"OK -- shape={shape}, none blocking ({len(ignored)} ignored, metadata high/crit={meta_hc})")
           PYEOF
 
   pnpm-audit-frontend:
@@ -422,4 +515,31 @@ jobs:
         run: |
           cd apps/backend
           cargo deny check bans licenses || echo "informational: bans/licenses report above is non-gating"
+
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    # Closes the one gap GitHub's provider-pattern secret scanning does NOT
+    # cover: raw EVM private keys (0x + 64 hex), e.g. the money-moving
+    # OPHIS_DRIVER_SUBMITTER_KEY. GitHub secret scanning + push protection stay
+    # ON (they handle AWS/GitHub/npm/etc. provider patterns); this job adds only
+    # the EVM-key rule so it does not duplicate that coverage or add provider
+    # false positives. Runs on PR + schedule + dispatch (intentionally NOT gated
+    # off the cron: a weekly full-history sweep is worth having). Rules +
+    # allowlist (bytes32 / topic0 / init-code-hash noise, Anvil test keys,
+    # generated artifacts) live in .github/gitleaks.toml. Free on public repos.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          # Full history so the commits a PR introduces are scanned (and the
+          # weekly run sweeps all history), not just the tip.
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
+        env:
+          # Read-only token is enough to fetch the commits for the diff.
+          # GITLEAKS_LICENSE is only required for orgs on private repos.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Custom, scoped config (only the EVM-key rule + allowlist).
+          GITLEAKS_CONFIG: .github/gitleaks.toml
 

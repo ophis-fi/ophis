@@ -72,3 +72,25 @@ jobs:
       - name: cargo test (floor-enforcement crates, lib unit tests)
         working-directory: apps/backend
         run: cargo test --offline --locked --lib -p app-data -p shared -p autopilot -p orderbook
+
+      # Lightweight Rust STATIC analysis on exactly the Ophis-diverged money-path
+      # crates. CodeQL does not cover Rust here (codeql-config paths-ignore
+      # excludes apps/backend), and cargo-audit/deny are dependency-advisory
+      # scans, not SAST -- so without this, the floor/fee code that backend-ci
+      # tests gets no static lint. Scoped --lib to the same 4 crates as the test
+      # step; -D warnings makes a new clippy lint fail the PR.
+      #
+      # `rustup component add clippy` is a static.rust-lang.org fetch, separate
+      # from the flaky crates.io registry the cargo-fetch retry above guards, so
+      # it needs no retry wrapper. NOTE: apps/backend is a cowprotocol/services
+      # fork with pre-existing style-lint debt in shared crates (e.g. an
+      # explicit_auto_deref in poison-recovery), so a blanket -D warnings would
+      # fail every backend PR on inherited debt. We therefore DENY only the
+      # `correctness` group (real bugs block the PR) and WARN the rest (visible
+      # in the log, not fatal). Tighten toward -D warnings once the upstream
+      # style debt is triaged.
+      - name: cargo clippy (floor-enforcement crates, deny correctness lints)
+        working-directory: apps/backend
+        run: |
+          rustup component add clippy
+          cargo clippy --offline --locked --lib -p app-data -p shared -p autopilot -p orderbook -- -W clippy::all -D clippy::correctness

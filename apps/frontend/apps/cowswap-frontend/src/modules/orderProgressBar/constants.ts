@@ -78,15 +78,14 @@ export const FINAL_STATES: OrderProgressBarStepName[] = [
 export const COW_SWAP_BENEFITS = [
   msg`Ophis solvers search Uniswap, 1inch, Matcha, Sushi and more to find you the best price.`,
   msg`Ophis sets the standard for protecting against MEV attacks such as frontrunning and sandwiching.`,
-  msg`Ophis was the first DEX to offer intent-based trading, gasless swaps, coincidences of wants, and many other DeFi innovations.`,
+  msg`Ophis uses intent-based trading: gasless swaps, coincidences of wants, and MEV protection.`,
   msg`Ophis matches peer-to-peer swaps to save on settlement costs.`,
   msg`You can avoid price impact on large trades by using TWAP orders on Ophis.`,
   msg`Limit orders on Ophis capture surplus - so if the price moves in your favor, you're likely to get more than you asked for.`,
   msg`On Ophis, you can set limit orders for balances you don't have yet.`,
   msg`Limit orders on Ophis are free to place and cancel. That's unique in DeFi!`,
   msg`You can protect all your Ethereum transactions from MEV - not just trades on Ophis - by installing MEV Blocker.`,
-  msg`Ophis pools grow faster than other AMM pools because they don't lose money to arbitrage bots.`,
-  msg`Ophis has over 20 active solvers - more than any other exchange.`,
+  msg`Multiple solvers compete for your order so you get the best available price.`,
   msg`Ophis's robust solver competition protects your slippage from being exploited by MEV bots.`,
   msg`Advanced users can create complex, conditional orders directly through Ophis. Read the docs for more info.`,
   msg`Unlike most other exchanges, Ophis doesn't charge you any fees if your trade fails.`,
@@ -111,10 +110,6 @@ export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor
   [10 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
   // Ophis fork: Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
-  // Ophis fork: HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
 }
 
 /**
@@ -134,20 +129,9 @@ export type ChainAggregationInfo = {
 }
 
 export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggregationInfo>> = {
-  // Ophis fork: HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: {
-    headline: 'Ophis aggregates liquidity across HyperEVM via 2 solvers.',
-    sources: [
-      {
-        solver: 'Baseline',
-        covers: 'HyperSwap V3 pools directly (WHYPE/USD₮0, WHYPE/USDC, WHYPE/UBTC, WHYPE/UETH, αHYPE/UETH and others)',
-      },
-      { solver: 'KyberSwap', covers: 'aggregator covering Hybra-CL, Project X V3, and custom HL AMMs' },
-    ],
-  },
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: {
-    headline: 'Ophis aggregates liquidity across Optimism via 2 solvers.',
+    headline: 'Ophis aggregates liquidity across Optimism.',
     sources: [
       { solver: 'OKX V6', covers: 'OnchainOS aggregator covering Velodrome, Uniswap V3, Curve and others' },
       { solver: 'KyberSwap', covers: 'aggregator covering Velodrome, Uniswap V3, Beethoven X and OP-native pools' },
@@ -159,11 +143,6 @@ export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggre
     sources: [
       { solver: 'KyberSwap', covers: 'aggregator covering Uniswap V3/V4 and Unichain-native pools' },
     ],
-  },
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: {
-    headline: 'Ophis aggregates liquidity across MegaETH.',
-    sources: [{ solver: 'KyberSwap', covers: 'aggregator covering MegaETH AMMs as they come online' }],
   },
 }
 

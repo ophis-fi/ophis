@@ -1,5 +1,9 @@
 :80 {
     encode gzip zstd
+    # Strip the reverse-proxy fingerprint from responses (audit 2026-07-09):
+    # the default Via header disclosed the origin proxy software on every
+    # rebates.ophis.fi response.
+    header -Via
     reverse_proxy indexer:8080 {
         header_up X-Real-IP {remote_host}
         health_uri /health
