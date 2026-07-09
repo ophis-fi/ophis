@@ -23,6 +23,7 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useCopyClipboard } from '@cowprotocol/common-hooks'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
 import { Callout, InlineCode, KeyValueList, MetricCard, Section } from 'ophis/ds'
 
@@ -112,10 +113,10 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
     setCreateState('signing')
     try {
       const body = await sign('create referral code')
-      if (accountRef.current !== startAccount) return
+      if (!areAddressesEqual(accountRef.current, startAccount)) return
       setCreateState('creating')
       const res = await createRefCode(body)
-      if (accountRef.current !== startAccount) return
+      if (!areAddressesEqual(accountRef.current, startAccount)) return
       setStats((prev) =>
         prev
           ? { ...prev, activeCodes: [res.code, ...prev.activeCodes.filter((c) => c !== res.code)] }
@@ -131,7 +132,7 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
       )
       setCreateState('idle')
     } catch (error: unknown) {
-      if (accountRef.current !== startAccount) return
+      if (!areAddressesEqual(accountRef.current, startAccount)) return
       // User-rejected signature (ethers v5 ACTION_REJECTED / EIP-1193 4001).
       const code = (error as { code?: number | string })?.code
       if (code === 4001 || code === 'ACTION_REJECTED') {

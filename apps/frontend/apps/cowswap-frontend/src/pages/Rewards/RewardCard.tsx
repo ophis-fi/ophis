@@ -16,7 +16,8 @@
  */
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
-import { useIsSmartContractWallet } from '@cowprotocol/wallet'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
 import { useOphisAffiliateSign } from 'modules/affiliate'
 
@@ -64,6 +65,12 @@ interface RewardCardProps {
 export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   const sign = useOphisAffiliateSign(account)
   const isSmartContractWallet = useIsSmartContractWallet()
+  // useIsSmartContractWallet() coalesces to `false` while the on-chain code
+  // lookup is still pending (a Safe resolves synchronously; a non-Safe
+  // contract wallet does not), so it cannot itself signal "still loading".
+  // useAccountType() is `undefined` until that getCode check resolves, which
+  // is the real loading signal we gate the claim button on (Codex review).
+  const accountType = useAccountType()
   const [claim, setClaim] = useState<ClaimState>({ step: 'idle' })
 
   // Latest account, for guarding async claim continuations against a wallet
@@ -78,7 +85,9 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   }, [account])
 
   const isEligible = account !== undefined && xp !== null && xp >= perk.xpRequired
-  const isValidated = claim.step === 'validated' && account !== undefined && claim.wallet === account
+  // Compare addresses case-insensitively: a reconnect can re-emit the same
+  // wallet with different checksum casing (Codex review).
+  const isValidated = claim.step === 'validated' && areAddressesEqual(claim.wallet, account)
   const progressPct = xp === null ? 0 : (xp / perk.xpRequired) * 100
 
   const onClaim = useCallback(async () => {
@@ -89,13 +98,14 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
     setClaim({ step: 'validating' })
     try {
       const signed = await sign(`claim reward ${perk.id}`)
-      // Bail if the wallet changed during signing: the account-change effect
-      // already reset the claim for the new wallet, so applying A's result
-      // (validated/rejected/error) here would leak into B's card (Codex review).
-      if (accountRef.current !== startAccount) return
+      // Bail if the wallet actually changed during signing (case-insensitive:
+      // a same-wallet reconnect can re-emit different casing). The
+      // account-change effect already reset the claim for a genuinely new
+      // wallet, so applying A's result here would leak into B's card.
+      if (!areAddressesEqual(accountRef.current, startAccount)) return
       setClaim({ step: 'validated', wallet: startAccount, issued: signed.issued, signature: signed.signature })
     } catch (error: unknown) {
-      if (accountRef.current !== startAccount) return
+      if (!areAddressesEqual(accountRef.current, startAccount)) return
       const code = (error as { code?: number | string })?.code
       setClaim(code === 4001 || code === 'ACTION_REJECTED' ? { step: 'rejected' } : { step: 'error' })
     }
@@ -146,27 +156,28 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
               The email includes your signed proof; the {perk.partner} code is sent back after a quick check.
             </styledEl.ClaimNote>
           </styledEl.ClaimPanel>
-        ) : isSmartContractWallet === undefined ? (
-          <styledEl.ClaimPanel>
-            {/* Wallet type not yet resolved (lookup loading or failed). Hold
-                the claim button rather than defaulting to the EOA signature
-                path, so a contract wallet can't slip through the EIP-191 flow
-                during that window (Codex review). */}
-            <styledEl.ClaimActionButton type="button" disabled>
-              Checking wallet...
-            </styledEl.ClaimActionButton>
-          </styledEl.ClaimPanel>
         ) : isSmartContractWallet ? (
           <styledEl.ClaimPanel>
             {/* Safe and other contract wallets cannot produce the recoverable
                 EIP-191 signature the claim check verifies (they sign via
                 EIP-1271, which needs an on-chain call to validate). Route
-                them to email until a 1271-aware claim path exists. */}
+                them to email until a 1271-aware claim path exists. A Safe
+                resolves synchronously so it lands here without a loading hold. */}
             <styledEl.ClaimNote>
               Smart-contract wallets are not supported for signature claims yet. Email{' '}
               <TextLink href={`mailto:${CLAIM_EMAIL}`}>{CLAIM_EMAIL}</TextLink> from your project
               contact and include your Safe address; eligibility is checked on-chain.
             </styledEl.ClaimNote>
+          </styledEl.ClaimPanel>
+        ) : accountType === undefined ? (
+          <styledEl.ClaimPanel>
+            {/* getCode still resolving for a non-Safe wallet: hold the button
+                rather than defaulting to the EOA signature path, so a contract
+                wallet can't enter the EIP-191 flow before detection completes
+                (Codex review). Fail-closed if the lookup errors. */}
+            <styledEl.ClaimActionButton type="button" disabled>
+              Checking wallet...
+            </styledEl.ClaimActionButton>
           </styledEl.ClaimPanel>
         ) : (
           <styledEl.ClaimPanel>
