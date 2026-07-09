@@ -241,3 +241,31 @@ test('OPTIONS preflight from a DISALLOWED origin sets no CORS headers', async ()
   expect(res.headers['access-control-allow-origin']).toBeUndefined();
   expect(res.headers['access-control-allow-methods']).toBeUndefined();
 });
+
+// /xp/:wallet — public per-wallet lifetime XP for the Cash Prize page.
+test('/xp/:wallet returns 200 with xp 0 for an unknown wallet (never 404)', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/xp/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(res.statusCode).toBe(200);
+  const body = JSON.parse(res.body);
+  // Wallet is echoed lowercased; unknown wallet = zero progress, not an error.
+  expect(body.wallet).toBe('0x04981ff1f1a901b0f5221af38e7ee4aca8353a27');
+  expect(body.xp).toBe(0);
+  expect(body.lifetimeVolumeUsd).toBe(0);
+  expect(body.generatedAt).toBeDefined();
+  // Lagging/cumulative invariant: same rule as /stats — no current-cycle
+  // or payout-timing fields on this public surface.
+  for (const key of Object.keys(body)) {
+    expect(key).not.toMatch(/30d|payout|cycle/i);
+  }
+});
+
+test('/xp/:wallet rejects a malformed address with 400', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/xp/not-a-wallet' });
+  expect(res.statusCode).toBe(400);
+  expect(JSON.parse(res.body)).toMatchObject({ error: 'invalid wallet address' });
+});

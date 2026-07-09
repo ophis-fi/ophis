@@ -20,7 +20,7 @@
  * AGENTS.md compliance: named export (no default), shared chrome reused from
  * the Affiliate page's styled module.
  */
-import { ReactNode, useCallback, useEffect, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useCopyClipboard } from '@cowprotocol/common-hooks'
 
@@ -89,12 +89,19 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
     }
   }, [account, loadStats])
 
+  // Latest connected account, for guarding async continuations: a wallet
+  // switch mid-sign/mid-request must not render the OLD wallet's minted code
+  // under the NEW wallet's dashboard.
+  const accountRef = useRef(account)
+  accountRef.current = account
+
   const onCreate = useCallback(async () => {
     setCreateState('signing')
     try {
       const body = await sign('create referral code')
       setCreateState('creating')
       const res = await createRefCode(body)
+      if (accountRef.current !== account) return
       setStats((prev) =>
         prev
           ? { ...prev, activeCodes: [res.code, ...prev.activeCodes.filter((c) => c !== res.code)] }
