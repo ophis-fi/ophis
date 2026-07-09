@@ -1,5 +1,5 @@
 /**
- * XpRing — the Cash Prize page's signature element.
+ * XpRing — the Rewards page's signature element.
  *
  * XP progress toward the next perk rendered as a ring closing on itself:
  * the ouroboros (the Ophis brand mark) is a circle completing itself, so

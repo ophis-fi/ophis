@@ -1,5 +1,5 @@
 /**
- * Styled components for the Cash Prize page. Extracted per the AGENTS.md
+ * Styled components for the Rewards page. Extracted per the AGENTS.md
  * convention (renderer stays under the 250-LOC cap).
  */
 import styled from 'styled-components/macro'
@@ -47,12 +47,11 @@ export const PerkHeader = styled.div`
   gap: 10px;
 `
 
-export const PerkPartner = styled.span`
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.7;
+export const PartnerLogo = styled.img`
+  /* Wide wordmark logos (e.g. Octav 996x181): fix the height, let width follow. */
+  height: 18px;
+  width: auto;
+  display: block;
 `
 
 export const PerkTitle = styled.h3`
@@ -117,4 +116,48 @@ export const ClaimButton = styled.a`
   &:focus-visible {
     background: #ffb95a;
   }
+`
+
+export const ClaimActionButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #131214;
+  background: #f2a63e;
+  transition: background 120ms ease;
+
+  &:hover,
+  &:focus-visible {
+    background: #ffb95a;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+`
+
+export const ClaimPanel = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  > p {
+    margin: 0;
+    font-size: 13.5px;
+  }
+`
+
+export const ClaimNote = styled.span`
+  font-size: 12px;
+  opacity: 0.6;
+  line-height: 1.4;
 `

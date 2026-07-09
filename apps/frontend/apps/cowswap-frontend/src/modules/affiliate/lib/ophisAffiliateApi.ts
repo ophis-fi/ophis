@@ -142,6 +142,10 @@ export type AffiliateSignedAction =
   // Bind is per-code, so the action string carries the code itself. The
   // backend rebuilds `bind referral code <code>` and byte-matches it.
   | `bind referral code ${string}`
+  // Rewards claim: proves the connected address owns the XP being claimed.
+  // Verified by the team on claim processing (recoverMessageAddress over the
+  // same `Ophis <action>\nAddress: ...\nIssued: ...` message shape).
+  | `claim reward ${string}`
 
 export interface SignedRequestBody {
   wallet: string
