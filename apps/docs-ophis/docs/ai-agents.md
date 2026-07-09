@@ -31,7 +31,7 @@ The fastest way to give an MCP-capable agent full Ophis access is the hosted
 https://mcp.ophis.fi/mcp
 ```
 
-It speaks streamable-HTTP MCP and exposes twelve tools:
+It speaks streamable-HTTP MCP and exposes fourteen tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -40,7 +40,9 @@ It speaks streamable-HTTP MCP and exposes twelve tools:
 | `get_quote` | Fetch an executable quote for a parsed intent. |
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
+| `validate_order` | Offline preflight for an order you built outside `build_order`: catches the silent-failure modes (wrong appCode, wrong orderbook host, wrong EIP-712 domain, appData-hash mismatch, unpinned receiver) before you sign. |
 | `lookup_tier` | Look up a wallet's 30-day volume tier / rebate status. |
+| `get_integrator_earnings` | Look up what an integrator's own-fee / referral routing earned, by appCode: routed volume, the Ophis base fee, your stacked fee, and rebate paid-to-date with payout tx links. |
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
 | `get_balances` | Read a wallet's native and ERC-20 balances on one chain via a public RPC. |
 | `get_portfolio` | Read a wallet's token balances across multiple chains. |

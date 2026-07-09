@@ -49,10 +49,17 @@ describe('executeOphisSwap input guards', () => {
     ).rejects.toThrow(/does not operate on chain/i);
   });
 
-  it('requires a referral code (it carries the rebate)', async () => {
+  it('allows a missing referral code (warns once instead of throwing; the order still carries the base fee)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Referral is opt-in: an empty/missing code must NOT be a hard error (that hard
+    // throw was the top agent-adoption blocker). The call proceeds past the referral
+    // check and only rejects later for an unrelated reason (these input-guard mocks
+    // return an empty quote), never for a missing referral code.
     await expect(
-      executeOphisSwap(mockWallet(1), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, { referralCode: '' }),
-    ).rejects.toThrow(/referral code is required/i);
+      executeOphisSwap(mockWallet(1), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, {}),
+    ).rejects.not.toThrow(/referral code is required/i);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/no referralcode set/i));
+    warn.mockRestore();
   });
 
   it('rejects native ETH as the sell token (ERC-20 only — wrap to WETH)', async () => {
