@@ -67,6 +67,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
           -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
           AND t.volume_fee_bps IS DISTINCT FROM 0
+          -- Production chains only: mirror of accrual's Sepolia exclusion.
+          AND t.chain_id <> 11155111
           -- appData-wins (mirror of accrual): exclude trades attributed via an
           -- ACTIVE code owned by someone other than the trader, so bind volume
           -- here + appData volume below are disjoint (no double-count). The
@@ -89,6 +91,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
           AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
+          AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
           -- appData-wins (mirror of accrual): see the partner branch above.
           AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
             SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
@@ -123,6 +126,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
       -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
       -- since NULL is excluded.)
       AND t.volume_fee_bps > 0
+      AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
   `;
 
   const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
@@ -279,7 +283,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // also start with /ref/), so those keep falling through to the strict
     // allow-list branch and still receive POST in Access-Control-Allow-Methods.
     const isPublicRead =
-      req.method === 'GET' && (req.url.startsWith('/tier/') || req.url.startsWith('/ref/'));
+      req.method === 'GET' &&
+      (req.url.startsWith('/tier/') || req.url.startsWith('/ref/') || req.url.startsWith('/xp/'));
     if (isPublicRead) {
       reply.header('access-control-allow-origin', '*');
       reply.header('vary', 'Origin');

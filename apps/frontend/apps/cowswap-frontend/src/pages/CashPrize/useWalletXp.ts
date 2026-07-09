@@ -15,7 +15,9 @@ export interface WalletXpState {
  */
 export function useWalletXp(account: string | undefined): WalletXpState {
   const [data, setData] = useState<WalletXp | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Initialize as loading when a wallet is already connected so the first
+  // frame renders the loading branch, never a false "0 XP".
+  const [loading, setLoading] = useState(Boolean(account))
   const [error, setError] = useState(false)
 
   useEffect(() => {

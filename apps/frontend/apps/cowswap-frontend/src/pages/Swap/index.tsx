@@ -76,7 +76,9 @@ export function SwapPage(): ReactNode {
 
       <SwapUpdaters />
       <SwapStage>
-        <SwapWidget topContent={<ReferralCta fallback={DcaCta} />} />
+        {/* Partner iframe embeds keep the plain DCA banner: the referral CTA
+            would route partner users to /profile inside the host's iframe. */}
+        <SwapWidget topContent={isInjectedWidget() ? DcaCta : <ReferralCta fallback={DcaCta} />} />
         {/* Full app only. In an injected widget (partner iframe embeds) the panel is
             not mounted at all, so it never renders in or resizes a partner embed and
             never fetches GeckoTerminal from one. */}

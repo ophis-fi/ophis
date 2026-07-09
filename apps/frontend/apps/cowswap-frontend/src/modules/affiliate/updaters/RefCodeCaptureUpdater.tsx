@@ -33,6 +33,7 @@ import { ReactNode, useEffect, useRef } from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useAtomValue, useSetAtom } from 'jotai'
+import { RESET } from 'jotai/utils'
 
 import { useAffiliateTraderCodeFromUrl } from '../hooks/useAffiliateTraderCodeFromUrl'
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'
@@ -67,8 +68,10 @@ export function RefCodeCaptureUpdater(): ReactNode {
   // Promote a pre-connect captured code to the connecting wallet's bucket.
   // The first wallet to connect claims the pending code; the backend still
   // enforces net-new + first-bind-wins, so this only affects attribution
-  // of wallets that would otherwise carry no code at all. Re-validate the
-  // code shape on the way out: the pending slot is localStorage, which is
+  // of wallets that would otherwise carry no code at all. A wallet that
+  // ALREADY has a saved code keeps it (no overwrite, no surprise sign
+  // popup); the pending slot is consumed either way. Re-validate the code
+  // shape on the way out: the pending slot is localStorage, which is
   // user-editable and therefore a trust boundary.
   const pendingCode = useAtomValue(affiliatePendingRefCodeAtom)
   const setPendingCode = useSetAtom(affiliatePendingRefCodeAtom)
@@ -76,11 +79,11 @@ export function RefCodeCaptureUpdater(): ReactNode {
   useEffect(() => {
     if (!account || !pendingCode) return
     const validated = formatRefCode(pendingCode)
-    if (validated) {
+    if (validated && !savedCode) {
       setSavedCode({ savedCode: validated })
     }
-    setPendingCode(undefined)
-  }, [account, pendingCode, setSavedCode, setPendingCode])
+    setPendingCode(RESET)
+  }, [account, pendingCode, savedCode, setSavedCode, setPendingCode])
 
   // Guard against duplicate in-flight binds for the same (wallet, code).
   const inFlightKeyRef = useRef<string | undefined>(undefined)
@@ -138,6 +141,17 @@ export function RefCodeCaptureUpdater(): ReactNode {
         // for a future retry.
         if (error instanceof AffiliateApiError && (error.status === 409 || error.status === 400)) {
           markRefBound({ wallet: account, code })
+          return
+        }
+        // 401 = the signed timestamp fell outside the server's replay window,
+        // almost always a skewed CLIENT clock. It will 401 again on the very
+        // next attempt, so retrying within this session just loops a signature
+        // popup on every page load. Park it for the session (like a user
+        // rejection); a later session retries once, and self-heals when the
+        // clock is fixed.
+        if (error instanceof AffiliateApiError && error.status === 401) {
+          rejectedKeysRef.current.add(key)
+          console.warn('[RefCodeCaptureUpdater] bind rejected (401, likely clock skew) - paused for this session')
           return
         }
         // Transient (5xx / network / CORS / timeout): left un-marked for a later

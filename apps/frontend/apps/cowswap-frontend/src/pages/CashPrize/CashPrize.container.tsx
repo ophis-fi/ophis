@@ -82,6 +82,9 @@ function PerkCardView({ perk, xp, account }: PerkCardProps): ReactNode {
 export function CashPrizePage(): ReactNode {
   const { account } = useWalletInfo()
   const { data, loading, error } = useWalletXp(account)
+  // Loading covers the pre-fetch frame too (connected, no data, no error yet)
+  // so a "0 XP" never flashes before the real balance.
+  const isXpLoading = loading || (Boolean(account) && !data && !error)
 
   const xp = data?.xp ?? null
   const lockedThresholds = CASH_PRIZE_PERKS.filter((p) => xp === null || xp < p.xpRequired).map((p) => p.xpRequired)
@@ -103,7 +106,7 @@ export function CashPrizePage(): ReactNode {
             </p>
             <ConnectWalletCta />
           </Callout>
-        ) : loading ? (
+        ) : isXpLoading ? (
           <p>Loading your XP...</p>
         ) : error ? (
           <Callout tone="warning" title="Could not load your XP">
