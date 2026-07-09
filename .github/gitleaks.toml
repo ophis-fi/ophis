@@ -73,6 +73,16 @@ paths = [
   '''pnpm-lock\.yaml$''',
   '''yarn\.lock$''',
   '''(^|/)\.github/gitleaks\.toml$''',
+  # Example / documentation / test files that carry placeholder keys by design
+  # (dummy zeros, sequential hex, or the anvil fixtures). A real operational
+  # key would live in a rendered config or env, not a committed example/doc/test
+  # (and those surfaces are still scanned). Anchored with (^|/) so both the
+  # current and pre-restructure historical paths match under full-history scans.
+  '''(^|/)example\.toml$''',
+  '''(^|/)[^/]*\.example($|\.)''',
+  '''(^|/)cypress/''',
+  '''(^|/)docs/development/plans/''',
+  '''(^|/)README\.md$''',
 ]
 regexTarget = "line"
 regexes = [
