@@ -21,16 +21,20 @@ export function useWalletXp(account: string | undefined): WalletXpState {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    if (!account) {
-      setData(null)
-      return
-    }
+    // Drop the previous wallet's XP immediately on any account change:
+    // eligibility must never be derived from another account's balance,
+    // neither while the new fetch is in flight nor after it fails (Codex
+    // post-merge review).
+    setData(null)
+    setError(false)
+    if (!account) return
     const signal = { cancelled: false }
     setLoading(true)
-    setError(false)
     getWalletXp(account)
       .then((res) => {
-        if (!signal.cancelled) setData(res)
+        // The endpoint echoes the queried wallet lowercased; accept only a
+        // response for the account this effect ran for.
+        if (!signal.cancelled && res.wallet === account.toLowerCase()) setData(res)
       })
       .catch(() => {
         if (!signal.cancelled) setError(true)
