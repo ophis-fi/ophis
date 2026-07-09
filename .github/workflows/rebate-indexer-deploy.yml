@@ -105,19 +105,28 @@ jobs:
              cd /srv/ophis/apps/rebate-indexer
              docker compose up -d --build
              # up -d does NOT recreate caddy when only its bind-mounted Caddyfile
-             # changed (bind mounts are outside the compose config hash), so
-             # explicitly reload caddy to pick up Caddyfile edits; fall back to a
-             # container restart if the graceful reload is unavailable.
-             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile || docker compose restart caddy
+             # changed (bind mounts are outside the compose config hash), so pick
+             # up Caddyfile edits explicitly. VALIDATE first, then reload; set -e
+             # fails the deploy on a bad config. Do NOT fall back to 'restart
+             # caddy' on failure -- that would relaunch caddy into a crash-loop
+             # with port 80 down while the indexer :8080 check below still passes,
+             # letting the deploy go green with public traffic broken (Codex).
+             # A graceful reload keeps serving the old config if the new one is
+             # rejected, so a validation failure never drops the listener.
+             docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
              docker compose ps
-             # Wait for /health to return 200 before declaring success
+             # Require BOTH the indexer (:8080) and the public caddy listener
+             # (:80) to answer 200 before success, so a caddy that failed to
+             # serve fails the deploy instead of going green on an indexer probe.
              for i in 1 2 3 4 5 6 7 8 9 10; do
-               if curl -fsS http://localhost:8080/health >/dev/null; then
-                 echo 'health ok'
+               if curl -fsS http://localhost:8080/health >/dev/null && curl -fsS http://localhost:80/health >/dev/null; then
+                 echo 'health ok (indexer + caddy)'
                  exit 0
                fi
                sleep 3
              done
              echo 'health check failed after 30s'
              docker compose logs indexer | tail -30
+             docker compose logs caddy | tail -30
              exit 1"

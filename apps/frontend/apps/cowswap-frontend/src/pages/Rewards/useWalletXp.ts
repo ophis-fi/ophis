@@ -47,5 +47,12 @@ export function useWalletXp(account: string | undefined): WalletXpState {
     }
   }, [account])
 
-  return { data, loading, error }
+  // Gate the returned data by the CURRENT account at read time, not just via
+  // the clearing effect above. On an A->B switch React renders once with B's
+  // account while A's data is still in state (effects run after that render),
+  // so a read-time match is what prevents B from ever deriving eligibility
+  // from A's XP for that frame (Codex post-merge review).
+  const scopedData = data && account && data.wallet === account.toLowerCase() ? data : null
+
+  return { data: scopedData, loading, error }
 }

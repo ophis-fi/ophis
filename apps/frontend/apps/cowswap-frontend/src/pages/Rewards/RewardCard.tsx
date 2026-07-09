@@ -14,7 +14,7 @@
  * The reward only unblocks AFTER the address validation succeeds; eligibility
  * alone (step 2) never reveals redemption content.
  */
-import { ReactNode, useCallback, useEffect, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useIsSmartContractWallet } from '@cowprotocol/wallet'
 
@@ -66,6 +66,11 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   const isSmartContractWallet = useIsSmartContractWallet()
   const [claim, setClaim] = useState<ClaimState>({ step: 'idle' })
 
+  // Latest account, for guarding async claim continuations against a wallet
+  // switch that lands while the signature prompt is pending.
+  const accountRef = useRef(account)
+  accountRef.current = account
+
   // A wallet switch resets the claim machine: a validation belongs to the
   // address that signed it, never to whichever address connects next.
   useEffect(() => {
@@ -80,11 +85,17 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
     // Re-check eligibility at click time: the CTA only renders when eligible,
     // but a wallet switch could land between render and click.
     if (!isEligible || !account) return
+    const startAccount = account
     setClaim({ step: 'validating' })
     try {
       const signed = await sign(`claim reward ${perk.id}`)
-      setClaim({ step: 'validated', wallet: account, issued: signed.issued, signature: signed.signature })
+      // Bail if the wallet changed during signing: the account-change effect
+      // already reset the claim for the new wallet, so applying A's result
+      // (validated/rejected/error) here would leak into B's card (Codex review).
+      if (accountRef.current !== startAccount) return
+      setClaim({ step: 'validated', wallet: startAccount, issued: signed.issued, signature: signed.signature })
     } catch (error: unknown) {
+      if (accountRef.current !== startAccount) return
       const code = (error as { code?: number | string })?.code
       setClaim(code === 4001 || code === 'ACTION_REJECTED' ? { step: 'rejected' } : { step: 'error' })
     }
@@ -134,6 +145,16 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
             <styledEl.ClaimNote>
               The email includes your signed proof; the {perk.partner} code is sent back after a quick check.
             </styledEl.ClaimNote>
+          </styledEl.ClaimPanel>
+        ) : isSmartContractWallet === undefined ? (
+          <styledEl.ClaimPanel>
+            {/* Wallet type not yet resolved (lookup loading or failed). Hold
+                the claim button rather than defaulting to the EOA signature
+                path, so a contract wallet can't slip through the EIP-191 flow
+                during that window (Codex review). */}
+            <styledEl.ClaimActionButton type="button" disabled>
+              Checking wallet...
+            </styledEl.ClaimActionButton>
           </styledEl.ClaimPanel>
         ) : isSmartContractWallet ? (
           <styledEl.ClaimPanel>
