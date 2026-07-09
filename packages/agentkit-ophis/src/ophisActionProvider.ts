@@ -5,19 +5,25 @@ import { OphisSwapSchema } from './schemas.js';
 import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisActionProviderConfig {
-  /** The integrator referral code that earns the 8-12% rebate. Falls back to OPHIS_REFERRAL_CODE. */
+  /**
+   * OPTIONAL integrator referral code that earns the 8-12% rebate. Falls back to
+   * OPHIS_REFERRAL_CODE. Omit it and swaps still work (you just forgo the
+   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   */
   referralCode?: string;
 }
 
 export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
-  readonly #referralCode: string;
+  readonly #referralCode: string | undefined;
 
   constructor(config: OphisActionProviderConfig = {}) {
     super('ophis', []);
     const code = config.referralCode ?? process.env.OPHIS_REFERRAL_CODE;
     if (!code) {
-      throw new Error(
-        '@ophis/agentkit-ophis: referral code required (pass config.referralCode or set OPHIS_REFERRAL_CODE) — it carries the rebate.',
+      // Do not block construction on a missing code (that was the top adoption
+      // killer): warn once, keep working, let the builder add a code to earn.
+      console.warn(
+        '[@ophis/agentkit-ophis] No referral code set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass config.referralCode or set OPHIS_REFERRAL_CODE.',
       );
     }
     this.#referralCode = code;
@@ -42,7 +48,7 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
           sellAmount: args.sellAmount,
           slippageBps: args.slippageBps ?? undefined,
         },
-        { referralCode: this.#referralCode },
+        this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {},
       );
       return JSON.stringify({ success: true, ...result });
     } catch (error) {

@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "fi.ophis/mcp",
   "title": "Ophis MCP",
-  "description": "Gasless, MEV-protected onchain token swaps for AI agents on 11 EVM chains, built on CoW Protocol.",
-  "version": "0.1.0",
+  "description": "Gasless, MEV-protected onchain token swaps for AI agents on 12 EVM chains, built on CoW Protocol.",
+  "version": "0.1.1",
   "websiteUrl": "https://ophis.fi",
   "repository": {
     "url": "https://github.com/ophis-fi/ophis",
@@ -19,7 +19,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "tool": "ophis-mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "docs": "https://docs.ophis.fi/",
       "tools": [
         "parse_intent",
@@ -28,8 +28,10 @@
         "get_quote",
         "expected_surplus",
         "build_order",
+        "validate_order",
         "submit_order",
         "lookup_tier",
+        "get_integrator_earnings",
         "get_balances",
         "get_portfolio",
         "get_gas",
