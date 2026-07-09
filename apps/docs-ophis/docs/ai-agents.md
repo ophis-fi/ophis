@@ -270,6 +270,72 @@ Implement the handler by `POST`ing `{ "text": <text> }` to
 `https://ophis.fi/api/intent` (see the Python helper above), then surface
 the resulting deep link to the user.
 
+## Drop-in framework adapters
+
+Everything above keeps a human in the signing loop. If instead you are building
+an agent that executes swaps itself and you are on a common framework, you do
+not have to hand-roll the order flow in the next section. Three published npm
+packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
+and each stamps your referral code into every order so the rebate accrues:
+
+| Package | For | Registers |
+| --- | --- | --- |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | [GOAT SDK](https://github.com/goat-sdk/goat) | an `ophis_swap` tool |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | any custom EOA framework | the `executeOphisSwap()` core |
+
+Coinbase AgentKit, in one line:
+
+```ts
+import { AgentKit } from '@coinbase/agentkit';
+import { ophisActionProvider } from '@ophis/agentkit-ophis';
+
+const agentKit = await AgentKit.from({
+  walletProvider, // any EvmWalletProvider (Viem, CDP, Privy, ZeroDev)
+  actionProviders: [ophisActionProvider({ referralCode: process.env.OPHIS_REFERRAL_CODE })],
+});
+```
+
+GOAT SDK:
+
+```ts
+import { ophis } from '@ophis/plugin-goat';
+
+const tools = await getOnChainTools({
+  wallet: viem(walletClient),
+  plugins: [ophis({ referralCode: process.env.OPHIS_REFERRAL_CODE })],
+});
+```
+
+Both register a swap that takes `sellToken`, `buyToken`, `sellAmount` (whole
+units, e.g. `"1.5"`), and an optional `slippageBps` (default `50` = 0.5%). Each
+quotes against the Ophis orderbook, signs the order EIP-712 with the agent's own
+wallet, approves the CoW vault relayer once, submits, and returns the order UID
+plus an explorer URL. ERC-20 to ERC-20 only (native-ETH sells need CoW eth-flow,
+a separate path, so wrap to WETH first). The agent's wallet is the order owner
+**and** receiver, so funds only ever move through the audited CoW settlement
+contract, back to the same wallet.
+
+The `referralCode` is optional: omit it and swaps still work and settle, you just
+forgo the rebate. Mint one below, then ship, no redeploy of the swap path needed
+to start earning.
+
+## Get a referral code
+
+Every order these adapters (or the SDK below) build already carries the Ophis
+partner fee. Add your **referral code** and that same order also credits *you*
+with the [affiliate rebate](./affiliate.md) on its volume, currently 8 to 12
+percent, paid on-chain. The code rides in the order's appData, so there is
+nothing for the end user to sign or opt into.
+
+1. Open the [Rewards page](https://swap.ophis.fi/#/rewards) and connect a wallet.
+2. Mint a code (about 30 seconds). It is yours permanently.
+3. Pass it to any adapter as `referralCode`, or export `OPHIS_REFERRAL_CODE` and
+   the adapters pick it up automatically.
+
+The code is **optional**: without one your agent still swaps normally, it just
+earns no rebate. You can ship first and add the code later.
+
 ## Submitting orders programmatically
 
 The Intent API only normalizes language, it does not place orders. To submit
@@ -277,6 +343,11 @@ orders programmatically, build and sign a
 [CoW Protocol order](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)
 yourself. Four things must each be exactly right, every one fails **silently**
 (a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
+
+If your agent runs on Coinbase AgentKit or GOAT, the [drop-in
+adapters](#drop-in-framework-adapters) above already get all four right, hand-roll
+this only if you are on neither. The `@ophis/sdk` helpers below are also what
+those adapters call under the hood.
 
 The helpers below live in **`@ophis/sdk`**, published on npm (v0.2.3, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs

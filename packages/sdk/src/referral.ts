@@ -41,7 +41,13 @@ export function normalizeOphisReferralCode(code: string): string {
  *   const metadata = { ...otherMetadata, ...buildOphisReferrerMetadata('acme') }
  *
  * which yields `metadata.ophisReferrer.code === 'acme'`.
+ *
+ * The code is OPTIONAL: called with no code (or an empty string) it returns
+ * `{}`, so an order can be built and settled WITHOUT a referral (it still
+ * carries the Ophis partner fee) and simply earns no rebate. This lets an agent
+ * builder swap out of the box and add a code later to start earning.
  */
-export function buildOphisReferrerMetadata(code: string): { ophisReferrer: OphisReferrerTag } {
+export function buildOphisReferrerMetadata(code?: string): { ophisReferrer?: OphisReferrerTag } {
+  if (!code) return {};
   return { ophisReferrer: { code: normalizeOphisReferralCode(code) } };
 }

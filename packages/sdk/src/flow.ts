@@ -47,8 +47,11 @@ export const isOphisFeeChain = (chainId: number): boolean => {
 export interface OphisOrderMetadataOptions {
   /** Chain the order settles on. Must be an Ophis-served chain. */
   readonly chainId: number;
-  /** Your Ophis referral code. Earns the rebate; embedded in metadata.ophisReferrer.code. */
-  readonly referralCode: string;
+  /** Your Ophis referral code. OPTIONAL: when set it earns the rebate and is
+   *  embedded in metadata.ophisReferrer.code; when omitted the order still
+   *  carries the Ophis partner fee and settles normally, you just forgo the
+   *  rebate. Mint one at https://swap.ophis.fi/#/rewards. */
+  readonly referralCode?: string;
   /**
    * True ONLY for a same-chain stablecoin pair, which charges the reduced 1 bp
    * rate instead of the standard 5 bps partner rate. You decide this; the SDK is
@@ -71,7 +74,9 @@ export interface OphisAppDataInput {
   readonly appCode: 'ophis';
   readonly metadata: {
     readonly partnerFee: OphisPartnerFee;
-    readonly ophisReferrer: { readonly code: string };
+    /** Present only when a referral code was supplied; the partner fee applies
+     *  either way, so an order without it is still a valid, fee-bearing Ophis order. */
+    readonly ophisReferrer?: { readonly code: string };
     readonly signer?: `0x${string}`;
     readonly hooks: Record<string, never>;
   };
@@ -119,13 +124,14 @@ export function buildOphisOrderMetadata(opts: OphisOrderMetadataOptions): OphisA
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
     volumeBps: ophisVolumeBpsForPair(isStablePair),
   };
-  // buildOphisReferrerMetadata validates the code grammar and throws on a typo.
-  const { ophisReferrer } = buildOphisReferrerMetadata(referralCode);
+  // buildOphisReferrerMetadata validates the code grammar and throws on a typo;
+  // with no code it returns {} so the order is fee-bearing but unattributed.
+  const referrerTag = buildOphisReferrerMetadata(referralCode);
   return {
     appCode: 'ophis',
     metadata: {
       partnerFee,
-      ophisReferrer,
+      ...referrerTag,
       ...(signer !== undefined ? { signer } : {}),
       hooks: {},
     },
