@@ -103,17 +103,24 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   }, [account])
 
   const onCreate = useCallback(async () => {
+    // Pin the flow to the wallet that started it. If the account changes
+    // during any await, the account-change effect has already reset state for
+    // the NEW wallet, so a stale continuation must bail WITHOUT touching state
+    // (including the 'creating' transition and the catch path) — otherwise it
+    // strands the new wallet on a "Creating..."/error label (Codex review).
+    const startAccount = account
     setCreateState('signing')
     try {
       const body = await sign('create referral code')
+      if (accountRef.current !== startAccount) return
       setCreateState('creating')
       const res = await createRefCode(body)
-      if (accountRef.current !== account) return
+      if (accountRef.current !== startAccount) return
       setStats((prev) =>
         prev
           ? { ...prev, activeCodes: [res.code, ...prev.activeCodes.filter((c) => c !== res.code)] }
           : {
-              wallet: account,
+              wallet: startAccount,
               kind: 'regular',
               rateOfNetFeePct: 8,
               activeCodes: [res.code],
@@ -124,6 +131,7 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
       )
       setCreateState('idle')
     } catch (error: unknown) {
+      if (accountRef.current !== startAccount) return
       // User-rejected signature (ethers v5 ACTION_REJECTED / EIP-1193 4001).
       const code = (error as { code?: number | string })?.code
       if (code === 4001 || code === 'ACTION_REJECTED') {
