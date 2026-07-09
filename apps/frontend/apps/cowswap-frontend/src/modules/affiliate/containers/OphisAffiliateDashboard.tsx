@@ -95,6 +95,13 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   const accountRef = useRef(account)
   accountRef.current = account
 
+  // A wallet switch resets the mint state machine: without this, a stale
+  // in-flight create (guarded below) or a stale error/rejected state would
+  // leave the NEW wallet's mint button disabled or mislabeled.
+  useEffect(() => {
+    setCreateState('idle')
+  }, [account])
+
   const onCreate = useCallback(async () => {
     setCreateState('signing')
     try {

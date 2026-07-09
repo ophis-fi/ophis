@@ -809,6 +809,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
           SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
         ))
+        --   (3) production chains only, mirroring the headline stats + accrual, so
+        --       per-referee rows reconcile with the totals (Codex post-merge review).
+        AND t.chain_id <> 11155111
       WHERE r.referrer_wallet = ${buf}
       GROUP BY r.referred_wallet, r.bound_at
       ORDER BY r.bound_at DESC
@@ -945,6 +948,14 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
     const walletBuf = Buffer.from(raw.slice(2), 'hex');
+    // Enroll like /tier: the fetcher only indexes tracked_wallets, so a wallet
+    // whose first touchpoint is the Rewards page would otherwise read 0 XP
+    // forever. Same cheap idempotent upsert, no outbound calls (Codex
+    // post-merge review).
+    await sql`
+      INSERT INTO tracked_wallets (wallet) VALUES (${walletBuf})
+      ON CONFLICT (wallet) DO NOTHING
+    `;
     const chainIds = [...PRODUCTION_CHAIN_IDS];
     const rows = await sql<{ vol: string }[]>`
       SELECT COALESCE(SUM(value_usd), 0)::text AS vol

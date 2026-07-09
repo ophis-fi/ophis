@@ -14,7 +14,9 @@
  * The reward only unblocks AFTER the address validation succeeds; eligibility
  * alone (step 2) never reveals redemption content.
  */
-import { ReactNode, useCallback, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useState } from 'react'
+
+import { useIsSmartContractWallet } from '@cowprotocol/wallet'
 
 import { useOphisAffiliateSign } from 'modules/affiliate'
 
@@ -47,7 +49,9 @@ function claimHref(perk: RewardPerk, account: string, issued: number, signature:
 type ClaimState =
   | { step: 'idle' }
   | { step: 'validating' }
-  | { step: 'validated'; issued: number; signature: string }
+  // `wallet` pins the validation to the address that actually signed: the
+  // validated branch renders only while that address is still connected.
+  | { step: 'validated'; wallet: string; issued: number; signature: string }
   | { step: 'rejected' }
   | { step: 'error' }
 
@@ -59,9 +63,17 @@ interface RewardCardProps {
 
 export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   const sign = useOphisAffiliateSign(account)
+  const isSmartContractWallet = useIsSmartContractWallet()
   const [claim, setClaim] = useState<ClaimState>({ step: 'idle' })
 
+  // A wallet switch resets the claim machine: a validation belongs to the
+  // address that signed it, never to whichever address connects next.
+  useEffect(() => {
+    setClaim({ step: 'idle' })
+  }, [account])
+
   const isEligible = account !== undefined && xp !== null && xp >= perk.xpRequired
+  const isValidated = claim.step === 'validated' && account !== undefined && claim.wallet === account
   const progressPct = xp === null ? 0 : (xp / perk.xpRequired) * 100
 
   const onClaim = useCallback(async () => {
@@ -71,7 +83,7 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
     setClaim({ step: 'validating' })
     try {
       const signed = await sign(`claim reward ${perk.id}`)
-      setClaim({ step: 'validated', issued: signed.issued, signature: signed.signature })
+      setClaim({ step: 'validated', wallet: account, issued: signed.issued, signature: signed.signature })
     } catch (error: unknown) {
       const code = (error as { code?: number | string })?.code
       setClaim(code === 4001 || code === 'ACTION_REJECTED' ? { step: 'rejected' } : { step: 'error' })
@@ -80,7 +92,7 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
 
   const badge = !isEligible ? (
     <Badge tone="planned">{`${formatXp(perk.xpRequired)} XP`}</Badge>
-  ) : claim.step === 'validated' ? (
+  ) : isValidated ? (
     <Badge tone="live">Unlocked</Badge>
   ) : (
     <Badge tone="live">Eligible</Badge>
@@ -111,16 +123,28 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
                 : `${formatXp(xp)} / ${formatXp(perk.xpRequired)} XP`}
             </styledEl.ProgressLabel>
           </>
-        ) : claim.step === 'validated' ? (
+        ) : isValidated && claim.step === 'validated' ? (
           <styledEl.ClaimPanel>
             <p>
-              Address <strong>{truncateAddress(account)}</strong> validated. Your reward is unlocked.
+              Address <strong>{truncateAddress(claim.wallet)}</strong> validated. Your reward is unlocked.
             </p>
-            <styledEl.ClaimButton href={claimHref(perk, account, claim.issued, claim.signature)}>
+            <styledEl.ClaimButton href={claimHref(perk, claim.wallet, claim.issued, claim.signature)}>
               Request your code by email
             </styledEl.ClaimButton>
             <styledEl.ClaimNote>
               The email includes your signed proof; the {perk.partner} code is sent back after a quick check.
+            </styledEl.ClaimNote>
+          </styledEl.ClaimPanel>
+        ) : isSmartContractWallet ? (
+          <styledEl.ClaimPanel>
+            {/* Safe and other contract wallets cannot produce the recoverable
+                EIP-191 signature the claim check verifies (they sign via
+                EIP-1271, which needs an on-chain call to validate). Route
+                them to email until a 1271-aware claim path exists. */}
+            <styledEl.ClaimNote>
+              Smart-contract wallets are not supported for signature claims yet. Email{' '}
+              <TextLink href={`mailto:${CLAIM_EMAIL}`}>{CLAIM_EMAIL}</TextLink> from your project
+              contact and include your Safe address; eligibility is checked on-chain.
             </styledEl.ClaimNote>
           </styledEl.ClaimPanel>
         ) : (
