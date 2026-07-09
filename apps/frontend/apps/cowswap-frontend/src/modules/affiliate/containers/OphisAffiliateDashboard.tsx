@@ -23,7 +23,7 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useCopyClipboard } from '@cowprotocol/common-hooks'
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 
 import { Callout, InlineCode, KeyValueList, MetricCard, Section } from 'ophis/ds'
 
@@ -98,10 +98,11 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
 
   // A GENUINE wallet switch resets the mint state machine (a stale in-flight
   // create or error/rejected state would otherwise mislabel the new wallet's
-  // button). Key on the lowercased address so a checksum-only re-emit of the
-  // SAME wallet does NOT reset mid-signature -- otherwise the reset re-enables
-  // the button and the user can fire a duplicate createRefCode (Codex review).
-  const accountKey = account.toLowerCase()
+  // button). Key on the canonical address key so a checksum-only re-emit of
+  // the SAME wallet does NOT reset mid-signature -- otherwise the reset
+  // re-enables the button and the user can fire a duplicate createRefCode
+  // (Codex review).
+  const accountKey = getAddressKey(account)
   useEffect(() => {
     setCreateState('idle')
   }, [accountKey])
