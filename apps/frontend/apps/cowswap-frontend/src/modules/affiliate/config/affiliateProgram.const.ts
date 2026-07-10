@@ -25,6 +25,9 @@ export const PAST_ORDERS_SCAN_LIMIT = 10
 export const AFFILIATE_TRADER_SAVED_CODES_STORAGE_KEY = 'cowswap:affiliateTraderSavedCodes:v0'
 export const AFFILIATE_TRADER_PAYOUT_CONFIRMATIONS_STORAGE_KEY = 'cowswap:affiliateTraderPayoutConfirmations:v0'
 export const AFFILIATE_PENDING_REF_CODE_STORAGE_KEY = 'ophis:affiliatePendingRefCode:v0'
+// The connected wallet's OWN referral code, cached so the post-trade share can
+// embed it as ?ref= without a fresh signature. See affiliateOwnCodeAtom.
+export const AFFILIATE_OWN_CODE_STORAGE_KEY = 'ophis:affiliateOwnCode:v0'
 
 export const AFFILIATE_SUPPORTED_NETWORK_NAMES = AFFILIATE_SUPPORTED_CHAIN_IDS.map(
   (chainId) => CHAIN_INFO[chainId].label,

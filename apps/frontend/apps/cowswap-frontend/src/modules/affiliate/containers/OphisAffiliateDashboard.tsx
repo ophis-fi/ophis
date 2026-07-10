@@ -25,12 +25,15 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useCopyClipboard } from '@cowprotocol/common-hooks'
 import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 
+import { useSetAtom } from 'jotai'
+
 import { Callout, InlineCode, KeyValueList, MetricCard, Section } from 'ophis/ds'
 
 import { ActionButton, GhostButton, MetricRow, ShareRow } from 'pages/Affiliate/Affiliate.styled'
 
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'
 import { type AffiliateStats, AffiliateApiError, createRefCode, getAffiliateStats } from '../lib/ophisAffiliateApi'
+import { setAffiliateOwnCodeAtom } from '../state/affiliateOwnCodeAtom'
 
 import { PartnerAffiliateSummary } from './PartnerAffiliateSummary'
 
@@ -151,6 +154,15 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   // Render the rate from the backend (8 is only a last-resort fallback before
   // stats load), so the view tracks FEE_SHARE_BPS if the policy ever changes.
   const rate = stats?.rateOfNetFeePct ?? 8
+
+  // Cache the connected wallet's own code so the post-trade "share your swap"
+  // tweet can embed it as ?ref= (turning every affiliate's swap into a referral
+  // link) without a fresh signature. Placed before the partner early-return so
+  // both regular and partner codes are captured; no-op for a wallet with none.
+  const persistOwnCode = useSetAtom(setAffiliateOwnCodeAtom)
+  useEffect(() => {
+    if (activeCode) persistOwnCode(activeCode)
+  }, [activeCode, persistOwnCode])
 
   // Partner-aware branch: a connected wallet whose own public stats report
   // kind === 'partner' gets the read-only partner summary, NOT the regular
