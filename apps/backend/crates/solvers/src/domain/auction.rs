@@ -77,6 +77,17 @@ impl Price {
             .checked_mul(eth::U256::from(Self::BASE))?
             .checked_div(self.0.0)
     }
+
+    /// Computes the native-token (wei) value of `amount` base units of the
+    /// token priced at `self`. This is the inverse of [`Self::ether_value`]:
+    /// given a token amount it returns the equivalent value denominated in the
+    /// native reference asset. Returns `None` on overflow, so callers relying
+    /// on it as a coarse tripwire should fail open.
+    pub fn native_value(&self, amount: eth::U256) -> Option<eth::U256> {
+        amount
+            .checked_mul(self.0.0)?
+            .checked_div(eth::U256::from(Self::BASE))
+    }
 }
 
 /// The estimated effective gas price that will likely be used for executing the

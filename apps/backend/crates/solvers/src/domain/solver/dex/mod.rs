@@ -50,6 +50,10 @@ pub struct Dex {
     /// Whether to internalize the solution interactions using the Settlement
     /// contract buffer.
     internalize_interactions: bool,
+
+    /// OUTPUT-side anti-siphon guards applied to every aggregator swap at the
+    /// `dex::Swap::into_solution` choke point.
+    output_guard: dex::OutputGuard,
 }
 
 /// The amount of time we aim the solver to finish before the final deadline is
@@ -76,6 +80,7 @@ impl Dex {
             rate_limiter,
             gas_offset: config.gas_offset,
             internalize_interactions: config.internalize_interactions,
+            output_guard: config.output_guard,
         }
     }
 
@@ -108,11 +113,13 @@ impl Dex {
         auction: &'a auction::Auction,
     ) -> impl stream::Stream<Item = solution::Solution> + 'a {
         // A price-estimation quote (`auction.id == Id::Quote`, i.e. the DTO `id`
-        // field was absent) must report the OPTIMISTIC swap output, matching
-        // 0x/ParaSwap, instead of the slippage floor that is correct only for
-        // on-chain settlement. Computed once; an auction is wholly quote or
-        // wholly solve. NEVER true for a competition auction (those carry a
-        // numeric id => Id::Solve), so the settle path is untouched.
+        // field was absent) is handled two ways downstream: (a) the flooring DEX
+        // lanes report the OPTIMISTIC swap output (0x/ParaSwap parity, not the
+        // settle-only slippage floor), and (b) the strict output-delivery
+        // simulation must NOT reject it — a quote's owner is unfunded so the sim
+        // cannot run and would fail closed. Computed once; an auction is wholly
+        // quote or wholly solve. NEVER true for a competition auction (those
+        // carry a numeric id => Id::Solve), so the settle path is untouched.
         let is_quote = matches!(auction.id, auction::Id::Quote);
         stream::iter(auction.orders.iter())
             .enumerate()
@@ -241,8 +248,10 @@ impl Dex {
                 order.clone(),
                 gas_price,
                 sell,
+                tokens,
                 &self.simulator,
                 self.gas_offset,
+                &self.output_guard,
                 is_quote,
             )
             .await
