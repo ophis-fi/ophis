@@ -36,13 +36,14 @@ async fn swap_sell_regular() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100000000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage, false).await;
+    let swap_response = okx.swap(&order, &slippage).await;
     let swap = swap_response.unwrap();
 
     assert_eq!(swap.input.token, order.amount().token);
@@ -80,13 +81,14 @@ async fn swap_buy_disabled() {
         sell: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage, false).await;
+    let swap_response = okx.swap(&order, &slippage).await;
     assert!(matches!(
         swap_response.unwrap_err(),
         crate::infra::dex::okx::Error::OrderNotSupported
@@ -120,13 +122,14 @@ async fn swap_buy_enabled() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage, false).await;
+    let swap_response = okx.swap(&order, &slippage).await;
     let swap = swap_response.unwrap();
 
     assert_eq!(swap.output.token, order.amount().token);
@@ -167,13 +170,14 @@ async fn swap_api_error() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::ZERO),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage, false).await;
+    let swap_response = okx.swap(&order, &slippage).await;
 
     assert!(matches!(
         swap_response.unwrap_err(),
@@ -208,13 +212,14 @@ async fn swap_sell_insufficient_liquidity() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(10000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage, false).await;
+    let swap_response = okx.swap(&order, &slippage).await;
 
     assert!(matches!(
         swap_response.unwrap_err(),
@@ -249,13 +254,14 @@ async fn swap_buy_insufficient_liquidity() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(10000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage, false).await;
+    let swap_response = okx.swap(&order, &slippage).await;
 
     assert!(matches!(
         swap_response.unwrap_err(),

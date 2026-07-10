@@ -34,6 +34,7 @@ async fn swap_sell_live_op_mainnet() {
         buy: TokenAddress::from(address!("0x0b2c639c533813f4aa9d7837caf62653d097ff85")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 

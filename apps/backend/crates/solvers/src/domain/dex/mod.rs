@@ -63,6 +63,15 @@ pub struct Order {
     pub buy: eth::TokenAddress,
     pub side: order::Side,
     pub amount: Amount,
+    /// The order's signed minimum buy amount for THIS (possibly partial) fill,
+    /// at the order's limit price. On the SELL solve path the flooring
+    /// aggregator lanes bound the router's minReturn to at least this so a swap
+    /// the order would actually accept is never dropped by `satisfies`: the
+    /// fixed-slippage floor can otherwise sit below the limit when the user's
+    /// slippage is tighter than the solver's, leaving an optimistically-quoted
+    /// order unsettleable. Ignored on the quote path (which reports optimistic)
+    /// and for BUY (exactOut pins the output).
+    pub buy_limit: eth::U256,
     pub owner: eth::Address,
 }
 
@@ -76,8 +85,36 @@ impl Order {
                 order::Side::Buy => order.buy.amount,
                 order::Side::Sell => order.sell.amount,
             }),
+            // For a SELL this is the signed min-buy (scaled to the fill by the
+            // caller); for a BUY it is the exact requested output. Unused on the
+            // BUY floor path but carried uniformly.
+            buy_limit: order.buy.amount,
             owner: order.owner(),
         }
+    }
+
+    /// SELL solve path only: the aggregator slippage (bps) to actually send so
+    /// the router's guaranteed minReturn covers the order's signed buy limit.
+    /// Returns the TIGHTER of the solver's configured slippage and the slippage
+    /// implied by the order's limit vs the optimistic route output, so a loose
+    /// order keeps the configured floor while a tight one is bounded to its
+    /// limit (never over-tightened). Reporting `min_return_amount(optimistic,
+    /// this)` then yields `max(floor, buy_limit)`, which both settles (<=
+    /// realized, the router guarantees minReturn) and satisfies (>= buy_limit).
+    pub fn bounded_solve_slippage_bps(&self, optimistic: eth::U256, configured_bps: u16) -> u16 {
+        // Limit at or above the optimistic route output: send zero slippage so
+        // the router must realize the full optimistic (the tightest safe bound);
+        // if the market can't deliver it the swap is correctly not settled.
+        if self.buy_limit >= optimistic || optimistic.is_zero() {
+            return 0;
+        }
+        let bps = eth::U256::from(10_000u64);
+        // implied = (optimistic - buy_limit) / optimistic, in bps. In [0, 10000)
+        // since 0 < buy_limit < optimistic, so the u16 cast never truncates.
+        let implied_bps: u16 = ((optimistic - self.buy_limit) * bps / optimistic)
+            .try_into()
+            .unwrap_or(configured_bps);
+        configured_bps.min(implied_bps)
     }
 
     /// Returns the order swapped amount as an asset. The token associated with
@@ -903,5 +940,54 @@ mod output_guard_tests {
             )
             .await;
         assert!(solution.is_some());
+    }
+}
+
+#[cfg(test)]
+mod bounded_slippage_tests {
+    use {super::*, crate::domain::order, alloy::primitives::address};
+
+    fn sell_order(buy_limit: u128) -> Order {
+        Order {
+            sell: eth::TokenAddress(address!("0x0b2c639c533813f4aa9d7837caf62653d097ff85")),
+            buy: eth::TokenAddress(address!("0x4200000000000000000000000000000000000006")),
+            side: order::Side::Sell,
+            amount: Amount::new(U256::from(1_000u64)),
+            buy_limit: U256::from(buy_limit),
+            owner: address!("0x0000000000000000000000000000000000000001"),
+        }
+    }
+
+    #[test]
+    fn loose_order_keeps_configured_slippage() {
+        // buy_limit (900) below the configured floor (990): the fixed floor
+        // already satisfies, so the configured slippage is unchanged.
+        assert_eq!(
+            sell_order(900).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            100
+        );
+    }
+
+    #[test]
+    fn tight_order_is_bounded_to_its_limit() {
+        // buy_limit (995) above the configured floor (990) — the P1 case.
+        // Tighten to 50 bps so the reported floor == 995 == buy_limit, so the
+        // order the optimistic quote produced still settles.
+        assert_eq!(
+            sell_order(995).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            50
+        );
+    }
+
+    #[test]
+    fn limit_at_or_above_optimistic_sends_zero() {
+        assert_eq!(
+            sell_order(1_000).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            0
+        );
+        assert_eq!(
+            sell_order(1_100).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            0
+        );
     }
 }

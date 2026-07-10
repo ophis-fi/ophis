@@ -43,6 +43,7 @@ async fn swap_sell_live_op_mainnet() {
         buy: TokenAddress::from(address!("0x0b2c639c533813f4aa9d7837caf62653d097ff85")),
         side: order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -88,6 +89,7 @@ async fn swap_buy_live_op_mainnet() {
         buy: TokenAddress::from(address!("0x4200000000000000000000000000000000000006")),
         side: order::Side::Buy,
         amount: Amount::new(buy_amount),
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -141,6 +143,7 @@ async fn buy_with_partner_fee_is_rejected_before_network() {
         buy: TokenAddress::from(address!("0x4200000000000000000000000000000000000006")),
         side: order::Side::Buy,
         amount: Amount::new(U256::from(45_900_000_000_000_000_u128)),
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
