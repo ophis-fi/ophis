@@ -115,8 +115,17 @@ impl Swap {
         sell_token: Option<auction::Price>,
         simulator: &infra::dex::Simulator,
         gas_offset: eth::Gas,
+        is_quote: bool,
     ) -> Option<solution::Solution> {
-        let gas = if order.class == order::Class::Limit {
+        // On the quote path we report the OPTIMISTIC `output.amount`. That value
+        // is intentionally higher than the router's guaranteed minReceived, so
+        // feeding it into the gas simulator (which builds a Swapper.sol call
+        // whose `buy.amount` == output.amount and requires the DEX to realize
+        // it) would revert and drop the quote. Quotes never settle on-chain and
+        // gas is only indicative for them, so use the heuristic gas and never
+        // simulate. On the solve path (`is_quote == false`) this branch is
+        // byte-identical to before — Limit orders still simulate.
+        let gas = if !is_quote && order.class == order::Class::Limit {
             match simulator.gas(order.owner(), &self).await {
                 Ok(value) => value,
                 Err(infra::dex::simulator::Error::SettlementContractIsOwner) => self.gas,

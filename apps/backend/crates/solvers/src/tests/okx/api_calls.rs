@@ -42,7 +42,7 @@ async fn swap_sell_regular() {
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage).await;
+    let swap_response = okx.swap(&order, &slippage, false).await;
     let swap = swap_response.unwrap();
 
     assert_eq!(swap.input.token, order.amount().token);
@@ -86,7 +86,7 @@ async fn swap_buy_disabled() {
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage).await;
+    let swap_response = okx.swap(&order, &slippage, false).await;
     assert!(matches!(
         swap_response.unwrap_err(),
         crate::infra::dex::okx::Error::OrderNotSupported
@@ -126,7 +126,7 @@ async fn swap_buy_enabled() {
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage).await;
+    let swap_response = okx.swap(&order, &slippage, false).await;
     let swap = swap_response.unwrap();
 
     assert_eq!(swap.output.token, order.amount().token);
@@ -173,7 +173,7 @@ async fn swap_api_error() {
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage).await;
+    let swap_response = okx.swap(&order, &slippage, false).await;
 
     assert!(matches!(
         swap_response.unwrap_err(),
@@ -214,7 +214,7 @@ async fn swap_sell_insufficient_liquidity() {
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage).await;
+    let swap_response = okx.swap(&order, &slippage, false).await;
 
     assert!(matches!(
         swap_response.unwrap_err(),
@@ -255,7 +255,7 @@ async fn swap_buy_insufficient_liquidity() {
     let slippage = Slippage::one_percent();
 
     let okx = crate::infra::dex::okx::Okx::try_new(okx_config).unwrap();
-    let swap_response = okx.swap(&order, &slippage).await;
+    let swap_response = okx.swap(&order, &slippage, false).await;
 
     assert!(matches!(
         swap_response.unwrap_err(),

@@ -40,7 +40,7 @@ async fn swap_sell_live_op_mainnet() {
     let slippage = Slippage::one_percent();
 
     let kyberswap = kyberswap_dex::KyberSwap::try_new(config).unwrap();
-    let swap = kyberswap.swap(&order, &slippage).await.unwrap();
+    let swap = kyberswap.swap(&order, &slippage, false).await.unwrap();
 
     assert_eq!(swap.input.token, order.sell);
     assert_eq!(swap.output.token, order.buy);
