@@ -14,7 +14,7 @@ import { ReactNode, useCallback, useMemo, useState } from 'react'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { symbolToAddressResolver, useTokenForChainMapBySymbol } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
 
 import { CosmicStarfield } from '../CosmicStarfield'
@@ -24,6 +24,7 @@ import { OphisHeader } from '../OphisHeader'
 import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
 import { IntentInput } from './IntentInput'
+import { readIntentParam } from './intentParam'
 import { intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
@@ -402,7 +403,15 @@ function helperText(
 }
 
 export function IntentLanding(): ReactNode {
-  const [text, setText] = useState('')
+  const [searchParams] = useSearchParams()
+  // Seed the input once, on mount, from a shareable `?intent=` link (hash-router
+  // query first, then the pre-hash document search so both link shapes work).
+  // Empty when absent, so a normal visit is unchanged. useIntentParse(text) below
+  // then parses the seeded text automatically: the visitor lands with the tokens
+  // detected and Continue enabled, one tap from a pre-filled trade.
+  const [text, setText] = useState(() =>
+    readIntentParam(searchParams.toString(), typeof window === 'undefined' ? '' : window.location.search),
+  )
   const navigate = useNavigate()
   const parseState = useIntentParse(text)
   const ready = isReadyToSubmit(parseState.parsed)
