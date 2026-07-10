@@ -178,6 +178,7 @@ impl Dodo {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         // DODO route-service is exactIn-only.
         if order.side == order::Side::Buy {
@@ -189,7 +190,7 @@ impl Dodo {
         let id = ID.fetch_add(1, atomic::Ordering::Relaxed);
 
         async move {
-            let route = self.get_route(order, slippage).await?;
+            let (route, clamped_bps) = self.get_route(order, slippage).await?;
 
             // Validate BOTH the router (`to`) and the ERC-20 approval target
             // (`targetApproveAddr`) against the static allowlist BEFORE using
@@ -262,8 +263,15 @@ impl Dodo {
                 },
                 output: eth::Asset {
                     token: order.buy,
-                    // The guaranteed floor — see the long comment above.
-                    amount: min_return,
+                    // Settle: DODO's guaranteed minReturnAmount (#726). Quote:
+                    // reverse the floor to recover the ~optimistic estimate
+                    // (DODO's `resAmount` is an f64 in token units, not wei, so
+                    // un-floor the wei value instead). Quotes never settle.
+                    amount: if is_quote {
+                        dodo_unfloor(min_return, clamped_bps)
+                    } else {
+                        min_return
+                    },
                 },
                 allowance: dex::Allowance {
                     // DODO pulls the sell token via its ApproveProxy, NOT the
@@ -284,7 +292,7 @@ impl Dodo {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
-    ) -> Result<dto::RouteData, Error> {
+    ) -> Result<(dto::RouteData, u16), Error> {
         let slippage_bps = slippage.as_bps().ok_or(Error::InvalidSlippage)?;
         let clamped_bps = crate::infra::metrics::clamp_slippage_bps(
             crate::infra::metrics::Dex::Dodo,
@@ -323,7 +331,10 @@ impl Dodo {
                 reason: format!("DODO returned status {}", response.status),
             });
         }
-        response.data.ok_or(Error::NotFound)
+        response
+            .data
+            .ok_or(Error::NotFound)
+            .map(|data| (data, clamped_bps))
     }
 }
 
@@ -338,6 +349,25 @@ fn bps_to_percent_string(bps: u16) -> String {
         // Two-decimal fraction, trimmed.
         let s = format!("{whole}.{frac:02}");
         s.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+/// Recover the ~optimistic quote from DODO's on-chain `minReturnAmount`
+/// (`floor = optimistic * (10000 - bps) / 10000`). Quote path only — the
+/// recovered value is never settled, so the reverse-rounding is harmless.
+/// `slippage_bps` is clamped to MAX_SLIPPAGE_BPS so `keep` stays in
+/// [10000 - MAX, 10000] and is never zero on the real quote path; the explicit
+/// `keep.is_zero()` guard makes the 100%-slippage edge an identity, not a
+/// divide-by-zero.
+fn dodo_unfloor(floor: U256, slippage_bps: u16) -> U256 {
+    let bps = U256::from(10_000u64);
+    let keep = bps.saturating_sub(U256::from(slippage_bps));
+    if keep.is_zero() {
+        return floor;
+    }
+    match floor.checked_mul(bps) {
+        Some(scaled) => scaled / keep,
+        None => floor / keep * bps,
     }
 }
 
@@ -415,6 +445,22 @@ mod tests {
         // it is the slippage-applied minimum and not a static value.
         let min_return_5pct = U256::from(425_252_072_756u128);
         assert!(min_return_5pct < min_return);
+    }
+
+    #[test]
+    fn dodo_unfloor_recovers_optimistic_on_quote() {
+        let min_return = U256::from(443_157_433_018u128); // 1% floor (live 130 probe)
+        let recovered = dodo_unfloor(min_return, 100); // reverse the 1%
+        assert!(recovered > min_return);
+        assert_eq!(
+            recovered,
+            min_return * U256::from(10_000u64) / U256::from(9_900u64)
+        );
+        // Guard: keep==0 (never taken on the clamped quote path) is identity,
+        // not a divide-by-zero.
+        assert_eq!(dodo_unfloor(min_return, 10_000), min_return);
+        // Zero slippage is identity too.
+        assert_eq!(dodo_unfloor(min_return, 0), min_return);
     }
 
     #[test]

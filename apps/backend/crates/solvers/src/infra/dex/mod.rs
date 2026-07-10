@@ -40,15 +40,19 @@ impl Dex {
         order: &dex::Order,
         slippage: &dex::Slippage,
         tokens: &auction::Tokens,
+        // Quote path: report the optimistic output. Only the flooring lanes
+        // (okx/kyberswap/velora/odos/dodo) consume this; the others already
+        // report their optimistic/pinned amount and are unchanged.
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         let swap = match self {
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
-            Dex::Okx(okx) => okx.swap(order, slippage).await?,
-            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage).await?,
-            Dex::Velora(velora) => velora.swap(order, slippage).await?,
-            Dex::Odos(odos) => odos.swap(order, slippage).await?,
+            Dex::Okx(okx) => okx.swap(order, slippage, is_quote).await?,
+            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage, is_quote).await?,
+            Dex::Velora(velora) => velora.swap(order, slippage, tokens, is_quote).await?,
+            Dex::Odos(odos) => odos.swap(order, slippage, is_quote).await?,
             Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
-            Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
+            Dex::Dodo(dodo) => dodo.swap(order, slippage, is_quote).await?,
             Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
             Dex::Enso(enso) => enso.swap(order, slippage).await?,
         };

@@ -188,6 +188,7 @@ impl Odos {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         // Odos SOR is exactIn-only.
         if order.side == order::Side::Buy {
@@ -305,7 +306,13 @@ impl Odos {
                     // order's signed buy-amount-min is enforced downstream, so
                     // a floor below the limit is correctly filtered as a
                     // NoSolution.
-                    amount: min_output_amount(optimistic_out, slippage_bps),
+                    // Settle: router floor (#726). Quote: optimistic_out, so the
+                    // price shown matches 0x/ParaSwap. Quotes never settle.
+                    amount: if is_quote {
+                        optimistic_out
+                    } else {
+                        min_output_amount(optimistic_out, slippage_bps)
+                    },
                 },
                 allowance: dex::Allowance {
                     // Odos's V2 router is the spender (it pulls the input via
@@ -536,6 +543,17 @@ mod tests {
             min_output_amount(U256::from(1_000_000u64), 100),
             U256::from(990_000u64)
         );
+    }
+
+    #[test]
+    fn quote_reports_optimistic_solve_reports_floor() {
+        // Mirrors the is_quote branch in `swap`: quote => optimistic_out,
+        // solve => the router floor. Documents the SELL-side quote/settle split.
+        let optimistic_out = U256::from(988_146_014_276_470u128);
+        let quote = optimistic_out;
+        let solve = min_output_amount(optimistic_out, 100);
+        assert_eq!(quote, optimistic_out);
+        assert!(solve < optimistic_out);
     }
 
     #[test]
