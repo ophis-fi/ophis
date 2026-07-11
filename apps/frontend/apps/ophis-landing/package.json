@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "node scripts/tokens-to-css.mjs",
+    "prebuild": "node scripts/tokens-to-css.mjs && node scripts/check-skill-digest.mjs",
     "new:post": "node scripts/new-post.mjs",
     "dev": "pnpm prebuild && astro dev",
     "build": "pnpm prebuild && node scripts/check-blog-alt.mjs && astro build",

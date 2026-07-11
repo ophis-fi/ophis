@@ -5,6 +5,11 @@ out = "out"
 libs = ["lib"]
 
 # Compiler settings
+# These MUST match solidity/Makefile SOLFLAGS so CI/slither run on the exact
+# bytecode that ships. Makefile: solc 0.8.30, --optimize --optimize-runs 1000000
+# --evm-version shanghai --metadata-hash none.
 solc = "0.8.30"
-evm_version = "cancun"
-optimizer = false
+evm_version = "shanghai"
+optimizer = true
+optimizer_runs = 1000000
+bytecode_hash = "none"
