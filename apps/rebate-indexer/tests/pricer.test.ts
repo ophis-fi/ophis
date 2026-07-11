@@ -15,9 +15,9 @@ const UNI_USDC = '0x078d782b760474a361dda0af3839290b0ef57ad6' as `0x${string}`; 
 
 beforeEach(() => mockNativePrice.mockReset());
 
-// Unichain (130) is sovereign like OP, BUT its native_price is PER-ATOM (verified
-// live: 6-dec USDC ~6.4e8, NOT 18-dec-normalized like OP's ~6.4e20). So 130 must
-// price exactly like the hosted chains — NO correctOpNativePrice. These lock that
+// Unichain (130) is sovereign like OP; both serve PER-ATOM native_price (verified
+// live: 6-dec USDC ~6.4e8, WETH 1.0), so they price exactly like the hosted chains
+// with NO decimals correction. These lock that
 // the OP special-case did not leak onto 130 (which would mis-price it by ~1e12).
 describe('priceTrade — Unichain (130) prices per-atom, NOT OP-normalized', () => {
   it('self-prices the Unichain USD reference at its 6 decimals (no oracle, no 1e12 correction)', async () => {

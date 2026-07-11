@@ -45,10 +45,7 @@ services:
       REBATE_FEE_BASIS_WEI: ${REBATE_FEE_BASIS_WEI:-}
       REBATE_MAX_TRADE_USD: ${REBATE_MAX_TRADE_USD:-}
       # Optimism (sovereign Ophis backend) indexing. Defaults are production-ready;
-      # set OPTIMISM_RPC_URL to a private OP RPC to avoid public-node rate limits
-      # (the pricer reads ERC20 decimals on-chain to correct the OP native_price oracle).
       OP_ORDERBOOK_URL: ${OP_ORDERBOOK_URL:-https://optimism-mainnet.ophis.fi}
-      OPTIMISM_RPC_URL: ${OPTIMISM_RPC_URL:-https://mainnet.optimism.io}
       # Unichain (sovereign Ophis backend) indexing. Only the orderbook host is
       # overridable: unlike OP, Unichain's native_price oracle is per-atom (no
       # 18-dec normalization), so the pricer needs NO on-chain decimals read and
