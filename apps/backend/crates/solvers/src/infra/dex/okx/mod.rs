@@ -46,16 +46,6 @@ fn okx_min_received(to_token_amount: U256, slippage_bps: u16) -> U256 {
     }
 }
 
-/// SELL-side reported output: the router floor on settle, the optimistic
-/// `to_token_amount` on a quote. BUY already reports the pinned exact output at
-/// the call site and does not go through here.
-fn okx_reported_output(to_token_amount: U256, slippage_bps: u16, is_quote: bool) -> U256 {
-    if is_quote {
-        to_token_amount
-    } else {
-        okx_min_received(to_token_amount, slippage_bps)
-    }
-}
 
 const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 
@@ -329,7 +319,6 @@ impl Okx {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
-        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         // Set up a tracing span to make debugging of API requests easier.
         static ID: AtomicU64 = AtomicU64::new(0);
@@ -477,10 +466,9 @@ impl Okx {
                 // amount; slippage applies to the INPUT (the allowance pad
                 // above), not the output, so report to_token_amount unmodified.
                 amount: match order.side {
-                    order::Side::Sell => okx_reported_output(
+                    order::Side::Sell => okx_min_received(
                         swap_response.router_result.to_token_amount,
                         clamped_bps,
-                        is_quote,
                     ),
                     order::Side::Buy => swap_response.router_result.to_token_amount,
                 },
@@ -883,20 +871,6 @@ impl From<util::http::RoundtripError<dto::Error>> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn okx_reported_output_quote_is_optimistic() {
-        // Live shape: 10k USDC -> ~5.041 weETH optimistic.
-        let opt = U256::from(5_041_000_000_000_000_000u128);
-        assert_eq!(okx_reported_output(opt, 100, true), opt);
-    }
-
-    #[test]
-    fn okx_reported_output_solve_is_floor() {
-        let opt = U256::from(5_041_000_000_000_000_000u128);
-        assert_eq!(okx_reported_output(opt, 100, false), okx_min_received(opt, 100));
-        assert!(okx_reported_output(opt, 100, false) < opt);
-    }
 
     fn op_router() -> Address {
         Address::new([
