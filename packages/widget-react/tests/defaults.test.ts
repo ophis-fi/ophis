@@ -13,7 +13,7 @@ describe('withOphisDefaults', () => {
     expect(merged.baseUrl).toBe('https://swap.ophis.fi');
     expect(merged.appCode).toBe(OPHIS_WIDGET_APP_CODE);
     expect(merged.partnerFee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
-    expect(merged.partnerFee?.bps).toBe(10);
+    expect(merged.partnerFee?.bps).toBe(5);
   });
 
   it('lets the caller override host, appCode and fee bps', () => {
@@ -31,7 +31,7 @@ describe('withOphisDefaults', () => {
   it('treats a blank or whitespace baseUrl/appCode as unset (no silent leak to the CoW host)', () => {
     const blank = withOphisDefaults({ tradeType: 'swap', baseUrl: '', appCode: '   ' } as any);
     expect(blank.baseUrl).toBe('https://swap.ophis.fi');
-    expect(blank.appCode).toBe('Ophis');
+    expect(blank.appCode).toBe('ophis');
 
     const whitespaceUrl = withOphisDefaults({ tradeType: 'swap', baseUrl: '   ' } as any);
     expect(whitespaceUrl.baseUrl).toBe('https://swap.ophis.fi');

@@ -8,21 +8,23 @@ import type { CowSwapWidgetParams } from '@cowprotocol/widget-react';
 export const OPHIS_WIDGET_BASE_URL = 'https://swap.ophis.fi';
 
 /**
- * appCode that tags every order placed through the widget. Mirrors the
- * frontend default (`appCode: 'Ophis'` in cowswap-frontend appData) so widget
- * orders share the Ophis appData identity.
+ * appCode that tags every order placed through the widget. LOWERCASE 'ophis':
+ * the rebate indexer recognizes Ophis orders by a case-sensitive match against
+ * the lowercase APP_CODES set, so a capitalized appCode would drop the order from
+ * attribution. Mirrors the frontend default (`appCode: 'ophis'`).
  */
-export const OPHIS_WIDGET_APP_CODE = 'Ophis';
+export const OPHIS_WIDGET_APP_CODE = 'ophis';
 
 /**
  * The widget's `PartnerFee` type is `{ bps, recipient }` (FlexibleConfig).
  * The SDK exposes the fee as `{ volumeBps, recipient }`. We map volumeBps -> bps
- * here. `bps` is the volume fee in basis points; 10 = 0.10% (1 for same-chain
- * stable pairs, but the widget cannot know the pair ahead of time, so we default
- * to the standard rate and let same-chain-stable handling stay server-side).
+ * here. `bps` is the volume fee in basis points; 5 = 0.05% the @ophis/sdk partner
+ * rate (1 for same-chain stable pairs, but the widget cannot know the pair ahead
+ * of time, so we default to the standard rate and let same-chain-stable handling
+ * stay server-side).
  */
 export const OPHIS_WIDGET_PARTNER_FEE: NonNullable<CowSwapWidgetParams['partnerFee']> = {
-  bps: ophisVolumeBpsForPair(false), // 10 bps standard volume fee
+  bps: ophisVolumeBpsForPair(false), // 5 bps partner volume fee
   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 };
 

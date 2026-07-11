@@ -1,0 +1,586 @@
+# infra/unichain-mainnet/docker-compose.yml — Ophis Unichain mainnet stack (chain 130).
+# Cloned from infra/optimism-mainnet and adapted for Unichain.
+#
+# Port allocation (all bind 127.0.0.1 only):
+#   db:                5439
+#   orderbook:         8400
+#   driver:            8401
+#   baseline:          9301
+#   okx-solver:        9302
+#   kyberswap-solver:  9303
+#   velora-solver:     9304
+#   odos-solver:       9305
+#   openocean-solver:  9306
+#   dodo-solver:       9307
+#   lifi-solver:       9308
+#   enso-solver:       9309
+#   rpc-proxy (eRPC):  4002  (JSON-RPC); metrics on 4002+1 = 4003 internal
+#   prometheus:        9092
+#   alertmanager:      9095
+#   jaeger UI:         16687
+#   jaeger OTLP/gRPC:  4318
+
+name: unichain-mainnet
+
+x-backend-build-args: &backend-build-args
+  OPHIS_GIT_DESCRIBE: "${OPHIS_GIT_DESCRIBE:-}"
+
+#
+# Secret management:
+#   - Addresses come from fill-in-after-deploy values (see FILL-IN-AFTER-DEPLOY.md)
+#   - Secrets (driver private key, DB password) come from ./.env in this dir
+#   - ./.env is gitignored — see ./.env.example for the template
+#
+# All HTTP/RPC ports bind to 127.0.0.1 only. External access is via
+# Cloudflare Tunnel, never direct port exposure.
+
+services:
+  # Jaeger all-in-one — OTLP/gRPC collector + UI + in-memory storage.
+  # Ports offset from OP stack (OP uses 16686/4317) to coexist.
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    restart: always
+    mem_limit: 512m
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16687:16686"  # UI: http://127.0.0.1:16687
+      - "127.0.0.1:4318:4317"    # OTLP/gRPC (offset from OP's 4317)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # eRPC multi-provider proxy for Unichain mainnet (chain 130).
+  # 3 upstreams with 2-of-3 consensus on critical reads.
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:latest
+    restart: always
+    mem_limit: 512m
+    # The self-hosted Unichain op-reth node runs in a SEPARATE compose project
+    # (/opt/unichain-node on the same host) and publishes :8545 on the host.
+    # erpc.yaml's debug/trace leg targets `ophis-uni-node:8545`; map that name to
+    # the host gateway so the proxy reaches the node without host-publishing a
+    # second port. (Gate-2 validated this exact path via --add-host.) Hardening
+    # follow-up: a shared external docker network instead of host-gateway.
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
+    volumes:
+      - ./rendered/erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "127.0.0.1:4002:4000"  # offset from OP (4001) and HL (4000)
+
+  rpc-proxy-health:
+    image: busybox:stable-musl
+    restart: always
+    depends_on:
+      rpc-proxy: { condition: service_started }
+    command: ["sh", "-c", "while true; do sleep 30; done"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://rpc-proxy:4000/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16
+    restart: always
+    mem_limit: 2g
+    # synchronous_commit=off: UNLIKE the OP stack, the Unichain op-reth node is
+    # CO-LOCATED on this same host/disk (/dev/vda1). Its ~1s-block state-root
+    # writes saturate the disk's fsync IOPS, so with the default
+    # synchronous_commit=on every Postgres COMMIT blocked 5-18s on WALSync/
+    # WALWrite. That strangled the auction pipeline (the per-block
+    # "DELETE FROM auctions; INSERT" rewrite + last_indexed_blocks upsert took
+    # 15-20s), so auctions were built empty and orders EXPIRED before any
+    # settlement could land (2026-06-30 incident; 18s -> ~80ms after this flag).
+    #
+    # SAFE here: the orderbook DB is NOT the source of truth for funds — the
+    # on-chain GPv2Settlement is. Orders/quotes are reconstructable (users
+    # re-broadcast), the `auctions` table is ephemeral (rewritten every block),
+    # and the settlement indexer re-reads the chain idempotently by tx hash, so
+    # the submitter's on-chain nonce — not the DB — prevents double-settlement.
+    # The only crash (OS/host power-loss) exposure is losing recently-committed
+    # reconstructable metadata (the async-commit window: typically ~0.6s, but
+    # longer while the WAL writer is itself blocked under the same severe I/O
+    # stalls this flag mitigates); never funds, never integrity (this is NOT
+    # fsync=off, which we deliberately leave ON to preserve crash consistency).
+    #
+    # Durable fix tracked separately: move op-reth to its own VM/disk like the
+    # OP stack so the node and Postgres no longer share an fsync queue.
+    command:
+      - "postgres"
+      - "-c"
+      - "synchronous_commit=off"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5439:5432"  # offset: OP=5435, HL=5436, Unichain=5439
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrations:
+    image: backend-migrations:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: migrations
+    restart: on-failure
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+
+  orderbook:
+    image: local-orderbook:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: orderbook
+      args: *backend-build-args
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/unichain-mainnet/.env}
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+    volumes:
+      - ./rendered/orderbook.toml:/orderbook.toml:ro
+    command: ["--config", "/orderbook.toml"]
+    ports:
+      - "127.0.0.1:8400:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  autopilot:
+    image: local-autopilot:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: autopilot
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      db: { condition: service_healthy }
+      migrations: { condition: service_completed_successfully }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_WRITE_URL: ${DB_WRITE_URL}
+      DB_READ_URL: ${DB_READ_URL}
+      ETH_RPC_URL: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
+      COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/unichain-mainnet/.env}
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+    volumes:
+      - ./rendered/autopilot.toml:/autopilot.toml:ro
+    command: ["--config", "/autopilot.toml"]
+
+  driver:
+    image: local-driver:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: driver
+      args: *backend-build-args
+    restart: always
+    mem_limit: 2g
+    depends_on:
+      baseline: { condition: service_healthy }
+      okx-solver: { condition: service_healthy }
+      kyberswap-solver: { condition: service_healthy }
+      velora-solver: { condition: service_healthy }
+      odos-solver: { condition: service_healthy }
+      openocean-solver: { condition: service_healthy }
+      dodo-solver: { condition: service_healthy }
+      lifi-solver: { condition: service_healthy }
+      enso-solver: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ETHRPC: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
+      ADDR: 0.0.0.0:80
+      TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+    volumes:
+      - ./rendered/driver.toml:/driver.toml:ro
+    command: ["--config", "/driver.toml"]
+    ports:
+      - "127.0.0.1:8401:80"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - |
+          bash -c '
+            exec 3<>/dev/tcp/127.0.0.1/80 || exit 1
+            printf "GET /healthz HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3
+            head -n 1 <&3 | grep -q " 200 "
+          '
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  baseline:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/baseline.toml:/baseline.toml:ro
+    command: ["baseline", "--config", "/baseline.toml"]
+    ports:
+      - "127.0.0.1:9301:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # OKX V6 DEX aggregator solver — ENABLED on Unichain (2026-06-30). Renewed
+  # OKX_* creds in .env; router 0x6733Eb2E…510d19 + spender 0x2e28281C…7782c
+  # allowlisted in both the solver and driver allowlists. SELL-only (no
+  # buy_orders_endpoint — avoids the U256::MAX buy-allowance footgun); the SELL
+  # output reports the reconstructed slippage floor (the #726 fix). Covers all
+  # Unichain DEXes (incl. Uniswap V4).
+  okx-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/okx.toml:/okx.toml:ro
+    command: ["okx", "--config", "/okx.toml"]
+    ports:
+      - "127.0.0.1:9302:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  kyberswap-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/kyberswap.toml:/kyberswap.toml:ro
+    command: ["kyberswap", "--config", "/kyberswap.toml"]
+    ports:
+      - "127.0.0.1:9303:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Velora (formerly ParaSwap) Augustus V6.2 aggregator solver — ENABLED on
+  # Unichain (verified 2026-06-30: api.velora.xyz serves network 130, the live
+  # route's router == the allowlisted Augustus V6.2 0x6a000f20…001068, and
+  # VELORA_SUPPORTED_CHAINS includes 130). Second independent solver lane.
+  velora-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/velora.toml:/velora.toml:ro
+    command: ["velora", "--config", "/velora.toml"]
+    ports:
+      - "127.0.0.1:9304:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Odos SOR v2 aggregator solver — ENABLED on Unichain (verified 2026-06-30:
+  # Odos serves chain 130; OdosRouterV2 0x6409722F…46A1f3 is allowlisted in both
+  # the solver and driver allowlists). Keyless. Reports the reconstructed
+  # slippage floor as the SELL output. Third independent solver lane.
+  odos-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/odos.toml:/odos.toml:ro
+    command: ["odos", "--config", "/odos.toml"]
+    ports:
+      - "127.0.0.1:9305:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # OpenOcean V4 aggregator solver — ENABLED on Unichain (verified 2026-06-30:
+  # OpenOcean V4 serves chain 130; OpenOceanExchangeProxy 0x6352a56c…304e64 is
+  # allowlisted in both the solver and driver allowlists). Keyless. Reports
+  # data.minOutAmount (the guaranteed floor) as the SELL output. Fourth lane.
+  openocean-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/openocean.toml:/openocean.toml:ro
+    command: ["openocean", "--config", "/openocean.toml"]
+    ports:
+      - "127.0.0.1:9306:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # DODO route-service aggregator solver — ENABLED on Unichain (verified
+  # 2026-06-30: DODO serves chain 130; DODORouteProxy 0x89Ba4039…006f4D and
+  # DODOApproveProxy 0xf3d60Ba9…3462Dd are BOTH allowlisted in the solver and
+  # driver allowlists). Keyless (public widget key). Reports
+  # data.minReturnAmount (the guaranteed floor) as the SELL output. Fifth lane.
+  dodo-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/dodo.toml:/dodo.toml:ro
+    command: ["dodo", "--config", "/dodo.toml"]
+    ports:
+      - "127.0.0.1:9307:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # LI.FI same-chain DEX aggregator solver — ENABLED on Unichain (2026-06-30).
+  # LiFiDiamond 0x864b314D…b9232 (router == approval target) allowlisted in both
+  # layers; SELL output = estimate.toAmountMin (guaranteed floor). Same-chain
+  # only (rejects bridge routes). Keyless. Seventh lane.
+  lifi-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/lifi.toml:/lifi.toml:ro
+    command: ["lifi", "--config", "/lifi.toml"]
+    ports:
+      - "127.0.0.1:9308:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Enso Shortcuts /route aggregator solver — ENABLED on Unichain (2026-06-30).
+  # EnsoRouter 0xF75584eF…22Cf (router == spender) allowlisted in both layers;
+  # SELL output = minAmountOut (guaranteed floor). KEYED (free Bearer key in
+  # .env; fail-fasts on empty key). Eighth lane.
+  enso-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/enso.toml:/enso.toml:ro
+    command: ["enso", "--config", "/enso.toml"]
+    ports:
+      - "127.0.0.1:9309:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.0.1
+    restart: always
+    mem_limit: 512m
+    user: "nobody"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.listen-address=0.0.0.0:9090"
+      - "--no-web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9092:9090"  # OP=9091, HL=9090, Unichain=9092
+    depends_on:
+      driver: { condition: service_started }
+      autopilot: { condition: service_started }
+      orderbook: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  alertmanager:
+    profiles: ["observability"]
+    image: prom/alertmanager:v0.27.0
+    restart: always
+    mem_limit: 128m
+    user: "nobody"
+    volumes:
+      - ./observability-rendered/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./observability-rendered/telegram-token:/etc/alertmanager/telegram-token:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=0.0.0.0:9093"
+    ports:
+      - "127.0.0.1:9095:9093"  # OP=9094, HL=9093, Unichain=9095
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  node-exporter:
+    profiles: ["observability"]
+    image: prom/node-exporter:v1.8.2
+    restart: always
+    mem_limit: 128m
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host"
+    volumes:
+      - "/proc:/host/proc:ro"
+      - "/sys:/host/sys:ro"
+      - "/:/host:ro,rslave"
+
+  # Auto-refunder for expired eth-flow (native-ETH) orders. Ophis self-hosts the
+  # Unichain stack, so unlike CoW's hosted deployment there is NO managed
+  # refunder: without this, an expired native-ETH order strands the user's ETH
+  # in the eth-flow contract until a manual invalidateOrder. This worker scans
+  # the orderbook DB for expired, unfilled, unrefunded eth-flow orders and batch
+  # invalidates them on-chain, returning the ETH to each order owner.
+  #
+  # MIN_PRICE_DEVIATION_BPS is NEGATIVE so EVERY expired order is refunded: an
+  # expired order can never fill, so refunding is always correct. Gas is paid
+  # from a dedicated low-value EOA (keychain ophis-refunder-pk), NOT the
+  # settlement submitter, to avoid nonce contention. See docs runbook.
+  refunder:
+    image: local-refunder:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: refunder
+      args: *backend-build-args
+    restart: always
+    mem_limit: 512m
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_URL: ${DB_READ_URL}
+      NODE_URL: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
+      CHAIN_ID: "130"
+      ETHFLOW_CONTRACTS: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7"
+      REFUNDER_PK: ${OPHIS_REFUNDER_PK:?refunder key must be set (keychain ophis-refunder-pk; export before compose up)}
+      # Negative -> refund every expired order (an expired order can never fill).
+      MIN_PRICE_DEVIATION_BPS: "-1000000"
+      MIN_VALIDITY_DURATION: "2m"
+      LOOKBACK_TIME: "30d"
+
+volumes:
+  postgres:
+  prometheus-data:
+  alertmanager-data:

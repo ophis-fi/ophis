@@ -5,8 +5,13 @@ use {
 };
 
 pub mod bitget;
+pub mod dodo;
+pub mod enso;
 pub mod kyberswap;
+pub mod lifi;
+pub mod odos;
 pub mod okx;
+pub mod openocean;
 pub mod simulator;
 pub mod velora;
 
@@ -18,6 +23,11 @@ pub enum Dex {
     Okx(Box<okx::Okx>),
     KyberSwap(Box<kyberswap::KyberSwap>),
     Velora(Box<velora::Velora>),
+    Odos(Box<odos::Odos>),
+    OpenOcean(Box<openocean::OpenOcean>),
+    Dodo(Box<dodo::Dodo>),
+    Lifi(Box<lifi::Lifi>),
+    Enso(Box<enso::Enso>),
 }
 
 impl Dex {
@@ -30,12 +40,23 @@ impl Dex {
         order: &dex::Order,
         slippage: &dex::Slippage,
         tokens: &auction::Tokens,
+        // Quote path: kyberswap/velora report the optimistic output (and, on the
+        // solve path, bound the router minReturn by the order's buy limit so a
+        // tight order still settles). The other lanes report their guaranteed
+        // floor on both paths (self-consistent, so an order quoted at their
+        // floor always settles); they don't need this flag.
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         let swap = match self {
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
-            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage).await?,
-            Dex::Velora(velora) => velora.swap(order, slippage).await?,
+            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage, is_quote).await?,
+            Dex::Velora(velora) => velora.swap(order, slippage, tokens, is_quote).await?,
+            Dex::Odos(odos) => odos.swap(order, slippage).await?,
+            Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
+            Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
+            Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
+            Dex::Enso(enso) => enso.swap(order, slippage).await?,
         };
         Ok(swap)
     }
@@ -145,6 +166,64 @@ impl From<velora::Error> for Error {
             // next auction iteration when /prices returns a fresh route.
             velora::Error::NotFound | velora::Error::RateChanged => Self::NotFound,
             velora::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<odos::Error> for Error {
+    fn from(err: odos::Error) -> Self {
+        match err {
+            odos::Error::OrderNotSupported => Self::OrderNotSupported,
+            odos::Error::NotFound => Self::NotFound,
+            odos::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<openocean::Error> for Error {
+    fn from(err: openocean::Error) -> Self {
+        match err {
+            openocean::Error::OrderNotSupported => Self::OrderNotSupported,
+            openocean::Error::NotFound => Self::NotFound,
+            // Missing token decimals is a permanent per-order reject (OpenOcean
+            // takes amounts in decimal units), not a transient — mirror bitget.
+            openocean::Error::MissingDecimals => Self::BadRequest,
+            openocean::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<dodo::Error> for Error {
+    fn from(err: dodo::Error) -> Self {
+        match err {
+            dodo::Error::OrderNotSupported => Self::OrderNotSupported,
+            dodo::Error::NotFound => Self::NotFound,
+            dodo::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<lifi::Error> for Error {
+    fn from(err: lifi::Error) -> Self {
+        match err {
+            lifi::Error::OrderNotSupported => Self::OrderNotSupported,
+            lifi::Error::NotFound => Self::NotFound,
+            lifi::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<enso::Error> for Error {
+    fn from(err: enso::Error) -> Self {
+        match err {
+            enso::Error::OrderNotSupported => Self::OrderNotSupported,
+            enso::Error::NotFound => Self::NotFound,
+            enso::Error::RateLimited => Self::RateLimited,
             _ => Self::Other(Box::new(err)),
         }
     }

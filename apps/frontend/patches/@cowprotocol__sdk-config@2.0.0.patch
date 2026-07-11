@@ -17,7 +17,7 @@ index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd
 +    logoUrl: "https://files.cow.fi/tokens/HYPE.png"
 +  },
 +  // Ophis fork — chain 10 (Optimism): WETH at 0x4200…0006 (canonical OP WETH)
-+  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
++  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 130: createWrappedTokenForChain(130, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
@@ -27,8 +27,8 @@ index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd
  var BARN_ETH_FLOW_ADDRESS = "0xb37aDD6AC288BD3825a901Cba6ec65A89f31B8CC";
 -var ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS);
 -var BARN_ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS);
-+var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
-+var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
++var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7" };
++var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7" };
  var MAX_VALID_TO_EPOCH = 4294967295;
 
  // src/chains/utils.ts
@@ -51,7 +51,7 @@ index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e
 +    logoUrl: "https://files.cow.fi/tokens/HYPE.png"
 +  },
 +  // Ophis fork — chain 10 (Optimism): WETH at 0x4200…0006 (canonical OP WETH)
-+  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
++  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 130: createWrappedTokenForChain(130, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
@@ -61,8 +61,8 @@ index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e
  var BARN_ETH_FLOW_ADDRESS = "0xb37aDD6AC288BD3825a901Cba6ec65A89f31B8CC";
 -var ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS);
 -var BARN_ETH_FLOW_ADDRESSES = mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS);
-+var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
-+var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504" };
++var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7" };
++var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 999: "0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B", 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7" };
  var MAX_VALID_TO_EPOCH = 4294967295;
 
  // src/chains/utils.ts

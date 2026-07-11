@@ -83,6 +83,7 @@ pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 /// never take the address from a `/swap` or `/routes` response.
 const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
+    (130, UNICHAIN_MAINNET),
     (999, HYPEREVM_MAINNET),
 ];
 
@@ -101,16 +102,34 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // Verified live 2026-05-16 via `cast code` (49127 bytes) and
     // upstream docs:
     // https://developers.velora.xyz/augustus-swapper/augustus-v6.2-smart-contracts
-    address!("6a000F20005980200259B80c5102003040001068"),
+    address!("6A000F20005980200259B80c5102003040001068"),
     // OKX V6 router on Optimism mainnet. Verified 2026-05-18 via
     // authenticated probe + `cast code`. Used as `tx.to` returned by
     // OKX `/swap`. Distinct from the spender address below — OKX
     // separates router and approval target on V6.
-    address!("Dd5E9B947c99AA60baB00CA4631DCe63b49983E7"),
+    address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7"),
     // OKX V6 spender on Optimism mainnet. Returned by OKX
     // `/approve-transaction` as `dexContractAddress` — the ERC-20
     // approval grantee. Verified 2026-05-18 alongside the router.
     address!("68D6B739D2020067D1e2F713b999dA97E4d54812"),
+    // Odos OdosRouterV2 on Optimism (10) -- router (tx.to) == ERC-20 spender.
+    // Per-chain; verified 2026-07-06 via api.odos.xyz + eth_getCode (14721 B).
+    address!("Ca423977156BB05b13A2BA3b76Bc5419E2fE9680"),
+    // Enso EnsoRouter on Optimism (10) -- tx.to == approval target.
+    // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
+    address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
+    // LI.FI LiFiDiamond on Optimism (10) -- tx.to == approvalAddress.
+    // Per-chain diamond; verified 2026-07-06 via li.quest (5176 B).
+    address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
+    // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
+    // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).
+    address!("6352a56caadC4F1E25CD6c75970Fa768A3304e64"),
+    // DODO DODORouteProxy on Optimism (10) -- the router tx.to. Per-chain.
+    // Verified 2026-07-06 via getdodoroute?chainId=10 (11202 B).
+    address!("8b09DB11ea380d6454D2592D334FFC319ce6EF3E"),
+    // DODO DODOApproveProxy on Optimism (10) -- ERC-20 approval target,
+    // distinct from the router above. Verified 2026-07-06 (2432 B).
+    address!("a492d6eABcdc3E204676f15B950bBdD448080364"),
 ];
 
 /// HyperEVM mainnet (chain 999). Only KyberSwap currently supports this
@@ -120,6 +139,64 @@ const OPTIMISM_MAINNET: &[Address] = &[
 const HYPEREVM_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 (same CREATE2 address as OP).
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+];
+
+/// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +
+/// OKX + LI.FI + Enso. When a new aggregator is enabled on Unichain, append its
+/// router/spender here after upstream verification — the SOLVER-level allowlist
+/// is NOT sufficient: the driver independently rejects any non-allowlisted
+/// Custom target / spender.
+const UNICHAIN_MAINNET: &[Address] = &[
+    // KyberSwap MetaAggregationRouterV2 — same CREATE2-deterministic address
+    // as OP/HL. Verified live 2026-06-29: KyberSwap's Unichain aggregator
+    // (aggregator-api.kyberswap.com/unichain) returns this exact router for
+    // real Uniswap-v4 routes on chain 130. Router == ERC-20 spender.
+    address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+    // Velora (ParaSwap) Augustus V6.2 — unified router AND tokenTransferProxy
+    // (== ERC-20 spender). Verified live 2026-06-30: api.velora.xyz network=130
+    // returns this exact contractAddress == tokenTransferProxy; matches the
+    // solver-level VELORA_ROUTER_ALLOWLIST. Same address on all Velora chains.
+    address!("6A000F20005980200259B80c5102003040001068"),
+    // Odos OdosRouterV2 on Unichain (130) — the `to` of the assembled tx AND
+    // the ERC-20 spender (Odos approves a single router). Verified on-chain via
+    // `cast code` on chain 130; matches the solver-level ODOS_ROUTER_ALLOWLIST.
+    address!("6409722F3a1C4486A3b1FE566cBDd5e9D946A1f3"),
+    // OpenOcean OpenOceanExchangeProxy on Unichain (130) — router (`tx.to`) ==
+    // ERC-20 spender. Verified on-chain via `cast code` on chain 130; matches
+    // the solver-level OPENOCEAN_ROUTER_ALLOWLIST.
+    address!("6352a56caadC4F1E25CD6c75970Fa768A3304e64"),
+    // DODO DODORouteProxy on Unichain (130) — the router we call as `to`.
+    // Verified on-chain via `cast code` on chain 130; matches the solver-level
+    // DODO_ROUTER_ALLOWLIST. DODO uses a SEPARATE ERC-20 approval target
+    // (DODOApproveProxy, below) as the allowance spender — both must be
+    // allowlisted because the driver validates BOTH target and spender.
+    address!("89Ba4039841587B0a4cFfDF17AEE30caCF006f4D"),
+    // DODO DODOApproveProxy on Unichain (130) — the ERC-20 approval target
+    // (allowance spender, `targetApproveAddr`) the DODORouteProxy pulls the sell
+    // token through. Distinct from the router `to` above. Verified on-chain via
+    // `cast code`; matches the solver-level DODO_ROUTER_ALLOWLIST.
+    address!("f3d60Ba9e76459A7075E9676740347B7413462Dd"),
+    // OKX DEX router on Unichain (130) — the `tx.to` returned by OKX V6 /swap.
+    // Distinct from the spender below (OKX V6 separates router and approval
+    // target). Verified 2026-06-30 via authenticated OKX V6 probe + `eth_getCode`
+    // (stable across 3 token pairs, 24367 B); matches the (130,...) entry in the
+    // solver-level OKX_ROUTER_ALLOWLIST.
+    address!("6733Eb2E75B1625F1Fe5f18aD2cB2BaBDA510d19"),
+    // OKX DEX spender on Unichain (130) — the `dexContractAddress` returned by
+    // OKX V6 /approve-transaction (the ERC-20 approval target). Separate from the
+    // router above. Verified 2026-06-30 (stable across 3 pairs, 1610 B); matches
+    // the solver-level OKX_ROUTER_ALLOWLIST spender.
+    address!("2e28281Cf3D58f475cebE27bec4B8a23dFC7782c"),
+    // LI.FI LiFiDiamond on Unichain (130) — BOTH the same-chain swap `tx.to` AND
+    // the ERC-20 approval target (estimate.approvalAddress == tx.to). Verified
+    // 2026-06-30 via li.quest/v1/quote + `eth_getCode` (254-byte EIP-2535 proxy);
+    // matches the solver-level LIFI_ROUTER_ALLOWLIST.
+    address!("864b314D4C5a0399368609581d3E8933a63b9232"),
+    // Enso EnsoRouter on Unichain (130) — the Shortcuts /route `tx.to`, which is
+    // ALSO the ERC-20 approval target (routingStrategy=router pulls tokenIn via
+    // the approval). Verified 2026-06-30 via authenticated Enso probe +
+    // `eth_getCode` (3313 B, stable across pairs); matches ENSO_ROUTER_ALLOWLIST.
+    address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
 ];
 
 /// Validation error from [`validate`] / [`validate_target`] /
@@ -273,9 +350,9 @@ mod tests {
     // KyberSwap router (verified on both OP and HL).
     const KYBER: Address = address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5");
     // Velora Augustus V6.2 (OP only).
-    const VELORA: Address = address!("6a000F20005980200259B80c5102003040001068");
+    const VELORA: Address = address!("6A000F20005980200259B80c5102003040001068");
     // OKX V6 router on OP (used in the OKX coverage test below).
-    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99AA60baB00CA4631DCe63b49983E7");
+    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7");
     // OKX V6 spender on OP (separate from router — verifies router/spender
     // distinct-address handling).
     const OKX_OP_SPENDER: Address = address!("68D6B739D2020067D1e2F713b999dA97E4d54812");

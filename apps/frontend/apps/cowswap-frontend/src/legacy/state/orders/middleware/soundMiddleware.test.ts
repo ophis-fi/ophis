@@ -1,6 +1,7 @@
 import { AnyAction, Dispatch, MiddlewareAPI } from 'redux'
 import { instance, mock, resetCalls, when } from 'ts-mockito'
 
+import { getIsBridgeOrder } from 'common/utils/getIsBridgeOrder'
 import { getCowSoundError, getCowSoundSend, getCowSoundSuccess } from 'modules/sounds'
 
 import { soundMiddleware } from './soundMiddleware'
@@ -12,6 +13,9 @@ const nextMock = jest.fn()
 const actionMock = mock<AnyAction>()
 
 jest.mock('modules/sounds')
+jest.mock('common/utils/getIsBridgeOrder')
+
+const mockGetIsBridgeOrder = getIsBridgeOrder as jest.MockedFunction<typeof getIsBridgeOrder>
 
 // TODO: Break down this large function into smaller functions
 
@@ -27,6 +31,8 @@ describe('soundMiddleware', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     jest.clearAllMocks()
+    // Default: treat fulfilled orders as regular (non-bridge) swaps.
+    mockGetIsBridgeOrder.mockReturnValue(false)
   })
 
   describe('batch order action', () => {
@@ -99,6 +105,18 @@ describe('soundMiddleware', () => {
       soundMiddleware(instance(mockStore))(nextMock)(instance(actionMock))
 
       expect(getCowSoundSuccess).toHaveBeenCalledTimes(1)
+      expect(getCowSoundError).toHaveBeenCalledTimes(0)
+      expect(getCowSoundSend).toHaveBeenCalledTimes(0)
+    })
+
+    it('should not play a sound for bridge orders (handled by PendingBridgeOrdersUpdater)', () => {
+      when(actionMock.payload).thenReturn({ chainId: 1, orders: ['some bridge order'] })
+      when(actionMock.type).thenReturn('order/fullfillOrdersBatch')
+      mockGetIsBridgeOrder.mockReturnValue(true)
+
+      soundMiddleware(instance(mockStore))(nextMock)(instance(actionMock))
+
+      expect(getCowSoundSuccess).toHaveBeenCalledTimes(0)
       expect(getCowSoundError).toHaveBeenCalledTimes(0)
       expect(getCowSoundSend).toHaveBeenCalledTimes(0)
     })

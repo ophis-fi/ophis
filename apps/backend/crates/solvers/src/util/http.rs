@@ -84,6 +84,23 @@ where
             .map(RoundtripError::Api)
             .unwrap_or_else(|_| {
                 RoundtripError::Http(if status.is_success() {
+                    // A 2xx whose body parses as neither the success type nor a
+                    // structured API error is almost always upstream schema
+                    // drift (cf. the Odos `outputTokens` incident, where a
+                    // changed field silently turned every real route into a
+                    // "no solution"). The raw body is only `TRACE`-logged above,
+                    // so without this the broken field is invisible at prod log
+                    // levels. Surface the field-naming serde error. This arm is
+                    // NOT reached by APIs that signal failure via a 200 envelope
+                    // (KyberSwap / OpenOcean): those parse as the `Api` error
+                    // just above and short-circuit, so a normal no-route
+                    // response never produces a false "drift" warning.
+                    tracing::warn!(
+                        %status,
+                        error = %err,
+                        "failed to deserialize successful HTTP response body; \
+                         upstream API schema may have drifted",
+                    );
                     Error::Json(err)
                 } else {
                     Error::Status(status, body)

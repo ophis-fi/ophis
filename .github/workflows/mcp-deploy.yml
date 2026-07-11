@@ -44,7 +44,15 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
 
-      - run: pnpm install --frozen-lockfile
+      # --ignore-scripts: this job later runs `wrangler deploy` with the
+      # CLOUDFLARE_WORKERS_TOKEN on the same runner, so no third-party dependency
+      # lifecycle script should execute next to that token (mirrors
+      # sdk-release.yml). Safe here: the root workspace has no own postinstall,
+      # the SDK build is invoked explicitly below, and the test step is plain
+      # `vitest run` (no workerd/miniflare native runtime needed).
+      # Future option if a build ever needs a native dep script: split into a
+      # secret-free build job + a deploy job (upload/download artifact).
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
       # The MCP Worker imports @ophis/sdk from its built dist/.
       - run: pnpm --filter @ophis/sdk build

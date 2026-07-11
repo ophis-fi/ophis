@@ -84,6 +84,52 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Odos { config: path } => {
+            let config = config::dex::odos::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Odos(Box::new(
+                    dex::odos::Odos::try_new(config.odos).expect("invalid Odos configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::OpenOcean { config: path } => {
+            let config = config::dex::openocean::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::OpenOcean(Box::new(
+                    dex::openocean::OpenOcean::try_new(config.openocean)
+                        .expect("invalid OpenOcean configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Dodo { config: path } => {
+            let config = config::dex::dodo::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Dodo(Box::new(
+                    dex::dodo::Dodo::try_new(config.dodo).expect("invalid DODO configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Lifi { config: path } => {
+            let config = config::dex::lifi::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Lifi(Box::new(
+                    dex::lifi::Lifi::try_new(config.lifi).expect("invalid LI.FI configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Enso { config: path } => {
+            let config = config::dex::enso::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Enso(Box::new(
+                    dex::enso::Enso::try_new(config.enso).expect("invalid Enso configuration"),
+                )),
+                config.base,
+            )))
+        }
     };
 
     crate::api::Api {

@@ -25,6 +25,7 @@ const chainId = getCurrentChainIdFromUrl()
 // Override via REACT_APP_ORDER_BOOK_URLS env if needed (merged on top of this base).
 const PROD_BASE_URL = 'https://api.cow.fi'
 const OPHIS_OP_ORDERBOOK_URL = 'https://optimism-mainnet.ophis.fi'
+const OPHIS_UNICHAIN_ORDERBOOK_URL = 'https://unichain-mainnet.ophis.fi'
 // MegaETH (4326) + HyperEVM (999) removed from the frontend on
 // 2026-05-20. Backend scaffolding kept in infra/megaeth-mainnet/ +
 // infra/hyperevm-mainnet/ for future re-enablement.
@@ -43,6 +44,8 @@ const OPHIS_ORDERBOOK_BASE_URLS = {
   [SupportedChainId.INK]: `${PROD_BASE_URL}/ink`,
   // Ophis OP mainnet orderbook (verified live)
   [10 as unknown as SupportedChainId]: OPHIS_OP_ORDERBOOK_URL,
+  // Ophis Unichain mainnet orderbook
+  [130 as unknown as SupportedChainId]: OPHIS_UNICHAIN_ORDERBOOK_URL,
 } as unknown as ApiBaseUrls
 
 const envBaseUrls = process.env.REACT_APP_ORDER_BOOK_URLS

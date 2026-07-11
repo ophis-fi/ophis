@@ -26,6 +26,9 @@ const API_BASE_URLs: Record<SupportedChainId, string | undefined> = {
   ...mapSupportedNetworks((_networkId: SupportedChainId): string => `${TENDERLY_API_URL}/${_networkId}`),
   // Ophis fork: Tenderly API URL pattern works for OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: `${TENDERLY_API_URL}/10`,
+  // Ophis fork: Unichain mainnet (chain 130) — Tenderly does not index Unichain;
+  // undefined disables Tenderly lookups gracefully (see _getApiBaseUrl).
+  [130 as unknown as SupportedChainId]: undefined,
   // Ophis fork: MegaETH mainnet (chain 4326) — Tenderly does not index MegaETH;
   // undefined disables Tenderly lookups gracefully (see _getApiBaseUrl).
   [4326 as unknown as SupportedChainId]: undefined,

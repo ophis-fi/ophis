@@ -63,4 +63,29 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve individual orders via the Odos aggregator API
+    Odos {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve individual orders via the OpenOcean aggregator API
+    OpenOcean {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve individual orders via the DODO aggregator API
+    Dodo {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve individual orders via the LI.FI aggregator API
+    Lifi {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve individual orders via the Enso aggregator API
+    Enso {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
 }

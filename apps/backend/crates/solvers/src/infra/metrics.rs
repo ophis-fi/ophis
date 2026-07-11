@@ -78,6 +78,12 @@ pub fn request_sent() {
 pub enum Dex {
     KyberSwap,
     Velora,
+    Odos,
+    OpenOcean,
+    Dodo,
+    Okx,
+    Lifi,
+    Enso,
 }
 
 impl Dex {
@@ -85,6 +91,12 @@ impl Dex {
         match self {
             Dex::KyberSwap => "kyberswap",
             Dex::Velora => "velora",
+            Dex::Odos => "odos",
+            Dex::OpenOcean => "openocean",
+            Dex::Dodo => "dodo",
+            Dex::Okx => "okx",
+            Dex::Lifi => "lifi",
+            Dex::Enso => "enso",
         }
     }
 }

@@ -116,24 +116,29 @@ impl ProtocolFees {
         volume_fee_bucket_overrides: Vec<TokenBucketFeeOverride>,
         enable_sell_equals_buy_volume_fee: bool,
     ) -> Self {
-        // OP partner-fee floor invariant (defense-in-depth). `max_partner_fee` is
+        // Ophis retail-rate cap invariant (defense-in-depth). `max_partner_fee` is
         // the operator-set UPPER cap applied to every partner fee in
         // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
-        // means every partner fee is an Ophis fee, and the token-pair floor
-        // (enforced at order ingress and re-clamped here) is at most
-        // OPHIS_DEFAULT_VOLUME_FEE_BPS. If the cap were configured below that floor,
-        // the cap would silently settle an allowlisted-recipient fee BELOW the
-        // floor on the eth-flow / on-chain path that skips ingress, reopening the
-        // bypass. Fail fast at startup rather than under-charge at settlement.
+        // means every partner fee is an Ophis fee. The HIGHEST rate any legitimate
+        // Ophis order carries is OPHIS_DEFAULT_VOLUME_FEE_BPS, the 10 bps RETAIL
+        // rate the front-end emits (the SDK partner rate is 5 bps and the stable
+        // rate 1 bp, both below it). The front-end pins its env to EXACTLY this
+        // retail rate (readVolumeFeeBps enables the flat fee only for that value),
+        // so no Ophis order can carry MORE than the retail rate; therefore
+        // `cap >= retail` is exactly sufficient — no super-retail order exists for
+        // the cap to wrongly pass. A cap below the retail rate would silently clamp
+        // a legitimate 10 bps retail order DOWN at settlement (and, a fortiori,
+        // could undercut the 4 bps floor on the eth-flow / on-chain path that skips
+        // ingress). Fail fast at startup rather than under-charge at settlement.
         let cap = config.max_partner_fee.get();
-        let floor_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
-        let floor_factor = floor_bps as f64 / 10_000.0;
+        let retail_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
+        let retail_factor = retail_bps as f64 / 10_000.0;
         assert!(
-            cap >= floor_factor,
-            "max_partner_fee ({cap}) is below the OP partner-fee floor of {floor_bps} \
-             bps ({floor_factor}); the autopilot cap would settle Ophis fees below \
-             the enforced floor. Raise max_partner_fee in the autopilot fee-policy \
-             config."
+            cap >= retail_factor,
+            "max_partner_fee ({cap}) is below the Ophis retail rate of {retail_bps} \
+             bps ({retail_factor}); the autopilot cap would settle a legitimate \
+             retail Ophis order below the rate the front-end charges. Raise \
+             max_partner_fee in the autopilot fee-policy config."
         );
 
         let volume_fee_policy = VolumeFeePolicy::new(
@@ -463,13 +468,14 @@ mod test {
     use {super::*, model::order::OrderMetadata};
 
     #[test]
-    #[should_panic(expected = "below the OP partner-fee floor")]
+    #[should_panic(expected = "below the Ophis retail rate")]
     fn new_panics_when_max_partner_fee_below_floor() {
-        // A cap below the 10 bps non-stable floor would let the autopilot's
-        // upper cap settle an Ophis fee below the floor on the eth-flow path that
-        // skips ingress. The constructor must refuse to build (fail fast at boot).
+        // A cap below the 10 bps retail rate would let the autopilot's upper cap
+        // settle a legitimate retail order BELOW retail (and could undercut the
+        // floor on the eth-flow path that skips ingress). The constructor must
+        // refuse to build (fail fast at boot).
         let config = FeePoliciesConfig {
-            max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps floor
+            max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps retail
             ..Default::default()
         };
         let _ = ProtocolFees::new(&config, vec![], false);
@@ -477,7 +483,7 @@ mod test {
 
     #[test]
     fn new_accepts_max_partner_fee_at_or_above_floor() {
-        // Production default (100 bps) and a value just above the floor both build.
+        // Production default (100 bps) and a value above the retail rate both build.
         for factor in [0.002_f64, 0.01] {
             let config = FeePoliciesConfig {
                 max_partner_fee: FeeFactor::new(factor),
@@ -573,7 +579,7 @@ mod test {
         // token-pair floor by the defense-in-depth autopilot floor (mirrors the
         // orderbook ingress validator). This closes the prior 0-fee bypass for any
         // path that skips the off-chain ingress (eth-flow / on-chain orders, stale
-        // DB rows). The order's default token pair is non-stable -> the 10 bps floor.
+        // DB rows). The order's default token pair is non-stable -> the 4 bps floor.
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(
@@ -602,12 +608,12 @@ mod test {
         let max_partner_fee = 0.3; // 30%
         let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
 
-        // Expected: 0 bps clamped UP to the 10 bps floor (default tokens are
-        // non-stable; 10 bps = 0.001), never settling a sub-floor Volume fee.
+        // Expected: 0 bps clamped UP to the 4 bps floor (default tokens are
+        // non-stable; 4 bps = 0.0004), never settling a sub-floor Volume fee.
         assert_eq!(
             result,
             vec![Policy::Volume {
-                factor: FeeFactor::try_from(0.001).unwrap(),
+                factor: FeeFactor::try_from(0.0004).unwrap(),
             }]
         );
     }
@@ -957,11 +963,11 @@ mod test {
     #[test]
     fn surplus_fee_to_allowlisted_recipient_neutralized_to_floor() {
         // Default (non-stable) token pair, so the floor is
-        // OPHIS_DEFAULT_VOLUME_FEE_BPS (10 bps = 0.001). The surplus bps value is
+        // OPHIS_NON_STABLE_FLOOR_BPS (4 bps = 0.0004). The surplus bps value is
         // irrelevant: it is discarded and replaced by the token-pair floor, so a
         // near-zero surplus fee on an eth-flow order can never be used to settle
         // below the minimum. max_partner_fee = 1.0 here, so the cap never binds.
-        let floor = FeeFactor::try_from(0.001).unwrap();
+        let floor = FeeFactor::try_from(0.0004).unwrap();
         assert_eq!(neutralized_surplus_factor(0), floor);
         assert_eq!(neutralized_surplus_factor(1), floor);
         assert_eq!(neutralized_surplus_factor(2500), floor);
@@ -971,7 +977,7 @@ mod test {
 
     #[test]
     fn price_improvement_fee_to_allowlisted_recipient_neutralized_to_floor() {
-        let floor = FeeFactor::try_from(0.001).unwrap();
+        let floor = FeeFactor::try_from(0.0004).unwrap();
         assert_eq!(neutralized_price_improvement_factor(0), floor);
         assert_eq!(neutralized_price_improvement_factor(2500), floor);
         assert_eq!(neutralized_price_improvement_factor(9999), floor);

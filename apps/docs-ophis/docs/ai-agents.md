@@ -13,6 +13,15 @@ accepts free-form natural language and returns structured JSON your agent
 can map directly to a pre-filled swap link. The agent does the parsing
 and routing; **the human always reviews and signs.**
 
+:::tip[New: the full walkthrough]
+
+For a narrative guide, including the MEV and key-safety pitfalls of letting an
+agent trade, read
+[How to let an AI agent swap tokens](https://ophis.fi/blog/let-an-ai-agent-swap-tokens)
+on the Ophis blog.
+
+:::
+
 ## MCP server (recommended)
 
 The fastest way to give an MCP-capable agent full Ophis access is the hosted
@@ -22,22 +31,88 @@ The fastest way to give an MCP-capable agent full Ophis access is the hosted
 https://mcp.ophis.fi/mcp
 ```
 
-It speaks streamable-HTTP MCP and exposes six tools:
+It speaks streamable-HTTP MCP and exposes fourteen tools:
 
 | Tool | What it does |
 | --- | --- |
 | `parse_intent` | Parse a natural-language request into a structured intent. |
+| `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis/CoW token list; fails closed (anti-spoof). Call this before quoting or building so you never trade against a spoofed address. |
 | `get_quote` | Fetch an executable quote for a parsed intent. |
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
+| `validate_order` | Offline preflight for an order you built outside `build_order`: catches the silent-failure modes (wrong appCode, wrong orderbook host, wrong EIP-712 domain, appData-hash mismatch, unpinned receiver) before you sign. |
 | `lookup_tier` | Look up a wallet's 30-day volume tier / rebate status. |
+| `get_integrator_earnings` | Look up what an integrator's own-fee / referral routing earned, by appCode: routed volume, the Ophis base fee, your stacked fee, and rebate paid-to-date with payout tx links. |
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
+| `get_balances` | Read a wallet's native and ERC-20 balances on one chain via a public RPC. |
+| `get_portfolio` | Read a wallet's token balances across multiple chains. |
+| `get_gas` | Fetch the current gas price for a chain. |
+| `get_token_chart` | Fetch a token's OHLCV price chart. |
+| `expected_surplus` | Estimate how much better an Ophis sell-quote beats the open market (`beatBps`). |
 
 Point any MCP client (Claude, Cursor, or a custom agent) at that URL. Ophis
 never holds keys: `build_order` returns a bounded order the agent signs
 locally; the signature is the trust boundary (see the warning below). A bare
 request without an `Accept: text/event-stream` header returns HTTP 406; that is
 the transport negotiating, not an outage.
+
+### Connect your MCP client
+
+The server is public and keyless, so there is nothing to sign up for. Copy the
+block for your client.
+
+**Claude Code** (one command):
+
+```bash
+claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
+```
+
+**Claude Desktop** (`claude_desktop_config.json`, via the `mcp-remote` bridge):
+
+```json
+{
+  "mcpServers": {
+    "ophis": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.ophis.fi/mcp"]
+    }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json`, or the project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "ophis": {
+      "url": "https://mcp.ophis.fi/mcp"
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`):
+
+```json
+{
+  "servers": {
+    "ophis": {
+      "type": "http",
+      "url": "https://mcp.ophis.fi/mcp"
+    }
+  }
+}
+```
+
+**OpenAI Agents SDK, LangChain, or any custom client**: point a
+streamable-HTTP MCP transport at `https://mcp.ophis.fi/mcp`. The
+[LangChain tool](#langchain-tool) and function-calling examples below show the
+call path without an MCP client at all.
+
+After connecting, ask the agent to "quote 100 USDC to ETH on Optimism" and it
+will call `resolve_token`, `get_quote`, and `build_order`; it returns a bounded
+order for you (or your wallet) to sign.
 
 If you'd rather make a single REST call than wire up the full toolset, use the
 [Intent API](./intent-api.md) directly, as shown next.
@@ -95,7 +170,7 @@ import requests
 
 OPHIS = "https://ophis.fi"
 
-# The 11 EVM chains the Intent API can return, mapped to their chain IDs.
+# The 12 EVM chains the Intent API can return, mapped to their chain IDs.
 # Keep in sync with the API's supported-network list; build_deeplink()
 # raises on any future slug not listed here rather than misrouting it.
 CHAIN_SLUG_TO_ID = {
@@ -110,6 +185,7 @@ CHAIN_SLUG_TO_ID = {
     "arbitrum": 42161,
     "avalanche": 43114,
     "plasma": 9745,
+    "unichain": 130,
 }
 
 
@@ -196,6 +272,72 @@ Implement the handler by `POST`ing `{ "text": <text> }` to
 `https://ophis.fi/api/intent` (see the Python helper above), then surface
 the resulting deep link to the user.
 
+## Drop-in framework adapters
+
+Everything above keeps a human in the signing loop. If instead you are building
+an agent that executes swaps itself and you are on a common framework, you do
+not have to hand-roll the order flow in the next section. Three published npm
+packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
+and each stamps your referral code into every order so the rebate accrues:
+
+| Package | For | Registers |
+| --- | --- | --- |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | [GOAT SDK](https://github.com/goat-sdk/goat) | an `ophis_swap` tool |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | any custom EOA framework | the `executeOphisSwap()` core |
+
+Coinbase AgentKit, in one line:
+
+```ts
+import { AgentKit } from '@coinbase/agentkit';
+import { ophisActionProvider } from '@ophis/agentkit-ophis';
+
+const agentKit = await AgentKit.from({
+  walletProvider, // any EvmWalletProvider (Viem, CDP, Privy, ZeroDev)
+  actionProviders: [ophisActionProvider({ referralCode: process.env.OPHIS_REFERRAL_CODE })],
+});
+```
+
+GOAT SDK:
+
+```ts
+import { ophis } from '@ophis/plugin-goat';
+
+const tools = await getOnChainTools({
+  wallet: viem(walletClient),
+  plugins: [ophis({ referralCode: process.env.OPHIS_REFERRAL_CODE })],
+});
+```
+
+Both register a swap that takes `sellToken`, `buyToken`, `sellAmount` (whole
+units, e.g. `"1.5"`), and an optional `slippageBps` (default `50` = 0.5%). Each
+quotes against the Ophis orderbook, signs the order EIP-712 with the agent's own
+wallet, approves the CoW vault relayer once, submits, and returns the order UID
+plus an explorer URL. ERC-20 to ERC-20 only (native-ETH sells need CoW eth-flow,
+a separate path, so wrap to WETH first). The agent's wallet is the order owner
+**and** receiver, so funds only ever move through the audited CoW settlement
+contract, back to the same wallet.
+
+The `referralCode` is optional: omit it and swaps still work and settle, you just
+forgo the rebate. Mint one below, then ship, no redeploy of the swap path needed
+to start earning.
+
+## Get a referral code
+
+Every order these adapters (or the SDK below) build already carries the Ophis
+partner fee. Add your **referral code** and that same order also credits *you*
+with the [affiliate rebate](./affiliate.md) on its volume, currently 8 to 12
+percent, paid on-chain. The code rides in the order's appData, so there is
+nothing for the end user to sign or opt into.
+
+1. Open the [Rewards page](https://swap.ophis.fi/#/rewards) and connect a wallet.
+2. Mint a code (about 30 seconds). It is yours permanently.
+3. Pass it to any adapter as `referralCode`, or export `OPHIS_REFERRAL_CODE` and
+   the adapters pick it up automatically.
+
+The code is **optional**: without one your agent still swaps normally, it just
+earns no rebate. You can ship first and add the code later.
+
 ## Submitting orders programmatically
 
 The Intent API only normalizes language, it does not place orders. To submit
@@ -204,18 +346,24 @@ orders programmatically, build and sign a
 yourself. Four things must each be exactly right, every one fails **silently**
 (a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.0.1, public).
+If your agent runs on Coinbase AgentKit or GOAT, the [drop-in
+adapters](#drop-in-framework-adapters) above already get all four right, hand-roll
+this only if you are on neither. The `@ophis/sdk` helpers below are also what
+those adapters call under the hood.
+
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.2.3, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 
 ### 1. Resolve the orderbook host from the chain ID
 
-:::danger[Optimism does not live on api.cow.fi]
+:::danger[Optimism and Unichain do not live on api.cow.fi]
 
-Optimism is the one chain that breaks the `api.cow.fi/<slug>` pattern. Ophis
-self-hosts its OP orderbook at `optimism-mainnet.ophis.fi`. Posting an OP order
-to `api.cow.fi/optimism-mainnet` (a host that does not serve Ophis) **silently
-bypasses the Ophis solver and zeroes the partner fee**.
+Optimism and Unichain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
+their orderbooks at `optimism-mainnet.ophis.fi` and `unichain-mainnet.ophis.fi`.
+Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
+Ophis) **silently bypasses the Ophis solver and zeroes the partner fee**. Resolve
+hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
 
 :::
 
@@ -228,9 +376,12 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The partner fee is a flat 0.10% (10 bps) fee on trade volume, applied to every
-trade, written into the order's `appData` at `metadata.partnerFee`. Use the
-CIP-75 **volume** shape `{ volumeBps: 10, recipient }`, **not** the
+The partner fee for SDK and manual integrations is a flat 0.05% (5 bps) fee on
+trade volume (the Ophis swap app charges its own 0.10% retail rate), written into
+the order's `appData` at `metadata.partnerFee`. This section is for callers that
+build appData themselves; the keyless MCP `build_order` embeds this fee for you
+at the flat 5 bps rate (it does not apply the reduced stable-pair rate). Use the
+CIP-75 **volume** shape `{ volumeBps: 5, recipient }`, **not** the
 price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
 the two shapes use different denominators, so slotting a value into the wrong
 field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
@@ -239,7 +390,7 @@ stable, so the hash won't match what solvers expect.
 
 Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp): same-chain pairs
 where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
-`{ volumeBps: 10, recipient }`. The `@ophis/sdk` exposes
+`{ volumeBps: 5, recipient }`. The `@ophis/sdk` exposes
 `OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
 to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
 so integrators pass `isStablePair` based on their own token classification.
@@ -255,18 +406,20 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On Optimism the fee is an ENFORCED FLOOR: the self-hosted backend rejects
-// (HTTP 400) any order to the Ophis fee recipient whose partner fee is below the
-// floor (10 bps, or 1 bp for a same-chain stablecoin pair), or that uses a
-// Surplus/PriceImprovement policy. Carry this fragment unchanged on OP: do not
-// lower the bps and do not drop the fee, or the order is rejected.
+// On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge
+// is 5 bps (1 bp stable pairs). The backend also enforces an anti-abuse MINIMUM:
+// it rejects (HTTP 400) any order to the Ophis fee recipient whose fee is below
+// 4 bps non-stable (or 1 bp for a same-chain stablecoin pair), or that uses a
+// Surplus/PriceImprovement policy. The 4 bps is a floor the backend accepts, not
+// a rate to target. Carry this fragment unchanged: do not lower the bps and do
+// not drop the fee, or the order is rejected.
 const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> the Ophis flat-volume partner-fee fragment { volumeBps: 10, recipient }
+// -> the Ophis flat-volume partner-fee fragment { volumeBps: 5, recipient }
 //    for this chain (enforced as a minimum on Optimism: at least the floor)
 
 const metadataApi = new MetadataApi();
 const doc = await metadataApi.generateAppDataDoc({
-  appCode: 'Ophis',
+  appCode: 'ophis',
   metadata: {
     partnerFee,
     hooks: {}, // pin empty, appData hooks are arbitrary on-chain calls
@@ -282,9 +435,10 @@ CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
 `signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
 chains do **not** use CoW's canonical settlement.
 
-:::danger[The Optimism settlement is not the canonical CoW one]
+:::danger[The Optimism and Unichain settlements are not the canonical CoW one]
 
-On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, **not** the canonical
+On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, and on Unichain it is
+`0x108A678716e5E1776036eF044CAB7064226F714E`, **not** the canonical
 `0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
 order with the SDK default yields a domain separator the deployed contract
 rejects, every order fails. Build the domain from the chain ID instead.

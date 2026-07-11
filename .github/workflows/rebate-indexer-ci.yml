@@ -40,10 +40,16 @@ jobs:
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile --filter @ophis/rebate-indexer...
       - run: pnpm --filter @ophis/rebate-indexer typecheck
+      # `pnpm test` runs the FULL vitest suite — unit AND the testcontainers-backed
+      # integration tests (tests/integration.test.ts + tests/**/*.int.test.ts) — using
+      # GitHub's auto-detected Docker daemon. A dedicated `test:integration` step is
+      # therefore redundant, and its npm script carries local Mac/Colima testcontainers
+      # defaults (TESTCONTAINERS_RYUK_DISABLED=true + TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE)
+      # that flake the Postgres container in CI (the same integration.test.ts passes here
+      # under `pnpm test` but timed out + ECONNREFUSED-cascaded under that local config).
+      # Integration coverage therefore runs once, here, via the working config. The
+      # `test:integration` npm script stays for local single-file runs.
       - run: pnpm --filter @ophis/rebate-indexer test
-      - run: pnpm --filter @ophis/rebate-indexer test:integration
-        env:
-          DOCKER_HOST: unix:///var/run/docker.sock
 
   e2e:
     runs-on: ubuntu-latest

@@ -55,6 +55,17 @@ pub const OPHIS_PARTNER_FEE_RECIPIENT: Address =
 pub const OPHIS_DEFAULT_VOLUME_FEE_BPS: u64 = 10;
 pub const OPHIS_STABLE_VOLUME_FEE_BPS: u64 = 1;
 
+/// The MINIMUM non-stable Volume bps the OP self-hosted backend ACCEPTS for a
+/// fee to an allowlisted recipient (the anti-zero-bypass floor). DECOUPLED from
+/// OPHIS_DEFAULT_VOLUME_FEE_BPS (the 10 bps RETAIL rate the frontend charges and
+/// mirrors): the ingress floor sits BELOW retail so the partner SDK tier (5 bps)
+/// clears with headroom and a future VIP tier has room, while the frontend keeps
+/// charging 10 bps. Invariant: OPHIS_STABLE_VOLUME_FEE_BPS (1) <=
+/// OPHIS_NON_STABLE_FLOOR_BPS (4) <= OPHIS_DEFAULT_VOLUME_FEE_BPS (10) <= the
+/// autopilot max_partner_fee cap (100). A floor (min accepted), never an upper
+/// bound and never the fee a user is charged.
+pub const OPHIS_NON_STABLE_FLOOR_BPS: u64 = 4;
+
 /// Optimism (chain 10) stablecoin set, mirrored from the frontend
 /// `OPTIMISM_STABLECOINS` (libs/common-const/src/tokens.ts). A swap where BOTH
 /// tokens are in this set is a same-chain stable pair and floors at the reduced
@@ -86,10 +97,12 @@ const OPTIMISM_BOOSTED_TOKENS: &[Address] = &[];
 /// never appCode/referrer, which are client-controlled). New partner tiers are
 /// added after the partner Safe is independently verified and allowlisted.
 fn recipient_base_floor_bps(_recipient: Address) -> u64 {
-    // Only the Ophis Safe is allowlisted today, held to the full 10 bps. A
-    // partner tier (e.g. Lagoon at 5 bps) is added as:
-    //   if recipient == LAGOON_PARTNER_FEE_RECIPIENT { 5 } else { 10 }
-    OPHIS_DEFAULT_VOLUME_FEE_BPS
+    // Only the Ophis Safe is allowlisted today, floored at OPHIS_NON_STABLE_FLOOR_BPS
+    // (4 bps). The frontend still CHARGES the 10 bps retail rate; this floor only sets
+    // the minimum the backend accepts, leaving room for the 5 bps partner SDK tier and
+    // a future sub-5-bps VIP tier keyed on the recipient:
+    //   if recipient == LAGOON_PARTNER_FEE_RECIPIENT { 4 } else { OPHIS_NON_STABLE_FLOOR_BPS }
+    OPHIS_NON_STABLE_FLOOR_BPS
 }
 
 /// Minimum Volume-policy bps the OP backend accepts for a partner fee to an
@@ -1096,10 +1109,10 @@ mod tests {
         // stable <-> stable => reduced floor
         assert_eq!(partner_fee_floor_bps(usdc, usdt, r), OPHIS_STABLE_VOLUME_FEE_BPS);
         assert_eq!(partner_fee_floor_bps(dai, usdc, r), OPHIS_STABLE_VOLUME_FEE_BPS);
-        // any volatile leg => full default floor (this is the bypass the floor closes)
-        assert_eq!(partner_fee_floor_bps(weth, usdc, r), OPHIS_DEFAULT_VOLUME_FEE_BPS);
-        assert_eq!(partner_fee_floor_bps(usdc, weth, r), OPHIS_DEFAULT_VOLUME_FEE_BPS);
-        assert_eq!(partner_fee_floor_bps(weth, weth, r), OPHIS_DEFAULT_VOLUME_FEE_BPS);
+        // any volatile leg => the non-stable floor (this is the bypass the floor closes)
+        assert_eq!(partner_fee_floor_bps(weth, usdc, r), OPHIS_NON_STABLE_FLOOR_BPS);
+        assert_eq!(partner_fee_floor_bps(usdc, weth, r), OPHIS_NON_STABLE_FLOOR_BPS);
+        assert_eq!(partner_fee_floor_bps(weth, weth, r), OPHIS_NON_STABLE_FLOOR_BPS);
         // floor is never zero
         assert!(partner_fee_floor_bps(weth, usdc, r) >= OPHIS_STABLE_VOLUME_FEE_BPS);
     }

@@ -1,6 +1,13 @@
+import { sql as dsql } from 'drizzle-orm';
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode } from './cow/types.js';
+import { GROSS_FEE_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
+import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
+
+// The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
+// base when it actually pays THIS recipient.
+const OPHIS_FEE_RECIPIENT = OPHIS_SAFE_ADDRESS.toLowerCase();
 
 const log = logger.child({ module: 'fetcher' });
 const PAGE_SIZE = 1_000;
@@ -32,10 +39,356 @@ export interface PendingTrade {
   /** Referral code from appData (metadata.ophisReferrer.code), normalized +
    *  grammar-validated, or null when absent/malformed. */
   appdataRefCode: string | null;
+  /** Gross volume-fee rate (bps) from appData metadata.partnerFee.volumeBps,
+   *  clamped to [1, GROSS_FEE_BPS]; null when absent/unreadable (accrual then
+   *  treats it as the legacy retail rate). */
+  volumeFeeBps: number | null;
+  /** True when volumeFeeBps is authoritative (API row under the owner-allowlist, or an
+   *  on-chain-verified decoder row). False for a settle() decoder DISCOVERY row whose
+   *  volumeFeeBps is a provisional 0 — the API fetcher may still upgrade it to the real
+   *  verified fee; the money path never credits it (it stays at fee=0). */
+  feeVerified: boolean;
+  /** The integrator's OWN flat-Volume fee rate (bps) from a NON-Ophis partnerFee
+   *  entry in appData, clamped to [1, OWN_FEE_MAX_BPS]; null when the order stacked no
+   *  such entry. Reporting-only (GET /earnings/:appCode) - NOT part of the Ophis money
+   *  path. See readOwnFee. */
+  ownFeeBps: number | null;
+  /** The integrator's own-fee recipient (lowercased 0x-address) that pairs with
+   *  ownFeeBps, for the "where it paid out" link; null when ownFeeBps is null. */
+  ownFeeRecipient: `0x${string}` | null;
+}
+
+/**
+ * Decode the integrator's OWN fee from a settled order's appData: the FIRST
+ * partnerFee entry whose recipient is NOT the Ophis Safe and which is a flat Volume
+ * fee ({ volumeBps } or legacy { bps }, integer >= 1, with no surplus/PI/cap shape).
+ * Integrators STACK their own recipient entry next to the Ophis base entry, so this
+ * is how the earnings endpoint attributes what an integrator's own routing earned.
+ *
+ * Reporting-only: this NEVER feeds the Ophis fee base, the rebate, or the affiliate
+ * accrual (those key on volume_fee_bps, the Ophis-recipient entry). appData is
+ * attacker-controllable, so the rate is clamped to OWN_FEE_MAX_BPS (a crafted entry
+ * cannot inflate the reported figure) and the recipient is shape-validated.
+ *
+ * Only flat Volume own-fees are decoded: a surplus/price-improvement own-fee is not
+ * priceable from volume alone, so it is left null (same limitation as the Ophis-fee
+ * classifier). This runs on EVERY chain - the fetcher resolves the full appData for
+ * every trade - so there is no hosted-chain attribution gap; only the paid/guaranteed
+ * labeling in earnings.ts is sovereign-scoped.
+ */
+function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | null {
+  const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
+  const entries = Array.isArray(pf) ? pf : [pf];
+  for (const e of entries) {
+    const entry = e as {
+      volumeBps?: unknown;
+      bps?: unknown;
+      surplusBps?: unknown;
+      priceImprovementBps?: unknown;
+      maxVolumeBps?: unknown;
+      recipient?: unknown;
+    };
+    if (typeof entry?.recipient !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(entry.recipient)) continue;
+    const recipient = entry.recipient.toLowerCase() as `0x${string}`;
+    if (recipient === OPHIS_FEE_RECIPIENT) continue; // the Ophis base fee -> volume_fee_bps, not own-fee
+    const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+    // Flat Volume arm: { volumeBps } XOR legacy { bps }, with surplusBps,
+    // priceImprovementBps AND maxVolumeBps ALL absent (mirrors readVolumeFeeBps).
+    const isFlatVolume =
+      entry.surplusBps === undefined &&
+      entry.priceImprovementBps === undefined &&
+      entry.maxVolumeBps === undefined &&
+      !(entry.volumeBps !== undefined && entry.bps !== undefined);
+    if (!isFlatVolume) continue;
+    const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
+    if (isInt(raw) && raw >= 1) {
+      return { bps: Math.min(raw, OWN_FEE_MAX_BPS), recipient };
+    }
+  }
+  return null;
+}
+
+/**
+ * Read the order's gross volume-fee rate (bps) from its appData, recipient-guarded
+ * and clamped to [1, retail]. Classifies the Ophis partner fee against the backend
+ * app_data.rs FeePolicyDeserializer arms and returns one of THREE states (which
+ * must NOT collapse, because accrual/dashboard SQL applies
+ * COALESCE(volume_fee_bps, GROSS_FEE_BPS) and would credit a NULL at the retail
+ * default):
+ *
+ *   N (1..retail) -- a settled flat Volume fee to Ophis: CIP-75 `{ volumeBps }` or
+ *     legacy `{ bps }` with surplusBps/priceImprovementBps/maxVolumeBps all absent
+ *     (and not both aliases). Clamped to [1, retail] (a crafted appData can never
+ *     claim more than the legacy assumption). This is ~all production volume.
+ *
+ *   null -- a VALID Surplus `{ surplusBps, maxVolumeBps }` or PriceImprovement
+ *     `{ priceImprovementBps, maxVolumeBps }` fee to Ophis. Ophis DID collect a fee,
+ *     but this volume-derived indexer cannot compute a surplus/PI amount, so it is
+ *     UNKNOWN -> COALESCEs to the retail default and still earns a rebate (the
+ *     pre-per-trade behaviour) rather than being zeroed.
+ *
+ *   0 -- examined, NO settled Ophis fee at ALL: a non-Ophis recipient, an absent /
+ *     0-bps fee, or a backend-REJECTED shape (capped `{ volumeBps/bps, maxVolumeBps }`,
+ *     both aliases) that never settles. 0 is non-NULL, so COALESCE keeps it 0 and the
+ *     trade is credited at ZERO. This is the fix for `{ volumeBps: 5, maxVolumeBps:
+ *     50 }` being credited at the retail 10.
+ *
+ * appData is attacker-controllable, so a crafted array cannot use a decoy
+ * `{recipient: attacker, volumeBps: 10}` to over-credit: only Ophis-recipient
+ * entries are considered, and a real Volume fee is preferred over a surplus/PI one.
+ * The caller additionally leaves NULL for unparseable appData / pre-per-trade rows.
+ */
+function readVolumeFeeBps(meta: unknown): number | null {
+  const pf = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
+  const entries = Array.isArray(pf) ? pf : [pf];
+  let sawOphisNonVolumeFee = false; // a valid surplus / price-improvement Ophis fee
+  for (const e of entries) {
+    const entry = e as {
+      volumeBps?: unknown;
+      bps?: unknown;
+      surplusBps?: unknown;
+      priceImprovementBps?: unknown;
+      maxVolumeBps?: unknown;
+      recipient?: unknown;
+    };
+    if (typeof entry?.recipient !== 'string' || entry.recipient.toLowerCase() !== OPHIS_FEE_RECIPIENT) {
+      continue; // only the fee that actually pays the Ophis recipient counts
+    }
+    const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+    // Flat Volume arm: { volumeBps } XOR legacy { bps }, with surplusBps,
+    // priceImprovementBps AND maxVolumeBps ALL absent (mirrors the backend). Prefer
+    // a real Volume fee over a surplus/PI entry in a multi-entry array.
+    const isFlatVolume =
+      entry.surplusBps === undefined &&
+      entry.priceImprovementBps === undefined &&
+      entry.maxVolumeBps === undefined &&
+      !(entry.volumeBps !== undefined && entry.bps !== undefined);
+    if (isFlatVolume) {
+      const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
+      if (isInt(raw) && raw >= 1) {
+        return Math.min(raw, GROSS_FEE_BPS);
+      }
+    } else if (
+      // EXACT backend Surplus arm { surplusBps, maxVolumeBps } or PriceImprovement
+      // arm { priceImprovementBps, maxVolumeBps } (integers, mutually exclusive, no
+      // volumeBps/bps). A VALID such fee is a real Ophis fee on a CoW-hosted chain
+      // (CoW accepts CIP-75 Surplus/PI; only the OP sovereign backend rejects it),
+      // but the volume-derived indexer can't compute it -> defer to NULL (retail
+      // default) so it still earns. A MALFORMED surplus-ish shape (e.g. missing
+      // maxVolumeBps, non-integer, or mixed with volumeBps/bps) is backend-rejected
+      // (no settled fee) and must NOT get the retail default -> falls through to 0.
+      (isInt(entry.surplusBps) &&
+        isInt(entry.maxVolumeBps) &&
+        entry.priceImprovementBps === undefined &&
+        entry.volumeBps === undefined &&
+        entry.bps === undefined) ||
+      (isInt(entry.priceImprovementBps) &&
+        isInt(entry.maxVolumeBps) &&
+        entry.surplusBps === undefined &&
+        entry.volumeBps === undefined &&
+        entry.bps === undefined)
+    ) {
+      sawOphisNonVolumeFee = true;
+    }
+    // else: capped { volumeBps/bps, maxVolumeBps }, both-aliases, or a malformed
+    // surplus/PI shape -> backend Errs (no settled fee) -> not creditable; try next.
+  }
+  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (retail default,
+  // still earns). Otherwise Ophis collected nothing -> 0 (credit zero).
+  return sawOphisNonVolumeFee ? null : 0;
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
   return code !== undefined && (APP_CODES as readonly string[]).includes(code);
+}
+
+/**
+ * Chains where Ophis runs its OWN dedicated eth-flow contract (NOT the shared
+ * canonical CoW eth-flow). On these, an eth-flow order's on-chain `owner` is this
+ * contract and the real trader is the order `receiver`. The contract is not shared,
+ * so querying it as an "owner" surfaces ONLY Ophis eth-flow trades, which we then
+ * attribute to the receiver. Mirrors apps/frontend/libs/common-const/src/common.ts
+ * OPHIS_ETHFLOW_OVERRIDES, kept in sync by hand (grep OPHIS_ETHFLOW_OVERRIDES).
+ * Paused chains are omitted, but for DIFFERENT reasons: MegaETH (4326) is a zero
+ * sentinel (no contract deployed), whereas HyperEVM (999) IS a real deployed
+ * eth-flow contract, omitted ONLY because the chain is strategically paused. When
+ * HyperEVM un-pauses (mirroring the FE un-pause), ADD 999 here or native-ETH HL
+ * rebates will silently never index. The shared canonical eth-flow on CoW-hosted
+ * chains (e.g. Base) is NOT here: scanning it would pull all CoW eth-flow traffic,
+ * impractical on the free API (tracked as a follow-up).
+ */
+const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
+  // Optimism: Ophis-deployed eth-flow (checksum 0x764fE4aa1FF493cf39931c7923C8ff5837596504, 2026-06-07)
+  10: '0x764fe4aa1ff493cf39931c7923c8ff5837596504',
+  // Unichain (130): Ophis-deployed eth-flow (checksum 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7,
+  // verified on-chain: EthFlow.cowSwapSettlement() == Ophis Unichain settlement, 2026-06-30). The
+  // chain is LIVE, so native-ETH sells must index here or their rebates silently never accrue.
+  130: '0x38c03729153bccf6a281daf41d7c6a14c543f1d7',
+});
+/** Lowercased owner addresses for O(1) "is this an Ophis eth-flow contract" checks. */
+const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ETHFLOW_OWNER_BY_CHAIN));
+
+/**
+ * The SHARED canonical CoW eth-flow contracts (prod + barn), identical across all
+ * CoW-hosted chains (deployed at one CREATE2 address). Sourced from
+ * @cowprotocol/sdk-config ETH_FLOW_ADDRESS / BARN_ETH_FLOW_ADDRESS (see
+ * apps/frontend/patches/@cowprotocol__sdk-config@2.0.0.patch). Lowercased.
+ *
+ * The on-chain settle() decoder uses these so a native-ETH order on a hosted chain
+ * (e.g. Base) attributes to its `receiver` (the real trader), not the router. The
+ * CoW-API fetcher does NOT use them: it cannot enumerate a shared contract as an
+ * "owner" (that would pull all of CoW's eth-flow traffic), which is exactly the gap
+ * the decoder closes. Keep in sync with the SDK patch by hand (grep ETH_FLOW_ADDRESS).
+ */
+export const CANONICAL_COW_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
+  '0xba3cb449bd2b4adddbc894d8697f5170800eadec', // prod
+  '0xb37add6ac288bd3825a901cba6ec65a89f31b8cc', // barn
+]);
+
+/**
+ * The eth-flow owner set the ON-CHAIN settle() decoder passes to attributeOrder:
+ * the Ophis-dedicated contracts UNION the shared canonical CoW eth-flow contracts.
+ * The decoder discovers settlements blind, so it must recognise the shared contract
+ * (which the API fetcher never queries) to attribute a hosted-chain native-ETH order
+ * to its receiver rather than the router.
+ */
+export const DECODER_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
+  ...OPHIS_ETHFLOW_OWNERS,
+  ...CANONICAL_COW_ETHFLOW_OWNERS,
+]);
+
+/**
+ * PURE per-trade attribution: given a parsed appData document and the settled-trade
+ * context, classify it as an Ophis trade and build the PendingTrade row, or return
+ * null to drop it. This is the SINGLE money-path that BOTH the CoW-API fetcher and
+ * the on-chain settle() decoder produce trades through, so the recipient guard, the
+ * 3-state fee classification, the refcode grammar gates and the eth-flow receiver
+ * attribution are byte-identical regardless of source.
+ *
+ * Callers own SOURCE-specific pre-filters: the API path first checks the order is in
+ * a terminal status and derives executed amounts + creationDate; the decoder takes
+ * amounts from the Trade event and the timestamp from the block. A settled on-chain
+ * Trade event is terminal by construction, so there is no status check here.
+ *
+ * `ethFlowOwners` is the set of addresses that, when they are the order `owner`, mean
+ * an eth-flow order whose real trader is `receiver`. The API fetcher passes the
+ * narrow Ophis-dedicated set (default); the decoder passes that UNION the shared
+ * canonical CoW eth-flow contracts so hosted-chain native-ETH attributes correctly.
+ */
+export function attributeOrder(
+  meta: unknown,
+  ctx: {
+    owner: string;
+    receiver: string | null | undefined;
+    sellToken: `0x${string}`;
+    buyToken: `0x${string}`;
+    executedSell: bigint;
+    executedBuy: bigint;
+    tradeUid: `0x${string}`;
+    chainId: number;
+    blockNumber: bigint;
+    blockTimestamp: Date;
+  },
+  ethFlowOwners: ReadonlySet<string> = OPHIS_ETHFLOW_OWNERS,
+): PendingTrade | null {
+  let appCode: AppCode | undefined;
+  let appdataRefCode: string | null = null;
+  let volumeFeeBps: number | null = null;
+  let ownFee: { bps: number; recipient: `0x${string}` } | null = null;
+  try {
+    const m = meta as {
+      appCode?: unknown;
+      metadata?: {
+        widget?: { appCode?: unknown };
+        ophisReferrer?: { code?: unknown };
+        referrer?: { code?: unknown };
+      };
+    };
+    const lower = (v: unknown): string | undefined => (typeof v === 'string' ? v.toLowerCase() : undefined);
+    // Normalize appCode to lowercase BEFORE matching (emitters ship mixed casing:
+    // widget, MCP build_order, and the FE fallback all tag 'Ophis' capitalized).
+    const topAppCode = lower(m?.appCode);
+    // Widget embeds promote the HOST app's appCode to the top level and DEMOTE the
+    // Ophis code to metadata.widget.appCode. Recognize either, else widget orders drop.
+    const widgetAppCode = lower(m?.metadata?.widget?.appCode);
+    appCode = isAppCodeOfInterest(topAppCode)
+      ? topAppCode
+      : isAppCodeOfInterest(widgetAppCode)
+        ? widgetAppCode
+        : undefined;
+    // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no settled
+    // Ophis Volume fee. Stays NULL only on a parse failure (unknown -> retail default).
+    volumeFeeBps = readVolumeFeeBps(meta);
+    // Integrator OWN-fee (a stacked NON-Ophis partnerFee entry). Reporting-only; never
+    // touches the Ophis money path. Independent of the affiliate attribution below.
+    ownFee = readOwnFee(meta);
+    // PREFERRED affiliate attribution: explicit metadata.ophisReferrer.code (SDK/agent
+    // path). appData is attacker-controllable: keep ONLY if it matches the registry
+    // grammar, lowercased, AND only on a CONFIRMED positive Ophis Volume fee (>0) so a
+    // forged surplus/PI shape can't COALESCE to retail and credit a referrer for free.
+    // FALLBACK: metadata.referrer.code — the schema-standard field the Ophis frontend
+    // attaches to every order carrying a saved ?ref code (buildAppData.ts). Without it,
+    // a wallet whose signed bind never landed (rejected popup, clock skew) traded with
+    // the code inert forever (audit 2026-07-09). Same grammar + fee gates apply, and
+    // the accrual layer keeps its active-code / non-self / appData-wins guards.
+    const rawRef = m?.metadata?.ophisReferrer?.code ?? m?.metadata?.referrer?.code;
+    if (typeof rawRef === 'string' && volumeFeeBps !== null && volumeFeeBps > 0) {
+      const code = rawRef.trim().toLowerCase();
+      if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
+    }
+    // FALLBACK for WIDGET embeds (cannot carry ophisReferrer; only appCode survives the
+    // CoW widget transport). The integrator's top-level appCode is the referral
+    // candidate when the order is widget-recognized and the top level is not itself a
+    // reserved Ophis code, GATED on volumeFeeBps > 0 (same forge guard as above).
+    if (
+      appdataRefCode === null &&
+      isAppCodeOfInterest(widgetAppCode) &&
+      !isAppCodeOfInterest(topAppCode) &&
+      typeof topAppCode === 'string' &&
+      /^[a-z0-9_-]{3,64}$/.test(topAppCode) &&
+      volumeFeeBps !== null &&
+      volumeFeeBps > 0
+    ) {
+      appdataRefCode = topAppCode;
+    }
+  } catch {
+    appCode = undefined;
+  }
+  if (appCode === undefined) return null; // not an Ophis-recognized order
+  if (ctx.executedSell === 0n) return null; // no settled volume (defensive)
+
+  // eth-flow orders settle with owner = the eth-flow contract, NOT the trader.
+  // Attribute to the order `receiver` (the real trader). Skip rather than mis-credit
+  // an eth-flow order with no usable receiver, and never attribute back to a router.
+  let wallet: `0x${string}`;
+  if (ethFlowOwners.has(ctx.owner.toLowerCase())) {
+    const receiver = ctx.receiver?.trim().toLowerCase();
+    if (!receiver || !/^0x[0-9a-f]{40}$/.test(receiver)) return null;
+    if (receiver === ctx.owner.toLowerCase() || ethFlowOwners.has(receiver)) return null;
+    wallet = receiver as `0x${string}`;
+  } else {
+    wallet = ctx.owner as `0x${string}`;
+  }
+
+  return {
+    tradeUid: ctx.tradeUid,
+    chainId: ctx.chainId,
+    wallet,
+    blockNumber: ctx.blockNumber,
+    blockTimestamp: ctx.blockTimestamp,
+    sellToken: ctx.sellToken,
+    buyToken: ctx.buyToken,
+    sellAmount: ctx.executedSell,
+    buyAmount: ctx.executedBuy,
+    appCode,
+    appdataRefCode,
+    volumeFeeBps,
+    // API attribution runs under the owner-allowlist, so its fee is authoritative. The
+    // settle() decoder overrides this to false for a discovery (catalog-only) row.
+    feeVerified: true,
+    ownFeeBps: ownFee?.bps ?? null,
+    ownFeeRecipient: ownFee?.recipient ?? null,
+  };
 }
 
 /**
@@ -77,70 +430,72 @@ export async function fetchChainTrades(
         // Lazily import sql + schema only when we have a real db instance.
         const { sql, schema } = await import('./db/index.js');
         const already = await deps.db
-          .select({ uid: schema.trades.tradeUid })
+          .select({
+            uid: schema.trades.tradeUid,
+            volumeFeeBps: schema.trades.volumeFeeBps,
+            feeVerified: schema.trades.feeVerified,
+          })
           .from(schema.trades)
           .where(sql`trade_uid = decode(${t.orderUid.slice(2)}, 'hex')`)
           .limit(1);
-        if (already.length > 0) continue;
+        // Skip only a row we've ALREADY enriched AUTHORITATIVELY (fee_verified=true with
+        // a non-null rate). Re-process otherwise:
+        //  - a pre-per-trade row has volume_fee_bps = NULL -> backfill the rate from
+        //    appData (otherwise accrual defaults it to retail and over-credits a 5/1 bps
+        //    order);
+        //  - a settle() decoder DISCOVERY row has fee_verified=false (provisional 0) ->
+        //    write the real owner-allowlist-confirmed fee, so a trade the decoder
+        //    cataloged before its wallet was tracked is not left permanently at 0.
+        // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
+        const row = already[0] as { volumeFeeBps: number | null; feeVerified: boolean } | undefined;
+        if (row && row.volumeFeeBps !== null && row.feeVerified) continue;
       }
 
       // Confirm appCode by fetching the order. We could store unfiltered trades and filter
       // at scoring time, but fetching the order resolves fullAppData (avoids storing trades
       // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
       const order = await getOrder(chainId, t.orderUid as `0x${string}`);
-      let appCode: string | undefined;
-      let appdataRefCode: string | null = null;
-      try {
-        const meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
-        appCode = meta?.appCode;
-        // Affiliate attribution: an order may carry metadata.ophisReferrer.code.
-        // appData is attacker-controllable, so keep the code ONLY if it matches
-        // the registry grammar (mirrors api.ts /^[a-z0-9_-]{3,64}$/); lowercase to
-        // match ref_codes. A malformed code is dropped to null (the trade then
-        // falls back to the wallet-bind path at accrual time).
-        const rawRef = meta?.metadata?.ophisReferrer?.code;
-        if (typeof rawRef === 'string') {
-          const code = rawRef.trim().toLowerCase();
-          if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;
-        }
-      } catch {
-        appCode = undefined;
-      }
-      if (!isAppCodeOfInterest(appCode)) continue;
 
-      // Record settled volume from any order in a TERMINAL state, using the
-      // order's EXECUTED amounts (total across fills, surplus-inclusive). This
-      // includes orders that partially filled and were then cancelled/expired:
-      // those fills are real settled CoW volume the rebate must count, and the
-      // executed amount is final once terminal. We skip only still-active orders
-      // (open/presignaturePending) — they may fill more and re-evaluate on a
-      // later run (they aren't stored, so not deduped out). Using the order's
-      // executed total (not a single fill) also prevents partial-fill/TWAP
-      // undercounting.
+      // Record settled volume only from orders in a TERMINAL state, using the order's
+      // EXECUTED amounts (total across fills, surplus-inclusive). Includes orders that
+      // partially filled then cancelled/expired (real settled CoW volume; the executed
+      // amount is final once terminal). Skip still-active orders (open/presignaturePending):
+      // they may fill more and re-evaluate on a later run. This status pre-filter is
+      // API-source-specific — an on-chain Trade event is terminal by construction.
       const isTerminal =
         order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired';
       if (!isTerminal) continue;
       const execSell = order.executedSellAmount ?? t.sellAmount;
       const execBuy = order.executedBuyAmount ?? t.buyAmount;
-      if (BigInt(execSell) === 0n) continue; // no settled volume (defensive; a /trades row implies a fill)
 
-      out.push({
-        tradeUid: t.orderUid as `0x${string}`,
-        chainId,
-        wallet: t.owner as `0x${string}`,
-        blockNumber: BigInt(t.blockNumber),
-        // NOTE: order creationDate, not on-chain settlement time. Equal for
-        // market orders (all Ophis flow today); a limit/TWAP order created long
-        // before it fills could land in the wrong 30-day window — tracked as a
-        // follow-up if non-market volume appears.
-        blockTimestamp: new Date(order.creationDate),
+      let meta: unknown;
+      try {
+        meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
+      } catch {
+        continue; // unparseable appData -> not attributable
+      }
+
+      // Shared money-path attribution (same fn the on-chain decoder uses), so the
+      // recipient guard, 3-state fee, refcode gates and eth-flow handling are identical.
+      // block_timestamp = order creationDate (CoW settlement is near-instant and the
+      // rebate window is 30 days, so sub-minute skew is irrelevant; also avoids a
+      // per-chain RPC dependency). NOTE: for a limit/TWAP order created long before it
+      // fills this could land in the wrong 30-day window — tracked as a follow-up if
+      // non-market volume appears. The default (Ophis-dedicated) eth-flow owner set is
+      // correct here: the API path only ever queries those contracts as an owner.
+      const trade = attributeOrder(meta, {
+        owner: t.owner,
+        receiver: order.receiver,
         sellToken: t.sellToken as `0x${string}`,
         buyToken: t.buyToken as `0x${string}`,
-        sellAmount: BigInt(execSell),
-        buyAmount: BigInt(execBuy),
-        appCode,
-        appdataRefCode,
+        executedSell: BigInt(execSell),
+        executedBuy: BigInt(execBuy),
+        tradeUid: t.orderUid as `0x${string}`,
+        chainId,
+        blockNumber: BigInt(t.blockNumber),
+        blockTimestamp: new Date(order.creationDate),
       });
+      if (trade) out.push(trade);
     }
 
     if (page.length < PAGE_SIZE) break;
@@ -221,12 +576,12 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
     // be spammed with arbitrary addresses; without a cap, runFetcher would do
-    // (rows × 11 chains) CoW calls and amplify that into a self-DoS + CoW
+    // (rows × 12 chains) CoW calls and amplify that into a self-DoS + CoW
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
     const MAX_OWNERS_PER_RUN = 500;
-    const owners = await sql<{ wallet: string }[]>`
+    const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL OR last_fetched < now() - INTERVAL '6 hours'
@@ -237,34 +592,96 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC, last_fetched ASC NULLS FIRST, first_seen ASC
       LIMIT ${MAX_OWNERS_PER_RUN}
     `;
+    // Drop any Ophis eth-flow contract spam-registered via the public /tier
+    // endpoint: it is fetched separately as a synthetic owner below (attributing
+    // its trades to the receiver, not itself), so processing it as a tracked
+    // wallet would double-fetch chain 10 and inflate the `inserted` log count.
+    const owners = ownerRows.filter((o) => !OPHIS_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
+    // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
+    // FEE arms: only a verified API write ever moves volume_fee_bps / fee_verified.
+    const FEE_UPGRADE_ARMS = dsql`(${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0)
+                                  OR (${schema.trades.feeVerified} = false AND excluded.fee_verified = true)`;
+    // OWN-FEE fill arm (finding #4): a still-NULL own_fee_bps on an existing row + a
+    // non-null own_fee_bps from a VERIFIED incoming row. Verified-only so a decoder
+    // discovery row (fee_verified=false) can never fill it. Reaches surplus/PI Ophis-fee
+    // rows (volume_fee_bps NULL) that the fee arms structurally miss.
+    const OWN_FEE_FILL_ARM = dsql`${schema.trades.ownFeeBps} IS NULL
+                                  AND excluded.own_fee_bps IS NOT NULL
+                                  AND excluded.fee_verified = true`;
+    // Upsert a batch of fetched trades. Shared by the tracked-wallet loop and the
+    // eth-flow synthetic-owner pass below so both apply identical backfill semantics.
+    const upsertTrades = async (rows: PendingTrade[]): Promise<number> => {
+      if (rows.length === 0) return 0;
+      await db
+        .insert(schema.trades)
+        .values(
+          rows.map((r) => ({
+            tradeUid: r.tradeUid,
+            chainId: r.chainId,
+            wallet: r.wallet,
+            blockNumber: r.blockNumber,
+            blockTimestamp: r.blockTimestamp,
+            sellToken: r.sellToken,
+            buyToken: r.buyToken,
+            sellAmount: r.sellAmount,
+            buyAmount: r.buyAmount,
+            appCode: r.appCode,
+            partnerFeeWei: null,
+            appdataRefCode: r.appdataRefCode,
+            volumeFeeBps: r.volumeFeeBps,
+            feeVerified: r.feeVerified,
+            ownFeeBps: r.ownFeeBps,
+            ownFeeRecipient: r.ownFeeRecipient,
+            // A freshly-indexed row has ALREADY been through the own-fee decode
+            // (attributeOrder ran readOwnFee), so stamp it scanned at insert time. This
+            // keeps it OUT of the backfillOwnFee queue (which selects own_fee_scanned_at
+            // IS NULL); the backfill only ever needs to reach pre-0016 rows.
+            ownFeeScannedAt: new Date(),
+          })),
+        )
+        // UPGRADE-only backfill on a re-encountered row, via THREE disjoint arms (a
+        // VERIFIED API write is the only thing that ever updates an existing row; never a
+        // downgrade, never a decoder clobber). Each column is set with a CASE so an arm
+        // only touches the columns it owns:
+        //  (1) FEE self-heal: a still-NULL pre-per-trade row -> a POSITIVE rate. The `> 0`
+        //      is load-bearing: a historical NULL whose appData yields 0/NULL must STAY
+        //      NULL (unknown -> retail), so re-fetching history can't reclassify it.
+        //  (2) FEE decoder-upgrade: replace a settle() decoder DISCOVERY row
+        //      (fee_verified=false, provisional 0) with the API's owner-allowlist-confirmed
+        //      fee + fee_verified=true, at whatever rate (0 or > 0).
+        //  (3) OWN-FEE fill (finding #4): an existing own_fee_bps IS NULL row whose
+        //      incoming VERIFIED API appData decodes a non-null own_fee_bps. This covers a
+        //      row the fee arms miss, e.g. a surplus/PI Ophis fee row (volume_fee_bps
+        //      stays NULL) that stacked an integrator own-fee. It updates ONLY the own-fee
+        //      columns and NEVER volume_fee_bps / fee_verified.
+        // A decoder upsert carries excluded.fee_verified=false, so it satisfies NO arm ->
+        // it can only INSERT a brand-new row and never overwrites an existing one.
+        // volume_fee_bps / fee_verified move ONLY on the FEE arms (1|2); own_fee_bps /
+        // own_fee_recipient / own_fee_scanned_at move on ANY arm (1|2|3). Everything else
+        // (value_usd / priced_at / amounts) stays as first indexed. A plain re-fetch of an
+        // already-verified, already-own-fee'd row matches no arm, so a stable row is left
+        // untouched (its own-fee is not rewritten).
+        .onConflictDoUpdate({
+          target: schema.trades.tradeUid,
+          set: {
+            volumeFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.volume_fee_bps ELSE ${schema.trades.volumeFeeBps} END`,
+            feeVerified: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.fee_verified ELSE ${schema.trades.feeVerified} END`,
+            ownFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_bps ELSE ${schema.trades.ownFeeBps} END`,
+            ownFeeRecipient: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_recipient ELSE ${schema.trades.ownFeeRecipient} END`,
+            ownFeeScannedAt: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_scanned_at ELSE ${schema.trades.ownFeeScannedAt} END`,
+          },
+          setWhere: dsql`(${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM})`,
+        });
+      return rows.length;
+    };
     for (const { wallet } of owners) {
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
           const rows = await fetchChainTrades(chainId, owner, dbDeps);
-          if (rows.length === 0) continue;
-          await db
-            .insert(schema.trades)
-            .values(
-              rows.map((r) => ({
-                tradeUid: r.tradeUid,
-                chainId: r.chainId,
-                wallet: r.wallet,
-                blockNumber: r.blockNumber,
-                blockTimestamp: r.blockTimestamp,
-                sellToken: r.sellToken,
-                buyToken: r.buyToken,
-                sellAmount: r.sellAmount,
-                buyAmount: r.buyAmount,
-                appCode: r.appCode,
-                partnerFeeWei: null,
-                appdataRefCode: r.appdataRefCode,
-              })),
-            )
-            .onConflictDoNothing();
-          inserted += rows.length;
+          inserted += await upsertTrades(rows);
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
@@ -278,6 +695,42 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         await sql`UPDATE tracked_wallets SET last_fetched = now(), last_attempt_at = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       } else {
         await sql`UPDATE tracked_wallets SET last_attempt_at = now() WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+      }
+    }
+
+    // eth-flow synthetic owners: eth-flow orders settle with owner = the Ophis
+    // eth-flow contract (not the trader), so they never appear under a tracked
+    // wallet's query above. Fetch each dedicated Ophis eth-flow contract as an
+    // owner on its own chain; fetchChainTrades attributes each trade to its
+    // receiver. Fixed addresses (one per override chain), so no tracked-wallet
+    // budget cost, and they are never added to tracked_wallets (fetched directly).
+    for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
+      const chainId = Number(chainIdStr);
+      if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
+      try {
+        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        inserted += await upsertTrades(rows);
+      } catch (err) {
+        log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
+      }
+    }
+
+    // On-chain settle() decoder (SUPPLEMENTAL source): closes the rebate gap for
+    // hosted-chain native-ETH (shared eth-flow) + contract-owner / EIP-1271 orders
+    // that the owner-scoped CoW-API fetch above structurally misses. Runs INSIDE
+    // this advisory lock so its per-chain cursor + upserts share the fetcher's
+    // critical section. OFF unless SETTLE_DECODER_CHAINS is set (Base-first). Reuses
+    // the same upsertTrades (PK-idempotent on trade_uid, so it can never double-count
+    // a trade the API fetcher already wrote).
+    if (process.env.SETTLE_DECODER_CHAINS) {
+      try {
+        const { runSettleDecoder } = await import('./cow/onchain.js');
+        inserted += await runSettleDecoder({
+          sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
+          upsertTrades,
+        });
+      } catch (err) {
+        log.error({ err }, 'settle-decoder pass failed');
       }
     }
 
@@ -352,4 +805,111 @@ export async function pruneStaleWallets(): Promise<{ pruned: number }> {
   } finally {
     lockConn.release();
   }
+}
+
+/** Injectable order reader for backfillOwnFee (tests stub it; prod uses getOrder). */
+export interface BackfillDeps {
+  getOrder?: (chainId: number, uid: `0x${string}`) => Promise<{ fullAppData?: string | null }>;
+}
+
+/**
+ * ONE-TIME, opt-in backfill of the reporting-only own-fee columns (migration 0014)
+ * onto rows indexed BEFORE the own_fee_scanned_at marker (migration 0016). The hot
+ * fetch loop SKIPS an already-verified row and the upsert enriches only NULL-fee /
+ * unverified rows, so a VERIFIED pre-0014 trade never got own_fee_bps / own_fee_recipient
+ * and GET /earnings/:appCode under-reports its historical own-fee. This re-resolves each
+ * such row's settled appData ONCE and writes ONLY the own-fee columns via a TARGETED
+ * UPDATE (never volume_fee_bps / fee_verified), so the verified Ophis fee and its
+ * idempotence are untouched. The write re-checks own_fee_bps IS NULL so a concurrent
+ * write is never clobbered.
+ *
+ * CONVERGENCE (why own_fee_scanned_at, not own_fee_bps IS NULL, is the queue state):
+ * own_fee_bps IS NULL is OVERLOADED: the normal insert path writes NULL own_fee_bps for
+ * every trade with no integrator own-fee (the vast majority). Keying the queue on it
+ * re-selected the SAME oldest no-own-fee rows every run, wrote nothing, returned
+ * updated:0 FOREVER, and could starve real-own-fee rows past the LIMIT window. Instead we
+ * select own_fee_scanned_at IS NULL and ALWAYS stamp own_fee_scanned_at on a scan (found
+ * an own-fee or not), so each row is scanned AT MOST ONCE and the queue drains. Dropping
+ * the old volume_fee_bps IS NOT NULL filter also covers a surplus/PI Ophis-fee row
+ * (volume_fee_bps NULL) that stacked an own-fee (finding #4).
+ *
+ * Run OUT of band (the backfill-own-fee CLI command), never inside runFetcher: it
+ * re-fetches one order per scanned row, so it is not a per-run CoW load. Bounded by
+ * `limit`; the pre-0016 backlog is finite and each bounded run permanently drains up to
+ * `limit` of it.
+ */
+export async function backfillOwnFee(
+  limit = 500,
+  deps: BackfillDeps = {},
+): Promise<{ scanned: number; updated: number }> {
+  const { sql } = await import('./db/index.js');
+  const fetchOrder = deps.getOrder ?? getOrder;
+  const markScanned = (uidHex: string) =>
+    sql`UPDATE trades SET own_fee_scanned_at = now() WHERE trade_uid = decode(${uidHex}, 'hex')`;
+  // Verified rows never yet scanned for an own-fee. The marker (not own_fee_bps) is the
+  // work-queue state, so a no-own-fee row is scanned once and then leaves the set. No
+  // volume_fee_bps filter, so surplus/PI rows (volume_fee_bps NULL) are covered too.
+  const rows = await sql<{ uid_hex: string; chain_id: number }[]>`
+    SELECT encode(trade_uid, 'hex') AS uid_hex, chain_id
+    FROM trades
+    WHERE own_fee_scanned_at IS NULL
+      AND fee_verified = true
+    ORDER BY fetched_at ASC
+    LIMIT ${limit}
+  `;
+  let scanned = 0;
+  let updated = 0;
+  for (const r of rows) {
+    scanned++;
+    if (!SUPPORTED_CHAIN_IDS.includes(r.chain_id)) {
+      // Not a chain we can re-fetch; it can never gain an own-fee here, so mark it
+      // scanned so it leaves the queue and the backfill still converges.
+      await markScanned(r.uid_hex);
+      continue;
+    }
+    const uid = `0x${r.uid_hex}` as `0x${string}`;
+    let order: { fullAppData?: string | null };
+    try {
+      order = await fetchOrder(r.chain_id, uid);
+    } catch (err) {
+      // TRANSIENT: do NOT mark scanned; leave it in the queue to retry next run so a
+      // CoW blip can't permanently skip a row that might carry an own-fee.
+      log.warn({ err, chainId: r.chain_id, uid }, 'backfill-own-fee: getOrder failed; leaving unscanned to retry');
+      continue;
+    }
+    // Only a SUCCESSFULLY-PARSED real appData document is conclusive. A missing or
+    // malformed fullAppData is treated like the transient getOrder miss above:
+    // leave the row UNSCANNED so a later read that resolves the appData can still
+    // reveal a stacked own-fee. Stamping here would permanently drop the row on a
+    // transient app-data resolver miss and underreport historical own-fee.
+    if (!order.fullAppData) {
+      log.warn({ chainId: r.chain_id, uid }, 'backfill-own-fee: order has no fullAppData; leaving unscanned to retry');
+      continue;
+    }
+    let meta: unknown;
+    try {
+      meta = JSON.parse(order.fullAppData);
+    } catch {
+      log.warn({ chainId: r.chain_id, uid }, 'backfill-own-fee: malformed fullAppData; leaving unscanned to retry');
+      continue;
+    }
+    const own = readOwnFee(meta);
+    // ALWAYS stamp own_fee_scanned_at so the row leaves the candidate set; write
+    // own_fee_bps / own_fee_recipient ONLY when an own-fee is actually decoded. The
+    // own_fee_bps IS NULL guard keeps a concurrent write from being clobbered.
+    if (own) {
+      const res = await sql`
+        UPDATE trades
+        SET own_fee_bps = ${own.bps},
+            own_fee_recipient = decode(${own.recipient.slice(2)}, 'hex'),
+            own_fee_scanned_at = now()
+        WHERE trade_uid = decode(${r.uid_hex}, 'hex') AND own_fee_bps IS NULL
+      `;
+      updated += res.count ?? 0;
+    } else {
+      await markScanned(r.uid_hex);
+    }
+  }
+  log.info({ scanned, updated }, 'backfill-own-fee complete');
+  return { scanned, updated };
 }

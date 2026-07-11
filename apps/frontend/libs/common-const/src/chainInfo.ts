@@ -24,6 +24,14 @@ import {
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import { TokenWithLogo } from './types'
 
+// Official Unichain brand mark (pink #F50DB4 web3icons glyph, MIT) inlined as a
+// data: URI. CHAIN_INFO lives in this shared lib and is consumed by multiple
+// apps (cowswap-frontend, explorer, ...); inlining keeps the logo
+// origin-independent so no app 404s on a missing /logos asset. See the chain
+// 130 entry below. Consumed via <img src> (CSP img-src allows data:).
+const UNICHAIN_LOGO_DATA_URI =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9Im5vbmUiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEyIiBmaWxsPSIjRjUwREI0Ii8+PHBhdGggdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTIgMTIpIHNjYWxlKC43NCkgdHJhbnNsYXRlKC0xMiAtMTIpIiBmaWxsPSIjZmZmIiBkPSJNMjEgMTEuODI5QTguODMgOC44MyAwIDAgMSAxMi4xNzEgM2gtLjM0MnY4LjgyOUgzdi4zNDJBOC44MyA4LjgzIDAgMCAxIDExLjgyOSAyMWguMzQydi04LjgyOUgyMXoiLz48L3N2Zz4=' as HttpsString
+
 // Ophis fork (2026-05-20): MegaETH (4326) and HyperEVM (999) chain
 // definitions removed from the frontend. Backend scaffolding for these
 // chains is preserved in `infra/megaeth-mainnet/` + `infra/hyperevm-mainnet/`
@@ -164,6 +172,34 @@ export const CHAIN_INFO: ChainInfoMap = {
     urlAlias: 'opt',
     nativeCurrency: NATIVE_CURRENCIES[AdditionalTargetChainId.OPTIMISM],
   },
+  // Ophis fork: Unichain (chain 130). Not in the SDK's TargetChainId /
+  // AdditionalTargetChainId enums, so the BaseChainInfo is constructed
+  // literally here (mirrors the shape `mapChainInfoToBaseChainInfo` produces
+  // for the SDK chains). Unichain is an OP-Stack rollup; the logo is the
+  // official Unichain brand mark (pink #F50DB4 web3icons glyph, MIT) inlined
+  // as a data: URI. CHAIN_INFO is in the SHARED common-const lib, consumed by
+  // cowswap-frontend AND explorer (+ future apps); a root-relative /logos path
+  // would resolve against each app's own origin and 404 where the asset isn't
+  // shipped, so the logo travels WITH the constant. Like the SDK chains' logos
+  // it is origin-independent. CSP img-src allows data:. Previously reused the
+  // SDK ethereum logo as a placeholder, which rendered the Ethereum diamond.
+  [130 as unknown as SupportedChainId]: {
+    docs: 'https://docs.unichain.org' as HttpsString,
+    explorer: 'https://uniscan.xyz' as HttpsString,
+    infoLink: 'https://www.unichain.org' as HttpsString,
+    logo: {
+      light: UNICHAIN_LOGO_DATA_URI,
+      dark: UNICHAIN_LOGO_DATA_URI,
+    },
+    addressPrefix: 'uni',
+    label: 'Unichain',
+    eip155Label: 'Unichain',
+    explorerTitle: 'Uniscan',
+    color: '#FF007A',
+    name: 'unichain',
+    urlAlias: 'unichain',
+    nativeCurrency: NATIVE_CURRENCIES[130 as unknown as SupportedChainId],
+  },
   // MegaETH (4326) + HyperEVM (999) intentionally not in CHAIN_INFO —
   // see top-of-file comment for context (removed 2026-05-20).
 }
@@ -184,7 +220,7 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
-  SupportedChainId.SEPOLIA,
+  130 as unknown as SupportedChainId, // Ophis fork: Unichain
 ]
 
 /**
@@ -203,9 +239,9 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SupportedChainId.INK, // TODO: decide where to place Ink
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM,
+  130 as unknown as TargetChainId, // Ophis fork: Unichain
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
-  SupportedChainId.SEPOLIA,
 ]
 
 export const CHAIN_INFO_ARRAY: BaseChainInfo[] = SORTED_CHAIN_IDS.map((id) => CHAIN_INFO[id])

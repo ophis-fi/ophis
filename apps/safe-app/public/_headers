@@ -1,0 +1,22 @@
+# Cloudflare Pages headers (host at safe.ophis.fi).
+# Safe (app.safe.global) fetches /manifest.json AND its iconPath (ophis-icon.svg) cross-origin to
+# register and render the app, so static assets must be CORS-open SITE-WIDE (the earlier
+# /manifest.json-only rule left the icon blockable). The app is a static, credential-less SPA (no
+# cookies / no auth), so Access-Control-Allow-Origin: * is safe here.
+# One Content-Security-Policy line only (Cloudflare Pages does not merge duplicate CSP headers under
+# a path), so frame-ancestors and the resource directives live together.
+#   - connect-src: the Ophis orderbook hosts — optimism-mainnet.ophis.fi (OP self-hosted) and
+#     api.cow.fi (the CoW-hosted chains) — plus *.ophis.fi which also covers the rebate indexer
+#     (rebates.ophis.fi) the app pings to enroll the Safe.
+#   - script-src 'self': no inline/eval scripts (Vite emits external bundles).
+#   - style-src 'unsafe-inline': the app uses inline React style objects.
+#   - Permissions-Policy + Cross-Origin-Opener-Policy mirror the sibling
+#     subdomains (swap/explorer/landing) so safe.ophis.fi carries the same
+#     transport/isolation posture. COOP only governs the top-level standalone
+#     load at safe.ophis.fi (it is inert when the app is framed inside
+#     app.safe.global); same-origin-allow-popups matches the swap app.
+/*
+  Access-Control-Allow-Origin: *
+  Content-Security-Policy: frame-ancestors https://app.safe.global https://*.safe.global; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://optimism-mainnet.ophis.fi https://*.ophis.fi https://api.cow.fi; img-src 'self' data:; object-src 'none'; base-uri 'none'
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), midi=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups

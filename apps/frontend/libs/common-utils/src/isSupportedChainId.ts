@@ -13,7 +13,12 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 // FE list) had no matching entry → `find()` returned undefined → `.id`
 // threw → entire SPA crashed at boot with "Cannot read properties of
 // undefined (reading 'id')".
-const OPHIS_EXTRA_CHAINS = new Set<number>([10])
+// Unichain (130) is included too. SAFE because, unlike the removed 4326/999, it
+// HAS a matching entry in the wagmi runtime chains array (wagmi/config.ts -> the
+// viem `unichain` chain), so wagmi's getClient `find(c => c.id === 130)` resolves
+// and cannot re-trigger the PR #234 boot crash. Restores auto network-switch for
+// limit/advanced orders + cross-chain selector balances on Unichain.
+const OPHIS_EXTRA_CHAINS = new Set<number>([10, 130])
 
 export function isSupportedChainId(chainId: number | undefined): chainId is SupportedChainId {
   return typeof chainId === 'number' && (chainId in SupportedChainId || OPHIS_EXTRA_CHAINS.has(chainId))

@@ -1,5 +1,13 @@
 :80 {
     encode gzip zstd
+    # Strip the reverse-proxy fingerprint (audit 2026-07-09): Caddy adds
+    # `Via: 1.1 Caddy` on every response, disclosing the origin proxy software.
+    # This must be a SITE-level `header -Via` (verified on the VM): Caddy injects
+    # its Via after the reverse_proxy hop, so a `header_down -Via` inside
+    # reverse_proxy does NOT remove it, but the site-level response header
+    # handler does. Requires a caddy reload/restart to take effect (see the
+    # rebate-indexer-deploy workflow).
+    header -Via
     reverse_proxy indexer:8080 {
         header_up X-Real-IP {remote_host}
         health_uri /health

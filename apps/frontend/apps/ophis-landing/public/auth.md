@@ -18,8 +18,9 @@ authenticate against and no protected resource to obtain a token for.
   structured intent). Rate limited to 30 requests/min/IP. Spec:
   `https://ophis.fi/openapi.json`.
 - **MCP server:** `https://mcp.ophis.fi/mcp` (discovery at
-  `https://ophis.fi/.well-known/mcp.json`). Six public tools: parse_intent,
-  get_quote, build_order, submit_order, lookup_tier, list_chains.
+  `https://ophis.fi/.well-known/mcp.json`). Twelve public tools: parse_intent,
+  resolve_token, get_quote, build_order, submit_order, lookup_tier, list_chains,
+  get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus.
 - **Agent skills index:** `https://ophis.fi/.well-known/agent-skills/index.json`
 - **Plugin manifest:** `https://ophis.fi/.well-known/ai-plugin.json`
 - **API catalog (RFC 9727):** `https://ophis.fi/.well-known/api-catalog`

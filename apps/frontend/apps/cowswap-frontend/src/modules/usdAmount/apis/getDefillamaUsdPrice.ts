@@ -30,6 +30,8 @@ export const DEFILLAMA_PLATFORMS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: 'ink',
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: 'optimism',
+  // Ophis fork: Unichain mainnet (chain 130) — DefiLlama 'unichain' slug
+  [130 as unknown as SupportedChainId]: 'unichain',
   // Ophis fork: MegaETH mainnet (chain 4326) — DefiLlama may not have a
   // platform slug for MegaETH yet; null disables price lookups gracefully.
   // Re-evaluate post-launch.

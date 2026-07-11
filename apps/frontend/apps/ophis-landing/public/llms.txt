@@ -2,15 +2,16 @@
 
 > Ophis is an intent-based, MEV-protected DEX aggregator built for the agent era. Describe a trade in natural language; Ophis parses the intent, fetches a best-execution quote, and batch-settles it MEV-protected on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. Autonomous agents can trade through a public MCP server.
 
-Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price: an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On Optimism (chain 10), the live Ophis network, settlement uses Ophis's own GPv2Settlement at a non-canonical address (NOT CoW's canonical address). Agents MUST resolve the per-chain settlement domain (and orderbook host) via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address yields a domain the deployed contract rejects.
+Ophis is a CoW Protocol fork. Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price: an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On the Ophis-operated networks Optimism (chain 10) and Unichain (chain 130), settlement uses Ophis's own GPv2Settlement at a non-canonical address (NOT CoW's canonical address). Agents MUST resolve the per-chain settlement domain (and orderbook host) via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address yields a domain the deployed contract rejects.
 
 ## Pricing
 
-- Flat fee: 0.10% (10 bps) on trade volume, applied to every trade.
+- Flat Ophis fee: 0.10% (10 bps) on trade volume on the swap app. SDK/MCP partner integrations charge a reduced 0.05% (5 bps) partner rate; the SDK sets 1 bp on same-chain stablecoin pairs while the keyless MCP is flat 5 bps. Using the SDK or a manual appData build, integrators can stack their own fee on top of ERC-20 orders (up to 95 bps under the default 100 bps aggregate cap; see https://docs.ophis.fi/partners).
 - Stablecoin discount: 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.
-- Surplus: 100% of any price improvement a solver finds beyond your signed quote is returned to the trader. The fee is on volume only and takes no cut of surplus.
+- All-in cost per chain: on the Ophis-operated chains (Optimism, Unichain) the flat Ophis fee is the entire cost. On the 10 CoW-hosted chains, CoW Protocol charges its own fees on top: a 0.02% protocol volume fee (0.003% on correlated pairs) plus 50% of any quote improvement (capped at 0.98% of volume), making the fixed all-in there 0.12% standard / 0.013% stables. Sources: https://docs.cow.fi/governance/fees and https://docs.ophis.fi/fees.
+- Surplus: Ophis takes no cut of price improvement on any chain. On Optimism and Unichain, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement upstream before the remainder is returned.
 - APIs: the public MCP server and the Intent API are free. The Intent API is rate-limited to 30 requests per minute per IP.
-- Worked example: a 100,000 USDC trade pays 0.10% = 100 USDC in fee at 10 bps. The same 100,000 between two stablecoins on one chain pays 0.01% = 10 USDC at 1 bp.
+- Worked example: a 100,000 USDC trade pays 100 USDC all-in on Optimism/Unichain (0.10%), or 120 USDC fixed all-in on a CoW-hosted chain (0.12%). The same 100,000 between two stablecoins on one chain pays 10 USDC (Optimism/Unichain) or 13 USDC all-in (CoW-hosted).
 
 Intent API example (free, 30 req/min per IP):
 
@@ -22,7 +23,7 @@ curl -X POST https://swap.ophis.fi/api/intent \
 
 ## For agents
 
-- [MCP server](https://mcp.ophis.fi/mcp): a Streamable-HTTP Model Context Protocol server. Tools: `parse_intent` (natural language -> structured swap), `get_quote` (best-execution quote), `build_order` (a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner), `submit_order` (relay a pre-signed order), `lookup_tier` (fee-rebate tier), `list_chains`. Public, unauthenticated, and keyless: it never holds keys or signs; the agent signs with its own key.
+- [MCP server](https://mcp.ophis.fi/mcp): a Streamable-HTTP Model Context Protocol server. Tools: `parse_intent` (natural language -> structured swap), `resolve_token` (symbol -> canonical address, fails closed / anti-spoof), `get_quote` (best-execution quote), `build_order` (a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner), `submit_order` (relay a pre-signed order), `lookup_tier` (fee-rebate tier), `list_chains`, `get_balances` (wallet balances on a chain), `get_portfolio` (cross-chain balances), `get_gas` (chain gas price), `get_token_chart` (OHLCV chart), `expected_surplus` (beat-the-market estimate). Public, unauthenticated, and keyless: it never holds keys or signs; the agent signs with its own key.
 - [Intent API](https://swap.ophis.fi/api/intent): `POST {"text": "swap 100 USDC for ETH on Optimism"}` returns `{ok: true, data: {intent, entities}}` where entities are `{type: sellToken|buyToken|amount|chain, value, raw, start, end}`. Machine-readable spec: [OpenAPI](https://ophis.fi/openapi.json).
 - Discovery manifests: [`/.well-known/mcp.json`](https://ophis.fi/.well-known/mcp.json) (MCP server + tools), [`/.well-known/ai-plugin.json`](https://ophis.fi/.well-known/ai-plugin.json) (plugin manifest).
 
@@ -35,5 +36,6 @@ curl -X POST https://swap.ophis.fi/api/intent \
 ## Optional
 
 - [GitHub](https://github.com/ophis-fi/ophis): full source.
-- Fee model: a flat 0.10% (10 bps) fee on trade volume, applied to every trade (e.g. swap 1,000 USDC, fee = 0.10% = 1 USDC), with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.
-- Surplus: any price improvement a solver finds beyond your signed quote is returned to the trader in full. The flat fee is on volume only and takes no cut of surplus.
+- [Full docs text](https://docs.ophis.fi/llms-full.txt): the entire documentation concatenated into one file for LLM context windows.
+- Fee model: a flat 0.10% (10 bps) Ophis fee on trade volume (0.01% on same-chain stablecoin pairs), all-in on Optimism/Unichain. On CoW-hosted chains CoW Protocol adds a 0.02% volume fee (0.003% correlated) plus 50% of quote improvement, so the fixed all-in there is 0.12% / 0.013%.
+- Surplus: Ophis takes no cut of surplus anywhere. 100% of price improvement returned on Optimism/Unichain; on CoW-hosted chains CoW Protocol retains 50% of quote improvement upstream.

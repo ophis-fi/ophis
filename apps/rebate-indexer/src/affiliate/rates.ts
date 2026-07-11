@@ -9,14 +9,17 @@
 // hosted chains, 0% on Optimism (sovereign Ophis backend). So Ophis keeps 75% on
 // hosted, 100% on OP.
 //
-// DATA REALITY (grounding 2026-06-10): the indexer has NO per-trade fee
-// (trades.partnerFeeWei is always NULL) and indexes ONLY the 11 CoW-hosted chains
-// (Optimism is not indexed). So accrual is VOLUME-derived: a referrer earns
-// `referred_volume * effectiveVolumeBps(tier, chainId)`. This is identical to the
-// model doc's published rates because the rates were defined as bps-of-volume:
-//   effectiveVolumeBps = feeShare * GROSS_FEE_BPS * keepFraction(chain)
+// ACCRUAL BASIS (updated 2026-06-19, per-trade fees): the fee is now per-channel
+// (retail 10 bps, SDK/partner 5 bps, stable 1 bp), so accrual takes the tier share
+// of the ACTUAL gross fee each trade carried, read from appData and stored per
+// trade (trades.volume_fee_bps, clamped [1, retail]; NULL -> the retail default
+// GROSS_FEE_BPS). owed = feeShare * keepFraction(chain) * SUM(value * actual_bps).
+// For an ALL-RETAIL (10 bps) referrer this reduces EXACTLY to the published rates:
+//   feeShare * GROSS_FEE_BPS * keepFraction(chain)
 //   Regular hosted = 0.08 * 10 * 0.75 = 0.60 bps   (OP = 0.08 * 10 * 1.00 = 0.80 bps)
 //   Partner hosted = 0.12 * 10 * 0.75 = 0.90 bps   (OP = 0.12 * 10 * 1.00 = 1.20 bps)
+// A 5 bps SDK referrer earns HALF those; a 1 bp stable pair a tenth. The indexer
+// still indexes only the CoW-hosted chains (Optimism not indexed yet).
 
 export type AffiliateKind = 'regular' | 'partner';
 
@@ -26,26 +29,46 @@ export const FEE_SHARE_BPS: Readonly<Record<AffiliateKind, number>> = {
   partner: 1200, // 12%
 };
 
-/** The standard gross volume fee, in bps. Stablecoin pairs pay 1 bp but the
- *  indexer does not flag stable trades, so v1 uses the standard rate for accrual
- *  (a slight overestimate for stable-stable pairs; flagged in the monthly report). */
+/** The RETAIL gross volume fee, in bps. Two roles now that the fee is per-channel:
+ *  (1) the DEFAULT/legacy rate accrual assumes when a trade's actual
+ *  trades.volume_fee_bps is NULL (historical rows or an unreadable fee), and
+ *  (2) the CLAMP CEILING the fetcher applies to a trade's claimed volumeBps, so an
+ *  attacker-crafted appData can never inflate the fee base above the retail rate.
+ *  Accrual otherwise uses the ACTUAL per-trade bps; this is no longer the single
+ *  assumed gross. Mirrors OPHIS_FRONTEND_OP_VOLUME_BPS in the frontend. */
 export const GROSS_FEE_BPS = 10;
 
 /** CoW DAO's protocol cut on the partner fee, in bps (25%), on hosted chains. */
 export const COW_TAKE_BPS = 2500;
 
+/** Defensive display ceiling on an integrator's decoded OWN-fee rate (bps), used
+ *  by the fetcher when it reads a non-Ophis partnerFee entry from a settled order's
+ *  appData (migration 0014). appData is attacker-controllable, so a crafted entry
+ *  cannot inflate the reported own-fee above this bound. The verified own-fee max is
+ *  95 bps: the aggregate of an integrator's own entry plus the 5 bps Ophis base is
+ *  bounded by the 100 bps aggregate cap, so the own entry alone can settle at most
+ *  95 bps. That is the correct clamp for a SETTLED order (the only kind this fetcher
+ *  reads); a crafted entry above it never validates and never settles. */
+export const OWN_FEE_MAX_BPS = 95;
+
 /** Hard cap on REFERRED VOLUME per referrer per calendar month, for Regular only.
  *  Partner is uncapped. Volume past the cap earns zero (hard-stop, Clement 2026-06-10). */
 export const REGULAR_VOL_CAP_USD = 1_000_000;
 
-/** Optimism mainnet — the only chain where Ophis keeps the full fee (no CoW cut).
- *  Not indexed yet, but the math is OP-ready so OP trades accrue correctly once fed. */
 export const OPTIMISM_CHAIN_ID = 10;
+export const UNICHAIN_CHAIN_ID = 130;
+
+/** Ophis-SOVEREIGN chains: Ophis runs its own orderbook + settlement, so there is
+ *  NO CoW DAO service-fee cut and Ophis keeps the full fee (100%). Optimism (10) and
+ *  Unichain (130) are sovereign; every CoW-hosted chain pays CoW's 25% cut (keeps 75%).
+ *  This set is the SINGLE source of truth for the keep fraction — keepFractionBps() and
+ *  the api.ts payout SQL both derive from it, so adding a sovereign chain is one edit. */
+export const SOVEREIGN_CHAIN_IDS: ReadonlySet<number> = new Set([OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID]);
 
 /** Fraction of the gross fee Ophis keeps after CoW's cut, scaled by 1e4.
- *  Optimism keeps 100% (10_000); every hosted chain keeps 75% (7_500). */
+ *  Sovereign chains keep 100% (10_000); every hosted chain keeps 75% (7_500). */
 export function keepFractionBps(chainId: number): number {
-  return chainId === OPTIMISM_CHAIN_ID ? 10_000 : 10_000 - COW_TAKE_BPS;
+  return SOVEREIGN_CHAIN_IDS.has(chainId) ? 10_000 : 10_000 - COW_TAKE_BPS;
 }
 
 /**
@@ -59,13 +82,13 @@ export function effectiveVolumeBps(kind: AffiliateKind, chainId: number): number
 }
 
 /**
- * Volume-derived ESTIMATE of an affiliate's current-cycle earnings on a USD
- * referred volume, for the dashboard. Mirrors the monthly accrual
- * (volume * effectiveVolumeBps): the indexer covers only CoW-hosted chains, so
- * use the hosted keep fraction. Regular affiliates are capped at
- * REGULAR_VOL_CAP_USD / month; partners are uncapped. This is an estimate, not a
- * settled figure: it overestimates stable-stable pairs (which pay 1 bp, not the
- * 10 bp standard the indexer assumes) exactly as the monthly accrual does.
+ * Volume-derived UPPER-BOUND estimate of an affiliate's current-cycle earnings on
+ * a USD referred volume, for the dashboard. Given only a volume (no per-trade fee
+ * mix), it assumes the full RETAIL rate (GROSS_FEE_BPS) on the hosted keep
+ * fraction, so it is the MOST the volume could earn. The settled monthly accrual
+ * uses the ACTUAL per-trade fee, so real earnings are LOWER for any SDK-channel
+ * (5 bps) or stable-pair (1 bp) volume. Regular affiliates are capped at
+ * REGULAR_VOL_CAP_USD / month; partners are uncapped.
  */
 export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): number {
   if (!Number.isFinite(volumeUsd) || volumeUsd <= 0) return 0;
@@ -74,4 +97,29 @@ export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): num
   // indexer does not index Optimism, so all referred volume here is hosted.
   const HOSTED_CHAIN_ID = 1;
   return (cappedVolume * effectiveVolumeBps(kind, HOSTED_CHAIN_ID)) / 10_000;
+}
+
+/**
+ * Fee-aware dashboard estimate of an affiliate's current-cycle earnings, from the
+ * ACTUAL cycle NET fee (netFeeUsd = SUM(value * per-trade bps * keepFraction(chain))
+ * / 1e8, with the per-chain CoW cut already applied at the SQL layer so Optimism
+ * volume keeps 100% and hosted volume 75%, matching the accrual). owed = feeShare *
+ * netFee, so it MATCHES what the settled monthly accrual pays (a 5 bps SDK partner
+ * sees ~half of the old retail-assumed figure, not 2x; OP volume is not understated
+ * by 25%). Regular caps on VOLUME at REGULAR_VOL_CAP_USD, applied proportionally to
+ * the net fee (the dashboard estimate does not need the accrual's exact
+ * least-valuable-first cap allocation). volumeUsd is the cycle referred volume that
+ * produced netFeeUsd, used only to compute the regular cap.
+ */
+export function estimateEarningsFromNetFeeUsd(
+  netFeeUsd: number,
+  volumeUsd: number,
+  kind: AffiliateKind,
+): number {
+  if (!Number.isFinite(netFeeUsd) || netFeeUsd <= 0) return 0;
+  const cappedFraction =
+    kind === 'regular' && Number.isFinite(volumeUsd) && volumeUsd > REGULAR_VOL_CAP_USD
+      ? REGULAR_VOL_CAP_USD / volumeUsd
+      : 1;
+  return (FEE_SHARE_BPS[kind] / 10_000) * netFeeUsd * cappedFraction;
 }

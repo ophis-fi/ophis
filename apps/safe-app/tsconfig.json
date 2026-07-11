@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    // @cowprotocol/app-data (a cow-sdk dep, used directly in src/lib/appData.ts) ships valid
+    // declarations at dist/index.d.ts but its package.json "exports" map omits a "types"
+    // condition, so under moduleResolution: "bundler" TS can't locate them (TS7016 / "no
+    // exported member"). Map the bare specifier straight to the shipped .d.ts. Drop this when
+    // the package adds a "types" condition to its exports map.
+    "paths": {
+      "@cowprotocol/app-data": ["./node_modules/@cowprotocol/app-data/dist/index.d.ts"]
+    },
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}

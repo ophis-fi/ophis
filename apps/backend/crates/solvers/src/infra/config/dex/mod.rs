@@ -1,7 +1,12 @@
 pub mod bitget;
+pub mod dodo;
+pub mod enso;
 pub mod file;
 pub mod kyberswap;
+pub mod lifi;
+pub mod odos;
 pub mod okx;
+pub mod openocean;
 pub mod velora;
 
 use {
@@ -32,4 +37,5 @@ pub struct Config {
     pub gas_offset: eth::Gas,
     pub block_stream: Option<CurrentBlockWatcher>,
     pub internalize_interactions: bool,
+    pub output_guard: crate::domain::dex::OutputGuard,
 }

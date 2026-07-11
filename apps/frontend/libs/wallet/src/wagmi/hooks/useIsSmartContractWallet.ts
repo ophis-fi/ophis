@@ -20,10 +20,17 @@ export function useAccountType(): AccountType | undefined {
   const publicClient = usePublicClient({ chainId })
   const { account } = useWalletInfo()
 
+  // Gate on publicClient (matching the web3-react impl's `account && provider`
+  // gate): without it, a temporarily-undefined client would make the fetcher
+  // return EOA for `!code` even though bytecode was never checked, mis-
+  // classifying a contract wallet as an EOA. With the gate, no client means no
+  // SWR run, so `data` stays undefined (unresolved) until the client is ready.
   const { data } = useSWR(
-    account ? ['isSmartContract', account, chainId] : null,
+    account && publicClient ? ['isSmartContract', account, chainId] : null,
     async ([, _account]) => {
       try {
+        // publicClient is guaranteed defined here by the SWR key gate above;
+        // the optional chain only satisfies the closure's widened type.
         const code = await publicClient?.getCode({ address: _account })
 
         if (!code) {

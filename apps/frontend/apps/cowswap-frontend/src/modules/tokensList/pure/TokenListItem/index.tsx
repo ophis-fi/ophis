@@ -109,13 +109,14 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
   })
 
   const isTokenSelected = checkIsTokenSelected(token, selectedToken)
-  // Ophis fork: OP (chain 10), MegaETH (chain 4326), and HyperEVM (chain 999)
-  // are supported at the frontend layer.
+  // Ophis fork: OP (chain 10), Unichain (chain 130), MegaETH (chain 4326), and
+  // HyperEVM (chain 999) are supported at the frontend layer.
   const isSupportedChain =
     token.chainId in SupportedChainId ||
     token.chainId === 10 ||
     token.chainId === 4326 ||
-    token.chainId === 999
+    token.chainId === 999 ||
+    token.chainId === 130
   const shouldShowBalances = isWalletConnected && isSupportedChain
   const shouldFormatBalances = shouldShowBalances && hasIntersected
   const balanceAmount =

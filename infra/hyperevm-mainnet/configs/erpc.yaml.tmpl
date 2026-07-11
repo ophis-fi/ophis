@@ -37,7 +37,8 @@
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/999
 
-logLevel: info
+# info logs 1 line/RPC req+resp; disk-fill risk (2026-06-15 OP incident)
+logLevel: warn
 
 # Client-side rate-limiter attempted 2026-05-19 (90/min budget on
 # official-hl) and immediately rolled back: eRPC's consensus mode

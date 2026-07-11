@@ -25,7 +25,7 @@
 //!    `observe(secondsAgos = [window, 0])`. The pool returns two cumulative
 //!    tick values. The arithmetic-mean tick over the window is
 //!    `(tick_now - tick_then) / window`. The price is then `1.0001^tick`,
-//!    scaled by token-decimal differences.
+//!    which is already an atom-ratio (no decimal scaling; see below).
 //!
 //! 4. **Cardinality guard**. If the pool's `observationCardinality < 2` it
 //!    cannot serve a TWAP — `observe` would revert with `OLD`. We don't probe
@@ -57,9 +57,10 @@
 //! avg_tick = (cumulative_now - cumulative_then) / seconds
 //! ```
 //!
-//! Then `price = 1.0001^avg_tick` is the `token1/token0` ratio. We multiply by
-//! the decimal adjustment so the f64 we return is denominated correctly given
-//! the caller's token-decimal expectation (see
+//! Then `price = 1.0001^avg_tick` is the `token1/token0` ATOM-ratio. After
+//! inverting to `native per token` that is native-wei per 1 token-atom, which
+//! IS the CoW native-price f64 the caller expects -- NO decimal adjustment is
+//! applied, since the token's decimals are already baked into the tick (see
 //! `super::NativePriceEstimator::estimate_native_price` for the contract).
 
 use {
@@ -105,12 +106,10 @@ pub struct UniswapV3 {
     native_token: Address,
     token_infos: Arc<dyn TokenInfoFetching>,
     config: UniswapV3Config,
-    native_decimals: u8,
 }
 
 impl UniswapV3 {
-    /// Build a new estimator. Fetches the native-token decimals once at
-    /// startup so the per-call hot path doesn't need to.
+    /// Build a new estimator.
     pub async fn new(
         web3: Web3,
         native_token: Address,
@@ -126,20 +125,11 @@ impl UniswapV3 {
             "uniswap-v3 twap_window_secs must be positive"
         );
 
-        let native_decimals = token_infos
-            .get_token_info(native_token)
-            .await
-            .map_err(|err| anyhow!("UniswapV3: failed to fetch native token info: {err}"))?
-            .decimals
-            .with_context(|| {
-                format!("could not determine decimals of native token {native_token:?}")
-            })?;
         Ok(Self {
             web3,
             native_token,
             token_infos,
             config,
-            native_decimals,
         })
     }
 
@@ -311,12 +301,7 @@ fn compute_average_tick(tick_cumulatives: &[i64], window: u32) -> Option<i64> {
 /// `native/token`.
 ///
 /// Returns `None` on overflow or a non-normal f64 result.
-fn tick_to_native_price(
-    tick: i64,
-    token_decimals: u8,
-    native_decimals: u8,
-    token0_is_native: bool,
-) -> Option<f64> {
+fn tick_to_native_price(tick: i64, token0_is_native: bool) -> Option<f64> {
     // 1.0001^tick — directly in f64. Ticks are bounded by [-887272, 887272]
     // (the V3 MIN_TICK / MAX_TICK), so 1.0001^tick is at most ~2^96, well
     // inside f64 range (~1.8e308). f64 has ~15 decimal digits of precision;
@@ -337,15 +322,14 @@ fn tick_to_native_price(
         raw_price
     };
 
-    // Decimal adjustment so the returned f64 is denominated in the same way
-    // as the other estimators: when `token` and `native` have the same
-    // decimals, `price` is unitless; when `token` has fewer decimals
-    // (e.g. USDC with 6 vs WETH with 18) the raw wei-ratio is much smaller
-    // than the human-readable price, so we shift left.
-    let decimal_adjustment =
-        10f64.powi(i32::from(native_decimals) - i32::from(token_decimals));
-
-    let price = price_native_per_token_wei_ratio * decimal_adjustment;
+    // No decimal shift is applied. `price_native_per_token_wei_ratio` is
+    // already native-wei per 1 token-ATOM, which IS the CoW native-price f64
+    // convention (see shared::external_prices; to_normalized_price multiplies
+    // it by 1e18). The token's decimals are already baked into where the pool
+    // tick sits. A prior 10^(native_decimals - token_decimals) adjustment here
+    // double-counted decimals and priced every non-18-decimal token
+    // 10^(18-dec) too high (e.g. USDC 10^12 too high, seen live as ~5.6e38).
+    let price = price_native_per_token_wei_ratio;
     price.is_normal().then_some(price)
 }
 
@@ -373,7 +357,9 @@ impl NativePriceEstimating for UniswapV3 {
                         "UniswapV3 failed to fetch token info: {err}"
                     ))
                 })?;
-            let token_decimals = token_info
+            // Kept as a "known token" guard (fail closed on tokens with no
+            // decimals); the value is no longer used by the tick math.
+            let _token_decimals = token_info
                 .decimals
                 .with_context(|| format!("missing decimals for token {token:?}"))?;
 
@@ -381,12 +367,7 @@ impl NativePriceEstimating for UniswapV3 {
                 return Err(PriceEstimationError::NoLiquidity);
             };
 
-            let price = tick_to_native_price(
-                tick,
-                token_decimals,
-                self.native_decimals,
-                token0_is_native,
-            )
+            let price = tick_to_native_price(tick, token0_is_native)
             .ok_or_else(|| {
                 PriceEstimationError::EstimatorInternal(anyhow!(
                     "UniswapV3 tick {tick} produced malformed price"
@@ -544,8 +525,8 @@ mod tests {
     /// of the pool the native token is on.
     #[test]
     fn tick_to_native_price_zero_tick() {
-        assert_eq!(tick_to_native_price(0, 18, 18, false), Some(1.0));
-        assert_eq!(tick_to_native_price(0, 18, 18, true), Some(1.0));
+        assert_eq!(tick_to_native_price(0, false), Some(1.0));
+        assert_eq!(tick_to_native_price(0, true), Some(1.0));
     }
 
     /// USDC has 6 decimals, WETH has 18. The USDC/WETH 0.05% pool on
@@ -559,38 +540,30 @@ mod tests {
     /// `denominate_price`).
     #[test]
     fn tick_to_native_price_usdc_pool_scale_is_sane() {
-        // USDC is token0 on mainnet (USDC < WETH). At tick -200_000:
-        //   raw = 1.0001^-200000 ≈ 2.06e-9   (token1/token0 = WETH/USDC in wei)
-        //   token0_is_native = false (WETH is token1, not native? — on
-        //     Ethereum WETH IS the native token in CoW terms).
-        // Wait — native = WETH, USDC = the token being priced. WETH >
-        // USDC by address, so token0 = USDC, token1 = WETH; native is token1.
-        // => token0_is_native = false.
-        // raw = WETH/USDC in wei-ratio = ~2.06e-9.
-        // price_native_per_token = raw = ~2.06e-9 wei-of-WETH per wei-of-USDC.
-        // adjustment = 10^(18 - 6) = 10^12.
-        // final = 2.06e-9 * 10^12 ≈ 2060.
-        let price = tick_to_native_price(-200_000, 6, 18, false).unwrap();
-        // Wide tolerance; this is a sanity check that the order-of-magnitude
-        // is right, not that the math matches a specific reference.
+        // USDC (6dec) priced against WETH (native, 18dec). USDC < WETH by
+        // address, so USDC is token0 and native WETH is token1 =>
+        // token0_is_native = false and raw = token1/token0 = native-wei per
+        // USDC-atom. At USDC ~= $1 (ETH ~= $1767) that is ~5.66e8 (1 USDC-atom
+        // = 1e-6/1767 ETH ~= 5.66e8 wei), reached near tick +201_551. The
+        // returned native price IS that wei-ratio: no decimal shift.
+        let price = tick_to_native_price(201_551, false).unwrap();
         assert!(
-            (1_000.0..10_000.0).contains(&price),
-            "expected ~2060, got {price}"
+            (1e8..1e9).contains(&price),
+            "expected ~5.66e8 native-wei per USDC-atom, got {price}"
         );
     }
 
-    /// Inverted variant — same tick, WETH the priced token, USDC native
-    /// (hypothetical "USDC-native" chain): the price should be ~1/2060.
+    /// Inverted variant: WETH the priced token, USDC native (hypothetical
+    /// USDC-native chain): the price should be ~1/5.66e8.
     #[test]
     fn tick_to_native_price_inverted_pool() {
-        // token0 = native (USDC), token1 = WETH. raw is WETH/USDC = ~2.06e-9
-        // in wei. Inverted: native/token = USDC/WETH = ~4.85e8 wei-ratio.
-        // adjustment = 10^(6 - 18) = 10^-12.
-        // final = 4.85e8 * 10^-12 ≈ 4.85e-4.
-        let price = tick_to_native_price(-200_000, 18, 6, true).unwrap();
+        // Inverted: WETH is the priced token and USDC is the native token.
+        // token0 = native (USDC) => token0_is_native = true, so
+        // price = 1/raw = ~1/5.66e8 = ~1.77e-9.
+        let price = tick_to_native_price(201_551, true).unwrap();
         assert!(
-            (1e-5..1e-3).contains(&price),
-            "expected ~5e-4, got {price}"
+            (1e-10..1e-8).contains(&price),
+            "expected ~1.77e-9, got {price}"
         );
     }
 
@@ -602,7 +575,7 @@ mod tests {
     fn full_pipeline_zero_cumulative_yields_unit_price() {
         let tick = compute_average_tick(&[0, 0], 180).unwrap();
         assert_eq!(tick, 0);
-        let price = tick_to_native_price(tick, 18, 18, false).unwrap();
+        let price = tick_to_native_price(tick, false).unwrap();
         assert_eq!(price, 1.0);
     }
 
@@ -684,9 +657,7 @@ mod tests {
                 fee_tiers: vec![500],
                 min_liquidity: 1,
                 twap_window_secs: 180,
-            },
-            native_decimals: 18,
-        };
+            },        };
 
         let price = estimator
             .estimate_native_price(token, Duration::from_secs(5))
@@ -734,9 +705,7 @@ mod tests {
                 fee_tiers: vec![500, 3000],
                 min_liquidity: 1,
                 twap_window_secs: 180,
-            },
-            native_decimals: 18,
-        };
+            },        };
 
         let result = estimator
             .estimate_native_price(token, Duration::from_secs(5))
@@ -771,9 +740,7 @@ mod tests {
                 fee_tiers: vec![500],
                 min_liquidity: 1,
                 twap_window_secs: 180,
-            },
-            native_decimals: 18,
-        };
+            },        };
         let price = estimator
             .estimate_native_price(native, Duration::from_secs(5))
             .await
@@ -786,8 +753,8 @@ mod tests {
     #[test]
     fn tick_overflow_returns_none() {
         // i64 value that doesn't fit in i32.
-        assert_eq!(tick_to_native_price(i64::MAX, 18, 18, false), None);
-        assert_eq!(tick_to_native_price(i64::MIN, 18, 18, false), None);
+        assert_eq!(tick_to_native_price(i64::MAX, false), None);
+        assert_eq!(tick_to_native_price(i64::MIN, false), None);
     }
 
 }

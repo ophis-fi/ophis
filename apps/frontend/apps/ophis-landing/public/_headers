@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-WG4lLsY3iG+UMgk0QNtu4qwNYgUvijA8ss88Z5+A6tU=' 'sha256-fUv2t8ZBpNKDnHv7gyyxSjTZqBa1qlbDcufWvLWAwj8=' 'sha256-OjMWgQLPPSzN65f1zKvtlywmsmNSBxGiBnZwIFAyAqk=' 'sha256-QzWFZi+FLIx23tnm9SBU4aEgx4x8DsuASP07mfqol/c=' 'sha256-SaCkFfPruIdTXT8/97JArQmGxiJAL2o4bBDvSgJ5y3Q=' 'sha256-SuinMiccMvfxH4Wsw20lp4ZO7yXeJPr2zgCG1khIh7o=' 'sha256-41nY4CI9KIsvLKdh0yJpWHVADO52MYlEV2kEnt1/Q5U=' 'sha256-ct6uG2R9iHP3L80cTZEge8KmxG5DEgLY2FiLHvK8yOA=' 'sha256-pPd0moqs0fdy6rPxWTXmehMxj2qTku5sFR1lf/NFK2g=' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.google-analytics.com; font-src 'self'; connect-src 'self' https://swap.ophis.fi https://ophis.fi https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-l2grA/0G1thOQNWg4HyVULrnV2lL6HwaEsgqFCqkV7Y=' 'sha256-fUv2t8ZBpNKDnHv7gyyxSjTZqBa1qlbDcufWvLWAwj8=' 'sha256-OjMWgQLPPSzN65f1zKvtlywmsmNSBxGiBnZwIFAyAqk=' 'sha256-QzWFZi+FLIx23tnm9SBU4aEgx4x8DsuASP07mfqol/c=' 'sha256-SaCkFfPruIdTXT8/97JArQmGxiJAL2o4bBDvSgJ5y3Q=' 'sha256-SuinMiccMvfxH4Wsw20lp4ZO7yXeJPr2zgCG1khIh7o=' 'sha256-41nY4CI9KIsvLKdh0yJpWHVADO52MYlEV2kEnt1/Q5U=' 'sha256-ct6uG2R9iHP3L80cTZEge8KmxG5DEgLY2FiLHvK8yOA=' 'sha256-pPd0moqs0fdy6rPxWTXmehMxj2qTku5sFR1lf/NFK2g=' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.google-analytics.com; font-src 'self'; connect-src 'self' https://swap.ophis.fi https://ophis.fi https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -7,6 +7,12 @@
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
+  # Cloudflare Pages injects `Access-Control-Allow-Origin: *` on every response by
+  # default. On HTML that wildcard contradicts the same-origin CORP above, so detach
+  # it here and re-attach it below only on the machine-readable endpoints where
+  # cross-origin reads are actually wanted (agents / AEO crawlers fetching the API
+  # surface). `!` detaches a platform-set header; the per-path rules below re-add it.
+  ! Access-Control-Allow-Origin
 
 /*.png
   Cache-Control: public, max-age=31536000, immutable
@@ -39,3 +45,16 @@
 /.well-known/api-catalog
   Content-Type: application/linkset+json; charset=utf-8
   Link: </.well-known/api-catalog>; rel="api-catalog"
+
+# Re-attach wildcard CORS only on the machine-readable endpoints (detached from
+# HTML by the `! Access-Control-Allow-Origin` rule under `/*` above). These are the
+# public, credential-less API surface that agents/AEO crawlers fetch cross-origin.
+# CF Pages COMBINES matching rules, so these re-add ACAO for these paths only.
+/openapi.json
+  Access-Control-Allow-Origin: *
+
+/llms.txt
+  Access-Control-Allow-Origin: *
+
+/.well-known/*
+  Access-Control-Allow-Origin: *

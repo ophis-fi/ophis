@@ -116,6 +116,23 @@ impl Mempool {
         })
     }
 
+    /// Fetches the account's transaction count at the LATEST (mined) block,
+    /// ignoring `config.nonce_block_number`. Unlike [`Self::get_nonce`], this is
+    /// deliberately pinned to `latest`: it is used to test whether a tx at a
+    /// given nonce has already been MINED (nonce slot filled on-chain). A
+    /// `pending` count would include the account's own un-mined submission and
+    /// give a false "already mined", so that check MUST read latest.
+    pub async fn get_mined_nonce(&self, address: eth::Address) -> Result<u64, mempools::Error> {
+        self.transport
+            .provider
+            .get_transaction_count(address)
+            .latest()
+            .await
+            .map_err(|err| {
+                mempools::Error::Other(anyhow::Error::from(err).context("failed to fetch mined nonce"))
+            })
+    }
+
     /// Submits a transaction to the mempool. Returns optimistically as soon as
     /// the transaction is pending. `signer` is the address that signs and pays
     /// for gas (may differ from the solver address in EIP-7702 mode).

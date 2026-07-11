@@ -28,7 +28,7 @@
     {
       "aid": "fi.ophis:mcp",
       "name": "Ophis MCP Server",
-      "description": "Keyless Model Context Protocol server (Streamable-HTTP) exposing six tools (parse_intent, get_quote, build_order, submit_order, lookup_tier, list_chains) so AI agents can quote and build non-custodial, gasless, MEV-protected swaps across 11 EVM chains. The server holds no keys and never signs.",
+      "description": "Keyless Model Context Protocol server (Streamable-HTTP) exposing twelve tools (parse_intent, resolve_token, get_quote, build_order, submit_order, lookup_tier, list_chains, get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus) so AI agents can quote and build non-custodial, gasless, MEV-protected swaps across 12 EVM chains. The server holds no keys and never signs.",
       "humanURL": "https://docs.ophis.fi/ai-agents",
       "baseURL": "https://mcp.ophis.fi/mcp",
       "image": "https://ophis.fi/favicon.ico",

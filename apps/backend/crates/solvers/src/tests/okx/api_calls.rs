@@ -36,6 +36,7 @@ async fn swap_sell_regular() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100000000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -62,11 +63,13 @@ async fn swap_buy_disabled() {
         sell_orders_signature_base_url: None,
         buy_orders_signature_base_url: None,
         chain_id: crate::domain::eth::ChainId::Mainnet,
+        // Dummy non-empty creds: this test exercises the buy-disabled path, not
+        // auth, but Okx::try_new now fail-fasts on empty credentials.
         okx_credentials: okx_dex::OkxCredentialsConfig {
-            project_id: String::new(),
-            api_key: String::new(),
-            api_secret_key: String::new(),
-            api_passphrase: String::new(),
+            project_id: "1".to_string(),
+            api_key: "1234".to_string(),
+            api_secret_key: "1234567890123456".to_string(),
+            api_passphrase: "pass".to_string(),
         },
         settlement_contract: address!("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
         block_stream: None,
@@ -78,6 +81,7 @@ async fn swap_buy_disabled() {
         sell: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -118,6 +122,7 @@ async fn swap_buy_enabled() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -165,6 +170,7 @@ async fn swap_api_error() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::ZERO),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -206,6 +212,7 @@ async fn swap_sell_insufficient_liquidity() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(10000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -247,6 +254,7 @@ async fn swap_buy_insufficient_liquidity() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(10000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 

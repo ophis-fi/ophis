@@ -55,6 +55,13 @@ export const Routes = {
   // Partner stats + referee table only render after a successful signed
   // POST /partner against the rebate-indexer API.
   PARTNER: '/partner',
+  // Ophis: '/rewards' = partner rewards unlocked with XP (1 XP per $1 of
+  // lifetime fee-bearing volume, GET rebates.ophis.fi/xp/:wallet). Public
+  // page; wallet connection needed for progress + the claim validation.
+  REWARDS: '/rewards',
+  // Legacy alias: the page shipped as '/cash-prize' (2026-07-09 morning) and
+  // was renamed same day. Redirects to REWARDS in RoutesApp.
+  CASH_PRIZE: '/cash-prize',
   // Ophis: '/learn' = orientation / navigation hub linking the existing
   // Ophis pages + upstream CoW Protocol context. Not a publication archive.
   LEARN: '/learn',

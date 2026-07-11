@@ -12,12 +12,13 @@ Surfaces: **landing** `ophis.fi` (Astro), **swap** `swap.ophis.fi`
 | Signal | Landing | Swap | Docs |
 | --- | --- | --- | --- |
 | `robots.txt` (+ AI crawlers allowed) | yes | yes (fixed: now points at swap.ophis.fi) | yes |
-| `sitemap.xml` | yes | yes (see follow-up) | yes (auto) |
-| `llms.txt` | yes | yes | yes |
+| `sitemap.xml` | yes | yes (root-only by design) | yes (auto; `/search` excluded) |
+| `llms.txt` | yes | yes | yes (+ build-generated `llms-full.txt`) |
 | OG + Twitter meta | yes | yes | yes |
 | Meta description | yes | yes | yes |
 | Canonical | yes | per-route follow-up | yes (Docusaurus) |
-| JSON-LD | Organization, WebSite, SoftwareApplication | Organization + WebApplication (added) | Organization (added) + per-page BreadcrumbList |
+| JSON-LD | Organization + WebSite sitewide; SoftwareApplication + SDK HowTo home-only; FAQPage (home); BlogPosting (posts) | Organization + WebApplication (added) | Organization (added) + per-page BreadcrumbList |
+| IndexNow | yes (pinged on main deploys by `landing-deploy.yml`, non-fatal) | no | no |
 | GA4 (G-NG9YX5G9CM) | yes (Consent Mode region-scoped + banner) | yes (region-scoped + banner) | yes (region-scoped + banner) |
 | Search engine verification | GSC/Bing/Yandex via apex | GSC/Bing via apex; **Yandex per-host pending** | GSC/Bing via apex; **Yandex per-host pending** |
 
@@ -152,17 +153,33 @@ https://challenges.cloudflare.com https://www.googletagmanager.com` (still **no
 
 - **Swap per-route canonical + meta.** The swap is a client-rendered SPA; a
   static canonical in `index.html` would wrongly point every route at the root.
-  Wire `react-helmet-async` to emit a per-route canonical + title/description
-  (the marketing pages `/about`, `/legal`, `/brand` resolve on both `ophis.fi`
-  and `swap.ophis.fi`, so the canonical also resolves the duplicate-content
-  question — pick one canonical host per page).
-- **Swap/business `sitemap.xml` host-specific (done) + canonical host (still open).**
-  Per the Sitemaps protocol (every URL must be same-host as the sitemap file), the
-  one Pages deploy serves each host its OWN same-host sitemap: `swap.ophis.fi`
-  gets the static `public/sitemap.xml` (swap-only URLs) via `context.next()`;
-  `business.ophis.fi` gets a generated business-only sitemap + robots from
-  `functions/_middleware.ts`. The non-standard `Host:` robots directive was
-  dropped. The landing (`ophis.fi`) is a separate deploy with its own sitemap.
-  Still open: the marketing pages (`/about`, `/legal`, `/brand`, `/learn`) resolve
-  on both `ophis.fi` and `swap.ophis.fi`; pick one canonical host per page and
-  align each surface's sitemap + `rel=canonical` to it.
+  Wire `react-helmet-async` to emit a per-route canonical + title/description.
+- **Swap/business `sitemap.xml` host-specific (done).** Per the Sitemaps
+  protocol (every URL must be same-host as the sitemap file), the one Pages
+  deploy serves each host its OWN same-host sitemap: `swap.ophis.fi` gets the
+  static `public/sitemap.xml` (root URL only; hash routes are invisible to
+  crawlers) via `context.next()`; `business.ophis.fi` gets a generated
+  business-only sitemap + robots (now with the full AI-crawler allowances +
+  Content-Signal, matching the other hosts) from `functions/_middleware.ts`.
+  The non-standard `Host:` robots directive was dropped. The landing
+  (`ophis.fi`) is a separate deploy with its own sitemap.
+- **Canonical-host question: CLOSED (2026-07-03).** The marketing routes no
+  longer resolve as paths on `ophis.fi` (`/about`, `/legal`, `/brand`, `/learn`
+  return 404 on the apex); they live only under `swap.ophis.fi/#/...` hash
+  routes, which crawlers do not fetch. There is no live duplicate-content
+  surface between the hosts.
+
+## Changelog
+
+- **2026-07-03 (swap Soft-404 root-cause fix):** Search Console reported swap.ophis.fi (and its hash routes) as Soft 404. Two causes fixed: (1) the SPA HTML fallback answered missing hashed-asset paths (deploy-propagation windows) with the one-year immutable header attached by path, so browsers and Googlebot cached HTML-as-JavaScript and every later render died at the static shell; functions/_middleware.ts now returns a real no-store 404 for asset-shaped paths that would fall back to HTML. (2) The crawler-visible shell ended with "Loading the app...", a textbook soft-404 trigger; replaced with a content line. After deploy: URL-inspect https://swap.ophis.fi/ in GSC and Request indexing. Hash-fragment rows (#/...) can never be indexed separately and inherit the root verdict; treat them as noise.
+- **2026-07-03 (SEO/AEO hygiene sweep):** swap `llms.txt` app-route links fixed
+  to `swap.ophis.fi/#/...` (they pointed at the hash-less apex, so agents and AI
+  crawlers following them landed on the wrong page), chain list refreshed to
+  the 12 live networks (Unichain added; the swap SEO block's stale HyperEVM
+  mention removed), Unichain orderbook host (`unichain-mainnet.ophis.fi`)
+  documented, `/#/affiliate` route listed, operator email added; business
+  robots.txt aligned with the other hosts (AI crawlers + Content-Signal); docs
+  sitemap excludes `/search`; docs build now generates `llms-full.txt` (linked
+  from every `llms.txt`); landing JSON-LD split (Organization + WebSite
+  sitewide, SoftwareApplication + SDK HowTo home-only, X profile added to
+  `sameAs`); landing footer links Rebates + Business.

@@ -53,7 +53,7 @@ const fee = buildOphisAppDataPartnerFee(10); // { volumeBps, recipient } on OP
 createCowSwapWidget(container, {
   params: {
     baseUrl: 'https://swap.ophis.fi', // the Ophis host
-    appCode: 'Ophis',
+    appCode: 'ophis',
     tradeType: 'swap',
     width: '450px',
     height: '640px',
@@ -70,8 +70,8 @@ createCowSwapWidget(container, {
 | Field | Default (via `@ophis/widget-react`) | Notes |
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
-| `appCode` | `Ophis` | Tags orders in appData. Set your own e.g. `"MyDapp-via-Ophis"`. |
-| `partnerFee.bps` | `10` (0.10%) | Same-chain stable pairs are reduced server-side. |
+| `appCode` | `ophis` | Tags orders in appData. Set your own e.g. `"MyDapp-via-Ophis"`. |
+| `partnerFee.bps` | `5` (0.05%, the SDK partner rate) | Same-chain stable pairs are reduced server-side. |
 | `partnerFee.recipient` | Ophis Safe | Always pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 
@@ -91,10 +91,10 @@ embedded against a third-party origin.
 ## Notes
 
 - The widget is GPL-3.0, like the rest of Ophis.
-- Optimism orders settle on the Ophis self-hosted orderbook; the CoW-hosted
-  chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea,
-  Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
-  widget app, 11 chains in total.
+- Optimism and Unichain orders settle on the Ophis self-hosted orderbooks; the
+  CoW-hosted chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche,
+  Linea, Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
+  widget app, 12 chains in total.
 - **Self-hosting an Ophis fork?** The host must allow third-party framing (CSP
   `frame-ancestors *`, no `X-Frame-Options: SAMEORIGIN`), or integrators'
   iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is

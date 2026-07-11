@@ -1,5 +1,6 @@
 node_modules/
 dist/
+*.tsbuildinfo
 .next/
 .turbo/
 .vercel/
@@ -9,6 +10,14 @@ target/
 .env.local
 .env.*.local
 .DS_Store
+
+# Credential material, globally (zero tracked collateral outside docs/operations/):
+# private keys, PEM certs/keys, and any private runbook written outside
+# docs/operations/. Prevents `git add -A` from staging a submitter.key copied in
+# for debugging or a stray *.private.md on this public repo.
+*.key
+*.pem
+*.private.md
 *.log
 coverage/
 .idea/

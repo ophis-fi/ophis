@@ -31,6 +31,7 @@ const LINEA_START_DATE = 'November 2025'
 const PLASMA_START_DATE = 'January 2026'
 const INK_START_DATE = 'February 2026'
 const OPTIMISM_START_DATE = 'May 2026'
+const UNICHAIN_START_DATE = 'June 2026'
 const MEGAETH_START_DATE = 'May 2026'
 const HYPEREVM_START_DATE = 'May 2026'
 
@@ -48,6 +49,8 @@ const START_DATE: Record<SupportedChainId, string> = {
   [SupportedChainId.INK]: INK_START_DATE,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: OPTIMISM_START_DATE,
+  // Ophis fork: Unichain mainnet (chain 130)
+  [130 as unknown as SupportedChainId]: UNICHAIN_START_DATE,
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: MEGAETH_START_DATE,
   // Ophis fork: HyperEVM mainnet (chain 999)

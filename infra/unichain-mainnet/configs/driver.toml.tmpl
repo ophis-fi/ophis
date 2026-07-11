@@ -1,0 +1,146 @@
+# Ophis — Unichain mainnet (chain 130) driver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# Baseline ships EMPTY on Unichain: no on-chain AMM liquidity sources are
+# configured. All routing goes through the six aggregator solver lanes
+# (KyberSwap, Velora, Odos, OpenOcean, DODO, OKX). Unichain's liquid liquidity
+# is Uniswap V4, which the aggregators route and the baseline UniV2 reader
+# cannot read.
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "30000000"
+
+# Skip eth_createAccessList preflight. Post-eRPC the bare-call path is
+# 2-of-3 consensus-protected; same rationale as OP stack.
+disable-access-list-simulation = true
+
+[contracts]
+gp-v2-settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+weth = "0x4200000000000000000000000000000000000006"  # OP Stack predeploy on Unichain
+balances = "0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A"
+signatures = "0x5f315A204E7971fC29a66fef3a5773f6B0202fac"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# OKX V6 DEX aggregator — ENABLED on Unichain (2026-06-30, renewed OKX_* creds).
+# Covers all Unichain DEXes (incl. Uniswap V4). SELL-only (the solver leaves
+# buy_orders_endpoint unset). Router/spender allowlisted in both layers; SELL
+# output reports the slippage floor (#726 fix).
+[[solver]]
+name = "okx"
+endpoint = "http://okx-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[[solver]]
+name = "kyberswap"
+endpoint = "http://kyberswap-solver"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# Velora (formerly ParaSwap) Augustus V6.2 aggregator — ENABLED on Unichain.
+# Verified 2026-06-30: api.velora.xyz serves network 130, VELORA_SUPPORTED_CHAINS
+# includes 130, and the live 130 route's router == the allowlisted Augustus V6.2
+# (0x6a000f20…001068). Reports the slippage-floored output (the #726 buffer-siphon
+# fix applied to velora's SELL path). Second independent solver so one bad bid
+# can't zero the auction.
+[[solver]]
+name = "velora"
+endpoint = "http://velora-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# Odos SOR v2 aggregator — ENABLED on Unichain (keyless). Router
+# 0x6409722F…46A1f3 (== spender) allowlisted in both the solver and driver
+# allowlists. Odos has no min-out field, so the SELL output is the reconstructed
+# slippage floor (the #726 fix). Third independent solver lane.
+[[solver]]
+name = "odos"
+endpoint = "http://odos-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# OpenOcean V4 aggregator — ENABLED on Unichain (keyless). Router
+# 0x6352a56c…304e64 (== spender) allowlisted in both allowlists. SELL output =
+# data.minOutAmount (the guaranteed floor). Fourth lane.
+[[solver]]
+name = "openocean"
+endpoint = "http://openocean-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# DODO route-service aggregator — ENABLED on Unichain (keyless). RouteProxy
+# 0x89Ba4039…006f4D + separate ApproveProxy 0xf3d60Ba9…3462Dd both allowlisted
+# in both allowlists. SELL output = data.minReturnAmount (the guaranteed floor).
+# Fifth lane.
+[[solver]]
+name = "dodo"
+endpoint = "http://dodo-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# LI.FI same-chain aggregator — ENABLED on Unichain (keyless). LiFiDiamond
+# 0x864b314D…b9232 allowlisted in both layers; SELL output = estimate.toAmountMin
+# (guaranteed floor); same-chain only. Seventh lane.
+[[solver]]
+name = "lifi"
+endpoint = "http://lifi-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# Enso Shortcuts aggregator — ENABLED on Unichain (keyed; free Bearer key).
+# EnsoRouter 0xF75584eF…22Cf (router == spender) allowlisted in both layers;
+# SELL output = minAmountOut (guaranteed floor). Eighth lane.
+[[solver]]
+name = "enso"
+endpoint = "http://enso-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[submission]
+# Unichain mainnet typical L2 gas price is 0.001-0.05 gwei (same order as OP).
+# 5 gwei cap is ~100x above realistic Unichain traffic. Same value as OP stack.
+gas-price-cap = "5000000000"
+
+# Submission mempools for Unichain mainnet — raced in parallel via select_ok.
+# Two independent operators here: PublicNode + Unichain Labs (the public RPC and
+# the sequencer are both Unichain Labs). A 3rd distinct relay would tighten the
+# anti-correlation floor (the OP stack uses 3); tracked as a resilience follow-up.
+[[submission.mempool]]
+url = "https://unichain-rpc.publicnode.com"
+
+[[submission.mempool]]
+url = "https://mainnet.unichain.org"
+
+[[submission.mempool]]
+url = "https://mainnet-sequencer.unichain.org"
+
+[liquidity]
+base-tokens = [
+  "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy on Unichain)
+  "0x078d782b760474a361dda0af3839290b0ef57ad6",  # USDC (canonical on Unichain, Circle-issued)
+]
+
+# NOTE: no [[liquidity.*]] AMM sources on Unichain, by design. The baseline
+# UniV2 reader has nothing to route; the six aggregator lanes (KyberSwap,
+# Velora, Odos, OpenOcean, DODO, OKX) cover all DEX liquidity including Uniswap
+# V4 (Unichain's deepest pools). The earlier
+# UniV2 + Sushi router entries were removed: both router addresses have ZERO
+# code on chain 130 (verified via eth_getCode against the node), so they
+# found no pools. To add a native V2 source later, first confirm the router
+# has code on 130 AND a true 0.30% fee (the reader panics on any other fee).

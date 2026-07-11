@@ -6,7 +6,7 @@ import { cowTokenMiddleware } from './cowToken/middleware'
 import cowToken from './cowToken/reducer'
 import enhancedTransactions from './enhancedTransactions/reducer'
 import gas from './gas/reducer'
-import { appziMiddleware, soundMiddleware } from './orders/middleware'
+import { appziMiddleware, ophisEnrollMiddleware, soundMiddleware } from './orders/middleware'
 import orders from './orders/reducer'
 import user from './user/reducer'
 
@@ -28,7 +28,8 @@ export const cowSwapStore = configureStore({
       .concat(save({ states: PERSISTED_KEYS, debounce: 1000 }))
       .concat(cowTokenMiddleware)
       .concat(soundMiddleware)
-      .concat(appziMiddleware),
+      .concat(appziMiddleware)
+      .concat(ophisEnrollMiddleware),
   preloadedState: load({ states: PERSISTED_KEYS, disableWarnings: process.env.NODE_ENV === 'test' }),
 })
 

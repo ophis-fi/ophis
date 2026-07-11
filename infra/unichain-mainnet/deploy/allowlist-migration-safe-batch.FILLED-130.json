@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "chainId": "130",
+  "createdAt": 0,
+  "meta": {
+    "name": "Ophis Unichain AllowList timelock migration (#442, chain 130)",
+    "description": "Ophis Unichain (chain 130) AllowList timelock migration (#442). Two calls on the GPv2AllowListAuthentication proxy 0x1002E12f2e7f848b20fe572F92133E467a5D010C, in order: (1) setManager(0x4821A534FB11ea4bb2f88d48B13A498A80462e64) = AllowListGuardian, while the Safe still controls it; (2) transferOwnership(0xFC2A6a54122E6D0a598CAe7453DD61263c1065Ed) = TimelockController. End state: manager()==Guardian, owner()==Timelock. addSolver/upgrades become 24h-timelocked; instant removeSolver stays via the Guardian (Safe). Fork-simulated GO. In the Safe UI confirm both txs target 0x1002E12f... before signing 2-of-3.",
+    "txBuilderVersion": "1.16.5",
+    "createdFromSafeAddress": "0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF",
+    "createdFromOwnerAddress": ""
+  },
+  "transactions": [
+    {
+      "to": "0x1002E12f2e7f848b20fe572F92133E467a5D010C",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "manager_", "type": "address" }
+        ],
+        "name": "setManager",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "manager_": "0x4821A534FB11ea4bb2f88d48B13A498A80462e64"
+      }
+    },
+    {
+      "to": "0x1002E12f2e7f848b20fe572F92133E467a5D010C",
+      "value": "0",
+      "data": null,
+      "contractMethod": {
+        "inputs": [
+          { "internalType": "address", "name": "newOwner", "type": "address" }
+        ],
+        "name": "transferOwnership",
+        "payable": false
+      },
+      "contractInputsValues": {
+        "newOwner": "0xFC2A6a54122E6D0a598CAe7453DD61263c1065Ed"
+      }
+    }
+  ]
+}

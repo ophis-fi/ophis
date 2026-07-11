@@ -1,0 +1,27 @@
+# Ophis — Unichain mainnet (chain 130) Velora aggregator solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# ENABLED on Unichain (2026-06-30). Velora (formerly ParaSwap) Augustus V6.2
+# serves network 130 (verified live via api.velora.xyz). The Augustus V6.2
+# router 0x6A000F20005980200259B80c5102003040001068 (== tokenTransferProxy /
+# spender) is in BOTH the solver allowlist (dex::velora::VELORA_ROUTER_ALLOWLIST)
+# AND the driver allowlist (custom_allowlist::UNICHAIN_MAINNET). The velora SELL
+# output reports the slippage floor (the #726 fix). Second solver lane.
+
+node-url = "${UNICHAIN_MAINNET_RPC}"
+
+# Ophis-fork settlement on Unichain. Fill after Phase-1 Ledger ceremony.
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+
+[dex]
+chain-id = "130"
+
+partner = "ophis"
+
+# partner-address and partner-fee-bps deliberately commented out — same
+# double-charging concern as OP velora.toml.tmpl. CIP-75 handles partner
+# fees at the protocol layer.
+# partner-address = "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
+# partner-fee-bps = 25

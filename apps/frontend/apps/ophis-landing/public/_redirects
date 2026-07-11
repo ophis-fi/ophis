@@ -1,0 +1,9 @@
+# Cloudflare Pages _redirects. Astro copies public/ verbatim into dist/, and CF
+# Pages serves this file from the deploy root.
+#
+# AI/AEO crawlers commonly probe /llms-full.txt next to /llms.txt on every origin.
+# The apex (ophis.fi) has only /llms.txt; the full concatenated docs corpus lives
+# on the docs subdomain. Redirect the apex path to the live docs file so the probe
+# returns the corpus instead of a 404. 302 (temporary) because the canonical home
+# of the full text is docs.ophis.fi, which regenerates it on every docs build.
+/llms-full.txt  https://docs.ophis.fi/llms-full.txt  302

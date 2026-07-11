@@ -1,0 +1,23 @@
+-- Discovery-only decoder support.
+--
+-- The settle() decoder can run in DISCOVERY-ONLY mode: it catalogs Ophis trades it
+-- finds on-chain (eth-flow / SDK / agent / widget swaps the owner-scoped API fetcher
+-- misses) so they appear in the public /stats counters and get picked up by the API
+-- fetcher once their wallet is later tracked -- WITHOUT crediting any rebate. Such a
+-- row is written with volume_fee_bps = 0 (no credit; the money path excludes 0
+-- everywhere -- the wallets matview, accrual > 0, computeAffiliate > 0) and is marked
+-- fee_verified = false.
+--
+-- `fee_verified` exists ONLY to govern the fetcher's backfill/skip logic, never a
+-- credit. Without it, a decoder-written provisional 0 would look "already processed"
+-- to the API fetcher (volume_fee_bps IS NOT NULL) and the API would never write the
+-- real owner-allowlist-confirmed fee -> a legit fee-paying trade stuck at 0, no rebate.
+-- With it, the API fetcher re-processes a fee_verified = false row and UPGRADES it to
+-- the verified fee. A decoder upsert can never overwrite an existing row (its
+-- excluded.fee_verified = false satisfies neither upsert arm).
+--
+-- Existing rows are all API-fetched (owner-allowlist confirmed) => verified. DEFAULT
+-- true backfills them correctly. The money gates are unchanged; they key on
+-- volume_fee_bps, not on fee_verified.
+
+ALTER TABLE trades ADD COLUMN fee_verified boolean NOT NULL DEFAULT true;

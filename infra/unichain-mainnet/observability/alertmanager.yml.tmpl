@@ -1,0 +1,87 @@
+# Alertmanager configuration for Ophis Unichain mainnet (chain 130).
+#
+# Routes:
+#   - severity=critical  → Telegram (Clement, immediate), no grouping
+#   - severity=warning   → Telegram (Clement), grouped per 15m
+#   - default            → Telegram (catch-all)
+#
+# Telegram details:
+#   - Bot: @clawdiusfranciscus_bot (token from
+#     ~/.kimi/kimi-claw/openclaw.json → channels.telegram.botToken,
+#     rendered into /etc/alertmanager/telegram-token at compose time)
+#   - Chat: 735726338 (Clement's DM)
+#
+# Why bot_token_file instead of bot_token:
+#   - bot_token in YAML is visible via `docker inspect alertmanager` and
+#     in the container's read-only mount listing. The _file variant lets
+#     Alertmanager read the token from a chmod-600 mounted file that is
+#     NOT visible from `docker inspect` (mirrors the driver-submitter PK
+#     handling — see infra/optimism-mainnet/docker-compose.yml).
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: telegram-critical
+  group_by: ['alertname', 'chain']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 1h
+  routes:
+    - matchers:
+        - severity = critical
+      receiver: telegram-critical
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 30m
+    - matchers:
+        - severity = warning
+      receiver: telegram-warning
+      group_wait: 30s
+      group_interval: 15m
+      repeat_interval: 4h
+
+receivers:
+  - name: telegram-critical
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/telegram-token
+        chat_id: 735726338
+        api_url: https://api.telegram.org
+        parse_mode: HTML
+        send_resolved: true
+        message: |
+          <b>🚨 [{{ .Status | toUpper }}] Ophis Unichain — {{ .CommonLabels.alertname }}</b>
+          {{ range .Alerts }}
+          <b>Severity:</b> {{ .Labels.severity }}
+          <b>Chain:</b> {{ .Labels.chain }}
+          <b>Summary:</b> {{ .Annotations.summary }}
+          <b>Description:</b> {{ .Annotations.description }}
+          <b>Started:</b> {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ end }}
+
+  - name: telegram-warning
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/telegram-token
+        chat_id: 735726338
+        api_url: https://api.telegram.org
+        parse_mode: HTML
+        send_resolved: true
+        message: |
+          <b>⚠️ [{{ .Status | toUpper }}] Ophis Unichain — {{ .CommonLabels.alertname }}</b>
+          {{ range .Alerts }}
+          <b>Severity:</b> {{ .Labels.severity }}
+          <b>Summary:</b> {{ .Annotations.summary }}
+          <b>Description:</b> {{ .Annotations.description }}
+          {{ end }}
+
+inhibit_rules:
+  # When autopilot or eRPC is down, the settlement + auction pipeline stops, so the
+  # settlement-health and latency alerts fire as a CONSEQUENCE. Suppress ONLY those
+  # downstream alerts — NEVER the infra/root-cause alerts (disk, node-exporter,
+  # driver/orderbook/eRPC-down), which may be the actual cause and must stay visible.
+  - source_matchers: [alertname=OphisUniAutopilotDown, severity=critical]
+    target_matchers: [severity=~"critical|warning", alertname=~"OphisUni(NoSettlements1h|SettlementFailureRateHigh|MempoolSubmissionFailing|SolverDropRateHigh|SimulationRevertSpike|AuctionLatencyHigh|SolveTimeBudgetExhausted)"]
+    equal: [chain]
+  - source_matchers: [alertname=OphisUniERPCDown, severity=critical]
+    target_matchers: [severity=~"critical|warning", alertname=~"OphisUni(NoSettlements1h|SettlementFailureRateHigh|MempoolSubmissionFailing|SolverDropRateHigh|SimulationRevertSpike|AuctionLatencyHigh|SolveTimeBudgetExhausted)"]
+    equal: [chain]

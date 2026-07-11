@@ -22,12 +22,25 @@
     "@types/node": "^22.5.0"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "bigint-buffer",
+      "bufferutil",
+      "core-js-pure",
+      "cpu-features",
+      "esbuild",
+      "keccak",
+      "protobufjs",
+      "secp256k1",
+      "sharp",
+      "ssh2",
+      "utf-8-validate",
+      "workerd"
+    ],
     "overrides": {
       "form-data": "^2.5.4",
       "underscore": "^1.12.1",
       "@babel/traverse": "^7.23.2",
-      "@openzeppelin/contracts": "3.4.2-solc-0.7",
-      "undici": "^6.24.0",
+      "undici": "^6.27.0",
       "ws": "^8.21.0",
       "tmp": "^0.2.6",
       "esbuild": "^0.28.1",
@@ -35,7 +48,10 @@
       "js-yaml": "^4.2.0",
       "vite": "^7.0.0",
       "@grpc/grpc-js": "1.14.4",
-      "hono": "^4.12.25"
+      "hono": "^4.12.25",
+      "number-to-bn>bn.js": "^4.12.3",
+      "ethjs-unit>bn.js": "^4.12.3",
+      "@metamask/utils>uuid": "^11.1.1"
     }
   }
 }

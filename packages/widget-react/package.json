@@ -1,6 +1,6 @@
 {
   "name": "@ophis/widget-react",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Embed the Ophis swap widget in a React app. A thin, Ophis-branded wrapper over @cowprotocol/widget-react that defaults the iframe host to swap.ophis.fi and injects the Ophis appCode + CIP-75 partner fee.",
   "license": "GPL-3.0-or-later",
   "type": "module",

@@ -11,6 +11,7 @@ import {
   boolean,
   index,
   primaryKey,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 // uint256 stored as NUMERIC(78) — drizzle exposes string at the TS layer;
@@ -46,10 +47,55 @@ export const trades = pgTable(
     appCode: text('app_code').notNull(),
     partnerFeeWei: uint256('partner_fee_wei'),
 
+    // Gross volume-fee rate (bps) read from the order's appData by the fetcher,
+    // CLAMPED to [1, retail=10] (migration 0010). Three states:
+    //   N (1..10) = the actual per-trade flat Volume rate (SDK 5 / retail 10 / stable 1);
+    //   0         = examined, NO settled Ophis fee at all (a backend-rejected shape
+    //               like capped {volumeBps,maxVolumeBps} or both-aliases, a non-Ophis
+    //               recipient, an absent/0-bps fee) -> credited at ZERO;
+    //   NULL      = unknown -> COALESCEs to the legacy retail rate; covers a
+    //               pre-per-trade historical row, unparseable appData, OR a VALID
+    //               surplus/price-improvement Ophis fee this volume-derived indexer
+    //               cannot compute (so it still earns at the default rather than 0).
+    // 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, GROSS_FEE_BPS) keeps 0 as
+    // 0 (no credit) but maps NULL to retail. The self-healing backfill only upgrades
+    // NULL -> a POSITIVE rate, so re-fetching history never reclassifies it to 0.
+    volumeFeeBps: integer('volume_fee_bps'),
+
+    // True when volume_fee_bps is AUTHORITATIVE: an API row fetched under the
+    // owner-allowlist, or an on-chain-verified decoder row. False for a settle()
+    // decoder DISCOVERY row whose volume_fee_bps is a provisional 0 (catalog-only,
+    // credits nothing). Governs the fetcher backfill/skip logic ONLY (migration 0013);
+    // the money path keys on volume_fee_bps, never on this column. DEFAULT true so
+    // pre-0013 rows (all API-fetched) read as verified.
+    feeVerified: boolean('fee_verified').notNull().default(true),
+
     // Affiliate referral code from the order's appData (metadata.ophisReferrer.code),
     // normalized + grammar-validated by the fetcher. NULL when the order carried no
     // code. Accrual attributes such a trade to the code owner (migration 0009).
     appdataRefCode: text('appdata_ref_code'),
+
+    // Integrator OWN-FEE (partner-fee stacking, migration 0014). CoW's partnerFee is
+    // an ARRAY; an integrator can stack their own recipient entry next to the Ophis
+    // base entry. These capture the FIRST non-Ophis flat-Volume entry so
+    // GET /earnings/:appCode can report what an integrator's own routing earned.
+    //   own_fee_bps       = the integrator's own flat Volume rate, clamped to
+    //                       [1, OWN_FEE_MAX_BPS]; NULL when no non-Ophis flat-Volume
+    //                       entry was present.
+    //   own_fee_recipient = the integrator's own-fee recipient (where it paid out);
+    //                       NULL when own_fee_bps is NULL.
+    // Decoded on EVERY chain (the fetcher has the full appData); only the
+    // paid/guaranteed labeling is sovereign-scoped (see src/earnings.ts).
+    ownFeeBps: integer('own_fee_bps'),
+    ownFeeRecipient: bytea('own_fee_recipient'),
+
+    // Own-fee SCAN MARKER (migration 0016). NULL means the row has NOT yet been scanned
+    // for a stacked integrator own-fee; a timestamp means it has (whether or not one was
+    // found). This is the backfillOwnFee work-queue state. NEVER overload own_fee_bps
+    // for it (own_fee_bps IS NULL keeps meaning "no flat own-fee recorded"). The insert/
+    // upsert path stamps this so a freshly-indexed row never enters the backfill queue;
+    // the backfill stamps it so every row is scanned at most once and the queue drains.
+    ownFeeScannedAt: timestamp('own_fee_scanned_at', { withTimezone: true }),
 
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
@@ -218,5 +264,51 @@ export const affiliateBatchEntries = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.batchId, t.referrerWallet] }),
     referrerIdx: index('affiliate_entries_referrer_idx').on(t.referrerWallet),
+  }),
+);
+
+// --- Sovereign integrator OWN-FEE payout (migration 0017) --------------------
+// Deliberately SEPARATE from BOTH the rebate and affiliate tables so rebate,
+// affiliate and own-fee recipient addresses + amounts are never mixed. UNLIKE
+// rebate/affiliate (Gnosis-only), own-fee pays on the SOVEREIGN chain the volume
+// routed on, so the batch carries chain_id and uniqueness is (cycle_month, chain_id).
+// See migrations/0017_own_fee_batches.sql for the contract.
+
+// One own-fee payout batch per (cycle month, chain). Column types mirror affiliate_batches.
+export const ownFeeBatches = pgTable(
+  'own_fee_batches',
+  {
+    id: serial('id').primaryKey(),
+    cycleMonth: date('cycle_month').notNull(),
+    chainId: integer('chain_id').notNull(),
+    totalOwedWei: uint256('total_owed_wei').notNull(),
+    wethUsdPrice: numeric('weth_usd_price', { precision: 20, scale: 4 }),
+    status: text('status').notNull(),
+    safeProposalHash: bytea('safe_proposal_hash'),
+    safeTxHash: bytea('safe_tx_hash'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    cycleChainUq: uniqueIndex('own_fee_batches_cycle_chain_uq').on(t.cycleMonth, t.chainId),
+  }),
+);
+
+// One row per own-fee recipient paid in a cycle+chain. Mirrors affiliate_batch_entries.
+export const ownFeeBatchEntries = pgTable(
+  'own_fee_batch_entries',
+  {
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => ownFeeBatches.id),
+    // The own_fee_recipient = the on-chain WETH payout address.
+    recipient: bytea('recipient').notNull(),
+    owedWei: uint256('owed_wei').notNull(),
+    paidWei: uint256('paid_wei'),
+    status: text('status').notNull().default('pending'),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.batchId, t.recipient] }),
+    recipientIdx: index('own_fee_entries_recipient_idx').on(t.recipient),
   }),
 );

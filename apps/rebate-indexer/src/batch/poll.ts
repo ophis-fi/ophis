@@ -1,4 +1,5 @@
 import SafeApiKit from '@safe-global/api-kit';
+import { safeTxServiceUrl } from '../safe/addresses.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'poll' });
@@ -11,7 +12,10 @@ export interface PollResult {
 
 /** One-shot status check. Caller decides cadence. */
 export async function getProposalStatus(chainId: number, safeTxHash: `0x${string}`): Promise<PollResult> {
-  const apiKit = new SafeApiKit({ chainId: BigInt(chainId) });
+  // Pass the explicit Transaction Service URL for chains the api-kit lacks a built-in
+  // for (e.g. Unichain 130, which otherwise throws); undefined elsewhere = unchanged.
+  const txServiceUrl = safeTxServiceUrl(chainId);
+  const apiKit = new SafeApiKit({ chainId: BigInt(chainId), ...(txServiceUrl ? { txServiceUrl } : {}) });
   const tx = await apiKit.getTransaction(safeTxHash);
   return {
     executed: Boolean(tx.isExecuted),

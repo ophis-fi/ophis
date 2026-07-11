@@ -6,9 +6,19 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
-import { FEE_SHARE_BPS, estimateEarningsUsd, type AffiliateKind } from './affiliate/rates.js';
+import {
+  FEE_SHARE_BPS,
+  GROSS_FEE_BPS,
+  OPTIMISM_CHAIN_ID,
+  SOVEREIGN_CHAIN_IDS,
+  keepFractionBps,
+  estimateEarningsFromNetFeeUsd,
+  type AffiliateKind,
+} from './affiliate/rates.js';
 
 // Bounds on the cycle window for a referrer's current-month affiliate stats.
 function currentCycleWindow(now: Date): { start: Date; end: Date } {
@@ -35,17 +45,30 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   // Branching on kind keeps the common regular path off a full referee-history
   // scan on every profile refresh.
   const [agg] = isPartner
-    ? await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
+    ? await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_net_weighted: string | null; lifetime_volume_usd: string | null }[]>`
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_volume_usd,
+          -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
+          -- estimate matches the per-trade, per-chain payout: sovereign chains
+          -- (OP, Unichain) keep 100%, hosted 75% (NULL bps -> retail default, like accrual).
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+            * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
+            WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
+          ), 0)::text AS cycle_net_weighted,
           COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
         FROM referrals r
         LEFT JOIN trades t
           ON t.wallet = r.referred_wallet
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+          -- Exclude explicit 0-fee trades (no settled Ophis fee): they earn nothing
+          -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
+          -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
+          AND t.volume_fee_bps IS DISTINCT FROM 0
+          -- Production chains only: mirror of accrual's Sepolia exclusion.
+          AND t.chain_id <> 11155111
           -- appData-wins (mirror of accrual): exclude trades attributed via an
           -- ACTIVE code owned by someone other than the trader, so bind volume
           -- here + appData volume below are disjoint (no double-count). The
@@ -55,16 +78,20 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           ))
         WHERE r.referrer_wallet = ${buf}
       `
-    : await sql<{ referred_count: string; cycle_volume_usd: string | null; lifetime_volume_usd: string | null }[]>`
+    : await sql<{ referred_count: string; cycle_volume_usd: string | null; cycle_net_weighted: string | null; lifetime_volume_usd: string | null }[]>`
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+            * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd
         FROM referrals r
         LEFT JOIN trades t
           ON t.wallet = r.referred_wallet
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
+          AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
+          AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
           -- appData-wins (mirror of accrual): see the partner branch above.
           AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
             SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
@@ -78,23 +105,42 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   // trades), so summing the two does NOT double-count, and the displayed volume
   // matches what the monthly payout actually accrues. referredCount stays bind-
   // based (an appData tag credits volume; it does not create a bound referee).
-  const [appdataAgg] = await sql<{ cycle_volume_usd: string; lifetime_volume_usd: string }[]>`
+  const [appdataAgg] = await sql<{ cycle_volume_usd: string; cycle_net_weighted: string; lifetime_volume_usd: string }[]>`
     SELECT
       COALESCE(SUM(t.value_usd) FILTER (
         WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
       ), 0)::text AS cycle_volume_usd,
+      COALESCE(SUM(t.value_usd * t.volume_fee_bps
+        * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
+        WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
+      ), 0)::text AS cycle_net_weighted,
       COALESCE(SUM(t.value_usd), 0)::text AS lifetime_volume_usd
     FROM trades t
     JOIN ref_codes rc ON rc.code = t.appdata_ref_code AND rc.active
     WHERE rc.referrer_wallet = ${buf}
       AND rc.referrer_wallet <> t.wallet
       AND t.value_usd IS NOT NULL
+      -- appData arm requires a CONFIRMED fee (> 0), mirroring accrual's appData fee gate:
+      -- it is the attacker-controllable forge surface, so NULL (surplus/PI / unconfirmed)
+      -- is excluded here, unlike the bind arms above which keep NULL -> retail. Display
+      -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
+      -- since NULL is excluded.)
+      AND t.volume_fee_bps > 0
+      AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
   `;
 
   const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
   const bindLifetime = agg && agg.lifetime_volume_usd ? parseFloat(agg.lifetime_volume_usd) : 0;
   const appdataCycle = appdataAgg ? parseFloat(appdataAgg.cycle_volume_usd) : 0;
   const appdataLifetime = appdataAgg ? parseFloat(appdataAgg.lifetime_volume_usd) : 0;
+  // Cycle NET fee (USD) = SUM(value * bps * keepFractionBps(chain)) / 1e8 across
+  // bind + appData (disjoint), matching the per-trade, per-chain accrual (sovereign
+  // OP/Unichain keep 100%, hosted 75%). The /1e8 unscales both the bps (1e4) and the
+  // keep bps (1e4). Drives the fee-aware earnings estimate (no ~2x for SDK; sovereign
+  // chains not understated 25%).
+  const bindNetWeighted = agg && agg.cycle_net_weighted ? parseFloat(agg.cycle_net_weighted) : 0;
+  const appdataNetWeighted = appdataAgg ? parseFloat(appdataAgg.cycle_net_weighted) : 0;
+  const currentCycleNetFeeUsd = (bindNetWeighted + appdataNetWeighted) / 100_000_000;
 
   return {
     wallet: referrer,
@@ -105,6 +151,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
     // Bind + appData volume (disjoint). Drives both the display and the partner
     // earnings estimate, so the dashboard now matches the payout.
     currentCycleVolumeUsd: bindCycle + appdataCycle,
+    // Actual cycle NET fee (Σ value*bps*keep/1e8) for the fee-aware earnings estimate.
+    currentCycleNetFeeUsd,
     // Partners display lifetime referred volume (bind + appData); regular never
     // displays lifetime (stays 0, unchanged).
     lifetimeReferredVolumeUsd: isPartner ? bindLifetime + appdataLifetime : 0,
@@ -220,7 +268,27 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
     const allowed = ['https://ophis.fi', 'https://www.ophis.fi', 'https://swap.ophis.fi'];
-    if (origin && allowed.includes(origin)) {
+    // /tier/:wallet (wallet enrollment) and /ref/:code (code lookup) are PUBLIC,
+    // unauthenticated, idempotent, credential-free reads. Allow ANY browser origin
+    // so a partner web app can enroll wallets via @ophis/sdk's enrollOphisTrader on
+    // wallet-connect (the Ophis swap page is no longer the only browser caller).
+    // `*` is safe here precisely because these endpoints carry no cookies/auth, and
+    // the enrollment upsert already happens server-side regardless of CORS; the
+    // header only lets the browser READ the response. Credentialed POSTs (/partner,
+    // /ref/bind) keep the strict allow-list below.
+    // GET only: the enrollment/lookup call is a SIMPLE cross-origin GET (its
+    // only header is the safelisted `accept`), so no preflight is involved and
+    // the GET response just needs allow-origin. Crucially this does NOT match the
+    // OPTIONS preflights of the signed POST routes /ref/bind and /ref/codes (which
+    // also start with /ref/), so those keep falling through to the strict
+    // allow-list branch and still receive POST in Access-Control-Allow-Methods.
+    const isPublicRead =
+      req.method === 'GET' &&
+      (req.url.startsWith('/tier/') || req.url.startsWith('/ref/') || req.url.startsWith('/xp/'));
+    if (isPublicRead) {
+      reply.header('access-control-allow-origin', '*');
+      reply.header('vary', 'Origin');
+    } else if (origin && allowed.includes(origin)) {
       reply.header('access-control-allow-origin', origin);
       reply.header('access-control-allow-methods', 'GET, POST, OPTIONS');
       reply.header('access-control-allow-headers', 'content-type, accept');
@@ -249,9 +317,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     },
   }, async (_req, reply) =>
     // /health is allowed so Bing can crawl it and read its noindex header (a bare
-    // Disallow makes Bing report it as "blocked by robots.txt"). Everything else
-    // (incl. wallet-scoped /tier) stays disallowed for privacy + crawl budget.
-    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\nAllow: /health\n'),
+    // Disallow makes Bing report it as "blocked by robots.txt"). /stats is the
+    // public cumulative-proof page (indexable for discoverability). Everything
+    // else (incl. wallet-scoped /tier) stays disallowed for privacy + crawl budget.
+    reply.code(200).type('text/plain; charset=utf-8').send('User-agent: *\nDisallow: /\nAllow: /$\nAllow: /health\nAllow: /stats\n'),
   );
 
   app.get('/health', {
@@ -400,6 +469,100 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         .send(html);
     }
     return status;
+  });
+
+  // PUBLIC cumulative stats: lifetime settled volume, trades, traders, and a
+  // per-chain breakdown, from the indexed `trades` table, plus static
+  // execution-model facts (EXECUTION_FACTS) and the derived lifetime average
+  // trade size. Deliberately cumulative/lagging ONLY: it never exposes
+  // current-cycle 30d volume or the next-payout timing (those stay on the
+  // admin-only /status, where they are a front-runner timing signal).
+  // Cumulative lifetime totals and configuration facts are not gameable, so
+  // this is a safe public credibility/proof surface. JSON for API clients;
+  // a styled page for a browser (same content-negotiation as /tier).
+  app.get('/stats', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
+    },
+  }, async (req, reply) => {
+    // Public production proof surface: restrict to the named mainnet chains so
+    // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
+    // the cumulative figures. A plain mutable copy for postgres-js array binding.
+    const chainIds = [...PRODUCTION_CHAIN_IDS];
+    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
+      SELECT
+        COALESCE(SUM(value_usd), 0)::text AS vol,
+        COUNT(*)::text                    AS trades,
+        COUNT(DISTINCT wallet)::text      AS traders,
+        COUNT(DISTINCT chain_id)::text    AS chains,
+        -- AVG ignores NULLs, so this is the average over PRICED trades only.
+        -- It avoids dividing priced volume by the all-trades count (which would
+        -- understate while some trades are still awaiting a price).
+        ROUND(AVG(value_usd)::numeric, 2)::text AS avg_trade
+      FROM trades
+      WHERE chain_id = ANY(${chainIds})
+    `;
+    const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
+      SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n
+      FROM trades
+      WHERE chain_id = ANY(${chainIds})
+      GROUP BY chain_id
+      ORDER BY SUM(value_usd) DESC NULLS LAST, COUNT(*) DESC
+    `;
+    const t = totalsRows[0];
+    const stats: PublicStats = {
+      totalVolumeUsd: Number(t?.vol ?? '0'),
+      totalTrades: Number(t?.trades ?? '0'),
+      distinctTraders: Number(t?.traders ?? '0'),
+      chainsActive: Number(t?.chains ?? '0'),
+      byChain: byChainRows.map((r) => ({
+        chainId: r.chain_id,
+        volumeUsd: Number(r.vol ?? '0'),
+        trades: Number(r.n),
+      })),
+      generatedAt: new Date().toISOString(),
+    };
+
+    reply.header('vary', 'Origin, Accept');
+    const accept = req.headers.accept ?? '';
+    if (accept.includes('text/html')) {
+      return reply
+        .type('text/html; charset=utf-8')
+        .header('cache-control', 'public, max-age=300')
+        .header(
+          'content-security-policy',
+          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+        )
+        .send(renderStatsPage(stats));
+    }
+    // Lifetime average trade size over PRICED trades only (SQL AVG ignores
+    // NULLs), so it is not skewed low by trades still awaiting a price. Null
+    // until at least one priced trade is indexed. Lagging-only, no extra signal.
+    const avgTradeUsd = t?.avg_trade != null ? Number(t.avg_trade) : null;
+    return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
+  });
+
+  // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an
+  // integrator verify what their own-fee routing earned and where it paid out. Same
+  // keyless posture as /tier and /stats. Reports CUMULATIVE (lifetime) routed volume +
+  // fee accrual + EXACT paid-to-date referral share; the "guaranteed/paid" figures are
+  // scoped to the Ophis-operated chains (OP + Unichain), and CoW-hosted figures are
+  // labeled accrued-and-CoW-disbursed via the disclaimer (see src/earnings.ts).
+  //
+  // Deliberately mirrors the /stats security invariant: it NEVER exposes current-cycle
+  // 30d volume, an estimated current-cycle earning, or next-payout timing (front-runner
+  // signals kept on the admin-only /status and the sig-gated /partner).
+  app.get<{ Params: { appCode: string } }>('/earnings/:appCode', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public - matches /stats
+    },
+  }, async (req, reply) => {
+    const code = req.params.appCode.toLowerCase();
+    // Same grammar as a referral code (appdata_ref_code is the key): 3-64 [a-z0-9_-].
+    if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid appCode' });
+    reply.header('vary', 'Origin');
+    const earnings = await getIntegratorEarnings(code, new Date());
+    return { ok: true, ...earnings };
   });
 
   app.get('/batches', {
@@ -634,21 +797,35 @@ export async function buildApiServer(): Promise<FastifyInstance> {
              COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
       FROM referrals r
       LEFT JOIN trades t ON t.wallet = r.referred_wallet AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
-        -- appData-wins (mirror of the headline stats + accrual): exclude trades
-        -- attributed via an active code owned by someone other than the trader, so
-        -- each referee's shown bind volume matches the corrected headline + payout.
+        -- Mirror the headline stats + accrual bind arm so each referee's shown bind
+        -- volume == the corrected headline + payout:
+        --   (1) fee-gate out examined-0 trades. A settle() DISCOVERY row credits
+        --       nothing (volume_fee_bps=0), so it must not inflate a referee's shown
+        --       volume; NULL is KEPT (the retail-default bind semantics). Same
+        --       IS DISTINCT FROM 0 gate as the headline (the bind arm above).
+        AND t.volume_fee_bps IS DISTINCT FROM 0
+        --   (2) appData-wins: exclude trades attributed via an active code owned by
+        --       someone OTHER than the trader.
         AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
           SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
         ))
+        --   (3) production chains only, mirroring the headline stats + accrual, so
+        --       per-referee rows reconcile with the totals (Codex post-merge review).
+        AND t.chain_id <> 11155111
       WHERE r.referrer_wallet = ${buf}
       GROUP BY r.referred_wallet, r.bound_at
       ORDER BY r.bound_at DESC
       LIMIT 500
     `;
-    // Earnings panel figures. Estimated current-cycle earnings are volume-derived
-    // (the indexer has no per-trade fee); paid-to-date is exact, summed from the
-    // executed monthly Safe batches. Next payout is the 1st of next month, 02:00 UTC.
-    const estimatedCurrentCycleEarningsUsd = estimateEarningsUsd(stats.currentCycleVolumeUsd, stats.kind);
+    // Earnings panel figures. Estimated current-cycle earnings are FEE-AWARE: the
+    // tier share of the actual cycle fee base (Σ value*bps), so a 5 bps SDK partner
+    // sees roughly what the payout pays, not ~2x. Paid-to-date is exact, summed from
+    // the executed monthly Safe batches. Next payout is the 1st of next month, 02:00 UTC.
+    const estimatedCurrentCycleEarningsUsd = estimateEarningsFromNetFeeUsd(
+      stats.currentCycleNetFeeUsd,
+      stats.currentCycleVolumeUsd,
+      stats.kind,
+    );
     const [paid] = await sql<{ paid_weth: number; paid_usd: number }[]>`
       SELECT
         COALESCE(SUM(e.paid_wei::numeric) / 1e18, 0)::float8 AS paid_weth,
@@ -753,6 +930,50 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const rankInfo = await getRankInfo(raw as `0x${string}`);
     if (!rankInfo) return reply.code(404).send({ error: 'wallet not found' });
     return rankInfo;
+  });
+
+  // PUBLIC per-wallet XP for the Cash Prize page: 1 XP per $1 of the wallet's
+  // own lifetime fee-bearing volume. Lifetime/cumulative only, so it sits in
+  // the same lagging, non-gameable category as /stats (per-wallet 30d volume
+  // is already public on /tier and /rank). Fee-gated exactly like the
+  // `wallets` matview (volume_fee_bps = 0 means examined-and-fee-free, which
+  // must not mint XP) and restricted to production chains so testnet dust
+  // never unlocks a perk. Unknown wallets get 200 with xp 0, not 404: the
+  // page treats "never traded" as zero progress, not an error.
+  app.get<{ Params: { wallet: string } }>('/xp/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
+    },
+  }, async (req, reply) => {
+    const raw = req.params.wallet.toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    const walletBuf = Buffer.from(raw.slice(2), 'hex');
+    // Enroll like /tier: the fetcher only indexes tracked_wallets, so a wallet
+    // whose first touchpoint is the Rewards page would otherwise read 0 XP
+    // forever. Same cheap idempotent upsert, no outbound calls (Codex
+    // post-merge review).
+    await sql`
+      INSERT INTO tracked_wallets (wallet) VALUES (${walletBuf})
+      ON CONFLICT (wallet) DO NOTHING
+    `;
+    const chainIds = [...PRODUCTION_CHAIN_IDS];
+    const rows = await sql<{ vol: string }[]>`
+      SELECT COALESCE(SUM(value_usd), 0)::text AS vol
+      FROM trades
+      WHERE wallet = ${walletBuf}
+        AND chain_id = ANY(${chainIds})
+        AND value_usd IS NOT NULL
+        AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
+    `;
+    const lifetimeVolumeUsd = Number(rows[0]?.vol ?? '0');
+    reply.header('vary', 'Origin');
+    reply.header('cache-control', 'public, max-age=60');
+    return {
+      wallet: raw,
+      xp: Math.floor(lifetimeVolumeUsd),
+      lifetimeVolumeUsd,
+      generatedAt: new Date().toISOString(),
+    };
   });
 
   // Rate-limit 404s too — otherwise an attacker hitting random paths

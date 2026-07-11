@@ -16,6 +16,7 @@ import {
   plasma,
   polygon,
   sepolia,
+  unichain,
 } from 'viem/chains'
 import { createConfig, Transport } from 'wagmi'
 
@@ -77,7 +78,9 @@ const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof
 // the array-build site so the next incomplete sweep can't repeat
 // this exact crash mode.
 const OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
-const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID]
+// Ophis fork: Unichain (chain 130) added at frontend layer, same pattern as OP.
+const UNICHAIN_CHAIN_ID = 130 as unknown as SupportedChainId
+const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID]
 
 const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.MAINNET]: mainnet,
@@ -92,6 +95,7 @@ const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.INK]: ink,
   [SupportedChainId.SEPOLIA]: sepolia,
   [OPTIMISM_CHAIN_ID]: optimism,
+  [UNICHAIN_CHAIN_ID]: unichain,
 }
 
 // Defensive guard: `SUPPORTED_CHAINS[chainId]` returns undefined if the

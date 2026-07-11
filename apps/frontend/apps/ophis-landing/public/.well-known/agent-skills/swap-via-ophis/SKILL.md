@@ -7,7 +7,7 @@ license: MIT
 # Swap via Ophis
 
 Ophis is a non-custodial, intent-based DEX aggregator (a CoW Protocol fork) live
-on Optimism and 10 other EVM chains, with Solana and Bitcoin as cross-chain
+on Optimism, Unichain, and 10 other EVM chains, with Solana and Bitcoin as cross-chain
 destinations via NEAR Intents. Orders settle inside batch auctions at a uniform
 clearing price, so they are MEV-protected by construction. The user (or an agent
 acting on their behalf) always signs the final order locally, in their own
@@ -47,9 +47,15 @@ All endpoints are public and require no API key or authentication.
 
 ## Fees
 
-A flat 0.10% (10 bps) fee on trade volume, with a reduced 0.01% (1 bp) on
-same-chain stablecoin-to-stablecoin swaps. A share of fees is returned monthly to active
-wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
+A flat 0.10% (10 bps) fee on trade volume on the swap app, with a reduced
+0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps; orders built through
+the SDK/MCP integration path carry a reduced 0.05% (5 bps) partner rate. On the
+Ophis-operated chains (Optimism, Unichain) the Ophis fee is the all-in cost and
+100% of price improvement is returned to the trader; on CoW-hosted chains CoW
+Protocol's own fees apply on top (a 0.02% volume fee, 0.003% on correlated
+pairs, plus 50% of quote improvement, capped at 0.98% of volume). Details:
+https://docs.ophis.fi/fees. A share of fees is returned
+monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and `ophisVolumeBpsForPair(isStablePair)`.
 
@@ -58,7 +64,8 @@ wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 - Non-custodial: confirm the order's `receiver` equals the user's address before
   signing; `build_order` pins it by default.
 - The settlement contract on Optimism is Ophis's own GPv2Settlement at
-  `0x310784c7FCE12d578dA6f53460777bAc9718B859` (NOT CoW's canonical address).
+  `0x310784c7FCE12d578dA6f53460777bAc9718B859`, and on Unichain it is
+  `0x108A678716e5E1776036eF044CAB7064226F714E` (NOT CoW's canonical address).
   Always resolve the per-chain settlement domain via `list_chains` or the SDK.
 - Ophis intentionally does not implement HTTP-native payment automation; the
   user's wallet signature is the trust boundary.

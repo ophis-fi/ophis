@@ -1,0 +1,60 @@
+<section class="build">
+  <div class="build-inner reveal-up" data-reveal>
+    <div class="build-copy">
+      <h2>Build on Ophis</h2>
+      <p>Keep your fee. We settle it on-chain. Charge your own rate on top of a 5 bps base; MEV-protected, gasless execution for your users.</p>
+    </div>
+    <div class="ctas">
+      <a class="cta-primary" href="https://docs.ophis.fi/partners" rel="noopener">Partner terms</a>
+      <a class="cta-secondary" href="https://business.ophis.fi" rel="noopener">Talk to us</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .build { padding: 0 56px 24px; }
+  .build-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  h2 {
+    font-size: 22px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+  }
+  .build-copy p {
+    color: var(--ophis-fg-muted);
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0;
+    max-width: 520px;
+  }
+  .ctas { display: inline-flex; gap: 12px; flex-wrap: wrap; }
+  .cta-primary, .cta-secondary {
+    padding: 12px 22px;
+    border-radius: var(--ophis-radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: filter 150ms ease, border-color 150ms ease;
+    white-space: nowrap;
+  }
+  .cta-primary { background: var(--ophis-saffron-60); color: var(--ophis-bg); font-weight: 600; }
+  .cta-primary:hover { filter: brightness(1.05); }
+  .cta-secondary { color: var(--ophis-fg); border: 1px solid var(--ophis-border); }
+  .cta-secondary:hover { border-color: var(--ophis-fg-muted); }
+  @media (max-width: 560px) {
+    .build { padding: 0 20px 24px; }
+    .build-inner { padding: 24px 20px; }
+  }
+</style>

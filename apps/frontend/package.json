@@ -73,8 +73,8 @@
       "bn.js": "^5.2.3",
       "vite": "^7.3.5",
       "esbuild": "^0.28.1",
-      "http-proxy-middleware@>=0.16.0 <3.0.6": "^3.0.7",
       "http-proxy-middleware@>=3.0.4 <3.0.7": "3.0.7",
+      "http-proxy-middleware@>=2.0.0 <2.0.10": "2.0.10",
       "piscina": "4.9.3",
       "postcss": "^8.5.10",
       "yaml": "^1.10.3",
@@ -101,7 +101,8 @@
       "@babel/plugin-transform-modules-systemjs": "^7.29.4",
       "minimatch": "^10.2.3",
       "svgo": "^3.3.3",
-      "tmp": "^0.2.6"
+      "tmp": "^0.2.6",
+      "@xhmikosr/decompress": "^10.2.1"
     }
   },
   "config": {

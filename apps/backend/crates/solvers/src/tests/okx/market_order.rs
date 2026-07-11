@@ -224,7 +224,7 @@ async fn sell() {
                        "kind":"custom",
                        "outputs":[
                           {
-                             "amount":"6556259156432631386442",
+                             "amount":"6490696564868305072577",
                              "token":"0xe41d2489571d322189246dafa5ebde1f4699f498"
                           }
                        ],
@@ -235,7 +235,7 @@ async fn sell() {
                  "postInteractions":[],
                  "preInteractions":[],
                  "prices":{
-                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"6556259156432631386442",
+                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"6490696564868305072577",
                     "0xe41d2489571d322189246dafa5ebde1f4699f498":"1000000000000000000"
                  },
                  "trades":[
@@ -776,7 +776,7 @@ async fn sell_twice() {
                        "kind":"custom",
                        "outputs":[
                           {
-                             "amount":"6556259156432631386442",
+                             "amount":"6490696564868305072577",
                              "token":"0xe41d2489571d322189246dafa5ebde1f4699f498"
                           }
                        ],
@@ -787,7 +787,7 @@ async fn sell_twice() {
                  "postInteractions":[],
                  "preInteractions":[],
                  "prices":{
-                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"6556259156432631386442",
+                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"6490696564868305072577",
                     "0xe41d2489571d322189246dafa5ebde1f4699f498":"1000000000000000000"
                  },
                  "trades":[
@@ -1035,7 +1035,7 @@ async fn sell_twice_parallel() {
                        "kind":"custom",
                        "outputs":[
                           {
-                             "amount":"6556259156432631386442",
+                             "amount":"6490696564868305072577",
                              "token":"0xe41d2489571d322189246dafa5ebde1f4699f498"
                           }
                        ],
@@ -1046,7 +1046,7 @@ async fn sell_twice_parallel() {
                  "postInteractions":[],
                  "preInteractions":[],
                  "prices":{
-                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"6556259156432631386442",
+                    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2":"6490696564868305072577",
                     "0xe41d2489571d322189246dafa5ebde1f4699f498":"1000000000000000000"
                  },
                  "trades":[

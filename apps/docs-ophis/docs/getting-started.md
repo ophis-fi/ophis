@@ -41,7 +41,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Settle: on-chain, MEV-protected',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles your order in a batch where every trade clears at the same uniform price, via CoW Protocol batch auctions, so there is no front-running, no sandwiching, and no priority-gas auction. 100% of any price surplus goes to you, the trader.',
+      text: 'The winning solver settles your order in a batch where every trade clears at the same uniform price, via CoW Protocol batch auctions, so there is no front-running, no sandwiching, and no priority-gas auction. Ophis takes no cut of surplus: on the Ophis-operated chains (Optimism, Unichain) 100% of any price surplus goes to you, the trader; on CoW-hosted chains CoW Protocol retains 50% of quote improvement.',
     },
   ],
 };
@@ -93,7 +93,7 @@ so its API key never reaches the browser. See the
 Your signed order is broadcast to a batch auction. Solvers race to find
 the best path, an on-chain DEX, a peer-to-peer match against another
 order in the same batch, or a cross-chain route, and bid for the right
-to settle it. On Optimism, Ophis currently operates the solver itself,
+to settle it. On Optimism and Unichain, Ophis currently operates the solver itself,
 competing across several routing strategies, see [How it works](./architecture.md).
 
 ### 3 · Settle, on-chain, MEV-protected
@@ -107,10 +107,10 @@ For the full lifecycle, see [How it works](./architecture.md).
 
 ## Supported networks
 
-Ophis surfaces **11 EVM chains** as full source _and_ destination in the
+Ophis surfaces **12 EVM chains** as full source _and_ destination in the
 network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
-Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, and Polygon (plus the
-Sepolia testnet). On any of these you can both pay from and receive into
+Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, and Unichain
+(plus the Sepolia testnet). On any of these you can both pay from and receive into
 your EVM wallet.
 
 | | | |
@@ -118,7 +118,7 @@ your EVM wallet.
 | Ethereum | Arbitrum One | Avalanche |
 | Base | BNB Smart Chain | Gnosis Chain |
 | Ink | Linea | Optimism |
-| Plasma | Polygon | |
+| Plasma | Polygon | Unichain |
 
 In addition, **Solana** and **Bitcoin** are available as cross-chain
 _destinations only_ via [NEAR Intents](https://near.org/intents): trade

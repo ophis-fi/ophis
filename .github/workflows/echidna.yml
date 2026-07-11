@@ -33,12 +33,32 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
+      # Persist the fuzzing corpus across runs so each weekly run DEEPENS
+      # accumulated coverage instead of restarting from an empty corpus.
+      # actions/cache (not download-artifact): the upload artifact below is
+      # sha-keyed (echidna-${{ github.sha }}), so there is no stable name to
+      # fetch, and download-artifact needs run-id + token plumbing to reach a
+      # prior run. The exact key is unique per run (always a miss), so
+      # restore-keys pulls the newest prior corpus and this run saves an updated
+      # one at post-job. CAVEAT: GitHub evicts caches unused for 7 days (= this
+      # weekly cadence), so the 90-day artifact upload below stays as a backstop.
+      - name: Restore/seed Echidna corpus cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: /tmp/echidna-out
+          key: echidna-corpus-${{ github.run_id }}
+          restore-keys: |
+            echidna-corpus-
+
       - name: Run Echidna in TOB toolbox
         env:
           WORKSPACE: ${{ github.workspace }}
         run: |
           mkdir -p /tmp/echidna-out
-          chmod 0777 /tmp/echidna-out
+          # Recursive: corpus files restored from cache are owned by the runner
+          # user, but the TOB container writes as the (non-root) ethsec user and
+          # must be able to overwrite them, so make the whole tree writable.
+          chmod -R 0777 /tmp/echidna-out
           # The TOB toolbox runs as the (non-root) `ethsec` user, and
           # crytic-compile writes its `crytic-export/` into the CWD (/work).
           # On current runner images the checked-out contracts dir is not

@@ -1,0 +1,166 @@
+# Ophis — Unichain mainnet (chain 130) autopilot config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time:
+#   ./render-configs.sh
+#
+# UNICHAIN_RPC_INTERNAL defaults to the eRPC proxy path in docker-compose.yml;
+# it is only set in .env when deliberately bypassing consensus (e.g. for
+# failure-domain tests).
+# node-url is a plain Url field (no %ENV deserializer) → must be a literal URL;
+# an empty ${UNICHAIN_RPC_INTERNAL} fails TOML parse. Hardcode the eRPC proxy,
+# same as the OP stack's canonical autopilot.toml. The driver keeps the
+# UNICHAIN_RPC_INTERNAL single-provider bypass via its ETHRPC env.
+node-url = "http://rpc-proxy:4000/main/evm/130"
+simulation-node-url = "http://rpc-proxy:4000/main/evm/130"
+
+# Per-order wait while the run loop fetches a missing native (ETH-denominated)
+# token price. CoinGecko simple/token_price typically answers in 200-500ms;
+# 5s is generous and covers a cold cache after restart.
+native-price-timeout = "5s"
+
+# NOTE: skip-event-sync lives under the [ethflow] section in this backend's
+# config schema (configs/src/autopilot/ethflow.rs), NOT at the top level —
+# see [ethflow] below.
+#
+# OPERATIONAL INVARIANT (self-node retention): the self-node prunes receipts/logs
+# to ~24h (86400 blocks). The autopilot indexes settlement logs forward from the
+# GPv2 deploy block and must not fall >24h behind, or the self-node can no longer
+# serve the gap's logs. eRPC's two public read legs DO serve historical eth_getLogs,
+# so a >24h autopilot outage still recovers via 2-of-3 consensus from the public
+# legs (not the self-node). Self-node-only RTO is ~24h; longer gaps lean on the
+# public legs. Same recovery model as the OP stack.
+
+[contracts]
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+balances = "0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A"
+signatures = "0x5f315A204E7971fC29a66fef3a5773f6B0202fac"
+native-token = "0x4200000000000000000000000000000000000006"  # WETH (OP Stack predeploy on Unichain)
+hooks = "0x2FbB1e41fF4f9b707E4428EEC7F5AFAaC5D60810"
+balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical cross-chain
+
+[ethflow]
+# skip-event-sync = true: the sovereign Unichain settlement is NOT in CoW's
+# canonical contracts registry (same reasoning as HL/chain-999). Without it the
+# autopilot backfills Settlement events from genesis and rejects block-0 lookups.
+# Start from "latest" and index forward. (This field is parsed into the ethflow
+# config — configs/src/autopilot/ethflow.rs — hence its placement here.)
+skip-event-sync = true
+# EthFlow DEPLOYED 2026-06-29 (CoWSwapEthFlow, native-ETH sells). Constructor-wired
+# to Settlement 0x108A6787…F714E + WETH 0x4200…0006; WETH→vaultRelayer(0xaB29E2a8…)
+# allowance = MAX; runtime byte-identical to OP's EthFlow. Reviewed Codex gpt-5.5 +
+# Trail of Bits + Verity (settlement leg). NOTE: under skip-event-sync=true the
+# autopilot indexes EthFlow from LATEST (indexing-start is a no-op — ethflow_events.rs:170);
+# orders must be placed AFTER an autopilot restart to be indexed (no backfill).
+contracts = ["0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7"]
+indexing-start = 51995740
+
+[logging]
+filter = "warn,autopilot=debug,shared=info,price_estimation=info"
+
+[current-block]
+poll-interval = "1s"  # Unichain block time (~1s)
+
+[run-loop]
+solve-deadline = "20s"
+
+[[gas-estimators]]
+type = "Web3"
+
+[[gas-estimators]]
+type = "Alloy"
+
+[[drivers]]
+name = "baseline"
+url = "http://driver/baseline"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# OKX V6 DEX aggregator — ENABLED on Unichain (2026-06-30, renewed OKX_* creds).
+[[drivers]]
+name = "okx"
+url = "http://driver/okx"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+[[drivers]]
+name = "kyberswap"
+url = "http://driver/kyberswap"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# Velora aggregator — ENABLED on Unichain (verified 2026-06-30: api.velora.xyz
+# serves 130; live route router == allowlisted Augustus V6.2). 2nd solver.
+[[drivers]]
+name = "velora"
+url = "http://driver/velora"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# Odos SOR v2 aggregator — ENABLED on Unichain (keyless). 3rd solver.
+[[drivers]]
+name = "odos"
+url = "http://driver/odos"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# OpenOcean V4 aggregator — ENABLED on Unichain (keyless). 4th solver.
+[[drivers]]
+name = "openocean"
+url = "http://driver/openocean"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# DODO route-service aggregator — ENABLED on Unichain (keyless). 5th solver.
+[[drivers]]
+name = "dodo"
+url = "http://driver/dodo"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# LI.FI same-chain aggregator — ENABLED on Unichain (keyless). 7th solver.
+[[drivers]]
+name = "lifi"
+url = "http://driver/lifi"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+# Enso Shortcuts aggregator — ENABLED on Unichain (keyed). 8th solver.
+[[drivers]]
+name = "enso"
+url = "http://driver/enso"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+[fee-policies]
+
+[database]
+write-url = "%DB_WRITE_URL"
+read-url = "%DB_READ_URL"
+
+[order-quoting]
+price-estimation-drivers = [
+  { name = "baseline", url = "http://driver/baseline" },
+  { name = "okx", url = "http://driver/okx" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+  { name = "velora", url = "http://driver/velora" },
+  { name = "odos", url = "http://driver/odos" },
+  { name = "openocean", url = "http://driver/openocean" },
+  { name = "dodo", url = "http://driver/dodo" },
+  { name = "lifi", url = "http://driver/lifi" },
+  { name = "enso", url = "http://driver/enso" },
+]
+
+[price-estimation]
+amount-to-estimate-prices-with = "1000000000000000"
+
+[price-estimation.coin-gecko]
+api-key = "%COINGECKO_API_KEY"
+url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+[native-price-estimation]
+# Primary: on-chain Uniswap V3 TWAP. The init-code-hash IS a canonical
+# cross-chain constant, but the factory address is NOT: Unichain uses its own
+# v3CoreFactory (0x1F98400000000000000000000000000000000003), distinct from the
+# 0x1F98431c... factory used on Ethereum / Optimism. Verified live on-chain.
+# Fallback: CoinGecko. Unichain is supported on CoinGecko (verified via
+# coingecko.com/api/v3/asset_platforms).
+estimators = [
+  [
+    { type = "UniswapV3", factory = "0x1F98400000000000000000000000000000000003", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "CoinGecko" },
+  ],
+]
+
+[native-price-estimation.cache]
+max-age = "20m"

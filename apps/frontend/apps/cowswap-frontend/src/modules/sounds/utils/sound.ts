@@ -1,17 +1,20 @@
-// Ophis: silence upstream audio cues.
+// Ophis: branded swap-completion audio cue.
 //
-// Ophis shipped a "moo" sound on order success and other branded
-// audio cues that are off-brand for Ophis. Rather than ship audio
-// files we don't yet have, these helpers return a no-op audio stub.
-// Replace with Ophis sound design later — keep the named exports so
-// the sound middleware doesn't need refactoring.
+// Upstream CoW ships a "moo" sound on order success plus send/error cues that
+// are off-brand for Ophis, so the SEND and ERROR cues stay silenced (no-op
+// stub). We DO play one branded sound the moment a swap (or bridge) order is
+// FILLED, wired through getCowSoundSuccess() below. The trigger sites are
+// chain-agnostic (soundMiddleware's fulfillOrdersBatch action + the bridge
+// EXECUTED updater), so this plays on every chain (mainnet, Unichain,
+// Optimism, ...) with no per-chain gating. The asset lives in public/audio and
+// is served from the /audio/ root path on the deployed site.
 
 type SoundType = 'SEND' | 'SUCCESS' | 'ERROR'
 type Sounds = Record<SoundType, string>
 
 const DEFAULT_SOUNDS: Sounds = {
   SEND: '/audio/send.mp3',
-  SUCCESS: '/audio/success.mp3',
+  SUCCESS: '/audio/lalala.mp3',
   ERROR: '/audio/error.mp3',
 }
 
@@ -30,14 +33,25 @@ function getEmptySound(): HTMLAudioElement {
   return stub as HTMLAudioElement
 }
 
+function getSound(type: SoundType): HTMLAudioElement {
+  if (typeof Audio === 'undefined') {
+    return getEmptySound()
+  }
+
+  return new Audio(DEFAULT_SOUNDS[type])
+}
+
+// SEND stays silenced (off-brand upstream cue).
 export function getCowSoundSend(): HTMLAudioElement {
   return getEmptySound()
 }
 
+// SUCCESS plays the branded Ophis swap-completion cue on every chain.
 export function getCowSoundSuccess(): HTMLAudioElement {
-  return getEmptySound()
+  return getSound('SUCCESS')
 }
 
+// ERROR stays silenced (off-brand upstream cue).
 export function getCowSoundError(): HTMLAudioElement {
   return getEmptySound()
 }

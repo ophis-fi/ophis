@@ -1,0 +1,26 @@
+node-url = "http://localhost:8545"
+
+[dex]
+# Chain ID. This Odos SOR v2 solver is verified on Unichain (130). Odos encodes
+# the chain in the request body (chainId), not the URL.
+chain-id = "130"
+
+# Optional: override the API endpoint (default https://api.odos.xyz/):
+# endpoint = "https://api.odos.xyz/"
+
+# Odos API key, sent as the x-api-key header. The anonymous tier is too
+# rate-limited to participate (HTTP 429 even for a single solve), so a free-plan
+# key (2 RPS / 4k daily, no KYC, register at enterprise.odos.xyz) is effectively
+# required. It is a SECRET and never touches the funds path (auth / rate-limit
+# only) — render it from an env placeholder, never hardcode a value:
+# api-key = "${ODOS_API_KEY}"
+
+# Optional: Odos referral code for partner attribution / volume monetization.
+# Never touches the funds path. If you set it, render it from an env placeholder
+# rather than hardcoding a value (it is a u64, so it is unquoted), e.g.:
+# referral-code = ${ODOS_REFERRAL_CODE}
+
+# NOTE: Odos's quote API is exactIn-only — buy (exactOut) orders are returned as
+# "no solution". Odos exposes no min-out field, so the GUARANTEED slippage floor
+# (out_amount * (10000 - clamped_bps) / 10000) is reported as the sell clearing
+# amount, never the optimistic quote.

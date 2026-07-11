@@ -8,7 +8,9 @@ on:
 
 permissions:
   contents: read
-  deployments: write
+  # deployments: write removed 2026-07 (audit): the deploy uses
+  # cloudflare/wrangler-action + `wrangler pages deploy`, neither of which
+  # touches the GitHub Deployments API, so the scope was dead weight.
   id-token: write # SLSA build provenance (#438)
   attestations: write # SLSA build provenance (#438)
 
@@ -56,6 +58,15 @@ jobs:
 
       - name: install cowswap deps
         working-directory: apps/frontend
+        # NOTE (audit, token-adjacent install): --ignore-scripts is deliberately
+        # NOT applied here. The apps/frontend build genuinely needs lifecycle
+        # scripts -- the workspace's own postinstall runs patch-package (cowswap
+        # patches) and native deps (@swc/core, esbuild) link their platform
+        # binaries. Later steps in THIS job carry CLOUDFLARE_API_TOKEN /
+        # FORMSPREE_DEPLOY_KEY / BUNGEE_API. The proper hardening is the job
+        # split (secret-free build job -> artifact -> deploy job with tokens);
+        # tracked as future work rather than breaking the build with
+        # --ignore-scripts. Exposure is bounded by --frozen-lockfile.
         run: pnpm install --frozen-lockfile
 
       # Deploy the Formspree form config (formspree.json at repo root) so the
@@ -83,20 +94,36 @@ jobs:
           fi
 
       # The flat volume fee is the LIVE production fee model (10 bps since
-      # 2026-06-08, #508/#509). If the repo secret went missing or held garbage,
-      # readVolumeFeeBps() would silently fall back to 0 and the build would
-      # ship the LEGACY price-improvement fee while every public surface says
-      # 0.10% — a misrepresented production fee. Fail the deploy instead.
-      # (audit 2026-06-09)
+      # 2026-06-08, #508/#509). readVolumeFeeBps() now enables the flat fee ONLY
+      # when the secret equals EXACTLY the retail rate; any other value (missing,
+      # garbage, the 5 bps PARTNER rate, or a super-retail value) silently falls
+      # back to 0 and ships the LEGACY price-improvement fee while every public
+      # surface says 0.10%. So assert the secret is exactly the retail rate before
+      # the build, not merely "in [1,50]". (audit 2026-06-09, tightened 2026-06-19)
+      #
+      # NOTE (audit, hygiene only): REACT_APP_OPHIS_VOLUME_FEE_BPS is PUBLIC
+      # config (the documented 10 bps retail rate), not a secret. It is echoed
+      # into logs below on both pass/fail paths; GitHub auto-redacts registered
+      # secret values, so exposure is nil, but it also masks every literal "10"
+      # in run logs. It could be moved to a repo VARIABLE
+      # (vars.REACT_APP_OPHIS_VOLUME_FEE_BPS) to drop the masking. Left as a
+      # secret here deliberately: flipping to vars.* would fail this assert (and
+      # ship the legacy fee) until the repo variable is created, which is a
+      # settings change out of band from this file. Do both together.
       - name: assert flat-fee flag is set and sane
         env:
           BPS: ${{ secrets.REACT_APP_OPHIS_VOLUME_FEE_BPS }}
+          # The one retail rate the front-end accepts. Mirrors
+          # OPHIS_FRONTEND_OP_VOLUME_BPS in
+          # apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts.
+          # Move both in lockstep if the retail rate ever changes.
+          RETAIL_BPS: '10'
         run: |
-          if ! [[ "$BPS" =~ ^[0-9]+$ ]] || (( BPS < 1 || BPS > 50 )); then
-            echo "::error::REACT_APP_OPHIS_VOLUME_FEE_BPS must be an integer in [1,50]; got '${BPS:-<unset>}'. The flat fee is the live model — an unset/garbage value silently reverts production to the legacy price-improvement fee. Fix the repo secret (expected: 10)."
+          if [[ "$BPS" != "$RETAIL_BPS" ]]; then
+            echo "::error::REACT_APP_OPHIS_VOLUME_FEE_BPS must equal the retail rate ${RETAIL_BPS}; got '${BPS:-<unset>}'. readVolumeFeeBps() enables the flat fee ONLY for exactly ${RETAIL_BPS} bps — any other value (incl. the 5 bps partner rate) silently reverts production to the legacy price-improvement fee. Fix the repo secret to ${RETAIL_BPS}."
             exit 1
           fi
-          echo "flat-fee flag OK (${BPS} bps)"
+          echo "flat-fee flag OK (${BPS} bps retail)"
 
       - name: build cowswap
         working-directory: apps/frontend
@@ -109,11 +136,12 @@ jobs:
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
           REACT_APP_REBATES_API: https://rebates.ophis.fi
-          # Flat volume fee in bps (build-time flag, validated [1,50] client-side
-          # AND asserted non-empty by the step above — this is the LIVE fee model;
-          # empty/unset would silently revert to the legacy price-improvement
-          # fallback). Move in lockstep with the @ophis/sdk republish + the static
-          # fee copy (docs/business/llms/tier all say 10 bps).
+          # Flat volume fee in bps (build-time flag). readVolumeFeeBps() enables the
+          # flat fee ONLY for EXACTLY the retail rate; the step above asserts the
+          # secret equals it before build (any other value, incl. the 5 bps partner
+          # rate, would silently revert to the legacy price-improvement fallback).
+          # Move in lockstep with the @ophis/sdk republish + the static fee copy
+          # (docs/business/llms/tier all say 10 bps).
           REACT_APP_OPHIS_VOLUME_FEE_BPS: ${{ secrets.REACT_APP_OPHIS_VOLUME_FEE_BPS }}
           # Ophis fork: OP mainnet (chain 10) RPC URL. The default public
           # node fallback works but a private endpoint is preferred for
@@ -273,10 +301,13 @@ jobs:
           # orders/<uid>, and any chain missing here makes the orderbook base
           # resolve to the string "undefined" -> /undefined/api/v1/orders/... ->
           # 404 -> a blank Order Details page (caught on Base, 2026-06-04).
-          # The Ophis-fork chains (10, 4326, 999) point at our self-hosted CoW
+          # The Ophis-fork chains (10, 130) point at our self-hosted CoW
           # services; the canonical CoW chains stay on api.cow.fi (we don't run
           # our own orderbook there). All api.cow.fi slugs verified live.
-          REACT_APP_ORDER_BOOK_URLS: '{"1":"https://api.cow.fi/mainnet","100":"https://api.cow.fi/xdai","42161":"https://api.cow.fi/arbitrum_one","8453":"https://api.cow.fi/base","137":"https://api.cow.fi/polygon","43114":"https://api.cow.fi/avalanche","56":"https://api.cow.fi/bnb","59144":"https://api.cow.fi/linea","57073":"https://api.cow.fi/ink","9745":"https://api.cow.fi/plasma","11155111":"https://api.cow.fi/sepolia","10":"https://optimism-mainnet.ophis.fi","4326":"https://megaeth-mainnet.ophis.fi","999":"https://hyperevm.ophis.fi"}'
+          # MegaETH (4326) + HyperEVM (999) dropped: both are paused and removed
+          # from the swap frontend (chainInfo.ts), so the explorer never gets a
+          # deep-link for them; keeping dead hosts here only risked stale lookups.
+          REACT_APP_ORDER_BOOK_URLS: '{"1":"https://api.cow.fi/mainnet","100":"https://api.cow.fi/xdai","42161":"https://api.cow.fi/arbitrum_one","8453":"https://api.cow.fi/base","137":"https://api.cow.fi/polygon","43114":"https://api.cow.fi/avalanche","56":"https://api.cow.fi/bnb","59144":"https://api.cow.fi/linea","57073":"https://api.cow.fi/ink","9745":"https://api.cow.fi/plasma","11155111":"https://api.cow.fi/sepolia","10":"https://optimism-mainnet.ophis.fi","130":"https://unichain-mainnet.ophis.fi"}'
         run: pnpx nx run explorer:build --skip-nx-cache
 
       - name: drop leaked artifacts (explorer)

@@ -4,6 +4,7 @@ import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
 import { priceTrade } from '../pricer.js';
 import { buildAffiliateReferrers } from './accrual.js';
 import { computeAffiliate } from './computeAffiliate.js';
+import { GROSS_FEE_BPS } from './rates.js';
 import { assembleReport } from './report.js';
 import { notify } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
@@ -68,14 +69,22 @@ export async function deliverMonthlyReport(deps: { rpcUrl: string; now?: Date })
     const referrers = await buildAffiliateReferrers(start, end);
     const affiliate = computeAffiliate(referrers, wethUsdPrice);
 
-    // Total indexed volume this period, by chain (attribution view).
-    const volRows = await sql<{ chain_id: number; vol: string }[]>`
-      SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol
+    // Total indexed volume this period, by chain (attribution view), plus the
+    // ACTUAL gross fee base (SUM(value * per-trade bps)) so the implied-net-fee
+    // reconciliation reflects the real per-channel fees, not an assumed rate.
+    const volRows = await sql<{ chain_id: number; vol: string; fee_weighted: string }[]>`
+      SELECT
+        chain_id,
+        COALESCE(SUM(value_usd), 0)::text AS vol,
+        COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, ${GROSS_FEE_BPS})), 0)::text AS fee_weighted
       FROM trades
       WHERE block_timestamp >= ${start.toISOString()} AND block_timestamp < ${end.toISOString()} AND value_usd IS NOT NULL
       GROUP BY chain_id
     `;
     const volumeByChain = new Map<number, number>(volRows.map((r) => [r.chain_id, parseFloat(r.vol)]));
+    const feeBaseByChain = new Map<number, number>(
+      volRows.map((r) => [r.chain_id, parseFloat(r.fee_weighted) / 10_000]),
+    );
 
     const report = assembleReport({
       cycleMonth: label,
@@ -87,6 +96,7 @@ export async function deliverMonthlyReport(deps: { rpcUrl: string; now?: Date })
       rebateRecipientCount,
       affiliate,
       volumeByChain,
+      feeBaseByChain,
     });
 
     await notify(report.text.length > TG_LIMIT ? report.text.slice(0, TG_LIMIT) + '\n…(truncated)' : report.text);

@@ -50,6 +50,10 @@ pub struct Dex {
     /// Whether to internalize the solution interactions using the Settlement
     /// contract buffer.
     internalize_interactions: bool,
+
+    /// OUTPUT-side anti-siphon guards applied to every aggregator swap at the
+    /// `dex::Swap::into_solution` choke point.
+    output_guard: dex::OutputGuard,
 }
 
 /// The amount of time we aim the solver to finish before the final deadline is
@@ -76,6 +80,7 @@ impl Dex {
             rate_limiter,
             gas_offset: config.gas_offset,
             internalize_interactions: config.internalize_interactions,
+            output_guard: config.output_guard,
         }
     }
 
@@ -107,11 +112,23 @@ impl Dex {
         &'a self,
         auction: &'a auction::Auction,
     ) -> impl stream::Stream<Item = solution::Solution> + 'a {
+        // A price-estimation quote (`auction.id == Id::Quote`, i.e. the DTO `id`
+        // field was absent) is handled two ways downstream: (a) the flooring DEX
+        // lanes report the OPTIMISTIC swap output (0x/ParaSwap parity, not the
+        // settle-only slippage floor), and (b) the strict output-delivery
+        // simulation must NOT reject it — a quote's owner is unfunded so the sim
+        // cannot run and would fail closed. Computed once; an auction is wholly
+        // quote or wholly solve. NEVER true for a competition auction (those
+        // carry a numeric id => Id::Solve), so the settle path is untouched.
+        let is_quote = matches!(auction.id, auction::Id::Quote);
         stream::iter(auction.orders.iter())
             .enumerate()
-            .map(|(i, order)| {
+            // `move` copies the `Copy` captures (`&self`, `&auction`, the
+            // `is_quote` bool) into the closure so the produced `'a` futures own
+            // `is_quote` rather than borrowing this frame's local.
+            .map(move |(i, order)| {
                 let span = tracing::info_span!("solve", order = %order.uid);
-                self.solve_order(order, &auction.tokens, auction.gas_price)
+                self.solve_order(order, &auction.tokens, auction.gas_price, is_quote)
                     .map(move |solution| solution.map(|s| s.with_id(solution::Id(i as u64))))
                     .instrument(span)
             })
@@ -124,6 +141,7 @@ impl Dex {
         order: &Order,
         dex_order: &dex::Order,
         tokens: &auction::Tokens,
+        is_quote: bool,
     ) -> Option<dex::Swap> {
         let dex_err_handler = |err: infra::dex::Error| {
             infra::metrics::solve_error(err.format_variant());
@@ -158,7 +176,7 @@ impl Dex {
         let swap = async {
             let slippage = self.slippage.relative(&dex_order.amount(), tokens);
             self.dex
-                .swap(dex_order, &slippage, tokens)
+                .swap(dex_order, &slippage, tokens, is_quote)
                 .await
                 .inspect(|_| infra::metrics::request_sent())
                 .map_err(dex_err_handler)
@@ -220,17 +238,21 @@ impl Dex {
         order: &order::Order,
         tokens: &auction::Tokens,
         gas_price: auction::GasPrice,
+        is_quote: bool,
     ) -> Option<solution::Solution> {
         let dex_order = self.fills.dex_order(order, tokens)?;
-        let swap = self.try_solve(order, &dex_order, tokens).await?;
+        let swap = self.try_solve(order, &dex_order, tokens, is_quote).await?;
         let sell = tokens.reference_price(&order.sell.token);
         let Some(solution) = swap
             .into_solution(
                 order.clone(),
                 gas_price,
                 sell,
+                tokens,
                 &self.simulator,
                 self.gas_offset,
+                &self.output_guard,
+                is_quote,
             )
             .await
         else {

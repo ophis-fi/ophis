@@ -30,6 +30,8 @@ export {
   getOphisSettlementAddress,
   getOphisOrderDomain,
   OPHIS_SETTLEMENT_ADDRESSES,
+  getOphisVaultRelayer,
+  OPHIS_VAULT_RELAYER_ADDRESSES,
   type OphisOrderDomain,
 } from './domain.js';
 
@@ -46,6 +48,8 @@ export {
   assertAddressLike,
   addressesEqual,
   isZeroAddress,
+  isBytes32,
+  assertBytes32,
 } from './guards.js';
 
 export {
@@ -54,3 +58,30 @@ export {
   assignTier,
   type Tier,
 } from './tiers.js';
+
+export {
+  OPHIS_REBATE_INDEXER_URL,
+  isOphisFeeChain,
+  buildOphisOrderMetadata,
+  enrollOphisTrader,
+  buildOphisOrderCreation,
+  type OphisSigningScheme,
+  type OphisOrderMetadataOptions,
+  type OphisAppDataInput,
+  type EnrollOphisTraderOptions,
+  type OphisOrderCreationOptions,
+} from './flow.js';
+
+export {
+  OPHIS_ETHFLOW_ADDRESSES,
+  isOphisEthFlowChain,
+  getOphisEthFlowAddress,
+  buildOphisEthFlowOrder,
+  ethFlowOrderToTuple,
+  ETHFLOW_CREATE_ORDER_ABI,
+  ETHFLOW_CREATE_ORDER_ABI_HUMAN,
+  type EthFlowOrderData,
+  type EthFlowOrderTuple,
+  type OphisEthFlowParams,
+  type OphisEthFlowOrder,
+} from './ethflow.js';

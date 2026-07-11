@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ophis Swap for Safe: MEV-protected, batch-settled token swaps</title>
+    <meta
+      name="description"
+      content="Ophis Swap is a Safe App for MEV-protected, batch-settled token swaps with fee rebates, run inside your Safe. Add it at app.safe.global and swap without leaving your Safe."
+    />
+    <link rel="canonical" href="https://safe.ophis.fi/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Ophis" />
+    <meta property="og:title" content="Ophis Swap for Safe" />
+    <meta
+      property="og:description"
+      content="A Safe App for MEV-protected, batch-settled token swaps with fee rebates, run inside your Safe on CoW Protocol's audited GPv2 contracts."
+    />
+    <meta property="og:url" content="https://safe.ophis.fi/" />
+    <meta property="og:image" content="https://ophis.fi/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@ophisfi" />
+    <meta name="twitter:title" content="Ophis Swap for Safe" />
+    <meta
+      name="twitter:description"
+      content="A Safe App for MEV-protected, batch-settled token swaps with fee rebates, run inside your Safe."
+    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Ophis Swap for Safe",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Web (Safe App)",
+        "url": "https://safe.ophis.fi/",
+        "description": "A Safe App for MEV-protected, batch-settled token swaps with fee rebates, run inside Safe on CoW Protocol's audited GPv2 contracts.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "publisher": { "@type": "Organization", "name": "Ophis", "url": "https://ophis.fi" }
+      }
+    </script>
+  </head>
+  <body>
+    <!-- Crawler-visible fallback. The React app (createRoot) clears #root on
+         mount, so JS users / the embedded Safe context get the live app; bots
+         that do not run JS still read this explainer. -->
+    <div id="root">
+      <main>
+        <h1>Ophis Swap for Safe</h1>
+        <p>
+          Ophis Swap is a Safe App for MEV-protected, batch-settled token swaps with fee
+          rebates, run directly inside your Safe. Swaps settle on CoW Protocol's audited
+          GPv2 contracts, so you keep self-custody and never approve a separate dapp.
+        </p>
+        <p>
+          To add it: open <a href="https://app.safe.global">app.safe.global</a>, go to Apps,
+          choose "Add custom app", and enter <strong>https://safe.ophis.fi</strong>. Then swap
+          straight from your Safe.
+        </p>
+        <p>
+          <a href="https://ophis.fi">Ophis</a> &middot;
+          <a href="https://docs.ophis.fi">Docs</a> &middot;
+          <a href="https://swap.ophis.fi">Standalone swap app</a>
+        </p>
+      </main>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

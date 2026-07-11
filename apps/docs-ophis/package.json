@@ -7,9 +7,9 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
-    "build": "docusaurus build",
+    "build": "node scripts/generate-llms-full.mjs && docusaurus build && node scripts/inject-csp-hashes.mjs",
     "swizzle": "docusaurus swizzle",
-    "deploy": "docusaurus deploy",
+    "deploy": "node scripts/generate-llms-full.mjs && docusaurus deploy",
     "clear": "docusaurus clear",
     "serve": "docusaurus serve",
     "write-translations": "docusaurus write-translations",
@@ -51,7 +51,7 @@
   "pnpm": {
     "overrides": {
       "@babel/core": "^7.29.6",
-      "http-proxy-middleware@>=0.16.0 <3.0.6": "^3.0.6",
+      "http-proxy-middleware@<3.0.6": "3.0.7",
       "joi": "17.13.4",
       "js-yaml": "^4.2.0",
       "launch-editor": "^2.14.1",

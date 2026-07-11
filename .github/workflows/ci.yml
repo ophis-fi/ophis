@@ -60,6 +60,62 @@ jobs:
             echo "packages/sdk not present yet — skipping"
           fi
 
+  safe-app:
+    name: apps/safe-app
+    runs-on: ubuntu-latest
+    needs: root
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The Safe App's `turbo run typecheck` runs in the root job, but that step is
+      # `|| echo`-swallowed (non-fatal), so a type error there does NOT redden CI. This job is
+      # the real, BLOCKING gate: it typechecks AND builds apps/safe-app. The Safe App typechecks
+      # against @ophis/sdk's emitted .d.ts, so build the SDK first.
+      - run: |
+          if [ -f apps/safe-app/package.json ]; then
+            pnpm --filter @ophis/sdk build
+            pnpm --filter @ophis/safe-app typecheck
+            pnpm --filter @ophis/safe-app build
+          else
+            echo "apps/safe-app not present yet — skipping"
+          fi
+
+  agent-plugins:
+    name: packages/agent-plugins
+    runs-on: ubuntu-latest
+    needs: root
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The root `turbo run typecheck` is `|| echo`-swallowed (non-fatal). These AI-agent swap
+      # plugins SIGN + SUBMIT CoW orders, so a silent compile break must redden CI. This job is the
+      # real, BLOCKING gate. The plugins typecheck against @ophis/agent-swap's emitted .d.ts, which
+      # itself needs @ophis/sdk built first.
+      - run: |
+          if [ -f packages/agent-swap/package.json ]; then
+            pnpm --filter @ophis/sdk build
+            pnpm --filter @ophis/agent-swap build
+            pnpm --filter @ophis/agent-swap test
+            pnpm --filter @ophis/plugin-goat build
+            pnpm --filter @ophis/agentkit-ophis build
+          else
+            echo "agent plugins not present yet — skipping"
+          fi
+
   erpc-consensus-guard:
     name: eRPC consensus fail-closed guard (#447)
     runs-on: ubuntu-latest
@@ -72,3 +128,5 @@ jobs:
         run: python3 -m pip install --quiet --break-system-packages pyyaml
       - name: assert OP eRPC template stays 2-of-3-across-3 fail-closed
         run: python3 infra/optimism-mainnet/assert-erpc-failclosed.py infra/optimism-mainnet/configs/erpc.yaml.tmpl
+      - name: assert Unichain eRPC template stays 2-of-3-across-3 fail-closed
+        run: python3 infra/unichain-mainnet/assert-erpc-failclosed.py infra/unichain-mainnet/configs/erpc.yaml.tmpl

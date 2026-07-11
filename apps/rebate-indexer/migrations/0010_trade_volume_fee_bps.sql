@@ -1,0 +1,19 @@
+-- Per-trade gross volume-fee rate (bps), read from the order's CoW appData
+-- metadata.partnerFee.volumeBps by the fetcher and CLAMPED to [1, retail=10]
+-- before storage (a crafted appData can never claim more than the retail rate, so
+-- the worst case equals the legacy flat-10 assumption; an honest 5 bps SDK order
+-- or 1 bp stable pair credits its real rate).
+--
+-- Why this column: accrual pays a share of the fee Ophis KEEPS (net). With a
+-- per-channel fee (retail 10 bps, SDK/partner 5 bps, stable 1 bp) a single
+-- assumed gross rate over-credits the 5 bps SDK channel ~2x. The fee base must be
+-- the SUM of (value_usd * actual_bps) per trade, not (volume * a constant).
+--
+-- Three states (see src/db/schema.ts): N (1..10) = actual flat Volume rate; 0 =
+-- examined, NO settled Ophis fee at all (backend-rejected capped/both-aliases shape,
+-- wrong recipient, absent) -> credited at zero; NULL = unknown -> COALESCEs to the
+-- legacy retail rate (a pre-per-trade historical row, unparseable appData, or a
+-- valid surplus/price-improvement fee the indexer cannot compute, so it still
+-- earns). 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, 10) keeps a 0 as 0
+-- (no credit) but maps NULL to retail.
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS volume_fee_bps INTEGER;

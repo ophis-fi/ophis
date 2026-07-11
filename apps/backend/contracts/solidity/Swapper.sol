@@ -43,6 +43,71 @@ contract Swapper {
     ) external returns (
         uint256 gasUsed
     ) {
+        gasUsed = _settle(settlement, sell, buy, allowance, calls);
+    }
+
+    /// @dev Simulates the same single DEX swap as `swap`, but additionally
+    /// measures the buy token actually delivered into the settlement by the
+    /// swap interactions. This lets the caller reject solutions whose reported
+    /// buy output the interactions do not truly deliver (an inflated echoed
+    /// output whose shortfall would otherwise be silently covered by the
+    /// settlement's own buffer, draining it).
+    ///
+    /// @param settlement - the CoW Protocol settlement contract.
+    /// @param sell - the asset being sold in the swap.
+    /// @param buy - the asset being bought in the swap; `buy.amount` is the
+    /// reported output being validated.
+    /// @param allowance - the required ERC-20 allowance for the swap.
+    /// @param calls - the calls for executing the swap.
+    ///
+    /// @return gasUsed - the cumulative gas used for the simulated settlement,
+    /// or 0 when the simulation was not possible (see `swap`).
+    /// @return realizedOut - the buy amount the interactions actually delivered
+    /// into the settlement, measured as the settlement's buy-token balance
+    /// delta plus the `buy.amount` paid out to the receiver. A shortfall
+    /// covered by the settlement buffer surfaces as `realizedOut < buy.amount`.
+    /// Only meaningful when `gasUsed != 0`.
+    function swapEnsuringOutput(
+        ISettlement settlement,
+        Asset calldata sell,
+        Asset calldata buy,
+        Allowance calldata allowance,
+        Interaction[] calldata calls
+    ) external returns (
+        uint256 gasUsed,
+        uint256 realizedOut
+    ) {
+        if (IERC20(sell.token).balanceOf(address(this)) < sell.amount) {
+            // The swapper does not have sufficient balance, so no settlement
+            // could be simulated. Signal this to the caller via gasUsed == 0;
+            // realizedOut is not meaningful in this case and delivery stays
+            // unproven.
+            return (0, 0);
+        }
+
+        // Snapshot the settlement's buy-token balance before running the
+        // (non-internalized) settlement. The settlement pays `buy.amount` out
+        // of its own balance to the receiver, so its balance rises by
+        // (delivered - buy.amount). Adding `buy.amount` back to the delta
+        // recovers the amount the interactions actually delivered.
+        uint256 preBuy = IERC20(buy.token).balanceOf(address(settlement));
+        gasUsed = _settle(settlement, sell, buy, allowance, calls);
+        uint256 postBuy = IERC20(buy.token).balanceOf(address(settlement));
+        realizedOut = postBuy + buy.amount - preBuy;
+    }
+
+    /// @dev Shared fake fill-or-kill settlement used by `swap` and
+    /// `swapEnsuringOutput`. Returns 0 gas (and runs no settlement) when the
+    /// swapper lacks the sell balance, matching the historical `swap` contract.
+    function _settle(
+        ISettlement settlement,
+        Asset calldata sell,
+        Asset calldata buy,
+        Allowance calldata allowance,
+        Interaction[] calldata calls
+    ) private returns (
+        uint256 gasUsed
+    ) {
         if (IERC20(sell.token).balanceOf(address(this)) < sell.amount) {
             // The swapper does not have sufficient balance. This can happen
             // when hooks set up required balance for a trade. This is currently

@@ -2,12 +2,17 @@
  * Ophis MCP server (Cloudflare Worker, Streamable HTTP at /mcp).
  *
  * Agent-facing tools for the Ophis DEX:
- *   parse_intent  — natural language -> structured swap intent (LibertAI Qwen)
- *   get_quote     — best-execution quote from the chain's Ophis orderbook
- *   build_order   — a bounded, ready-to-sign EIP-712 CoW order (receiver pinned)
- *   submit_order  — relay a PRE-SIGNED order to the orderbook (no keys held here)
- *   lookup_tier   — a wallet's fee-rebate tier/status
- *   list_chains   — supported chains + orderbook host + settlement contract
+ *   parse_intent     — natural language -> structured swap intent (LibertAI Qwen)
+ *   get_quote        — best-execution quote from the chain's Ophis orderbook
+ *   build_order      — a bounded, ready-to-sign EIP-712 CoW order (receiver pinned)
+ *   submit_order     — relay a PRE-SIGNED order to the orderbook (no keys held here)
+ *   lookup_tier      — a wallet's fee-rebate tier/status
+ *   list_chains      — supported chains + orderbook host + settlement contract
+ *   get_balances     — native + ERC-20 balances on one chain (public RPC multicall)
+ *   get_portfolio    — native + ERC-20 balances across many chains
+ *   get_gas          — current gas price for a chain (EIP-1559 + legacy)
+ *   get_token_chart  — token OHLCV history (keyless GeckoTerminal)
+ *   expected_surplus — Ophis vs all-DEX-aggregator beat-the-market bps
  *
  * The server holds NO private keys and never signs. build_order returns a
  * payload the calling agent signs with its own key. Public + unauthenticated:
@@ -23,6 +28,14 @@ interface RateLimit {
   limit(options: { key: string }): Promise<{ success: boolean }>
 }
 
+/** Cloudflare Workers Analytics Engine dataset binding (minimal shape; the
+ *  full type comes from @cloudflare/workers-types once cf-typegen runs, but a
+ *  local interface keeps this file self-contained, matching the RateLimit
+ *  pattern above). Analytics Engine is available on the Workers free plan. */
+interface AnalyticsEngineDataset {
+  writeDataPoint(point: { indexes?: string[]; blobs?: string[]; doubles?: number[] }): void
+}
+
 interface Env {
   OPHIS_MCP: DurableObjectNamespace
   MCP_RATE_LIMIT?: RateLimit
@@ -34,6 +47,42 @@ interface Env {
    *  a referrer-tagged order's owner for indexing (so the affiliate is actually
    *  credited). Defaults to the production indexer. */
   OPHIS_REBATES_API?: string
+  /** Optional funnel-telemetry dataset. When bound, each /mcp JSON-RPC call
+   *  writes one privacy-preserving data point (tool name, a hashed consumer id,
+   *  truncated UA, origin-or-not, chainId). Absent binding = no-op. */
+  MCP_ANALYTICS?: AnalyticsEngineDataset
+}
+
+/**
+ * Record one funnel data point per JSON-RPC item, fully non-blocking and
+ * failure-swallowed. Distinguishes real quote/build consumers from crawlers and
+ * health-checks so the anonymous ~2k req/day on this endpoint can be measured
+ * (strategy experiment 1). The consumer id is the first 16 hex of a SHA-256 of
+ * `ip|ua`; the raw IP is never stored.
+ */
+async function recordTelemetry(
+  analytics: AnalyticsEngineDataset,
+  items: unknown[],
+  ip: string,
+  ua: string,
+  hasOrigin: boolean,
+): Promise<void> {
+  const enc = new TextEncoder()
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(`${ip}|${ua}`))
+  const consumer = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16)
+  const uaTrunc = ua.slice(0, 48)
+  const browser = hasOrigin ? 'origin' : 'no-origin'
+  for (const item of items) {
+    const it = item as { method?: unknown; params?: { name?: unknown; arguments?: { chainId?: unknown } } }
+    if (typeof it?.method !== 'string') continue
+    const toolName = it.method === 'tools/call' ? String(it.params?.name ?? 'unknown') : `rpc:${it.method}`
+    const chainId = it.params?.arguments?.chainId != null ? String(it.params.arguments.chainId) : ''
+    analytics.writeDataPoint({
+      indexes: [toolName.slice(0, 32)],
+      blobs: [toolName, consumer, uaTrunc, browser, chainId],
+      doubles: [1],
+    })
+  }
 }
 
 export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string, never>> {
@@ -49,9 +98,24 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
 
 const INFO = {
   name: 'Ophis MCP',
-  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers.',
+  description: 'Agent-facing tools for the Ophis DEX: parse swap intents, resolve token symbols to canonical addresses (anti-spoof), fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
   transport: { type: 'streamable-http', endpoint: '/mcp' },
-  tools: ['parse_intent', 'get_quote', 'build_order', 'submit_order', 'lookup_tier', 'list_chains'],
+  tools: [
+    'parse_intent',
+    'resolve_token',
+    'get_quote',
+    'build_order',
+    'submit_order',
+    'lookup_tier',
+    'get_integrator_earnings',
+    'list_chains',
+    'get_balances',
+    'get_portfolio',
+    'get_gas',
+    'get_token_chart',
+    'expected_surplus',
+    'validate_order',
+  ],
   docs: 'https://docs.ophis.fi/',
   source: 'https://github.com/ophis-fi/ophis',
   security:
@@ -115,6 +179,15 @@ export default {
           const parsed = JSON.parse(body)
           if (Array.isArray(parsed) && parsed.length > MAX_BATCH) {
             return rpcError(429, -32600, `JSON-RPC batch too large (max ${MAX_BATCH} requests per call).`)
+          }
+          // Funnel telemetry: fully non-blocking (ctx.waitUntil) and
+          // failure-swallowed, so the request path never waits on or fails from
+          // it. No-op when MCP_ANALYTICS is unbound.
+          if (env.MCP_ANALYTICS) {
+            const items = Array.isArray(parsed) ? parsed : [parsed]
+            const ua = request.headers.get('user-agent') ?? ''
+            const hasOrigin = request.headers.get('origin') !== null
+            ctx.waitUntil(recordTelemetry(env.MCP_ANALYTICS, items, ip, ua, hasOrigin).catch(() => {}))
           }
         } catch {
           // Malformed JSON — let the MCP transport return the proper parse error.

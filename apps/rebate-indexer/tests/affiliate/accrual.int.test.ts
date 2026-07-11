@@ -10,6 +10,12 @@ let getReferrerStats: (w: `0x${string}`, now: Date) => Promise<any>;
 const W = (h: string) => h.padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
 
+// Sum a referrer's referred volume on one chain across its (chain, bps) buckets.
+const volOnChain = (r: any, chain: number): number =>
+  (r.buckets as { chainId: number; volumeUsd: number }[])
+    .filter((b) => b.chainId === chain)
+    .reduce((s, b) => s + b.volumeUsd, 0);
+
 beforeAll(async () => {
   const { container, connectionUri } = await startPg();
   pg = container;
@@ -32,8 +38,8 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('reg1', decode(${referrer},'hex'), 'regular', true)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('par1', decode(${partner},'hex'), 'partner', true)`;
     // referrals bound a month ago
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred1},'hex'),'reg1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred2},'hex'),'par1',decode(${partner},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred1},'hex'),'reg1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred2},'hex'),'par1',decode(${partner},'hex'),true, now() - interval '90 days')`;
     // trades in the window
     const insTrade = (uid: string, wallet: string, chain: number, usd: string, ts: string) => sql`
       INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
@@ -54,13 +60,13 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const par = refs.find((r) => r.referrer_wallet === `0x${partner}`);
     expect(reg).toBeTruthy();
     expect(reg.kind).toBe('regular');
-    expect(reg.volumeByChain.get(100)).toBe(500000); // out-of-window 999 excluded
-    expect(reg.volumeByChain.get(10)).toBe(300000);
+    expect(volOnChain(reg, 100)).toBe(500000); // out-of-window 999 excluded
+    expect(volOnChain(reg, 10)).toBe(300000);
     // No payout redirect seeded for the regular referrer => null (pay to identity).
     expect(reg.payoutWallet).toBeNull();
     expect(par).toBeTruthy();
     expect(par.kind).toBe('partner');
-    expect(par.volumeByChain.get(100)).toBe(5000000);
+    expect(volOnChain(par, 100)).toBe(5000000);
     expect(par.payoutWallet).toBeNull();
   });
 
@@ -71,7 +77,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO ref_codes (code, referrer_wallet, payout_wallet, kind, active)
       VALUES ('pay1', decode(${referrer},'hex'), decode(${payout},'hex'), 'partner', true)`;
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
-      VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '40 days')`;
+      VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
     await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
@@ -100,15 +106,17 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('bind1', decode(${refB},'hex'), 'regular', true)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('dead1', decode(${refC},'hex'), 'regular', false)`;
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('selfown', decode(${selfOwner},'hex'), 'regular', true)`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${bound},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${stale},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${selfOwner},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${bound},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '90 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${stale},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '90 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${selfOwner},'hex'),'bind1',decode(${refB},'hex'),true, now() - interval '90 days')`;
 
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
+    // volume_fee_bps = 10 (a confirmed Ophis fee) so the appData arm's fee gate (> 0)
+    // credits the tagged trades; the bind arm keeps NULL -> retail regardless.
     const ins = (uid: string, wallet: string, usd: string, ref: string | null) => sql`
-      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), 100, decode(${wallet},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${ref}, ${usd}, now())`;
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${wallet},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${ref}, ${usd}, 10, now())`;
 
     await ins('a91', trader, '100000', 'appref1'); // unbound trader, tagged -> refA (direct)
     await ins('a92', bound, '200000', null); //        bound wallet, untagged -> refB (bind)
@@ -125,17 +133,141 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const b = refs.find((r) => r.referrer_wallet === `0x${refB}`);
     // refA: appData volume only (trader 100k + bound 50k); self-referral 1M excluded.
     expect(a).toBeTruthy();
-    expect(a.volumeByChain.get(100)).toBe(150000);
+    expect(volOnChain(a, 100)).toBe(150000);
     // refB: bind volume only — untagged 200k + stale-inactive-code fallback 30k +
     // selfOwner self-code fallback 40k = 270k. The active-non-self appData-tagged
     // trade is appData-wins -> NOT double-counted here.
     expect(b).toBeTruthy();
-    expect(b.volumeByChain.get(100)).toBe(270000);
+    expect(volOnChain(b, 100)).toBe(270000);
     // The INACTIVE code owner earns nothing (no active code, no bind).
     expect(refs.find((r) => r.referrer_wallet === `0x${refC}`)).toBeFalsy();
     // The self-tagging owner earns nothing for its own self-tagged trade (it went
     // to its bind referrer refB, not to itself).
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
+  });
+
+  it('per-rate buckets (real SQL): volume_fee_bps splits (chain,bps); 5 bps earns half of 10 bps; NULL -> retail', async () => {
+    const referrer = W('a5a5');
+    const referred = W('c5c5');
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
+      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
+    const now = new Date();
+    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
+    // Same chain (100), three rates: 10 bps (retail), 5 bps (SDK), NULL (-> retail default).
+    const insFee = (uid: string, usd: string, bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
+    await insFee('e51', '100000', 10); // retail
+    await insFee('e52', '100000', 5); //  SDK -> half
+    await insFee('e53', '100000', null); // unknown -> COALESCE to 10
+
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const refs = await buildAffiliateReferrers(start, end);
+    const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
+    expect(r).toBeTruthy();
+    // The chain-100 volume splits into a 10-bps bucket (retail 100k + NULL-default 100k = 200k)
+    // and a 5-bps bucket (100k) — the real SQL GROUP BY on COALESCE(volume_fee_bps, 10).
+    const b10 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 10);
+    const b5 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 5);
+    expect(b10?.volumeUsd).toBe(200000);
+    expect(b5?.volumeUsd).toBe(100000);
+
+    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5)/1e4 = 0.06 * 250 = $15. The 5-bps
+    // $100k contributes half ($3) of what the 10-bps $100k does ($6).
+    const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
+    const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${referrer}`);
+    expect(owed).toBeTruthy();
+    expect(owed!.owedUsd).toBeCloseTo(15, 6);
+  });
+
+  it('appData arm: both 0 (rejected policy) AND NULL (unconfirmed) credit ZERO — only a confirmed fee earns', async () => {
+    const ref = W('aa00');
+    const trader = W('aa11'); // unbound; appData-tagged with ref's code
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('zerofee', decode(${ref},'hex'), 'partner', true)`;
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const ins = (uid: string, usd: string, bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${trader},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', 'zerofee', ${usd}, ${bps}, now())`;
+    await ins('20f0', '100000', 0); //    rejected policy -> 0 fee -> credits zero
+    await ins('20f1', '100000', null); // unconfirmed (surplus/PI / un-backfilled) -> EXCLUDED on the appData arm
+    await ins('20f2', '100000', 10); //   confirmed retail fee -> credits
+
+    // appData arm requires a CONFIRMED fee (> 0): both the 0-fee and the NULL trade are
+    // excluded; only the $100k retail trade earns and counts toward referred volume.
+    const refs = await buildAffiliateReferrers(start, end);
+    const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
+    const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${ref}`);
+    expect(owed).toBeTruthy();
+    // owed = 12% * 75% * (100k*10)/1e4 = 0.09 * 100 = $9 (only the confirmed-fee $100k earns).
+    expect(owed!.owedUsd).toBeCloseTo(9, 6);
+    expect(owed!.referredVolumeUsd).toBe(100000); // 0-fee AND NULL volume excluded
+
+    // Dashboard mirrors accrual's appData gate: only the confirmed $100k retail trade ->
+    // net fee = $100k * 10bps * 75% = $75 (0 and NULL both excluded).
+    const stats = await getReferrerStats(`0x${ref}`, now);
+    expect(stats.currentCycleNetFeeUsd).toBeCloseTo(75, 4);
+    // Displayed/cap volume = only the confirmed-fee trade: $100k.
+    expect(stats.currentCycleVolumeUsd).toBe(100000);
+  });
+
+  it('a BOUND wallet tagged with an active non-self code + NULL/0 fee credits NEITHER arm (no bind fallback)', async () => {
+    // The load-bearing disjointness: the bind arm excludes active-non-self-code trades
+    // (bps-INDEPENDENT NOT EXISTS), and the appData arm now requires volume_fee_bps > 0.
+    // So a bound trader's NULL/0-fee trade tagged with someone else's active code must
+    // vanish from BOTH arms — NOT fall back to the binder. (Backfill later confirms the
+    // fee and credits the code owner.)
+    const codeOwner = W('c0de'); // owns the active appData code 'xcode'
+    const binder = W('b1de'); //    the bound trader's referrer (owns 'bcode')
+    const boundTrader = W('b0d7'); // bound to `binder`, but trades tagged with codeOwner's code
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('xcode', decode(${codeOwner},'hex'), 'regular', true)`;
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('bcode', decode(${binder},'hex'), 'regular', true)`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundTrader},'hex'),'bcode',decode(${binder},'hex'),true, now() - interval '90 days')`;
+    const now = new Date();
+    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
+    const insFee = (uid: string, bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${boundTrader},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', 'xcode', '100000', ${bps}, now())`;
+    await insFee('bd01', null); // NULL fee -> excluded by the appData > 0 gate
+    await insFee('bd02', 0); //    0 fee    -> excluded by the appData > 0 gate
+
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const refs = await buildAffiliateReferrers(start, end);
+    // appData owner: NULL/0 fee -> excluded by the > 0 gate.
+    expect(refs.find((r) => r.referrer_wallet === `0x${codeOwner}`)).toBeFalsy();
+    // binder: the trades carry an ACTIVE non-self code -> excluded from the bind NOT EXISTS
+    // (bps-independent), so they do NOT fall back to the binder despite the appData rejection.
+    expect(refs.find((r) => r.referrer_wallet === `0x${binder}`)).toBeFalsy();
+  });
+
+  it('volume_fee_bps backfill upsert (self-healing): upgrades NULL to a POSITIVE rate only, never to 0, never clobbers a set rate', async () => {
+    const uid = UID('ba5e');
+    const w = W('ba5e');
+    // Mirrors the fetcher's drizzle onConflictDoUpdate: backfill ONLY when the stored
+    // row is NULL AND the new rate is POSITIVE (so a 0/NULL re-fetch of history can't
+    // reclassify it).
+    const upsert = (bps: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${uid},'hex'), 100, decode(${w},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '1000', ${bps}, now())
+      ON CONFLICT (trade_uid) DO UPDATE SET volume_fee_bps = EXCLUDED.volume_fee_bps WHERE trades.volume_fee_bps IS NULL AND EXCLUDED.volume_fee_bps > 0`;
+    const read = async () =>
+      (await sql<{ volume_fee_bps: number | null; value_usd: string }[]>`
+        SELECT volume_fee_bps, value_usd::text FROM trades WHERE trade_uid = decode(${uid},'hex')`)[0];
+
+    await upsert(null); // first index by the pre-per-trade code: NULL bps
+    expect((await read())!.volume_fee_bps).toBeNull();
+    await upsert(0); //    re-fetch yields 0 (no Ophis fee) -> must NOT reclassify history
+    expect((await read())!.volume_fee_bps).toBeNull(); // stays NULL (unconfirmed), not reclassified to 0
+    await upsert(5); //    re-fetch finds the real positive rate -> backfills
+    expect((await read())!.volume_fee_bps).toBe(5);
+    await upsert(10); //   a later re-fetch must NOT clobber the set rate
+    const final = await read();
+    expect(final!.volume_fee_bps).toBe(5);
+    expect(final!.value_usd).toBe('1000.0000'); // other columns untouched by the backfill
   });
 
   it('getReferrerStats: current-cycle volume = bind + appData, no double-count, referredCount bind-based', async () => {
@@ -144,11 +276,11 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     const pureW = W('9c0c'); // unbound; trades tagged with refS's code (appData only)
 
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('scode', decode(${refS},'hex'), 'regular', true)`;
-    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundW},'hex'),'scode',decode(${refS},'hex'),true, now() - interval '40 days')`;
+    await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${boundW},'hex'),'scode',decode(${refS},'hex'),true, now() - interval '90 days')`;
     // Current-cycle trades (now()), so currentCycleWindow(new Date()) includes them.
     const insNow = (uid: string, wallet: string, usd: string, ref: string | null) => sql`
-      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), 100, decode(${wallet},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${ref}, ${usd}, now())`;
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${wallet},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${ref}, ${usd}, 10, now())`;
     await insNow('5a1', boundW, '100000', null); //  bound, untagged -> bind
     await insNow('5a2', boundW, '40000', 'scode'); // bound, tagged active (owner refS <> trader) -> appData ONLY (excluded from bind)
     await insNow('5a3', pureW, '25000', 'scode'); //  unbound, tagged -> appData
@@ -160,5 +292,23 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(stats.currentCycleVolumeUsd).toBe(165000);
     // referredCount stays bind-based: only boundW is a bound referee (pureW is appData-only).
     expect(stats.referredCount).toBe(1);
+  });
+
+  it('getReferrerStats net fee applies per-chain keep (real SQL): sovereign OP+Unichain 100%, hosted 75%', async () => {
+    const ref = W('dd11'); // unique wallet (NB: W('b0b') and W('0b0b') collapse to the same addr)
+    const trader = W('dd22'); // unbound; trades tagged with ref's code (appData path, owner != ref)
+    await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('netkeep', decode(${ref},'hex'), 'partner', true)`;
+    const insNow = (uid: string, chain: number, usd: string, bps: number) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, appdata_ref_code, value_usd, volume_fee_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), ${chain}, decode(${trader},'hex'), 1, now(), decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', 'netkeep', ${usd}, ${bps}, now())`;
+    await insNow('cef1', 100, '100000', 10); // hosted:   net = 100000*10/1e4 * 0.75 = $75
+    await insNow('cef2', 10, '100000', 10); //  Optimism: net = 100000*10/1e4 * 1.00 = $100
+    await insNow('cef3', 130, '100000', 10); // Unichain: net = 100000*10/1e4 * 1.00 = $100 (sovereign)
+
+    const stats = await getReferrerStats(`0x${ref}`, new Date());
+    // Per-chain keep applied in SQL via ANY(SOVEREIGN_CHAIN_IDS): $75 (hosted) + $100 (OP)
+    // + $100 (Unichain) = $275. If 130 fell to the hosted branch it would give $250,
+    // understating the Unichain half by 25% — the bug this PR fixes.
+    expect(stats.currentCycleNetFeeUsd).toBeCloseTo(275, 4);
   });
 });

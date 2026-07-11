@@ -12,6 +12,8 @@
  * EIP-191), NOT `_signTypedData` (EIP-712, would not verify).
  */
 
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import { AFFILIATE_API_TIMEOUT_MS } from '../config/affiliateProgram.const'
 
 export const REBATES_API = process.env.REACT_APP_REBATES_API || 'https://rebates.ophis.fi'
@@ -142,6 +144,10 @@ export type AffiliateSignedAction =
   // Bind is per-code, so the action string carries the code itself. The
   // backend rebuilds `bind referral code <code>` and byte-matches it.
   | `bind referral code ${string}`
+  // Rewards claim: proves the connected address owns the XP being claimed.
+  // Verified by the team on claim processing (recoverMessageAddress over the
+  // same `Ophis <action>\nAddress: ...\nIssued: ...` message shape).
+  | `claim reward ${string}`
 
 export interface SignedRequestBody {
   wallet: string
@@ -150,12 +156,14 @@ export interface SignedRequestBody {
 }
 
 /**
- * Build the EIP-191 message string the backend expects. Address is
- * lowercased and `issued` is whole seconds, both load-bearing for the
- * server-side `recoverMessageAddress` byte match.
+ * Build the EIP-191 message string the backend expects. Address is normalized
+ * to its canonical (lowercased) key and `issued` is whole seconds, both
+ * load-bearing for the server-side `recoverMessageAddress` byte match.
+ * getAddressKey returns the exact lowercase form, so this is byte-identical to
+ * the previous `.toLowerCase()` and preserves signature compatibility.
  */
 export function buildAffiliateSignMessage(action: AffiliateSignedAction, address: string, issuedSec: number): string {
-  return `Ophis ${action}\nAddress: ${address.toLowerCase()}\nIssued: ${issuedSec}`
+  return `Ophis ${action}\nAddress: ${getAddressKey(address)}\nIssued: ${issuedSec}`
 }
 
 export function nowIssuedSec(): number {
@@ -200,6 +208,20 @@ export function lookupRefCode(code: string): Promise<RefLookupResponse> {
   )
 }
 
+/** GET /xp/:wallet — 1 XP per $1 of the wallet's own lifetime fee-bearing volume. */
+export interface WalletXp {
+  wallet: string
+  xp: number
+  lifetimeVolumeUsd: number
+  generatedAt: string
+}
+
+export function getWalletXp(wallet: string): Promise<WalletXp> {
+  return fetch(`${REBATES_API}/xp/${encodeURIComponent(getAddressKey(wallet))}`, {
+    signal: timeoutSignal(),
+  }).then((res) => parseJson<WalletXp>(res))
+}
+
 /**
  * Body for POST /ref/bind. The bind is signature-gated: the referred wallet
  * must prove control of its address by `personal_sign`-ing
@@ -240,14 +262,14 @@ export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateRes
  */
 export function getLeaderboard(limit = 100, self?: string): Promise<LeaderboardResponse> {
   const params = new URLSearchParams({ limit: String(limit) })
-  if (self) params.set('self', self.toLowerCase())
+  if (self) params.set('self', getAddressKey(self))
   return fetch(`${REBATES_API}/leaderboard?${params.toString()}`).then((res) =>
     parseJson<LeaderboardResponse>(res),
   )
 }
 
 export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
-  return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(wallet.toLowerCase())}`).then((res) =>
+  return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(getAddressKey(wallet))}`).then((res) =>
     parseJson<AffiliateStats>(res),
   )
 }
@@ -258,7 +280,7 @@ export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
  * Profile rank chip. 404 (no volume yet) is handled by the caller as Unranked.
  */
 export function getRankStatus(wallet: string): Promise<RankStatus> {
-  return fetch(`${REBATES_API}/rank/${encodeURIComponent(wallet.toLowerCase())}`, {
+  return fetch(`${REBATES_API}/rank/${encodeURIComponent(getAddressKey(wallet))}`, {
     headers: { accept: 'application/json' },
   }).then((res) => parseJson<RankStatus>(res))
 }

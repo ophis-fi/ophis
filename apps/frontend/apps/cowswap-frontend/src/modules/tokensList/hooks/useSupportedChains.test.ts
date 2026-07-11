@@ -31,12 +31,13 @@ describe('useSupportedChains', () => {
 
     expect(result.current.length).toBeGreaterThan(0)
     result.current.forEach((chain) => {
-      // Ophis fork: 3 chains supported at FE layer even though the SDK enum
+      // Ophis fork: 4 chains supported at FE layer even though the SDK enum
       // doesn't list them as primary SupportedChainId entries:
       //   - 10 (Optimism mainnet)
+      //   - 130 (Unichain mainnet — sovereign, live 2026-06-29)
       //   - 4326 (MegaETH mainnet — paused 2026-05-18 but FE still wires)
       //   - 999 (HyperEVM mainnet — paused 2026-05-19 but FE still wires)
-      const OPHIS_NON_SDK_CHAINS = new Set([10, 4326, 999])
+      const OPHIS_NON_SDK_CHAINS = new Set([10, 130, 4326, 999])
       expect(chain.id in SupportedChainId || OPHIS_NON_SDK_CHAINS.has(chain.id)).toBe(true)
     })
   })

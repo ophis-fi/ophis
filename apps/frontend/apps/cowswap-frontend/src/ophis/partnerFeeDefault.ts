@@ -29,29 +29,54 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
 
 /**
  * FLAG-GATED FEE MODEL. Default OFF = the legacy price-improvement model
- * (the fallback only; PRODUCTION RUNS WITH THE FLAG ON). Set
- * `REACT_APP_OPHIS_VOLUME_FEE_BPS` to an integer in
- * [BACKEND_NON_STABLE_FLOOR_BPS, 50] to switch the LIVE fee to a FLAT volume
- * fee of that many bps (prod sets 10 = 0.10% via a GH repo secret consumed in
- * cloudflare-deploy.yml).
+ * (the fallback only; PRODUCTION RUNS WITH THE FLAG ON). The flag enables ONLY
+ * when `REACT_APP_OPHIS_VOLUME_FEE_BPS` equals EXACTLY the retail rate
+ * OPHIS_FRONTEND_OP_VOLUME_BPS (10 = 0.10%, set via a GH repo secret consumed in
+ * cloudflare-deploy.yml). Any other value keeps the flag OFF.
  *
- * Lower bound: the OP self-hosted backend enforces a token-pair-aware MINIMUM
- * partner fee to the Ophis recipient (app_data.rs `partner_fee_floor_bps`,
- * checked at order ingress and re-clamped in the autopilot): 10 bps for any
- * non-stable pair, 1 bp for same-chain stable pairs. A base rate below the
- * non-stable floor would make the backend reject non-stable orders at ingress
- * (PartnerFeeBelowFloor), so a sub-floor value disables the flag (fee model
- * stays off) instead of building rejectable orders. Stable pairs are charged
- * 1 bp separately via OPHIS_STABLE_VOLUME_BPS.
- *
- * Upper bound 50: a Volume fee is bounded above only by the autopilot global
- * `max_partner_fee` (100 bps); 50 keeps us well under it and at/under the
- * competitor rate (Matcha 10, Velora 15).
+ * Why EXACTLY the retail rate (not a range):
+ *  - Sub-retail (e.g. the 5 bps partner rate): the front-end must NOT charge a
+ *    partner-tier fee to its own retail users. A sub-retail value disables the
+ *    flag; the OP path then charges the 10 bps retail via ophisVolumeOnlyFloorFee
+ *    and CoW-hosted chains use the price-improvement object. The deploy guard
+ *    rejects such a secret before build so production can never silently ship the
+ *    legacy fallback at the wrong rate.
+ *  - Super-retail (>10): if the front-end could emit a retail fee above 10, the
+ *    autopilot's operator cap (asserted `>= retail`) could silently clamp it down
+ *    at settlement. Pinning to exactly the retail rate keeps that assert sufficient.
+ *  - Stable pairs are charged 1 bp separately via OPHIS_STABLE_VOLUME_BPS; the OP
+ *    backend floor (4 bps non-stable, 1 bp stable) is enforced server-side and is
+ *    BELOW the retail rate, so it never gates the retail front-end.
  */
-const BACKEND_NON_STABLE_FLOOR_BPS = 10
+// The Ophis front-end's RETAIL non-stable Volume rate (10 bps). swap.ophis.fi
+// charges this, and it is the LOWER BOUND for the env flag below: a build can
+// only configure a retail rate AT OR ABOVE it. A partner-tier value (e.g. 5)
+// must NOT enable the flag, or OP retail orders would be undercharged at the
+// partner rate. Decoupled from the backend floor (BACKEND_NON_STABLE_FLOOR_BPS).
+const OPHIS_FRONTEND_OP_VOLUME_BPS = 10
+// The OP self-hosted backend's MINIMUM non-stable Volume bps (mirrors
+// app_data.rs OPHIS_NON_STABLE_FLOOR_BPS = 4). The cross-workspace floor-invariant
+// gate (scripts/check-floor-invariant.sh) greps this declaration to assert
+// floor(4) <= partner(5) <= retail(10). It is NOT the env bound: partner
+// integrations charge 5 bps (via @ophis/sdk) above this floor while swap.ophis.fi
+// keeps the 10 bps retail rate. Exported (not a bare local) so it documents the
+// mirrored backend floor for any consumer and is not flagged as an unused local.
+export const BACKEND_NON_STABLE_FLOOR_BPS = 4
 function readVolumeFeeBps(): number {
-  const raw = Number(process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS)
-  return Number.isInteger(raw) && raw >= BACKEND_NON_STABLE_FLOOR_BPS && raw <= 50 ? raw : 0
+  // EXACT-STRING match against the retail rate, identical to the CI deploy guard's
+  // byte compare (`[[ "$BPS" != "10" ]]` in cloudflare-deploy.yml). Using the raw
+  // string (not Number()) keeps the two gates equivalent: a malformed-but-coercible
+  // secret like '010' / '10.0' / '1e1' must NOT enable the flag here when CI would
+  // reject it, so neither gate is solely load-bearing. The flag enables ONLY for
+  // exactly the retail rate; a partner-tier value (5), a super-retail value, or any
+  // garbage DISABLES it (the OP path then charges the 10 bps retail via
+  // ophisVolumeOnlyFloorFee; CoW-hosted chains fall back to the price-improvement
+  // object). Pinning to exactly the retail rate is also what makes the autopilot
+  // startup assert (cap >= retail) provably sufficient: the front-end can never emit
+  // a retail fee ABOVE OPHIS_FRONTEND_OP_VOLUME_BPS, so the operator cap can never
+  // silently clamp a legitimate retail order down.
+  const raw = process.env.REACT_APP_OPHIS_VOLUME_FEE_BPS
+  return raw === String(OPHIS_FRONTEND_OP_VOLUME_BPS) ? OPHIS_FRONTEND_OP_VOLUME_BPS : 0
 }
 /** Flat-volume-fee bps when the flag is enabled (0 = flag off). */
 export const OPHIS_VOLUME_BPS = readVolumeFeeBps()
@@ -104,22 +129,24 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
  * REJECTS Surplus/PriceImprovement partner fees at order ingress (app_data.rs
  * `validate_partner_fees`). The price-improvement fallback above
  * (OPHIS_DEFAULT_APP_DATA_PARTNER_FEE) must NEVER be emitted on these chains or
- * ingress returns 400. Optimism (10) is the only self-hosted chain today;
- * CoW-hosted chains validate via api.cow.fi and still accept the PI shape.
+ * ingress returns 400. Optimism (10) and Unichain (130) are the self-hosted
+ * chains today; CoW-hosted chains validate via api.cow.fi and still accept the
+ * PI shape.
  */
-const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10])
+const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 130])
 
-/** The OP non-stable floor (bps). The backend floors any Ophis Volume fee here. */
-export const OPHIS_NON_STABLE_VOLUME_BPS = BACKEND_NON_STABLE_FLOOR_BPS
+/** The OP non-stable RETAIL fee the front-end charges and writes on-chain (OPHIS_FRONTEND_OP_VOLUME_BPS = 10 bps, hoisted above). */
+export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_FRONTEND_OP_VOLUME_BPS
 
-/** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism today). */
+/** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism, Unichain today). */
 export function isVolumeOnlyChain(chainId: number | undefined): boolean {
   return chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)
 }
 
 /**
- * The Ophis floor VOLUME fee for a self-hosted Volume-only chain (Optimism), or
- * `undefined` off those chains. On OP the backend enforces a fee FLOOR and would
+ * The Ophis floor VOLUME fee for a self-hosted Volume-only chain (Optimism,
+ * Unichain), or `undefined` off those chains. On those chains the backend
+ * enforces a fee FLOOR and would
  * reject a sub-floor fee or let an ABSENT one ride free, so the Ophis fee must be
  * present at >= the floor whether or not the flat-volume flag is on. This is the
  * SINGLE source used for BOTH the displayed fee row and the on-chain appData fee
@@ -140,7 +167,7 @@ export function ophisVolumeOnlyFloorFee(
 
 /**
  * Gates the on-chain Ophis price-improvement partner-fee value by chain. On
- * VOLUME-only chains (Optimism) the self-hosted backend REJECTS the PI shape at
+ * VOLUME-only chains (Optimism, Unichain) the self-hosted backend REJECTS the PI shape at
  * ingress, so suppress it (return `undefined`) and let the volumeFee pipeline
  * carry the floor Volume fee instead (ophisVolumeOnlyFloorFee, surfaced via
  * volumeFeeAtom) so the displayed fee and the on-chain appData fee stay in

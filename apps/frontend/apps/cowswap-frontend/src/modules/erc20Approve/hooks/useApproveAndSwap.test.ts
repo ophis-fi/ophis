@@ -119,8 +119,10 @@ describe('useApproveAndSwap', () => {
       })
     })
 
-    it('should not call onApproveConfirm if permit signing fails', async () => {
+    it('should fall through to on-chain approve when permit signing fails (no silent no-op)', async () => {
       mockUseTokenSupportsPermit.mockReturnValue(true)
+      // generatePermitToTrade resolves false on any non-throwing permit failure
+      // (swallowed rpc/token error, or the user rejecting the signature).
       mockGeneratePermitToTrade.mockResolvedValue(false)
 
       const { result } = renderHook(
@@ -138,8 +140,12 @@ describe('useApproveAndSwap', () => {
 
       await waitFor(() => {
         expect(mockGeneratePermitToTrade).toHaveBeenCalled()
+        // Regression guard: a failed permit must fall through to the on-chain
+        // approve, not leave the "Approve and Swap" CTA a silent no-op.
+        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        // handleApprove returns undefined in this test (no tx), so the swap is
+        // not confirmed — but the approve path WAS taken.
         expect(mockOnApproveConfirm).not.toHaveBeenCalled()
-        expect(mockHandleApprove).not.toHaveBeenCalled()
       })
     })
 

@@ -47,7 +47,7 @@ them. Pass a `provider` for an injected wallet.
 | Field | Default | Override? |
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | Yes (e.g. a staging host) |
-| `appCode` | `Ophis` | Yes |
+| `appCode` | `ophis` | Yes |
 | `partnerFee.bps` | `10` (0.10%) | Yes |
 | `partnerFee.recipient` | Ophis Safe `0x858f0F5e...CeF8` | No, always pinned |
 
@@ -57,7 +57,7 @@ Everything else is the upstream `CowSwapWidgetParams` API. The raw
 ## Vanilla JS / no React?
 
 Use [`@cowprotocol/widget-lib`](https://www.npmjs.com/package/@cowprotocol/widget-lib)
-directly and pass `baseUrl: 'https://swap.ophis.fi'`, `appCode: 'Ophis'`, and the
+directly and pass `baseUrl: 'https://swap.ophis.fi'`, `appCode: 'ophis'`, and the
 partner fee from [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk)
 (`buildOphisAppDataPartnerFee`). See the [integration guide](https://docs.ophis.fi/widget).
 

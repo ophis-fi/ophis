@@ -137,7 +137,7 @@ export const OrderAddressNotFound: React.FC = (): React.ReactNode => {
           <SearchContent>
             <Search searchString={wasRedirected ? '' : searchString} submitSearchImmediatly={!wasRedirected} />
             <span>or</span>
-            <Support href="https://discord.gg/ophis" target="_blank" rel="noopener noreferrer">
+            <Support href="mailto:contact@ophis.fi" target="_blank" rel="noopener noreferrer">
               Get Support
               <img src={SupportIcon} alt="Support icon" />
             </Support>

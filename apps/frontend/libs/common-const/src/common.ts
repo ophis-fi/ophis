@@ -76,6 +76,7 @@ export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 // cowProtocolContracts.ts for the full rationale.
 const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',     // OP — deployed 2026-06-07 (tx 0xc0316c2c…c48e) + sdk patch
+  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7',    // Unichain — EthFlow deployed 2026-06-29 (Codex+ToB+Verity reviewed)
   4326: '0x0000000000000000000000000000000000000000',   // MegaETH — not deployed
   999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B',    // HyperEVM — PR #61 (deployed) + PR #65 (sdk patch)
 }
@@ -106,6 +107,8 @@ export const V_COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.SEPOLIA]: '0x21d06a222bbb94ec1406a0a8ba86b4d761bc9864',
   // Ophis fork: vCOW not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: vCOW not deployed on Unichain (chain 130)
+  [130 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on HyperEVM mainnet (chain 999)
@@ -127,6 +130,8 @@ export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: null,
   // Ophis fork: COW token not deployed on OP mainnet
   [10 as unknown as SupportedChainId]: null,
+  // Ophis fork: COW token not deployed on Unichain (chain 130)
+  [130 as unknown as SupportedChainId]: null,
   // Ophis fork: COW token not deployed on MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: COW token not deployed on HyperEVM mainnet (chain 999)
@@ -156,6 +161,8 @@ export const ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD: Record<SupportedChainId, numbe
   ...mapSupportedNetworks(200 as number), // 2%
   // Ophis fork: OP mainnet
   [10 as unknown as SupportedChainId]: 200,
+  // Ophis fork: Unichain mainnet (chain 130)
+  [130 as unknown as SupportedChainId]: 200,
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: 200,
   // Ophis fork: HyperEVM mainnet (chain 999)
@@ -197,6 +204,11 @@ export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
   [SupportedChainId.INK]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.INK}`,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: `https://api.blocknative.com/gasprices/blockprices?chainid=10`,
+  // Ophis fork: Unichain mainnet (chain 130) — Blocknative gas API was shut
+  // down 2026-06-19, so use Unichain's Blockscout gas-price-oracle (same
+  // response shape the GasUpdater parser already reads for Gnosis/Arbitrum/
+  // Base/Polygon; verified live HTTP 200).
+  [130 as unknown as SupportedChainId]: 'https://unichain.blockscout.com/api/v1/gas-price-oracle',
   // Ophis fork: MegaETH mainnet (chain 4326) — Blocknative does not support MegaETH yet
   [4326 as unknown as SupportedChainId]: '',
   // Ophis fork: HyperEVM mainnet (chain 999) — Blocknative does not support HyperEVM
@@ -216,6 +228,8 @@ export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
   [SupportedChainId.INK]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
   // Ophis fork: OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // Ophis fork: Unichain mainnet (chain 130) — Blockscout gas oracle needs no key
+  [130 as unknown as SupportedChainId]: null,
   // Ophis fork: MegaETH mainnet (chain 4326) — no Blocknative key needed (endpoint empty)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: HyperEVM mainnet (chain 999) — no Blocknative key needed (endpoint empty)

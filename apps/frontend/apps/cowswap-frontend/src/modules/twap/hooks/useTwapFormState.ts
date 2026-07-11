@@ -23,7 +23,7 @@ export function useTwapFormState(): TwapFormState | null {
   // promise where the button is reachable but silent no-ops because the SDK's
   // COMPOSABLE_COW_CONTRACT_ADDRESS[10] / [4326] / [999] is undefined.
   // Returning null here makes the TWAP tab clearly disabled instead.
-  if ((chainId as number) === 10 || (chainId as number) === 4326 || (chainId as number) === 999) return null
+  if ((chainId as number) === 10 || (chainId as number) === 130 || (chainId as number) === 4326 || (chainId as number) === 999) return null
 
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { sellAmount } = receiveAmountInfo?.beforeAllFees || {}

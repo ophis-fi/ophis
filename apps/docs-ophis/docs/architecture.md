@@ -56,7 +56,7 @@ on-chain liquidity, matching orders against each other peer-to-peer
 (no liquidity pool needed), or bridging cross-chain. Solvers bid, and
 the one that maximises total surplus wins the right to settle.
 
-On Optimism, where Ophis runs its own stack. Ophis currently operates the
+On Optimism and Unichain, where Ophis runs its own stack. Ophis currently operates the
 solver itself, competing across several routing strategies (a baseline on-chain
 router plus multiple DEX aggregators) that bid against each other per batch, so
 there is genuine price competition even though the solver is Ophis-operated. The
@@ -83,8 +83,8 @@ order-level MEV vectors by construction:
 | --- | --- |
 | **Frontend** | A fork of the CoW Swap frontend with the natural-language intent layer added. |
 | **Intent-parser proxy** | A Cloudflare Pages Function in front of LibertAI Qwen 3.6 27B. See [Intent API](./intent-api.md). |
-| **Self-hosted orderbook & solver** | On Optimism, Ophis runs its own CoW Protocol orderbook (`optimism-mainnet.ophis.fi`) and operates the solver. CoW-aligned chains use `api.cow.fi` and CoW's solver network. |
-| **Settlement contracts** | CoW Protocol's `GPv2Settlement` (unchanged code), deployed and operated by Ophis on Optimism, alongside Ophis-specific allowlist + fee-handling contracts. See [Security & audits](./audits.md). |
+| **Self-hosted orderbook & solver** | On Optimism and Unichain, Ophis runs its own CoW Protocol orderbooks (`optimism-mainnet.ophis.fi` and `unichain-mainnet.ophis.fi`) and operates the solver. CoW-aligned chains use `api.cow.fi` and CoW's solver network. |
+| **Settlement contracts** | CoW Protocol's `GPv2Settlement` (unchanged code), deployed and operated by Ophis on Optimism and Unichain, alongside Ophis-specific allowlist + fee-handling contracts. See [Security & audits](./audits.md). |
 | **Rebate indexer** | Indexes volume-tier rebates that accrue to traders. See [Fees & rebates](./fees.md). |
 
 ## Cross-chain via NEAR Intents

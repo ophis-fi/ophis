@@ -47,11 +47,18 @@ export function useApproveAndSwap({
   const handlePermit = useCallback(async () => {
     if (isPermitSupported && onApproveConfirm) {
       const isPermitSigned = await generatePermitToTrade()
+
+      // Only short-circuit as a "permit flow" when the permit actually signed.
+      // generatePermitToTrade() returns false on ANY permit failure — a swallowed
+      // error in generatePermitHook (rpc nonce read, token eip-2612 quirk), or the
+      // user rejecting the signature. Previously this returned true unconditionally,
+      // so a failed/rejected permit made the "Approve and Swap" CTA do nothing at
+      // all (no approve tx, no order, no error) — the reported Unichain symptom.
+      // On failure, fall through to the on-chain approve + swap below.
       if (isPermitSigned) {
         onApproveConfirm(null)
+        return true
       }
-
-      return true
     }
 
     return false
