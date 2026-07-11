@@ -302,35 +302,25 @@ impl Error {
     /// (or, in #774, a valid quote) on an RPC blip is the regression this
     /// classifier is built to avoid.
     ///
-    /// Deliberately biased toward "transient": only a JSON-RPC *error
-    /// response* (the node executed the call and it failed) is ever a revert,
-    /// and only when it carries revert return-data or an "…revert…" message.
-    /// Transport errors, null/local/serde failures, and non-execution server
-    /// errors (rate limit, internal error) all return `false`.
+    /// Deliberately biased toward "transient": classification is delegated to
+    /// the shared [`ContractErrorExt::is_contract_revert`] so it stays in
+    /// lockstep with the driver's settlement-revert detection. A revert is
+    /// only a JSON-RPC *error response* (the node executed the call and it
+    /// failed) carrying revert return-data, geth code `3`, an "…revert…"
+    /// message, the `INVALID`/`0xFE` opcode halt (`InvalidFEOpcode`, older
+    /// Solidity's missing-selector halt), or an empty-data / unknown-selector
+    /// contract error. Transport errors, null/local/serde failures,
+    /// non-execution server errors (rate limit, internal error), and other EVM
+    /// halts that bad input can trigger (`InvalidJump`, `StackUnderflow`, …)
+    /// all return `false` and keep the lenient/transient path.
     pub fn is_revert(&self) -> bool {
+        use ethrpc::alloy::errors::ContractErrorExt;
         let Self::ContractCall(err) = self else {
             // `SettlementContractIsOwner` is a can-not-simulate precondition,
             // not a revert; it has its own lenient arm at the call sites.
             return false;
         };
-
-        // Unambiguous: the node attached revert return-data. Usual shape for a
-        // reverting `eth_call` on geth/reth/eRPC (including "0x" empty revert).
-        if err.as_revert_data().is_some() {
-            return true;
-        }
-
-        // Fallback for reverts whose (empty) return-data the node omits: a
-        // JSON-RPC error response with an execution-revert message. Gated on
-        // `as_error_resp()` so a pure transport error is never misread, and on
-        // "revert" so transient server errors (rate limit, internal, timeout,
-        // and top-level `eth_call` gas-cap OOG) stay lenient.
-        matches!(
-            err,
-            alloy::contract::Error::TransportError(t)
-                if t.as_error_resp()
-                    .is_some_and(|resp| resp.message.to_ascii_lowercase().contains("revert"))
-        )
+        err.is_contract_revert()
     }
 }
 
@@ -384,6 +374,34 @@ mod tests {
             // by the execution-revert message.
             let err = contract_err(r#"{"code":-32000,"message":"execution reverted"}"#);
             assert!(err.is_revert());
+        }
+
+        #[test]
+        fn invalid_fe_opcode_halt_is_revert() {
+            // anvil/revm surface the INVALID (0xFE) opcode as `EVM error
+            // InvalidFEOpcode` with NO "revert" word and NO return-data — older
+            // Solidity emits it on a missing selector, a contract-level
+            // rejection. The prior string-match let this slip to the lenient
+            // path; the shared classifier catches it (Codex P2).
+            let err = contract_err(r#"{"code":-32603,"message":"EVM error InvalidFEOpcode"}"#);
+            assert!(err.is_revert());
+        }
+
+        #[test]
+        fn geth_code_3_without_revert_word_is_revert() {
+            // geth tags execution reverts with code 3; classify by the code even
+            // when the message omits the literal "revert" word.
+            let err = contract_err(r#"{"code":3,"message":"transaction execution failed"}"#);
+            assert!(err.is_revert());
+        }
+
+        #[test]
+        fn other_evm_halt_invalid_jump_is_not_revert() {
+            // Halts that BAD INPUT can trigger (InvalidJump/StackUnderflow) are
+            // not contract-level rejections — they must keep bubbling up as
+            // transient rather than fail a real solve closed.
+            let err = contract_err(r#"{"code":-32603,"message":"EVM error InvalidJump"}"#);
+            assert!(!err.is_revert());
         }
 
         #[test]
