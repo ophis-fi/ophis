@@ -27,8 +27,9 @@ export const CowOrder = z.object({
   appData: z.string(),                                                // IPFS-hash hex
   fullAppData: z.string().nullable().optional(),                      // JSON string, when CoW resolved it
   // eth-flow orders settle with owner = the eth-flow router contract, and the
-  // real trader is `receiver`. zod strips unknown keys, so this MUST be declared
-  // for the fetcher to read it (else native-ETH rebates attribute to the router).
+  // real trader is `receiver` (the scan surfaces it). zod strips unknown keys,
+  // so this MUST be declared for the fetcher to read it (else native-ETH rebates
+  // attribute to the router).
   receiver: z.string().nullable().optional(),
   creationDate: z.string(),                                           // ISO 8601 (informational)
   status: z.string().optional(),                                      // 'fulfilled' | 'open' | 'cancelled' | 'expired' | ...
