@@ -39,7 +39,8 @@
     "tar": "^7.5.16",
     "js-yaml": "^4.2.0",
     "undici": "^6.27.0",
-    "**/request/form-data": "^2.5.6"
+    "**/request/form-data": "^2.5.6",
+    "ws": "^8.17.1"
   },
   "peerDependencies": {
     "ethers": "^5.4.0"
