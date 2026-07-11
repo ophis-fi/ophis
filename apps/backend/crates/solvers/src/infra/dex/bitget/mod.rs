@@ -43,6 +43,14 @@ const SIGNATURE_API_PATH: &str = "/bgw-pro/swapx/pro/";
 /// Bitget API path for getting swap calldata.
 const SWAP_PATH: &str = "swap";
 
+/// Maximum slippage (in bps) we will ever send to Bitget (20%). Mirrors the cap
+/// the other aggregator lanes apply (okx / kyberswap / velora / dodo): an
+/// upstream-requested slippage above this is clamped so a degenerate config
+/// cannot widen the router's enforced minReceived. The SAME clamped value is
+/// sent to Bitget AND used to reconstruct the reported floor, so the two never
+/// diverge.
+const MAX_SLIPPAGE_BPS: u16 = 2000;
+
 /// Bindings to the Bitget swap API.
 pub struct Bitget {
     client: super::Client,
@@ -120,12 +128,26 @@ impl Bitget {
             .and_then(|t| t.decimals)
             .ok_or(Error::MissingDecimals)?;
 
+        // Clamp the requested slippage to Bitget's cap ONCE and reuse the same
+        // value for both the API request (below) and the reconstructed floor.
+        // Bitget bakes the slippage we send into the calldata's on-chain
+        // minReturn, so the floor MUST be reconstructed from the exact value
+        // sent; clamping one but not the other could report a floor above what
+        // the router enforces and revert the settlement payout. Mirrors okx /
+        // kyberswap / velora / dodo.
+        let clamped_bps = crate::infra::metrics::clamp_slippage_bps(
+            crate::infra::metrics::Dex::Bitget,
+            slippage.as_bps().unwrap_or(MAX_SLIPPAGE_BPS),
+            MAX_SLIPPAGE_BPS,
+        );
+        let slippage = dex::Slippage::from_bps(clamped_bps);
+
         // Set up a tracing span to make debugging of API requests easier.
         static ID: AtomicU64 = AtomicU64::new(0);
         let id = ID.fetch_add(1, atomic::Ordering::Relaxed);
 
         let response = self
-            .handle_sell_order(order, slippage, sell_decimals)
+            .handle_sell_order(order, &slippage, sell_decimals)
             .instrument(tracing::trace_span!("swap", id = %id))
             .await?;
 
@@ -142,22 +164,40 @@ impl Bitget {
             .checked_add(gas_limit / U256::from(2))
             .ok_or(Error::GasCalculationFailed)?;
 
-        let output_amount = decimal_to_wei(&response.out_amount, buy_decimals)?;
+        // Report the GUARANTEED slippage floor, not the optimistic quote.
+        // Bitget bakes `outAmount * (10000 - slippage) / 10000` into the
+        // calldata as the on-chain minReturn; reporting the optimistic outAmount
+        // as the CoW buy clearing amount would let the settlement payout exceed
+        // realized output and revert (#726). `clamped_bps` == the slippage sent.
+        let optimistic_out = decimal_to_wei(&response.out_amount, buy_decimals)?;
+        let output_amount = bitget_min_received(optimistic_out, clamped_bps);
 
         Ok(dex::Swap {
             calls: vec![dex::Call {
+                // `to` is the router returned by the API; it is used as the call
+                // target AND (below) the ERC-20 spender. Both are allowlist
+                // checked downstream in the driver's custom_allowlist.rs before
+                // any allowance is granted.
                 to: contract,
                 calldata,
             }],
             input: eth::Asset {
+                // Trust the SIGNED order's sell token and amount, never an
+                // API-echoed value. Bitget returns no from-amount we could
+                // inflate, so the input stays pinned to the signed sell amount.
                 token: order.sell,
                 amount: order.amount.get(),
             },
             output: eth::Asset {
+                // Trust the SIGNED order's buy token; the amount is the router
+                // floor computed above.
                 token: order.buy,
                 amount: output_amount,
             },
             allowance: dex::Allowance {
+                // Bound the allowance to the signed sell amount (never U256::MAX
+                // or an API-echoed value), so an allowlisted-but-poisoned router
+                // can only pull the exact amount the user signed for.
                 spender: contract,
                 amount: dex::Amount::new(order.amount.get()),
             },
@@ -297,6 +337,25 @@ impl Bitget {
     }
 }
 
+/// Bitget's guaranteed minimum output for an optimistic `out_amount_wei` and the
+/// slippage bps we sent to `/swap`. Bitget also returns a `minAmount` field, but
+/// we RECONSTRUCT the floor from the slippage actually sent (the value baked into
+/// the calldata's on-chain minReturn), so a poisoned or stale `minAmount` can
+/// never inflate the reported clearing amount above what the router enforces.
+/// Floor-division rounds DOWN, so the reported value is never above the router's
+/// own minReceived. Mirrors okx_min_received / kyberswap::min_return_amount.
+fn bitget_min_received(out_amount_wei: U256, slippage_bps: u16) -> U256 {
+    let bps = U256::from(10_000u64);
+    let keep = bps.saturating_sub(U256::from(slippage_bps));
+    // Real token amounts are far below U256::MAX/10000 so the multiply cannot
+    // overflow; if it ever did, fall back to the (more conservative) divide-first
+    // form rather than the un-discounted optimistic amount.
+    match out_amount_wei.checked_mul(keep) {
+        Some(scaled) => scaled / bps,
+        None => out_amount_wei / bps * keep,
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CreationError {
     #[error(transparent)]
@@ -329,4 +388,33 @@ pub enum Error {
     Api { code: i64, message: String },
     #[error(transparent)]
     Http(#[from] util::http::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bitget_min_received_is_router_slippage_floor() {
+        // Matches the market_order test fixture: 6556.259156432631386442 (18
+        // decimals) at 100 bps (1%) slippage -> 6490.696564868305072577, the
+        // exact `minAmount` Bitget returns for the same route.
+        let out = U256::from(6_556_259_156_432_631_386_442u128);
+        let floor = bitget_min_received(out, 100);
+        assert_eq!(floor, U256::from(6_490_696_564_868_305_072_577u128));
+        // Strictly below the optimistic quote (the value that used to revert).
+        assert!(floor < out);
+    }
+
+    #[test]
+    fn bitget_min_received_zero_slippage_is_identity() {
+        let a = U256::from(1_000_000_000u64);
+        assert_eq!(bitget_min_received(a, 0), a);
+    }
+
+    #[test]
+    fn bitget_min_received_full_slippage_is_zero() {
+        let a = U256::from(1_000_000_000u64);
+        assert_eq!(bitget_min_received(a, 10_000), U256::ZERO);
+    }
 }
