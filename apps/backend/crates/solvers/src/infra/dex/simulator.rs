@@ -302,14 +302,12 @@ impl Error {
     /// (or, in #774, a valid quote) on an RPC blip is the regression this
     /// classifier is built to avoid.
     ///
-    /// Deliberately biased toward "transient": classification is delegated to
-    /// the shared [`ContractErrorExt::is_contract_revert`] so it stays in
-    /// lockstep with the driver's settlement-revert detection. A revert is
-    /// only a JSON-RPC *error response* (the node executed the call and it
-    /// failed) carrying revert return-data, geth code `3`, an "…revert…"
-    /// message, the `INVALID`/`0xFE` opcode halt (`InvalidFEOpcode`, older
-    /// Solidity's missing-selector halt), or an empty-data / unknown-selector
-    /// contract error. Transport errors, null/local/serde failures,
+    /// Deliberately biased toward "transient": a revert is ONLY a JSON-RPC
+    /// *error response* (the node executed the eth_call and it failed on-chain)
+    /// carrying revert return-data, geth code `3`, an "…revert…" message, or
+    /// the `INVALID`/`0xFE` opcode halt (`InvalidFEOpcode`, older Solidity's
+    /// missing-selector halt). Local ABI-decode outcomes (`ZeroData` "0x" /
+    /// unknown-selector), transport errors, null/local/serde failures,
     /// non-execution server errors (rate limit, internal error), and other EVM
     /// halts that bad input can trigger (`InvalidJump`, `StackUnderflow`, …)
     /// all return `false` and keep the lenient/transient path.
@@ -320,7 +318,23 @@ impl Error {
             // not a revert; it has its own lenient arm at the call sites.
             return false;
         };
-        err.is_contract_revert()
+        // Only a JSON-RPC *error response* means the node actually executed the
+        // eth_call and it failed on-chain. Gate the shared classifier on that
+        // variant so we keep its revert-data / geth-code-3 / "revert" /
+        // InvalidFEOpcode table but do NOT inherit its local-decode arm
+        // (`ZeroData`/`UnknownFunction`/`UnknownSelector`): those are alloy
+        // CLIENT-side decode outcomes with no node execution failure. In the
+        // strict-output sim a `ZeroData` ("0x") arises when an upstream
+        // silently DROPS the Swapper state override, so the eth_call hits a
+        // codeless address — an infrastructure blip, not a settlement revert;
+        // inheriting that arm would fail-close every real solve on such an RPC
+        // hiccup (the #774 regression). A genuine revert can only surface as an
+        // `ErrorResp` (alloy reaches its decode stage only on `Ok(bytes)`), so
+        // this never lets a real settlement revert through.
+        matches!(
+            err,
+            alloy::contract::Error::TransportError(t) if t.as_error_resp().is_some()
+        ) && err.is_contract_revert()
     }
 }
 
@@ -393,6 +407,34 @@ mod tests {
             // when the message omits the literal "revert" word.
             let err = contract_err(r#"{"code":3,"message":"transaction execution failed"}"#);
             assert!(err.is_revert());
+        }
+
+        #[test]
+        fn zero_data_local_decode_is_not_revert() {
+            // `ContractError::ZeroData` is what alloy raises when an eth_call
+            // returns "0x" — in the strict-output sim this happens when an
+            // upstream silently DROPS the Swapper state override and the call
+            // hits a codeless address. NOTHING reverted; it is an RPC/infra blip
+            // that MUST stay lenient (else every real solve fails closed on an
+            // override drop — the #774 regression). `ZeroData`'s second field is
+            // an `alloy_dyn_abi::Error` (no ctor without a new dep), so we
+            // exercise its IDENTICAL local-decode `is_contract_revert` match arm
+            // via `UnknownFunction` — a non-`TransportError` variant the gate
+            // excludes.
+            let err = Error::ContractCall(alloy::contract::Error::UnknownFunction(
+                "swapEnsuringOutput".to_string(),
+            ));
+            assert!(!err.is_revert());
+        }
+
+        #[test]
+        fn unknown_selector_local_decode_is_not_revert() {
+            // Same client-side decode arm as `ZeroData`: a local ABI-decode
+            // outcome, not a node execution failure -> lenient.
+            let err = Error::ContractCall(alloy::contract::Error::UnknownSelector(
+                alloy::primitives::Selector::from([0xde, 0xad, 0xbe, 0xef]),
+            ));
+            assert!(!err.is_revert());
         }
 
         #[test]
