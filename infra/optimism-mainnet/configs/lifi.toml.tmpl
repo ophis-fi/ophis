@@ -1,0 +1,33 @@
+# Ophis -- Optimism mainnet (chain 10) LI.FI aggregator solver config.
+#
+# TEMPLATE FILE (kept as .tmpl for stack consistency; keyless, so envsubst is a
+# no-op). Render with ./render-configs.sh.
+#
+# Mirrored from infra/unichain-mainnet/configs/lifi.toml.tmpl and adapted for OP.
+# LI.FI SAME-CHAIN DEX swaps serve chain 10 (verified 2026-07-06: li.quest/v1/
+# chains lists id 10 "OP Mainnet" with diamondAddress
+# 0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE; a live /v1/quote fromChain=toChain=
+# 10 returns that same address as BOTH transactionRequest.to AND
+# estimate.approvalAddress). The LiFiDiamond is PER CHAIN, so the OP address
+# DIFFERS from Unichain's 0x864b314D…; the OP address is allowlisted (chain 10)
+# in BOTH the solver allowlist (dex::lifi::LIFI_ROUTER_ALLOWLIST) AND the driver
+# allowlist (custom_allowlist::OPTIMISM_MAINNET). The SELL output reports
+# estimate.toAmountMin (the guaranteed on-chain floor) -- the #726 fix. Same-chain
+# only: the module rejects any cross-chain/bridge route. Keyless (integrator only).
+
+# Reuses the existing OP DEX-solver node-url (configs/velora.toml,
+# configs/kyberswap.toml). Switch to the OP_MAINNET_RPC env var if you prefer
+# the okx.toml.tmpl style (that var is already in the envsubst list).
+node-url = "https://optimism-rpc.publicnode.com"
+
+# Ophis-fork settlement on Optimism. Without this override the solver framework
+# falls back to the canonical CoW address, bakes the wrong receiver into the swap
+# calldata, and settle() reverts with "transfer amount exceeds balance".
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+
+[dex]
+chain-id = "10"
+
+# LI.FI `integrator` string -- REQUIRED by LI.FI (it 404s on quotes without one).
+# Partner attribution only; never touches the funds path.
+integrator = "ophis"

@@ -135,7 +135,7 @@ echo ""
 # its image gets rebuilt on every `--build` so a fresh container always
 # spawns. Listed here for completeness in case `--build` ever gets
 # stripped from the invocation.
-CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver)
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver odos-solver enso-solver lifi-solver openocean-solver dodo-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
@@ -157,7 +157,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # Trailing `|| true` removed: if a service fails to stop/start, we
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
-  DOWNSTREAM=(driver orderbook autopilot okx-solver)
+  DOWNSTREAM=(driver orderbook autopilot okx-solver odos-solver enso-solver lifi-solver openocean-solver dodo-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.
