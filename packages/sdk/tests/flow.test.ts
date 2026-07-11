@@ -46,6 +46,15 @@ describe('buildOphisOrderMetadata', () => {
     expect(metadata.ophisReferrer).toEqual({ code: 'yourcode' });
   });
 
+  it('without a referral code: still a valid, fee-bearing order, just no attribution', () => {
+    // The order-build must NOT require a code (that was the top agent-adoption
+    // killer): omitting it keeps the partner fee and omits ophisReferrer.
+    const { appCode, metadata } = buildOphisOrderMetadata({ chainId: 1 });
+    expect(appCode).toBe('ophis');
+    expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 5 });
+    expect(metadata.ophisReferrer).toBeUndefined();
+  });
+
   it('includes signer only when provided (EIP-1271), and always an empty hooks', () => {
     const withSigner = buildOphisOrderMetadata({ chainId: 1, referralCode: 'yourcode', signer: OWNER });
     expect(withSigner.metadata.signer).toBe(OWNER);

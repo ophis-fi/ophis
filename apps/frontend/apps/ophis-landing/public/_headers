@@ -7,6 +7,12 @@
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
+  # Cloudflare Pages injects `Access-Control-Allow-Origin: *` on every response by
+  # default. On HTML that wildcard contradicts the same-origin CORP above, so detach
+  # it here and re-attach it below only on the machine-readable endpoints where
+  # cross-origin reads are actually wanted (agents / AEO crawlers fetching the API
+  # surface). `!` detaches a platform-set header; the per-path rules below re-add it.
+  ! Access-Control-Allow-Origin
 
 /*.png
   Cache-Control: public, max-age=31536000, immutable
@@ -39,3 +45,16 @@
 /.well-known/api-catalog
   Content-Type: application/linkset+json; charset=utf-8
   Link: </.well-known/api-catalog>; rel="api-catalog"
+
+# Re-attach wildcard CORS only on the machine-readable endpoints (detached from
+# HTML by the `! Access-Control-Allow-Origin` rule under `/*` above). These are the
+# public, credential-less API surface that agents/AEO crawlers fetch cross-origin.
+# CF Pages COMBINES matching rules, so these re-add ACAO for these paths only.
+/openapi.json
+  Access-Control-Allow-Origin: *
+
+/llms.txt
+  Access-Control-Allow-Origin: *
+
+/.well-known/*
+  Access-Control-Allow-Origin: *

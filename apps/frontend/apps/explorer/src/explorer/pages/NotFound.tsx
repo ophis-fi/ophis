@@ -25,6 +25,7 @@ const NotFoundRequestPage = () => {
     <Wrapper>
       <Helmet>
         <title>Page not found - {APP_TITLE}</title>
+        <meta name="robots" content="noindex" />
       </Helmet>
       <Title>Page not found</Title>
       <Content>

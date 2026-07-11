@@ -67,6 +67,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
           -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
           AND t.volume_fee_bps IS DISTINCT FROM 0
+          -- Production chains only: mirror of accrual's Sepolia exclusion.
+          AND t.chain_id <> 11155111
           -- appData-wins (mirror of accrual): exclude trades attributed via an
           -- ACTIVE code owned by someone other than the trader, so bind volume
           -- here + appData volume below are disjoint (no double-count). The
@@ -89,6 +91,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
           AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
+          AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
           -- appData-wins (mirror of accrual): see the partner branch above.
           AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
             SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
@@ -123,6 +126,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
       -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
       -- since NULL is excluded.)
       AND t.volume_fee_bps > 0
+      AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
   `;
 
   const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
@@ -279,7 +283,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // also start with /ref/), so those keep falling through to the strict
     // allow-list branch and still receive POST in Access-Control-Allow-Methods.
     const isPublicRead =
-      req.method === 'GET' && (req.url.startsWith('/tier/') || req.url.startsWith('/ref/'));
+      req.method === 'GET' &&
+      (req.url.startsWith('/tier/') || req.url.startsWith('/ref/') || req.url.startsWith('/xp/'));
     if (isPublicRead) {
       reply.header('access-control-allow-origin', '*');
       reply.header('vary', 'Origin');
@@ -804,6 +809,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
           SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
         ))
+        --   (3) production chains only, mirroring the headline stats + accrual, so
+        --       per-referee rows reconcile with the totals (Codex post-merge review).
+        AND t.chain_id <> 11155111
       WHERE r.referrer_wallet = ${buf}
       GROUP BY r.referred_wallet, r.bound_at
       ORDER BY r.bound_at DESC
@@ -922,6 +930,50 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const rankInfo = await getRankInfo(raw as `0x${string}`);
     if (!rankInfo) return reply.code(404).send({ error: 'wallet not found' });
     return rankInfo;
+  });
+
+  // PUBLIC per-wallet XP for the Cash Prize page: 1 XP per $1 of the wallet's
+  // own lifetime fee-bearing volume. Lifetime/cumulative only, so it sits in
+  // the same lagging, non-gameable category as /stats (per-wallet 30d volume
+  // is already public on /tier and /rank). Fee-gated exactly like the
+  // `wallets` matview (volume_fee_bps = 0 means examined-and-fee-free, which
+  // must not mint XP) and restricted to production chains so testnet dust
+  // never unlocks a perk. Unknown wallets get 200 with xp 0, not 404: the
+  // page treats "never traded" as zero progress, not an error.
+  app.get<{ Params: { wallet: string } }>('/xp/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
+    },
+  }, async (req, reply) => {
+    const raw = req.params.wallet.toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    const walletBuf = Buffer.from(raw.slice(2), 'hex');
+    // Enroll like /tier: the fetcher only indexes tracked_wallets, so a wallet
+    // whose first touchpoint is the Rewards page would otherwise read 0 XP
+    // forever. Same cheap idempotent upsert, no outbound calls (Codex
+    // post-merge review).
+    await sql`
+      INSERT INTO tracked_wallets (wallet) VALUES (${walletBuf})
+      ON CONFLICT (wallet) DO NOTHING
+    `;
+    const chainIds = [...PRODUCTION_CHAIN_IDS];
+    const rows = await sql<{ vol: string }[]>`
+      SELECT COALESCE(SUM(value_usd), 0)::text AS vol
+      FROM trades
+      WHERE wallet = ${walletBuf}
+        AND chain_id = ANY(${chainIds})
+        AND value_usd IS NOT NULL
+        AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
+    `;
+    const lifetimeVolumeUsd = Number(rows[0]?.vol ?? '0');
+    reply.header('vary', 'Origin');
+    reply.header('cache-control', 'public, max-age=60');
+    return {
+      wallet: raw,
+      xp: Math.floor(lifetimeVolumeUsd),
+      lifetimeVolumeUsd,
+      generatedAt: new Date().toISOString(),
+    };
   });
 
   // Rate-limit 404s too — otherwise an attacker hitting random paths

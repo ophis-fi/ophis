@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { getCollection } from 'astro:content'
+import { getPublishedPosts } from '../lib/posts'
 
 // Hand-rolled RSS 2.0 feed — dependency-free (no @astrojs/rss). Prerendered to
 // dist/rss.xml at build time. Linked site-wide from Base.astro.
@@ -14,9 +14,7 @@ const esc = (s: string) =>
     .replace(/"/g, '&quot;')
 
 export const GET: APIRoute = async () => {
-  const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
-    (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime(),
-  )
+  const posts = await getPublishedPosts()
 
   const items = posts
     .map(

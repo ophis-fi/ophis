@@ -1,3 +1,5 @@
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 
@@ -24,7 +26,10 @@ const refBoundWalletsByKeyAtom = atomWithStorage<Record<string, true | undefined
 )
 
 function boundKey(wallet: string, code: string): string {
-  return `${wallet.toLowerCase()}:${code.toLowerCase()}`
+  // Address via getAddressKey (canonical, lowercased) per AGENTS.md; the ref
+  // code is not an address, so it keeps its own case normalization. Both are
+  // byte-identical to the previous lowercasing, so stored keys still match.
+  return `${getAddressKey(wallet)}:${code.toLowerCase()}`
 }
 
 export const isRefBoundAtom = atom((get) => {

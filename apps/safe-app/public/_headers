@@ -10,6 +10,13 @@
 #     (rebates.ophis.fi) the app pings to enroll the Safe.
 #   - script-src 'self': no inline/eval scripts (Vite emits external bundles).
 #   - style-src 'unsafe-inline': the app uses inline React style objects.
+#   - Permissions-Policy + Cross-Origin-Opener-Policy mirror the sibling
+#     subdomains (swap/explorer/landing) so safe.ophis.fi carries the same
+#     transport/isolation posture. COOP only governs the top-level standalone
+#     load at safe.ophis.fi (it is inert when the app is framed inside
+#     app.safe.global); same-origin-allow-popups matches the swap app.
 /*
   Access-Control-Allow-Origin: *
   Content-Security-Policy: frame-ancestors https://app.safe.global https://*.safe.global; default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://optimism-mainnet.ophis.fi https://*.ophis.fi https://api.cow.fi; img-src 'self' data:; object-src 'none'; base-uri 'none'
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), midi=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin-allow-popups

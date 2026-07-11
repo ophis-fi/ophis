@@ -41,4 +41,13 @@ describe('buildOphisReferrerMetadata', () => {
   it('throws (does not silently drop) on an invalid code', () => {
     expect(() => buildOphisReferrerMetadata('no')).toThrow();
   });
+
+  it('returns {} when no code is supplied (referral is opt-in, does not throw)', () => {
+    // The order still carries the Ophis partner fee (built separately); it just
+    // is not attributed to a referrer. This is what lets an agent swap out of
+    // the box without a code.
+    expect(buildOphisReferrerMetadata()).toEqual({});
+    expect(buildOphisReferrerMetadata('')).toEqual({});
+    expect(buildOphisReferrerMetadata(undefined)).toEqual({});
+  });
 });

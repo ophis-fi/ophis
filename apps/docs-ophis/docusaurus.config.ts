@@ -24,6 +24,13 @@ const config: Config = {
   url: SITE_URL,
   baseUrl: '/',
 
+  // Cloudflare Pages serves directory-style URLs and 308-redirects /page to
+  // /page/. Emit trailing-slash URLs so canonicals, hreflang alternates,
+  // internal links, and sitemap <loc> entries all resolve to the 200 form CF
+  // serves (no redirect hop for crawlers). Docusaurus's documented setting for
+  // trailing-slash hosts.
+  trailingSlash: true,
+
   // Deployed to Cloudflare Pages (project `ophis-docs`), not GitHub Pages.
   // These two only drive the "edit this page" / GitHub links.
   organizationName: 'ophis-fi',
@@ -47,12 +54,18 @@ const config: Config = {
     locales: ['en'],
   },
 
-  // Geist + Geist Mono — same family the app adopted in PR #271. Loaded
-  // from Google Fonts with a system fallback stack in custom.css, so the
-  // site still renders cleanly if the font CDN is unreachable.
+  // Geist — self-hosted (static/fonts/geist-sans-variable.woff2), same family
+  // the app and landing use, no longer fetched from Google Fonts. This removes a
+  // render-blocking third-party stylesheet and font origin. The @font-face is
+  // declared in src/css/custom.css; a system fallback stack there keeps the site
+  // readable if the woff2 is unreachable.
+  // NOTE: Geist Mono is NOT self-hosted yet. The repo ships only the sans woff2,
+  // so until a geist-mono-variable.woff2 (same Vercel OFL source) is added to
+  // static/fonts/ and the placeholder @font-face in custom.css is enabled,
+  // code/monospace text uses the ui-monospace fallback stack in custom.css.
   headTags: [
-    {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.googleapis.com'}},
-    {tagName: 'link', attributes: {rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous'}},
+    // Preload the self-hosted body font so first paint is not gated on it.
+    {tagName: 'link', attributes: {rel: 'preload', href: '/fonts/geist-sans-variable.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous'}},
     // GA4 (gtag) + Consent Mode v2, REGION-SCOPED. Done manually rather than via
     // the preset `gtag` option so the consent-default is GUARANTEED to run before
     // gtag('config') (so GA4 never sets cookies pre-consent). GA4 Enhanced
@@ -97,9 +110,8 @@ const config: Config = {
       }),
     },
   ],
-  stylesheets: [
-    'https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap',
-  ],
+  // Geist is now self-hosted via @font-face in src/css/custom.css (see the
+  // headTags preload above); no external font stylesheet is loaded.
 
   // Client-side opt-in/opt-out consent banner. Runs on every page; upgrades or
   // revokes Consent Mode analytics_storage and persists the choice. Pairs with
@@ -211,8 +223,8 @@ const config: Config = {
           title: 'Product',
           items: [
             {label: 'Trade', href: APP_URL},
-            {label: 'Learn', href: `${APP_URL}/#/learn`},
-            {label: 'About', href: `${APP_URL}/#/about`},
+            {label: 'Learn', href: `${SWAP_URL}/#/learn`},
+            {label: 'About', href: `${SWAP_URL}/#/about`},
             {label: 'Business', href: BUSINESS_URL},
           ],
         },

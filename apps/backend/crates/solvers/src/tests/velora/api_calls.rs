@@ -9,7 +9,7 @@
 
 use {
     crate::{
-        domain::{dex::*, eth::*, order},
+        domain::{auction, dex::*, eth::*, order},
         infra::dex::velora as velora_dex,
     },
     alloy::primitives::{address, U256},
@@ -43,6 +43,7 @@ async fn swap_sell_live_op_mainnet() {
         buy: TokenAddress::from(address!("0x0b2c639c533813f4aa9d7837caf62653d097ff85")),
         side: order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -52,7 +53,7 @@ async fn swap_sell_live_op_mainnet() {
         Ok(v) => v,
         Err(e) => panic!("Velora try_new failed: {e:?}"),
     };
-    let swap = match velora.swap(&order, &slippage).await {
+    let swap = match velora.swap(&order, &slippage, &auction::Tokens(std::collections::HashMap::new()), false).await {
         Ok(s) => s,
         Err(e) => panic!("Velora swap failed: {e:?}"),
     };
@@ -88,6 +89,7 @@ async fn swap_buy_live_op_mainnet() {
         buy: TokenAddress::from(address!("0x4200000000000000000000000000000000000006")),
         side: order::Side::Buy,
         amount: Amount::new(buy_amount),
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -97,7 +99,7 @@ async fn swap_buy_live_op_mainnet() {
         Ok(v) => v,
         Err(e) => panic!("Velora try_new failed: {e:?}"),
     };
-    let swap = match velora.swap(&order, &slippage).await {
+    let swap = match velora.swap(&order, &slippage, &auction::Tokens(std::collections::HashMap::new()), false).await {
         Ok(s) => s,
         Err(e) => panic!("Velora BUY swap failed: {e:?}"),
     };
@@ -141,12 +143,13 @@ async fn buy_with_partner_fee_is_rejected_before_network() {
         buy: TokenAddress::from(address!("0x4200000000000000000000000000000000000006")),
         side: order::Side::Buy,
         amount: Amount::new(U256::from(45_900_000_000_000_000_u128)),
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
     let velora = velora_dex::Velora::try_new(config).expect("try_new");
     let err = velora
-        .swap(&order, &Slippage::one_percent())
+        .swap(&order, &Slippage::one_percent(), &auction::Tokens(std::collections::HashMap::new()), false)
         .await
         .expect_err("BUY + partner fee must be rejected");
     assert!(

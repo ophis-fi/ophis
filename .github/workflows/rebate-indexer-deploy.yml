@@ -42,11 +42,27 @@ jobs:
           SSH_HOST:        ${{ secrets.ALEPH_REBATES_SSH_HOST }}
           SSH_USER:        ${{ secrets.ALEPH_REBATES_SSH_USER }}
           SSH_PORT:        ${{ secrets.ALEPH_REBATES_SSH_PORT }}
+          # Pinned VM host key (replaces the TOFU ssh-keyscan). See note below.
+          SSH_HOST_KEY:    ${{ secrets.SSH_HOST_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          # Pin the VM's SSH host key from a secret instead of trusting whatever
+          # answers on the tailnet IP. `ssh-keyscan >> known_hosts` was TOFU
+          # per-run, i.e. NO host authentication: anything that could answer on
+          # the tailnet IP got an authenticated session + the full repo rsync.
+          # SSH_HOST_KEY must hold the known_hosts line for the VM, e.g.
+          # `<tailnet-host> ssh-ed25519 AAAA...` (capture once with
+          # `ssh-keyscan -p <port> <host>`). Fail closed if it is unset so the
+          # deploy never silently reverts to trusting an unknown host.
+          # OPERATOR: add the `SSH_HOST_KEY` secret to the `production`
+          # environment (this job's `environment: production`).
+          if [ -z "$SSH_HOST_KEY" ]; then
+            echo "::error::SSH_HOST_KEY secret is not set; refusing to connect without a pinned host key. Add it to the production environment."
+            exit 1
+          fi
+          echo "$SSH_HOST_KEY" >> ~/.ssh/known_hosts
           # The VM builds the image locally — no GHCR push needed. We rsync
           # the minimal source subset (excluding workspace siblings the
           # indexer doesn't import + node_modules + the VM's .env file).
@@ -59,7 +75,7 @@ jobs:
           # NB: comments must NOT appear between \-continued lines — a comment
           # after a trailing \ ends the command early (Codex #471 P1).
           rsync -az --delete \
-            -e "ssh -i ~/.ssh/id_ed25519 -p $SSH_PORT" \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $SSH_PORT -o StrictHostKeyChecking=yes" \
             --exclude="node_modules" \
             --exclude="dist" \
             --exclude=".turbo" \
@@ -84,19 +100,33 @@ jobs:
           SSH_USER: ${{ secrets.ALEPH_REBATES_SSH_USER }}
           SSH_PORT: ${{ secrets.ALEPH_REBATES_SSH_PORT }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+          ssh -i ~/.ssh/id_ed25519 -p "$SSH_PORT" -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
             "set -e
              cd /srv/ophis/apps/rebate-indexer
              docker compose up -d --build
+             # up -d does NOT recreate caddy when only its bind-mounted Caddyfile
+             # changed (bind mounts are outside the compose config hash), so pick
+             # up Caddyfile edits explicitly. VALIDATE first, then reload; set -e
+             # fails the deploy on a bad config. Do NOT fall back to 'restart
+             # caddy' on failure -- that would relaunch caddy into a crash-loop
+             # with port 80 down while the indexer :8080 check below still passes,
+             # letting the deploy go green with public traffic broken (Codex).
+             # A graceful reload keeps serving the old config if the new one is
+             # rejected, so a validation failure never drops the listener.
+             docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
              docker compose ps
-             # Wait for /health to return 200 before declaring success
+             # Require BOTH the indexer (:8080) and the public caddy listener
+             # (:80) to answer 200 before success, so a caddy that failed to
+             # serve fails the deploy instead of going green on an indexer probe.
              for i in 1 2 3 4 5 6 7 8 9 10; do
-               if curl -fsS http://localhost:8080/health >/dev/null; then
-                 echo 'health ok'
+               if curl -fsS http://localhost:8080/health >/dev/null && curl -fsS http://localhost:80/health >/dev/null; then
+                 echo 'health ok (indexer + caddy)'
                  exit 0
                fi
                sleep 3
              done
              echo 'health check failed after 30s'
              docker compose logs indexer | tail -30
+             docker compose logs caddy | tail -30
              exit 1"

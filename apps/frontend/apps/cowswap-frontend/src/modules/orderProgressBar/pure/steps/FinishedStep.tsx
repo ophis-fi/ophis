@@ -12,6 +12,7 @@ import { Confetti, ExternalLink, InfoTooltip, TokenAmount } from '@cowprotocol/u
 
 import { i18n } from '@lingui/core'
 import { Trans, useLingui } from '@lingui/react/macro'
+import { useAtomValue } from 'jotai'
 import { PiCaretDown, PiCaretUp, PiTrophyFill } from 'react-icons/pi'
 import SVG from 'react-inlinesvg'
 
@@ -19,6 +20,7 @@ import { AMM_LOGOS } from 'legacy/components/AMMsLogo'
 import { Order } from 'legacy/state/orders/actions'
 import { useIsDarkMode } from 'legacy/state/user/hooks'
 
+import { affiliateOwnCodeAtom } from 'modules/affiliate'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
 import { CowSwapAnalyticsCategory, toCowSwapGtmEvent } from 'common/analytics/types'
@@ -93,9 +95,17 @@ export function FinishedStep({
     }
   }, [chainId, t])
 
+  // The connected wallet's own referral code (if they minted one on the
+  // affiliate/rewards page). When present, the share link carries it as ?ref=,
+  // so a completed swap becomes a referral-attributed invite. Absent for most
+  // traders, in which case the share falls back to the plain link.
+  const ownRefCode = useAtomValue(affiliateOwnCodeAtom)
+
   const twitterUrl = useMemo(() => {
-    return shouldShowSurplus ? getTwitterShareUrl(surplusData, order) : getTwitterShareUrlForBenefit(randomBenefit)
-  }, [shouldShowSurplus, surplusData, order, randomBenefit])
+    return shouldShowSurplus
+      ? getTwitterShareUrl(surplusData, order, ownRefCode)
+      : getTwitterShareUrlForBenefit(randomBenefit, ownRefCode)
+  }, [shouldShowSurplus, surplusData, order, randomBenefit, ownRefCode])
 
   // If order is not set, return null
   if (!order) {

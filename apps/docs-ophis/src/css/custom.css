@@ -11,6 +11,41 @@
  * readable fallback for users who toggle it.
  */
 
+/*
+ * Geist — self-hosted variable font (static/fonts/geist-sans-variable.woff2).
+ * Replaces the former Google Fonts <link> so the docs no longer depend on a
+ * render-blocking third-party stylesheet. The --ifm-font-family-base fallback
+ * stack below keeps text readable if the woff2 fails to load.
+ */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src:
+    url('/fonts/geist-sans-variable.woff2') format('woff2-variations'),
+    url('/fonts/geist-sans-variable.woff2') format('woff2');
+}
+
+/*
+ * Geist Mono is NOT self-hosted yet: the repo ships only the sans woff2. To
+ * self-host it, add a geist-mono-variable.woff2 to static/fonts/ (same Vercel
+ * OFL source as the sans) and uncomment the @font-face below. Until then, the
+ * --ifm-font-family-monospace fallback stack (ui-monospace, SFMono-Regular,
+ * 'JetBrains Mono', Menlo, monospace) renders code blocks.
+ */
+/*
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src:
+    url('/fonts/geist-mono-variable.woff2') format('woff2-variations'),
+    url('/fonts/geist-mono-variable.woff2') format('woff2');
+}
+*/
+
 :root {
   /* Light-mode primary: a darker saffron so links clear WCAG AA on white. */
   --ifm-color-primary: #a86411;

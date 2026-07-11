@@ -4145,10 +4145,6 @@ msgstr "Please sign order"
 msgid "Order unlikely to execute"
 msgstr "Order unlikely to execute"
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
-msgid "Ophis pools grow faster than other AMM pools because they don't lose money to arbitrage bots."
-msgstr "Ophis pools grow faster than other AMM pools because they don't lose money to arbitrage bots."
-
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/Settings/LimitOrdersSettings.pure.tsx
 msgid "Choose where to display the limit price input."
 msgstr "Choose where to display the limit price input."
@@ -4242,10 +4238,6 @@ msgstr "Choose a custom deadline for your limit order"
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 msgid "Cancelled order"
 msgstr "Cancelled order"
-
-#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
-msgid "Ophis has over 20 active solvers - more than any other exchange."
-msgstr "Ophis has over 20 active solvers - more than any other exchange."
 
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxiesPage/index.tsx
 msgid "on {chainLabel}"
@@ -4809,6 +4801,10 @@ msgstr "This order needs to be signed and executed with your {walletType} wallet
 msgid "If you approve an unlimited amount, you will only have to do this once per token."
 msgstr "If you approve an unlimited amount, you will only have to do this once per token."
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
+msgid "Ophis uses intent-based trading: gasless swaps, coincidences of wants, and MEV protection."
+msgstr "Ophis uses intent-based trading: gasless swaps, coincidences of wants, and MEV protection."
+
 #: apps/cowswap-frontend/src/modules/wallet/pure/PendingView/index.tsx
 msgid "Try Again"
 msgstr "Try Again"
@@ -5185,10 +5181,6 @@ msgstr "Status"
 msgid "higher"
 msgstr "higher"
 
-#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
-msgid "Ophis was the first DEX to offer intent-based trading, gasless swaps, coincidences of wants, and many other DeFi innovations."
-msgstr "Ophis was the first DEX to offer intent-based trading, gasless swaps, coincidences of wants, and many other DeFi innovations."
-
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "When locked, the limit price stays fixed when changing the amounts. When unlocked, the limit price will update based on the amount changes."
 msgstr "When locked, the limit price stays fixed when changing the amounts. When unlocked, the limit price will update based on the amount changes."
@@ -5368,6 +5360,10 @@ msgstr "User rejected signing the cancellation"
 #: apps/cowswap-frontend/src/modules/accountProxy/pure/FAQContent/index.tsx
 msgid "<0>Select an {accountProxyLabelString}</0> and then select a token you want to recover from your smart account."
 msgstr "<0>Select an {accountProxyLabelString}</0> and then select a token you want to recover from your smart account."
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
+msgid "Multiple solvers compete for your order so you get the best available price."
+msgstr "Multiple solvers compete for your order so you get the best available price."
 
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/common.tsx
 msgid "Loading {accountProxyLabel}"

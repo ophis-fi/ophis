@@ -620,6 +620,42 @@ services:
       - "/sys:/host/sys:ro"
       - "/:/host:ro,rslave"
 
+  # Auto-refunder for expired eth-flow (native-ETH) orders. Ophis self-hosts the
+  # OP stack, so unlike CoW's hosted deployment there is NO managed refunder:
+  # without this, an expired native-ETH order strands the user's ETH in the
+  # eth-flow contract until a manual invalidateOrder. This worker scans the
+  # orderbook DB for expired, unfilled, unrefunded eth-flow orders and batch
+  # invalidates them on-chain, returning the ETH to each order owner.
+  #
+  # MIN_PRICE_DEVIATION_BPS is NEGATIVE so EVERY expired order is refunded: an
+  # expired order can never fill, so refunding is always correct. CoW's default
+  # (190 = only >=1.9% slippage) skips normal tight-slippage orders. Gas is paid
+  # from a dedicated low-value EOA (keychain ophis-refunder-pk), NOT the
+  # settlement submitter, to avoid nonce contention. See docs runbook.
+  refunder:
+    image: local-refunder:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: refunder
+      args: *backend-build-args
+    restart: always
+    mem_limit: 512m
+    depends_on:
+      db: { condition: service_healthy }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_URL: ${DB_READ_URL}
+      NODE_URL: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
+      CHAIN_ID: "10"
+      ETHFLOW_CONTRACTS: "0x764fE4aa1FF493cf39931c7923C8ff5837596504"
+      REFUNDER_PK: ${OPHIS_REFUNDER_PK:?refunder key must be set (keychain ophis-refunder-pk; export before compose up)}
+      # Negative -> refund every expired order (an expired order can never fill).
+      MIN_PRICE_DEVIATION_BPS: "-1000000"
+      MIN_VALIDITY_DURATION: "2m"
+      LOOKBACK_TIME: "30d"
+
 volumes:
   postgres:
   prometheus-data:

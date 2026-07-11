@@ -40,16 +40,9 @@ const PROPOSED_STATUSES = ['proposing', 'proposed', 'executed', 'failed'] as con
  */
 const OWN_FEE_ACCRUAL_LOOKBACK_MONTHS = 6;
 
-/** The settled (previous) calendar month for a cron firing on the 1st of `now`. */
-function settledWindow(now: Date): { start: Date; end: Date; label: string } {
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  return { start, end, label: `${start.toISOString().slice(0, 10)}` }; // YYYY-MM-01
-}
-
 /**
  * The recent settled (fully elapsed) months to (re)accrue this run, OLDEST first. The
- * LAST element is settledWindow(now) (the current settled month); earlier elements are
+ * LAST element is the current settled (previous-calendar) month; earlier elements are
  * the preceding months within OWN_FEE_ACCRUAL_LOOKBACK_MONTHS, so a missed run is caught
  * up in order. Each entry is the [start, end) UTC month bounds plus the YYYY-MM-01 label.
  */

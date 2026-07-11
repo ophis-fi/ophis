@@ -35,6 +35,7 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
           </styledEl.Wordmark>
         </styledEl.CompactBrand>
         <styledEl.CompactLinks>
+          <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
           <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
           <styledEl.InternalLink to="/about">About</styledEl.InternalLink>
           <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
@@ -70,6 +71,12 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
             </li>
             <li>
               <styledEl.InternalLink to="/profile">Profile</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
+            </li>
+            <li>
+              <styledEl.InternalLink to="/rewards">Rewards</styledEl.InternalLink>
             </li>
             <li>
               <styledEl.InternalLink to="/leaderboard">Leaderboard</styledEl.InternalLink>

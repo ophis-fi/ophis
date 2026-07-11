@@ -61,8 +61,14 @@ export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ s
   const referrers = await buildAffiliateReferrers(start, end);
   const owed = computeAffiliate(referrers, wethUsdPrice);
 
-  // Rebate pool already proposed this cycle (for the double-spend guard).
-  const [rb] = await sql<{ pool: string }[]>`SELECT pool_weth_wei::text AS pool FROM rebate_batches ORDER BY id DESC LIMIT 1`;
+  // RESERVE the WETH committed to EVERY still-pending rebate proposal for the
+  // double-spend guard — not just the latest cycle's batch. Affiliate is paid from
+  // the SAME Safe as rebates, so any rebate batch still 'proposing'/'proposed'
+  // (queued, not yet signed/executed) still holds its pool WETH in the Safe. SUMming
+  // only the latest row would ignore an earlier back-month rebate proposal that is
+  // still unsigned, letting affiliate + rebates together over-draw the Safe. Mirrors
+  // the own-fee reservation (ownFee/payout.ts). (money-safety)
+  const [rb] = await sql<{ pool: string }[]>`SELECT COALESCE(SUM(pool_weth_wei), 0)::text AS pool FROM rebate_batches WHERE status IN ('proposing', 'proposed')`;
   const rebatePoolWei = rb ? BigInt(rb.pool) : 0n;
 
   const plan = planAffiliatePayout(owed, safeBalanceWei, rebatePoolWei);

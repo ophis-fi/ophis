@@ -24,6 +24,10 @@ export const PAST_ORDERS_SCAN_LIMIT = 10
 
 export const AFFILIATE_TRADER_SAVED_CODES_STORAGE_KEY = 'cowswap:affiliateTraderSavedCodes:v0'
 export const AFFILIATE_TRADER_PAYOUT_CONFIRMATIONS_STORAGE_KEY = 'cowswap:affiliateTraderPayoutConfirmations:v0'
+export const AFFILIATE_PENDING_REF_CODE_STORAGE_KEY = 'ophis:affiliatePendingRefCode:v0'
+// The connected wallet's OWN referral code, cached so the post-trade share can
+// embed it as ?ref= without a fresh signature. See affiliateOwnCodeAtom.
+export const AFFILIATE_OWN_CODE_STORAGE_KEY = 'ophis:affiliateOwnCode:v0'
 
 export const AFFILIATE_SUPPORTED_NETWORK_NAMES = AFFILIATE_SUPPORTED_CHAIN_IDS.map(
   (chainId) => CHAIN_INFO[chainId].label,
@@ -64,9 +68,13 @@ export const BACKOFF_START_DELAY_MS = ms`1s`
 export const BACKOFF_TIME_MULTIPLE = 3
 export const BACKOFF_MAX_ATTEMPTS = 3
 
-export const REF_CODE_PATTERN = /^[A-Z0-9_-]{5,20}$/
-export const REF_CODE_MIN_LENGTH = 5
-export const REF_CODE_MAX_LENGTH = 20
+// MUST mirror the backend code grammar (apps/rebate-indexer/src/api.ts:
+// ^[a-z0-9_-]{3,64}$, display-uppercase here). The old {5,20} silently
+// dropped valid short codes at ?ref capture — including the 3-char partner
+// codes the backend has minted since PR #528.
+export const REF_CODE_PATTERN = /^[A-Z0-9_-]{3,64}$/
+export const REF_CODE_MIN_LENGTH = 3
+export const REF_CODE_MAX_LENGTH = 64
 
 /**
  * Defaults params - keep them in sync with the cms env vars: `infrastructure/cms/index.ts`

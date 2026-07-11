@@ -221,7 +221,6 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
   130 as unknown as SupportedChainId, // Ophis fork: Unichain
-  SupportedChainId.SEPOLIA,
 ]
 
 /**
@@ -243,7 +242,6 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   130 as unknown as TargetChainId, // Ophis fork: Unichain
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
-  SupportedChainId.SEPOLIA,
 ]
 
 export const CHAIN_INFO_ARRAY: BaseChainInfo[] = SORTED_CHAIN_IDS.map((id) => CHAIN_INFO[id])

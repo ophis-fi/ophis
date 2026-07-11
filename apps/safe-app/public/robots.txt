@@ -1,0 +1,46 @@
+# Ophis Swap for Safe is a public Safe App. We welcome search engines AND
+# answer / generative engines and autonomous agents (AEO / GEO), matching the
+# landing, swap, docs, and explorer policy.
+
+User-agent: *
+Allow: /
+# Cloudflare infra paths are not content. Email Address Obfuscation injects a
+# /cdn-cgi/l/email-protection link that returns 4xx to crawlers; crawlers never
+# need /cdn-cgi/.
+Disallow: /cdn-cgi/
+# Content Signals (contentsignals.org): public content, AI use welcome.
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
+
+# Answer-engine / LLM crawlers explicitly allowed.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /

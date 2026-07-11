@@ -298,7 +298,11 @@ export function attributeOrder(
   try {
     const m = meta as {
       appCode?: unknown;
-      metadata?: { widget?: { appCode?: unknown }; ophisReferrer?: { code?: unknown } };
+      metadata?: {
+        widget?: { appCode?: unknown };
+        ophisReferrer?: { code?: unknown };
+        referrer?: { code?: unknown };
+      };
     };
     const lower = (v: unknown): string | undefined => (typeof v === 'string' ? v.toLowerCase() : undefined);
     // Normalize appCode to lowercase BEFORE matching (emitters ship mixed casing:
@@ -322,7 +326,12 @@ export function attributeOrder(
     // path). appData is attacker-controllable: keep ONLY if it matches the registry
     // grammar, lowercased, AND only on a CONFIRMED positive Ophis Volume fee (>0) so a
     // forged surplus/PI shape can't COALESCE to retail and credit a referrer for free.
-    const rawRef = m?.metadata?.ophisReferrer?.code;
+    // FALLBACK: metadata.referrer.code — the schema-standard field the Ophis frontend
+    // attaches to every order carrying a saved ?ref code (buildAppData.ts). Without it,
+    // a wallet whose signed bind never landed (rejected popup, clock skew) traded with
+    // the code inert forever (audit 2026-07-09). Same grammar + fee gates apply, and
+    // the accrual layer keeps its active-code / non-self / appData-wins guards.
+    const rawRef = m?.metadata?.ophisReferrer?.code ?? m?.metadata?.referrer?.code;
     if (typeof rawRef === 'string' && volumeFeeBps !== null && volumeFeeBps > 0) {
       const code = rawRef.trim().toLowerCase();
       if (/^[a-z0-9_-]{3,64}$/.test(code)) appdataRefCode = code;

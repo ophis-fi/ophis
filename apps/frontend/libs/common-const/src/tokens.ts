@@ -95,6 +95,16 @@ const sUSD_MAINNET = new TokenWithLogo(
   'Synth sUSD',
 )
 
+export const EURE_MAINNET = new TokenWithLogo(
+  'https://assets.coingecko.com/coins/images/23354/large/eur.png',
+  SupportedChainId.MAINNET,
+  // Monerium v2 — https://etherscan.io/token/0x39b8B6385416f4cA36a20319F70D28621895279D
+  '0x39b8B6385416f4cA36a20319F70D28621895279D',
+  18,
+  'EURe',
+  'Monerium EURe',
+)
+
 // Gnosis chain
 
 export const USDT_GNOSIS_CHAIN = new TokenWithLogo(
@@ -250,6 +260,16 @@ const MIM_ARBITRUM_ONE = new TokenWithLogo(
   'Magic Internet Money',
 )
 
+export const EURE_ARBITRUM_ONE = new TokenWithLogo(
+  EURE_MAINNET.logoURI,
+  SupportedChainId.ARBITRUM_ONE,
+  // Monerium v2 — https://arbiscan.io/token/0x0c06cCF38114ddfc35e07427B9424adcca9F44F8
+  '0x0c06cCF38114ddfc35e07427B9424adcca9F44F8',
+  18,
+  'EURe',
+  'Monerium EURe',
+)
+
 // Base
 
 export const USDT_BASE = new TokenWithLogo(
@@ -341,6 +361,16 @@ export const EUSD_BASE = new TokenWithLogo(
   'Electronic Dollar',
 )
 
+export const EURE_BASE = new TokenWithLogo(
+  EURE_MAINNET.logoURI,
+  SupportedChainId.BASE,
+  // Monerium v2 — https://basescan.org/token/0xbf6e2966A9C3D99C9E4D069E04f7Bdb9C8aa762C
+  '0xbf6e2966A9C3D99C9E4D069E04f7Bdb9C8aa762C',
+  18,
+  'EURe',
+  'Monerium EURe',
+)
+
 // Sepolia
 
 export const GNO_SEPOLIA = new TokenWithLogo(
@@ -397,6 +427,16 @@ export const DAI_POLYGON = new TokenWithLogo(
   18,
   'DAI',
   'Dai',
+)
+
+export const EURE_POLYGON = new TokenWithLogo(
+  EURE_MAINNET.logoURI,
+  SupportedChainId.POLYGON,
+  // Monerium v2 — https://polygonscan.com/token/0xE0aEa583266584DafBB3f9C3211d5588c73fEa8d
+  '0xE0aEa583266584DafBB3f9C3211d5588c73fEa8d',
+  18,
+  'EURe',
+  'Monerium EURe',
 )
 
 // Avalanche
@@ -493,6 +533,16 @@ export const USDT_LINEA = new TokenWithLogo(
   6,
   'USDT',
   'Tether USD',
+)
+
+export const EURE_LINEA = new TokenWithLogo(
+  EURE_MAINNET.logoURI,
+  SupportedChainId.LINEA,
+  // Monerium v2 — https://lineascan.build/token/0x3ff47c5Bf409C86533FE1f4907524d304062428D
+  '0x3ff47c5Bf409C86533FE1f4907524d304062428D',
+  18,
+  'EURe',
+  'Monerium EURe',
 )
 
 // Plasma
@@ -733,6 +783,7 @@ const MAINNET_STABLECOINS = [
   LUSD_MAINNET.address,
   PYUSD_MAINNET.address,
   sUSD_MAINNET.address,
+  EURE_MAINNET.address,
 ].map((t) => t.toLowerCase())
 
 // NOTE: whenever this list is updated, make sure to update the docs section regarding the volume fees
@@ -757,6 +808,7 @@ const ARBITRUM_ONE_STABLECOINS = [
   USDCE_ARBITRUM_ONE.address,
   FRAX_ARBITRUM_ONE.address,
   MIM_ARBITRUM_ONE.address,
+  EURE_ARBITRUM_ONE.address,
 ].map((t) => t.toLowerCase())
 
 const BASE_STABLECOINS = [
@@ -769,11 +821,15 @@ const BASE_STABLECOINS = [
   USD_PLUS_BASE.address,
   EUSD_BASE.address,
   USDT_BASE.address,
+  EURE_BASE.address,
 ].map((t) => t.toLowerCase())
 
-const POLYGON_STABLECOINS = [USDC_POLYGON.address, USDT_POLYGON.address, DAI_POLYGON.address].map((t) =>
-  t.toLowerCase(),
-)
+const POLYGON_STABLECOINS = [
+  USDC_POLYGON.address,
+  USDT_POLYGON.address,
+  DAI_POLYGON.address,
+  EURE_POLYGON.address,
+].map((t) => t.toLowerCase())
 
 const AVALANCHE_STABLECOINS = [USDC_AVALANCHE.address, USDT_AVALANCHE.address].map((t) => t.toLowerCase())
 
@@ -781,7 +837,7 @@ const BNB_STABLECOINS = [USDC_BNB.address, USDT_BNB.address, DAI_BNB.address, BU
   t.toLowerCase(),
 )
 
-const LINEA_STABLECOINS = [USDC_LINEA.address].map((t) => t.toLowerCase())
+const LINEA_STABLECOINS = [USDC_LINEA.address, EURE_LINEA.address].map((t) => t.toLowerCase())
 
 const PLASMA_STABLECOINS = [USDT_PLASMA.address].map((t) => t.toLowerCase())
 

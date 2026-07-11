@@ -6,8 +6,12 @@ import { OphisSwapParameters } from './parameters.js';
 import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisPluginOptions {
-  /** The integrator referral code that earns the 8-12% rebate (rides in the order's appData). */
-  referralCode: string;
+  /**
+   * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
+   * order's appData). Omit it and swaps still work (you just forgo the rebate);
+   * mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   */
+  referralCode?: string;
 }
 
 // Ophis-operated EVM chains with a live orderbook. The swap core re-checks isOphisFeeChain and
@@ -33,15 +37,19 @@ class OphisService {
         sellAmount: parameters.sellAmount,
         slippageBps: parameters.slippageBps,
       },
-      { referralCode: this.options.referralCode },
+      this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {},
     );
   }
 }
 
 export class OphisPlugin extends PluginBase<EVMWalletClient> {
-  constructor(options: OphisPluginOptions) {
+  constructor(options: OphisPluginOptions = {}) {
     if (!options?.referralCode) {
-      throw new Error('@ophis/plugin-goat: referralCode is required (it carries the rebate).');
+      // Do not block construction on a missing code (that was the top adoption
+      // killer): warn once, keep working, let the builder add a code to earn.
+      console.warn(
+        '[@ophis/plugin-goat] No referralCode set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass it as options.referralCode.',
+      );
     }
     super('ophis', [new OphisService(options)]);
   }

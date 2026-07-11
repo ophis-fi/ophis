@@ -34,13 +34,14 @@ async fn swap_sell_live_op_mainnet() {
         buy: TokenAddress::from(address!("0x0b2c639c533813f4aa9d7837caf62653d097ff85")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
+        buy_limit: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
     let slippage = Slippage::one_percent();
 
     let kyberswap = kyberswap_dex::KyberSwap::try_new(config).unwrap();
-    let swap = kyberswap.swap(&order, &slippage).await.unwrap();
+    let swap = kyberswap.swap(&order, &slippage, false).await.unwrap();
 
     assert_eq!(swap.input.token, order.sell);
     assert_eq!(swap.output.token, order.buy);

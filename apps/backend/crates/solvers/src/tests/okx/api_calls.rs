@@ -36,6 +36,7 @@ async fn swap_sell_regular() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100000000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -80,6 +81,7 @@ async fn swap_buy_disabled() {
         sell: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -120,6 +122,7 @@ async fn swap_buy_enabled() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -167,6 +170,7 @@ async fn swap_api_error() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::ZERO),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -208,6 +212,7 @@ async fn swap_sell_insufficient_liquidity() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(10000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -249,6 +254,7 @@ async fn swap_buy_insufficient_liquidity() {
         buy: TokenAddress::from(address!("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(10000000000000_u128)),
+        buy_limit: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 

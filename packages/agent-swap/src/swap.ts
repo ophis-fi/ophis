@@ -36,11 +36,17 @@ export interface OphisSwapParams {
 }
 
 export interface OphisSwapOptions {
-  /** The integrator referral code that earns the 8-12% rebate (rides in the order's appData). */
-  referralCode: string;
+  /**
+   * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
+   * order's appData). Omit it and the swap still works and settles normally,
+   * you just forgo the rebate. Mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   */
+  referralCode?: string;
   /** Set true for stablecoin<>stablecoin pairs to apply the 1bp stable fee tier. */
   isStablePair?: boolean;
 }
+
+let warnedNoReferral = false;
 
 export interface OphisSwapResult {
   /** The CoW order UID; track it on the Ophis explorer. */
@@ -88,7 +94,14 @@ export async function executeOphisSwap(
   if (!isOphisFeeChain(chainId)) {
     throw new Error(`Ophis does not operate on chain ${chainId}; switch the agent to a supported chain.`);
   }
-  if (!options.referralCode) throw new Error('Ophis referral code is required (it carries the rebate).');
+  if (!options.referralCode && !warnedNoReferral) {
+    warnedNoReferral = true;
+    // Do not block the swap on a missing code (that was the top adoption
+    // killer): warn once, keep swapping, let the builder add a code to earn.
+    console.warn(
+      '[@ophis/agent-swap] No referralCode set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass it as options.referralCode.',
+    );
+  }
 
   const owner = wallet.getAddress();
   const sellToken = assertErc20(params.sellToken, 'sellToken');

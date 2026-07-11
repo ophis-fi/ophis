@@ -1,4 +1,5 @@
 export { affiliateTraderSavedCodeAtom } from './state/affiliateTraderSavedCodeAtom'
+export { affiliateOwnCodeAtom, setAffiliateOwnCodeAtom } from './state/affiliateOwnCodeAtom'
 
 // Ophis native affiliate program (rebates.ophis.fi). NATIVE-only surfaces:
 // the app-wide ?ref capture + bind updater, plus the typed API client and
@@ -18,6 +19,7 @@ export {
   getLeaderboard,
   getPartnerDashboard,
   getRankStatus,
+  getWalletXp,
   lookupRefCode,
 } from './lib/ophisAffiliateApi'
 export type {
@@ -34,4 +36,5 @@ export type {
   RefCodeCreateResponse,
   RefLookupResponse,
   SignedRequestBody,
+  WalletXp,
 } from './lib/ophisAffiliateApi'

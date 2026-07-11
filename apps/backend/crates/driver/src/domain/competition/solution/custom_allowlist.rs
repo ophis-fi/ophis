@@ -102,12 +102,12 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // Verified live 2026-05-16 via `cast code` (49127 bytes) and
     // upstream docs:
     // https://developers.velora.xyz/augustus-swapper/augustus-v6.2-smart-contracts
-    address!("6a000F20005980200259B80c5102003040001068"),
+    address!("6A000F20005980200259B80c5102003040001068"),
     // OKX V6 router on Optimism mainnet. Verified 2026-05-18 via
     // authenticated probe + `cast code`. Used as `tx.to` returned by
     // OKX `/swap`. Distinct from the spender address below — OKX
     // separates router and approval target on V6.
-    address!("Dd5E9B947c99AA60baB00CA4631DCe63b49983E7"),
+    address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7"),
     // OKX V6 spender on Optimism mainnet. Returned by OKX
     // `/approve-transaction` as `dexContractAddress` — the ERC-20
     // approval grantee. Verified 2026-05-18 alongside the router.
@@ -350,9 +350,9 @@ mod tests {
     // KyberSwap router (verified on both OP and HL).
     const KYBER: Address = address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5");
     // Velora Augustus V6.2 (OP only).
-    const VELORA: Address = address!("6a000F20005980200259B80c5102003040001068");
+    const VELORA: Address = address!("6A000F20005980200259B80c5102003040001068");
     // OKX V6 router on OP (used in the OKX coverage test below).
-    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99AA60baB00CA4631DCe63b49983E7");
+    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7");
     // OKX V6 spender on OP (separate from router — verifies router/spender
     // distinct-address handling).
     const OKX_OP_SPENDER: Address = address!("68D6B739D2020067D1e2F713b999dA97E4d54812");

@@ -14,7 +14,7 @@ import { ReactNode, useCallback, useMemo, useState } from 'react'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { symbolToAddressResolver, useTokenForChainMapBySymbol } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
 
 import { CosmicStarfield } from '../CosmicStarfield'
@@ -24,6 +24,7 @@ import { OphisHeader } from '../OphisHeader'
 import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
 import { IntentInput } from './IntentInput'
+import { readIntentParam } from './intentParam'
 import { intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
@@ -60,17 +61,42 @@ const Page = styled.main`
   color: #f5efe6;
   position: relative;
 
+  & > * {
+    position: relative;
+    z-index: 1;
+  }
+`
+
+/**
+ * Decorative vignette + ambient blobs, in a dedicated clipping layer.
+ *
+ * These used to live as ::before/::after directly on Page. That scrolled:
+ * the blob layer animates transform (scale 1.06 + translate3d) on a
+ * viewport-sized box, and TRANSFORMED bounds count as scrollable overflow,
+ * so Page (the scroll container) gained 7-34px of phantom scroll that
+ * breathed with the 24s animation cycle - users could scroll past the
+ * footer into bare background. Wrapping the pseudos in an absolutely
+ * positioned overflow:hidden layer clips the animated bounds, so the
+ * viewport-fit invariant (no scroll on normal screens) holds again.
+ */
+const Backdrop = styled.div`
+  && {
+    position: absolute;
+    z-index: 0;
+  }
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+
   &::before {
     /* Vignette to deepen the edges and improve text contrast over the
        cosmic backdrop. */
     content: '';
     position: absolute;
     inset: 0;
-    pointer-events: none;
     background:
       radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(10, 10, 10, 0.55) 75%),
       linear-gradient(180deg, rgba(10, 10, 10, 0) 0%, rgba(10, 10, 10, 0.6) 75%, rgba(10, 10, 10, 0.95) 100%);
-    z-index: 0;
   }
 
   /* Two slow-orbiting sunset/violet blobs that drift across the hero —
@@ -81,12 +107,10 @@ const Page = styled.main`
     content: '';
     position: absolute;
     inset: 0;
-    pointer-events: none;
     background:
       radial-gradient(420px 320px at 20% 30%, rgba(242, 166, 62, 0.16), transparent 70%),
       radial-gradient(380px 280px at 80% 60%, rgba(180, 138, 255, 0.12), transparent 70%);
     filter: blur(40px);
-    z-index: 0;
     animation: ophis-hero-blob 24s ease-in-out infinite alternate;
   }
 
@@ -100,11 +124,6 @@ const Page = styled.main`
     &::after {
       animation: none;
     }
-  }
-
-  & > * {
-    position: relative;
-    z-index: 1;
   }
 `
 
@@ -384,7 +403,15 @@ function helperText(
 }
 
 export function IntentLanding(): ReactNode {
-  const [text, setText] = useState('')
+  const [searchParams] = useSearchParams()
+  // Seed the input once, on mount, from a shareable `?intent=` link (hash-router
+  // query first, then the pre-hash document search so both link shapes work).
+  // Empty when absent, so a normal visit is unchanged. useIntentParse(text) below
+  // then parses the seeded text automatically: the visitor lands with the tokens
+  // detected and Continue enabled, one tap from a pre-filled trade.
+  const [text, setText] = useState(() =>
+    readIntentParam(searchParams.toString(), typeof window === 'undefined' ? '' : window.location.search),
+  )
   const navigate = useNavigate()
   const parseState = useIntentParse(text)
   const ready = isReadyToSubmit(parseState.parsed)
@@ -425,6 +452,7 @@ export function IntentLanding(): ReactNode {
 
   return (
     <Page>
+      <Backdrop aria-hidden="true" />
       <CosmicStarfield />
       <OphisHeader transparent>
         {/* PR #245 (2026-05-23): removed the inline `<Logo src="/ophis-lockup.svg">`

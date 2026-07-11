@@ -238,7 +238,7 @@ Schema:
 Rules:
 - Token canonical values: uppercase symbols of well-known crypto
   assets traded on EVM DEXes. Examples by category:
-    Stablecoins:   USDC, USDT, DAI, FRAX, LUSD, GHO, FDUSD, EURC, MIM
+    Stablecoins:   USDC, USDT, DAI, FRAX, LUSD, GHO, FDUSD, EURC, EURE, MIM
     ETH-pegs:      ETH, WETH, STETH, WSTETH, RETH, CBETH, EZETH
     BTC-pegs:      WBTC, TBTC, CBBTC, BTC
     Native L1/L2:  ARB, OP, MATIC, AVAX, BNB, APT, SUI, NEAR, ATOM,

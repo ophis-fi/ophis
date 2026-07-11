@@ -139,6 +139,7 @@ impl KyberSwap {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         // KyberSwap is exactIn-only.
         if order.side == order::Side::Buy {
@@ -159,8 +160,24 @@ impl KyberSwap {
             // settlement calldata. See KYBERSWAP_ROUTER_ALLOWLIST docs.
             validate_router_allowlist(&routes_router)?;
 
+            // On the solve path, bound the slippage sent to /route/build by the
+            // order's signed buy limit, so the router's on-chain minReturn (==
+            // the reported buy clearing amount) is at least what the order will
+            // accept. Without this, an order signed against the optimistic quote
+            // (buyAmountMin near optimistic) is dropped by `satisfies` because
+            // the fixed 1% floor sits below its limit. Quotes report optimistic
+            // and never settle, so leave the slippage configured for them.
+            let build_slippage = if is_quote {
+                slippage.clone()
+            } else {
+                let configured_bps = slippage.as_bps().unwrap_or(0);
+                let bounded_bps = order
+                    .bounded_solve_slippage_bps(routes.route_summary.amount_out, configured_bps);
+                dex::Slippage::from_bps(bounded_bps)
+            };
+
             let (build, slippage_tolerance) = self
-                .build_route(routes.route_summary, order, slippage)
+                .build_route(routes.route_summary, order, &build_slippage)
                 .await?;
 
             // Step 2 should return the same router address as step 1. Treat a
@@ -234,7 +251,11 @@ impl KyberSwap {
                     // buffer (standard CoW surplus handling). The order's
                     // signed buy-amount-min is enforced downstream, so a floor
                     // below the limit is correctly filtered as NoSolution.
-                    amount: min_return_amount(build.amount_out, slippage_tolerance),
+                    // Settle: the router's guaranteed floor (#726) so the buy
+                    // payout can never exceed realized output. Quote: the
+                    // optimistic `amount_out`, matching 0x/ParaSwap. See
+                    // `reported_output`.
+                    amount: reported_output(build.amount_out, slippage_tolerance, is_quote),
                 },
                 allowance: dex::Allowance {
                     spender: routes_router,
@@ -368,6 +389,20 @@ fn min_return_amount(amount_out: U256, slippage_tolerance_bps: u16) -> U256 {
     }
 }
 
+/// The buy-side amount to REPORT for a SELL order.
+///
+/// * settle (`is_quote == false`): the router's guaranteed slippage floor
+///   (`min_return_amount`) — the #726 invariant; do NOT weaken this.
+/// * quote  (`is_quote == true`): the optimistic `amount_out`, closing the
+///   ~1% competitiveness gap. Quotes never settle, so no revert risk.
+fn reported_output(optimistic_out: U256, slippage_tolerance_bps: u16, is_quote: bool) -> U256 {
+    if is_quote {
+        optimistic_out
+    } else {
+        min_return_amount(optimistic_out, slippage_tolerance_bps)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CreationError {
     #[error(transparent)]
@@ -454,5 +489,22 @@ mod tests {
     fn min_return_amount_full_slippage_is_zero() {
         let a = U256::from(1_000_000_000u64);
         assert_eq!(min_return_amount(a, 10_000), U256::ZERO);
+    }
+
+    #[test]
+    fn reported_output_quote_is_optimistic() {
+        let optimistic = U256::from(988_146_014_276_470u128);
+        assert_eq!(reported_output(optimistic, 100, true), optimistic);
+        assert_eq!(reported_output(optimistic, 2000, true), optimistic);
+    }
+
+    #[test]
+    fn reported_output_solve_is_floor() {
+        let optimistic = U256::from(988_146_014_276_470u128);
+        assert_eq!(
+            reported_output(optimistic, 100, false),
+            min_return_amount(optimistic, 100)
+        );
+        assert!(reported_output(optimistic, 100, false) < optimistic);
     }
 }

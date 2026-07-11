@@ -36,7 +36,7 @@ export function LearnPage(): ReactNode {
       width="medium"
       eyebrow="Learn, navigation hub"
       title="Learn Ophis without the guesswork."
-      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage, if and when we do, they should land in their own section below."
+      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage. When we do, they will get their own section below."
     >
       <Callout tone="info" title="What this page is, and isn't">
         <p>
@@ -186,7 +186,7 @@ export function LearnPage(): ReactNode {
       >
         <p>
           Drop a note via the <TextLink href="/contact">contact form</TextLink>, it helps us decide what to document
-          next. If and when original Ophis articles or product announcements ship, they should appear in a new section
+          next. If and when original Ophis articles or product announcements ship, they will appear in a new section
           above.
         </p>
       </Section>
