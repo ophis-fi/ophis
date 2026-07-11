@@ -259,11 +259,22 @@ impl Swap {
                         }
                     }
                     Err(err) => {
-                        // A sim that reverts or errors follows the same policy as
-                        // SettlementContractIsOwner above: price a quote or a
+                        let is_revert = err.is_revert();
+                        tracing::warn!(?err, is_revert, "strict output simulation errored");
+                        // A REAL solve whose settlement simulation REVERTED is
+                        // unexecutable (DEX under-delivers / router calldata
+                        // reverts); never submit it — upstream filtered LIMIT
+                        // gas-sim errors. Fail closed regardless of buffer
+                        // exposure.
+                        if !is_quote && is_revert {
+                            return None;
+                        }
+                        // TRANSIENT (RPC/transport) errors and QUOTES keep the
+                        // prior can-not-measure policy: price a quote or a
                         // non-buffer-exposed swap on heuristic gas rather than
-                        // dropping it; fail closed on a buffer-exposed real solve.
-                        tracing::warn!(?err, "strict output simulation errored");
+                        // dropping it; fail closed only on a buffer-exposed real
+                        // solve. (A quote that reverts on a flooring lane's
+                        // optimistic output is still priced here — #774.)
                         if is_quote || !self.buy_is_buffer_exposed(tokens) {
                             self.gas
                         } else {
@@ -317,12 +328,13 @@ impl Swap {
                         }
                     }
                     Err(err) => {
-                        // A sim that reverts or errors follows the same policy as
-                        // SettlementContractIsOwner above: accept a quote or a
-                        // non-buffer-exposed swap; fail closed on a buffer-exposed
-                        // real solve.
-                        tracing::warn!(?err, "strict output simulation errored");
-                        if !is_quote && self.buy_is_buffer_exposed(tokens) {
+                        let is_revert = err.is_revert();
+                        tracing::warn!(?err, is_revert, "strict output simulation errored");
+                        // A REAL solve whose settlement simulation REVERTED is
+                        // unexecutable, so drop it regardless of buffer
+                        // exposure. TRANSIENT errors and quotes keep the prior
+                        // policy: accept unless a buffer-exposed real solve.
+                        if !is_quote && (is_revert || self.buy_is_buffer_exposed(tokens)) {
                             return None;
                         }
                     }
