@@ -41,6 +41,15 @@ const WRAPPED_NATIVE_BALANCE_SLOT: u8 = 3;
 /// output is measured) exactly like a normal order whose owner holds the sell
 /// token. It only fires when the sell token IS the wrapped native, so it never
 /// perturbs a normal order (whose owner already holds a non-native sell token).
+///
+/// Correct because the ETH->WETH wrap enters the FINAL settlement as an ORDER
+/// pre-interaction (autopilot ethflow_events.rs `wrap_all` selector 0x4c84c1c8),
+/// which the driver re-includes for every fulfillment (encoding.rs
+/// `pre_interactions.extend`). It does NOT flow through `solution.wrappers`, so
+/// the DEX solver correctly emits `wrappers: vec![]` and this override models the
+/// post-wrap SELL-side balance. The realized OUTPUT is still measured for real
+/// (Swapper `realizedOut`), so faking the sell balance cannot blind the
+/// anti-siphon guard: an under-delivering DEX is still rejected.
 fn eth_flow_balance_override(owner: Address, swap: &dex::Swap) -> Option<(B256, B256)> {
     // The zero address is the anonymous-quote sentinel (from = 0x0) and can
     // never hold or transfer ERC20 tokens. Granting it a balance would make the
@@ -278,6 +287,53 @@ pub enum Error {
     SettlementContractIsOwner,
 }
 
+impl Error {
+    /// Whether this error is an EVM execution **revert** of the simulation
+    /// call — the settlement the swap interactions would perform cannot
+    /// succeed on-chain (the DEX under-delivers, or the router calldata
+    /// reverts, which `Swapper` bubbles via `Caller.doMeteredCallNoReturn`) —
+    /// as opposed to a **transient** transport/RPC failure (timeout, reset,
+    /// 5xx, rate limit, (de)serialization) where the swap's executability is
+    /// merely UNKNOWN.
+    ///
+    /// A reverting simulation for a real (settle-able) solve means the
+    /// solution is unexecutable and must never be submitted, so callers fail
+    /// CLOSED on it. A transient failure stays LENIENT: dropping a valid solve
+    /// (or, in #774, a valid quote) on an RPC blip is the regression this
+    /// classifier is built to avoid.
+    ///
+    /// Deliberately biased toward "transient": only a JSON-RPC *error
+    /// response* (the node executed the call and it failed) is ever a revert,
+    /// and only when it carries revert return-data or an "…revert…" message.
+    /// Transport errors, null/local/serde failures, and non-execution server
+    /// errors (rate limit, internal error) all return `false`.
+    pub fn is_revert(&self) -> bool {
+        let Self::ContractCall(err) = self else {
+            // `SettlementContractIsOwner` is a can-not-simulate precondition,
+            // not a revert; it has its own lenient arm at the call sites.
+            return false;
+        };
+
+        // Unambiguous: the node attached revert return-data. Usual shape for a
+        // reverting `eth_call` on geth/reth/eRPC (including "0x" empty revert).
+        if err.as_revert_data().is_some() {
+            return true;
+        }
+
+        // Fallback for reverts whose (empty) return-data the node omits: a
+        // JSON-RPC error response with an execution-revert message. Gated on
+        // `as_error_resp()` so a pure transport error is never misread, and on
+        // "revert" so transient server errors (rate limit, internal, timeout,
+        // and top-level `eth_call` gas-cap OOG) stay lenient.
+        matches!(
+            err,
+            alloy::contract::Error::TransportError(t)
+                if t.as_error_resp()
+                    .is_some_and(|resp| resp.message.to_ascii_lowercase().contains("revert"))
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, alloy::primitives::b256};
@@ -292,5 +348,85 @@ mod tests {
             wrapped_native_balance_slot(owner),
             b256!("55576e8f9be9c279e97c3d9148807514bf90c4c718d2ff153be89caecfadc1a1"),
         );
+    }
+
+    mod is_revert {
+        use super::*;
+
+        // `deser_err` returns `RpcError::ErrorResp` when the text parses as a
+        // JSON-RPC error payload — exactly the shape a node returns for a
+        // reverted (or otherwise failed) `eth_call`. Builds a real
+        // `alloy::contract::Error` without a live provider.
+        fn contract_err(payload_json: &str) -> Error {
+            let dummy = serde_json::from_str::<u8>("x").unwrap_err();
+            let rpc_err = alloy::transports::TransportError::deser_err(dummy, payload_json);
+            assert!(rpc_err.is_error_resp(), "test setup: expected an ErrorResp");
+            Error::ContractCall(alloy::contract::Error::TransportError(rpc_err))
+        }
+
+        #[test]
+        fn revert_with_reason_data_is_revert() {
+            // geth/reth: {"code":3,"message":"execution reverted","data":"0x08c379a0…"}
+            let err =
+                contract_err(r#"{"code":3,"message":"execution reverted","data":"0x08c379a0"}"#);
+            assert!(err.is_revert());
+        }
+
+        #[test]
+        fn revert_empty_data_hex_is_revert() {
+            let err = contract_err(r#"{"code":3,"message":"execution reverted","data":"0x"}"#);
+            assert!(err.is_revert());
+        }
+
+        #[test]
+        fn revert_message_only_no_data_field_is_revert() {
+            // eRPC/normalized nodes may drop `data` on an empty revert; classify
+            // by the execution-revert message.
+            let err = contract_err(r#"{"code":-32000,"message":"execution reverted"}"#);
+            assert!(err.is_revert());
+        }
+
+        #[test]
+        fn top_level_out_of_gas_is_not_revert() {
+            // Top-level eth_call gas-cap OOG = can-not-measure/transient, NOT a
+            // solution revert (a genuine inner OOG bubbles as "execution
+            // reverted" via Caller.sol). Must stay lenient (#774 spirit).
+            let err = contract_err(r#"{"code":-32000,"message":"out of gas"}"#);
+            assert!(!err.is_revert());
+        }
+
+        #[test]
+        fn rate_limit_error_resp_is_not_revert() {
+            let err = contract_err(r#"{"code":-32005,"message":"rate limit exceeded"}"#);
+            assert!(!err.is_revert());
+        }
+
+        #[test]
+        fn internal_error_resp_is_not_revert() {
+            let err = contract_err(r#"{"code":-32603,"message":"Internal error"}"#);
+            assert!(!err.is_revert());
+        }
+
+        #[test]
+        fn transport_error_is_not_revert() {
+            // Connection-level failure: executability unknown -> transient.
+            let rpc_err = alloy::transports::TransportError::local_usage_str("connection reset");
+            assert!(!rpc_err.is_error_resp());
+            let err = Error::ContractCall(alloy::contract::Error::TransportError(rpc_err));
+            assert!(!err.is_revert());
+        }
+
+        #[test]
+        fn null_response_is_not_revert() {
+            let err = Error::ContractCall(alloy::contract::Error::TransportError(
+                alloy::transports::TransportError::NullResp,
+            ));
+            assert!(!err.is_revert());
+        }
+
+        #[test]
+        fn settlement_contract_is_owner_is_not_revert() {
+            assert!(!Error::SettlementContractIsOwner.is_revert());
+        }
     }
 }
