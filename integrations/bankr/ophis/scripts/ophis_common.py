@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import socket
 import sys
 import urllib.request
 import urllib.error
@@ -128,9 +130,15 @@ def build_app_data(referral_code: str | None = None, is_stable_pair: bool = Fals
         "hooks": {},
     }
     if referral_code:
-        # /^[a-z0-9_-]{3,64}$/ (referral.ts). Optional — omitting it still yields a
-        # valid fee-bearing order, you just forgo the rebate.
-        metadata["ophisReferrer"] = {"code": referral_code.strip().lower()}
+        # Validate against the SDK grammar /^[a-z0-9_-]{3,64}$/ (referral.ts) and FAIL
+        # LOUDLY on a bad code — an unmatchable code would be silently written to
+        # appData, so the order settles but the referrer earns NO rebate (silent
+        # unattribution). Optional: omitting the code still yields a valid fee-bearing
+        # order, you just forgo the rebate.
+        code = referral_code.strip().lower()
+        if not re.match(r"^[a-z0-9_-]{3,64}$", code):
+            sys.exit(f"invalid referral code {referral_code!r}: must match [a-z0-9_-]{{3,64}}")
+        metadata["ophisReferrer"] = {"code": code}
     doc = {"appCode": "ophis", "metadata": metadata, "version": APP_DATA_VERSION}
     # Deterministic compact JSON (sorted keys), matching cow-sdk's stringify.
     full = json.dumps(doc, sort_keys=True, separators=(",", ":"))
@@ -168,19 +176,23 @@ def encode_set_presignature(order_uid_hex: str, signed: bool = True) -> str:
 
 
 # ── HTTP + Bankr Submit API ───────────────────────────────────────────────────
-def _http(method: str, url: str, body: dict | None = None, headers: dict | None = None) -> dict:
+def _http(method: str, url: str, body: dict | None = None, headers: dict | None = None,
+          timeout: int = 60) -> dict:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("content-type", "application/json")
     for k, v in (headers or {}).items():
         req.add_header(k, v)
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode()
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")
         sys.exit(f"{method} {url} -> HTTP {e.code}: {detail[:500]}")
+    except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+        # A DNS/connection/timeout failure must exit cleanly, not dump a traceback.
+        sys.exit(f"{method} {url} -> network error: {e}")
 
 
 def bankr_api_key() -> str:
@@ -213,8 +225,11 @@ def bankr_submit(key: str, chain_id: int, to: str, data: str, description: str, 
             "waitForConfirmation": True,
         },
         headers={"X-API-Key": key},
+        timeout=120,  # waitForConfirmation blocks on the tx being mined
     )
-    if not res.get("success"):
+    # Treat an explicit success flag OR a returned transactionHash as success (the
+    # exact success key is confirmed against a live /agent/submit response).
+    if not (res.get("success") or res.get("transactionHash")):
         sys.exit(f"Bankr submit failed ({description}): {json.dumps(res)[:400]}")
     return res
 
@@ -265,10 +280,15 @@ def post_order(chain_id: int, order: dict) -> str:
 
 def enroll_wallet(wallet: str) -> None:
     """Best-effort: register the wallet so the rebate indexer indexes its trades.
-    Idempotent GET /tier/{wallet}; never blocks the swap if it fails."""
+    Idempotent GET /tier/{wallet}. MUST NOT block or abort the swap — a rebate-
+    indexer outage (DNS/connection/timeout/non-2xx) is swallowed so the healthy
+    swap+fee path still proceeds. Uses a raw urllib call (not _http, which exits on
+    error) so every failure mode is caught here."""
     try:
-        _http("GET", f"{REBATE_INDEXER_URL}/tier/{wallet}")
-    except SystemExit:
+        req = urllib.request.Request(f"{REBATE_INDEXER_URL}/tier/{wallet}", method="GET")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp.read()
+    except Exception:
         pass
 
 

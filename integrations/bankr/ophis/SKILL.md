@@ -33,9 +33,9 @@ A CoW swap is an **off-chain signed order**, not a normal swap transaction. This
 
 1. **Quote** — ask the Ophis/CoW quote endpoint how much `buyToken` the user gets for their `sellToken` amount (or vice-versa). The quote also returns the fee and a `validTo`.
 2. **Build the order** — construct the CoW order with Ophis `appData` attached (this carries the Ophis integrator/partner fee + optional referral code; it is what routes the order through Ophis and credits the integrator).
-3. **Approve** — if the sell token is an ERC-20 and the CoW **VaultRelayer** doesn't yet have an allowance, submit an `approve(VaultRelayer, amount)` transaction **via the Bankr Submit API** (`POST /agent/submit`).
-4. **Authorize the order on-chain** — submit a `setPreSignature(orderUid, true)` transaction to the CoW **Settlement** contract **via the Bankr Submit API**. This is the "presign" signing scheme: it lets a wallet authorize a CoW order with an on-chain transaction instead of an EIP-712 signature — a clean fit for Bankr's transaction-submission model (no raw message-signing needed).
-5. **Post the order** — `POST` the order (with `signingScheme: "presign"`) to the CoW/Ophis orderbook. Solvers pick it up and settle it in the next batch.
+3. **Approve** — submit an `approve(VaultRelayer, amount)` transaction, sent to the ERC-20 **sell token** (spender = the CoW **VaultRelayer**), **via the Bankr Submit API** (`POST /agent/submit`).
+4. **Post the order** — `POST` the order (with `signingScheme: "presign"`, empty signature) to the CoW/Ophis orderbook, which returns the order **UID**.
+5. **Authorize the order on-chain** — submit a `setPreSignature(orderUid, true)` transaction to the CoW **Settlement** contract **via the Bankr Submit API**. This "presign" scheme authorizes the order with an on-chain transaction instead of an EIP-712 signature — a clean fit for Bankr's transaction-submission model (no raw message-signing needed). Once mined, solvers settle it in the next batch.
 6. **Track** — poll the order status / link the user to `explorer.cow.fi` for the fill.
 
 > Native-token (ETH) sells use CoW's eth-flow path instead of approve+presign. See `references/api.md`.

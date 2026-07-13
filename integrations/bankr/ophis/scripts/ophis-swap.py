@@ -46,9 +46,16 @@ def main() -> None:
     slippage_bps = int(sys.argv[7]) if len(sys.argv) > 7 else 50
     referral = sys.argv[8] if len(sys.argv) > 8 else None
 
-    if sell_token.lower() == ZERO or sell_token.lower().startswith("0xeeee"):
+    NATIVE = (ZERO, "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+    if sell_token.lower() in NATIVE:
         sys.exit("Native-token sells use CoW's eth-flow path (not this script). Sell WETH instead, "
                  "or see references/api.md for the eth-flow contract call.")
+    if buy_token.lower() in NATIVE:
+        sys.exit("Native-token buys aren't supported here (SDK is ERC-20↔ERC-20). Buy WETH and "
+                 "unwrap it yourself. See references/api.md.")
+    if not (0 <= slippage_bps <= 5000):
+        sys.exit("slippage_bps must be within [0, 5000] (0%..50%). A higher value floors the buy "
+                 "amount toward 0 = an accept-any-price order (max-sandwich risk).")
 
     sell_wei = oc.to_wei(amount, sell_dec)
     key = oc.bankr_api_key()
@@ -62,35 +69,44 @@ def main() -> None:
     full_app_data, app_hash = oc.build_app_data(referral_code=referral)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_wei, wallet, full_app_data, app_hash)
     quote_buy = int(quote.get("buyAmount", "0"))
+    # Echo the quote's amounts into the order (mirrors the SDK reference): sign the
+    # sellAmount/feeAmount the orderbook quoted, not the raw input, so the signed order
+    # matches what was priced. On modern CoW deployments feeAmount is 0 and sellAmount
+    # equals the input.
+    quote_sell = int(quote.get("sellAmount") or sell_wei)
     quote_fee = int(quote.get("feeAmount", "0"))
     valid_to = int(quote.get("validTo") or (int(time.time()) + 1200))
     if quote_buy <= 0:
         sys.exit(f"quote returned no buyAmount: {quote}")
 
-    # Slippage floor on the buy side.
+    # Slippage floor on the buy side. Refuse a zero floor (accept-any-price).
     min_buy = quote_buy * (10_000 - slippage_bps) // 10_000
+    if min_buy <= 0:
+        sys.exit("computed minimum buy amount is 0 — refusing an accept-any-price order.")
     print(f"Quote: ~{Decimal(quote_buy) / (Decimal(10) ** buy_dec)} buy token "
           f"(min after {slippage_bps}bps: {Decimal(min_buy) / (Decimal(10) ** buy_dec)})")
 
     # 3. Publish the full appData so solvers honor the partner fee for this hash.
     oc.put_app_data(chain_id, app_hash, full_app_data)
 
-    # 4. Approve the VaultRelayer for the sell amount (+ any quoted fee), via Bankr.
+    # 4. Approve the sell TOKEN so the VaultRelayer can pull it, via Bankr Submit.
+    # The transaction target is the ERC-20 sell token; the approve() spender is the
+    # relayer. (Sending approve() to the relayer itself would revert / grant nothing.)
     relayer = oc.vault_relayer(chain_id)
-    approve_amt = sell_wei + quote_fee
-    print("Approving VaultRelayer via Bankr Submit ...")
-    oc.bankr_submit(key, chain_id, relayer, oc.encode_approve(relayer, approve_amt),
-                    "Approve CoW VaultRelayer for Ophis swap")
+    approve_amt = quote_sell + quote_fee
+    print("Approving sell token -> VaultRelayer via Bankr Submit ...")
+    oc.bankr_submit(key, chain_id, sell_token, oc.encode_approve(relayer, approve_amt),
+                    "Approve sell token to CoW VaultRelayer for Ophis swap")
 
     # 5. Post the order with signingScheme=presign (empty signature; authorized on-chain next).
     order = {
         "sellToken": sell_token,
         "buyToken": buy_token,
         "receiver": wallet,
-        "sellAmount": str(sell_wei),
+        "sellAmount": str(quote_sell),
         "buyAmount": str(min_buy),
         "validTo": valid_to,
-        "feeAmount": "0",              # modern CoW/Ophis market order: fee is in appData + surplus
+        "feeAmount": str(quote_fee),   # echo the quote (0 on modern CoW; fee is in appData + surplus)
         "kind": "sell",
         "partiallyFillable": False,
         "sellTokenBalance": "erc20",
