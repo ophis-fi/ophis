@@ -10,8 +10,6 @@ import json
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.dirname(__file__))
 import ophis_core as oc  # noqa: E402
 import ophis_swap as t  # noqa: E402
@@ -72,13 +70,15 @@ def test_approve_revert_aborts(monkeypatch):
     assert res["ok"] is False and "reverted" in res["error"]
 
 
-def test_rejects_nonzero_fee(monkeypatch):
-    _base(monkeypatch, quote={**GOOD, "feeAmount": "7"})
+def test_accepts_fee_split_when_gross_matches(monkeypatch):
+    # A non-zero fee split out is fine as long as sellAmount + feeAmount == requested; the tool
+    # signs feeAmount 0 and the gross amount regardless.
+    _base(monkeypatch, quote={**GOOD, "sellAmount": "99999900", "feeAmount": "100"})
     res = json.loads(t.ophis_swap(USDC, WETH, "100"))
-    assert res["ok"] is False and "feeAmount" in res["error"]
+    assert res["ok"] is True and res["order_uid"] == UID
 
 
-def test_rejects_sellamount_drift(monkeypatch):
+def test_rejects_gross_mismatch(monkeypatch):
     _base(monkeypatch, quote={**GOOD, "sellAmount": "999"})
     res = json.loads(t.ophis_swap(USDC, WETH, "100"))
     assert res["ok"] is False and "!= requested" in res["error"]

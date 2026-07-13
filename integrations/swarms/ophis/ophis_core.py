@@ -24,6 +24,7 @@ ORDERBOOK_URLS = {
     42161: "https://api.cow.fi/arbitrum_one",
     43114: "https://api.cow.fi/avalanche",
     56:    "https://api.cow.fi/bnb",
+    9745:  "https://api.cow.fi/plasma",
     59144: "https://api.cow.fi/linea",
     57073: "https://api.cow.fi/ink",
     10:    "https://optimism-mainnet.ophis.fi",   # Ophis-sovereign
@@ -41,6 +42,7 @@ RPC_URLS = {
     8453:  "https://mainnet.base.org",
     42161: "https://arb1.arbitrum.io/rpc",
     43114: "https://api.avax.network/ext/bc/C/rpc",
+    9745:  "https://rpc.plasma.to",
     57073: "https://rpc-gel.inkonchain.com",
     59144: "https://rpc.linea.build",
 }
@@ -95,6 +97,7 @@ CHAIN_ALIASES = {
     "polygon": 137, "matic": 137, "base": 8453, "arbitrum": 42161, "arb": 42161,
     "avalanche": 43114, "avax": 43114, "bnb": 56, "bsc": 56, "binance": 56,
     "linea": 59144, "ink": 57073, "optimism": 10, "op": 10, "unichain": 130,
+    "plasma": 9745,
 }
 
 

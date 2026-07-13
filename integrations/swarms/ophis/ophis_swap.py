@@ -152,10 +152,13 @@ def ophis_swap(
             raise RuntimeError(f"quote sellToken {quote['sellToken']} != requested {sell}; refusing")
         if to_checksum_address(str(quote["buyToken"])) != buy:
             raise RuntimeError(f"quote buyToken {quote['buyToken']} != requested {buy}; refusing")
-        if quote_fee != 0:
-            raise RuntimeError(f"orderbook returned a non-zero feeAmount ({quote_fee}); Ophis orders must have feeAmount 0")
-        if quote_sell != sell_atomic:
-            raise RuntimeError(f"orderbook sellAmount ({quote_sell}) != requested ({sell_atomic}); refusing to sign a different amount")
+        # We ALWAYS sign feeAmount 0 (Ophis/CoW take the fee from surplus + the appData partner
+        # fee), so bind the GROSS (quote sellAmount + feeAmount) to the requested amount rather than
+        # rejecting a quote that split a non-zero fee out. An honest sell quote's gross equals the
+        # request exactly; any drift (over or under) means a bad/hostile quote.
+        gross = quote_sell + quote_fee
+        if gross != sell_atomic:
+            raise RuntimeError(f"quote gross (sellAmount+feeAmount = {gross}) != requested ({sell_atomic}); refusing to sign")
         if not (0 < quote_buy <= oc.MAX_UINT256):
             raise RuntimeError(f"quote buyAmount out of range (0, uint256]: {quote_buy}")
 
