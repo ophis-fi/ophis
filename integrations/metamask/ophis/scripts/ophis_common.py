@@ -203,11 +203,13 @@ def _http(method: str, url: str, body: dict | None = None, headers: dict | None 
         # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is scheme-guarded to https:// above and built from the fixed ORDERBOOK_URLS/RPC_URLS https map.
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode()
-            return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         sys.exit(f"{method} {url} -> HTTP {e.code}: {e.read().decode(errors='replace')[:500]}")
     except (urllib.error.URLError, TimeoutError) as e:
         sys.exit(f"{method} {url} -> network error: {e}")
+    # Single explicit return: the except branches sys.exit (NoReturn), so there is no implicit
+    # fall-through to None for a function typed -> dict.
+    return json.loads(raw) if raw else {}
 
 
 def get_quote(chain_id, sell_token, buy_token, sell_amount_atomic, from_addr, full_app_data, app_data_hash) -> dict:
