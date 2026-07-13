@@ -1,0 +1,16 @@
+{
+  "include": ["src"],
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "module": "esnext",
+    "lib": ["dom", "esnext"],
+    "target": "es2020",
+    "moduleResolution": "node",
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
