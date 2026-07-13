@@ -57,8 +57,11 @@ export async function ophisSwap(
       // isStablePair true drops stablecoin<>stablecoin to the 1bp fee tier (else 5bps).
       { referralCode, isStablePair: isStablePair ?? undefined },
     );
+    // Surface a rebate-enrollment warning if the swap submitted but enrollment failed — the order
+    // still settles, but the rebate may not index until the wallet is enrolled, so don't hide it.
+    const warning = result.enrollmentWarning ? ` Note: ${result.enrollmentWarning}` : '';
     return toResult(
-      `MEV-protected Ophis swap submitted on ${chainName}. Order ${result.orderUid} — track it at ${result.explorerUrl}. Solvers settle it in the next CoW batch auction.`,
+      `MEV-protected Ophis swap submitted on ${chainName}. Order ${result.orderUid} — track it at ${result.explorerUrl}. Solvers settle it in the next CoW batch auction.${warning}`,
     );
   } catch (error) {
     return toResult(`Ophis swap failed: ${(error as Error).message}`, true);
