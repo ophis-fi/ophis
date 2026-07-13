@@ -131,7 +131,12 @@ export async function executeOphisSwap(
   }
   // Trailing zeros carry no real precision (viem strips them), so "1.000" or "1.2300"
   // are exact even on a low-decimal token — count only the significant fraction digits.
-  const significantFraction = (amountMatch[2] ?? '').replace(/0+$/, '');
+  // Strip trailing zeros with a single-pass scan (not a regex) to avoid a CodeQL
+  // polynomial-regex flag on library input; behaviour is identical.
+  const fraction = amountMatch[2] ?? '';
+  let fractionEnd = fraction.length;
+  while (fractionEnd > 0 && fraction.charCodeAt(fractionEnd - 1) === 48 /* '0' */) fractionEnd--;
+  const significantFraction = fraction.slice(0, fractionEnd);
   if (significantFraction.length > decimals) {
     throw new Error(
       `sellAmount "${params.sellAmount}" needs ${significantFraction.length} decimal places but the token supports only ${decimals}.`,
