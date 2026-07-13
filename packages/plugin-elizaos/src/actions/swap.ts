@@ -38,7 +38,11 @@ export const ophisSwapAction: Action = {
     try {
       // 1. Extract the swap intent (elizaOS v1 XML pattern).
       const state = await runtime.composeState(message, ['RECENT_MESSAGES']);
+      const userText = String((message?.content?.text ?? '') as string);
       (state as Record<string, unknown>).supportedChains = SUPPORTED_CHAIN_NAMES.join(' | ');
+      // Structurally anchor extraction on THIS request (not just recent history), so a
+      // stale or injected earlier message can't supply the tokens/amount/chain.
+      (state as Record<string, unknown>).currentRequest = userText;
       const prompt = composePromptFromState({ state, template: swapTemplate });
       const xml = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
       const parsed = parseKeyValueXml(xml);
@@ -63,6 +67,20 @@ export const ophisSwapAction: Action = {
       }
 
       // 3. Resolve tokens to checksummed addresses (never guess — ask for the address).
+      // A raw 0x address is accepted ONLY if the user actually wrote it in this request
+      // — this structurally blocks a model-hallucinated-but-valid address from routing
+      // funds to the wrong token. Otherwise the token must be a known symbol resolved
+      // from the verified map.
+      const requireUserProvided = (raw: string, label: string) => {
+        const v = raw.trim();
+        if (/^0x[0-9a-fA-F]{40}$/.test(v) && !userText.toLowerCase().includes(v.toLowerCase())) {
+          throw new Error(
+            `The ${label} address ${v} was not in your request. Use a token symbol, or paste the exact address you intend to trade.`,
+          );
+        }
+      };
+      requireUserProvided(String(parsed.inputToken ?? ''), 'sell token');
+      requireUserProvided(String(parsed.outputToken ?? ''), 'buy token');
       const sellToken = resolveToken(String(parsed.inputToken ?? ''), resolved.id);
       const buyToken = resolveToken(String(parsed.outputToken ?? ''), resolved.id);
       const amount = String(parsed.amount ?? '').trim();
@@ -104,11 +122,21 @@ export const ophisSwapAction: Action = {
       );
 
       const text = `Submitted an MEV-protected swap on ${chainName} via Ophis. Order ${result.orderUid} — track it at ${result.explorerUrl}`;
-      callback?.({ text, content: { success: true, ...result } });
+      // The order is already submitted: a callback DELIVERY failure must NOT be reported
+      // as a swap failure (that could prompt a duplicate swap), so guard it separately.
+      try {
+        await callback?.({ text, content: { success: true, ...result } });
+      } catch {
+        /* callback delivery only — the swap succeeded regardless */
+      }
       return { success: true, text, data: { actionName: 'OPHIS_SWAP', ...result } };
     } catch (err) {
       const messageText = err instanceof Error ? err.message : String(err);
-      callback?.({ text: `The Ophis swap could not be completed: ${messageText}`, content: { success: false, error: messageText } });
+      try {
+        await callback?.({ text: `The Ophis swap could not be completed: ${messageText}`, content: { success: false, error: messageText } });
+      } catch {
+        /* never let a callback error escape the handler — always return an ActionResult */
+      }
       return { success: false, text: `Ophis swap failed: ${messageText}`, error: err instanceof Error ? err : new Error(messageText) };
     }
   },
@@ -120,7 +148,7 @@ export const ophisSwapAction: Action = {
         name: '{{agent}}',
         content: {
           text: 'Submitting an MEV-protected swap of 100 USDC → WETH on Base through Ophis…',
-          action: 'OPHIS_SWAP',
+          actions: ['OPHIS_SWAP'],
         },
       },
     ],
@@ -128,7 +156,7 @@ export const ophisSwapAction: Action = {
       { name: '{{user}}', content: { text: 'Sell 0.5 WETH for USDC on Unichain' } },
       {
         name: '{{agent}}',
-        content: { text: 'Routing 0.5 WETH → USDC on Unichain via Ophis (MEV-protected)…', action: 'OPHIS_SWAP' },
+        content: { text: 'Routing 0.5 WETH → USDC on Unichain via Ophis (MEV-protected)…', actions: ['OPHIS_SWAP'] },
       },
     ],
   ],

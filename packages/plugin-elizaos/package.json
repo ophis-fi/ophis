@@ -61,9 +61,8 @@
       },
       "OPHIS_FEE_CHAIN": {
         "type": "string",
-        "description": "Default chain when the user's request doesn't name one (e.g. optimism, base, unichain, arbitrum).",
+        "description": "OPTIONAL default chain for requests that don't name one (e.g. base, unichain, arbitrum). If UNSET, a swap request MUST name its chain — the plugin never silently picks one. No default is provided on purpose.",
         "required": false,
-        "default": "optimism",
         "sensitive": false
       }
     }

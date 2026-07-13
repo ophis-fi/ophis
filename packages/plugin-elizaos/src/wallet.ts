@@ -53,20 +53,31 @@ export function buildOphisWallet(runtime: IAgentRuntime, chainName: string): Oph
         functionName: 'allowance',
         args: [address, spender],
       })) as bigint;
-      if (current < minAtomicAmount) {
-        // Max approval to the CoW vault relayer (spender fixed by the swap core) so a
-        // repeat swap of the same token needs no further approval. Await the receipt
-        // so the subsequent order is fillable.
+      if (current >= minAtomicAmount) return;
+
+      const approve = async (value: bigint) => {
         const hash = await walletClient.writeContract({
           address: token,
           abi: erc20Abi,
           functionName: 'approve',
-          args: [spender, maxUint256],
+          args: [spender, value],
           account,
           chain: resolved.chain,
         });
-        await publicClient.waitForTransactionReceipt({ hash });
-      }
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        // A reverted approval must NOT proceed — otherwise we'd submit an unfillable
+        // order against a still-insufficient allowance.
+        if (receipt.status !== 'success') {
+          throw new Error(`ERC-20 approve reverted (tx ${hash}) for ${token}; aborting the swap.`);
+        }
+      };
+
+      // Some tokens (e.g. Ethereum USDT) revert on a non-zero -> non-zero approve, so
+      // reset an existing insufficient allowance to 0 first. Then set the max approval
+      // (the spender is the CoW vault relayer, fixed by the swap core), so repeat swaps
+      // of the same token need no further approval.
+      if (current > 0n) await approve(0n);
+      await approve(maxUint256);
     },
     signTypedData: async (data: OphisTypedData) => {
       // The EOA signs the CoW order directly (EIP-712). OphisTypedData is a loose

@@ -41,7 +41,12 @@ Ethereum, Optimism, BNB, Gnosis, **Unichain**, Polygon, Base, Ink, Arbitrum, Ava
 
 Common tokens (USDC, WETH, …) resolve by symbol on the major chains; for anything else, ask by **contract address** (`0x…`). Native ETH is not supported — swap WETH and unwrap. The plugin never guesses a token address.
 
-**Token trust:** the order receiver is pinned to the agent's own wallet, so proceeds can never be diverted to a third party. But — as with any autonomous swap tool — the plugin executes against whatever `buyToken` the model resolves; if the agent's inputs (or injected content) point `buyToken` at a worthless/honeypot token, the agent will sell into it. Constrain the agent's inputs accordingly, or restrict it to the symbol map.
+**Trust model (autonomous NL agent).** The swap intent (chain, tokens, amount) is extracted by the model from the user's request, so it inherits the usual bounds — and hardening — of an autonomous agent:
+
+- **Receiver is pinned to the agent's own wallet** — proceeds can never be diverted to a third party.
+- **Raw `0x` token addresses are accepted only if they appear verbatim in the user's request** — a model-hallucinated-but-valid address can't route funds to the wrong token.
+- **Symbols resolve only through a verified canonical map**; chains are restricted to the Ophis-supported set; extraction is anchored on the *current* request (embedded/older-message instructions are ignored); slippage is floored (no accept-any-price).
+- **Residual, by design:** within those bounds the model still chooses the chain / canonical token / amount, so a misinterpretation could pick a *supported-but-unintended* one. Constrain the agent's inputs accordingly for high-value or shared-room deployments.
 
 ## Notes
 
