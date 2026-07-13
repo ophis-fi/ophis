@@ -28,6 +28,24 @@ vi.mock('@cowprotocol/app-data', () => ({
   },
   stringifyDeterministic: async () => '{}',
 }));
+// Mock @ophis/sdk so the binding tests, which proceed past the input guards, never touch the live
+// rebate indexer (enrollOphisTrader) or any real network — keeps the suite deterministic in CI.
+vi.mock('@ophis/sdk', () => ({
+  isOphisFeeChain: (id: number) => id === 1,
+  enrollOphisTrader: async () => {},
+  buildOphisOrderMetadata: () => ({}),
+  getOphisOrderbookUrl: () => 'https://orderbook.test',
+  getOphisVaultRelayer: () => '0x2222222222222222222222222222222222222222',
+  getOphisOrderDomain: () => ({
+    name: 'Gnosis Protocol',
+    version: 'v2',
+    chainId: 1,
+    verifyingContract: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
+  }),
+  ophisOrderReceiver: (owner: string) => owner,
+  assertReceiverIsOwner: () => {},
+  buildOphisOrderCreation: (x: unknown) => x,
+}));
 
 const { executeOphisSwap } = await import('../src/swap.js');
 
@@ -149,12 +167,19 @@ describe('executeOphisSwap quote<->request binding (defense against a malicious/
     ).rejects.toThrow(/buyToken.*refusing to sign/i);
   });
 
-  it('refuses to sign when the gross pull (sellAmount + feeAmount) exceeds the requested amount', async () => {
+  it('refuses to sign when the gross (sellAmount + feeAmount) exceeds the requested amount', async () => {
     // Honest sum is 1e18; inflate the fee by 1 wei so the wallet would approve/sign more than asked.
     hoisted.quote = { ...honest, sellAmount: '1000000000000000000', feeAmount: '1' };
     await expect(
       executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
-    ).rejects.toThrow(/exceeds requested.*refusing to sign/i);
+    ).rejects.toThrow(/!= requested.*refusing to sign/i);
+  });
+
+  it('refuses to sign when the gross is LESS than requested (under-pull: sells less than asked)', async () => {
+    hoisted.quote = { ...honest, sellAmount: '900000000000000000', feeAmount: '5000000000000000' }; // 0.905e18 < 1e18
+    await expect(
+      executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
+    ).rejects.toThrow(/!= requested.*refusing to sign/i);
   });
 
   it('refuses to sign a zero-proceeds order (tiny buyAmount rounds the buy floor to 0)', async () => {

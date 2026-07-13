@@ -175,15 +175,20 @@ export async function executeOphisSwap(
   // Assemble the order to sign. appData = the bytes32 HASH (this is what is signed). Slippage lowers
   // the buyAmount so the quoted price is a floor, not an exact requirement.
   const minBuyAmount = applySlippage(BigInt(String(q.buyAmount)), slippageBps).toString();
+  // The order sells the GROSS amount with a signed feeAmount of 0: Ophis/CoW orders take the fee from
+  // surplus + the appData partner fee, never a signed feeAmount (a non-zero one is unslipped extra
+  // spend and the orderbook rejects it — see apps/mcp-server assertion). For a sell quote CoW splits
+  // sellAmountBeforeFee into (sellAmount NET, feeAmount); their sum is the gross the caller asked for.
+  const grossSell = BigInt(String(q.sellAmount)) + BigInt(String(q.feeAmount));
   const order = {
     sellToken: toChecksum(String(q.sellToken)),
     buyToken: toChecksum(String(q.buyToken)),
     receiver,
-    sellAmount: String(q.sellAmount),
+    sellAmount: grossSell.toString(),
     buyAmount: minBuyAmount,
     validTo: Math.floor(Date.now() / 1000) + ORDER_TTL_SECONDS,
     appData: appDataHash,
-    feeAmount: String(q.feeAmount),
+    feeAmount: '0',
     kind: 'sell',
     partiallyFillable: false,
     sellTokenBalance: 'erc20',
@@ -192,19 +197,18 @@ export async function executeOphisSwap(
   assertReceiverIsOwner(owner, receiver); // drain guard: the receiver must be the owner
 
   // Bind the signed order back to the REQUEST. The orderbook host is trusted for pricing, but the
-  // fields the wallet approves + signs must not be able to drift from what the caller asked for: a
-  // compromised/malicious quote must not substitute tokens or inflate the amount pulled. Tokens must
-  // match exactly (both already checksummed), and the gross pull (sellAmount + feeAmount) must not
-  // exceed the requested sell amount — CoW deducts the fee from sellAmountBeforeFee, so the honest
-  // sum equals sellAmountAtomic; anything larger means the quote is trying to pull more than asked.
-  const grossPull = BigInt(order.sellAmount) + BigInt(order.feeAmount);
+  // fields the wallet approves + signs must not drift from what the caller asked for: a compromised
+  // quote must not substitute tokens or change the amount pulled. Tokens must match exactly (both
+  // already checksummed), and the gross (quote sellAmount + feeAmount) must EQUAL the requested
+  // amount — an honest CoW sell quote splits sellAmountBeforeFee exactly, so any drift up (over-pull)
+  // or down (selling less than asked while reporting the full amount) means a bad/hostile quote.
   if (order.sellToken !== sellToken)
     throw new Error(`quote sellToken ${order.sellToken} != requested ${sellToken}; refusing to sign`);
   if (order.buyToken !== buyToken)
     throw new Error(`quote buyToken ${order.buyToken} != requested ${buyToken}; refusing to sign`);
-  if (grossPull > sellAmountAtomic)
+  if (grossSell !== sellAmountAtomic)
     throw new Error(
-      `quote gross pull ${grossPull} (sellAmount+feeAmount) exceeds requested ${sellAmountAtomic}; refusing to sign`,
+      `quote gross (sellAmount+feeAmount = ${grossSell}) != requested ${sellAmountAtomic}; refusing to sign`,
     );
   // A quote can only be trusted for pricing so far: reject a buy floor of 0 outright. At buyAmount=1
   // (or any tiny value) slippage rounds minBuyAmount to 0 — an order that would sell the full input
@@ -213,9 +217,10 @@ export async function executeOphisSwap(
   if (BigInt(order.buyAmount) <= 0n)
     throw new Error(`quote buy floor is 0 (buyAmount too low: ${String(q.buyAmount)}); refusing to sign a zero-proceeds order`);
 
-  // Approve the OPHIS vault relayer for what settlement pulls (sellAmount NET + feeAmount = the gross).
+  // Approve the OPHIS vault relayer for what settlement pulls: the signed sellAmount (the gross; the
+  // signed feeAmount is 0, so sellAmount + feeAmount = grossSell).
   const relayer = getOphisVaultRelayer(chainId);
-  await wallet.ensureErc20Allowance(sellToken, relayer, grossPull);
+  await wallet.ensureErc20Allowance(sellToken, relayer, grossSell);
 
   // Sign the order EIP-712 with the agent's EOA wallet (NOT presign — that is the smart-wallet path).
   const signature = await wallet.signTypedData({
