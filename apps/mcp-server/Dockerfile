@@ -31,8 +31,9 @@ FROM node:24-alpine AS runtime
 WORKDIR /app
 RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
 ENV NODE_ENV=production
-COPY --from=build /app /app
+COPY --from=build --chown=node:node /app /app
 WORKDIR /app/apps/mcp-server
+USER node
 # No EXPOSE: the server speaks MCP over stdio, not HTTP. tini reaps the tsx/node
 # child cleanly. Run via `docker run -i` so stdin/stdout carry the MCP channel.
 ENTRYPOINT ["tini","--"]

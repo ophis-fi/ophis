@@ -12,14 +12,17 @@
  * API is itself keyless and public.
  *
  * Mirrors the security posture of functions/api/intent.ts: origin allow-list,
- * per-IP KV rate limit (isolate fallback), bounded upstream timeout, generic
+ * per-IP Cloudflare Rate Limiting binding (isolate fallback), bounded upstream timeout, generic
  * errors, no-store.
  */
 
+interface RateLimitBinding {
+  limit(input: { key: string }): Promise<{ success: boolean }>
+}
+
 interface Env {
-  // Shared KV namespace `OPHIS_RATELIMIT` (same binding intent.ts uses). When
-  // unbound (local wrangler dev), the limiter falls back to an in-isolate Map.
-  OPHIS_RATELIMIT?: KVNamespace
+  /** Cloudflare Rate Limiting binding for authoritative per-IP admission. */
+  OPHIS_BEAT_MARKET_RATE_LIMITER?: RateLimitBinding
 }
 
 type ErrorCode = 'BAD_INPUT' | 'UNSUPPORTED' | 'UPSTREAM' | 'TIMEOUT' | 'RATE_LIMITED' | 'FORBIDDEN'
@@ -69,32 +72,6 @@ const json = (body: BeatMarketResponse, status = 200, extraHeaders: Record<strin
     },
   })
 
-async function checkRateLimitKV(
-  kv: KVNamespace,
-  ip: string,
-): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
-  const now = Date.now()
-  const cutoff = now - RATE_LIMIT_WINDOW_MS
-  const key = `rl-bm:${ip}`
-  const raw = await kv.get(key)
-  let timestamps: number[] = []
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (Array.isArray(parsed)) timestamps = parsed.filter((t): t is number => typeof t === 'number' && t >= cutoff)
-    } catch {
-      // bad value — treat as empty.
-    }
-  }
-  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfterSec = Math.max(1, Math.ceil((timestamps[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
-    return { ok: false, retryAfterSec }
-  }
-  timestamps.push(now)
-  await kv.put(key, JSON.stringify(timestamps), { expirationTtl: 120 })
-  return { ok: true }
-}
-
 function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS
@@ -112,9 +89,10 @@ function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAft
 }
 
 async function checkRateLimit(env: Env, ip: string): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
-  if (env.OPHIS_RATELIMIT) {
+  if (env.OPHIS_BEAT_MARKET_RATE_LIMITER) {
     try {
-      return await checkRateLimitKV(env.OPHIS_RATELIMIT, ip)
+      const result = await env.OPHIS_BEAT_MARKET_RATE_LIMITER.limit({ key: ip })
+      return result.success ? { ok: true } : { ok: false, retryAfterSec: 60 }
     } catch {
       return checkRateLimitIsolate(ip)
     }

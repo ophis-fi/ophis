@@ -26,9 +26,8 @@
  *     POSTs; a present-but-unrecognized Origin is rejected. (Absent Origin —
  *     same-origin GETs, curl — passes, like /api/intent; the rate limit is the
  *     backstop for non-browser callers.)
- *   - Per-IP rate limit: KV-backed sliding window (OPHIS_RATELIMIT, shared
- *     namespace with /api/intent under a distinct key prefix), per-isolate
- *     in-memory fallback when KV is unbound/unavailable.
+ *   - Per-IP rate limit: Rate-Limiting-binding-backed admission with a per-isolate
+ *     in-memory fallback for local development.
  *
  * Routing: CF Pages catch-all. /api/bungee/<rest> -> ${BUNGEE_BACKEND}/<rest>,
  * method + query + body forwarded verbatim.
@@ -46,13 +45,17 @@
  *   5. A live bridge-quote test confirming the fee accrues to the Safe.
  */
 
+interface RateLimitBinding {
+  limit(input: { key: string }): Promise<{ success: boolean }>
+}
+
 interface Env {
   /** Bungee dedicated-integrator API key (Cloudflare Pages runtime secret). */
   BUNGEE_API?: string
   /** Upstream Bungee host override. Default = the dedicated backend. */
   BUNGEE_BACKEND?: string
-  /** KV namespace shared with /api/intent — distributed per-IP rate limit. */
-  OPHIS_RATELIMIT?: KVNamespace
+  /** Cloudflare Rate Limiting binding for authoritative per-IP admission. */
+  OPHIS_BUNGEE_RATE_LIMITER?: RateLimitBinding
 }
 
 // Bungee's dedicated-integrator host (confirmed in their API-access docs). The
@@ -105,32 +108,9 @@ function isAllowedOrigin(origin: string): boolean {
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 120
 const RATE_LIMIT_MAX_KEYS = 1024
-// Distinct prefix so entries never collide with /api/intent's `rl:` keys in
-// the shared OPHIS_RATELIMIT namespace.
+// Prefix used only by the local in-isolate fallback Map. Production admission
+// uses OPHIS_BUNGEE_RATE_LIMITER instead.
 const RATE_LIMIT_KEY_PREFIX = 'bungee:rl:'
-
-async function checkRateLimitKV(kv: KVNamespace, ip: string): Promise<boolean> {
-  const now = Date.now()
-  const cutoff = now - RATE_LIMIT_WINDOW_MS
-  const key = `${RATE_LIMIT_KEY_PREFIX}${ip}`
-  const raw = await kv.get(key)
-  let timestamps: number[] = []
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) timestamps = parsed.filter((t) => typeof t === 'number' && t > cutoff)
-    } catch {
-      timestamps = []
-    }
-  }
-  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) return false
-  timestamps.push(now)
-  await kv.put(key, JSON.stringify(timestamps), { expirationTtl: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000) * 2 })
-  return true
-}
-
-// Per-isolate fallback (KV unbound or erroring): coarse but better than open.
-const isolateHits = new Map<string, number[]>()
 
 function checkRateLimitIsolate(ip: string): boolean {
   const now = Date.now()
@@ -147,9 +127,10 @@ function checkRateLimitIsolate(ip: string): boolean {
 }
 
 async function checkRateLimit(env: Env, ip: string): Promise<boolean> {
-  if (env.OPHIS_RATELIMIT) {
+  if (env.OPHIS_BUNGEE_RATE_LIMITER) {
     try {
-      return await checkRateLimitKV(env.OPHIS_RATELIMIT, ip)
+      const result = await env.OPHIS_BUNGEE_RATE_LIMITER.limit({ key: ip })
+      return result.success
     } catch {
       return checkRateLimitIsolate(ip)
     }

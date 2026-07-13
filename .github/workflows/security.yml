@@ -9,7 +9,7 @@ name: Security
 # repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
 # WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
-# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend) plus the
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, contracts-yarn-audit) plus the
 # secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
 # tier / erpc / policy-pack) and Slither depend only on repo contents a PR
 # already exercised, so they are skipped on schedule via
@@ -19,6 +19,7 @@ name: Security
 #   - slither             Solidity static analysis (Trail of Bits)
 #   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree)
 #   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories
+#   - contracts-yarn-audit legacy contracts deploy/test toolchain advisories
 #   - cargo-audit         Rust dep advisories
 #   - cargo-deny          Rust supply-chain (advisories + sources)
 #   - gitleaks            raw EVM-private-key secret scan
@@ -100,6 +101,16 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Check tiers.ts mirror across rebate-indexer + packages/sdk + cowswap-frontend
         run: ./scripts/check-tier-invariant.sh
+
+
+  infra-compose-security:
+    name: Infra compose security invariants
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check auth parity and pinned RPC proxy image requirements
+        run: ./scripts/check-infra-compose-security.py
 
   erpc-id-collisions:
     name: eRPC upstream-ID cross-stack collision lint
@@ -239,6 +250,31 @@ jobs:
           name: slither-${{ github.sha }}
           path: /tmp/slither-out/
           retention-days: 30
+
+
+  contracts-yarn-audit:
+    name: yarn audit (contracts legacy toolchain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: contracts/yarn.lock
+
+      - name: Install contracts dependencies
+        working-directory: contracts
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Run contracts yarn audit
+        working-directory: contracts
+        run: |
+          yarn audit --json > /tmp/contracts-yarn-audit.jsonl || true
+          cat /tmp/contracts-yarn-audit.jsonl
+
+      - name: Block audit regressions above documented baseline
+        run: scripts/contracts-audit-gate.py /tmp/contracts-yarn-audit.jsonl audit/contracts-yarn-audit-baseline.json
 
   pnpm-audit:
     name: pnpm audit (JS/TS deps)

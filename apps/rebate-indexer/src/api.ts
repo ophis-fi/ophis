@@ -214,6 +214,43 @@ function assertAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
 //
 // The 172.16.0.0/12 range is RFC 1918 private; in a non-Docker deploy it
 // is inert because no public peer will originate from that range.
+
+function enrollmentQueueMax(): number {
+  const raw = process.env.REBATE_ENROLLMENT_QUEUE_MAX?.trim();
+  if (!raw) return 5_000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`REBATE_ENROLLMENT_QUEUE_MAX must be a non-negative integer; got "${raw}"`);
+  }
+  return parsed;
+}
+
+async function admitTrackedWallet(rawWallet: `0x${string}`): Promise<boolean> {
+  const maxQueued = enrollmentQueueMax();
+  const rows = await sql<{ accepted: boolean }[]>`
+    WITH candidate AS (
+      SELECT decode(${rawWallet.slice(2)}, 'hex') AS wallet
+    ), existing AS (
+      SELECT 1 FROM tracked_wallets tw WHERE tw.wallet = (SELECT wallet FROM candidate)
+    ), queue AS (
+      SELECT COUNT(*)::int AS queued
+      FROM tracked_wallets tw
+      WHERE tw.last_fetched IS NULL
+        AND tw.last_attempt_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM trades t WHERE t.wallet = tw.wallet)
+    ), inserted AS (
+      INSERT INTO tracked_wallets (wallet)
+      SELECT wallet FROM candidate
+      WHERE EXISTS (SELECT 1 FROM existing)
+         OR (SELECT queued FROM queue) < ${maxQueued}
+      ON CONFLICT (wallet) DO NOTHING
+      RETURNING 1
+    )
+    SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted
+  `;
+  return rows[0]?.accepted !== false;
+}
+
 function isTrustedProxyPeer(addr: string): boolean {
   if (!addr) return false;
   // Loopback IPv4 + IPv6
@@ -425,13 +462,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
     // Register the wallet so the fetcher backfills its Ophis trades on the next
-    // run. Cheap idempotent upsert, no outbound calls — the heavy CoW fetching
-    // happens in runFetcher, not on this request path (keeps /tier fast + no
-    // amplification DoS surface).
-    await sql`
-      INSERT INTO tracked_wallets (wallet) VALUES (decode(${raw.slice(2)}, 'hex'))
-      ON CONFLICT (wallet) DO NOTHING
-    `;
+    // run. Admission is globally bounded so unauthenticated public reads cannot
+    // fill an unbounded never-fetched backlog ahead of later legitimate users.
+    if (!(await admitTrackedWallet(raw as `0x${string}`))) {
+      return reply.code(429).send({ error: 'rebate enrollment queue is full; place an Ophis order or retry later' });
+    }
     const status = await getWalletStatus(raw as `0x${string}`);
 
     // Content negotiation (review item #17): a BROWSER navigating here (e.g.
@@ -947,15 +982,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   }, async (req, reply) => {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    // Enroll like /tier, but behind the same global admission cap so Rewards
+    // page traffic cannot create an unbounded never-fetched backlog.
+    if (!(await admitTrackedWallet(raw as `0x${string}`))) {
+      return reply.code(429).send({ error: 'rebate enrollment queue is full; place an Ophis order or retry later' });
+    }
     const walletBuf = Buffer.from(raw.slice(2), 'hex');
-    // Enroll like /tier: the fetcher only indexes tracked_wallets, so a wallet
-    // whose first touchpoint is the Rewards page would otherwise read 0 XP
-    // forever. Same cheap idempotent upsert, no outbound calls (Codex
-    // post-merge review).
-    await sql`
-      INSERT INTO tracked_wallets (wallet) VALUES (${walletBuf})
-      ON CONFLICT (wallet) DO NOTHING
-    `;
     const chainIds = [...PRODUCTION_CHAIN_IDS];
     const rows = await sql<{ vol: string }[]>`
       SELECT COALESCE(SUM(value_usd), 0)::text AS vol

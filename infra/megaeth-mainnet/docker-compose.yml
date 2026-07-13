@@ -57,6 +57,7 @@ services:
       DB_READ_URL: ${DB_READ_URL}
       ETH_RPC_URL: ${MEGAETH_MAINNET_RPC}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/megaeth-mainnet/.env}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
@@ -91,6 +92,7 @@ services:
       DB_READ_URL: ${DB_READ_URL}
       ETH_RPC_URL: ${MEGAETH_MAINNET_RPC}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/megaeth-mainnet/.env}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -112,6 +114,7 @@ services:
       ETHRPC: ${MEGAETH_MAINNET_RPC}
       ADDR: 0.0.0.0:80
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
       # Tier 1 PK isolation (2026-05-18): PK *source* is now
       # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).
       # The rendered driver.toml stays here in ./rendered/ because colima's
