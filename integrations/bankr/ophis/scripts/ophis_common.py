@@ -178,12 +178,15 @@ def encode_set_presignature(order_uid_hex: str, signed: bool = True) -> str:
 # ── HTTP + Bankr Submit API ───────────────────────────────────────────────────
 def _http(method: str, url: str, body: dict | None = None, headers: dict | None = None,
           timeout: int = 60) -> dict:
+    if not url.lower().startswith("https://"):
+        sys.exit(f"refusing non-HTTPS URL: {url}")  # block file://, http://, etc.
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("content-type", "application/json")
     for k, v in (headers or {}).items():
         req.add_header(k, v)
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is scheme-guarded to https:// above and built from the fixed ORDERBOOK_URLS/BANKR_API https maps.
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode()
             return json.loads(raw) if raw else {}
@@ -295,8 +298,11 @@ def enroll_wallet(wallet: str) -> None:
     indexer outage (DNS/connection/timeout/non-2xx) is swallowed so the healthy
     swap+fee path still proceeds. Uses a raw urllib call (not _http, which exits on
     error) so every failure mode is caught here."""
+    if not re.match(r"^0x[0-9a-fA-F]{40}$", wallet or ""):
+        return  # only a validated 0x-address goes into the URL path
     try:
         req = urllib.request.Request(f"{REBATE_INDEXER_URL}/tier/{wallet}", method="GET")
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- fixed https REBATE_INDEXER_URL + a validated 0x-address path segment.
         with urllib.request.urlopen(req, timeout=15) as resp:
             resp.read()
     except Exception:
