@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "@heyanon/sdk": "2.3.1",
-    "@ophis/agent-swap": "^0.1.0",
+    "@ophis/agent-swap": "^0.2.0",
     "viem": "^2.21.0"
   }
 }

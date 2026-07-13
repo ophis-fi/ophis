@@ -11,10 +11,11 @@ interface Props {
   buyToken: string;
   sellAmount: string;
   slippageBps: number | null;
-  // The referral code is a caller-visible arg here: HeyAnon adapters have no deploy-time
-  // config channel, so the integrator pins/constrains it in their agent config. It only
-  // controls rebate ATTRIBUTION (rides in appData) — not user funds; receiver stays owner.
-  referralCode: string;
+  // Optional referral code (caller-visible arg — HeyAnon adapters have no deploy-time config
+  // channel, so an integrator pins it in their agent config). It only controls rebate
+  // ATTRIBUTION (rides in appData) — not user funds; receiver stays owner. Omit it and the
+  // swap still settles (from @ophis/agent-swap 0.2.0 the core warns once instead of throwing).
+  referralCode: string | null;
   isStablePair: boolean | null;
 }
 
@@ -29,11 +30,6 @@ export async function ophisSwap(
 ): Promise<FunctionReturn> {
   const { evm, notify } = options;
   if (!evm) return toResult('An EVM wallet is required for Ophis swaps.', true);
-  // @ophis/agent-swap requires a referral code (it carries the rebate) and THROWS on an
-  // empty one, so reject early with a clean message instead of an opaque core error.
-  if (!referralCode?.trim()) {
-    return toResult('An Ophis referral code is required — it carries the rebate attribution.', true);
-  }
   // Ophis/CoW orders are EIP-712-signed. This HeyAnon runtime must expose typed-data
   // signing (optional in the SDK). If absent, a presign build would be needed.
   if (typeof evm.signTypedDatas !== 'function') {
@@ -55,7 +51,8 @@ export async function ophisSwap(
       wallet,
       { sellToken, buyToken, sellAmount, slippageBps: slippageBps ?? undefined },
       // isStablePair true drops stablecoin<>stablecoin to the 1bp fee tier (else 5bps).
-      { referralCode, isStablePair: isStablePair ?? undefined },
+      // Pass referralCode only when non-empty; the 0.2.0 core treats its absence as "no rebate".
+      { ...(referralCode?.trim() ? { referralCode: referralCode.trim() } : {}), isStablePair: isStablePair ?? undefined },
     );
     // Surface a rebate-enrollment warning if the swap submitted but enrollment failed — the order
     // still settles, but the rebate may not index until the wallet is enrolled, so don't hide it.

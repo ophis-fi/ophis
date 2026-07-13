@@ -19,7 +19,7 @@ export const tools: AdapterExport['tools'] = [
           buyToken: { type: 'string', description: 'ERC-20 buy token contract address (0x…)' },
           sellAmount: { type: 'string', description: 'Amount of sellToken in WHOLE units, e.g. "1.5"' },
           slippageBps: { type: ['number', 'null'], description: 'Max slippage in basis points (0-5000); null for the 0.5% default' },
-          referralCode: { type: 'string', description: 'Ophis referral code that carries the rebate attribution (required by the swap core)' },
+          referralCode: { type: ['string', 'null'], description: 'Optional Ophis referral code that carries the rebate attribution; null if none' },
           isStablePair: { type: ['boolean', 'null'], description: 'true only when BOTH tokens are stablecoins, to apply the 1bp stable fee tier; null otherwise' },
         },
         required: ['chainName', 'sellToken', 'buyToken', 'sellAmount', 'slippageBps', 'referralCode', 'isStablePair'],
