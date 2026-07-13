@@ -227,9 +227,15 @@ def bankr_submit(key: str, chain_id: int, to: str, data: str, description: str, 
         headers={"X-API-Key": key},
         timeout=120,  # waitForConfirmation blocks on the tx being mined
     )
-    # Treat an explicit success flag OR a returned transactionHash as success (the
-    # exact success key is confirmed against a live /agent/submit response).
-    if not (res.get("success") or res.get("transactionHash")):
+    # With waitForConfirmation, a mined-but-REVERTED tx can still come back with a hash, so a hash
+    # alone is not success (a reverted approval or setPreSignature would otherwise be reported as
+    # OK and the order printed as fillable). Reject an explicit failure/revert status first, then
+    # require a success flag or a confirmed status.
+    status = str(res.get("status") or res.get("state") or "").lower()
+    if status in ("reverted", "failed", "failure", "error", "dropped"):
+        sys.exit(f"Bankr submit reverted/failed ({description}, status={status!r}): {json.dumps(res)[:400]}")
+    ok = res.get("success") is True or status in ("confirmed", "success", "mined", "ok") or bool(res.get("transactionHash"))
+    if not ok:
         sys.exit(f"Bankr submit failed ({description}): {json.dumps(res)[:400]}")
     return res
 
@@ -249,9 +255,14 @@ def get_quote(chain_id: int, sell_token: str, buy_token: str, sell_amount_wei: i
         "sellTokenBalance": "erc20",
         "buyTokenBalance": "erc20",
         "priceQuality": "optimal",
-        "signingScheme": "eip712",   # pricing only; the order below uses presign
+        # The order is submitted with signingScheme presign, so quote with the same scheme — CoW
+        # treats the requested scheme as part of the returned order shape/UID expectations.
+        "signingScheme": "presign",
         "onchainOrder": False,
-        "appData": full_app_data,
+        # Send the appData HASH (not the full JSON) to the quote: CoW's strict app-data schema
+        # rejects the Ophis-only ophisReferrer key, so an inline full doc 400s a referral'd quote.
+        # The full string is only PUT + submitted (those paths accept the extension).
+        "appData": app_data_hash,
         "appDataHash": app_data_hash,
         "validFor": 1200,
     }
@@ -289,6 +300,8 @@ def enroll_wallet(wallet: str) -> None:
         with urllib.request.urlopen(req, timeout=15) as resp:
             resp.read()
     except Exception:
+        # Best-effort + non-blocking by design (see docstring): every failure mode of the
+        # rebate-indexer GET is swallowed so a swap never aborts on an enrollment hiccup.
         pass
 
 
