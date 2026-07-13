@@ -10,14 +10,20 @@
  * See docs/development/specs/2026-05-08-ophis-intent-input-design.md.
  */
 
+interface RateLimitBinding {
+  limit(input: { key: string }): Promise<{ success: boolean }>
+}
+
 interface Env {
   LIBERTAI_API_KEY: string
-  // KV namespace `OPHIS_RATELIMIT` — distributed rate-limit counter,
-  // bound to this Pages project at the production env level. See
-  // docs/development/specs/2026-05-08-ophis-intent-input-design.md.
-  // If unbound (e.g. during local wrangler dev without the binding),
-  // the rate limiter falls back to an in-isolate Map (best-effort).
+  // KV namespace used ONLY for the intent response cache. Rate limiting must
+  // not use KV read/modify/write because KV is eventually consistent and not
+  // atomic under burst concurrency.
   OPHIS_RATELIMIT?: KVNamespace
+  // Cloudflare Rate Limiting bindings. Production should bind both; local
+  // wrangler/dev falls back to a per-isolate limiter.
+  OPHIS_INTENT_RATE_LIMITER?: RateLimitBinding
+  OPHIS_INTENT_GLOBAL_RATE_LIMITER?: RateLimitBinding
 }
 
 type EntityType = 'sellToken' | 'buyToken' | 'amount' | 'chain'
@@ -80,49 +86,22 @@ async function sha256Hex(input: string): Promise<string> {
     .join('')
 }
 
-// Rate limit (per IP, sliding window). Primary path: a KV-backed
-// counter (`env.OPHIS_RATELIMIT`) with N distinct strongly-consistent
-// reads — works across all CF isolates and edge POPs. Fallback path:
-// an in-isolate Map (per-isolate, near-useless on Pages Functions
-// because each request often gets a fresh isolate, but kept so the
-// function still imposes *some* cap if the binding ever drops).
+// Rate limit (per IP). Production uses Cloudflare's Rate Limiting binding so
+// admission is authoritative at the edge; local/dev falls back to an in-isolate
+// Map so wrangler tests still have a best-effort cap without KV.
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 30
 const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate (fallback path)
 const ipBuckets = new Map<string, number[]>()
 
-// Global BEST-EFFORT backstop on LibertAI CALLS (not requests): a coarse signal
-// that bounds total upstream LLM calls/min across ALL IPs, catching a
-// distributed flood (many IPs each under the per-IP cap). NOT a hard ceiling:
-// KV has no atomic increment, so concurrent cache-miss requests can read the
-// same value and all pass (under-count under burst). The AUTHORITATIVE flood
-// cap is the Cloudflare edge Rate-Limiting rule on /api/intent (atomic, enforced
-// before this function even runs): block at >20 req / 10s / colo per IP. That
-// rule's exact config + how to verify/reapply it is documented in
-// docs/operations/api-intent-rate-limit.md (the repo source of truth). This
-// in-function counter is defense-in-depth for the common case and a fallback if
-// the edge rule is ever removed. Counts only cache-MISS calls (a cache hit makes
-// no LibertAI call).
-const GLOBAL_LLM_CALLS_PER_MIN = 600
-const GLOBAL_RL_KEY_PREFIX = 'grl:'
-
-async function checkGlobalLlmBudget(kv: KVNamespace): Promise<boolean> {
-  const minuteBucket = Math.floor(Date.now() / 60_000)
-  const key = `${GLOBAL_RL_KEY_PREFIX}${minuteBucket}`
-  let count = 0
-  try {
-    const raw = await kv.get(key)
-    count = raw ? parseInt(raw, 10) || 0 : 0
-  } catch {
-    return true // KV outage → fail open to the per-IP cap rather than block everyone
-  }
-  if (count >= GLOBAL_LLM_CALLS_PER_MIN) return false
-  try {
-    await kv.put(key, String(count + 1), { expirationTtl: 120 })
-  } catch {
-    // best-effort increment; the cap still holds on the next read
-  }
-  return true
+// Authoritative global LibertAI-call circuit breaker. Uses Cloudflare's
+// Rate Limiting binding instead of KV so admission is handled by Cloudflare's
+// rate-limiter primitive rather than a non-atomic KV read/modify/write. Counts
+// only cache-MISS calls (a cache hit makes no LibertAI call).
+async function checkGlobalLlmBudget(env: Env): Promise<boolean> {
+  if (!env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) return true
+  const result = await env.OPHIS_INTENT_GLOBAL_RATE_LIMITER.limit({ key: 'global' })
+  return result.success
 }
 
 const ALLOWED_ORIGINS = new Set<string>([
@@ -151,36 +130,6 @@ function isAllowedOrigin(origin: string | null): boolean {
   }
 }
 
-async function checkRateLimitKV(
-  kv: KVNamespace,
-  ip: string,
-): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
-  const now = Date.now()
-  const cutoff = now - RATE_LIMIT_WINDOW_MS
-  const key = `rl:${ip}`
-  // KV.get returns the most recent timestamps array (or null). Strong
-  // consistency is not guaranteed across regions, but Cloudflare KV's
-  // typical replication lag (<1s) is well within our window.
-  const raw = await kv.get(key)
-  let timestamps: number[] = []
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as unknown
-      if (Array.isArray(parsed)) timestamps = parsed.filter((t): t is number => typeof t === 'number' && t >= cutoff)
-    } catch {
-      // bad value in KV — treat as empty; will be overwritten below.
-    }
-  }
-  if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfterSec = Math.max(1, Math.ceil((timestamps[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
-    return { ok: false, retryAfterSec }
-  }
-  timestamps.push(now)
-  // expirationTtl: window + small buffer; KV cleans up automatically.
-  await kv.put(key, JSON.stringify(timestamps), { expirationTtl: 120 })
-  return { ok: true }
-}
-
 function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAfterSec: number } {
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS
@@ -205,12 +154,11 @@ async function checkRateLimit(
   env: Env,
   ip: string,
 ): Promise<{ ok: true } | { ok: false; retryAfterSec: number }> {
-  if (env.OPHIS_RATELIMIT) {
+  if (env.OPHIS_INTENT_RATE_LIMITER) {
     try {
-      return await checkRateLimitKV(env.OPHIS_RATELIMIT, ip)
+      const result = await env.OPHIS_INTENT_RATE_LIMITER.limit({ key: ip })
+      return result.success ? { ok: true } : { ok: false, retryAfterSec: 60 }
     } catch {
-      // KV outage → fall back to the per-isolate cap rather than
-      // failing open. Logging would happen via CF logs.
       return checkRateLimitIsolate(ip)
     }
   }
@@ -725,8 +673,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return json({ ok: false, error: { code: 'FORBIDDEN', message: 'origin not allowed' } }, 403)
   }
 
-  // Per-IP rate limit, KV-backed (distributed across all isolates).
-  // cf-connecting-ip is set by Cloudflare on every edge request.
+  // Per-IP rate limit. Production uses Cloudflare Rate Limiting binding;
+  // local/dev falls back to a per-isolate cap. cf-connecting-ip is set by Cloudflare on every edge request.
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
   const rl = await checkRateLimit(env, ip)
   if (!rl.ok) {
@@ -805,9 +753,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   // Global LibertAI-call circuit breaker — reached only on a cache MISS, i.e.
   // we are about to make a real upstream LLM call. Bounds total calls/min
   // across ALL IPs so a distributed flood (each IP under the per-IP cap) can't
-  // saturate the upstream or run up cost. KV outage fails open to the per-IP cap.
-  if (env.OPHIS_RATELIMIT) {
-    const withinGlobalBudget = await checkGlobalLlmBudget(env.OPHIS_RATELIMIT)
+  // saturate the upstream or run up cost. If the binding is absent, the deployment relies on the per-IP cap only.
+  if (env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) {
+    const withinGlobalBudget = await checkGlobalLlmBudget(env)
     if (!withinGlobalBudget) {
       return json(
         { ok: false, error: { code: 'RATE_LIMITED', message: 'service is busy, try again shortly' } },

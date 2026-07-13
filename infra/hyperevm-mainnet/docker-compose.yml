@@ -17,7 +17,7 @@ services:
   # load); eRPC fans requests out to 6 upstream providers with automatic
   # failover + retry + re-org-aware caching.
   rpc-proxy:
-    image: ghcr.io/erpc/erpc:latest
+    image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
     volumes:
@@ -110,6 +110,9 @@ services:
       # via asset_platforms), so the block is effectively unused on HL — but
       # orderbook fails to parse the config if the env var is missing.
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?COINGECKO_API_KEY must be set in infra/hyperevm-mainnet/.env}
+      # Keep inter-service auth parity with autopilot + driver; orderbook sends
+      # bearer headers to driver quote endpoints when this token is configured.
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./rendered/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]

@@ -74,7 +74,7 @@ services:
   #
   # Cloned from infra/hyperevm-mainnet (Phase 4 audit M-2, 2026-05-19).
   rpc-proxy:
-    image: ghcr.io/erpc/erpc:latest
+    image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
     volumes:

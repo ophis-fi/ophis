@@ -4,7 +4,13 @@ import { type FastifyInstance } from 'fastify';
 // Mock the db module so buildApiServer can be imported without a real DATABASE_URL.
 // The /health and rate-limit tests exercise the HTTP layer only.
 vi.mock('../src/db/index.js', () => ({
-  sql: Object.assign(async () => [], {
+  sql: Object.assign(async (strings: TemplateStringsArray) => {
+    const text = Array.isArray(strings) ? strings.join('') : String(strings);
+    if (text.includes('SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted')) {
+      return [{ accepted: process.env.REBATE_ENROLLMENT_QUEUE_MAX !== '0' }];
+    }
+    return [];
+  }, {
     unsafe: async () => [],
   }),
   db: {
@@ -33,6 +39,7 @@ afterEach(async () => {
   await app?.close();
   app = undefined;
   delete process.env.REBATE_INDEXER_ADMIN_TOKEN;
+  delete process.env.REBATE_ENROLLMENT_QUEUE_MAX;
 });
 
 // Must import AFTER vi.mock() calls above are hoisted.
@@ -261,6 +268,29 @@ test('/xp/:wallet returns 200 with xp 0 for an unknown wallet (never 404)', asyn
   for (const key of Object.keys(body)) {
     expect(key).not.toMatch(/30d|payout|cycle/i);
   }
+});
+
+
+test('/tier/:wallet rejects new enrollments when the global admission queue is full', async () => {
+  process.env.REBATE_ENROLLMENT_QUEUE_MAX = '0';
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/tier/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(res.statusCode).toBe(429);
+  expect(JSON.parse(res.body)).toMatchObject({ error: expect.stringContaining('enrollment queue is full') });
+});
+
+test('/xp/:wallet rejects new enrollments when the global admission queue is full', async () => {
+  process.env.REBATE_ENROLLMENT_QUEUE_MAX = '0';
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/xp/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(res.statusCode).toBe(429);
+  expect(JSON.parse(res.body)).toMatchObject({ error: expect.stringContaining('enrollment queue is full') });
 });
 
 test('/xp/:wallet rejects a malformed address with 400', async () => {

@@ -56,7 +56,7 @@ services:
   # eRPC multi-provider proxy for Unichain mainnet (chain 130).
   # 3 upstreams with 2-of-3 consensus on critical reads.
   rpc-proxy:
-    image: ghcr.io/erpc/erpc:latest
+    image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
     # The self-hosted Unichain op-reth node runs in a SEPARATE compose project
