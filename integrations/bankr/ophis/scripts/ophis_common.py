@@ -212,24 +212,35 @@ def bankr_api_key() -> str:
     return key
 
 
+_EVM_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
 def bankr_wallet_address(key: str) -> str:
     # GET /wallet/me returns the wallet info (address + chains). The legacy /agent/* endpoints
-    # were removed; the Wallet API is the current surface.
+    # were removed; the Wallet API is the current surface. Resolve the EVM address by FORMAT,
+    # not by guessing one exact key: Bankr is multi-chain (EVM + Solana) and a Solana address is
+    # never 0x-40-hex, so a format guard can never return one.
     res = _http("GET", f"{BANKR_API}/wallet/me", headers={"X-API-Key": key})
 
-    def _evm(d):
-        # Bankr is multi-chain (EVM + Solana), so pick a value that is specifically a 0x EVM
-        # address across the plausible shapes — never a Solana address.
+    def _named(d):
+        # Prefer an explicitly wallet-named key, so a stray token/contract 0x can't win.
         if not isinstance(d, dict):
             return None
-        for k in ("evmAddress", "address", "evm", "wallet", "walletAddress"):
+        for k in ("evmAddress", "address", "evm", "wallet", "walletAddress", "signer", "owner"):
             v = d.get(k)
-            if isinstance(v, str) and re.match(r"^0x[0-9a-fA-F]{40}$", v):
+            if isinstance(v, str) and _EVM_ADDR_RE.match(v):
                 return v
         return None
 
-    addr = (_evm(res) or _evm(res.get("data")) or _evm(res.get("wallet"))
-            or _evm(res.get("addresses")) or _evm(res.get("evm")))
+    addr = None
+    if isinstance(res, dict):  # a non-object JSON response falls through to the clean error below
+        addr = _named(res)
+        for nest in ("data", "wallet", "addresses", "evm"):  # tolerate one level of nesting
+            addr = addr or _named(res.get(nest))
+        if not addr:
+            # Last resort: any top-level 0x EVM value. /wallet/me is wallet info (address + chains),
+            # not a token list, so a bare format-guarded scan is safe.
+            addr = next((v for v in res.values() if isinstance(v, str) and _EVM_ADDR_RE.match(v)), None)
     if not addr:
         sys.exit(f"could not resolve the Bankr EVM wallet address from /wallet/me: {json.dumps(res)[:300]}")
     return addr
@@ -250,15 +261,20 @@ def bankr_submit(key: str, chain_id: int, to: str, data: str, description: str, 
     # Documented /wallet/submit status values are "success" | "reverted" | "pending". With
     # waitForConfirmation a mined-but-REVERTED tx still returns a hash, so a hash alone is NOT
     # success (a reverted approval / setPreSignature would otherwise print as a fillable order).
-    # Reject reverted, require an explicit success, and refuse an unconfirmed "pending".
     status = str(res.get("status") or res.get("state") or "").lower()
     if status in ("reverted", "failed", "failure", "error", "dropped"):
         sys.exit(f"Bankr submit reverted/failed ({description}, status={status!r}): {json.dumps(res)[:400]}")
-    # Accept an explicit success flag/status; only fall back to a bare hash when NO status is
-    # reported (legacy) — never accept a "pending" (not yet confirmed) for an approval/presign.
-    ok = res.get("success") is True or status in ("success", "confirmed", "mined", "ok") or (not status and bool(res.get("transactionHash")))
+    if status == "pending":
+        # Not yet confirmed — refuse regardless of any success flag; an approval/presign this
+        # skill submits MUST be mined before we build/print an order that depends on it.
+        sys.exit(f"Bankr submit not confirmed ({description}, status=pending): {json.dumps(res)[:400]}")
+    has_status_key = ("status" in res) or ("state" in res)
+    # Accept an explicit confirmed success; only fall back to a bare hash when the response
+    # reports NO status field at all (legacy) — a present-but-empty status is not "confirmed".
+    ok = status in ("success", "confirmed", "mined", "ok") or res.get("success") is True \
+        or (not has_status_key and bool(res.get("transactionHash")))
     if not ok:
-        sys.exit(f"Bankr submit failed ({description}): {json.dumps(res)[:400]}")
+        sys.exit(f"Bankr submit not confirmed successful ({description}): {json.dumps(res)[:400]}")
     return res
 
 
