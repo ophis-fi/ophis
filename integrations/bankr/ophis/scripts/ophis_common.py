@@ -189,13 +189,15 @@ def _http(method: str, url: str, body: dict | None = None, headers: dict | None 
         # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is scheme-guarded to https:// above and built from the fixed ORDERBOOK_URLS/BANKR_API https maps.
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode()
-            return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")
         sys.exit(f"{method} {url} -> HTTP {e.code}: {detail[:500]}")
     except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
         # A DNS/connection/timeout failure must exit cleanly, not dump a traceback.
         sys.exit(f"{method} {url} -> network error: {e}")
+    # Single explicit return: the except branches sys.exit (NoReturn), so this is the only
+    # non-error path — no implicit fall-through to None for a function typed -> dict.
+    return json.loads(raw) if raw else {}
 
 
 def bankr_api_key() -> str:
