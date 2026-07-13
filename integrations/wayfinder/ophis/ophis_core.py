@@ -14,19 +14,20 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 import urllib.error
 import urllib.request
 
 # ── Per-chain orderbook base URL (@ophis/sdk orderbook.ts). Only the chains that
 # also exist in Wayfinder's SUPPORTED_CHAINS are reachable from this adapter; the
 # adapter enforces that intersection (Optimism/Unichain/Gnosis/Linea/Ink are Ophis
-# chains that Wayfinder does not support, so they are intentionally absent here). ─
+# chains that Wayfinder does not support, so they are intentionally absent here).
+# Plasma (9745) IS in both — Ophis (canonical CoW deployment) and the Wayfinder SDK. ─
 ORDERBOOK_URLS = {
     1:     "https://api.cow.fi/mainnet",
     56:    "https://api.cow.fi/bnb",
     137:   "https://api.cow.fi/polygon",
     8453:  "https://api.cow.fi/base",
+    9745:  "https://api.cow.fi/plasma",
     42161: "https://api.cow.fi/arbitrum_one",
     43114: "https://api.cow.fi/avalanche",
 }

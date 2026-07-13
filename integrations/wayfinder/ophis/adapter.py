@@ -93,6 +93,11 @@ class OphisAdapter(BaseAdapter):
                 return False, "sign_typed_data callback is required to sign Ophis (CoW) EIP-712 orders"
             if is_native_token(sell_token) or is_native_token(buy_token):
                 return False, "Ophis EOA orders are ERC-20 only; wrap native to WETH first (native uses CoW eth-flow)."
+            # Reject a fractional basis-point value up front: a float slippage_bps would make
+            # min_buy a float and serialize buyAmount like "123.0" instead of a uint string
+            # (and could approve the relayer before the malformed order fails to submit).
+            if isinstance(slippage_bps, bool) or not isinstance(slippage_bps, int):
+                return False, f"slippage_bps must be an integer number of basis points, got {slippage_bps!r}"
             if not (0 <= slippage_bps <= MAX_SLIPPAGE_BPS):
                 return False, f"slippage_bps must be within [0, {MAX_SLIPPAGE_BPS}] (0%..50%)"
 
@@ -121,14 +126,14 @@ class OphisAdapter(BaseAdapter):
             quote_sell = int(quote["sellAmount"])
             quote_fee = int(quote["feeAmount"])
 
-            # Bind the SIGNED order to the request — never sign fields drifted from intent.
-            # Ophis orders carry feeAmount 0 (the fee is in appData); a non-zero quote fee is
-            # extra sell-token spend the slippage bound does not cover. A quote sellAmount that
-            # differs from the request would sign a different sell size than asked.
-            if quote_fee != 0:
-                return False, f"orderbook returned a non-zero feeAmount ({quote_fee}); Ophis orders must have feeAmount 0"
-            if quote_sell != sell_atomic:
-                return False, f"orderbook sellAmount ({quote_sell}) != requested ({sell_atomic}); refusing to sign a different amount"
+            # Bind the SIGNED order to the request. We ALWAYS sign feeAmount 0 (Ophis/CoW take the
+            # fee from surplus + the appData partner fee), so bind the GROSS (quote sellAmount +
+            # feeAmount) to the requested amount rather than rejecting a quote just because it split
+            # a non-zero fee out — an honest sell quote's gross equals the request exactly. Any drift
+            # (over or under) means a bad/hostile quote.
+            gross = quote_sell + quote_fee
+            if gross != sell_atomic:
+                return False, f"quote gross (sellAmount+feeAmount = {gross}) != requested ({sell_atomic}); refusing to sign"
             if quote_buy <= 0:
                 return False, f"quote returned no buyAmount: {quote}"
 

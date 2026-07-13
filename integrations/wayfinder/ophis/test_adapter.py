@@ -136,14 +136,17 @@ def test_happy_path_submits_and_binds(monkeypatch):
     assert res["min_buy"] == str(50000000000000000 * 9950 // 10000)
 
 
-def test_rejects_nonzero_fee(monkeypatch):
-    _patch_orderbook(monkeypatch, quote={**_GOOD, "feeAmount": "7"})
+def test_accepts_fee_split_when_gross_matches(monkeypatch):
+    # A quote that splits a non-zero fee out is fine as long as sellAmount + feeAmount == requested;
+    # the adapter signs feeAmount 0 and the gross amount regardless.
+    _patch_orderbook(monkeypatch, quote={**_GOOD, "sellAmount": "99999900", "feeAmount": "100"})
     ok, res = _run(_make().swap_exact_in(sell_token=USDC, buy_token=WETH, amount_in="100"))
-    assert ok is False and "feeAmount" in res
+    assert ok is True and res["order_uid"] == UID
 
 
-def test_rejects_sellamount_drift(monkeypatch):
-    _patch_orderbook(monkeypatch, quote={**_GOOD, "sellAmount": "999"})
+def test_rejects_gross_mismatch(monkeypatch):
+    # gross (sellAmount + feeAmount) != requested -> refuse (over- or under-pull).
+    _patch_orderbook(monkeypatch, quote={**_GOOD, "sellAmount": "999", "feeAmount": "0"})
     ok, res = _run(_make().swap_exact_in(sell_token=USDC, buy_token=WETH, amount_in="100"))
     assert ok is False and "!= requested" in res
 
