@@ -1,12 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { OphisAgentWallet, Address } from '../src/index.js';
+
+// A mutable quote the mocked orderbook returns. Defaults to {} so the input-guard tests keep
+// throwing at order-build (unchanged); the binding-guard tests set a concrete quote to drive
+// past the build and exercise the request<->quote binding checks.
+const hoisted = vi.hoisted(() => ({ quote: {} as Record<string, unknown> }));
 
 // Stub the cow-sdk / app-data modules so importing swap.ts doesn't pull the heavy CoW order stack
 // (and its ethers-v5 CJS shim) into Node. These input-guard tests throw BEFORE any of it is used.
 vi.mock('@cowprotocol/cow-sdk', () => ({
   OrderBookApi: class {
     async getQuote() {
-      return { quote: {} };
+      return { quote: hoisted.quote };
     }
     async sendOrder() {
       return 'uid';
@@ -112,5 +117,65 @@ describe('executeOphisSwap input guards', () => {
     await expect(
       executeOphisSwap(mockWallet(1), { sellToken: WETH, buyToken: USDC, sellAmount: '1', slippageBps: 50.5 }, REF),
     ).rejects.toThrow(/out of range|non-integer/i);
+  });
+});
+
+describe('executeOphisSwap quote<->request binding (defense against a malicious/compromised quote)', () => {
+  afterEach(() => {
+    hoisted.quote = {};
+  });
+
+  // 1 WETH (18 decimals) => atomic 1e18. An honest sell quote has sellAmount + feeAmount === 1e18.
+  const honest = {
+    sellToken: WETH,
+    buyToken: USDC,
+    sellAmount: '995000000000000000',
+    feeAmount: '5000000000000000',
+    buyAmount: '3000000000',
+    validTo: 4_000_000_000,
+  };
+
+  it('refuses to sign when the quote substitutes the sell token', async () => {
+    hoisted.quote = { ...honest, sellToken: USDC }; // != requested WETH
+    await expect(
+      executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
+    ).rejects.toThrow(/sellToken.*refusing to sign/i);
+  });
+
+  it('refuses to sign when the quote substitutes the buy token', async () => {
+    hoisted.quote = { ...honest, buyToken: WETH }; // != requested USDC
+    await expect(
+      executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
+    ).rejects.toThrow(/buyToken.*refusing to sign/i);
+  });
+
+  it('refuses to sign when the gross pull (sellAmount + feeAmount) exceeds the requested amount', async () => {
+    // Honest sum is 1e18; inflate the fee by 1 wei so the wallet would approve/sign more than asked.
+    hoisted.quote = { ...honest, sellAmount: '1000000000000000000', feeAmount: '1' };
+    await expect(
+      executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
+    ).rejects.toThrow(/exceeds requested.*refusing to sign/i);
+  });
+
+  it('refuses to sign a zero-proceeds order (tiny buyAmount rounds the buy floor to 0)', async () => {
+    // buyAmount 1 with the default 50bps slippage floors minBuyAmount to 0 => sell everything for ~nothing.
+    hoisted.quote = { ...honest, buyAmount: '1' };
+    await expect(
+      executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
+    ).rejects.toThrow(/zero-proceeds|buy floor/i);
+  });
+
+  it('does not reject an honest quote for a binding reason', async () => {
+    hoisted.quote = { ...honest };
+    // May still reject downstream for an unrelated mocked reason; it must NOT be the binding error.
+    const err = await executeOphisSwap(
+      mockWallet(1, 18),
+      { sellToken: WETH, buyToken: USDC, sellAmount: '1' },
+      REF,
+    ).then(
+      () => null,
+      (e: Error) => e,
+    );
+    if (err) expect(err.message).not.toMatch(/refusing to sign/i);
   });
 });
