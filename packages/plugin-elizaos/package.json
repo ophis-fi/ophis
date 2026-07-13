@@ -1,0 +1,71 @@
+{
+  "name": "@ophis/plugin-elizaos",
+  "version": "0.1.0",
+  "description": "elizaOS plugin: MEV-protected same-chain swaps via Ophis (CoW Protocol). The agent signs CoW orders with its own EVM key; the Ophis partner fee + your referral code accrue the 8-12% rebate.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/plugin-elizaos"
+  },
+  "homepage": "https://docs.ophis.fi/ai-agents",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": ["elizaos", "elizaos-plugins", "plugin", "ophis", "swap", "cow-protocol", "mev-protection", "defi", "rebate", "ai-agent"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@ophis/agent-swap": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": ">=1.0.8"
+  },
+  "devDependencies": {
+    "@elizaos/core": "^1.7.2",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.8"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "EVM_PRIVATE_KEY": {
+        "type": "string",
+        "description": "0x hex private key (EOA) the agent signs CoW orders with. Keep it funded with the sell token + a little native gas for the one-time approval.",
+        "required": true,
+        "sensitive": true
+      },
+      "OPHIS_REFERRAL_CODE": {
+        "type": "string",
+        "description": "Ophis referral/partner code so your swaps earn the 8-12% rebate. Mint one at https://swap.ophis.fi/#/rewards. Optional — swaps work without it.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPHIS_FEE_CHAIN": {
+        "type": "string",
+        "description": "Default chain when the user's request doesn't name one (e.g. optimism, base, unichain, arbitrum).",
+        "required": false,
+        "default": "optimism",
+        "sensitive": false
+      }
+    }
+  }
+}
