@@ -23,6 +23,10 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 // Autonomous-agent slippage ceiling (50%). At 100% the buy floor is 0 — an order that accepts any
 // proceeds. There is no human reviewing an agent's tx, so an absurd slippage is rejected outright.
 const MAX_SLIPPAGE_BPS = 5_000;
+// The order's validity window. We set this ourselves (now + TTL) rather than trusting the quote's
+// validTo, so a compromised quote cannot mint a signature valid far into the future for delayed,
+// unfavorable execution. 30 min comfortably covers batch-auction settlement.
+const ORDER_TTL_SECONDS = 30 * 60;
 
 export interface OphisSwapParams {
   /** ERC-20 sell token address. */
@@ -110,12 +114,35 @@ export async function executeOphisSwap(
   // Cap well below 100%: at 10000 the buy floor would be 0 (an order that accepts ANY/zero proceeds
   // — a max-sandwich invitation). An unattended agent has no human reviewing the tx, so reject an
   // absurd slippage outright. MAX_SLIPPAGE_BPS = 5000 (50%) still allows very illiquid pairs.
-  if (slippageBps < 0 || slippageBps > MAX_SLIPPAGE_BPS) {
-    throw new Error(`slippageBps out of range [0,${MAX_SLIPPAGE_BPS}]: ${slippageBps}`);
+  if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > MAX_SLIPPAGE_BPS) {
+    throw new Error(`slippageBps out of range [0,${MAX_SLIPPAGE_BPS}] or non-integer: ${slippageBps}`);
   }
 
   const decimals = await wallet.readErc20Decimals(sellToken);
-  const sellAmountAtomic = parseUnits(params.sellAmount, decimals);
+  // REJECT excess precision instead of letting parseUnits ROUND it. parseUnits rounds
+  // a fraction that doesn't fit the token's decimals (e.g. "0.5" of a 0-decimal token
+  // -> 1, i.e. 2x the intended amount), which for an unattended agent means selling a
+  // different quantity than requested. Enforce a plain decimal whose fractional part
+  // fits `decimals` so the whole-unit -> base-unit conversion is exact.
+  const amountStr = params.sellAmount.trim();
+  const amountMatch = /^(\d+)(?:\.(\d+))?$/.exec(amountStr);
+  if (!amountMatch) {
+    throw new Error(`sellAmount must be a plain decimal string (e.g. "1.5"): ${params.sellAmount}`);
+  }
+  // Trailing zeros carry no real precision (viem strips them), so "1.000" or "1.2300"
+  // are exact even on a low-decimal token — count only the significant fraction digits.
+  // Strip trailing zeros with a single-pass scan (not a regex) to avoid a CodeQL
+  // polynomial-regex flag on library input; behaviour is identical.
+  const fraction = amountMatch[2] ?? '';
+  let fractionEnd = fraction.length;
+  while (fractionEnd > 0 && fraction.charCodeAt(fractionEnd - 1) === 48 /* '0' */) fractionEnd--;
+  const significantFraction = fraction.slice(0, fractionEnd);
+  if (significantFraction.length > decimals) {
+    throw new Error(
+      `sellAmount "${params.sellAmount}" needs ${significantFraction.length} decimal places but the token supports only ${decimals}.`,
+    );
+  }
+  const sellAmountAtomic = parseUnits(amountStr, decimals);
   if (sellAmountAtomic <= 0n) throw new Error(`sellAmount must be > 0: ${params.sellAmount}`);
 
   // Enroll the trader with the OWNER-SCOPED rebate indexer. Non-fatal: an enrollment hiccup must not
@@ -153,15 +180,20 @@ export async function executeOphisSwap(
   // Assemble the order to sign. appData = the bytes32 HASH (this is what is signed). Slippage lowers
   // the buyAmount so the quoted price is a floor, not an exact requirement.
   const minBuyAmount = applySlippage(BigInt(String(q.buyAmount)), slippageBps).toString();
+  // The order sells the GROSS amount with a signed feeAmount of 0: Ophis/CoW orders take the fee from
+  // surplus + the appData partner fee, never a signed feeAmount (a non-zero one is unslipped extra
+  // spend and the orderbook rejects it — see apps/mcp-server assertion). For a sell quote CoW splits
+  // sellAmountBeforeFee into (sellAmount NET, feeAmount); their sum is the gross the caller asked for.
+  const grossSell = BigInt(String(q.sellAmount)) + BigInt(String(q.feeAmount));
   const order = {
     sellToken: toChecksum(String(q.sellToken)),
     buyToken: toChecksum(String(q.buyToken)),
     receiver,
-    sellAmount: String(q.sellAmount),
+    sellAmount: grossSell.toString(),
     buyAmount: minBuyAmount,
-    validTo: Number(q.validTo),
+    validTo: Math.floor(Date.now() / 1000) + ORDER_TTL_SECONDS,
     appData: appDataHash,
-    feeAmount: String(q.feeAmount),
+    feeAmount: '0',
     kind: 'sell',
     partiallyFillable: false,
     sellTokenBalance: 'erc20',
@@ -169,10 +201,31 @@ export async function executeOphisSwap(
   } as const;
   assertReceiverIsOwner(owner, receiver); // drain guard: the receiver must be the owner
 
-  // Approve the OPHIS vault relayer for what settlement pulls (sellAmount NET + feeAmount = the gross).
+  // Bind the signed order back to the REQUEST. The orderbook host is trusted for pricing, but the
+  // fields the wallet approves + signs must not drift from what the caller asked for: a compromised
+  // quote must not substitute tokens or change the amount pulled. Tokens must match exactly (both
+  // already checksummed), and the gross (quote sellAmount + feeAmount) must EQUAL the requested
+  // amount — an honest CoW sell quote splits sellAmountBeforeFee exactly, so any drift up (over-pull)
+  // or down (selling less than asked while reporting the full amount) means a bad/hostile quote.
+  if (order.sellToken !== sellToken)
+    throw new Error(`quote sellToken ${order.sellToken} != requested ${sellToken}; refusing to sign`);
+  if (order.buyToken !== buyToken)
+    throw new Error(`quote buyToken ${order.buyToken} != requested ${buyToken}; refusing to sign`);
+  if (grossSell !== sellAmountAtomic)
+    throw new Error(
+      `quote gross (sellAmount+feeAmount = ${grossSell}) != requested ${sellAmountAtomic}; refusing to sign`,
+    );
+  // A quote can only be trusted for pricing so far: reject a buy floor of 0 outright. At buyAmount=1
+  // (or any tiny value) slippage rounds minBuyAmount to 0 — an order that would sell the full input
+  // for zero proceeds (a max-sandwich invitation). We cannot assert a GOOD price without an oracle,
+  // but we can refuse a zero-proceeds order.
+  if (BigInt(order.buyAmount) <= 0n)
+    throw new Error(`quote buy floor is 0 (buyAmount too low: ${String(q.buyAmount)}); refusing to sign a zero-proceeds order`);
+
+  // Approve the OPHIS vault relayer for what settlement pulls: the signed sellAmount (the gross; the
+  // signed feeAmount is 0, so sellAmount + feeAmount = grossSell).
   const relayer = getOphisVaultRelayer(chainId);
-  const pullAmount = BigInt(order.sellAmount) + BigInt(order.feeAmount);
-  await wallet.ensureErc20Allowance(sellToken, relayer, pullAmount);
+  await wallet.ensureErc20Allowance(sellToken, relayer, grossSell);
 
   // Sign the order EIP-712 with the agent's EOA wallet (NOT presign — that is the smart-wallet path).
   const signature = await wallet.signTypedData({

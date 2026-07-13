@@ -1,6 +1,6 @@
 {
   "name": "@ophis/agent-swap",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-agnostic core: execute an Ophis (CoW Protocol) ERC-20 swap from an AI agent's EOA wallet, carrying the Ophis partner fee + referrer code in appData so the integrator earns the rebate. Used by @ophis/plugin-goat and @ophis/agentkit-ophis.",
   "license": "GPL-3.0-or-later",
   "type": "module",
