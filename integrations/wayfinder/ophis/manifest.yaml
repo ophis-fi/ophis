@@ -1,0 +1,5 @@
+schema_version: "0.1"
+entrypoint: "adapters.ophis_adapter.adapter.OphisAdapter"
+capabilities:
+  - "ophis.swap.exact_in"
+dependencies: []
