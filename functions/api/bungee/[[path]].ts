@@ -112,6 +112,17 @@ const RATE_LIMIT_MAX_KEYS = 1024
 // uses OPHIS_BUNGEE_RATE_LIMITER instead.
 const RATE_LIMIT_KEY_PREFIX = 'bungee:rl:'
 
+// Per-isolate sliding-window buckets: ip -> recent request timestamps (ms).
+// This is the BEST-EFFORT fallback used when OPHIS_BUNGEE_RATE_LIMITER is
+// absent (local dev / preview) or throws. It MUST live at module scope so it
+// survives across requests handled by the same isolate — declaring it inside
+// checkRateLimitIsolate would reset the window on every call (no limiting), and
+// omitting it entirely makes checkRateLimitIsolate throw a ReferenceError and
+// 500 the first request. It is intentionally per-isolate (not global): CF may
+// run many isolates, so this only approximates a limit, which is why the
+// binding is authoritative in production.
+const isolateHits = new Map<string, number[]>()
+
 function checkRateLimitIsolate(ip: string): boolean {
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS

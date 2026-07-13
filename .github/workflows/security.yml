@@ -274,6 +274,13 @@ jobs:
           cat /tmp/contracts-yarn-audit.jsonl
 
       - name: Block audit regressions above documented baseline
+        # Gates on advisory IDENTITY (per-GHSA/npm-id + module), not just the
+        # aggregate severity counts: a net-new HIGH/CRITICAL advisory is blocked
+        # even when an old advisory at the same severity disappears (counts stay
+        # flat). The severity counts remain a secondary guard. After triaging a
+        # new advisory, regenerate the baseline on this same (networked) runner:
+        #   scripts/contracts-audit-gate.py --generate \
+        #     /tmp/contracts-yarn-audit.jsonl audit/contracts-yarn-audit-baseline.json
         run: scripts/contracts-audit-gate.py /tmp/contracts-yarn-audit.jsonl audit/contracts-yarn-audit-baseline.json
 
   pnpm-audit:

@@ -179,6 +179,12 @@ fi
 export OPHIS_DRIVER_SUBMITTER_KEY
 
 mkdir -p rendered
+# The rendered dir is the HOST confidentiality gate for the 0644 files the
+# per-template loop below emits (see the chmod rationale there): keep it
+# operator-only 0700 so no other host user can traverse in to read a rendered
+# config. `mkdir` honors umask 077 on a fresh create, but a dir left over from
+# a pre-0700 run keeps its old mode — so set it explicitly (idempotent).
+chmod 700 rendered
 shopt -s nullglob
 
 # ── Tier 1.5 RAM-disk PK render (Phase 4 audit H1 follow-up, 2026-05-20) ──
@@ -467,18 +473,26 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
   envsubst '${UNICHAIN_MAINNET_RPC} ${UNICHAIN_RPC_INTERNAL} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ODOS_API_KEY} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out_tmp"
-  # PK/secret-bearing configs stay 0600. Non-secret configs (RPC URLs,
-  # contract addresses, %VAR runtime-substituted placeholders — NO secret
-  # literals) get 0644 so NON-ROOT container users can read them: the erpc
-  # image runs as `nonroot`, and on native Linux Docker (the VM) bind-mount
-  # perms are literal, so a root:0600 erpc.yaml is unreadable by erpc → a
-  # "permission denied" boot loop. macOS/colima's uid mapping masked this.
-  # (chmod is redundant-but-defensive under the umask 077 set at script top.)
-  if is_pk_bearing "$name"; then
-    chmod 600 "$out_tmp"
-  else
-    chmod 644 "$out_tmp"
-  fi
+  # Emit 0644 for ALL rendered configs — including the PK/secret-bearing ones
+  # (was: 0600 for PK-bearing, 0644 only for non-secret). The non-secret 0644
+  # was already required because the erpc image runs as `nonroot` and, on this
+  # stack's native-Linux VM, bind-mount perms are LITERAL — a root:0600
+  # erpc.yaml is unreadable by erpc → "permission denied" boot loop. The CoW
+  # services now ALSO drop to the non-root `ophis` user (USER 10001:10001 in
+  # apps/backend/Dockerfile — autopilot/driver/orderbook/solvers/refunder), so
+  # the PK-bearing configs hit the exact same wall: the driver (driver.toml)
+  # and the OKX/Odos/Enso solvers (okx/odos/enso.toml) run as uid 10001 and
+  # can no longer read their own 0600 config → crash-loop. Emit 0644 so they
+  # boot. Confidentiality is held by the DIRECTORY gate, NOT the file bits:
+  # non-secret files live in ./rendered (0700, set above) and every PK/secret
+  # file lives on the RAM-disk mount ($RAM_PK_MOUNT, a 0700 tmpfs), both
+  # operator-only. No other host user can traverse in to open them, and a
+  # single-file bind-mount doesn't require the container to traverse the dir.
+  # Same-uid (deploy user) read of the RAM-disk was already accepted (Tier 1.5
+  # docstring "Same-UID exfiltration ... NOT closed"), so 0644-within-0700
+  # widens no documented host exposure.
+  # (Redundant under `umask 077`, but explicit against a future umask edit.)
+  chmod 644 "$out_tmp"
   mv -f "$out_tmp" "$out"
 
   if is_pk_bearing "$name"; then
@@ -657,8 +671,10 @@ if [[ -d observability ]]; then
 fi
 
 echo ""
-echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, mode 600."
-echo "PK-bearing driver.toml lives on RAM-disk ($RAM_PK_MOUNT) — wipes on reboot."
+echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, files 0644"
+echo "    inside an operator-only 0700 dir (dir is the confidentiality gate so the"
+echo "    non-root uid-10001 containers can read the bind-mounted files)."
+echo "PK-bearing driver.toml lives on RAM-disk ($RAM_PK_MOUNT, 0700) — wipes on reboot."
 echo ""
 
 # Warn if APFS local-snapshots may contain a prior Tier-1 on-disk render

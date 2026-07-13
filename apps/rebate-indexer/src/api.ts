@@ -227,28 +227,86 @@ function enrollmentQueueMax(): number {
 
 async function admitTrackedWallet(rawWallet: `0x${string}`): Promise<boolean> {
   const maxQueued = enrollmentQueueMax();
-  const rows = await sql<{ accepted: boolean }[]>`
+  const walletHex = rawWallet.slice(2);
+
+  // FAST PATH (no lock). A wallet that is already tracked OR already has an indexed
+  // trade is ALWAYS admitted and never counts against the enrollment cap:
+  //   - already-tracked: idempotent — the common case for legitimate repeat traffic
+  //     on /tier and /xp (100/min each), so it must NOT serialize on the global
+  //     admission lock in the slow path below.
+  //   - proven (has trades): a real Ophis trader, so it can never be 429'd by a spam
+  //     backlog. This covers eth-flow synthetic-owner fetches, which attribute trades
+  //     to a RECEIVER without ever adding that receiver to tracked_wallets — such a
+  //     wallet is enrolled here (uncapped, idempotent) so the fetcher refreshes its
+  //     future trades. The INSERT fires only for a proven-but-untracked wallet; for a
+  //     plain already-tracked read it selects zero rows.
+  const [pre] = await sql<{ admit: boolean }[]>`
     WITH candidate AS (
-      SELECT decode(${rawWallet.slice(2)}, 'hex') AS wallet
-    ), existing AS (
-      SELECT 1 FROM tracked_wallets tw WHERE tw.wallet = (SELECT wallet FROM candidate)
-    ), queue AS (
-      SELECT COUNT(*)::int AS queued
-      FROM tracked_wallets tw
-      WHERE tw.last_fetched IS NULL
-        AND tw.last_attempt_at IS NULL
-        AND NOT EXISTS (SELECT 1 FROM trades t WHERE t.wallet = tw.wallet)
-    ), inserted AS (
+      SELECT decode(${walletHex}, 'hex') AS wallet
+    ), status AS (
+      SELECT
+        EXISTS (SELECT 1 FROM tracked_wallets tw WHERE tw.wallet = (SELECT wallet FROM candidate)) AS tracked,
+        EXISTS (SELECT 1 FROM trades t WHERE t.wallet = (SELECT wallet FROM candidate)) AS proven
+    ), enroll_proven AS (
       INSERT INTO tracked_wallets (wallet)
       SELECT wallet FROM candidate
-      WHERE EXISTS (SELECT 1 FROM existing)
-         OR (SELECT queued FROM queue) < ${maxQueued}
+      WHERE (SELECT proven FROM status) AND NOT (SELECT tracked FROM status)
       ON CONFLICT (wallet) DO NOTHING
       RETURNING 1
     )
-    SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted
+    SELECT ((SELECT tracked FROM status) OR (SELECT proven FROM status)) AS admit
   `;
-  return rows[0]?.accepted !== false;
+  if (pre?.admit) return true;
+
+  // SLOW PATH: a genuinely NEW, unproven wallet. Serialize admissions on a global
+  // advisory xact lock so the backlog count and the insert are ATOMIC. Without it a
+  // burst of concurrent new wallets each reads the same sub-cap count before any
+  // insert commits, so they all pass the predicate — turning the cap into a soft
+  // per-race limit instead of a hard backlog bound. Same pattern as the /ref/bind
+  // lock; distinct key. Taken ONLY for first-time unproven enrollments (the abuse
+  // surface), never for the lock-free fast path above. Auto-releases at tx end.
+  return sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(731948)`;
+    const rows = await tx<{ accepted: boolean }[]>`
+      WITH candidate AS (
+        SELECT decode(${walletHex}, 'hex') AS wallet
+      ), status AS (
+        -- Re-check under the lock: another admission may have inserted or proven this
+        -- wallet since the fast-path read above.
+        SELECT
+          EXISTS (SELECT 1 FROM tracked_wallets tw WHERE tw.wallet = (SELECT wallet FROM candidate)) AS tracked,
+          EXISTS (SELECT 1 FROM trades t WHERE t.wallet = (SELECT wallet FROM candidate)) AS proven
+      ), backlog AS (
+        -- Unproven backlog = EVERY tracked wallet with no indexed trade yet, NOT just
+        -- the never-attempted ones. The old (last_fetched IS NULL AND last_attempt_at
+        -- IS NULL) filter let a caller re-fill the queue after every fetcher pass: a
+        -- spam wallet dropped out of the total the instant the fetcher attempted it
+        -- (even with zero trades), yet lingered — and kept getting refreshed — until
+        -- the 7-day prune. Counting all unproven rows makes the cap a real bound on
+        -- the unproven fetch workload.
+        SELECT COUNT(*)::int AS queued
+        FROM tracked_wallets tw
+        WHERE NOT EXISTS (SELECT 1 FROM trades t WHERE t.wallet = tw.wallet)
+      ), inserted AS (
+        INSERT INTO tracked_wallets (wallet)
+        SELECT wallet FROM candidate
+        WHERE (SELECT tracked FROM status)
+           OR (SELECT proven FROM status)
+           OR (SELECT queued FROM backlog) < ${maxQueued}
+        ON CONFLICT (wallet) DO NOTHING
+        RETURNING 1
+      )
+      SELECT (
+        (SELECT tracked FROM status)
+        OR (SELECT proven FROM status)
+        OR EXISTS (SELECT 1 FROM inserted)
+      ) AS accepted
+    `;
+    // Fail CLOSED: only an explicit accepted=true admits. The final SELECT (no FROM)
+    // always returns exactly one row today, but if a future edit ever made it return
+    // zero rows, `!== false` would fail OPEN (admit past the cap) — deny instead.
+    return rows[0]?.accepted === true;
+  });
 }
 
 function isTrustedProxyPeer(addr: string): boolean {

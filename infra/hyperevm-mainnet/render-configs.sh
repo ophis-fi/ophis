@@ -226,6 +226,12 @@ if [[ -d observability && -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
 fi
 
 mkdir -p rendered
+# The rendered dir is the HOST confidentiality gate for the 0644 files the
+# per-template loop below emits (see the chmod rationale there): keep it
+# operator-only 0700 so no other host user can traverse in to read a rendered
+# config. `mkdir` honors umask 077 on a fresh create, but a dir left over from
+# a pre-0700 run keeps its old mode — so set it explicitly (idempotent).
+chmod 700 rendered
 shopt -s nullglob
 
 # ── Tier 1.5 RAM-disk PK render (ported from OP, 2026-05-21) ──────────────
@@ -384,9 +390,25 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # empty/partial config during the envsubst write window.
   envsubst '${ALCHEMY_API_KEY} ${HYPEREVM_MAINNET_RPC} ${HYPEREVM_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${HYPERSWAP_V3_SUBGRAPH_URL}' \
     < "$tmpl" > "$out_tmp"
-  # Redundant under `umask 077` set at script top, but kept as defense-
-  # in-depth against a future edit that hoists or removes the umask.
-  chmod 600 "$out_tmp"
+  # Emit 0644 (was 0600). Every rendered config here is bind-mounted read-only
+  # into a container whose service now DROPS to the non-root `ophis` user
+  # (USER 10001:10001 in apps/backend/Dockerfile — autopilot/driver/orderbook/
+  # solvers/refunder). On native-Linux Docker bind-mount perms are LITERAL, so
+  # a 0600 file owned by the host operator uid is UNREADABLE by in-container
+  # uid 10001 → the service crash-loops with "permission denied" at startup.
+  # colima/virtiofs masks it via uid remapping, but we emit 0644 unconditionally
+  # so the same rendered tree also boots on a native-Linux target and a future
+  # `user:` pin can't silently re-break it. This covers the PK-bearing
+  # driver.toml too: the driver runs as uid 10001 and must read its own config.
+  # Host confidentiality is held by the DIRECTORY gate, NOT the file bits:
+  # ./rendered is 0700 (set above) and the RAM-disk mount ($RAM_PK_MOUNT) is
+  # 0700, both operator-only. No other host user can traverse in to open a
+  # rendered file, and a single-file bind-mount doesn't require the container to
+  # traverse that dir. Same-uid (operator) read of the RAM-disk was already
+  # in-scope-accepted (Tier 1.5 docstring), so 0644-within-0700 widens no
+  # documented host exposure.
+  # (Redundant under `umask 077`, but explicit against a future umask edit.)
+  chmod 644 "$out_tmp"
   mv -f "$out_tmp" "$out"
 
   if is_pk_bearing "$name"; then
@@ -509,8 +531,10 @@ if [[ -d observability ]]; then
 fi
 
 echo ""
-echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, mode 600."
-echo "PK-bearing driver.toml lives on RAM-disk ($RAM_PK_MOUNT) — wipes on reboot."
+echo "OK. Rendered configs are in $SCRIPT_DIR/rendered/ — gitignored, files 0644"
+echo "    inside an operator-only 0700 dir (dir is the confidentiality gate so the"
+echo "    non-root uid-10001 containers can read the bind-mounted files)."
+echo "PK-bearing driver.toml lives on RAM-disk ($RAM_PK_MOUNT, 0700) — wipes on reboot."
 echo ""
 
 # Warn if APFS local-snapshots may contain a prior Tier-1 on-disk render

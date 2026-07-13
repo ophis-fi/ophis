@@ -44,7 +44,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
     cp target/release/refunder / && \
     cp target/release/solvers /
 
-# Create an intermediate image to extract the binaries
+# Create an intermediate image to extract the binaries.
+#
+# The system `ophis` user (uid/gid 10001) drops root for every service stage
+# below (autopilot/driver/orderbook/refunder/solvers + the combined final
+# stage). RUNTIME CONFIG-READ CONTRACT: these services read their config from
+# rendered TOMLs bind-mounted read-only (e.g. ./rendered/driver.toml:/driver.toml:ro).
+# On native-Linux Docker bind-mount perms are LITERAL, so a config file that is
+# 0600 and owned by the host operator uid is UNREADABLE by in-container uid
+# 10001 → the service crash-loops with "permission denied" at startup. The
+# render path (infra/*/render-configs.sh) therefore emits those configs 0644
+# inside an operator-only 0700 directory (the dir is the host confidentiality
+# gate; secret-bearing configs additionally live on a 0700 RAM-disk mount). Do
+# NOT tighten the rendered files back to 0600, and do NOT drop this USER switch,
+# without changing the other side of this contract in lockstep.
 FROM docker.io/debian:bookworm-slim AS intermediate
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && \
     apt-get install -y ca-certificates tini gettext-base && \

@@ -3,15 +3,25 @@ import { type FastifyInstance } from 'fastify';
 
 // Mock the db module so buildApiServer can be imported without a real DATABASE_URL.
 // The /health and rate-limit tests exercise the HTTP layer only.
-vi.mock('../src/db/index.js', () => ({
-  sql: Object.assign(async (strings: TemplateStringsArray) => {
+vi.mock('../src/db/index.js', () => {
+  // admitTrackedWallet now runs a lock-free fast-path query (…AS admit) and, for a
+  // new unproven wallet, a slow path inside sql.begin() that ends in …AS accepted.
+  // The fast path returns [] here (no `admit` row) so every test falls through to the
+  // accepted query, which resolves to accepted=false only when the cap is 0 (the
+  // queue-full tests) — matching the real 429 behaviour.
+  const sqlTag = async (strings: TemplateStringsArray) => {
     const text = Array.isArray(strings) ? strings.join('') : String(strings);
-    if (text.includes('SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted')) {
+    if (text.includes('AS accepted')) {
       return [{ accepted: process.env.REBATE_ENROLLMENT_QUEUE_MAX !== '0' }];
     }
     return [];
-  }, {
+  };
+  return {
+  sql: Object.assign(sqlTag, {
     unsafe: async () => [],
+    // Slow-path admission wraps the count+insert in a transaction; run the callback
+    // with the same tag mock as its tx handle.
+    begin: async (fn: (tx: typeof sqlTag) => unknown) => fn(sqlTag),
   }),
   db: {
     select: () => ({
@@ -26,7 +36,8 @@ vi.mock('../src/db/index.js', () => ({
     rebateBatches: 'rebateBatches',
     rebateBatchEntries: 'rebateBatchEntries',
   },
-}));
+  };
+});
 
 // Also mock tierer so /tier/:wallet doesn't need DB.
 vi.mock('../src/tierer.js', () => ({

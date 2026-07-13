@@ -16,12 +16,20 @@ interface RateLimitBinding {
 
 interface Env {
   LIBERTAI_API_KEY: string
-  // KV namespace used ONLY for the intent response cache. Rate limiting must
-  // not use KV read/modify/write because KV is eventually consistent and not
-  // atomic under burst concurrency.
+  // KV namespace for the intent response cache AND the coarse GLOBAL
+  // LibertAI-call budget (see checkGlobalLlmBudget). Per-IP admission must NOT
+  // use KV read/modify/write — KV is eventually consistent and non-atomic, so it
+  // under-counts bursts; that job belongs to the CF Rate Limiting binding. The
+  // global budget, by contrast, is a COARSE per-minute ceiling where mild
+  // under-counting during replication lag is acceptable, so a shared (globally
+  // replicated) KV counter is the right tool there — a CF Rate Limiting binding
+  // is enforced per-colo and cannot express a single global cap.
   OPHIS_RATELIMIT?: KVNamespace
-  // Cloudflare Rate Limiting bindings. Production should bind both; local
-  // wrangler/dev falls back to a per-isolate limiter.
+  // Cloudflare Rate Limiting bindings (per-colo, atomic). OPHIS_INTENT_RATE_LIMITER
+  // is the per-IP admission cap. OPHIS_INTENT_GLOBAL_RATE_LIMITER is ONLY a cheap
+  // per-colo PRE-FILTER in front of the KV global budget — it is per-colo, so it
+  // cannot itself be the global LibertAI cap (see checkGlobalLlmBudget). Production
+  // should bind these; local wrangler/dev falls back to a per-isolate limiter.
   OPHIS_INTENT_RATE_LIMITER?: RateLimitBinding
   OPHIS_INTENT_GLOBAL_RATE_LIMITER?: RateLimitBinding
 }
@@ -94,14 +102,70 @@ const RATE_LIMIT_MAX_REQUESTS = 30
 const RATE_LIMIT_MAX_KEYS = 1024 // hard cap on memory growth per isolate (fallback path)
 const ipBuckets = new Map<string, number[]>()
 
-// Authoritative global LibertAI-call circuit breaker. Uses Cloudflare's
-// Rate Limiting binding instead of KV so admission is handled by Cloudflare's
-// rate-limiter primitive rather than a non-atomic KV read/modify/write. Counts
-// only cache-MISS calls (a cache hit makes no LibertAI call).
+// GLOBAL_LLM_CALLS_PER_MIN: coarse per-minute ceiling on TOTAL LibertAI calls
+// (cache misses only) across ALL IPs and ALL edge colos. This is the global
+// cost/abuse ceiling for the upstream LLM. It is intentionally sized well above
+// legitimate aggregate traffic so it trips only on a distributed flood.
+// 600/min (10/s) — the exact budget the prior shared-KV counter enforced on main
+// (restored verbatim; the CF-rate-limiter change had dropped this global ceiling).
+// Repo is the source of truth; raise/lower here if the intended ceiling changes.
+const GLOBAL_LLM_CALLS_PER_MIN = 600
+const GLOBAL_BUDGET_KEY_PREFIX = 'llm-budget:'
+
+// Authoritative GLOBAL LibertAI-call circuit breaker (cache-MISS calls only — a
+// cache hit makes no upstream call).
+//
+// WHY a KV counter and not the CF Rate Limiting binding alone: a Cloudflare Rate
+// Limiting binding is enforced PER COLO (per edge location). A fixed key
+// ('global') therefore yields one budget PER ACTIVE COLO, so the true global
+// LibertAI call rate becomes (limit x number of active colos) — under distributed
+// cache-miss traffic the breaker is silently multiplied and fails to cap cost or
+// upstream load (Codex P2 regression vs. the prior shared-KV counter). So the
+// GLOBAL source of truth is a shared KV counter (OPHIS_RATELIMIT is globally
+// replicated); the CF binding is kept ONLY as a cheap atomic per-colo PRE-FILTER
+// in front of it (absorbs same-colo bursts without a KV round-trip).
+//
+// KV is eventually consistent (~60s) with no atomic increment, so this is a
+// COARSE backstop: concurrent misses within the replication window can under-count
+// and admit somewhat more than GLOBAL_LLM_CALLS_PER_MIN. That is acceptable — the
+// atomic edge rate-limiting RULE (per-IP/per-colo, docs/operations/api-intent-
+// rate-limit.md) is the primary flood cap; this only bounds a distributed
+// low-and-slow flood that stays under every per-IP and per-colo cap. The fail path
+// is best-effort but NOT an unbounded fail-open: a KV read/write error degrades to
+// the per-colo CF pre-filter that already ran, never to "no cap at all".
 async function checkGlobalLlmBudget(env: Env): Promise<boolean> {
-  if (!env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) return true
-  const result = await env.OPHIS_INTENT_GLOBAL_RATE_LIMITER.limit({ key: 'global' })
-  return result.success
+  // (1) Cheap per-colo pre-filter — atomic at the edge, no KV round-trip. The
+  // 'global' key is per-colo BY DESIGN here: this is only the pre-filter, and the
+  // KV counter below is the true global authority.
+  if (env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) {
+    try {
+      const pre = await env.OPHIS_INTENT_GLOBAL_RATE_LIMITER.limit({ key: 'global' })
+      if (!pre.success) return false
+    } catch {
+      // Pre-filter unavailable → fall through to the KV authority below.
+    }
+  }
+  // (2) Authoritative GLOBAL counter in KV. Per-minute bucket key so the window
+  // self-expires via TTL (no separate reset path). The non-atomic read/modify/
+  // write is acceptable for a coarse global ceiling (see the doc comment above).
+  if (env.OPHIS_RATELIMIT) {
+    try {
+      const minute = Math.floor(Date.now() / 60_000)
+      const key = `${GLOBAL_BUDGET_KEY_PREFIX}${minute}`
+      const raw = await env.OPHIS_RATELIMIT.get(key)
+      const current = Number(raw ?? '0')
+      const count = Number.isFinite(current) && current >= 0 ? current : 0
+      if (count >= GLOBAL_LLM_CALLS_PER_MIN) return false
+      // Count this admitted cache-MISS call. TTL 120s comfortably covers the 60s
+      // bucket plus KV replication lag; stale minute buckets self-evict. Best-
+      // effort — a failed put just under-counts (bounded by the per-colo pre-filter).
+      await env.OPHIS_RATELIMIT.put(key, String(count + 1), { expirationTtl: 120 })
+    } catch {
+      // KV outage → degrade to the per-colo pre-filter (already applied above) and
+      // the atomic edge rate-limiting rule. Not an unbounded fail-open.
+    }
+  }
+  return true
 }
 
 const ALLOWED_ORIGINS = new Set<string>([
@@ -750,19 +814,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   }
 
-  // Global LibertAI-call circuit breaker — reached only on a cache MISS, i.e.
-  // we are about to make a real upstream LLM call. Bounds total calls/min
-  // across ALL IPs so a distributed flood (each IP under the per-IP cap) can't
-  // saturate the upstream or run up cost. If the binding is absent, the deployment relies on the per-IP cap only.
-  if (env.OPHIS_INTENT_GLOBAL_RATE_LIMITER) {
-    const withinGlobalBudget = await checkGlobalLlmBudget(env)
-    if (!withinGlobalBudget) {
-      return json(
-        { ok: false, error: { code: 'RATE_LIMITED', message: 'service is busy, try again shortly' } },
-        429,
-        { 'retry-after': '30' },
-      )
-    }
+  // Global LibertAI-call circuit breaker — reached only on a cache MISS, i.e. we
+  // are about to make a real upstream LLM call. Bounds total calls/min across ALL
+  // IPs AND all edge colos (the KV counter is the global source of truth) so a
+  // distributed flood — each IP under the per-IP cap, spread across colos — can't
+  // saturate the upstream or run up cost. No-ops if neither the KV namespace nor
+  // the CF binding is present, in which case the deployment relies on the per-IP
+  // cap and the atomic edge rate-limiting rule only.
+  const withinGlobalBudget = await checkGlobalLlmBudget(env)
+  if (!withinGlobalBudget) {
+    return json(
+      { ok: false, error: { code: 'RATE_LIMITED', message: 'service is busy, try again shortly' } },
+      429,
+      { 'retry-after': '30' },
+    )
   }
 
   const controller = new AbortController()

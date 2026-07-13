@@ -1,10 +1,312 @@
 {
-  "critical": 82,
-  "high": 233,
-  "moderate": 262,
-  "low": 191,
+  "schemaVersion": 2,
+  "identityBaselineGenerated": true,
+  "acceptedHighCritical": {
+    "GHSA-23c5-xmqv-rm74::minimatch": {
+      "severity": "high",
+      "id": "GHSA-23c5-xmqv-rm74",
+      "module": "minimatch",
+      "title": "minimatch ReDoS: nested *() extglobs generate catastrophically backtracking regular expressions",
+      "paths": 20
+    },
+    "GHSA-25h7-pfq9-p65f::flatted": {
+      "severity": "high",
+      "id": "GHSA-25h7-pfq9-p65f",
+      "module": "flatted",
+      "title": "flatted vulnerable to unbounded recursion DoS in parse() revive phase",
+      "paths": 1
+    },
+    "GHSA-2w6w-674q-4c4q::handlebars": {
+      "severity": "critical",
+      "id": "GHSA-2w6w-674q-4c4q",
+      "module": "handlebars",
+      "title": "Handlebars.js has JavaScript Injection via AST Type Confusion",
+      "paths": 1
+    },
+    "GHSA-35jh-r3h4-6jhm::lodash": {
+      "severity": "high",
+      "id": "GHSA-35jh-r3h4-6jhm",
+      "module": "lodash",
+      "title": "Command Injection in lodash",
+      "paths": 2
+    },
+    "GHSA-37ch-88jc-xwx2::path-to-regexp": {
+      "severity": "high",
+      "id": "GHSA-37ch-88jc-xwx2",
+      "module": "path-to-regexp",
+      "title": "path-to-regexp vulnerable to Regular Expression Denial of Service via multiple route parameters",
+      "paths": 3
+    },
+    "GHSA-3mfm-83xf-c92r::handlebars": {
+      "severity": "high",
+      "id": "GHSA-3mfm-83xf-c92r",
+      "module": "handlebars",
+      "title": "Handlebars.js has JavaScript Injection via AST Type Confusion by tampering @partial-block",
+      "paths": 1
+    },
+    "GHSA-3ppc-4f35-3m26::minimatch": {
+      "severity": "high",
+      "id": "GHSA-3ppc-4f35-3m26",
+      "module": "minimatch",
+      "title": "minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern",
+      "paths": 20
+    },
+    "GHSA-3xgq-45jj-v275::cross-spawn": {
+      "severity": "high",
+      "id": "GHSA-3xgq-45jj-v275",
+      "module": "cross-spawn",
+      "title": "Regular Expression Denial of Service (ReDoS) in cross-spawn",
+      "paths": 4
+    },
+    "GHSA-4q6p-r6v2-jvc5::get-func-name": {
+      "severity": "high",
+      "id": "GHSA-4q6p-r6v2-jvc5",
+      "module": "get-func-name",
+      "title": "Chaijs/get-func-name vulnerable to ReDoS",
+      "paths": 2
+    },
+    "GHSA-4rq4-32rv-6wp6::shelljs": {
+      "severity": "high",
+      "id": "GHSA-4rq4-32rv-6wp6",
+      "module": "shelljs",
+      "title": "Improper Privilege Management in shelljs",
+      "paths": 1
+    },
+    "GHSA-584q-6j8j-r5pm::secp256k1": {
+      "severity": "high",
+      "id": "GHSA-584q-6j8j-r5pm",
+      "module": "secp256k1",
+      "title": "secp256k1-node allows private key extraction over ECDH",
+      "paths": 11
+    },
+    "GHSA-5c6j-r48x-rmvq::serialize-javascript": {
+      "severity": "high",
+      "id": "GHSA-5c6j-r48x-rmvq",
+      "module": "serialize-javascript",
+      "title": "Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()",
+      "paths": 1
+    },
+    "GHSA-67hx-6x53-jw92::babel-traverse": {
+      "severity": "critical",
+      "id": "GHSA-67hx-6x53-jw92",
+      "module": "babel-traverse",
+      "title": "Babel vulnerable to arbitrary code execution when compiling specifically crafted malicious code",
+      "paths": 6
+    },
+    "GHSA-7r86-cg39-jmmj::minimatch": {
+      "severity": "high",
+      "id": "GHSA-7r86-cg39-jmmj",
+      "module": "minimatch",
+      "title": "minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments",
+      "paths": 20
+    },
+    "GHSA-93q8-gq69-wqmw::ansi-regex": {
+      "severity": "high",
+      "id": "GHSA-93q8-gq69-wqmw",
+      "module": "ansi-regex",
+      "title": "Inefficient Regular Expression Complexity in chalk/ansi-regex",
+      "paths": 13
+    },
+    "GHSA-95m3-7q98-8xr5::sha.js": {
+      "severity": "critical",
+      "id": "GHSA-95m3-7q98-8xr5",
+      "module": "sha.js",
+      "title": "sha.js is missing type checks leading to hash rewind and passing on crafted data",
+      "paths": 14
+    },
+    "GHSA-9c47-m6qq-7p4h::json5": {
+      "severity": "high",
+      "id": "GHSA-9c47-m6qq-7p4h",
+      "module": "json5",
+      "title": "Prototype Pollution in JSON5 via Parse Method",
+      "paths": 3
+    },
+    "GHSA-9cx6-37pm-9jff::handlebars": {
+      "severity": "high",
+      "id": "GHSA-9cx6-37pm-9jff",
+      "module": "handlebars",
+      "title": "Handlebars.js has Denial of Service via Malformed Decorator Syntax in Template Compilation",
+      "paths": 1
+    },
+    "GHSA-9wv6-86v2-598j::path-to-regexp": {
+      "severity": "high",
+      "id": "GHSA-9wv6-86v2-598j",
+      "module": "path-to-regexp",
+      "title": "path-to-regexp outputs backtracking regular expressions",
+      "paths": 4
+    },
+    "GHSA-c2c7-rcm5-vvqj::picomatch": {
+      "severity": "high",
+      "id": "GHSA-c2c7-rcm5-vvqj",
+      "module": "picomatch",
+      "title": "Picomatch has a ReDoS vulnerability via extglob quantifiers",
+      "paths": 9
+    },
+    "GHSA-c2qf-rxjj-qqgw::semver": {
+      "severity": "high",
+      "id": "GHSA-c2qf-rxjj-qqgw",
+      "module": "semver",
+      "title": "semver vulnerable to Regular Expression Denial of Service",
+      "paths": 32
+    },
+    "GHSA-cf4h-3jhx-xvhq::underscore": {
+      "severity": "critical",
+      "id": "GHSA-cf4h-3jhx-xvhq",
+      "module": "underscore",
+      "title": "Arbitrary Code Execution in underscore",
+      "paths": 10
+    },
+    "GHSA-cpq7-6gpm-g9rc::cipher-base": {
+      "severity": "critical",
+      "id": "GHSA-cpq7-6gpm-g9rc",
+      "module": "cipher-base",
+      "title": "cipher-base is missing type checks, leading to hash rewind and passing on crafted data",
+      "paths": 14
+    },
+    "GHSA-f8q6-p94x-37v3::minimatch": {
+      "severity": "high",
+      "id": "GHSA-f8q6-p94x-37v3",
+      "module": "minimatch",
+      "title": "minimatch ReDoS vulnerability",
+      "paths": 4
+    },
+    "GHSA-fwr7-v2mv-hh25::async": {
+      "severity": "high",
+      "id": "GHSA-fwr7-v2mv-hh25",
+      "module": "async",
+      "title": "Prototype Pollution in async",
+      "paths": 2
+    },
+    "GHSA-grv7-fg5c-xmjg::braces": {
+      "severity": "high",
+      "id": "GHSA-grv7-fg5c-xmjg",
+      "module": "braces",
+      "title": "Uncontrolled resource consumption in braces",
+      "paths": 8
+    },
+    "GHSA-h7cp-r72f-jxh6::pbkdf2": {
+      "severity": "critical",
+      "id": "GHSA-h7cp-r72f-jxh6",
+      "module": "pbkdf2",
+      "title": "pbkdf2 returns predictable uninitialized/zero-filled memory for non-normalized or unimplemented algos",
+      "paths": 11
+    },
+    "GHSA-hrpp-h998-j3pp::qs": {
+      "severity": "high",
+      "id": "GHSA-hrpp-h998-j3pp",
+      "module": "qs",
+      "title": "qs vulnerable to Prototype Pollution",
+      "paths": 3
+    },
+    "GHSA-ph9p-34f9-6g65::tmp": {
+      "severity": "high",
+      "id": "GHSA-ph9p-34f9-6g65",
+      "module": "tmp",
+      "title": "tmp has Path Traversal via unsanitized prefix/postfix that enables directory escape",
+      "paths": 7
+    },
+    "GHSA-qpx9-hpmf-5gmw::underscore": {
+      "severity": "high",
+      "id": "GHSA-qpx9-hpmf-5gmw",
+      "module": "underscore",
+      "title": "Underscore has unlimited recursion in _.flatten and _.isEqual, potential for DoS attack",
+      "paths": 10
+    },
+    "GHSA-qwcr-r2fm-qrc7::body-parser": {
+      "severity": "high",
+      "id": "GHSA-qwcr-r2fm-qrc7",
+      "module": "body-parser",
+      "title": "body-parser vulnerable to denial of service when url encoding is enabled",
+      "paths": 6
+    },
+    "GHSA-r5fr-rjxr-66jc::lodash": {
+      "severity": "high",
+      "id": "GHSA-r5fr-rjxr-66jc",
+      "module": "lodash",
+      "title": "lodash vulnerable to Code Injection via `_.template` imports key names",
+      "paths": 23
+    },
+    "GHSA-r683-j2x4-v87g::node-fetch": {
+      "severity": "high",
+      "id": "GHSA-r683-j2x4-v87g",
+      "module": "node-fetch",
+      "title": "node-fetch forwards secure headers to untrusted sites",
+      "paths": 2
+    },
+    "GHSA-rf6f-7fwh-wjgh::flatted": {
+      "severity": "high",
+      "id": "GHSA-rf6f-7fwh-wjgh",
+      "module": "flatted",
+      "title": "Prototype Pollution via parse() in NodeJS flatted",
+      "paths": 1
+    },
+    "GHSA-rhx6-c78j-4q9w::path-to-regexp": {
+      "severity": "high",
+      "id": "GHSA-rhx6-c78j-4q9w",
+      "module": "path-to-regexp",
+      "title": "path-to-regexp contains a ReDoS",
+      "paths": 3
+    },
+    "GHSA-v62p-rq8g-8h59::pbkdf2": {
+      "severity": "critical",
+      "id": "GHSA-v62p-rq8g-8h59",
+      "module": "pbkdf2",
+      "title": "pbkdf2 silently disregards Uint8Array input, returning static keys",
+      "paths": 11
+    },
+    "GHSA-vjh7-7g9h-fjfh::elliptic": {
+      "severity": "critical",
+      "id": "GHSA-vjh7-7g9h-fjfh",
+      "module": "elliptic",
+      "title": "Elliptic's private key extraction in ECDSA upon signing a malformed input (e.g. a string)",
+      "paths": 15
+    },
+    "GHSA-wf6x-7x77-mvgw::immutable": {
+      "severity": "high",
+      "id": "GHSA-wf6x-7x77-mvgw",
+      "module": "immutable",
+      "title": "Immutable is vulnerable to Prototype Pollution",
+      "paths": 1
+    },
+    "GHSA-x9w5-v3q2-3rhw::browserify-sign": {
+      "severity": "high",
+      "id": "GHSA-x9w5-v3q2-3rhw",
+      "module": "browserify-sign",
+      "title": "browserify-sign upper bound check issue in `dsaVerify` leads to a signature forgery attack",
+      "paths": 2
+    },
+    "GHSA-xhpv-hc6g-r9c6::handlebars": {
+      "severity": "high",
+      "id": "GHSA-xhpv-hc6g-r9c6",
+      "module": "handlebars",
+      "title": "Handlebars.js has JavaScript Injection via AST Type Confusion when passing an object as dynamic partial",
+      "paths": 1
+    },
+    "GHSA-xjpj-3mr7-gcpf::handlebars": {
+      "severity": "high",
+      "id": "GHSA-xjpj-3mr7-gcpf",
+      "module": "handlebars",
+      "title": "Handlebars.js has JavaScript Injection in CLI Precompiler via Unescaped Names and Options",
+      "paths": 1
+    },
+    "GHSA-xq7p-g2vc-g82p::base-x": {
+      "severity": "high",
+      "id": "GHSA-xq7p-g2vc-g82p",
+      "module": "base-x",
+      "title": "Homograph attack allows Unicode lookalike characters to bypass validation.",
+      "paths": 11
+    }
+  },
+  "counts": {
+    "critical": 82,
+    "high": 233,
+    "moderate": 262,
+    "low": 191
+  },
   "notes": [
-    "Baseline is advisory resolution-path count from the 2026-07-13 contracts toolchain review.",
-    "contracts/ is a legacy deployment/test toolchain; this gate prevents regressions while modernization work removes the baseline."
+    "acceptedHighCritical is the SET of accepted HIGH/CRITICAL advisory identities (<GHSA-or-npm-id>::<module>) for contracts/ as of the last `--generate` run.",
+    "counts is the per-severity resolution-path count from the same auditSummary, kept as a secondary regression guard.",
+    "contracts/ is a legacy deployment/test toolchain; this gate prevents regressions while modernization removes the baseline.",
+    "Regenerate after triaging new advisories: scripts/contracts-audit-gate.py --generate <audit-jsonl> audit/contracts-yarn-audit-baseline.json"
   ]
 }
