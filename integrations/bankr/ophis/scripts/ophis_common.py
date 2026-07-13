@@ -212,18 +212,33 @@ def bankr_api_key() -> str:
     return key
 
 
-def bankr_wallet_address(key: str, chain_slug: str = "base") -> str:
-    res = _http("GET", f"{BANKR_API}/agent/balances?chains={chain_slug}", headers={"X-API-Key": key})
-    # Bankr returns the EVM wallet address on the balances payload; support a few shapes.
-    addr = res.get("address") or res.get("wallet") or (res.get("data") or {}).get("address")
+def bankr_wallet_address(key: str) -> str:
+    # GET /wallet/me returns the wallet info (address + chains). The legacy /agent/* endpoints
+    # were removed; the Wallet API is the current surface.
+    res = _http("GET", f"{BANKR_API}/wallet/me", headers={"X-API-Key": key})
+
+    def _evm(d):
+        # Bankr is multi-chain (EVM + Solana), so pick a value that is specifically a 0x EVM
+        # address across the plausible shapes — never a Solana address.
+        if not isinstance(d, dict):
+            return None
+        for k in ("evmAddress", "address", "evm", "wallet", "walletAddress"):
+            v = d.get(k)
+            if isinstance(v, str) and re.match(r"^0x[0-9a-fA-F]{40}$", v):
+                return v
+        return None
+
+    addr = (_evm(res) or _evm(res.get("data")) or _evm(res.get("wallet"))
+            or _evm(res.get("addresses")) or _evm(res.get("evm")))
     if not addr:
-        sys.exit(f"could not resolve the Bankr wallet address from /agent/balances: {json.dumps(res)[:300]}")
+        sys.exit(f"could not resolve the Bankr EVM wallet address from /wallet/me: {json.dumps(res)[:300]}")
     return addr
 
 
 def bankr_submit(key: str, chain_id: int, to: str, data: str, description: str, value: str = "0") -> dict:
+    # POST /wallet/submit (the current Wallet API; /agent/submit was removed). Same body shape.
     res = _http(
-        "POST", f"{BANKR_API}/agent/submit",
+        "POST", f"{BANKR_API}/wallet/submit",
         body={
             "transaction": {"to": to, "chainId": chain_id, "value": value, "data": data},
             "description": description,
@@ -232,14 +247,16 @@ def bankr_submit(key: str, chain_id: int, to: str, data: str, description: str, 
         headers={"X-API-Key": key},
         timeout=120,  # waitForConfirmation blocks on the tx being mined
     )
-    # With waitForConfirmation, a mined-but-REVERTED tx can still come back with a hash, so a hash
-    # alone is not success (a reverted approval or setPreSignature would otherwise be reported as
-    # OK and the order printed as fillable). Reject an explicit failure/revert status first, then
-    # require a success flag or a confirmed status.
+    # Documented /wallet/submit status values are "success" | "reverted" | "pending". With
+    # waitForConfirmation a mined-but-REVERTED tx still returns a hash, so a hash alone is NOT
+    # success (a reverted approval / setPreSignature would otherwise print as a fillable order).
+    # Reject reverted, require an explicit success, and refuse an unconfirmed "pending".
     status = str(res.get("status") or res.get("state") or "").lower()
     if status in ("reverted", "failed", "failure", "error", "dropped"):
         sys.exit(f"Bankr submit reverted/failed ({description}, status={status!r}): {json.dumps(res)[:400]}")
-    ok = res.get("success") is True or status in ("confirmed", "success", "mined", "ok") or bool(res.get("transactionHash"))
+    # Accept an explicit success flag/status; only fall back to a bare hash when NO status is
+    # reported (legacy) — never accept a "pending" (not yet confirmed) for an approval/presign.
+    ok = res.get("success") is True or status in ("success", "confirmed", "mined", "ok") or (not status and bool(res.get("transactionHash")))
     if not ok:
         sys.exit(f"Bankr submit failed ({description}): {json.dumps(res)[:400]}")
     return res

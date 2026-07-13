@@ -29,9 +29,6 @@ from decimal import Decimal
 sys.path.insert(0, __import__("os").path.dirname(__file__))
 import ophis_common as oc  # noqa: E402
 
-# Bankr wallet chain slug for the /agent/balances address lookup (the EVM address
-# is the same across chains; this just needs a slug Bankr recognizes).
-BANKR_SLUG = {1: "ethereum", 8453: "base", 137: "polygon", 130: "unichain", 42161: "arbitrum", 56: "bnb"}
 ZERO = "0x0000000000000000000000000000000000000000"
 
 
@@ -59,7 +56,7 @@ def main() -> None:
 
     sell_wei = oc.to_wei(amount, sell_dec)
     key = oc.bankr_api_key()
-    wallet = oc.bankr_wallet_address(key, BANKR_SLUG.get(chain_id, "base"))
+    wallet = oc.bankr_wallet_address(key)
     print(f"Bankr wallet: {wallet}")
 
     # Enroll so the rebate indexer tracks this wallet's trades (idempotent).
