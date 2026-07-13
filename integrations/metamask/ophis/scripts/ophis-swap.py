@@ -63,20 +63,24 @@ def main() -> None:
     full_app_data, app_hash = oc.build_app_data(referral_code=referral, is_stable_pair=is_stable)
     sell_atomic = oc.to_atomic(amount, sell_dec)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_atomic, wallet, full_app_data, app_hash)
-    quote_buy = int(quote.get("buyAmount", "0"))
-    quote_sell = int(quote.get("sellAmount") or sell_atomic)
-    quote_fee = int(quote.get("feeAmount", "0"))
+    # Require the binding fields to be PRESENT — a missing field must not silently default into the
+    # request (which would defeat the gross bind below).
+    for _f in ("sellAmount", "buyAmount", "feeAmount"):
+        if _f not in quote:
+            sys.exit(f"orderbook quote is missing required field {_f!r}: {quote}")
+    quote_buy = int(quote["buyAmount"])
+    quote_sell = int(quote["sellAmount"])
+    quote_fee = int(quote["feeAmount"])
     if quote_buy <= 0:
         sys.exit(f"quote returned no buyAmount: {quote}")
 
-    # Bind the SIGNED order to the user's intent. Ophis orders carry feeAmount 0 (the
-    # fee rides in appData); a non-zero quote fee is extra sell-token spend the slippage
-    # bound does not cover, so refuse it. Likewise refuse a sellAmount that differs from
-    # what the user asked — never sign a larger sell than requested.
-    if quote_fee != 0:
-        sys.exit(f"orderbook returned a non-zero feeAmount ({quote_fee}); Ophis orders must have feeAmount 0. Aborting.")
-    if quote_sell != sell_atomic:
-        sys.exit(f"orderbook sellAmount ({quote_sell}) != requested ({sell_atomic}). Aborting to avoid signing a different amount.")
+    # Bind the SIGNED order to the user's intent. We ALWAYS sign feeAmount 0 (Ophis/CoW take the
+    # fee from surplus + the appData partner fee), so bind the GROSS (quote sellAmount + feeAmount)
+    # to the requested amount rather than rejecting a quote just because it split a non-zero fee out.
+    # An honest sell quote's gross equals the request exactly; any drift (over or under) is refused.
+    gross = quote_sell + quote_fee
+    if gross != sell_atomic:
+        sys.exit(f"quote gross (sellAmount+feeAmount = {gross}) != requested ({sell_atomic}). Aborting to avoid signing a different amount.")
 
     # Self-set validTo (do not trust the orderbook's expiry). Order valid ~20 min.
     valid_to = int(time.time()) + 1200

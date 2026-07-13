@@ -25,6 +25,7 @@ ORDERBOOK_URLS = {
     42161:    "https://api.cow.fi/arbitrum_one",
     43114:    "https://api.cow.fi/avalanche",
     56:       "https://api.cow.fi/bnb",
+    9745:     "https://api.cow.fi/plasma",
     59144:    "https://api.cow.fi/linea",
     57073:    "https://api.cow.fi/ink",
     10:       "https://optimism-mainnet.ophis.fi",   # Ophis-sovereign
@@ -43,6 +44,7 @@ RPC_URLS = {
     8453:  "https://mainnet.base.org",
     42161: "https://arb1.arbitrum.io/rpc",
     43114: "https://api.avax.network/ext/bc/C/rpc",
+    9745:  "https://rpc.plasma.to",
     57073: "https://rpc-gel.inkonchain.com",
     59144: "https://rpc.linea.build",
 }
@@ -269,6 +271,9 @@ def enroll_wallet(wallet: str) -> None:
         with urllib.request.urlopen(urllib.request.Request(f"{REBATE_INDEXER_URL}/tier/{wallet}"), timeout=15) as r:
             r.read()
     except Exception:
+        # Best-effort + non-blocking by design: a rebate-indexer outage (DNS/connection/timeout/
+        # non-2xx) must NOT abort the swap. Enrollment is idempotent and retried on the next swap,
+        # so every failure mode is swallowed here and the healthy swap + fee path still proceeds.
         pass
 
 
@@ -332,14 +337,19 @@ def mm_wallet_address() -> str:
 
 
 def mm_send_transaction(chain_id: int, to: str, data: str, intent: str, timeout: int = 300) -> str:
+    # `intent` is a human-readable description kept in the signature; it is NOT passed as a CLI flag.
+    # The documented `mm wallet` surface (--chain-id/--payload/--wait) does not include --intent, and
+    # an unknown flag would make the CLI reject the command.
+    del intent
     payload = json.dumps({"to": to, "value": "0x0", "data": data})
-    res = _mm(["wallet", "send-transaction", "--chain-id", str(chain_id), "--payload", payload, "--wait", "--intent", intent], timeout=timeout)
+    res = _mm(["wallet", "send-transaction", "--chain-id", str(chain_id), "--payload", payload, "--wait"], timeout=timeout)
     return _extract_0x(res, ("transactionHash", "txHash", "hash"), r"0x[a-fA-F0-9]{64}(?![a-fA-F0-9])", "transaction hash")
 
 
 def mm_sign_typed_data(chain_id: int, typed_data: dict, intent: str) -> str:
+    del intent  # see mm_send_transaction: --intent is not a supported mm flag; keep it out of the cmd.
     payload = json.dumps(typed_data)
-    res = _mm(["wallet", "sign-typed-data", "--chain-id", str(chain_id), "--payload", payload, "--wait", "--intent", intent])
+    res = _mm(["wallet", "sign-typed-data", "--chain-id", str(chain_id), "--payload", payload, "--wait"])
     # An EOA EIP-712 signature is exactly 65 bytes = 130 hex chars (0x + 130). Exact
     # length prevents a 40-hex address or 64-hex hash/pollingId being taken as the sig.
     return _extract_0x(res, ("signature", "sig", "result"), r"0x[a-fA-F0-9]{130}(?![a-fA-F0-9])", "signature")
