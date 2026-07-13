@@ -110,12 +110,30 @@ export async function executeOphisSwap(
   // Cap well below 100%: at 10000 the buy floor would be 0 (an order that accepts ANY/zero proceeds
   // — a max-sandwich invitation). An unattended agent has no human reviewing the tx, so reject an
   // absurd slippage outright. MAX_SLIPPAGE_BPS = 5000 (50%) still allows very illiquid pairs.
-  if (slippageBps < 0 || slippageBps > MAX_SLIPPAGE_BPS) {
-    throw new Error(`slippageBps out of range [0,${MAX_SLIPPAGE_BPS}]: ${slippageBps}`);
+  if (!Number.isInteger(slippageBps) || slippageBps < 0 || slippageBps > MAX_SLIPPAGE_BPS) {
+    throw new Error(`slippageBps out of range [0,${MAX_SLIPPAGE_BPS}] or non-integer: ${slippageBps}`);
   }
 
   const decimals = await wallet.readErc20Decimals(sellToken);
-  const sellAmountAtomic = parseUnits(params.sellAmount, decimals);
+  // REJECT excess precision instead of letting parseUnits ROUND it. parseUnits rounds
+  // a fraction that doesn't fit the token's decimals (e.g. "0.5" of a 0-decimal token
+  // -> 1, i.e. 2x the intended amount), which for an unattended agent means selling a
+  // different quantity than requested. Enforce a plain decimal whose fractional part
+  // fits `decimals` so the whole-unit -> base-unit conversion is exact.
+  const amountStr = params.sellAmount.trim();
+  const amountMatch = /^(\d+)(?:\.(\d+))?$/.exec(amountStr);
+  if (!amountMatch) {
+    throw new Error(`sellAmount must be a plain decimal string (e.g. "1.5"): ${params.sellAmount}`);
+  }
+  // Trailing zeros carry no real precision (viem strips them), so "1.000" or "1.2300"
+  // are exact even on a low-decimal token — count only the significant fraction digits.
+  const significantFraction = (amountMatch[2] ?? '').replace(/0+$/, '');
+  if (significantFraction.length > decimals) {
+    throw new Error(
+      `sellAmount "${params.sellAmount}" needs ${significantFraction.length} decimal places but the token supports only ${decimals}.`,
+    );
+  }
+  const sellAmountAtomic = parseUnits(amountStr, decimals);
   if (sellAmountAtomic <= 0n) throw new Error(`sellAmount must be > 0: ${params.sellAmount}`);
 
   // Enroll the trader with the OWNER-SCOPED rebate indexer. Non-fatal: an enrollment hiccup must not

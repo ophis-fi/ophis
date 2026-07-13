@@ -30,11 +30,11 @@ const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const WETH: Address = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 const NATIVE = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
-function mockWallet(chainId: number): OphisAgentWallet {
+function mockWallet(chainId: number, decimals = 18): OphisAgentWallet {
   return {
     getAddress: () => '0x1111111111111111111111111111111111111111',
     getChainId: () => chainId,
-    readErc20Decimals: vi.fn(async () => 18),
+    readErc20Decimals: vi.fn(async () => decimals),
     ensureErc20Allowance: vi.fn(async () => {}),
     signTypedData: vi.fn(async () => '0xdeadbeef' as Address),
   };
@@ -84,5 +84,33 @@ describe('executeOphisSwap input guards', () => {
     await expect(
       executeOphisSwap(mockWallet(1), { sellToken: WETH, buyToken: USDC, sellAmount: '1', slippageBps: 20000 }, REF),
     ).rejects.toThrow(/slippageBps out of range/i);
+  });
+
+  it('rejects an amount with MORE decimals than the token supports (would otherwise round: 0.5 of a 0-decimal token -> 1)', async () => {
+    await expect(
+      executeOphisSwap(mockWallet(1, 0), { sellToken: WETH, buyToken: USDC, sellAmount: '0.5' }, REF),
+    ).rejects.toThrow(/decimal places/i);
+  });
+
+  it('rejects a non-plain-decimal amount (thousands separators / units / sci-notation)', async () => {
+    for (const bad of ['1,000', '1_000', '1.5 ETH', '1e3']) {
+      await expect(
+        executeOphisSwap(mockWallet(1), { sellToken: WETH, buyToken: USDC, sellAmount: bad }, REF),
+      ).rejects.toThrow(/plain decimal/i);
+    }
+  });
+
+  it('accepts trailing zeros that carry no real precision (1.000 on a 0-decimal token is exact)', async () => {
+    // Must pass the precision guard (then fails later for an unrelated mocked reason) —
+    // it must NOT be rejected for decimal places.
+    await expect(
+      executeOphisSwap(mockWallet(1, 0), { sellToken: WETH, buyToken: USDC, sellAmount: '1.000' }, REF),
+    ).rejects.not.toThrow(/decimal places/i);
+  });
+
+  it('rejects a non-integer slippageBps', async () => {
+    await expect(
+      executeOphisSwap(mockWallet(1), { sellToken: WETH, buyToken: USDC, sellAmount: '1', slippageBps: 50.5 }, REF),
+    ).rejects.toThrow(/out of range|non-integer/i);
   });
 });
