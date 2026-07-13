@@ -39,10 +39,14 @@ export const ophisSwapAction: Action = {
       // 1. Extract the swap intent (elizaOS v1 XML pattern).
       const state = await runtime.composeState(message, ['RECENT_MESSAGES']);
       const userText = String((message?.content?.text ?? '') as string);
-      (state as Record<string, unknown>).supportedChains = SUPPORTED_CHAIN_NAMES.join(' | ');
-      // Structurally anchor extraction on THIS request (not just recent history), so a
-      // stale or injected earlier message can't supply the tokens/amount/chain.
-      (state as Record<string, unknown>).currentRequest = userText;
+      // Structurally anchor extraction on THIS request (not just recent history), so a stale or
+      // injected earlier message can't supply the tokens/amount/chain. composePromptFromState
+      // interpolates {{placeholders}} from state.values, so set them there (with a top-level
+      // fallback for runtimes that read the root object).
+      const s = state as Record<string, unknown>;
+      const values = (s.values ??= {}) as Record<string, unknown>;
+      values.supportedChains = s.supportedChains = SUPPORTED_CHAIN_NAMES.join(' | ');
+      values.currentRequest = s.currentRequest = userText;
       const prompt = composePromptFromState({ state, template: swapTemplate });
       const xml = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
       const parsed = parseKeyValueXml(xml);
