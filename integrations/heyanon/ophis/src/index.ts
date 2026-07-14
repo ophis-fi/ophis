@@ -5,7 +5,10 @@ import { tools } from './tools';
 
 const { getChainName } = EVM.utils;
 
-export default {
+// Explicit AdapterExport annotation (not `satisfies`): the inferred default-export type would
+// otherwise reference a transitive @heyanon/sdk type via a non-portable .pnpm/openai path
+// (TS2742) when the project is built inside a pnpm workspace (e.g. anon-integration-guide).
+const adapter: AdapterExport = {
   tools,
   functions,
   description:
@@ -13,4 +16,6 @@ export default {
   tags: [AdapterTag.DEX],
   chains: supportedChains.map(getChainName) as Chain[],
   executableFunctions: ['ophisSwap'],
-} satisfies AdapterExport;
+};
+
+export default adapter;
