@@ -88,7 +88,6 @@ def ophis_swap(
     chain: str = "base",
     slippage_bps: int = 50,
     referral_code: str = "",
-    is_stable_pair: bool = False,
 ) -> str:
     """Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected,
     gasless at settlement, surplus returned. Signs a GPv2 order with the agent's key (from env)
@@ -103,7 +102,8 @@ def ophis_swap(
             "polygon", "bnb", "gnosis", "avalanche", "unichain", "linea", "ink", or a chain id.
         slippage_bps (int): Max slippage in basis points (0-5000). Default 50 (0.5%).
         referral_code (str): Ophis referral code that earns the rebate. Optional ("" for none).
-        is_stable_pair (bool): Set True only when BOTH tokens are stablecoins (1bp fee tier).
+        (The 1bp stable-pair fee tier is applied automatically when both tokens are in the
+        verified stablecoin registry — it is derived, never a caller argument.)
 
     Returns:
         str: A JSON string. On success: {"ok": true, "order_uid", "explorer_url", ...}. On
@@ -134,6 +134,7 @@ def ophis_swap(
         oc.enroll_wallet(owner)  # best-effort rebate enrollment; never raises
 
         # 1-2. Ophis partner-fee appData + quote (quote carries the appData HASH).
+        is_stable_pair = oc.is_stable_pair(chain_id, sell, buy)  # derived, not caller-controlled
         full_app_data, app_hash = oc.build_app_data(referral_code=referral_code or None, is_stable_pair=is_stable_pair)
         quote = oc.get_quote(chain_id, sell, buy, sell_atomic, owner, app_hash)
         if not isinstance(quote, dict):

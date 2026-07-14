@@ -112,6 +112,7 @@ jobs:
             pnpm --filter @ophis/agent-swap test
             pnpm --filter @ophis/plugin-goat build
             pnpm --filter @ophis/agentkit-ophis build
+            pnpm --filter @ophis/plugin-elizaos build
           else
             echo "agent plugins not present yet — skipping"
           fi

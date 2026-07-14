@@ -18,8 +18,7 @@ ZERO = "0x0000000000000000000000000000000000000000"
 
 
 def main() -> None:
-    argv = [a for a in sys.argv[1:] if a != "--stable"]
-    is_stable = "--stable" in sys.argv
+    argv = sys.argv[1:]
     if len(argv) < 6:
         print(__doc__.strip())
         sys.exit(1)
@@ -29,6 +28,8 @@ def main() -> None:
     buy_token, buy_dec = argv[4], int(argv[5])
     referral = argv[6] if len(argv) > 6 else None
 
+    # Stable tier is DERIVED from the verified stablecoin registry (never a caller flag).
+    is_stable = oc.is_stable_pair(chain_id, sell_token, buy_token)
     full_app_data, app_hash = oc.build_app_data(referral_code=referral, is_stable_pair=is_stable)
     sell_atomic = oc.to_atomic(amount, sell_dec)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_atomic, ZERO, full_app_data, app_hash)
