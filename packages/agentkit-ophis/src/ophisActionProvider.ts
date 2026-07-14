@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import { ActionProvider, CreateAction, EvmWalletProvider, type Network } from '@coinbase/agentkit';
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { OphisSwapSchema } from './schemas.js';
+import { isOphisStablePair } from './stablecoins.js';
 import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisActionProviderConfig {
@@ -40,15 +41,22 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
   })
   async swap(walletProvider: EvmWalletProvider, args: z.infer<typeof OphisSwapSchema>): Promise<string> {
     try {
+      const wallet = toOphisWallet(walletProvider);
+      // Derive the 1bp stable-pair tier from a verified stablecoin list (never caller input),
+      // so a stablecoin<>stablecoin swap is charged the reduced rate automatically.
+      const isStablePair = isOphisStablePair(wallet.getChainId(), args.sellToken, args.buyToken);
       const result = await executeOphisSwap(
-        toOphisWallet(walletProvider),
+        wallet,
         {
           sellToken: args.sellToken,
           buyToken: args.buyToken,
           sellAmount: args.sellAmount,
           slippageBps: args.slippageBps ?? undefined,
         },
-        this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {},
+        {
+          ...(this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {}),
+          isStablePair,
+        },
       );
       return JSON.stringify({ success: true, ...result });
     } catch (error) {

@@ -332,10 +332,9 @@ sells need CoW eth-flow, a separate path, so wrap to WETH first). The agent's
 wallet is the order owner **and** receiver, so funds only ever move through the
 audited CoW settlement contract, back to the same wallet.
 
-The elizaOS plugin and the platform integrations below apply the reduced 1 bp
-stablecoin-to-stablecoin rate automatically, detecting a stable pair from a
-verified stablecoin list. The AgentKit and GOAT adapters currently submit
-stablecoin pairs at the standard 5 bps rate.
+The stablecoin-to-stablecoin 1 bp fee tier is applied automatically: every drop-in
+adapter (AgentKit, GOAT, elizaOS) and the platform integrations below detect a
+stable pair from a verified stablecoin list, so you never set it by hand.
 
 The `referralCode` is optional: omit it and swaps still work and settle, you just
 forgo the rebate. Mint one below, then ship, no redeploy of the swap path needed
@@ -427,9 +426,9 @@ where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
 `OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
 to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
 so on this manual path you pass `isStablePair` based on your own token
-classification. The elizaOS plugin and the platform integrations below derive it
-from a verified stablecoin list; the AgentKit and GOAT adapters (like this manual
-path when you omit it) fall back to the standard-rate default.
+classification. The drop-in adapters above (AgentKit, GOAT, elizaOS) and the
+platform integrations derive it for you from a verified stablecoin list, so you
+only make this call when hand-rolling orders.
 
 ```typescript
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
