@@ -3,7 +3,7 @@
 Agent Wallet (`mm`).
 
 Usage:
-  ophis-swap.py <chain_id> <sell_token> <sell_decimals> <amount> <buy_token> <buy_decimals> [slippage_bps] [referral_code] [--stable]
+  ophis-swap.py <chain_id> <sell_token> <sell_decimals> <amount> <buy_token> <buy_decimals> [slippage_bps] [referral_code]
 
 Example (100 USDC -> WETH on Base, 0.5% slippage):
   ophis-swap.py 8453 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 6 100 \\
@@ -19,7 +19,8 @@ directly, no presign):
   6. submit     POST {orderbook}/api/v1/orders  signingScheme=eip712 -> order UID
 
 Options: [slippage_bps] default 50 (0.5%, capped 5000). [referral_code] earns the
-rebate. [--stable] uses the 1bp stable-pair fee tier.
+rebate. The 1bp stable-pair tier is applied automatically when both tokens are in the
+verified stablecoin registry (never a caller flag).
 
 Requires: the `mm` CLI logged in + initialized (`mm doctor`), and a keccak lib.
 """
@@ -35,8 +36,7 @@ NATIVE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
 
 def main() -> None:
-    argv = [a for a in sys.argv[1:] if a != "--stable"]
-    is_stable = "--stable" in sys.argv
+    argv = sys.argv[1:]
     if len(argv) < 6:
         print(__doc__.strip())
         sys.exit(1)
@@ -59,7 +59,9 @@ def main() -> None:
     print(f"MetaMask wallet: {wallet}")
     oc.enroll_wallet(wallet)
 
-    # 1-2. appData (partner fee) + quote.
+    # 1-2. appData (partner fee) + quote. The 1bp stable tier is DERIVED from a verified
+    # stablecoin registry (never a caller flag), so a mislabeled pair can't undercharge.
+    is_stable = oc.is_stable_pair(chain_id, sell_token, buy_token)
     full_app_data, app_hash = oc.build_app_data(referral_code=referral, is_stable_pair=is_stable)
     sell_atomic = oc.to_atomic(amount, sell_dec)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_atomic, wallet, full_app_data, app_hash)

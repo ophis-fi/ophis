@@ -32,7 +32,7 @@ Built by `ophis_common.build_app_data`:
 ```
 
 - **`appCode` MUST be the literal `"ophis"`** — a custom appCode makes the rebate indexer silently drop the order.
-- **`partnerFee`** is the CIP-75 **VOLUME** policy `{volumeBps, recipient}` (NOT the price-improvement shape). Recipient is the Ophis Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (CREATE2-deterministic across chains). Default **5 bps** (integrator rate); **1 bp** for stable↔stable pairs. NOTE: this scaffold always sends **5 bps** — `build_app_data` accepts `is_stable_pair` but the CLI never sets it. Wire a per-chain stablecoin lookup into `ophis-swap.py` to charge 1 bp on stable pairs (frontend parity).
+- **`partnerFee`** is the CIP-75 **VOLUME** policy `{volumeBps, recipient}` (NOT the price-improvement shape). Recipient is the Ophis Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (CREATE2-deterministic across chains). Default **5 bps** (integrator rate); **1 bp** for stable↔stable pairs. The stable tier is DERIVED: `ophis-swap.py` calls `is_stable_pair(chain_id, sell, buy)` against the verified `STABLECOINS` registry (mirrored from the Ophis frontend's source-of-truth list) and never trusts a caller flag, so a mislabeled non-stable pair can never undercharge (a pair not in the registry conservatively gets 5 bps).
 - **Referral (optional):** `metadata.ophisReferrer.code` (`/^[a-z0-9_-]{3,64}$/`). Omitting it still yields a valid fee-bearing order; including a partner's own code is how the **integrator earns the rebate** — set it to monetize Bankr-routed volume.
 - Signed with `appData = keccak256(fullAppData)`; **submitted** with `appData = full JSON string` + `appDataHash = the hash`. The backend checks `keccak256(appData) == appDataHash`.
 

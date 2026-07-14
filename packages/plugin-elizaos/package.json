@@ -1,6 +1,6 @@
 {
   "name": "@ophis/plugin-elizaos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "elizaOS plugin: MEV-protected same-chain swaps via Ophis (CoW Protocol). The agent signs CoW orders with its own EVM key; the Ophis partner fee + your referral code accrue the 8-12% rebate.",
   "license": "GPL-3.0-or-later",
   "type": "module",
@@ -14,7 +14,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "repository": {
     "type": "git",
@@ -23,7 +26,18 @@
   },
   "homepage": "https://docs.ophis.fi/ai-agents",
   "bugs": "https://github.com/ophis-fi/ophis/issues",
-  "keywords": ["elizaos", "elizaos-plugins", "plugin", "ophis", "swap", "cow-protocol", "mev-protection", "defi", "rebate", "ai-agent"],
+  "keywords": [
+    "elizaos",
+    "elizaos-plugins",
+    "plugin",
+    "ophis",
+    "swap",
+    "cow-protocol",
+    "mev-protection",
+    "defi",
+    "rebate",
+    "ai-agent"
+  ],
   "publishConfig": {
     "access": "public"
   },

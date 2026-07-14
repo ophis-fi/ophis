@@ -63,7 +63,9 @@ def main() -> None:
     oc.enroll_wallet(wallet)
 
     # 1-2. appData (partner fee) + quote (post-fee price).
-    full_app_data, app_hash = oc.build_app_data(referral_code=referral)
+    # The 1bp stable-pair tier is DERIVED from a verified stablecoin registry (never a caller flag).
+    is_stable = oc.is_stable_pair(chain_id, sell_token, buy_token)
+    full_app_data, app_hash = oc.build_app_data(referral_code=referral, is_stable_pair=is_stable)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_wei, wallet, full_app_data, app_hash)
     # Require the binding fields present (no silent default), then bind the GROSS to the request.
     # The order sells the gross amount with feeAmount 0: Ophis/CoW take the fee from surplus + the
@@ -92,14 +94,24 @@ def main() -> None:
     # 3. Publish the full appData so solvers honor the partner fee for this hash.
     oc.put_app_data(chain_id, app_hash, full_app_data)
 
-    # 4. Approve the sell TOKEN so the VaultRelayer can pull it, via Bankr Submit.
-    # The transaction target is the ERC-20 sell token; the approve() spender is the
-    # relayer. (Sending approve() to the relayer itself would revert / grant nothing.)
+    # 4. Approve the sell TOKEN so the VaultRelayer can pull it, via Bankr Submit (allowance-aware,
+    # USDT-safe). The tx target is the ERC-20 sell token; the approve() spender is the relayer.
     relayer = oc.vault_relayer(chain_id)
     approve_amt = gross  # settlement pulls the gross (signed sellAmount + feeAmount 0)
-    print("Approving sell token -> VaultRelayer via Bankr Submit ...")
-    oc.bankr_submit(key, chain_id, sell_token, oc.encode_approve(relayer, approve_amt),
-                    "Approve sell token to CoW VaultRelayer for Ophis swap")
+    current = oc.read_allowance(chain_id, sell_token, wallet, relayer)
+    if current is not None and current >= approve_amt:
+        print("Sufficient VaultRelayer allowance — skipping approve.")
+    else:
+        if current is None or current > 0:
+            # A non-zero (or unknown, if the read failed) existing allowance: reset to 0 first —
+            # USDT + clones REVERT on a non-zero -> non-zero approve, and on a failed read we can't
+            # rule that out, so reset then set the exact amount.
+            print("Resetting existing VaultRelayer allowance to 0 (USDT-safe) via Bankr Submit ...")
+            oc.bankr_submit(key, chain_id, sell_token, oc.encode_approve(relayer, 0),
+                            "Reset CoW VaultRelayer allowance to 0")
+        print("Approving sell token -> VaultRelayer via Bankr Submit ...")
+        oc.bankr_submit(key, chain_id, sell_token, oc.encode_approve(relayer, approve_amt),
+                        "Approve sell token to CoW VaultRelayer for Ophis swap")
 
     # 5. Post the order with signingScheme=presign (empty signature; authorized on-chain next).
     order = {

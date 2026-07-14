@@ -75,7 +75,6 @@ class OphisAdapter(BaseAdapter):
         amount_in: str,
         slippage_bps: int = 50,
         referral_code: str | None = None,
-        is_stable_pair: bool = False,
         min_buy_amount: int | str | None = None,
     ) -> tuple[bool, Any]:
         """MEV-protected exact-in swap of `amount_in` (whole units) of `sell_token`
@@ -85,8 +84,8 @@ class OphisAdapter(BaseAdapter):
         `min_buy_amount` (base units of buy_token, optional) is an ABSOLUTE price floor:
         the order's post-slippage buy minimum must be >= it, else the swap is refused.
         Supply it to bind price against an adversarial quote — the orderbook is otherwise
-        trusted for pricing (as in every CoW integration). `is_stable_pair` is caller-
-        declared (it selects the 1bp stable-fee tier); the caller owns that classification.
+        trusted for pricing (as in every CoW integration). The 1bp stable-pair fee tier is
+        DERIVED from a verified stablecoin registry (never a caller flag).
         """
         try:
             if self.sign_typed_data is None:
@@ -113,6 +112,7 @@ class OphisAdapter(BaseAdapter):
             await asyncio.to_thread(oc.enroll_wallet, self.owner)  # best-effort; never raises
 
             # 1-2. Ophis partner-fee appData + a quote (quote carries the appData HASH).
+            is_stable_pair = oc.is_stable_pair(self.chain_id, sell, buy)  # derived, not caller-controlled
             full_app_data, app_hash = oc.build_app_data(referral_code=referral_code, is_stable_pair=is_stable_pair)
             quote = await asyncio.to_thread(oc.get_quote, self.chain_id, sell, buy, sell_atomic, self.owner, app_hash)
             if not isinstance(quote, dict):

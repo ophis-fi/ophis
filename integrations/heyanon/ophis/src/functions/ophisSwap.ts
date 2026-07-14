@@ -1,6 +1,7 @@
 import { EVM, EvmChain, FunctionOptions, FunctionReturn, toResult } from '@heyanon/sdk';
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { supportedChains } from '../constants';
+import { isOphisStablePair } from '../stablecoins';
 import { toOphisWallet } from '../ophis-wallet';
 
 const { getChainFromName } = EVM.utils;
@@ -16,7 +17,6 @@ interface Props {
   // ATTRIBUTION (rides in appData) — not user funds; receiver stays owner. Omit it and the
   // swap still settles (from @ophis/agent-swap 0.2.0 the core warns once instead of throwing).
   referralCode: string | null;
-  isStablePair: boolean | null;
 }
 
 /**
@@ -25,7 +25,7 @@ interface Props {
  * returned, no sandwiching). Reuses the audited @ophis/agent-swap core.
  */
 export async function ophisSwap(
-  { chainName, sellToken, buyToken, sellAmount, slippageBps, referralCode, isStablePair }: Props,
+  { chainName, sellToken, buyToken, sellAmount, slippageBps, referralCode }: Props,
   options: FunctionOptions,
 ): Promise<FunctionReturn> {
   const { evm, notify } = options;
@@ -47,12 +47,14 @@ export async function ophisSwap(
     const account = await evm.getAddress();
     await notify?.(`Building an MEV-protected Ophis swap on ${chainName}…`);
     const wallet = toOphisWallet(evm, account, chainId);
+    // The 1bp stable-pair tier is DERIVED from a verified stablecoin registry (never a caller flag),
+    // so a mislabeled non-stable pair can't undercharge. Pass referralCode only when non-empty; the
+    // 0.2.0 core treats its absence as "no rebate".
+    const isStablePair = isOphisStablePair(chainId, sellToken, buyToken);
     const result = await executeOphisSwap(
       wallet,
       { sellToken, buyToken, sellAmount, slippageBps: slippageBps ?? undefined },
-      // isStablePair true drops stablecoin<>stablecoin to the 1bp fee tier (else 5bps).
-      // Pass referralCode only when non-empty; the 0.2.0 core treats its absence as "no rebate".
-      { ...(referralCode?.trim() ? { referralCode: referralCode.trim() } : {}), isStablePair: isStablePair ?? undefined },
+      { ...(referralCode?.trim() ? { referralCode: referralCode.trim() } : {}), isStablePair },
     );
     // Surface a rebate-enrollment warning if the swap submitted but enrollment failed — the order
     // still settles, but the rebate may not index until the wallet is enrolled, so don't hide it.
