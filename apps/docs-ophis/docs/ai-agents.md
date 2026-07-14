@@ -276,7 +276,7 @@ the resulting deep link to the user.
 
 Everything above keeps a human in the signing loop. If instead you are building
 an agent that executes swaps itself and you are on a common framework, you do
-not have to hand-roll the order flow in the next section. Three published npm
+not have to hand-roll the order flow in the next section. Four published npm
 packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
 and each stamps your referral code into every order so the rebate accrues:
 
@@ -284,6 +284,7 @@ and each stamps your referral code into every order so the rebate accrues:
 | --- | --- | --- |
 | [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
 | [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | [GOAT SDK](https://github.com/goat-sdk/goat) | an `ophis_swap` tool |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | [elizaOS](https://github.com/elizaOS/eliza) | a `swap` action |
 | [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | any custom EOA framework | the `executeOphisSwap()` core |
 
 Coinbase AgentKit, in one line:
@@ -309,18 +310,46 @@ const tools = await getOnChainTools({
 });
 ```
 
-Both register a swap that takes `sellToken`, `buyToken`, `sellAmount` (whole
-units, e.g. `"1.5"`), and an optional `slippageBps` (default `50` = 0.5%). Each
-quotes against the Ophis orderbook, signs the order EIP-712 with the agent's own
-wallet, approves the CoW vault relayer once, submits, and returns the order UID
-plus an explorer URL. ERC-20 to ERC-20 only (native-ETH sells need CoW eth-flow,
-a separate path, so wrap to WETH first). The agent's wallet is the order owner
-**and** receiver, so funds only ever move through the audited CoW settlement
-contract, back to the same wallet.
+elizaOS (the agent signs with its own `EVM_PRIVATE_KEY`; set `OPHIS_REFERRAL_CODE`
+in the character settings to earn the rebate):
+
+```ts
+import { ophisPlugin } from '@ophis/plugin-elizaos';
+
+export const character = {
+  name: 'Trader',
+  plugins: [ophisPlugin], // registers a natural-language `swap` action
+};
+```
+
+The AgentKit and GOAT tools take `sellToken`, `buyToken`, `sellAmount` (whole
+units, e.g. `"1.5"`), and an optional `slippageBps` (default `50` = 0.5%); the
+elizaOS action reads the same fields from the user's message. Each quotes against
+the Ophis orderbook, signs the order EIP-712 with the agent's own wallet, approves
+the CoW vault relayer once, submits, and returns the order UID plus an explorer
+URL. ERC-20 to ERC-20 only (native-ETH sells need CoW eth-flow, a separate path,
+so wrap to WETH first). The agent's wallet is the order owner **and** receiver, so
+funds only ever move through the audited CoW settlement contract, back to the same
+wallet. The stablecoin-to-stablecoin 1 bp fee tier is derived automatically from a
+verified stablecoin list, so you never set it by hand.
 
 The `referralCode` is optional: omit it and swaps still work and settle, you just
 forgo the rebate. Mint one below, then ship, no redeploy of the swap path needed
 to start earning.
+
+### More platform integrations
+
+Beyond the npm packages above, Ophis maintains swap integrations for more agent
+platforms, each built on the same audited Ophis order flow (the TypeScript ones
+reuse `@ophis/agent-swap`; the Python ones mirror the same order construction and
+fund-safety guards):
+[elizaOS](https://www.npmjs.com/package/@ophis/plugin-elizaos) (published, in the
+table above), plus **HeyAnon**, **Swarms**, the **MetaMask Agent Wallet**, and
+**Bankr**. Their source lives under
+[`integrations/`](https://github.com/ophis-fi/ophis/tree/main/integrations) in the
+Ophis repo; each is being submitted to its platform's own registry, so availability
+follows that platform's review. The MCP server and Intent API above already work
+with any of these agents today.
 
 ## Get a referral code
 
@@ -393,7 +422,9 @@ where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
 `{ volumeBps: 5, recipient }`. The `@ophis/sdk` exposes
 `OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
 to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
-so integrators pass `isStablePair` based on their own token classification.
+so on this manual path you pass `isStablePair` based on your own token
+classification. The drop-in adapters above derive it for you from a verified
+stablecoin list, so you only make this call when hand-rolling orders.
 
 ```typescript
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
