@@ -12,6 +12,7 @@ import {
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { buildOphisWallet } from '../wallet.js';
 import { resolveChain, SUPPORTED_CHAIN_NAMES } from '../chains.js';
+import { isOphisStablePair } from '../stablecoins.js';
 import { resolveToken } from '../tokens.js';
 import { swapTemplate } from '../templates.js';
 
@@ -119,10 +120,13 @@ export const ophisSwapAction: Action = {
       }
 
       const wallet = buildOphisWallet(runtime, chainName);
+      // The 1bp stable-pair tier is DERIVED from a verified stablecoin registry (never caller
+      // input), so a mislabeled non-stable pair can't undercharge; parity with the other adapters.
+      const isStablePair = isOphisStablePair(resolved.id, sellToken, buyToken);
       const result = await executeOphisSwap(
         wallet,
         { sellToken, buyToken, sellAmount: amount },
-        referralCode ? { referralCode } : {},
+        { ...(referralCode ? { referralCode } : {}), isStablePair },
       );
 
       const text = `Submitted an MEV-protected swap on ${chainName} via Ophis. Order ${result.orderUid} — track it at ${result.explorerUrl}`;

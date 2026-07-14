@@ -44,7 +44,7 @@ ok, result = await adapter.swap_exact_in(
     amount_in="100",
     slippage_bps=50,
     referral_code="my-ophis-code",   # earns the rebate
-    is_stable_pair=False,
+    # (the 1bp stable-pair tier is derived automatically from a verified stablecoin registry)
 )
 # ok == True -> result = {"order_uid": "0x…", "min_buy": "…", "explorer_url": "…", ...}
 ```
