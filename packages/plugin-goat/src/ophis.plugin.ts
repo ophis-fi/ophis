@@ -3,6 +3,7 @@ import { EVMWalletClient } from '@goat-sdk/wallet-evm';
 import { arbitrum, avalanche, base, gnosis, mainnet, optimism, polygon } from 'viem/chains';
 import { executeOphisSwap, type OphisSwapResult } from '@ophis/agent-swap';
 import { OphisSwapParameters } from './parameters.js';
+import { isOphisStablePair } from './stablecoins.js';
 import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisPluginOptions {
@@ -29,15 +30,22 @@ class OphisService {
       '(e.g. "1.5"). Native ETH is NOT supported — use WETH. Returns the CoW order UID and an explorer URL.',
   })
   async ophisSwap(walletClient: EVMWalletClient, parameters: OphisSwapParameters): Promise<OphisSwapResult> {
+    const wallet = toOphisWallet(walletClient);
+    // Derive the 1bp stable-pair tier from a verified stablecoin list (never caller input),
+    // so a stablecoin<>stablecoin swap is charged the reduced rate automatically.
+    const isStablePair = isOphisStablePair(wallet.getChainId(), parameters.sellToken, parameters.buyToken);
     return executeOphisSwap(
-      toOphisWallet(walletClient),
+      wallet,
       {
         sellToken: parameters.sellToken,
         buyToken: parameters.buyToken,
         sellAmount: parameters.sellAmount,
         slippageBps: parameters.slippageBps,
       },
-      this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {},
+      {
+        ...(this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {}),
+        isStablePair,
+      },
     );
   }
 }
