@@ -1,0 +1,22 @@
+name: Install osv-scanner
+description: >-
+  Download and SHA256-verify the pinned osv-scanner binary and put it on PATH.
+  Used by the security-audit jobs that replaced pnpm/yarn audit after npm retired
+  the legacy audit endpoint (HTTP 410). Pinned by version + SHA256 so the CLI
+  cannot drift (osv-scanner deprecates flags across minor lines).
+
+runs:
+  using: composite
+  steps:
+    - name: Install osv-scanner (pinned, SHA256-verified)
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION=v2.4.0
+        SHA256=15314940c10d26af9c6649f150b8a47c1262e8fc7e17b1d1029b0e479e8ed8a0
+        URL="https://github.com/google/osv-scanner/releases/download/${VERSION}/osv-scanner_linux_amd64"
+        curl -fsSL --retry 3 --retry-delay 2 -o /tmp/osv-scanner "$URL"
+        echo "${SHA256}  /tmp/osv-scanner" | sha256sum -c -
+        sudo install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
+        rm -f /tmp/osv-scanner
+        osv-scanner --version
