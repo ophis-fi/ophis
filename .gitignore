@@ -57,3 +57,10 @@ skills-lock.json
 
 # Playwright run output (frontend root level; per-app output already ignored)
 apps/frontend/test-results/
+
+# Integration example packages (integrations/**) are built with tsup and
+# submitted to their upstream registries — they are NOT in the pnpm workspace
+# and no CI here runs `npm ci` against them. A committed npm lockfile only
+# re-derived third-party-transitive Dependabot alerts (@heyanon/sdk deps we
+# cannot remediate). Resolve fresh on install instead of tracking the lockfile.
+integrations/**/package-lock.json

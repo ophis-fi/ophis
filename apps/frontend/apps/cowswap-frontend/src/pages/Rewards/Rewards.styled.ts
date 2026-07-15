@@ -156,6 +156,27 @@ export const ClaimPanel = styled.div`
   }
 `
 
+export const RedeemRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+`
+
+export const CodeChip = styled.span`
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #f2a63e;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(242, 166, 62, 0.45);
+  background: rgba(242, 166, 62, 0.08);
+  /* Single click selects the whole code for easy copy. */
+  user-select: all;
+`
+
 export const ClaimNote = styled.span`
   font-size: 12px;
   opacity: 0.6;
