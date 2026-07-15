@@ -135,7 +135,8 @@ def mode_advisories(findings, ignore):
 
 def mode_baseline(findings, baseline_path):
     try:
-        baseline = json.loads(open(baseline_path).read())
+        with open(baseline_path) as f:
+            baseline = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         print(f"ERROR: cannot read baseline {baseline_path!r}: {exc} -- failing closed.", file=sys.stderr)
         sys.exit(2)
