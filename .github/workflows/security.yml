@@ -9,7 +9,7 @@ name: Security
 # repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
 # WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
-# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, contracts-yarn-audit) plus the
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, contracts-osv-audit) plus the
 # secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
 # tier / erpc / policy-pack) and Slither depend only on repo contents a PR
 # already exercised, so they are skipped on schedule via
@@ -17,14 +17,18 @@ name: Security
 #
 # Jobs:
 #   - slither             Solidity static analysis (Trail of Bits)
-#   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree)
-#   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories
-#   - contracts-yarn-audit legacy contracts deploy/test toolchain advisories
+#   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree, osv-scanner)
+#   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories (osv-scanner)
+#   - contracts-osv-audit legacy contracts deploy/test toolchain advisories (osv-scanner)
 #   - cargo-audit         Rust dep advisories
 #   - cargo-deny          Rust supply-chain (advisories + sources)
 #   - gitleaks            raw EVM-private-key secret scan
 #
-# Each advisory job blocks merge if it regresses against the audit baseline.
+# The JS/TS + contracts advisory jobs use osv-scanner (reads pnpm-lock.yaml /
+# yarn.lock directly against the OSV/GitHub advisory DB) after npm retired its
+# legacy audit endpoint (HTTP 410) which broke `pnpm audit` / `yarn audit`. The
+# two pnpm jobs block on new HIGH/CRITICAL advisories; contracts blocks on
+# regressions above a documented baseline. Shared gate: scripts/osv-gate.py.
 
 on:
   pull_request:
@@ -252,228 +256,85 @@ jobs:
           retention-days: 30
 
 
-  contracts-yarn-audit:
-    name: yarn audit (contracts legacy toolchain)
+  contracts-osv-audit:
+    name: contracts audit (osv-scanner, regression baseline)
     runs-on: ubuntu-latest
+    # contracts/ is a legacy deployment/test toolchain carrying a large known
+    # advisory baseline, so this job gates on REGRESSIONS above that baseline
+    # (audit/contracts-osv-baseline.json), NOT on absolute HIGH/CRITICAL like the
+    # pnpm workspace jobs. osv-scanner reads contracts/yarn.lock directly (whole
+    # tree, no yarn install), replacing `yarn audit` after npm retired the legacy
+    # audit endpoint (HTTP 410).
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
-        with:
-          node-version: 22
-          cache: yarn
-          cache-dependency-path: contracts/yarn.lock
-
-      - name: Install contracts dependencies
-        working-directory: contracts
-        run: yarn install --frozen-lockfile --ignore-scripts
-
-      - name: Run contracts yarn audit
-        working-directory: contracts
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan contracts/yarn.lock and gate on regressions
         run: |
-          yarn audit --json > /tmp/contracts-yarn-audit.jsonl || true
-          cat /tmp/contracts-yarn-audit.jsonl
-
-      - name: Block audit regressions above documented baseline
-        run: scripts/contracts-audit-gate.py /tmp/contracts-yarn-audit.jsonl audit/contracts-yarn-audit-baseline.json
+          rc=0
+          osv-scanner --lockfile contracts/yarn.lock --format json \
+            --output-file /tmp/osv-contracts.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          python3 scripts/osv-gate.py /tmp/osv-contracts.json --mode baseline \
+            --osv-rc "$rc" --baseline audit/contracts-osv-baseline.json
 
   pnpm-audit:
     name: pnpm audit (JS/TS deps)
     runs-on: ubuntu-latest
-    # Audits the FULL root workspace tree, NOT --prod. --prod scopes to
-    # dependencies + optionalDependencies only, which SKIPS the build/test
-    # devDependencies that compile and test the npm-PUBLISHED packages
-    # (@ophis/sdk, @ophis/agent-swap, @ophis/plugin-goat, @ophis/agentkit-ophis,
-    # @ophis/widget-react) and are therefore a supply-chain surface (audit
-    # 2026-06 P2, same principle the sibling pnpm-audit-frontend job documents).
-    # Uses the frontend job's fail-closed gate. Documented non-reachable
-    # advisories with no fix are ignored below; keep that list TIGHT.
+    # Audits the FULL root workspace tree (dev + prod). The root devDependencies
+    # build and test the npm-PUBLISHED packages (@ophis/sdk, @ophis/agent-swap,
+    # @ophis/plugin-goat, @ophis/agentkit-ophis, @ophis/plugin-elizaos,
+    # @ophis/widget-react) and are therefore a supply-chain surface (audit 2026-06
+    # P2). osv-scanner reads pnpm-lock.yaml directly (whole resolved tree, no
+    # install, no npm audit endpoint), replacing `pnpm audit` after npm retired the
+    # legacy audit endpoint (HTTP 410). Documented non-reachable advisories with no
+    # fix are ignored below; keep that list TIGHT.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: |
-            pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Run pnpm audit (root workspace, incl. devDependencies)
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan root workspace and block on HIGH/CRITICAL
         run: |
-          # FULL tree, NOT --prod: the root devDependencies build and test the
-          # npm-published @ophis packages, so an advisory in that toolchain must
-          # block. `|| true` because pnpm audit exits non-zero on ANY advisory;
-          # the python step below decides what actually blocks (HIGH/CRITICAL).
-          pnpm audit --json > /tmp/pnpm-audit.json || true
-          cat /tmp/pnpm-audit.json
-
-      - name: Block on NEW HIGH or CRITICAL advisories
-        run: |
-          python3 - <<'PYEOF'
-          import json, sys
-          # Documented advisories with no upstream fix. Keep TIGHT -- every entry
-          # needs a written justification.
-          IGNORE = {
-              # bigint-buffer Buffer Overflow via toBigIntLE() (HIGH). Reaches the
-              # tree ONLY through @coinbase/agentkit (a devDep satisfying
-              # agentkit-ophis's peer dep) -> @solana/spl-token ->
-              # buffer-layout-utils. The Solana spl-token path is unreachable for
-              # Ophis, dev/test-only, not in any published tarball, and NO patched
-              # release exists (patched '<0.0.0'). (audit 2026-07)
-              'GHSA-3gc7-fjrx-p6mg',
-          }
-          # NB: elliptic (CVE-2025-14505) is npm-severity LOW with no fixed
-          # release, so it never enters the HIGH/CRITICAL block path below and
-          # needs no IGNORE entry. uuid CVE-2026-41907 (moderate) is FIXED by the
-          # root pnpm override '@metamask/utils>uuid': '^11.1.1' in package.json.
-          def ghsa(url):
-              return (url or '').rstrip('/').split('/')[-1]
-          with open('/tmp/pnpm-audit.json') as f:
-              d = json.load(f)
-
-          blocking, ignored, shape = [], [], None
-          # Shape A (npm-v6 / current pnpm): advisories = { id: {severity, module_name, url, title} }
-          adv = d.get('advisories')
-          if isinstance(adv, dict):
-              shape = 'advisories'
-              for k, a in adv.items():
-                  if a.get('severity') not in ('high', 'critical'):
-                      continue
-                  g = ghsa(a.get('url')) or str(k)
-                  rec = f"{a.get('module_name','?')} (sev={a.get('severity')}, {g}): {a.get('title','?')}"
-                  (ignored if g in IGNORE else blocking).append(rec)
-          # Shape B (npm-v7): vulnerabilities = { name: {severity, via: [{url,title}|str]} }
-          vuln = d.get('vulnerabilities')
-          if isinstance(vuln, dict) and vuln:
-              shape = shape or 'vulnerabilities'
-              for name, a in vuln.items():
-                  if a.get('severity') not in ('high', 'critical'):
-                      continue
-                  gs = [ghsa(v.get('url')) for v in (a.get('via') or []) if isinstance(v, dict)]
-                  gs = [g for g in gs if g]
-                  rec = f"{name} (sev={a.get('severity')}, {','.join(gs) or '?'})"
-                  # Ignore only if EVERY contributing advisory is allow-listed.
-                  (ignored if gs and all(g in IGNORE for g in gs) else blocking).append(rec)
-
-          # Fail CLOSED: never silently pass on an unrecognized/empty audit shape.
-          meta_v = (d.get('metadata') or {}).get('vulnerabilities') or {}
-          meta_hc = (meta_v.get('high') or 0) + (meta_v.get('critical') or 0)
-          if shape is None:
-              print("ERROR: unrecognized pnpm audit JSON (no advisories/vulnerabilities) -- failing closed.", file=sys.stderr)
-              sys.exit(1)
-          if meta_hc > 0 and not blocking and not ignored:
-              print(f"ERROR: metadata reports {meta_hc} high/critical but parser matched none "
-                    f"(shape='{shape}' mismatch?) -- failing closed.", file=sys.stderr)
-              sys.exit(1)
-
-          for i in ignored:
-              print(f"IGNORED (documented non-reachable): {i}")
-          if blocking:
-              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories in the root workspace")
-              for b in blocking:
-                  print(f"  - {b}")
-              sys.exit(1)
-          print(f"OK -- shape={shape}, none blocking ({len(ignored)} ignored, metadata high/crit={meta_hc})")
-          PYEOF
+          rc=0
+          osv-scanner --lockfile pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-root.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          # IGNORE bigint-buffer GHSA-3gc7-fjrx-p6mg (HIGH): reaches the tree ONLY
+          # via @coinbase/agentkit (a devDep satisfying agentkit-ophis's peer dep)
+          # -> @solana/spl-token -> buffer-layout-utils. The Solana spl-token path
+          # is unreachable for Ophis, dev/test-only, not in any published tarball,
+          # and NO patched release exists. (audit 2026-07)
+          python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
+            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
     runs-on: ubuntu-latest
-    # apps/frontend is its OWN pnpm workspace (cowswap upstream ships its own
-    # package manager) with a separate lockfile, so the root pnpm-audit job above
-    # does NOT cover it — the largest, browser-facing dependency tree. This job
-    # closes that gap (audit 2026-06 P3: a `tmp` HIGH had stayed green because the
-    # frontend was never audited in CI). It audits the FULL tree incl.
-    # devDependencies (NOT --prod), since build-time deps compile the browser
-    # bundle and are a supply-chain surface (audit 2026-06 P2). Documented
-    # non-reachable advisories are ignored below; keep that list TIGHT (each entry
-    # needs a written reason).
+    # apps/frontend is its OWN pnpm workspace (cowswap upstream) with a separate
+    # lockfile, so the root job above does not cover it -- the largest,
+    # browser-facing dependency tree (audit 2026-06 P3). osv-scanner reads
+    # apps/frontend/pnpm-lock.yaml directly (full tree incl. build-time
+    # devDependencies, which compile the browser bundle and are a supply-chain
+    # surface, audit 2026-06 P2). Documented non-reachable advisories are ignored
+    # below; keep that list TIGHT.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
-        with:
-          node-version: 22
-
-      - name: Run pnpm audit (frontend workspace, incl. devDependencies)
-        working-directory: apps/frontend
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan frontend workspace and block on HIGH/CRITICAL
         run: |
-          # Audit the FULL dependency tree, NOT --prod. `--prod` scopes to
-          # dependencies + optionalDependencies only, which would SKIP exactly the
-          # class this job exists to guard: build-time devDependencies
-          # (Nx/webpack/vite/patch-package) that compile the browser bundle, and
-          # are therefore a supply-chain surface. Concretely, the `tmp` HIGH this
-          # job was added for is pulled in via the devDependency patch-package
-          # (package.json), so a --prod audit never saw it — the gate skipped the
-          # very thing it claimed to cover. (audit 2026-06 P2)
-          # pnpm audit reads apps/frontend/pnpm-lock.yaml directly (no install
-          # needed). `|| true` because it exits non-zero on ANY advisory; the
-          # python step below decides what actually blocks (HIGH/CRITICAL only).
-          pnpm audit --json > /tmp/fe-audit.json || true
-          cat /tmp/fe-audit.json
-
-      - name: Block on NEW HIGH or CRITICAL advisories
-        run: |
-          python3 - <<'PYEOF'
-          import json, sys
-          # Documented, non-runtime-reachable advisories with no upstream fix.
-          # Keep TIGHT — every entry needs a written justification.
-          IGNORE = {
-              # `ip` SSRF (improper isPublic categorization): transitive
-              # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
-              # already pinned to latest 2.0.1. (audit 2026-06)
-              'GHSA-2p57-rm9w-gvfp',
-          }
-          def ghsa(url):
-              return (url or '').rstrip('/').split('/')[-1]
-          with open('/tmp/fe-audit.json') as f:
-              d = json.load(f)
-
-          blocking, ignored, shape = [], [], None
-          # Shape A (npm-v6 / current pnpm): advisories = { id: {severity, module_name, url, title} }
-          adv = d.get('advisories')
-          if isinstance(adv, dict):
-              shape = 'advisories'
-              for k, a in adv.items():
-                  if a.get('severity') not in ('high', 'critical'):
-                      continue
-                  g = ghsa(a.get('url')) or str(k)
-                  rec = f"{a.get('module_name','?')} (sev={a.get('severity')}, {g}): {a.get('title','?')}"
-                  (ignored if g in IGNORE else blocking).append(rec)
-          # Shape B (npm-v7): vulnerabilities = { name: {severity, via: [{url,title}|str]} }
-          vuln = d.get('vulnerabilities')
-          if isinstance(vuln, dict) and vuln:
-              shape = shape or 'vulnerabilities'
-              for name, a in vuln.items():
-                  if a.get('severity') not in ('high', 'critical'):
-                      continue
-                  gs = [ghsa(v.get('url')) for v in (a.get('via') or []) if isinstance(v, dict)]
-                  gs = [g for g in gs if g]
-                  rec = f"{name} (sev={a.get('severity')}, {','.join(gs) or '?'})"
-                  # Ignore only if EVERY contributing advisory is allow-listed.
-                  (ignored if gs and all(g in IGNORE for g in gs) else blocking).append(rec)
-
-          # Fail CLOSED: never silently pass on an unrecognized/empty audit shape.
-          meta_v = (d.get('metadata') or {}).get('vulnerabilities') or {}
-          meta_hc = (meta_v.get('high') or 0) + (meta_v.get('critical') or 0)
-          if shape is None:
-              print("ERROR: unrecognized pnpm audit JSON (no advisories/vulnerabilities) — failing closed.", file=sys.stderr)
-              sys.exit(1)
-          if meta_hc > 0 and not blocking and not ignored:
-              print(f"ERROR: metadata reports {meta_hc} high/critical but parser matched none "
-                    f"(shape='{shape}' mismatch?) — failing closed.", file=sys.stderr)
-              sys.exit(1)
-
-          for i in ignored:
-              print(f"IGNORED (documented non-reachable): {i}")
-          if blocking:
-              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories in apps/frontend")
-              for b in blocking:
-                  print(f"  - {b}")
-              sys.exit(1)
-          print(f"OK -- shape={shape}, none blocking ({len(ignored)} ignored, metadata high/crit={meta_hc})")
-          PYEOF
+          rc=0
+          osv-scanner --lockfile apps/frontend/pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-fe.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          # IGNORE ip GHSA-2p57-rm9w-gvfp (HIGH SSRF): transitive
+          # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
+          # already pinned to latest 2.0.1. (audit 2026-06)
+          python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp
 
   cargo-audit:
     name: cargo audit (Rust deps)
