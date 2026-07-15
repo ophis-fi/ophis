@@ -46,15 +46,59 @@ def ghsa_of(vuln):
     return vid or "?"
 
 
+def band_from_cvss(score):
+    """Map a numeric CVSS base score to the GHSA severity band, or None."""
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return None
+    if s >= 9.0:
+        return "critical"
+    if s >= 7.0:
+        return "high"
+    if s >= 4.0:
+        return "moderate"
+    if s > 0.0:
+        return "low"
+    return None
+
+
 def iter_findings(doc):
-    """Yield (name, version, ghsa, severity_lower, title) for every vulnerability."""
+    """Yield (name, version, ghsa, severity_lower, title) for every vulnerability.
+
+    Severity is taken from database_specific.severity (the GHSA band osv/npm
+    populate for reviewed advisories). If that is absent -- an ungraded or a
+    CVSS-only record -- fall back to the numeric CVSS base score in the
+    package's groups[].max_severity (mapped to a band). If neither is available
+    the band is "" (empty), which the caller treats as fail-closed: a real
+    advisory we cannot classify must never be silently skipped."""
     for result in doc.get("results") or []:
         for pkg in result.get("packages") or []:
             p = pkg.get("package") or {}
             name = p.get("name", "?")
             version = p.get("version", "?")
+            # Per-id CVSS fallback from groups[].max_severity (+ a package-wide
+            # max as a last resort), so a CVSS-only HIGH is still gated.
+            id_cvss, pkg_max = {}, None
+            for g in pkg.get("groups") or []:
+                band = band_from_cvss(g.get("max_severity"))
+                if band is None:
+                    continue
+                order = ("low", "moderate", "high", "critical")
+                if pkg_max is None or order.index(band) > order.index(pkg_max):
+                    pkg_max = band
+                for key in (g.get("ids") or []) + (g.get("aliases") or []):
+                    id_cvss[key] = band
             for vuln in pkg.get("vulnerabilities") or []:
                 sev = ((vuln.get("database_specific") or {}).get("severity") or "").lower()
+                if sev not in SEVERITIES:
+                    sev = id_cvss.get(vuln.get("id", ""))
+                    if sev is None:
+                        for alias in vuln.get("aliases") or []:
+                            if alias in id_cvss:
+                                sev = id_cvss[alias]
+                                break
+                    sev = sev or pkg_max or ""
                 title = vuln.get("summary") or vuln.get("id") or "?"
                 yield name, version, ghsa_of(vuln), sev, title
 
@@ -131,6 +175,17 @@ def main():
     if args.osv_rc == 1 and not findings:
         print("ERROR: osv-scanner reported vulnerabilities (rc=1) but the gate parsed "
               "none -- schema drift, failing closed.", file=sys.stderr)
+        sys.exit(2)
+
+    # Fail-closed severity guard: a finding we cannot classify (no
+    # database_specific.severity AND no CVSS fallback) must never be silently
+    # skipped by advisories mode or dropped from baseline counts. This is the
+    # net the old npm-audit gate had via its metadata high/critical cross-check.
+    unclassified = [f for f in findings if f[3] not in SEVERITIES]
+    if unclassified:
+        n, v, g, _, _ = unclassified[0]
+        print(f"ERROR: {len(unclassified)} finding(s) have no resolvable severity "
+              f"(e.g. {n}@{v} {g}) -- cannot gate, failing closed.", file=sys.stderr)
         sys.exit(2)
 
     if args.mode == "advisories":

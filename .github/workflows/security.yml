@@ -270,6 +270,7 @@ jobs:
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan contracts/yarn.lock and gate on regressions
         run: |
+          test -s contracts/yarn.lock || { echo "lockfile contracts/yarn.lock missing or empty -- failing closed"; exit 1; }
           rc=0
           osv-scanner --lockfile contracts/yarn.lock --format json \
             --output-file /tmp/osv-contracts.json || rc=$?
@@ -295,6 +296,7 @@ jobs:
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan root workspace and block on HIGH/CRITICAL
         run: |
+          test -s pnpm-lock.yaml || { echo "lockfile pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
           rc=0
           osv-scanner --lockfile pnpm-lock.yaml --format json \
             --output-file /tmp/osv-root.json || rc=$?
@@ -324,6 +326,7 @@ jobs:
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan frontend workspace and block on HIGH/CRITICAL
         run: |
+          test -s apps/frontend/pnpm-lock.yaml || { echo "lockfile apps/frontend/pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
           rc=0
           osv-scanner --lockfile apps/frontend/pnpm-lock.yaml --format json \
             --output-file /tmp/osv-fe.json || rc=$?
