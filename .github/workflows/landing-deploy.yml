@@ -18,13 +18,6 @@ on:
     paths:
       - 'apps/frontend/apps/ophis-landing/**'
       - 'functions/api/**'
-  # TEMPORARY (remove after 2026-07-14): daily rebuild so the scheduled blog posts
-  # (pubDate Jul 9-14, gated by src/lib/posts.ts isPublished) go live on their date.
-  # A static build only surfaces a future-dated post when it rebuilds, so we rebuild
-  # daily during the launch window. The `window` job below makes scheduled runs a
-  # no-op outside Jul 9-14, so this self-expires with no effect on push/PR deploys.
-  schedule:
-    - cron: '17 6 * * *'
 
 permissions:
   contents: read
@@ -39,33 +32,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Gate for the daily `schedule` rebuild only. push/PR events always proceed
-  # (behaviour unchanged); a scheduled run proceeds ONLY within the Jul 9-14 2026
-  # blog launch window, so the temporary cron self-expires without a manual edit
-  # and never deploys off-window. github.event_name is a fixed enum, not user input.
-  window:
-    name: publish-window gate
-    runs-on: ubuntu-latest
-    outputs:
-      proceed: ${{ steps.check.outputs.proceed }}
-    steps:
-      - id: check
-        run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          T=$(date -u +%Y-%m-%d)
-          if [[ "$T" > "2026-07-08" && "$T" < "2026-07-15" ]]; then
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "Scheduled run on $T is outside the Jul 9-14 publish window; skipping."
-          fi
-
   build-deploy:
-    needs: window
-    if: needs.window.outputs.proceed == 'true'
     name: build + lighthouse + deploy
     runs-on: ubuntu-latest
     steps:
@@ -127,8 +94,6 @@ jobs:
           # corrupt GITHUB_OUTPUT's single-line key=value format. CF Pages also rejects
           # non-ASCII (error 8000111). Ref: feedback_cf_pages_ascii_commit_message.
           MSG=$(printf '%s' "$RAW_MSG" | LC_ALL=C tr -cd '\40-\176' | head -c 200)
-          # Scheduled runs have no head_commit, so RAW_MSG is empty -> give CF Pages a label.
-          MSG=${MSG:-scheduled rebuild}
           echo "msg=${MSG}" >> "$GITHUB_OUTPUT"
 
       - name: stage intent API function for Pages
