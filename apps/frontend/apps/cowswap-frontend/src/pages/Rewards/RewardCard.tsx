@@ -8,8 +8,9 @@
  *                    (EIP-191, same message shape as every other Ophis signed
  *                    action, so the team can recover and verify the signer).
  *   4. validated   : the reward is unblocked for that address -> redemption
- *                    panel (email request carrying the signed proof, until
- *                    partner codes are wired into the app).
+ *                    panel. Perks with an in-app `code`/`redeemUrl` show the
+ *                    code plus a shop link; the rest fall back to an email
+ *                    request carrying the signed proof.
  *
  * The reward only unblocks AFTER the address validation succeeds; eligibility
  * alone (step 2) never reveals redemption content.
@@ -154,12 +155,37 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
             <p>
               Address <strong>{truncateAddress(claim.wallet)}</strong> validated. Your reward is unlocked.
             </p>
-            <styledEl.ClaimButton href={claimHref(perk, claim.wallet, claim.issued, claim.signature)}>
-              Request your code by email
-            </styledEl.ClaimButton>
-            <styledEl.ClaimNote>
-              The email includes your signed proof; the {perk.partner} code is sent back after a quick check.
-            </styledEl.ClaimNote>
+            {perk.code || perk.redeemUrl ? (
+              <>
+                {perk.code && (
+                  <styledEl.RedeemRow>
+                    <styledEl.ClaimNote>Code</styledEl.ClaimNote>
+                    <styledEl.CodeChip>{perk.code}</styledEl.CodeChip>
+                  </styledEl.RedeemRow>
+                )}
+                {perk.redeemUrl && (
+                  <styledEl.ClaimButton href={perk.redeemUrl} target="_blank" rel="noopener noreferrer">
+                    {perk.redeemLabel ?? `Shop ${perk.partner}`}
+                  </styledEl.ClaimButton>
+                )}
+                <styledEl.ClaimNote>
+                  {perk.code && perk.redeemUrl
+                    ? 'Use this link and enter the code above at checkout to get your discount.'
+                    : perk.code
+                      ? 'Enter the code above at checkout to get your discount.'
+                      : 'Shop through this link to get your discount.'}
+                </styledEl.ClaimNote>
+              </>
+            ) : (
+              <>
+                <styledEl.ClaimButton href={claimHref(perk, claim.wallet, claim.issued, claim.signature)}>
+                  Request your code by email
+                </styledEl.ClaimButton>
+                <styledEl.ClaimNote>
+                  The email includes your signed proof; the {perk.partner} code is sent back after a quick check.
+                </styledEl.ClaimNote>
+              </>
+            )}
           </styledEl.ClaimPanel>
         ) : isSmartContractWallet ? (
           <styledEl.ClaimPanel>
