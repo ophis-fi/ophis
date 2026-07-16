@@ -53,9 +53,10 @@ domain are looked up by `chainId`, with no per-chain code:
 - **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 
-Fork-verified end-to-end against the REAL deployed contracts on 10 of these (OP, Unichain,
-Base, Ethereum, Arbitrum, Polygon, Gnosis, Avalanche, BNB, Linea). Ink + Plasma use the
-identical canonical path; add a fundable sell token + fork RPC to `test/fork` to verify them.
+Fork-verified end-to-end against the REAL deployed contracts on **all 12** — each deploys a
+Safe, funds the sell token, executes `[approve, setPreSignature]`, and asserts exact allowance
+to the real relayer + presignature recorded in the real settlement + exact-pull. (Plasma has
+no USDC yet, so its check uses a WETH9 -> USDT0 pair.)
 
 ## Curator model A: MPC / owner key (protocol-kit)
 

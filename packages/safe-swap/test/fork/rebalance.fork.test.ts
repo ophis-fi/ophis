@@ -141,9 +141,30 @@ const CHAINS = [
     settlement: CANON_SETTLEMENT,
     relayer: CANON_RELAYER,
   },
-  // Ink (57073) + Plasma (9745) are also SDK-supported (canonical CoW settlement, identical
-  // presign path). Not fork-verified here only because their native-USDC address + a reliable
-  // archive fork RPC weren't pinned down; add a fundable sell token + rpcEnv to verify them.
+  {
+    // Ink (OP-stack): native USDC + rpc-ten.inkonchain.com from the Ophis token/RPC config.
+    name: 'Ink',
+    id: 57073,
+    rpcEnv: 'OPHIS_FORK_RPC_INK',
+    port: 8561,
+    usdc: getAddress('0x2D270e6886d130D724215A266106e6832161EAEd'),
+    weth: getAddress('0x4200000000000000000000000000000000000006'),
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    // Plasma (per the Plasma docs / Ophis token list): pair is WETH9 <-> USDT0. USDT0 is a
+    // LayerZero OFT whose non-standard balance storage defeats the slot-probe, so we SELL the
+    // standard WETH9 (fundable) and BUY USDT0 (the buy token is never funded/pulled here).
+    name: 'Plasma',
+    id: 9745,
+    rpcEnv: 'OPHIS_FORK_RPC_PLASMA',
+    port: 8562,
+    usdc: getAddress('0x6100E367285b01F48D07953803A2d8dCA5D19873'), // WETH9 (sell, fundable)
+    weth: getAddress('0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb'), // USDT0 (buy)
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
 ] as const;
 
 describe.each(CHAINS)('rebalance fork integration ($name)', (c) => {
