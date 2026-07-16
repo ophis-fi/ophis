@@ -92,8 +92,10 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     if (minBuyAmount <= 0n) throw new Error(`minBuyAmount must be > 0 (atomic units); got ${p.minBuyAmount}`);
   }
 
-  const requestedSellToken = getAddress(p.sellToken);
-  const requestedBuyToken = getAddress(p.buyToken);
+  // as Address: an optional adapter (exec-safe) brings protocol-kit's bundled viem
+  // into the type program; pin getAddress's checksummed result to the local alias.
+  const requestedSellToken = getAddress(p.sellToken) as Address;
+  const requestedBuyToken = getAddress(p.buyToken) as Address;
   const requestedGross = BigInt(p.sellAmount);
   if (requestedGross <= 0n) throw new Error(`sellAmount must be > 0 (atomic units); got ${p.sellAmount}`);
 

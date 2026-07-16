@@ -160,8 +160,12 @@ export function assembleVaultOrder(a: {
 }): VaultOrder {
   assertSlippageBps(a.slippageBps);
 
-  const sellToken = getAddress(a.quoteSellToken);
-  const buyToken = getAddress(a.quoteBuyToken);
+  // Cast to the local Address alias: an optional adapter (exec-safe) pulls
+  // protocol-kit's bundled viem into the type program, so viem's own Address can
+  // resolve ambiguously across the two viem copies. getAddress returns a
+  // checksummed address, so pinning it to the local `0x${string}` is sound.
+  const sellToken = getAddress(a.quoteSellToken) as Address;
+  const buyToken = getAddress(a.quoteBuyToken) as Address;
   const receiver = ophisOrderReceiver(a.safe) as Address;
   assertReceiverIsOwner(a.safe, receiver); // drain guard: receiver must be the Safe
 
