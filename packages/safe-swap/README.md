@@ -46,17 +46,21 @@ returns the raw tx batch. **Execution is up to you** — pick a curator model be
 
 ## Chains
 
-Works on every chain `@ophis/sdk` resolves — settlement / relayer / orderbook / signing
-domain are looked up by `chainId`, with no per-chain code:
+Works on every chain with a **live Ophis / CoW orderbook** — `@ophis/sdk` looks up settlement /
+relayer / orderbook / signing domain by `chainId`, with no per-chain code. (A few chain IDs
+resolve a settlement but have no live orderbook, e.g. paused chains like 4326 / 999; those
+throw at the quote step and are not tradeable.)
 
 - **Ophis self-hosted** (non-canonical settlement, 100% fee): Optimism, Unichain.
 - **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 
-Fork-verified end-to-end against the REAL deployed contracts on **all 12** — each deploys a
-Safe, funds the sell token, executes `[approve, setPreSignature]`, and asserts exact allowance
-to the real relayer + presignature recorded in the real settlement + exact-pull. (Plasma has
-no USDC yet, so its check uses a WETH9 -> USDT0 pair.)
+The batch's **on-chain effects** are fork-verified against the REAL deployed contracts on all
+12 — each deploys a Safe, funds the sell token, executes `[approve, setPreSignature]`, and
+asserts exact allowance to the real relayer + presignature recorded in the real settlement +
+exact-pull. This proves the on-chain surface the builder produces; it does NOT quote/submit an
+order or run a solver settlement (a fork has no solver network — that is covered by the
+monitored real-chain rollout). (Plasma has no USDC yet, so its check uses a WETH9 -> USDT0 pair.)
 
 ## Curator model A: MPC / owner key (protocol-kit)
 
