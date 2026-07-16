@@ -38,7 +38,7 @@ describe('intentToUrl', () => {
     expect(url).toBe('/swap/USDC/ETH')
   })
 
-  it('full intent: amount + chain + sell + buy → URL', () => {
+  it('full intent: amount + chain + sell + buy → URL with human sell amount', () => {
     const url = intentToUrl(
       make([
         { type: 'amount', value: '100', raw: '100', start: 5, end: 8 },
@@ -47,8 +47,36 @@ describe('intentToUrl', () => {
         { type: 'chain', value: 'optimism', raw: 'optimism', start: 25, end: 33 },
       ]),
     )
-    // amount intentionally not encoded (per-token decimals scaling deferred to V2)
-    expect(url).toBe('/10/swap/USDC/ETH')
+    // Amount is HUMAN units (not atomic): cowswap's useSetupTradeAmountsFromUrl
+    // scales it by the token decimals via tryParseCurrencyAmount.
+    expect(url).toBe('/10/swap/USDC/ETH?sellAmount=100')
+  })
+
+  it('buy-only intent fills buyAmount', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '500', raw: '500', start: 4, end: 7 },
+        { type: 'buyToken', value: 'COW', raw: 'cow', start: 8, end: 11 },
+      ]),
+    )
+    expect(url).toBe('/swap/_/COW?buyAmount=500')
+  })
+
+  it('amount with no token is dropped (nothing to bind it to)', () => {
+    const url = intentToUrl(make([{ type: 'amount', value: '100', raw: '100', start: 0, end: 3 }]))
+    expect(url).toBe('/swap')
+  })
+
+  it('sell amount survives token->address resolution', () => {
+    const USDC = '0xA0b86991c6218b36c1d19d4a2e9Eb0cE3606eB48'
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 0, end: 3 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 4, end: 8 },
+      ]),
+      (s) => (s === 'USDC' ? USDC : null),
+    )
+    expect(url).toBe(`/swap/${USDC}?sellAmount=100`)
   })
 
   it('unknown chain slug is dropped', () => {

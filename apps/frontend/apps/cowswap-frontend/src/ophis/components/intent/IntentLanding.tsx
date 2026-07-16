@@ -25,7 +25,8 @@ import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
 import { IntentInput } from './IntentInput'
 import { readIntentParam } from './intentParam'
-import { intentToUrl } from './intentToUrl'
+import { writeIntentStash } from './intentStash'
+import { extractIntentFields, intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
 import { useWarmTargetChainLists } from './useWarmTargetChainLists'
@@ -440,7 +441,21 @@ export function IntentLanding(): ReactNode {
 
   const handleSubmit = useCallback(() => {
     if (!ready || !parseState.parsed) return
-    navigate(intentToUrl(parseState.parsed, symbolToAddressResolver(symbolMap)))
+    const resolveToken = symbolToAddressResolver(symbolMap)
+    // Persist the resolved trade so it survives the wallet-connect handoff: on
+    // connect, cowswap re-derives trade state from the provider and can wipe the
+    // URL tokens (useSetupTradeState -> getDefaultTradeRawState). IntentRestoreUpdater
+    // reads this back and re-navigates to the intended trade. Stash the PARSED chain
+    // only (undefined => restore uses the connected chain, never forcing a switch).
+    const fields = extractIntentFields(parseState.parsed, resolveToken)
+    writeIntentStash({
+      chainId: fields.chainId,
+      sellToken: fields.sellToken,
+      buyToken: fields.buyToken,
+      amount: fields.amount,
+      field: fields.field,
+    })
+    navigate(intentToUrl(parseState.parsed, resolveToken))
   }, [navigate, parseState.parsed, ready, symbolMap])
 
   const helper = useMemo(
