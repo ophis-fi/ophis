@@ -1,0 +1,20 @@
+{
+  "fuzzing": {
+    "testLimit": 40000,
+    "callSequenceLength": 60,
+    "targetContracts": ["VaultPolicyEchidna"],
+    "corpusDirectory": "test/fizz/vault/corpus-medusa",
+    "testing": {
+      "stopOnFailedTest": false,
+      "propertyTesting": { "enabled": true, "testPrefixes": ["echidna_"] },
+      "assertionTesting": { "enabled": false }
+    }
+  },
+  "compilation": {
+    "platform": "crytic-compile",
+    "platformConfig": {
+      "target": "/Users/scep/greg-wt/lagoon-vaults/contracts/test/fizz/vault/VaultPolicyEchidna.sol",
+      "args": ["--compile-force-framework", "foundry"]
+    }
+  }
+}
