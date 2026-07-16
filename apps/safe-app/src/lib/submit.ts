@@ -1,17 +1,16 @@
 import { Interface } from 'ethers';
 import type SafeAppsSDK from '@safe-global/safe-apps-sdk';
-import { SigningScheme } from '@cowprotocol/cow-sdk';
-import { getOphisSettlementAddress, getOphisVaultRelayer, assertReceiverIsOwner } from '@ophis/sdk';
+import { assertReceiverIsOwner, buildOphisOrderCreation, getOphisVaultRelayer } from '@ophis/sdk';
+import { assertUidMatches, buildPresignTxBatch } from '@ophis/safe-swap';
 import { ophisOrderBook } from './quote';
 import { assertErc20Token } from './tokens';
 import { WETH_DEPOSIT_IFACE } from './weth';
 import { enrollTrackedWallet } from './tracking';
 import type { QuotedOrder } from './order';
 
-const SETTLEMENT_IFACE = new Interface(['function setPreSignature(bytes orderUid, bool signed)']);
-// Minimal ERC-20 surface for the allowance read + the approval we may prepend.
+// Minimal ERC-20 surface for the allowance read (the approvals themselves are built by the
+// shared @ophis/safe-swap batch builder).
 const ERC20_ALLOWANCE_IFACE = new Interface(['function allowance(address,address) view returns (uint256)']);
-const ERC20_APPROVE_IFACE = new Interface(['function approve(address,uint256)']);
 
 export interface SubmitResult {
   orderUid: string;
@@ -33,7 +32,7 @@ export async function submitOrder(
   // order owner stays the Safe, so the owner-scoped rebate indexer attributes it normally.
   wrapNative = false,
 ): Promise<SubmitResult> {
-  assertReceiverIsOwner(owner, order.receiver as `0x${string}`); // drain guard before any tx
+  assertReceiverIsOwner(owner, order.receiver); // drain guard before any tx
   // Belt-and-suspenders: the approval path below targets order.sellToken, so it must be a real
   // ERC-20 — never a native-ETH sentinel / zero address. For a wrapNative sell this is WETH (the
   // form mapped native -> WETH before quoting); for an ERC-20 sell it's the token itself. Either
@@ -54,43 +53,40 @@ export async function submitOrder(
     console.warn('[ophis] rebate-indexer enrollment failed; the rebate may not index:', enrollmentWarning);
   }
 
-  // 1) Create the order in PRESIGNATURE_PENDING. For presign the "signature" is the owner address.
-  const orderUid: string = await api.sendOrder({
-    ...(order as any),
-    from: owner,
-    appData: fullAppData,
+  // 1) Create the order in PRESIGNATURE_PENDING via the shared wire-body builder (validates the
+  //    appDataHash, asserts the SIGNED order.appData matches it, and drain-guards the receiver).
+  //    For presign the "signature" is the owner address.
+  const body = buildOphisOrderCreation({
+    order: order as unknown as Record<string, unknown>,
+    owner,
+    fullAppData,
     appDataHash,
-    signingScheme: SigningScheme.PRESIGN,
     signature: owner,
-  } as any);
+    signingScheme: 'presign',
+  } as never);
+  const hostUid = (await api.sendOrder(body as never)) as unknown as string;
+  // CRITICAL (guard parity with the headless vault builder): never trust the host's uid.
+  // Re-derive it from the locally guarded order and refuse to presign anything else — a
+  // compromised orderbook could return a DIFFERENT order's uid to redirect the presign.
+  const orderUid = assertUidMatches(hostUid, order, chainId, owner);
 
-  // 2) Encode GPv2Settlement.setPreSignature(orderUid, true) against the OPHIS settlement address
-  //    (OP is the non-canonical 0x310784c7...; the canonical address would bypass the Ophis fee).
-  const settlement = getOphisSettlementAddress(chainId);
-  const setPreSignatureData = SETTLEMENT_IFACE.encodeFunctionData('setPreSignature', [orderUid, true]);
-
-  // 3) CoW settlement pulls the sell token via the GPv2VaultRelayer. On Ophis-operated chains
-  //    that is the NON-canonical Ophis relayer (getOphisVaultRelayer, NOT cow-sdk's default), so a
-  //    first-time seller whose Safe never approved it would have its order accepted but never
-  //    filled. If the Safe's allowance for the relayer is below what settlement can pull, PREPEND
-  //    an ERC-20 approve into the SAME Safe execution so one signature does both (approve, presign).
-  //    The relayer pulls sellAmount + feeAmount, so size the allowance off the BEFORE-fee total,
-  //    not order.sellAmount (which is already net of the fee) — otherwise a Safe with no spare
-  //    allowance presigns an order that stays unfillable.
-  const relayer = getOphisVaultRelayer(chainId);
+  // 2) The relayer pulls the signed sellAmount + feeAmount. Since the guard-parity refactor the
+  //    order signs the GROSS as sellAmount with feeAmount '0', so this equals the before-fee total
+  //    the user asked to sell (identical value to the previous net + fee split).
   const pullAmount = BigInt(order.sellAmount) + BigInt(order.feeAmount);
   const txs: { to: string; value: string; data: string }[] = [];
 
   // Native-ETH sell: wrap FIRST, in this same execution. order.sellToken is the WETH address (the
-  // quote was taken in WETH) and pullAmount = sellAmount + feeAmount is exactly the WETH settlement
-  // pulls, so deposit that much native ETH. The Safe must hold >= pullAmount native ETH; the wrap +
-  // the approve below + the presign all execute under ONE owner signature.
+  // quote was taken in WETH) and pullAmount is exactly the WETH settlement pulls, so deposit that
+  // much native ETH. The Safe must hold >= pullAmount native ETH; the wrap + the approve below +
+  // the presign all execute under ONE owner signature.
   if (wrapNative) {
     txs.push({ to: order.sellToken, value: pullAmount.toString(), data: WETH_DEPOSIT_IFACE.encodeFunctionData('deposit') });
   }
 
   let currentAllowance: bigint | null;
   try {
+    const relayer = getOphisVaultRelayer(chainId);
     const allowanceData = ERC20_ALLOWANCE_IFACE.encodeFunctionData('allowance', [owner, relayer]);
     const raw = await sdk.eth.call([{ to: order.sellToken, data: allowanceData }]);
     [currentAllowance] = ERC20_ALLOWANCE_IFACE.decodeFunctionResult('allowance', raw) as unknown as [bigint];
@@ -101,21 +97,20 @@ export async function submitOrder(
     currentAllowance = null;
   }
 
-  if (currentAllowance === null || currentAllowance < pullAmount) {
-    // USDT-style tokens REVERT on a non-zero -> non-zero approve; if the current allowance is
-    // non-zero (or unknown), reset it to 0 first. approve(0) is safe on every ERC-20, so doing it
-    // when the allowance is unknown is harmless. Without this, the batch's approve reverts and the
-    // following setPreSignature never executes, leaving the order unfillable.
-    if (currentAllowance === null || currentAllowance > 0n) {
-      txs.push({ to: order.sellToken, value: '0', data: ERC20_APPROVE_IFACE.encodeFunctionData('approve', [relayer, 0]) });
-    }
-    // Least-privilege: approve exactly what settlement can pull (not MaxUint256) so a stale
-    // approval cannot be drained by a later compromise of the relayer.
-    txs.push({ to: order.sellToken, value: '0', data: ERC20_APPROVE_IFACE.encodeFunctionData('approve', [relayer, pullAmount]) });
-  }
-  txs.push({ to: settlement, value: '0', data: setPreSignatureData });
+  // 3) Build [approve?, setPreSignature] via the shared @ophis/safe-swap batch builder — the ONE
+  //    hardened codepath (exact USDT-safe approve to the Ophis relayer, never MaxUint256, clamps a
+  //    pre-existing oversized allowance, presign targets the Ophis settlement, never canonical CoW).
+  const { txs: batchTxs } = buildPresignTxBatch({
+    chainId,
+    orderUid,
+    sellToken: order.sellToken,
+    pullAmount,
+    currentAllowance,
+  });
+  txs.push(...batchTxs);
 
-  // 4) Propose the (approve? + presign) batch to the Safe queue; owners co-sign + execute in the UI.
+  // 4) Propose the (wrap? + approve? + presign) batch to the Safe queue; owners co-sign + execute
+  //    in the UI.
   const { safeTxHash } = await sdk.txs.send({ txs });
   return { orderUid, safeTxHash, enrollmentWarning };
 }

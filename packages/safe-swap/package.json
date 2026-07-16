@@ -10,6 +10,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./exec-safe": {
+      "types": "./dist/exec-safe.d.ts",
+      "import": "./dist/exec-safe.js"
+    },
+    "./roles-preset": {
+      "types": "./dist/roles-preset.d.ts",
+      "import": "./dist/roles-preset.js"
     }
   },
   "files": [
@@ -49,8 +57,23 @@
     "@ophis/sdk": "workspace:*",
     "viem": "^2.21.0"
   },
+  "peerDependencies": {
+    "@safe-global/protocol-kit": ">=5.0.0",
+    "zodiac-roles-sdk": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@safe-global/protocol-kit": {
+      "optional": true
+    },
+    "zodiac-roles-sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@safe-global/protocol-kit": "^8.0.4",
+    "@safe-global/types-kit": "^4.0.1",
     "typescript": "^5.5.0",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "zodiac-roles-sdk": "^4.0.0"
   }
 }

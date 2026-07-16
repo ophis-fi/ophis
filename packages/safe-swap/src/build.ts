@@ -13,8 +13,12 @@
  * Delivery-agnostic lift of apps/safe-app/src/lib/submit.ts (minus the iframe
  * @safe-global/safe-apps-sdk coupling), reusing @ophis/sdk order construction.
  */
-import { OrderBookApi, OrderQuoteSideKindSell, SigningScheme } from '@cowprotocol/cow-sdk';
-import { MetadataApi, stringifyDeterministic } from '@cowprotocol/app-data';
+// NOTE: @cowprotocol/cow-sdk and @cowprotocol/app-data are imported LAZILY inside
+// buildOphisSafePresign (dynamic import), never at module top. cow-sdk transitively
+// initializes @cowprotocol/contracts, whose module init assumes an ethers-v5 API and
+// crashes under plain node/vitest with ethers 6 resolved — and this package's main
+// consumers are headless node bots. Keeping the barrel pure at init means importing
+// @ophis/safe-swap never loads cow-sdk until a quote is actually requested.
 import { getAddress, keccak256, toBytes } from 'viem';
 import {
   buildOphisOrderCreation,
@@ -93,6 +97,13 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   const requestedGross = BigInt(p.sellAmount);
   if (requestedGross <= 0n) throw new Error(`sellAmount must be > 0 (atomic units); got ${p.sellAmount}`);
 
+  // Lazy-load the CoW SDKs here (see the module-top note): the wire enum values are
+  // the plain strings 'sell' / 'presign', so no static enum import is needed.
+  const [{ OrderBookApi }, { MetadataApi, stringifyDeterministic }] = await Promise.all([
+    import('@cowprotocol/cow-sdk'),
+    import('@cowprotocol/app-data'),
+  ]);
+
   // Fee-bearing appData; the Safe is the EIP-1271 contract signer (metadata.signer).
   const appDataInput = buildOphisOrderMetadata({
     chainId: p.chainId,
@@ -108,7 +119,7 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   const api = new OrderBookApi({ chainId: p.chainId, baseUrls: { [p.chainId]: getOphisOrderbookUrl(p.chainId) } } as never);
   const receiver = ophisOrderReceiver(p.safe);
   const quoteRes = (await api.getQuote({
-    kind: OrderQuoteSideKindSell.SELL,
+    kind: 'sell',
     sellToken: requestedSellToken,
     buyToken: requestedBuyToken,
     sellAmountBeforeFee: requestedGross.toString(),
@@ -121,7 +132,7 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     // exactly as the safe-app quote path does.
     appData: fullAppData,
     appDataHash,
-    signingScheme: SigningScheme.PRESIGN,
+    signingScheme: 'presign',
   } as never)) as { quote?: Record<string, unknown> } & Record<string, unknown>;
   const q = (quoteRes.quote ?? quoteRes) as Record<string, unknown>;
 
