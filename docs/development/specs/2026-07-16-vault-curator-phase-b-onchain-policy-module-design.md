@@ -120,6 +120,51 @@ config-error room; all are in the B1 code):
 - The effective floor is `max(oracleFloor, minBuyOverride)` - the curator
   tightens, never loosens.
 
+### Codex review hardening (2026-07-17, applied in B1)
+
+The Codex review of PR #833 surfaced three composition attacks on the threat
+model (each order valid, the AGGREGATE a drain) plus two config gaps; all
+applied:
+
+- **Daily USD turnover cap (P1).** Per-order floors alone let a compromised
+  curator CHURN: alternate full-balance orders between two allowlisted
+  tokens, each clearing the floor, each bleeding slippage + fees. New
+  required config `dailyUsdTurnoverCap` (18-dec USD): sell-side value
+  (priced by the same Chainlink read the floor used) accumulates in a UTC-day
+  bucket; exceeding the cap reverts. Worst-case daily damage is now
+  `cap * (maxSlippageBps + fees + intra-TTL drift)` - quantifiable per vault.
+- **L2 sequencer-uptime gate (P1).** After an OP-stack sequencer outage a
+  PRE-OUTAGE price can pass the staleness check before feeds recover. New
+  optional config `sequencerUptimeFeed` + `sequencerGracePeriod` (must be set
+  together; standard Chainlink pattern: answer != 0 = down, and reads stay
+  rejected until `startedAt + grace` passes). Set it on Unichain/OP/Base
+  wherever Chainlink publishes the feed; address(0) disables (with the
+  documented risk).
+- **Fill-time floor residual (P1) - partially structural.** The floor holds
+  at PRESIGN time; a presigned order stays fillable at its signed limit until
+  `validTo`, so intra-TTL adverse moves can be captured by a solver.
+  Mitigated: `MAX_TTL_CAP` reduced 1 day -> **1 hour** (the builder's real
+  TTL is 30 min), and the turnover cap bounds repetition. FULLY closing it
+  requires enforcing the floor at settlement time via a conditional-signature
+  (EIP-1271) scheme - recorded as the Phase-C extension, disclosed in the
+  module NatSpec.
+- **Cancel scoped to module-created uids (P2).** `rebalance` records
+  `keccak256(uid)`; `cancel` refuses anything not recorded, so the curator
+  cannot cancel owner-authorized presignatures that exist outside the module.
+- **Zero appData rejected (P2).** `appDataHash == bytes32(0)` now fails
+  construction - a zero hash would have made fee-less orders policy-valid,
+  silently disabling the partner-fee invariant.
+- Constructor refactored to a single `ModuleConfig` struct (11 params were
+  approaching stack limits and hurting reviewability).
+
+Additional invariants (continue the table above):
+
+| # | Sev | Invariant | Enforced by |
+|---|-----|-----------|-------------|
+| B10 | CRITICAL | Sell-side USD turnover within a UTC day never exceeds `dailyUsdTurnoverCap` (churn bound) | `_recordTurnover`; unit test (2 pass / 3rd reverts / next-day resets) |
+| B11 | HIGH | No oracle price is trusted while the L2 sequencer is down or within the post-recovery grace period (when a feed is configured) | `_checkSequencer`; unit tests (down / in-grace / after-grace) |
+| B12 | MEDIUM | `cancel` only unsets presignatures this module created | `moduleCreatedUid` recording; unit test proves owner-created presignature untouched |
+
 Validates (revert on ANY failure), then acts:
 
 1. `order.sellToken`, `order.buyToken` both in the allowlist.

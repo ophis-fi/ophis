@@ -2,7 +2,6 @@
 pragma solidity >=0.8.17 <0.9.0;
 
 import {OphisVaultPolicyModule} from "./OphisVaultPolicyModule.sol";
-import {IGPv2Settlement, ISafe} from "./interfaces/IVaultPolicyDeps.sol";
 
 /// @title Factory for Ophis vault order-policy modules
 /// @notice Deploys one immutable policy module per vault and enforces, AT
@@ -28,39 +27,23 @@ contract OphisVaultPolicyModuleFactory {
     error CuratorIsSafeOwner(address curator);
 
     function deploy(
-        ISafe safe,
-        IGPv2Settlement settlement,
-        address curator,
-        bytes32 appDataHash,
-        uint256 maxSlippageBps,
-        uint256 maxTtl,
-        uint256 maxOracleStaleness,
-        OphisVaultPolicyModule.TokenFeed[] calldata tokens
+        OphisVaultPolicyModule.ModuleConfig calldata cfg
     ) external returns (OphisVaultPolicyModule module) {
         // The one check the module itself cannot self-enforce cheaply on
         // every call: a curator that is (or becomes) a Safe owner has full
         // Safe power and does not need the module. Reject at deploy;
         // owner-set drift afterwards is governance's to prevent.
-        address[] memory owners = safe.getOwners();
+        address[] memory owners = cfg.safe.getOwners();
         for (uint256 i = 0; i < owners.length; i++) {
-            if (owners[i] == curator) revert CuratorIsSafeOwner(curator);
+            if (owners[i] == cfg.curator) revert CuratorIsSafeOwner(cfg.curator);
         }
 
-        module = new OphisVaultPolicyModule(
-            safe,
-            settlement,
-            curator,
-            appDataHash,
-            maxSlippageBps,
-            maxTtl,
-            maxOracleStaleness,
-            tokens
-        );
+        module = new OphisVaultPolicyModule(cfg);
         emit ModuleDeployed(
             address(module),
-            address(safe),
-            curator,
-            address(settlement)
+            address(cfg.safe),
+            cfg.curator,
+            address(cfg.settlement)
         );
     }
 }

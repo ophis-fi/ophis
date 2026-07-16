@@ -18,6 +18,7 @@ contract OphisVaultPolicyModuleTest is Test {
     address internal constant RELAYER = address(0xBEEF00000000000000000000000000000000BEEf);
     address internal constant CURATOR = address(0xCA11);
     address internal constant SAFE_OWNER = address(0xA11CE);
+    uint256 internal constant BIG_CAP = 1_000_000e18; // non-interfering default
 
     MockSafe internal safe;
     MockSettlement internal settlement;
@@ -44,16 +45,7 @@ contract OphisVaultPolicyModuleTest is Test {
         usdcFeed = new MockFeed(8, 1e8, T0);
         wethFeed = new MockFeed(8, 2000e8, T0);
         usdtFeed = new MockFeed(8, 1e8, T0);
-        module = new OphisVaultPolicyModule(
-            ISafe(address(safe)),
-            IGPv2Settlement(address(settlement)),
-            CURATOR,
-            APP_DATA,
-            50, // maxSlippageBps
-            1800, // maxTtl
-            3600, // maxOracleStaleness
-            tokenFeeds()
-        );
+        module = new OphisVaultPolicyModule(baseConfig());
         safe.setEnabledModule(address(module));
     }
 
@@ -66,6 +58,26 @@ contract OphisVaultPolicyModuleTest is Test {
         tokens[0] = OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)));
         tokens[1] = OphisVaultPolicyModule.TokenFeed(address(weth), IAggregatorV3(address(wethFeed)));
         tokens[2] = OphisVaultPolicyModule.TokenFeed(address(usdt), IAggregatorV3(address(usdtFeed)));
+    }
+
+    function baseConfig()
+        internal
+        view
+        returns (OphisVaultPolicyModule.ModuleConfig memory cfg)
+    {
+        cfg = OphisVaultPolicyModule.ModuleConfig({
+            safe: ISafe(address(safe)),
+            settlement: IGPv2Settlement(address(settlement)),
+            curator: CURATOR,
+            appDataHash: APP_DATA,
+            maxSlippageBps: 50,
+            maxTtl: 1800,
+            maxOracleStaleness: 3600,
+            dailyUsdTurnoverCap: BIG_CAP,
+            sequencerUptimeFeed: IAggregatorV3(address(0)),
+            sequencerGracePeriod: 0,
+            tokens: tokenFeeds()
+        });
     }
 
     function validOrder() internal view returns (GPv2Order.Data memory) {
@@ -104,6 +116,7 @@ contract OphisVaultPolicyModuleTest is Test {
         // semantics), so this passing proves the uid embeds the Safe.
         assertEq(settlement.preSignature(uid), settlement.PRE_SIGNED());
         assertEq(usdc.allowance(address(safe), RELAYER), 1000e6); // exact, never MaxUint
+        assertTrue(module.moduleCreatedUid(keccak256(uid)));
     }
 
     function test_uid_matches_local_derivation() public {
@@ -186,6 +199,85 @@ contract OphisVaultPolicyModuleTest is Test {
     }
 
     // ------------------------------------------------------------------
+    // Daily USD turnover cap (churn bound)
+    // ------------------------------------------------------------------
+
+    function test_turnover_cap_blocks_churn_and_resets_daily() public {
+        // Dedicated module with a 2500-USD daily cap; each valid order sells
+        // 1000 USDC (= 1000e18 USD at the $1 feed).
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        cfg.dailyUsdTurnoverCap = 2500e18;
+        OphisVaultPolicyModule capped = new OphisVaultPolicyModule(cfg);
+        safe.setEnabledModule(address(capped));
+
+        vm.prank(CURATOR);
+        capped.rebalance(validOrder(), 0); // spent 1000e18
+        assertEq(capped.turnoverSpentUsd(), 1000e18);
+        vm.prank(CURATOR);
+        capped.rebalance(validOrder(), 0); // spent 2000e18
+        assertEq(capped.turnoverSpentUsd(), 2000e18);
+
+        // Third order would take the day to 3000e18 > 2500e18: refused. The
+        // churn attack (alternate full-balance orders bleeding slippage) is
+        // bounded to cap * (slippage + fees) per day.
+        vm.prank(CURATOR);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisVaultPolicyModule.TurnoverCapExceeded.selector,
+                2000e18,
+                1000e18,
+                2500e18
+            )
+        );
+        capped.rebalance(validOrder(), 0);
+
+        // Next UTC day: the bucket resets and rebalancing resumes.
+        vm.warp(block.timestamp + 1 days);
+        usdcFeed.set(1e8, block.timestamp); // refresh feeds past staleness
+        wethFeed.set(2000e8, block.timestamp);
+        vm.prank(CURATOR);
+        capped.rebalance(validOrder(), 0);
+        assertEq(capped.turnoverSpentUsd(), 1000e18);
+    }
+
+    // ------------------------------------------------------------------
+    // L2 sequencer-uptime gate
+    // ------------------------------------------------------------------
+
+    function sequencerModule(
+        MockFeed uptime
+    ) internal returns (OphisVaultPolicyModule seq) {
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        cfg.sequencerUptimeFeed = IAggregatorV3(address(uptime));
+        cfg.sequencerGracePeriod = 900;
+        seq = new OphisVaultPolicyModule(cfg);
+        safe.setEnabledModule(address(seq));
+    }
+
+    function test_sequencer_down_reverts() public {
+        MockFeed uptime = new MockFeed(0, 1, T0); // answer 1 = DOWN
+        OphisVaultPolicyModule seq = sequencerModule(uptime);
+        vm.prank(CURATOR);
+        vm.expectRevert(OphisVaultPolicyModule.SequencerDown.selector);
+        seq.rebalance(validOrder(), 0);
+    }
+
+    function test_sequencer_recovery_grace_period_enforced() public {
+        // Sequencer back up 100s ago, grace is 900s: pre-outage prices could
+        // still pass the staleness check, so oracle reads stay rejected.
+        MockFeed uptime = new MockFeed(0, 0, T0 - 100);
+        OphisVaultPolicyModule seq = sequencerModule(uptime);
+        vm.prank(CURATOR);
+        vm.expectRevert(OphisVaultPolicyModule.SequencerStarting.selector);
+        seq.rebalance(validOrder(), 0);
+
+        // Once the grace period has elapsed, rebalancing resumes.
+        uptime.set(0, T0 - 901);
+        vm.prank(CURATOR);
+        seq.rebalance(validOrder(), 0);
+    }
+
+    // ------------------------------------------------------------------
     // Policy checks (B0, B3-surface, B4, B7)
     // ------------------------------------------------------------------
 
@@ -218,6 +310,10 @@ contract OphisVaultPolicyModuleTest is Test {
     function test_wrong_app_data_reverts() public {
         GPv2Order.Data memory order = validOrder();
         order.appData = keccak256("attacker appdata: no ophis fee");
+        vm.expectRevert(OphisVaultPolicyModule.WrongAppData.selector);
+        rebalanceAsCurator(order, 0);
+        // The zero appData a fee-less CoW order would carry is refused too.
+        order.appData = bytes32(0);
         vm.expectRevert(OphisVaultPolicyModule.WrongAppData.selector);
         rebalanceAsCurator(order, 0);
     }
@@ -316,7 +412,7 @@ contract OphisVaultPolicyModuleTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Cancel (risk-reducing only)
+    // Cancel (risk-reducing only, scoped to module-created uids)
     // ------------------------------------------------------------------
 
     function test_curator_can_cancel_its_presignature() public {
@@ -333,24 +429,25 @@ contract OphisVaultPolicyModuleTest is Test {
         module.cancel(uid);
     }
 
-    function test_cancel_of_foreign_uid_fails_closed() public {
-        // A uid owned by someone else: the settlement's owner check refuses
-        // it, and the module surfaces the failed exec instead of ignoring it.
-        bytes memory foreignUid = new bytes(GPv2Order.UID_LENGTH);
+    function test_cancel_refuses_uids_not_created_by_this_module() public {
+        // A presignature the OWNERS created directly (a hedge, a liquidation,
+        // an order from another venue): the curator cannot cancel it through
+        // this module, because rebalance never recorded that uid.
+        bytes memory ownerUid = new bytes(GPv2Order.UID_LENGTH);
         GPv2Order.packOrderUidParams(
-            foreignUid,
-            keccak256("foreign digest"),
-            address(0xD00D),
+            ownerUid,
+            keccak256("owner-authorized order"),
+            address(safe),
             uint32(block.timestamp + 100)
         );
+        vm.prank(address(safe));
+        settlement.setPreSignature(ownerUid, true);
+
         vm.prank(CURATOR);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                OphisVaultPolicyModule.ModuleExecFailed.selector,
-                address(settlement)
-            )
-        );
-        module.cancel(foreignUid);
+        vm.expectRevert(OphisVaultPolicyModule.UnknownOrderUid.selector);
+        module.cancel(ownerUid);
+        // The owner-authorized presignature is untouched.
+        assertEq(settlement.preSignature(ownerUid), settlement.PRE_SIGNED());
     }
 
     // ------------------------------------------------------------------
@@ -369,62 +466,79 @@ contract OphisVaultPolicyModuleTest is Test {
     // the module has no setters; these prove the write-once path is strict)
     // ------------------------------------------------------------------
 
-    function newModule(
-        address curator_,
-        uint256 slippage,
-        uint256 ttl,
-        uint256 staleness,
-        OphisVaultPolicyModule.TokenFeed[] memory tokens
-    ) internal returns (OphisVaultPolicyModule) {
-        return new OphisVaultPolicyModule(
-            ISafe(address(safe)),
-            IGPv2Settlement(address(settlement)),
-            curator_,
-            APP_DATA,
-            slippage,
-            ttl,
-            staleness,
-            tokens
-        );
-    }
-
     function test_constructor_rejects_bad_config() public {
-        OphisVaultPolicyModule.TokenFeed[] memory tokens = tokenFeeds();
+        OphisVaultPolicyModule.ModuleConfig memory cfg;
 
+        cfg = baseConfig();
+        cfg.curator = address(0);
         vm.expectRevert(OphisVaultPolicyModule.ZeroAddress.selector);
-        newModule(address(0), 50, 1800, 3600, tokens);
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
+        cfg.appDataHash = bytes32(0); // would disable the fee invariant
+        vm.expectRevert(OphisVaultPolicyModule.ZeroAppData.selector);
+        new OphisVaultPolicyModule(cfg);
+
+        cfg = baseConfig();
+        cfg.curator = address(safe); // curator == safe
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(address(safe), 50, 1800, 3600, tokens); // curator == safe
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
+        cfg.maxSlippageBps = 5001; // over cap
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(CURATOR, 5001, 1800, 3600, tokens); // slippage over cap
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
+        cfg.maxTtl = 0;
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(CURATOR, 50, 0, 3600, tokens); // zero ttl
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
+        cfg.maxTtl = 1 hours + 1; // TTL cap is deliberately tight (1 hour)
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(CURATOR, 50, 1 days + 1, 3600, tokens); // ttl over cap
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
+        cfg.maxOracleStaleness = 0;
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(CURATOR, 50, 1800, 0, tokens); // zero staleness
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
+        cfg.dailyUsdTurnoverCap = 0; // unbounded churn is not a valid config
+        vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
+        new OphisVaultPolicyModule(cfg);
+
+        cfg = baseConfig();
+        cfg.sequencerUptimeFeed = IAggregatorV3(address(usdcFeed));
+        cfg.sequencerGracePeriod = 0; // feed without grace: incoherent
+        vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
+        new OphisVaultPolicyModule(cfg);
+
+        cfg = baseConfig();
+        cfg.sequencerGracePeriod = 900; // grace without feed: incoherent
+        vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
+        new OphisVaultPolicyModule(cfg);
+
+        cfg = baseConfig();
         OphisVaultPolicyModule.TokenFeed[] memory single =
             new OphisVaultPolicyModule.TokenFeed[](1);
-        single[0] = tokens[0];
+        single[0] = cfg.tokens[0];
+        cfg.tokens = single; // fewer than 2 tokens
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(CURATOR, 50, 1800, 3600, single); // fewer than 2 tokens
+        new OphisVaultPolicyModule(cfg);
 
+        cfg = baseConfig();
         OphisVaultPolicyModule.TokenFeed[] memory dup =
             new OphisVaultPolicyModule.TokenFeed[](2);
-        dup[0] = tokens[0];
-        dup[1] = tokens[0];
+        dup[0] = cfg.tokens[0];
+        dup[1] = cfg.tokens[0];
+        cfg.tokens = dup; // duplicate token
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
-        newModule(CURATOR, 50, 1800, 3600, dup); // duplicate token
+        new OphisVaultPolicyModule(cfg);
     }
 
     function test_constructor_probes_feed_liveness() public {
-        OphisVaultPolicyModule.TokenFeed[] memory tokens = tokenFeeds();
         usdcFeed.set(1e8, T0 - 3601); // stale at deploy
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -432,7 +546,7 @@ contract OphisVaultPolicyModuleTest is Test {
                 address(usdcFeed)
             )
         );
-        newModule(CURATOR, 50, 1800, 3600, tokens);
+        new OphisVaultPolicyModule(baseConfig());
 
         usdcFeed.set(0, T0); // invalid price at deploy
         vm.expectRevert(
@@ -441,7 +555,7 @@ contract OphisVaultPolicyModuleTest is Test {
                 address(usdcFeed)
             )
         );
-        newModule(CURATOR, 50, 1800, 3600, tokens);
+        new OphisVaultPolicyModule(baseConfig());
     }
 
     function test_constructor_reads_settlement_wiring() public view {
@@ -455,39 +569,24 @@ contract OphisVaultPolicyModuleTest is Test {
 
     function test_factory_rejects_curator_that_is_a_safe_owner() public {
         OphisVaultPolicyModuleFactory factory = new OphisVaultPolicyModuleFactory();
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        cfg.curator = SAFE_OWNER; // curator IS an owner: refused
         vm.expectRevert(
             abi.encodeWithSelector(
                 OphisVaultPolicyModuleFactory.CuratorIsSafeOwner.selector,
                 SAFE_OWNER
             )
         );
-        factory.deploy(
-            ISafe(address(safe)),
-            IGPv2Settlement(address(settlement)),
-            SAFE_OWNER, // curator IS an owner: refused
-            APP_DATA,
-            50,
-            1800,
-            3600,
-            tokenFeeds()
-        );
+        factory.deploy(cfg);
     }
 
     function test_factory_deploys_configured_module() public {
         OphisVaultPolicyModuleFactory factory = new OphisVaultPolicyModuleFactory();
-        OphisVaultPolicyModule deployed = factory.deploy(
-            ISafe(address(safe)),
-            IGPv2Settlement(address(settlement)),
-            CURATOR,
-            APP_DATA,
-            50,
-            1800,
-            3600,
-            tokenFeeds()
-        );
+        OphisVaultPolicyModule deployed = factory.deploy(baseConfig());
         assertEq(deployed.curator(), CURATOR);
         assertEq(address(deployed.safe()), address(safe));
         assertEq(deployed.relayer(), RELAYER);
+        assertEq(deployed.dailyUsdTurnoverCap(), BIG_CAP);
         (bool allowed, , , uint8 tokenDecimals) = deployed.tokenPolicy(address(weth));
         assertTrue(allowed);
         assertEq(tokenDecimals, 18);
