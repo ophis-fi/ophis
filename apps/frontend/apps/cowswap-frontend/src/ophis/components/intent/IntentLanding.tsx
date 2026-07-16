@@ -442,18 +442,25 @@ export function IntentLanding(): ReactNode {
   const handleSubmit = useCallback(() => {
     if (!ready || !parseState.parsed) return
     const resolveToken = symbolToAddressResolver(symbolMap)
-    // Persist the resolved trade so it survives the wallet-connect handoff: on
-    // connect, cowswap re-derives trade state from the provider and can wipe the
-    // URL tokens (useSetupTradeState -> getDefaultTradeRawState). IntentRestoreUpdater
-    // reads this back and re-navigates to the intended trade. Stash the PARSED chain
-    // only (undefined => restore uses the connected chain, never forcing a switch).
-    const fields = extractIntentFields(parseState.parsed, resolveToken)
+    // Persist the trade so it survives the wallet-connect handoff: on connect,
+    // cowswap re-derives trade state from the provider and can wipe the URL tokens
+    // (useSetupTradeState -> getDefaultTradeRawState). IntentRestoreUpdater reads
+    // this back and re-navigates to the intended trade.
+    //
+    // An EXPLICIT-chain intent stashes the chain-specific ADDRESS (fills the form
+    // reliably). A NO-chain intent stashes the chain-agnostic SYMBOL and only the
+    // parsed chain (undefined), so restore re-resolves it on the wallet's own chain:
+    // an address resolved for this page's default chain would be wrong on an L2 the
+    // user later connects.
+    const resolved = extractIntentFields(parseState.parsed, resolveToken)
+    const raw = extractIntentFields(parseState.parsed)
+    const hasChain = resolved.chainId !== undefined
     writeIntentStash({
-      chainId: fields.chainId,
-      sellToken: fields.sellToken,
-      buyToken: fields.buyToken,
-      amount: fields.amount,
-      field: fields.field,
+      chainId: resolved.chainId,
+      sellToken: hasChain ? resolved.sellToken : raw.sellToken,
+      buyToken: hasChain ? resolved.buyToken : raw.buyToken,
+      amount: resolved.amount,
+      field: resolved.field,
     })
     navigate(intentToUrl(parseState.parsed, resolveToken))
   }, [navigate, parseState.parsed, ready, symbolMap])

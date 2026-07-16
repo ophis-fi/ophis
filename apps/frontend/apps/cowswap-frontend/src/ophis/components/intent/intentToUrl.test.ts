@@ -1,4 +1,4 @@
-import { intentToUrl } from './intentToUrl'
+import { extractIntentFields, intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 
 const make = (entities: ParsedIntent['entities']): ParsedIntent => ({ intent: 'swap', entities })
@@ -137,5 +137,37 @@ describe('intentToUrl with a token resolver', () => {
       resolve,
     )
     expect(url).toBe(`/8453/swap/${USDC_ADDR}`)
+  })
+})
+
+describe('extractIntentFields', () => {
+  const USDC_ADDR = '0xA0b86991c6218b36c1d19d4a2e9Eb0cE3606eB48'
+  const resolve = (s: string): string | null => (s === 'USDC' ? USDC_ADDR : null)
+
+  it('returns raw symbols when no resolver is passed (chain-agnostic stash)', () => {
+    const f = extractIntentFields(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 0, end: 3 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 4, end: 8 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 9, end: 12 },
+      ]),
+    )
+    expect(f).toEqual({ chainId: undefined, sellToken: 'USDC', buyToken: 'ETH', amount: '100', field: 'sell' })
+  })
+
+  it('resolves symbols to addresses when a resolver is passed', () => {
+    const f = extractIntentFields(make([{ type: 'sellToken', value: 'USDC', raw: 'usdc', start: 0, end: 4 }]), resolve)
+    expect(f.sellToken).toBe(USDC_ADDR)
+  })
+
+  it('detects the amount side and parses the chain', () => {
+    const f = extractIntentFields(
+      make([
+        { type: 'chain', value: 'optimism', raw: 'optimism', start: 0, end: 8 },
+        { type: 'buyToken', value: 'COW', raw: 'cow', start: 9, end: 12 },
+        { type: 'amount', value: '5', raw: '5', start: 13, end: 14 },
+      ]),
+    )
+    expect(f).toEqual({ chainId: 10, sellToken: undefined, buyToken: 'COW', amount: '5', field: 'buy' })
   })
 })
