@@ -38,8 +38,8 @@ export function SwapUpdaters(): ReactNode {
       <EthFlowDeadlineUpdater deadlineState={swapDeadlineState} />
       <SetupSwapAmountsFromUrlUpdater />
       {/* Ophis: restore a stashed swap intent across the wallet-connect handoff
-          (see IntentRestoreUpdater). Swap-surface only, so the widget/limit/
-          advanced surfaces are untouched. */}
+          (see IntentRestoreUpdater). Inert without a stash, so non-intent flows,
+          limit/advanced surfaces and the injected widget are unaffected. */}
       <IntentRestoreUpdater />
       <InvalidBridgeOutputUpdater />
       <QuoteObserverUpdater />

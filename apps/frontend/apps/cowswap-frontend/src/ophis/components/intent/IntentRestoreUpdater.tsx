@@ -18,9 +18,16 @@
  *  - All storage access is best-effort and never throws.
  *
  * Known trade-off: the stash reflects the trade AT INTENT-SUBMIT time. A user who
- * submits an intent, manually edits the form while disconnected, then connects
- * will be returned to the originally-parsed trade. That path is rare next to the
- * common "submit then connect", where restoring is exactly right.
+ * submits an intent, then navigates elsewhere while still disconnected (edits the
+ * form, or follows a direct swap link), then connects, is returned to the
+ * originally-parsed trade. That path is rare next to the common "submit then
+ * connect", and it matches the product intent of holding the searched trade until
+ * the user connects.
+ *
+ * Note on mounting: SwapUpdaters is also mounted inside the injected widget, so
+ * this updater technically mounts there too — but the landing page is the only
+ * writer of the stash and is not part of the widget, so it is inert there. Limit
+ * and advanced surfaces do not mount SwapUpdaters at all.
  */
 import { useEffect, useRef } from 'react'
 
@@ -64,7 +71,9 @@ export function IntentRestoreUpdater(): null {
     if (!stash) return
 
     // Honour an explicit intent chain; otherwise stay on the connected chain
-    // (never force a network switch the user did not ask for).
+    // (never force a network switch the user did not ask for). walletChainId is
+    // captured HERE, once, so the target is fully built before we defer (see the
+    // dependency note below).
     const chainId = stash.chainId ?? walletChainId
     const segments: string[] = []
     if (chainId) segments.push(String(chainId))
@@ -81,10 +90,19 @@ export function IntentRestoreUpdater(): null {
 
     // Defer past the current commit so this wins the race against
     // useSetupTradeState's connect-time default navigation. `replace` swaps out
-    // that transient wiped-default entry instead of pushing a duplicate.
+    // that transient wiped-default entry. When an explicit intent chain differs
+    // from the wallet's, cowswap's own rememberedUrlStateRef then carries these
+    // tokens through the network switch it triggers.
     const id = setTimeout(() => navigate(target, { replace: true }), 0)
     return () => clearTimeout(id)
-  }, [account, prevAccount, walletChainId, navigate])
+    // walletChainId is read ONCE at the connect transition and is deliberately
+    // NOT a dependency: were it one, a wallet that publishes account and chainId
+    // in separate commits would re-run this effect on the chainId update, whose
+    // cleanup would clearTimeout the pending restore — and with consumedRef
+    // already set and the stash already cleared, the intent would be lost for
+    // good. The target is fully built above, so no later value is needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, prevAccount, navigate])
 
   return null
 }
