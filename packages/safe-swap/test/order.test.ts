@@ -148,6 +148,18 @@ describe('buildPresignTxBatch', () => {
     expect(decodeApprove(txs[1]!.data).args[1]).toBe(1_000_000n); // exact re-approve, not MaxUint
   });
 
+  it('keepSufficientAllowance -> leaves an oversized allowance in place (concurrent-orders escape hatch)', () => {
+    const { txs } = buildPresignTxBatch({ chainId: CHAIN, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1_000_000n, currentAllowance: MAX_UINT256, keepSufficientAllowance: true });
+    expect(txs).toHaveLength(1); // presign only, no clamp
+    expect(txs[0]!.to.toLowerCase()).toBe(OP_SETTLEMENT.toLowerCase());
+  });
+
+  it('keepSufficientAllowance still tops up an insufficient allowance', () => {
+    const { txs } = buildPresignTxBatch({ chainId: CHAIN, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1_000_000n, currentAllowance: 500_000n, keepSufficientAllowance: true });
+    expect(txs).toHaveLength(3);
+    expect(decodeApprove(txs[1]!.data).args[1]).toBe(1_000_000n);
+  });
+
   it('resolves distinct Ophis settlement per chain (OP vs Unichain)', () => {
     const op = buildPresignTxBatch({ chainId: 10, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1n, currentAllowance: 1n });
     const uni = buildPresignTxBatch({ chainId: 130, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1n, currentAllowance: 1n });

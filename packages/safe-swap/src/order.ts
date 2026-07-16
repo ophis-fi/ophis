@@ -212,16 +212,29 @@ export function buildPresignTxBatch(args: {
   sellToken: Address;
   pullAmount: bigint;
   currentAllowance: bigint | null;
+  /**
+   * Escape hatch (default false). When true, an allowance that is ALREADY >=
+   * pullAmount is left untouched (approve only when it is below), the old
+   * top-up behaviour. Use ONLY when the Safe deliberately keeps ONE shared
+   * relayer allowance funding several CONCURRENT presigned orders, where the
+   * least-privilege clamp would shrink the allowance the other orders still
+   * need. For a normal sequential rebalance leave it false (least-privilege).
+   */
+  keepSufficientAllowance?: boolean;
 }): { txs: TxCall[]; settlement: Address; relayer: Address } {
   const settlement = getOphisSettlementAddress(args.chainId) as Address;
   const relayer = getOphisVaultRelayer(args.chainId) as Address;
   const txs: TxCall[] = [];
 
-  // Skip the approve ONLY when the Safe's allowance is ALREADY EXACTLY pullAmount.
-  // Anything else — too low, OR a pre-existing oversized/MaxUint allowance — is
-  // reset to 0 (USDT-safe) then exact-approved, so no stale over-allowance to the
-  // relayer survives the rebalance (least-privilege invariant #5).
-  if (args.currentAllowance === null || args.currentAllowance !== args.pullAmount) {
+  // Default (least-privilege invariant #5): skip the approve ONLY when the Safe's
+  // allowance is ALREADY EXACTLY pullAmount. Anything else — too low, OR a
+  // pre-existing oversized/MaxUint allowance — is reset to 0 (USDT-safe) then
+  // exact-approved, so no stale over-allowance to the relayer survives. With
+  // keepSufficientAllowance, only a BELOW-pullAmount allowance is topped up.
+  const needsApprove = args.keepSufficientAllowance
+    ? args.currentAllowance === null || args.currentAllowance < args.pullAmount
+    : args.currentAllowance === null || args.currentAllowance !== args.pullAmount;
+  if (needsApprove) {
     if (args.currentAllowance === null || args.currentAllowance > 0n) {
       txs.push({ to: args.sellToken, value: '0', data: encodeApprove(relayer, 0n) });
     }
