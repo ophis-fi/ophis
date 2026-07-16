@@ -19,6 +19,7 @@ import { getAddress, keccak256, toBytes } from 'viem';
 import {
   buildOphisOrderCreation,
   buildOphisOrderMetadata,
+  enrollOphisTrader,
   getOphisOrderbookUrl,
   getOphisVaultRelayer,
   ophisOrderReceiver,
@@ -64,6 +65,12 @@ export interface OphisSafePresignResult {
   txs: TxCall[];
   settlement: Address;
   relayer: Address;
+  /**
+   * Set when rebate-indexer enrollment failed. The order still built and can
+   * settle; the referral rebate may just not index until the Safe is enrolled
+   * (enrollment is not a settlement precondition).
+   */
+  enrollmentWarning?: string;
 }
 
 export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<OphisSafePresignResult> {
@@ -71,6 +78,15 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   assertErc20(p.buyToken, 'Buy token');
   const slippageBps = p.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   assertSlippageBps(slippageBps);
+
+  // A caller hard min-out must be a positive atomic amount. A negative/zero value
+  // (a defaulting/config bug) would make assertBuyFloor accept any positive signed
+  // floor, silently disabling the min-out protection.
+  let minBuyAmount: bigint | undefined;
+  if (p.minBuyAmount !== undefined) {
+    minBuyAmount = BigInt(p.minBuyAmount);
+    if (minBuyAmount <= 0n) throw new Error(`minBuyAmount must be > 0 (atomic units); got ${p.minBuyAmount}`);
+  }
 
   const requestedSellToken = getAddress(p.sellToken);
   const requestedBuyToken = getAddress(p.buyToken);
@@ -98,7 +114,12 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     sellAmountBeforeFee: requestedGross.toString(),
     from: p.safe,
     receiver,
-    appData: appDataHash,
+    // Quote WITH the full appData PREIMAGE (partner fee + referrer). The Ophis
+    // orderbook DTO treats appData+appDataHash as {full, expected} and validates
+    // keccak(full) == expected, so passing the bytes32 hash as appData fails
+    // app-data validation (and would price a no-fee order). Pass the preimage,
+    // exactly as the safe-app quote path does.
+    appData: fullAppData,
     appDataHash,
     signingScheme: SigningScheme.PRESIGN,
   } as never)) as { quote?: Record<string, unknown> } & Record<string, unknown>;
@@ -118,8 +139,19 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     slippageBps,
     ttlSeconds: ORDER_TTL_SECONDS,
     nowSeconds: Math.floor(Date.now() / 1000),
-    minBuyAmount: p.minBuyAmount !== undefined ? BigInt(p.minBuyAmount) : undefined,
+    minBuyAmount,
   });
+
+  // Enroll the Safe with the rebate indexer BEFORE creating the order: the indexer
+  // is owner-scoped, so an unenrolled Safe settles fine but its referral rebate is
+  // NEVER indexed (the existing Safe/EOA paths enroll first). Non-blocking, because
+  // enrollment is not a settlement precondition: a failure surfaces a warning.
+  let enrollmentWarning: string | undefined;
+  try {
+    await enrollOphisTrader(p.safe);
+  } catch (e) {
+    enrollmentWarning = (e as Error).message;
+  }
 
   // Create the order PRESIGNATURE_PENDING; for presign the signature is the Safe address.
   const body = buildOphisOrderCreation({
@@ -154,5 +186,5 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     currentAllowance,
   });
 
-  return { orderUid, txs, settlement, relayer };
+  return { orderUid, txs, settlement, relayer, enrollmentWarning };
 }

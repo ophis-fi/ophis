@@ -217,7 +217,11 @@ export function buildPresignTxBatch(args: {
   const relayer = getOphisVaultRelayer(args.chainId) as Address;
   const txs: TxCall[] = [];
 
-  if (args.currentAllowance === null || args.currentAllowance < args.pullAmount) {
+  // Skip the approve ONLY when the Safe's allowance is ALREADY EXACTLY pullAmount.
+  // Anything else — too low, OR a pre-existing oversized/MaxUint allowance — is
+  // reset to 0 (USDT-safe) then exact-approved, so no stale over-allowance to the
+  // relayer survives the rebalance (least-privilege invariant #5).
+  if (args.currentAllowance === null || args.currentAllowance !== args.pullAmount) {
     if (args.currentAllowance === null || args.currentAllowance > 0n) {
       txs.push({ to: args.sellToken, value: '0', data: encodeApprove(relayer, 0n) });
     }

@@ -135,10 +135,17 @@ describe('buildPresignTxBatch', () => {
     expect(decodeApprove(txs[1]!.data).args[1]).toBe(1_000_000n);
   });
 
-  it('sufficient allowance -> presign only (no approve)', () => {
+  it('exact allowance -> presign only (no approve)', () => {
     const { txs } = buildPresignTxBatch({ chainId: CHAIN, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1_000_000n, currentAllowance: 1_000_000n });
     expect(txs).toHaveLength(1);
     expect(txs[0]!.to.toLowerCase()).toBe(OP_SETTLEMENT.toLowerCase());
+  });
+
+  it('oversized allowance -> reset + exact approve + presign (clamp, invariant 5)', () => {
+    const { txs } = buildPresignTxBatch({ chainId: CHAIN, orderUid: ORDER_UID, sellToken: SELL, pullAmount: 1_000_000n, currentAllowance: MAX_UINT256 });
+    expect(txs).toHaveLength(3);
+    expect(decodeApprove(txs[0]!.data).args[1]).toBe(0n); // reset the oversized allowance down
+    expect(decodeApprove(txs[1]!.data).args[1]).toBe(1_000_000n); // exact re-approve, not MaxUint
   });
 
   it('resolves distinct Ophis settlement per chain (OP vs Unichain)', () => {
