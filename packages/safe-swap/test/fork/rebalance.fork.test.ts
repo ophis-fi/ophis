@@ -135,8 +135,9 @@ describe.each(CHAINS)('rebalance fork integration ($name)', (c) => {
     });
     expect(pre).toBe(PRE_SIGNED);
 
-    // (3) the relayer can pull EXACTLY pullAmount and then NO more (allowance exhausted) ->
-    // proves the approve is exact, not MaxUint.
+    // (3) end-to-end corroboration: the real settlement path (relayer transferFrom) pulls
+    // EXACTLY pullAmount, then a further 1-wei pull reverts. The allowance() == pullAmount
+    // assertion above is the definitive exact-approve proof; this shows it being consumed.
     await impersonate(fork, OP_RELAYER);
     const settBalBefore = await fork.pub.readContract({ address: USDC, abi: ERC20_ABI, functionName: 'balanceOf', args: [OP_SETTLEMENT] });
     const pullHash = await fork.wallet.sendTransaction({
@@ -149,7 +150,9 @@ describe.each(CHAINS)('rebalance fork integration ($name)', (c) => {
     const settBalAfter = await fork.pub.readContract({ address: USDC, abi: ERC20_ABI, functionName: 'balanceOf', args: [OP_SETTLEMENT] });
     expect(settBalAfter - settBalBefore).toBe(1_000_000n);
 
-    // A further 1-wei pull must revert: the exact allowance is exhausted.
+    // A further 1-wei pull reverts because the exact allowance is now exhausted (with a
+    // MaxUint approve it would have succeeded). The Safe still holds 4 USDC, so this
+    // isolates allowance, not balance.
     await expect(
       fork.pub.call({
         account: OP_RELAYER,

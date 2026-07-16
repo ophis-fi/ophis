@@ -42,6 +42,10 @@ export const ERC20_ABI = parseAbi([
   'function transferFrom(address from, address to, uint256 amount) returns (bool)',
 ]);
 export const SETTLEMENT_ABI = parseAbi(['function preSignature(bytes) view returns (uint256)']);
+const SAFE_ACCOUNT_ABI = parseAbi([
+  'function getOwners() view returns (address[])',
+  'function getThreshold() view returns (uint256)',
+]);
 
 // GPv2 marker written by setPreSignature(uid, true).
 export const PRE_SIGNED = BigInt(keccak256(toHex('GPv2Signing.Scheme.PreSign')));
@@ -79,12 +83,15 @@ export async function startFork(forkUrl: string, port: number): Promise<Fork> {
   return { rpcUrl, pub, wallet, proc, stop: () => proc.kill() };
 }
 
-async function anvilRpc(fork: Fork, method: string, params: unknown[]): Promise<void> {
-  await fetch(fork.rpcUrl, {
+async function anvilRpc(fork: Fork, method: string, params: unknown[]): Promise<unknown> {
+  const res = await fetch(fork.rpcUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
+  const json = (await res.json()) as { result?: unknown; error?: { message?: string } };
+  if (json.error) throw new Error(`${method} failed: ${json.error.message ?? JSON.stringify(json.error)}`);
+  return json.result;
 }
 
 /** Deploy a 1-of-1 Safe owned by anvil account 0 against the canonical factory. */
@@ -118,24 +125,43 @@ export async function deploySafe(fork: Fork, saltNonce: bigint): Promise<Address
     functionName: 'createProxyWithNonce',
     args: [SAFE_L2_SINGLETON, initializer, saltNonce],
   });
-  await fork.pub.waitForTransactionReceipt({ hash });
-  return result as Address;
+  const receipt = await fork.pub.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error('deploySafe: proxy deployment reverted');
+
+  // Assert the Safe really deployed as a 1-of-1 owned by the anvil account, so a
+  // false-pass (undeployed / wrong-owner Safe) can't slip through downstream.
+  const proxy = result as Address;
+  const [owners, threshold] = await Promise.all([
+    fork.pub.readContract({ address: proxy, abi: SAFE_ACCOUNT_ABI, functionName: 'getOwners' }),
+    fork.pub.readContract({ address: proxy, abi: SAFE_ACCOUNT_ABI, functionName: 'getThreshold' }),
+  ]);
+  if (owners.length !== 1 || owners[0].toLowerCase() !== ANVIL_ACCOUNT.toLowerCase() || threshold !== 1n) {
+    throw new Error(`deploySafe: unexpected Safe config (owners=${owners.join(',')} threshold=${threshold})`);
+  }
+  return proxy;
 }
 
 /**
  * Fund `holder` with `amount` of ERC-20 `token` by finding the balanceOf storage slot:
  * write a sentinel to mapping(address=>uint) at each candidate base slot and keep the one
- * that makes balanceOf() reflect it. Robust across FiatToken / WETH / OZ layouts.
+ * that makes balanceOf() reflect it. Handles the common balanceOf = mapping(address => uint)
+ * layouts (FiatToken, WETH9, OZ) by probing; EVERY probed cell is restored unless it turns
+ * out to be the balance slot, so no unrelated storage is left mutated. A token with
+ * non-mapping / computed balance logic will not be found here (the probe throws).
  */
 export async function dealErc20(fork: Fork, token: Address, holder: Address, amount: bigint): Promise<void> {
   for (let slot = 0n; slot <= 30n; slot++) {
     const key = keccak256(`0x${pad(holder, { size: 32 }).slice(2)}${pad(toHex(slot), { size: 32 }).slice(2)}` as Hex);
-    const prev = await fork.pub.getStorageAt({ address: token, slot: key });
+    const prev = (await fork.pub.getStorageAt({ address: token, slot: key })) ?? pad('0x0', { size: 32 });
     await anvilRpc(fork, 'anvil_setStorageAt', [token, key, pad(toHex(amount), { size: 32 })]);
-    const bal = await fork.pub.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [holder] });
-    if (bal === amount) return;
-    // restore and keep probing
-    await anvilRpc(fork, 'anvil_setStorageAt', [token, key, prev ?? pad('0x0', { size: 32 })]);
+    let matched = false;
+    try {
+      const bal = await fork.pub.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [holder] });
+      matched = bal === amount;
+    } finally {
+      if (!matched) await anvilRpc(fork, 'anvil_setStorageAt', [token, key, prev]); // always restore a non-balance cell
+    }
+    if (matched) return;
   }
   throw new Error(`dealErc20: could not find the balance slot for ${token}`);
 }
