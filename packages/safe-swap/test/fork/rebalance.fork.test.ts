@@ -55,6 +55,18 @@ const CHAINS = [
     settlement: getAddress('0x108A678716e5E1776036eF044CAB7064226F714E'),
     relayer: getAddress('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'),
   },
+  {
+    // Base is CoW-HOSTED: the SDK resolves the CANONICAL GPv2 settlement + relayer
+    // (fee still rides in appData). Verifies the canonical-settlement presign path.
+    name: 'Base',
+    id: 8453,
+    rpcEnv: 'OPHIS_FORK_RPC_BASE',
+    port: 8553,
+    usdc: getAddress('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'),
+    weth: getAddress('0x4200000000000000000000000000000000000006'),
+    settlement: getAddress('0x9008D19f58AAbD9eD0D60971565AA8510560ab41'),
+    relayer: getAddress('0xC92E8bdf79f0507f65a392b0ab4667716BFE0110'),
+  },
 ] as const;
 
 describe.each(CHAINS)('rebalance fork integration ($name)', (c) => {

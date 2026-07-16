@@ -135,7 +135,7 @@ Modify:
 - M1 - Extract and harden the builder: `@ophis/safe-swap` (build.ts + guards.ts), wire the presign creation branch, refactor `apps/safe-app` to consume it (guard-parity fix). All unit tests + semgrep green.
 - M2 - Headless executor: `exec-safe.ts` (protocol-kit MPC exec). Fork integration test: funds-return-to-Safe + fee-to-0x858 on Unichain + OP.
 - M3 - Zodiac Roles preset + fork security proof (least-privilege). Curator README.
-- M4 - Gated rollout: Unichain (130) first, then OP (10), Base (8453) secondary. Gate merge on internal audit + ToB-semgrep + Codex.
+- M4 - Gated rollout: Unichain (130) first, then OP (10), Base (8453) secondary [CONFIRMED by Clement 2026-07-16]. All three chains fork-verified against the REAL deployed contracts (Base uses the CANONICAL CoW settlement/relayer, being CoW-hosted). Gates: ToB-semgrep 0 findings, final Codex/adversarial audit, CI green. Enablement is operational (no new contracts are deployed; the builder resolves each chain's settlement/relayer/orderbook from @ophis/sdk).
 
 ## Decisions (open questions resolved)
 
@@ -143,7 +143,8 @@ Modify:
 - Curator exec model: the builder is exec-agnostic; MPC executor (M2) before Roles preset (M3).
 - EIP-1271 on-chain policy module: Phase B (presign + Roles + candid disclosure for Phase A).
 - Fee: standard 5bp partner / 1bp stable via the single allowlisted `0x858` recipient; any curator-specific split handled off-chain on that recipient (no new allowlisted Safe, no re-audit).
-- Chain priority: lead on Unichain (self-hosted, 100% fee). Rebate-attribution (route to vault LPs vs keep vs referralCode) surfaced for Clement before M4; does not affect the code.
+- Chain priority: Unichain -> OP -> Base [Clement 2026-07-16]. Unichain + OP are self-hosted (100% fee, non-canonical settlement); Base is CoW-hosted (canonical settlement, fee via appData).
+- Rebate-attribution: DECIDED PER PARTNER at onboarding [Clement 2026-07-16]. The code ships attribution-agnostic (optional `referralCode`), so no global policy is baked in.
 
 ## Phase B sketch (later)
 
