@@ -30,11 +30,15 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
   // The quote is stored together with the EXACT appData it was priced against, so onPropose
   // submits the same fee-bearing appData the quote reflected (never a fresh/divergent one).
   // `wrapNative` is captured WITH the quote so the proposal wraps iff the quote was taken in WETH.
+  // `requested` captures what the user ASKED for (post-wrap-mapping token + gross amount) so the
+  // signed order is bound back to the request (assertRequestBound in the shared assembly): a
+  // hostile quote response cannot substitute tokens or change the amount the Safe pulls.
   const [quoted, setQuoted] = useState<{
     quote: any;
     fullAppData: string;
     appDataHash: string;
     wrapNative: boolean;
+    requested: { sellToken: `0x${string}`; buyToken: `0x${string}`; sellAmount: string };
   } | null>(null);
   const [submitted, setSubmitted] = useState<{
     orderUid: string;
@@ -69,7 +73,17 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
       const wrapNative = sellNative || isNativeEth(sellToken);
       const sellTokenForQuote = wrapNative ? getWethAddress(chainId) : sellToken;
       const quote = await getQuote(chainId, owner, sellTokenForQuote, buyToken, sellAmount, fullAppData, appDataHash);
-      setQuoted({ quote, fullAppData, appDataHash, wrapNative });
+      setQuoted({
+        quote,
+        fullAppData,
+        appDataHash,
+        wrapNative,
+        requested: {
+          sellToken: sellTokenForQuote as `0x${string}`,
+          buyToken: buyToken as `0x${string}`,
+          sellAmount,
+        },
+      });
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -78,8 +92,8 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
     setError(null); setBusy(true);
     try {
       const ownerAddr = owner as `0x${string}`;
-      const { quote, fullAppData, appDataHash } = quoted;
-      const order = assembleOrder(ownerAddr, quote, appDataHash);
+      const { quote, fullAppData, appDataHash, requested } = quoted;
+      const order = assembleOrder(ownerAddr, quote, appDataHash, requested);
       setSubmitted(await submitOrder(sdk, chainId, ownerAddr, order, fullAppData, appDataHash, quoted.wrapNative));
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }

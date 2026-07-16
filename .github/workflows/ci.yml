@@ -81,10 +81,40 @@ jobs:
       - run: |
           if [ -f apps/safe-app/package.json ]; then
             pnpm --filter @ophis/sdk build
+            pnpm --filter @ophis/safe-swap build
             pnpm --filter @ophis/safe-app typecheck
+            pnpm --filter @ophis/safe-app test
             pnpm --filter @ophis/safe-app build
           else
             echo "apps/safe-app not present yet — skipping"
+          fi
+
+  safe-swap:
+    name: packages/safe-swap
+    runs-on: ubuntu-latest
+    needs: root
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # The root `turbo run typecheck` is `|| echo`-swallowed (non-fatal). This package builds the
+      # presign tx batch a vault Safe EXECUTES (money path), so a silent compile or guard break must
+      # redden CI. This job is the real, BLOCKING gate. It typechecks against @ophis/sdk's emitted
+      # .d.ts, so build the SDK first. Fork tests (test/fork*) are env-gated and do NOT run here.
+      - run: |
+          if [ -f packages/safe-swap/package.json ]; then
+            pnpm --filter @ophis/sdk build
+            pnpm --filter @ophis/safe-swap build
+            pnpm --filter @ophis/safe-swap typecheck
+            pnpm --filter @ophis/safe-swap test
+          else
+            echo "packages/safe-swap not present yet — skipping"
           fi
 
   agent-plugins:
