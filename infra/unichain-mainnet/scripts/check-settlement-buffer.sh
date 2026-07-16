@@ -20,7 +20,10 @@ if [[ "${-}" == *x* ]]; then
 fi
 
 RPC="${OPHIS_RPC:-http://localhost:4002/main/evm/130}"
-SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
+# Unichain (130) Ophis settlement - NOT the OP one (0x310784c7...B859); this
+# script previously carried the OP address by copy-paste, silently monitoring
+# the wrong contract's buffer.
+SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
 SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
 
 # token:symbol:decimals
