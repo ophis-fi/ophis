@@ -33,7 +33,12 @@ import {
   type Fork,
 } from './harness.js';
 
-// One entry per self-hosted Ophis chain. Each runs only when its fork RPC env is set.
+// All CoW-hosted (canonical) chains share the deterministic GPv2 settlement + relayer;
+// only the fundable sell token + fork RPC differ. `usdc` is just the sell token (WXDAI on
+// Gnosis). Each entry runs only when its fork RPC env is set.
+const CANON_SETTLEMENT = getAddress('0x9008d19f58aabd9ed0d60971565aa8510560ab41');
+const CANON_RELAYER = getAddress('0xc92e8bdf79f0507f65a392b0ab4667716bfe0110');
+
 const CHAINS = [
   {
     name: 'OP',
@@ -55,18 +60,90 @@ const CHAINS = [
     settlement: getAddress('0x108A678716e5E1776036eF044CAB7064226F714E'),
     relayer: getAddress('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'),
   },
+  // --- CoW-hosted (canonical settlement, fee via appData) ---
   {
-    // Base is CoW-HOSTED: the SDK resolves the CANONICAL GPv2 settlement + relayer
-    // (fee still rides in appData). Verifies the canonical-settlement presign path.
     name: 'Base',
     id: 8453,
     rpcEnv: 'OPHIS_FORK_RPC_BASE',
     port: 8553,
     usdc: getAddress('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'),
     weth: getAddress('0x4200000000000000000000000000000000000006'),
-    settlement: getAddress('0x9008D19f58AAbD9eD0D60971565AA8510560ab41'),
-    relayer: getAddress('0xC92E8bdf79f0507f65a392b0ab4667716BFE0110'),
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
   },
+  {
+    name: 'Ethereum',
+    id: 1,
+    rpcEnv: 'OPHIS_FORK_RPC_ETH',
+    port: 8554,
+    usdc: getAddress('0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'),
+    weth: getAddress('0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'),
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    name: 'Arbitrum',
+    id: 42161,
+    rpcEnv: 'OPHIS_FORK_RPC_ARBITRUM',
+    port: 8555,
+    usdc: getAddress('0xaf88d065e77c8cc2239327c5edb3a432268e5831'),
+    weth: getAddress('0x82af49447d8a07e3bd95bd0d56f35241523fbab1'),
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    name: 'Polygon',
+    id: 137,
+    rpcEnv: 'OPHIS_FORK_RPC_POLYGON',
+    port: 8556,
+    usdc: getAddress('0x3c499c542cef5e3811e1192ce70d8cc03d5c3359'),
+    weth: getAddress('0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270'), // WPOL
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    name: 'Gnosis',
+    id: 100,
+    rpcEnv: 'OPHIS_FORK_RPC_GNOSIS',
+    port: 8557,
+    usdc: getAddress('0xe91d153e0b41518a2ce8dd3d7944fa863463a97d'), // WXDAI (sell)
+    weth: getAddress('0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1'), // WETH on Gnosis
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    name: 'Avalanche',
+    id: 43114,
+    rpcEnv: 'OPHIS_FORK_RPC_AVAX',
+    port: 8558,
+    usdc: getAddress('0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e'),
+    weth: getAddress('0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7'), // WAVAX
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    name: 'BNB',
+    id: 56,
+    rpcEnv: 'OPHIS_FORK_RPC_BNB',
+    port: 8559,
+    usdc: getAddress('0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d'),
+    weth: getAddress('0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'), // WBNB
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  {
+    name: 'Linea',
+    id: 59144,
+    rpcEnv: 'OPHIS_FORK_RPC_LINEA',
+    port: 8560,
+    usdc: getAddress('0x176211869ca2b568f2a7d4ee941e073a821ee1ff'),
+    weth: getAddress('0xe5d7c2a44ffddf6b295a15c148167daaaf5cf34f'),
+    settlement: CANON_SETTLEMENT,
+    relayer: CANON_RELAYER,
+  },
+  // Ink (57073) + Plasma (9745) are also SDK-supported (canonical CoW settlement, identical
+  // presign path). Not fork-verified here only because their native-USDC address + a reliable
+  // archive fork RPC weren't pinned down; add a fundable sell token + rpcEnv to verify them.
 ] as const;
 
 describe.each(CHAINS)('rebalance fork integration ($name)', (c) => {

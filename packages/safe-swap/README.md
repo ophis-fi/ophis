@@ -44,6 +44,19 @@ const { orderUid, txs, settlement, relayer, enrollmentWarning } = await buildOph
 assembles a hardened order, POSTs it `PRESIGNATURE_PENDING` to get the `orderUid`, and
 returns the raw tx batch. **Execution is up to you** — pick a curator model below.
 
+## Chains
+
+Works on every chain `@ophis/sdk` resolves — settlement / relayer / orderbook / signing
+domain are looked up by `chainId`, with no per-chain code:
+
+- **Ophis self-hosted** (non-canonical settlement, 100% fee): Optimism, Unichain.
+- **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
+  Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
+
+Fork-verified end-to-end against the REAL deployed contracts on 10 of these (OP, Unichain,
+Base, Ethereum, Arbitrum, Polygon, Gnosis, Avalanche, BNB, Linea). Ink + Plasma use the
+identical canonical path; add a fundable sell token + fork RPC to `test/fork` to verify them.
+
 ## Curator model A: MPC / owner key (protocol-kit)
 
 ```ts
