@@ -41,24 +41,31 @@ import { notify } from '../src/telegram/alerter.js';
 // not a dependency of this app; keep these in sync with packages/sdk if a
 // chain is ever re-pointed). Unichain + OP are Ophis self-hosted
 // (non-canonical settlement); Base is CoW-hosted (canonical).
-const CHAINS: Record<number, { name: string; orderbook: string; settlement: Address; rpc: string }> = {
+// `sovereign: true` = Ophis self-hosted settlement, where the CIP-75 fee
+// accrues in the settlement buffer until the operator sweep. On CoW-hosted
+// chains (Base) the canonical settlement is NOT ours to sweep; fee arrival
+// follows CoW's own remittance accounting instead.
+const CHAINS: Record<number, { name: string; orderbook: string; settlement: Address; rpc: string; sovereign: boolean }> = {
   130: {
     name: 'Unichain',
     orderbook: 'https://unichain-mainnet.ophis.fi',
     settlement: '0x108A678716e5E1776036eF044CAB7064226F714E',
     rpc: 'https://mainnet.unichain.org',
+    sovereign: true,
   },
   10: {
     name: 'Optimism',
     orderbook: 'https://optimism-mainnet.ophis.fi',
     settlement: '0x310784c7FCE12d578dA6f53460777bAc9718B859',
     rpc: 'https://mainnet.optimism.io',
+    sovereign: true,
   },
   8453: {
     name: 'Base',
     orderbook: 'https://api.cow.fi/base',
     settlement: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
     rpc: 'https://mainnet.base.org',
+    sovereign: false,
   },
 };
 
@@ -77,10 +84,18 @@ function fail(msg: string): never {
   process.exit(2);
 }
 
+// Returns null on ANY failure (non-2xx, network error, DNS, abort timeout,
+// malformed JSON) so the long-running poll loop retries instead of dying
+// mid-trial with no report.
 async function fetchJson(url: string): Promise<unknown | null> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.warn(`[fetch] transient failure for ${url}: ${(e as Error).message}`);
+    return null;
+  }
 }
 
 interface CheckRow {
@@ -106,17 +121,16 @@ async function main(): Promise<void> {
 
   // ---- 1) poll the orderbook until the order is terminal --------------------
   let order: Record<string, unknown> | null = null;
-  let status = 'unknown';
+  let status: string;
   const deadline = Date.now() + timeoutSec * 1_000;
-  for (;;) {
+  do {
     order = (await fetchJson(`${chain.orderbook}/api/v1/orders/${uid}`)) as Record<string, unknown> | null;
     status = String(order?.status ?? 'unknown');
     const executed = String(order?.executedBuyAmount ?? '0');
     console.log(`[poll ${new Date().toISOString()}] status=${status} executedBuy=${executed}`);
     if (status === 'fulfilled' || status === 'cancelled' || status === 'expired') break;
-    if (Date.now() > deadline) break;
     await new Promise((r) => setTimeout(r, intervalSec * 1_000));
-  }
+  } while (Date.now() <= deadline);
 
   const checks: CheckRow[] = [];
   checks.push({
@@ -208,25 +222,43 @@ async function main(): Promise<void> {
   });
 
   // ---- 4) fee: collected now, arrives at the Safe on sweep ------------------
-  const protocolFees = (order.executedProtocolFees ?? []) as { amount?: string; token?: string }[];
+  // executedProtocolFees lives on the TRADE row (backend model/trade.rs), not
+  // on the order metadata; keep the order-level read only as a fallback for
+  // orderbook versions that mirror it there.
+  const tradeRow = trades?.find((t) => (t.txHash as string | undefined)?.toLowerCase() === txHash.toLowerCase()) ?? trades?.[0];
+  const protocolFees = ((tradeRow?.executedProtocolFees ?? order.executedProtocolFees ?? []) as { amount?: string; token?: string }[]);
   const feeCollected = protocolFees.reduce((acc, f) => acc + BigInt(f.amount ?? '0'), 0n);
   checks.push({
-    name: 'partner fee collected (orderbook executedProtocolFees)',
+    name: 'partner fee collected (trade executedProtocolFees)',
     pass: feeCollected > 0n,
     detail: `total=${feeCollected} entries=${JSON.stringify(protocolFees)}`,
   });
 
-  const bufferBalance = (await client.readContract({
-    address: buyToken,
-    abi: ERC20_BALANCE_ABI,
-    functionName: 'balanceOf',
-    args: [chain.settlement],
-  })) as bigint;
-  checks.push({
-    name: `fee arrival at ${PARTNER_FEE_SAFE}`,
-    pass: 'PENDING',
-    detail: `sovereign CIP-75 fee accrues in the settlement; buffer(buyToken)=${bufferBalance}; run sweep-to-safe.sh and verify the Transfer to the fee Safe`,
-  });
+  if (chain.sovereign) {
+    // Sovereign settlement: the CIP-75 fee accrues INSIDE the settlement and
+    // only reaches the fee Safe via the operator sweep - report the live
+    // buffer and leave arrival PENDING until sweep-to-safe.sh runs.
+    const bufferBalance = (await client.readContract({
+      address: buyToken,
+      abi: ERC20_BALANCE_ABI,
+      functionName: 'balanceOf',
+      args: [chain.settlement],
+    })) as bigint;
+    checks.push({
+      name: `fee arrival at ${PARTNER_FEE_SAFE}`,
+      pass: 'PENDING',
+      detail: `sovereign CIP-75 fee accrues in the settlement; buffer(buyToken)=${bufferBalance}; run sweep-to-safe.sh and verify the Transfer to the fee Safe`,
+    });
+  } else {
+    // CoW-hosted chain: the canonical settlement is not ours to sweep; the
+    // partner fee is remitted through CoW's own fee accounting. Collection
+    // (above) is the verifiable on-trial signal here.
+    checks.push({
+      name: `fee arrival at ${PARTNER_FEE_SAFE}`,
+      pass: 'PENDING',
+      detail: 'CoW-hosted chain: fee remitted via CoW fee accounting/payouts, not an Ophis sweep; reconcile against the next CoW payout cycle',
+    });
+  }
 
   const allPass = checks.every((c) => c.pass === true || c.pass === 'PENDING');
   report(chain.name, uid, checks);
