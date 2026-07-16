@@ -16,41 +16,56 @@ import {
 /// @notice A Safe module that closes the Phase-A residual of the vault-curator
 /// rebalance venue: it decodes the FULL CoW order ON-CHAIN and enforces the
 /// policy (receiver == the vault Safe, token allowlist, oracle-backed minimum
-/// out, pinned Ophis fee appData, daily USD turnover cap, L2-sequencer-aware
+/// out, pinned Ophis fee appData, rolling USD turnover cap, L2-sequencer-aware
 /// oracle reads) BEFORE any presignature can exist. A compromised curator key
 /// can therefore only ever trigger policy-valid rebalances - it cannot drain
 /// the vault, and its worst-case damage is bounded:
 ///
-///   max daily loss <= dailyUsdTurnoverCap * (maxSlippageBps/1e4 + fees
-///                     + intra-TTL market drift)
+///   loss over any rolling 24h <= ~dailyUsdTurnoverCap * (maxSlippageBps/1e4
+///                                + fees + intra-TTL market drift)
+///
+/// The turnover accountant is a LEAKY BUCKET (drains at the cap per day) rather
+/// than a calendar bucket, so there is no UTC-midnight cliff to straddle: the
+/// instantaneous burst is bounded to the cap and the sustained rate to the cap
+/// per rolling day.
 ///
 /// The module's ONLY state-changing entrypoints are `rebalance` (policy-gated
 /// presign) and `cancel` (strictly risk-reducing: it can only REMOVE a
-/// presignature this module itself created). There is deliberately no generic
-/// exec, no delegatecall, and no post-deploy configuration: policy config is
-/// written once at construction and can never be widened. A new policy means
-/// a new module instance that the Safe owners enable (and the old one they
-/// disable).
+/// presignature this module itself created, and it zeroes that order's relayer
+/// allowance). There is deliberately no generic exec, no delegatecall, and no
+/// post-deploy configuration: policy config is written once at construction and
+/// can never be widened. A new policy means a new module instance that the Safe
+/// owners enable (and the old one they disable + let its orders expire).
 ///
 /// Settlement-agnostic by design: `domainSeparator` and the vault relayer are
 /// read from the settlement itself at deploy, so one bytecode works
 /// byte-identically against the Ophis non-canonical settlements (Unichain,
 /// Optimism) and the canonical CoW settlement (Base).
 ///
-/// KNOWN RESIDUAL (disclosed): the oracle floor is enforced at PRESIGN time,
-/// not at fill time - a presigned order stays fillable at its signed limit
-/// until `validTo`, so an adverse market move inside the TTL window can be
-/// captured by a solver. This exposure is bounded by MAX_TTL_CAP (1 hour) and
-/// by the daily turnover cap; enforcing the floor at settlement time needs a
-/// conditional-signature (EIP-1271) scheme and is a Phase-C extension.
+/// KNOWN RESIDUALS (disclosed):
+///  1. Fill-time floor: the oracle floor is enforced at PRESIGN time, not at
+///     fill time - a presigned order stays fillable at its signed limit until
+///     `validTo`, so an adverse market move inside the TTL window can be
+///     captured. Bounded by MAX_TTL_CAP (1 hour) and the turnover cap; a true
+///     fix needs a conditional-signature (EIP-1271) scheme (Phase C).
+///  2. Shared-token allowances: `_approveAndPresign` resets any nonzero relayer
+///     allowance on the sell token (USDT-safety). A vault running this module
+///     MUST NOT keep concurrent relayer approvals on the same sell token from
+///     another venue/module; when migrating, disable the old module and let its
+///     orders expire/cancel first (else a rebalance can starve the old order's
+///     allowance).
+///  3. Token selection: fee-on-transfer / rebasing tokens must NOT be
+///     allowlisted - the floor is computed on the gross sellAmount, which such
+///     tokens do not deliver in full. Owners choose the allowlist at deploy.
 ///
 /// OPERATIONAL INVARIANT (the guarantee depends on it): the curator MUST NOT
-/// be a Safe owner and MUST NOT be able to call the Safe directly (scope it
-/// via a Zodiac Roles Modifier to `rebalance`/`cancel` on this module only).
-/// The factory enforces the owner check at deploy; keeping it true over time
-/// is the vault owners' responsibility. Safe OWNERS retain full custody and
-/// can always disable the module - Phase B constrains the CURATOR, not the
-/// owners.
+/// be a Safe owner and MUST NOT be able to call the Safe directly (scope it via
+/// a Zodiac Roles Modifier to `rebalance`/`cancel` on this module only, and do
+/// not enable the curator as its own Safe module). Both the factory AND this
+/// constructor reject a curator that is a current Safe owner; keeping it true
+/// over time (no owner-set / module-enable drift) is the vault owners'
+/// responsibility. Safe OWNERS retain full custody and can always disable the
+/// module - Phase B constrains the CURATOR, not the owners.
 contract OphisVaultPolicyModule is ReentrancyGuard {
     using GPv2Order for GPv2Order.Data;
 
@@ -60,12 +75,17 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         IAggregatorV3 feed; // token/USD Chainlink feed
         uint8 feedDecimals; // cached from feed.decimals() at deploy
         uint8 tokenDecimals; // cached from token.decimals() at deploy
+        uint256 maxStaleness; // per-token accepted price age (feed heartbeat)
     }
 
-    /// @dev Constructor input: a token and its token/USD feed.
+    /// @dev Constructor input: a token, its token/USD feed, and the max price
+    /// age tolerated for THAT feed (sized to the feed's own heartbeat, so a
+    /// slow-heartbeat stable does not force a loose window on a fast, volatile
+    /// asset).
     struct TokenFeed {
         address token;
         IAggregatorV3 feed;
+        uint256 maxStaleness;
     }
 
     /// @dev Full construction config (a struct keeps the surface reviewable
@@ -79,9 +99,8 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         bytes32 appDataHash;
         uint256 maxSlippageBps;
         uint256 maxTtl;
-        uint256 maxOracleStaleness;
-        /// Rolling daily (UTC-day bucket) cap on SELL-side turnover, in
-        /// 18-decimal USD. Bounds a compromised curator's churn damage.
+        /// Rolling (leaky-bucket) cap on SELL-side turnover, in 18-decimal USD,
+        /// drained at this much per day. Bounds a compromised curator's churn.
         uint256 dailyUsdTurnoverCap;
         /// Chainlink L2 sequencer-uptime feed; address(0) disables the gate
         /// (chains without one). When set, oracle reads are rejected while
@@ -110,9 +129,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     uint256 public immutable maxSlippageBps;
     /// @notice Maximum order validity window, in seconds.
     uint256 public immutable maxTtl;
-    /// @notice Maximum accepted oracle price age, in seconds.
-    uint256 public immutable maxOracleStaleness;
-    /// @notice Daily sell-side turnover cap in 18-decimal USD.
+    /// @notice Rolling sell-side turnover cap in 18-decimal USD (per day).
     uint256 public immutable dailyUsdTurnoverCap;
     /// @notice L2 sequencer uptime feed (address(0) = gate disabled).
     IAggregatorV3 public immutable sequencerUptimeFeed;
@@ -121,14 +138,16 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
 
     /// @notice Per-token policy; populated only at construction (no setters).
     mapping(address => TokenPolicy) public tokenPolicy;
-    /// @notice keccak256(orderUid) => created by this module. `cancel` only
-    /// accepts uids recorded here, so a curator cannot cancel owner-authorized
-    /// presignatures that exist outside this module.
-    mapping(bytes32 => bool) public moduleCreatedUid;
-    /// @notice Current UTC-day bucket (block.timestamp / 1 days).
-    uint256 public turnoverDay;
-    /// @notice 18-decimal USD sell turnover spent inside `turnoverDay`.
+    /// @notice keccak256(orderUid) => the order's sell token (address(0) = not
+    /// created by this module). `cancel` only accepts uids recorded here, so a
+    /// curator cannot cancel presignatures created outside this module, and it
+    /// uses the recorded token to zero that order's relayer allowance.
+    mapping(bytes32 => address) public moduleOrderSellToken;
+    /// @notice Leaky-bucket accumulator of sell-side USD turnover (18-dec),
+    /// drained at `dailyUsdTurnoverCap` per day since `lastTurnoverTs`.
     uint256 public turnoverSpentUsd;
+    /// @notice Timestamp of the last turnover accrual (leak reference point).
+    uint256 public lastTurnoverTs;
 
     uint256 internal constant BPS = 10_000;
     /// @dev Hard caps on construction params (a per-vault config is expected
@@ -140,6 +159,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     uint256 internal constant MAX_TTL_CAP = 1 hours;
     uint256 internal constant MAX_STALENESS_CAP = 1 days;
     uint256 internal constant MAX_SEQ_GRACE_CAP = 1 days;
+    /// @dev Bounds `10 ** tokenDecimals` so a pathological high-decimal token
+    /// cannot brick every rebalance (self-DoS); far above any real token.
+    uint8 internal constant MAX_TOKEN_DECIMALS = 36;
 
     event Rebalanced(
         bytes orderUid,
@@ -155,6 +177,8 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     error ZeroAddress();
     error ZeroAppData();
     error BadConfig();
+    error CuratorIsOwner();
+    error UnsupportedTokenDecimals(address token);
     error TokenNotAllowed(address token);
     error SameToken();
     error ReceiverNotSafe();
@@ -163,6 +187,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     error BadOrderFlags();
     error BadValidTo();
     error ZeroSellAmount();
+    error ZeroOracleFloor();
     error BelowFloor(uint256 buyAmount, uint256 requiredFloor);
     error TurnoverCapExceeded(uint256 spentUsd, uint256 orderUsd, uint256 capUsd);
     error SequencerDown();
@@ -185,8 +210,6 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             cfg.maxSlippageBps > MAX_SLIPPAGE_BPS_CAP ||
             cfg.maxTtl == 0 ||
             cfg.maxTtl > MAX_TTL_CAP ||
-            cfg.maxOracleStaleness == 0 ||
-            cfg.maxOracleStaleness > MAX_STALENESS_CAP ||
             cfg.dailyUsdTurnoverCap == 0 ||
             cfg.tokens.length < 2
         ) revert BadConfig();
@@ -199,6 +222,11 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         } else if (cfg.sequencerGracePeriod != 0) {
             revert BadConfig();
         }
+        // Defense in depth: the module's whole guarantee rests on the curator
+        // not being a Safe owner (an owner can exec raw approve/setPreSignature
+        // and bypass the module). The factory enforces this too, but a direct
+        // deploy must not be able to skip it.
+        _requireCuratorNotOwner(cfg.safe, cfg.curator);
 
         safe = cfg.safe;
         settlement = cfg.settlement;
@@ -206,10 +234,10 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         appDataHash = cfg.appDataHash;
         maxSlippageBps = cfg.maxSlippageBps;
         maxTtl = cfg.maxTtl;
-        maxOracleStaleness = cfg.maxOracleStaleness;
         dailyUsdTurnoverCap = cfg.dailyUsdTurnoverCap;
         sequencerUptimeFeed = cfg.sequencerUptimeFeed;
         sequencerGracePeriod = cfg.sequencerGracePeriod;
+        lastTurnoverTs = block.timestamp;
 
         // Read, never trust: relayer + domain separator come from the
         // settlement itself (both are immutables there), so this module
@@ -221,19 +249,28 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         for (uint256 i = 0; i < cfg.tokens.length; i++) {
             address token = cfg.tokens[i].token;
             IAggregatorV3 feed = cfg.tokens[i].feed;
+            uint256 staleness = cfg.tokens[i].maxStaleness;
             if (token == address(0) || address(feed) == address(0)) {
                 revert ZeroAddress();
             }
+            if (staleness == 0 || staleness > MAX_STALENESS_CAP) {
+                revert BadConfig();
+            }
             if (tokenPolicy[token].allowed) revert BadConfig(); // duplicate
+            uint8 tokenDecimals = IERC20Metadata(token).decimals();
+            if (tokenDecimals > MAX_TOKEN_DECIMALS) {
+                revert UnsupportedTokenDecimals(token);
+            }
             uint8 feedDecimals = feed.decimals();
             // Fail-closed liveness probe: a feed that cannot serve a valid,
             // fresh price NOW does not belong in the policy.
-            OphisChainlinkFloor.read18(feed, feedDecimals, cfg.maxOracleStaleness);
+            OphisChainlinkFloor.read18(feed, feedDecimals, staleness);
             tokenPolicy[token] = TokenPolicy({
                 allowed: true,
                 feed: feed,
                 feedDecimals: feedDecimals,
-                tokenDecimals: IERC20Metadata(token).decimals()
+                tokenDecimals: tokenDecimals,
+                maxStaleness: staleness
             });
         }
     }
@@ -247,7 +284,8 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     /// regardless of what the off-chain layer claims.
     /// @param minBuyOverride The curator's own NAV-based floor. The effective
     /// floor is `max(oracleFloor, minBuyOverride)` - the curator can TIGHTEN
-    /// the oracle floor, never loosen it.
+    /// the oracle floor, never loosen it. A zero oracle floor always reverts
+    /// regardless of this value.
     /// @return orderUid The 56-byte uid that was presigned.
     function rebalance(
         GPv2Order.Data calldata order,
@@ -261,7 +299,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         );
         _recordTurnover(orderUsd);
         orderUid = _deriveUid(order);
-        moduleCreatedUid[keccak256(orderUid)] = true;
+        moduleOrderSellToken[keccak256(orderUid)] = address(order.sellToken);
         _approveAndPresign(order, orderUid);
 
         emit Rebalanced(
@@ -274,15 +312,20 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         );
     }
 
-    /// @notice Revokes a presignature THIS MODULE created. Strictly
-    /// risk-reducing: it can only ever REMOVE the settlement's permission to
-    /// fill an order, so it is safe to expose to the curator (e.g. the market
-    /// moved and a still-open order no longer reflects fair value). Uids not
-    /// recorded by `rebalance` are refused, so the curator cannot cancel
-    /// owner-authorized presignatures created outside this module.
+    /// @notice Revokes a presignature THIS MODULE created and zeroes its
+    /// relayer allowance. Strictly risk-reducing: it can only ever REMOVE the
+    /// settlement's permission to fill an order and shrink an approval, so it
+    /// is safe to expose to the curator (e.g. the market moved and a still-open
+    /// order no longer reflects fair value). Uids not recorded by `rebalance`
+    /// are refused, so the curator cannot cancel presignatures created outside
+    /// this module.
     function cancel(bytes calldata orderUid) external nonReentrant {
         if (msg.sender != curator) revert NotCurator();
-        if (!moduleCreatedUid[keccak256(orderUid)]) revert UnknownOrderUid();
+        bytes32 key = keccak256(orderUid);
+        address sellToken = moduleOrderSellToken[key];
+        if (sellToken == address(0)) revert UnknownOrderUid();
+        // Clear the record first (CEI): a re-presigned order gets a fresh entry.
+        delete moduleOrderSellToken[key];
         _exec(
             address(settlement),
             abi.encodeWithSelector(
@@ -291,6 +334,11 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
                 false
             )
         );
+        // Zero the relayer allowance this order left standing (hygiene: keep
+        // the approval lifecycle coupled to the presignature lifecycle).
+        if (IERC20(sellToken).allowance(address(safe), relayer) != 0) {
+            _safeApprove(sellToken, 0);
+        }
         emit Cancelled(orderUid);
     }
 
@@ -337,7 +385,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         uint256 sellPrice18 = OphisChainlinkFloor.read18(
             sellPolicy.feed,
             sellPolicy.feedDecimals,
-            maxOracleStaleness
+            sellPolicy.maxStaleness
         );
         oracleFloor = OphisChainlinkFloor.floorBuyAmount(
             order.sellAmount,
@@ -346,15 +394,19 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             OphisChainlinkFloor.read18(
                 buyPolicy.feed,
                 buyPolicy.feedDecimals,
-                maxOracleStaleness
+                buyPolicy.maxStaleness
             ),
             buyPolicy.tokenDecimals,
             maxSlippageBps
         );
+        // A floor that truncates to zero (order value < 1 base unit of the buy
+        // token) must fail closed REGARDLESS of minBuyOverride - otherwise a
+        // curator could pass minBuyOverride = 1 to admit a ~zero-proceeds order.
+        if (oracleFloor == 0) revert ZeroOracleFloor();
         uint256 requiredFloor = minBuyOverride > oracleFloor
             ? minBuyOverride
             : oracleFloor;
-        if (requiredFloor == 0 || order.buyAmount < requiredFloor) {
+        if (order.buyAmount < requiredFloor) {
             revert BelowFloor(order.buyAmount, requiredFloor);
         }
 
@@ -366,35 +418,41 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
 
     /// @dev Chainlink L2 sequencer-uptime pattern: answer == 0 means "up";
     /// `startedAt` is when the current status began, so a recent recovery
-    /// still rejects until the grace period has elapsed.
+    /// still rejects until the grace period has elapsed. `startedAt == 0`
+    /// is an invalid/uninitialized round and is rejected.
     function _checkSequencer() internal view {
         IAggregatorV3 feed = sequencerUptimeFeed;
         if (address(feed) == address(0)) return;
         (, int256 answer, uint256 startedAt, , ) = feed.latestRoundData();
         if (answer != 0) revert SequencerDown();
+        if (startedAt == 0) revert SequencerStarting();
         if (block.timestamp - startedAt < sequencerGracePeriod) {
             revert SequencerStarting();
         }
     }
 
-    /// @dev Rolling UTC-day turnover accounting: a compromised curator's
-    /// churn (alternating policy-valid orders that each bleed slippage+fees)
-    /// is bounded to the cap per day instead of being unbounded.
+    /// @dev Leaky-bucket turnover accounting: the accumulator drains at
+    /// `dailyUsdTurnoverCap` per day since the last accrual, so the sustained
+    /// sell rate cannot exceed the cap over any rolling 24h and the
+    /// instantaneous burst is bounded to the cap - there is no calendar
+    /// boundary a compromised curator can straddle to double the bound.
     function _recordTurnover(uint256 orderUsd) internal {
-        uint256 day = block.timestamp / 1 days;
-        if (day != turnoverDay) {
-            turnoverDay = day;
-            turnoverSpentUsd = 0;
-        }
-        uint256 spent = turnoverSpentUsd + orderUsd;
-        if (spent > dailyUsdTurnoverCap) {
+        uint256 nowTs = block.timestamp;
+        uint256 elapsed = nowTs - lastTurnoverTs;
+        uint256 leaked = (elapsed * dailyUsdTurnoverCap) / 1 days;
+        uint256 spent = turnoverSpentUsd > leaked
+            ? turnoverSpentUsd - leaked
+            : 0;
+        uint256 newSpent = spent + orderUsd;
+        if (newSpent > dailyUsdTurnoverCap) {
             revert TurnoverCapExceeded(
-                turnoverSpentUsd,
+                spent,
                 orderUsd,
                 dailyUsdTurnoverCap
             );
         }
-        turnoverSpentUsd = spent;
+        turnoverSpentUsd = newSpent;
+        lastTurnoverTs = nowTs;
     }
 
     /// @dev The uid is derived with the settlement's OWN library + domain
@@ -434,6 +492,15 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
                 true
             )
         );
+    }
+
+    /// @dev Reverts unless `curator` is absent from the Safe's current owner
+    /// set. An owner-curator has full Safe power and does not need the module.
+    function _requireCuratorNotOwner(ISafe safe_, address curator_) internal view {
+        address[] memory owners = safe_.getOwners();
+        for (uint256 i = 0; i < owners.length; i++) {
+            if (owners[i] == curator_) revert CuratorIsOwner();
+        }
     }
 
     /// @dev Plain CALL from the Safe (operation 0, never delegatecall).

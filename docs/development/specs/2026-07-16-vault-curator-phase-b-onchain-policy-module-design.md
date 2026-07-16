@@ -161,9 +161,51 @@ Additional invariants (continue the table above):
 
 | # | Sev | Invariant | Enforced by |
 |---|-----|-----------|-------------|
-| B10 | CRITICAL | Sell-side USD turnover within a UTC day never exceeds `dailyUsdTurnoverCap` (churn bound) | `_recordTurnover`; unit test (2 pass / 3rd reverts / next-day resets) |
-| B11 | HIGH | No oracle price is trusted while the L2 sequencer is down or within the post-recovery grace period (when a feed is configured) | `_checkSequencer`; unit tests (down / in-grace / after-grace) |
-| B12 | MEDIUM | `cancel` only unsets presignatures this module created | `moduleCreatedUid` recording; unit test proves owner-created presignature untouched |
+| B10 | CRITICAL | Sell-side USD turnover never exceeds `dailyUsdTurnoverCap` over any rolling 24h (churn bound; leaky bucket, no calendar cliff) | `_recordTurnover`; unit tests (single>cap reverts / rolling-window bound / partial-leak refill) |
+| B11 | HIGH | No oracle price is trusted while the L2 sequencer is down, in an invalid (`startedAt==0`) round, or within the post-recovery grace period | `_checkSequencer`; unit tests (down / startedAt==0 / in-grace / after-grace) |
+| B12 | MEDIUM | `cancel` only unsets presignatures this module created, and zeroes their relayer allowance | `moduleOrderSellToken` recording; unit test proves owner-created presignature untouched + allowance zeroed |
+| B13 | HIGH | A truncated-to-zero oracle floor fails closed regardless of `minBuyOverride` | `_enforcePolicy` `ZeroOracleFloor`; unit test (exotic 2-dec buy token + override=1) |
+
+### 12-agent adversarial audit hardening (2026-07-17, applied in B3)
+
+A 12-agent Pashov solidity-auditor pass (opus) plus semgrep found NO drain-level
+vulnerability - all 12 agents confirmed the core "compromised curator cannot
+drain" thesis (every GPv2 order field bound into the presigned uid; Safe-deputy
+power limited to `approve(relayer,exact)` + `setPreSignature`). One FINDING (all
+12 agents converged) + six hardening leads, all applied:
+
+- **FINDING - turnover fixed-window boundary (all 12).** The v1 cap bucketed by
+  `block.timestamp / 1 days` and hard-reset at UTC midnight, while presigned
+  orders stay fillable up to `maxTtl` past the boundary - a curator could spend
+  the full cap at 23:59 and again at 00:00 for ~2x cap in a ~1h window,
+  defeating the documented `max daily loss` bound. FIX: replaced with a
+  **leaky-bucket accountant** (`turnoverSpentUsd` drains at `dailyUsdTurnoverCap`
+  per day since `lastTurnoverTs`), so the instantaneous burst is bounded to the
+  cap and the sustained rate to the cap per rolling 24h. No calendar cliff.
+- **cancel resets the relayer allowance (5 agents).** `cancel` now zeroes the
+  cancelled order's relayer allowance (tracked via `moduleOrderSellToken`), not
+  just the presignature - coupling the approval lifecycle to the order lifecycle.
+- **sequencer `startedAt==0` guard (4 agents).** `_checkSequencer` now rejects
+  the uninitialized/genesis round (standard Chainlink L2 pattern).
+- **curator-not-owner in the constructor (4 agents).** The check now runs in the
+  module constructor too, not only the factory, so a direct (non-factory) deploy
+  cannot ship a module whose curator is a Safe owner.
+- **zero oracle floor fails closed (2 agents).** A floor that truncates to zero
+  now reverts (`ZeroOracleFloor`) independent of `minBuyOverride`, closing the
+  `minBuyOverride=1` bypass on exotic low-decimal/high-price buy tokens.
+- **per-token oracle staleness (1 agent, adopted).** `maxOracleStaleness` moved
+  from a single global value into each `TokenFeed`, so a slow-heartbeat stable no
+  longer forces a loose staleness window on a fast, volatile asset.
+- **`tokenDecimals` bounded at construction** (`MAX_TOKEN_DECIMALS = 36`) so a
+  pathological high-decimal token cannot brick every rebalance.
+
+Documented residuals (in the module NatSpec, not code-fixable here): the
+fill-time floor (Phase-C EIP-1271), shared-token relayer allowances across
+concurrent venues/modules (operational: disable the old module + expire its
+orders before migrating), and fee-on-transfer/rebasing token exclusion (owner
+allowlist responsibility). Post-hardening: 38 vault tests, full suite 300/300,
+semgrep 0 security findings. Remaining B-gates: fizz invariant campaign (B2) +
+fork drain-proof (B4).
 
 Validates (revert on ANY failure), then acts:
 

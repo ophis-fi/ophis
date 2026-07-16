@@ -107,8 +107,8 @@ contract GoldenUidTest is Test {
         MockFeed feed = new MockFeed(8, 1e8, block.timestamp);
         OphisVaultPolicyModule.TokenFeed[] memory tokens =
             new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(SELL, IAggregatorV3(address(feed)));
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(BUY, IAggregatorV3(address(feed)));
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(SELL, IAggregatorV3(address(feed)), 3600);
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(BUY, IAggregatorV3(address(feed)), 3600);
 
         OphisVaultPolicyModule module = new OphisVaultPolicyModule(
             OphisVaultPolicyModule.ModuleConfig({
@@ -118,7 +118,6 @@ contract GoldenUidTest is Test {
                 appDataHash: MODULE_APP_DATA,
                 maxSlippageBps: 50,
                 maxTtl: 1800,
-                maxOracleStaleness: 3600,
                 dailyUsdTurnoverCap: 1_000_000e18,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
                 sequencerGracePeriod: 0,
