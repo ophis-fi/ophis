@@ -1,0 +1,56 @@
+{
+  "name": "@ophis/safe-swap",
+  "version": "0.1.0",
+  "description": "Headless Ophis (CoW Protocol) swap builder for a Safe (vault) trader: build a receiver-pinned, fee-bearing CoW order plus the [approve, setPreSignature] tx batch for a vault curator / manager (Zodiac Roles / MPC / multisig) to execute. Funds never leave the vault Safe.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/safe-swap"
+  },
+  "homepage": "https://docs.ophis.fi",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": [
+    "ophis",
+    "cow-protocol",
+    "safe",
+    "vault",
+    "vault-curator",
+    "erc-7540",
+    "defi",
+    "rebalance"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@cowprotocol/app-data": "^2.5.1",
+    "@cowprotocol/cow-sdk": "^5.9.0",
+    "@ophis/sdk": "workspace:*",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.8"
+  }
+}
