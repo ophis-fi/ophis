@@ -171,3 +171,53 @@ describe('extractIntentFields', () => {
     expect(f).toEqual({ chainId: 10, sellToken: undefined, buyToken: 'COW', amount: '5', field: 'buy' })
   })
 })
+
+describe('intentToUrl amount side + fallback chain', () => {
+  it('binds a buy-side amount to buyAmount ("buy 500 COW with USDC")', () => {
+    // amount(4) is adjacent to the BUY token COW(8), far from the SELL token USDC(18)
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '500', raw: '500', start: 4, end: 7 },
+        { type: 'buyToken', value: 'COW', raw: 'cow', start: 8, end: 11 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 18, end: 22 },
+      ]),
+    )
+    expect(url).toBe('/swap/USDC/COW?buyAmount=500')
+  })
+
+  it('binds a sell-side amount to sellAmount ("swap 100 USDC for ETH")', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 5, end: 8 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 9, end: 13 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 18, end: 21 },
+      ]),
+    )
+    expect(url).toBe('/swap/USDC/ETH?sellAmount=100')
+  })
+
+  it('emits the fallback chain segment when the intent names none', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 5, end: 8 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 9, end: 13 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 18, end: 21 },
+      ]),
+      undefined,
+      8453,
+    )
+    expect(url).toBe('/8453/swap/USDC/ETH?sellAmount=100')
+  })
+
+  it('parsed chain still wins over the fallback', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'chain', value: 'optimism', raw: 'optimism', start: 0, end: 8 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 9, end: 13 },
+      ]),
+      undefined,
+      8453,
+    )
+    expect(url).toBe('/10/swap/USDC')
+  })
+})

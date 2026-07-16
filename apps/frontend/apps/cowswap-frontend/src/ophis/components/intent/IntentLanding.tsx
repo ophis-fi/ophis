@@ -462,8 +462,11 @@ export function IntentLanding(): ReactNode {
       amount: resolved.amount,
       field: resolved.field,
     })
-    navigate(intentToUrl(parseState.parsed, resolveToken))
-  }, [navigate, parseState.parsed, ready, symbolMap])
+    // Pass targetChainId as the URL's fallback chain so a chainless intent still
+    // emits a chain segment (a chainless URL carrying ?sellAmount is mis-handled by
+    // SwapPageRedirect, which would apply the amount to the default pair).
+    navigate(intentToUrl(parseState.parsed, resolveToken, targetChainId))
+  }, [navigate, parseState.parsed, ready, symbolMap, targetChainId])
 
   const helper = useMemo(
     () => helperText(text, parseState.status, parseState.parsed, parseState.errorCode, parseState.errorMessage),

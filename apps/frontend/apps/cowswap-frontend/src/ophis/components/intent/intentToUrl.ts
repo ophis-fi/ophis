@@ -59,33 +59,66 @@ export function extractIntentFields(
   let sell: string | undefined
   let buy: string | undefined
   let amount: string | undefined
+  let sellStart: number | undefined
+  let buyStart: number | undefined
+  let amountStart: number | undefined
 
   for (const e of parsed.entities) {
     if (e.type === 'chain' && chainId === undefined) chainId = chainSlugToId(e.value)
-    else if (e.type === 'sellToken' && sell === undefined) sell = e.value
-    else if (e.type === 'buyToken' && buy === undefined) buy = e.value
-    else if (e.type === 'amount' && amount === undefined) amount = e.value
+    else if (e.type === 'sellToken' && sell === undefined) {
+      sell = e.value
+      sellStart = e.start
+    } else if (e.type === 'buyToken' && buy === undefined) {
+      buy = e.value
+      buyStart = e.start
+    } else if (e.type === 'amount' && amount === undefined) {
+      amount = e.value
+      amountStart = e.start
+    }
   }
 
   const resolve = (symbol: string | undefined): string | undefined =>
     symbol === undefined ? undefined : resolveToken?.(symbol) ?? symbol
+
+  // Bind the amount to the positionally-nearest token, so "buy 500 COW with USDC"
+  // (amount adjacent to the BUY token) fills the buy side, while "swap 100 USDC for
+  // ETH" (amount adjacent to the SELL token) fills the sell side. Fall back to the
+  // sell side when only one token is present or positions are unavailable.
+  let field: 'sell' | 'buy'
+  if (sell !== undefined && buy !== undefined && amountStart !== undefined) {
+    const dSell = sellStart !== undefined ? Math.abs(amountStart - sellStart) : Number.POSITIVE_INFINITY
+    const dBuy = buyStart !== undefined ? Math.abs(amountStart - buyStart) : Number.POSITIVE_INFINITY
+    field = dBuy < dSell ? 'buy' : 'sell'
+  } else {
+    field = sell !== undefined ? 'sell' : 'buy'
+  }
 
   return {
     chainId,
     sellToken: resolve(sell),
     buyToken: resolve(buy),
     amount: amount || undefined,
-    field: sell !== undefined ? 'sell' : 'buy',
+    field,
   }
 }
 
-export function intentToUrl(parsed: ParsedIntent, resolveToken?: (symbol: string) => string | null): string {
+export function intentToUrl(
+  parsed: ParsedIntent,
+  resolveToken?: (symbol: string) => string | null,
+  fallbackChainId?: number,
+): string {
   if (parsed.intent !== 'swap') return '/swap'
 
-  const { chainId, sellToken, buyToken, amount } = extractIntentFields(parsed, resolveToken)
+  const { chainId, sellToken, buyToken, amount, field } = extractIntentFields(parsed, resolveToken)
+
+  // Emit a chain segment whenever we know one (parsed, else the caller's fallback =
+  // the connected/default chain). A chainless URL that carries an amount is unsafe:
+  // cowswap's SwapPageRedirect rebuilds the path from the DEFAULT pair while keeping
+  // the query, so ?sellAmount would apply to WETH/USDC instead of the parsed tokens.
+  const effectiveChainId = chainId ?? fallbackChainId
 
   const segments: string[] = []
-  if (chainId !== undefined) segments.push(String(chainId))
+  if (effectiveChainId !== undefined) segments.push(String(effectiveChainId))
   segments.push('swap')
 
   // Encode token segments: valid symbols/addresses are unaffected, but a
@@ -97,12 +130,11 @@ export function intentToUrl(parsed: ParsedIntent, resolveToken?: (symbol: string
 
   let url = '/' + segments.join('/')
 
-  // Pre-fill the amount (human units) when there is a token for it to bind to:
-  // sell side wins when a sell token is present, otherwise a buy-only intent
-  // fills the buy amount. cowswap's amount updater ignores an amount whose
-  // currency isn't loaded yet and re-applies once it is, so this is always safe.
+  // Pre-fill the amount (human units) on the side it binds to (see extractIntentFields).
+  // cowswap's amount updater ignores an amount whose currency isn't loaded yet and
+  // re-applies once it is, so this is always safe.
   if (amount) {
-    const amountKey = sellToken ? SELL_AMOUNT_KEY : buyToken ? BUY_AMOUNT_KEY : undefined
+    const amountKey = field === 'buy' ? (buyToken ? BUY_AMOUNT_KEY : undefined) : sellToken ? SELL_AMOUNT_KEY : undefined
     if (amountKey) url += `?${amountKey}=${encodeURIComponent(amount)}`
   }
 
