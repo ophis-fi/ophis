@@ -62,6 +62,14 @@ export interface OphisSafePresignParams {
    * When omitted, it approves defensively (reset-to-0 then exact approve).
    */
   readAllowance?: (token: Address, owner: Address, spender: Address) => Promise<bigint>;
+  /**
+   * Default false: a pre-existing oversized relayer allowance is clamped to exact
+   * (least-privilege). Set true ONLY when the Safe deliberately keeps ONE shared
+   * relayer allowance funding several CONCURRENT presigned orders, where the clamp
+   * would shrink the allowance the other in-flight orders still need (see
+   * buildPresignTxBatch). For a normal sequential rebalance, leave it false.
+   */
+  keepSufficientAllowance?: boolean;
 }
 
 export interface OphisSafePresignResult {
@@ -197,6 +205,7 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     sellToken: order.sellToken,
     pullAmount,
     currentAllowance,
+    keepSufficientAllowance: p.keepSufficientAllowance,
   });
 
   return { orderUid, txs, settlement, relayer, enrollmentWarning };

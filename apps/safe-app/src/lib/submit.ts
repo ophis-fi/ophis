@@ -31,6 +31,10 @@ export async function submitOrder(
   // own ETH to WETH in the SAME execution, then sells WETH. order.sellToken is already WETH and the
   // order owner stays the Safe, so the owner-scoped rebate indexer attributes it normally.
   wrapNative = false,
+  // keepSufficientAllowance: leave a pre-existing >= pullAmount relayer allowance untouched instead
+  // of clamping it to exact. Only for a Safe that deliberately keeps ONE shared allowance across
+  // several CONCURRENT presigned orders; default (clamp) is the least-privilege behaviour.
+  opts?: { keepSufficientAllowance?: boolean },
 ): Promise<SubmitResult> {
   assertReceiverIsOwner(owner, order.receiver); // drain guard before any tx
   // Belt-and-suspenders: the approval path below targets order.sellToken, so it must be a real
@@ -106,6 +110,7 @@ export async function submitOrder(
     sellToken: order.sellToken,
     pullAmount,
     currentAllowance,
+    keepSufficientAllowance: opts?.keepSufficientAllowance,
   });
   txs.push(...batchTxs);
 

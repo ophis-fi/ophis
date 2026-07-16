@@ -27,9 +27,22 @@
  * this module never touches the chain. Imported only via the
  * "@ophis/safe-swap/roles-preset" subpath; needs zodiac-roles-sdk (an OPTIONAL peer).
  *
- * Residual (same as ./exec-safe, disclosed in the design spec): presign + Roles
- * bound the on-chain SURFACE but cannot enforce receiver / fee / minOut inside the
- * setPreSignature calldata. The Phase-B EIP-1271 policy module closes that.
+ * !! SECURITY (Phase A) !! This preset bounds the on-chain SURFACE (which targets /
+ * selectors the role may call), NOT the SEMANTICS of the calldata. A COMPROMISED
+ * curator role member can still DRAIN the listed sellTokens: `approve` pins the
+ * spender to the relayer but leaves the AMOUNT unconstrained, and `setPreSignature`
+ * places no condition on the order uid - so the key can approve(relayer, MaxUint)
+ * and presign a self-crafted order (owner = the Safe, receiver = attacker,
+ * minOut ~ 0), then settle it (on a self-hosted chain the attacker can act as
+ * solver). GPv2 only checks uid.owner == msg.sender == the Safe, which holds.
+ *
+ * Until the Phase-B EIP-1271 policy module ships (it decodes the FULL order and
+ * enforces receiver == vault + token allowlist + minOut >= oracle before the
+ * digest is honoured), treat the curator Roles key as FULL VAULT-OWNER-LEVEL
+ * CUSTODY: grant it only to a key you would trust to move vault funds directly.
+ * The preset's Phase-A value is confining a not-yet-abused key to the two Ophis
+ * call shapes and denying every other target/selector; it is NOT a "curator cannot
+ * drain even if its key leaks" guarantee.
  */
 import { getOphisSettlementAddress, getOphisVaultRelayer } from '@ophis/sdk';
 import { c, type PermissionSet } from 'zodiac-roles-sdk';

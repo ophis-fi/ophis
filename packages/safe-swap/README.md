@@ -110,6 +110,19 @@ vault's guardian / timelock. The only true "curator cannot drain even if its key
 guarantee is the Phase-B on-chain EIP-1271 policy module (decodes the full order and asserts
 receiver == vault + token allowlist + minOut >= oracle) — not yet built.
 
+> **Until Phase B, treat the curator MPC / Roles key as full vault-owner-level custody.**
+> A compromised curator key can `approve(relayer, MaxUint)` (the Roles preset pins the
+> spender but not the amount) and `setPreSignature` a self-crafted drain order (owner = the
+> Safe, receiver = attacker), then settle it. The Roles preset confines a *not-yet-abused*
+> key to the two Ophis call shapes and denies every other target; it does **not** stop a
+> drain by an already-compromised key. Grant the curator key only to something you would
+> trust to move vault funds directly.
+
+Note: `buildOphisSafePresign` / `submitOrder` clamp a pre-existing oversized relayer
+allowance to exact by default (least-privilege). If a Safe deliberately keeps ONE shared
+allowance across several **concurrent** presigned orders, pass `keepSufficientAllowance: true`
+so the clamp doesn't make the other in-flight orders unfillable.
+
 ## Testing
 
 ```bash
