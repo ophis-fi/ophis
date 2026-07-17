@@ -58,7 +58,7 @@
       "serialize-javascript": "^7.0.5",
       "undici": "^7.28.0",
       "webpack-dev-server": "^5.2.5",
-      "websocket-driver": ">=0.7.5"
+      "websocket-driver": ">=0.7.5 <0.8.0"
     },
     "patchedDependencies": {
       "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch"
