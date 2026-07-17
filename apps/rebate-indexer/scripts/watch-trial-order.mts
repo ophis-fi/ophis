@@ -233,7 +233,12 @@ async function main(): Promise<void> {
   //   (b) a VOLUME-policy protocol fee (that IS the partner fee) was executed.
   const tradeRow = trades?.find((t) => (t.txHash as string | undefined)?.toLowerCase() === txHash.toLowerCase()) ?? trades?.[0];
 
-  let feeRecipient = 'unknown';
+  // Find the OPHIS partnerFee entry in appData. An order may STACK fees (an
+  // integrator entry before ours), so search EVERY entry for our recipient
+  // rather than assuming index 0, and read its volume bps to correlate with
+  // the executed fee below.
+  type PartnerFee = { recipient?: string; volumeBps?: number; bps?: number };
+  let ophisPartnerFee: PartnerFee | undefined;
   try {
     let fullAppData = order.fullAppData as string | undefined;
     if (!fullAppData) {
@@ -244,28 +249,45 @@ async function main(): Promise<void> {
     }
     const parsed = fullAppData ? JSON.parse(fullAppData) : null;
     const pf = parsed?.metadata?.partnerFee;
-    const rec = Array.isArray(pf) ? pf[0]?.recipient : pf?.recipient;
-    if (typeof rec === 'string') feeRecipient = rec;
+    const entries: PartnerFee[] = Array.isArray(pf) ? pf : pf ? [pf] : [];
+    ophisPartnerFee = entries.find(
+      (e) => typeof e?.recipient === 'string' && e.recipient.toLowerCase() === PARTNER_FEE_SAFE.toLowerCase(),
+    );
   } catch (e) {
     console.warn('[fee] could not parse appData partnerFee:', (e as Error).message);
   }
+  const ophisBps = ophisPartnerFee ? Number(ophisPartnerFee.volumeBps ?? ophisPartnerFee.bps ?? 0) : 0;
   checks.push({
-    name: `appData partner fee pinned to ${PARTNER_FEE_SAFE}`,
-    pass: feeRecipient.toLowerCase() === PARTNER_FEE_SAFE.toLowerCase(),
-    detail: `appData partnerFee.recipient = ${feeRecipient}`,
+    name: `appData partner fee pinned to ${PARTNER_FEE_SAFE} (positive volume bps)`,
+    pass: Boolean(ophisPartnerFee) && ophisBps > 0,
+    detail: `ophis partnerFee entry = ${JSON.stringify(ophisPartnerFee ?? null)}`,
   });
 
-  // executedProtocolFees lives on the TRADE row (backend model/trade.rs); the
-  // order-level read is only a fallback. The partner fee is the VOLUME policy;
-  // a priceImprovement entry is CoW's, not ours, so it must NOT count.
-  type FeeEntry = { amount?: string; token?: string; policy?: Record<string, unknown> };
+  // Correlate the EXECUTED fee to the Ophis entry. executedProtocolFees (on the
+  // trade row; the order-level read is a fallback) carries NO recipient, so a
+  // bare "some volume fee > 0" could be another recipient's on a stacked-fee
+  // order. Require a volume-policy entry whose factor matches the Ophis bps
+  // (bps/1e4) with a positive amount. Residual: two recipients at the identical
+  // bps are indistinguishable from this data alone (fine for our own trial,
+  // which carries only the Ophis fee).
+  type FeeEntry = { amount?: string; token?: string; policy?: { volume?: { factor?: number } } };
   const protocolFees = (tradeRow?.executedProtocolFees ?? order.executedProtocolFees ?? []) as FeeEntry[];
-  const volumeFees = protocolFees.filter((f) => f.policy?.volume != null);
-  const partnerFeeCollected = volumeFees.reduce((acc, f) => acc + BigInt(f.amount ?? '0'), 0n);
+  const expectedFactor = ophisBps / 1e4;
+  const ophisVolumeFee =
+    ophisBps > 0
+      ? protocolFees.find(
+          (f) =>
+            f.policy?.volume?.factor != null &&
+            Math.abs(Number(f.policy.volume.factor) - expectedFactor) < 1e-9 &&
+            BigInt(f.amount ?? '0') > 0n,
+        )
+      : undefined;
   checks.push({
-    name: 'partner (volume-policy) fee collected',
-    pass: partnerFeeCollected > 0n,
-    detail: `volume-fee total=${partnerFeeCollected}; all executedProtocolFees=${JSON.stringify(protocolFees)}`,
+    name: 'Ophis volume fee executed (factor-matched to appData)',
+    pass: Boolean(ophisVolumeFee),
+    detail: ophisVolumeFee
+      ? `matched executed volume fee: ${JSON.stringify(ophisVolumeFee)}`
+      : `no executed volume fee with factor ${expectedFactor}; all=${JSON.stringify(protocolFees)}`,
   });
 
   if (chain.sovereign) {
