@@ -514,35 +514,78 @@ contract OphisVaultPolicyModuleTest is Test {
         module.cancel(uid);
     }
 
-    function test_cancel_of_superseded_order_preserves_live_allowance() public {
-        // Order A on USDC (owns the allowance), then order B on the SAME token
-        // (supersedes A: reset-to-exact makes the allowance B's amount, A
-        // unfillable). Cancelling the SUPERSEDED A must NOT clear B's allowance.
+    function test_supersede_revokes_prior_and_preserves_live_allowance() public {
+        // Order A on USDC (owns the allowance), then order B on the SAME token.
+        // Superseding A must (1) revoke A's presignature so it cannot linger
+        // fillable at a stale floor, (2) drop A's record so it is no longer
+        // cancellable, and (3) leave B's exact allowance untouched.
         GPv2Order.Data memory a = validOrder();
         a.sellAmount = 1000e6;
         a.validTo = uint32(block.timestamp + 1000);
         bytes memory uidA = rebalanceAsCurator(a, 0);
+        assertEq(settlement.preSignature(uidA), settlement.PRE_SIGNED());
 
         GPv2Order.Data memory b = validOrder();
         b.sellAmount = 700e6;
         b.validTo = uint32(block.timestamp + 1200);
         bytes memory uidB = rebalanceAsCurator(b, 0);
-        // B now owns the allowance (exact 700e6); A is unfillable.
+        // B now owns the allowance (exact 700e6); A is REVOKED at supersede time.
         assertEq(usdc.allowance(address(safe), RELAYER), 700e6);
         assertEq(module.liveAllowanceUid(address(usdc)), keccak256(uidB));
-
-        // Cancel the superseded A: its presignature clears, but B's allowance
-        // is untouched (the fix for the shared-allowance footgun).
+        assertEq(module.liveAllowanceOrderUid(address(usdc)), uidB);
+        assertEq(settlement.preSignature(uidA), 0, "superseded order left presigned");
+        // A's record is gone, so cancelling it is a no-op that fails closed.
         vm.prank(CURATOR);
+        vm.expectRevert(OphisVaultPolicyModule.UnknownOrderUid.selector);
         module.cancel(uidA);
-        assertEq(settlement.preSignature(uidA), 0);
-        assertEq(usdc.allowance(address(safe), RELAYER), 700e6, "superseded cancel starved the live order");
+        // B's allowance was never starved by the supersede/revoke.
+        assertEq(usdc.allowance(address(safe), RELAYER), 700e6, "supersede starved the live order");
 
-        // Cancelling the LIVE B does zero the allowance.
+        // Cancelling the LIVE B zeros the allowance and both bookkeeping maps.
         vm.prank(CURATOR);
         module.cancel(uidB);
         assertEq(usdc.allowance(address(safe), RELAYER), 0);
         assertEq(module.liveAllowanceUid(address(usdc)), bytes32(0));
+        assertEq(module.liveAllowanceOrderUid(address(usdc)).length, 0);
+    }
+
+    function test_supersede_isolated_per_sell_token() public {
+        // A sells USDC, B sells USDT (a DIFFERENT sell token). The supersede
+        // path keys on the sell token, so B must leave A's USDC presignature,
+        // bookkeeping, and allowance completely untouched.
+        GPv2Order.Data memory a = validOrder(); // USDC -> WETH
+        a.validTo = uint32(block.timestamp + 1000);
+        bytes memory uidA = rebalanceAsCurator(a, 0);
+
+        GPv2Order.Data memory b = validOrder();
+        b.sellToken = IERC20(address(usdt));
+        b.buyToken = IERC20(address(weth));
+        b.sellAmount = 1000e6; // 1000 USDT
+        b.buyAmount = 5e17; // 0.5 WETH — clears the 0.5% floor (0.4975 WETH)
+        b.validTo = uint32(block.timestamp + 1100);
+        bytes memory uidB = rebalanceAsCurator(b, 0);
+
+        // A (USDC) is fully intact after B (USDT).
+        assertEq(settlement.preSignature(uidA), settlement.PRE_SIGNED(), "cross-token rebalance revoked the USDC order");
+        assertEq(module.liveAllowanceUid(address(usdc)), keccak256(uidA));
+        assertEq(module.liveAllowanceOrderUid(address(usdc)), uidA);
+        assertEq(usdc.allowance(address(safe), RELAYER), 1000e6);
+        // B owns the USDT allowance independently.
+        assertEq(module.liveAllowanceUid(address(usdt)), keccak256(uidB));
+        assertEq(usdt.allowance(address(safe), RELAYER), 1000e6);
+    }
+
+    function test_supersede_of_same_uid_is_noop_not_self_revoke() public {
+        // Re-presigning the EXACT same order (same uid) must not revoke itself:
+        // the supersede branch is skipped when keccak(prevUid) == key.
+        GPv2Order.Data memory a = validOrder();
+        a.sellAmount = 500e6;
+        a.validTo = uint32(block.timestamp + 900);
+        bytes memory uidA = rebalanceAsCurator(a, 0);
+        bytes memory uidA2 = rebalanceAsCurator(a, 0); // identical order → identical uid
+        assertEq(uidA2, uidA);
+        assertEq(settlement.preSignature(uidA), settlement.PRE_SIGNED(), "self-supersede wrongly revoked the order");
+        assertEq(usdc.allowance(address(safe), RELAYER), 500e6);
     }
 
     function test_cancel_refuses_uids_not_created_by_this_module() public {

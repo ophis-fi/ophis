@@ -157,6 +157,11 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     /// zeroes the allowance ONLY when the cancelled order still owns it, so
     /// cancelling a superseded order cannot starve a live successor's allowance.
     mapping(address => bytes32) public liveAllowanceUid;
+    /// @notice sellToken => the uid BYTES of that same order (the byte form of
+    /// `liveAllowanceUid`). Kept so `rebalance` can revoke the presignature of
+    /// the same-token order it supersedes — `setPreSignature` needs the uid
+    /// bytes, not just their hash. Always in lockstep with `liveAllowanceUid`.
+    mapping(address => bytes) public liveAllowanceOrderUid;
     /// @notice Leaky-bucket accumulator of sell-side USD turnover (18-dec),
     /// drained at `dailyUsdTurnoverCap` per day since `lastTurnoverTs`.
     uint256 public turnoverSpentUsd;
@@ -314,10 +319,36 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         _recordTurnover(orderUsd);
         orderUid = _deriveUid(order);
         bytes32 key = keccak256(orderUid);
-        moduleOrderSellToken[key] = address(order.sellToken);
-        // This order now owns the token's relayer allowance (it is about to be
-        // reset to exact below), superseding any prior same-token order.
-        liveAllowanceUid[address(order.sellToken)] = key;
+        address sellToken = address(order.sellToken);
+        // Capture the same-token order this rebalance supersedes (if any) BEFORE
+        // repointing the bookkeeping, so its presignature can be revoked below.
+        bytes memory supersededUid = liveAllowanceOrderUid[sellToken];
+        bool supersedes = supersededUid.length != 0 &&
+            keccak256(supersededUid) != key;
+
+        // Effects (CEI): this order now owns the token's relayer allowance (it
+        // is about to be reset to exact below), superseding any prior same-token
+        // order — whose record is dropped so `cancel` can no longer act on it.
+        moduleOrderSellToken[key] = sellToken;
+        if (supersedes) delete moduleOrderSellToken[keccak256(supersededUid)];
+        liveAllowanceUid[sellToken] = key;
+        liveAllowanceOrderUid[sellToken] = orderUid;
+
+        // Interactions. Revoke the superseded order's presignature FIRST so it
+        // can never remain fillable at a now-stale oracle floor once the new
+        // order repoints the shared allowance (a superseded order otherwise
+        // stays presigned until its validTo, widening the presign-vs-fill
+        // window). `nonReentrant` guards the whole call.
+        if (supersedes) {
+            _exec(
+                address(settlement),
+                abi.encodeWithSelector(
+                    IGPv2Settlement.setPreSignature.selector,
+                    supersededUid,
+                    false
+                )
+            );
+        }
         _approveAndPresign(order, orderUid);
 
         emit Rebalanced(
@@ -361,6 +392,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         // it.
         if (liveAllowanceUid[sellToken] == key) {
             delete liveAllowanceUid[sellToken];
+            delete liveAllowanceOrderUid[sellToken];
             if (IERC20(sellToken).allowance(address(safe), relayer) != 0) {
                 _safeApprove(sellToken, 0);
             }
