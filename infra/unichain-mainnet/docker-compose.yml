@@ -568,6 +568,8 @@ services:
     restart: always
     mem_limit: 512m
     depends_on:
+      db: { condition: service_healthy }
+      orderbook: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       DB_URL: ${DB_READ_URL}
