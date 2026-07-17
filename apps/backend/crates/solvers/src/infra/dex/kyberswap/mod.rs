@@ -36,6 +36,19 @@ const MAX_SLIPPAGE_BPS: u16 = 2000;
 /// was computed against. See `bounded_solve_slippage_bps`.
 const REPRICE_MARGIN_BPS: u16 = 1;
 
+/// Gas estimate for the fee used in slippage bounding: the API's decimal gas
+/// string padded by 50% (mirroring the swap's own gas padding) plus the
+/// settle-simulation overhead. An unparseable string falls back to a LARGE
+/// bound — over-estimating only tightens the floor, while zero would
+/// under-estimate the fee and recreate the unsettleable-order bug.
+fn bound_gas_estimate(gas: &str) -> eth::Gas {
+    let gas: u64 = gas.trim().parse().unwrap_or(dex::UNPARSEABLE_GAS_FALLBACK);
+    eth::Gas(U256::from(
+        gas.saturating_add(gas / 2)
+            .saturating_add(dex::SIM_SETTLE_OVERHEAD_GAS),
+    ))
+}
+
 /// Allowlist of KyberSwap router addresses that can be approved as ERC-20
 /// spender for the Settlement contract.
 ///
@@ -174,37 +187,68 @@ impl KyberSwap {
             // estimate mirrors the final swap gas (route gas + 50% pad) plus
             // the settle-simulation overhead. Quotes report optimistic and
             // never settle, so leave the slippage configured for them.
+            let configured_bps = slippage.as_bps().unwrap_or(0);
             let build_slippage = if is_quote {
                 slippage.clone()
             } else {
-                let configured_bps = slippage.as_bps().unwrap_or(0);
-                let routes_gas: u64 = routes
-                    .route_summary
-                    .gas
-                    .trim()
-                    .parse()
-                    .unwrap_or(dex::UNPARSEABLE_GAS_FALLBACK);
-                let gas_estimate = eth::Gas(U256::from(
-                    routes_gas
-                        .saturating_add(routes_gas / 2)
-                        .saturating_add(dex::SIM_SETTLE_OVERHEAD_GAS),
-                ));
                 let bounded_bps = order.bounded_solve_slippage_bps(
                     routes.route_summary.amount_out,
                     configured_bps,
-                    gas_estimate,
+                    bound_gas_estimate(&routes.route_summary.gas),
                     // /route/build re-quotes the route and its optimistic
                     // amount_out lands ~1 bp below the /routes value the bound
                     // was computed against (observed live 2026-07-17); tighten
-                    // by 1 bp so the re-priced minReturn stays above the bar.
+                    // by 1 bp so the re-priced minReturn usually stays above
+                    // the bar without the validation rebuild below.
                     REPRICE_MARGIN_BPS,
                 );
                 dex::Slippage::from_bps(bounded_bps)
             };
 
-            let (build, slippage_tolerance) = self
-                .build_route(routes.route_summary, order, &build_slippage)
+            let (mut build, mut slippage_tolerance) = self
+                .build_route(routes.route_summary.clone(), order, &build_slippage)
                 .await?;
+
+            // SOLVE-path floor validation on the BUILD-stage base. The bps
+            // bound above was computed against the /routes optimistic, but the
+            // router's on-chain minReturn (== the reported buy clearing
+            // amount) is `build.amount_out × (1 − bps)` — when /route/build
+            // re-prices more than REPRICE_MARGIN_BPS below /routes, that floor
+            // lands under the fee-inflated bar and the swap would be rejected
+            // downstream (the very failure this bounding exists to fix).
+            // `sent <= bounded(build base)` is exactly `floor >= bar`
+            // (monotone), so rebuild ONCE with the tighter build-stage bound;
+            // if even that undershoots (the market moved again mid-flight),
+            // give up and let the next auction retry with fresh prices.
+            if !is_quote {
+                let accepts = |b: &dto::BuildData, sent: u16| {
+                    sent <= order.bounded_solve_slippage_bps(
+                        b.amount_out,
+                        configured_bps,
+                        bound_gas_estimate(&b.gas),
+                        0,
+                    )
+                };
+                if !accepts(&build, slippage_tolerance) {
+                    let retry_bps = order.bounded_solve_slippage_bps(
+                        build.amount_out,
+                        configured_bps,
+                        bound_gas_estimate(&build.gas),
+                        0,
+                    );
+                    let (build2, sent2) = self
+                        .build_route(
+                            routes.route_summary.clone(),
+                            order,
+                            &dex::Slippage::from_bps(retry_bps),
+                        )
+                        .await?;
+                    if !accepts(&build2, sent2) {
+                        return Err(Error::NotFound);
+                    }
+                    (build, slippage_tolerance) = (build2, sent2);
+                }
+            }
 
             // Step 2 should return the same router address as step 1. Treat a
             // mismatch as a misbehaving API rather than silently using one.

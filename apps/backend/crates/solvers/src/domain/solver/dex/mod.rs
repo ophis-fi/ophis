@@ -254,6 +254,11 @@ impl Dex {
                 gas_price: gas_price.0,
                 gas_offset: self.gas_offset,
                 sell_price: tokens.reference_price(&order.sell.token),
+                // Full signed amounts (NOT the fill): the fee is charged above
+                // the routed input up to the total-sell cap, so partial fills
+                // with room get a proportional bar instead of fee-scaling.
+                total_sell: order.sell.amount,
+                total_buy: order.buy.amount,
             };
         }
         let swap = self.try_solve(order, &dex_order, tokens, is_quote).await?;

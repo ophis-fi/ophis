@@ -104,6 +104,18 @@ pub struct SolveFee {
     /// pre-fee-aware behavior; `into_dex_solution` also returns no solution
     /// without a sell price, so nothing is lost).
     pub sell_price: Option<auction::Price>,
+    /// The order's FULL signed sell amount (not the fill). The surplus fee is
+    /// charged ON TOP of the routed input up to this cap
+    /// (`into_dex_solution`: `sell = min(input + fee, order.sell.amount)`), so
+    /// for a partial fill with room above it the fee raises the limit bar
+    /// proportionally but the swap output is credited in full; only when the
+    /// cap binds does the fee eat into the credited buy. Zero (the default)
+    /// means "assume the cap binds" — the conservative full-fill shape.
+    pub total_sell: eth::U256,
+    /// The order's FULL signed buy amount (the limit-price counterpart of
+    /// `total_sell`). Zero (the default) falls back to the fill-scaled
+    /// `buy_limit`.
+    pub total_buy: eth::U256,
 }
 
 impl SolveFee {
@@ -197,27 +209,56 @@ impl Order {
         reprice_margin_bps: u16,
     ) -> u16 {
         // Inflate the signed buy limit so the router floor also covers the
-        // surplus fee. `into_dex_solution` credits the buy side
-        // ceil((amount − fee) × output / amount), so the exact minimal output
-        // satisfying `credited >= buy_limit` is the smallest integer with
-        // (amount − fee) × output > (buy_limit − 1) × amount:
-        //   target = floor((buy_limit − 1) × amount / (amount − fee)) + 1.
+        // surplus fee, mirroring `into_dex_solution` + the limit check
+        // EXACTLY: the fee is charged on top of the routed input up to the
+        // order's full signed sell (`sell = min(input + fee, total_sell)`),
+        // the credited buy is `ceil((sell − fee) × output / input)`, and the
+        // check is `total_sell × buy >= total_buy × sell`. Two regimes:
+        //
+        // - UNCAPPED (input + fee <= total_sell, partial fills with room):
+        //   credited = output, bar = ceil(total_buy × (input + fee) /
+        //   total_sell) — the fee raises the bar proportionally.
+        // - CAPPED (input + fee > total_sell; always for a full fill):
+        //   bar = total_buy, credited factor = total_sell − fee, so the
+        //   minimal output is floor((total_buy − 1) × input /
+        //   (total_sell − fee)) + 1.
+        //
         // Widened to U512 so huge-supply tokens cannot overflow into a
-        // fail-open bare-limit bound; a target that overflows U256 is
-        // unreachable, so fail closed with zero slippage instead.
+        // fail-open under-bound; a target that overflows U256 is unreachable,
+        // so fail closed with zero slippage instead. Zero totals (context not
+        // populated) fall back to the full-fill shape over the fill-scaled
+        // `buy_limit` — the conservative pre-context behavior.
         let fee = self.solve_fee.fee_in_sell(swap_gas_estimate);
         let amount = self.amount.0;
-        let target = if fee.is_zero() || self.buy_limit.is_zero() {
+        let total_sell = match self.solve_fee.total_sell {
+            t if t.is_zero() || t < amount => amount,
+            t => t,
+        };
+        let total_buy = match self.solve_fee.total_buy {
+            t if t.is_zero() => self.buy_limit,
+            t => t,
+        };
+        let target = if fee.is_zero() || total_buy.is_zero() {
             self.buy_limit
-        } else if fee >= amount {
-            // The fee alone consumes the whole input: no floor can satisfy the
-            // fee-scaled limit check; send zero slippage (the tightest safe
-            // bound) and let the limit check drop the swap — the order is
-            // economically unsettleable at this gas price.
+        } else if amount.saturating_add(fee) <= total_sell {
+            // UNCAPPED: bar = ceil(total_buy × (input + fee) / total_sell).
+            let num = U512::from(total_buy) * (U512::from(amount) + U512::from(fee));
+            let den = U512::from(total_sell);
+            match U256::uint_try_from((num + den - U512::from(1u8)) / den) {
+                Ok(target) => target,
+                Err(_) => return 0,
+            }
+        } else if fee >= total_sell {
+            // The fee alone consumes the order's whole signed sell: no output
+            // can satisfy the limit check; send zero slippage (the tightest
+            // safe bound) and let the limit check drop the swap — the order
+            // is economically unsettleable at this gas price.
             return 0;
         } else {
-            let num = U512::from(self.buy_limit - U256::from(1)) * U512::from(amount);
-            let den = U512::from(amount - fee);
+            // CAPPED: minimal output with ceil((total_sell − fee) × out /
+            // input) >= total_buy.
+            let num = U512::from(total_buy - U256::from(1)) * U512::from(amount);
+            let den = U512::from(total_sell - fee);
             match U256::uint_try_from(num / den + U512::from(1u8)) {
                 Ok(target) => target,
                 Err(_) => return 0,
@@ -1172,7 +1213,61 @@ mod bounded_slippage_tests {
             sell_price: Some(auction::Price(eth::Ether(U256::from(
                 1_000_000_000_000_000_000_u128,
             )))),
+            // Zero totals = the conservative full-fill (capped) shape.
+            total_sell: U256::ZERO,
+            total_buy: U256::ZERO,
         }
+    }
+
+    #[test]
+    fn partial_fill_with_room_gets_a_proportional_bar_not_fee_scaling() {
+        // Partial fill: input 500 of a signed 1000-sell / 990-buy order, fee 5
+        // (4 + safety atom). input + fee = 505 <= 1000, so the fee rides above
+        // the fill (`sell = min(input + fee, total)`) and the bar is
+        // proportional: ceil(990 × 505 / 1000) = 500 — NOT the fee-scaled
+        // full-fill shape, and NOT "unsettleable" even though a same-size fee
+        // on a tiny fill could exceed it.
+        let mut order = sell_order(495); // fill-scaled limit (unused: totals set)
+        order.amount = Amount::new(U256::from(500u64));
+        order.solve_fee = SolveFee {
+            total_sell: U256::from(1_000u64),
+            total_buy: U256::from(990u64),
+            ..fee(4)
+        };
+        // Optimistic 502 for the 500-input route → implied vs the 500 bar =
+        // floor((502 − 500) × 1e4 / 502) = 39 bps.
+        assert_eq!(
+            order.bounded_solve_slippage_bps(
+                U256::from(502u64),
+                100,
+                eth::Gas(U256::from(1u64)),
+                0
+            ),
+            39
+        );
+        // And a fee at/above the PARTIAL input alone no longer zeroes the
+        // bound (the old full-fill assumption did): fee 600 > input 500 but
+        // input + fee = 1100 > total 1000 → capped regime, bar = full 990 buy
+        // over factor total − fee = 400: target = floor(989 × 500 / 400) + 1
+        // = 1237 ≥ optimistic → zero slippage only because the bar is truly
+        // unreachable at this optimistic, not because of a false
+        // "fee >= input" cutoff.
+        let mut order = sell_order(495);
+        order.amount = Amount::new(U256::from(500u64));
+        order.solve_fee = SolveFee {
+            total_sell: U256::from(1_000u64),
+            total_buy: U256::from(990u64),
+            ..fee(599)
+        };
+        assert_eq!(
+            order.bounded_solve_slippage_bps(
+                U256::from(502u64),
+                100,
+                eth::Gas(U256::from(1u64)),
+                0
+            ),
+            0
+        );
     }
 
     #[test]
@@ -1247,6 +1342,9 @@ mod bounded_slippage_tests {
             sell_price: Some(auction::Price(eth::Ether(U256::from(
                 543_000_000_000_000_000_000_000_000_u128,
             )))),
+            // Full fill: totals equal the fill (the capped regime, like prod).
+            total_sell: sell_amount,
+            total_buy: buy_limit,
         };
         let order = Order {
             amount: Amount::new(sell_amount),
