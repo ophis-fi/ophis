@@ -34,6 +34,7 @@
       "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch"
     },
     "overrides": {
+      "adm-zip": ">=0.6.0",
       "elliptic": "^6.6.1",
       "form-data": "^2.5.6",
       "protobufjs": "^7.6.3",
