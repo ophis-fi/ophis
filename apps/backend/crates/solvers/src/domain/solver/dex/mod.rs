@@ -240,7 +240,27 @@ impl Dex {
         gas_price: auction::GasPrice,
         is_quote: bool,
     ) -> Option<solution::Solution> {
-        let dex_order = self.fills.dex_order(order, tokens)?;
+        let mut dex_order = self.fills.dex_order(order, tokens)?;
+        // Fee context for solve-path slippage bounding: the lanes estimate the
+        // surplus fee `into_dex_solution` will charge (below, from the same
+        // gas price / offset / sell price) so the bounded router floor covers
+        // the fee-scaled limit check and a tight order remains settleable.
+        // Only LIMIT-class orders carry a surplus fee (`Fee::Protocol` for
+        // MARKET leaves the credited buy unscaled), so only they get the fee
+        // headroom — inflating a MARKET order's bound would over-tighten its
+        // router floor for no reason.
+        if order.solver_determines_fee() {
+            dex_order.solve_fee = dex::SolveFee {
+                gas_price: gas_price.0,
+                gas_offset: self.gas_offset,
+                sell_price: tokens.reference_price(&order.sell.token),
+                // Full signed amounts (NOT the fill): the fee is charged above
+                // the routed input up to the total-sell cap, so partial fills
+                // with room get a proportional bar instead of fee-scaling.
+                total_sell: order.sell.amount,
+                total_buy: order.buy.amount,
+            };
+        }
         let swap = self.try_solve(order, &dex_order, tokens, is_quote).await?;
         let sell = tokens.reference_price(&order.sell.token);
         let Some(solution) = swap

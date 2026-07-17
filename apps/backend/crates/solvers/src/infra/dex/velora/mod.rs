@@ -391,7 +391,9 @@ impl Velora {
             base_url: config.base_url,
             chain_id,
             settlement_contract: config.settlement_contract,
-            partner: config.partner.unwrap_or_else(|| DEFAULT_PARTNER.to_string()),
+            partner: config
+                .partner
+                .unwrap_or_else(|| DEFAULT_PARTNER.to_string()),
             partner_address: config.partner_address,
             partner_fee_bps: config.partner_fee_bps,
         })
@@ -481,18 +483,39 @@ impl Velora {
             }
 
             // On the SELL solve path, bound the slippage by the order's signed
-            // buy limit so the router's minReturn (baked into both the
-            // /transactions calldata and the reported buy clearing amount)
-            // covers what the order accepts. Without this, an order signed
-            // against the optimistic quote is dropped by `satisfies` when the
-            // fixed floor sits below its limit. Quotes report optimistic and
-            // never settle; BUY (exactOut) pins the output — leave both configured.
+            // buy limit plus the estimated surplus fee, so the router's
+            // minReturn (baked into both the /transactions calldata and the
+            // reported buy clearing amount) covers what the order accepts
+            // AFTER the fee-scaled limit check in `into_dex_solution`. Without
+            // the fee the bounded floor undershoots that check by ~fee/sell on
+            // every bounded solve (the 2026-07-17 Unichain unsettleable-orders
+            // bug); without bounding at all, the fixed floor sits below a
+            // tight order's limit. The gas estimate mirrors the final swap gas
+            // (`gasCost` + 50% pad) plus the settle-simulation overhead.
+            // Quotes report optimistic and never settle; BUY (exactOut) pins
+            // the output — leave both configured.
             let effective_slippage = if is_quote || order.side == order::Side::Buy {
                 slippage.clone()
             } else {
                 let configured_bps = slippage.as_bps().unwrap_or(0);
-                let bounded_bps =
-                    order.bounded_solve_slippage_bps(prices.dest_amount, configured_bps);
+                let prices_gas: u64 = prices
+                    .gas_cost
+                    .trim()
+                    .parse()
+                    .unwrap_or(dex::UNPARSEABLE_GAS_FALLBACK);
+                let gas_estimate = eth::Gas(U256::from(
+                    prices_gas
+                        .saturating_add(prices_gas / 2)
+                        .saturating_add(dex::SIM_SETTLE_OVERHEAD_GAS),
+                ));
+                let bounded_bps = order.bounded_solve_slippage_bps(
+                    prices.dest_amount,
+                    configured_bps,
+                    gas_estimate,
+                    // /transactions builds against the same priceRoute, so
+                    // there is no cross-call re-pricing to absorb.
+                    0,
+                );
                 dex::Slippage::from_bps(bounded_bps)
             };
 
@@ -516,7 +539,14 @@ impl Velora {
             // Pure assembly + side-dependent integrity checks. Extracted so
             // the exactIn vs exactOut invariants are unit-testable without
             // hitting the live API.
-            build_swap(order, &effective_slippage, &prices, prices_router, tx.data, is_quote)
+            build_swap(
+                order,
+                &effective_slippage,
+                &prices,
+                prices_router,
+                tx.data,
+                is_quote,
+            )
         }
         .instrument(tracing::trace_span!("velora-swap", id = %id))
         .await
@@ -751,7 +781,7 @@ mod build_swap_tests {
     use {
         super::*,
         crate::domain::{dex::Amount, dex::Order, dex::Slippage, eth::TokenAddress, order::Side},
-        alloy::primitives::{address, U256},
+        alloy::primitives::{U256, address},
     };
 
     const ROUTER: Address = address!("0x6a000f20005980200259b80c5102003040001068");
@@ -783,6 +813,7 @@ mod build_swap_tests {
             side,
             amount: Amount::new(amount),
             buy_limit: Default::default(),
+            solve_fee: Default::default(),
             owner: address!("0x0494f503912c101bfd76b88e4f5d8a33de284d1a"),
         }
     }
@@ -850,10 +881,22 @@ mod build_swap_tests {
 
     #[test]
     fn pad_src_with_bps_rounds_up() {
-        assert_eq!(pad_src_with_bps(U256::from(1000u64), 100), U256::from(1010u64)); // 1%
-        assert_eq!(pad_src_with_bps(U256::from(1000u64), 2000), U256::from(1200u64)); // 20%
-        assert_eq!(pad_src_with_bps(U256::from(101u64), 100), U256::from(103u64)); // 1.01 -> ceil 2
-        assert_eq!(pad_src_with_bps(U256::from(1000u64), 0), U256::from(1000u64)); // no pad
+        assert_eq!(
+            pad_src_with_bps(U256::from(1000u64), 100),
+            U256::from(1010u64)
+        ); // 1%
+        assert_eq!(
+            pad_src_with_bps(U256::from(1000u64), 2000),
+            U256::from(1200u64)
+        ); // 20%
+        assert_eq!(
+            pad_src_with_bps(U256::from(101u64), 100),
+            U256::from(103u64)
+        ); // 1.01 -> ceil 2
+        assert_eq!(
+            pad_src_with_bps(U256::from(1000u64), 0),
+            U256::from(1000u64)
+        ); // no pad
     }
 
     #[test]
@@ -872,9 +915,15 @@ mod build_swap_tests {
 
         let clamped = pad_src_with_bps(src_in, MAX_SLIPPAGE_BPS); // 20% pad
         let unclamped = pad_src_with_bps(src_in, 5000); // 50% pad — must NOT be used
-        assert_eq!(swap.input.amount, clamped, "input padded by clamped 20%, not raw 50%");
+        assert_eq!(
+            swap.input.amount, clamped,
+            "input padded by clamped 20%, not raw 50%"
+        );
         assert_eq!(swap.allowance.amount.get(), clamped);
-        assert!(clamped < unclamped, "clamp must reduce the pad vs the raw 50%");
+        assert!(
+            clamped < unclamped,
+            "clamp must reduce the pad vs the raw 50%"
+        );
     }
 
     #[test]
@@ -957,7 +1006,8 @@ mod build_swap_tests {
         let o = order(Side::Buy, USDC, WETH, buy_amount);
         let p = price_route(src_in, buy_amount);
         for is_quote in [true, false] {
-            let swap = build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![], is_quote).unwrap();
+            let swap =
+                build_swap(&o, &Slippage::one_percent(), &p, ROUTER, vec![], is_quote).unwrap();
             assert_eq!(swap.output.amount, buy_amount);
         }
     }

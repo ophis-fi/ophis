@@ -223,11 +223,12 @@ impl Lifi {
 
             // Reject any bridge-like step. Only `swap`/`protocol` steps are
             // same-chain-deterministic and executable later by the Settlement.
-            if let Some(step) = quote
-                .included_steps
-                .iter()
-                .find(|s| matches!(s.step_type.to_ascii_lowercase().as_str(), "cross" | "bridge"))
-            {
+            if let Some(step) = quote.included_steps.iter().find(|s| {
+                matches!(
+                    s.step_type.to_ascii_lowercase().as_str(),
+                    "cross" | "bridge"
+                )
+            }) {
                 return Err(Error::Api {
                     code: -1,
                     reason: format!(

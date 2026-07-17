@@ -35,6 +35,7 @@ async fn swap_sell_live_op_mainnet() {
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 

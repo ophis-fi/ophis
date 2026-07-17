@@ -37,6 +37,7 @@ async fn swap_sell_regular() {
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(100000000000000000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -82,6 +83,7 @@ async fn swap_buy_disabled() {
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -123,6 +125,7 @@ async fn swap_buy_enabled() {
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -171,6 +174,7 @@ async fn swap_api_error() {
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::ZERO),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -213,6 +217,7 @@ async fn swap_sell_insufficient_liquidity() {
         side: crate::domain::order::Side::Sell,
         amount: Amount::new(U256::from(10000000000000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
@@ -255,6 +260,7 @@ async fn swap_buy_insufficient_liquidity() {
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(10000000000000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 
