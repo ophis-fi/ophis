@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getAddress, toFunctionSelector } from 'viem';
 import { processPermissions } from 'zodiac-roles-sdk';
 import { getOphisSettlementAddress, getOphisVaultRelayer } from '@ophis/sdk';
-import { ophisCuratorRolesPreset } from '../src/roles-preset.js';
+import { ophisCuratorRolesPreset, ophisVaultModuleRolesPreset } from '../src/roles-preset.js';
 
 const CHAIN = 10; // OP
 // as `0x${string}`: zodiac-roles-sdk pulls its own viem into the type program, so
@@ -79,5 +79,41 @@ describe('ophisCuratorRolesPreset', () => {
 
   it('rejects an empty token list', () => {
     expect(() => ophisCuratorRolesPreset({ chainId: CHAIN, sellTokens: [] })).toThrow(/at least one sellToken/);
+  });
+});
+
+describe('ophisVaultModuleRolesPreset (Phase B)', () => {
+  const MODULE = getAddress('0x1234567890AbcdEF1234567890aBcdef12345678') as `0x${string}`;
+  const REBALANCE = toFunctionSelector(
+    'rebalance((address,address,address,uint256,uint256,uint32,bytes32,uint256,bytes32,bool,bytes32,bytes32),uint256)',
+  );
+  const CANCEL = toFunctionSelector('cancel(bytes)');
+  const preset = ophisVaultModuleRolesPreset({ module: MODULE });
+  const { targets } = processPermissions([preset]);
+  const json = dump(targets);
+
+  it('scopes EXACTLY the module (default-deny every other target)', () => {
+    expect(targets.map((t) => t.address.toLowerCase())).toEqual([MODULE.toLowerCase()]);
+  });
+
+  it('allows ONLY rebalance + cancel on the module', () => {
+    const mod = targets.find((t) => t.address.toLowerCase() === MODULE.toLowerCase())!;
+    const selectors = mod.functions.map((f) => f.selector.toLowerCase()).sort();
+    expect(selectors).toEqual([REBALANCE.toLowerCase(), CANCEL.toLowerCase()].sort());
+  });
+
+  it('does NOT grant raw approve / setPreSignature / enableModule anywhere', () => {
+    // The whole point: the curator cannot reach the Safe's approve or the
+    // settlement's setPreSignature directly, only the policy-gated module.
+    expect(json).not.toContain(APPROVE.slice(2));
+    expect(json).not.toContain(SET_PRESIGNATURE.toLowerCase().slice(2));
+    expect(json).not.toContain(toFunctionSelector('enableModule(address)').slice(2));
+    // No calldata conditions needed — the module IS the policy.
+    const mod = targets.find((t) => t.address.toLowerCase() === MODULE.toLowerCase())!;
+    for (const f of mod.functions) expect(f.wildcarded).toBe(true);
+  });
+
+  it('requires a module address', () => {
+    expect(() => ophisVaultModuleRolesPreset({ module: '' as `0x${string}` })).toThrow(/module address is required/);
   });
 });

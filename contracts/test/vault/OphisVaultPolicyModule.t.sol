@@ -514,6 +514,37 @@ contract OphisVaultPolicyModuleTest is Test {
         module.cancel(uid);
     }
 
+    function test_cancel_of_superseded_order_preserves_live_allowance() public {
+        // Order A on USDC (owns the allowance), then order B on the SAME token
+        // (supersedes A: reset-to-exact makes the allowance B's amount, A
+        // unfillable). Cancelling the SUPERSEDED A must NOT clear B's allowance.
+        GPv2Order.Data memory a = validOrder();
+        a.sellAmount = 1000e6;
+        a.validTo = uint32(block.timestamp + 1000);
+        bytes memory uidA = rebalanceAsCurator(a, 0);
+
+        GPv2Order.Data memory b = validOrder();
+        b.sellAmount = 700e6;
+        b.validTo = uint32(block.timestamp + 1200);
+        bytes memory uidB = rebalanceAsCurator(b, 0);
+        // B now owns the allowance (exact 700e6); A is unfillable.
+        assertEq(usdc.allowance(address(safe), RELAYER), 700e6);
+        assertEq(module.liveAllowanceUid(address(usdc)), keccak256(uidB));
+
+        // Cancel the superseded A: its presignature clears, but B's allowance
+        // is untouched (the fix for the shared-allowance footgun).
+        vm.prank(CURATOR);
+        module.cancel(uidA);
+        assertEq(settlement.preSignature(uidA), 0);
+        assertEq(usdc.allowance(address(safe), RELAYER), 700e6, "superseded cancel starved the live order");
+
+        // Cancelling the LIVE B does zero the allowance.
+        vm.prank(CURATOR);
+        module.cancel(uidB);
+        assertEq(usdc.allowance(address(safe), RELAYER), 0);
+        assertEq(module.liveAllowanceUid(address(usdc)), bytes32(0));
+    }
+
     function test_cancel_refuses_uids_not_created_by_this_module() public {
         // A presignature the OWNERS created directly (a hedge, a liquidation,
         // an order from another venue): the curator cannot cancel it through

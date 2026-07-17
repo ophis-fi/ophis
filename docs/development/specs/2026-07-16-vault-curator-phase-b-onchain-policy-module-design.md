@@ -161,7 +161,7 @@ Additional invariants (continue the table above):
 
 | # | Sev | Invariant | Enforced by |
 |---|-----|-----------|-------------|
-| B10 | CRITICAL | Sell-side USD turnover never exceeds `dailyUsdTurnoverCap` over any rolling 24h (churn bound; leaky bucket, no calendar cliff) | `_recordTurnover`; unit tests (single>cap reverts / rolling-window bound / partial-leak refill) |
+| B10 | CRITICAL | Sell-side USD turnover: instantaneous burst <= `dailyUsdTurnoverCap`; any rolling 24h <= ~2x cap (token-bucket burst allowance, no calendar cliff). Operators size the cap to <= half their 24h tolerance. | `_recordTurnover`; unit tests (single>cap reverts / rolling-window bound / partial-leak refill) |
 | B11 | HIGH | No oracle price is trusted while the L2 sequencer is down, in an invalid (`startedAt==0`) round, or within the post-recovery grace period | `_checkSequencer`; unit tests (down / startedAt==0 / in-grace / after-grace) |
 | B12 | MEDIUM | `cancel` only unsets presignatures this module created, and zeroes their relayer allowance | `moduleOrderSellToken` recording; unit test proves owner-created presignature untouched + allowance zeroed |
 | B13 | HIGH | A truncated-to-zero oracle floor fails closed regardless of `minBuyOverride` | `_enforcePolicy` `ZeroOracleFloor`; unit test (exotic 2-dec buy token + override=1) |
@@ -204,8 +204,32 @@ fill-time floor (Phase-C EIP-1271), shared-token relayer allowances across
 concurrent venues/modules (operational: disable the old module + expire its
 orders before migrating), and fee-on-transfer/rebasing token exclusion (owner
 allowlist responsibility). Post-hardening: 38 vault tests, full suite 300/300,
-semgrep 0 security findings. Remaining B-gates: fizz invariant campaign (B2) +
-fork drain-proof (B4).
+semgrep 0 security findings. Then: fizz invariant campaign (B2, 3 engines, 0
+counterexamples) + fork drain-proof (B4, 3/3 on OP/Unichain/Base) both green.
+
+### Post-merge Codex follow-up (2026-07-17)
+
+A fresh Codex pass on the merged PR surfaced three more actionable items, all
+applied:
+
+- **Phase-B Roles preset added (P1).** The design assumed a Roles preset scoping
+  the curator to only `module.rebalance`/`cancel`, but only the permissive
+  Phase-A preset existed - a deployment following it would let a compromised
+  curator bypass the module and presign directly. Added
+  `ophisVaultModuleRolesPreset({ module })` to `packages/safe-swap/src/roles-preset.ts`
+  (scopes exactly `rebalance` + `cancel` on the module, denies raw
+  approve/setPreSignature/enableModule; no calldata conditions - the module IS
+  the policy) + tests. This is the preset that actually delivers the guarantee.
+- **cancel no longer starves a live successor's allowance (P2).** Added
+  `liveAllowanceUid[token]`; `cancel` zeroes the relayer allowance ONLY when the
+  cancelled order still owns it (was the most-recent rebalance for its token), so
+  cancelling a superseded same-token order cannot starve the live order.
+- **Turnover guarantee stated honestly (P1).** The leaky bucket is a token
+  bucket, so any rolling 24h admits up to ~2x cap (not a strict rolling cap).
+  B10 + the module NatSpec now state this and instruct operators to size the cap
+  to <= half their 24h tolerance. Not tightened to a strict sliding window
+  (O(k) storage) because this is a defense-in-depth slippage bound, not drain
+  prevention.
 
 Validates (revert on ANY failure), then acts:
 
