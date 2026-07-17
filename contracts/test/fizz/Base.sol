@@ -241,6 +241,22 @@ abstract contract Base is StringUtils, Clamp, Deployer, Math {
         return GUARDIAN_ROLE;
     }
 
+    // The full set of governance-meaningful addresses whose solver membership
+    // the frame conditions (SP-08 / SP-11) must prove is NOT mutated by a
+    // solver op on a different target: the 3 actors, TIMELOCK_ROLE,
+    // GUARDIAN_ROLE, and the Guardian contract. Fixed count (actors.length is
+    // always 3) so Snapshots can use a fixed-size `bool[6]`.
+    function candidateCount() internal view returns (uint256) {
+        return actors.length + 3;
+    }
+
+    function candidateAt(uint256 i) internal view returns (address) {
+        if (i < actors.length) return actors[i];
+        if (i == actors.length) return TIMELOCK_ROLE;
+        if (i == actors.length + 1) return GUARDIAN_ROLE;
+        return address(allowListGuardian);
+    }
+
     // Sums the native token balances of all actors
     function sumActorsBalances() internal view returns (uint256 sumOfBalances) {
         for (uint256 i; i < actors.length; i++) {

@@ -191,7 +191,14 @@ abstract contract GPv2AllowListAuthenticationHandler is Properties {
                 property_proposeManagerUnconditional(manager_);
             }
             property_pendingManagerSlotProtected();
-        } catch {}
+        } catch {
+            // SP-13: an authorized proposeManager must never revert for any
+            // input. Suppressing an authorized revert here would let a
+            // regression that rejects some input pass SP-13 vacuously.
+            if (wasAuthorized) {
+                t(false, "SP-13: authorized proposeManager reverted");
+            }
+        }
     }
 
     function gPv2AllowListAuthentication_proposeManager_asAdmin(address manager_) public asTimelock {
@@ -352,6 +359,14 @@ abstract contract GPv2AllowListAuthenticationHandler is Properties {
     /// fully reversible with no residual/dust state.
     function gPv2AllowListAuthentication_managerRoundTrip(uint256 bSeed) public {
         address m0 = authentication.manager();
+        // The AllowListGuardian contract exposes no direct proposeManager /
+        // acceptManagership forwarder, so it can never originate this call in
+        // the deployed system; a round trip rooted at it (the initial-state
+        // manager) is unreachable and would report reversibility for an
+        // identity that cannot participate in the two-step rail. Likewise a
+        // zero manager cannot propose. Only run once the manager has been
+        // handed off to a callable actor/role identity.
+        if (m0 == address(allowListGuardian) || m0 == address(0)) return;
         address b = toActor(address(uint160(bSeed)));
         if (b == m0) return;
 

@@ -10,6 +10,11 @@ abstract contract Snapshots is Base {
         address pendingManager;
         address guardian;
         bool isSolverTarget;
+        // isSolver() for the 6 known governance candidates (candidateAt 0..5),
+        // so SP-11 / SP-08 frame conditions can prove a solver op or a
+        // setGuardian touched NO other address's membership -- not just the
+        // single `currentTarget`.
+        bool[6] otherSolvers;
     }
 
     State internal stateBefore;
@@ -21,6 +26,9 @@ abstract contract Snapshots is Base {
         state.pendingManager = authentication.pendingManager();
         state.guardian = allowListGuardian.guardian();
         state.isSolverTarget = authentication.isSolver(currentTarget);
+        for (uint256 i; i < candidateCount(); i++) {
+            state.otherSolvers[i] = authentication.isSolver(candidateAt(i));
+        }
     }
     
     function snapshotBefore() internal {

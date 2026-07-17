@@ -235,6 +235,8 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
         t(allowListGuardian.guardian() == newGuardian, "SP-08: setGuardian did not set guardian");
         t(stateAfter.manager == stateBefore.manager, "SP-08: setGuardian touched authenticator manager");
         t(stateAfter.pendingManager == stateBefore.pendingManager, "SP-08: setGuardian touched authenticator pendingManager");
+        // setGuardian must not touch ANY solver membership on the authenticator.
+        _assertOtherSolversUnchanged(address(0), "SP-08: setGuardian mutated a solver membership");
     }
 
     /// @notice SP-09: a direct authentication.addSolver(s) succeeds iff the effective caller equals manager() at call time, then isSolver(s)==true
@@ -253,6 +255,18 @@ abstract contract Properties is PropertiesAsserts, Snapshots {
     function property_solverOpFrameCondition() internal {
         t(stateAfter.manager == stateBefore.manager, "SP-11: solver op mutated manager");
         t(stateAfter.pendingManager == stateBefore.pendingManager, "SP-11: solver op mutated pendingManager");
+        // A solver op must flip isSolver ONLY for currentTarget; every other
+        // known candidate's membership is frozen across the call.
+        _assertOtherSolversUnchanged(currentTarget, "SP-11: solver op mutated a non-target address's membership");
+    }
+
+    /// @notice Frame helper: every governance candidate EXCEPT `exclude` must
+    /// have identical isSolver() membership before and after the op.
+    function _assertOtherSolversUnchanged(address exclude, string memory tag) internal {
+        for (uint256 i; i < candidateCount(); i++) {
+            if (candidateAt(i) == exclude) continue;
+            t(stateAfter.otherSolvers[i] == stateBefore.otherSolvers[i], tag);
+        }
     }
 
     /// @notice SP-12: a successful direct setManager(m) is an atomic pair: manager==m (any m incl 0) AND pendingManager==0
