@@ -73,7 +73,73 @@ pub struct Order {
     /// and for BUY (exactOut pins the output).
     pub buy_limit: eth::U256,
     pub owner: eth::Address,
+    /// Parameters for estimating the solver's surplus fee (gas recovery, taken
+    /// in the SELL token) at slippage-bounding time. Populated by the solver
+    /// layer from the auction; defaults to a zero fee (bounding then targets
+    /// the bare `buy_limit`, the pre-fee-aware behavior).
+    pub solve_fee: SolveFee,
 }
+
+/// Inputs for estimating the surplus fee a LIMIT-order solution will carry.
+///
+/// `Solution::into_dex_solution` charges the user
+/// `ether_value((solution_gas + gas_offset) × gas_price)` in SELL tokens and
+/// credits the buy side only `(sell − fee) × output / sell` (ceil), so the
+/// router floor must exceed the order's `buy_limit` by the fee-scaled margin or
+/// the solution is rejected as "limit price not satisfied" AFTER the swap was
+/// built. This struct lets the flooring lanes reproduce that fee (with a
+/// conservative gas estimate) BEFORE choosing the router slippage, so the
+/// bounded minReturn covers the fee-inflated bar. Discovered live on Unichain
+/// 2026-07-17: every default-slippage market order was unsettleable because the
+/// bounded floor undershot the bar by exactly the fee (sub-bp to a few bp).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SolveFee {
+    /// The auction's effective gas price, in wei per gas unit.
+    pub gas_price: eth::Ether,
+    /// The solver's configured gas offset (added to the swap gas when the fee
+    /// is computed, mirroring `into_dex_solution`).
+    pub gas_offset: eth::Gas,
+    /// The auction reference price of the SELL token. `None` when the auction
+    /// carries no price — the fee estimate is then zero (fail-open to the
+    /// pre-fee-aware behavior; `into_dex_solution` also returns no solution
+    /// without a sell price, so nothing is lost).
+    pub sell_price: Option<auction::Price>,
+}
+
+impl SolveFee {
+    /// Estimated surplus fee in SELL-token atoms for a swap expected to use
+    /// `gas` units of gas. Mirrors `into_dex_solution`'s
+    /// `ether_value((gas + gas_offset) × gas_price)` and adds 1 atom so the
+    /// estimate is never below the final (floored) fee for the same gas.
+    /// Returns zero on a missing sell price or arithmetic overflow (fail-open:
+    /// bounding then targets the bare buy limit, as before fee-awareness).
+    pub fn fee_in_sell(&self, gas: eth::Gas) -> eth::U256 {
+        let Some(price) = self.sell_price else {
+            return U256::ZERO;
+        };
+        let Some(total_wei) = gas
+            .0
+            .checked_add(self.gas_offset.0)
+            .and_then(|g| g.checked_mul(self.gas_price.0))
+        else {
+            return U256::ZERO;
+        };
+        price
+            .ether_value(eth::Ether(total_wei))
+            .map(|fee| fee.saturating_add(U256::from(1)))
+            .unwrap_or(U256::ZERO)
+    }
+}
+
+/// Extra gas added to a lane's padded API gas estimate when estimating the
+/// surplus fee for slippage bounding. When the strict output simulation
+/// succeeds, `into_dex_solution` uses the SIMULATED gas — a full `settle()`
+/// including transfers and approvals — which can exceed the aggregator API's
+/// route-only estimate (observed on Unichain: velora API 193k padded vs 307k
+/// simulated). Over-estimating only tightens the router floor by the
+/// fee-difference (sub-bp on typical trades); under-estimating recreates the
+/// unsettleable-order bug this margin exists to prevent.
+pub const SIM_SETTLE_OVERHEAD_GAS: u64 = 200_000;
 
 impl Order {
     pub fn new(order: &order::Order) -> Self {
@@ -90,31 +156,75 @@ impl Order {
             // BUY floor path but carried uniformly.
             buy_limit: order.buy.amount,
             owner: order.owner(),
+            solve_fee: SolveFee::default(),
         }
     }
 
     /// SELL solve path only: the aggregator slippage (bps) to actually send so
-    /// the router's guaranteed minReturn covers the order's signed buy limit.
-    /// Returns the TIGHTER of the solver's configured slippage and the slippage
-    /// implied by the order's limit vs the optimistic route output, so a loose
-    /// order keeps the configured floor while a tight one is bounded to its
-    /// limit (never over-tightened). Reporting `min_return_amount(optimistic,
-    /// this)` then yields `max(floor, buy_limit)`, which both settles (<=
-    /// realized, the router guarantees minReturn) and satisfies (>= buy_limit).
-    pub fn bounded_solve_slippage_bps(&self, optimistic: eth::U256, configured_bps: u16) -> u16 {
-        // Limit at or above the optimistic route output: send zero slippage so
+    /// the router's guaranteed minReturn covers the order's signed buy limit
+    /// PLUS the estimated surplus fee. Returns the TIGHTER of the solver's
+    /// configured slippage and the slippage implied by the fee-inflated limit
+    /// vs the optimistic route output, so a loose order keeps the configured
+    /// floor while a tight one is bounded to its (fee-adjusted) limit.
+    ///
+    /// The fee matters because `into_dex_solution` credits the buy side only
+    /// `(sell − fee) × output / sell`: a floor that covers the bare limit
+    /// still fails the limit check by ~fee/sell (the 2026-07-17 Unichain
+    /// unsettleable-orders bug). `swap_gas_estimate` should be the lane's
+    /// padded API gas plus [`SIM_SETTLE_OVERHEAD_GAS`], so the estimated fee
+    /// upper-bounds the fee the solution will actually carry.
+    ///
+    /// `reprice_margin_bps` is subtracted from the IMPLIED bound (floored at
+    /// 0) for lanes whose build step re-prices the optimistic base the bound
+    /// was computed against (KyberSwap's `/route/build` re-quotes below
+    /// `/routes` by ~1 bp; the margin keeps the re-priced minReturn above the
+    /// bar). Loose orders that keep the configured slippage are unaffected —
+    /// their floor is derived from the build-stage base itself and needs no
+    /// cross-call margin.
+    pub fn bounded_solve_slippage_bps(
+        &self,
+        optimistic: eth::U256,
+        configured_bps: u16,
+        swap_gas_estimate: eth::Gas,
+        reprice_margin_bps: u16,
+    ) -> u16 {
+        // Inflate the signed buy limit so the router floor also covers the
+        // surplus fee: need ceil((amount − fee) × output / amount) >= buy_limit
+        // for `into_dex_solution`, so target output >= ceil(buy_limit × amount
+        // / (amount − fee)). Falls back to the bare limit on overflow or a
+        // zero fee estimate.
+        let fee = self.solve_fee.fee_in_sell(swap_gas_estimate);
+        let amount = self.amount.0;
+        let target = if fee.is_zero() || fee >= amount {
+            // Zero fee: bare-limit behavior. Fee >= the whole input: no floor
+            // can satisfy the fee-scaled limit check; send zero slippage (the
+            // tightest safe bound) and let the limit check drop the swap — the
+            // order is economically unsettleable at this gas price.
+            if fee >= amount && !fee.is_zero() {
+                return 0;
+            }
+            self.buy_limit
+        } else {
+            let den = amount - fee;
+            self.buy_limit
+                .checked_mul(amount)
+                .and_then(|num| num.checked_add(den - U256::from(1)))
+                .map(|num| num / den)
+                .unwrap_or(self.buy_limit)
+        };
+        // Target at or above the optimistic route output: send zero slippage so
         // the router must realize the full optimistic (the tightest safe bound);
         // if the market can't deliver it the swap is correctly not settled.
-        if self.buy_limit >= optimistic || optimistic.is_zero() {
+        if target >= optimistic || optimistic.is_zero() {
             return 0;
         }
         let bps = eth::U256::from(10_000u64);
-        // implied = (optimistic - buy_limit) / optimistic, in bps. In [0, 10000)
-        // since 0 < buy_limit < optimistic, so the u16 cast never truncates.
-        let implied_bps: u16 = ((optimistic - self.buy_limit) * bps / optimistic)
+        // implied = (optimistic - target) / optimistic, in bps. In [0, 10000)
+        // since 0 < target < optimistic, so the u16 cast never truncates.
+        let implied_bps: u16 = ((optimistic - target) * bps / optimistic)
             .try_into()
             .unwrap_or(configured_bps);
-        configured_bps.min(implied_bps)
+        configured_bps.min(implied_bps.saturating_sub(reprice_margin_bps))
     }
 
     /// Returns the order swapped amount as an asset. The token associated with
@@ -967,17 +1077,20 @@ mod bounded_slippage_tests {
             amount: Amount::new(U256::from(1_000u64)),
             buy_limit: U256::from(buy_limit),
             owner: address!("0x0000000000000000000000000000000000000001"),
+            solve_fee: SolveFee::default(),
         }
+    }
+
+    /// Zero-fee, zero-margin — the pre-fee-aware call shape.
+    fn bounded(order: &Order, optimistic: u64, configured: u16) -> u16 {
+        order.bounded_solve_slippage_bps(U256::from(optimistic), configured, eth::Gas(U256::ZERO), 0)
     }
 
     #[test]
     fn loose_order_keeps_configured_slippage() {
         // buy_limit (900) below the configured floor (990): the fixed floor
         // already satisfies, so the configured slippage is unchanged.
-        assert_eq!(
-            sell_order(900).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
-            100
-        );
+        assert_eq!(bounded(&sell_order(900), 1_000, 100), 100);
     }
 
     #[test]
@@ -985,20 +1098,141 @@ mod bounded_slippage_tests {
         // buy_limit (995) above the configured floor (990) — the P1 case.
         // Tighten to 50 bps so the reported floor == 995 == buy_limit, so the
         // order the optimistic quote produced still settles.
+        assert_eq!(bounded(&sell_order(995), 1_000, 100), 50);
+    }
+
+    #[test]
+    fn limit_at_or_above_optimistic_sends_zero() {
+        assert_eq!(bounded(&sell_order(1_000), 1_000, 100), 0);
+        assert_eq!(bounded(&sell_order(1_100), 1_000, 100), 0);
+    }
+
+    /// A [`SolveFee`] whose `fee_in_sell` comes out to exactly `fee_atoms + 1`
+    /// for a 1-gas swap with no offset: gas price = fee_atoms wei and a sell
+    /// price of 1e18 (1 atom per wei).
+    fn fee(fee_atoms: u64) -> SolveFee {
+        SolveFee {
+            gas_price: eth::Ether(U256::from(fee_atoms)),
+            gas_offset: eth::Gas(U256::ZERO),
+            sell_price: Some(auction::Price(eth::Ether(U256::from(
+                1_000_000_000_000_000_000_u128,
+            )))),
+        }
+    }
+
+    #[test]
+    fn fee_in_sell_mirrors_solution_fee_plus_one() {
+        // ether_value((gas + offset) × price) with price 1e18 (1:1) = gas × gas_price, +1.
+        assert_eq!(fee(7).fee_in_sell(eth::Gas(U256::from(1u64))), U256::from(8u64));
+        // Missing sell price → zero (fail-open).
+        let missing = SolveFee { sell_price: None, ..fee(7) };
+        assert_eq!(missing.fee_in_sell(eth::Gas(U256::from(1u64))), U256::ZERO);
+    }
+
+    #[test]
+    fn fee_inflates_the_bound_target() {
+        // buy_limit 990 of optimistic 1000 → implied 100 bps bare. With a fee
+        // estimate of 5 atoms (4 + the safety atom) on a sell of 1000, the
+        // target becomes ceil(990 × 1000 / 995) = 995 → implied 50 bps: the
+        // floor now leaves room for the fee-scaled limit check.
+        let mut order = sell_order(990);
+        order.solve_fee = fee(4);
         assert_eq!(
-            sell_order(995).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            order.bounded_solve_slippage_bps(
+                U256::from(1_000u64),
+                100,
+                eth::Gas(U256::from(1u64)),
+                0
+            ),
             50
         );
     }
 
     #[test]
-    fn limit_at_or_above_optimistic_sends_zero() {
+    fn fee_covering_bound_satisfies_the_fee_scaled_limit_check() {
+        // Regression for the 2026-07-17 Unichain unsettleable-orders bug, with
+        // the live numbers: USDC (6 dp) → WETH, sell 3594671 atoms, the
+        // auction's fee-adjusted buy limit, velora's optimistic route output,
+        // gas price 1.5e6 wei, USDC reference price ~5.43e26, gas offset
+        // 106391, velora padded API gas 193110 (+ the sim overhead margin).
+        let sell_amount = U256::from(3_594_671_u64);
+        let buy_limit = U256::from(1_948_989_691_966_047_u128);
+        let optimistic = U256::from(1_957_061_929_356_070_u128);
+        let solve_fee = SolveFee {
+            gas_price: eth::Ether(U256::from(1_500_000_u64)),
+            gas_offset: eth::Gas(U256::from(106_391_u64)),
+            sell_price: Some(auction::Price(eth::Ether(
+                U256::from(543_000_000_000_000_000_000_000_000_u128),
+            ))),
+        };
+        let order = Order {
+            amount: Amount::new(sell_amount),
+            buy_limit,
+            solve_fee,
+            ..sell_order(0)
+        };
+        let gas_estimate = eth::Gas(U256::from(193_110_u64 + SIM_SETTLE_OVERHEAD_GAS));
+
+        let bps = order.bounded_solve_slippage_bps(optimistic, 100, gas_estimate, 0);
+        // The bound must have engaged (tighter than configured) but not
+        // degenerated to zero.
+        assert!(bps > 0 && bps < 100, "bps = {bps}");
+
+        // The router floor at the bounded slippage…
+        let floor = optimistic * U256::from(10_000 - bps as u64) / U256::from(10_000u64);
+        // …must pass `into_dex_solution`'s fee-scaled limit check even when
+        // the SIMULATED gas (307541, larger than the padded API estimate)
+        // sets the actual fee: credited buy = ceil((sell − fee) × floor /
+        // sell) >= buy_limit.
+        let actual_fee = solve_fee
+            .fee_in_sell(eth::Gas(U256::from(307_541_u64)))
+            .checked_sub(U256::from(1u64)) // the estimate's safety atom is not in the real fee
+            .unwrap();
+        let credited = (sell_amount - actual_fee)
+            .checked_mul(floor)
+            .unwrap()
+            .div_ceil(sell_amount);
+        assert!(
+            credited >= buy_limit,
+            "credited {credited} < limit {buy_limit} (bps {bps}, floor {floor}, fee {actual_fee})"
+        );
+    }
+
+    #[test]
+    fn fee_swallowing_the_input_sends_zero() {
+        let mut order = sell_order(990);
+        order.solve_fee = fee(2_000); // fee > the 1000-atom sell
         assert_eq!(
-            sell_order(1_000).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            order.bounded_solve_slippage_bps(
+                U256::from(1_000u64),
+                100,
+                eth::Gas(U256::from(1u64)),
+                0
+            ),
             0
         );
+    }
+
+    #[test]
+    fn reprice_margin_is_subtracted_from_the_implied_bound_only() {
+        // Same as tight_order_is_bounded_to_its_limit but with a 1 bp
+        // re-pricing margin (the KyberSwap /routes → /route/build drift).
+        let order = sell_order(995);
         assert_eq!(
-            sell_order(1_100).bounded_solve_slippage_bps(U256::from(1_000u64), 100),
+            order.bounded_solve_slippage_bps(U256::from(1_000u64), 100, eth::Gas(U256::ZERO), 1),
+            49
+        );
+        // A LOOSE order keeps the configured slippage untouched: its floor is
+        // derived from the build-stage base itself, so no margin applies.
+        let order = sell_order(900);
+        assert_eq!(
+            order.bounded_solve_slippage_bps(U256::from(1_000u64), 100, eth::Gas(U256::ZERO), 1),
+            100
+        );
+        // The margin also floors at zero rather than underflowing.
+        let order = sell_order(1_000);
+        assert_eq!(
+            order.bounded_solve_slippage_bps(U256::from(1_000u64), 100, eth::Gas(U256::ZERO), 1),
             0
         );
     }

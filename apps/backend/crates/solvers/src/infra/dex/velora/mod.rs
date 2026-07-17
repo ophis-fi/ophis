@@ -481,18 +481,35 @@ impl Velora {
             }
 
             // On the SELL solve path, bound the slippage by the order's signed
-            // buy limit so the router's minReturn (baked into both the
-            // /transactions calldata and the reported buy clearing amount)
-            // covers what the order accepts. Without this, an order signed
-            // against the optimistic quote is dropped by `satisfies` when the
-            // fixed floor sits below its limit. Quotes report optimistic and
-            // never settle; BUY (exactOut) pins the output — leave both configured.
+            // buy limit plus the estimated surplus fee, so the router's
+            // minReturn (baked into both the /transactions calldata and the
+            // reported buy clearing amount) covers what the order accepts
+            // AFTER the fee-scaled limit check in `into_dex_solution`. Without
+            // the fee the bounded floor undershoots that check by ~fee/sell on
+            // every bounded solve (the 2026-07-17 Unichain unsettleable-orders
+            // bug); without bounding at all, the fixed floor sits below a
+            // tight order's limit. The gas estimate mirrors the final swap gas
+            // (`gasCost` + 50% pad) plus the settle-simulation overhead.
+            // Quotes report optimistic and never settle; BUY (exactOut) pins
+            // the output — leave both configured.
             let effective_slippage = if is_quote || order.side == order::Side::Buy {
                 slippage.clone()
             } else {
                 let configured_bps = slippage.as_bps().unwrap_or(0);
-                let bounded_bps =
-                    order.bounded_solve_slippage_bps(prices.dest_amount, configured_bps);
+                let prices_gas: u64 = prices.gas_cost.trim().parse().unwrap_or(0);
+                let gas_estimate = eth::Gas(U256::from(
+                    prices_gas
+                        .saturating_add(prices_gas / 2)
+                        .saturating_add(dex::SIM_SETTLE_OVERHEAD_GAS),
+                ));
+                let bounded_bps = order.bounded_solve_slippage_bps(
+                    prices.dest_amount,
+                    configured_bps,
+                    gas_estimate,
+                    // /transactions builds against the same priceRoute, so
+                    // there is no cross-call re-pricing to absorb.
+                    0,
+                );
                 dex::Slippage::from_bps(bounded_bps)
             };
 
@@ -783,6 +800,7 @@ mod build_swap_tests {
             side,
             amount: Amount::new(amount),
             buy_limit: Default::default(),
+        solve_fee: Default::default(),
             owner: address!("0x0494f503912c101bfd76b88e4f5d8a33de284d1a"),
         }
     }

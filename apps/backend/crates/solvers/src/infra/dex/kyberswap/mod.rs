@@ -31,6 +31,11 @@ pub const DEFAULT_CLIENT_ID: &str = "ophis-solver";
 /// Maximum value KyberSwap accepts for `slippageTolerance` (20%).
 const MAX_SLIPPAGE_BPS: u16 = 2000;
 
+/// Slippage subtracted from the bounded solve slippage to absorb the
+/// `/route/build` re-pricing drift below the `/routes` optimistic the bound
+/// was computed against. See `bounded_solve_slippage_bps`.
+const REPRICE_MARGIN_BPS: u16 = 1;
+
 /// Allowlist of KyberSwap router addresses that can be approved as ERC-20
 /// spender for the Settlement contract.
 ///
@@ -161,18 +166,36 @@ impl KyberSwap {
             validate_router_allowlist(&routes_router)?;
 
             // On the solve path, bound the slippage sent to /route/build by the
-            // order's signed buy limit, so the router's on-chain minReturn (==
-            // the reported buy clearing amount) is at least what the order will
-            // accept. Without this, an order signed against the optimistic quote
-            // (buyAmountMin near optimistic) is dropped by `satisfies` because
-            // the fixed 1% floor sits below its limit. Quotes report optimistic
-            // and never settle, so leave the slippage configured for them.
+            // order's signed buy limit plus the estimated surplus fee, so the
+            // router's on-chain minReturn (== the reported buy clearing amount)
+            // is at least what the order will accept AFTER the fee-scaled limit
+            // check in `into_dex_solution`. Without the fee the bounded floor
+            // undershoots that check by ~fee/sell on every bounded solve (the
+            // 2026-07-17 Unichain unsettleable-orders bug); without bounding at
+            // all, the fixed 1% floor sits below a tight order's limit. The gas
+            // estimate mirrors the final swap gas (route gas + 50% pad) plus
+            // the settle-simulation overhead. Quotes report optimistic and
+            // never settle, so leave the slippage configured for them.
             let build_slippage = if is_quote {
                 slippage.clone()
             } else {
                 let configured_bps = slippage.as_bps().unwrap_or(0);
-                let bounded_bps = order
-                    .bounded_solve_slippage_bps(routes.route_summary.amount_out, configured_bps);
+                let routes_gas: u64 = routes.route_summary.gas.trim().parse().unwrap_or(0);
+                let gas_estimate = eth::Gas(U256::from(
+                    routes_gas
+                        .saturating_add(routes_gas / 2)
+                        .saturating_add(dex::SIM_SETTLE_OVERHEAD_GAS),
+                ));
+                let bounded_bps = order.bounded_solve_slippage_bps(
+                    routes.route_summary.amount_out,
+                    configured_bps,
+                    gas_estimate,
+                    // /route/build re-quotes the route and its optimistic
+                    // amount_out lands ~1 bp below the /routes value the bound
+                    // was computed against (observed live 2026-07-17); tighten
+                    // by 1 bp so the re-priced minReturn stays above the bar.
+                    REPRICE_MARGIN_BPS,
+                );
                 dex::Slippage::from_bps(bounded_bps)
             };
 

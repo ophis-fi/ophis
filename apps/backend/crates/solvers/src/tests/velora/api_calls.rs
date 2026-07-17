@@ -44,6 +44,7 @@ async fn swap_sell_live_op_mainnet() {
         side: order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -90,6 +91,7 @@ async fn swap_buy_live_op_mainnet() {
         side: order::Side::Buy,
         amount: Amount::new(buy_amount),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -144,6 +146,7 @@ async fn buy_with_partner_fee_is_rejected_before_network() {
         side: order::Side::Buy,
         amount: Amount::new(U256::from(45_900_000_000_000_000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
