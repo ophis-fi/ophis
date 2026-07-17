@@ -92,7 +92,7 @@ async fn swap_sell_all_chains() {
             side: crate::domain::order::Side::Sell,
             amount: Amount::new(U256::from(tc.sell_amount)),
             buy_limit: Default::default(),
-        solve_fee: Default::default(),
+            solve_fee: Default::default(),
             owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
         };
 

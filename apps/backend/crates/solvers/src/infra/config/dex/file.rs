@@ -219,33 +219,32 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
     // CoW Protocol contracts have the same address.
     let default_contracts = contracts::Contracts::for_chain_id(eth::ChainId::Mainnet);
     let (settlement, authenticator) = if let Some(settlement) = config.settlement {
-        let authenticator =
-            {
-                let web3 = blockchain::rpc(&config.node_url);
-                let settlement =
-                    ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
-                // Bootstrap RPC call: retry with backoff so transient eRPC
-                // consensus failures during HL stack restart bursts don't
-                // crash-loop the container. See the `retry-helper` crate.
-                retry_helper::with_backoff(
-                    "settlement.authenticator",
-                    retry_helper::BackoffConfig::default(),
-                    || async { settlement.authenticator().call().await },
-                )
-                .await
-                .unwrap_or_else(|_| {
-                    // Intentionally redacted: the alloy `TransportError` Debug
-                    // can echo the configured RPC URL, which on some providers
-                    // embeds an API key. The per-attempt error is already
-                    // tracing::warn!-logged by `with_backoff` with secrets
-                    // handled via tracing's redaction; the panic only needs
-                    // to surface that all retries exhausted.
-                    panic!(
-                        "settlement.authenticator() read exhausted retries; see preceding \
+        let authenticator = {
+            let web3 = blockchain::rpc(&config.node_url);
+            let settlement =
+                ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
+            // Bootstrap RPC call: retry with backoff so transient eRPC
+            // consensus failures during HL stack restart bursts don't
+            // crash-loop the container. See the `retry-helper` crate.
+            retry_helper::with_backoff(
+                "settlement.authenticator",
+                retry_helper::BackoffConfig::default(),
+                || async { settlement.authenticator().call().await },
+            )
+            .await
+            .unwrap_or_else(|_| {
+                // Intentionally redacted: the alloy `TransportError` Debug
+                // can echo the configured RPC URL, which on some providers
+                // embeds an API key. The per-attempt error is already
+                // tracing::warn!-logged by `with_backoff` with secrets
+                // handled via tracing's redaction; the panic only needs
+                // to surface that all retries exhausted.
+                panic!(
+                    "settlement.authenticator() read exhausted retries; see preceding \
                          tracing::warn! logs for per-attempt error detail"
-                    )
-                })
-            };
+                )
+            })
+        };
         (settlement, authenticator)
     } else {
         (

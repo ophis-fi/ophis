@@ -46,7 +46,6 @@ fn okx_min_received(to_token_amount: U256, slippage_bps: u16) -> U256 {
     }
 }
 
-
 const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 
 /// Allowlist of OKX DEX router (`tx.to`) + approve-spender (`dexContractAddress`)
@@ -348,10 +347,7 @@ impl Okx {
         // handle_buy_order so that a poisoned response never persists in the
         // moka cache (retro-audit follow-up: prevents sticky DoS on
         // (token, side) keys if the allowlist itself is ever wrong).
-        validate_router_allowlist(
-            self.defaults.chain_index,
-            &swap_response.tx.to,
-        )?;
+        validate_router_allowlist(self.defaults.chain_index, &swap_response.tx.to)?;
 
         // Buffer-siphon guard (mirrors kyberswap/mod.rs:187, velora, odos, dodo,
         // lifi, enso, openocean, bitget — the one lane that was missing it). For
@@ -387,14 +383,21 @@ impl Okx {
         // inventory) instead of the realized swap output (a buffer-internalization
         // drain, the output-side mirror of the input-side siphon above). Reject any
         // echoed from/to token that does not match the signed order before relabeling.
-        if swap_response.router_result.from_token.token_contract_address != order.sell.0
+        if swap_response
+            .router_result
+            .from_token
+            .token_contract_address
+            != order.sell.0
             || swap_response.router_result.to_token.token_contract_address != order.buy.0
         {
             return Err(Error::Api {
                 code: -1,
                 reason: format!(
                     "OKX /swap echoed tokens ({:?} -> {:?}) != signed order ({:?} -> {:?})",
-                    swap_response.router_result.from_token.token_contract_address,
+                    swap_response
+                        .router_result
+                        .from_token
+                        .token_contract_address,
                     swap_response.router_result.to_token.token_contract_address,
                     order.sell.0,
                     order.buy.0,
@@ -466,10 +469,9 @@ impl Okx {
                 // amount; slippage applies to the INPUT (the allowance pad
                 // above), not the output, so report to_token_amount unmodified.
                 amount: match order.side {
-                    order::Side::Sell => okx_min_received(
-                        swap_response.router_result.to_token_amount,
-                        clamped_bps,
-                    ),
+                    order::Side::Sell => {
+                        okx_min_received(swap_response.router_result.to_token_amount, clamped_bps)
+                    }
                     order::Side::Buy => swap_response.router_result.to_token_amount,
                 },
             },
@@ -735,9 +737,7 @@ impl Okx {
 
         let request = request_builder
             .try_clone()
-            .ok_or_else(|| {
-                Error::RequestBuildFailed("request builder not cloneable".to_string())
-            })?
+            .ok_or_else(|| Error::RequestBuildFailed("request builder not cloneable".to_string()))?
             .build()
             .map_err(|e| Error::RequestBuildFailed(format!("build: {e}")))?;
 

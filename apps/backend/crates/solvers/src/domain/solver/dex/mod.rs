@@ -245,11 +245,17 @@ impl Dex {
         // surplus fee `into_dex_solution` will charge (below, from the same
         // gas price / offset / sell price) so the bounded router floor covers
         // the fee-scaled limit check and a tight order remains settleable.
-        dex_order.solve_fee = dex::SolveFee {
-            gas_price: gas_price.0,
-            gas_offset: self.gas_offset,
-            sell_price: tokens.reference_price(&order.sell.token),
-        };
+        // Only LIMIT-class orders carry a surplus fee (`Fee::Protocol` for
+        // MARKET leaves the credited buy unscaled), so only they get the fee
+        // headroom — inflating a MARKET order's bound would over-tighten its
+        // router floor for no reason.
+        if order.solver_determines_fee() {
+            dex_order.solve_fee = dex::SolveFee {
+                gas_price: gas_price.0,
+                gas_offset: self.gas_offset,
+                sell_price: tokens.reference_price(&order.sell.token),
+            };
+        }
         let swap = self.try_solve(order, &dex_order, tokens, is_quote).await?;
         let sell = tokens.reference_price(&order.sell.token);
         let Some(solution) = swap

@@ -57,12 +57,10 @@ const REPRICE_MARGIN_BPS: u16 = 1;
 /// after independent verification (their docs at
 /// https://docs.kyberswap.com/Aggregator/aggregator-protocol-deployment/
 /// contracts-and-addresses) — do NOT take it from a /routes response.
-const KYBERSWAP_ROUTER_ALLOWLIST: &[Address] = &[
-    Address::new([
-        0x61, 0x31, 0xB5, 0xfa, 0xe1, 0x9E, 0xA4, 0xf9, 0xD9, 0x64, 0xeA, 0xc0, 0x40, 0x8E, 0x44,
-        0x08, 0xb6, 0x63, 0x37, 0xb5,
-    ]),
-];
+const KYBERSWAP_ROUTER_ALLOWLIST: &[Address] = &[Address::new([
+    0x61, 0x31, 0xB5, 0xfa, 0xe1, 0x9E, 0xA4, 0xf9, 0xD9, 0x64, 0xeA, 0xc0, 0x40, 0x8E, 0x44, 0x08,
+    0xb6, 0x63, 0x37, 0xb5,
+])];
 
 fn validate_router_allowlist(router: &Address) -> Result<(), Error> {
     if KYBERSWAP_ROUTER_ALLOWLIST.contains(router) {
@@ -180,7 +178,12 @@ impl KyberSwap {
                 slippage.clone()
             } else {
                 let configured_bps = slippage.as_bps().unwrap_or(0);
-                let routes_gas: u64 = routes.route_summary.gas.trim().parse().unwrap_or(0);
+                let routes_gas: u64 = routes
+                    .route_summary
+                    .gas
+                    .trim()
+                    .parse()
+                    .unwrap_or(dex::UNPARSEABLE_GAS_FALLBACK);
                 let gas_estimate = eth::Gas(U256::from(
                     routes_gas
                         .saturating_add(routes_gas / 2)

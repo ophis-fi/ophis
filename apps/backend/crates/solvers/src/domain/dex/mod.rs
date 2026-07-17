@@ -7,7 +7,7 @@ use {
         domain::{self, auction, eth, order, solution},
         infra,
     },
-    alloy::primitives::{Address, U256},
+    alloy::primitives::{Address, U256, U512, ruint::UintTryFrom},
     bigdecimal::BigDecimal,
     number::conversions::u256_to_big_int,
     std::fmt::{self, Debug, Formatter},
@@ -141,6 +141,14 @@ impl SolveFee {
 /// unsettleable-order bug this margin exists to prevent.
 pub const SIM_SETTLE_OVERHEAD_GAS: u64 = 200_000;
 
+/// Gas estimate used for slippage bounding when the aggregator's gas string
+/// does not parse. Deliberately LARGE: an over-estimate only tightens the
+/// router floor, while treating unparseable gas as zero would under-estimate
+/// the fee and recreate the unsettleable-order bug for that lane. (The lanes
+/// fail the whole swap on an unparseable BUILD-stage gas anyway; this covers
+/// the bounding-stage string diverging from it.)
+pub const UNPARSEABLE_GAS_FALLBACK: u64 = 3_000_000;
+
 impl Order {
     pub fn new(order: &order::Order) -> Self {
         Self {
@@ -189,28 +197,31 @@ impl Order {
         reprice_margin_bps: u16,
     ) -> u16 {
         // Inflate the signed buy limit so the router floor also covers the
-        // surplus fee: need ceil((amount − fee) × output / amount) >= buy_limit
-        // for `into_dex_solution`, so target output >= ceil(buy_limit × amount
-        // / (amount − fee)). Falls back to the bare limit on overflow or a
-        // zero fee estimate.
+        // surplus fee. `into_dex_solution` credits the buy side
+        // ceil((amount − fee) × output / amount), so the exact minimal output
+        // satisfying `credited >= buy_limit` is the smallest integer with
+        // (amount − fee) × output > (buy_limit − 1) × amount:
+        //   target = floor((buy_limit − 1) × amount / (amount − fee)) + 1.
+        // Widened to U512 so huge-supply tokens cannot overflow into a
+        // fail-open bare-limit bound; a target that overflows U256 is
+        // unreachable, so fail closed with zero slippage instead.
         let fee = self.solve_fee.fee_in_sell(swap_gas_estimate);
         let amount = self.amount.0;
-        let target = if fee.is_zero() || fee >= amount {
-            // Zero fee: bare-limit behavior. Fee >= the whole input: no floor
-            // can satisfy the fee-scaled limit check; send zero slippage (the
-            // tightest safe bound) and let the limit check drop the swap — the
-            // order is economically unsettleable at this gas price.
-            if fee >= amount && !fee.is_zero() {
-                return 0;
-            }
+        let target = if fee.is_zero() || self.buy_limit.is_zero() {
             self.buy_limit
+        } else if fee >= amount {
+            // The fee alone consumes the whole input: no floor can satisfy the
+            // fee-scaled limit check; send zero slippage (the tightest safe
+            // bound) and let the limit check drop the swap — the order is
+            // economically unsettleable at this gas price.
+            return 0;
         } else {
-            let den = amount - fee;
-            self.buy_limit
-                .checked_mul(amount)
-                .and_then(|num| num.checked_add(den - U256::from(1)))
-                .map(|num| num / den)
-                .unwrap_or(self.buy_limit)
+            let num = U512::from(self.buy_limit - U256::from(1)) * U512::from(amount);
+            let den = U512::from(amount - fee);
+            match U256::uint_try_from(num / den + U512::from(1u8)) {
+                Ok(target) => target,
+                Err(_) => return 0,
+            }
         };
         // Target at or above the optimistic route output: send zero slippage so
         // the router must realize the full optimistic (the tightest safe bound);
@@ -220,9 +231,13 @@ impl Order {
         }
         let bps = eth::U256::from(10_000u64);
         // implied = (optimistic - target) / optimistic, in bps. In [0, 10000)
-        // since 0 < target < optimistic, so the u16 cast never truncates.
-        let implied_bps: u16 = ((optimistic - target) * bps / optimistic)
-            .try_into()
+        // since 0 < target < optimistic, so the u16 cast never truncates; the
+        // checked mul only fails for absurd optimistic values (> ~1e73), where
+        // the configured slippage is the right answer anyway.
+        let implied_bps: u16 = (optimistic - target)
+            .checked_mul(bps)
+            .map(|scaled| scaled / optimistic)
+            .and_then(|v| v.try_into().ok())
             .unwrap_or(configured_bps);
         configured_bps.min(implied_bps.saturating_sub(reprice_margin_bps))
     }
@@ -321,7 +336,8 @@ impl Swap {
         // Part 1: coarse reference-price ceiling. Cheap, no latency, fails open
         // on missing prices; catches only egregious (> factor) over-reports.
         if sell_side
-            && !self.output_within_price_reference(tokens, &output_guard.max_output_reference_factor)
+            && !self
+                .output_within_price_reference(tokens, &output_guard.max_output_reference_factor)
         {
             tracing::warn!(
                 input = ?self.input,
@@ -661,8 +677,14 @@ mod allowance_limit_tests {
     fn buy_swap(output_weth: U256, allowance_usdc: U256) -> Swap {
         Swap {
             calls: vec![],
-            input: eth::Asset { amount: allowance_usdc, token: eth::TokenAddress(USDC) },
-            output: eth::Asset { amount: output_weth, token: eth::TokenAddress(WETH) },
+            input: eth::Asset {
+                amount: allowance_usdc,
+                token: eth::TokenAddress(USDC),
+            },
+            output: eth::Asset {
+                amount: output_weth,
+                token: eth::TokenAddress(WETH),
+            },
             allowance: Allowance {
                 spender: address!("0x6a000f20005980200259b80c5102003040001068"),
                 amount: Amount::new(allowance_usdc),
@@ -675,8 +697,14 @@ mod allowance_limit_tests {
     fn buy_order(buy_weth: U256, max_sell_usdc: U256) -> order::Order {
         order::Order {
             uid: order::Uid([0u8; 56]),
-            sell: eth::Asset { amount: max_sell_usdc, token: eth::TokenAddress(USDC) },
-            buy: eth::Asset { amount: buy_weth, token: eth::TokenAddress(WETH) },
+            sell: eth::Asset {
+                amount: max_sell_usdc,
+                token: eth::TokenAddress(USDC),
+            },
+            buy: eth::Asset {
+                amount: buy_weth,
+                token: eth::TokenAddress(WETH),
+            },
             side: order::Side::Buy,
             class: order::Class::Market,
             partially_fillable: false,
@@ -686,8 +714,12 @@ mod allowance_limit_tests {
     }
 
     // Buy 1 WETH for at most 3,000 USDC.
-    fn one_weth() -> U256 { U256::from(1_000_000_000_000_000_000u128) }
-    fn max_sell() -> U256 { U256::from(3_000_000_000u64) }
+    fn one_weth() -> U256 {
+        U256::from(1_000_000_000_000_000_000u128)
+    }
+    fn max_sell() -> U256 {
+        U256::from(3_000_000_000u64)
+    }
 
     #[test]
     fn full_buy_allowance_at_limit_is_allowed() {
@@ -728,8 +760,14 @@ mod allowance_limit_tests {
         let sell_amount = max_sell();
         let order = order::Order {
             uid: order::Uid([0u8; 56]),
-            sell: eth::Asset { amount: sell_amount, token: eth::TokenAddress(USDC) },
-            buy: eth::Asset { amount: one_weth(), token: eth::TokenAddress(WETH) },
+            sell: eth::Asset {
+                amount: sell_amount,
+                token: eth::TokenAddress(USDC),
+            },
+            buy: eth::Asset {
+                amount: one_weth(),
+                token: eth::TokenAddress(WETH),
+            },
             side: order::Side::Sell,
             class: order::Class::Market,
             partially_fillable: false,
@@ -739,8 +777,14 @@ mod allowance_limit_tests {
         // Output meets the limit exactly; allowance == input == sell_amount.
         let swap = Swap {
             calls: vec![],
-            input: eth::Asset { amount: sell_amount, token: eth::TokenAddress(USDC) },
-            output: eth::Asset { amount: one_weth(), token: eth::TokenAddress(WETH) },
+            input: eth::Asset {
+                amount: sell_amount,
+                token: eth::TokenAddress(USDC),
+            },
+            output: eth::Asset {
+                amount: one_weth(),
+                token: eth::TokenAddress(WETH),
+            },
             allowance: Allowance {
                 spender: address!("0x6a000f20005980200259b80c5102003040001068"),
                 amount: Amount::new(sell_amount),
@@ -899,9 +943,15 @@ mod output_guard_tests {
     #[test]
     fn native_value_is_amount_scaled_by_price() {
         let unit = auction::Price(eth::Ether(U256::from(UNIT_PRICE)));
-        assert_eq!(unit.native_value(U256::from(1_234u64)), Some(U256::from(1_234u64)));
+        assert_eq!(
+            unit.native_value(U256::from(1_234u64)),
+            Some(U256::from(1_234u64))
+        );
         let half = auction::Price(eth::Ether(U256::from(UNIT_PRICE / 2)));
-        assert_eq!(half.native_value(U256::from(1_000u64)), Some(U256::from(500u64)));
+        assert_eq!(
+            half.native_value(U256::from(1_000u64)),
+            Some(U256::from(500u64))
+        );
     }
 
     // --- Part 2: strict output-delivery simulation gating ---
@@ -1083,7 +1133,12 @@ mod bounded_slippage_tests {
 
     /// Zero-fee, zero-margin — the pre-fee-aware call shape.
     fn bounded(order: &Order, optimistic: u64, configured: u16) -> u16 {
-        order.bounded_solve_slippage_bps(U256::from(optimistic), configured, eth::Gas(U256::ZERO), 0)
+        order.bounded_solve_slippage_bps(
+            U256::from(optimistic),
+            configured,
+            eth::Gas(U256::ZERO),
+            0,
+        )
     }
 
     #[test]
@@ -1123,9 +1178,15 @@ mod bounded_slippage_tests {
     #[test]
     fn fee_in_sell_mirrors_solution_fee_plus_one() {
         // ether_value((gas + offset) × price) with price 1e18 (1:1) = gas × gas_price, +1.
-        assert_eq!(fee(7).fee_in_sell(eth::Gas(U256::from(1u64))), U256::from(8u64));
+        assert_eq!(
+            fee(7).fee_in_sell(eth::Gas(U256::from(1u64))),
+            U256::from(8u64)
+        );
         // Missing sell price → zero (fail-open).
-        let missing = SolveFee { sell_price: None, ..fee(7) };
+        let missing = SolveFee {
+            sell_price: None,
+            ..fee(7)
+        };
         assert_eq!(missing.fee_in_sell(eth::Gas(U256::from(1u64))), U256::ZERO);
     }
 
@@ -1133,8 +1194,10 @@ mod bounded_slippage_tests {
     fn fee_inflates_the_bound_target() {
         // buy_limit 990 of optimistic 1000 → implied 100 bps bare. With a fee
         // estimate of 5 atoms (4 + the safety atom) on a sell of 1000, the
-        // target becomes ceil(990 × 1000 / 995) = 995 → implied 50 bps: the
-        // floor now leaves room for the fee-scaled limit check.
+        // EXACT minimal output is floor(989 × 1000 / 995) + 1 = 994 (output
+        // 994 credits ceil(995 × 994 / 1000) = 990 = the limit; 993 credits
+        // only 989) → implied 60 bps: the floor now leaves exactly enough
+        // room for the fee-scaled limit check, and no more.
         let mut order = sell_order(990);
         order.solve_fee = fee(4);
         assert_eq!(
@@ -1144,7 +1207,27 @@ mod bounded_slippage_tests {
                 eth::Gas(U256::from(1u64)),
                 0
             ),
-            50
+            60
+        );
+        // Sanity: the minimal target really is minimal — credited buy at
+        // output 994 meets the limit, at 993 it does not.
+        let credited =
+            |out: u64| (U256::from(1_000u64 - 5) * U256::from(out)).div_ceil(U256::from(1_000u64));
+        assert!(credited(994) >= U256::from(990u64));
+        assert!(credited(993) < U256::from(990u64));
+    }
+
+    #[test]
+    fn overflowing_target_fails_closed_with_zero_slippage() {
+        // A near-max buy limit whose fee-inflated target exceeds U256: the
+        // bound must fail CLOSED (zero slippage → router must beat the full
+        // optimistic) rather than silently dropping the fee margin.
+        let mut order = sell_order(0);
+        order.buy_limit = U256::MAX - U256::from(1u8);
+        order.solve_fee = fee(4);
+        assert_eq!(
+            order.bounded_solve_slippage_bps(U256::MAX, 100, eth::Gas(U256::from(1u64)), 0),
+            0
         );
     }
 
@@ -1161,9 +1244,9 @@ mod bounded_slippage_tests {
         let solve_fee = SolveFee {
             gas_price: eth::Ether(U256::from(1_500_000_u64)),
             gas_offset: eth::Gas(U256::from(106_391_u64)),
-            sell_price: Some(auction::Price(eth::Ether(
-                U256::from(543_000_000_000_000_000_000_000_000_u128),
-            ))),
+            sell_price: Some(auction::Price(eth::Ether(U256::from(
+                543_000_000_000_000_000_000_000_000_u128,
+            )))),
         };
         let order = Order {
             amount: Amount::new(sell_amount),
