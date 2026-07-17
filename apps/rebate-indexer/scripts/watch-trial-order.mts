@@ -164,6 +164,10 @@ async function main(): Promise<void> {
   });
   if (!txHash) {
     report(chain.name, uid, checks);
+    await notify(
+      `Trial order ${uid.slice(0, 18)}... on ${chain.name}: FULFILLED but the settlement tx could not be located ` +
+        `(trades endpoint empty/unavailable) - verification INCOMPLETE, investigate.`,
+    );
     process.exit(1);
   }
 
@@ -221,17 +225,47 @@ async function main(): Promise<void> {
     detail: `transferred=${sellTransfer} executed=${executedSell}`,
   });
 
-  // ---- 4) fee: collected now, arrives at the Safe on sweep ------------------
-  // executedProtocolFees lives on the TRADE row (backend model/trade.rs), not
-  // on the order metadata; keep the order-level read only as a fallback for
-  // orderbook versions that mirror it there.
+  // ---- 4) fee: validate the OPHIS partner fee SPECIFICALLY ------------------
+  // A positive protocol fee alone is not enough to greenlight: CoW's own
+  // price-improvement fee is a DIFFERENT policy, and the partner fee must be
+  // attributed to the frozen Ophis recipient. Verify BOTH:
+  //   (a) the order's appData pins partnerFee.recipient == the Ophis fee Safe,
+  //   (b) a VOLUME-policy protocol fee (that IS the partner fee) was executed.
   const tradeRow = trades?.find((t) => (t.txHash as string | undefined)?.toLowerCase() === txHash.toLowerCase()) ?? trades?.[0];
-  const protocolFees = ((tradeRow?.executedProtocolFees ?? order.executedProtocolFees ?? []) as { amount?: string; token?: string }[]);
-  const feeCollected = protocolFees.reduce((acc, f) => acc + BigInt(f.amount ?? '0'), 0n);
+
+  let feeRecipient = 'unknown';
+  try {
+    let fullAppData = order.fullAppData as string | undefined;
+    if (!fullAppData) {
+      const ad = (await fetchJson(`${chain.orderbook}/api/v1/app_data/${String(order.appData)}`)) as
+        | { fullAppData?: string }
+        | null;
+      fullAppData = ad?.fullAppData;
+    }
+    const parsed = fullAppData ? JSON.parse(fullAppData) : null;
+    const pf = parsed?.metadata?.partnerFee;
+    const rec = Array.isArray(pf) ? pf[0]?.recipient : pf?.recipient;
+    if (typeof rec === 'string') feeRecipient = rec;
+  } catch (e) {
+    console.warn('[fee] could not parse appData partnerFee:', (e as Error).message);
+  }
   checks.push({
-    name: 'partner fee collected (trade executedProtocolFees)',
-    pass: feeCollected > 0n,
-    detail: `total=${feeCollected} entries=${JSON.stringify(protocolFees)}`,
+    name: `appData partner fee pinned to ${PARTNER_FEE_SAFE}`,
+    pass: feeRecipient.toLowerCase() === PARTNER_FEE_SAFE.toLowerCase(),
+    detail: `appData partnerFee.recipient = ${feeRecipient}`,
+  });
+
+  // executedProtocolFees lives on the TRADE row (backend model/trade.rs); the
+  // order-level read is only a fallback. The partner fee is the VOLUME policy;
+  // a priceImprovement entry is CoW's, not ours, so it must NOT count.
+  type FeeEntry = { amount?: string; token?: string; policy?: Record<string, unknown> };
+  const protocolFees = (tradeRow?.executedProtocolFees ?? order.executedProtocolFees ?? []) as FeeEntry[];
+  const volumeFees = protocolFees.filter((f) => f.policy?.volume != null);
+  const partnerFeeCollected = volumeFees.reduce((acc, f) => acc + BigInt(f.amount ?? '0'), 0n);
+  checks.push({
+    name: 'partner (volume-policy) fee collected',
+    pass: partnerFeeCollected > 0n,
+    detail: `volume-fee total=${partnerFeeCollected}; all executedProtocolFees=${JSON.stringify(protocolFees)}`,
   });
 
   if (chain.sovereign) {
@@ -290,7 +324,14 @@ function report(chainName: string, uid: string, checks: CheckRow[]): void {
   }
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(e);
+  // Route the crash through Telegram too: an operator relying on the
+  // completion ping must not be left silent when verification aborts.
+  try {
+    await notify(`Trial watcher CRASHED before completing verification: ${(e as Error).message}`);
+  } catch {
+    /* best-effort */
+  }
   process.exit(2);
 });
