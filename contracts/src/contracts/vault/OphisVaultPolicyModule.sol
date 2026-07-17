@@ -176,7 +176,12 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     /// presign time, so the TTL bounds the window in which an adverse market
     /// move can be captured against a still-open order.
     uint256 internal constant MAX_TTL_CAP = 1 hours;
-    uint256 internal constant MAX_STALENESS_CAP = 1 days;
+    // 2 days: many production Chainlink feeds have a 24h heartbeat (e.g. every
+    // USD feed on Unichain), so a per-token maxStaleness must be able to sit at
+    // 24h + a buffer to avoid false-stale reverts on a slightly-late heartbeat.
+    // Deviation-driven updates keep feeds far fresher in practice; this is only
+    // the ceiling an operator may configure.
+    uint256 internal constant MAX_STALENESS_CAP = 2 days;
     uint256 internal constant MAX_SEQ_GRACE_CAP = 1 days;
     /// @dev Bounds `10 ** tokenDecimals` so a pathological high-decimal token
     /// cannot brick every rebalance (self-DoS); far above any real token.

@@ -664,7 +664,7 @@ contract OphisVaultPolicyModuleTest is Test {
         new OphisVaultPolicyModule(cfg);
 
         cfg = baseConfig();
-        cfg.tokens[0].maxStaleness = 1 days + 1; // over the staleness cap
+        cfg.tokens[0].maxStaleness = 2 days + 1; // over the staleness cap
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
         new OphisVaultPolicyModule(cfg);
 
