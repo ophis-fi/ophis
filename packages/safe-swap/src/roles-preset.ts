@@ -1,21 +1,23 @@
 /**
- * Zodiac Roles Modifier v2 presets for a vault-curator role.
+ * Zodiac Roles Modifier v2 preset for a vault-curator role — the PHASE-A
+ * (direct-presign) model only.
  *
- * TWO presets, for the TWO curator models. PICK ONE:
- *
- *  - `ophisVaultModuleRolesPreset({ module })` — **Phase B, RECOMMENDED.** For a
- *    vault that has enabled the on-chain `OphisVaultPolicyModule`. Scopes the
- *    curator to ONLY `module.rebalance` + `module.cancel` and denies raw
- *    approve / setPreSignature / enableModule / everything else. Because the
- *    module enforces receiver == vault + allowlist + oracle floor + fee
- *    ON-CHAIN, this preset gives the real "a compromised curator key cannot
- *    drain the vault" guarantee. Use this whenever the module is deployed.
- *
- *  - `ophisCuratorRolesPreset({ chainId, sellTokens })` — **Phase A, LEGACY.**
- *    For the direct-presign model (no policy module). Bounds the on-chain
- *    SURFACE only; a compromised curator CAN still drain (see its own
- *    !! SECURITY !! note). Use ONLY when no policy module is deployed, and
- *    treat the curator key as full vault custody.
+ * NOTE on the Phase-B policy module (`OphisVaultPolicyModule`): it does NOT use
+ * a Zodiac Roles preset. A Roles Modifier routes a role member's call THROUGH
+ * the Safe avatar (`avatar.execTransactionFromModule`), so the module would see
+ * `msg.sender == the Safe`, and the module both gates on `msg.sender == curator`
+ * and rejects `curator == the Safe` at construction — every Roles-routed call
+ * would revert `NotCurator`. Instead, the Phase-B curator is a DIRECT CALLER of
+ * the module: a dedicated EOA / MPC signer / multisig contract that calls
+ * `module.rebalance` / `module.cancel` directly and is NOT a Safe owner or an
+ * enabled Safe module. Its confinement is intrinsic: (1) the module enforces the
+ * full order policy on-chain, so even the curator can only produce policy-valid
+ * rebalances, and (2) with no owner/module rights it has no other way to touch
+ * the Safe. That combination — not a Roles preset — delivers "a compromised
+ * curator key cannot drain the vault." For multi-member / revocable access, use
+ * a multisig or governance contract as the curator. (This preset below is only
+ * for the Phase-A direct-presign model, where the curator DOES need Safe
+ * approve/presign rights and therefore benefits from Roles surface-bounding.)
  *
  * ---
  *
@@ -93,45 +95,6 @@ export function ophisCuratorRolesPreset(p: OphisCuratorRolesParams): PermissionS
       targetAddress: settlement,
       signature: 'setPreSignature(bytes,bool)',
     },
-  ];
-
-  return permissions as PermissionSet;
-}
-
-/** The full GPv2Order.Data tuple signature, as OphisVaultPolicyModule.rebalance takes it. */
-const REBALANCE_SIG =
-  'rebalance((address,address,address,uint256,uint256,uint32,bytes32,uint256,bytes32,bool,bytes32,bytes32),uint256)';
-const CANCEL_SIG = 'cancel(bytes)';
-
-export interface OphisVaultModuleRolesParams {
-  /** The deployed `OphisVaultPolicyModule` instance enabled on the vault Safe. */
-  module: Address;
-}
-
-/**
- * Phase-B preset: scope the curator role to EXACTLY the vault policy module's
- * `rebalance` + `cancel`, and nothing else. THIS is the preset that delivers the
- * "a compromised curator key cannot drain the vault" guarantee, because the
- * module enforces the full order policy (receiver == vault, token allowlist,
- * oracle floor, pinned Ophis fee, turnover cap) ON-CHAIN, and this preset denies
- * the curator every other target/selector — crucially raw `approve` /
- * `setPreSignature` on the Safe (which would let a compromised key presign a
- * drain order directly, bypassing the module) and `enableModule` /
- * `setFallbackHandler` / `setGuard` (which would let it swap the policy).
- *
- * No calldata conditions are needed: the module IS the policy, so the Roles
- * layer only has to confine the curator to the module's two entrypoints. The
- * Roles Modifier is default-DENY, so everything unlisted is rejected.
- *
- * Apply it to the curator role via the zodiac-roles-sdk apply flow. Needs
- * zodiac-roles-sdk (an OPTIONAL peer); imported via "@ophis/safe-swap/roles-preset".
- */
-export function ophisVaultModuleRolesPreset(p: OphisVaultModuleRolesParams): PermissionSet {
-  if (!p.module) throw new Error('ophisVaultModuleRolesPreset: module address is required');
-
-  const permissions = [
-    { targetAddress: p.module, signature: REBALANCE_SIG },
-    { targetAddress: p.module, signature: CANCEL_SIG },
   ];
 
   return permissions as PermissionSet;

@@ -86,8 +86,10 @@ Per-vault immutable module, minted by a minimal factory. Each instance binds at 
 - `safe` - the vault Safe the module is enabled on.
 - `settlement`, `relayer` - the chain's Ophis/CoW settlement + vault relayer (the same
   SDK-resolved addresses as Phase-A invariant 4; never a hardcoded canonical assumption).
-- `curator` - the only address allowed to call `rebalance()` (the Zodiac Roles Modifier, or
-  the curator key/contract).
+- `curator` - the only address allowed to call `rebalance()` / `cancel()`: a dedicated
+  DIRECT-CALLER key/contract (EOA / MPC signer / multisig), not a Safe owner, not an enabled
+  Safe module, and NOT routed through a Zodiac Roles Modifier (Roles executes via the Safe
+  avatar, so the module would see `msg.sender == the Safe` and reject it).
 - policy config - the token allowlist and the Chainlink feed registry (see Oracle).
 
 The factory asserts, at deploy, that `curator` is NOT one of `safe.getOwners()` (see the
@@ -212,14 +214,20 @@ counterexamples) + fork drain-proof (B4, 3/3 on OP/Unichain/Base) both green.
 A fresh Codex pass on the merged PR surfaced three more actionable items, all
 applied:
 
-- **Phase-B Roles preset added (P1).** The design assumed a Roles preset scoping
-  the curator to only `module.rebalance`/`cancel`, but only the permissive
-  Phase-A preset existed - a deployment following it would let a compromised
-  curator bypass the module and presign directly. Added
-  `ophisVaultModuleRolesPreset({ module })` to `packages/safe-swap/src/roles-preset.ts`
-  (scopes exactly `rebalance` + `cancel` on the module, denies raw
-  approve/setPreSignature/enableModule; no calldata conditions - the module IS
-  the policy) + tests. This is the preset that actually delivers the guarantee.
+- **Phase-B curator model corrected: DIRECT CALLER, not Zodiac Roles (P1, x2).**
+  The design (and a first follow-up) assumed the curator would be Roles-scoped to
+  `module.rebalance`/`cancel`. A second Codex pass showed that is architecturally
+  broken: a Zodiac Roles Modifier executes via `avatar.execTransactionFromModule`,
+  so the module sees `msg.sender == the Safe`, which it gates against
+  (`msg.sender == curator`) and rejects at construction (`curator != safe`) -
+  every Roles-routed call reverts `NotCurator`. Correct model: the curator is a
+  DIRECT CALLER (a dedicated EOA / MPC signer / multisig contract) that calls the
+  module and nothing else, is not a Safe owner or enabled module, and is confined
+  intrinsically (the module enforces policy on-chain; the curator has no other
+  Safe rights). Removed the broken `ophisVaultModuleRolesPreset`; documented the
+  direct-caller model in the module NatSpec + `roles-preset.ts`. The Phase-A
+  Roles preset stays for the direct-presign (no-module) model, where the curator
+  DOES need Safe approve/presign rights.
 - **cancel no longer starves a live successor's allowance (P2).** Added
   `liveAllowanceUid[token]`; `cancel` zeroes the relayer allowance ONLY when the
   cancelled order still owns it (was the most-recent rebalance for its token), so
@@ -281,12 +289,14 @@ Modeled on the CoW-audited `composable-cow/src/types/StopLoss.sol`:
 
 - `curator` calls `rebalance`. Even if the curator is compromised, it can trigger ONLY
   policy-valid orders, so it cannot drain (receiver pinned to `safe`, `buyAmount >= floor`).
-- OPERATIONAL INVARIANT (the guarantee depends on it): the curator key MUST NOT be a Safe
-  owner, and MUST be scoped (via the Phase-B Zodiac Roles preset) to call ONLY
-  `module.rebalance` - never raw `setPreSignature` / `approve` on the Safe, and never
-  `enableModule` / `disableModule` / `setFallbackHandler` / `setGuard`. If the curator is an
-  owner or can call any of those, the module is bypassable and the guarantee is void. Enforced
-  by a factory deploy-time check (`curator not in safe.getOwners()`) plus the Roles preset.
+- OPERATIONAL INVARIANT (the guarantee depends on it): the curator is a DIRECT CALLER of the
+  module (EOA / MPC / multisig) and MUST NOT be a Safe owner NOR an enabled Safe module, so it
+  can only ever call `module.rebalance` / `cancel` - never raw `setPreSignature` / `approve`
+  on the Safe, and never `enableModule` / `setFallbackHandler` / `setGuard`. If the curator is
+  an owner or an enabled module, it could bypass the policy gate and the guarantee is void.
+  Enforced by a factory + constructor deploy-time check (`curator not in safe.getOwners()`);
+  keeping it un-moduled over time is the owners' responsibility. Do NOT route the curator
+  through a Zodiac Roles Modifier (avatar routing makes `msg.sender == the Safe`, rejected).
 - The vault OWNER multisig (guardian / timelock) retains full authority (it can disable the
   module or rotate config). That is expected: owners are the vault's ultimate custody; Phase B
   constrains the CURATOR, not the owners.
@@ -301,7 +311,7 @@ Modeled on the CoW-audited `composable-cow/src/types/StopLoss.sol`:
 | B0 | CRITICAL | `order.receiver == safe` - no foreign receiver can be presigned | `rebalance` check 2; fork drain-proof |
 | B1 | CRITICAL | `order.buyAmount >= oracleFloor` (and `>= minBuyOverride >= oracleFloor`) | `rebalance` check 6 + Chainlink floor; fuzz invariant |
 | B2 | CRITICAL | only `rebalance` mutates; no arbitrary `execTransactionFromModule` is reachable | module has no other entrypoint; unit selector-sweep + fuzz |
-| B3 | CRITICAL | curator is not a Safe owner and is Roles-scoped to only `module.rebalance` | factory deploy check + Phase-B Roles preset; fork test |
+| B3 | CRITICAL | curator is a direct caller, not a Safe owner or enabled module (so it can only reach `module.rebalance`/`cancel`) | factory + constructor `curator not in getOwners()`; fork test |
 | B4 | HIGH | `sellToken`/`buyToken` in allowlist; `feeAmount == 0`; `appData == OPHIS_APPDATA_HASH` | checks 1, 3, 7 |
 | B5 | HIGH | approve is EXACT to `relayer`, never MaxUint, USDT-safe reset | module approve; unit test |
 | B6 | HIGH | uid uses `settlement.domainSeparator()` (SDK-resolved settlement, per chain) | `order.hash`; golden vectors vs safe-swap TS `computeOrderUid` |

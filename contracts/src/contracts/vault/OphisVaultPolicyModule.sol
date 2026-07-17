@@ -64,14 +64,17 @@ import {
 ///     allowlisted - the floor is computed on the gross sellAmount, which such
 ///     tokens do not deliver in full. Owners choose the allowlist at deploy.
 ///
-/// OPERATIONAL INVARIANT (the guarantee depends on it): the curator MUST NOT
-/// be a Safe owner and MUST NOT be able to call the Safe directly (scope it via
-/// a Zodiac Roles Modifier to `rebalance`/`cancel` on this module only, and do
-/// not enable the curator as its own Safe module). Both the factory AND this
-/// constructor reject a curator that is a current Safe owner; keeping it true
-/// over time (no owner-set / module-enable drift) is the vault owners'
-/// responsibility. Safe OWNERS retain full custody and can always disable the
-/// module - Phase B constrains the CURATOR, not the owners.
+/// OPERATIONAL INVARIANT (the guarantee depends on it): the `curator` is a
+/// DIRECT CALLER of this module - a dedicated EOA / MPC signer / multisig
+/// contract that calls `rebalance` / `cancel` and NOTHING ELSE. It MUST NOT be
+/// a Safe owner and MUST NOT be an enabled Safe module, so it has no way to
+/// touch the Safe except through this module's policy gate. Both the factory
+/// AND this constructor reject a curator that is a current Safe owner; keeping
+/// it un-ownered / un-moduled over time is the vault owners' responsibility.
+/// Do NOT route the curator through a Zodiac Roles Modifier: Roles executes via
+/// `avatar.execTransactionFromModule`, so the module would see `msg.sender ==
+/// the Safe` (rejected here). Safe OWNERS retain full custody and can always
+/// disable the module - Phase B constrains the CURATOR, not the owners.
 contract OphisVaultPolicyModule is ReentrancyGuard {
     using GPv2Order for GPv2Order.Data;
 
