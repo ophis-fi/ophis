@@ -164,6 +164,10 @@ async function main(): Promise<void> {
   });
   if (!txHash) {
     report(chain.name, uid, checks);
+    await notify(
+      `Trial order ${uid.slice(0, 18)}... on ${chain.name}: FULFILLED but the settlement tx could not be located ` +
+        `(trades endpoint empty/unavailable) - verification INCOMPLETE, investigate.`,
+    );
     process.exit(1);
   }
 
@@ -221,17 +225,69 @@ async function main(): Promise<void> {
     detail: `transferred=${sellTransfer} executed=${executedSell}`,
   });
 
-  // ---- 4) fee: collected now, arrives at the Safe on sweep ------------------
-  // executedProtocolFees lives on the TRADE row (backend model/trade.rs), not
-  // on the order metadata; keep the order-level read only as a fallback for
-  // orderbook versions that mirror it there.
+  // ---- 4) fee: validate the OPHIS partner fee SPECIFICALLY ------------------
+  // A positive protocol fee alone is not enough to greenlight: CoW's own
+  // price-improvement fee is a DIFFERENT policy, and the partner fee must be
+  // attributed to the frozen Ophis recipient. Verify BOTH:
+  //   (a) the order's appData pins partnerFee.recipient == the Ophis fee Safe,
+  //   (b) a VOLUME-policy protocol fee (that IS the partner fee) was executed.
   const tradeRow = trades?.find((t) => (t.txHash as string | undefined)?.toLowerCase() === txHash.toLowerCase()) ?? trades?.[0];
-  const protocolFees = ((tradeRow?.executedProtocolFees ?? order.executedProtocolFees ?? []) as { amount?: string; token?: string }[]);
-  const feeCollected = protocolFees.reduce((acc, f) => acc + BigInt(f.amount ?? '0'), 0n);
+
+  // Find the OPHIS partnerFee entry in appData. An order may STACK fees (an
+  // integrator entry before ours), so search EVERY entry for our recipient
+  // rather than assuming index 0, and read its volume bps to correlate with
+  // the executed fee below.
+  type PartnerFee = { recipient?: string; volumeBps?: number; bps?: number };
+  let ophisPartnerFee: PartnerFee | undefined;
+  try {
+    let fullAppData = order.fullAppData as string | undefined;
+    if (!fullAppData) {
+      const ad = (await fetchJson(`${chain.orderbook}/api/v1/app_data/${String(order.appData)}`)) as
+        | { fullAppData?: string }
+        | null;
+      fullAppData = ad?.fullAppData;
+    }
+    const parsed = fullAppData ? JSON.parse(fullAppData) : null;
+    const pf = parsed?.metadata?.partnerFee;
+    const entries: PartnerFee[] = Array.isArray(pf) ? pf : pf ? [pf] : [];
+    ophisPartnerFee = entries.find(
+      (e) => typeof e?.recipient === 'string' && e.recipient.toLowerCase() === PARTNER_FEE_SAFE.toLowerCase(),
+    );
+  } catch (e) {
+    console.warn('[fee] could not parse appData partnerFee:', (e as Error).message);
+  }
+  const ophisBps = ophisPartnerFee ? Number(ophisPartnerFee.volumeBps ?? ophisPartnerFee.bps ?? 0) : 0;
   checks.push({
-    name: 'partner fee collected (trade executedProtocolFees)',
-    pass: feeCollected > 0n,
-    detail: `total=${feeCollected} entries=${JSON.stringify(protocolFees)}`,
+    name: `appData partner fee pinned to ${PARTNER_FEE_SAFE} (positive volume bps)`,
+    pass: Boolean(ophisPartnerFee) && ophisBps > 0,
+    detail: `ophis partnerFee entry = ${JSON.stringify(ophisPartnerFee ?? null)}`,
+  });
+
+  // Correlate the EXECUTED fee to the Ophis entry. executedProtocolFees (on the
+  // trade row; the order-level read is a fallback) carries NO recipient, so a
+  // bare "some volume fee > 0" could be another recipient's on a stacked-fee
+  // order. Require a volume-policy entry whose factor matches the Ophis bps
+  // (bps/1e4) with a positive amount. Residual: two recipients at the identical
+  // bps are indistinguishable from this data alone (fine for our own trial,
+  // which carries only the Ophis fee).
+  type FeeEntry = { amount?: string; token?: string; policy?: { volume?: { factor?: number } } };
+  const protocolFees = (tradeRow?.executedProtocolFees ?? order.executedProtocolFees ?? []) as FeeEntry[];
+  const expectedFactor = ophisBps / 1e4;
+  const ophisVolumeFee =
+    ophisBps > 0
+      ? protocolFees.find(
+          (f) =>
+            f.policy?.volume?.factor != null &&
+            Math.abs(Number(f.policy.volume.factor) - expectedFactor) < 1e-9 &&
+            BigInt(f.amount ?? '0') > 0n,
+        )
+      : undefined;
+  checks.push({
+    name: 'Ophis volume fee executed (factor-matched to appData)',
+    pass: Boolean(ophisVolumeFee),
+    detail: ophisVolumeFee
+      ? `matched executed volume fee: ${JSON.stringify(ophisVolumeFee)}`
+      : `no executed volume fee with factor ${expectedFactor}; all=${JSON.stringify(protocolFees)}`,
   });
 
   if (chain.sovereign) {
@@ -290,7 +346,14 @@ function report(chainName: string, uid: string, checks: CheckRow[]): void {
   }
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(e);
+  // Route the crash through Telegram too: an operator relying on the
+  // completion ping must not be left silent when verification aborts.
+  try {
+    await notify(`Trial watcher CRASHED before completing verification: ${(e as Error).message}`);
+  } catch {
+    /* best-effort */
+  }
   process.exit(2);
 });
