@@ -19,15 +19,21 @@ import {
 /// out, pinned Ophis fee appData, rolling USD turnover cap, L2-sequencer-aware
 /// oracle reads) BEFORE any presignature can exist. A compromised curator key
 /// can therefore only ever trigger policy-valid rebalances - it cannot drain
-/// the vault, and its worst-case damage is bounded:
+/// the vault, and its worst-case damage is bounded.
 ///
-///   loss over any rolling 24h <= ~dailyUsdTurnoverCap * (maxSlippageBps/1e4
-///                                + fees + intra-TTL market drift)
-///
-/// The turnover accountant is a LEAKY BUCKET (drains at the cap per day) rather
-/// than a calendar bucket, so there is no UTC-midnight cliff to straddle: the
-/// instantaneous burst is bounded to the cap and the sustained rate to the cap
-/// per rolling day.
+/// The turnover accountant is a LEAKY BUCKET (capacity `dailyUsdTurnoverCap`,
+/// drains at the cap per day), NOT a strict sliding window. Its guarantees:
+///   - INSTANTANEOUS burst is bounded to `dailyUsdTurnoverCap` (there is no
+///     calendar cliff to straddle, unlike a fixed UTC-day bucket);
+///   - over any ROLLING 24h it admits at most ~2x the cap (spend the full cap,
+///     then re-spend it as the bucket drips back over the next 24h). This is
+///     the inherent burst allowance of any O(1) rate limiter.
+/// SIZE THE CAP ACCORDINGLY: set `dailyUsdTurnoverCap` to <= HALF your true
+/// 24h loss tolerance, so worst-case bleed over any rolling 24h stays within
+/// ~cap * 2 * (maxSlippageBps/1e4 + fees + intra-TTL drift). A strict
+/// sliding-window bound would need O(k) storage and is deliberately not taken
+/// for this defense-in-depth control (every order still clears the oracle
+/// floor + receiver pin, so this bounds slippage bleed, not a drain).
 ///
 /// The module's ONLY state-changing entrypoints are `rebalance` (policy-gated
 /// presign) and `cancel` (strictly risk-reducing: it can only REMOVE a
@@ -58,14 +64,17 @@ import {
 ///     allowlisted - the floor is computed on the gross sellAmount, which such
 ///     tokens do not deliver in full. Owners choose the allowlist at deploy.
 ///
-/// OPERATIONAL INVARIANT (the guarantee depends on it): the curator MUST NOT
-/// be a Safe owner and MUST NOT be able to call the Safe directly (scope it via
-/// a Zodiac Roles Modifier to `rebalance`/`cancel` on this module only, and do
-/// not enable the curator as its own Safe module). Both the factory AND this
-/// constructor reject a curator that is a current Safe owner; keeping it true
-/// over time (no owner-set / module-enable drift) is the vault owners'
-/// responsibility. Safe OWNERS retain full custody and can always disable the
-/// module - Phase B constrains the CURATOR, not the owners.
+/// OPERATIONAL INVARIANT (the guarantee depends on it): the `curator` is a
+/// DIRECT CALLER of this module - a dedicated EOA / MPC signer / multisig
+/// contract that calls `rebalance` / `cancel` and NOTHING ELSE. It MUST NOT be
+/// a Safe owner and MUST NOT be an enabled Safe module, so it has no way to
+/// touch the Safe except through this module's policy gate. Both the factory
+/// AND this constructor reject a curator that is a current Safe owner; keeping
+/// it un-ownered / un-moduled over time is the vault owners' responsibility.
+/// Do NOT route the curator through a Zodiac Roles Modifier: Roles executes via
+/// `avatar.execTransactionFromModule`, so the module would see `msg.sender ==
+/// the Safe` (rejected here). Safe OWNERS retain full custody and can always
+/// disable the module - Phase B constrains the CURATOR, not the owners.
 contract OphisVaultPolicyModule is ReentrancyGuard {
     using GPv2Order for GPv2Order.Data;
 
@@ -140,9 +149,14 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     mapping(address => TokenPolicy) public tokenPolicy;
     /// @notice keccak256(orderUid) => the order's sell token (address(0) = not
     /// created by this module). `cancel` only accepts uids recorded here, so a
-    /// curator cannot cancel presignatures created outside this module, and it
-    /// uses the recorded token to zero that order's relayer allowance.
+    /// curator cannot cancel presignatures created outside this module.
     mapping(bytes32 => address) public moduleOrderSellToken;
+    /// @notice sellToken => keccak256(orderUid) of the order that CURRENTLY owns
+    /// the relayer allowance for that token (the most-recent rebalance, since
+    /// `_approveAndPresign` resets the allowance to exact each time). `cancel`
+    /// zeroes the allowance ONLY when the cancelled order still owns it, so
+    /// cancelling a superseded order cannot starve a live successor's allowance.
+    mapping(address => bytes32) public liveAllowanceUid;
     /// @notice Leaky-bucket accumulator of sell-side USD turnover (18-dec),
     /// drained at `dailyUsdTurnoverCap` per day since `lastTurnoverTs`.
     uint256 public turnoverSpentUsd;
@@ -299,7 +313,11 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         );
         _recordTurnover(orderUsd);
         orderUid = _deriveUid(order);
-        moduleOrderSellToken[keccak256(orderUid)] = address(order.sellToken);
+        bytes32 key = keccak256(orderUid);
+        moduleOrderSellToken[key] = address(order.sellToken);
+        // This order now owns the token's relayer allowance (it is about to be
+        // reset to exact below), superseding any prior same-token order.
+        liveAllowanceUid[address(order.sellToken)] = key;
         _approveAndPresign(order, orderUid);
 
         emit Rebalanced(
@@ -312,13 +330,16 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         );
     }
 
-    /// @notice Revokes a presignature THIS MODULE created and zeroes its
-    /// relayer allowance. Strictly risk-reducing: it can only ever REMOVE the
-    /// settlement's permission to fill an order and shrink an approval, so it
-    /// is safe to expose to the curator (e.g. the market moved and a still-open
-    /// order no longer reflects fair value). Uids not recorded by `rebalance`
-    /// are refused, so the curator cannot cancel presignatures created outside
-    /// this module.
+    /// @notice Revokes a presignature THIS MODULE created and, IF this order
+    /// still owns its token's relayer allowance, zeroes that allowance.
+    /// Strictly risk-reducing: it can only ever REMOVE the settlement's
+    /// permission to fill an order and shrink an approval, so it is safe to
+    /// expose to the curator (e.g. the market moved and a still-open order no
+    /// longer reflects fair value). Uids not recorded by `rebalance` are
+    /// refused, so the curator cannot cancel presignatures created outside this
+    /// module. Cancelling a SUPERSEDED same-token order does NOT touch the
+    /// live successor's allowance (the ERC20 allowance is shared per token, so
+    /// blindly zeroing it would starve the successor).
     function cancel(bytes calldata orderUid) external nonReentrant {
         if (msg.sender != curator) revert NotCurator();
         bytes32 key = keccak256(orderUid);
@@ -334,10 +355,15 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
                 false
             )
         );
-        // Zero the relayer allowance this order left standing (hygiene: keep
-        // the approval lifecycle coupled to the presignature lifecycle).
-        if (IERC20(sellToken).allowance(address(safe), relayer) != 0) {
-            _safeApprove(sellToken, 0);
+        // Only zero the relayer allowance when THIS order still owns it (it was
+        // the most-recent rebalance for its token). If a later same-token order
+        // superseded it, that successor owns the live allowance and must keep
+        // it.
+        if (liveAllowanceUid[sellToken] == key) {
+            delete liveAllowanceUid[sellToken];
+            if (IERC20(sellToken).allowance(address(safe), relayer) != 0) {
+                _safeApprove(sellToken, 0);
+            }
         }
         emit Cancelled(orderUid);
     }
@@ -432,10 +458,11 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     }
 
     /// @dev Leaky-bucket turnover accounting: the accumulator drains at
-    /// `dailyUsdTurnoverCap` per day since the last accrual, so the sustained
-    /// sell rate cannot exceed the cap over any rolling 24h and the
-    /// instantaneous burst is bounded to the cap - there is no calendar
-    /// boundary a compromised curator can straddle to double the bound.
+    /// `dailyUsdTurnoverCap` per day since the last accrual. This bounds the
+    /// INSTANTANEOUS burst to the cap (no calendar cliff to straddle) and any
+    /// rolling 24h to at most ~2x the cap (the standard token-bucket burst
+    /// allowance). Size the cap to <= half the true 24h tolerance; see the
+    /// contract NatSpec.
     function _recordTurnover(uint256 orderUsd) internal {
         uint256 nowTs = block.timestamp;
         uint256 elapsed = nowTs - lastTurnoverTs;

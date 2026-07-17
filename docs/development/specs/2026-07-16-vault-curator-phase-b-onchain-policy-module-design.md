@@ -86,8 +86,10 @@ Per-vault immutable module, minted by a minimal factory. Each instance binds at 
 - `safe` - the vault Safe the module is enabled on.
 - `settlement`, `relayer` - the chain's Ophis/CoW settlement + vault relayer (the same
   SDK-resolved addresses as Phase-A invariant 4; never a hardcoded canonical assumption).
-- `curator` - the only address allowed to call `rebalance()` (the Zodiac Roles Modifier, or
-  the curator key/contract).
+- `curator` - the only address allowed to call `rebalance()` / `cancel()`: a dedicated
+  DIRECT-CALLER key/contract (EOA / MPC signer / multisig), not a Safe owner, not an enabled
+  Safe module, and NOT routed through a Zodiac Roles Modifier (Roles executes via the Safe
+  avatar, so the module would see `msg.sender == the Safe` and reject it).
 - policy config - the token allowlist and the Chainlink feed registry (see Oracle).
 
 The factory asserts, at deploy, that `curator` is NOT one of `safe.getOwners()` (see the
@@ -161,7 +163,7 @@ Additional invariants (continue the table above):
 
 | # | Sev | Invariant | Enforced by |
 |---|-----|-----------|-------------|
-| B10 | CRITICAL | Sell-side USD turnover never exceeds `dailyUsdTurnoverCap` over any rolling 24h (churn bound; leaky bucket, no calendar cliff) | `_recordTurnover`; unit tests (single>cap reverts / rolling-window bound / partial-leak refill) |
+| B10 | CRITICAL | Sell-side USD turnover: instantaneous burst <= `dailyUsdTurnoverCap`; any rolling 24h <= ~2x cap (token-bucket burst allowance, no calendar cliff). Operators size the cap to <= half their 24h tolerance. | `_recordTurnover`; unit tests (single>cap reverts / rolling-window bound / partial-leak refill) |
 | B11 | HIGH | No oracle price is trusted while the L2 sequencer is down, in an invalid (`startedAt==0`) round, or within the post-recovery grace period | `_checkSequencer`; unit tests (down / startedAt==0 / in-grace / after-grace) |
 | B12 | MEDIUM | `cancel` only unsets presignatures this module created, and zeroes their relayer allowance | `moduleOrderSellToken` recording; unit test proves owner-created presignature untouched + allowance zeroed |
 | B13 | HIGH | A truncated-to-zero oracle floor fails closed regardless of `minBuyOverride` | `_enforcePolicy` `ZeroOracleFloor`; unit test (exotic 2-dec buy token + override=1) |
@@ -204,8 +206,38 @@ fill-time floor (Phase-C EIP-1271), shared-token relayer allowances across
 concurrent venues/modules (operational: disable the old module + expire its
 orders before migrating), and fee-on-transfer/rebasing token exclusion (owner
 allowlist responsibility). Post-hardening: 38 vault tests, full suite 300/300,
-semgrep 0 security findings. Remaining B-gates: fizz invariant campaign (B2) +
-fork drain-proof (B4).
+semgrep 0 security findings. Then: fizz invariant campaign (B2, 3 engines, 0
+counterexamples) + fork drain-proof (B4, 3/3 on OP/Unichain/Base) both green.
+
+### Post-merge Codex follow-up (2026-07-17)
+
+A fresh Codex pass on the merged PR surfaced three more actionable items, all
+applied:
+
+- **Phase-B curator model corrected: DIRECT CALLER, not Zodiac Roles (P1, x2).**
+  The design (and a first follow-up) assumed the curator would be Roles-scoped to
+  `module.rebalance`/`cancel`. A second Codex pass showed that is architecturally
+  broken: a Zodiac Roles Modifier executes via `avatar.execTransactionFromModule`,
+  so the module sees `msg.sender == the Safe`, which it gates against
+  (`msg.sender == curator`) and rejects at construction (`curator != safe`) -
+  every Roles-routed call reverts `NotCurator`. Correct model: the curator is a
+  DIRECT CALLER (a dedicated EOA / MPC signer / multisig contract) that calls the
+  module and nothing else, is not a Safe owner or enabled module, and is confined
+  intrinsically (the module enforces policy on-chain; the curator has no other
+  Safe rights). Removed the broken `ophisVaultModuleRolesPreset`; documented the
+  direct-caller model in the module NatSpec + `roles-preset.ts`. The Phase-A
+  Roles preset stays for the direct-presign (no-module) model, where the curator
+  DOES need Safe approve/presign rights.
+- **cancel no longer starves a live successor's allowance (P2).** Added
+  `liveAllowanceUid[token]`; `cancel` zeroes the relayer allowance ONLY when the
+  cancelled order still owns it (was the most-recent rebalance for its token), so
+  cancelling a superseded same-token order cannot starve the live order.
+- **Turnover guarantee stated honestly (P1).** The leaky bucket is a token
+  bucket, so any rolling 24h admits up to ~2x cap (not a strict rolling cap).
+  B10 + the module NatSpec now state this and instruct operators to size the cap
+  to <= half their 24h tolerance. Not tightened to a strict sliding window
+  (O(k) storage) because this is a defense-in-depth slippage bound, not drain
+  prevention.
 
 Validates (revert on ANY failure), then acts:
 
@@ -257,12 +289,14 @@ Modeled on the CoW-audited `composable-cow/src/types/StopLoss.sol`:
 
 - `curator` calls `rebalance`. Even if the curator is compromised, it can trigger ONLY
   policy-valid orders, so it cannot drain (receiver pinned to `safe`, `buyAmount >= floor`).
-- OPERATIONAL INVARIANT (the guarantee depends on it): the curator key MUST NOT be a Safe
-  owner, and MUST be scoped (via the Phase-B Zodiac Roles preset) to call ONLY
-  `module.rebalance` - never raw `setPreSignature` / `approve` on the Safe, and never
-  `enableModule` / `disableModule` / `setFallbackHandler` / `setGuard`. If the curator is an
-  owner or can call any of those, the module is bypassable and the guarantee is void. Enforced
-  by a factory deploy-time check (`curator not in safe.getOwners()`) plus the Roles preset.
+- OPERATIONAL INVARIANT (the guarantee depends on it): the curator is a DIRECT CALLER of the
+  module (EOA / MPC / multisig) and MUST NOT be a Safe owner NOR an enabled Safe module, so it
+  can only ever call `module.rebalance` / `cancel` - never raw `setPreSignature` / `approve`
+  on the Safe, and never `enableModule` / `setFallbackHandler` / `setGuard`. If the curator is
+  an owner or an enabled module, it could bypass the policy gate and the guarantee is void.
+  Enforced by a factory + constructor deploy-time check (`curator not in safe.getOwners()`);
+  keeping it un-moduled over time is the owners' responsibility. Do NOT route the curator
+  through a Zodiac Roles Modifier (avatar routing makes `msg.sender == the Safe`, rejected).
 - The vault OWNER multisig (guardian / timelock) retains full authority (it can disable the
   module or rotate config). That is expected: owners are the vault's ultimate custody; Phase B
   constrains the CURATOR, not the owners.
@@ -277,7 +311,7 @@ Modeled on the CoW-audited `composable-cow/src/types/StopLoss.sol`:
 | B0 | CRITICAL | `order.receiver == safe` - no foreign receiver can be presigned | `rebalance` check 2; fork drain-proof |
 | B1 | CRITICAL | `order.buyAmount >= oracleFloor` (and `>= minBuyOverride >= oracleFloor`) | `rebalance` check 6 + Chainlink floor; fuzz invariant |
 | B2 | CRITICAL | only `rebalance` mutates; no arbitrary `execTransactionFromModule` is reachable | module has no other entrypoint; unit selector-sweep + fuzz |
-| B3 | CRITICAL | curator is not a Safe owner and is Roles-scoped to only `module.rebalance` | factory deploy check + Phase-B Roles preset; fork test |
+| B3 | CRITICAL | curator is a direct caller, not a Safe owner or enabled module (so it can only reach `module.rebalance`/`cancel`) | factory + constructor `curator not in getOwners()`; fork test |
 | B4 | HIGH | `sellToken`/`buyToken` in allowlist; `feeAmount == 0`; `appData == OPHIS_APPDATA_HASH` | checks 1, 3, 7 |
 | B5 | HIGH | approve is EXACT to `relayer`, never MaxUint, USDT-safe reset | module approve; unit test |
 | B6 | HIGH | uid uses `settlement.domainSeparator()` (SDK-resolved settlement, per chain) | `order.hash`; golden vectors vs safe-swap TS `computeOrderUid` |

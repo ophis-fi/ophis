@@ -1,5 +1,27 @@
 /**
- * Zodiac Roles Modifier v2 preset for a vault-curator role (M3).
+ * Zodiac Roles Modifier v2 preset for a vault-curator role — the PHASE-A
+ * (direct-presign) model only.
+ *
+ * NOTE on the Phase-B policy module (`OphisVaultPolicyModule`): it does NOT use
+ * a Zodiac Roles preset. A Roles Modifier routes a role member's call THROUGH
+ * the Safe avatar (`avatar.execTransactionFromModule`), so the module would see
+ * `msg.sender == the Safe`, and the module both gates on `msg.sender == curator`
+ * and rejects `curator == the Safe` at construction — every Roles-routed call
+ * would revert `NotCurator`. Instead, the Phase-B curator is a DIRECT CALLER of
+ * the module: a dedicated EOA / MPC signer / multisig contract that calls
+ * `module.rebalance` / `module.cancel` directly and is NOT a Safe owner or an
+ * enabled Safe module. Its confinement is intrinsic: (1) the module enforces the
+ * full order policy on-chain, so even the curator can only produce policy-valid
+ * rebalances, and (2) with no owner/module rights it has no other way to touch
+ * the Safe. That combination — not a Roles preset — delivers "a compromised
+ * curator key cannot drain the vault." For multi-member / revocable access, use
+ * a multisig or governance contract as the curator. (This preset below is only
+ * for the Phase-A direct-presign model, where the curator DOES need Safe
+ * approve/presign rights and therefore benefits from Roles surface-bounding.)
+ *
+ * ---
+ *
+ * Phase-A preset detail (M3).
  *
  * A curator that drives rebalances through a Zodiac Roles Modifier (rather than an
  * MPC owner key, see ./exec-safe) should scope the curator ROLE to EXACTLY the two
