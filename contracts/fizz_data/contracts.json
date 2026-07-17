@@ -1,0 +1,482 @@
+[
+  {
+    "name": "AllowListGuardian",
+    "sourcePath": "src/contracts/AllowListGuardian.sol",
+    "artifactPath": "out/AllowListGuardian.sol/AllowListGuardian.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "authenticator_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "timelock_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "guardian_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "addSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "removeSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setGuardian",
+        "inputs": [
+          {
+            "name": "newGuardian",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setManager",
+        "inputs": [
+          {
+            "name": "newManager",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "GPv2AllowListAuthentication",
+    "sourcePath": "src/contracts/GPv2AllowListAuthentication.sol",
+    "artifactPath": "out/GPv2AllowListAuthentication.sol/GPv2AllowListAuthentication.json",
+    "constructor": {
+      "inputs": [],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "acceptManagership",
+        "inputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "addSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "cancelManagerTransfer",
+        "inputs": [],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "initializeManager",
+        "inputs": [
+          {
+            "name": "manager_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "proposeManager",
+        "inputs": [
+          {
+            "name": "manager_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "removeSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setManager",
+        "inputs": [
+          {
+            "name": "manager_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "simulateDelegatecall",
+        "inputs": [
+          {
+            "name": "targetContract",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "calldataPayload",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "simulateDelegatecallInternal",
+        "inputs": [
+          {
+            "name": "targetContract",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "calldataPayload",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "GPv2Settlement",
+    "sourcePath": "src/contracts/GPv2Settlement.sol",
+    "artifactPath": "out/GPv2Settlement.sol/GPv2Settlement.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "authenticator_",
+          "type": "contract",
+          "internalType": "GPv2Authentication"
+        },
+        {
+          "name": "vault_",
+          "type": "contract",
+          "internalType": "IVault"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "freeFilledAmountStorage",
+        "inputs": [
+          {
+            "name": "orderUids",
+            "type": "array",
+            "internalType": "bytes[]"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "freePreSignatureStorage",
+        "inputs": [
+          {
+            "name": "orderUids",
+            "type": "array",
+            "internalType": "bytes[]"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "invalidateOrder",
+        "inputs": [
+          {
+            "name": "orderUid",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setPreSignature",
+        "inputs": [
+          {
+            "name": "orderUid",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "signed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "settle",
+        "inputs": [
+          {
+            "name": "tokens",
+            "type": "contract",
+            "internalType": "IERC20[]"
+          },
+          {
+            "name": "clearingPrices",
+            "type": "array",
+            "internalType": "uint256[]"
+          },
+          {
+            "name": "trades",
+            "type": "array",
+            "internalType": "GPv2Trade.Data[]"
+          },
+          {
+            "name": "interactions",
+            "type": "array",
+            "internalType": "GPv2Interaction.Data[][3]"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "simulateDelegatecall",
+        "inputs": [
+          {
+            "name": "targetContract",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "calldataPayload",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "simulateDelegatecallInternal",
+        "inputs": [
+          {
+            "name": "targetContract",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "calldataPayload",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "swap",
+        "inputs": [
+          {
+            "name": "swaps",
+            "type": "array",
+            "internalType": "IVault.BatchSwapStep[]"
+          },
+          {
+            "name": "tokens",
+            "type": "contract",
+            "internalType": "IERC20[]"
+          },
+          {
+            "name": "trade",
+            "type": "tuple",
+            "internalType": "GPv2Trade.Data"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": true,
+    "hasFallback": false
+  },
+  {
+    "name": "GPv2VaultRelayer",
+    "sourcePath": "src/contracts/GPv2VaultRelayer.sol",
+    "artifactPath": "out/GPv2VaultRelayer.sol/GPv2VaultRelayer.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "vault_",
+          "type": "contract",
+          "internalType": "IVault"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "batchSwapWithFee",
+        "inputs": [
+          {
+            "name": "kind",
+            "type": "enum",
+            "internalType": "IVault.SwapKind"
+          },
+          {
+            "name": "swaps",
+            "type": "array",
+            "internalType": "IVault.BatchSwapStep[]"
+          },
+          {
+            "name": "tokens",
+            "type": "contract",
+            "internalType": "IERC20[]"
+          },
+          {
+            "name": "funds",
+            "type": "tuple",
+            "internalType": "IVault.FundManagement"
+          },
+          {
+            "name": "limits",
+            "type": "array",
+            "internalType": "int256[]"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "feeTransfer",
+            "type": "tuple",
+            "internalType": "GPv2Transfer.Data"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "transferFromAccounts",
+        "inputs": [
+          {
+            "name": "transfers",
+            "type": "array",
+            "internalType": "GPv2Transfer.Data[]"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "GPv2Signing",
+    "sourcePath": "src/contracts/mixins/GPv2Signing.sol",
+    "artifactPath": "out/GPv2Signing.sol/GPv2Signing.json",
+    "constructor": {
+      "inputs": [],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "setPreSignature",
+        "inputs": [
+          {
+            "name": "orderUid",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "signed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "StorageAccessible",
+    "sourcePath": "src/contracts/mixins/StorageAccessible.sol",
+    "artifactPath": "out/StorageAccessible.sol/StorageAccessible.json",
+    "constructor": {
+      "inputs": [],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "simulateDelegatecall",
+        "inputs": [
+          {
+            "name": "targetContract",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "calldataPayload",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "simulateDelegatecallInternal",
+        "inputs": [
+          {
+            "name": "targetContract",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "calldataPayload",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  }
+]
