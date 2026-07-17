@@ -10,6 +10,20 @@ optimizer_runs = 1000000
 evm_version = "cancun"
 
 deny_warnings = true
+# deny_warnings scope: recent solc (0.8.30+) added deprecation warnings
+# (payable.transfer, virtual modifiers, memory-safe natspec, selfdestruct)
+# that fire inside code we do not author: the VENDORED cowprotocol sources
+# and their legacy tests (upstream-audited, kept byte-faithful), forge-std,
+# and the GENERATED Echidna/Medusa harness under test/fizz (compiled by the
+# fuzzers with their own solc settings). Ignore warnings FROM those paths
+# only - Ophis-authored contracts (src/contracts/*.sol, src/contracts/vault,
+# test/vault) remain fully warning-gated.
+ignored_warnings_from = [
+  "test/fizz",
+  "test/GPv2Signing",
+  "src/contracts/libraries",
+  "lib/forge-std",
+]
 
 fs_permissions = [
   { access = "read", path = "./balancer"},
