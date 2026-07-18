@@ -28,7 +28,7 @@ import {
   getOphisVaultRelayer,
   ophisOrderReceiver,
 } from '@ophis/sdk';
-import { assertErc20, assertSlippageBps, DEFAULT_SLIPPAGE_BPS } from './guards.js';
+import { assertErc20, assertSlippageBps, assertTtlSeconds, DEFAULT_SLIPPAGE_BPS } from './guards.js';
 import { assembleVaultOrder, assertUidMatches, buildPresignTxBatch, ORDER_TTL_SECONDS, type TxCall, type VaultOrder } from './order.js';
 
 type Address = `0x${string}`;
@@ -52,6 +52,14 @@ export interface OphisSafePresignParams {
   minBuyAmount?: string;
   /** Slippage tolerance; default 50 bps, hard-capped at MAX_SLIPPAGE_BPS. */
   slippageBps?: number;
+  /**
+   * Optional order TTL in seconds (validTo = now + ttlSeconds). Default 1800 (30
+   * min); must be in [1, MAX_TTL_SECONDS = 3600]. For the on-chain policy-module
+   * path, keep it BELOW the module's maxTtl with headroom for L2 block-timestamp
+   * lag (e.g. ttlSeconds 1500 under a maxTtl of 1800), or the module reverts
+   * BadValidTo.
+   */
+  ttlSeconds?: number;
   /** Optional integrator rebate tag. */
   referralCode?: string;
   /** Selects the 1 bp stable vs 5 bp partner volume fee. */
@@ -98,6 +106,8 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   assertErc20(p.buyToken, 'Buy token');
   const slippageBps = p.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   assertSlippageBps(slippageBps);
+  const ttlSeconds = p.ttlSeconds ?? ORDER_TTL_SECONDS;
+  assertTtlSeconds(ttlSeconds);
 
   // A caller hard min-out must be a positive atomic amount. A negative/zero value
   // (a defaulting/config bug) would make assertBuyFloor accept any positive signed
@@ -166,7 +176,7 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     requestedGross,
     appDataHash,
     slippageBps,
-    ttlSeconds: ORDER_TTL_SECONDS,
+    ttlSeconds,
     nowSeconds: Math.floor(Date.now() / 1000),
     minBuyAmount,
   });

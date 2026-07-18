@@ -137,6 +137,7 @@ const { orderUid, order, txs } = await buildOphisSafePresign({
   sellToken: USDC, buyToken: WETH,
   sellAmount: '20000000',   // 20 USDC (atomic, 6dp)
   slippageBps: 50,
+  // ttlSeconds: 1500,      // optional (>=0.1.1): shorter order; keep maxTtl above it
 });
 ```
 
@@ -149,16 +150,17 @@ Two execution paths:
 - Direct path: execute `txs` ([approve?, setPreSignature]) straight from the
   Safe. Bypasses the module's per-order checks — use only outside the trial.
 
-TTL: `buildOphisSafePresign` posts orders with a FIXED 1800s TTL (validTo =
-build-time wall clock + 1800; it has no ttlSeconds option). The module is
-therefore deployed with `maxTtl = 3600` (Step 2's scripts), giving that fixed
-order a full 1800s of headroom over the module's `validTo <= block.timestamp +
-maxTtl` check - so it validates even though the L2 block timestamp can lag the
-builder's wall clock. Do NOT deploy the module with `maxTtl = 1800`: that leaves
-zero slack and the rebalance reverts `BadValidTo`. The actual price-exposure
-window stays the order's 1800s validTo; `maxTtl` is only the ceiling on a
-curator-craftable TTL. (If you later want tighter curator orders, add an optional
-`ttlSeconds` to the builder and lower `maxTtl` to match.)
+TTL: `buildOphisSafePresign` defaults to an 1800s order TTL (validTo = build-time
+wall clock + 1800) and accepts an optional `ttlSeconds` (>= 0.1.1, capped at
+3600). The module here is deployed with `maxTtl = 3600` (Step 2), which gives the
+default 1800s order a full 1800s of headroom over the module's `validTo <=
+block.timestamp + maxTtl` check - so it validates even though the L2 block
+timestamp can lag the builder's wall clock. Do NOT deploy with `maxTtl = 1800`:
+that leaves zero slack and reverts `BadValidTo`. For tighter curator orders, pass
+a shorter `ttlSeconds` (e.g. 1500) and you may lower `maxTtl` to match - keep at
+least a few minutes of headroom over `ttlSeconds` for block-timestamp lag. The
+actual price-exposure window is the order's `ttlSeconds`; `maxTtl` is only the
+ceiling.
 
 ## Step 6 — verify
 

@@ -6,7 +6,9 @@ import {
   assertRequestBound,
   assertSignedFeeZero,
   assertSlippageBps,
+  assertTtlSeconds,
   MAX_SLIPPAGE_BPS,
+  MAX_TTL_SECONDS,
 } from '../src/guards.js';
 
 const SELL = '0x1111111111111111111111111111111111111111';
@@ -42,6 +44,22 @@ describe('assertSlippageBps / applySlippage', () => {
   it('lowers the amount by the bps', () => {
     expect(applySlippage(10_000n, 50)).toBe(9_950n);
     expect(applySlippage(10_000n, 0)).toBe(10_000n);
+  });
+});
+
+describe('assertTtlSeconds', () => {
+  it('accepts the [1, MAX] range', () => {
+    expect(() => assertTtlSeconds(1)).not.toThrow();
+    expect(() => assertTtlSeconds(1500)).not.toThrow();
+    expect(() => assertTtlSeconds(MAX_TTL_SECONDS)).not.toThrow();
+  });
+  it('rejects zero, negative, and above the cap', () => {
+    expect(() => assertTtlSeconds(0)).toThrow(/out of range/i);
+    expect(() => assertTtlSeconds(-1)).toThrow(/out of range/i);
+    expect(() => assertTtlSeconds(MAX_TTL_SECONDS + 1)).toThrow(/out of range/i);
+  });
+  it('rejects a non-integer', () => {
+    expect(() => assertTtlSeconds(1500.5)).toThrow(/out of range/i);
   });
 });
 

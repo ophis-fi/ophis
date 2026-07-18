@@ -1,6 +1,6 @@
 {
   "name": "@ophis/safe-swap",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Headless Ophis (CoW Protocol) swap builder for a Safe (vault) trader: build a receiver-pinned, fee-bearing CoW order plus the [approve, setPreSignature] tx batch for a vault curator / manager (Zodiac Roles / MPC / multisig) to execute. Funds never leave the vault Safe.",
   "license": "GPL-3.0-or-later",
   "type": "module",

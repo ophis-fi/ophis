@@ -39,6 +39,21 @@ export function assertSlippageBps(bps: number): void {
   }
 }
 
+/**
+ * Max order TTL the builder will sign: 1 hour, matching the on-chain policy
+ * module's MAX_TTL_CAP. A short TTL keeps the stale-price window tight - the
+ * oracle floor only holds at presign time, so validTo bounds how long an adverse
+ * move can be captured against a still-open order.
+ */
+export const MAX_TTL_SECONDS = 3600;
+
+/** Order TTL (validTo = now + ttlSeconds) must be an integer in [1, MAX_TTL_SECONDS]. */
+export function assertTtlSeconds(ttlSeconds: number): void {
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds <= 0 || ttlSeconds > MAX_TTL_SECONDS) {
+    throw new Error(`ttlSeconds ${ttlSeconds} out of range [1, ${MAX_TTL_SECONDS}]`);
+  }
+}
+
 /** Lower the buy floor by `bps`, so the quoted price is a floor, not an exact requirement. */
 export function applySlippage(amount: bigint, bps: number): bigint {
   assertSlippageBps(bps);
