@@ -48,12 +48,15 @@ table above.
 ## Step 0 — run the preflight (no funds, verifies the chain config)
 
 ```bash
+# Run all forge commands from the contracts/ directory (the foundry project root).
+cd contracts
+
 # OP
 OPHIS_FORK_RPC=https://mainnet.optimism.io \
-  forge test -C contracts --match-path 'test/fork/VaultPolicyModuleOPReal.t.sol' -vv
+  forge test --match-path 'test/fork/VaultPolicyModuleOPReal.t.sol' -vv
 # Base
 OPHIS_FORK_RPC_BASE=https://mainnet.base.org \
-  forge test -C contracts --match-path 'test/fork/VaultPolicyModuleBaseReal.t.sol' -vv
+  forge test --match-path 'test/fork/VaultPolicyModuleBaseReal.t.sol' -vv
 ```
 
 3/3 pass = the feeds, settlement, and tokens are live and the module builds.
@@ -88,11 +91,12 @@ export VAULT_CURATOR=0xYourCuratorAddress
 export VAULT_APPDATA_HASH=0x...        # from Step 1
 export VAULT_CAP=250000000000000000000 # 250e18 USD/day; tune to trial size
 
+# From the contracts/ directory (Step 0), so foundry resolves the src/contracts/... imports.
 # OP
-forge script contracts/script/DeployVaultPolicyModuleOP.s.sol \
+forge script script/DeployVaultPolicyModuleOP.s.sol \
   --rpc-url https://mainnet.optimism.io --broadcast --account <deployer-keystore>
 # Base
-forge script contracts/script/DeployVaultPolicyModuleBase.s.sol \
+forge script script/DeployVaultPolicyModuleBase.s.sol \
   --rpc-url https://mainnet.base.org --broadcast --account <deployer-keystore>
 ```
 
@@ -123,6 +127,11 @@ Use `@ophis/safe-swap` to build the presign, keeping params identical to Step 1:
 
 ```js
 import { buildOphisSafePresign } from '@ophis/safe-swap';
+
+const VAULT_SAFE = process.env.VAULT_SAFE;                  // your trial Safe
+const USDC = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85';  // OP native USDC (see table; use Base's for 8453)
+const WETH = '0x4200000000000000000000000000000000000006';
+
 const { orderUid, order, txs } = await buildOphisSafePresign({
   chainId: 10, safe: VAULT_SAFE,
   sellToken: USDC, buyToken: WETH,
@@ -140,9 +149,16 @@ Two execution paths:
 - Direct path: execute `txs` ([approve?, setPreSignature]) straight from the
   Safe. Bypasses the module's per-order checks — use only outside the trial.
 
-Give the order TTL headroom under the module's `maxTtl` (1800s): the builder's
-validTo is wall-clock while the module checks the block timestamp, so a TTL
-equal to `maxTtl` can trip `BadValidTo`. Use ttlSeconds <= ~1500.
+TTL: `buildOphisSafePresign` posts orders with a FIXED 1800s TTL (validTo =
+build-time wall clock + 1800; it has no ttlSeconds option). The module is
+therefore deployed with `maxTtl = 3600` (Step 2's scripts), giving that fixed
+order a full 1800s of headroom over the module's `validTo <= block.timestamp +
+maxTtl` check - so it validates even though the L2 block timestamp can lag the
+builder's wall clock. Do NOT deploy the module with `maxTtl = 1800`: that leaves
+zero slack and the rebalance reverts `BadValidTo`. The actual price-exposure
+window stays the order's 1800s validTo; `maxTtl` is only the ceiling on a
+curator-craftable TTL. (If you later want tighter curator orders, add an optional
+`ttlSeconds` to the builder and lower `maxTtl` to match.)
 
 ## Step 6 — verify
 

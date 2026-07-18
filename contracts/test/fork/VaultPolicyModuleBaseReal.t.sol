@@ -97,7 +97,7 @@ contract VaultPolicyModuleBaseReal is Test {
                 curator: CURATOR,
                 appDataHash: APP_DATA,
                 maxSlippageBps: 50,
-                maxTtl: 1800,
+                maxTtl: 3600, // matches the deploy script: headroom over the builder's 1800s TTL
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(SEQUENCER_FEED),
                 sequencerGracePeriod: SEQ_GRACE,

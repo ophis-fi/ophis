@@ -44,7 +44,12 @@ contract DeployVaultPolicyModuleOP is Script {
             curator: curator,
             appDataHash: appDataHash,
             maxSlippageBps: 50,
-            maxTtl: 1800,
+            // Headroom over @ophis/safe-swap's fixed 1800s order TTL: the module
+            // checks validTo against the L2 block timestamp, which can lag the
+            // builder's wall clock, so maxTtl == 1800 leaves zero slack and
+            // reverts BadValidTo. Actual price exposure stays the order's 1800s
+            // validTo; this is only the ceiling on a curator-craftable TTL.
+            maxTtl: 3600,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
             sequencerGracePeriod: 1 hours,
