@@ -33,6 +33,7 @@ contract Handler is Test {
         address buyToken;
         uint256 feeAmount;
         bytes32 appData;
+        uint256 sellAmount;
     }
 
     Rec[] public recs;
@@ -101,7 +102,7 @@ contract Handler is Test {
 
         try module.rebalance(o, bound(uint256(override_), 0, 1e29)) returns (bytes memory uid) {
             recs.push(
-                Rec(uid, o.receiver, st, bt, o.feeAmount, o.appData)
+                Rec(uid, o.receiver, st, bt, o.feeAmount, o.appData, o.sellAmount)
             );
         } catch {
             // policy-violating or cap-exceeding orders revert: expected
@@ -195,7 +196,7 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
         // Safe, zero fee, pinned appData, sell-kind. Must presign + record.
         handler.doRebalance(0, 1, uint96(1000e6), 0, 1000, 0);
         assertEq(handler.recCount(), 1, "clean order did not presign");
-        (bytes memory uid, , , , , ) = handler.recs(0);
+        (bytes memory uid, , , , , , ) = handler.recs(0);
         assertEq(settlement.preSignature(uid), settlement.PRE_SIGNED());
         // And a bad order (foreign receiver) must NOT record.
         handler.doRebalance(0, 1, uint96(1000e6), 0, 1000, 1);
@@ -214,7 +215,7 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
     function invariant_no_bad_presignature_survives() public view {
         uint256 n = handler.recCount();
         for (uint256 i = 0; i < n; i++) {
-            (bytes memory uid, address receiver, address sellToken, address buyToken, uint256 feeAmount, bytes32 ad) =
+            (bytes memory uid, address receiver, address sellToken, address buyToken, uint256 feeAmount, bytes32 ad, ) =
                 handler.recs(i);
             if (settlement.preSignature(uid) != settlement.PRE_SIGNED()) continue;
             assertEq(receiver, address(safe), "presigned order with foreign receiver");
@@ -226,6 +227,44 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
                 sellToken != buyToken,
                 "presigned order with non-allowlisted or same token"
             );
+        }
+    }
+
+    /// Regression guard for the reconciliation (superseded-order un-presign +
+    /// combined allowance tracking): for EACH sell token there is at most one
+    /// order holding a live presignature, and the relayer allowance for that
+    /// token equals exactly that order's sellAmount (0 when none is live). This
+    /// is the property whose absence WAS the pre-reconciliation drain bug (two
+    /// live same-token orders sharing one allowance); a future edit dropping the
+    /// supersede-time revoke would trip this invariant instead of shipping.
+    function invariant_one_live_presign_and_exact_allowance_per_sellToken() public view {
+        _checkSellToken(address(usdc));
+        _checkSellToken(address(weth));
+        _checkSellToken(address(rogue)); // never allowlisted: must stay empty
+    }
+
+    function _checkSellToken(address token) internal view {
+        uint256 n = handler.recCount();
+        bytes memory liveUid;
+        uint256 liveSellAmount;
+        uint256 liveCount;
+        for (uint256 i = 0; i < n; i++) {
+            (bytes memory uid, , address sellToken, , , , uint256 sellAmount) =
+                handler.recs(i);
+            if (sellToken != token) continue;
+            if (settlement.preSignature(uid) != settlement.PRE_SIGNED()) continue;
+            // The same uid re-presigned (self-supersede) is ONE live order.
+            if (liveCount == 1 && keccak256(uid) == keccak256(liveUid)) continue;
+            liveUid = uid;
+            liveSellAmount = sellAmount;
+            liveCount++;
+        }
+        assertLe(liveCount, 1, "more than one live presigned order for a sell token");
+        uint256 onchain = IERC20(token).allowance(address(safe), RELAYER);
+        if (liveCount == 1) {
+            assertEq(onchain, liveSellAmount, "relayer allowance != live order sellAmount");
+        } else {
+            assertEq(onchain, 0, "residual relayer allowance with no live order");
         }
     }
 }
