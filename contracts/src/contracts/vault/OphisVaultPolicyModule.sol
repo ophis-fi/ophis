@@ -69,8 +69,9 @@ import {
 /// contract that calls `rebalance` / `cancel` and NOTHING ELSE. It MUST NOT be
 /// a Safe owner and MUST NOT be an enabled Safe module, so it has no way to
 /// touch the Safe except through this module's policy gate. Both the factory
-/// AND this constructor reject a curator that is a current Safe owner; keeping
-/// it un-ownered / un-moduled over time is the vault owners' responsibility.
+/// AND this constructor reject a curator that is a current Safe owner OR an
+/// already-enabled Safe module; keeping it un-ownered / un-moduled over time
+/// (owners/modules can drift post-deploy) is the vault owners' responsibility.
 /// Do NOT route the curator through a Zodiac Roles Modifier: Roles executes via
 /// `avatar.execTransactionFromModule`, so the module would see `msg.sender ==
 /// the Safe` (rejected here). Safe OWNERS retain full custody and can always
@@ -129,8 +130,10 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     address public immutable relayer;
     /// @notice The settlement's EIP-712 domain separator (immutable there too).
     bytes32 public immutable domainSeparator;
-    /// @notice The only address allowed to trigger rebalances (a Zodiac Roles
-    /// modifier, an MPC signer, or a curator contract - never a Safe owner).
+    /// @notice The only address allowed to trigger rebalances. A DIRECT caller
+    /// (a dedicated EOA / MPC signer / multisig) - never a Safe owner, an enabled
+    /// Safe module, or a Zodiac Roles modifier (see the operational invariant on
+    /// the contract).
     address public immutable curator;
     /// @notice The frozen Ophis partner-fee appData hash orders must carry.
     bytes32 public immutable appDataHash;
@@ -176,7 +179,16 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     /// presign time, so the TTL bounds the window in which an adverse market
     /// move can be captured against a still-open order.
     uint256 internal constant MAX_TTL_CAP = 1 hours;
-    uint256 internal constant MAX_STALENESS_CAP = 1 days;
+    // 2 days: many production Chainlink feeds have a 24h heartbeat (e.g. every
+    // USD feed on Unichain), so a per-token maxStaleness must be able to sit at
+    // 24h + a buffer to avoid false-stale reverts on a slightly-late heartbeat.
+    // Deviation-driven updates keep feeds far fresher in practice; this is only
+    // the ceiling an operator may configure. OPERATOR GUIDANCE: size each token's
+    // maxStaleness to ITS feed heartbeat (tight for volatile assets - this cap is
+    // a stables-friendly maximum, not a default), and size the sequencer grace
+    // period >= the feed's typical post-recovery update latency so a just-
+    // recovered sequencer cannot serve a pre-outage price inside the grace window.
+    uint256 internal constant MAX_STALENESS_CAP = 2 days;
     uint256 internal constant MAX_SEQ_GRACE_CAP = 1 days;
     /// @dev Bounds `10 ** tokenDecimals` so a pathological high-decimal token
     /// cannot brick every rebalance (self-DoS); far above any real token.
@@ -197,6 +209,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     error ZeroAppData();
     error BadConfig();
     error CuratorIsOwner();
+    error CuratorIsModule();
     error UnsupportedTokenDecimals(address token);
     error TokenNotAllowed(address token);
     error SameToken();
@@ -242,10 +255,12 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             revert BadConfig();
         }
         // Defense in depth: the module's whole guarantee rests on the curator
-        // not being a Safe owner (an owner can exec raw approve/setPreSignature
-        // and bypass the module). The factory enforces this too, but a direct
-        // deploy must not be able to skip it.
-        _requireCuratorNotOwner(cfg.safe, cfg.curator);
+        // having no privileged path to the Safe but this module - neither a Safe
+        // owner nor an enabled Safe module (either can exec raw approve/
+        // setPreSignature and bypass the gate; an enabled module needs no
+        // signature threshold, so it is strictly the more dangerous of the two).
+        // The factory enforces this too, but a direct deploy must not skip it.
+        _requireCuratorNotPrivileged(cfg.safe, cfg.curator);
 
         safe = cfg.safe;
         settlement = cfg.settlement;
@@ -388,8 +403,14 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         );
         // Only zero the relayer allowance when THIS order still owns it (it was
         // the most-recent rebalance for its token). If a later same-token order
-        // superseded it, that successor owns the live allowance and must keep
-        // it.
+        // superseded it, that successor owns the live allowance and must keep it.
+        // Belt-and-suspenders: a superseded order's `moduleOrderSellToken` record
+        // is deleted at supersession, so it can no longer reach this cancel path
+        // and the `!=` branch is unreachable via the current supersede logic. The
+        // guard stays as a hard invariant so a future change to that logic cannot
+        // silently starve a live successor's allowance - the
+        // `OphisVaultPolicyModuleInvariant` suite asserts exactly this property
+        // (<=1 live presignature per sell token; allowance == that order's amount).
         if (liveAllowanceUid[sellToken] == key) {
             delete liveAllowanceUid[sellToken];
             delete liveAllowanceOrderUid[sellToken];
@@ -553,13 +574,17 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         );
     }
 
-    /// @dev Reverts unless `curator` is absent from the Safe's current owner
-    /// set. An owner-curator has full Safe power and does not need the module.
-    function _requireCuratorNotOwner(ISafe safe_, address curator_) internal view {
+    /// @dev Reverts unless `curator` has no privileged path to the Safe other
+    /// than this module: it must be neither a current Safe owner NOR an enabled
+    /// Safe module. Either would let the curator exec raw approve/setPreSignature
+    /// as the Safe and bypass the policy gate - and an enabled module needs no
+    /// signature threshold, so it is strictly more dangerous than an owner.
+    function _requireCuratorNotPrivileged(ISafe safe_, address curator_) internal view {
         address[] memory owners = safe_.getOwners();
         for (uint256 i = 0; i < owners.length; i++) {
             if (owners[i] == curator_) revert CuratorIsOwner();
         }
+        if (safe_.isModuleEnabled(curator_)) revert CuratorIsModule();
     }
 
     /// @dev Plain CALL from the Safe (operation 0, never delegatecall).

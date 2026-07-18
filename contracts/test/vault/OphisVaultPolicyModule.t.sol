@@ -217,6 +217,31 @@ contract OphisVaultPolicyModuleTest is Test {
         rebalanceAsCurator(order, 0);
     }
 
+    function test_stale_round_reverts() public {
+        // answeredInRound < roundId: a carried-over answer from an earlier
+        // round. updatedAt stays fresh, so ONLY the round guard can catch it.
+        usdcFeed.setRounds(5, 4);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisChainlinkFloor.StaleOraclePrice.selector,
+                address(usdcFeed)
+            )
+        );
+        rebalanceAsCurator(validOrder(), 0);
+    }
+
+    function test_incomplete_round_reverts() public {
+        // updatedAt == 0: an in-progress round the aggregator has not answered.
+        usdcFeed.set(1e8, 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisChainlinkFloor.StaleOraclePrice.selector,
+                address(usdcFeed)
+            )
+        );
+        rebalanceAsCurator(validOrder(), 0);
+    }
+
     function test_invalid_oracle_price_reverts() public {
         wethFeed.set(0, block.timestamp);
         vm.expectRevert(
@@ -664,7 +689,7 @@ contract OphisVaultPolicyModuleTest is Test {
         new OphisVaultPolicyModule(cfg);
 
         cfg = baseConfig();
-        cfg.tokens[0].maxStaleness = 1 days + 1; // over the staleness cap
+        cfg.tokens[0].maxStaleness = 2 days + 1; // over the staleness cap
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
         new OphisVaultPolicyModule(cfg);
 
@@ -708,6 +733,16 @@ contract OphisVaultPolicyModuleTest is Test {
         OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
         cfg.curator = SAFE_OWNER;
         vm.expectRevert(OphisVaultPolicyModule.CuratorIsOwner.selector);
+        new OphisVaultPolicyModule(cfg);
+    }
+
+    function test_constructor_rejects_curator_that_is_an_enabled_module() public {
+        // A curator that is ALSO an enabled Safe module has unilateral
+        // execTransactionFromModule power (no signature threshold) and bypasses
+        // the policy gate entirely - strictly more dangerous than an owner.
+        safe.setModuleEnabled(CURATOR, true);
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        vm.expectRevert(OphisVaultPolicyModule.CuratorIsModule.selector);
         new OphisVaultPolicyModule(cfg);
     }
 
@@ -764,6 +799,18 @@ contract OphisVaultPolicyModuleTest is Test {
             )
         );
         factory.deploy(cfg);
+    }
+
+    function test_factory_rejects_curator_that_is_an_enabled_module() public {
+        OphisVaultPolicyModuleFactory factory = new OphisVaultPolicyModuleFactory();
+        safe.setModuleEnabled(CURATOR, true); // curator already a module: refused
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisVaultPolicyModuleFactory.CuratorIsSafeModule.selector,
+                CURATOR
+            )
+        );
+        factory.deploy(baseConfig());
     }
 
     function test_factory_deploys_configured_module() public {

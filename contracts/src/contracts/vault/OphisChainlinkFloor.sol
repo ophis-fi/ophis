@@ -30,8 +30,21 @@ library OphisChainlinkFloor {
         uint256 maxStaleness
     ) internal view returns (uint256 price18) {
         if (feedDecimals > 18) revert UnsupportedFeedDecimals(address(feed));
-        (, int256 answer, , uint256 updatedAt, ) = feed.latestRoundData();
+        (
+            uint80 roundId,
+            int256 answer,
+            ,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = feed.latestRoundData();
         if (answer <= 0) revert InvalidOraclePrice(address(feed));
+        // Reject an incomplete round (updatedAt == 0) or an answer carried over
+        // from an earlier round (answeredInRound < roundId): a proxy pointing at
+        // a stalled or newly-swapped aggregator can return a stale price that the
+        // pure updatedAt-age check below would still accept.
+        if (updatedAt == 0 || answeredInRound < roundId) {
+            revert StaleOraclePrice(address(feed));
+        }
         if (block.timestamp > updatedAt + maxStaleness) {
             revert StaleOraclePrice(address(feed));
         }

@@ -17,6 +17,11 @@ interface ISafe {
     ) external returns (bool success, bytes memory returnData);
 
     function getOwners() external view returns (address[] memory);
+
+    /// @dev Whether `module` is currently an enabled Safe module. Read at
+    /// deploy to reject a curator that already holds unilateral module power
+    /// over the Safe (see the module's operational invariant).
+    function isModuleEnabled(address module) external view returns (bool);
 }
 
 /// @dev Minimal settlement surface (Ophis non-canonical on self-hosted

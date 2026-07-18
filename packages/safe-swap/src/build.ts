@@ -29,7 +29,7 @@ import {
   ophisOrderReceiver,
 } from '@ophis/sdk';
 import { assertErc20, assertSlippageBps, DEFAULT_SLIPPAGE_BPS } from './guards.js';
-import { assembleVaultOrder, assertUidMatches, buildPresignTxBatch, ORDER_TTL_SECONDS, type TxCall } from './order.js';
+import { assembleVaultOrder, assertUidMatches, buildPresignTxBatch, ORDER_TTL_SECONDS, type TxCall, type VaultOrder } from './order.js';
 
 type Address = `0x${string}`;
 
@@ -74,6 +74,14 @@ export interface OphisSafePresignParams {
 
 export interface OphisSafePresignResult {
   orderUid: string;
+  /**
+   * The assembled, receiver-pinned order whose uid was posted. A Phase-B
+   * policy-module caller passes this to `module.rebalance`, which re-derives and
+   * presigns the identical uid; the direct-presign path uses `txs` instead.
+   */
+  order: VaultOrder;
+  /** The full appData preimage (JSON) whose keccak is the order's appDataHash. */
+  fullAppData: string;
   txs: TxCall[];
   settlement: Address;
   relayer: Address;
@@ -208,5 +216,8 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     keepSufficientAllowance: p.keepSufficientAllowance,
   });
 
-  return { orderUid, txs, settlement, relayer, enrollmentWarning };
+  // `order` + `fullAppData` are returned so a Phase-B policy-module caller can
+  // pass the exact posted order to `module.rebalance` (the module re-derives and
+  // presigns the same uid); the direct-presign path uses `txs`.
+  return { orderUid, order, fullAppData, txs, settlement, relayer, enrollmentWarning };
 }
