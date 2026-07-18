@@ -142,6 +142,8 @@ services:
       FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
 
   orderbook:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-orderbook:latest
     build:
       context: ../../apps/backend
@@ -174,6 +176,8 @@ services:
       start_period: 60s
 
   autopilot:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-autopilot:latest
     build:
       context: ../../apps/backend
@@ -273,6 +277,8 @@ services:
   # output reports the reconstructed slippage floor (the #726 fix). Covers all
   # Unichain DEXes (incl. Uniswap V4).
   okx-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -296,6 +302,8 @@ services:
       start_period: 30s
 
   kyberswap-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -323,6 +331,8 @@ services:
   # route's router == the allowlisted Augustus V6.2 0x6a000f20…001068, and
   # VELORA_SUPPORTED_CHAINS includes 130). Second independent solver lane.
   velora-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -350,6 +360,8 @@ services:
   # the solver and driver allowlists). Keyless. Reports the reconstructed
   # slippage floor as the SELL output. Third independent solver lane.
   odos-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -377,6 +389,8 @@ services:
   # allowlisted in both the solver and driver allowlists). Keyless. Reports
   # data.minOutAmount (the guaranteed floor) as the SELL output. Fourth lane.
   openocean-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -405,6 +419,8 @@ services:
   # driver allowlists). Keyless (public widget key). Reports
   # data.minReturnAmount (the guaranteed floor) as the SELL output. Fifth lane.
   dodo-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -432,6 +448,8 @@ services:
   # layers; SELL output = estimate.toAmountMin (guaranteed floor). Same-chain
   # only (rejects bridge routes). Keyless. Seventh lane.
   lifi-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -459,6 +477,8 @@ services:
   # SELL output = minAmountOut (guaranteed floor). KEYED (free Bearer key in
   # .env; fail-fasts on empty key). Eighth lane.
   enso-solver:
+    extra_hosts:
+      - "ophis-uni-node:host-gateway"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
