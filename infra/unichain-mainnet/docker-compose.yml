@@ -66,7 +66,7 @@ services:
     # second port. (Gate-2 validated this exact path via --add-host.) Hardening
     # follow-up: a shared external docker network instead of host-gateway.
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     volumes:
       - ./rendered/erpc.yaml:/erpc.yaml:ro
     ports:
@@ -143,7 +143,7 @@ services:
 
   orderbook:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-orderbook:latest
     build:
       context: ../../apps/backend
@@ -177,7 +177,7 @@ services:
 
   autopilot:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-autopilot:latest
     build:
       context: ../../apps/backend
@@ -278,7 +278,7 @@ services:
   # Unichain DEXes (incl. Uniswap V4).
   okx-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -303,7 +303,7 @@ services:
 
   kyberswap-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -332,7 +332,7 @@ services:
   # VELORA_SUPPORTED_CHAINS includes 130). Second independent solver lane.
   velora-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -361,7 +361,7 @@ services:
   # slippage floor as the SELL output. Third independent solver lane.
   odos-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -390,7 +390,7 @@ services:
   # data.minOutAmount (the guaranteed floor) as the SELL output. Fourth lane.
   openocean-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -420,7 +420,7 @@ services:
   # data.minReturnAmount (the guaranteed floor) as the SELL output. Fifth lane.
   dodo-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -449,7 +449,7 @@ services:
   # only (rejects bridge routes). Keyless. Seventh lane.
   lifi-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -478,7 +478,7 @@ services:
   # .env; fail-fasts on empty key). Eighth lane.
   enso-solver:
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
