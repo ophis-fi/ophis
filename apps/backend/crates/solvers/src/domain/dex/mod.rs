@@ -1106,6 +1106,7 @@ mod output_guard_tests {
             &"http://localhost:1/".parse().unwrap(),
             Address::ZERO,
             address!("0x1111111111111111111111111111111111111111"),
+            infra::dex::simulator::DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT,
         )
     }
 

@@ -110,6 +110,16 @@ struct Config {
     #[serde(default = "default_strict_output_simulation")]
     strict_output_simulation: bool,
 
+    /// Storage slot of the wrapped-native token's `balanceOf` mapping, used by
+    /// the eth-flow simulation balance override. CHAIN-DEPENDENT despite the
+    /// shared 0x4200..06 predeploy address: OP mainnet = WETH9 = slot 3 (the
+    /// default); Unichain's newer WETH98-style predeploy = slot 0 (verified
+    /// on-chain 2026-07-18). A wrong slot silently grants no balance and
+    /// fail-closes every eth-flow (native ETH) sell on buffer-exposed buy
+    /// tokens.
+    #[serde(default = "default_wrapped_native_balance_slot")]
+    wrapped_native_balance_slot: u8,
+
     /// OUTPUT-side anti-siphon: when to run the strict output-delivery
     /// simulation for MARKET SELL swaps (defaults to `buffer-exposed`).
     ///
@@ -198,6 +208,10 @@ fn default_max_output_reference_factor() -> BigDecimal {
 
 fn default_strict_output_simulation() -> bool {
     true
+}
+
+fn default_wrapped_native_balance_slot() -> u8 {
+    crate::infra::dex::simulator::DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT
 }
 
 /// Loads the base solver configuration from a TOML file.
@@ -290,6 +304,7 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
         gas_offset: eth::Gas(config.gas_offset),
         block_stream,
         internalize_interactions: config.internalize_interactions,
+        wrapped_native_balance_slot: config.wrapped_native_balance_slot,
         output_guard: crate::domain::dex::OutputGuard {
             max_output_reference_factor: config.max_output_reference_factor,
             strict_output_simulation: config.strict_output_simulation,

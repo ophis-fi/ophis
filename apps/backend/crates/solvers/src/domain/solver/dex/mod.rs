@@ -72,6 +72,7 @@ impl Dex {
                 &config.node_url,
                 config.contracts.settlement,
                 config.contracts.authenticator,
+                config.wrapped_native_balance_slot,
             ),
             slippage: config.slippage,
             minimum_surplus: config.minimum_surplus,
