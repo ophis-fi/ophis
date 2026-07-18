@@ -22,7 +22,7 @@ chain, and you want best execution with MEV protection and a predictable fee.
 
 All endpoints are public and require no API key or authentication.
 
-1. Parse intent: `POST https://ophis.fi/api/intent`
+1. Parse intent: `POST https://swap.ophis.fi/api/intent`
    - Body: `{ "text": "swap 100 USDC for ETH on Base" }`
    - Returns a structured `ParsedIntent` (sellToken, buyToken, amount, chain).
    - Rate limited to 30 requests/min/IP. See https://ophis.fi/openapi.json.

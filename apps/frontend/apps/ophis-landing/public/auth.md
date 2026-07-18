@@ -14,7 +14,7 @@ authenticate against and no protected resource to obtain a token for.
 
 ## Public endpoints (no registration, no key)
 
-- **Intent API:** `POST https://ophis.fi/api/intent` (natural language to a
+- **Intent API:** `POST https://swap.ophis.fi/api/intent` (natural language to a
   structured intent). Rate limited to 30 requests/min/IP. Spec:
   `https://ophis.fi/openapi.json`.
 - **MCP server:** `https://mcp.ophis.fi/mcp` (discovery at

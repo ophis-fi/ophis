@@ -145,6 +145,10 @@ ERC-1271 from a smart-contract wallet). There is no deposit step and no balance
 to withdraw. More edge cases are covered in the
 [FAQ docs](https://docs.ophis.fi/faq).
 
+### What are my options for gasless swaps?
+
+There are three ways to swap without holding a native gas token: intent-based settlement (what Ophis does, you sign an off-chain order and a solver pays the gas), ERC-4337 account-abstraction paymasters, and relayers or meta-transactions. They differ on whether you need a smart account, whether you pre-fund each chain, and whether the swap is MEV-protected. The full side-by-side is in [gasless DeFi swaps: your options](/blog/gasless-defi-swap-options/).
+
 ## Try a swap with an empty gas tank
 
 Open [swap.ophis.fi](https://swap.ophis.fi/), connect a wallet that holds any

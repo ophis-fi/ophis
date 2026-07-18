@@ -1,5 +1,5 @@
 ---
-title: "AI agent token swaps with GOAT or Coinbase AgentKit"
+title: "GOAT SDK token swaps for AI agents (with Coinbase AgentKit)"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
 author: Ophis
@@ -27,7 +27,7 @@ From there it is Ophis's normal intent flow: a competing solver network races to
 
 The packages also resolve the per-chain orderbook and EIP-712 settlement domain for you: on some chains Ophis runs its own bytecode-identical deployment of CoW Protocol's audited GPv2Settlement, on the rest orders settle through the canonical audited contracts. Guessing either value by hand produces silently rejected or misrouted orders.
 
-## Wiring a GOAT agent
+## Wiring a GOAT SDK agent
 
 GOAT surfaces one plugin through its adapters for Vercel AI, LangChain, Mastra, Eliza, or MCP.
 

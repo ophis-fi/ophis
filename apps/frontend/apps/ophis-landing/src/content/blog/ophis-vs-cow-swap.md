@@ -9,7 +9,7 @@ cover: ./ophis-vs-cow-swap.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chain logos, a CoW Protocol fork"
 ---
 
-Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and the same solver competition that fills CoW Swap orders; on Optimism and Unichain, Ophis operates sovereign deployments: its own orderbook and a bytecode-identical GPv2Settlement at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, a flat 0.10% Ophis fee, monthly WETH volume rebates, and an affiliate program.
+Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and the same solver competition that fills CoW Swap (often written cowswap) orders; on Optimism and Unichain, Ophis operates sovereign deployments: its own orderbook and a bytecode-identical GPv2Settlement at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, a flat 0.10% Ophis fee, monthly WETH volume rebates, and an affiliate program.
 
 That is the whole comparison in three sentences. The rest of this page unpacks it plainly, because Ophis (the intent-based DEX aggregator at [ophis.fi](https://ophis.fi/)) exists because of CoW Protocol, not despite it. A maintained side-by-side also lives in the [comparison docs](https://docs.ophis.fi/comparison).
 
@@ -87,6 +87,10 @@ Three reasons. First, an agent-first product: a keyless MCP server, an Intent AP
 ### What does a trade on Ophis cost?
 
 The Ophis fee is a flat 0.10% of volume, or 0.01% for same-chain stablecoin pairs, taken in the sell token; orders are gasless, so you need no native token. On Optimism and Unichain that is the whole cost and you keep 100% of any price improvement. On the ten chains that settle through CoW Protocol's contracts, CoW Protocol's protocol fee applies on top (all-in about 0.12%, or about 0.013% on stable pairs) and half of any price improvement goes to the protocol; see [docs.cow.fi](https://docs.cow.fi). Volume tiers (10% to 50% by 30-day volume) weight your share of a monthly WETH rebate pool, with tier progress shown on the swap page.
+
+### Is Ophis a cowswap alternative?
+
+Yes. Ophis (sometimes searched as a cowswap alternative) is a CoW Protocol fork, so it gives you the same batch-auction, MEV-protected settlement CoW Swap uses, on the same solver network on the ten hosted chains. What differs is the layer on top: natural-language intents, an agent stack (a keyless MCP server and a free Intent API), a flat 0.10% fee, monthly WETH volume rebates, and sovereign deployments on Optimism and Unichain. If you want CoW Swap's mechanism with an agent-first surface, Ophis is the closest fork.
 
 ## Try it
 
