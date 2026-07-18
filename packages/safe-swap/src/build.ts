@@ -208,5 +208,8 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
     keepSufficientAllowance: p.keepSufficientAllowance,
   });
 
-  return { orderUid, txs, settlement, relayer, enrollmentWarning };
+  // `order` + `fullAppData` are returned so a Phase-B policy-module caller can
+  // pass the exact posted order to `module.rebalance` (the module re-derives and
+  // presigns the same uid); the direct-presign path uses `txs`.
+  return { orderUid, order, fullAppData, txs, settlement, relayer, enrollmentWarning };
 }
