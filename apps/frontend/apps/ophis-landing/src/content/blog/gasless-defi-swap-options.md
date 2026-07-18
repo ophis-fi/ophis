@@ -62,7 +62,7 @@ For DeFi swapping specifically, the intent model removes the two frictions the o
 
 The facts, so the comparison is grounded:
 
-- **Fee.** A flat 0.10% (10 bps) of trade volume, taken in the token you sell. Same-chain stablecoin-to-stablecoin pairs pay 0.01% (1 bp). The partner and SDK base is 5 bps, and the Optimism floor is 4 bps. The fee takes no share of any price improvement your order earns.
+- **Fee.** The Ophis fee is a flat 0.10% (10 bps) of trade volume, taken in the token you sell, or 0.01% (1 bp) for same-chain stablecoin-to-stablecoin pairs (the partner and SDK base is 5 bps). On Optimism and Unichain, where Ophis runs its own settlement, that is the whole cost. On the ten CoW-hosted chains, CoW Protocol's protocol fee applies on top, so the all-in cost is about 0.12% (about 0.013% on stable pairs). The fee takes no share of any price improvement your order earns.
 - **Rebates.** High-volume wallets share a monthly WETH rebate pool (21.25% of collected WETH fees), allocated by a rolling 30-day volume tier weighted from 10% up to 50% (Bronze through Platinum). The [fee docs](https://docs.ophis.fi/fees) have the full schedule.
 - **Reach.** Live on 12 EVM chains: Ethereum, Optimism, BNB, Gnosis, Unichain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, and Linea. Solana and Bitcoin destinations are reachable via NEAR Intents.
 - **Deployments.** Ophis runs sovereign self-hosted deployments on Optimism and Unichain (its own orderbook and a bytecode-identical GPv2Settlement); the rest settle through CoW-hosted infrastructure.
