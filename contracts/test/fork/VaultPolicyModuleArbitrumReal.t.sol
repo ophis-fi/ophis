@@ -33,8 +33,8 @@ interface ISafeSetup {
 /// @title Preflight: the vault policy module against REAL Arbitrum state.
 /// @notice Mirrors the Base preflight for Arbitrum One (42161), CoW-HOSTED: the
 /// module is constructed against the CANONICAL GPv2 settlement + relayer, the
-/// REAL Arbitrum Chainlink ETH/USD + USDC/USD feeds (8-decimal, 24h heartbeats)
-/// and the REAL Arbitrum sequencer-uptime feed, on an Arbitrum fork. Proves:
+/// REAL Arbitrum Chainlink ETH/USD + USDC/USD feeds (8-decimal) and the REAL
+/// Arbitrum sequencer-uptime feed, on an Arbitrum fork. Proves:
 /// the feed liveness probe passes; a legit rebalance presigns in the real
 /// settlement with exact allowance; the real oracle produces a nonzero floor
 /// (below-floor reverts); a drain order is rejected. Gate before the Arbitrum
@@ -56,9 +56,11 @@ contract VaultPolicyModuleArbitrumReal is Test {
     address internal constant ETH_USD_FEED = 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612; // 8 dec
     address internal constant SEQUENCER_FEED = 0xFdB631F5EE196F0ed6FAa767959853A9F217697D;
 
-    // BOTH feeds have 24h heartbeats on Arbitrum (see the deploy script).
+    // ETH/USD is deviation-driven, updating every few minutes in practice, so
+    // the tight OP/Base window applies; USDC/USD is a 24h-heartbeat stable feed
+    // (see the deploy script).
     uint256 internal constant USDC_STALENESS = 26 hours;
-    uint256 internal constant ETH_STALENESS = 26 hours;
+    uint256 internal constant ETH_STALENESS = 6 hours;
     uint256 internal constant SEQ_GRACE = 1 hours;
 
     address internal constant CURATOR = address(0xC0FFEE);

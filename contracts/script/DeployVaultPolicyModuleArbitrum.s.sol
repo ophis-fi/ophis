@@ -19,12 +19,12 @@ contract DeployVaultPolicyModuleArbitrum is Script {
     address constant ETH_FEED = 0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612; // ETH/USD, 8dp
     address constant SEQ_FEED = 0xFdB631F5EE196F0ed6FAa767959853A9F217697D; // L2 uptime
 
-    // Arbitrum's ETH/USD feed has a 24h HEARTBEAT (deviation-driven updates keep
-    // it far fresher in practice, but the contract-level guarantee is 24h) - so
-    // BOTH tokens need the 24h + buffer window here, unlike OP/Base whose
-    // ETH/USD heartbeats are minutes. A tighter window would false-stale
-    // (self-DoS) on a max-quiet market.
-    uint256 constant ETH_STALENESS = 26 hours;
+    // Arbitrum's ETH/USD feed is deviation-driven (0.05%) and updates every few
+    // minutes in practice (measured on-chain: ~2-6 min/round), so the tight 6h
+    // window used on OP/Base is safe here too and keeps the stale-price
+    // envelope small; a false-stale is a harmless fail-closed revert (retry).
+    // USDC/USD is a 24h-heartbeat stable feed and needs 24h + buffer.
+    uint256 constant ETH_STALENESS = 6 hours;
     uint256 constant USDC_STALENESS = 26 hours;
 
     function run() external {

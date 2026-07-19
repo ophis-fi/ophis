@@ -27,7 +27,7 @@ constructor probes each feed + settlement, so a passing preflight IS the proof.
 | ETH/USD feed (8dp) | `0x13e3Ee699D1909E989722E753853AE30b17e08c5` | `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` | `0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419` | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
 | USDC/USD feed (8dp) | `0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3` | `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` | `0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6` | `0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3` |
 | Sequencer uptime | `0x371EAD81c9102C9BF4874A9075FFFf170F2Ee389` | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` | none (L1: gate disabled) | `0xFdB631F5EE196F0ed6FAa767959853A9F217697D` |
-| maxStaleness (WETH / USDC) | 6h / 26h | 6h / 26h | 6h / 26h | 26h / 26h |
+| maxStaleness (WETH / USDC) | 6h / 26h | 6h / 26h | 6h / 26h | 6h / 26h |
 | seq grace | 1h | 1h | — | 1h |
 
 OP is self-hosted (Ophis non-canonical settlement + relayer). Base, Ethereum,
@@ -35,8 +35,10 @@ and Arbitrum are CoW-hosted: orders settle through the canonical settlement +
 relayer with the Ophis partner fee carried in the pinned appData. The module
 reads the relayer + domain separator from whichever settlement it is configured
 with — the per-chain differences are the address table above, plus: Ethereum is
-an L1 (no sequencer feed, gate disabled), and Arbitrum's ETH/USD feed has a 24h
-HEARTBEAT (deviation-driven in practice) so BOTH its tokens use the 26h window.
+an L1 (no sequencer feed, gate disabled). Every chain's ETH/USD feed is
+deviation-driven and updates every few minutes in practice, so the tight 6h
+window applies everywhere; the 26h window is only for the 24h-heartbeat stable
+feeds.
 
 ## Prerequisites
 
@@ -141,12 +143,21 @@ Use `@ophis/safe-swap` to build the presign, keeping params identical to Step 1:
 ```js
 import { buildOphisSafePresign } from '@ophis/safe-swap';
 
-const VAULT_SAFE = process.env.VAULT_SAFE;                  // your trial Safe
-const USDC = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85';  // OP native USDC (see table; use Base's for 8453)
-const WETH = '0x4200000000000000000000000000000000000006';
+// Per-chain token addresses (MUST match the deployed module's allowlist - the
+// module rejects any other token as TokenNotAllowed). Same values as the table.
+const CHAINS = {
+  10:    { usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', weth: '0x4200000000000000000000000000000000000006' }, // OP
+  8453:  { usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', weth: '0x4200000000000000000000000000000000000006' }, // Base
+  1:     { usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', weth: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' }, // Ethereum
+  42161: { usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', weth: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' }, // Arbitrum
+};
+
+const CHAIN_ID = 10;                        // set to the chain you deployed on
+const VAULT_SAFE = process.env.VAULT_SAFE;  // your trial Safe
+const { usdc: USDC, weth: WETH } = CHAINS[CHAIN_ID];
 
 const { orderUid, order, txs } = await buildOphisSafePresign({
-  chainId: 10, safe: VAULT_SAFE,
+  chainId: CHAIN_ID, safe: VAULT_SAFE,
   sellToken: USDC, buyToken: WETH,
   sellAmount: '20000000',   // 20 USDC (atomic, 6dp)
   slippageBps: 50,
