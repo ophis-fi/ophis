@@ -174,6 +174,17 @@ Two execution paths:
 - Direct path: execute `txs` ([approve?, setPreSignature]) straight from the
   Safe. Bypasses the module's per-order checks — use only outside the trial.
 
+Order sizing vs the floor band (learned live on Arbitrum + Ethereum): the
+module accepts an order only if its buy floor is within `maxSlippageBps` (50bps)
+of the Chainlink mid. The quote's gas-based fee consumes part of that band -
+negligible on L2s, but on Ethereum a ~$0.07-0.09 fee is 30-60bps of a $15-20
+order, which stacked with the default 50bps order slippage puts the order BELOW
+the module floor (revert `BelowFloor`, fail-closed, nothing signed). Rules of
+thumb: keep `order slippageBps + fee-as-bps-of-order + quote-vs-oracle gap <
+50bps`; on L1 size orders so the fee is <15bps (>= ~$60 at typical fees), or
+tighten `slippageBps` (30bps worked on Arbitrum, 3bps cleared a $19 L1 order);
+real vault rebalances ($10k+) never feel this - it is a small-trial artifact.
+
 TTL: `buildOphisSafePresign` defaults to an 1800s order TTL (validTo = build-time
 wall clock + 1800) and accepts an optional `ttlSeconds` (>= 0.1.1, capped at
 3600). The module here is deployed with `maxTtl = 3600` (Step 2), which gives the
