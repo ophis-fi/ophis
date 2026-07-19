@@ -66,7 +66,7 @@ settlement they gate and which Chainlink feeds they read.
 | Optimism (10) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Ophis self-hosted |
 | Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
 | Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
-| Unichain (130) | see repo | Ophis self-hosted |
+| Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
 
 Each vault deploys its own module instance through the factory, configured
 with its own Safe, curator, allowlist, and caps.
