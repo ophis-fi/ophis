@@ -7,32 +7,29 @@ import {OphisVaultPolicyModuleFactory} from "src/contracts/vault/OphisVaultPolic
 import {IAggregatorV3, IGPv2Settlement, ISafe} from "src/contracts/vault/interfaces/IVaultPolicyDeps.sol";
 
 /// @notice Deploys the vault policy factory + a module for a trial vault on
-/// Optimism (10). Env: VAULT_SAFE, VAULT_CURATOR, VAULT_APPDATA_HASH, optional
-/// VAULT_CAP (default 250e18). Feeds/settlement/tokens hardcoded to addresses
-/// verified against live OP state (see the OP fork preflight test). Unlike
-/// Unichain, OP's Chainlink feeds are 8-decimal and ETH/USD updates far more
-/// often than the 24h-heartbeat stables, so maxStaleness is sized PER feed.
-contract DeployVaultPolicyModuleOP is Script {
-    // Ophis self-hosted OP settlement (NON-canonical; verified on-chain). The
-    // module reads its relayer + domain separator from here at construction.
-    address constant SETTLEMENT = 0x310784c7FCE12d578dA6f53460777bAc9718B859;
-    address constant USDC = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85; // native USDC, 6dp
-    address constant WETH = 0x4200000000000000000000000000000000000006; // 18dp
-    address constant USDC_FEED = 0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3; // USDC/USD, 8dp
-    address constant ETH_FEED = 0x13e3Ee699D1909E989722E753853AE30b17e08c5; // ETH/USD, 8dp
-    address constant SEQ_FEED = 0x371EAD81c9102C9BF4874A9075FFFf170F2Ee389; // L2 uptime
+/// Ethereum mainnet (1). Env: VAULT_SAFE, VAULT_CURATOR, VAULT_APPDATA_HASH,
+/// optional VAULT_CAP (default 250e18). CoW-hosted: canonical settlement +
+/// relayer, Ophis partner fee via the pinned appData. Ethereum is an L1 - there
+/// is NO sequencer-uptime feed, so the sequencer gate is disabled (address(0),
+/// grace 0; the module constructor requires they be zero together). Addresses
+/// verified against live Ethereum state (see the Ethereum fork preflight).
+contract DeployVaultPolicyModuleEthereum is Script {
+    address constant SETTLEMENT = 0x9008D19f58AAbD9eD0D60971565AA8510560ab41; // canonical
+    address constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; // 6dp
+    address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // 18dp
+    address constant USDC_FEED = 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6; // USDC/USD, 8dp
+    address constant ETH_FEED = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // ETH/USD, 8dp
 
-    // ETH/USD updates on a short (deviation-driven, ~20min heartbeat) cadence:
-    // 2h = several heartbeats of buffer while keeping the volatile-leg stale-
-    // price envelope tight (audit lead: size tight to the heartbeat). USDC/USD
-    // is a 24h-heartbeat stable feed and needs 24h + a buffer.
+    // Ethereum ETH/USD has a 1h heartbeat (0.5% deviation): 2h = heartbeat + a
+    // full missed round of buffer, keeping the volatile-leg stale-price envelope
+    // tight (audit lead). USDC/USD is a 24h-heartbeat stable feed.
     uint256 constant ETH_STALENESS = 2 hours;
     uint256 constant USDC_STALENESS = 26 hours;
 
     function run() external {
         // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
         // closed cross-chain, but this reverts with a clear reason first).
-        require(block.chainid == 10, "wrong chain");
+        require(block.chainid == 1, "wrong chain");
         address safe = vm.envAddress("VAULT_SAFE");
         address curator = vm.envAddress("VAULT_CURATOR");
         bytes32 appDataHash = vm.envBytes32("VAULT_APPDATA_HASH");
@@ -48,15 +45,13 @@ contract DeployVaultPolicyModuleOP is Script {
             curator: curator,
             appDataHash: appDataHash,
             maxSlippageBps: 50,
-            // Headroom over @ophis/safe-swap's fixed 1800s order TTL: the module
-            // checks validTo against the L2 block timestamp, which can lag the
-            // builder's wall clock, so maxTtl == 1800 leaves zero slack and
-            // reverts BadValidTo. Actual price exposure stays the order's 1800s
-            // validTo; this is only the ceiling on a curator-craftable TTL.
+            // Headroom over @ophis/safe-swap's default 1800s order TTL (see the
+            // OP/Base scripts): maxTtl == the order TTL leaves zero slack against
+            // block-timestamp lag and reverts BadValidTo.
             maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
-            sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
-            sequencerGracePeriod: 1 hours,
+            sequencerUptimeFeed: IAggregatorV3(address(0)), // L1: no sequencer gate
+            sequencerGracePeriod: 0,
             tokens: tokens
         });
 

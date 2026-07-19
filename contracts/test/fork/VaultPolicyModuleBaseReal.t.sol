@@ -56,7 +56,7 @@ contract VaultPolicyModuleBaseReal is Test {
     address internal constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
 
     uint256 internal constant USDC_STALENESS = 26 hours;
-    uint256 internal constant ETH_STALENESS = 6 hours;
+    uint256 internal constant ETH_STALENESS = 2 hours;
     uint256 internal constant SEQ_GRACE = 1 hours;
 
     address internal constant CURATOR = address(0xC0FFEE);
@@ -97,7 +97,7 @@ contract VaultPolicyModuleBaseReal is Test {
                 curator: CURATOR,
                 appDataHash: APP_DATA,
                 maxSlippageBps: 50,
-                maxTtl: 3600, // matches the deploy script: headroom over the builder's 1800s TTL
+                maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(SEQUENCER_FEED),
                 sequencerGracePeriod: SEQ_GRACE,
@@ -132,7 +132,7 @@ contract VaultPolicyModuleBaseReal is Test {
     /// The module constructed against REAL feeds (probe passed) and a legit
     /// rebalance presigns in the REAL canonical settlement with exact allowance.
     function test_base_real_construct_and_presign() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         assertTrue(safe.isModuleEnabled(address(module)));
         GPv2Order.Data memory order = _order(address(safe), 1e30);
         vm.prank(CURATOR);
@@ -145,7 +145,7 @@ contract VaultPolicyModuleBaseReal is Test {
     /// The REAL oracle produces a nonzero floor: a 1-wei buyAmount reverts
     /// BelowFloor (proves read18 against the real 8-decimal feeds works).
     function test_base_real_below_floor_reverts() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         vm.prank(CURATOR);
         vm.expectRevert(); // BelowFloor(1, realFloor)
         module.rebalance(_order(address(safe), 1), 0);
@@ -153,7 +153,7 @@ contract VaultPolicyModuleBaseReal is Test {
 
     /// A drain order (attacker receiver) is rejected on-chain.
     function test_base_real_drain_rejected() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         vm.prank(CURATOR);
         vm.expectRevert(OphisVaultPolicyModule.ReceiverNotSafe.selector);
         module.rebalance(_order(address(0xBAD), 1e30), 0);
