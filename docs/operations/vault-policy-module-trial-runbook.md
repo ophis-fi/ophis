@@ -1,4 +1,4 @@
-# Vault policy module — live trial runbook (OP, then Base)
+# Vault policy module — live trial runbook (OP, Base, Ethereum, Arbitrum)
 
 How to stand up a gated Phase-B vault-curator trial on a new chain: deploy the
 `OphisVaultPolicyModule`, migrate/point a trial Safe at it, and settle a real
@@ -18,24 +18,25 @@ Every address below is checked against live chain state by the fork preflight
 (`contracts/test/fork/VaultPolicyModule{OP,Base}Real.t.sol`) — the module
 constructor probes each feed + settlement, so a passing preflight IS the proof.
 
-| | Optimism (10) | Base (8453) |
-|---|---|---|
-| Settlement | `0x310784c7FCE12d578dA6f53460777bAc9718B859` (Ophis self-hosted) | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (canonical CoW) |
-| Relayer (read from settlement) | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
-| USDC (6dp) | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| WETH (18dp) | `0x4200000000000000000000000000000000000006` | `0x4200000000000000000000000000000000000006` |
-| ETH/USD feed (8dp) | `0x13e3Ee699D1909E989722E753853AE30b17e08c5` | `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` |
-| USDC/USD feed (8dp) | `0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3` | `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` |
-| Sequencer uptime | `0x371EAD81c9102C9BF4874A9075FFFf170F2Ee389` | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` |
-| maxStaleness (WETH / USDC) | 6h / 26h | 6h / 26h |
-| seq grace | 1h | 1h |
+| | Optimism (10) | Base (8453) | Ethereum (1) | Arbitrum (42161) |
+|---|---|---|---|---|
+| Settlement | `0x310784c7FCE12d578dA6f53460777bAc9718B859` (Ophis self-hosted) | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (canonical) | canonical (same) | canonical (same) |
+| Relayer (read from settlement) | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | canonical (same) | canonical (same) |
+| USDC (6dp) | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+| WETH (18dp) | `0x4200000000000000000000000000000000000006` | `0x4200000000000000000000000000000000000006` | `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` | `0x82aF49447D8a07e3bd95BD0d56f35241523fBab1` |
+| ETH/USD feed (8dp) | `0x13e3Ee699D1909E989722E753853AE30b17e08c5` | `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` | `0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419` | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
+| USDC/USD feed (8dp) | `0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3` | `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` | `0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6` | `0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3` |
+| Sequencer uptime | `0x371EAD81c9102C9BF4874A9075FFFf170F2Ee389` | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` | none (L1: gate disabled) | `0xFdB631F5EE196F0ed6FAa767959853A9F217697D` |
+| maxStaleness (WETH / USDC) | 6h / 26h | 6h / 26h | 6h / 26h | 26h / 26h |
+| seq grace | 1h | 1h | — | 1h |
 
-Base is CoW-hosted (sovereign stack paused), so orders settle through the
-canonical settlement + relayer with the Ophis partner fee carried in the pinned
-appData. OP is self-hosted, so it uses the Ophis (non-canonical) settlement +
-relayer. The module reads the relayer + domain separator from whichever
-settlement it is configured with — the only per-chain difference is the address
-table above.
+OP is self-hosted (Ophis non-canonical settlement + relayer). Base, Ethereum,
+and Arbitrum are CoW-hosted: orders settle through the canonical settlement +
+relayer with the Ophis partner fee carried in the pinned appData. The module
+reads the relayer + domain separator from whichever settlement it is configured
+with — the per-chain differences are the address table above, plus: Ethereum is
+an L1 (no sequencer feed, gate disabled), and Arbitrum's ETH/USD feed has a 24h
+HEARTBEAT (deviation-driven in practice) so BOTH its tokens use the 26h window.
 
 ## Prerequisites
 
@@ -57,6 +58,12 @@ OPHIS_FORK_RPC=https://mainnet.optimism.io \
 # Base
 OPHIS_FORK_RPC_BASE=https://mainnet.base.org \
   forge test --match-path 'test/fork/VaultPolicyModuleBaseReal.t.sol' -vv
+# Ethereum
+OPHIS_FORK_RPC_ETH=https://ethereum-rpc.publicnode.com \
+  forge test --match-path 'test/fork/VaultPolicyModuleEthereumReal.t.sol' -vv
+# Arbitrum
+OPHIS_FORK_RPC_ARBITRUM=https://arb1.arbitrum.io/rpc \
+  forge test --match-path 'test/fork/VaultPolicyModuleArbitrumReal.t.sol' -vv
 ```
 
 3/3 pass = the feeds, settlement, and tokens are live and the module builds.
@@ -98,6 +105,12 @@ forge script script/DeployVaultPolicyModuleOP.s.sol \
 # Base
 forge script script/DeployVaultPolicyModuleBase.s.sol \
   --rpc-url https://mainnet.base.org --broadcast --account <deployer-keystore>
+# Ethereum
+forge script script/DeployVaultPolicyModuleEthereum.s.sol \
+  --rpc-url https://ethereum-rpc.publicnode.com --broadcast --account <deployer-keystore>
+# Arbitrum
+forge script script/DeployVaultPolicyModuleArbitrum.s.sol \
+  --rpc-url https://arb1.arbitrum.io/rpc --broadcast --account <deployer-keystore>
 ```
 
 Use a foundry keystore (`--account`) or `--ledger` for the deployer — never pass
