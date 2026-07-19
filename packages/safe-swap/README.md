@@ -9,10 +9,12 @@ funds never leave its control, and the order carries the Ophis partner fee.
 This package builds the order + the on-chain tx batch. It never holds keys and (for the
 core builder) never imports a wallet SDK.
 
-> Maturity: this is Phase A (curator rebalance venue). M1–M3 are implemented and
-> unit + fork tested; it is **not yet published to npm or enabled on mainnet** — that is
-> M4's gated, monitored rollout. The strongest "curator cannot drain even if its key
-> leaks" guarantee is the Phase-B EIP-1271 policy module (not built). See "Security".
+> Maturity: published to npm and live. The Phase-B **on-chain policy module**
+> (`OphisVaultPolicyModule`) is deployed and has settled real module-gated
+> rebalances on five chains (Ethereum, Optimism, Base, Arbitrum, Unichain) — it is
+> the strongest curator model and the recommended one (model C below). The module
+> contracts went through a 12-agent adversarial audit, Trail of Bits semgrep,
+> Echidna/Foundry invariant fuzzing, and independent review. See "Security".
 
 ## Install
 
@@ -28,16 +30,20 @@ pnpm add zodiac-roles-sdk             # for @ophis/safe-swap/roles-preset
 ```ts
 import { buildOphisSafePresign } from '@ophis/safe-swap'
 
-const { orderUid, txs, settlement, relayer, enrollmentWarning } = await buildOphisSafePresign({
-  chainId: 130,                 // Unichain (or 10 = OP)
-  safe: vaultSafeAddress,       // order.from AND order.receiver
-  sellToken: USDC,
-  buyToken: WETH,
-  sellAmount: '1000000',        // ATOMIC gross to sell (base units)
-  minBuyAmount: curatorMinOut,  // ATOMIC hard floor; recommended for any real size
-  slippageBps: 50,
-})
-// `txs` is [approve?, setPreSignature(orderUid, true)] — execute it AS the Safe.
+const { orderUid, order, fullAppData, txs, settlement, relayer, enrollmentWarning } =
+  await buildOphisSafePresign({
+    chainId: 130,                 // Unichain (or 10 = OP, 1, 8453, 42161, ...)
+    safe: vaultSafeAddress,       // order.from AND order.receiver
+    sellToken: USDC,
+    buyToken: WETH,
+    sellAmount: '1000000',        // ATOMIC gross to sell (base units)
+    minBuyAmount: curatorMinOut,  // ATOMIC hard floor; recommended for any real size
+    slippageBps: 50,
+    ttlSeconds: 1500,             // optional; default 1800, capped at 3600
+  })
+// Direct path: `txs` is [approve?, setPreSignature(orderUid, true)] — execute AS the Safe.
+// Policy-module path (model C): pass `order` to `module.rebalance(order, minBuyOverride)`
+// from the curator key; the module re-derives the same uid and presigns on-chain.
 ```
 
 `buildOphisSafePresign` quotes against the Ophis orderbook (receiver pinned to the Safe),
@@ -61,6 +67,25 @@ asserts exact allowance to the real relayer + presignature recorded in the real 
 exact-pull. This proves the on-chain surface the builder produces; it does NOT quote/submit an
 order or run a solver settlement (a fork has no solver network — that is covered by the
 monitored real-chain rollout). (Plasma has no USDC yet, so its check uses a WETH9 -> USDT0 pair.)
+
+## Curator model C: on-chain policy module (strongest, recommended)
+
+Deploy an `OphisVaultPolicyModule` for the vault (factory + per-chain deploy scripts in
+`contracts/script/`), enable it on the Safe, and give the curator key exactly two
+entrypoints: `module.rebalance(order, minBuyOverride)` and `module.cancel(orderUid)`.
+The module re-checks EVERY order field on-chain before presigning — receiver pinned to
+the Safe, token allowlist, Chainlink oracle price floor, pinned partner-fee appData,
+zero signed fee, TTL ceiling, rolling daily USD turnover cap — so a compromised curator
+key cannot drain the vault, only trigger policy-valid rebalances inside that envelope.
+
+```ts
+const { order } = await buildOphisSafePresign({ ...params, ttlSeconds: 1500 })
+// curator key calls: module.rebalance(order, 0)
+// the module re-derives the same orderUid, sets an EXACT allowance, and presigns.
+```
+
+Live on Ethereum, Optimism, Base, Arbitrum, and Unichain with real settled rebalances.
+Operator guide: `docs/operations/vault-policy-module-trial-runbook.md` in the repo.
 
 ## Curator model A: MPC / owner key (protocol-kit)
 
@@ -121,20 +146,22 @@ Enforced in code and unit-tested (fail-closed):
 - request binding (tokens + gross), buy-floor > 0 + optional caller hard min-out, slippage
   cap, local `validTo`, `partiallyFillable=false`.
 
-**Residual (disclosed):** presign + Roles bound the on-chain SURFACE (approve-the-relayer +
-presign-the-settlement, nothing else), but they cannot enforce receiver / fee / minOut
-inside the `setPreSignature` calldata. Those rest on the off-chain builder guards plus the
-vault's guardian / timelock. The only true "curator cannot drain even if its key leaks"
-guarantee is the Phase-B on-chain EIP-1271 policy module (decodes the full order and asserts
-receiver == vault + token allowlist + minOut >= oracle) — not yet built.
+**Residual (disclosed):** with curator models A/B, presign + Roles bound the on-chain
+SURFACE (approve-the-relayer + presign-the-settlement, nothing else), but they cannot
+enforce receiver / fee / minOut inside the `setPreSignature` calldata — those rest on the
+off-chain builder guards plus the vault's guardian / timelock. The true "curator cannot
+drain even if its key leaks" guarantee is **curator model C: the on-chain policy module**
+(decodes the full order on-chain and asserts receiver == vault + token allowlist +
+oracle floor + pinned appData + turnover cap) — built, audited (12-agent adversarial
+pass + Trail of Bits semgrep + Echidna/Foundry invariants), and live on five chains.
 
-> **Until Phase B, treat the curator MPC / Roles key as full vault-owner-level custody.**
-> A compromised curator key can `approve(relayer, MaxUint)` (the Roles preset pins the
-> spender but not the amount) and `setPreSignature` a self-crafted drain order (owner = the
-> Safe, receiver = attacker), then settle it. The Roles preset confines a *not-yet-abused*
-> key to the two Ophis call shapes and denies every other target; it does **not** stop a
-> drain by an already-compromised key. Grant the curator key only to something you would
-> trust to move vault funds directly.
+> **With models A/B (no policy module), treat the curator MPC / Roles key as full
+> vault-owner-level custody.** A compromised curator key can `approve(relayer, MaxUint)`
+> (the Roles preset pins the spender but not the amount) and `setPreSignature` a
+> self-crafted drain order (owner = the Safe, receiver = attacker), then settle it.
+> With model C, a compromised curator is bounded to policy-valid rebalances: worst case
+> is price bleed inside the oracle-floor band, capped by the module's daily USD turnover
+> budget. Prefer model C for any real deployment.
 
 Note: `buildOphisSafePresign` / `submitOrder` clamp a pre-existing oversized relayer
 allowance to exact by default (least-privilege). If a Safe deliberately keeps ONE shared

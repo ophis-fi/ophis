@@ -60,7 +60,7 @@ contract VaultPolicyModuleArbitrumReal is Test {
     // the tight OP/Base window applies; USDC/USD is a 24h-heartbeat stable feed
     // (see the deploy script).
     uint256 internal constant USDC_STALENESS = 26 hours;
-    uint256 internal constant ETH_STALENESS = 6 hours;
+    uint256 internal constant ETH_STALENESS = 2 hours;
     uint256 internal constant SEQ_GRACE = 1 hours;
 
     address internal constant CURATOR = address(0xC0FFEE);
@@ -101,7 +101,7 @@ contract VaultPolicyModuleArbitrumReal is Test {
                 curator: CURATOR,
                 appDataHash: APP_DATA,
                 maxSlippageBps: 50,
-                maxTtl: 3600, // matches the deploy script: headroom over the builder's 1800s TTL
+                maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(SEQUENCER_FEED),
                 sequencerGracePeriod: SEQ_GRACE,

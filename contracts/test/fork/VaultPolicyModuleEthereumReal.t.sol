@@ -56,7 +56,7 @@ contract VaultPolicyModuleEthereumReal is Test {
     address internal constant ETH_USD_FEED = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // 8 dec
 
     uint256 internal constant USDC_STALENESS = 26 hours;
-    uint256 internal constant ETH_STALENESS = 6 hours;
+    uint256 internal constant ETH_STALENESS = 2 hours;
 
     address internal constant CURATOR = address(0xC0FFEE);
     address internal constant SAFE_OWNER = address(0xA11CE);
@@ -96,7 +96,7 @@ contract VaultPolicyModuleEthereumReal is Test {
                 curator: CURATOR,
                 appDataHash: APP_DATA,
                 maxSlippageBps: 50,
-                maxTtl: 3600, // matches the deploy script: headroom over the builder's 1800s TTL
+                maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
                 sequencerGracePeriod: 0,

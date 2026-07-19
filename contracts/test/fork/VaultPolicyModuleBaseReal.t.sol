@@ -56,7 +56,7 @@ contract VaultPolicyModuleBaseReal is Test {
     address internal constant SEQUENCER_FEED = 0xBCF85224fc0756B9Fa45aA7892530B47e10b6433;
 
     uint256 internal constant USDC_STALENESS = 26 hours;
-    uint256 internal constant ETH_STALENESS = 6 hours;
+    uint256 internal constant ETH_STALENESS = 2 hours;
     uint256 internal constant SEQ_GRACE = 1 hours;
 
     address internal constant CURATOR = address(0xC0FFEE);
@@ -97,7 +97,7 @@ contract VaultPolicyModuleBaseReal is Test {
                 curator: CURATOR,
                 appDataHash: APP_DATA,
                 maxSlippageBps: 50,
-                maxTtl: 3600, // matches the deploy script: headroom over the builder's 1800s TTL
+                maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(SEQUENCER_FEED),
                 sequencerGracePeriod: SEQ_GRACE,

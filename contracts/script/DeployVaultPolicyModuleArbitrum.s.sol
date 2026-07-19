@@ -20,14 +20,17 @@ contract DeployVaultPolicyModuleArbitrum is Script {
     address constant SEQ_FEED = 0xFdB631F5EE196F0ed6FAa767959853A9F217697D; // L2 uptime
 
     // Arbitrum's ETH/USD feed is deviation-driven (0.05%) and updates every few
-    // minutes in practice (measured on-chain: ~2-6 min/round), so the tight 6h
-    // window used on OP/Base is safe here too and keeps the stale-price
+    // minutes in practice (measured on-chain: ~2-6 min/round), so the tight 2h
+    // window shared with the other chains is safe and keeps the stale-price
     // envelope small; a false-stale is a harmless fail-closed revert (retry).
     // USDC/USD is a 24h-heartbeat stable feed and needs 24h + buffer.
-    uint256 constant ETH_STALENESS = 6 hours;
+    uint256 constant ETH_STALENESS = 2 hours;
     uint256 constant USDC_STALENESS = 26 hours;
 
     function run() external {
+        // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
+        // closed cross-chain, but this reverts with a clear reason first).
+        require(block.chainid == 42161, "wrong chain");
         address safe = vm.envAddress("VAULT_SAFE");
         address curator = vm.envAddress("VAULT_CURATOR");
         bytes32 appDataHash = vm.envBytes32("VAULT_APPDATA_HASH");
@@ -45,7 +48,7 @@ contract DeployVaultPolicyModuleArbitrum is Script {
             maxSlippageBps: 50,
             // Headroom over @ophis/safe-swap's default 1800s order TTL (see the
             // OP/Base scripts).
-            maxTtl: 3600,
+            maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
             sequencerGracePeriod: 1 hours,

@@ -20,12 +20,16 @@ contract DeployVaultPolicyModuleEthereum is Script {
     address constant USDC_FEED = 0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6; // USDC/USD, 8dp
     address constant ETH_FEED = 0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419; // ETH/USD, 8dp
 
-    // Ethereum ETH/USD has a 1h heartbeat (0.5% deviation) - 6h is a generous
-    // buffer; USDC/USD is a 24h-heartbeat stable feed.
-    uint256 constant ETH_STALENESS = 6 hours;
+    // Ethereum ETH/USD has a 1h heartbeat (0.5% deviation): 2h = heartbeat + a
+    // full missed round of buffer, keeping the volatile-leg stale-price envelope
+    // tight (audit lead). USDC/USD is a 24h-heartbeat stable feed.
+    uint256 constant ETH_STALENESS = 2 hours;
     uint256 constant USDC_STALENESS = 26 hours;
 
     function run() external {
+        // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
+        // closed cross-chain, but this reverts with a clear reason first).
+        require(block.chainid == 1, "wrong chain");
         address safe = vm.envAddress("VAULT_SAFE");
         address curator = vm.envAddress("VAULT_CURATOR");
         bytes32 appDataHash = vm.envBytes32("VAULT_APPDATA_HASH");
@@ -44,7 +48,7 @@ contract DeployVaultPolicyModuleEthereum is Script {
             // Headroom over @ophis/safe-swap's default 1800s order TTL (see the
             // OP/Base scripts): maxTtl == the order TTL leaves zero slack against
             // block-timestamp lag and reverts BadValidTo.
-            maxTtl: 3600,
+            maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(address(0)), // L1: no sequencer gate
             sequencerGracePeriod: 0,

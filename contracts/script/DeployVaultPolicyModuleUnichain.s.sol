@@ -19,6 +19,9 @@ contract DeployVaultPolicyModuleUnichain is Script {
     address constant SEQ_FEED = 0x495639D9914e7D270c5dCC641BfB1d807423F813; // L2 uptime
 
     function run() external {
+        // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
+        // closed cross-chain, but this reverts with a clear reason first).
+        require(block.chainid == 130, "wrong chain");
         address safe = vm.envAddress("VAULT_SAFE");
         address curator = vm.envAddress("VAULT_CURATOR");
         bytes32 appDataHash = vm.envBytes32("VAULT_APPDATA_HASH");
@@ -34,7 +37,7 @@ contract DeployVaultPolicyModuleUnichain is Script {
             curator: curator,
             appDataHash: appDataHash,
             maxSlippageBps: 50,
-            maxTtl: 1800,
+            maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
             sequencerGracePeriod: 1 hours,

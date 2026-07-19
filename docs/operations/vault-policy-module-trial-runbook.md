@@ -27,7 +27,7 @@ constructor probes each feed + settlement, so a passing preflight IS the proof.
 | ETH/USD feed (8dp) | `0x13e3Ee699D1909E989722E753853AE30b17e08c5` | `0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70` | `0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419` | `0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612` |
 | USDC/USD feed (8dp) | `0x16a9FA2FDa030272Ce99B29CF780dFA30361E0f3` | `0x7e860098F58bBFC8648a4311b374B1D669a2bc6B` | `0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6` | `0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3` |
 | Sequencer uptime | `0x371EAD81c9102C9BF4874A9075FFFf170F2Ee389` | `0xBCF85224fc0756B9Fa45aA7892530B47e10b6433` | none (L1: gate disabled) | `0xFdB631F5EE196F0ed6FAa767959853A9F217697D` |
-| maxStaleness (WETH / USDC) | 6h / 26h | 6h / 26h | 6h / 26h | 6h / 26h |
+| maxStaleness (WETH / USDC) | 2h / 26h | 2h / 26h | 2h / 26h | 2h / 26h |
 | seq grace | 1h | 1h | — | 1h |
 
 OP is self-hosted (Ophis non-canonical settlement + relayer). Base, Ethereum,
@@ -36,7 +36,7 @@ relayer with the Ophis partner fee carried in the pinned appData. The module
 reads the relayer + domain separator from whichever settlement it is configured
 with — the per-chain differences are the address table above, plus: Ethereum is
 an L1 (no sequencer feed, gate disabled). Every chain's ETH/USD feed is
-deviation-driven and updates every few minutes in practice, so the tight 6h
+deviation-driven and updates every few minutes in practice, so the tight 2h
 window applies everywhere; the 26h window is only for the 24h-heartbeat stable
 feeds.
 
@@ -187,7 +187,9 @@ real vault rebalances ($10k+) never feel this - it is a small-trial artifact.
 
 TTL: `buildOphisSafePresign` defaults to an 1800s order TTL (validTo = build-time
 wall clock + 1800) and accepts an optional `ttlSeconds` (>= 0.1.1, capped at
-3600). The module here is deployed with `maxTtl = 3600` (Step 2), which gives the
+3600). The module here is deployed with `maxTtl = 1980` (Step 2): the builder's
+1800s order plus 180s of block-timestamp-lag margin, kept tight so a compromised
+curator cannot stretch the fill window beyond ~33 minutes (audit lead). It gives the
 default 1800s order a full 1800s of headroom over the module's `validTo <=
 block.timestamp + maxTtl` check - so it validates even though the L2 block
 timestamp can lag the builder's wall clock. Do NOT deploy with `maxTtl = 1800`:

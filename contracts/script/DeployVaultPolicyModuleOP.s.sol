@@ -22,13 +22,17 @@ contract DeployVaultPolicyModuleOP is Script {
     address constant ETH_FEED = 0x13e3Ee699D1909E989722E753853AE30b17e08c5; // ETH/USD, 8dp
     address constant SEQ_FEED = 0x371EAD81c9102C9BF4874A9075FFFf170F2Ee389; // L2 uptime
 
-    // ETH/USD updates on a short (deviation-driven, ~20min-1h) heartbeat, so a
-    // few hours is a safe-yet-tight window for the volatile leg; USDC/USD is a
-    // 24h-heartbeat stable feed and needs 24h + a buffer.
-    uint256 constant ETH_STALENESS = 6 hours;
+    // ETH/USD updates on a short (deviation-driven, ~20min heartbeat) cadence:
+    // 2h = several heartbeats of buffer while keeping the volatile-leg stale-
+    // price envelope tight (audit lead: size tight to the heartbeat). USDC/USD
+    // is a 24h-heartbeat stable feed and needs 24h + a buffer.
+    uint256 constant ETH_STALENESS = 2 hours;
     uint256 constant USDC_STALENESS = 26 hours;
 
     function run() external {
+        // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
+        // closed cross-chain, but this reverts with a clear reason first).
+        require(block.chainid == 10, "wrong chain");
         address safe = vm.envAddress("VAULT_SAFE");
         address curator = vm.envAddress("VAULT_CURATOR");
         bytes32 appDataHash = vm.envBytes32("VAULT_APPDATA_HASH");
@@ -49,7 +53,7 @@ contract DeployVaultPolicyModuleOP is Script {
             // builder's wall clock, so maxTtl == 1800 leaves zero slack and
             // reverts BadValidTo. Actual price exposure stays the order's 1800s
             // validTo; this is only the ceiling on a curator-craftable TTL.
-            maxTtl: 3600,
+            maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
             sequencerGracePeriod: 1 hours,
