@@ -54,6 +54,40 @@ mean each presign backs at most one fill.
 The module is immutable: no owner, no setters, no upgrade path. Changing
 policy means deploying a new module and switching over.
 
+## Multi-token vaults
+
+The USDC/WETH pair in the examples is just the smallest case. The module is
+built with a LIST of tokens, each paired with its own Chainlink USD price feed
+and staleness window. The minimum is two, and there is no fixed upper bound
+beyond gas. A vault holding USDC, WETH, WBTC, and DAI, for instance, deploys
+with four entries.
+
+How the token set behaves:
+
+- **Any allowlisted token into any other.** The oracle floor is a cross-rate:
+  for a sell of A into B the module reads A/USD and B/USD and requires the order
+  to clear the implied price minus the slippage band. The curator rotates freely
+  within the allowlist, always price-checked. A token that is not on the list is
+  rejected as `TokenNotAllowed`.
+- **One shared daily budget, denominated in USD.** The turnover cap is global
+  across every token, not per token, so a compromised curator cannot multiply
+  its reach by rotating through many assets. One bucket bounds the whole vault.
+- **One live order per sell token.** Allowance tracking is per sell token, so
+  there is never more than one in-flight presigned order per token sharing an
+  allowance (the property the audit's regression invariant locks down).
+- **The set is fixed at deploy.** The module is immutable, so adding or removing
+  a token means deploying a fresh module and re-enabling it. That is the
+  deliberate trade for having no admin function that could inject a malicious
+  token or feed.
+
+Two requirements for a token to be allowlistable:
+
+- It needs a Chainlink USD feed, which is how the module prices it.
+- It must not be fee-on-transfer or rebasing. The floor is computed on the gross
+  sell amount, which those token types do not deliver in full, so they are
+  excluded. A vault can still HOLD such assets; it just cannot rebalance them
+  through this module.
+
 ## Live deployments
 
 The module is live and has settled real rebalances on five chains. The
@@ -66,7 +100,7 @@ settlement they gate and which Chainlink feeds they read.
 | Optimism (10) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Ophis self-hosted |
 | Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
 | Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
-| Unichain (130) | see repo | Ophis self-hosted |
+| Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
 
 Each vault deploys its own module instance through the factory, configured
 with its own Safe, curator, allowlist, and caps.
@@ -151,3 +185,41 @@ access instantly, and `cancel` revokes any open order.
 
 Rebalances carry the standard Ophis partner fee (5 bps SDK tier) in the pinned
 appData, attributed on settlement. See [Fees](/fees) for the full schedule.
+
+## FAQ
+
+**What problem does this actually solve?**
+
+Running an active vault strategy normally means giving an operations key the
+power to move funds, which is the same power needed to steal them. The policy
+module separates the two. The curator key can trigger swaps but can only ever
+produce policy-valid orders: proceeds back to the vault, allowlisted tokens,
+oracle-priced, capped daily volume. A leaked or rogue curator key cannot
+redirect a single token out of the vault. At worst it can make slightly-off but
+policy-valid trades, bounded by the daily budget.
+
+**What does a vault manager have to do to start using it?**
+
+Four steps: deploy a module for your Safe from the per-chain factory; enable it
+on the Safe with one owner-signed `enableModule` transaction; build orders with
+the `@ophis/safe-swap` package; and have the curator key call
+`module.rebalance(order)`. Funds never leave the Safe, and the owners can
+`disableModule` at any time. The
+[runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operations/vault-policy-module-trial-runbook.md)
+has the full sequence.
+
+**Can a vault rebalance more than two tokens?**
+
+Yes. The module takes a list of tokens, each with its own price feed, minimum
+two and no fixed upper bound. See [Multi-token vaults](#multi-token-vaults) for
+how the allowlist, the shared USD budget, and the fixed-at-deploy token set
+behave.
+
+**Why is the module factory at a different address on Unichain?**
+
+A contract's address is derived from its deployer and that deployer's nonce. On
+Ethereum, Optimism, Base, and Arbitrum the factory was the deployer's first
+transaction on each chain, so it landed at the same address everywhere. On
+Unichain the deployer had already transacted, so the factory came out at a
+different nonce and therefore a different address. It is the same factory
+contract in every case.
