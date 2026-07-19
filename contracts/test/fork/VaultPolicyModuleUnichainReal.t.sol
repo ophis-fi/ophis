@@ -133,7 +133,7 @@ contract VaultPolicyModuleUnichainReal is Test {
     /// The module constructed against REAL feeds (probe passed) and a legit
     /// rebalance presigns in the REAL settlement with an exact relayer allowance.
     function test_unichain_real_construct_and_presign() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         assertTrue(safe.isModuleEnabled(address(module)));
         // buyAmount high enough to clear any real floor; the point is the real
         // oracle read + real settlement presign, not the floor value.
@@ -148,7 +148,7 @@ contract VaultPolicyModuleUnichainReal is Test {
     /// The REAL oracle produces a nonzero floor: a 1-wei buyAmount reverts
     /// BelowFloor (proves read18 against the real 18-decimal feeds works).
     function test_unichain_real_below_floor_reverts() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         vm.prank(CURATOR);
         vm.expectRevert(); // BelowFloor(1, realFloor)
         module.rebalance(_order(address(safe), 1), 0);
@@ -156,7 +156,7 @@ contract VaultPolicyModuleUnichainReal is Test {
 
     /// A drain order (attacker receiver) is rejected on-chain.
     function test_unichain_real_drain_rejected() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         vm.prank(CURATOR);
         vm.expectRevert(OphisVaultPolicyModule.ReceiverNotSafe.selector);
         module.rebalance(_order(address(0xBAD), 1e30), 0);

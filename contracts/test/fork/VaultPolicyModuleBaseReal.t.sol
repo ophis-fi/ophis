@@ -132,7 +132,7 @@ contract VaultPolicyModuleBaseReal is Test {
     /// The module constructed against REAL feeds (probe passed) and a legit
     /// rebalance presigns in the REAL canonical settlement with exact allowance.
     function test_base_real_construct_and_presign() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         assertTrue(safe.isModuleEnabled(address(module)));
         GPv2Order.Data memory order = _order(address(safe), 1e30);
         vm.prank(CURATOR);
@@ -145,7 +145,7 @@ contract VaultPolicyModuleBaseReal is Test {
     /// The REAL oracle produces a nonzero floor: a 1-wei buyAmount reverts
     /// BelowFloor (proves read18 against the real 8-decimal feeds works).
     function test_base_real_below_floor_reverts() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         vm.prank(CURATOR);
         vm.expectRevert(); // BelowFloor(1, realFloor)
         module.rebalance(_order(address(safe), 1), 0);
@@ -153,7 +153,7 @@ contract VaultPolicyModuleBaseReal is Test {
 
     /// A drain order (attacker receiver) is rejected on-chain.
     function test_base_real_drain_rejected() public {
-        if (!_forked()) return;
+        if (!_forked()) vm.skip(true);
         vm.prank(CURATOR);
         vm.expectRevert(OphisVaultPolicyModule.ReceiverNotSafe.selector);
         module.rebalance(_order(address(0xBAD), 1e30), 0);

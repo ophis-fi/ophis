@@ -82,7 +82,7 @@ import { buildOphisOrderMetadata } from '@ophis/sdk';
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/app-data';
 import { keccak256, toBytes } from 'viem';
 
-const CHAIN_ID = 10;           // 8453 for Base
+const CHAIN_ID = 10;           // 1 Ethereum | 10 OP | 8453 Base | 42161 Arbitrum
 const SAFE = '0xYourTrialSafe';
 const input = buildOphisOrderMetadata({ chainId: CHAIN_ID, signer: SAFE });
 const full = await stringifyDeterministic(await new MetadataApi().generateAppDataDoc(input));
