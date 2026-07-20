@@ -32,8 +32,11 @@ echidna test/fizz/vault/VaultPolicyEchidna.sol --contract VaultPolicyEchidna \
 
 ## Medusa
 
-Uses `medusa.json` in this directory (absolute `target` path required by
-medusa's CWD handling — edit if the repo moves):
+Uses `medusa.json` in this directory. Medusa resolves `target` relative to the
+CONFIG FILE's directory (it chdirs there), so the target is the bare
+`VaultPolicyEchidna.sol` — do NOT reintroduce an absolute path: one pointing at
+another worktree compiles and fuzzes THAT copy and reports green for code never
+under test, and it cannot run in CI or on another machine.
 
 ```bash
 medusa fuzz --config test/fizz/vault/medusa.json
