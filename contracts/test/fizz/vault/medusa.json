@@ -13,7 +13,7 @@
   "compilation": {
     "platform": "crytic-compile",
     "platformConfig": {
-      "target": "/Users/scep/greg-wt/lagoon-vaults/contracts/test/fizz/vault/VaultPolicyEchidna.sol",
+      "target": "VaultPolicyEchidna.sol",
       "args": ["--compile-force-framework", "foundry"]
     }
   }

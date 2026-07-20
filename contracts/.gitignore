@@ -31,3 +31,5 @@ fizz_data/logs_medusa/
 test/fizz/**/corpus-medusa/
 test/fizz/**/crytic-export/
 test/fizz/**/slither_results.json
+# crytic-compile writes here when echidna/medusa are run from contracts/
+crytic-export/
