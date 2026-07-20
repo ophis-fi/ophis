@@ -1,6 +1,9 @@
 # Ophis Vault Policy Module - Phase C: fill-time floor, oracle adapters, timelocked allowlist
 
-Status: DRAFT for review (C0). Nothing in this document is implemented.
+Status: DRAFT (C0), **NOT ready for implementation**. Nothing here is
+implemented, and the P1/P2 sections need a consolidation rewrite before C1
+starts - see "Status after five review rounds" at the end. The design lanes
+are sound; the document has accumulated contradictions from patching.
 Owner: vault-manager feature. Prior art: `2026-07-16-vault-curator-phase-b-onchain-policy-module-design.md` (Phase B, live on 5 chains).
 
 ## Provenance / how this spec was verified
@@ -205,10 +208,29 @@ transaction is manipulable exactly at the moment the floor is supposed to bind.
 Sources are therefore classified once, at registration, and only one class may
 gate fills:
 
-- **FILL-ELIGIBLE**: values that cannot be moved within a transaction by a
-  settlement participant - push oracles whose value is written by an external
-  reporter (Chainlink, RedStone push, API3), and compositions built solely from
-  them. A solver cannot move a pushed answer mid-settlement.
+- **FILL-ELIGIBLE**: values whose ON-CHAIN WRITE PATH is gated by an
+  allowlist of privileged writers, so no settlement participant can move them
+  mid-transaction. **This is a property of the specific FEED, decided by its
+  write authorization - never of a vendor brand.** Verified 2026-07-20:
+  Chainlink OCR aggregators qualify - `transmit` is transmitter-allowlisted AND
+  EOA-only (`msg.sender == tx.origin`), hence unreachable from the settlement
+  contract; a differential `eth_call` on Unichain returns
+  `UnauthorizedTransmitter()` from an arbitrary sender versus
+  `WrongNumberOfSignatures()` from the registered transmitter.
+  **RedStone push and API3 DO NOT qualify** and must not be treated as
+  fill-eligible: both use a sign-off-chain / anyone-relays model.
+  `MultiFeedAdapterWithoutRounds.updateDataFeedsValuesPartial` is `public` with
+  no caller check (`requireAuthorisedUpdater` defaults to an empty body -
+  "By default, anyone can update data feed values"), accepts payloads up to
+  ~3 minutes old with no deviation bound, and skips failed updates silently so
+  the attempt is free; `Api3ServerV1.updateBeaconWithSignedData` is `external`
+  guarded only by `recover(signature) == airnode`, with a future-side timestamp
+  bound only - permissionless in-transaction updating is API3's stated design
+  intent (it is the basis of their OEV product). Independently reproduced: the
+  RedStone Unichain adapter returns `CalldataMustHaveValidPayload()` from two
+  unrelated senders, i.e. execution reaches payload parsing with no
+  authorization step. Chronicle `poke` and Pyth `updatePriceFeeds` fail the
+  same test.
 - **REGISTRATION-ONLY**: values derived from live protocol state readable and
   writable in-tx - ERC-4626 `convertToAssets`, `getPooledEthByShares`, AMM
   spot, any `IRateProvider` backed by mutable balances. These may tighten the
@@ -217,20 +239,25 @@ gate fills:
 
 A route whose sources are not all FILL-ELIGIBLE cannot be used by a vault in
 Eip1271 mode; the module rejects such a registration rather than silently
-degrading the guarantee. **Eligibility must be mechanically rooted, not
-self-declared.** An adapter's own `fillEligible` flag is a claim by the very
-contract whose trustworthiness is in question - a mistaken or hostile adapter
-can simply return `true`. The module therefore accepts an adapter as
-FILL-ELIGIBLE only if it is one of a small set of PINNED implementations:
-adapters are deployed by an Ophis adapter factory and the module checks
-`extcodehash` against the codehashes of the audited PushFeedAdapter /
-ComposedRateAdapter implementations recorded immutably at module construction,
-with composition leaves checked recursively so a ComposedRateAdapter cannot
-smuggle a REGISTRATION-ONLY leg underneath. `sourceKind()` then serves only as
-a redundant cross-check and a source of clear revert reasons, never as the
-authority. This keeps the eligible set auditable by inspection: the answer to
-"can a solver move this number inside the settlement tx" is decided by which
-audited bytecode is running, not by what a contract asserts about itself. This is a real coverage cost - it removes exactly the
+degrading the guarantee. **Eligibility must be rooted in the FEED, and codehash pinning cannot do it.**
+Two earlier attempts were wrong and are recorded here so they are not retried.
+(1) Adapter self-declaration (`fillEligible`) is a claim by the very contract
+whose trustworthiness is in question. (2) Pinning adapter `extcodehash` fails
+twice over: Solidity inlines `immutable` values into runtime bytecode, so two
+PushFeedAdapter instances differing only in their `{proxy, decimals,
+maxStaleness}` configuration have DIFFERENT codehashes and no fixed pin can
+admit the family; and more fundamentally, fill-eligibility is a property of the
+CONFIGURED FEED ADDRESS an adapter points at, not of the adapter's code - the
+same audited bytecode is eligible or not depending on its `proxy` field, so no
+codehash scheme can decide the question.
+The eligibility decision therefore lives where the property does: **an explicit
+per-chain allowlist of FEED ADDRESSES whose write path has been verified
+privileged-writer-gated**, recorded in the module and extended only through the
+P3 timelock, where the claim "this feed's `transmit` is transmitter-allowlisted"
+is exactly the kind of assertion a public delay window exists to let reviewers
+check. A composed route is fill-eligible only if every leg's feed address is on
+that list. `sourceKind()` survives as a cross-check and a source of clear revert
+reasons, never as the authority. This is a real coverage cost - it removes exactly the
 LST/LRT rate composition that motivated P2 for some pairs - and the honest
 resolution is that those pairs get an ExR *push feed* (which Chainlink,
 RedStone and API3 all publish for the major LSTs, per the catalog above) rather
@@ -357,12 +384,21 @@ field:
   **policy-critical** (`setPreSignature(uid, false)` in Presign mode) MUST
   succeed or the whole `removeToken` reverts; **hygiene**
   (allowance zeroing, and revocation in Eip1271 mode where the policy effect
-  already landed) is failure-isolated and retryable. A Presign-mode vault
-  holding a token that can brick its own `setPreSignature` path therefore
-  cannot be instantly removed - so Presign-mode allowlists must exclude tokens
-  whose transfer/approve can be frozen by a third party, which is stated as a
-  listing rule rather than pretended away. Eip1271 mode has no such
-  restriction, and this is a concrete reason to prefer it.
+  already landed) is failure-isolated and retryable.
+  **Correction to an earlier draft of this section:** it claimed a freezable
+  ERC20 could brick the policy-critical step and that Presign allowlists must
+  therefore exclude such tokens. That is false. `setPreSignature` and
+  `invalidateOrder` are calls to the SETTLEMENT with zero token interaction -
+  `extractOrderUidParams`, an owner check, one storage write, one event
+  (`GPv2Signing.sol:321-331`) - so no token can make them revert. Only the
+  ALLOWANCE step touches the token, and that step is hygiene, not policy. The
+  listing rule is withdrawn.
+  This also resolves the C15 tension: because the policy-critical call cannot
+  be made to fail by any token, `removeToken` never needs to revert on a
+  hostile token, and de-allowlisting genuinely is unconditional. The remaining
+  honest caveat is narrower - if the settlement call fails for some other
+  reason in Presign mode there is no fill-time gate to fall back on, so that
+  case reverts by design.
 - **The record stores the full uid BYTES, not just the digest.** A GPv2 uid is
   `digest(32) || owner(20) || validTo(4)`; `validTo` is hashed *into* the
   digest but is not recoverable *from* it, so neither
@@ -720,8 +756,10 @@ the verification log tracks which currently have no assigned target.
   EVERY live order the token appears in (sell side or buy side) and zeroes the
   sell-side allowance(s); after it no new registration, no 1271 validation,
   and no module-created presignature can involve that token.
-- **C15**: `removeToken` ALWAYS succeeds in de-allowlisting, whatever the
-  tokens or orders involved. Two parts: (i) gas is statically bounded and
+- **C15**: `removeToken` ALWAYS succeeds in de-allowlisting for any token or
+  order state a token can induce - no ERC20 behaviour (pausing, blacklisting,
+  reverting approve) can block it, because the policy-critical settlement calls
+  never touch the token. Two parts: (i) gas is statically bounded and
   independent of history - at most one settlement call per allowlisted token
   (`allowedTokens.length <= MAX_ALLOWED_TOKENS`), and no code path lets order
   activity grow any structure removal must iterate; (ii) no external call can
@@ -737,11 +775,17 @@ the verification log tracks which currently have no assigned target.
   cap, or loosens any parameter - in particular the guardian CANNOT execute a
   pending add, because execution is what widens the set. Only the Safe
   proposes and only the Safe executes.
-- **C16**: the guardian is rotatable by the Safe (`rotateGuardian`) and the
-  curator can never hold it (`guardian != curator` enforced in the CONSTRUCTOR,
-  not only the factory - a direct deploy must not be able to hand the curator
-  the P3 admin surface). A lost or compromised guardian must never be able to
-  permanently DoS the allowlist.
+- **C16**: the guardian is rotatable by the Safe, but rotation cannot be used
+  to escape a veto and cannot hand the role to the curator. Both were holes in
+  the first draft of this invariant: an INSTANT rotation lets the Safe swap in
+  a Safe-controlled guardian one block before a pending add matures, nullifying
+  the very veto the delay exists to provide; and `guardian != curator` was
+  stated only for the constructor, so rotation could set `guardian = curator`
+  post-deploy and hand the curator the whole admin surface (which also
+  falsifies C7). Normatively: `rotateGuardian` enforces `guardian != curator`,
+  and either runs through the same DELAY as a token add or is blocked while any
+  pending operation is live. A lost guardian must still never permanently DoS
+  the allowlist.
 - **C11**: three distinct guards: (0) staleness is enforced BY THE MODULE
   against the `updatedAt` each source returns, per-route and per-token - the
   module cannot delegate freshness to an adapter it does not control and then
@@ -1066,6 +1110,74 @@ two of them were introduced by MY OWN earlier fixes in this same document:
   (a naive subtraction underflow-reverts on a drained bucket and propagates
   through the shared cancel path into `removeToken`).
 
+RE-VERIFICATION ROUND (2026-07-20, 4 lenses on the rewritten spec). This round
+found TWO BLOCKERS, both in fixes introduced by the two rounds immediately
+before it, plus ~20 MAJORs concentrated in the same two lanes. Applied:
+
+- (BLOCKER, fixed) **FILL-ELIGIBLE was defined by vendor brand, and two of its
+  three families do not have the property.** The class was written as "push
+  oracles (Chainlink, RedStone push, API3)". Only Chainlink qualifies: OCR
+  `transmit` is transmitter-allowlisted AND EOA-only, so it is unreachable from
+  the settlement contract. RedStone push and API3 both use sign-off-chain /
+  anyone-relays - `updateDataFeedsValuesPartial` is `public` with an empty
+  `requireAuthorisedUpdater` ("By default, anyone can update data feed
+  values"), accepts ~3-minute-old payloads with no deviation bound and skips
+  failures silently; `updateBeaconWithSignedData` is guarded only by an Airnode
+  signature check, and permissionless in-tx updating is API3's design intent.
+  So a settling solver could pick the most favourable signed price in the
+  window and push it as a pre-interaction, setting `oracleFloor(block)` itself
+  and falsifying C2. Worse, the Unichain wstETH route's MANDATORY anchor was
+  the RedStone wstETH/ETH feed, so a solver could suppress a genuine depeg
+  signal in-transaction. Independently reproduced before accepting.
+  Fixed by defining the class by WRITE-PATH MECHANISM (privileged-writer
+  allowlist) rather than brand. Coverage consequence, stated plainly: Unichain
+  USDT/USD has no fill-eligible source at all, and the wstETH anchor must be
+  re-sourced or that route runs Presign.
+- (BLOCKER, fixed) **Codehash pinning cannot decide fill-eligibility.** Two
+  reasons, either fatal: Solidity inlines `immutable`s into runtime bytecode,
+  so PushFeedAdapter instances differing only in configuration have different
+  codehashes and no fixed pin admits the family; and eligibility is a property
+  of the CONFIGURED FEED ADDRESS, not of the adapter's code - identical audited
+  bytecode is eligible or not depending on its `proxy` field. Replaced with an
+  explicit per-chain allowlist of verified FEED ADDRESSES, extended only
+  through the P3 timelock (where "this feed's write path is
+  privileged-writer-gated" is exactly the claim a public delay lets reviewers
+  check).
+- (MAJOR, fixed) **A claim I made in the Codex round was simply false**: that a
+  freezable ERC20 could brick `setPreSignature` and that Presign allowlists
+  must therefore exclude such tokens. `setPreSignature`/`invalidateOrder` are
+  settlement calls with ZERO token interaction. The listing rule is withdrawn,
+  and this also dissolves the C15 contradiction - since no token can force the
+  policy-critical call to fail, de-allowlisting is genuinely unconditional.
+- (MAJOR, fixed) **`rotateGuardian` nullified the veto it shipped beside**: an
+  instant Safe-only rotation lets the Safe install a friendly guardian one
+  block before a pending add matures. It also carried no `guardian != curator`
+  check, so rotation could hand the curator the admin surface and falsify C7.
+  C16 now requires the check and either a DELAY on rotation or a block while
+  pendings are live.
+
+STILL OPEN from this round - these are NOT patched, and they are the reason the
+next step is a consolidation rewrite of the P1/P2 sections rather than a sixth
+patch (see "Status" below): `AnchoredAdapter` is absent from the eligible-source
+story, so the mandatory anchor and the eligibility rule are jointly
+unsatisfiable as written; `priceUsd18()` returns a single scalar `updatedAt`
+while `ComposedRateAdapter` has per-leg staleness, and the spec never says what
+a multi-leg source reports; `TokenRoute`/`TokenAdd` carry no staleness field at
+all although C11 requires per-token staleness; CAPO CLAMPS rather than reverts
+and its snapshot needs a governance re-set that the immutable-adapter model
+forecloses; four of the ten Unichain "production" feeds are Chainlink SVR
+(OEV-auction) feeds - including the ETH/USD feed the live module uses - which
+the catalog never mentions; Ethereum has no ExR PROXY for several assets the
+spec assumes (those RDD rows are Data Streams, `proxyAddress: null`, not
+adapter-readable); neither added registration check actually separates the TEST
+CAPPED feed from a production one (it returns $0.99988 at 8 decimals); the
+de-allowlist-first ordering and the sweep that iterates `allowedTokens` are
+order-incompatible; `sweepResidual` has no residual state to operate on and is
+keyed by the wrong token for buy-side removals; C6's Presign-parity claim is
+unachievable now that `cancel`'s signature changed; "same probe discipline as
+Phase B" contradicts the identity-validation paragraph; and the test plan and
+the TRACKED list contradict each other on which invariants have targets.
+
 Codex gate (final, 2026-07-20). Verdict: the CRITICAL cancellation fix is
 "complete if implemented literally" - no caller-controlled uid tail reaches the
 refund gate, `filledAmount`, `invalidateOrder` or `setPreSignature` - and
@@ -1222,3 +1334,36 @@ reported; findings applied:
 - (MINOR, oracles) Chainlink `deprecating` != dead: Arbitrum's ETHx/ETH ExR
   was announced for 2025-12-22 and is still publishing today. Route
   replacement must trigger on the RDD flag, not on observed liveness.
+
+
+## Status after five review rounds (read this before scheduling C1)
+
+The three lanes are sound and worth building: an EIP-1271 fill-time floor
+through EFH, a bounded oracle-adapter taxonomy, and a Safe-proposed timelocked
+allowlist. The verification history is in the log above and it is unusually
+productive - eleven defects that would otherwise have reached contract code,
+including a CRITICAL that fully unbound the daily turnover cap and two BLOCKERS
+in the oracle-eligibility model.
+
+It is also the reason this document should not go straight to implementation.
+**Five of those eleven defects were introduced by earlier fixes in this same
+document**, and the most recent round found two lanes whose successive patches
+now contradict each other (the anchor requirement versus the eligibility rule;
+the staleness model versus the adapter interface; the removal ordering versus
+the sweep bound). That is patch debt, not a research gap: each fix was locally
+correct and the composition drifted.
+
+RECOMMENDED NEXT STEP - a C0.5 consolidation pass before any Solidity:
+rewrite the P1 (fill-time) and P2 (oracle) sections from their current
+conclusions rather than editing them again, so the eligibility rule, the anchor
+requirement, the staleness model and the adapter interface are designed
+together once; then re-derive C1-C16 from that text rather than carrying them
+forward. The P3 lane is in better shape and mostly needs the open items above
+folded in. Budget a single fresh review round on the rewritten sections, not
+another patch cycle.
+
+The seven open decisions remain the gate on all of it. Two now carry extra
+weight from the final round: the FILL-ELIGIBLE correction shrinks real coverage
+(Unichain USDT/USD has no eligible source; the wstETH anchor must be
+re-sourced), which bears directly on decision 4 (anchor mandatoriness) and
+decision 7 (initial adapter scope).
