@@ -112,9 +112,13 @@ view returns (bytes4)` - the module (already one-per-vault, already holding all
 policy state) implements it directly. One less contract, one less trust edge.
 Before delegating, EFH re-derives
 `keccak256(0x19 || 0x01 || domainSeparator || keccak256(typeHash || encodeData))`
-and requires it equals `_hash` - so the module provably receives the exact
-order struct that hashes to the digest being settled; it never trusts decoded
-fields it didn't bind.
+and delegates to the verifier ONLY if it equals `_hash` - so the module
+provably receives the exact order struct that hashes to the digest being
+settled, and never trusts decoded fields it didn't bind. (Mechanism note for
+the C1 tests: on mismatch EFH does not `require`; it falls through to
+`defaultIsValidSignature`, the owner-threshold path, which then reverts for
+our blob. Same security outcome, different revert - assert the behaviour, not
+a specific `require`.)
 
 ### P2 lane: fixed adapter taxonomy, price18-shaped
 
@@ -148,10 +152,17 @@ truth" below):
    *lowers* the floor (vault overpays), a deflated SELL-token rate also lowers
    it. CAPO alone is upside-only; we cap both sides.
 4. **AnchoredAdapter** - wraps a primary source with an independent anchor and
-   a `maxDivergenceBps` band (both directions; production thresholds: 1%
-   stables/majors, 2% LSTs, per Liquity v2; Cove's audited AnchoredOracle
-   bounds the parameter to [0.1%, 50%] - we reimplement the pattern, their code
-   is BUSL-1.1). Mandatory for RATE-class sources and for exchange-rate feeds
+   a `maxDivergenceBps` band, enforced in BOTH directions and fail-closed.
+   Reference points for sizing (stated precisely, because the shapes differ):
+   Liquity v2 uses 1% for stETH/USD-vs-ETH/USD and 2% for rETH
+   market-vs-canonical - both are LST peg checks, and both act as *selection*
+   switches on redemption rather than fail-closed bands, so they inform the
+   magnitude only, not the semantics; Cove's audited AnchoredOracle is the
+   fail-closed-band precedent and bounds the parameter to [0.1%, 50%] (we
+   reimplement the pattern - their code is BUSL-1.1). Liquity has no
+   stables/majors threshold to borrow; ours for stables is a
+   Phase-C parameter choice to be set per route, not an inherited
+   figure. Mandatory for RATE-class sources and for exchange-rate feeds
    used on the buy side, because **exchange-rate feeds do not track market
    depegs** - wstETH/stETH ExR stays ~1.24 even if stETH trades at 0.9 ETH; the
    fail-open case is buying a depegged asset at par. Anchor independence
@@ -379,24 +390,56 @@ AND-constraint, Morpho `adapterRegistry`-style).
    zeroes the allowance under the existing `liveAllowanceUid` ownership rules.
    Cancel stays curator-callable (strictly risk-reducing) and is also invoked
    by the P3 `removeToken` path.
-7. **Turnover refund (new decision).** The bucket is charged at registration
-   for orders that may never fill; a compromised curator could otherwise
-   exhaust the day's budget with never-fillable registrations (DoS on
-   rebalancing, not a drain). `cancel` refunds the order's charged `sellUsd18`
-   IFF `settlement.filledAmount(uid) == 0` at cancel time (read BEFORE
-   invalidating, which sets it to max). No refund on passive expiry (would
-   need a poke tx; curators should cancel instead). Refund never increases the
-   bucket beyond its cap-time accounting (refund saturates at the amount still
-   accounted).
+7. **Turnover refund (new decision, and its test MUST be time-gated).** The
+   bucket is charged at registration for orders that may never fill; a
+   compromised curator could otherwise exhaust the day's budget with
+   never-fillable registrations (DoS on rebalancing, not a drain). `cancel`
+   refunds the order's charged `sellUsd18` only when BOTH hold:
+   `block.timestamp <= validTo` (extracted from the uid via
+   `extractOrderUidParams` - no extra storage needed) AND
+   `settlement.filledAmount(uid) == 0`, read BEFORE invalidating (which sets
+   it to `type(uint256).max`).
+   **The `validTo` gate is load-bearing, not cosmetic.**
+   `filledAmount(uid) == 0` is NOT a sound "never filled" test once an order
+   has expired: `GPv2Settlement.freeFilledAmountStorage(bytes[])` resets
+   `filledAmount[uid] = 0` for any uid with `validTo < block.timestamp`
+   (`GPv2Settlement.sol:262-266` -> `freeOrderStorage:474-487`), and its only
+   guard is `onlyInteraction` (`address(this) == msg.sender`, line 94-97) - so
+   ANY solver can zero it by putting the call in a settlement's interaction
+   list, with no owner check and no per-order authorization. Without the time
+   gate the attack is: register (bucket charged) -> order FILLS -> order
+   expires (<= 1h) -> any solver frees the slot -> curator calls `cancel` (the
+   Phase-B registration record survives both fill and expiry) -> reads
+   `filledAmount == 0` -> refund granted for an order that actually settled.
+   Repeated each TTL window, that lets a compromised curator settle many
+   multiples of `dailyUsdTurnoverCap` per day - the refund would unbind the
+   headline economic bound it sits next to. Inside the validity window
+   `freeFilledAmountStorage` cannot have run (it requires `validTo <` now), so
+   there `filledAmount == 0` is trustworthy.
+   Refunds are one-shot by construction (Phase-B `cancel` deletes the
+   registration record before interacting, so the path cannot be re-entered)
+   and never credit more than was charged. No refund on passive expiry - which
+   the `validTo` gate now ENFORCES rather than merely intends; a curator who
+   wants the budget back must cancel before expiry.
 
 ## Oracle ground truth (verified 2026-07-20, drives the P2 catalog)
 
-- **Unichain**: 12 Chainlink entries, ALL 18-decimal, ALL 24h heartbeat -
-  ETH/USD `0xBcE70e19...` (0.5% dev), BTC/USD, LINK/USD, UNI/USD, TWO live
-  USDC/USD proxies (`0xbd1cD151...` and `0x7E014561...` - pin by address,
-  never resolve by symbol), and exchange-rate feeds wstETH/stETH
+- **Unichain**: 12 Chainlink RDD entries, but NOT uniformly shaped - 10 price
+  feeds at 18 decimals with 24h heartbeats, PLUS a 0-decimal sequencer-uptime
+  feed and an 8-decimal `USDC / USD TEST CAPPED` proxy
+  (`0x3d16af379E134DF160313411c970e2BeEECAb73E`) which is LIVE and updating
+  (so there are effectively THREE live USDC/USD-named proxies, only two of
+  which are production). This is precisely why routes pin exact addresses and
+  read `decimals()` at registration rather than assuming a per-chain norm. The
+  10 production feeds -
+  ETH/USD `0xBcE70e19...` (0.5% dev), BTC/USD, LINK/USD, UNI/USD, two
+  production USDC/USD proxies (`0xbd1cD151...` and `0x7E014561...` - pin by
+  address, never resolve by symbol, and never confuse them with the TEST
+  CAPPED proxy above), and exchange-rate feeds wstETH/stETH
   `0x1f31C00A...`, weETH/eETH `0xc47e4a32...`, ezETH/ETH, rsETH/ETH (all
-  0.05% dev), plus the sequencer-uptime feed `0x495639D9...` (verified live).
+  0.05% dev). Separately, the sequencer-uptime feed `0x495639D9...` (verified
+  live, 0 decimals - it is a status flag, not a price, and is read by the
+  sequencer gate rather than by any adapter).
   NO USDT/USD (RedStone `0x58fa68A3...` is the only push option), no
   stETH/USD, no LST market feeds - wstETH->USD requires the ExR x ETH/USD
   composition (peg assumption) anchored by RedStone's wstETH/ETH market feed
@@ -407,16 +450,26 @@ AND-constraint, Morpho `adapterRegistry`-style).
   re-probe discipline at deploy). Decimals are 8 for USD feeds and 18 for
   ETH-quoted feeds on these chains - adapters read `decimals()` at deploy,
   never assume.
-- **Feed churn is real**: Chainlink shuts feeds on ~2-week notice (ETHx/ETH ExR
-  died 2025-12-22; stBTC/BTC ExR + ezETH PoR die 2026-07-22). This is why P3
+- **Feed churn is real, and announcements are not shutdowns**: Chainlink flags
+  feeds `deprecating` with ~2-week notice (Arbitrum ETHx/ETH ExR
+  `0x1f5C0C2C...` was announced for 2025-12-22 and is STILL publishing as of
+  2026-07-20, ~11h fresh; stBTC/BTC ExR + ezETH PoR are announced for
+  2026-07-22). Operational rule: route replacement triggers on the RDD
+  `deprecating` flag, not on observed liveness - a still-publishing
+  deprecated feed is exactly the trap. This is why P3
   covers oracle-route replacement, not just token add/remove, and why per-token
   `maxStaleness` must be sized to the feed's heartbeat + margin. Live-module
-  reality check (on-chain-verified): the OP/Base/Arb/Eth module `0x17cC...1980`
-  runs 6h ETH staleness under feeds with 24h heartbeats (Arbitrum's ETH/USD
-  notably) - it survives only on deviation-triggered updates, and a flat market
-  can legitimately brick rebalances (fail-closed availability risk, now fixable
-  via P3 instead of redeploy); the Unichain module `0xb524...8AAE` already runs
-  26h staleness sized to that chain's all-24h-heartbeat catalog.
+  reality check (on-chain-verified, and it corrects an earlier draft of this
+  spec): the ETH/USD feeds the live modules actually use are all far TIGHTER
+  than their 6h staleness - Arbitrum `0x639Fe6ab...` heartbeat 1755s (observed
+  62s old), Optimism `0x13e3Ee69...` 1200s - so there is no ETH-side
+  availability risk to cite. The real margin case is the stable leg: OP
+  USDC/USD has an 86400s heartbeat against the module's 93600s USDC staleness,
+  i.e. only ~2h of slack, so one late heartbeat fails closed. The Unichain
+  module `0xb524...8AAE` runs 26h staleness against that chain's 24h-heartbeat
+  feeds - the same ~2h pattern. That thin, per-feed, per-chain margin is the
+  concrete motivation for P3 route mutability: today re-sizing it means a
+  redeploy.
 
 ## Interface sketch (normative shape, not final code)
 
@@ -428,7 +481,9 @@ interface IOphisPriceSource {
 
 contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier */ {
     enum Mode { Presign, Eip1271 }            // per-vault, immutable at deploy
-    struct TokenRoute { bool allowed; IOphisPriceSource source; }
+    // tokenDecimals stays CACHED here: floorBuyAmount still takes both token
+    // decimals as arguments, and priceUsd18() only absorbs FEED decimals.
+    struct TokenRoute { bool allowed; uint8 tokenDecimals; IOphisPriceSource source; }
     struct TokenAdd  { address token; IOphisPriceSource source; /* probe cfg */ }
     struct OrderState { address sellToken; address buyToken; uint96 registeredAt;
                         uint256 minBuyOverride; uint256 sellUsd18; }
@@ -483,8 +538,13 @@ today, plus `guardian != curator`.
   returns wrong-magic silently) on policy failure, with transient/fatal typed
   reasons. (STATICCALL-compatible; orderbook/driver behavior deterministic.)
 - **C4**: turnover is charged exactly once per registration and refunded at
-  most once, only when `filledAmount(uid) == 0` at cancel; bucket accounting
-  never exceeds Phase-B bounds (instantaneous <= cap, rolling 24h <= ~2x cap).
+  most once, ONLY for an order cancelled strictly within its validity window
+  (`block.timestamp <= validTo`) and with `filledAmount(uid) == 0` at that
+  block; no filled order is ever refunded, including after any third party
+  calls `freeFilledAmountStorage`. Bucket accounting never exceeds Phase-B
+  bounds (instantaneous <= cap, rolling 24h <= ~2x cap). (Fuzz target: fill an
+  order, warp past `validTo`, zero its `filledAmount` as a solver would, then
+  assert `cancel` refunds nothing.)
 - **C5**: `cancel` and supersession leave no fillable path: deregistered AND
   `filledAmount = uint256.max` on-chain AND allowance rules preserved
   (<= 1 live order per sell token; allowance == that order's amount - the
@@ -518,10 +578,16 @@ today, plus `guardian != curator`.
 - **C10**: guardian powers are exclusively risk-reducing (cancelPending,
   removeToken); no guardian path adds tokens, raises caps, or loosens any
   parameter.
-- **C11**: every adapter read is staticcall-pure and fail-closed; a zero or
-  stale or out-of-bounds price reverts (ZeroOracleFloor semantics preserved
-  through composition; Erc4626RateAdapter enforces upper cap AND lower bound;
-  AnchoredAdapter enforces the divergence band both directions).
+- **C11**: two distinct guards, both preserved: (i) every adapter read is
+  staticcall-pure and fail-closed - a zero, stale, or out-of-bounds price
+  reverts (`InvalidOraclePrice`/`StaleOraclePrice` semantics, now enforced
+  INSIDE the adapter; `Erc4626RateAdapter` enforces upper cap AND lower bound;
+  `AnchoredAdapter` enforces the divergence band in both directions); and
+  (ii) the module-level `ZeroOracleFloor` guard on the COMPUTED floor stays
+  exactly as in Phase B - it catches a floor that truncates to zero (order
+  value below one base unit of the buy token) and fails closed regardless of
+  `minBuyOverride`. (ii) is not a price-source property and cannot be
+  delegated to adapters.
 - **C12**: `rebalance` in 1271 mode reverts unless the Safe's fallback handler
   is the pinned EFH and `EFH.domainVerifiers(safe, domainSeparator) == this`.
   (No silent fall-through to owner-threshold validation.)
@@ -598,9 +664,19 @@ today, plus `guardian != curator`.
   correct: `eip1271-skip-creation-validation = false` on both chains.
 - **infra**: Unichain EFH replay-deploy (one funded tx to the CREATE2 proxy;
   initcode preserved); per-chain deploy scripts extended with the wiring
-  ceremony batch (Safe owners: `setFallbackHandler(EFH)` +
-  `setDomainVerifier(domainSeparator, module)` - both Safe self-calls in one
-  `execTransaction` batch, templated like the existing enableModule batch);
+  ceremony (Safe owners: `setFallbackHandler(EFH)` THEN
+  `setDomainVerifier(domainSeparator, module)`). Two mechanics the scripts
+  must get right: (a) a single `execTransaction` has one `to`, so batching two
+  self-calls requires `operation = DELEGATECALL` into MultiSendCallOnly -
+  which is what the Safe Transaction Builder emits, but is NOT what the
+  existing enableModule step does (that runbook step is one plain
+  transaction, so it is not a template for this); (b) **the order is
+  mandatory** - `setDomainVerifier` is `onlySelf` on the EFH and reachable
+  only through the Safe's fallback, so if it runs before
+  `setFallbackHandler(EFH)` the inner call lands on the current
+  CompatibilityFallbackHandler, which has no such method, and the whole batch
+  reverts. Fail-closed, but it silently blocks the ceremony if a script emits
+  the calls in the wrong order;
   watch-trial-order gains 1271-order awareness (status polling identical; add
   a floor-vs-fill assertion from the `Rebalanced` event vs the settled price).
 - **monitoring**: alert on `TokenAddSubmitted` (anywhere), on repeated
@@ -737,7 +813,8 @@ applied above:
   `removeToken` revokes both sides, C9 restated.
 - (MINOR, consistency) OrderState field list unified (registeredAt, buyToken;
   validTo re-derived from encodeData); bad-order detector "five knobs" ->
-  "its knobs" (there are seven fields); AllowListGuardian provenance corrected
+  "its knobs" (`BadOrderDetectionConfig` has nine fields); AllowListGuardian
+  provenance corrected
   (chain-governance pattern, not a Phase-B artifact); the 6h-staleness
   liveness example now names the right modules/chains (OP/Base/Arb/Eth module
   6h vs Unichain module 26h - verified on-chain).
@@ -795,11 +872,49 @@ sufficient and is not a policy-bypass window; and the settlement independently
 enforces `executed >= signed buyAmount` for fill-or-kill sell orders, which is
 what makes the C2 phrasing accurate.
 
-Coverage caveat (honest): of the four draft-stage lenses, consistency and
-design-soundness completed; the protocol-mechanics and oracle-ground-truth
-lenses did not run to completion (API overload, then usage-credit exhaustion).
-Their subject matter is the material copied from the two research packets that
-each already passed an independent adversarial verification pass with fresh
-source reads and on-chain probes (`cow-1271-lifecycle`, `oracle-adapters`), so
-the claims are double-checked at source even though the draft-stage re-check
-is missing. Re-running those two lenses is the first task of C1 review.
+Draft-stage round 2 - the protocol-mechanics and oracle-ground-truth lenses
+(initially lost to API overload) completed on retry. All four lenses have now
+reported; findings applied:
+
+- (MAJOR, mechanics) **The turnover refund was exploitable and would have
+  partly unbound the daily cap.** `filledAmount(uid) == 0` is not a sound
+  "never filled" test after expiry: `freeFilledAmountStorage` zeroes that slot
+  for any expired uid and is guarded only by `onlyInteraction`, so any solver
+  can trigger it from a settlement's interaction list. Fill -> expire ->
+  solver frees the slot -> `cancel` refunds an order that actually settled,
+  repeatable every TTL window. Fixed by gating the refund on
+  `block.timestamp <= validTo` (extracted from the uid, no new storage), which
+  also enforces the spec's stated "no refund on passive expiry" intent that
+  nothing previously enforced. C4 restated and given a fuzz target.
+- (MAJOR, oracles) The Unichain catalog was wrong: 12 RDD entries are not all
+  18-decimal/24h - one is the 0-decimal sequencer feed and one is a LIVE
+  8-decimal `USDC / USD TEST CAPPED` proxy, making three live USDC/USD-named
+  proxies. Corrected, and it strengthens the pin-by-address rule.
+- (MAJOR, oracles) The staleness liveness example was factually wrong: the
+  ETH/USD feeds the live modules use have 1755s (Arb) and 1200s (OP)
+  heartbeats, not 24h, so the ETH-side availability risk I described does not
+  exist. Replaced with the real thin-margin case (OP USDC/USD 86400s heartbeat
+  vs 93600s configured staleness, ~2h slack).
+- (MAJOR, oracles) Liquity attribution corrected: its 1% is stETH/USD-vs-
+  ETH/USD and 2% is rETH market-vs-canonical - both LST checks, both selection
+  switches rather than fail-closed bands. Liquity has no stables/majors
+  threshold to borrow; our stables band is a Phase-C parameter choice.
+- (MINOR, mechanics) EFH does not `require` on digest mismatch - it falls
+  through to `defaultIsValidSignature`, which reverts for our blob. Same
+  outcome, different mechanism; C1 tests must assert behaviour, not a
+  `require`.
+- (MINOR, mechanics) The wiring ceremony needs `DELEGATECALL` into
+  MultiSendCallOnly to batch two Safe self-calls, and `setFallbackHandler`
+  MUST precede `setDomainVerifier` (the latter is `onlySelf` on EFH and
+  unreachable through the old handler). The enableModule runbook step is a
+  single plain transaction and is not a template for it.
+- (MINOR, mechanics) `BadOrderDetectionConfig` has nine fields, not seven.
+- (MINOR, oracles) `TokenRoute` must keep a cached `tokenDecimals`:
+  `priceUsd18()` absorbs FEED decimals only, while `floorBuyAmount` still
+  takes both token decimals.
+- (MINOR, oracles) `ZeroOracleFloor` is a module-level guard on the computed
+  floor, not a price-source property - C11 split into the two distinct
+  guarantees.
+- (MINOR, oracles) Chainlink `deprecating` != dead: Arbitrum's ETHx/ETH ExR
+  was announced for 2025-12-22 and is still publishing today. Route
+  replacement must trigger on the RDD flag, not on observed liveness.
