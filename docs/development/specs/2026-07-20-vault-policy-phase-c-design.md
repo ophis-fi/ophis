@@ -217,7 +217,20 @@ gate fills:
 
 A route whose sources are not all FILL-ELIGIBLE cannot be used by a vault in
 Eip1271 mode; the module rejects such a registration rather than silently
-degrading the guarantee. This is a real coverage cost - it removes exactly the
+degrading the guarantee. **Eligibility must be mechanically rooted, not
+self-declared.** An adapter's own `fillEligible` flag is a claim by the very
+contract whose trustworthiness is in question - a mistaken or hostile adapter
+can simply return `true`. The module therefore accepts an adapter as
+FILL-ELIGIBLE only if it is one of a small set of PINNED implementations:
+adapters are deployed by an Ophis adapter factory and the module checks
+`extcodehash` against the codehashes of the audited PushFeedAdapter /
+ComposedRateAdapter implementations recorded immutably at module construction,
+with composition leaves checked recursively so a ComposedRateAdapter cannot
+smuggle a REGISTRATION-ONLY leg underneath. `sourceKind()` then serves only as
+a redundant cross-check and a source of clear revert reasons, never as the
+authority. This keeps the eligible set auditable by inspection: the answer to
+"can a solver move this number inside the settlement tx" is decided by which
+audited bytecode is running, not by what a contract asserts about itself. This is a real coverage cost - it removes exactly the
 LST/LRT rate composition that motivated P2 for some pairs - and the honest
 resolution is that those pairs get an ExR *push feed* (which Chainlink,
 RedStone and API3 all publish for the major LSTs, per the catalog above) rather
@@ -330,10 +343,26 @@ field:
   orders via the fill-time allowlist re-check), and each residual revocation
   is then attempted independently with its failure isolated
   (`try`/`catch` per call), emitting `ResidualRevocationFailed(token, uid,
-  reason)` for anything that fails rather than reverting the transaction. A
-  token whose `approve` reverts thus still leaves the vault de-allowlisted and
-  its orders policy-dead; only the cosmetic allowance zeroing is deferred to a
-  retryable `sweepResidual(token)`. C15 must bound reverts, not just gas.
+  reason)` rather than reverting the transaction, and the failure is deferred
+  to a retryable `sweepResidual(token)`. C15 must bound reverts, not just gas.
+  **But revert-tolerance and the removal guarantee conflict in Presign mode,
+  and the conflict must be resolved by mode, not waved away.** In Eip1271 mode
+  de-allowlisting IS the enforcement: the fill-time allowlist re-check refuses
+  the order at the next settlement attempt, so catching a failed
+  `setPreSignature(uid, false)` is genuinely safe and only allowance hygiene is
+  deferred. In Presign mode there is no fill-time gate - the settlement's
+  `preSignature` mapping is independent of our storage, so a swallowed
+  revocation failure leaves the order STILL FILLABLE at its old floor with a
+  live allowance. Therefore residual steps are classified:
+  **policy-critical** (`setPreSignature(uid, false)` in Presign mode) MUST
+  succeed or the whole `removeToken` reverts; **hygiene**
+  (allowance zeroing, and revocation in Eip1271 mode where the policy effect
+  already landed) is failure-isolated and retryable. A Presign-mode vault
+  holding a token that can brick its own `setPreSignature` path therefore
+  cannot be instantly removed - so Presign-mode allowlists must exclude tokens
+  whose transfer/approve can be frozen by a third party, which is stated as a
+  listing rule rather than pretended away. Eip1271 mode has no such
+  restriction, and this is a concrete reason to prefer it.
 - **The record stores the full uid BYTES, not just the digest.** A GPv2 uid is
   `digest(32) || owner(20) || validTo(4)`; `validTo` is hashed *into* the
   digest but is not recoverable *from* it, so neither
@@ -374,10 +403,13 @@ AND-constraint, Morpho `adapterRegistry`-style).
      `EFH.domainVerifiers(safe, domainSeparator)` must equal this module -
      otherwise the posted order could silently fall through to owner-threshold
      validation;
-   - registers `orderState[digest] = Registered{sellToken, buyToken,
-     registeredAt, minBuyOverride, sellUsd18}` (the fill-time check needs
-     `minBuyOverride`, the refund path needs `sellUsd18`, and P3 removal needs
-     `buyToken`; `validTo` is re-derived from `encodeData` at validation);
+   - registers `orderState[digest] = Registered{sellToken, buyToken, validTo,
+     registeredAt, minBuyOverride, sellUsd18}`. `validTo` is STORED, not
+     re-derived from caller input later: it is the refund time gate and it is
+     needed to rebuild the uid, and taking either from caller-supplied bytes is
+     the CRITICAL defect fixed in this document. (The fill-time path may still
+     read `validTo` out of `encodeData`, because there EFH has already proven
+     that struct hashes to the settled digest.)
    - supersession unchanged in spirit: a same-sell-token predecessor is
      deregistered AND hard-invalidated (`invalidateOrder(uid)` via
      `execTransactionFromModule`) before the allowance is repointed;
@@ -454,7 +486,7 @@ AND-constraint, Morpho `adapterRegistry`-style).
    to control.
 6. **Cancellation.** The API `DELETE /orders` route is structurally impossible
    for Safe-owned orders (cancellation signatures are ECDSA-only in the
-   services model). `module.cancel(orderUid)` therefore: deregisters (=>
+   services model). `module.cancel(digest)` therefore: deregisters (=>
    verifier reverts from the next staticcall on) AND hard-cancels on-chain via
    `execTransactionFromModule -> settlement.invalidateOrder(uid)`
    (owner-only from the uid, sets `filledAmount = uint256.max`, emits
@@ -468,10 +500,10 @@ AND-constraint, Morpho `adapterRegistry`-style).
    compromised curator could otherwise exhaust the day's budget with
    never-fillable registrations (DoS on rebalancing, not a drain). `cancel`
    refunds the order's charged `sellUsd18` only when BOTH hold:
-   `block.timestamp <= validTo` (extracted from the uid via
-   `extractOrderUidParams` - no extra storage needed) AND
-   `settlement.filledAmount(uid) == 0`, read BEFORE invalidating (which sets
-   it to `type(uint256).max`).
+   `block.timestamp <= state.validTo` (read from STORED `OrderState`, never
+   from caller input) AND `settlement.filledAmount(uid) == 0` for the uid the
+   module REBUILDS itself, read BEFORE invalidating (which sets it to
+   `type(uint256).max`).
    **The `validTo` gate is load-bearing, not cosmetic.**
    `filledAmount(uid) == 0` is NOT a sound "never filled" test once an order
    has expired: `GPv2Settlement.freeFilledAmountStorage(bytes[])` resets
@@ -632,7 +664,11 @@ initial set (same probe discipline as Phase B, length <=
 `MAX_ALLOWED_TOKENS`). Factory enforces curator-not-owner/module exactly as
 today, plus `guardian != curator`.
 
-## Security invariants (Phase C additions; C1-C13, all unit+fuzz+fork tested)
+## Security invariants (Phase C additions, C1-C16)
+
+These are DESIGN obligations, not achieved results - nothing here is
+implemented yet. Each must be discharged by unit + fuzz + fork tests in C1-C3;
+the verification log tracks which currently have no assigned target.
 
 - **C1**: no order can reach a valid 1271 answer unless its digest was
   registered by `rebalance` under the full Phase-B policy. (Registration
@@ -658,8 +694,12 @@ today, plus `guardian != curator`.
   bounds (instantaneous <= cap, rolling 24h <= ~2x cap). (Fuzz target: fill an
   order, warp past `validTo`, zero its `filledAmount` as a solver would, then
   assert `cancel` refunds nothing.)
-- **C5**: `cancel` and supersession leave no fillable path: deregistered AND
-  `filledAmount = uint256.max` on-chain AND allowance rules preserved
+- **C5**: `cancel` and supersession leave no fillable path, by the mechanism
+  appropriate to the mode: Eip1271 -> deregistered (the fill-time check then
+  refuses) AND `invalidateOrder` sets `filledAmount = uint256.max`; Presign ->
+  `setPreSignature(uid, false)` MUST succeed, there being no fill-time gate to
+  fall back on. `filledAmount` and `preSignature` are separate raw-uid
+  mappings, so neither call substitutes for the other. Allowance rules preserved
   (<= 1 live order per sell token; allowance == that order's amount - the
   existing invariant suite extends to 1271 mode).
 - **C6**: in Presign + FROZEN mode the module's order path is behaviorally
@@ -673,7 +713,7 @@ today, plus `guardian != curator`.
   construction: every admin entrypoint gates on `msg.sender == address(safe)`
   or the guardian; none accepts the curator).
 - **C8**: a token becomes allowed only via `executeTokenAdd` - callable by the
-  Safe or the guardian only - inside `[eta, eta + EXECUTE_WINDOW]` after a
+  Safe ONLY (never the guardian; see C10) - inside `[eta, eta + EXECUTE_WINDOW]` after a
   Safe-proposed `submitTokenAdd`, with execute-time revalidation passing; a
   pending outside its window is dead.
 - **C9**: `removeToken` is instant and atomically deregisters + invalidates
@@ -705,9 +745,10 @@ today, plus `guardian != curator`.
 - **C11**: three distinct guards: (0) staleness is enforced BY THE MODULE
   against the `updatedAt` each source returns, per-route and per-token - the
   module cannot delegate freshness to an adapter it does not control and then
-  claim the property; (i) every adapter read is staticcall-pure and fail-closed - a zero, stale, or out-of-bounds price
-  reverts (`InvalidOraclePrice`/`StaleOraclePrice` semantics, now enforced
-  INSIDE the adapter; `Erc4626RateAdapter` enforces upper cap AND lower bound;
+  claim the property; (i) every adapter read is staticcall-pure and fail-closed on the values only
+  it can judge - a zero or out-of-bounds price reverts inside the adapter
+  (`InvalidOraclePrice`; staleness belongs to guard 0 alone, so each property
+  has exactly ONE enforcement boundary); `Erc4626RateAdapter` enforces upper cap AND lower bound;
   `AnchoredAdapter` enforces the divergence band in both directions); and
   (ii) the module-level `ZeroOracleFloor` guard on the COMPUTED floor stays
   exactly as in Phase B - it catches a floor that truncates to zero (order
@@ -1025,6 +1066,40 @@ two of them were introduced by MY OWN earlier fixes in this same document:
   (a naive subtraction underflow-reverts on a drained bucket and propagates
   through the shared cancel path into `removeToken`).
 
+Codex gate (final, 2026-07-20). Verdict: the CRITICAL cancellation fix is
+"complete if implemented literally" - no caller-controlled uid tail reaches the
+refund gate, `filledAmount`, `invalidateOrder` or `setPreSignature` - and
+genuine authenticated push feeds do close the solver pre-interaction vector.
+Codex withheld approval for implementation on two grounds, both now addressed:
+
+- (HIGH, fixed) **My two fixes conflicted.** Making the removal sweep
+  revert-tolerant is safe in Eip1271 mode, where de-allowlisting itself is the
+  enforcement, but in Presign mode `setPreSignature(uid, false)` IS the
+  enforcement and the settlement's `preSignature` mapping is independent of our
+  storage - so swallowing that failure leaves the order still fillable at its
+  old floor with a live allowance, making C9's "invalidates EVERY live order"
+  stronger than the mechanism. Residual steps are now classified: policy-
+  critical revocation must succeed (or `removeToken` reverts) in Presign mode;
+  allowance hygiene, and revocation in Eip1271 mode, stay failure-isolated.
+  Consequence stated rather than hidden: Presign-mode allowlists must exclude
+  tokens whose approve/transfer a third party can freeze, and that is a concrete
+  reason to prefer Eip1271 mode.
+- (HIGH, fixed) **FILL-ELIGIBLE was self-declared.** An adapter asserting its
+  own `fillEligible` is a claim by the contract whose trustworthiness is in
+  question. Eligibility is now rooted in PINNED implementations - `extcodehash`
+  checked against audited adapter codehashes recorded at module construction,
+  with composition leaves checked recursively so a ComposedRateAdapter cannot
+  smuggle a REGISTRATION-ONLY leg underneath; `sourceKind()` is demoted to a
+  redundant cross-check.
+- (LOW, fixed) Stale text the earlier edits left behind, all security-relevant:
+  the lifecycle still said `module.cancel(orderUid)` and "extract validTo from
+  the uid"; registration omitted stored `validTo`; C8 still granted the
+  guardian execution power that C10 and the interface had removed; C5
+  unconditionally required `filledAmount = max` although Presign revokes via
+  `setPreSignature`; C11 assigned staleness to both module and adapter; and the
+  invariant heading claimed C1-C13 were "all unit+fuzz+fork tested" in a
+  document whose first line says nothing is implemented.
+
 TRACKED, not yet folded into the design text (for C1 scoping - each is
 confirmed and none changes the lanes above): the anchor band's fail-closed
 semantics can trap a vault in a genuinely depegging asset, whereas the cited
@@ -1111,7 +1186,8 @@ reported; findings applied:
   can trigger it from a settlement's interaction list. Fill -> expire ->
   solver frees the slot -> `cancel` refunds an order that actually settled,
   repeatable every TTL window. Fixed by gating the refund on
-  `block.timestamp <= validTo` (extracted from the uid, no new storage), which
+  `block.timestamp <= validTo` (which the audit round then showed must be READ
+  FROM STORAGE, not from the uid - see the CRITICAL below), which
   also enforces the spec's stated "no refund on passive expiry" intent that
   nothing previously enforced. C4 restated and given a fuzz target.
 - (MAJOR, oracles) The Unichain catalog was wrong: 12 RDD entries are not all
