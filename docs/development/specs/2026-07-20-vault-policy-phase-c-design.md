@@ -1,9 +1,10 @@
 # Ophis Vault Policy Module - Phase C: fill-time floor, oracle adapters, timelocked allowlist
 
-Status: DRAFT (C0), **NOT ready for implementation**. Nothing here is
-implemented, and the P1/P2 sections need a consolidation rewrite before C1
-starts - see "Status after five review rounds" at the end. The design lanes
-are sound; the document has accumulated contradictions from patching.
+Status: DRAFT (C0.5 consolidation applied). Nothing here is implemented. The
+P1 and P2 sections were REWRITTEN from their conclusions on 2026-07-20 rather
+than patched further; P3 still carries open items. Awaiting one fresh review
+round on the rewritten sections plus the seven open decisions - see "Status"
+at the end.
 Owner: vault-manager feature. Prior art: `2026-07-16-vault-curator-phase-b-onchain-policy-module-design.md` (Phase B, live on 5 chains).
 
 ## Provenance / how this spec was verified
@@ -66,204 +67,248 @@ as a per-vault deployment choice.
 
 ## Why this shape (decisions + ruled-out alternatives)
 
-### P1 lane: EFH + module-as-verifier (the ComposableCoW pattern, minus ComposableCoW)
+### P1 lane: EFH + module-as-verifier, with policy inputs the caller cannot touch
 
-The settlement side needs nothing new: our vendored `GPv2Signing` (byte-identical
-to upstream `cowprotocol/contracts` @ ff07c4a0) already supports scheme
-`Eip1271` - `recoverEip1271Signer(orderDigest, signature)` slices a 20-byte
-owner prefix and STATICCALLs
-`isValidSignature(bytes32 orderDigest, bytes signature)` on the owner, requiring
-magic `0x1626ba7e` (`GPv2Signing.sol:281-303`). The order owner must be the
-Safe (the vault relayer pulls sell tokens from the owner), so the 1271 answer
-must come from the Safe - which means a fallback-handler route. Verified facts
-that fix the lane:
+**Rewritten in the C0.5 consolidation pass.** The lane itself never changed -
+keep the Safe as order owner, answer `isValidSignature` through CoW's audited
+ExtensibleFallbackHandler with the module registered as domain verifier - but
+three rounds of patching left the section describing a cancellation API that no
+longer exists and a data-provenance rule stated only in a later footnote. Both
+are load-bearing, so the lane is restated from its conclusions.
 
-- **EFH is deployed at `0x2f55e8b20D0B9FEFA187AA7d00B6Cbe563605bF5` on
-  Ethereum, Optimism, Base, Arbitrum** (identical 9,419-byte runtime, verified
-  by `eth_getCode` on all four) and **absent on Unichain** (0 bytes). It is
-  audited (Ackee Blockchain 2023, report 1.2; Gnosis internal May/Jul 2023 +
-  diff audit Aug 2024) and has validated CoW TWAP fills in production since
-  Aug 2023 through exactly this call path.
-- **Unichain gets the same address by replaying the original deployment**: the
-  canonical CREATE2 deployer `0x4e59b44847b379578588920cA78FbF26c0B4956C` is
-  live on Unichain; replaying the original mainnet deploy calldata (salt
-  `bytes32("v1.0.0")` + the original 9,451-byte initcode, preserved from
-  mainnet tx `0x33dcbc73a8797c69a5b3956539dd8d191cf3f190bcb27a4d4eca8556f030f574`)
-  reproduces `0x2f55...5bF5` exactly (recomputed via `cast create2`). Do NOT
-  rebuild from source - composable-cow issue #93 confirms current source does
-  not reproduce the deployed bytecode (metadata drift).
-- **ComposableCoW itself is ruled out**, twice over: we don't need its
-  conditional-order registry or the Watchtower (our own pipeline posts orders;
-  Watchtower only matters for autonomous order creation), and the instances
-  deployed on OP/Base are constructor-bound to the **canonical** settlement's
-  domain separator (`0x8b0a8cfa...` on OP = canonical `0x9008D19f...` domain),
-  so they cannot validate orders for our sovereign settlements anyway. EFH
-  itself is settlement-agnostic: `setDomainVerifier` keys verifiers per
-  `(safe, domainSeparator)`.
-- **Milkman's escrow lane is ruled out**: it moves funds out of the Safe into a
-  per-order clone with a max relayer approval - against our custody story - and
-  its shipped Chainlink checker has no staleness check. We keep its one good
-  idea (fill-time price check inside `isValidSignature`) without the escrow.
-- **A custom fallback handler is ruled out**: it would forfeit EFH's audit
-  history and production track record to save ~40 lines, with the identical
-  Safe-UI "non-default handler" warning either way.
+**Why this shape.** The settlement side needs nothing new: our vendored
+`GPv2Signing` (byte-identical to upstream `cowprotocol/contracts` @ ff07c4a0)
+already implements scheme `Eip1271` - `recoverEip1271Signer` slices a 20-byte
+owner prefix and STATICCALLs `isValidSignature(bytes32, bytes)` on the owner,
+requiring magic `0x1626ba7e` (`GPv2Signing.sol:281-303`). Since the vault
+relayer pulls sell tokens from the order owner, the owner must be the Safe, so
+the answer has to come through a fallback handler. Verified facts that fix the
+lane:
 
-The verifier is **the module itself**. EFH's muxer interface is
-`isValidSafeSignature(Safe safe, address sender, bytes32 _hash, bytes32
-domainSeparator, bytes32 typeHash, bytes encodeData, bytes payload) external
-view returns (bytes4)` - the module (already one-per-vault, already holding all
-policy state) implements it directly. One less contract, one less trust edge.
-Before delegating, EFH re-derives
-`keccak256(0x19 || 0x01 || domainSeparator || keccak256(typeHash || encodeData))`
-and delegates to the verifier ONLY if it equals `_hash` - so the module
-provably receives the exact order struct that hashes to the digest being
-settled, and never trusts decoded fields it didn't bind. (Mechanism note for
-the C1 tests: on mismatch EFH does not `require`; it falls through to
-`defaultIsValidSignature`, the owner-threshold path, which then reverts for
-our blob. Same security outcome, different revert - assert the behaviour, not
-a specific `require`.)
+- **EFH is deployed at `0x2f55e8b20D0B9FEFA187AA7d00B6Cbe563605bF5`** on
+  Ethereum, Optimism, Base and Arbitrum (identical 9,419-byte runtime, checked
+  by `eth_getCode`), and **absent on Unichain**. It is Ackee- and
+  Gnosis-audited and has validated CoW TWAP fills through this exact path since
+  Aug 2023. Unichain gets the same address by replaying the original CREATE2
+  deployment (salt `bytes32("v1.0.0")`, original initcode); do NOT rebuild from
+  source - composable-cow issue #93 confirms current source does not reproduce
+  the deployed bytecode.
+- **ComposableCoW is ruled out** twice over: we need neither its conditional-
+  order registry nor the Watchtower (our own pipeline posts orders), and its
+  OP/Base instances are constructor-bound to the CANONICAL settlement's domain,
+  so they cannot validate orders for our sovereign settlements. EFH itself is
+  settlement-agnostic, keying verifiers per `(safe, domainSeparator)`.
+- **Milkman's escrow lane is ruled out** (funds leave the Safe into a per-order
+  clone), and **a custom fallback handler is ruled out** (forfeits EFH's audit
+  history and production record to save ~40 lines, with the same Safe-UI
+  warning either way).
+- **The module is the verifier.** EFH's muxer signature
+  `isValidSafeSignature(Safe, address sender, bytes32 _hash, bytes32
+  domainSeparator, bytes32 typeHash, bytes encodeData, bytes payload) view
+  returns (bytes4)` is implemented directly by the module, which already holds
+  the policy state - one less contract and one less trust edge. Before
+  delegating, EFH re-derives the EIP-712 digest from `(domainSeparator,
+  typeHash, encodeData)` and delegates only if it equals `_hash`, so the module
+  provably receives the exact order struct being settled. (Mechanism note for
+  tests: on mismatch EFH does not `require`; it falls through to
+  `defaultIsValidSignature`, which then reverts for our blob. Assert the
+  behaviour, not a `require`.)
 
-### P2 lane: fixed adapter taxonomy, price18-shaped
+**The rule that governs every entrypoint: no policy input may come from caller
+bytes.** This is stated here, once, because violating it produced the CRITICAL
+of the audit round and it constrains the whole lane. `GPv2Order.extract-
+OrderUidParams` is a pure calldata slice guarded only by `length == 56`;
+`filledAmount` and `preSignature` are `mapping(bytes => uint256)` keyed on RAW
+uid bytes; `invalidateOrder`/`setPreSignature` authorize only on the owner slice
+`uid[32:52]`. So a `cancel(bytes orderUid)` against digest-keyed state
+authenticates just 32 of 56 bytes, and forging the 4 `validTo` bytes both
+extends a time gate and re-keys `filledAmount` to a virgin slot reading zero.
+Therefore, normatively: **the module accepts a `bytes32 digest` and rebuilds the
+uid itself** via `packOrderUidParams(buf, digest, address(safe),
+state.validTo)`, with `validTo` STORED in `OrderState` at registration. Every
+uid the module passes to the settlement, and every value it gates on, is
+module-derived.
 
-Our floor math (`OphisChainlinkFloor.floorBuyAmount`, audited through Phase B)
-consumes two 18-decimal USD prices. P2 keeps that contract and swaps the feed
-read for an adapter read. A generic plugin bus is ruled out (unbounded audit
-surface); instead a fixed taxonomy of four immutable adapter types, chosen
-against the verified per-chain feed reality (full catalog in "Oracle ground
-truth" below):
+**Two-phase lifecycle.** (1) `rebalance` is the stateful gate: it runs the full
+Phase-B policy once, charges the leaky bucket, asserts the EFH/verifier wiring
+is still installed, sets the exact relayer allowance, and registers
+`orderState[digest]`. (2) Every validation thereafter - at placement, in each
+driver simulation, and inside the settlement transaction - staticcalls the
+module, which requires `safe_ == address(safe)`, requires the digest to be
+registered, and re-runs only the checks whose truth can change: oracle floor
+against `order.buyAmount`, per-leg staleness, sequencer gate, allowlist
+membership on both sides, `validTo`. Fields frozen in the digest are not
+re-checked because they cannot change. `sender` and `payload` carry no
+authority: settlement context is adversarial (the Feb-2023 Barter incident
+drained fees through settlement-context calls).
 
-1. **PushFeedAdapter** - AggregatorV3-shaped read with per-source
-   `{proxy, decimals-read-at-deploy, maxStaleness}`. One code path covers
-   Chainlink, RedStone push (verified AggregatorV3-compatible, 8-dec, constant
-   `roundId=1`), and API3 `Api3ReaderProxyV1` (verified `(0, answer, ts, ts,
-   0)`; `getRoundData` reverts). The `answeredInRound < roundId` completeness
-   check is **Chainlink-only** (constructor flag): RedStone/API3 pass it
-   vacuously or with meaningless semantics.
-2. **ComposedRateAdapter** - exchange-rate push feed x underlying
-   `IOphisPriceSource` (e.g. Unichain wstETH: `wstETH/stETH ExR (0x1f31C00A...)
-   x ETH/USD (0xBcE70e19...)`), per-leg staleness. This is Chainlink's own
-   documented recommendation for yield-bearing assets and Morpho's
-   `MorphoChainlinkOracleV2` composition math is the reference.
-3. **Erc4626RateAdapter** - `convertToAssets`-derived rate x underlying
-   adapter. **NOT ELIGIBLE AS A FILL-TIME SOURCE (P1) - registration-time
-   only, and only in Presign mode**, because the fill-time check runs INSIDE
-   the settlement transaction, AFTER solver-controlled pre-interactions: a
-   settling solver can deposit/donate into the referenced 4626 vault in the
-   same transaction, move `convertToAssets`, and bend the floor down before
-   `isValidSignature` reads it. That defeats P1's entire guarantee for any
-   source whose value is a function of mutable live contract state the solver
-   can touch in-tx. See "Adapter eligibility" below - this constraint governs
-   the whole taxonomy, not just this type.
-   Where it IS used, it is legal only wrapped in bounds: a CAPO-style snapshot
-   + max-yearly-growth upside cap (Aave `PriceCapAdapterBase` formula: cap =
-   snapshotRatio + snapshotRatio * maxYearly% * elapsed / year, snapshot term
-   <= 180 days) **plus a lower bound that itself grows with the snapshot** (a
-   static lower bound decays to a no-op against a monotonically growing rate,
-   erasing sell-side deflation protection over time). Raw `convertToAssets` is
-   banned:
-   the Venus wUSDM donation attack (2025-02-27, rate 1.0694 -> 1.7641 in one
-   step, net loss $716,789) is exactly the drain our floor exists to prevent,
-   and for OUR floor both directions are dangerous - an inflated BUY-token rate
-   *lowers* the floor (vault overpays), a deflated SELL-token rate also lowers
-   it. CAPO alone is upside-only; we cap both sides.
-4. **AnchoredAdapter** - wraps a primary source with an independent anchor and
-   a `maxDivergenceBps` band, enforced in BOTH directions and fail-closed.
-   Reference points for sizing (stated precisely, because the shapes differ):
-   Liquity v2 uses 1% for stETH/USD-vs-ETH/USD and 2% for rETH
-   market-vs-canonical - both are LST peg checks, and both act as *selection*
-   switches on redemption rather than fail-closed bands, so they inform the
-   magnitude only, not the semantics; Cove's audited AnchoredOracle is the
-   fail-closed-band precedent and bounds the parameter to [0.1%, 50%] (we
-   reimplement the pattern - their code is BUSL-1.1). Liquity has no
-   stables/majors threshold to borrow; ours for stables is a
-   Phase-C parameter choice to be set per route, not an inherited
-   figure. Mandatory for RATE-class sources and for exchange-rate feeds
-   used on the buy side, because **exchange-rate feeds do not track market
-   depegs** - wstETH/stETH ExR stays ~1.24 even if stETH trades at 0.9 ETH; the
-   fail-open case is buying a depegged asset at par. Anchor independence
-   matters: on Unichain, Chainlink's wstETH ExR and Chronicle's are bit-identical
-   (same upstream `getPooledEthByShares`) - NOT independent; RedStone's
-   wstETH/ETH market feed is the genuinely independent leg.
+**What a fill-time floor does and does not promise.** It promises that no fill
+occurs while the signed limit sits below the current oracle floor. It does NOT
+observe the executed price - 1271 gates order validity, not clearing price; the
+settlement independently enforces executed >= signed limit, and solver
+competition prices the fill above it. The guarantee is only as good as the
+floor's inputs, which is why P2's eligibility rule is part of this lane's
+correctness rather than a neighbouring concern: a floor read from a source a
+settling solver can move in the same transaction is not a fill-time floor at
+all.
 
-**Ruled out as floor primaries:** Pyth (pull model: freshness depends on
-third-party keepers pushing; `updatePriceFeeds` is state-mutating and cannot run
-in the 1271 view context; Euler caps Pyth staleness at 15 min - frequently dead
-on quiet chains), RedStone Core pull (state-mutating `updatePrice` cache),
-Chronicle (reads are toll-whitelisted; `address(0)` is tolled so off-chain
-simulations pass while the on-chain caller reverts - a testing trap; usable
-later as an anchor if we accept the whitelist ops dependency), and TWAP-of-rate
-(not a mainstream production mitigation; snapshot+growth-cap and anchor bands
-dominate).
+**Failure and cancellation semantics.** Post-placement nothing removes a
+floor-blocked order: upstream deleted autopilot's periodic 1271 re-validation
+(services #4118, in our pin) and skips balance checks for 1271 orders, so the
+order stays in every auction until `validTo` and is dropped per-attempt by
+driver simulation (`resimulate_until_revert` re-simulates each block, so a
+mid-auction floor flip is caught pre-submission with no on-chain revert). That
+is graceful degradation - if price recovers within the TTL it fills, otherwise
+it expires. Two accepted consequences: near-floor orders burn solver simulation
+cycles, so the builder must quote a buffer above the floor; and on CoW-hosted
+chains third-party solvers may apply their own deprioritization, which is not
+ours to control. Cancellation is on-chain only - the API route requires an ECDSA
+signature and is structurally impossible for a Safe-owned order - so
+`cancel(digest)` deregisters AND calls `invalidateOrder(rebuiltUid)`, which the
+autopilot indexes into `invalidations` for permanent removal.
 
-Adapters must be **staticcall-pure**: any adapter that internally mutates state
-reverts the whole settlement at fill time despite passing unit tests via
-`eth_call`. Every adapter is liveness-probed at registration exactly like
-Phase-B probes feeds today.
+**Refunds.** The bucket is charged at registration, so a compromised curator
+could otherwise exhaust the day's budget with never-fillable orders. `cancel`
+refunds the charged `sellUsd18` only when `block.timestamp <= state.validTo`
+(read from STORAGE) and `filledAmount(rebuiltUid) == 0`, read before
+invalidating. The time gate is load-bearing: `freeFilledAmountStorage` zeroes
+that slot for any expired uid and is guarded only by `onlyInteraction`, so any
+solver can trigger it - without the gate, fill-then-expire-then-cancel refunds a
+settled order. Refunds are one-shot (the registration record is deleted before
+interacting), saturate at zero, and cumulative refunds must never exceed
+cumulative charges.
 
-**Adapter eligibility (the constraint that makes P1 real).** Staticcall-purity
-is necessary but NOT sufficient. `isValidSignature` executes inside the
-settlement transaction, after the solver's own pre-interactions have run, so a
-source that merely *reads* mutable state the solver can write in the same
-transaction is manipulable exactly at the moment the floor is supposed to bind.
-Sources are therefore classified once, at registration, and only one class may
-gate fills:
 
-- **FILL-ELIGIBLE**: values whose ON-CHAIN WRITE PATH is gated by an
-  allowlist of privileged writers, so no settlement participant can move them
-  mid-transaction. **This is a property of the specific FEED, decided by its
-  write authorization - never of a vendor brand.** Verified 2026-07-20:
-  Chainlink OCR aggregators qualify - `transmit` is transmitter-allowlisted AND
-  EOA-only (`msg.sender == tx.origin`), hence unreachable from the settlement
-  contract; a differential `eth_call` on Unichain returns
+### P2 lane: module-composed routes over thin, address-allowlisted sources
+
+**Rewritten in the C0.5 consolidation pass.** The earlier version was a
+taxonomy of four self-contained adapter types, patched four times; the patches
+ended up mutually unsatisfiable (a mandatory anchor that no eligible adapter
+could express, a single scalar `updatedAt` against per-leg staleness, a
+codehash pin that cannot admit configured instances, CAPO parameters frozen
+into an immutable adapter that Aave re-sets by governance). All four dissolve
+under one structural change, so the design is stated here from its conclusions
+rather than as another amendment.
+
+**The change: composition, staleness and bounds move INTO the module.** An
+adapter is no longer a black box that returns a finished USD price. It is a
+thin, single-purpose *source* that reports one number and when it was written.
+The module holds the **route** - which sources compose into a token's price,
+what each leg's staleness budget is, what bounds apply - and does the
+composition itself. Every problem above was a consequence of asking a monolithic
+adapter to carry state the module needed to reason about.
+
+```solidity
+interface IOphisPriceSource {
+    /// One raw observation, 18-dec, plus the timestamp it was written.
+    /// Reverts on values only the source can judge (zero/negative, malformed).
+    /// Staleness is NOT judged here - the module owns that per leg.
+    function read18() external view returns (uint256 value, uint256 updatedAt);
+}
+
+enum LegKind { UsdPrice, ExchangeRate }   // how the module composes it
+
+struct Leg {
+    IOphisPriceSource source;
+    address feed;            // the underlying feed this source reads
+    LegKind kind;
+    uint64  maxStaleness;    // PER LEG, sized to that feed's heartbeat
+    bool    fillEligible;    // decided per FEED ADDRESS (see below)
+}
+
+struct Route {
+    Leg[]   legs;            // composed by the module: UsdPrice x ExchangeRate*
+    Leg     anchor;          // optional; zero source = none
+    uint32  maxDivergenceBps;// anchor band, enforced BOTH directions
+    RateBound bound;         // for routes containing a mutable-rate leg
+}
+```
+
+A token's price is `legs[0].value` scaled by each subsequent exchange-rate leg,
+with the module checking **each leg's own `updatedAt` against that leg's own
+`maxStaleness`**. There is no composed-`updatedAt` question to answer, because
+no single value ever has to stand for the freshness of several legs. C11's
+"one enforcement boundary per property" is now structural: sources judge
+validity, the module judges freshness and composition.
+
+**Eligibility is a property of the FEED, decided by its write path.** Not of a
+vendor, and not of the adapter's bytecode. A feed is fill-eligible only if the
+on-chain write to the value it exposes is gated by an allowlist of privileged
+writers, so no settlement participant can move it mid-transaction. Verified
+2026-07-20:
+
+- **Chainlink OCR aggregators qualify.** `transmit` is transmitter-allowlisted
+  AND EOA-only (`msg.sender == tx.origin`), hence unreachable from the
+  settlement contract. Differential `eth_call` on Unichain returns
   `UnauthorizedTransmitter()` from an arbitrary sender versus
   `WrongNumberOfSignatures()` from the registered transmitter.
-  **RedStone push and API3 DO NOT qualify** and must not be treated as
-  fill-eligible: both use a sign-off-chain / anyone-relays model.
-  `MultiFeedAdapterWithoutRounds.updateDataFeedsValuesPartial` is `public` with
-  no caller check (`requireAuthorisedUpdater` defaults to an empty body -
-  "By default, anyone can update data feed values"), accepts payloads up to
-  ~3 minutes old with no deviation bound, and skips failed updates silently so
-  the attempt is free; `Api3ServerV1.updateBeaconWithSignedData` is `external`
-  guarded only by `recover(signature) == airnode`, with a future-side timestamp
-  bound only - permissionless in-transaction updating is API3's stated design
-  intent (it is the basis of their OEV product). Independently reproduced: the
-  RedStone Unichain adapter returns `CalldataMustHaveValidPayload()` from two
-  unrelated senders, i.e. execution reaches payload parsing with no
-  authorization step. Chronicle `poke` and Pyth `updatePriceFeeds` fail the
-  same test.
-- **REGISTRATION-ONLY**: values derived from live protocol state readable and
-  writable in-tx - ERC-4626 `convertToAssets`, `getPooledEthByShares`, AMM
-  spot, any `IRateProvider` backed by mutable balances. These may tighten the
-  floor at `rebalance` time (where the curator, not a solver, controls the
-  transaction) but MUST NOT be consulted at fill time.
+- **RedStone push, API3, Chronicle and Pyth do NOT qualify.** All use
+  sign-off-chain / anyone-relays. `updateDataFeedsValuesPartial` is `public`
+  with an empty `requireAuthorisedUpdater` ("By default, anyone can update data
+  feed values"), takes ~3-minute-old payloads with no deviation bound, and
+  skips failed updates silently so the attempt is free.
+  `Api3ServerV1.updateBeaconWithSignedData` is guarded only by
+  `recover(signature) == airnode`; permissionless in-transaction updating is
+  API3's design intent. Chronicle's `poke` and Pyth's `updatePriceFeeds` are
+  the same shape.
+- **Live protocol reads** (`convertToAssets`, `getPooledEthByShares`, AMM spot,
+  balance-backed `IRateProvider`) obviously do not qualify: a solver can move
+  them directly.
 
-A route whose sources are not all FILL-ELIGIBLE cannot be used by a vault in
-Eip1271 mode; the module rejects such a registration rather than silently
-degrading the guarantee. **Eligibility must be rooted in the FEED, and codehash pinning cannot do it.**
-Two earlier attempts were wrong and are recorded here so they are not retried.
-(1) Adapter self-declaration (`fillEligible`) is a claim by the very contract
-whose trustworthiness is in question. (2) Pinning adapter `extcodehash` fails
-twice over: Solidity inlines `immutable` values into runtime bytecode, so two
-PushFeedAdapter instances differing only in their `{proxy, decimals,
-maxStaleness}` configuration have DIFFERENT codehashes and no fixed pin can
-admit the family; and more fundamentally, fill-eligibility is a property of the
-CONFIGURED FEED ADDRESS an adapter points at, not of the adapter's code - the
-same audited bytecode is eligible or not depending on its `proxy` field, so no
-codehash scheme can decide the question.
-The eligibility decision therefore lives where the property does: **an explicit
-per-chain allowlist of FEED ADDRESSES whose write path has been verified
-privileged-writer-gated**, recorded in the module and extended only through the
-P3 timelock, where the claim "this feed's `transmit` is transmitter-allowlisted"
-is exactly the kind of assertion a public delay window exists to let reviewers
-check. A composed route is fill-eligible only if every leg's feed address is on
-that list. `sourceKind()` survives as a cross-check and a source of clear revert
-reasons, never as the authority. This is a real coverage cost - it removes exactly the
-LST/LRT rate composition that motivated P2 for some pairs - and the honest
-resolution is that those pairs get an ExR *push feed* (which Chainlink,
-RedStone and API3 all publish for the major LSTs, per the catalog above) rather
-than an on-chain rate read. Where no push feed exists, the vault runs that pair
-in Presign mode with a registration-time floor, and the spec says so plainly
-instead of claiming a fill-time guarantee it cannot deliver.
+Because eligibility belongs to the feed address, it is recorded as an explicit
+**per-chain allowlist of feed addresses**, seeded at construction and extended
+only through the P3 timelock - where "this feed's `transmit` is
+transmitter-allowlisted" is exactly the claim a public delay window exists to
+let reviewers verify. This also disposes of the identity problem the earlier
+draft could not solve: Unichain's live 8-decimal `USDC / USD TEST CAPPED` proxy
+returns a plausible $0.99988 and no probe distinguishes it from production - but
+it is simply not on the list.
+
+**Anchoring is a route property, not an adapter type.** That is what makes the
+mandatory-anchor rule satisfiable: an anchor is a `Leg` like any other, so it
+carries its own eligibility and staleness. The rule follows from the mechanics
+rather than being asserted over them:
+
+- A route used at fill time must have every leg fill-eligible, **anchor
+  included**. An anchor that a solver can move is worse than no anchor: it can
+  be pushed to suppress a genuine depeg signal, or to force a fail-closed band
+  breach as a grief. This is exactly the defect that made the previous draft's
+  Unichain wstETH route unsound.
+- Where no eligible anchor exists, the route is registration-anchored: the band
+  is enforced at `rebalance`, and the route is marked so the vault cannot run it
+  in Eip1271 mode while claiming a fill-time guarantee.
+
+**Mutable-rate legs are registration-only, and their bounds are governed.** A
+leg whose value is a live protocol read may tighten the floor at `rebalance`
+(where the curator, not a solver, controls the transaction) and must never gate
+a fill. Where such a leg is used, `RateBound` carries a CAPO-style snapshot with
+a max-growth cap **and** a lower bound that grows with the snapshot (a static
+lower bound decays to a no-op against a monotonically rising rate). Two
+deliberate divergences from Aave's reference, both because our failure mode is
+different: theirs **clamps** an out-of-range ratio and returns zero on error,
+ours **reverts** - a clamped price silently produces a wrong floor, which is the
+failure we exist to prevent; and the snapshot parameters live in the route
+config, updatable through the P3 timelock, because Aave re-sets its snapshot by
+risk-admin governance and an immutable adapter has no way to.
+
+**Coverage, stated rather than implied.** The correction shrinks what Eip1271
+mode can serve, and the honest consequences are: Unichain USDT/USD has no
+fill-eligible source at all (RedStone is the only push option there), so that
+pair cannot run fill-time-floored on Unichain; the Unichain wstETH route must
+take a Chainlink ExR leg with no independent eligible anchor, or run
+registration-anchored; and several Ethereum exchange-rate rows in Chainlink's
+directory are Data Streams entries with `proxyAddress: null`, which no adapter
+can read. Where a chain lacks an eligible source for a pair, the vault runs that
+pair in Presign mode with a registration-time floor and the docs say so, rather
+than quietly degrading a guarantee.
+
+**Open sizing questions for review** (deliberately not invented here):
+`maxDivergenceBps` per asset class, the CAPO growth ceiling, and whether
+Chainlink SVR (OEV-auction) feeds - four of Unichain's ten production feeds,
+including the ETH/USD feed the LIVE module already uses - are acceptable as
+fill-eligible legs given their different update dynamics. That last one is a
+question about deployed code, not only about Phase C.
+
 
 ### P3 lane: in-module pending map, Safe-proposed, guardian-vetoable
 
@@ -297,12 +342,14 @@ field:
   a decimals-mismatched proxy, a deliberately capped TEST feed (Unichain ships
   a live 8-decimal `USDC / USD TEST CAPPED` proxy - see the catalog), or a
   constant. Any of those silently collapses the floor in the direction that
-  lets value leave. Registration therefore also requires: the source's
-  self-declared `sourceKind`/`fillEligible` to match the route's intent; the
-  returned price to sit inside an explicit per-token sanity band supplied in
-  the `TokenAdd` payload (so the proposer states what "right" looks like and
-  the timelock makes that claim publicly reviewable); and, for Eip1271-mode
-  vaults, every source in the route to be FILL-ELIGIBLE.
+  lets value leave. Registration therefore also requires (per the C0.5 P2
+  model): every leg's `feed` to be on the eligibility allowlist if the vault
+  runs Eip1271 mode (C17) - which alone excludes the TEST CAPPED proxy, since
+  it is simply not listed; each leg's declared `LegKind` to match its position
+  in the route (a `UsdPrice` leg cannot sit where an `ExchangeRate` is
+  composed); and the composed price to fall inside an explicit per-token sanity
+  band supplied in the `TokenAdd` payload, so the proposer states what "right"
+  looks like and the timelock makes that claim publicly reviewable.
 - **Pendings expire, and execution is NOT permissionless.** Morpho, OZ
   TimelockController, and Aera pendings live forever and execute
   permissionless-after-delay - a forgotten pending add is a landmine anyone
@@ -639,24 +686,27 @@ AND-constraint, Morpho `adapterRegistry`-style).
 ## Interface sketch (normative shape, not final code)
 
 ```solidity
-/// P2: every price source, staticcall-pure, reverts fail-closed, price in 1e18 USD.
+/// P2: a thin source reports ONE observation. Composition, staleness and
+/// bounds live in the module (see the P2 lane) - not here.
 interface IOphisPriceSource {
-    /// 1e18-USD price AND the timestamp it was observed, so the MODULE enforces
-    /// staleness rather than trusting each adapter to police itself.
-    /// Reverts fail-closed on invalid or out-of-bounds values.
-    function priceUsd18() external view returns (uint256 price, uint256 updatedAt);
-    /// Registration-time self-description, checked against the route config so a
-    /// USD feed cannot be silently registered where an exchange rate is meant,
-    /// and so REGISTRATION-ONLY sources can never gate a fill.
-    function sourceKind() external view returns (uint8 kind, bool fillEligible);
+    /// 18-dec value plus the timestamp it was written. Reverts only on what the
+    /// source alone can judge (zero/negative, malformed). Staleness is NOT
+    /// judged here: the module owns it per leg.
+    function read18() external view returns (uint256 value, uint256 updatedAt);
 }
 
 contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier */ {
     enum Mode { Presign, Eip1271 }            // per-vault, immutable at deploy
-    // tokenDecimals stays CACHED here: floorBuyAmount still takes both token
-    // decimals as arguments, and priceUsd18() only absorbs FEED decimals.
-    struct TokenRoute { bool allowed; uint8 tokenDecimals; IOphisPriceSource source; }
-    struct TokenAdd  { address token; IOphisPriceSource source; /* probe cfg */ }
+    enum LegKind { UsdPrice, ExchangeRate }
+    // fillEligible is decided per FEED ADDRESS against the eligibility
+    // allowlist - never from vendor identity or adapter bytecode.
+    struct Leg { IOphisPriceSource source; address feed; LegKind kind;
+                 uint64 maxStaleness; bool fillEligible; }
+    // tokenDecimals stays CACHED: floorBuyAmount takes both token decimals,
+    // and a source's read18() only absorbs FEED decimals.
+    struct TokenRoute { bool allowed; uint8 tokenDecimals; Leg[] legs;
+                        Leg anchor; uint32 maxDivergenceBps; RateBound bound; }
+    struct TokenAdd  { address token; TokenRoute route; uint256 sanityLow; uint256 sanityHigh; }
     // validTo is STORED, never re-read from a caller-supplied uid (see cancel).
     struct OrderState { address sellToken; address buyToken; uint32 validTo;
                         uint96 registeredAt; uint256 minBuyOverride; uint256 sellUsd18; }
@@ -669,6 +719,8 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     mapping(bytes32 => OrderState) internal orderState;      // digest-keyed, O(1) reads only
     mapping(address => LiveOrder)  internal liveOrder;       // sellToken => its single live order
     address[] public allowedTokens;                          // capped at MAX_ALLOWED_TOKENS
+    mapping(address => bool) public feedFillEligible;        // FEED address => eligible
+                                                             // seeded at deploy, extended via P3 timelock only
     // NOTE: deliberately NO token => uid[] index. A fill (STATICCALL) and a
     // passive expiry cannot prune such an array, so it would grow per
     // rebalance and let a compromised curator gas-brick removeToken.
@@ -700,7 +752,7 @@ initial set (same probe discipline as Phase B, length <=
 `MAX_ALLOWED_TOKENS`). Factory enforces curator-not-owner/module exactly as
 today, plus `guardian != curator`.
 
-## Security invariants (Phase C additions, C1-C16)
+## Security invariants (Phase C additions, C1-C18)
 
 These are DESIGN obligations, not achieved results - nothing here is
 implemented yet. Each must be discharged by unit + fuzz + fork tests in C1-C3;
@@ -711,8 +763,12 @@ the verification log tracks which currently have no assigned target.
   gating; covers forged-payload and cross-Safe replay - EFH binds digest to
   struct, the module binds digest to its own registration for THIS safe.)
 - **C2**: at any block where `isValidSafeSignature` returns magic,
-  `order.buyAmount >= max(oracleFloor(block), minBuyOverride)` with all
-  adapter reads fresh and the sequencer gate passing. (The fill-time floor.)
+  `order.buyAmount >= max(oracleFloor(block), minBuyOverride)`, with EVERY leg
+  of the route (anchor included) within its own `maxStaleness` and the
+  sequencer gate passing. Re-derived in C0.5: the floor is only meaningful if
+  no leg can be moved by a settlement participant, so C2 holds ONLY for routes
+  whose legs are all fill-eligible - which the module enforces at registration
+  rather than assuming (C17).
 - **C3**: `isValidSafeSignature` performs zero state writes and reverts (never
   returns wrong-magic silently) on policy failure, with transient/fatal typed
   reasons. (STATICCALL-compatible; orderbook/driver behavior deterministic.)
@@ -786,19 +842,23 @@ the verification log tracks which currently have no assigned target.
   and either runs through the same DELAY as a token add or is blocked while any
   pending operation is live. A lost guardian must still never permanently DoS
   the allowlist.
-- **C11**: three distinct guards: (0) staleness is enforced BY THE MODULE
-  against the `updatedAt` each source returns, per-route and per-token - the
-  module cannot delegate freshness to an adapter it does not control and then
-  claim the property; (i) every adapter read is staticcall-pure and fail-closed on the values only
-  it can judge - a zero or out-of-bounds price reverts inside the adapter
-  (`InvalidOraclePrice`; staleness belongs to guard 0 alone, so each property
-  has exactly ONE enforcement boundary); `Erc4626RateAdapter` enforces upper cap AND lower bound;
-  `AnchoredAdapter` enforces the divergence band in both directions); and
-  (ii) the module-level `ZeroOracleFloor` guard on the COMPUTED floor stays
-  exactly as in Phase B - it catches a floor that truncates to zero (order
-  value below one base unit of the buy token) and fails closed regardless of
-  `minBuyOverride`. (ii) is not a price-source property and cannot be
-  delegated to adapters.
+- **C11**: exactly one enforcement boundary per property, which the C0.5 model
+  makes structural rather than aspirational: a SOURCE judges only what it alone
+  can (zero/negative, malformed -> revert); the MODULE judges freshness (each
+  leg against its own `maxStaleness`), composition, the anchor band (both
+  directions), and rate bounds; and the module-level `ZeroOracleFloor` guard on
+  the COMPUTED floor stays as in Phase B, catching a floor that truncates to
+  zero regardless of `minBuyOverride`. No composed `updatedAt` is ever
+  synthesised, because no single value stands for several legs' freshness.
+- **C17**: a route registered for an Eip1271-mode vault has every leg AND its
+  anchor marked fill-eligible, and eligibility is set only from the feed-address
+  allowlist. A route containing any registration-only leg is rejected for
+  Eip1271 mode rather than silently degrading to a weaker guarantee; such
+  routes are usable at `rebalance` time in Presign mode only.
+- **C18**: bounds fail closed, never clamp. A rate leg outside its CAPO-style
+  growth cap or growing lower bound, or an anchor outside `maxDivergenceBps`,
+  REVERTS - deliberately diverging from Aave's reference, which clamps and
+  returns zero, because a clamped price silently yields a wrong floor.
 - **C12**: `rebalance` in 1271 mode reverts unless the Safe's fallback handler
   is the pinned EFH and `EFH.domainVerifiers(safe, domainSeparator) == this`.
   (No silent fall-through to owner-threshold validation.)
@@ -1110,6 +1170,38 @@ two of them were introduced by MY OWN earlier fixes in this same document:
   (a naive subtraction underflow-reverts on a drained bucket and propagates
   through the shared cancel path into `removeToken`).
 
+C0.5 CONSOLIDATION PASS (2026-07-20). P1 and P2 were REWRITTEN from their
+conclusions rather than patched a further time; this entry records what changed
+so the rewrite is auditable against the history below it.
+
+- **P1** kept its lane (Safe as owner, EFH, module-as-verifier) but now states
+  the caller-provenance rule ONCE, up front, as the constraint governing every
+  entrypoint - it had been left in a footnote while the surrounding text still
+  described a `cancel(bytes)` API the design no longer used. Also folds in what
+  a fill-time floor does and does not promise (it gates order validity, not
+  clearing price), and makes explicit that P2's eligibility rule is part of
+  P1's correctness rather than a neighbouring concern.
+- **P2** was restructured around one insight that dissolves four separate
+  contradictions simultaneously: **composition, staleness and bounds move INTO
+  the module**, leaving an adapter as a thin source reporting one observation
+  and its timestamp. Consequences: per-leg staleness becomes expressible and no
+  composed `updatedAt` is ever synthesised; the mandatory anchor becomes
+  satisfiable because an anchor is just another `Leg` carrying its own
+  eligibility (and an anchor a solver can move is worse than none, which is
+  what made the previous Unichain wstETH route unsound); no codehash scheme is
+  needed because eligibility belongs to the FEED ADDRESS and lives in an
+  allowlist extended through the P3 timelock; and CAPO parameters regain a
+  governance path that the immutable-adapter model had foreclosed. The
+  four-type taxonomy is retired.
+- **Invariants re-derived, not carried forward**: C2 now holds only for routes
+  whose legs are all fill-eligible; C11 states one enforcement boundary per
+  property as a structural consequence rather than an aspiration; C17
+  (eligibility enforced at registration, never assumed) and C18 (bounds revert,
+  never clamp - deliberately diverging from Aave's clamping reference) are new.
+- **Deliberately NOT done**: the P3 open items from the round below remain
+  open. They are contained within P3 and did not justify holding the P1/P2
+  rewrite.
+
 RE-VERIFICATION ROUND (2026-07-20, 4 lenses on the rewritten spec). This round
 found TWO BLOCKERS, both in fixes introduced by the two rounds immediately
 before it, plus ~20 MAJORs concentrated in the same two lanes. Applied:
@@ -1336,34 +1428,46 @@ reported; findings applied:
   replacement must trigger on the RDD flag, not on observed liveness.
 
 
-## Status after five review rounds (read this before scheduling C1)
+## Status (C0.5 applied, 2026-07-20)
 
-The three lanes are sound and worth building: an EIP-1271 fill-time floor
-through EFH, a bounded oracle-adapter taxonomy, and a Safe-proposed timelocked
-allowlist. The verification history is in the log above and it is unusually
-productive - eleven defects that would otherwise have reached contract code,
-including a CRITICAL that fully unbound the daily turnover cap and two BLOCKERS
-in the oracle-eligibility model.
+The three lanes are sound and worth building. Five review rounds found eleven
+defects that would otherwise have reached contract code, including a CRITICAL
+that fully unbound the daily turnover cap and two BLOCKERS in the oracle
+eligibility model. **Five of those eleven were introduced by earlier fixes in
+this same document** - patch debt, not a research gap - which is what triggered
+this consolidation.
 
-It is also the reason this document should not go straight to implementation.
-**Five of those eleven defects were introduced by earlier fixes in this same
-document**, and the most recent round found two lanes whose successive patches
-now contradict each other (the anchor requirement versus the eligibility rule;
-the staleness model versus the adapter interface; the removal ordering versus
-the sweep bound). That is patch debt, not a research gap: each fix was locally
-correct and the composition drifted.
+**What C0.5 changed.** P1 and P2 were rewritten from their conclusions rather
+than amended again. P1 now states the caller-provenance rule once, as the
+constraint governing every entrypoint, instead of leaving it in a footnote
+under a cancellation API the text no longer used. P2 was restructured around a
+single insight that dissolves four separate contradictions at once: composition,
+staleness and bounds move INTO the module, so an adapter becomes a thin source
+reporting one observation and its timestamp. That makes per-leg staleness
+expressible (no synthesised composed `updatedAt`), makes the mandatory anchor
+satisfiable (an anchor is a `Leg`, carrying its own eligibility), removes the
+need for any codehash scheme (eligibility is a property of the FEED ADDRESS,
+recorded in an allowlist extended through the P3 timelock), and gives CAPO
+parameters a governance path the immutable-adapter model had foreclosed. C2 and
+C11 were re-derived from the new text; C17 (eligibility is enforced, not
+assumed) and C18 (bounds revert rather than clamp) are new.
 
-RECOMMENDED NEXT STEP - a C0.5 consolidation pass before any Solidity:
-rewrite the P1 (fill-time) and P2 (oracle) sections from their current
-conclusions rather than editing them again, so the eligibility rule, the anchor
-requirement, the staleness model and the adapter interface are designed
-together once; then re-derive C1-C16 from that text rather than carrying them
-forward. The P3 lane is in better shape and mostly needs the open items above
-folded in. Budget a single fresh review round on the rewritten sections, not
-another patch cycle.
+**What is still open.** P3 carries the unpatched items from the re-verification
+round: the de-allowlist-first ordering versus the sweep that iterates
+`allowedTokens`, `sweepResidual` having no residual state and the wrong key for
+buy-side removals, C6's Presign-parity claim now that `cancel`'s signature
+changed, and the test-plan/TRACKED contradiction over which invariants have
+targets. These are contained within P3 and did not justify holding the P1/P2
+rewrite.
 
-The seven open decisions remain the gate on all of it. Two now carry extra
-weight from the final round: the FILL-ELIGIBLE correction shrinks real coverage
-(Unichain USDT/USD has no eligible source; the wstETH anchor must be
-re-sourced), which bears directly on decision 4 (anchor mandatoriness) and
-decision 7 (initial adapter scope).
+**Sizing questions that need a human, not a lens**: `maxDivergenceBps` per asset
+class, the CAPO growth ceiling, and whether Chainlink SVR (OEV-auction) feeds
+are acceptable as fill-eligible legs - four of Unichain's ten production feeds
+are SVR, including the ETH/USD feed the LIVE module already uses, so that last
+question is about deployed code as much as about Phase C.
+
+**Next**: one fresh review round on the rewritten P1/P2 sections (not another
+patch cycle), then the seven open decisions, then C1. The FILL-ELIGIBLE
+correction shrinks real coverage - Unichain USDT/USD has no eligible source and
+the wstETH anchor must be re-sourced - which bears directly on decision 4
+(anchor mandatoriness) and decision 7 (initial adapter scope).
