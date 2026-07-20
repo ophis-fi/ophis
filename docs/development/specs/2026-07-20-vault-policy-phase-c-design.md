@@ -198,7 +198,9 @@ field:
 - **Validate at execute, not only at submit.** Morpho validates nothing at
   submit and documents the footgun; Aera probes at schedule AND commit.
   `executeTokenAdd` re-runs constructor-grade validation: duplicate-reject,
-  decimals <= 36, staleness bounds, live adapter probe, sequencer gate.
+  decimals <= 36, staleness bounds, live adapter probe, sequencer gate, and
+  `allowedTokens.length < MAX_ALLOWED_TOKENS` (the cap that keeps
+  `removeToken`'s sweep statically bounded - see C15).
 - **Pendings expire, and execution is NOT permissionless.** Morpho, OZ
   TimelockController, and Aera pendings live forever and execute
   permissionless-after-delay - a forgotten pending add is a landmine anyone
@@ -222,21 +224,46 @@ field:
   pending-`decreaseTimelock` pipelining hole where the real guarantee horizon
   is a `min()` over pendings; with ~3 admin ops, per-selector granularity buys
   nothing.
-- **Removal atomically settles the live-order residual, on BOTH sides.**
-  Phase-B bookkeeping is keyed by sell token only; a live order whose BUY side
-  is the removed token would survive it. Storing `buyToken` per order is
-  necessary but not sufficient - a digest-keyed mapping cannot be walked - so
-  Phase C also maintains an explicit `liveOrdersByToken` index populated for
-  BOTH sides at registration and pruned on cancel/supersede/fill-expiry.
-  `removeToken` iterates that index (bounded: <= 1 live order per sell token,
-  and the allowlist is small and enumerable), revoking each (presign mode:
-  `setPreSignature(uid, false)`; 1271 mode: `settlement.invalidateOrder(uid)`)
-  and zeroing the sell-side relayer allowance, reusing the existing `cancel()`
-  internals refactored into a shared path. In 1271 mode the fill-time
-  allowlist re-check (both sides) makes removal *instantly* invalidating even
-  before the on-chain revoke lands - a P1xP3 synergy; in presign mode the
-  on-chain revoke IS the enforcement, which is why it must cover the buy side
-  too.
+- **Removal atomically settles the live-order residual, on BOTH sides - via
+  bounded per-sell-token slots, never an append-only index.** Phase-B
+  bookkeeping is keyed by sell token only, so a live order whose BUY side is
+  the removed token would survive removal. The naive fix - a
+  `token => uid[]` index appended at registration - is WRONG and must not be
+  built: **nothing can prune it on the two most common terminal states.** A
+  fill is observed only inside `isValidSignature`, which is a STATICCALL and
+  cannot write; a passive expiry has no transaction at all. So such an index
+  is append-only in practice, grows one entry per historical rebalance, and
+  makes `removeToken` iterate every dead uid - eventually exceeding the block
+  gas limit and reverting. That would let a compromised curator **brick the
+  guardian's instant-removal power** by spamming registrations: a curator
+  degrading a safety control, which is exactly the escalation this module
+  exists to prevent.
+  Phase C instead extends the **existing per-sell-token live slot** (Phase B's
+  `liveAllowanceUid` / `liveAllowanceOrderUid`, already invariant-tested at
+  `<= 1 live order per sell token`) into
+  `liveOrder[sellToken] = {bytes uid, address buyToken, bytes32 digest}`.
+  Storage is O(allowlist), self-overwriting on supersede, and retains no
+  history. `removeToken(token)` iterates `allowedTokens` - length-capped at
+  `MAX_ALLOWED_TOKENS` so the sweep is statically bounded - and for each sell
+  token `S` with a live record `R`, revokes `R` when `S == token` OR
+  `R.buyToken == token`, then zeroes `S`'s relayer allowance when the revoked
+  order still owned it (the existing `cancel()` ownership rule, refactored
+  into a shared internal path). Worst case is one settlement call per
+  allowlisted token, bounded at deploy.
+- **The record stores the full uid BYTES, not just the digest.** A GPv2 uid is
+  `digest(32) || owner(20) || validTo(4)`; `validTo` is hashed *into* the
+  digest but is not recoverable *from* it, so neither
+  `setPreSignature(uid, false)` nor `settlement.invalidateOrder(uid)` can be
+  called from a digest alone. This is the same lesson Phase B already encodes
+  (`liveAllowanceOrderUid` exists precisely because "`setPreSignature` needs
+  the uid bytes, not just their hash" - module NatSpec); Phase C keeps that
+  property and adds `buyToken` beside it. A digest-keyed design would leave
+  buy-side orders un-revocable in presign mode.
+- Revocation is mode-aware: presign mode `setPreSignature(uid, false)`, 1271
+  mode `settlement.invalidateOrder(uid)`. In 1271 mode the fill-time allowlist
+  re-check (both sides) makes removal *instantly* invalidating even before the
+  on-chain revoke lands - a P1xP3 synergy; in presign mode the on-chain revoke
+  IS the enforcement, which is why it must cover the buy side too.
 - **Frozen mode stays available**: a factory flag deploys Phase-B semantics
   (no pending map, token set fixed at deploy) for vaults that want the
   strongest static story. Default is timelocked.
@@ -405,10 +432,18 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     struct TokenAdd  { address token; IOphisPriceSource source; /* probe cfg */ }
     struct OrderState { address sellToken; address buyToken; uint96 registeredAt;
                         uint256 minBuyOverride; uint256 sellUsd18; }
+    // Per-sell-token live slot (extends Phase B's liveAllowanceUid pair).
+    // Self-overwriting on supersede => O(allowlist) storage, ZERO history.
+    // uid is the full 56 bytes: validTo is NOT recoverable from the digest,
+    // and both setPreSignature/invalidateOrder need the bytes.
+    struct LiveOrder { bytes uid; address buyToken; bytes32 digest; }
 
-    // Enumerable state P3 removal needs (mappings alone cannot be walked):
-    address[] public allowedTokens;                   // small, bounded by policy
-    mapping(address => bytes32[]) internal liveOrdersByToken; // sell AND buy side
+    mapping(bytes32 => OrderState) internal orderState;      // digest-keyed, O(1) reads only
+    mapping(address => LiveOrder)  internal liveOrder;       // sellToken => its single live order
+    address[] public allowedTokens;                          // capped at MAX_ALLOWED_TOKENS
+    // NOTE: deliberately NO token => uid[] index. A fill (STATICCALL) and a
+    // passive expiry cannot prune such an array, so it would grow per
+    // rebalance and let a compromised curator gas-brick removeToken.
 
     // P1 - curator surface (unchanged names, extended semantics)
     function rebalance(GPv2Order.Data calldata order, uint256 minBuyOverride)
@@ -431,8 +466,9 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
 
 Constructor additions: `Mode mode`, `address guardian`, `uint256 delay`
 (>= 24h, immutable), `uint256 executeWindow` (immutable), `TokenRoute[]`
-initial set (same probe discipline as Phase B). Factory enforces
-curator-not-owner/module exactly as today, plus `guardian != curator`.
+initial set (same probe discipline as Phase B, length <=
+`MAX_ALLOWED_TOKENS`). Factory enforces curator-not-owner/module exactly as
+today, plus `guardian != curator`.
 
 ## Security invariants (Phase C additions; C1-C13, all unit+fuzz+fork tested)
 
@@ -471,6 +507,14 @@ curator-not-owner/module exactly as today, plus `guardian != curator`.
   EVERY live order the token appears in (sell side or buy side) and zeroes the
   sell-side allowance(s); after it no new registration, no 1271 validation,
   and no module-created presignature can involve that token.
+- **C15**: `removeToken`'s gas cost is statically bounded and independent of
+  history: it performs at most one settlement call per allowlisted token
+  (`allowedTokens.length <= MAX_ALLOWED_TOKENS`), and no code path lets order
+  activity grow any structure that removal must iterate. Corollary: no
+  sequence of curator actions can make `removeToken` revert for gas -
+  the guardian's instant-removal power is curator-proof. (Fuzz target:
+  register/cancel/supersede/expire arbitrarily, then assert `removeToken`
+  succeeds within a fixed gas budget.)
 - **C10**: guardian powers are exclusively risk-reducing (cancelPending,
   removeToken); no guardian path adds tokens, raises caps, or loosens any
   parameter.
@@ -710,11 +754,35 @@ applied above:
   new invariant C14 added.
 - (MINOR, design) `removeToken`'s buy-side sweep needed enumerable state that
   the data model did not provide (digest-keyed mappings cannot be walked).
-  Added `allowedTokens[]` + `liveOrdersByToken` index to the normative sketch.
+  First fix added `allowedTokens[]` + a `token => uid[]` index - **superseded
+  by PR-review round 1 below**, which showed that index is unbounded; the
+  shipped design uses bounded per-sell-token slots instead.
 - (MINOR, design) Added an explicit `safe_ == address(safe)` pin in
   `isValidSafeSignature` (EFH's `domainVerifiers` is caller-scoped, so a
   foreign Safe could name this module as verifier - harmless via
   receiver-pinning, but now excluded outright) and folded it into C13.
+
+PR-review round 1 (both P1, both valid, both applied - they invalidated the
+first attempt at the buy-side removal fix):
+
+- (P1) The proposed `token => uid[]` live-order index was **unprunable and
+  therefore unbounded**: a fill is observed only inside `isValidSignature`
+  (STATICCALL - cannot write) and a passive expiry has no transaction at all,
+  so entries for filled/expired orders would accumulate one per historical
+  rebalance and `removeToken` would eventually revert on gas - letting a
+  compromised curator gas-brick the guardian's instant-removal power by
+  spamming registrations. Redesigned onto **bounded per-sell-token slots**
+  (extending Phase B's already-invariant-tested `<= 1 live order per sell
+  token`) plus a length-capped `allowedTokens`; removal is now at most one
+  settlement call per allowlisted token, with zero historical retention. New
+  invariant C15 makes the bound explicit and fuzz-tested.
+- (P1) The index stored **digests, from which a uid cannot be reconstructed**
+  (uid = `digest || owner || validTo`; `validTo` is hashed into the digest but
+  not recoverable from it), so neither `setPreSignature` nor `invalidateOrder`
+  could be called for buy-side orders in presign mode. The live record now
+  stores the full uid bytes - which is exactly why Phase B carries
+  `liveAllowanceOrderUid` beside `liveAllowanceUid`; the first draft
+  re-introduced a bug Phase B had already solved.
 
 Verified-positive findings worth recording (they retire open questions rather
 than change the design): EFH's muxer interface, the `0x5fd7e97d` selector, and
