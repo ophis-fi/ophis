@@ -69,19 +69,35 @@ cast rpc debug_traceTransaction "$LATEST" '{"tracer":"callTracer"}' --rpc-url ht
 
 ## Sync
 
-- **Snapshot / init.** Fastest first sync uses `--init.latest=pruned` (or an `--init.url=`
-  snapshot if Robinhood publishes one). From-genesis re-sync needs the beacon blob window
-  (or a blob archiver) as noted above.
+- **Snapshot / init.** Robinhood publishes **no snapshot URL** (their docs leave the
+  `--init.url=<SNAPSHOT_URL>` placeholder unfilled; ask chain-developers-group@robinhood.com).
+  So first sync runs from the published genesis file via `--init.genesis-json-file`, per the
+  documented mainnet command. An earlier revision of this runbook used `--init.latest=pruned`;
+  that is NOT in the documented command and has no snapshot source to resolve against.
+  From-genesis sync needs the beacon blob window (or a blob archiver) as noted above, and
+  Robinhood warns it "will consume significant L1 request quota" - do not point it at a
+  free-tier L1 endpoint.
 - **Sequencer feed** for low-latency tip: `--node.feed.input.url=wss://feed.mainnet.chain.robinhood.com`
   (a non-sequencer full node subscribes to the sequencer feed to see txs before the next L1 batch).
 - Chain does ~134ms blocks (empirical), so it accrues block height fast (~900k/day). Budget disk.
 
-## Resources (per Arbitrum guidance)
+## Resources (per Robinhood's OWN docs - verified 2026-07-21)
 
-- Min 16 GB RAM (32 GB recommended); Nitro memory can be capped via `GOMEMLIMIT` +
-  `--node.resource-mgmt.mem-free-limit` under load.
-- SSD: pruned/full ~= (2 x current chain size) + 20% buffer; archive multi-TB.
-- CPU: 4+ cores.
+These are materially heavier than the generic Arbitrum guidance an earlier revision
+of this runbook quoted (16/32 GB). Size against these, not those:
+
+| | Robinhood docs | (generic Arbitrum guidance) |
+|---|---|---|
+| RAM | **64 GB min, 128 GB recommended** | 16 min / 32 rec |
+| Disk | **NVMe SSD, "several TBs"**; (2 x chain size) + 20% | same formula |
+| CPU | **8+ cores** | 4+ cores |
+
+Nitro memory can be capped via `GOMEMLIMIT` + `--node.resource-mgmt.mem-free-limit`
+under load, but that trades OOM-safety for sync speed - it does not make a 32 GB box
+adequate. Archive (`--execution.caching.archive`) is multi-TB on top of the above.
+
+The chain does ~134ms blocks (~900k/day), so disk grows fast; provision headroom and
+alert on free space rather than sizing to today's chain.
 
 ---
 
@@ -94,7 +110,8 @@ stack). Fill the two L1 endpoints and the chain-info path, then:
 ```bash
 cd infra/robinhood-mainnet/nitro
 cp .env.example .env      # set L1_EXECUTION_RPC, L1_BEACON_URL
-# place the canonical chain-info JSON at ./robinhood-chain-info.json (see robinhood-chain-info.md)
+# robinhood-chain-info.json + robinhood-genesis.json are already committed here
+# (fetched from the Robinhood CDN 2026-07-21); re-pull if upstream revises them.
 docker compose up -d
 docker compose logs -f nitro   # watch it sync to the tip
 ```

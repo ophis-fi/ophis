@@ -14,10 +14,10 @@ name: robinhood-nitro
 
 services:
   nitro:
-    # Pin the fully-qualified tag (Arbitrum publishes vMAJOR.MINOR.PATCH-<sha>);
-    # v3.11 is a moving alias. Confirm the current tag on the Robinhood docs
-    # (docs.robinhood.com/chain/run-a-full-node) before deploy - they may bump it.
-    image: offchainlabs/nitro-node:v3.11
+    # Fully-qualified tag as published by the Robinhood run-a-full-node docs
+    # (verified 2026-07-21). v3.11 alone is a MOVING alias - never deploy it.
+    # Re-check the docs before deploy; they may bump this.
+    image: offchainlabs/nitro-node:v3.11.2-3599aca
     restart: always
     stop_grace_period: 5m
     # Nitro archive is memory-hungry; cap it so it can't OOM the host.
@@ -25,19 +25,28 @@ services:
     environment:
       GOMEMLIMIT: 20GiB
     volumes:
-      - nitro-data:/home/user/.arbitrum
-      # Canonical Robinhood chain-info JSON (see robinhood-chain-info.md). Pull
-      # the live file; do NOT hand-transcribe rollup/inbox addresses.
+      # The nitro-node image runs as user `nitro`, so the datadir is
+      # /home/nitro/.arbitrum. Mounting /home/user/.arbitrum (the old value) does
+      # NOT persist the database - the node writes into the container layer and
+      # silently re-syncs from scratch on every restart.
+      - nitro-data:/home/nitro/.arbitrum
+      # Canonical Robinhood chain-info + genesis, fetched from the Robinhood CDN
+      # (see robinhood-chain-info.md). Do NOT hand-transcribe rollup/inbox addresses.
       - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
+      - ./robinhood-genesis.json:/config/robinhood-genesis.json:ro
     command:
       - --parent-chain.connection.url=${L1_EXECUTION_RPC:?set L1_EXECUTION_RPC in .env}
       - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
       - --chain.id=4663
       - --chain.info-files=/config/robinhood-chain-info.json
-      # Low-latency tip via the Robinhood sequencer feed.
+      # Low-latency tip via the Robinhood sequencer feed. Must be wss://.
       - --node.feed.input.url=wss://feed.mainnet.chain.robinhood.com
-      # Fast first sync. Swap for --init.url=<snapshot> if Robinhood publishes one.
-      - --init.latest=pruned
+      # MAINNET REQUIRES the published genesis file (the testnet command omits
+      # it). Without it the node cannot init the 4663 state correctly.
+      - --init.genesis-json-file=/config/robinhood-genesis.json
+      # NOTE: --init.latest=pruned was removed - it is not in the documented
+      # mainnet command and Robinhood publishes no snapshot for it to resolve.
+      # If they ever publish one, add: --init.url=<SNAPSHOT_URL> (first start only).
       # RPC exposed to the eRPC proxy. debug/arb/arbtrace are LOAD-BEARING: the
       # autopilot's debug_traceTransaction settlement decode depends on them.
       - --http.addr=0.0.0.0
