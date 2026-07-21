@@ -1,10 +1,10 @@
 {
-  "critical": 10,
-  "high": 56,
-  "moderate": 41,
-  "low": 36,
+  "critical": 11,
+  "high": 61,
+  "moderate": 52,
+  "low": 38,
   "notes": [
-    "Per-severity advisory count from osv-scanner against contracts/yarn.lock, measured 2026-07-15.",
+    "Per-severity advisory count from osv-scanner against contracts/yarn.lock, measured 2026-07-21.",
     "Replaces the retired yarn-audit path-counted baseline (contracts-yarn-audit-baseline.json) after npm retired the legacy audit endpoint (HTTP 410). osv de-dupes per (package@version, GHSA) so counts differ from yarn's dependency-path counts and are not comparable to the old file.",
     "contracts/ is a legacy deployment/test toolchain; this gate blocks REGRESSIONS above baseline (via scripts/osv-gate.py --mode baseline) while modernization work removes the baseline. It intentionally does NOT block on absolute HIGH/CRITICAL, unlike the pnpm workspace jobs."
   ]
