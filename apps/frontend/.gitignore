@@ -84,3 +84,4 @@ CLAUDE.md
 
 # Build output: functions/ is staged at deploy time from repo-root functions/
 build/cowswap/functions
+node-compile-cache/
