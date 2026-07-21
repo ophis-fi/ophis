@@ -9,7 +9,7 @@ name: Security
 # repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
 # WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
-# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, contracts-osv-audit) plus the
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, contracts-osv-audit) plus the
 # secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
 # tier / erpc / policy-pack) and Slither depend only on repo contents a PR
 # already exercised, so they are skipped on schedule via
@@ -19,6 +19,7 @@ name: Security
 #   - slither             Solidity static analysis (Trail of Bits)
 #   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree, osv-scanner)
 #   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories (osv-scanner)
+#   - pnpm-audit-docs     apps/docs-ophis (separate workspace) dep advisories (osv-scanner)
 #   - contracts-osv-audit legacy contracts deploy/test toolchain advisories (osv-scanner)
 #   - cargo-audit         Rust dep advisories
 #   - cargo-deny          Rust supply-chain (advisories + sources)
@@ -160,7 +161,7 @@ jobs:
     # Skip on the weekly cron: Slither's findings only change when the
     # (vendored, frozen) contracts change, which a PR already exercises, so
     # it is not a time-sensitive advisory job. Only cargo-audit, cargo-deny,
-    # pnpm-audit, pnpm-audit-frontend, and gitleaks run on schedule.
+    # pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, and gitleaks run on schedule.
     if: github.event_name != 'schedule'
     # Runs Trail of Bits' eth-security-toolbox container (digest-pinned
     # for reproducibility). The container ships slither 0.11.4, foundry,
@@ -353,6 +354,33 @@ jobs:
           # already pinned to latest 2.0.1. (audit 2026-06)
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp
+
+  pnpm-audit-docs:
+    name: pnpm audit (docs-ophis deps)
+    runs-on: ubuntu-latest
+    # apps/docs-ophis is its OWN pnpm workspace root (pnpm-workspace.yaml with
+    # `packages: []`), deliberately excluded from the root workspace the same way
+    # apps/frontend is -- so NEITHER the root job nor the frontend job covered it.
+    # That gap let js-yaml (GHSA-52cp-r559-cp3m), brace-expansion
+    # (GHSA-3jxr-9vmj-r5cp), shell-quote (GHSA-395f-4hp3-45gv) and uuid
+    # (GHSA-w5hq-g745-h8pq) sit open and unmonitored until 2026-07-21. This job
+    # closes the gap; it blocks on absolute HIGH/CRITICAL like the other two pnpm
+    # jobs (docs-ophis is a small, modern tree with no legacy baseline, so it
+    # does NOT need the contracts-style regression mode).
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan docs-ophis workspace and block on HIGH/CRITICAL
+        run: |
+          test -s apps/docs-ophis/pnpm-lock.yaml || { echo "lockfile apps/docs-ophis/pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
+          rc=0
+          osv-scanner --lockfile apps/docs-ophis/pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-docs.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
+            --osv-rc "$rc"
 
   cargo-audit:
     name: cargo audit (Rust deps)

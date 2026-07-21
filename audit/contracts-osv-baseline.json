@@ -1,11 +1,12 @@
 {
   "critical": 11,
-  "high": 61,
+  "high": 60,
   "moderate": 52,
   "low": 38,
   "notes": [
     "Per-severity advisory count from osv-scanner against contracts/yarn.lock, measured 2026-07-21.",
     "Replaces the retired yarn-audit path-counted baseline (contracts-yarn-audit-baseline.json) after npm retired the legacy audit endpoint (HTTP 410). osv de-dupes per (package@version, GHSA) so counts differ from yarn's dependency-path counts and are not comparable to the old file.",
-    "contracts/ is a legacy deployment/test toolchain; this gate blocks REGRESSIONS above baseline (via scripts/osv-gate.py --mode baseline) while modernization work removes the baseline. It intentionally does NOT block on absolute HIGH/CRITICAL, unlike the pnpm workspace jobs."
+    "contracts/ is a legacy deployment/test toolchain; this gate blocks REGRESSIONS above baseline (via scripts/osv-gate.py --mode baseline) while modernization work removes the baseline. It intentionally does NOT block on absolute HIGH/CRITICAL, unlike the pnpm workspace jobs.",
+    "2026-07-21: high 61 -> 60 after js-yaml resolution ^4.2.0 -> ^4.3.0 cleared GHSA-52cp-r559-cp3m. Ratcheted so the fix cannot silently regress. brace-expansion (GHSA-3jxr-9vmj-r5cp, both majors) deliberately REMAINS in baseline: yarn v1 resolutions are name-keyed only, so no per-major expression exists, and both consumers are minimatch (3.x wants ^1.1.7, 5.x wants ^2.0.1) -- forcing either major across both is an untestable functional risk in a dev-only glob path for a ReDoS with no attacker-controlled patterns. Durable fix is upgrading the hardhat toolchain that pins minimatch 3."
   ]
 }
