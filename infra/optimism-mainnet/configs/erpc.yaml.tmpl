@@ -423,38 +423,17 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: ophis-self-op
-        # Self-hosted full node reached via Tailscale (private overlay).
-        # Operational details (provisioning history, host inventory,
-        # NAT/iptables config, software version pins, public SSH endpoint)
-        # are kept in private ops notes — see
-        # docs/operations/op-erpc-self-hosted-runbook.md (gitignored).
-        #
-        # Provenance + restoration procedures live in that runbook; this
-        # public template only carries the live endpoint pointer the
-        # eRPC daemon needs at runtime.
-        #
-        # No DNS dependency — IP-pinned because the container DNS
-        # resolver doesn't see the Tailscale overlay's MagicDNS.
-        #
-        # Failure modes (operational, not security):
-        # - upstream unreachable: returns connection refused →
-        #   participant timeout. With agreementThreshold: 2 the other
-        #   two upstreams form quorum if they agree → settlement
-        #   continues. If they ALSO disagree simultaneously, we drop
-        #   below threshold → returnError → driver pauses until any
-        #   2 of 3 recover agreement.
-        # - endpoint IP rotation (host reprovision):
-        #   UPDATE THIS ENDPOINT + re-render configs.
-        endpoint: http://100.77.53.81:8545
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 8s
-            retry:
-              maxAttempts: 3
-              delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
-              jitter: 50ms
-
+      # ─── ophis-self-op (self-hosted 3rd upstream) — TEMPORARILY REMOVED ───
+      # 2026-07-17: the old self-hosted box (100.77.53.81) is DEAD (host down).
+      # While present its 8s participant timeout drags every consensus request and
+      # amplifies publicnode/tenderly 429s under the redistributed load →
+      # intermittent ErrConsensusLowParticipants → orderbook /quote 404. Removed to
+      # restore a clean 2-of-2 (publicnode=Cloudflare DNS, tenderly=Google DNS — 2
+      # independent failure domains, still fail-closed). Documented 2-of-2 interim.
+      #
+      # RE-ADD when the replacement self-hosted node is healthy: a new box is syncing
+      # at 46.255.204.207 (op-reth ~105M/154M tip, 22GB RAM as of 2026-07-17). Once
+      # caught up AND on the Tailscale overlay, restore the block with the new tailnet
+      # endpoint and bump back to 2-of-3. No free non-CF/non-Google public OP RPC
+      # exists to substitute (ankr key-gated, blast retired, drpc/meowrpc/omnia all
+      # share Cloudflare DNS with publicnode → would defeat the fork-poisoning model).
