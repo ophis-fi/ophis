@@ -70,7 +70,7 @@
     "@typescript-eslint/parser": "^5.58.0",
     "@uniswap/v2-core": "^1.0.1",
     "@uniswap/v2-periphery": "^1.1.0-beta.0",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "canonical-weth": "^1.4.0",
     "chai": "^4.3.7",
     "chai-as-promised": "^7.1.1",
