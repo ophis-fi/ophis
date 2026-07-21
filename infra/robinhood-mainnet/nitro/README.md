@@ -28,13 +28,67 @@ from Ethereum L1. You MUST supply two L1 endpoints:
 | Prereq | What | Free options |
 |--------|------|--------------|
 | **L1 execution RPC** | An Ethereum mainnet JSON-RPC (`--parent-chain.connection.url`). Nitro reads the SequencerInbox batches from here. | Own Ethereum node (best), or a free-tier provider, or `https://ethereum-rpc.publicnode.com`. |
-| **L1 beacon (blob) endpoint** | An Ethereum consensus/beacon API (`--parent-chain.blob-client.beacon-url`). Robinhood posts DA as **EIP-4844 blobs** (Rollup mode, NOT AnyTrust), and blobs live on the beacon chain, not the execution layer. | Own beacon node (best), or a free beacon API. Blobs are retained ~18 days; for a from-genesis re-sync of an older chain you need a blob archiver (`--parent-chain.blob-client.blob-storage-service-urls`). |
+| **L1 beacon (blob) endpoint** | An Ethereum consensus/beacon API (`--parent-chain.blob-client.beacon-url`). Robinhood posts DA as **EIP-4844 blobs** (Rollup mode, NOT AnyTrust), and blobs live on the beacon chain, not the execution layer. | Must reach back to the rollup's deployment - see "From-genesis sync is not possible" below. A standard free beacon API does NOT. One fallback is supported via `--parent-chain.blob-client.secondary-beacon-url`. |
 | **Robinhood chain-info JSON** | The Orbit rollup config (`--chain.info-json` or `--chain.info-files`) describing chainId 4663, its rollup/inbox/bridge L1 addresses, and genesis. | Published by Robinhood - see `robinhood-chain-info.md` in this dir. Pull the canonical file from the live docs before deploy; do not hand-transcribe rollup addresses. |
 
 **DA mode is Rollup (blobs), not AnyTrust** - so there is NO DAC / `--node.data-availability.*`
 config. If you see AnyTrust flags in a copied Arbitrum runbook, they do not apply here.
 
 ---
+
+## From-genesis sync is NOT possible (measured 2026-07-21)
+
+**Read this before provisioning anything.** It is the binding constraint on the whole
+deployment, and it is not a hardware problem - a bigger machine does not fix it.
+
+The rollup deployed at Ethereum L1 block `24994238`, timestamp **2026-04-30 16:51:59 UTC**.
+Nitro syncs by replaying the chain's DA (EIP-4844 blobs) from that point. Blobs are not
+retained forever, so the question is whether any beacon endpoint still serves that era.
+
+Measured against `ethereum-beacon-api.publicnode.com`, sampling consecutive slots
+(`/eth/v1/beacon/blobs/{slot}`) and counting how many carry blob data:
+
+| Age | Slots sampled | With blobs |
+|---|---|---|
+| 82d (rollup deploy) | 10 | **0** |
+| 75d | 10 | **0** |
+| 70d / 65d / 60d / 55d / 50d | 6 each | **0** |
+| 45d | 10 | 6 |
+| 3d | 10 | 9 |
+
+So retention on that endpoint is roughly **45-50 days** - and the chain is **82 days old**.
+Roughly the **first 32-37 days of DA is unreachable**, and a from-genesis sync stalls there.
+
+Note the ~45-50d figure is specific to that endpoint and to the post-Fusaka era (responses
+report `"version":"fulu"`, i.e. PeerDAS data columns). It is NOT the classic ~18-day
+`MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS` figure an earlier revision of this runbook quoted,
+and it will drift. **Re-measure before every deploy** - the gap widens as the chain ages:
+
+```bash
+# '"data":[]' across a run of consecutive slots => that era is gone from this endpoint.
+for i in $(seq 0 9); do
+  curl -s "$L1_BEACON_URL/eth/v1/beacon/blobs/$((14229224 + i))" | head -c 60; echo
+done
+```
+
+### The two ways out
+
+1. **An archive beacon provider** whose blob retention reaches past 2026-04-30. Verify with
+   the loop above *before paying* - retention depth is rarely advertised accurately. Nitro
+   v3.11.2 calls `/eth/v1/beacon/blobs/{slot}`; providers exposing only the older
+   `blob_sidecars` API may not satisfy it. Use `--parent-chain.blob-client.beacon-url`, plus
+   `--parent-chain.blob-client.secondary-beacon-url` for a fallback.
+2. **Restore from a database snapshot**, then follow the tip - which reduces the blob
+   requirement to hours and lets a free endpoint serve it.
+   - Robinhood publishes **no** official snapshot (`--init.url` placeholder left blank).
+     `robinhood-snapshots.offchainlabs.com` does **not** exist (HTTP 404, verified).
+   - Ask `chain-developers-group@robinhood.com` for an official one. **Prefer this.**
+   - Third-party snapshots exist but are **unattributed**. Treat any such snapshot as
+     untrusted input: a Nitro data directory can carry executable wasm. Leave
+     `--init.import-wasm` at its default `false`, verify publisher checksums, and - before
+     Ophis trusts a single trace from it - cross-check block hashes at several heights
+     against `rpc.mainnet.chain.robinhood.com`. Ophis settles real value on these traces;
+     a tampered state DB is a settlement-integrity risk, not just an ops inconvenience.
 
 ## Trace namespaces - the load-bearing flags
 
@@ -130,9 +184,13 @@ namespaces are not in `--http.api`. This is the #1 misconfig. Fix and restart.
 beacon endpoint is down or rate-limited - Nitro cannot read new batches / blobs. Check both
 L1 legs first.
 
-**"blob not found" during from-genesis sync:** the beacon endpoint's blob retention window
-(~18 days) does not cover the range. Use a blob archiver
-(`--parent-chain.blob-client.blob-storage-service-urls`) or an `--init` snapshot past that range.
+**"blob not found" / stalled sync in the early chain range:** the beacon endpoint's blob
+retention does not reach back to the rollup deployment. See "From-genesis sync is not
+possible" above - this is expected, not a misconfiguration, and no flag fixes it. You need
+a deeper archive beacon or a snapshot. Note there is NO
+`--parent-chain.blob-client.blob-storage-service-urls` flag (an earlier revision of this
+runbook invented it); the real fallback knob is
+`--parent-chain.blob-client.secondary-beacon-url`.
 
 **Wrong chain / genesis mismatch:** the chain-info JSON is stale or hand-edited. Re-pull the
 canonical file (`robinhood-chain-info.md`); never transcribe rollup/inbox addresses by hand.
