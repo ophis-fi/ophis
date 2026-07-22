@@ -1,7 +1,7 @@
 ---
 id: affiliate
 title: Affiliate program
-description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH on net-new wallets, for life.
+description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH, for life.
 sidebar_label: Affiliate program
 sidebar_position: 4
 ---
@@ -36,8 +36,9 @@ There are two tiers, and both numbers are published:
 | How to get it | Mint a code on the swap page | [Contact us](https://business.ophis.fi) to upgrade your code |
 
 - Paid **monthly in WETH**, from the Ophis fee Safe, on-chain.
-- Counts only **net-new wallets**: wallets that had not traded on Ophis before
-  arriving through your link.
+- **Through your referral link,** counts only **net-new wallets**: wallets that
+  had not traded on Ophis before arriving through the link. Volume you route
+  yourself through the SDK or widget is not net-new gated.
 - **Lifetime** attribution: once a referred wallet is bound to your code, you keep
   earning on its trades for as long as it trades.
 

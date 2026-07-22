@@ -587,8 +587,10 @@ The order carries the Ophis partner fee exactly as an ERC-20 order does.
 
 ## Caveats
 
-- **Use the SDK path, not the widget.** The embed cannot carry a `partnerFee` or
-  a referral code.
+- **Use the SDK path when you need more than the base rail.** The widget carries
+  the Ophis base fee and can earn referral attribution through its `appCode`, but
+  it cannot stack your own fee on top, redirect the recipient, or control
+  per-order `appData`: those need the SDK.
 - **Optimism and Unichain are the self-hosted chains.** Other chains are CoW-hosted, where
   Ophis charges the fee but cannot enforce a floor or an on-chain discount.
 - **Do not use the `api.cow.fi` host on Optimism.** It silently bypasses the
