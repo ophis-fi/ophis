@@ -22,6 +22,10 @@ minimumReleaseAgeExclude:
   # dompurify 3.4.9+ is the GHSA-vxr8-fq34-vvx9 cluster fix (XSS); name-excluded
   # so the security patch resolves despite the soak window.
   - dompurify
+  # fast-uri 3.1.4 is the GHSA-4c8g-83qw-93j6 + GHSA-v2hh-gcrm-f6hx fix (host
+  # confusion via IDN / backslash); name-excluded so the security patch resolves
+  # despite the soak window (<1 week from release 2026-07-19).
+  - fast-uri
   # protobufjs 7.6.3+ is the GHSA-f38q-mgvj-vph7 fix (prototype pollution);
   # name-excluded so the security patch resolves despite the soak window.
   - protobufjs
