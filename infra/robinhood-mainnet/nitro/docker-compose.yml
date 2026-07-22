@@ -20,16 +20,25 @@ services:
     image: offchainlabs/nitro-node:v3.11.2-3599aca
     restart: always
     stop_grace_period: 5m
-    # Nitro archive is memory-hungry; cap it so it can't OOM the host.
-    mem_limit: 24g
+    # Sized for a 26 GB WSL2 VM (.wslconfig): cap the container below the VM total
+    # so the VM's own Linux + dockerd keep ~4 GB. GOMEMLIMIT sits under mem_limit
+    # so Go GC gets aggressive BEFORE the cgroup OOM-kills. RAM adequacy here is
+    # unverified (see nitro/BRINGUP.md, risk #1) - watch RSS during the restore.
+    mem_limit: 22g
     environment:
-      GOMEMLIMIT: 20GiB
+      GOMEMLIMIT: 18GiB
     volumes:
       # The nitro-node image runs as user `nitro`, so the datadir is
-      # /home/nitro/.arbitrum. Mounting /home/user/.arbitrum (the old value) does
+      # /home/nitro/.arbitrum. Mounting /home/user/.arbitrum (an earlier value) does
       # NOT persist the database - the node writes into the container layer and
       # silently re-syncs from scratch on every restart.
-      - nitro-data:/home/nitro/.arbitrum
+      #
+      # BIND MOUNT to an ext4 path INSIDE the WSL2 distro (whose vhdx BRINGUP.md
+      # places on the D: NVMe). This is a real ext4 block device, NOT a /mnt/d/...
+      # Windows path, so there is no 9p penalty. Bind (not named volume) so the
+      # snapshot tarball can be extracted straight into it (see restore-snapshot.sh).
+      # NITRO_DATA_DIR defaults to ~/robinhood-nitro-data; set it in .env.
+      - ${NITRO_DATA_DIR:-./robinhood-nitro-data}:/home/nitro/.arbitrum
       # Canonical Robinhood chain-info + genesis, fetched from the Robinhood CDN
       # (see robinhood-chain-info.md). Do NOT hand-transcribe rollup/inbox addresses.
       - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
@@ -73,6 +82,14 @@ services:
       # defaults to TRUE (Watchtower strategy, verified in staker source), which
       # runs a needless L1-watching loop and noise. Disable it.
       - --node.staker.enable=false
+      # Memory safety valve on a RAM-constrained host (~26 GB WSL2 VM). Nitro's
+      # mem-free-limit ships DISABLED; set it so the node sheds load instead of
+      # OOM-killing when free memory runs low (e.g. concurrent traces from eRPC).
+      - --node.resource-mgmt.mem-free-limit=2GB
+      # Prometheus metrics on :6070 for sync-progress + memory tracking (BRINGUP.md).
+      - --metrics
+      - --metrics-server.addr=0.0.0.0
+      - --metrics-server.port=6070
       # Archive is OFF by default and that is CORRECT here. Verified in the Nitro
       # source: the default non-archive config retains recent state by
       # --execution.caching.block-count / .block-age, and debug_traceTransaction
@@ -85,6 +102,7 @@ services:
       # Tailscale name `ophis-rbh-node` -> this host). Never expose :8547 publicly.
       - "127.0.0.1:8547:8547"   # HTTP JSON-RPC
       - "127.0.0.1:8548:8548"   # WS JSON-RPC
+      - "127.0.0.1:6070:6070"   # Prometheus metrics (sync progress, memory)
     healthcheck:
       # Healthy = serves eth_blockNumber. (Trace-readiness is verified separately
       # via the debug_traceTransaction check in README.md.)
@@ -94,5 +112,5 @@ services:
       retries: 5
       start_period: 15m   # first sync
 
-volumes:
-  nitro-data:
+# No named volumes: the datadir is a bind mount to an ext4 path inside the distro
+# (on D:), so the snapshot can be extracted directly into it. See BRINGUP.md.
