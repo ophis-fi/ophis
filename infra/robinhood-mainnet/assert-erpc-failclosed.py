@@ -21,13 +21,17 @@ would make a stack restart fail on a host without PyYAML — worse than the
 weakening it guards against (Codex #464 P1). Template edits go through PRs.
 
 On top of the schema lock it asserts the value invariants: exactly the 5 expected
-upstream hosts; every Block A+B settlement-relevant method's first-matching
-failsafe rule is a consensus rule with maxParticipants:5, agreementThreshold:3
-(3-of-5; the correlated public+alchemy pair cannot reach quorum alone),
-lowParticipants:returnError (always fail-closed on an outage) and dispute in
-{returnError, preferBlockHeadLeader} (the latter only breaks 1-block tip-drift
-ties among upstreams that DID respond — see OP #476); every consensus rule
-fail-closed; matchMethod uses only the modelled `*`/`|` matcher.
+upstream hosts, each https:// except the Tailscale self-node (no silent TLS
+downgrade — Codex r3632331662); every protected method's first-matching failsafe
+rule is a consensus rule with maxParticipants:5, agreementThreshold:3 (3-of-5; the
+correlated public+alchemy pair cannot reach quorum alone) and
+lowParticipants:returnError (always fail-closed on an outage); the tip-sensitive
+reads may dispute via preferBlockHeadLeader (breaks 1-block tip-drift ties among
+upstreams that DID respond — OP #476), but the settlement-decode reads
+(eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt) MUST
+dispute via returnError (by-hash-immutable, so a dispute is never legitimate
+drift — Codex r3632331649/r3632331675); every consensus rule fail-closed;
+matchMethod uses only the modelled `*`/`|` matcher.
 """
 import re
 import sys
@@ -57,6 +61,14 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
     "api-robinhood-mainnet-archive.n.dwellir.com",
     "__fill_after_deploy_chainstack_host__",  # <- replace with your Chainstack node host
 })
+# The ONLY upstream allowed a non-TLS (http://) endpoint: the self-hosted Nitro
+# node, reached over an encrypted Tailscale link on this internal host name. Every
+# OTHER upstream is a public/managed provider on the open internet and MUST be
+# https:// (Codex r3632331662). Checking hostnames alone did not catch a
+# https->http downgrade — a future edit could silently drop TLS from a public leg,
+# and an on-path attacker could then control the correlated public+alchemy domain
+# plus a third downgraded leg to meet the 3-of-5 threshold with forged responses.
+SELF_NODE_HOST = "ophis-rbh-node"
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
 # blocks. eth_getTransactionReceipt is ALSO required under consensus (it's
@@ -66,10 +78,23 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
 # (maxParticipants/threshold/behaviors), not punishMisbehavior, so the no-punish
 # receipt rule satisfies it while a single forged receipt still can't reach quorum.
 BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt")
-BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash",
-           "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
+BLOCK_B = ("eth_getLogs", "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
+# Settlement-decode inputs addressed by IMMUTABLE hash. The autopilot builds the
+# decoded settlement from the receipt + trace + block header timestamp, fetching
+# the block via get_block_by_hash (apps/backend/crates/autopilot/src/infra/
+# blockchain/mod.rs) and the tx by hash. eth_getBlockByHash was previously in NO
+# consensus matcher and fell through to the single-upstream `*` retry, letting one
+# public/Alchemy-domain endpoint inject settlement timing unchecked (Codex
+# r3632331675). These MUST be under fail-closed consensus AND disputeBehavior:
+# returnError — a by-hash read is immutable, so a dispute is never legitimate
+# tip-drift; preferBlockHeadLeader would let the freshest-head leg (or the
+# correlated public+alchemy pair on a 2/1/1/1 split) supply it (Codex r3632331649).
+SETTLEMENT_DECODE = ("eth_getBlockByHash", "eth_getTransactionByHash")
 RECEIPT = ("eth_getTransactionReceipt",)
-PROTECTED_METHODS = BLOCK_A + BLOCK_B + RECEIPT
+# Methods whose first-matching consensus rule MUST resolve disputes with
+# returnError (never preferBlockHeadLeader). Durable lock on the split above.
+RETURN_ERROR_ONLY = SETTLEMENT_DECODE + RECEIPT
+PROTECTED_METHODS = BLOCK_A + BLOCK_B + SETTLEMENT_DECODE + RECEIPT
 
 # Allowed keys per structural level of the chain-4663 consensus/upstream surface.
 # Any key outside these sets fails closed (the whole point — see module docstring).
@@ -125,6 +150,15 @@ def _hostname(endpoint):
         return (urlsplit(s).hostname or s.strip().rstrip("/")).lower()
     except Exception:
         return s.lower()
+
+
+def _scheme(endpoint):
+    """URL scheme (http/https), lowercased; '' if unparseable (fails closed at the
+    https check for any non-self upstream)."""
+    try:
+        return (urlsplit(str(endpoint)).scheme or "").lower()
+    except Exception:
+        return ""
 
 
 def _consensus_failclosed(c):
@@ -205,6 +239,14 @@ def validate(cfg):
         for u in ups:
             if not u.get("endpoint"):
                 errs.append(f"upstream {u.get('id')!r} has no endpoint")
+                continue
+            host = _hostname(u.get("endpoint"))
+            scheme = _scheme(u.get("endpoint"))
+            if host != SELF_NODE_HOST and scheme != "https":
+                errs.append(
+                    f"upstream {u.get('id')!r} endpoint scheme is {scheme!r}, must be https "
+                    f"(only the self-node {SELF_NODE_HOST!r} may use http, over Tailscale); a non-TLS "
+                    "public leg is an on-path downgrade risk that host-only checks miss (Codex r3632331662)")
         hosts = {_hostname(u.get("endpoint")) for u in ups}
         if hosts != EXPECTED_UPSTREAM_HOSTS:
             errs.append(f"upstream hosts {sorted(hosts)} != the 5 expected failure domains {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 3-of-5; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
@@ -233,6 +275,13 @@ def validate(cfg):
                     why, ok = _consensus_failclosed(first["consensus"])
                     if not ok:
                         errs.append(f"{m}: first-matching consensus is not fail-closed: {why}")
+                    if m in RETURN_ERROR_ONLY and first["consensus"].get("disputeBehavior") != "returnError":
+                        errs.append(
+                            f"{m}: settlement-decode read must use disputeBehavior:returnError, got "
+                            f"{first['consensus'].get('disputeBehavior')!r} — a by-hash read is immutable, so a "
+                            "dispute is never legitimate tip-drift; preferBlockHeadLeader would let the freshest-head "
+                            "leg (or the correlated public+alchemy pair on a 2/1/1/1 split) supply it unchecked "
+                            "(Codex r3632331649/r3632331675)")
     if networks_checked == 0:
         errs.append(f"no chain-{CHAIN_ID} network found")
     return list(dict.fromkeys(errs))
@@ -253,9 +302,11 @@ def main(path):
         return EXIT_FAIL
     print(
         "OK (#447): Robinhood eRPC fail-closed — closed-world schema lock passed (no unrecognized config keys); "
-        "exactly the 5 expected upstream hosts; every Block A+B method's first-matching failsafe "
-        "rule is a maxParticipants:5/agreementThreshold:3 (3-of-5) consensus block with lowParticipants:returnError "
-        "(outage fail-closed) and dispute in {returnError, preferBlockHeadLeader} (#476); every consensus rule fail-closed."
+        "exactly the 5 expected upstream hosts, https:// except the Tailscale self-node; every protected method's "
+        "first-matching failsafe rule is a maxParticipants:5/agreementThreshold:3 (3-of-5) consensus block with "
+        "lowParticipants:returnError (outage fail-closed); tip-sensitive reads dispute via preferBlockHeadLeader (#476), "
+        "settlement-decode by-hash reads (block/tx/receipt) dispute via returnError (Codex r3632331649/r3632331675); "
+        "every consensus rule fail-closed."
     )
     return 0
 

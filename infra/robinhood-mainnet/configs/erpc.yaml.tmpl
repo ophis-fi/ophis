@@ -38,7 +38,18 @@
 #
 # Robinhood block time is ~134ms (far faster than Unichain's ~1s) -> heavy tip-
 # drift on `latest`-tagged reads. preferBlockHeadLeader + enforceHighestBlock +
-# enforceNonNullTaggedBlocks handle it without loosening consensus.
+# enforceNonNullTaggedBlocks handle it without loosening consensus for the tip-
+# sensitive reads (eth_call / state / logs / estimateGas / feeHistory).
+#
+# DISPUTE-BEHAVIOR SPLIT (2026-07-22, Codex r3632331649/r3632331675): the
+# settlement-decode inputs — eth_getTransactionReceipt, eth_getBlockByHash,
+# eth_getTransactionByHash — are addressed by IMMUTABLE hash, so a dispute is
+# never legitimate tip-drift. They use disputeBehavior:returnError (fail closed),
+# NOT preferBlockHeadLeader, so the freshest-head leg (or the correlated public+
+# alchemy pair on a 2/1/1/1 split) can never supply settlement-decode data that
+# did not reach the 3-of-5 threshold. Zero availability cost (immutable reads do
+# not legitimately dispute). preferBlockHeadLeader stays ONLY on the tip-sensitive
+# quote/state reads, where returnError previously failed ~30-50% of reads (#476).
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/4663
 
@@ -72,7 +83,11 @@ projects:
           # === Block B: Tip-lag-sensitive observation methods ===
           # ~134ms blocks => far more tip-drift than Unichain; disputeThreshold is
           # kept high so transient near-tip disagreement doesn't cordon a leg.
-          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+          # eth_getTransactionByHash is NOT here — it is by-hash-immutable and
+          # settlement-authoritative, so it moved to the returnError rule below
+          # (Codex r3632331649: preferBlockHeadLeader must not serve a disputed
+          # settlement-decode read via the correlated public+alchemy pair).
+          - matchMethod: "eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
             timeout:
               duration: 12s
             consensus:
@@ -84,6 +99,29 @@ projects:
                 disputeThreshold: 150
                 disputeWindow: 10m
                 sitOutPenalty: 5m
+
+          # === Settlement-decode by-hash reads: consensus, returnError-on-dispute ===
+          # eth_getBlockByHash + eth_getTransactionByHash are the two by-immutable-
+          # hash inputs to the autopilot's settlement decode (get_block_by_hash ->
+          # block.header.timestamp in autopilot/src/infra/blockchain/mod.rs, and the
+          # tx lookup). A block/tx addressed BY HASH is immutable, so honest legs
+          # return byte-identical results and a dispute is never legitimate tip-drift
+          # — it means a leg disagrees. disputeBehavior MUST be returnError here (NOT
+          # preferBlockHeadLeader): fail closed rather than let the freshest-head leg
+          # (or the correlated public+alchemy pair on a 2/1/1/1 split) supply
+          # settlement-decode data unchecked. Zero availability cost — these never
+          # legitimately dispute (Codex r3632331649; eth_getBlockByHash gap
+          # r3632331675). No punishMisbehavior: a near-tip leg that hasn't imported
+          # the block yet returns null (low-participants, already fail-closed), and
+          # must not be cordoned for it — same rationale as the receipt rule.
+          - matchMethod: "eth_getBlockByHash|eth_getTransactionByHash"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 5
+              agreementThreshold: 3
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
 
           # === eth_getTransactionReceipt: consensus, no punishMisbehavior ===
           - matchMethod: "eth_getTransactionReceipt"
