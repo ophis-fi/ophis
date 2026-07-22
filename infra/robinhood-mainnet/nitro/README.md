@@ -75,39 +75,88 @@ done
 
 1. **An archive beacon provider** whose blob retention reaches past 2026-04-30. Verify with
    the loop above *before paying* - retention depth is rarely advertised accurately. Nitro
-   v3.11.2 calls `/eth/v1/beacon/blobs/{slot}`; providers exposing only the older
-   `blob_sidecars` API may not satisfy it. Use `--parent-chain.blob-client.beacon-url`, plus
-   `--parent-chain.blob-client.secondary-beacon-url` for a fallback.
+   v3.11.2 calls `/eth/v1/beacon/blobs/{slot}` and the `blob_sidecars` fallback was
+   REMOVED in v3.10.0, so a provider exposing only `blob_sidecars` (Blobscan,
+   base-org/blob-archiver, several provider docs) will NOT satisfy it without a
+   translating proxy. Use `--parent-chain.blob-client.beacon-url`, plus
+   `--parent-chain.blob-client.secondary-beacon-url` for a fallback. As of 2026-07-21
+   no free source of the April-May 2026 blob range was found at all - budget for a paid
+   archive-beacon provider and prove its depth with the pre-purchase curl above.
 2. **Restore from a database snapshot**, then follow the tip - which reduces the blob
    requirement to hours and lets a free endpoint serve it.
    - Robinhood publishes **no** official snapshot (`--init.url` placeholder left blank).
-     `robinhood-snapshots.offchainlabs.com` does **not** exist (HTTP 404, verified).
+     Both `robinhood-snapshots.offchainlabs.com` and `snapshot.arbitrum.foundation`
+     (Nitro's built-in `--init.latest-base` default) return 404 for 4663, so the
+     `--init.latest` mechanism cannot work either. Verified.
    - Ask `chain-developers-group@robinhood.com` for an official one. **Prefer this.**
-   - Third-party snapshots exist but are **unattributed**. Treat any such snapshot as
-     untrusted input: a Nitro data directory can carry executable wasm. Leave
-     `--init.import-wasm` at its default `false`, verify publisher checksums, and - before
-     Ophis trusts a single trace from it - cross-check block hashes at several heights
-     against `rpc.mainnet.chain.robinhood.com`. Ophis settles real value on these traces;
-     a tampered state DB is a settlement-integrity risk, not just an ops inconvenience.
+   - A third-party snapshot exists (`snapshot.titandeployer.com`, ~107 GB compressed /
+     ~181 GB extracted, daily, published SHA256, resumable). It is operated
+     **anonymously** ("Titan Locker", a token-locking dapp on 4663, Telegram-only, no
+     Orbit-infra reputation), and it ships the `wasm` executable directory.
+
+   ### Trusting an untrusted snapshot is HARDER than "check a few block hashes"
+
+   An earlier revision of this runbook said to cross-check block hashes against the public
+   RPC. **That is necessary but NOT sufficient**, and the gap is a settlement-integrity
+   hole. Verified in the Geth/Nitro source (`core/state/database.go`, `CachingDB.Reader`):
+   state reads are served from the **flat snapshot layer first** (`newFlatReader`), and the
+   hash-verifying trie reader is only a fallback for gaps. The flat layer hashes the lookup
+   **key**, never the returned **value** - so a snapshot with tampered account balances,
+   storage slots, or contract code returns **silently wrong** state with no error. Header
+   `stateRoot` is not recomputed on a trace read. Consequently:
+   - Matching block hashes proves the **header chain** is canonical; it does **not** prove
+     the flat state DB behind those headers is faithful. Wrong-not-missing state means the
+     eRPC fail-closed guard never trips - the autopilot would trace against corrupt state
+     and mis-decode a settlement.
+   - The L1 `AssertionConfirmed` (blockHash, sendRoot) anchor is real but only pins headers,
+     and only up to ~6 days behind tip; it does not close the flat-state hole.
+   - The only sound assurances are: (a) get the snapshot from a **trusted publisher** over
+     TLS with an out-of-band checksum (Titan is anonymous, so this fails), or (b) re-derive
+     state by executing from DA - which on this chain is exactly what the blob gap makes
+     impossible. So an anonymous snapshot is a **reputational bet**, not a verifiable one.
+   - If used anyway: keep `--init.import-wasm=false` (default; its own flag help says the
+     wasm dir "contains executable code - only use with highly trusted source") and let the
+     node rebuild wasm locally; verify the SHA256; and treat every trace as only as
+     trustworthy as Titan.
+
+3. **Skip self-hosting entirely?** Unverified but high-value: some providers (reported:
+   Chainstack, Alchemy, Dwellir) may already serve `debug_traceTransaction` for 4663. If
+   one does, Ophis could point eRPC at it (ideally two, for the 2-of-3 quorum) instead of
+   running this node at all - no blobs, no snapshot, no Windows runtime. **Price and test
+   this before committing to a 107 GB restore.** Caveat: a third-party trace leg reintroduces
+   the trust/independence questions the sovereign node was meant to remove.
 
 ## Trace namespaces - the load-bearing flags
 
-The autopilot needs `debug_traceTransaction`. Nitro serves it via the Geth-derived
-`debug` namespace, plus the Arbitrum-native `arbtrace_*` family. Neither is on by
-default. The node MUST run with:
+The autopilot needs `debug_traceTransaction`, served by the Geth-derived `debug`
+namespace. It is not on by default. The node runs with:
 
 ```
---http.api=net,web3,eth,debug,arb,arbtrace
+--http.api=net,web3,eth,debug,arb
 ```
 
-**Archive vs near-tip.** Full historical tracing (`debug_traceTransaction` on a tx older
-than the in-memory state window) requires an **archive** node: `--execution.caching.archive`.
-On Nitro/Geth, archive is disk-heavy (Arbitrum One archive is multi-TB with PathDB) -
-far more than an equivalent `op-reth` archive. The Ophis autopilot only ever traces
-**near-tip** settlements it just submitted (seconds old), so a pruned/full node with the
-`debug` namespace and a generous in-memory state-retention window MAY suffice and save
-the archive disk. Start pruned + debug-enabled; add `--execution.caching.archive` only if
-trace calls on recently-landed settlements start returning "state not available".
+**Do NOT rely on `arbtrace_*`.** An earlier revision listed the `arbtrace_*` family as
+a second tracing option and put `arbtrace` in `--http.api`. Verified against the Nitro
+v3.11.2 source (`execution/gethexec/api.go`, `ArbTraceForwarderAPI`): `arbtrace_*` is a
+pure **forwarder** to a legacy pre-Nitro "classic" Arbitrum node, not a tracer. Orbit
+chains like Robinhood have no classic node, so every `arbtrace_*` call returns
+`arbtrace calls forwarding not configured`. Use `debug_traceTransaction` only.
+
+**Archive vs near-tip - archive is NOT needed.** Verified in the Nitro/Geth source: the
+default non-archive node keeps recent state in memory per `--execution.caching.block-count`
+and `--execution.caching.block-age`, and `debug_traceTransaction` on a near-tip tx is
+served from that window without archive. The autopilot only ever traces settlements it
+just submitted (seconds old), so the default pruned/full node suffices. Archive
+(`--execution.caching.archive`) is disk-heavy (multi-TB) and only needed for tracing OLD
+txs; add it solely if just-landed traces start returning "missing trie node" / "state not
+available".
+
+**Tracer timeout gotcha.** `debug_traceTransaction` has a hardcoded ~5s default tracer
+timeout with no Nitro flag to raise it. A very large CoW settlement trace can exceed it
+and return an error, which the fail-closed autopilot reads as "trace unavailable" and
+pauses settlement. If that shows up in practice, pass a per-call `timeout` in the tracer
+config (e.g. `'{"tracer":"callTracer","timeout":"30s"}'`) from the autopilot rather than
+relying on the default.
 
 After the node is synced, prove trace works before wiring it into eRPC:
 
@@ -115,8 +164,14 @@ After the node is synced, prove trace works before wiring it into eRPC:
 # from the eRPC host, over Tailscale:
 LATEST=$(cast tx $(cast block latest --rpc-url http://ophis-rbh-node:8547 --json | jq -r '.transactions[0]') --rpc-url http://ophis-rbh-node:8547 --json | jq -r '.hash')
 cast rpc debug_traceTransaction "$LATEST" '{"tracer":"callTracer"}' --rpc-url http://ophis-rbh-node:8547 | head
-# a non-error JSON trace => the node is autopilot-ready. An -32601 "method not
-# available" => the debug namespace is NOT enabled; fix --http.api and restart.
+# non-error JSON trace     => autopilot-ready.
+# -32601 "method ... not available" / does not exist => `debug` namespace NOT
+#                             enabled; fix --http.api and restart.
+# "missing trie node" / "state not available" => the tx is older than the near-tip
+#                             state window; for a JUST-landed settlement this should
+#                             not happen - if it does, the node is lagging or pruned
+#                             too aggressively (distinct from -32601; do NOT "fix" it
+#                             by editing --http.api).
 ```
 
 ---

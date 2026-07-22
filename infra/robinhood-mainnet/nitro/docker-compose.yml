@@ -36,7 +36,11 @@ services:
       - ./robinhood-genesis.json:/config/robinhood-genesis.json:ro
     command:
       - --parent-chain.connection.url=${L1_EXECUTION_RPC:?set L1_EXECUTION_RPC in .env}
+      # Blob DA endpoint. MUST reach back to the rollup deploy (2026-04-30) for a
+      # from-genesis sync - a standard free beacon does NOT (see README). One
+      # fallback is supported; the *-service-urls flag does not exist.
       - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
+      - --parent-chain.blob-client.secondary-beacon-url=${L1_BEACON_URL_FALLBACK:-}
       - --chain.id=4663
       - --chain.info-files=/config/robinhood-chain-info.json
       # Low-latency tip via the Robinhood sequencer feed. Must be wss://.
@@ -47,20 +51,35 @@ services:
       # NOTE: --init.latest=pruned was removed - it is not in the documented
       # mainnet command and Robinhood publishes no snapshot for it to resolve.
       # If they ever publish one, add: --init.url=<SNAPSHOT_URL> (first start only).
-      # RPC exposed to the eRPC proxy. debug/arb/arbtrace are LOAD-BEARING: the
-      # autopilot's debug_traceTransaction settlement decode depends on them.
+      # RPC exposed to the eRPC proxy. The LOAD-BEARING namespace is `debug`
+      # (debug_traceTransaction) - that is what the autopilot decodes settlements
+      # with. `arb` is kept for arb_* chain methods.
+      #
+      # `arbtrace` was REMOVED: verified against the Nitro v3.11.2 source
+      # (execution/gethexec/api.go, ArbTraceForwarderAPI) that the arbtrace_*
+      # namespace is a pure FORWARDER to a legacy pre-Nitro "classic" node. Orbit
+      # chains have no classic node, so every arbtrace_* call returns "arbtrace
+      # calls forwarding not configured". Enabling it advertised a trace family
+      # that cannot work. Use debug_traceTransaction, not arbtrace_*.
       - --http.addr=0.0.0.0
       - --http.port=8547
-      - --http.api=net,web3,eth,debug,arb,arbtrace
+      - --http.api=net,web3,eth,debug,arb
       - --http.corsdomain=*
       - --http.vhosts=*
       - --ws.addr=0.0.0.0
       - --ws.port=8548
       - --ws.api=net,web3,eth,arb
-      # Archive is OFF by default (Nitro archive is multi-TB). The autopilot only
-      # traces near-tip settlements, so a pruned node with debug enabled is the
-      # starting point. If trace calls on just-landed settlements return
-      # "state not available", add: --execution.caching.archive
+      # This is a pure read/trace node, NOT a validator. --node.staker.enable
+      # defaults to TRUE (Watchtower strategy, verified in staker source), which
+      # runs a needless L1-watching loop and noise. Disable it.
+      - --node.staker.enable=false
+      # Archive is OFF by default and that is CORRECT here. Verified in the Nitro
+      # source: the default non-archive config retains recent state by
+      # --execution.caching.block-count / .block-age, and debug_traceTransaction
+      # on a near-tip tx does not need archive. The autopilot only traces
+      # settlements seconds old, so leave archive off (archive is multi-TB). Only
+      # if just-landed traces return "missing trie node" / "state not available"
+      # would you add: --execution.caching.archive
     ports:
       # Bind to 127.0.0.1 only; the eRPC host reaches it over Tailscale (map the
       # Tailscale name `ophis-rbh-node` -> this host). Never expose :8547 publicly.

@@ -49,3 +49,6 @@ skills-lock.json
 
 # Playwright run output (frontend root level; per-app output already ignored)
 apps/frontend/test-results/
+
+# ad-hoc Nitro source checkout (scratch, not part of the repo)
+_nitrosrc/
