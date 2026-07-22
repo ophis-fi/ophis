@@ -111,7 +111,7 @@ def ophis_swap_intent(text: str) -> dict:
     deep link the user can open to review and sign. Use whenever a user wants to
     swap, buy, or sell a token. Always show the link to the user, never
     auto-execute a trade."""
-    r = requests.post("https://ophis.fi/api/intent", json={"text": text}, timeout=10)
+    r = requests.post("https://swap.ophis.fi/api/intent", json={"text": text}, timeout=10)
     r.raise_for_status()
     parsed = r.json()["data"]
     by_type = {e["type"]: e["value"] for e in parsed["entities"]}
