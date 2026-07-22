@@ -334,15 +334,20 @@ with the array shape above rather than using the helper.
 How your fee reaches you depends on the chain:
 
 - **CoW-hosted chains:** stacked fee entries are accepted and charged by CoW's
-  production orderbooks (we verified this against live quotes in July 2026).
-  Payouts flow through CoW Protocol's weekly partner-fee distribution under
-  CoW's terms, which include a service fee on partner fees (25% by default) and
-  a 0.001 WETH payout minimum
-  ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)).
-  Whether CoW's service fee applies to a stacked non-Ophis recipient, and the
-  end-to-end payout of that recipient, are what we are still verifying, so on
-  hosted chains do not assume the full own-fee reaches you until we confirm it
-  with your recipient address.
+  production orderbooks (we verified this against live quotes in July 2026), and
+  each recipient in the `partnerFee` array settles independently. Ophis still
+  takes **0% of your fee**, but CoW's settlement applies its own **partner-fee
+  service fee (25% by default under CIP-75) to every recipient's entry**,
+  including a stacked non-Ophis one. So on hosted chains **you receive 75% of your
+  own-fee, not 100%** (a 50 bps own-fee nets 37.5 bps). It is paid to your
+  `recipient` address through CoW's **weekly partner-fee distribution** in WETH,
+  with a **0.001 WETH minimum** (sub-threshold accruals are voided), for
+  **market-order trades** only
+  ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)). The
+  aggregate of all entries is capped at 100 bps, so your entry plus the 5 bps base
+  can total up to 100 bps. CoW's 25% is a CIP-75 default and is negotiable with
+  CoW DAO. We confirm the end-to-end payout to your recipient on the first settled
+  trade.
 - **Optimism and Unichain (Ophis-operated):** a stacked own-fee to a
   third-party recipient is paid to you through a two-step onboarding, both of
   which Ophis now supports end to end:
