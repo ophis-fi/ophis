@@ -19,6 +19,49 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ── Deploy-safety guard (2026-07-22 OP outage) ──────────────────────────────
+# The final line of this script runs `docker compose up -d --build`, which
+# rebuilds every image from whatever source SCRIPT_DIR points at. On 2026-07-22
+# it was run from a STALE checkout — a branch ~160 commits behind origin/main
+# whose infra/ configs had been hand-forward-ported to 8 solvers but whose
+# apps/backend source had NOT — so `--build` compiled a `solvers` binary missing
+# 5 engines. All 8 aggregator solvers crash-looped; the pipeline was down ~7h.
+#
+# Guard: refuse to build+deploy unless this checkout is clean and current with
+# origin/main (a stale or dirty tree can ship a binary that mismatches the
+# configs). Override for an intentional off-main deploy (canary / hotfix
+# branch) with ALLOW_STALE_BUILD=1.
+if [[ "${ALLOW_STALE_BUILD:-}" == "1" ]]; then
+  echo "==> deploy-safety: ALLOW_STALE_BUILD=1 set — skipping stale/dirty source check" >&2
+else
+  git -C "$SCRIPT_DIR" fetch --quiet origin main 2>/dev/null || true
+  _behind="$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  # Uncommitted changes to the build source (apps/backend) or this infra dir are
+  # the exact "forward-ported infra, stale binary" footgun. Gitignored files
+  # (.env, rendered/) don't show in --porcelain, so this won't false-positive on
+  # normal per-host secrets.
+  _dirty="$(git -C "$SCRIPT_DIR" status --porcelain -- ../../apps/backend . 2>/dev/null)"
+  if [[ "${_behind:-0}" != "0" || -n "$_dirty" ]]; then
+    {
+      echo ""
+      echo "*** REFUSING to build+deploy from this checkout ***"
+      [[ "${_behind:-0}" != "0" ]] && echo "    HEAD is ${_behind} commit(s) behind origin/main (stale source)."
+      [[ -n "$_dirty" ]] && echo "    Uncommitted changes under apps/backend/ or infra/optimism-mainnet/."
+      echo "    '--build' compiles images from THIS tree; a stale/dirty source can ship"
+      echo "    a binary that mismatches the configs (the 2026-07-22 ~7h outage)."
+      echo ""
+      echo "    Deploy from a clean, current origin/main worktree, e.g.:"
+      echo "      git worktree add --detach <path> origin/main"
+      echo "      cd <path>/infra/optimism-mainnet && ./compose-up.sh"
+      echo ""
+      echo "    Intentional off-main deploy (canary/hotfix)? Re-run with ALLOW_STALE_BUILD=1."
+      echo ""
+    } >&2
+    exit 20
+  fi
+  echo "==> deploy-safety: checkout clean and current with origin/main (ok to --build)"
+fi
+
 # Version string for the orderbook GET /api/v1/version route. The Docker build
 # context (apps/backend) has no .git, so vergen falls back to the literal
 # "VERGEN_IDEMPOTENT_OUTPUT" sentinel and it leaks out of /version. Compute the
@@ -49,6 +92,24 @@ if [[ -z "${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin
     echo "==> F7 inter-service auth token NOT set + not in Keychain — driver will run un-authenticated" >&2
     echo "    To enable: openssl rand -hex 32 | xargs -I{} security add-generic-password \\"  >&2
     echo "      -a \"\$USER\" -s ophis-inter-service-auth-token -w {} -U" >&2
+  fi
+fi
+
+# Refunder submitter PK (2026-07-22): source from Keychain like the F7 token
+# above. Without this, compose renders REFUNDER_PK='' and the ethflow refunder
+# comes up unable to sign — expired native-ETH orders then strand user funds
+# until a manual invalidateOrder (found PK-less after the 07-22 redeploy). The
+# refunder EOA is a dedicated low-value gas account; an expired order can never
+# fill, so refunding is always correct. Empty default preserves prior behavior
+# on hosts without the key. NOTE: this Keychain item's account is NOT $USER
+# (it was created under acct "ophis"), so look it up by service only.
+if [[ -z "${OPHIS_REFUNDER_PK:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+  if security find-generic-password -s ophis-refunder-pk -w >/dev/null 2>&1; then
+    OPHIS_REFUNDER_PK=$(security find-generic-password -s ophis-refunder-pk -w 2>/dev/null)
+    export OPHIS_REFUNDER_PK
+    echo "==> refunder PK sourced from Keychain"
+  else
+    echo "==> refunder PK NOT set + not in Keychain — ethflow refunder will not sign (expired orders won't auto-refund)" >&2
   fi
 fi
 
