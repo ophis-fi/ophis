@@ -55,9 +55,13 @@ smallest of three earning layers: see
 
 ## How attribution and payout work
 
-- **Attribution is off-chain and net-new.** A referred wallet is bound to your
-  code on its first qualifying activity. One referrer per referred wallet, and the
-  first valid bind wins.
+- **Attribution is off-chain.** A wallet that arrives through your referral link
+  is bound to your code on its first qualifying activity and must be net-new (no
+  prior Ophis trades). One referrer per referred wallet, and the first valid bind
+  wins. Integrators who route their own flow attribute differently: tagging orders
+  with your active code through the [SDK](./partners.md) or [widget](./widget.md)
+  credits that volume to you with no bind, and the net-new rule does not apply
+  there.
 - **Payout is monthly, in WETH.** At the end of each cycle, Ophis tallies the fees
   earned from your referrals' trades and batches the WETH owed to you in a single
   monthly payout from the fee Safe.
