@@ -119,12 +119,24 @@ done
      node rebuild wasm locally; verify the SHA256; and treat every trace as only as
      trustworthy as Titan.
 
-3. **Skip self-hosting entirely?** Unverified but high-value: some providers (reported:
-   Chainstack, Alchemy, Dwellir) may already serve `debug_traceTransaction` for 4663. If
-   one does, Ophis could point eRPC at it (ideally two, for the 2-of-3 quorum) instead of
-   running this node at all - no blobs, no snapshot, no Windows runtime. **Price and test
-   this before committing to a 107 GB restore.** Caveat: a third-party trace leg reintroduces
-   the trust/independence questions the sovereign node was meant to remove.
+3. **Skip self-hosting entirely (VERIFIED AVAILABLE).** Managed providers already serve
+   `debug_traceTransaction` for 4663 today - confirmed on provider docs 2026-07-22:
+   [Dwellir](https://www.dwellir.com/docs/robinhood/debug_traceTransaction) (dedicated
+   method page, archive + Nitro debug_* namespace),
+   [Chainstack](https://docs.chainstack.com/docs/robinhood-methods) (full geth debug_*
+   tracer set on mainnet + testnet), and
+   [Alchemy](https://www.alchemy.com/rpc/robinhood) (debug_trace on request). Ophis could
+   point eRPC at two of these for the 2-of-3 quorum and NOT run this node at all - no
+   blobs, no snapshot, no Windows runtime, no from-genesis sync. This sidesteps every
+   fatal blocker above.
+
+   **The trade-off is the whole reason the sovereign node exists.** A third-party trace leg
+   reintroduces exactly the trust/independence the self-hosted node was meant to remove: you
+   are trusting the provider's trace output, and two managed providers can share a failure
+   domain (both fail-close Ophis at once). The strongest posture is a hybrid - two managed
+   trace providers for availability now, plus the self-hosted node (once snapshot-restored
+   and hash-verified) as the sovereign tie-breaker leg. But if the goal is simply "Ophis can
+   trace 4663 this week", the managed route is the pragmatic answer and needs no node at all.
 
 ## Trace namespaces - the load-bearing flags
 
