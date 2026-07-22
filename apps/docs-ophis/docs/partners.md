@@ -341,7 +341,7 @@ How your fee reaches you depends on the chain:
   including a stacked non-Ophis one. So on hosted chains **you receive 75% of your
   own-fee, not 100%** (a 50 bps own-fee nets 37.5 bps). It is paid to your
   `recipient` address through CoW's **weekly partner-fee distribution** in WETH,
-  with a **0.001 WETH minimum** (sub-threshold accruals are voided), for
+  with a **0.001 WETH minimum** (accrued fees are paid once they cross it), for
   **market-order trades** only
   ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)). The
   aggregate of all entries is capped at 100 bps, so your entry plus the 5 bps base
@@ -460,9 +460,9 @@ Three earnings streams appear:
   executed sovereign own-fee batch with its on-chain tx and a block-explorer link (your
   proof of where it paid out). Sovereign amounts are USD-valued from routed volume, not
   exact per-token restitution. `hostedAccrued` is the own-fee charged on CoW-hosted chains,
-  where payout runs through CoW's weekly partner distribution under CoW's terms (Ophis does
-  not guarantee it, and the end-to-end payout of a stacked recipient there is still being
-  verified). Treat the accrued figures as charged/gross and the paid-to-date figures as the
+  where payout runs through CoW's weekly partner distribution under CoW's terms, net of
+  CoW's 25% service fee (Ophis does not guarantee CoW's payout, and we confirm a stacked
+  recipient's first hosted settlement). Treat the accrued figures as charged/gross and the paid-to-date figures as the
   amounts realized.
 - **Referral rebate** (`referral`): the monthly WETH rebate Ophis pays your wallet from
   the Gnosis Safe when your `appCode` is a registered referral code. `paidToDateWeth` /
@@ -533,9 +533,9 @@ monthly in WETH from the sovereign chain's Ophis Safe (Ophis takes 0% of it), on
 recipient is onboarded (allowlisted) and we have enabled and funded the payout for it; the
 `sovereignPaidToDateWeth` / `sovereignPaidToDateUsd` and `payouts` fields report the exact
 sovereign amounts already paid and their on-chain txs. The hosted figure is the gross amount
-charged at settlement, paid out under CoW's terms; whether CoW's service fee applies to a
-stacked non-Ophis recipient, and the end-to-end payout of that recipient, are still being
-verified. Treat the charged figures as gross, and the sovereign paid-to-date figures as the
+charged at settlement, paid out under CoW's terms; CoW's 25% service fee applies to a
+stacked non-Ophis recipient (you receive 75%), and we confirm the end-to-end payout on
+your recipient's first hosted settlement. Treat the charged figures as gross, and the sovereign paid-to-date figures as the
 amounts realized.
 
 ## Selling native ETH (eth-flow)
