@@ -14,8 +14,13 @@ charge the Ophis fee, and earn a rebate, signing with a smart-contract wallet
 (a Safe via EIP-1271, or an MPC signer behind EIP-1271).
 
 If you want to **embed** the Ophis swap UI instead, use the
-[widget](./widget.md). The widget cannot carry a partner fee or a rebate code,
-so to earn attribution you must use the SDK path described here.
+[widget](./widget.md). The widget carries the Ophis base fee automatically, and
+it can earn referral attribution too: set its `appCode` to a referral code you
+have minted and activated (the code string from your affiliate dashboard) and the
+indexer credits every widget order tagged with that code to you, with no wallet
+bind required. Use the SDK path described here when you need what the iframe
+cannot express: signing with a Safe or MPC signer via EIP-1271, stacking your own
+fee on top of the base, or controlling per-order `appData`.
 
 The whole integration is a **standard CoW Protocol order** built with
 `@cowprotocol/cow-sdk`, with a few values overridden from `@ophis/sdk`. If your
