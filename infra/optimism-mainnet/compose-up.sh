@@ -27,39 +27,56 @@ cd "$SCRIPT_DIR"
 # apps/backend source had NOT — so `--build` compiled a `solvers` binary missing
 # 5 engines. All 8 aggregator solvers crash-looped; the pipeline was down ~7h.
 #
-# Guard: refuse to build+deploy unless this checkout is clean and current with
-# origin/main (a stale or dirty tree can ship a binary that mismatches the
-# configs). Override for an intentional off-main deploy (canary / hotfix
-# branch) with ALLOW_STALE_BUILD=1.
+# Guard: refuse to build+deploy unless HEAD is EXACTLY a clean, freshly-fetched
+# origin/main. FAILS CLOSED — if we cannot prove the source is current
+# origin/main (not a git tree, no origin, offline, off-main commit, or a dirty
+# tree) we refuse rather than risk shipping a binary that mismatches the configs.
+# "Not behind" is deliberately NOT sufficient: a clean commit ON TOP of
+# origin/main is still unreviewed off-main code. Override for an intentional
+# off-main deploy (canary / hotfix / an offline DR host whose source you have
+# confirmed by hand) with ALLOW_STALE_BUILD=1.
 if [[ "${ALLOW_STALE_BUILD:-}" == "1" ]]; then
-  echo "==> deploy-safety: ALLOW_STALE_BUILD=1 set — skipping stale/dirty source check" >&2
+  echo "==> deploy-safety: ALLOW_STALE_BUILD=1 set — skipping the origin/main freshness check" >&2
 else
-  git -C "$SCRIPT_DIR" fetch --quiet origin main 2>/dev/null || true
-  _behind="$(git -C "$SCRIPT_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  _deploy_refuse() {  # $1 = reason line
+    {
+      echo ""
+      echo "*** REFUSING to build+deploy from this checkout ***"
+      echo "    $1"
+      echo "    '--build' compiles images from THIS tree; anything but a clean, current"
+      echo "    origin/main can ship a binary that mismatches the configs (2026-07-22 ~7h outage)."
+      echo ""
+      echo "    Deploy from a clean, current origin/main worktree:"
+      echo "      git fetch origin && git worktree add --detach <path> origin/main"
+      echo "      cd <path>/infra/optimism-mainnet && ./compose-up.sh"
+      echo ""
+      echo "    Intentional off-main deploy (canary / hotfix / offline DR host)?"
+      echo "    Re-run with ALLOW_STALE_BUILD=1 once you have confirmed the source by hand."
+      echo ""
+    } >&2
+    exit 20
+  }
+  # Must be a git work tree at all (a source archive has no way to prove freshness).
+  git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || _deploy_refuse "not a git work tree — cannot verify the source is current origin/main."
+  # Fail closed if origin/main can't be refreshed (offline / no remote / bad
+  # creds): a STALE local tracking ref must not masquerade as current.
+  git -C "$SCRIPT_DIR" fetch --quiet origin main 2>/dev/null \
+    || _deploy_refuse "could not 'git fetch origin main' — cannot confirm the source is current (offline / no origin / expired credentials?)."
+  _head="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)"
+  _main="$(git -C "$SCRIPT_DIR" rev-parse FETCH_HEAD 2>/dev/null || true)"  # just-fetched origin/main tip
   # Uncommitted changes to the build source (apps/backend) or this infra dir are
   # the exact "forward-ported infra, stale binary" footgun. Gitignored files
   # (.env, rendered/) don't show in --porcelain, so this won't false-positive on
   # normal per-host secrets.
-  _dirty="$(git -C "$SCRIPT_DIR" status --porcelain -- ../../apps/backend . 2>/dev/null)"
-  if [[ "${_behind:-0}" != "0" || -n "$_dirty" ]]; then
-    {
-      echo ""
-      echo "*** REFUSING to build+deploy from this checkout ***"
-      [[ "${_behind:-0}" != "0" ]] && echo "    HEAD is ${_behind} commit(s) behind origin/main (stale source)."
-      [[ -n "$_dirty" ]] && echo "    Uncommitted changes under apps/backend/ or infra/optimism-mainnet/."
-      echo "    '--build' compiles images from THIS tree; a stale/dirty source can ship"
-      echo "    a binary that mismatches the configs (the 2026-07-22 ~7h outage)."
-      echo ""
-      echo "    Deploy from a clean, current origin/main worktree, e.g.:"
-      echo "      git worktree add --detach <path> origin/main"
-      echo "      cd <path>/infra/optimism-mainnet && ./compose-up.sh"
-      echo ""
-      echo "    Intentional off-main deploy (canary/hotfix)? Re-run with ALLOW_STALE_BUILD=1."
-      echo ""
-    } >&2
-    exit 20
-  fi
-  echo "==> deploy-safety: checkout clean and current with origin/main (ok to --build)"
+  _dirty="$(git -C "$SCRIPT_DIR" status --porcelain -- ../../apps/backend . 2>/dev/null || true)"
+  [[ -n "$_head" && -n "$_main" ]] \
+    || _deploy_refuse "could not resolve HEAD and/or origin/main commit ids."
+  [[ "$_head" == "$_main" ]] \
+    || _deploy_refuse "HEAD ($(git -C "$SCRIPT_DIR" rev-parse --short HEAD)) is not origin/main ($(git -C "$SCRIPT_DIR" rev-parse --short FETCH_HEAD)) — off-main or stale source."
+  [[ -z "$_dirty" ]] \
+    || _deploy_refuse "uncommitted changes under apps/backend/ or infra/optimism-mainnet/ (dirty build source)."
+  echo "==> deploy-safety: HEAD is exactly clean, freshly-fetched origin/main (ok to --build)"
 fi
 
 # Version string for the orderbook GET /api/v1/version route. The Docker build
