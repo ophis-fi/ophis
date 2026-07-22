@@ -37,7 +37,7 @@
   "resolutions": {
     "adm-zip": "^0.6.0",
     "axios": "^1.16.1",
-    "tar": "^7.5.16",
+    "tar": "^7.5.18",
     "js-yaml": "^4.3.0",
     "undici": "^6.27.0",
     "**/request/form-data": "^2.5.6",
