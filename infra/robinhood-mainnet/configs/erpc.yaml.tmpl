@@ -1,33 +1,40 @@
 # eRPC multi-provider proxy for Robinhood Chain mainnet (chain 4663).
 #
-# Robinhood Chain is an Arbitrum Orbit L2. Like Unichain, the autopilot HARD-
-# requires debug_traceTransaction (settlement decode) and the public RPC does NOT
-# serve it (verified 2026-07-02: rpc.mainnet.chain.robinhood.com exposes
-# net,web3,eth only). So this stack runs a self-hosted Nitro node (see ../nitro/)
-# as the debug/trace leg + a read-consensus voter.
+# Robinhood Chain is an Arbitrum Orbit L2. The autopilot HARD-requires
+# debug_traceTransaction (settlement decode) and the public RPC does NOT serve it
+# (re-verified 2026-07-21: rpc.mainnet.chain.robinhood.com exposes net,web3,eth
+# only, debug_traceTransaction -> -32601).
 #
-# Three upstreams:
-#   ophis-self-rbh     ophis-rbh-node:8547    self-hosted Nitro over Tailscale.
-#                                             The ONLY leg that serves debug_*/
-#                                             arbtrace_* + full receipts. Also
-#                                             votes in the read consensus.
-#   robinhood-public   rpc.mainnet.chain.robinhood.com   Robinhood's public node (reads).
-#   robinhood-alchemy  robinhood-mainnet.g.alchemy.com   Alchemy (free key) (reads).
+# HYBRID TRACE (2026-07-22): a from-genesis self-node sync is blocked by an
+# unrecoverable blob-DA gap (see ../nitro/README.md), so trace no longer depends
+# on the self-node ALONE. Managed providers serve debug_* for 4663 today, so the
+# stack now runs THREE trace-capable legs, and the self-node is added as the
+# sovereign, L1-verified tie-breaker once it is restored from a snapshot.
 #
-# The two public legs cannot serve debug_*/arbtrace_*; eRPC's unsupported-method
-# failover routes those to ophis-self-rbh. If the self-node is down, trace calls
-# fail-closed -> the autopilot pauses settlement (safe).
+# FIVE upstreams (3 trace-capable *, 2 read-only):
+#   ophis-self-rbh       ophis-rbh-node:8547                        self-hosted Nitro. * debug_* + full receipts + read voter. Sovereign leg.
+#   robinhood-dwellir    api-robinhood-mainnet-archive.n.dwellir.com  Dwellir archive. * debug_* (verified 2026-07-22) + read voter. Independent.
+#   robinhood-chainstack <your-node>.p2pify.com                     Chainstack.     * debug_* (verified 2026-07-22) + read voter. Independent. PER-NODE HOST (fill-in).
+#   robinhood-public     rpc.mainnet.chain.robinhood.com            Robinhood public. reads only.
+#   robinhood-alchemy    robinhood-mainnet.g.alchemy.com            Alchemy.          reads only.
 #
-# *** GATE (RPC failure-domain independence) ***
-# Robinhood is a 1-day-old chain with THIN public-RPC diversity, and Robinhood's
-# own public RPC is Alchemy-provisioned per their docs - so robinhood-public and
-# robinhood-alchemy MAY share a failure domain (correlated). Until a third truly
-# independent free Robinhood RPC provider exists (or a SECOND self-hosted Nitro
-# node on a different host + L1 is added), treat consensus as effectively
-# 2-across-2 (self-node + one public domain). The fail-closed invariants
-# (2-of-3, lowParticipants:returnError) still hold and are asserted by
-# assert-erpc-failclosed.py in CI. Revisit EXPECTED_UPSTREAM_HOSTS + this file
-# when a third independent provider lands.
+# Reads: 3-of-5 consensus across all five (see quorum note below). debug_* is not
+# under consensus; it distributes across the three trace-capable legs and fails
+# over, so trace stays available if ANY one of {self, dwellir, chainstack} is up
+# (previously: only the self-node -> a self-node outage paused settlement). The
+# two read-only legs return method-not-found for debug_* and are skipped for it.
+#
+# *** QUORUM: 3-of-5, not 2-of-3 (changed 2026-07-22) ***
+# robinhood-public is Alchemy-provisioned per Robinhood's docs, so {public,
+# alchemy} MAY be ONE correlated failure domain (size 2). A 2-of-N quorum could
+# then be met by that correlated pair alone. agreementThreshold:3 REQUIRES a
+# third, independent voter to agree, so the pair cannot force a settlement read.
+# maxParticipants:5 also tolerates 2 simultaneous upstream outages (vs 1 under
+# 2-of-3) while staying fail-closed: lowParticipantsBehavior:returnError means
+# <3 valid responses -> error, never a lone-upstream answer. The GATE that this
+# config previously carried (thin independent diversity) is RESOLVED by Dwellir +
+# Chainstack, which are independent of the Alchemy domain and of each other.
+# assert-erpc-failclosed.py pins 5 upstreams / 3-of-5 and the 5 expected hosts.
 #
 # Robinhood block time is ~134ms (far faster than Unichain's ~1s) -> heavy tip-
 # drift on `latest`-tagged reads. preferBlockHeadLeader + enforceHighestBlock +
@@ -53,8 +60,8 @@ projects:
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              agreementThreshold: 2
+              maxParticipants: 5
+              agreementThreshold: 3
               disputeBehavior: preferBlockHeadLeader
               lowParticipantsBehavior: returnError
               punishMisbehavior:
@@ -69,8 +76,8 @@ projects:
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              agreementThreshold: 2
+              maxParticipants: 5
+              agreementThreshold: 3
               disputeBehavior: preferBlockHeadLeader
               lowParticipantsBehavior: returnError
               punishMisbehavior:
@@ -83,14 +90,21 @@ projects:
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              agreementThreshold: 2
+              maxParticipants: 5
+              agreementThreshold: 3
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
 
           # === Block C: Catch-all retry (no consensus) ===
-          # Carries debug_*/arbtrace_* - only ophis-self-rbh serves these; the
-          # public legs don't support them, so eRPC fails over to the self-node.
+          # Carries debug_* (settlement trace). THREE upstreams now serve it -
+          # ophis-self-rbh, robinhood-dwellir, robinhood-chainstack - so eRPC
+          # picks the healthiest and fails over among them; the two read-only legs
+          # return method-not-found and are skipped. debug_* is deliberately NOT
+          # under consensus: trace payloads are large and providers differ in
+          # tracer-output formatting, so cross-provider consensus would dispute
+          # (and, being fail-closed, PAUSE settlement) on cosmetic mismatches. See
+          # DESIGN NOTE at end of file for the deferred stronger options
+          # (sovereign-first ordering; consensus-on-trace).
           - matchMethod: "*"
             timeout:
               duration: 30s   # debug_traceTransaction is heavier than a plain read
@@ -111,9 +125,11 @@ projects:
 
     upstreams:
       - id: ophis-self-rbh
-        # Self-hosted Nitro node (../nitro/). THE debug/arbtrace leg + a read-
-        # consensus voter. ophis-rbh-node = the node host's Tailscale name; Nitro
-        # serves JSON-RPC on 8547 (NOT op-reth's 8545).
+        # Self-hosted Nitro node (../nitro/). The SOVEREIGN debug/trace leg + a
+        # read-consensus voter. ophis-rbh-node = the node host's Tailscale name;
+        # Nitro serves JSON-RPC on 8547 (NOT op-reth's 8545). Serves debug_* (NOT
+        # arbtrace_* - that is a dead forwarder on Orbit; see ../nitro/README.md).
+        # Added once restored-from-snapshot AND L1-verified (nitro/verify-snapshot.sh).
         endpoint: http://ophis-rbh-node:8547
         failsafe:
           - matchMethod: "*"
@@ -142,8 +158,9 @@ projects:
 
       - id: robinhood-alchemy
         # Alchemy (Robinhood's recommended provider; free-tier key). Reads only.
-        # ${ALCHEMY_API_KEY} is substituted by render-configs.sh. NOTE the GATE
-        # above: this may share a failure domain with robinhood-public.
+        # ${ALCHEMY_API_KEY} is substituted by render-configs.sh. May share a
+        # failure domain with robinhood-public (Alchemy provisions it) - which is
+        # exactly why the quorum is 3-of-5, not 2-of-N (see header).
         endpoint: https://robinhood-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
         failsafe:
           - matchMethod: "*"
@@ -155,3 +172,71 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+
+      - id: robinhood-dwellir
+        # Dwellir ARCHIVE endpoint. Serves debug_traceTransaction for 4663
+        # (verified on provider docs 2026-07-22) AND is an independent read voter.
+        # Stable per-network host; only ${DWELLIR_API_KEY} is templated (path key).
+        # 30s timeout because it serves trace, which is heavier than a read.
+        endpoint: https://api-robinhood-mainnet-archive.n.dwellir.com/${DWELLIR_API_KEY}
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: robinhood-chainstack
+        # Chainstack node. Serves the full geth debug_* tracer set for 4663
+        # (verified 2026-07-22) AND is an independent read voter.
+        #
+        # *** FILL-IN: Chainstack uses a PER-NODE subdomain, so the host is NOT a
+        # stable literal. Replace __FILL_AFTER_DEPLOY_CHAINSTACK_HOST__ below with
+        # YOUR node's host (e.g. nd-123-456-789.p2pify.com) AND update
+        # EXPECTED_UPSTREAM_HOSTS in ../assert-erpc-failclosed.py to match - one
+        # deliberate, reviewed edit. render-configs.sh fail-closes until the token
+        # is filled. Only ${CHAINSTACK_API_KEY} (the secret) is env-substituted.
+        # Stable-host alternative: dRPC (host lb.drpc.org) - but confirm it serves
+        # debug for 4663 with the pre-purchase curl in nitro/README.md first. ***
+        endpoint: https://__FILL_AFTER_DEPLOY_CHAINSTACK_HOST__/${CHAINSTACK_API_KEY}
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DESIGN NOTE - trace routing choices, deferred stronger options (for reviewers)
+#
+# This change does the unambiguous, guard-checkable part: 5 independent-ish
+# upstreams, 3-of-5 reads, trace across 3 legs via failover. Two stronger options
+# were considered and DEFERRED, each needing an eRPC feature the closed-world
+# guard does not model yet (so each is its own reviewed change, not a silent one):
+#
+# 1. SOVEREIGN-FIRST TRACE. Prefer ophis-self-rbh for debug_* (only fall back to
+#    a managed leg when the self-node is down), so normal-path traces come from
+#    the node we L1-verified. Needs an eRPC upstream priority / selection-policy
+#    field -> extend ALLOWED["upstream"] in the guard. Until then, trace goes to
+#    whichever trace-capable leg eRPC scores healthiest.
+#
+# 2. CONSENSUS-ON-TRACE. Require 2 independent providers to AGREE on the trace
+#    before Ophis acts, catching a single tampered/wrong trace. Powerful, but
+#    debug_traceTransaction payloads differ cosmetically across providers (gas
+#    formatting, field order, tracer version), so naive consensus would dispute
+#    on non-issues and - being fail-closed - PAUSE settlement. Doing this safely
+#    needs a normalizing comparator (ignoreFields / a custom equality), which the
+#    guard also does not model. Higher integrity, real false-positive risk.
+#
+# Current posture matches today's (single-provider trace, no consensus) but is
+# strictly MORE available (3 legs vs 1). Pick 1 and/or 2 as a follow-up if the
+# extra integrity/sovereignty is wanted; both are guard-schema changes.
+# ─────────────────────────────────────────────────────────────────────────────
