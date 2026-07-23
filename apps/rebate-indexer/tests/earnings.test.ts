@@ -6,8 +6,8 @@ const NOW = new Date('2026-07-04T00:00:00.000Z');
 // A stacked-fee integrator with volume on both sovereign chains (OP 10, Unichain 130)
 // and one CoW-hosted chain (Base 8453). Fee bases are USD*bps (assembler / 10_000).
 // Own-fee is reported GROSS (Ophis takes 0% of it); hosted own-fee pays out under
-// CoW's terms, which may take a service fee on a stacked recipient (not verified),
-// so the hosted figure is gross and not guaranteed. The Ophis base fee is also GROSS:
+// CoW's terms, which take a 25% service fee (CIP-75) on each stacked recipient, so
+// the hosted figure is gross (recipient nets 75%) and not guaranteed. The Ophis base fee is also GROSS:
 //   OP:       100k vol, ophis 10 bps -> $100, own 25 bps -> $250 (sovereign, swept)
 //   Unichain:  50k vol, ophis 10 bps -> $50,  own 25 bps -> $125 (sovereign, swept)
 //   Base:     200k vol, ophis 10 bps -> $200, own 30 bps -> $600 gross (hosted, not guaranteed)
@@ -39,7 +39,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
   it('scopes GUARANTEED own-fee to the sovereign chains and labels hosted as gross, not guaranteed', () => {
     const e = assembleEarnings('acme-dapp', fullInput, NOW);
     // sovereignGuaranteed = OP $250 + Unichain $125 = $375 (swept in full);
-    // hostedAccrued = Base $600 gross (not reduced by an unverified CoW cut).
+    // hostedAccrued = Base $600 reported GROSS (CoW's 25% service fee applies; recipient nets 75%).
     expect(e.ownFeeAccruedUsd.sovereignGuaranteed).toBe(375);
     expect(e.ownFeeAccruedUsd.hostedAccrued).toBe(600);
     expect(e.ownFeeAccruedUsd.total).toBe(975);

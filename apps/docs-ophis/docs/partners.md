@@ -341,7 +341,7 @@ How your fee reaches you depends on the chain:
   including a stacked non-Ophis one. So on hosted chains **you receive 75% of your
   own-fee, not 100%** (a 50 bps own-fee nets 37.5 bps). It is paid to your
   `recipient` address through CoW's **weekly partner-fee distribution** in WETH,
-  with a **0.001 WETH minimum** (accrued fees are paid once they cross it), for
+  with a **0.001 WETH minimum** (per CoW's terms a weekly amount below it can be voided, not carried forward), for
   **market-order trades** only
   ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)). The
   aggregate of all entries is capped at 100 bps, so your entry plus the 5 bps base
