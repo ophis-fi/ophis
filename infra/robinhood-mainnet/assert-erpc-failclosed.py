@@ -20,10 +20,10 @@ WHY CI, NOT render-configs.sh: wiring PyYAML into the operator/DR render path
 would make a stack restart fail on a host without PyYAML — worse than the
 weakening it guards against (Codex #464 P1). Template edits go through PRs.
 
-On top of the schema lock it asserts the value invariants: exactly the 5 expected
+On top of the schema lock it asserts the value invariants: exactly the 4 expected
 upstream hosts, each https:// except the Tailscale self-node (no silent TLS
 downgrade — Codex r3632331662); every protected method's first-matching failsafe
-rule is a consensus rule with maxParticipants:5, agreementThreshold:3 (3-of-5; the
+rule is a consensus rule with maxParticipants:4, agreementThreshold:3 (3-of-4; the
 correlated public+alchemy pair cannot reach quorum alone) and
 lowParticipants:returnError (always fail-closed on an outage); the tip-sensitive
 reads may dispute via preferBlockHeadLeader (breaks 1-block tip-drift ties among
@@ -40,26 +40,21 @@ from urllib.parse import urlsplit
 import yaml
 
 CHAIN_ID = 4663
-EXPECTED_UPSTREAMS = 5
-# The 5 Robinhood mainnet upstream hosts (hybrid trace, 2026-07-22). Three are
-# trace-capable (self-node, Dwellir, Chainstack); two are read-only (public,
-# Alchemy). robinhood-public is Alchemy-provisioned per Robinhood's docs, so
-# {public, alchemy} may be ONE correlated failure domain (size 2) - which is why
-# the quorum is 3-of-5 (agreementThreshold>2 defeats that pair; see the header in
-# configs/erpc.yaml.tmpl). A deliberate provider change MUST update this set.
-#
-# FILL-IN: robinhood-chainstack uses a PER-NODE subdomain, so its host is not a
-# stable literal. The placeholder below is the __FILL_AFTER_DEPLOY__ token from
-# the template (lowercased by _hostname); render-configs.sh refuses to render
-# while it is present. When you provision the Chainstack node, replace BOTH the
-# template endpoint host AND this entry with your node's real host (e.g.
-# nd-123-456-789.p2pify.com). Stable-host alternative: dRPC (host lb.drpc.org).
+EXPECTED_UPSTREAMS = 4
+# The 4 Robinhood mainnet upstream hosts (2026-07-23). ONE is trace-capable
+# (self-node); three are read-only voters (Chainstack, public, Alchemy) - no free
+# provider serves debug_* for 4663, so trace is self-node-only (see the header in
+# configs/erpc.yaml.tmpl). robinhood-public is Alchemy-provisioned per Robinhood's
+# docs, so {public, alchemy} may be ONE correlated failure domain (size 2) - which
+# is why the quorum is 3-of-4 (agreementThreshold>2 defeats that pair; Chainstack
+# is the independent voter that makes 3 reachable without the pair). A deliberate
+# provider change MUST update this set. (Dwellir was dropped - its free plan serves
+# neither debug_* nor eth_getLogs.)
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "ophis-rbh-node",
+    "robinhood-mainnet.core.chainstack.com",
     "rpc.mainnet.chain.robinhood.com",
     "robinhood-mainnet.g.alchemy.com",
-    "api-robinhood-mainnet-archive.n.dwellir.com",
-    "__fill_after_deploy_chainstack_host__",  # <- replace with your Chainstack node host
 })
 # The ONLY upstream allowed a non-TLS (http://) endpoint: the self-hosted Nitro
 # node, reached over an encrypted Tailscale link on this internal host name. Every
@@ -67,7 +62,7 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
 # https:// (Codex r3632331662). Checking hostnames alone did not catch a
 # https->http downgrade — a future edit could silently drop TLS from a public leg,
 # and an on-path attacker could then control the correlated public+alchemy domain
-# plus a third downgraded leg to meet the 3-of-5 threshold with forged responses.
+# plus a third downgraded leg to meet the 3-of-4 threshold with forged responses.
 SELF_NODE_HOST = "ophis-rbh-node"
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
@@ -165,15 +160,15 @@ def _consensus_failclosed(c):
     """consensus params (unknown KEYS like ignoreFields are already rejected by
     the closed-world key check on the consensus level; here we pin the VALUES).
 
-    Quorum is 3-of-5 (2026-07-22). maxParticipants:5 = all five upstreams vote;
+    Quorum is 3-of-4 (2026-07-23). maxParticipants:4 = all four upstreams vote;
     agreementThreshold:3 is the load-bearing value: {robinhood-public,
     robinhood-alchemy} may be ONE correlated failure domain (size 2), and
     requiring 3 agreeing responses means that pair alone CANNOT reach quorum - a
-    third, independent voter must concur. 3-of-5 also tolerates 2 simultaneous
-    outages while staying fail-closed via lowParticipantsBehavior:returnError
-    (<3 valid responses -> error, never a lone-upstream answer)."""
-    if c.get("maxParticipants") != 5:
-        return f"maxParticipants={c.get('maxParticipants')!r} (must be int 5)", False
+    third, independent voter (self or chainstack) must concur. 3-of-4 tolerates 1
+    simultaneous outage while staying fail-closed via lowParticipantsBehavior:
+    returnError (<3 valid responses -> error, never a lone-upstream answer)."""
+    if c.get("maxParticipants") != 4:
+        return f"maxParticipants={c.get('maxParticipants')!r} (must be int 4)", False
     if c.get("agreementThreshold") != 3:
         return f"agreementThreshold={c.get('agreementThreshold')!r} (must be int 3; <3 lets the correlated public+alchemy pair meet quorum alone)", False
     # disputeBehavior: a DISPUTE means maxParticipants responded but fewer than
@@ -249,7 +244,7 @@ def validate(cfg):
                     "public leg is an on-path downgrade risk that host-only checks miss (Codex r3632331662)")
         hosts = {_hostname(u.get("endpoint")) for u in ups}
         if hosts != EXPECTED_UPSTREAM_HOSTS:
-            errs.append(f"upstream hosts {sorted(hosts)} != the 5 expected failure domains {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 3-of-5; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
+            errs.append(f"upstream hosts {sorted(hosts)} != the 4 expected failure domains {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 3-of-4; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
         for net in proj.get("networks") or []:
             if (net.get("evm") or {}).get("chainId") != CHAIN_ID:
                 continue
@@ -296,14 +291,14 @@ def main(path):
         return EXIT_FAIL
     errs = validate(cfg or {})
     if errs:
-        print(f"ERROR (#447): Robinhood eRPC config is not 3-of-5 fail-closed ({path}):", file=sys.stderr)
+        print(f"ERROR (#447): Robinhood eRPC config is not 3-of-4 fail-closed ({path}):", file=sys.stderr)
         for e in errs:
             print(f"  - {e}", file=sys.stderr)
         return EXIT_FAIL
     print(
         "OK (#447): Robinhood eRPC fail-closed — closed-world schema lock passed (no unrecognized config keys); "
-        "exactly the 5 expected upstream hosts, https:// except the Tailscale self-node; every protected method's "
-        "first-matching failsafe rule is a maxParticipants:5/agreementThreshold:3 (3-of-5) consensus block with "
+        "exactly the 4 expected upstream hosts, https:// except the Tailscale self-node; every protected method's "
+        "first-matching failsafe rule is a maxParticipants:4/agreementThreshold:3 (3-of-4) consensus block with "
         "lowParticipants:returnError (outage fail-closed); tip-sensitive reads dispute via preferBlockHeadLeader (#476), "
         "settlement-decode by-hash reads (block/tx/receipt) dispute via returnError (Codex r3632331649/r3632331675); "
         "every consensus rule fail-closed."

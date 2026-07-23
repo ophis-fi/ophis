@@ -475,7 +475,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${ALCHEMY_API_KEY} ${DWELLIR_API_KEY} ${CHAINSTACK_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${ALCHEMY_API_KEY} ${CHAINSTACK_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out_tmp"
   # PK/secret-bearing configs stay 0600. Non-secret configs (RPC URLs,
   # contract addresses, %VAR runtime-substituted placeholders — NO secret
