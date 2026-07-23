@@ -19,15 +19,18 @@ const DRPC_NETWORK: Record<number, string> = {
   130: 'unichain',
 };
 
-// chainId -> a known keyless archive RPC used as the fallback when none is set. The
+// chainId -> a known keyless ARCHIVE RPC used as the fallback when none is set. The
 // sovereign chains (OP 10, Unichain 130) get a keyless default so the settle decoder
 // resolves a client with no per-chain env (override with SETTLE_RPC_URL_<id> for a
-// keyed archive endpoint). The decoder scans in small finalized windows, so a keyless
-// public RPC's getLogs range limits are handled by the window-halving in scanChain.
+// keyed endpoint). MUST be archive: the decoder's historical backfill does getLogs on
+// old blocks, which publicnode's keyless tier REJECTS ("Archive requests require a
+// personal token"). The official OP/Unichain endpoints serve archive getLogs (verified
+// on 2000-block windows at the sovereign settlement) keylessly; publicnode stays for
+// Base (8453), whose decoder use is tip-only.
 const DEFAULT_FALLBACK: Record<number, string> = {
   8453: 'https://base-rpc.publicnode.com',
-  10: 'https://optimism-rpc.publicnode.com',
-  130: 'https://unichain-rpc.publicnode.com',
+  10: 'https://mainnet.optimism.io',
+  130: 'https://mainnet.unichain.org',
 };
 
 const RPC_TIMEOUT_MS = 15_000;
