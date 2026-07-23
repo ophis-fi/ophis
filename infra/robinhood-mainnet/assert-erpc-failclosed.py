@@ -187,7 +187,7 @@ def _consensus_failclosed(c):
     # lowParticipantsBehavior MUST stay returnError (Codex #476 P1). LOW
     # PARTICIPANTS means fewer than agreementThreshold upstreams returned a valid
     # response (an outage, not a disagreement); serving the lone freshest result
-    # there downgrades 2-of-3 to 1-of-3, letting one hijacked/stale upstream supply
+    # there downgrades 3-of-4 to 1-of-4, letting one hijacked/stale upstream supply
     # settlement state unchecked. Fail closed.
     if c.get("lowParticipantsBehavior") != "returnError":
         return f"lowParticipantsBehavior={c.get('lowParticipantsBehavior')!r} (must be returnError)", False

@@ -245,7 +245,7 @@ groups:
         annotations:
           summary: "Robinhood eRPC low-participants > 5/s on {{ $labels.category }} for 10m"
           description: |
-            eRPC is failing consensus because fewer than 2 of 3 upstreams respond
+            eRPC is failing consensus because fewer than 3 of 4 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more Robinhood upstream(s) (robinhood-public /
             publicnode-uni / ophis-self-uni) are slow or rate-limited.
@@ -270,10 +270,10 @@ groups:
           summary: "Robinhood eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
           description: |
             Upstream Robinhood providers are returning DIFFERENT responses for the
-            same request — fork-view-poisoning suspect OR natural tip drift. 2-of-3
+            same request — fork-view-poisoning suspect OR natural tip drift. 3-of-4
             consensus is failing because responses don't match.
 
-            Sustained > 2/s is unusual: it means either (a) one of the 3
+            Sustained > 2/s is unusual: it means either (a) one of the 4
             upstreams is on a fork / lagging behind the others, OR (b) a
             specific request pattern is triggering deterministic disagreement
             (e.g., a `latest`-tag query that resolves to different blocks).
@@ -306,7 +306,7 @@ groups:
             orderbook will stall, no new settlements can broadcast, in-flight
             settlements will revert.
 
-            Likely cause: 2 of 3 upstream Robinhood providers simultaneously
+            Likely cause: 2 of 4 upstream Robinhood providers simultaneously
             degraded (rate-limit, outage, or DNS). Tip-drift on ~1s blocks can
             contribute extra disputes but should not push the overall failure
             rate above 50%.

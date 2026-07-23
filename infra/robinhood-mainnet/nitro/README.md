@@ -11,7 +11,7 @@ settlement, never mis-settles) when trace is unavailable. Robinhood's public RPC
 (`rpc.mainnet.chain.robinhood.com`) serves `--http.api=net,web3,eth` only - **no
 `debug`, no `arb`, no `arbtrace`** (verified by probe 2026-07-02). So the sovereign
 stack must run its own Nitro node with the trace namespaces enabled. This node is the
-only `debug_*`/`arbtrace_*` leg in the eRPC 2-of-3 proxy (`../configs/erpc.yaml.tmpl`),
+only `debug_*`/`arbtrace_*` leg in the eRPC 3-of-4 proxy (`../configs/erpc.yaml.tmpl`),
 plus a read-consensus voter.
 
 The node publishes JSON-RPC on **:8547** (HTTP) and **:8548** (WS). The eRPC proxy in the
@@ -126,7 +126,7 @@ done
    [Chainstack](https://docs.chainstack.com/docs/robinhood-methods) (full geth debug_*
    tracer set on mainnet + testnet), and
    [Alchemy](https://www.alchemy.com/rpc/robinhood) (debug_trace on request). Ophis could
-   point eRPC at two of these for the 2-of-3 quorum and NOT run this node at all - no
+   point eRPC at two of these for the 3-of-4 quorum and NOT run this node at all - no
    blobs, no snapshot, no Windows runtime, no from-genesis sync. This sidesteps every
    fatal blocker above.
 

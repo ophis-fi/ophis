@@ -6,7 +6,7 @@ bind-address = "0.0.0.0:80"
 
 [shared]
 # node-url is a plain Url field (no %ENV deserializer) => must be a literal URL;
-# an empty ${ROBINHOOD_RPC_INTERNAL} fails TOML parse. Point at the eRPC 2-of-3
+# an empty ${ROBINHOOD_RPC_INTERNAL} fails TOML parse. Point at the eRPC 3-of-4
 # proxy. The single-provider bypass (ROBINHOOD_RPC_INTERNAL) still applies to the
 # driver via its ETHRPC env.
 node-url = "http://rpc-proxy:4000/main/evm/4663"

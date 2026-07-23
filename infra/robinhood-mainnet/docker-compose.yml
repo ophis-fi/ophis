@@ -42,7 +42,7 @@ services:
       retries: 5
       start_period: 15s
 
-  # eRPC 2-of-3 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs
+  # eRPC 3-of-4 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs
   # in the SEPARATE ./nitro compose project and publishes :8547 on the host;
   # erpc.yaml's debug/trace leg targets ophis-rbh-node:8547, mapped to the host
   # gateway here (Gate-2 pattern). Hardening follow-up: a shared external network.

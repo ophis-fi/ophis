@@ -378,7 +378,7 @@ if [[ -n "${ROBINHOOD_RPC_INTERNAL:-}" ]]; then
     echo "" >&2
     echo "*** REFUSING: ROBINHOOD_RPC_INTERNAL is set in .env ***" >&2
     echo "    Value: ${ROBINHOOD_RPC_INTERNAL}" >&2
-    echo "    This BYPASSES the eRPC 2-of-3 consensus path and downgrades" >&2
+    echo "    This BYPASSES the eRPC 3-of-4 consensus path and downgrades" >&2
     echo "    the stack to single-provider posture. A single hostile" >&2
     echo "    upstream can poison reads under this configuration." >&2
     echo "" >&2
@@ -505,7 +505,7 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
-# NOTE: the eRPC 2-of-3 fail-closed consensus guard (#447) is enforced at CI/PR
+# NOTE: the eRPC 3-of-4 fail-closed consensus guard (#447) is enforced at CI/PR
 # time (infra/optimism-mainnet/assert-erpc-failclosed.py, run by the
 # "erpc-consensus-guard" job in .github/workflows/ci.yml) — deliberately NOT
 # here. Wiring PyYAML into the render path would make a stack restart fail on an
