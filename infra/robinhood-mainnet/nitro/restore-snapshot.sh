@@ -63,11 +63,13 @@ EOF
   MAN="$(curl -fsS --max-time 30 "$MANIFEST_URL")" || die "manifest fetch failed"
   echo "$MAN" | jq .
   NAME="$(echo "$MAN" | jq -r '.name')"
-  SNAPSHOT_SHA256="$(echo "$MAN" | jq -r '.sha256')"
+  # Preserve an operator-supplied out-of-band checksum; only fall back to the
+  # (untrusted, same-origin) mirror manifest hash when none was pinned.
+  [[ -n "$SNAPSHOT_SHA256" ]] || SNAPSHOT_SHA256="$(echo "$MAN" | jq -r '.sha256')"
   # Download lives under /snapshots/<name>, which 302-redirects to dl.titandeployer.com
   # (verified 2026-07-23). The bare $SNAPSHOT_BASE/<name> returns 404. curl/aria2c
   # follow the redirect; do not hardcode the dl.* host (it may be a rotating CDN).
-  SNAPSHOT_URL="$SNAPSHOT_BASE/snapshots/$NAME"
+  [[ -n "$SNAPSHOT_URL" ]] || SNAPSHOT_URL="$SNAPSHOT_BASE/snapshots/$NAME"
   [[ "$NAME" == *.tar.zst && ${#SNAPSHOT_SHA256} -eq 64 ]] || die "manifest shape unexpected (name=$NAME sha=$SNAPSHOT_SHA256)"
   cat <<EOF
 

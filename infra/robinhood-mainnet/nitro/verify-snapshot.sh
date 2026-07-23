@@ -71,24 +71,38 @@ L1_HEAD="$(cast block-number --rpc-url "$L1_RPC")"
 FROM=$(( L1_HEAD - 100000 ))     # ~2 weeks of L1; assertions are periodic, not per-block
 LOGS="$(cast logs --rpc-url "$L1_RPC" --from-block "$FROM" --to-block latest \
         --address "$ROLLUP" "$TOPIC0" --json 2>/dev/null || echo '[]')"
-NLOG="$(echo "$LOGS" | jq 'length')"
-echo "  found $NLOG AssertionConfirmed events in the last 100k L1 blocks"
-if [[ "$NLOG" -eq 0 ]]; then
-  bad "no AssertionConfirmed events found - widen FROM, or the ABI/topic differs for this rollup version; verify manually before trusting"
+# Fail closed if the query did not return a JSON array. jq 'length' on a
+# non-array (e.g. an RPC error object) is nonzero, which previously passed this
+# gate; and the filter below would then run the loop zero times.
+if ! echo "$LOGS" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  bad "L1 log query did not return a JSON array (RPC error or malformed response); cannot verify the anchor"
 else
-  # data = 0x || blockHash(32) || sendRoot(32). Decode and check the node.
-  while read -r ev; do
-    data="$(echo "$ev" | jq -r '.data')"
-    bh="0x${data:2:64}"
-    # Ask the node for a block WITH this hash; must exist and be canonical.
-    got="$(cast block "$bh" --rpc-url "$NODE_RPC" --json 2>/dev/null | jq -r '.hash // empty')"
-    if [[ "$got" == "$bh" ]]; then
-      num="$(cast block "$bh" --rpc-url "$NODE_RPC" --json | jq -r '.number')"
-      ok "L1-confirmed blockHash $bh present in node at height $((num))"
+  NLOG="$(echo "$LOGS" | jq 'length')"
+  echo "  found $NLOG AssertionConfirmed events in the last 100k L1 blocks"
+  if [[ "$NLOG" -eq 0 ]]; then
+    bad "no AssertionConfirmed events found - widen FROM, or the ABI/topic differs for this rollup version; verify manually before trusting"
+  else
+    # Capture the filtered events first so a jq failure fails closed instead of
+    # silently running the loop zero times (a process substitution hid its status).
+    EVENTS="$(echo "$LOGS" | jq -c '.[-3:][]')" || { bad "failed to parse L1 AssertionConfirmed events"; EVENTS=""; }
+    if [[ -z "$EVENTS" ]]; then
+      bad "no L1 anchor events after filtering - cannot verify the anchor"
     else
-      bad "L1-confirmed blockHash $bh NOT found in node - snapshot header chain diverges from L1 truth"
+      # data = 0x || blockHash(32) || sendRoot(32). Decode and check the node.
+      while read -r ev; do
+        data="$(echo "$ev" | jq -r '.data')"
+        bh="0x${data:2:64}"
+        # Ask the node for a block WITH this hash; must exist and be canonical.
+        got="$(cast block "$bh" --rpc-url "$NODE_RPC" --json 2>/dev/null | jq -r '.hash // empty')"
+        if [[ "$got" == "$bh" ]]; then
+          num="$(cast block "$bh" --rpc-url "$NODE_RPC" --json | jq -r '.number')"
+          ok "L1-confirmed blockHash $bh present in node at height $((num))"
+        else
+          bad "L1-confirmed blockHash $bh NOT found in node - snapshot header chain diverges from L1 truth"
+        fi
+      done <<< "$EVENTS"
     fi
-  done < <(echo "$LOGS" | jq -c '.[-3:][]')
+  fi
 fi
 
 # ── 3. trace actually works on a near-tip tx ──────────────────────────────────
