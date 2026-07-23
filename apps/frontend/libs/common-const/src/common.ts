@@ -191,7 +191,13 @@ export const GAS_PRICE_UPDATE_THRESHOLD = ms`5s`
 
 // See https://docs.blocknative.com/gas-prediction/gas-platform
 export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
-  [SupportedChainId.MAINNET]: 'https://api.blocknative.com/gasprices/blockprices',
+  // Blocknative's gas API was shut down 2026-06-19 (see the Unichain note below):
+  // the old mainnet endpoint now hard-fails (ERR_CONNECTION_RESET) and, since
+  // GasUpdater re-fetches every block, it spammed the console + churned the main
+  // thread on the swap app's default (mainnet) chain. Use Ethereum's Blockscout
+  // gas-price-oracle — same {slow,average,fast} response shape the parser already
+  // reads for Gnosis/Arbitrum/Base/Polygon/Unichain (verified live HTTP 200).
+  [SupportedChainId.MAINNET]: 'https://eth.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.GNOSIS_CHAIN]: 'https://gnosis.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.ARBITRUM_ONE]: 'https://arbitrum.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.BASE]: 'https://base.blockscout.com/api/v1/gas-price-oracle',

@@ -153,9 +153,29 @@
         #ophis-seo a{color:#f2a63e;text-decoration:none;font-size:15px}
         #ophis-seo a:hover{text-decoration:underline}
         #ophis-seo .hint{margin-top:28px;font-size:13px;color:#7d776e}
+        /* Swap-card skeleton: a human staring at this fallback while the ~1.3MB
+           (brotli) app bundle parses should see the swap widget *loading*, not a
+           marketing wall — so the trade UI "appears" instantly. Purely decorative
+           (aria-hidden) and removed with the rest of #ophis-seo by seo-fallback.js
+           the moment React mounts. No "loading" TEXT (soft-404 classifiers). */
+        #ophis-seo .skl{width:min(392px,92vw);margin:0 auto 30px;background:#0a0713;border:1px solid #1c1730;border-radius:20px;padding:16px;box-shadow:0 8px 40px rgba(0,0,0,.35)}
+        #ophis-seo .skl .row{display:flex;align-items:center;justify-content:space-between;background:#120d20;border-radius:14px;padding:16px 18px}
+        #ophis-seo .skl .arw{width:34px;height:34px;margin:8px auto;border-radius:50%;background:#120d20;border:1px solid #1c1730;display:flex;align-items:center;justify-content:center;color:#4a4258;font-size:16px}
+        #ophis-seo .skl b{display:block;border-radius:8px;background:linear-gradient(90deg,#1c1730 25%,#2a2340 50%,#1c1730 75%);background-size:200% 100%;animation:ophisShimmer 1.25s ease-in-out infinite}
+        #ophis-seo .skl .pill{width:98px;height:34px;border-radius:999px}
+        #ophis-seo .skl .amt{width:120px;height:22px}
+        #ophis-seo .skl .btn{width:100%;height:52px;border-radius:14px;margin-top:12px;background:linear-gradient(90deg,#2a2036 25%,#3a2c1c 50%,#2a2036 75%);background-size:200% 100%;animation:ophisShimmer 1.25s ease-in-out infinite}
+        @keyframes ophisShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        @media(prefers-reduced-motion:reduce){#ophis-seo .skl b,#ophis-seo .skl .btn{animation:none}}
       </style>
       <div class="wrap">
         <img src="/ophis-logo-full.svg" alt="Ophis" width="118" height="32" />
+        <div class="skl" aria-hidden="true">
+          <div class="row"><b class="pill"></b><b class="amt"></b></div>
+          <div class="arw">↓</div>
+          <div class="row"><b class="pill"></b><b class="amt"></b></div>
+          <b class="btn"></b>
+        </div>
         <h1>Ophis: the intent-based DEX aggregator with MEV-protected swaps</h1>
         <p>
           Describe a trade in plain language and Ophis routes you to a pre-filled order. A

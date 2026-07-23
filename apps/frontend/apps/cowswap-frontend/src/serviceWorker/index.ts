@@ -6,7 +6,7 @@ import 'workbox-precaching' // defines __WB_MANIFEST
 
 import { clientsClaim, setCacheNameDetails } from 'workbox-core'
 import { ExpirationPlugin } from 'workbox-expiration'
-import { precacheAndRoute } from 'workbox-precaching'
+import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
 import { PrecacheEntry } from 'workbox-precaching/_types'
 import { registerRoute, Route } from 'workbox-routing'
 import { CacheFirst } from 'workbox-strategies'
@@ -27,6 +27,14 @@ setCacheNameDetails({
 
 clientsClaim()
 self.skipWaiting()
+
+// Delete precaches left over from previous WEB_VERSIONs. Without this, a client
+// that was on an older build keeps that build's precache alongside the new one;
+// if it ever serves a stale entry (or the old precache is corrupt), the shell
+// can fail to hydrate and the app is stuck on the #ophis-seo fallback until the
+// user manually clears site data. Purging outdated precaches on activate makes
+// the skipWaiting()+clientsClaim() takeover clean.
+cleanupOutdatedCaches()
 
 const excludedAssets = ['emergency.js']
 
