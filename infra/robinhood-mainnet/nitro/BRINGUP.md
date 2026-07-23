@@ -136,21 +136,40 @@ snapshot stays a reputational bet, which is exactly why this node is only ONE of
 - Join this host to Tailscale as `ophis-rbh-node` so the eRPC proxy reaches
   `http://ophis-rbh-node:8547`. Keep :8547 bound to 127.0.0.1 (it already is).
 - **Autostart across Windows reboots.** WSL2 has NO supported service-model and
-  the widely-cited `autostart=true` .wslconfig key DOES NOT EXIST. Use a
-  Task Scheduler task, then VALIDATE it by actually rebooting:
+  the widely-cited `autostart=true` .wslconfig key DOES NOT EXIST. TWO things must
+  happen on boot: (a) the distro must be *started* (WSL boots it lazily), and (b)
+  something must *hold* a session open, because WSL2 shuts the VM down ~60s after
+  the LAST session closes and takes the container with it (`vmIdleTimeout=-1` is
+  NOT honored - observed 2026-07-23). A plain `wsl -e /bin/true` at startup fails
+  BOTH: it exits immediately (no hold), and SYSTEM can't see a distro registered
+  under a normal user. The working shape (tested 2026-07-23):
+
+  1. `keepalive-node.sh` (committed here) - a `while true; docker compose up -d;
+     sleep 120; done` loop. It runs as ONE long-lived wsl session, so it both
+     holds the VM up AND keeps the container running. Copy it into the distro at
+     `/home/<user>/keepalive-node.sh` (chmod +x).
+  2. A Task Scheduler task at **logon of the distro-owner user** (NOT SYSTEM -
+     the distro is registered per-user), running that keep-alive:
 
   ```powershell
-  # At-startup, no interactive login. `wsl -d` boots the distro; systemd(+Docker
-  # restart:always) brings the node back. -WindowStyle Hidden so nothing pops up.
-  $A = New-ScheduledTaskAction -Execute 'wsl.exe' -Argument '-d Ubuntu-24.04 -u root -e /bin/true'
-  $T = New-ScheduledTaskTrigger -AtStartup
-  $P = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-  Register-ScheduledTask -TaskName 'wsl-nitro-boot' -Action $A -Trigger $T -Principal $P
+  $action    = New-ScheduledTaskAction -Execute 'wsl.exe' `
+                 -Argument '-d Ubuntu-24.04 -u root -e bash /home/clement/keepalive-node.sh'
+  $trigger   = New-ScheduledTaskTrigger -AtLogOn -User 'CADIA\clement'
+  $principal = New-ScheduledTaskPrincipal -UserId 'CADIA\clement' -LogonType Interactive -RunLevel Highest
+  $settings  = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
+                 -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable `
+                 -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName 'OphisRobinhoodNode' -Action $action -Trigger $trigger `
+    -Principal $principal -Settings $settings -Force
+  Start-ScheduledTask -TaskName 'OphisRobinhoodNode'   # start it now, don't wait for next logon
   ```
 
-  Then reboot and confirm the node came back on its own (`docker ps` in the
-  distro, `eth_blockNumber` on :8547). Do not trust settlement to it until you
-  have seen it self-recover from a real reboot at least once.
+  **Reliability envelope:** the AtLogOn trigger means the node comes back after a
+  reboot ONCE THE OWNER LOGS IN (fine for a workstation that auto- or promptly
+  logs in). Truly headless (boot with no login) would need S4U/service + WSL
+  working without a user profile, which is finicky and NOT set up here. VALIDATE
+  by doing a real reboot and confirming `eth_blockNumber` on :8547 comes back on
+  its own; do not trust settlement to it until you've seen that at least once.
 
 ---
 
