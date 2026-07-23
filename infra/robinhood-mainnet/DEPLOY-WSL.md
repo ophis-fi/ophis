@@ -50,10 +50,12 @@ network, container-to-container:
 docker network create ophis-rbh-net
 docker network connect --alias ophis-rbh-node ophis-rbh-net robinhood-nitro-nitro-1
 ```
-The eRPC proxy then resolves `ophis-rbh-node:8547` to the node container. (The interim proxy
-already runs this way as `ophis-rbh-rpc-proxy`.) NOTE: the node container loses this extra
-network if it is recreated (e.g. on reboot) — re-run the `docker network connect`, or bake
-`ophis-rbh-net` into both compose files during a maintenance window.
+This is now **baked into both compose files**: the nitro service joins `ophis-rbh-net` with the
+alias `ophis-rbh-node`, and the main-stack `rpc-proxy` joins it (replacing the old broken
+`host-gateway` mapping). `compose-up.sh` and `keepalive-node.sh` create the network idempotently,
+so it survives reboots and force-recreates with **no manual `docker network connect`**. (The
+interim `docker run` proxy `ophis-rbh-rpc-proxy` also sits on this network; when the full stack
+deploys, the compose-managed `rpc-proxy` replaces it.)
 
 ## Verified on WSL (2026-07-23)
 `render-configs.sh` runs clean end-to-end here (tmpfs RAM-disk mounted, PK-on-RAM-disk symlink,

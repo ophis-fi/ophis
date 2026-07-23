@@ -42,16 +42,19 @@ services:
       retries: 5
       start_period: 15s
 
-  # eRPC 3-of-4 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs
-  # in the SEPARATE ./nitro compose project and publishes :8547 on the host;
-  # erpc.yaml's debug/trace leg targets ophis-rbh-node:8547, mapped to the host
-  # gateway here (Gate-2 pattern). Hardening follow-up: a shared external network.
+  # eRPC 3-of-4 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs in
+  # the SEPARATE ./nitro compose project. erpc.yaml's debug/trace leg targets
+  # ophis-rbh-node:8547; both projects join the shared external network `ophis-rbh-net`
+  # (the nitro service is aliased `ophis-rbh-node` there) so this proxy reaches the node
+  # container-to-container. The node binds :8547 on 127.0.0.1 only, so host-gateway /
+  # Tailscale to a loopback port cannot reach it — the shared network is the fix.
   rpc-proxy:
     image: ghcr.io/erpc/erpc:latest
     restart: always
     mem_limit: 512m
-    extra_hosts:
-      - "ophis-rbh-node:host-gateway"
+    networks:
+      default: {}
+      ophis-rbh-net: {}
     volumes:
       - ./rendered/erpc.yaml:/erpc.yaml:ro
     ports:
@@ -312,3 +315,12 @@ volumes:
   postgres:
   prometheus-data:
   alertmanager-data:
+
+networks:
+  # Shared with the ./nitro compose project so rpc-proxy resolves the node as
+  # ophis-rbh-node:8547 (see the rpc-proxy service comment). Created out-of-band by
+  # compose-up.sh (`docker network create ophis-rbh-net`). All other services have no
+  # `networks:` key, so they stay on the project default network and reach rpc-proxy there.
+  ophis-rbh-net:
+    external: true
+    name: ophis-rbh-net

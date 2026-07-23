@@ -19,6 +19,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Shared external docker network for the eRPC proxy <-> the ./nitro node (rpc-proxy
+# resolves ophis-rbh-node:8547 container-to-container; see docker-compose.yml).
+# Idempotent — external networks must exist before `docker compose up`.
+docker network create ophis-rbh-net >/dev/null 2>&1 || true
+
 # Version string for the orderbook GET /api/v1/version route. The Docker build
 # context (apps/backend) has no .git, so vergen falls back to the literal
 # "VERGEN_IDEMPOTENT_OUTPUT" sentinel and it leaks out of /version. Compute the

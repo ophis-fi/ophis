@@ -13,6 +13,10 @@
 set -u
 NODE_DIR="${NODE_DIR:-/home/clement/robinhood-nitro}"
 cd "$NODE_DIR" || { echo "keepalive: NODE_DIR $NODE_DIR not found" >&2; exit 1; }
+# The node joins the shared external network ophis-rbh-net (see docker-compose.yml) so
+# the eRPC proxy resolves it as ophis-rbh-node. External networks must exist before
+# `docker compose up`; create it idempotently before the loop.
+docker network create ophis-rbh-net >/dev/null 2>&1 || true
 while true; do
   docker compose --env-file .env up -d >/dev/null 2>&1 || true
   sleep 120

@@ -128,6 +128,22 @@ services:
       timeout: 10s
       retries: 5
       start_period: 15m   # first sync
+    networks:
+      default: {}
+      # Shared external network so the eRPC proxy (separate ./.. compose project)
+      # resolves this node as ophis-rbh-node:8547 container-to-container.
+      ophis-rbh-net:
+        aliases:
+          - ophis-rbh-node
 
 # No named volumes: the datadir is a bind mount to an ext4 path inside the distro
 # (on D:), so the snapshot can be extracted directly into it. See BRINGUP.md.
+
+# Shared external network so the eRPC proxy (../docker-compose.yml, a separate compose
+# project) resolves this node as `ophis-rbh-node:8547` container-to-container — the node
+# binds :8547 on 127.0.0.1 only, so host-gateway/Tailscale to a loopback port can't reach
+# it. Created out-of-band (keepalive-node.sh + compose-up.sh do it idempotently).
+networks:
+  ophis-rbh-net:
+    external: true
+    name: ophis-rbh-net
