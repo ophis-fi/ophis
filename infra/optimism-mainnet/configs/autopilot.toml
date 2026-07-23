@@ -72,6 +72,31 @@ name = "velora"
 url = "http://driver/velora"
 address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
 
+[[drivers]]
+name = "odos"
+url = "http://driver/odos"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "enso"
+url = "http://driver/enso"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "lifi"
+url = "http://driver/lifi"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "openocean"
+url = "http://driver/openocean"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "dodo"
+url = "http://driver/dodo"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
 [fee-policies]
 
 [database]
@@ -84,6 +109,11 @@ price-estimation-drivers = [
   { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "velora", url = "http://driver/velora" },
+  { name = "odos", url = "http://driver/odos" },
+  { name = "enso", url = "http://driver/enso" },
+  { name = "lifi", url = "http://driver/lifi" },
+  { name = "openocean", url = "http://driver/openocean" },
+  { name = "dodo", url = "http://driver/dodo" },
 ]
 
 [price-estimation]
