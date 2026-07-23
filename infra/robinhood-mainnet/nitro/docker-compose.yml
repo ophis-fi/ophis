@@ -118,9 +118,12 @@ services:
       - "127.0.0.1:8548:8548"   # WS JSON-RPC
       - "127.0.0.1:6070:6070"   # Prometheus metrics (sync progress, memory)
     healthcheck:
-      # Healthy = serves eth_blockNumber. (Trace-readiness is verified separately
-      # via the debug_traceTransaction check in README.md.)
-      test: ["CMD-SHELL", "wget -qO- --post-data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}' --header 'content-type: application/json' http://127.0.0.1:8547 | grep -q result || exit 1"]
+      # Healthy = serves eth_blockNumber. Use curl, NOT wget: the nitro-node image
+      # ships curl but NOT wget (verified 2026-07-23) - the old wget probe always
+      # failed with "wget: not found", so the container showed "unhealthy" while
+      # actually serving. (Trace-readiness is verified separately via the
+      # debug_traceTransaction check in README.md.)
+      test: ["CMD-SHELL", "curl -sf -X POST http://127.0.0.1:8547 -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}' | grep -q result || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
