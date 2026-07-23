@@ -15,11 +15,19 @@ import { createPublicClient, fallback, http, type PublicClient } from 'viem';
 // chainId -> dRPC network slug (for building the keyed dRPC URL from DRPC_API_KEY).
 const DRPC_NETWORK: Record<number, string> = {
   8453: 'base',
+  10: 'optimism',
+  130: 'unichain',
 };
 
-// chainId -> a known keyless archive RPC used as the fallback when none is set.
+// chainId -> a known keyless archive RPC used as the fallback when none is set. The
+// sovereign chains (OP 10, Unichain 130) get a keyless default so the settle decoder
+// resolves a client with no per-chain env (override with SETTLE_RPC_URL_<id> for a
+// keyed archive endpoint). The decoder scans in small finalized windows, so a keyless
+// public RPC's getLogs range limits are handled by the window-halving in scanChain.
 const DEFAULT_FALLBACK: Record<number, string> = {
   8453: 'https://base-rpc.publicnode.com',
+  10: 'https://optimism-rpc.publicnode.com',
+  130: 'https://unichain-rpc.publicnode.com',
 };
 
 const RPC_TIMEOUT_MS = 15_000;
