@@ -102,6 +102,10 @@ settlement they gate and which Chainlink feeds they read.
 | Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
 | Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
 
+Plasma (9745) is next: the deploy tooling and fork preflight are verified
+against live Plasma state (canonical CoW settlement, WXPL/USDT0 allowlist), and
+it joins the table once its first vault is live.
+
 Each vault deploys its own module instance through the factory, configured
 with its own Safe, curator, allowlist, and caps.
 
