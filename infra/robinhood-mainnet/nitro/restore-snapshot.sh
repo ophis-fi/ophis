@@ -82,14 +82,18 @@ log "Checksum OK: $ACTUAL"
   die "$NITRO_DATA_DIR is not empty. Refusing to extract over existing data. Move it aside first."
 mkdir -p "$NITRO_DATA_DIR"
 
-log "Extracting (~181 GB) into $NITRO_DATA_DIR"
+log "Extracting (~195 GB and growing with the chain) into $NITRO_DATA_DIR"
 # The tar contains data/robinhood/nitro/{l2chaindata,arbitrumdata,nodes,wasm,...}.
 # --strip-components lands the nitro/* contents directly at the data-dir root so
 # it maps to /home/nitro/.arbitrum/{l2chaindata,arbitrumdata,...} in the container.
-# Verify the layout first (cheap; lists without extracting):
+# Detect strip depth. NOTE: `grep -m1` / `sed` close the pipe early, which SIGPIPEs
+# the upstream `tar` and, under `set -o pipefail`, makes the pipeline exit 141 and
+# abort the whole restore. Disable pipefail for just these read-only probes.
+set +o pipefail
 log "Snapshot top-level layout:"
-tar -I zstd -tf "$FILE" | sed -n '1,20p'
-STRIP="$(tar -I zstd -tf "$FILE" | grep -m1 'l2chaindata' | awk -F/ '{for(i=1;i<=NF;i++) if($i=="l2chaindata"){print i-1; exit}}')"
+tar -I zstd -tf "$FILE" 2>/dev/null | sed -n '1,20p'
+STRIP="$(tar -I zstd -tf "$FILE" 2>/dev/null | grep -m1 'l2chaindata' | awk -F/ '{for(i=1;i<=NF;i++) if($i=="l2chaindata"){print i-1; exit}}')"
+set -o pipefail
 [[ -n "$STRIP" ]] || die "could not locate l2chaindata in the tar - unexpected snapshot layout, inspect manually"
 log "Stripping $STRIP leading path components so l2chaindata lands at the data-dir root"
 tar -I zstd --strip-components="$STRIP" -xf "$FILE" -C "$NITRO_DATA_DIR"
