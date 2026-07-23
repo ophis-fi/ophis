@@ -39,7 +39,9 @@ on:
 
 permissions:
   contents: read
-  deployments: write
+  # deployments: write removed 2026-07 (audit): the deploy uses
+  # `wrangler pages deploy`, which does not touch the GitHub Deployments API,
+  # so the scope was dead weight.
   id-token: write # SLSA build provenance (#438)
   attestations: write # SLSA build provenance (#438)
 
@@ -68,7 +70,16 @@ jobs:
             pnpm-lock.yaml
 
       - name: install
-        run: pnpm install --frozen-lockfile
+        # --ignore-scripts: the `wrangler pages deploy` step later in THIS job
+        # carries CLOUDFLARE_API_TOKEN, so no third-party dependency lifecycle
+        # script should execute next to it (mirrors sdk-release.yml). Safe: the
+        # root workspace has no own postinstall, the SDK + safe-app builds are
+        # invoked explicitly below, and the safe-app's vite/esbuild bundler
+        # resolves its platform binary from the installed optional dep (no
+        # postinstall required under pnpm).
+        # Future option if a build ever needs a native dep script: split into a
+        # secret-free build job + a deploy job (upload/download artifact).
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: build SDK (Safe App typechecks + bundles against its emitted .d.ts)
         run: pnpm --filter @ophis/sdk build

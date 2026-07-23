@@ -48,26 +48,33 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
 FROM docker.io/debian:bookworm-slim AS intermediate
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && \
     apt-get install -y ca-certificates tini gettext-base && \
-    apt-get clean
+    apt-get clean && \
+    groupadd --system --gid 10001 ophis && \
+    useradd --system --uid 10001 --gid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin ophis
 
 FROM intermediate AS autopilot
 COPY --from=cargo-build /autopilot /usr/local/bin/autopilot
+USER 10001:10001
 ENTRYPOINT [ "autopilot" ]
 
 FROM intermediate AS driver
 COPY --from=cargo-build /driver /usr/local/bin/driver
+USER 10001:10001
 ENTRYPOINT [ "driver" ]
 
 FROM intermediate AS orderbook
 COPY --from=cargo-build /orderbook /usr/local/bin/orderbook
+USER 10001:10001
 ENTRYPOINT [ "orderbook" ]
 
 FROM intermediate AS refunder
 COPY --from=cargo-build /refunder /usr/local/bin/refunder
+USER 10001:10001
 ENTRYPOINT [ "refunder" ]
 
 FROM intermediate AS solvers
 COPY --from=cargo-build /solvers /usr/local/bin/solvers
+USER 10001:10001
 ENTRYPOINT [ "solvers" ]
 
 # Extract Binary
@@ -79,5 +86,6 @@ COPY --from=cargo-build /driver /usr/local/bin/driver
 COPY --from=cargo-build /orderbook /usr/local/bin/orderbook
 COPY --from=cargo-build /refunder /usr/local/bin/refunder
 COPY --from=cargo-build /solvers /usr/local/bin/solvers
+USER 10001:10001
 
 ENTRYPOINT ["/usr/bin/tini", "-s", "--"]

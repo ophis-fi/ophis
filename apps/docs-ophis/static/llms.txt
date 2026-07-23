@@ -9,11 +9,11 @@
 
 ## Fees
 
-Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade. Same-chain stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp). The fee is on volume, not surplus: 100% of any price improvement a solver wins beyond your signed quote stays with you. See [How it works](https://docs.ophis.fi/fees#how-it-works) and [Surplus stays with you](https://docs.ophis.fi/fees#surplus-stays-with-you).
+Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); SDK/MCP partner integrations charge a reduced 0.05% (5 bps). On the Ophis-operated chains (Optimism, Unichain) the flat Ophis fee is the all-in cost and 100% of any price improvement a solver wins beyond your signed quote stays with you. On CoW-hosted chains, CoW Protocol charges its own fees on top (0.02% volume fee, 0.003% correlated, plus 50% of quote improvement capped at 0.98% of volume), so the fixed all-in there is 0.12% / 0.013%. See [The all-in cost, per chain](https://docs.ophis.fi/fees#the-all-in-cost-per-chain).
 
 Worked examples:
-- Swap $10,000 USDC to ETH (a volatile pair): fee is 0.10% = $10. See [Volatile pair](https://docs.ophis.fi/fees#volatile-pair-eg-usdc-to-eth-010-flat).
-- Swap $10,000 USDC to USDT on the same chain (a stablecoin pair): fee is 0.01% = $1. See [Same-chain stablecoin pair](https://docs.ophis.fi/fees#same-chain-stablecoin-pair-eg-usdc-to-usdt-001-flat).
+- Swap $10,000 USDC to ETH on Optimism (a volatile pair): fee is 0.10% = $10 all-in. On a CoW-hosted chain: 0.12% = $12 fixed all-in. See [Volatile pair](https://docs.ophis.fi/fees#volatile-pair-eg-usdc-to-eth-010-flat).
+- Swap $10,000 USDC to USDT on the same chain (a stablecoin pair): fee is 0.01% = $1 on Optimism/Unichain, 0.013% = $1.30 all-in on a CoW-hosted chain. See [Same-chain stablecoin pair](https://docs.ophis.fi/fees#same-chain-stablecoin-pair-eg-usdc-to-usdt-001-flat).
 - A large share of the fee comes back monthly in WETH rebates. See [Monthly WETH rebates](https://docs.ophis.fi/fees#what-you-get-back-monthly-weth-rebates).
 
 ## Reference
@@ -28,5 +28,6 @@ Worked examples:
 
 ## More
 
+- Full docs as a single file (for LLM context windows): https://docs.ophis.fi/llms-full.txt
 - App: https://swap.ophis.fi
 - Source: https://github.com/ophis-fi/ophis

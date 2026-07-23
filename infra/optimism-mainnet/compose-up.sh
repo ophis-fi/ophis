@@ -19,6 +19,66 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ── Deploy-safety guard (2026-07-22 OP outage) ──────────────────────────────
+# The final line of this script runs `docker compose up -d --build`, which
+# rebuilds every image from whatever source SCRIPT_DIR points at. On 2026-07-22
+# it was run from a STALE checkout — a branch ~160 commits behind origin/main
+# whose infra/ configs had been hand-forward-ported to 8 solvers but whose
+# apps/backend source had NOT — so `--build` compiled a `solvers` binary missing
+# 5 engines. All 8 aggregator solvers crash-looped; the pipeline was down ~7h.
+#
+# Guard: refuse to build+deploy unless HEAD is EXACTLY a clean, freshly-fetched
+# origin/main. FAILS CLOSED — if we cannot prove the source is current
+# origin/main (not a git tree, no origin, offline, off-main commit, or a dirty
+# tree) we refuse rather than risk shipping a binary that mismatches the configs.
+# "Not behind" is deliberately NOT sufficient: a clean commit ON TOP of
+# origin/main is still unreviewed off-main code. Override for an intentional
+# off-main deploy (canary / hotfix / an offline DR host whose source you have
+# confirmed by hand) with ALLOW_STALE_BUILD=1.
+if [[ "${ALLOW_STALE_BUILD:-}" == "1" ]]; then
+  echo "==> deploy-safety: ALLOW_STALE_BUILD=1 set — skipping the origin/main freshness check" >&2
+else
+  _deploy_refuse() {  # $1 = reason line
+    {
+      echo ""
+      echo "*** REFUSING to build+deploy from this checkout ***"
+      echo "    $1"
+      echo "    '--build' compiles images from THIS tree; anything but a clean, current"
+      echo "    origin/main can ship a binary that mismatches the configs (2026-07-22 ~7h outage)."
+      echo ""
+      echo "    Deploy from a clean, current origin/main worktree:"
+      echo "      git fetch origin && git worktree add --detach <path> origin/main"
+      echo "      cd <path>/infra/optimism-mainnet && ./compose-up.sh"
+      echo ""
+      echo "    Intentional off-main deploy (canary / hotfix / offline DR host)?"
+      echo "    Re-run with ALLOW_STALE_BUILD=1 once you have confirmed the source by hand."
+      echo ""
+    } >&2
+    exit 20
+  }
+  # Must be a git work tree at all (a source archive has no way to prove freshness).
+  git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || _deploy_refuse "not a git work tree — cannot verify the source is current origin/main."
+  # Fail closed if origin/main can't be refreshed (offline / no remote / bad
+  # creds): a STALE local tracking ref must not masquerade as current.
+  git -C "$SCRIPT_DIR" fetch --quiet origin main 2>/dev/null \
+    || _deploy_refuse "could not 'git fetch origin main' — cannot confirm the source is current (offline / no origin / expired credentials?)."
+  _head="$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)"
+  _main="$(git -C "$SCRIPT_DIR" rev-parse FETCH_HEAD 2>/dev/null || true)"  # just-fetched origin/main tip
+  # Uncommitted changes to the build source (apps/backend) or this infra dir are
+  # the exact "forward-ported infra, stale binary" footgun. Gitignored files
+  # (.env, rendered/) don't show in --porcelain, so this won't false-positive on
+  # normal per-host secrets.
+  _dirty="$(git -C "$SCRIPT_DIR" status --porcelain -- ../../apps/backend . 2>/dev/null || true)"
+  [[ -n "$_head" && -n "$_main" ]] \
+    || _deploy_refuse "could not resolve HEAD and/or origin/main commit ids."
+  [[ "$_head" == "$_main" ]] \
+    || _deploy_refuse "HEAD ($(git -C "$SCRIPT_DIR" rev-parse --short HEAD)) is not origin/main ($(git -C "$SCRIPT_DIR" rev-parse --short FETCH_HEAD)) — off-main or stale source."
+  [[ -z "$_dirty" ]] \
+    || _deploy_refuse "uncommitted changes under apps/backend/ or infra/optimism-mainnet/ (dirty build source)."
+  echo "==> deploy-safety: HEAD is exactly clean, freshly-fetched origin/main (ok to --build)"
+fi
+
 # Version string for the orderbook GET /api/v1/version route. The Docker build
 # context (apps/backend) has no .git, so vergen falls back to the literal
 # "VERGEN_IDEMPOTENT_OUTPUT" sentinel and it leaks out of /version. Compute the
@@ -49,6 +109,24 @@ if [[ -z "${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin
     echo "==> F7 inter-service auth token NOT set + not in Keychain — driver will run un-authenticated" >&2
     echo "    To enable: openssl rand -hex 32 | xargs -I{} security add-generic-password \\"  >&2
     echo "      -a \"\$USER\" -s ophis-inter-service-auth-token -w {} -U" >&2
+  fi
+fi
+
+# Refunder submitter PK (2026-07-22): source from Keychain like the F7 token
+# above. Without this, compose renders REFUNDER_PK='' and the ethflow refunder
+# comes up unable to sign — expired native-ETH orders then strand user funds
+# until a manual invalidateOrder (found PK-less after the 07-22 redeploy). The
+# refunder EOA is a dedicated low-value gas account; an expired order can never
+# fill, so refunding is always correct. Empty default preserves prior behavior
+# on hosts without the key. NOTE: this Keychain item's account is NOT $USER
+# (it was created under acct "ophis"), so look it up by service only.
+if [[ -z "${OPHIS_REFUNDER_PK:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+  if security find-generic-password -s ophis-refunder-pk -w >/dev/null 2>&1; then
+    OPHIS_REFUNDER_PK=$(security find-generic-password -s ophis-refunder-pk -w 2>/dev/null)
+    export OPHIS_REFUNDER_PK
+    echo "==> refunder PK sourced from Keychain"
+  else
+    echo "==> refunder PK NOT set + not in Keychain — ethflow refunder will not sign (expired orders won't auto-refund)" >&2
   fi
 fi
 
@@ -135,7 +213,7 @@ echo ""
 # its image gets rebuilt on every `--build` so a fresh container always
 # spawns. Listed here for completeness in case `--build` ever gets
 # stripped from the invocation.
-CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver)
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver odos-solver enso-solver lifi-solver openocean-solver dodo-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
@@ -157,7 +235,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # Trailing `|| true` removed: if a service fails to stop/start, we
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
-  DOWNSTREAM=(driver orderbook autopilot okx-solver)
+  DOWNSTREAM=(driver orderbook autopilot okx-solver odos-solver enso-solver lifi-solver openocean-solver dodo-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.

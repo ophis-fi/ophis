@@ -100,9 +100,9 @@ import requests
 
 # The chains the Intent API can return, mapped to their chain IDs (see the docs).
 CHAIN_IDS = {
-    "ethereum": 1, "optimism": 10, "bnb": 56, "gnosis": 100, "polygon": 137,
-    "base": 8453, "ink": 57073, "linea": 59144, "arbitrum": 42161,
-    "avalanche": 43114, "plasma": 9745,
+    "ethereum": 1, "optimism": 10, "unichain": 130, "bnb": 56, "gnosis": 100,
+    "polygon": 137, "base": 8453, "ink": 57073, "linea": 59144,
+    "arbitrum": 42161, "avalanche": 43114, "plasma": 9745,
 }
 
 @tool
@@ -170,7 +170,7 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the Ophis partner fee: a flat
-**0.10%** (just **0.01%** for stablecoin-to-stablecoin pairs) written into the
+**0.05%** (just **0.01%** for stablecoin-to-stablecoin pairs) written into the
 order's `appData`. Integrators earn a **rebate** on the volume they route, and
 the `lookup_tier` tool surfaces a wallet's 30-day volume tier.
 

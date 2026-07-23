@@ -1,7 +1,7 @@
 /**
  * Ophis MCP tool registration — shared between the Cloudflare Worker
  * (src/index.ts, Streamable HTTP) and the standalone stdio server
- * (src/standalone.ts, plain Node). Both register the SAME six tools against an
+ * (src/standalone.ts, plain Node). Both register the SAME 14 tools against an
  * McpServer; only the transport and how config is sourced differ.
  *
  * The server holds NO private keys and never signs. build_order returns a
@@ -17,6 +17,7 @@ import {
   buildOrder,
   submitOrder,
   lookupTier,
+  getIntegratorEarnings,
   listChains,
   extractQuoteAmounts,
   assertLimitWithinSlippage,
@@ -26,6 +27,7 @@ import {
   getTokenChart,
   expectedSurplus,
   resolveToken,
+  validateOrder,
   type Address,
 } from './ophis.js'
 
@@ -63,7 +65,7 @@ function fail(e: unknown) {
 }
 
 /**
- * Registers the six Ophis MCP tools on `server`. Behaviour-identical to the
+ * Registers the 14 Ophis MCP tools on `server`. Behaviour-identical to the
  * original OphisMCP.init(); the only difference is config is passed in rather
  * than read from a Worker Env (so the same tools run under stdio too).
  */
@@ -134,7 +136,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
       // enforce slippage); it never moves funds. submit_order is the write path.
       annotations: { title: 'Build signable order', readOnlyHint: true, openWorldHint: true },
       description:
-        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%, default = the cap) and ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched — retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
+        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism and Unichain are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
         owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
@@ -179,7 +181,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
           .nonnegative()
           .optional()
           .describe(
-            'Max accepted slippage in bips; capped at 5000 (50%, the default bound); recorded in appData. ENFORCED: build_order fetches a live quote and rejects a limit worse than this vs the quote. Fund safety: the receiver is always pinned to the owner.',
+            'Max accepted slippage in bips; capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). Recorded in appData. ENFORCED: build_order fetches a live quote and rejects a limit worse than this vs the quote. Fund safety: the receiver is always pinned to the owner.',
           ),
         // Retired fields (#611 -> #612 -> #613): slippage was briefly bounded against
         // a CALLER-supplied reference, which is fakeable on a no-auth tool. It is now
@@ -232,6 +234,10 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             // Per-call code wins; otherwise the server's configured default
             // (so an operator can attribute all orders to their own code).
             referrerCode: a.referrerCode ?? config?.defaultReferrerCode,
+            // Server-set order-source tag (metadata.ophisSource.app) so the
+            // funnel can attribute settled volume to the MCP surface. Not a
+            // caller-controlled field: every order this tool builds is 'mcp'.
+            source: 'mcp',
           },
           Math.floor(Date.now() / 1000),
         )
@@ -381,11 +387,34 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
   )
 
   server.registerTool(
+    'get_integrator_earnings',
+    {
+      annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
+      description:
+        "Look up what an integrator's own-fee routing earned, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
+      inputSchema: {
+        appCode: z
+          .string()
+          .min(3)
+          .max(64)
+          .describe('Your integrator appCode / referral code (3-64 chars of [a-z0-9_-]).'),
+      },
+    },
+    async ({ appCode }) => {
+      try {
+        return ok(await getIntegratorEarnings(appCode))
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
     'list_chains',
     {
       annotations: { title: 'List Ophis chains', readOnlyHint: true, openWorldHint: false },
       description:
-        "List Ophis chains, split into `tradeable` (orderbook host is live — only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, e.g. MegaETH/HyperEVM — these throw). Each tradeable chain includes its orderbook host and GPv2Settlement contract (Optimism/MegaETH/HyperEVM are non-canonical) and partner-fee config. No input.",
+        "List Ophis chains, split into `tradeable` (orderbook host is live, only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, so these throw). Each tradeable chain includes its orderbook host and GPv2Settlement contract (Optimism and Unichain are non-canonical) and partner-fee config. No input.",
       inputSchema: {},
     },
     async () => {
@@ -427,7 +456,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get cross-chain balances', readOnlyHint: true, openWorldHint: true },
       description:
-        "Read a wallet's native and (optionally) ERC-20 balances across multiple chains at once. Pass `tokensByChain` (chainId -> token addresses) to include token balances; omit `chainIds` to scan every chain with a public RPC (max 12). Per-chain RPC failures are returned inline so one dead endpoint does not sink the result. Read-only; holds no keys.",
+        "Read a wallet's native and (optionally) ERC-20 balances across multiple chains at once. Pass `tokensByChain` (chainId -> token addresses) to include token balances; omit `chainIds` to scan every chain with a public RPC (max 12 chains, and at most 100 token reads total across all chains). Per-chain RPC failures are returned inline so one dead endpoint does not sink the result. Read-only; holds no keys.",
       inputSchema: {
         owner: z.string().describe('Wallet address to read (0x...).'),
         chainIds: z
@@ -543,6 +572,63 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     async (a) => {
       try {
         return ok(await resolveToken({ chainId: a.chainId, symbol: a.symbol }))
+      } catch (e) {
+        return fail(e)
+      }
+    },
+  )
+
+  server.registerTool(
+    'validate_order',
+    {
+      annotations: { title: 'Validate order preflight', readOnlyHint: true, openWorldHint: false },
+      description:
+        "Offline preflight for an order you built OUTSIDE build_order (no network call, no keys). Catches the documented silent-failure modes before you sign or submit: wrong appCode (settles but earns zero rebate), wrong orderbook host (api.cow.fi silently bypasses the Ophis stack on Ophis-operated chains), wrong EIP-712 domain (signing against CoW's canonical settlement on an Ophis-operated chain yields a domain the deployed contract rejects), appData hash mismatch (order.appData must equal keccak256 of the exact fullAppData string), an unpinned receiver (proceeds leaving the owner), an expired or non-zero-fee order, and malformed partnerFee entries. Pass whatever you have (chainId is required; owner, order, fullAppData, signingDomain, orderbookUrl are all optional and each is checked if present). Returns { valid, errors, warnings, expected } where `expected` echoes the correct per-chain orderbook host, settlement, EIP-712 domain, appCode, and partnerFee. Prefer build_order to construct orders; use this to verify externally-built ones.",
+      inputSchema: {
+        chainId: z.number().int().describe('EVM chain id the order is for (use list_chains `tradeable`).'),
+        owner: z.string().optional().describe('The signing account address; enables the receiver drain-guard check.'),
+        order: z
+          .object({
+            receiver: z.string().optional(),
+            appData: z.string().optional().describe('The signed bytes32 appData hash.'),
+            validTo: z.number().int().optional(),
+            sellAmount: z.string().optional(),
+            buyAmount: z.string().optional(),
+            sellToken: z.string().optional(),
+            buyToken: z.string().optional(),
+            feeAmount: z.string().optional(),
+            kind: z.string().optional(),
+          })
+          .optional()
+          .describe('The (partial) order about to be signed.'),
+        fullAppData: z.string().optional().describe('The exact appData JSON string that will be submitted with the order.'),
+        signingDomain: z
+          .object({
+            name: z.string().optional(),
+            version: z.string().optional(),
+            chainId: z.number().int().optional(),
+            verifyingContract: z.string().optional(),
+          })
+          .optional()
+          .describe('The EIP-712 domain the order will be signed against.'),
+        orderbookUrl: z.string().optional().describe('The orderbook base URL the order will be submitted to.'),
+      },
+    },
+    async (a) => {
+      try {
+        return ok(
+          validateOrder(
+            {
+              chainId: a.chainId,
+              owner: a.owner as Address | undefined,
+              order: a.order,
+              fullAppData: a.fullAppData,
+              signingDomain: a.signingDomain,
+              orderbookUrl: a.orderbookUrl,
+            },
+            Math.floor(Date.now() / 1000),
+          ),
+        )
       } catch (e) {
         return fail(e)
       }

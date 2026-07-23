@@ -1,15 +1,35 @@
 name: Security
 
-# Runs on every PR targeting main / docs/* / feat/* branches plus on
-# workflow_dispatch for ad-hoc runs.
+# Runs on every PR targeting main / docs/* / feat/* branches, on
+# workflow_dispatch for ad-hoc runs, and weekly on a Monday cron.
 #
-# Three jobs run in parallel:
-#   - slither             — Solidity static analysis (Trail of Bits)
-#   - pnpm-audit          — root-workspace JS/TS dep advisories
-#   - pnpm-audit-frontend — apps/frontend (separate workspace) dep advisories
-#   - cargo-audit         — Rust dep advisories
+# WHY the cron: new RUSTSEC/GHSA advisories are published against deps that
+# are already on main. Between PRs (or on a quiet week) a fresh HIGH/CRITICAL
+# went unnoticed until the next PR happened to open (the class behind the
+# repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
-# Each job blocks merge if it regresses against the 2026-05-13 audit baseline.
+# WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, contracts-osv-audit) plus the
+# secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
+# tier / erpc / policy-pack) and Slither depend only on repo contents a PR
+# already exercised, so they are skipped on schedule via
+# `if: github.event_name != 'schedule'` to avoid noise on main.
+#
+# Jobs:
+#   - slither             Solidity static analysis (Trail of Bits)
+#   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree, osv-scanner)
+#   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories (osv-scanner)
+#   - pnpm-audit-docs     apps/docs-ophis (separate workspace) dep advisories (osv-scanner)
+#   - contracts-osv-audit legacy contracts deploy/test toolchain advisories (osv-scanner)
+#   - cargo-audit         Rust dep advisories
+#   - cargo-deny          Rust supply-chain (advisories + sources)
+#   - gitleaks            raw EVM-private-key secret scan
+#
+# The JS/TS + contracts advisory jobs use osv-scanner (reads pnpm-lock.yaml /
+# yarn.lock directly against the OSV/GitHub advisory DB) after npm retired its
+# legacy audit endpoint (HTTP 410) which broke `pnpm audit` / `yarn audit`. The
+# two pnpm jobs block on new HIGH/CRITICAL advisories; contracts blocks on
+# regressions above a documented baseline. Shared gate: scripts/osv-gate.py.
 
 on:
   pull_request:
@@ -18,6 +38,10 @@ on:
       - 'docs/**'
       - 'feat/**'
   workflow_dispatch:
+  schedule:
+    # Weekly Monday 05:00 UTC (codeql.yml runs at 04:00). Scheduled runs
+    # execute on main, where a failing advisory job alerts but blocks nothing.
+    - cron: '0 5 * * 1'
 
 # Default to read-only — fork PRs do not need write access. Audit
 # finding 2026-05-09 (matches ci.yml).
@@ -28,6 +52,9 @@ jobs:
   partner-fee-invariant:
     name: Partner-fee cross-workspace invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: depends only on repo contents a PR already
+    # exercised, so skip it on the weekly cron (advisory jobs only there).
+    if: github.event_name != 'schedule'
     # Phase 2.3 (2026-05-20). The Ophis partner-fee recipient is declared
     # as OPHIS_PARTNER_FEE_RECIPIENT in 3 source-of-truth files in
     # DIFFERENT pnpm workspaces (no shared-import option). PR #120 fixed
@@ -42,6 +69,8 @@ jobs:
   floor-invariant:
     name: OP partner-fee floor cross-workspace invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # 2026-06-18. The OP backend floors the CIP-75 Volume partner fee per token
     # pair (app_data.rs partner_fee_floor_bps): 10 bps default, 1 bp for
     # same-chain stable pairs (OPTIMISM_STABLECOINS) or boosted pairs
@@ -62,6 +91,8 @@ jobs:
   tier-invariant:
     name: Tier table cross-workspace invariant
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # 2026-05-21 follow-up to the rebate-indexer audit; extended 2026-06-09 to
     # the frontend mirror. TIERS + POOL_SPLIT_BPS are mirrored across THREE files:
     # apps/rebate-indexer/src/tiers.ts (drives the batcher's actual WETH
@@ -76,9 +107,21 @@ jobs:
       - name: Check tiers.ts mirror across rebate-indexer + packages/sdk + cowswap-frontend
         run: ./scripts/check-tier-invariant.sh
 
+
+  infra-compose-security:
+    name: Infra compose security invariants
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check auth parity and pinned RPC proxy image requirements
+        run: ./scripts/check-infra-compose-security.py
+
   erpc-id-collisions:
     name: eRPC upstream-ID cross-stack collision lint
     runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
     # Phase 2.6 (2026-05-20). Catches the cross-stack ID-naming
     # collision class. eRPC exports per-upstream Prometheus metrics
     # labeled by `id:`. If two stacks share an upstream id, the same
@@ -89,9 +132,37 @@ jobs:
       - name: Assert each chain's eRPC upstream IDs are suffixed and unique
         run: ./scripts/check-erpc-id-collisions.sh
 
+  policy-pack-address-invariant:
+    name: Agent-wallet policy-pack address invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-07-04. The Turnkey/Privy agent-wallet policy packs in
+    # examples/agent-wallet-policy-packs/ pin an agent key to the Ophis
+    # settlement + vault-relayer contracts per chain. Those addresses live in a
+    # hand-maintained table (addresses.json) that MUST stay byte-identical to
+    # OPHIS_SETTLEMENT_ADDRESSES / OPHIS_VAULT_RELAYER_ADDRESSES in
+    # packages/sdk/src/domain.ts. If a chain is added or an address rotated in
+    # the SDK but not the pack, a pack would authorize the wrong contract. This
+    # pure-Node check (no deps) is the hard gate; it also asserts the paused /
+    # testnet chains stay OUT of the packs and that the literals are present in
+    # the docs + README collateral.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+      - name: Diff policy-pack addresses against @ophis/sdk domain map
+        run: node scripts/check-policy-pack-addresses.mjs
+
   slither:
     name: Slither (Solidity)
     runs-on: ubuntu-latest
+    # Skip on the weekly cron: Slither's findings only change when the
+    # (vendored, frozen) contracts change, which a PR already exercises, so
+    # it is not a time-sensitive advisory job. Only cargo-audit, cargo-deny,
+    # pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, and gitleaks run on schedule.
+    if: github.event_name != 'schedule'
     # Runs Trail of Bits' eth-security-toolbox container (digest-pinned
     # for reproducibility). The container ships slither 0.11.4, foundry,
     # and solc-select with 0.7.6 pre-installed. Earlier pip-only setups
@@ -185,145 +256,131 @@ jobs:
           path: /tmp/slither-out/
           retention-days: 30
 
-  pnpm-audit:
-    name: pnpm audit (JS/TS deps)
+
+  contracts-osv-audit:
+    name: contracts audit (osv-scanner, regression baseline)
     runs-on: ubuntu-latest
+    # contracts/ is a legacy deployment/test toolchain carrying a large known
+    # advisory baseline, so this job gates on REGRESSIONS above that baseline
+    # (audit/contracts-osv-baseline.json), NOT on absolute HIGH/CRITICAL like the
+    # pnpm workspace jobs. osv-scanner reads contracts/yarn.lock directly,
+    # replacing `yarn audit` after npm retired the legacy audit endpoint
+    # (HTTP 410). Unlike the pnpm workspace, contracts is NOT frozen-installed by
+    # any other CI job, so we keep a `yarn install --frozen-lockfile` drift gate
+    # here: without it a PR could add a vulnerable dep to contracts/package.json
+    # without updating yarn.lock and be audited against the stale lockfile.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: |
-            pnpm-lock.yaml
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Run pnpm audit --prod
+          cache: yarn
+          cache-dependency-path: contracts/yarn.lock
+      - name: Assert contracts package.json and yarn.lock are in sync
+        # Drift gate only: --frozen-lockfile fails if package.json needs lockfile
+        # changes, guaranteeing osv scans a lockfile consistent with the manifest.
+        # --ignore-scripts blocks install hooks. The install does NOT feed the
+        # scan (osv reads yarn.lock directly below).
+        working-directory: contracts
+        run: yarn install --frozen-lockfile --ignore-scripts
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan contracts/yarn.lock and gate on regressions
         run: |
-          # --prod skips devDeps; we care about runtime CVEs.
-          # `|| true` because pnpm audit exits non-zero on ANY advisory.
-          pnpm audit --prod --json > /tmp/pnpm-audit.json || true
-          cat /tmp/pnpm-audit.json
+          test -s contracts/yarn.lock || { echo "lockfile contracts/yarn.lock missing or empty -- failing closed"; exit 1; }
+          rc=0
+          osv-scanner --lockfile contracts/yarn.lock --format json \
+            --output-file /tmp/osv-contracts.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          python3 scripts/osv-gate.py /tmp/osv-contracts.json --mode baseline \
+            --osv-rc "$rc" --baseline audit/contracts-osv-baseline.json
 
-      - name: Block on HIGH or CRITICAL advisories
+  pnpm-audit:
+    name: pnpm audit (JS/TS deps)
+    runs-on: ubuntu-latest
+    # Audits the FULL root workspace tree (dev + prod). The root devDependencies
+    # build and test the npm-PUBLISHED packages (@ophis/sdk, @ophis/agent-swap,
+    # @ophis/plugin-goat, @ophis/agentkit-ophis, @ophis/plugin-elizaos,
+    # @ophis/widget-react) and are therefore a supply-chain surface (audit 2026-06
+    # P2). osv-scanner reads pnpm-lock.yaml directly (whole resolved tree, no
+    # install, no npm audit endpoint), replacing `pnpm audit` after npm retired the
+    # legacy audit endpoint (HTTP 410). Documented non-reachable advisories with no
+    # fix are ignored below; keep that list TIGHT.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan root workspace and block on HIGH/CRITICAL
         run: |
-          python3 - <<'PYEOF'
-          import json, sys
-          with open('/tmp/pnpm-audit.json') as f:
-              d = json.load(f)
-          advisories = d.get('advisories', {})
-          blocking = []
-          for k, adv in advisories.items():
-              sev = adv.get('severity', '')
-              if sev in ('high', 'critical'):
-                  blocking.append(f"{adv.get('module_name','?')} (sev={sev}, advisory={k}): {adv.get('title','?')}")
-          if blocking:
-              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories")
-              for b in blocking:
-                  print(f"  - {b}")
-              sys.exit(1)
-          print(f"OK -- {len(advisories)} total advisories, none HIGH/CRITICAL")
-          PYEOF
+          test -s pnpm-lock.yaml || { echo "lockfile pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
+          rc=0
+          osv-scanner --lockfile pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-root.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          # IGNORE bigint-buffer GHSA-3gc7-fjrx-p6mg (HIGH): reaches the tree ONLY
+          # via @coinbase/agentkit (a devDep satisfying agentkit-ophis's peer dep)
+          # -> @solana/spl-token -> buffer-layout-utils. The Solana spl-token path
+          # is unreachable for Ophis, dev/test-only, not in any published tarball,
+          # and NO patched release exists. (audit 2026-07)
+          python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
+            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
     runs-on: ubuntu-latest
-    # apps/frontend is its OWN pnpm workspace (cowswap upstream ships its own
-    # package manager) with a separate lockfile, so the root pnpm-audit job above
-    # does NOT cover it — the largest, browser-facing dependency tree. This job
-    # closes that gap (audit 2026-06 P3: a `tmp` HIGH had stayed green because the
-    # frontend was never audited in CI). It audits the FULL tree incl.
-    # devDependencies (NOT --prod), since build-time deps compile the browser
-    # bundle and are a supply-chain surface (audit 2026-06 P2). Documented
-    # non-reachable advisories are ignored below; keep that list TIGHT (each entry
-    # needs a written reason).
+    # apps/frontend is its OWN pnpm workspace (cowswap upstream) with a separate
+    # lockfile, so the root job above does not cover it -- the largest,
+    # browser-facing dependency tree (audit 2026-06 P3). osv-scanner reads
+    # apps/frontend/pnpm-lock.yaml directly (full tree incl. build-time
+    # devDependencies, which compile the browser bundle and are a supply-chain
+    # surface, audit 2026-06 P2). Documented non-reachable advisories are ignored
+    # below; keep that list TIGHT.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
-        with:
-          node-version: 22
-
-      - name: Run pnpm audit (frontend workspace, incl. devDependencies)
-        working-directory: apps/frontend
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan frontend workspace and block on HIGH/CRITICAL
         run: |
-          # Audit the FULL dependency tree, NOT --prod. `--prod` scopes to
-          # dependencies + optionalDependencies only, which would SKIP exactly the
-          # class this job exists to guard: build-time devDependencies
-          # (Nx/webpack/vite/patch-package) that compile the browser bundle, and
-          # are therefore a supply-chain surface. Concretely, the `tmp` HIGH this
-          # job was added for is pulled in via the devDependency patch-package
-          # (package.json), so a --prod audit never saw it — the gate skipped the
-          # very thing it claimed to cover. (audit 2026-06 P2)
-          # pnpm audit reads apps/frontend/pnpm-lock.yaml directly (no install
-          # needed). `|| true` because it exits non-zero on ANY advisory; the
-          # python step below decides what actually blocks (HIGH/CRITICAL only).
-          pnpm audit --json > /tmp/fe-audit.json || true
-          cat /tmp/fe-audit.json
+          test -s apps/frontend/pnpm-lock.yaml || { echo "lockfile apps/frontend/pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
+          rc=0
+          osv-scanner --lockfile apps/frontend/pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-fe.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          # IGNORE ip GHSA-2p57-rm9w-gvfp (HIGH SSRF): transitive
+          # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
+          # already pinned to latest 2.0.1. (audit 2026-06)
+          python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp
 
-      - name: Block on NEW HIGH or CRITICAL advisories
+  pnpm-audit-docs:
+    name: pnpm audit (docs-ophis deps)
+    runs-on: ubuntu-latest
+    # apps/docs-ophis is its OWN pnpm workspace root (pnpm-workspace.yaml with
+    # `packages: []`), deliberately excluded from the root workspace the same way
+    # apps/frontend is -- so NEITHER the root job nor the frontend job covered it.
+    # That gap let js-yaml (GHSA-52cp-r559-cp3m), brace-expansion
+    # (GHSA-3jxr-9vmj-r5cp), shell-quote (GHSA-395f-4hp3-45gv) and uuid
+    # (GHSA-w5hq-g745-h8pq) sit open and unmonitored until 2026-07-21. This job
+    # closes the gap; it blocks on absolute HIGH/CRITICAL like the other two pnpm
+    # jobs (docs-ophis is a small, modern tree with no legacy baseline, so it
+    # does NOT need the contracts-style regression mode).
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan docs-ophis workspace and block on HIGH/CRITICAL
         run: |
-          python3 - <<'PYEOF'
-          import json, sys
-          # Documented, non-runtime-reachable advisories with no upstream fix.
-          # Keep TIGHT — every entry needs a written justification.
-          IGNORE = {
-              # `ip` SSRF (improper isPublic categorization): transitive
-              # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
-              # already pinned to latest 2.0.1. (audit 2026-06)
-              'GHSA-2p57-rm9w-gvfp',
-          }
-          def ghsa(url):
-              return (url or '').rstrip('/').split('/')[-1]
-          with open('/tmp/fe-audit.json') as f:
-              d = json.load(f)
-
-          blocking, ignored, shape = [], [], None
-          # Shape A (npm-v6 / current pnpm): advisories = { id: {severity, module_name, url, title} }
-          adv = d.get('advisories')
-          if isinstance(adv, dict):
-              shape = 'advisories'
-              for k, a in adv.items():
-                  if a.get('severity') not in ('high', 'critical'):
-                      continue
-                  g = ghsa(a.get('url')) or str(k)
-                  rec = f"{a.get('module_name','?')} (sev={a.get('severity')}, {g}): {a.get('title','?')}"
-                  (ignored if g in IGNORE else blocking).append(rec)
-          # Shape B (npm-v7): vulnerabilities = { name: {severity, via: [{url,title}|str]} }
-          vuln = d.get('vulnerabilities')
-          if isinstance(vuln, dict) and vuln:
-              shape = shape or 'vulnerabilities'
-              for name, a in vuln.items():
-                  if a.get('severity') not in ('high', 'critical'):
-                      continue
-                  gs = [ghsa(v.get('url')) for v in (a.get('via') or []) if isinstance(v, dict)]
-                  gs = [g for g in gs if g]
-                  rec = f"{name} (sev={a.get('severity')}, {','.join(gs) or '?'})"
-                  # Ignore only if EVERY contributing advisory is allow-listed.
-                  (ignored if gs and all(g in IGNORE for g in gs) else blocking).append(rec)
-
-          # Fail CLOSED: never silently pass on an unrecognized/empty audit shape.
-          meta_v = (d.get('metadata') or {}).get('vulnerabilities') or {}
-          meta_hc = (meta_v.get('high') or 0) + (meta_v.get('critical') or 0)
-          if shape is None:
-              print("ERROR: unrecognized pnpm audit JSON (no advisories/vulnerabilities) — failing closed.", file=sys.stderr)
-              sys.exit(1)
-          if meta_hc > 0 and not blocking and not ignored:
-              print(f"ERROR: metadata reports {meta_hc} high/critical but parser matched none "
-                    f"(shape='{shape}' mismatch?) — failing closed.", file=sys.stderr)
-              sys.exit(1)
-
-          for i in ignored:
-              print(f"IGNORED (documented non-reachable): {i}")
-          if blocking:
-              print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories in apps/frontend")
-              for b in blocking:
-                  print(f"  - {b}")
-              sys.exit(1)
-          print(f"OK -- shape={shape}, none blocking ({len(ignored)} ignored, metadata high/crit={meta_hc})")
-          PYEOF
+          test -s apps/docs-ophis/pnpm-lock.yaml || { echo "lockfile apps/docs-ophis/pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
+          rc=0
+          osv-scanner --lockfile apps/docs-ophis/pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-docs.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
+            --osv-rc "$rc"
 
   cargo-audit:
     name: cargo audit (Rust deps)
@@ -401,4 +458,40 @@ jobs:
         run: |
           cd apps/backend
           cargo deny check bans licenses || echo "informational: bans/licenses report above is non-gating"
+
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    # Closes the one gap GitHub's provider-pattern secret scanning does NOT
+    # cover: raw EVM private keys (0x + 64 hex), e.g. the money-moving
+    # OPHIS_DRIVER_SUBMITTER_KEY. GitHub secret scanning + push protection stay
+    # ON (they handle AWS/GitHub/npm/etc. provider patterns); this job adds only
+    # the EVM-key rule so it does not duplicate that coverage or add provider
+    # false positives. Runs on PR + schedule + dispatch (intentionally NOT gated
+    # off the cron: a weekly full-history sweep is worth having). Rules +
+    # allowlist (bytes32 / topic0 / init-code-hash noise, Anvil test keys,
+    # generated artifacts) live in .github/gitleaks.toml. Free on public repos.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          # Full history so the commits a PR introduces are scanned (and the
+          # weekly run sweeps all history), not just the tip.
+          fetch-depth: 0
+      # Use the gitleaks CLI binary directly (Apache-2.0, free), NOT
+      # gitleaks/gitleaks-action -- that action requires a paid GITLEAKS_LICENSE
+      # for ANY organization repo (public or private), which we do not buy. The
+      # CLI has no such gate. Pinned to a specific release for supply-chain
+      # integrity.
+      - name: Run gitleaks
+        env:
+          GITLEAKS_VERSION: 8.21.2
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          ./gitleaks detect \
+            --source . \
+            --config .github/gitleaks.toml \
+            --redact \
+            --no-banner \
+            --exit-code 1
 

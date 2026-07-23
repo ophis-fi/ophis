@@ -130,10 +130,19 @@ cp -r "$FUNCTIONS_SRC" "$STAGE/functions"
 #                 (useSubdomainRedirect), which client-bounces to
 #                 /docs/ and brings back the "useless URL extension"
 #                 UX. Added 2026-05-23 alongside the middleware ship.
+#   - `/static/*` — REQUIRED for the middleware's asset-fallback guard
+#                 (functions/_middleware.ts, #749): a missing hashed
+#                 bundle must 404 no-store instead of getting the SPA
+#                 HTML fallback with the one-year immutable header,
+#                 which poisons browser/Googlebot caches (the GSC
+#                 Soft-404 root cause). Without this include, deploys
+#                 staged by THIS script silently bypass the guard (the
+#                 CI deploy ships no _routes.json, so it routes
+#                 everything through Functions already).
 cat > "$STAGE/_routes.json" <<EOF
 {
   "version": 1,
-  "include": ["/", "/api/*", "/sitemap.xml", "/robots.txt"],
+  "include": ["/", "/api/*", "/sitemap.xml", "/robots.txt", "/static/*"],
   "exclude": []
 }
 EOF

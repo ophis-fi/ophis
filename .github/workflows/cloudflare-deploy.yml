@@ -8,7 +8,9 @@ on:
 
 permissions:
   contents: read
-  deployments: write
+  # deployments: write removed 2026-07 (audit): the deploy uses
+  # cloudflare/wrangler-action + `wrangler pages deploy`, neither of which
+  # touches the GitHub Deployments API, so the scope was dead weight.
   id-token: write # SLSA build provenance (#438)
   attestations: write # SLSA build provenance (#438)
 
@@ -56,6 +58,15 @@ jobs:
 
       - name: install cowswap deps
         working-directory: apps/frontend
+        # NOTE (audit, token-adjacent install): --ignore-scripts is deliberately
+        # NOT applied here. The apps/frontend build genuinely needs lifecycle
+        # scripts -- the workspace's own postinstall runs patch-package (cowswap
+        # patches) and native deps (@swc/core, esbuild) link their platform
+        # binaries. Later steps in THIS job carry CLOUDFLARE_API_TOKEN /
+        # FORMSPREE_DEPLOY_KEY / BUNGEE_API. The proper hardening is the job
+        # split (secret-free build job -> artifact -> deploy job with tokens);
+        # tracked as future work rather than breaking the build with
+        # --ignore-scripts. Exposure is bounded by --frozen-lockfile.
         run: pnpm install --frozen-lockfile
 
       # Deploy the Formspree form config (formspree.json at repo root) so the
@@ -89,6 +100,16 @@ jobs:
       # back to 0 and ships the LEGACY price-improvement fee while every public
       # surface says 0.10%. So assert the secret is exactly the retail rate before
       # the build, not merely "in [1,50]". (audit 2026-06-09, tightened 2026-06-19)
+      #
+      # NOTE (audit, hygiene only): REACT_APP_OPHIS_VOLUME_FEE_BPS is PUBLIC
+      # config (the documented 10 bps retail rate), not a secret. It is echoed
+      # into logs below on both pass/fail paths; GitHub auto-redacts registered
+      # secret values, so exposure is nil, but it also masks every literal "10"
+      # in run logs. It could be moved to a repo VARIABLE
+      # (vars.REACT_APP_OPHIS_VOLUME_FEE_BPS) to drop the masking. Left as a
+      # secret here deliberately: flipping to vars.* would fail this assert (and
+      # ship the legacy fee) until the repo variable is created, which is a
+      # settings change out of band from this file. Do both together.
       - name: assert flat-fee flag is set and sane
         env:
           BPS: ${{ secrets.REACT_APP_OPHIS_VOLUME_FEE_BPS }}

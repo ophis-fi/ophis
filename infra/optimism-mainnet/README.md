@@ -48,7 +48,8 @@ This stack runs the Ophis Protocol deployment on **Optimism mainnet (chain 10)**
 External dependencies:
   ├── OP_MAINNET_RPC      → optimism-rpc.publicnode.com (primary)
   ├── OKX OnchainOS API   → web3.okx.com/api/v6/dex/aggregator/
-  └── KyberSwap API       → aggregator-api.kyberswap.com/optimism/api/v1/
+  ├── KyberSwap API       → aggregator-api.kyberswap.com/optimism/api/v1/
+  └── Velora / Odos / Enso / LI.FI / OpenOcean / DODO aggregator APIs
 ```
 
 **Protocol authority**: 2-of-3 Safe (v1.4.1) at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, hardware-backed signers; threshold and the three owners verified on-chain. **Post-#442 migration (2026-06-05) the Safe no longer holds `owner()`/`manager()` of `AllowListAuthentication` directly** — `manager()` is the AllowListGuardian (`0x327F8894…6B6fC`) and the proxy `owner()` is the TimelockController (`0x8fEe4289…C373`). So `addSolver` and AllowList upgrades go through the **24h timelock** (Safe schedules → waits → executes); only `removeSolver` is instant (Safe → Guardian). A Safe batch sent directly to the AllowList now reverts. See `docs/operations/allowlist-governance-runbook.md` §3.
@@ -89,6 +90,12 @@ External dependencies:
 | 9022 | baseline solver | V2-shape AMMs (Sushi on OP) |
 | 9023 | okx solver | OKX OnchainOS aggregator |
 | 9024 | kyberswap solver | KyberSwap aggregator (after #87 lands) |
+| 9025 | velora solver | Velora (Augustus V6.2) aggregator |
+| 9026 | odos solver | Odos SOR v2 aggregator (ODOS_API_KEY) |
+| 9027 | enso solver | Enso router aggregator (ENSO_API_KEY) |
+| 9028 | lifi solver | LI.FI aggregator (keyless) |
+| 9029 | openocean solver | OpenOcean v4 aggregator (keyless) |
+| 9030 | dodo solver | DODO route aggregator (keyless) |
 
 ### Secrets — Keychain (`security find-generic-password -s <name> -a ophis -w`)
 
@@ -99,6 +106,8 @@ External dependencies:
 | `okx-secret-key` | OKX HMAC signing |
 | `okx-project-id` | OKX project identifier |
 | `okx-passphrase` | OKX additional auth factor |
+| `odos-api-key` | Odos SOR v2 auth (x-api-key header; free tier) |
+| `enso-api-key` | Enso router auth (Bearer; free, REQUIRED -- empty key restart-loops enso-solver) |
 
 ---
 

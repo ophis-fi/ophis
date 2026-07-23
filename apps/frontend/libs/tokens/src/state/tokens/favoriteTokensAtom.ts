@@ -1,7 +1,17 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 
-import { COW_TOKEN_TO_CHAIN, TokenWithLogo, USDC_GNOSIS_CHAIN, USDCe_GNOSIS_CHAIN } from '@cowprotocol/common-const'
+import {
+  COW_TOKEN_TO_CHAIN,
+  EURE_ARBITRUM_ONE,
+  EURE_BASE,
+  EURE_LINEA,
+  EURE_MAINNET,
+  EURE_POLYGON,
+  TokenWithLogo,
+  USDC_GNOSIS_CHAIN,
+  USDCe_GNOSIS_CHAIN,
+} from '@cowprotocol/common-const'
 import { getJotaiMergerStorage } from '@cowprotocol/core'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -19,8 +29,13 @@ const EMPTY_FAVORITE_TOKENS: TokenWithLogo[] = []
 // also discard every token the user added under v2. migrateFavoriteTokensAtomV2toV3
 // (below) carries the v2 selection forward MINUS the COW token, so a personalized
 // favorites list survives the upgrade instead of being reset to the defaults.
+// v4 (2026-07-09): EURe (Monerium) added as a default favorite on Mainnet,
+// Arbitrum, Base, Polygon, and Linea. The merger is SHALLOW per chain (a stored
+// chain map wins wholesale over the default one), so new defaults never reach
+// existing users without a key bump; migrateFavoriteTokensAtomV3toV4 carries the
+// v3 selection forward PLUS the new EURe entries.
 export const favoriteTokensAtom = atomWithStorage<FavoriteTokens>(
-  'favoriteTokensAtom:v3',
+  'favoriteTokensAtom:v4',
   DEFAULT_FAVORITE_TOKENS,
   getJotaiMergerStorage(),
 )
@@ -134,6 +149,40 @@ export function migrateFavoriteTokensAtomV2toV3(oldStorageKey: string, newStorag
   }
 }
 
+// One-time v3 -> v4 migration: carry the user's v3 favorites forward and ADD the
+// new EURe defaults to the chains they exist on. Only chains the user already
+// has a stored map for need the injection — an absent chain key falls through to
+// the (already EURe-bearing) defaults via the top-level merge. Idempotent: skips
+// if v4 already exists.
+export function migrateFavoriteTokensAtomV3toV4(oldStorageKey: string, newStorageKey: string): void {
+  try {
+    if (localStorage.getItem(newStorageKey) !== null) {
+      return
+    }
+
+    const v3Raw = localStorage.getItem(oldStorageKey)
+    if (!v3Raw) {
+      return
+    }
+
+    const migrated = JSON.parse(v3Raw) as FavoriteTokens
+    const newDefaults = [EURE_MAINNET, EURE_ARBITRUM_ONE, EURE_BASE, EURE_POLYGON, EURE_LINEA]
+
+    for (const token of newDefaults) {
+      const chainMap = migrated[token.chainId as SupportedChainId]
+      if (!chainMap) continue
+      const key = token.address.toLowerCase()
+      if (!chainMap[key]) {
+        chainMap[key] = { ...token, symbol: token.symbol || '', name: token.name || '' }
+      }
+    }
+
+    localStorage.setItem(newStorageKey, JSON.stringify(migrated))
+  } catch (e) {
+    console.error(`Failed to migrate favorite tokens from '${oldStorageKey}' to '${newStorageKey}'`, e)
+  }
+}
+
 // TODO: Remove after 2024-09-15
 // Migrate to the new USDC.e on gnosis chain AND update the localStorage key to the US spelling
 migrateFavoriteTokensAtom('favouriteTokensAtom:v1', 'favoriteTokensAtom:v2')
@@ -141,3 +190,7 @@ migrateFavoriteTokensAtom('favouriteTokensAtom:v1', 'favoriteTokensAtom:v2')
 // 2026-06-03: carry v2 favorites to v3 minus the CoW governance token. Runs after
 // the v1 -> v2 migration so a user still on v1 is upgraded v1 -> v2 -> v3 in order.
 migrateFavoriteTokensAtomV2toV3('favoriteTokensAtom:v2', 'favoriteTokensAtom:v3')
+
+// 2026-07-09: carry v3 favorites to v4 plus the new EURe defaults. Chain order:
+// v1 -> v2 -> v3 -> v4, each step idempotent.
+migrateFavoriteTokensAtomV3toV4('favoriteTokensAtom:v3', 'favoriteTokensAtom:v4')

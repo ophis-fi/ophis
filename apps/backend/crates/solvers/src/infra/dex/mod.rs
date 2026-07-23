@@ -40,12 +40,18 @@ impl Dex {
         order: &dex::Order,
         slippage: &dex::Slippage,
         tokens: &auction::Tokens,
+        // Quote path: kyberswap/velora report the optimistic output (and, on the
+        // solve path, bound the router minReturn by the order's buy limit so a
+        // tight order still settles). The other lanes report their guaranteed
+        // floor on both paths (self-consistent, so an order quoted at their
+        // floor always settles); they don't need this flag.
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         let swap = match self {
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
-            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage).await?,
-            Dex::Velora(velora) => velora.swap(order, slippage).await?,
+            Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage, is_quote).await?,
+            Dex::Velora(velora) => velora.swap(order, slippage, tokens, is_quote).await?,
             Dex::Odos(odos) => odos.swap(order, slippage).await?,
             Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
             Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,

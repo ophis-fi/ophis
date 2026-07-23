@@ -6,7 +6,9 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, PRODUCTION_CHAIN_IDS, type PublicStats } from './stats-page.js';
+import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { computePublicStats } from './stats.js';
+import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import {
@@ -66,6 +68,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
           -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
           AND t.volume_fee_bps IS DISTINCT FROM 0
+          -- Production chains only: mirror of accrual's Sepolia exclusion.
+          AND t.chain_id <> 11155111
           -- appData-wins (mirror of accrual): exclude trades attributed via an
           -- ACTIVE code owned by someone other than the trader, so bind volume
           -- here + appData volume below are disjoint (no double-count). The
@@ -88,6 +92,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
           AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
+          AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
           -- appData-wins (mirror of accrual): see the partner branch above.
           AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
             SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
@@ -122,6 +127,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
       -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
       -- since NULL is excluded.)
       AND t.volume_fee_bps > 0
+      AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
   `;
 
   const bindCycle = agg && agg.cycle_volume_usd ? parseFloat(agg.cycle_volume_usd) : 0;
@@ -209,6 +215,43 @@ function assertAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
 //
 // The 172.16.0.0/12 range is RFC 1918 private; in a non-Docker deploy it
 // is inert because no public peer will originate from that range.
+
+function enrollmentQueueMax(): number {
+  const raw = process.env.REBATE_ENROLLMENT_QUEUE_MAX?.trim();
+  if (!raw) return 5_000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`REBATE_ENROLLMENT_QUEUE_MAX must be a non-negative integer; got "${raw}"`);
+  }
+  return parsed;
+}
+
+async function admitTrackedWallet(rawWallet: `0x${string}`): Promise<boolean> {
+  const maxQueued = enrollmentQueueMax();
+  const rows = await sql<{ accepted: boolean }[]>`
+    WITH candidate AS (
+      SELECT decode(${rawWallet.slice(2)}, 'hex') AS wallet
+    ), existing AS (
+      SELECT 1 FROM tracked_wallets tw WHERE tw.wallet = (SELECT wallet FROM candidate)
+    ), queue AS (
+      SELECT COUNT(*)::int AS queued
+      FROM tracked_wallets tw
+      WHERE tw.last_fetched IS NULL
+        AND tw.last_attempt_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM trades t WHERE t.wallet = tw.wallet)
+    ), inserted AS (
+      INSERT INTO tracked_wallets (wallet)
+      SELECT wallet FROM candidate
+      WHERE EXISTS (SELECT 1 FROM existing)
+         OR (SELECT queued FROM queue) < ${maxQueued}
+      ON CONFLICT (wallet) DO NOTHING
+      RETURNING 1
+    )
+    SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted
+  `;
+  return rows[0]?.accepted !== false;
+}
+
 function isTrustedProxyPeer(addr: string): boolean {
   if (!addr) return false;
   // Loopback IPv4 + IPv6
@@ -278,7 +321,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // also start with /ref/), so those keep falling through to the strict
     // allow-list branch and still receive POST in Access-Control-Allow-Methods.
     const isPublicRead =
-      req.method === 'GET' && (req.url.startsWith('/tier/') || req.url.startsWith('/ref/'));
+      req.method === 'GET' &&
+      (req.url.startsWith('/tier/') || req.url.startsWith('/ref/') || req.url.startsWith('/xp/'));
     if (isPublicRead) {
       reply.header('access-control-allow-origin', '*');
       reply.header('vary', 'Origin');
@@ -419,13 +463,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const raw = req.params.wallet.toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
     // Register the wallet so the fetcher backfills its Ophis trades on the next
-    // run. Cheap idempotent upsert, no outbound calls — the heavy CoW fetching
-    // happens in runFetcher, not on this request path (keeps /tier fast + no
-    // amplification DoS surface).
-    await sql`
-      INSERT INTO tracked_wallets (wallet) VALUES (decode(${raw.slice(2)}, 'hex'))
-      ON CONFLICT (wallet) DO NOTHING
-    `;
+    // run. Admission is globally bounded so unauthenticated public reads cannot
+    // fill an unbounded never-fetched backlog ahead of later legitimate users.
+    if (!(await admitTrackedWallet(raw as `0x${string}`))) {
+      return reply.code(429).send({ error: 'rebate enrollment queue is full; place an Ophis order or retry later' });
+    }
     const status = await getWalletStatus(raw as `0x${string}`);
 
     // Content negotiation (review item #17): a BROWSER navigating here (e.g.
@@ -466,10 +508,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
 
   // PUBLIC cumulative stats: lifetime settled volume, trades, traders, and a
-  // per-chain breakdown, from the indexed `trades` table. Deliberately
-  // cumulative/lagging ONLY: it never exposes current-cycle 30d volume or the
-  // next-payout timing (those stay on the admin-only /status, where they are a
-  // front-runner timing signal). Cumulative lifetime totals are not gameable, so
+  // per-chain breakdown, from the indexed `trades` table, plus static
+  // execution-model facts (EXECUTION_FACTS) and the derived lifetime average
+  // trade size. Deliberately cumulative/lagging ONLY: it never exposes
+  // current-cycle 30d volume or the next-payout timing (those stay on the
+  // admin-only /status, where they are a front-runner timing signal).
+  // Cumulative lifetime totals and configuration facts are not gameable, so
   // this is a safe public credibility/proof surface. JSON for API clients;
   // a styled page for a browser (same content-negotiation as /tier).
   app.get('/stats', {
@@ -481,33 +525,15 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
     const chainIds = [...PRODUCTION_CHAIN_IDS];
-    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string }[]>`
-      SELECT
-        COALESCE(SUM(value_usd), 0)::text AS vol,
-        COUNT(*)::text                    AS trades,
-        COUNT(DISTINCT wallet)::text      AS traders,
-        COUNT(DISTINCT chain_id)::text    AS chains
-      FROM trades
-      WHERE chain_id = ANY(${chainIds})
-    `;
-    const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
-      SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n
-      FROM trades
-      WHERE chain_id = ANY(${chainIds})
-      GROUP BY chain_id
-      ORDER BY SUM(value_usd) DESC NULLS LAST, COUNT(*) DESC
-    `;
-    const t = totalsRows[0];
+    // Aggregation (with the eth-flow-router exclusion on the distinct-trader count)
+    // lives in computePublicStats so it is unit-testable against a real DB.
+    const data = await computePublicStats(sql, chainIds);
     const stats: PublicStats = {
-      totalVolumeUsd: Number(t?.vol ?? '0'),
-      totalTrades: Number(t?.trades ?? '0'),
-      distinctTraders: Number(t?.traders ?? '0'),
-      chainsActive: Number(t?.chains ?? '0'),
-      byChain: byChainRows.map((r) => ({
-        chainId: r.chain_id,
-        volumeUsd: Number(r.vol ?? '0'),
-        trades: Number(r.n),
-      })),
+      totalVolumeUsd: data.totalVolumeUsd,
+      totalTrades: data.totalTrades,
+      distinctTraders: data.distinctTraders,
+      chainsActive: data.chainsActive,
+      byChain: data.byChain,
       generatedAt: new Date().toISOString(),
     };
 
@@ -523,7 +549,34 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         )
         .send(renderStatsPage(stats));
     }
-    return { ok: true, ...stats };
+    // Lifetime average trade size over PRICED trades only (computed in
+    // computePublicStats via SQL AVG, which ignores NULLs), so it is not skewed low
+    // by trades still awaiting a price. Null until the first priced trade.
+    const avgTradeUsd = data.avgTradeUsd;
+    return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
+  });
+
+  // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an
+  // integrator verify what their own-fee routing earned and where it paid out. Same
+  // keyless posture as /tier and /stats. Reports CUMULATIVE (lifetime) routed volume +
+  // fee accrual + EXACT paid-to-date referral share; the "guaranteed/paid" figures are
+  // scoped to the Ophis-operated chains (OP + Unichain), and CoW-hosted figures are
+  // labeled accrued-and-CoW-disbursed via the disclaimer (see src/earnings.ts).
+  //
+  // Deliberately mirrors the /stats security invariant: it NEVER exposes current-cycle
+  // 30d volume, an estimated current-cycle earning, or next-payout timing (front-runner
+  // signals kept on the admin-only /status and the sig-gated /partner).
+  app.get<{ Params: { appCode: string } }>('/earnings/:appCode', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public - matches /stats
+    },
+  }, async (req, reply) => {
+    const code = req.params.appCode.toLowerCase();
+    // Same grammar as a referral code (appdata_ref_code is the key): 3-64 [a-z0-9_-].
+    if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid appCode' });
+    reply.header('vary', 'Origin');
+    const earnings = await getIntegratorEarnings(code, new Date());
+    return { ok: true, ...earnings };
   });
 
   app.get('/batches', {
@@ -770,6 +823,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
           SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
         ))
+        --   (3) production chains only, mirroring the headline stats + accrual, so
+        --       per-referee rows reconcile with the totals (Codex post-merge review).
+        AND t.chain_id <> 11155111
       WHERE r.referrer_wallet = ${buf}
       GROUP BY r.referred_wallet, r.bound_at
       ORDER BY r.bound_at DESC
@@ -888,6 +944,47 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const rankInfo = await getRankInfo(raw as `0x${string}`);
     if (!rankInfo) return reply.code(404).send({ error: 'wallet not found' });
     return rankInfo;
+  });
+
+  // PUBLIC per-wallet XP for the Cash Prize page: 1 XP per $1 of the wallet's
+  // own lifetime fee-bearing volume. Lifetime/cumulative only, so it sits in
+  // the same lagging, non-gameable category as /stats (per-wallet 30d volume
+  // is already public on /tier and /rank). Fee-gated exactly like the
+  // `wallets` matview (volume_fee_bps = 0 means examined-and-fee-free, which
+  // must not mint XP) and restricted to production chains so testnet dust
+  // never unlocks a perk. Unknown wallets get 200 with xp 0, not 404: the
+  // page treats "never traded" as zero progress, not an error.
+  app.get<{ Params: { wallet: string } }>('/xp/:wallet', {
+    config: {
+      rateLimit: { max: 100, timeWindow: '1 minute' }, // public endpoint
+    },
+  }, async (req, reply) => {
+    const raw = req.params.wallet.toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(raw)) return reply.code(400).send({ error: 'invalid wallet address' });
+    // Enroll like /tier, but behind the same global admission cap so Rewards
+    // page traffic cannot create an unbounded never-fetched backlog.
+    if (!(await admitTrackedWallet(raw as `0x${string}`))) {
+      return reply.code(429).send({ error: 'rebate enrollment queue is full; place an Ophis order or retry later' });
+    }
+    const walletBuf = Buffer.from(raw.slice(2), 'hex');
+    const chainIds = [...PRODUCTION_CHAIN_IDS];
+    const rows = await sql<{ vol: string }[]>`
+      SELECT COALESCE(SUM(value_usd), 0)::text AS vol
+      FROM trades
+      WHERE wallet = ${walletBuf}
+        AND chain_id = ANY(${chainIds})
+        AND value_usd IS NOT NULL
+        AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
+    `;
+    const lifetimeVolumeUsd = Number(rows[0]?.vol ?? '0');
+    reply.header('vary', 'Origin');
+    reply.header('cache-control', 'public, max-age=60');
+    return {
+      wallet: raw,
+      xp: Math.floor(lifetimeVolumeUsd),
+      lifetimeVolumeUsd,
+      generatedAt: new Date().toISOString(),
+    };
   });
 
   // Rate-limit 404s too — otherwise an attacker hitting random paths

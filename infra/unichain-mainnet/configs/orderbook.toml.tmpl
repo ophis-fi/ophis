@@ -11,8 +11,12 @@ bind-address = "0.0.0.0:80"
 # ("relative URL without a base"). Point at the eRPC 2-of-3 proxy, same as the
 # OP stack's canonical orderbook.toml. The single-provider bypass
 # (UNICHAIN_RPC_INTERNAL) still applies to the driver via its ETHRPC env.
-node-url = "http://rpc-proxy:4000/main/evm/130"
-simulation-node-url = "http://rpc-proxy:4000/main/evm/130"
+# Anchored to the SELF node (host-gateway alias, same route as erpc.yaml's
+# debug leg): auctions must be cut at a head every sim participant can serve.
+# Cutting at the eRPC max-head (fastest public upstream) starved all solves
+# whenever the self node trailed the leader (2026-07-18 incident).
+node-url = "http://ophis-uni-node:8545"
+simulation-node-url = "http://ophis-uni-node:8545"
 
 # Override every contract address — Unichain mainnet (chain 130) needs explicit
 # Ophis-deployed addresses since upstream's contracts registry doesn't include
@@ -31,12 +35,14 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
-# Primary: on-chain Uniswap V3 TWAP (factory + init-code-hash are canonical
-# constants, same on Ethereum / Optimism / Unichain — see Uniswap V3 deployments
-# reference). Fallback: CoinGecko (Unichain is supported on CoinGecko).
+# Primary: on-chain Uniswap V3 TWAP. The init-code-hash is a canonical
+# cross-chain constant, but the factory is NOT: Unichain uses its own
+# v3CoreFactory (0x1F98400000000000000000000000000000000003), distinct from the
+# 0x1F98431c... factory on Ethereum / Optimism (verified live on-chain).
+# Fallback: CoinGecko (Unichain is supported on CoinGecko).
 estimators = [
   [
-    { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "UniswapV3", factory = "0x1F98400000000000000000000000000000000003", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
     { type = "CoinGecko" },
   ],
 ]

@@ -3,7 +3,8 @@
 weth = "0x4200000000000000000000000000000000000006"
 base-tokens = [
   "0x4200000000000000000000000000000000000006",  # WETH (OP Stack predeploy)
-  "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",  # USDC (canonical, Circle-issued)
+  # USDC removed: 0x0b2C639c... is Optimism's USDC (no contract on MegaETH chain
+  # 4326). Re-verify the real USDC address on-chain before re-adding at revival.
 ]
 max-hops = 2
 max-partial-attempts = 5

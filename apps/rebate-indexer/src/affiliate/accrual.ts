@@ -77,6 +77,9 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.block_timestamp >= r.bound_at
       AND t.value_usd IS NOT NULL
+      -- Production chains only: Sepolia is indexed for dev visibility but must
+      -- never accrue a real WETH payout (audit 2026-07-09).
+      AND t.chain_id <> 11155111
       -- appData-wins: exclude from the bind path the trades the appData query below
       -- can CLAIM — those carrying an ACTIVE code owned by someone OTHER than the
       -- trader. A NULL/stale/inactive code OR a self-owned code is NOT excluded here
@@ -132,6 +135,8 @@ export async function buildAffiliateReferrers(
       AND t.value_usd IS NOT NULL
       AND rc.referrer_wallet <> t.wallet
       AND t.volume_fee_bps > 0
+      -- Production chains only: mirror the bind arm (Sepolia never pays out).
+      AND t.chain_id <> 11155111
     GROUP BY rc.referrer_wallet, t.chain_id, gross_bps
   `;
 

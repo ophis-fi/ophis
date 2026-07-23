@@ -2,22 +2,29 @@ import type { z } from 'zod';
 import { ActionProvider, CreateAction, EvmWalletProvider, type Network } from '@coinbase/agentkit';
 import { executeOphisSwap } from '@ophis/agent-swap';
 import { OphisSwapSchema } from './schemas.js';
+import { isOphisStablePair } from './stablecoins.js';
 import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisActionProviderConfig {
-  /** The integrator referral code that earns the 8-12% rebate. Falls back to OPHIS_REFERRAL_CODE. */
+  /**
+   * OPTIONAL integrator referral code that earns the 8-12% rebate. Falls back to
+   * OPHIS_REFERRAL_CODE. Omit it and swaps still work (you just forgo the
+   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   */
   referralCode?: string;
 }
 
 export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
-  readonly #referralCode: string;
+  readonly #referralCode: string | undefined;
 
   constructor(config: OphisActionProviderConfig = {}) {
     super('ophis', []);
     const code = config.referralCode ?? process.env.OPHIS_REFERRAL_CODE;
     if (!code) {
-      throw new Error(
-        '@ophis/agentkit-ophis: referral code required (pass config.referralCode or set OPHIS_REFERRAL_CODE) — it carries the rebate.',
+      // Do not block construction on a missing code (that was the top adoption
+      // killer): warn once, keep working, let the builder add a code to earn.
+      console.warn(
+        '[@ophis/agentkit-ophis] No referral code set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass config.referralCode or set OPHIS_REFERRAL_CODE.',
       );
     }
     this.#referralCode = code;
@@ -34,15 +41,22 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
   })
   async swap(walletProvider: EvmWalletProvider, args: z.infer<typeof OphisSwapSchema>): Promise<string> {
     try {
+      const wallet = toOphisWallet(walletProvider);
+      // Derive the 1bp stable-pair tier from a verified stablecoin list (never caller input),
+      // so a stablecoin<>stablecoin swap is charged the reduced rate automatically.
+      const isStablePair = isOphisStablePair(wallet.getChainId(), args.sellToken, args.buyToken);
       const result = await executeOphisSwap(
-        toOphisWallet(walletProvider),
+        wallet,
         {
           sellToken: args.sellToken,
           buyToken: args.buyToken,
           sellAmount: args.sellAmount,
           slippageBps: args.slippageBps ?? undefined,
         },
-        { referralCode: this.#referralCode },
+        {
+          ...(this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {}),
+          isStablePair,
+        },
       );
       return JSON.stringify({ success: true, ...result });
     } catch (error) {

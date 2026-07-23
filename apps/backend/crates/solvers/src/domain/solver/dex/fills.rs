@@ -172,24 +172,28 @@ impl Fills {
     /// Adjusts the next fill amount that should be tried. Always halves the
     /// last tried amount.
     pub fn reduce_next_try(&self, uid: order::Uid) {
-        lock_fill_amounts(&self.amounts).entry(uid).and_modify(|entry| {
-            entry.next_amount /= U256::from(2);
-            tracing::trace!(next_try =? entry.next_amount, "reduced next fill amount");
-        });
+        lock_fill_amounts(&self.amounts)
+            .entry(uid)
+            .and_modify(|entry| {
+                entry.next_amount /= U256::from(2);
+                tracing::trace!(next_try =? entry.next_amount, "reduced next fill amount");
+            });
     }
 
     /// Adjusts the next fill amount that should be tried. Doubles the amount to
     /// try. This is useful in case the onchain liquidity changed and now
     /// allows for bigger fills.
     pub fn increase_next_try(&self, uid: order::Uid) {
-        lock_fill_amounts(&self.amounts).entry(uid).and_modify(|entry| {
-            entry.next_amount = entry
-                .next_amount
-                .checked_mul(U256::from(2))
-                .unwrap_or(entry.total_amount)
-                .min(entry.total_amount);
-            tracing::trace!(next_try =? entry.next_amount, "increased next fill amount");
-        });
+        lock_fill_amounts(&self.amounts)
+            .entry(uid)
+            .and_modify(|entry| {
+                entry.next_amount = entry
+                    .next_amount
+                    .checked_mul(U256::from(2))
+                    .unwrap_or(entry.total_amount)
+                    .min(entry.total_amount);
+                tracing::trace!(next_try =? entry.next_amount, "increased next fill amount");
+            });
     }
 
     /// Removes entries that have not been requested for a long time. This

@@ -1,32 +1,33 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); on the Ophis-operated chains Optimism and Unichain that is the all-in cost, while on CoW-hosted chains CoW Protocol's own fees apply on top (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-protected**: orders settle off-chain via a batch auction; sandwich attacks are structurally absent, not best-effort.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Flat, transparent fee**: a flat 0.10% (10 bps) fee on trade volume, applied to every trade, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. Example: swap 1,000 USDC, fee = 0.10% = 1 USDC.
-- **Surplus stays with the trader**: any execution that beats the signed quote (surplus / price improvement) is returned to the trader in full. The flat fee is on volume only and takes no share of surplus, unlike a surplus-based or price-improvement fee model.
+- **Flat, published-all-in fee**: a flat 0.10% (10 bps) Ophis fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. On Optimism and Unichain that is the entire cost (example: swap 1,000 USDC on Optimism, fee = 1 USDC all-in). On CoW-hosted chains, CoW Protocol adds a 0.02% protocol volume fee (0.003% on correlated pairs), making the fixed all-in 0.12% / 0.013% there.
+- **Surplus**: Ophis takes no share of price improvement on any chain. On Optimism and Unichain, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume) upstream before the remainder is returned.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
 ## Routes
 
 - [/](https://ophis.fi/): Landing, entry point, brand surfaces, language-first swap intent input.
-- [/#/swap](https://ophis.fi/#/swap): Trade, standard swap UI (token A → token B, instant fill via solver auction).
-- [/#/limit](https://ophis.fi/#/limit): Limit orders, sign-once orders that solvers fill when your target price is reachable.
-- [/#/advanced](https://ophis.fi/#/advanced): Advanced trading. TWAP / programmable order types.
-- [/#/yield](https://ophis.fi/#/yield): Yield, token-to-yield-bearing-token routes.
-- [/#/about](https://ophis.fi/#/about): About, what Ophis is and isn't.
-- [/#/profile](https://ophis.fi/#/profile): Profile, wallet identity read from your connected wallet (address, chain, ENS).
-- [/#/learn](https://ophis.fi/#/learn): Learn, primers on intents, solvers, MEV, batch auctions.
+- [/#/swap](https://swap.ophis.fi/#/swap): Trade, standard swap UI (token A → token B, instant fill via solver auction).
+- [/#/limit](https://swap.ophis.fi/#/limit): Limit orders, sign-once orders that solvers fill when your target price is reachable.
+- [/#/advanced](https://swap.ophis.fi/#/advanced): Advanced trading. TWAP / programmable order types.
+- [/#/yield](https://swap.ophis.fi/#/yield): Yield, token-to-yield-bearing-token routes.
+- [/#/about](https://swap.ophis.fi/#/about): About, what Ophis is and isn't.
+- [/#/profile](https://swap.ophis.fi/#/profile): Profile, wallet identity read from your connected wallet (address, chain, ENS).
+- [/#/learn](https://swap.ophis.fi/#/learn): Learn, primers on intents, solvers, MEV, batch auctions.
+- [/#/affiliate](https://swap.ophis.fi/#/affiliate): Affiliate, mint a referral code and earn a share of the fee on referred volume.
 - [https://docs.ophis.fi](https://docs.ophis.fi): Full docs, protocol overview, intent API spec, architecture, AI-agent integration guide, audits.
 - [https://business.ophis.fi](https://business.ophis.fi): Business portal, integration playbook for institutional desks, custodians, and AI agents.
 
 ## APIs
 
-- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Same-origin only (Origin allowlist enforced). Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
+- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Browser calls are Origin-allowlisted (ophis.fi, swap.ophis.fi); non-browser callers (curl, server-side scripts, agents) that omit the Origin header are allowed, subject to the rate limit. Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
 
 ## For AI agents
 
@@ -34,22 +35,23 @@ Ophis is designed to be agent-friendly. The intent endpoint above accepts free-f
 
 1. POST your user's request (or your agent-generated trade idea) to `/api/intent`.
 2. Receive `ParsedIntent` with normalized `sellToken`, `buyToken`, `amount`, `chain` entities.
-3. Construct a deep-link: `https://ophis.fi/#/<chainId>/swap/<sellTokenSymbol>/<buyTokenSymbol>?inputCurrency=<amount>`.
+3. Construct a deep-link: `https://swap.ophis.fi/#/<chainId>/swap/<sellTokenSymbol>/<buyTokenSymbol>?inputCurrency=<amount>`.
 4. Open the link for the user to review and sign. Ophis never auto-signs, every order requires explicit wallet approval.
 
-Agents that submit orders programmatically should use the CoW Protocol orderbook API directly. Ophis surfaces 11 EVM source/destination chains in the network selector. Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, plus Sepolia for integration testing. Orderbook endpoints for the CoW-aligned chains live at `api.cow.fi`; Ophis-specific orderbook deployments (currently Optimism mainnet via `optimism-mainnet.ophis.fi`) follow the same schema. See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the API contract.
+Agents that submit orders programmatically should use the CoW Protocol orderbook API directly. Ophis surfaces 12 EVM source/destination chains in the network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, and Unichain, plus Sepolia for integration testing. Orderbook endpoints for the CoW-aligned chains live at `api.cow.fi`; Ophis-specific orderbook deployments (Optimism mainnet via `optimism-mainnet.ophis.fi`, Unichain via `unichain-mainnet.ophis.fi`) follow the same schema. See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the API contract.
 
 Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-sign model is the trust boundary; bypassing it for payment automation would compromise self-custody.
 
 ## Trust, audits, custody
 
 - **Custody**: Ophis is non-custodial. The protocol cannot move user funds without an EIP-712 signature from the user's wallet.
-- **Smart contracts**: On Optimism mainnet (chain 10), Ophis settles through its OWN GPv2Settlement deployment at `0x310784c7FCE12d578dA6f53460777bAc9718B859`, which is NOT CoW Protocol's canonical settlement address (`0x9008D19f58AAbD9eD0D60971565AA8510560ab41`). The bytecode is identical to CoW's audited GPv2Settlement, so the original audits apply: [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs). Agents MUST resolve the per-chain settlement domain via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address on Optimism yields a domain the deployed contract rejects.
+- **Smart contracts**: On the Ophis-operated networks Optimism (chain 10) and Unichain (chain 130), Ophis settles through its OWN GPv2Settlement deployments at non-canonical addresses; on Optimism that is `0x310784c7FCE12d578dA6f53460777bAc9718B859`, which is NOT CoW Protocol's canonical settlement address (`0x9008D19f58AAbD9eD0D60971565AA8510560ab41`). The bytecode is identical to CoW's audited GPv2Settlement, so the original audits apply: [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs). Agents MUST resolve the per-chain settlement domain via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address on an Ophis-operated network yields a domain the deployed contract rejects.
 - **Ophis-specific code**: Frontend fork, intent-parser CF Pages Function, rebate-indexer service. Source: [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
-- **Operator contact**: https://ophis.fi/#/contact (form; no email published).
+- **Operator contact**: [/#/contact](https://swap.ophis.fi/#/contact) (form) or contact@ophis.fi.
 
 ## Optional
 
 - [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis): Full source code (frontend, intent proxy, indexer, infra runbooks).
-- [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts. Ophis deploys bytecode-identical GPv2Settlement at its own non-canonical address on OP mainnet (resolve the exact address via `@ophis/sdk` or the MCP `list_chains` tool).
+- [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts. Ophis deploys bytecode-identical GPv2Settlement at its own non-canonical addresses on the Ophis-operated networks (Optimism, Unichain); resolve the exact address via `@ophis/sdk` or the MCP `list_chains` tool.
 - [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol): CoW Protocol docs, the settlement primitives Ophis is built on.
+- [Full docs text](https://docs.ophis.fi/llms-full.txt): the entire documentation concatenated into one file for LLM context windows.

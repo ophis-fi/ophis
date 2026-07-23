@@ -1,0 +1,186 @@
+[
+  {
+    "name": "AllowListGuardian",
+    "sourcePath": "src/contracts/AllowListGuardian.sol",
+    "artifactPath": "out/AllowListGuardian.sol/AllowListGuardian.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "authenticator_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "timelock_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "guardian_",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "addSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyTimelock",
+        "notes": "SLOW path core flow: forwards to authenticator.addSolver. Highest-signal action in the whole suite."
+      },
+      {
+        "name": "removeSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyGuardian",
+        "notes": "FAST path core flow: instant defensive eviction, forwards to authenticator.removeSolver."
+      },
+      {
+        "name": "setManager",
+        "inputs": [
+          {
+            "name": "newManager",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyTimelock",
+        "notes": "Drives the manager-handoff state machine (can move manager away from the Guardian entirely). Highest state-machine pressure of the secondary-looking functions, promoted to primary."
+      },
+      {
+        "name": "setGuardian",
+        "inputs": [
+          {
+            "name": "newGuardian",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary",
+        "access": "onlyTimelock",
+        "notes": "Rare role-rotation action. Dispatcher-grouped."
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "GPv2AllowListAuthentication",
+    "sourcePath": "src/contracts/GPv2AllowListAuthentication.sol",
+    "artifactPath": "out/GPv2AllowListAuthentication.sol/GPv2AllowListAuthentication.json",
+    "constructor": {
+      "inputs": [],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "addSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyManager",
+        "notes": "Direct (non-Guardian) path, reachable once manager is handed off away from the Guardian. Needed to fuzz raw idempotency + manager-gating."
+      },
+      {
+        "name": "removeSolver",
+        "inputs": [
+          {
+            "name": "solver",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyManager",
+        "notes": "Direct (non-Guardian) path."
+      },
+      {
+        "name": "proposeManager",
+        "inputs": [
+          {
+            "name": "manager_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyManagerOrOwner",
+        "notes": "Two-step transfer step 1/2 (MED-1). Core state machine under test."
+      },
+      {
+        "name": "acceptManagership",
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "permissionless (gated internally to msg.sender == pendingManager)",
+        "notes": "Two-step transfer step 2/2 (MED-1). Core state machine under test; callable by any actor, only succeeds for the exact pending address."
+      },
+      {
+        "name": "setManager",
+        "inputs": [
+          {
+            "name": "manager_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary",
+        "access": "onlyManagerOrOwner",
+        "notes": "Single-step instant transfer + emergency-rescue path (proxy admin). No zero-check at this layer (I-3 caveat) -- key adversarial target."
+      },
+      {
+        "name": "cancelManagerTransfer",
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "tier": "secondary",
+        "access": "onlyManagerOrOwner",
+        "notes": "Clears pending two-step transfer. Dispatcher-grouped."
+      },
+      {
+        "name": "initializeManager",
+        "inputs": [
+          {
+            "name": "manager_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary",
+        "access": "initializer (one-time)",
+        "notes": "Called once in setup() to seed the initial manager. Kept as a low-frequency handler purely to fuzz the idempotency guard (must always revert post-init). Dispatcher-grouped."
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  }
+]

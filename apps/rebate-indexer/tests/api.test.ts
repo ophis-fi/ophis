@@ -4,7 +4,13 @@ import { type FastifyInstance } from 'fastify';
 // Mock the db module so buildApiServer can be imported without a real DATABASE_URL.
 // The /health and rate-limit tests exercise the HTTP layer only.
 vi.mock('../src/db/index.js', () => ({
-  sql: Object.assign(async () => [], {
+  sql: Object.assign(async (strings: TemplateStringsArray) => {
+    const text = Array.isArray(strings) ? strings.join('') : String(strings);
+    if (text.includes('SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted')) {
+      return [{ accepted: process.env.REBATE_ENROLLMENT_QUEUE_MAX !== '0' }];
+    }
+    return [];
+  }, {
     unsafe: async () => [],
   }),
   db: {
@@ -33,6 +39,7 @@ afterEach(async () => {
   await app?.close();
   app = undefined;
   delete process.env.REBATE_INDEXER_ADMIN_TOKEN;
+  delete process.env.REBATE_ENROLLMENT_QUEUE_MAX;
 });
 
 // Must import AFTER vi.mock() calls above are hoisted.
@@ -66,10 +73,35 @@ test('/stats returns public cumulative JSON for an API client', async () => {
   expect(res.statusCode).toBe(200);
   const body = JSON.parse(res.body);
   expect(body.ok).toBe(true);
+  // Pre-existing fields: names and types must never change (public API compat).
   expect(body).toHaveProperty('totalVolumeUsd');
   expect(body).toHaveProperty('totalTrades');
   expect(body).toHaveProperty('distinctTraders');
   expect(Array.isArray(body.byChain)).toBe(true);
+  // Lifetime average trade size: null until the first trade (mocked db = empty).
+  expect(body).toHaveProperty('avgTradeUsd');
+  expect(body.avgTradeUsd).toBeNull();
+  // Static execution-model facts (configuration only, no indexed data).
+  expect(body.execution).toEqual({
+    mevProtection: 'batch-auction',
+    settlementModel: 'intent, uniform clearing price',
+    solverCompetition: {
+      sovereignChains: [
+        { chainId: 10, solvers: 4 },
+        { chainId: 130, solvers: 8 },
+      ],
+      hostedChains: 'CoW Protocol solver network',
+    },
+    improvementSplit: {
+      sovereign: '100% of price improvement returned to the trader',
+      hosted: 'CoW Protocol retains 50% of quote improvement upstream',
+    },
+  });
+  // Security invariant: the public JSON must never grow current-cycle 30d
+  // volume or next-payout timing fields (front-runner signals, admin-only).
+  for (const key of Object.keys(body)) {
+    expect(key).not.toMatch(/30d|payout|cycle/i);
+  }
 });
 
 test('/stats serves a styled HTML page to a browser (Accept: text/html)', async () => {
@@ -77,8 +109,38 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   const res = await app.inject({ method: 'GET', url: '/stats', headers: { accept: 'text/html' } });
   expect(res.statusCode).toBe(200);
   expect(res.headers['content-type']).toContain('text/html');
-  expect(res.body).toContain('Settled, on-chain');
+  expect(res.body).toContain('Every trade settles MEV-protected');
   expect(res.headers['content-security-policy']).toBeDefined();
+});
+
+test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, with no leak', async () => {
+  app = await buildApiServer();
+  // The mocked db returns [] for every query, so this exercises the route wiring +
+  // the empty-integrator shape (all-zero, disclaimer intact, registered false).
+  const res = await app.inject({ method: 'GET', url: '/earnings/acme-dapp' });
+  expect(res.statusCode).toBe(200);
+  const body = JSON.parse(res.body);
+  expect(body.ok).toBe(true);
+  expect(body.appCode).toBe('acme-dapp');
+  expect(typeof body.disclaimer).toBe('string');
+  expect(body.disclaimer).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
+  expect(body.sovereignChains).toEqual([10, 130]);
+  expect(body.routedVolumeUsd).toMatchObject({ total: 0, sovereign: 0, hosted: 0 });
+  expect(body.ownFeeAccruedUsd).toMatchObject({ sovereignGuaranteed: 0, hostedAccrued: 0 });
+  expect(body.referral.registered).toBe(false);
+  expect(Array.isArray(body.byChain)).toBe(true);
+  // Front-runner leak guard: no aggregate 30d / next-payout / current-cycle signals.
+  const lower = res.body.toLowerCase();
+  for (const forbidden of ['30d', 'nextpayout', 'next_batch', 'currentcycle', 'estimated']) {
+    expect(lower).not.toContain(forbidden);
+  }
+});
+
+test('/earnings/:appCode rejects an invalid appCode with 400', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/earnings/AB' }); // too short + fails grammar after lowercasing
+  expect(res.statusCode).toBe(400);
+  expect(JSON.parse(res.body)).toMatchObject({ error: 'invalid appCode' });
 });
 
 test('/health exposes the fetcher + pipeline liveness fields', async () => {
@@ -185,4 +247,55 @@ test('OPTIONS preflight from a DISALLOWED origin sets no CORS headers', async ()
   });
   expect(res.headers['access-control-allow-origin']).toBeUndefined();
   expect(res.headers['access-control-allow-methods']).toBeUndefined();
+});
+
+// /xp/:wallet — public per-wallet lifetime XP for the Cash Prize page.
+test('/xp/:wallet returns 200 with xp 0 for an unknown wallet (never 404)', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/xp/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(res.statusCode).toBe(200);
+  const body = JSON.parse(res.body);
+  // Wallet is echoed lowercased; unknown wallet = zero progress, not an error.
+  expect(body.wallet).toBe('0x04981ff1f1a901b0f5221af38e7ee4aca8353a27');
+  expect(body.xp).toBe(0);
+  expect(body.lifetimeVolumeUsd).toBe(0);
+  expect(body.generatedAt).toBeDefined();
+  // Lagging/cumulative invariant: same rule as /stats — no current-cycle
+  // or payout-timing fields on this public surface.
+  for (const key of Object.keys(body)) {
+    expect(key).not.toMatch(/30d|payout|cycle/i);
+  }
+});
+
+
+test('/tier/:wallet rejects new enrollments when the global admission queue is full', async () => {
+  process.env.REBATE_ENROLLMENT_QUEUE_MAX = '0';
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/tier/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(res.statusCode).toBe(429);
+  expect(JSON.parse(res.body)).toMatchObject({ error: expect.stringContaining('enrollment queue is full') });
+});
+
+test('/xp/:wallet rejects new enrollments when the global admission queue is full', async () => {
+  process.env.REBATE_ENROLLMENT_QUEUE_MAX = '0';
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/xp/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(res.statusCode).toBe(429);
+  expect(JSON.parse(res.body)).toMatchObject({ error: expect.stringContaining('enrollment queue is full') });
+});
+
+test('/xp/:wallet rejects a malformed address with 400', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/xp/not-a-wallet' });
+  expect(res.statusCode).toBe(400);
+  expect(JSON.parse(res.body)).toMatchObject({ error: 'invalid wallet address' });
 });

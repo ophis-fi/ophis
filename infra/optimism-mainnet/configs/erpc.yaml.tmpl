@@ -1,6 +1,6 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape: 2-of-3 consensus across publicnode + tenderly + self-hosted.**
+# **Current shape: 2-of-3 consensus across validationcloud + blockdaemon + tenderly.**
 #
 # Iteration history:
 #  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
@@ -19,61 +19,50 @@
 #    consensus call → 3-of-3 was unsatisfiable → driver couldn't boot.
 #
 # **Final config: 3 upstreams, agreementThreshold=2 (2-of-3 quorum).**
-# Considered 3-of-3 strict during the self-hosted onboarding window
-# (header comment iteration 144 below); reverted to 2-of-3 because
-# 3-of-3 was unsatisfiable under self-hosted's normal tip-drift. The
-# threat-model exposition below (lines 145-153) describes 2-of-3
-# quorum: a single hostile upstream cannot satisfy quorum because the
-# remaining 2 (across 2 distinct DNS providers) would dispute.
+# 2026-07-23 keyed migration: replaced the free publicnode(Cloudflare) + dead
+# self-host(100.77.53.81) with two KEYED providers after a free-tier-429 outage
+# (tenderly's keyless gateway 429'd under load, amplified by the dead self-node's
+# 8s participant timeout, collapsing the quorum). See the per-upstream comments in
+# the `upstreams:` block below for the full rationale. Full detail lives there;
+# this header is the top-level summary.
 #
-#   publicnode-op       optimism-rpc.publicnode.com    Allnodes
-#                                                       DNS: Cloudflare
-#                                                       CA: Let's Encrypt
-#   tenderly-op         optimism.gateway.tenderly.co   Tenderly
-#                                                       DNS: Google Cloud
-#                                                       CA: ZeroSSL/Sectigo
-#   ophis-self-op       Self-hosted, Tailscale-reachable
-#                                                       (operational details in private ops notes)
+#   validationcloud-op  mainnet.optimism.validationcloud.io  Validation Cloud
+#                                                             CDN: istio-envoy (NON-Cloudflare)
+#                                                             auth: KEYED (URL path)
+#   blockdaemon-op      svc.blockdaemon.com                  Blockdaemon
+#                                                             CDN: Cloudflare
+#                                                             auth: KEYED (URL ?apiKey)
+#   tenderly-op         optimism.gateway.tenderly.co         Tenderly
+#                                                             DNS: Google Cloud, free public tier
 #
-# **Threat-model: 3-of-3 over 3 fully-independent failure domains is
-# the strongest posture achievable. The prior 2-of-3 (with 2
-# CF-correlated upstreams) was poisonable under CF compromise. The
-# 2-of-2 interim (publicnode + tenderly) was DoS-not-poisoning but
-# couldn't get back to 3-of-3 because the only 3rd free provider
-# (1rpc-op) had a broken URL-parse and tenderly's free public tier
-# rate-limited `eth_getBalance`. Self-hosting closes both problems:**
+# **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
+# invariant that AT MOST ONE upstream is Cloudflare-fronted (blockdaemon):**
 #
-#  - Cloudflare DNS compromise → only publicnode is hijacked. tenderly
-#    on Google DNS returns the real answer → dispute → returnError →
-#    driver stops, does NOT settle against forged state.
-#  - Google DNS compromise → only tenderly is hijacked. publicnode on
-#    CF DNS returns the real answer → dispute → returnError → safe.
-#  - Both DNS providers compromised simultaneously: requires nation-
-#    state class control over both CF AND Google DNS infrastructure.
-#    Out of scope of the threat model.
-#  - Both upstreams happen to return the same answer: that IS the
-#    canonical chain state (publicnode and tenderly are independent
-#    operators; both seeing identical block data is the correct case).
+#  - Cloudflare compromise → only blockdaemon is hijacked. validationcloud
+#    (istio / non-CF) and tenderly (Google DNS) return the real answer →
+#    dispute → returnError → driver does NOT settle against forged state.
+#  - Validation Cloud OR Tenderly/Google compromise → the other two form
+#    quorum on the real answer → safe. NO 2-upstream subset shares one
+#    CDN/DNS, so a single-provider compromise can never satisfy quorum alone.
+#  - Two independent failure domains compromised at once: nation-state class,
+#    out of scope.
+#  - All three returning the same answer IS the canonical chain state
+#    (independent operators agreeing on block data is the correct case).
 #
-# Availability cost: any single-upstream blip = fail. Same posture as
-# the broken 3-of-3 we replaced; no regression. Driver tolerates via
-# bootstrap-retry + autopilot retry budget. If a 3rd non-CF upstream
-# becomes available we can add it (and bump back to 3-of-3 if 2 of 3
-# are still distinct-DNS).
-#
-# Trade-off accepted: "we'd rather not settle than settle against
+# Availability: 2 of 3 must both respond AND agree; a single-upstream blip is
+# tolerated (the other two form quorum). Fail-closed below quorum:
+# lowParticipantsBehavior:returnError → driver pauses rather than settling on
+# unverified state. Trade-off accepted: "rather not settle than settle against
 # forged state." Standard posture for any DEX moving real money.
 #
-# Rationale (replace-not-expand; mirroring the HL audit reasoning):
-#  - N=3 keeps the 2-of-3 consensus invariant defensible. Expanding N to >3 with
-#    eRPC's random sampling (maxParticipants:3) silently weakens the threat
-#    model to "attacker needs ≥2 of N" — see HL config for the math.
-#  - All 3 are uniformly unauthenticated HTTPS / public-tier. No MEV-searcher
-#    overlap (Bloxroute / Blocknative / Flashbots-style providers excluded —
-#    same uniform policy as HL eRPC).
-#  - Per-block consensus equality is sound on OP: post-Bedrock, the L2's
-#    block contents are deterministic per L2 block number; only tip drift on
-#    "which block is latest" varies, which `enforceHighestBlock` handles.
+# Rationale (replace-not-expand): N=3 keeps the 2-of-3 invariant defensible;
+# expanding N>3 under eRPC's random sampling (maxParticipants:3) would silently
+# weaken the model to "attacker needs ≥2 of N". TWO upstreams are now KEYED
+# (validationcloud, blockdaemon) for rate-limit reliability — the free-tier 429
+# that caused the outage is gone; tenderly stays free/public as the redundant
+# 3rd. Per-block consensus equality is sound on OP: post-Bedrock block contents
+# are deterministic per L2 block number; only tip drift on "latest" varies,
+# handled by `enforceHighestBlock`.
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/10
 
@@ -392,8 +381,42 @@ projects:
         statePollerDebounce: 1s
 
     upstreams:
-      - id: publicnode-op
-        endpoint: https://optimism-rpc.publicnode.com
+      # ─── KEYED consensus backbone (2026-07-23) ───
+      # Replaced the free publicnode-op (Cloudflare DNS) with two DEDICATED,
+      # authenticated providers. Rationale: the 2026-07-23 outage was free-tier
+      # fragility — Tenderly's keyless gateway 429'd under load and collapsed the
+      # quorum (publicnode alone < agreementThreshold=2). Keyed endpoints have no
+      # per-IP free-tier rate limit. publicnode was DROPPED (not kept as a 4th)
+      # because it is Cloudflare-fronted and Blockdaemon is ALSO Cloudflare: two CF
+      # upstreams in a 2-of-3 could be poisoned identically by a single CDN
+      # compromise and satisfy quorum. Invariant = ≤1 CF-fronted upstream per quorum.
+      # Validation Cloud (istio-envoy / own infra, non-CF) supplies the CDN diversity;
+      # Tenderly (Google DNS) is the third failure domain.
+      # Host is LITERAL (so the CI fail-closed guard's urlsplit can pin the failure
+      # domain); only the secret KEY resolves from .env (${VALIDATIONCLOUD_OP_KEY} /
+      # ${BLOCKDAEMON_OP_KEY}) via render-configs.sh envsubst — NEVER committed. Both
+      # keys arrived via chat 2026-07-23 → rotate on next maintenance window.
+      - id: validationcloud-op
+        # Keyed, non-CF (istio-envoy). The CDN-diverse anchor vs blockdaemon/CF.
+        endpoint: https://mainnet.optimism.validationcloud.io/v1/${VALIDATIONCLOUD_OP_KEY}
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: blockdaemon-op
+        # Keyed, Cloudflare-fronted — the ONE permitted CF upstream in this quorum.
+        # NB: this key has a LOW burst rate cap (measured 2026-07-23) — fine at current
+        # OP volume (0 steady-state 429s), but upgrade the tier (or swap to a non-CF
+        # keyed provider) if OP order-flow grows. eRPC's closed-world guard forbids a
+        # custom auth header, so URL `?apiKey=` is the only auth form available here.
+        endpoint: https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=${BLOCKDAEMON_OP_KEY}
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -423,38 +446,20 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: ophis-self-op
-        # Self-hosted full node reached via Tailscale (private overlay).
-        # Operational details (provisioning history, host inventory,
-        # NAT/iptables config, software version pins, public SSH endpoint)
-        # are kept in private ops notes — see
-        # docs/operations/op-erpc-self-hosted-runbook.md (gitignored).
-        #
-        # Provenance + restoration procedures live in that runbook; this
-        # public template only carries the live endpoint pointer the
-        # eRPC daemon needs at runtime.
-        #
-        # No DNS dependency — IP-pinned because the container DNS
-        # resolver doesn't see the Tailscale overlay's MagicDNS.
-        #
-        # Failure modes (operational, not security):
-        # - upstream unreachable: returns connection refused →
-        #   participant timeout. With agreementThreshold: 2 the other
-        #   two upstreams form quorum if they agree → settlement
-        #   continues. If they ALSO disagree simultaneously, we drop
-        #   below threshold → returnError → driver pauses until any
-        #   2 of 3 recover agreement.
-        # - endpoint IP rotation (host reprovision):
-        #   UPDATE THIS ENDPOINT + re-render configs.
-        endpoint: http://100.77.53.81:8545
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 8s
-            retry:
-              maxAttempts: 3
-              delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
-              jitter: 50ms
+      # ─── Consensus set (2026-07-23): validationcloud + blockdaemon + tenderly ───
+      # 2-of-3, agreementThreshold=2, maxParticipants=3. Two KEYED providers
+      # (validationcloud = istio non-CF, blockdaemon = CF) are the reliable backbone;
+      # tenderly (Google DNS, free) is the redundant 3rd for failure-domain diversity.
+      # When tenderly 429s, the two keyed providers still form the quorum → no outage
+      # (this is the fix for the 2026-07-23 free-tier-fragility incident that the dead
+      # self-node 100.77.53.81 amplified). Exactly one CF-fronted upstream (blockdaemon)
+      # → a single-CDN compromise can't poison a full quorum. Supersedes the free
+      # 2-of-2 (publicnode+tenderly) AND the dead self-host.
+      #
+      # #841 self-host (46.255.204.207, op-reth) is now OPTIONAL, not load-bearing. If
+      # re-added, keep the ≤1-CF-per-quorum invariant and either swap a lane (stay at 3)
+      # or bump to 2-of-4 — the latter ALSO needs assert-erpc-failclosed.py's
+      # EXPECTED_UPSTREAMS + EXPECTED_UPSTREAM_HOSTS updated. drpc/meowrpc/omnia remain
+      # disqualified (all Cloudflare-fronted → a 2-CF quorum with blockdaemon defeats
+      # the fork-poisoning threat model).
 

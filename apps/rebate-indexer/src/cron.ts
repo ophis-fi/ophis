@@ -7,6 +7,8 @@ import { reconcileBatches } from './batch/reconcile.js';
 import { deliverMonthlyReport } from './affiliate/deliverReport.js';
 import { runAffiliatePayout, reconcileAffiliateBatches } from './affiliate/payout.js';
 import { resolveAffiliatePayoutEnabled } from './affiliate/payoutPlan.js';
+import { accrueOwnFee, proposeOwnFeeBatches, reconcileOwnFeeBatches } from './ownFee/payout.js';
+import { resolveOwnFeePayoutEnabled } from './ownFee/payoutPlan.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
@@ -15,6 +17,40 @@ const log = logger.child({ module: 'cron' });
 
 function gnosisRpc(): string {
   return process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com';
+}
+
+// Sovereign chains that pay per-recipient own-fee (each from its OWN chain's Ophis Safe).
+const SOVEREIGN_OWN_FEE_CHAINS = [10, 130] as const;
+// Keyless public defaults; override per chain via OWN_FEE_RPC_URL_<id> (or the existing
+// SETTLE_RPC_URL_<id> the settle decoder already uses).
+const SOVEREIGN_RPC_DEFAULT: Record<number, string> = {
+  10: 'https://mainnet.optimism.io',
+  130: 'https://mainnet.unichain.org',
+};
+function ownFeeRpc(chainId: number): string {
+  return (
+    process.env[`OWN_FEE_RPC_URL_${chainId}`] ??
+    process.env[`SETTLE_RPC_URL_${chainId}`] ??
+    SOVEREIGN_RPC_DEFAULT[chainId] ??
+    'https://mainnet.optimism.io'
+  );
+}
+
+/**
+ * Global dry-run switch for the monthly Safe proposals (rebate batcher, affiliate
+ * payout, own-fee proposal). Default-ON (unset/''/'true'/'1' => propose) so live
+ * behavior is unchanged; 'false'/'0' => dry-run only. Any OTHER value THROWS
+ * (fail-loud) instead of silently proposing, so a typo like 'False'/'no'/'off'
+ * can never be misread as "propose real money". Same fail-loud parser shape as
+ * resolveDirectMode/resolveAffiliatePayoutEnabled/resolveOwnFeePayoutEnabled — this
+ * one just defaults ON rather than OFF. A money-path flag must never fail OPEN on an
+ * ambiguous value.
+ */
+export function resolveBatcherProposeEnabled(): boolean {
+  const raw = process.env.BATCHER_PROPOSE_ENABLED?.trim();
+  if (raw === undefined || raw === '' || raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  throw new Error(`BATCHER_PROPOSE_ENABLED must be 'true', '1', 'false', '0', or unset; got "${raw}"`);
 }
 
 /**
@@ -55,6 +91,10 @@ async function runPipelineSteps(): Promise<void> {
     // Same nightly heal for affiliate batches (separate table, same Safe service).
     const arec = await reconcileAffiliateBatches({ chainId: 100 });
     log.info(arec, 'affiliate reconcile complete');
+    // Same nightly heal for sovereign own-fee batches (separate table; each row polls
+    // the Safe service on its OWN chain 10/130). Read-only, so also safe to run always.
+    const ofrec = await reconcileOwnFeeBatches({});
+    log.info(ofrec, 'own-fee reconcile complete');
   } catch (err) {
     log.error({ err }, 'reconcile failed (non-fatal; observability only)');
     await alerts.alert('reconcile', `Nightly batch reconciliation failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
@@ -78,7 +118,21 @@ async function runPipelineSteps(): Promise<void> {
   let batcherRan = false;
   if (isFirstOfMonth()) {
     log.info('first-of-month: running batcher');
-    const proposeEnabled = process.env.BATCHER_PROPOSE_ENABLED !== 'false';
+    // Sovereign own-fee ACCRUAL (phase A). Runs FIRST, flag-INDEPENDENT and proposer-key
+    // -INDEPENDENT: it records the owed ledger to a 'computed' batch per sovereign chain
+    // (10/130) so nothing is ever lost while the payout flag or the proposer key are off.
+    // It reads no Safe balance and proposes nothing. Kept outside the proposer-key branch
+    // (a missing key must not skip accrual) and before the batcher so the current cycle's
+    // batch already exists for a same-run proposal. Wrapped per chain so one failure never
+    // blocks the rest of the cycle.
+    for (const chainId of SOVEREIGN_OWN_FEE_CHAINS) {
+      try {
+        await accrueOwnFee({ chainId });
+      } catch (err) {
+        log.error({ err, chainId }, 'own-fee accrual failed (non-fatal to the rest of the cycle)');
+      }
+    }
+    const proposeEnabled = resolveBatcherProposeEnabled();
     const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
     if (!proposerKey) {
       log.error('SAFE_PROPOSER_PRIVATE_KEY missing; skipping batcher');
@@ -110,6 +164,23 @@ async function runPipelineSteps(): Promise<void> {
           await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
         } catch (err) {
           log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+        }
+      }
+      // Sovereign per-recipient own-fee PROPOSAL (phase B). Needs the proposer key
+      // (this branch) AND OWN_FEE_PAYOUT_ENABLED (default OFF). Accrual (phase A) ran
+      // above, flag- and key-independent, so the current cycle's 'computed' batch
+      // already exists here. Proposes EVERY un-proposed 'computed' batch (current cycle
+      // AND any back-months a previously-off flag/key left behind), each a SEPARATE Safe
+      // MultiSend on ITS OWN sovereign chain from that chain's Ophis Safe; execution
+      // still needs the 2-of-3 signature. Wrapped per chain so one failure never blocks
+      // the other, the report, or the heartbeat.
+      if (resolveOwnFeePayoutEnabled()) {
+        for (const chainId of SOVEREIGN_OWN_FEE_CHAINS) {
+          try {
+            await proposeOwnFeeBatches({ chainId, rpcUrl: ownFeeRpc(chainId), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+          } catch (err) {
+            log.error({ err, chainId }, 'own-fee proposal failed (non-fatal to the rest of the cycle)');
+          }
         }
       }
     }

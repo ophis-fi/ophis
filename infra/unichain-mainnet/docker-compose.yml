@@ -56,7 +56,7 @@ services:
   # eRPC multi-provider proxy for Unichain mainnet (chain 130).
   # 3 upstreams with 2-of-3 consensus on critical reads.
   rpc-proxy:
-    image: ghcr.io/erpc/erpc:latest
+    image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
     # The self-hosted Unichain op-reth node runs in a SEPARATE compose project
@@ -66,7 +66,7 @@ services:
     # second port. (Gate-2 validated this exact path via --add-host.) Hardening
     # follow-up: a shared external docker network instead of host-gateway.
     extra_hosts:
-      - "ophis-uni-node:host-gateway"
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     volumes:
       - ./rendered/erpc.yaml:/erpc.yaml:ro
     ports:
@@ -142,6 +142,8 @@ services:
       FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
 
   orderbook:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-orderbook:latest
     build:
       context: ../../apps/backend
@@ -174,6 +176,8 @@ services:
       start_period: 60s
 
   autopilot:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-autopilot:latest
     build:
       context: ../../apps/backend
@@ -273,6 +277,8 @@ services:
   # output reports the reconstructed slippage floor (the #726 fix). Covers all
   # Unichain DEXes (incl. Uniswap V4).
   okx-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -296,6 +302,8 @@ services:
       start_period: 30s
 
   kyberswap-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -323,6 +331,8 @@ services:
   # route's router == the allowlisted Augustus V6.2 0x6a000f20…001068, and
   # VELORA_SUPPORTED_CHAINS includes 130). Second independent solver lane.
   velora-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -350,6 +360,8 @@ services:
   # the solver and driver allowlists). Keyless. Reports the reconstructed
   # slippage floor as the SELL output. Third independent solver lane.
   odos-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -377,6 +389,8 @@ services:
   # allowlisted in both the solver and driver allowlists). Keyless. Reports
   # data.minOutAmount (the guaranteed floor) as the SELL output. Fourth lane.
   openocean-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -405,6 +419,8 @@ services:
   # driver allowlists). Keyless (public widget key). Reports
   # data.minReturnAmount (the guaranteed floor) as the SELL output. Fifth lane.
   dodo-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -432,6 +448,8 @@ services:
   # layers; SELL output = estimate.toAmountMin (guaranteed floor). Same-chain
   # only (rejects bridge routes). Keyless. Seventh lane.
   lifi-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -459,6 +477,8 @@ services:
   # SELL output = minAmountOut (guaranteed floor). KEYED (free Bearer key in
   # .env; fail-fasts on empty key). Eighth lane.
   enso-solver:
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -546,6 +566,41 @@ services:
       - "/proc:/host/proc:ro"
       - "/sys:/host/sys:ro"
       - "/:/host:ro,rslave"
+
+  # Auto-refunder for expired eth-flow (native-ETH) orders. Ophis self-hosts the
+  # Unichain stack, so unlike CoW's hosted deployment there is NO managed
+  # refunder: without this, an expired native-ETH order strands the user's ETH
+  # in the eth-flow contract until a manual invalidateOrder. This worker scans
+  # the orderbook DB for expired, unfilled, unrefunded eth-flow orders and batch
+  # invalidates them on-chain, returning the ETH to each order owner.
+  #
+  # MIN_PRICE_DEVIATION_BPS is NEGATIVE so EVERY expired order is refunded: an
+  # expired order can never fill, so refunding is always correct. Gas is paid
+  # from a dedicated low-value EOA (keychain ophis-refunder-pk), NOT the
+  # settlement submitter, to avoid nonce contention. See docs runbook.
+  refunder:
+    image: local-refunder:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: refunder
+      args: *backend-build-args
+    restart: always
+    mem_limit: 512m
+    depends_on:
+      db: { condition: service_healthy }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_URL: ${DB_READ_URL}
+      NODE_URL: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
+      CHAIN_ID: "130"
+      ETHFLOW_CONTRACTS: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7"
+      REFUNDER_PK: ${OPHIS_REFUNDER_PK:?refunder key must be set (keychain ophis-refunder-pk; export before compose up)}
+      # Negative -> refund every expired order (an expired order can never fill).
+      MIN_PRICE_DEVIATION_BPS: "-1000000"
+      MIN_VALIDITY_DURATION: "2m"
+      LOOKBACK_TIME: "30d"
 
 volumes:
   postgres:

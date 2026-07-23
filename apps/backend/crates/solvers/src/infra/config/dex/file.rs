@@ -88,6 +88,80 @@ struct Config {
     /// contract buffers.
     #[serde(default = "default_internalize_interactions")]
     internalize_interactions: bool,
+
+    /// OUTPUT-side anti-siphon: the maximum factor by which a SELL swap's
+    /// reported output value may exceed its input value at the auction's
+    /// independent reference prices. A coarse tripwire that fails open on
+    /// missing prices; defaults to `25.0`.
+    ///
+    /// The default is deliberately loose. On the sovereign chains the native
+    /// reference price comes from a UniV3 self-pool TWAP that can misprice a
+    /// token by more than 2x (OP priced USDC >2x high, which made a tight 2.0
+    /// ceiling reject legitimate WETH->USDC sells so the orders expired). The
+    /// strict output SIMULATION is the ground-truth anti-siphon guard; this
+    /// ceiling only catches egregious (>25x) over-reports cheaply, so a wide
+    /// factor avoids false rejections without weakening real protection.
+    #[serde(default = "default_max_output_reference_factor")]
+    #[serde_as(as = "serde_with::DisplayFromStr")]
+    max_output_reference_factor: BigDecimal,
+
+    /// OUTPUT-side anti-siphon: whether to run the strict output-delivery
+    /// simulation for SELL swaps (defaults to `true`).
+    #[serde(default = "default_strict_output_simulation")]
+    strict_output_simulation: bool,
+
+    /// Storage slot of the wrapped-native token's `balanceOf` mapping, used by
+    /// the eth-flow simulation balance override. CHAIN-DEPENDENT despite the
+    /// shared 0x4200..06 predeploy address: OP mainnet = WETH9 = slot 3 (the
+    /// default); Unichain's newer WETH98-style predeploy = slot 0 (verified
+    /// on-chain 2026-07-18). A wrong slot silently grants no balance and
+    /// fail-closes every eth-flow (native ETH) sell on buffer-exposed buy
+    /// tokens.
+    #[serde(default = "default_wrapped_native_balance_slot")]
+    wrapped_native_balance_slot: u8,
+
+    /// OUTPUT-side anti-siphon: when to run the strict output-delivery
+    /// simulation for MARKET SELL swaps (defaults to `buffer-exposed`).
+    ///
+    /// TRUST ASSUMPTION: `buffer-exposed` decides via the auction's reported
+    /// `available_balance` for the buy token. If that figure is stale or
+    /// under-reports a settlement buffer that is actually non-empty on-chain,
+    /// AND the buy token has no auction reference price (the coarse ceiling
+    /// then no-ops too), a MARKET-SELL over-report goes unproven, bounded only
+    /// by the real buffer size. LIMIT sells are always strict and unaffected.
+    /// Set this to `all` on buffer-heavy chains where that trust is weak, to
+    /// simulate every MARKET sell regardless of the reported buffer.
+    #[serde(default)]
+    strict_market_output_simulation: MarketOutputSimulationMode,
+
+    /// OUTPUT-side anti-siphon: skip the strict MARKET output simulation for
+    /// orders below this native (wei) value (defaults to `0`, never skip).
+    #[serde(default)]
+    #[serde_as(as = "HexOrDecimalU256")]
+    market_output_simulation_min_native_value: eth::U256,
+}
+
+/// When to run the strict output-delivery simulation for MARKET SELL swaps.
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum MarketOutputSimulationMode {
+    /// Never run the strict simulation for MARKET orders.
+    Off,
+    /// Run only when the buy token is buffer exposed.
+    #[default]
+    BufferExposed,
+    /// Always run for MARKET orders (subject to the min native value).
+    All,
+}
+
+impl From<MarketOutputSimulationMode> for crate::domain::dex::MarketOutputSimulation {
+    fn from(mode: MarketOutputSimulationMode) -> Self {
+        match mode {
+            MarketOutputSimulationMode::Off => Self::Off,
+            MarketOutputSimulationMode::BufferExposed => Self::BufferExposed,
+            MarketOutputSimulationMode::All => Self::All,
+        }
+    }
 }
 
 fn default_relative_slippage() -> BigDecimal {
@@ -128,6 +202,18 @@ fn default_internalize_interactions() -> bool {
     true
 }
 
+fn default_max_output_reference_factor() -> BigDecimal {
+    BigDecimal::new(25.into(), 0) // 25.0x -- coarse tripwire; strict sim is the guard
+}
+
+fn default_strict_output_simulation() -> bool {
+    true
+}
+
+fn default_wrapped_native_balance_slot() -> u8 {
+    crate::infra::dex::simulator::DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT
+}
+
 /// Loads the base solver configuration from a TOML file.
 ///
 /// # Panics
@@ -147,33 +233,32 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
     // CoW Protocol contracts have the same address.
     let default_contracts = contracts::Contracts::for_chain_id(eth::ChainId::Mainnet);
     let (settlement, authenticator) = if let Some(settlement) = config.settlement {
-        let authenticator =
-            {
-                let web3 = blockchain::rpc(&config.node_url);
-                let settlement =
-                    ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
-                // Bootstrap RPC call: retry with backoff so transient eRPC
-                // consensus failures during HL stack restart bursts don't
-                // crash-loop the container. See the `retry-helper` crate.
-                retry_helper::with_backoff(
-                    "settlement.authenticator",
-                    retry_helper::BackoffConfig::default(),
-                    || async { settlement.authenticator().call().await },
-                )
-                .await
-                .unwrap_or_else(|_| {
-                    // Intentionally redacted: the alloy `TransportError` Debug
-                    // can echo the configured RPC URL, which on some providers
-                    // embeds an API key. The per-attempt error is already
-                    // tracing::warn!-logged by `with_backoff` with secrets
-                    // handled via tracing's redaction; the panic only needs
-                    // to surface that all retries exhausted.
-                    panic!(
-                        "settlement.authenticator() read exhausted retries; see preceding \
+        let authenticator = {
+            let web3 = blockchain::rpc(&config.node_url);
+            let settlement =
+                ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
+            // Bootstrap RPC call: retry with backoff so transient eRPC
+            // consensus failures during HL stack restart bursts don't
+            // crash-loop the container. See the `retry-helper` crate.
+            retry_helper::with_backoff(
+                "settlement.authenticator",
+                retry_helper::BackoffConfig::default(),
+                || async { settlement.authenticator().call().await },
+            )
+            .await
+            .unwrap_or_else(|_| {
+                // Intentionally redacted: the alloy `TransportError` Debug
+                // can echo the configured RPC URL, which on some providers
+                // embeds an API key. The per-attempt error is already
+                // tracing::warn!-logged by `with_backoff` with secrets
+                // handled via tracing's redaction; the panic only needs
+                // to surface that all retries exhausted.
+                panic!(
+                    "settlement.authenticator() read exhausted retries; see preceding \
                          tracing::warn! logs for per-attempt error detail"
-                    )
-                })
-            };
+                )
+            })
+        };
         (settlement, authenticator)
     } else {
         (
@@ -219,6 +304,14 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
         gas_offset: eth::Gas(config.gas_offset),
         block_stream,
         internalize_interactions: config.internalize_interactions,
+        wrapped_native_balance_slot: config.wrapped_native_balance_slot,
+        output_guard: crate::domain::dex::OutputGuard {
+            max_output_reference_factor: config.max_output_reference_factor,
+            strict_output_simulation: config.strict_output_simulation,
+            strict_market_output_simulation: config.strict_market_output_simulation.into(),
+            market_output_simulation_min_native_value: config
+                .market_output_simulation_min_native_value,
+        },
     };
     (config, dex)
 }

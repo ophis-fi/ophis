@@ -32,12 +32,9 @@ struct Config {
 
 fn default_endpoint(chain_id: eth::ChainId) -> reqwest::Url {
     // OpenOcean v4 endpoints are keyed by the numeric chain id.
-    format!(
-        "https://open-api.openocean.finance/v4/{}/",
-        chain_id as u64
-    )
-    .parse()
-    .expect("hard-coded OpenOcean endpoint URL is valid")
+    format!("https://open-api.openocean.finance/v4/{}/", chain_id as u64)
+        .parse()
+        .expect("hard-coded OpenOcean endpoint URL is valid")
 }
 
 /// Load the OpenOcean solver configuration from a TOML file.

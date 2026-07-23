@@ -2,17 +2,15 @@
 import Base from '../../layouts/Base.astro'
 import Nav from '../../components/Nav.astro'
 import Footer from '../../components/Footer.astro'
-import { getCollection } from 'astro:content'
 import { Image } from 'astro:assets'
+import { getPublishedPosts } from '../../lib/posts'
 
-const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
-  (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime(),
-)
+const posts = await getPublishedPosts()
 
 const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(d)
 ---
 <Base
-  title="Ophis Blog"
+  title="Ophis Blog: intent trading, MEV protection, AI agents"
   description="Engineering and product writing from Ophis: intent-based, MEV-protected swaps for the agent era. AI agents, rebates, and multi-chain DeFi."
   canonical="https://ophis.fi/blog/"
 >
@@ -33,12 +31,12 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
       <ul class="post-list">
         {posts.map((post) => (
           <li class="post-card feat">
-            <a class="post-link" href={`/blog/${post.id}`}>
+            <a class="post-link" href={`/blog/${post.id}/`}>
               {post.data.cover && (
                 <Image
                   class="card-thumb"
                   src={post.data.cover}
-                  alt=""
+                  alt={post.data.coverAlt ?? `Cover image for: ${post.data.title}`}
                   widths={[400, 760]}
                   sizes="(max-width: 760px) 100vw, 720px"
                   loading="lazy"

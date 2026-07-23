@@ -125,6 +125,8 @@ pub struct OpenOcean {
     /// Base URL including the chain segment and trailing slash, e.g.
     /// `https://open-api.openocean.finance/v4/130/`.
     base_url: reqwest::Url,
+    /// Configured chain id, cross-checked against the API's echoed chainId.
+    chain_id: eth::ChainId,
     settlement_contract: Address,
     /// Optional OpenOcean `referrer` for fee attribution. Keyless and unused
     /// by the v4 classic `/swap` calldata path; held for forward-compat.
@@ -168,6 +170,7 @@ impl OpenOcean {
         Ok(Self {
             client,
             base_url: config.base_url,
+            chain_id: config.chain_id,
             settlement_contract: config.settlement_contract,
             // `referrer` is accepted for forward-compat but the v4 classic
             // `/swap` calldata correctness does not depend on it; we keep the
@@ -229,13 +232,13 @@ impl OpenOcean {
             // Defensive: the response should be for the chain we asked for.
             // `chain_id` is best-effort (defaults to 0 if absent) so only
             // reject on an explicit non-zero mismatch.
-            if data.chain_id != 0 && data.chain_id != CHAIN_ID_UNICHAIN {
+            if data.chain_id != 0 && data.chain_id != self.chain_id as u64 {
                 return Err(Error::Api {
                     code: -1,
                     reason: format!(
                         "/swap returned chainId {} but this solver is wired to \
-                         Unichain (130)",
-                        data.chain_id
+                         chain {}",
+                        data.chain_id, self.chain_id as u64
                     ),
                 });
             }
@@ -382,11 +385,7 @@ impl OpenOcean {
             return Ok(());
         }
 
-        let reason = if !message.is_empty() {
-            message
-        } else {
-            error
-        };
+        let reason = if !message.is_empty() { message } else { error };
 
         // OpenOcean uses 429 for rate limiting; otherwise treat
         // "not found"-style messages as no route.
@@ -408,9 +407,6 @@ impl OpenOcean {
         })
     }
 }
-
-/// Unichain chain id, used only for the defensive response cross-check.
-const CHAIN_ID_UNICHAIN: u64 = 130;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreationError {
@@ -502,10 +498,7 @@ mod tests {
     #[test]
     fn wei_to_decimal_string_matches_token_decimals() {
         // 1.5 USDC (6 decimals).
-        assert_eq!(
-            wei_to_decimal_string(U256::from(1_500_000_u128), 6),
-            "1.5"
-        );
+        assert_eq!(wei_to_decimal_string(U256::from(1_500_000_u128), 6), "1.5");
         // 1 WETH (18 decimals).
         assert_eq!(
             wei_to_decimal_string(U256::from(1_000_000_000_000_000_000_u128), 18),

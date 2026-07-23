@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro'
-import { getCollection } from 'astro:content'
+import { getPublishedPosts } from '../lib/posts'
 
 // Dynamic sitemap. Prerendered to dist/sitemap.xml at build time (output:'static'),
 // so it stays a plain static file at https://ophis.fi/sitemap.xml — but blog posts
@@ -10,9 +10,7 @@ import { getCollection } from 'astro:content'
 const SITE = 'https://ophis.fi'
 
 export const GET: APIRoute = async () => {
-  const posts = (await getCollection('blog', ({ data }) => !data.draft)).sort(
-    (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime(),
-  )
+  const posts = await getPublishedPosts()
 
   const urls = [
     { loc: `${SITE}/`, changefreq: 'weekly', priority: '1.0' },

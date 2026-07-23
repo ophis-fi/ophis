@@ -35,3 +35,23 @@ The `.env` file on the VM is **not** synced by the deploy workflow — it lives 
 `/srv/ophis/apps/rebate-indexer/.env` and is managed out-of-band (operator updates
 it via `ssh` when secrets rotate). The workflow's `rsync --delete` explicitly
 excludes it.
+
+## Swap scan (exhaustive, allowlist-free)
+
+Report every Ophis swap in a time window across chains, independent of the rebate
+wallet allowlist. Read-only: it never touches the rebate DB.
+
+```bash
+# OP (local orderbook DB) + hosted majors via Alchemy, last 48h, also DM Clement:
+pnpm scan --since 48h --telegram
+
+# one chain, custom window, custom artifact path:
+pnpm scan --since 2d --chains ethereum --json /tmp/eth.json
+```
+
+Discovery is on-chain (`getLogs(Trade)` on the CoW Settlement contract) plus per-order
+appData resolution via CoW's API, keeping `appCode in {ophis, greg}`. Self-hosted
+Optimism reads its local orderbook Postgres directly (run on the Mac mini where Docker
+lives). Secrets (`alchemy-api-key`, `ophis-telegram-bot`) come from the macOS Keychain.
+The JSON artifact and the orderUid cache default to `~/.ophis/` (out of repo). Design:
+`docs/development/specs/2026-06-19-onchain-appdata-swap-scan-design.md`.

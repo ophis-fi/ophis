@@ -102,16 +102,34 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // Verified live 2026-05-16 via `cast code` (49127 bytes) and
     // upstream docs:
     // https://developers.velora.xyz/augustus-swapper/augustus-v6.2-smart-contracts
-    address!("6a000F20005980200259B80c5102003040001068"),
+    address!("6A000F20005980200259B80c5102003040001068"),
     // OKX V6 router on Optimism mainnet. Verified 2026-05-18 via
     // authenticated probe + `cast code`. Used as `tx.to` returned by
     // OKX `/swap`. Distinct from the spender address below — OKX
     // separates router and approval target on V6.
-    address!("Dd5E9B947c99AA60baB00CA4631DCe63b49983E7"),
+    address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7"),
     // OKX V6 spender on Optimism mainnet. Returned by OKX
     // `/approve-transaction` as `dexContractAddress` — the ERC-20
     // approval grantee. Verified 2026-05-18 alongside the router.
     address!("68D6B739D2020067D1e2F713b999dA97E4d54812"),
+    // Odos OdosRouterV2 on Optimism (10) -- router (tx.to) == ERC-20 spender.
+    // Per-chain; verified 2026-07-06 via api.odos.xyz + eth_getCode (14721 B).
+    address!("Ca423977156BB05b13A2BA3b76Bc5419E2fE9680"),
+    // Enso EnsoRouter on Optimism (10) -- tx.to == approval target.
+    // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
+    address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
+    // LI.FI LiFiDiamond on Optimism (10) -- tx.to == approvalAddress.
+    // Per-chain diamond; verified 2026-07-06 via li.quest (5176 B).
+    address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
+    // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
+    // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).
+    address!("6352a56caadC4F1E25CD6c75970Fa768A3304e64"),
+    // DODO DODORouteProxy on Optimism (10) -- the router tx.to. Per-chain.
+    // Verified 2026-07-06 via getdodoroute?chainId=10 (11202 B).
+    address!("8b09DB11ea380d6454D2592D334FFC319ce6EF3E"),
+    // DODO DODOApproveProxy on Optimism (10) -- ERC-20 approval target,
+    // distinct from the router above. Verified 2026-07-06 (2432 B).
+    address!("a492d6eABcdc3E204676f15B950bBdD448080364"),
 ];
 
 /// HyperEVM mainnet (chain 999). Only KyberSwap currently supports this
@@ -332,9 +350,9 @@ mod tests {
     // KyberSwap router (verified on both OP and HL).
     const KYBER: Address = address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5");
     // Velora Augustus V6.2 (OP only).
-    const VELORA: Address = address!("6a000F20005980200259B80c5102003040001068");
+    const VELORA: Address = address!("6A000F20005980200259B80c5102003040001068");
     // OKX V6 router on OP (used in the OKX coverage test below).
-    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99AA60baB00CA4631DCe63b49983E7");
+    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7");
     // OKX V6 spender on OP (separate from router — verifies router/spender
     // distinct-address handling).
     const OKX_OP_SPENDER: Address = address!("68D6B739D2020067D1e2F713b999dA97E4d54812");

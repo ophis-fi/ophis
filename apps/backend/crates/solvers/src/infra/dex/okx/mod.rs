@@ -347,10 +347,63 @@ impl Okx {
         // handle_buy_order so that a poisoned response never persists in the
         // moka cache (retro-audit follow-up: prevents sticky DoS on
         // (token, side) keys if the allowlist itself is ever wrong).
-        validate_router_allowlist(
-            self.defaults.chain_index,
-            &swap_response.tx.to,
-        )?;
+        validate_router_allowlist(self.defaults.chain_index, &swap_response.tx.to)?;
+
+        // Buffer-siphon guard (mirrors kyberswap/mod.rs:187, velora, odos, dodo,
+        // lifi, enso, openocean, bitget — the one lane that was missing it). For
+        // a SELL (exactIn) order the input is fixed by the signed order. A
+        // compromised/hijacked OKX edge could echo a larger `from_token_amount`,
+        // which we would turn into an inflated ERC-20 allowance below and an
+        // on-chain approval the (allowlisted) router uses to pull the Settlement
+        // contract's OWN buffer of the sold token — a direct loss of protocol
+        // funds. The framework's allowance_within_sell_limit only enforces the
+        // limit-price relation (O*S >= A*B), not A <= order.sell, so it does not
+        // close this. Fail fast rather than trust the echoed amount. (BUY /
+        // exactOut legitimately varies the input; it is bounded by the
+        // U256::MAX-allowance branch + the driver's 2^200 custom_allowlist cap.)
+        if order.side == order::Side::Sell
+            && swap_response.router_result.from_token_amount != order.amount.get()
+        {
+            return Err(Error::Api {
+                code: -1,
+                reason: format!(
+                    "OKX /swap returned from_token_amount {:?}, expected signed sell amount {:?}",
+                    swap_response.router_result.from_token_amount,
+                    order.amount.get()
+                ),
+            });
+        }
+
+        // Token-integrity guard (Codex review, PR #745): input.token / output.token
+        // below are relabeled to the SIGNED order.sell / order.buy. If a compromised
+        // or hijacked OKX edge returned calldata that actually swaps to a DIFFERENT
+        // asset, relabeling output.token to order.buy would MASK the mismatch that
+        // into_dex_solution's token-pair check would otherwise reject — letting the
+        // Settlement pay the buy token out of the contract's OWN buffer (protocol
+        // inventory) instead of the realized swap output (a buffer-internalization
+        // drain, the output-side mirror of the input-side siphon above). Reject any
+        // echoed from/to token that does not match the signed order before relabeling.
+        if swap_response
+            .router_result
+            .from_token
+            .token_contract_address
+            != order.sell.0
+            || swap_response.router_result.to_token.token_contract_address != order.buy.0
+        {
+            return Err(Error::Api {
+                code: -1,
+                reason: format!(
+                    "OKX /swap echoed tokens ({:?} -> {:?}) != signed order ({:?} -> {:?})",
+                    swap_response
+                        .router_result
+                        .from_token
+                        .token_contract_address,
+                    swap_response.router_result.to_token.token_contract_address,
+                    order.sell.0,
+                    order.buy.0,
+                ),
+            });
+        }
 
         // Increasing returned gas by 50% according to the documentation:
         // https://web3.okx.com/build/dev-docs/wallet-api/dex-swap (gas field description in Response param)
@@ -393,19 +446,17 @@ impl Okx {
                 calldata: swap_response.tx.data.clone(),
             }],
             input: eth::Asset {
-                token: swap_response
-                    .router_result
-                    .from_token
-                    .token_contract_address
-                    .into(),
+                // Trust the SIGNED order's sell token, never the API-echoed
+                // token (a hijacked response could otherwise redirect the
+                // approval/spend to an unrelated token). For SELL the amount is
+                // provably == order.amount.get() by the guard above; for BUY it
+                // is the computed exactOut input.
+                token: order.sell,
                 amount: swap_response.router_result.from_token_amount,
             },
             output: eth::Asset {
-                token: swap_response
-                    .router_result
-                    .to_token
-                    .token_contract_address
-                    .into(),
+                // Trust the SIGNED order's buy token, never the API-echoed one.
+                token: order.buy,
                 // SELL (exactIn): report the GUARANTEED router floor
                 // (to_token_amount discounted by the slippage we sent), NOT the
                 // optimistic quote. OKX has no explicit minReceived field; it
@@ -418,10 +469,9 @@ impl Okx {
                 // amount; slippage applies to the INPUT (the allowance pad
                 // above), not the output, so report to_token_amount unmodified.
                 amount: match order.side {
-                    order::Side::Sell => okx_min_received(
-                        swap_response.router_result.to_token_amount,
-                        clamped_bps,
-                    ),
+                    order::Side::Sell => {
+                        okx_min_received(swap_response.router_result.to_token_amount, clamped_bps)
+                    }
                     order::Side::Buy => swap_response.router_result.to_token_amount,
                 },
             },
@@ -687,9 +737,7 @@ impl Okx {
 
         let request = request_builder
             .try_clone()
-            .ok_or_else(|| {
-                Error::RequestBuildFailed("request builder not cloneable".to_string())
-            })?
+            .ok_or_else(|| Error::RequestBuildFailed("request builder not cloneable".to_string()))?
             .build()
             .map_err(|e| Error::RequestBuildFailed(format!("build: {e}")))?;
 

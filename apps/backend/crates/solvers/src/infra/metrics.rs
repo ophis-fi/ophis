@@ -84,6 +84,7 @@ pub enum Dex {
     Okx,
     Lifi,
     Enso,
+    Bitget,
 }
 
 impl Dex {
@@ -97,6 +98,7 @@ impl Dex {
             Dex::Okx => "okx",
             Dex::Lifi => "lifi",
             Dex::Enso => "enso",
+            Dex::Bitget => "bitget",
         }
     }
 }

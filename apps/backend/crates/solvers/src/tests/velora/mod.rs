@@ -11,6 +11,8 @@ pub fn config(solver_addr: &SocketAddr) -> tests::Config {
     tests::Config::String(format!(
         r"
 node-url = 'http://localhost:8545'
+strict-market-output-simulation = 'off'
+max-output-reference-factor = '1000000000000'
 [dex]
 chain-id = '10'
 endpoint = 'http://{solver_addr}/'

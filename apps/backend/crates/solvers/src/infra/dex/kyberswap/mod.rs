@@ -31,6 +31,24 @@ pub const DEFAULT_CLIENT_ID: &str = "ophis-solver";
 /// Maximum value KyberSwap accepts for `slippageTolerance` (20%).
 const MAX_SLIPPAGE_BPS: u16 = 2000;
 
+/// Slippage subtracted from the bounded solve slippage to absorb the
+/// `/route/build` re-pricing drift below the `/routes` optimistic the bound
+/// was computed against. See `bounded_solve_slippage_bps`.
+const REPRICE_MARGIN_BPS: u16 = 1;
+
+/// Gas estimate for the fee used in slippage bounding: the API's decimal gas
+/// string padded by 50% (mirroring the swap's own gas padding) plus the
+/// settle-simulation overhead. An unparseable string falls back to a LARGE
+/// bound — over-estimating only tightens the floor, while zero would
+/// under-estimate the fee and recreate the unsettleable-order bug.
+fn bound_gas_estimate(gas: &str) -> eth::Gas {
+    let gas: u64 = gas.trim().parse().unwrap_or(dex::UNPARSEABLE_GAS_FALLBACK);
+    eth::Gas(U256::from(
+        gas.saturating_add(gas / 2)
+            .saturating_add(dex::SIM_SETTLE_OVERHEAD_GAS),
+    ))
+}
+
 /// Allowlist of KyberSwap router addresses that can be approved as ERC-20
 /// spender for the Settlement contract.
 ///
@@ -52,12 +70,10 @@ const MAX_SLIPPAGE_BPS: u16 = 2000;
 /// after independent verification (their docs at
 /// https://docs.kyberswap.com/Aggregator/aggregator-protocol-deployment/
 /// contracts-and-addresses) — do NOT take it from a /routes response.
-const KYBERSWAP_ROUTER_ALLOWLIST: &[Address] = &[
-    Address::new([
-        0x61, 0x31, 0xB5, 0xfa, 0xe1, 0x9E, 0xA4, 0xf9, 0xD9, 0x64, 0xeA, 0xc0, 0x40, 0x8E, 0x44,
-        0x08, 0xb6, 0x63, 0x37, 0xb5,
-    ]),
-];
+const KYBERSWAP_ROUTER_ALLOWLIST: &[Address] = &[Address::new([
+    0x61, 0x31, 0xB5, 0xfa, 0xe1, 0x9E, 0xA4, 0xf9, 0xD9, 0x64, 0xeA, 0xc0, 0x40, 0x8E, 0x44, 0x08,
+    0xb6, 0x63, 0x37, 0xb5,
+])];
 
 fn validate_router_allowlist(router: &Address) -> Result<(), Error> {
     if KYBERSWAP_ROUTER_ALLOWLIST.contains(router) {
@@ -139,6 +155,7 @@ impl KyberSwap {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         // KyberSwap is exactIn-only.
         if order.side == order::Side::Buy {
@@ -159,9 +176,79 @@ impl KyberSwap {
             // settlement calldata. See KYBERSWAP_ROUTER_ALLOWLIST docs.
             validate_router_allowlist(&routes_router)?;
 
-            let (build, slippage_tolerance) = self
-                .build_route(routes.route_summary, order, slippage)
+            // On the solve path, bound the slippage sent to /route/build by the
+            // order's signed buy limit plus the estimated surplus fee, so the
+            // router's on-chain minReturn (== the reported buy clearing amount)
+            // is at least what the order will accept AFTER the fee-scaled limit
+            // check in `into_dex_solution`. Without the fee the bounded floor
+            // undershoots that check by ~fee/sell on every bounded solve (the
+            // 2026-07-17 Unichain unsettleable-orders bug); without bounding at
+            // all, the fixed 1% floor sits below a tight order's limit. The gas
+            // estimate mirrors the final swap gas (route gas + 50% pad) plus
+            // the settle-simulation overhead. Quotes report optimistic and
+            // never settle, so leave the slippage configured for them.
+            let configured_bps = slippage.as_bps().unwrap_or(0);
+            let build_slippage = if is_quote {
+                slippage.clone()
+            } else {
+                let bounded_bps = order.bounded_solve_slippage_bps(
+                    routes.route_summary.amount_out,
+                    configured_bps,
+                    bound_gas_estimate(&routes.route_summary.gas),
+                    // /route/build re-quotes the route and its optimistic
+                    // amount_out lands ~1 bp below the /routes value the bound
+                    // was computed against (observed live 2026-07-17); tighten
+                    // by 1 bp so the re-priced minReturn usually stays above
+                    // the bar without the validation rebuild below.
+                    REPRICE_MARGIN_BPS,
+                );
+                dex::Slippage::from_bps(bounded_bps)
+            };
+
+            let (mut build, mut slippage_tolerance) = self
+                .build_route(routes.route_summary.clone(), order, &build_slippage)
                 .await?;
+
+            // SOLVE-path floor validation on the BUILD-stage base. The bps
+            // bound above was computed against the /routes optimistic, but the
+            // router's on-chain minReturn (== the reported buy clearing
+            // amount) is `build.amount_out × (1 − bps)` — when /route/build
+            // re-prices more than REPRICE_MARGIN_BPS below /routes, that floor
+            // lands under the fee-inflated bar and the swap would be rejected
+            // downstream (the very failure this bounding exists to fix).
+            // `sent <= bounded(build base)` is exactly `floor >= bar`
+            // (monotone), so rebuild ONCE with the tighter build-stage bound;
+            // if even that undershoots (the market moved again mid-flight),
+            // give up and let the next auction retry with fresh prices.
+            if !is_quote {
+                let accepts = |b: &dto::BuildData, sent: u16| {
+                    sent <= order.bounded_solve_slippage_bps(
+                        b.amount_out,
+                        configured_bps,
+                        bound_gas_estimate(&b.gas),
+                        0,
+                    )
+                };
+                if !accepts(&build, slippage_tolerance) {
+                    let retry_bps = order.bounded_solve_slippage_bps(
+                        build.amount_out,
+                        configured_bps,
+                        bound_gas_estimate(&build.gas),
+                        0,
+                    );
+                    let (build2, sent2) = self
+                        .build_route(
+                            routes.route_summary.clone(),
+                            order,
+                            &dex::Slippage::from_bps(retry_bps),
+                        )
+                        .await?;
+                    if !accepts(&build2, sent2) {
+                        return Err(Error::NotFound);
+                    }
+                    (build, slippage_tolerance) = (build2, sent2);
+                }
+            }
 
             // Step 2 should return the same router address as step 1. Treat a
             // mismatch as a misbehaving API rather than silently using one.
@@ -234,7 +321,11 @@ impl KyberSwap {
                     // buffer (standard CoW surplus handling). The order's
                     // signed buy-amount-min is enforced downstream, so a floor
                     // below the limit is correctly filtered as NoSolution.
-                    amount: min_return_amount(build.amount_out, slippage_tolerance),
+                    // Settle: the router's guaranteed floor (#726) so the buy
+                    // payout can never exceed realized output. Quote: the
+                    // optimistic `amount_out`, matching 0x/ParaSwap. See
+                    // `reported_output`.
+                    amount: reported_output(build.amount_out, slippage_tolerance, is_quote),
                 },
                 allowance: dex::Allowance {
                     spender: routes_router,
@@ -368,6 +459,20 @@ fn min_return_amount(amount_out: U256, slippage_tolerance_bps: u16) -> U256 {
     }
 }
 
+/// The buy-side amount to REPORT for a SELL order.
+///
+/// * settle (`is_quote == false`): the router's guaranteed slippage floor
+///   (`min_return_amount`) — the #726 invariant; do NOT weaken this.
+/// * quote  (`is_quote == true`): the optimistic `amount_out`, closing the
+///   ~1% competitiveness gap. Quotes never settle, so no revert risk.
+fn reported_output(optimistic_out: U256, slippage_tolerance_bps: u16, is_quote: bool) -> U256 {
+    if is_quote {
+        optimistic_out
+    } else {
+        min_return_amount(optimistic_out, slippage_tolerance_bps)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CreationError {
     #[error(transparent)]
@@ -454,5 +559,22 @@ mod tests {
     fn min_return_amount_full_slippage_is_zero() {
         let a = U256::from(1_000_000_000u64);
         assert_eq!(min_return_amount(a, 10_000), U256::ZERO);
+    }
+
+    #[test]
+    fn reported_output_quote_is_optimistic() {
+        let optimistic = U256::from(988_146_014_276_470u128);
+        assert_eq!(reported_output(optimistic, 100, true), optimistic);
+        assert_eq!(reported_output(optimistic, 2000, true), optimistic);
+    }
+
+    #[test]
+    fn reported_output_solve_is_floor() {
+        let optimistic = U256::from(988_146_014_276_470u128);
+        assert_eq!(
+            reported_output(optimistic, 100, false),
+            min_return_amount(optimistic, 100)
+        );
+        assert!(reported_output(optimistic, 100, false) < optimistic);
     }
 }

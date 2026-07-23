@@ -1,9 +1,9 @@
 name: Publish @ophis agent plugins to npm
 
-# Publishes packages/agent-swap, packages/plugin-goat, packages/agentkit-ophis to npm on an
+# Publishes packages/agent-swap, packages/plugin-goat, packages/agentkit-ophis, packages/plugin-elizaos to npm on an
 # `agent-plugins-v*` tag (e.g. `agent-plugins-v0.1.0`). The three share a version; the tag suffix
-# must equal all three package.json `version`s. They are published in DEPENDENCY ORDER — agent-swap
-# first, because plugin-goat and agentkit-ophis depend on it (pnpm rewrites `workspace:*` to the
+# must equal all four package.json `version`s. They are published in DEPENDENCY ORDER — agent-swap
+# first, because plugin-goat, agentkit-ophis and plugin-elizaos depend on it (pnpm rewrites `workspace:*` to the
 # concrete published versions at pack time). Requires the repo secret NPM_TOKEN (an npm automation
 # token with publish rights to the @ophis scope). Provenance is attested via OIDC (id-token: write).
 #
@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   publish:
-    name: build + publish (agent-swap → plugin-goat, agentkit-ophis)
+    name: build + publish (agent-swap → plugin-goat, agentkit-ophis, plugin-elizaos)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -46,14 +46,14 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           TAG_VERSION="${TAG#agent-plugins-v}"
-          for pkg in agent-swap plugin-goat agentkit-ophis; do
+          for pkg in agent-swap plugin-goat agentkit-ophis plugin-elizaos; do
             PKG_VERSION="$(node -p "require('./packages/$pkg/package.json').version")"
             if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
               echo "::error::tag $TAG (version $TAG_VERSION) != packages/$pkg version $PKG_VERSION" >&2
               exit 1
             fi
           done
-          echo "tag matches all three package versions ($TAG_VERSION)"
+          echo "tag matches all four package versions ($TAG_VERSION)"
 
       # --ignore-scripts: do NOT run third-party dependency lifecycle scripts during install in this
       # token-bearing job (pnpm 9 runs them by default). Each package's build is invoked explicitly
@@ -69,6 +69,7 @@ jobs:
           pnpm --filter @ophis/agent-swap build
           pnpm --filter @ophis/plugin-goat build
           pnpm --filter @ophis/agentkit-ophis build
+          pnpm --filter @ophis/plugin-elizaos build
 
       - name: test
         run: pnpm --filter @ophis/agent-swap test
@@ -88,5 +89,10 @@ jobs:
 
       - name: publish @ophis/agentkit-ophis
         run: pnpm --filter @ophis/agentkit-ophis publish --no-git-checks --access public --provenance --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: publish @ophis/plugin-elizaos
+        run: pnpm --filter @ophis/plugin-elizaos publish --no-git-checks --access public --provenance --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

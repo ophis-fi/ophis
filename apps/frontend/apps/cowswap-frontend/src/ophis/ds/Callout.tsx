@@ -74,6 +74,11 @@ const Body = styled.div`
   & p + p {
     margin-top: 8px;
   }
+  /* Space an action button (e.g. the Connect Wallet CTA on Profile/Rewards)
+     from the paragraph above it; the paragraph's margin is zeroed above. */
+  & p + button {
+    margin-top: 18px;
+  }
 `
 
 interface CalloutPropsWithRole extends CalloutProps {

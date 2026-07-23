@@ -10,8 +10,12 @@
 # an empty ${UNICHAIN_RPC_INTERNAL} fails TOML parse. Hardcode the eRPC proxy,
 # same as the OP stack's canonical autopilot.toml. The driver keeps the
 # UNICHAIN_RPC_INTERNAL single-provider bypass via its ETHRPC env.
-node-url = "http://rpc-proxy:4000/main/evm/130"
-simulation-node-url = "http://rpc-proxy:4000/main/evm/130"
+# Anchored to the SELF node (host-gateway alias, same route as erpc.yaml's
+# debug leg): auctions must be cut at a head every sim participant can serve.
+# Cutting at the eRPC max-head (fastest public upstream) starved all solves
+# whenever the self node trailed the leader (2026-07-18 incident).
+node-url = "http://ophis-uni-node:8545"
+simulation-node-url = "http://ophis-uni-node:8545"
 
 # Per-order wait while the run loop fetches a missing native (ETH-denominated)
 # token price. CoinGecko simple/token_price typically answers in 200-500ms;
@@ -149,13 +153,15 @@ api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
 
 [native-price-estimation]
-# Primary: on-chain Uniswap V3 TWAP. Uniswap V3 factory and init-code-hash
-# are canonical cross-chain constants (same on Ethereum / Optimism / Unichain).
+# Primary: on-chain Uniswap V3 TWAP. The init-code-hash IS a canonical
+# cross-chain constant, but the factory address is NOT: Unichain uses its own
+# v3CoreFactory (0x1F98400000000000000000000000000000000003), distinct from the
+# 0x1F98431c... factory used on Ethereum / Optimism. Verified live on-chain.
 # Fallback: CoinGecko. Unichain is supported on CoinGecko (verified via
 # coingecko.com/api/v3/asset_platforms).
 estimators = [
   [
-    { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "UniswapV3", factory = "0x1F98400000000000000000000000000000000003", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
     { type = "CoinGecko" },
   ],
 ]

@@ -18,6 +18,8 @@ import {
   getTokenChart,
   expectedSurplus,
   resolveToken,
+  getIntegratorEarnings,
+  validateOrder,
   type Address,
 } from '../src/ophis.js'
 
@@ -25,6 +27,8 @@ const OWNER = '0x931e9f531cdd4835Def0dEDE1452BA8aFbe5ff9b' as const
 const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' as const
 const WETH_OP = '0x4200000000000000000000000000000000000006' as const
 const ATTACKER = '0x000000000000000000000000000000000000dEaD' as const
+const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as const
+const OP_TOKEN = '0x4200000000000000000000000000000000000042' as const
 const OPHIS_OP_SETTLEMENT = '0x310784c7FCE12d578dA6f53460777bAc9718B859'
 const NOW = 1_900_000_000
 
@@ -58,6 +62,191 @@ describe('buildOphisAppData', () => {
     const ad = buildOphisAppData(5)
     expect(ad.partnerFee).toBeUndefined()
     expect(ad.fullAppData).not.toContain('partnerFee')
+  })
+
+  it('embeds metadata.ophisSource.app only when a source is given, and it changes the hash', () => {
+    const without = buildOphisAppData(10)
+    const withSrc = buildOphisAppData(10, undefined, undefined, 'mcp')
+    expect(without.fullAppData).not.toContain('ophisSource')
+    expect(withSrc.fullAppData).toContain('"ophisSource":{"app":"mcp"}')
+    expect((withSrc.doc.metadata as Record<string, unknown>).ophisSource).toEqual({ app: 'mcp' })
+    // Distinct appData string => distinct signed hash.
+    expect(withSrc.appDataHash).not.toBe(without.appDataHash)
+    expect(withSrc.appDataHash).toBe(keccak256(toBytes(withSrc.fullAppData)))
+  })
+})
+
+describe('validateOrder (offline preflight)', () => {
+  it('passes a correct Optimism order and echoes the expected wiring', () => {
+    const ad = buildOphisAppData(10)
+    const r = validateOrder(
+      {
+        chainId: 10,
+        owner: OWNER,
+        order: { receiver: OWNER, appData: ad.appDataHash, validTo: NOW + 1200, feeAmount: '0' },
+        fullAppData: ad.fullAppData,
+        signingDomain: { name: 'Gnosis Protocol', version: 'v2', chainId: 10, verifyingContract: OPHIS_OP_SETTLEMENT },
+        orderbookUrl: 'https://optimism-mainnet.ophis.fi',
+      },
+      NOW,
+    )
+    expect(r.errors).toEqual([])
+    expect(r.valid).toBe(true)
+    expect(r.expected.settlement?.toLowerCase()).toBe(OPHIS_OP_SETTLEMENT.toLowerCase())
+    expect(r.expected.appCode).toBe('ophis')
+  })
+
+  it('rejects signing against CoW canonical settlement on an Ophis-operated chain', () => {
+    const r = validateOrder(
+      {
+        chainId: 10,
+        signingDomain: {
+          name: 'Gnosis Protocol',
+          version: 'v2',
+          chainId: 10,
+          verifyingContract: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
+        },
+      },
+      NOW,
+    )
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /canonical settlement/i.test(e) && e.includes(OPHIS_OP_SETTLEMENT))).toBe(true)
+  })
+
+  it('rejects api.cow.fi as the orderbook host on an Ophis-operated chain', () => {
+    const r = validateOrder({ chainId: 10, orderbookUrl: 'https://api.cow.fi/mainnet' }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /api\.cow\.fi/.test(e) && /bypass/i.test(e))).toBe(true)
+  })
+
+  it('flags an appData hash mismatch (the classic silent killer)', () => {
+    const ad = buildOphisAppData(10)
+    const r = validateOrder(
+      { chainId: 10, order: { appData: '0x' + '11'.repeat(32) }, fullAppData: ad.fullAppData },
+      NOW,
+    )
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /does not hash to order\.appData/.test(e))).toBe(true)
+  })
+
+  it('warns (not errors) on a non-ophis appCode', () => {
+    const doc = JSON.stringify({ version: APP_DATA_VERSION, appCode: 'notophis', metadata: {} })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.warnings.some((w) => /appCode/.test(w) && /zero rebate/i.test(w))).toBe(true)
+  })
+
+  it('errors when the receiver is not the owner (drain guard)', () => {
+    const r = validateOrder({ chainId: 10, owner: OWNER, order: { receiver: ATTACKER } }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /receiver/.test(e) && /drain guard/i.test(e))).toBe(true)
+  })
+
+  it('errors on an expired validTo', () => {
+    const r = validateOrder({ chainId: 10, order: { validTo: NOW - 1 } }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /expired/i.test(e))).toBe(true)
+  })
+
+  it('errors on a non-zero signed feeAmount', () => {
+    const r = validateOrder({ chainId: 10, order: { feeAmount: '1000' } }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /feeAmount/.test(e))).toBe(true)
+  })
+
+  it('errors on a partnerFee entry with out-of-range bps', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: [{ recipient: OWNER, volumeBps: 250 }] },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /volumeBps must be an integer in \[1, 100\]/.test(e))).toBe(true)
+  })
+
+  it('errors on a non-tradeable chain and lists tradeable ids', () => {
+    const r = validateOrder({ chainId: 999999 }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /not tradeable/.test(e))).toBe(true)
+  })
+
+  it('rejects api.cow.fi/mainnet on Gnosis (100): host matches but the path is the wrong chain', () => {
+    // Gnosis is CoW-hosted at api.cow.fi/xdai. A host-only check would accept the
+    // mainnet path because both share the api.cow.fi host; the full-base compare
+    // catches the wrong-chain path.
+    const r = validateOrder({ chainId: 100, orderbookUrl: 'https://api.cow.fi/mainnet' }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /wrong for chain 100/.test(e) && /api\.cow\.fi\/xdai/.test(e))).toBe(true)
+  })
+
+  it('rejects a partnerFee whose recipient is not the allowlisted Ophis Safe (backend allowlist)', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: ATTACKER, volumeBps: 5 } },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /no entry paying the Ophis recipient/i.test(e) && e.includes(OPHIS_SAFE))).toBe(true)
+  })
+
+  it('accepts a referral code that is only creditable after the indexer trims + lowercases it', () => {
+    // "ACME-Bot_1" is not byte-for-byte canonical, but the rebate indexer normalizes
+    // (trim + lowercase) to "acme-bot_1" before matching, so it IS creditable.
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: {
+        partnerFee: { recipient: OPHIS_SAFE, volumeBps: 5 },
+        ophisReferrer: { code: 'ACME-Bot_1' },
+      },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.errors.some((e) => /ophisReferrer/.test(e))).toBe(false)
+    expect(r.valid).toBe(true)
+  })
+
+  it('rejects a 2 bps Ophis-recipient Volume fee below the non-stable floor on Optimism', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 2 } },
+    })
+    const r = validateOrder({ chainId: 10, order: { sellToken: WETH_OP, buyToken: OP_TOKEN }, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /below the Ophis 4-bps non-stable Volume floor/i.test(e))).toBe(true)
+  })
+
+  it('rejects a stacked non-Ophis partnerFee recipient (backend allowlist rejects the whole order)', () => {
+    // The Ophis entry is present (so no missing-recipient error), but a stacked
+    // own-fee entry to a foreign recipient makes the backend reject the WHOLE
+    // order unless that address is independently allowlisted. A caller that gates
+    // on valid must not sign it, so this is an error (valid=false), not a warning.
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: {
+        partnerFee: [
+          { recipient: OPHIS_SAFE, volumeBps: 5 },
+          { recipient: ATTACKER, volumeBps: 30 },
+        ],
+      },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /not the Ophis recipient/i.test(e) && /allowlist/i.test(e) && e.includes(ATTACKER))).toBe(true)
+  })
+
+  it('warns (does not silently pass) when the Ophis fee may breach the floor but the tokens are omitted', () => {
+    // Same 2 bps fee as the floor test above, but with no sellToken/buyToken: the
+    // pair cannot be confirmed, so a bypass-by-omission must surface as a warning.
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 2 } },
+    })
+    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
+    expect(r.warnings.some((w) => /may breach the Ophis Volume floor/i.test(w))).toBe(true)
   })
 })
 
@@ -227,6 +416,11 @@ describe('listChains', () => {
     expect(op?.partnerFee?.volumeBps).toBe(5)
   })
 
+  it('names Unichain (130) with its real display name, not a chain-130 placeholder', () => {
+    const uni = listChains().tradeable.find((c) => c.chainId === 130)
+    expect(uni?.name).toBe('Unichain')
+  })
+
   it('puts Ethereum mainnet in tradeable with the canonical settlement', () => {
     const eth = listChains().tradeable.find((c) => c.chainId === 1)
     expect(eth?.ophisOperated).toBe(false)
@@ -278,10 +472,12 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
     expect(() => assertLimitWithinSlippage('buy', '100000000000', '250000000000000', fair, 100)).toThrow()
   })
 
-  it('defaults to the 50% cap when slippageBips is omitted', () => {
-    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair)).toThrow() // >50% below
-    const out40 = ((250000000000000n * 6000n) / 10000n).toString() // 40% below -> within 50% default
-    expect(() => assertLimitWithinSlippage('sell', '1000000', out40, fair)).not.toThrow()
+  it('defaults to a 100-bps (1%) backstop when slippageBips is omitted', () => {
+    expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair)).toThrow() // far below the 1% floor
+    const floor = ((250000000000000n * 9900n) / 10000n).toString() // exactly 1% below -> within the default
+    expect(() => assertLimitWithinSlippage('sell', '1000000', floor, fair)).not.toThrow()
+    const below = ((250000000000000n * 9800n) / 10000n).toString() // 2% below -> past the 1% default
+    expect(() => assertLimitWithinSlippage('sell', '1000000', below, fair)).toThrow()
   })
 
   it('widens the bound by the CIP-75 partner fee so legit fee-chain orders are not false-rejected', () => {
@@ -330,6 +526,14 @@ describe('getBalances / getGas / getPortfolio guards (no network)', () => {
     const res = await getPortfolio({ owner: OWNER, chainIds: [9745] })
     expect(res.chains).toEqual([])
     expect(res.owner).toBe(OWNER)
+  })
+
+  it('caps the total token fan-out across all chains without a network call', async () => {
+    // 3 chains x 50 tokens = 150 total token reads, over the 100 cap.
+    const tokensByChain = { 10: Array(50).fill(USDC_OP), 8453: Array(50).fill(USDC_OP), 42161: Array(50).fill(USDC_OP) }
+    await expect(
+      getPortfolio({ owner: OWNER, chainIds: [10, 8453, 42161], tokensByChain }),
+    ).rejects.toThrow(/at most 100 token reads total/)
   })
 })
 
@@ -624,5 +828,41 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
   it('throws on an invalid chainId (zero or non-integer)', async () => {
     await expect(resolveToken({ chainId: 0, symbol: 'USDC' }, list([]))).rejects.toThrow(/invalid chainId/)
     await expect(resolveToken({ chainId: 1.5, symbol: 'USDC' }, list([]))).rejects.toThrow(/invalid chainId/)
+  })
+})
+
+describe('getIntegratorEarnings (keyless indexer caller)', () => {
+  // Capture the URL the caller hits and return a canned earnings payload.
+  function captureFetch(payload: unknown, status = 200) {
+    let url: string | undefined
+    const fetchImpl = (async (u: string) => {
+      url = u
+      return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    return { fetchImpl, url: () => url }
+  }
+
+  it('lowercases the appCode and hits GET /earnings/:appCode, returning the indexer payload', async () => {
+    const cap = captureFetch({ ok: true, appCode: 'acme-dapp', disclaimer: 'x', routedVolumeUsd: { total: 0 } })
+    const res = await getIntegratorEarnings('Acme-Dapp', cap.fetchImpl)
+    expect(cap.url()).toBe('https://rebates.ophis.fi/earnings/acme-dapp')
+    expect(res.appCode).toBe('acme-dapp')
+    expect((res.earnings as { appCode: string }).appCode).toBe('acme-dapp')
+  })
+
+  it('wraps a non-200 indexer response in an { error } payload rather than throwing', async () => {
+    const cap = captureFetch({}, 503)
+    const res = await getIntegratorEarnings('acme-dapp', cap.fetchImpl)
+    expect((res.earnings as { error: string }).error).toContain('503')
+  })
+
+  it('rejects a malformed appCode before any network call', async () => {
+    let called = false
+    const fetchImpl = (async () => {
+      called = true
+      return new Response('{}', { status: 200 })
+    }) as unknown as typeof fetch
+    await expect(getIntegratorEarnings('ab', fetchImpl)).rejects.toThrow(/appCode/)
+    expect(called).toBe(false)
   })
 })

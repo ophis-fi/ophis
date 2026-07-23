@@ -74,7 +74,7 @@ services:
   #
   # Cloned from infra/hyperevm-mainnet (Phase 4 audit M-2, 2026-05-19).
   rpc-proxy:
-    image: ghcr.io/erpc/erpc:latest
+    image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
     volumes:
@@ -409,6 +409,121 @@ services:
       retries: 6
       start_period: 30s
 
+  odos-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/odos.toml:/odos.toml:ro
+    command: ["odos", "--config", "/odos.toml"]
+    ports:
+      - "127.0.0.1:9026:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  enso-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/enso.toml:/enso.toml:ro
+    command: ["enso", "--config", "/enso.toml"]
+    ports:
+      - "127.0.0.1:9027:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  lifi-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/lifi.toml:/lifi.toml:ro
+    command: ["lifi", "--config", "/lifi.toml"]
+    ports:
+      - "127.0.0.1:9028:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  openocean-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/openocean.toml:/openocean.toml:ro
+    command: ["openocean", "--config", "/openocean.toml"]
+    ports:
+      - "127.0.0.1:9029:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  dodo-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/dodo.toml:/dodo.toml:ro
+    command: ["dodo", "--config", "/dodo.toml"]
+    ports:
+      - "127.0.0.1:9030:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
   # Prometheus — scrape orderbook/driver/autopilot/rpc-proxy /metrics
   # endpoints and evaluate alert rules. Host port 9091 (HL stack uses 9090
   # to allow coexistence even though HL is paused).
@@ -504,6 +619,42 @@ services:
       - "/proc:/host/proc:ro"
       - "/sys:/host/sys:ro"
       - "/:/host:ro,rslave"
+
+  # Auto-refunder for expired eth-flow (native-ETH) orders. Ophis self-hosts the
+  # OP stack, so unlike CoW's hosted deployment there is NO managed refunder:
+  # without this, an expired native-ETH order strands the user's ETH in the
+  # eth-flow contract until a manual invalidateOrder. This worker scans the
+  # orderbook DB for expired, unfilled, unrefunded eth-flow orders and batch
+  # invalidates them on-chain, returning the ETH to each order owner.
+  #
+  # MIN_PRICE_DEVIATION_BPS is NEGATIVE so EVERY expired order is refunded: an
+  # expired order can never fill, so refunding is always correct. CoW's default
+  # (190 = only >=1.9% slippage) skips normal tight-slippage orders. Gas is paid
+  # from a dedicated low-value EOA (keychain ophis-refunder-pk), NOT the
+  # settlement submitter, to avoid nonce contention. See docs runbook.
+  refunder:
+    image: local-refunder:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: refunder
+      args: *backend-build-args
+    restart: always
+    mem_limit: 512m
+    depends_on:
+      db: { condition: service_healthy }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_URL: ${DB_READ_URL}
+      NODE_URL: ${OP_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/10}
+      CHAIN_ID: "10"
+      ETHFLOW_CONTRACTS: "0x764fE4aa1FF493cf39931c7923C8ff5837596504"
+      REFUNDER_PK: ${OPHIS_REFUNDER_PK:?refunder key must be set (keychain ophis-refunder-pk; export before compose up)}
+      # Negative -> refund every expired order (an expired order can never fill).
+      MIN_PRICE_DEVIATION_BPS: "-1000000"
+      MIN_VALIDITY_DURATION: "2m"
+      LOOKBACK_TIME: "30d"
 
 volumes:
   postgres:

@@ -3,11 +3,16 @@ import { EVMWalletClient } from '@goat-sdk/wallet-evm';
 import { arbitrum, avalanche, base, gnosis, mainnet, optimism, polygon } from 'viem/chains';
 import { executeOphisSwap, type OphisSwapResult } from '@ophis/agent-swap';
 import { OphisSwapParameters } from './parameters.js';
+import { isOphisStablePair } from './stablecoins.js';
 import { toOphisWallet } from './wallet-adapter.js';
 
 export interface OphisPluginOptions {
-  /** The integrator referral code that earns the 8-12% rebate (rides in the order's appData). */
-  referralCode: string;
+  /**
+   * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
+   * order's appData). Omit it and swaps still work (you just forgo the rebate);
+   * mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   */
+  referralCode?: string;
 }
 
 // Ophis-operated EVM chains with a live orderbook. The swap core re-checks isOphisFeeChain and
@@ -25,23 +30,34 @@ class OphisService {
       '(e.g. "1.5"). Native ETH is NOT supported — use WETH. Returns the CoW order UID and an explorer URL.',
   })
   async ophisSwap(walletClient: EVMWalletClient, parameters: OphisSwapParameters): Promise<OphisSwapResult> {
+    const wallet = toOphisWallet(walletClient);
+    // Derive the 1bp stable-pair tier from a verified stablecoin list (never caller input),
+    // so a stablecoin<>stablecoin swap is charged the reduced rate automatically.
+    const isStablePair = isOphisStablePair(wallet.getChainId(), parameters.sellToken, parameters.buyToken);
     return executeOphisSwap(
-      toOphisWallet(walletClient),
+      wallet,
       {
         sellToken: parameters.sellToken,
         buyToken: parameters.buyToken,
         sellAmount: parameters.sellAmount,
         slippageBps: parameters.slippageBps,
       },
-      { referralCode: this.options.referralCode },
+      {
+        ...(this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {}),
+        isStablePair,
+      },
     );
   }
 }
 
 export class OphisPlugin extends PluginBase<EVMWalletClient> {
-  constructor(options: OphisPluginOptions) {
+  constructor(options: OphisPluginOptions = {}) {
     if (!options?.referralCode) {
-      throw new Error('@ophis/plugin-goat: referralCode is required (it carries the rebate).');
+      // Do not block construction on a missing code (that was the top adoption
+      // killer): warn once, keep working, let the builder add a code to earn.
+      console.warn(
+        '[@ophis/plugin-goat] No referralCode set: swaps still work, but you are leaving the 8-12% rebate on the table. Mint a code at https://swap.ophis.fi/#/rewards and pass it as options.referralCode.',
+      );
     }
     super('ophis', [new OphisService(options)]);
   }

@@ -17,7 +17,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Build with Ophis',
       collapsed: false,
-      items: ['intent-api', 'ai-agents', 'widget', 'partners'],
+      items: ['intent-api', 'ai-agents', 'agent-swap-comparison', 'agent-btc-cookbook', 'agent-wallet-policies', 'vault-managers', 'widget', 'partners'],
     },
     {
       type: 'category',

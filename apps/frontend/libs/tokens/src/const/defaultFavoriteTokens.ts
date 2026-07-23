@@ -8,7 +8,12 @@ import {
   DAI_BASE,
   DAI_BNB,
   DAI_POLYGON,
+  EURE_ARBITRUM_ONE,
+  EURE_BASE,
   EURE_GNOSIS_CHAIN,
+  EURE_LINEA,
+  EURE_MAINNET,
+  EURE_POLYGON,
   GNO_GNOSIS_CHAIN,
   TokenWithLogo,
   USDC_ARBITRUM_ONE,
@@ -68,6 +73,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     USDT,
     WBTC,
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET],
+    EURE_MAINNET,
   ]),
   [SupportedChainId.GNOSIS_CHAIN]: tokensListToMap([
     USDCe_GNOSIS_CHAIN,
@@ -84,6 +90,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WBTC_ARBITRUM_ONE,
     DAI_ARBITRUM_ONE,
     ARB_ARBITRUM_ONE,
+    EURE_ARBITRUM_ONE,
   ]),
   [SupportedChainId.BASE]: tokensListToMap([
     USDC_BASE,
@@ -91,6 +98,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.BASE],
     CBBTC_BASE,
     DAI_BASE,
+    EURE_BASE,
   ]),
   [SupportedChainId.SEPOLIA]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.SEPOLIA],
@@ -102,6 +110,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     DAI_POLYGON,
     // Cow Token is deployed but there's no liquidity at the moment
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.POLYGON],
+    EURE_POLYGON,
   ]),
   [SupportedChainId.AVALANCHE]: tokensListToMap([
     USDC_AVALANCHE,
@@ -120,6 +129,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.LINEA],
     USDC_LINEA,
     USDT_LINEA,
+    EURE_LINEA,
   ]),
   [SupportedChainId.PLASMA]: tokensListToMap([
     WRAPPED_NATIVE_CURRENCIES[SupportedChainId.PLASMA],
