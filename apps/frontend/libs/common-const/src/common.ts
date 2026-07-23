@@ -221,7 +221,11 @@ export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
   [999 as unknown as SupportedChainId]: '',
 }
 export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
-  [SupportedChainId.MAINNET]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // MAINNET now uses Blockscout (keyless) — must be null, or getHeaders() would
+  // attach the Blocknative Authorization key to every eth.blockscout.com request,
+  // disclosing the provider credential to an unrelated host. Matches the other
+  // Blockscout chains below (Gnosis/Arbitrum/Base/Polygon), which are already null.
+  [SupportedChainId.MAINNET]: null,
   [SupportedChainId.GNOSIS_CHAIN]: null,
   [SupportedChainId.ARBITRUM_ONE]: null,
   [SupportedChainId.BASE]: null,

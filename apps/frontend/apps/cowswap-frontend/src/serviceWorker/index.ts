@@ -18,22 +18,41 @@ import pkg from '../../package.json'
 
 const WEB_VERSION = pkg.version
 
+// The precache manifest (injected by workbox at build time) lists every asset with
+// its content revision, so it changes on every deploy — even when package.json's
+// version does not. Capture it ONCE here — this is the single injection point
+// workbox's injectManifest replaces (it requires exactly one), so the reduce below
+// reuses this captured value instead of referencing the placeholder again.
+const precacheManifest = self.__WB_MANIFEST
+
+// Fold the manifest into a short, deploy-specific build id. It is appended to the
+// cache suffix so each build gets a DISTINCT precache name. Without it, two builds
+// that share package.json's version also share the name "Ophis-precache-v2-<ver>";
+// cleanupOutdatedCaches() then treats that name as still-current and never purges
+// it, so a stale/corrupt same-version precache survives and can leave the app
+// stuck on the #ophis-seo fallback until the user manually clears site data.
+const buildId = ((): string => {
+  let h = 5381
+  for (const entry of precacheManifest) {
+    const s = typeof entry === 'string' ? entry : `${entry.url}|${entry.revision ?? ''}`
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0
+  }
+  return h.toString(36)
+})()
+
 // Set Cache name
 //  See https://dev.to/atonchev/flawless-and-silent-upgrade-of-the-service-worker-2o95
 setCacheNameDetails({
   prefix: 'Ophis',
-  suffix: WEB_VERSION,
+  suffix: `${WEB_VERSION}-${buildId}`,
 })
 
 clientsClaim()
 self.skipWaiting()
 
-// Delete precaches left over from previous WEB_VERSIONs. Without this, a client
-// that was on an older build keeps that build's precache alongside the new one;
-// if it ever serves a stale entry (or the old precache is corrupt), the shell
-// can fail to hydrate and the app is stuck on the #ophis-seo fallback until the
-// user manually clears site data. Purging outdated precaches on activate makes
-// the skipWaiting()+clientsClaim() takeover clean.
+// Now that each deploy has a distinct cache name (build id above), this purges the
+// previous deploy's precache on activate, keeping the skipWaiting()+clientsClaim()
+// takeover clean instead of leaving stale caches to accumulate.
 cleanupOutdatedCaches()
 
 const excludedAssets = ['emergency.js']
@@ -44,7 +63,7 @@ registerRoute(new DocumentRoute())
 
 // Splits entries into assets, which are loaded on-demand; and entries, which are precached.
 // Effectively, this precaches the document, and caches all other assets on-demand.
-const { assets, entries } = self.__WB_MANIFEST.reduce<{ assets: { [key: string]: boolean }; entries: PrecacheEntry[] }>(
+const { assets, entries } = precacheManifest.reduce<{ assets: { [key: string]: boolean }; entries: PrecacheEntry[] }>(
   (acc, entry) => {
     const { assets, entries } = acc
 
