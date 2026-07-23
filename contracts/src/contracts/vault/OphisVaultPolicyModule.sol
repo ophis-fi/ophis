@@ -86,16 +86,20 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         uint8 feedDecimals; // cached from feed.decimals() at deploy
         uint8 tokenDecimals; // cached from token.decimals() at deploy
         uint256 maxStaleness; // per-token accepted price age (feed heartbeat)
+        uint256 minPrice18; // lower accepted token/USD price, 18 decimals
+        uint256 maxPrice18; // upper accepted token/USD price, 18 decimals
     }
 
-    /// @dev Constructor input: a token, its token/USD feed, and the max price
-    /// age tolerated for THAT feed (sized to the feed's own heartbeat, so a
+    /// @dev Constructor input: a token, its token/USD feed, the max price age
+    /// tolerated for THAT feed (sized to the feed's own heartbeat, so a
     /// slow-heartbeat stable does not force a loose window on a fast, volatile
-    /// asset).
+    /// asset), and the accepted 18-decimal token/USD price bounds.
     struct TokenFeed {
         address token;
         IAggregatorV3 feed;
         uint256 maxStaleness;
+        uint256 minPrice18;
+        uint256 maxPrice18;
     }
 
     /// @dev Full construction config (a struct keeps the surface reviewable
@@ -217,6 +221,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     error NonZeroSignedFee();
     error WrongAppData();
     error BadOrderFlags();
+    error BadPriceBounds(address token);
     error BadValidTo();
     error ZeroSellAmount();
     error ZeroOracleFloor();
@@ -284,11 +289,16 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             address token = cfg.tokens[i].token;
             IAggregatorV3 feed = cfg.tokens[i].feed;
             uint256 staleness = cfg.tokens[i].maxStaleness;
+            uint256 minPrice18 = cfg.tokens[i].minPrice18;
+            uint256 maxPrice18 = cfg.tokens[i].maxPrice18;
             if (token == address(0) || address(feed) == address(0)) {
                 revert ZeroAddress();
             }
             if (staleness == 0 || staleness > MAX_STALENESS_CAP) {
                 revert BadConfig();
+            }
+            if (minPrice18 == 0 || minPrice18 >= maxPrice18) {
+                revert BadPriceBounds(token);
             }
             if (tokenPolicy[token].allowed) revert BadConfig(); // duplicate
             uint8 tokenDecimals = IERC20Metadata(token).decimals();
@@ -298,13 +308,21 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             uint8 feedDecimals = feed.decimals();
             // Fail-closed liveness probe: a feed that cannot serve a valid,
             // fresh price NOW does not belong in the policy.
-            OphisChainlinkFloor.read18(feed, feedDecimals, staleness);
+            OphisChainlinkFloor.read18(
+                feed,
+                feedDecimals,
+                staleness,
+                minPrice18,
+                maxPrice18
+            );
             tokenPolicy[token] = TokenPolicy({
                 allowed: true,
                 feed: feed,
                 feedDecimals: feedDecimals,
                 tokenDecimals: tokenDecimals,
-                maxStaleness: staleness
+                maxStaleness: staleness,
+                minPrice18: minPrice18,
+                maxPrice18: maxPrice18
             });
         }
     }
@@ -325,6 +343,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         GPv2Order.Data calldata order,
         uint256 minBuyOverride
     ) external nonReentrant returns (bytes memory orderUid) {
+        _requireCuratorNotPrivileged(safe, curator);
         if (msg.sender != curator) revert NotCurator();
 
         (uint256 oracleFloor, uint256 orderUsd) = _enforcePolicy(
@@ -387,6 +406,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     /// live successor's allowance (the ERC20 allowance is shared per token, so
     /// blindly zeroing it would starve the successor).
     function cancel(bytes calldata orderUid) external nonReentrant {
+        _requireCuratorNotPrivileged(safe, curator);
         if (msg.sender != curator) revert NotCurator();
         bytes32 key = keccak256(orderUid);
         address sellToken = moduleOrderSellToken[key];
@@ -464,7 +484,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         uint256 sellPrice18 = OphisChainlinkFloor.read18(
             sellPolicy.feed,
             sellPolicy.feedDecimals,
-            sellPolicy.maxStaleness
+            sellPolicy.maxStaleness,
+            sellPolicy.minPrice18,
+            sellPolicy.maxPrice18
         );
         oracleFloor = OphisChainlinkFloor.floorBuyAmount(
             order.sellAmount,
@@ -473,7 +495,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             OphisChainlinkFloor.read18(
                 buyPolicy.feed,
                 buyPolicy.feedDecimals,
-                buyPolicy.maxStaleness
+                buyPolicy.maxStaleness,
+                buyPolicy.minPrice18,
+                buyPolicy.maxPrice18
             ),
             buyPolicy.tokenDecimals,
             maxSlippageBps

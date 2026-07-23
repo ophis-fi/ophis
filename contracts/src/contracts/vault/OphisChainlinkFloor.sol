@@ -19,15 +19,18 @@ library OphisChainlinkFloor {
     uint256 internal constant BPS = 10_000;
 
     error InvalidOraclePrice(address feed);
+    error OraclePriceOutOfBounds(address feed);
     error StaleOraclePrice(address feed);
     error UnsupportedFeedDecimals(address feed);
 
-    /// @dev Reads one feed, enforcing validity + freshness, and returns the
-    /// price scaled to 18 decimals.
+    /// @dev Reads one feed, enforcing validity + freshness + configured price
+    /// bounds, and returns the price scaled to 18 decimals.
     function read18(
         IAggregatorV3 feed,
         uint8 feedDecimals,
-        uint256 maxStaleness
+        uint256 maxStaleness,
+        uint256 minPrice18,
+        uint256 maxPrice18
     ) internal view returns (uint256 price18) {
         if (feedDecimals > 18) revert UnsupportedFeedDecimals(address(feed));
         (
@@ -49,6 +52,9 @@ library OphisChainlinkFloor {
             revert StaleOraclePrice(address(feed));
         }
         price18 = uint256(answer) * (10 ** (18 - feedDecimals));
+        if (price18 < minPrice18 || price18 > maxPrice18) {
+            revert OraclePriceOutOfBounds(address(feed));
+        }
     }
 
     /// @dev Oracle floor for selling `sellAmount` of the sell token into the

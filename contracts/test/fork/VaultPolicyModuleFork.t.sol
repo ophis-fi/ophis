@@ -96,11 +96,8 @@ contract VaultPolicyModuleFork is Test {
             uint256(0),
             payable(address(0))
         );
-        address proxy = ISafeProxyFactory(SAFE_FACTORY).createProxyWithNonce(
-            SAFE_L2_SINGLETON,
-            initializer,
-            uint256(keccak256("ophis-vault-fork"))
-        );
+        address proxy = ISafeProxyFactory(SAFE_FACTORY)
+            .createProxyWithNonce(SAFE_L2_SINGLETON, initializer, uint256(keccak256("ophis-vault-fork")));
         safe = ISafeSetup(proxy);
 
         // Mock oracle feeds (the settlement/relayer/Safe are the REAL contracts
@@ -108,10 +105,11 @@ contract VaultPolicyModuleFork is Test {
         usdcFeed = new MockFeed(8, 1e8, block.timestamp);
         wethFeed = new MockFeed(8, 2000e8, block.timestamp);
 
-        OphisVaultPolicyModule.TokenFeed[] memory tokens =
-            new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(sellTokenAddr, IAggregatorV3(address(usdcFeed)), 1 days);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(buyTokenAddr, IAggregatorV3(address(wethFeed)), 1 days);
+        OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
+        tokens[0] =
+            OphisVaultPolicyModule.TokenFeed(sellTokenAddr, IAggregatorV3(address(usdcFeed)), 1 days, 25e16, 4e18);
+        tokens[1] =
+            OphisVaultPolicyModule.TokenFeed(buyTokenAddr, IAggregatorV3(address(wethFeed)), 1 days, 500e18, 8000e18);
 
         module = new OphisVaultPolicyModule(
             OphisVaultPolicyModule.ModuleConfig({
@@ -138,11 +136,7 @@ contract VaultPolicyModuleFork is Test {
         return address(settlement) != address(0);
     }
 
-    function _order(address receiver, uint256 buyAmount)
-        internal
-        view
-        returns (GPv2Order.Data memory)
-    {
+    function _order(address receiver, uint256 buyAmount) internal view returns (GPv2Order.Data memory) {
         return GPv2Order.Data({
             sellToken: IERC20(sellTokenAddr),
             buyToken: IERC20(buyTokenAddr),
@@ -191,9 +185,7 @@ contract VaultPolicyModuleFork is Test {
         if (!_forked()) return;
         GPv2Order.Data memory bad = _order(address(safe), 1); // 1 wei WETH << floor
         vm.prank(CURATOR);
-        vm.expectRevert(
-            abi.encodeWithSelector(OphisVaultPolicyModule.BelowFloor.selector, 1, 4975e14)
-        );
+        vm.expectRevert(abi.encodeWithSelector(OphisVaultPolicyModule.BelowFloor.selector, 1, 4975e14));
         module.rebalance(bad, 0);
         assertEq(IERC20(sellTokenAddr).allowance(address(safe), relayer), 0);
     }

@@ -28,6 +28,10 @@ contract DeployVaultPolicyModuleBase is Script {
     // heartbeat). USDC/USD is a 24h-heartbeat stable feed.
     uint256 constant ETH_STALENESS = 2 hours;
     uint256 constant USDC_STALENESS = 26 hours;
+    uint256 constant USDC_MIN_PRICE18 = 25e16;
+    uint256 constant USDC_MAX_PRICE18 = 4e18;
+    uint256 constant ETH_MIN_PRICE18 = 500e18;
+    uint256 constant ETH_MAX_PRICE18 = 8000e18;
 
     function run() external {
         // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
@@ -39,8 +43,12 @@ contract DeployVaultPolicyModuleBase is Script {
         uint256 cap = vm.envOr("VAULT_CAP", uint256(250e18));
 
         OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(USDC, IAggregatorV3(USDC_FEED), USDC_STALENESS);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(WETH, IAggregatorV3(ETH_FEED), ETH_STALENESS);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(
+            USDC, IAggregatorV3(USDC_FEED), USDC_STALENESS, USDC_MIN_PRICE18, USDC_MAX_PRICE18
+        );
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(
+            WETH, IAggregatorV3(ETH_FEED), ETH_STALENESS, ETH_MIN_PRICE18, ETH_MAX_PRICE18
+        );
 
         OphisVaultPolicyModule.ModuleConfig memory cfg = OphisVaultPolicyModule.ModuleConfig({
             safe: ISafe(safe),

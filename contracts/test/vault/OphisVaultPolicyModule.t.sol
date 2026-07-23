@@ -20,6 +20,10 @@ contract OphisVaultPolicyModuleTest is Test {
     address internal constant SAFE_OWNER = address(0xA11CE);
     uint256 internal constant BIG_CAP = 1_000_000e18; // non-interfering default
     uint256 internal constant STALENESS = 3600;
+    uint256 internal constant USD_MIN = 25e16;
+    uint256 internal constant USD_MAX = 4e18;
+    uint256 internal constant ETH_MIN = 500e18;
+    uint256 internal constant ETH_MAX = 8000e18;
 
     MockSafe internal safe;
     MockSettlement internal settlement;
@@ -56,9 +60,25 @@ contract OphisVaultPolicyModuleTest is Test {
         returns (OphisVaultPolicyModule.TokenFeed[] memory tokens)
     {
         tokens = new OphisVaultPolicyModule.TokenFeed[](3);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)), STALENESS);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(address(weth), IAggregatorV3(address(wethFeed)), STALENESS);
-        tokens[2] = OphisVaultPolicyModule.TokenFeed(address(usdt), IAggregatorV3(address(usdtFeed)), STALENESS);
+        tokens[0] = tokenFeed(address(usdc), usdcFeed, USD_MIN, USD_MAX);
+        tokens[1] = tokenFeed(address(weth), wethFeed, ETH_MIN, ETH_MAX);
+        tokens[2] = tokenFeed(address(usdt), usdtFeed, USD_MIN, USD_MAX);
+    }
+
+    function tokenFeed(
+        address token,
+        MockFeed feed,
+        uint256 minPrice18,
+        uint256 maxPrice18
+    ) internal pure returns (OphisVaultPolicyModule.TokenFeed memory) {
+        return
+            OphisVaultPolicyModule.TokenFeed({
+                token: token,
+                feed: IAggregatorV3(address(feed)),
+                maxStaleness: STALENESS,
+                minPrice18: minPrice18,
+                maxPrice18: maxPrice18
+            });
     }
 
     function baseConfig()
@@ -189,8 +209,8 @@ contract OphisVaultPolicyModuleTest is Test {
         MockFeed bigFeed = new MockFeed(8, 1_000_000e8, block.timestamp); // $1M/unit
         OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
         cfg.tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        cfg.tokens[0] = OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)), STALENESS);
-        cfg.tokens[1] = OphisVaultPolicyModule.TokenFeed(address(bigUnit), IAggregatorV3(address(bigFeed)), STALENESS);
+        cfg.tokens[0] = tokenFeed(address(usdc), usdcFeed, USD_MIN, USD_MAX);
+        cfg.tokens[1] = tokenFeed(address(bigUnit), bigFeed, 250_000e18, 4_000_000e18);
         OphisVaultPolicyModule m = new OphisVaultPolicyModule(cfg);
         safe.setEnabledModule(address(m));
 
@@ -251,6 +271,35 @@ contract OphisVaultPolicyModuleTest is Test {
             )
         );
         rebalanceAsCurator(validOrder(), 0);
+    }
+
+    function test_oracle_price_below_bounds_reverts() public {
+        usdcFeed.set(24e6, block.timestamp); // 0.24 at 8 feed decimals
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisChainlinkFloor.OraclePriceOutOfBounds.selector,
+                address(usdcFeed)
+            )
+        );
+        rebalanceAsCurator(validOrder(), 0);
+    }
+
+    function test_oracle_price_above_bounds_reverts() public {
+        wethFeed.set(8001e8, block.timestamp);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisChainlinkFloor.OraclePriceOutOfBounds.selector,
+                address(wethFeed)
+            )
+        );
+        rebalanceAsCurator(validOrder(), 0);
+    }
+
+    function test_oracle_price_inside_bounds_works() public {
+        usdcFeed.set(26e6, block.timestamp); // 0.26 at 8 feed decimals
+        GPv2Order.Data memory order = validOrder();
+        order.buyAmount = 13e16; // above the resulting 0.12935 WETH floor
+        rebalanceAsCurator(order, 0);
     }
 
     // ------------------------------------------------------------------
@@ -746,14 +795,59 @@ contract OphisVaultPolicyModuleTest is Test {
         new OphisVaultPolicyModule(cfg);
     }
 
+    // ------------------------------------------------------------------
+    // Runtime curator-drift guard: rebalance/cancel re-check the invariant,
+    // not only the constructor. A curator that becomes an enabled Safe module
+    // after deployment must fail closed.
+    // ------------------------------------------------------------------
+
+    function test_rebalance_reverts_when_curator_drifts_to_module() public {
+        safe.setModuleEnabled(CURATOR, true);
+        vm.prank(CURATOR);
+        vm.expectRevert(OphisVaultPolicyModule.CuratorIsModule.selector);
+        module.rebalance(validOrder(), 0);
+    }
+
+    function test_cancel_reverts_when_curator_drifts_to_module() public {
+        // The guard runs before the order-uid lookup, so any bytes argument
+        // reverts CuratorIsModule once the curator is a module.
+        safe.setModuleEnabled(CURATOR, true);
+        vm.prank(CURATOR);
+        vm.expectRevert(OphisVaultPolicyModule.CuratorIsModule.selector);
+        module.cancel(hex"1234");
+    }
+
     function test_constructor_rejects_high_decimal_token() public {
         MockERC20 wild = new MockERC20(40); // > MAX_TOKEN_DECIMALS
         OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
-        cfg.tokens[2] = OphisVaultPolicyModule.TokenFeed(address(wild), IAggregatorV3(address(usdtFeed)), STALENESS);
+        cfg.tokens[2] = tokenFeed(address(wild), usdtFeed, USD_MIN, USD_MAX);
         vm.expectRevert(
             abi.encodeWithSelector(
                 OphisVaultPolicyModule.UnsupportedTokenDecimals.selector,
                 address(wild)
+            )
+        );
+        new OphisVaultPolicyModule(cfg);
+    }
+
+    function test_constructor_rejects_bad_price_bounds() public {
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        cfg.tokens[0].minPrice18 = 0;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisVaultPolicyModule.BadPriceBounds.selector,
+                address(usdc)
+            )
+        );
+        new OphisVaultPolicyModule(cfg);
+
+        cfg = baseConfig();
+        cfg.tokens[0].minPrice18 = 2e18;
+        cfg.tokens[0].maxPrice18 = 2e18;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OphisVaultPolicyModule.BadPriceBounds.selector,
+                address(usdc)
             )
         );
         new OphisVaultPolicyModule(cfg);
@@ -820,9 +914,19 @@ contract OphisVaultPolicyModuleTest is Test {
         assertEq(address(deployed.safe()), address(safe));
         assertEq(deployed.relayer(), RELAYER);
         assertEq(deployed.dailyUsdTurnoverCap(), BIG_CAP);
-        (bool allowed, , , uint8 tokenDecimals, uint256 maxStaleness) = deployed.tokenPolicy(address(weth));
+        (
+            bool allowed,
+            ,
+            ,
+            uint8 tokenDecimals,
+            uint256 maxStaleness,
+            uint256 minPrice18,
+            uint256 maxPrice18
+        ) = deployed.tokenPolicy(address(weth));
         assertTrue(allowed);
         assertEq(tokenDecimals, 18);
         assertEq(maxStaleness, STALENESS);
+        assertEq(minPrice18, ETH_MIN);
+        assertEq(maxPrice18, ETH_MAX);
     }
 }
