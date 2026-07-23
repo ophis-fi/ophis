@@ -75,9 +75,9 @@ export interface EarningsChainRow {
   ophisFeeAccruedUsd: number;
   /** The GROSS integrator own-fee charged to their stacked recipient on this chain.
    *  Ophis takes 0% of it. On Optimism/Unichain it is swept in full; on CoW-hosted
-   *  chains it pays out under CoW's terms (which may include a service fee on a
-   *  stacked recipient, not yet verified), so treat the hosted portion as gross and
-   *  not guaranteed. */
+   *  chains it pays out under CoW's terms (which take a 25% service fee, CIP-75, on
+   *  a stacked recipient, so the recipient nets 75%), so treat the hosted portion as
+   *  gross and not guaranteed. */
   ownFeeAccruedUsd: number;
 }
 
@@ -104,8 +104,8 @@ export interface IntegratorEarnings {
   /** The integrator's OWN stacked fee, GROSS (Ophis takes 0% of it).
    *  sovereignGuaranteed is Ophis-controlled and swept in full; hostedAccrued is the
    *  gross amount charged at settlement on CoW-hosted chains, disbursed under CoW's
-   *  terms (which may take a service fee on a stacked recipient, not yet verified),
-   *  so it is not guaranteed. */
+   *  terms (which take a 25% service fee on a stacked recipient, CIP-75, so the
+   *  recipient nets 75%), so it is gross and not guaranteed. */
   ownFeeAccruedUsd: {
     total: number;
     sovereignGuaranteed: number;
@@ -193,10 +193,11 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       // Own-fee is the GROSS amount charged to the integrator's stacked recipient
       // at settlement. Ophis takes 0% of it. On Optimism/Unichain it is swept in
       // full, so gross == received. On CoW-hosted chains payout runs through CoW's
-      // distribution under CoW's terms; whether CoW's service fee applies to a
-      // stacked non-Ophis recipient is not yet verified, so we report the gross
-      // charged amount and label hostedAccrued as unverified/not guaranteed rather
-      // than assuming a specific haircut (which would be an unverified deduction).
+      // distribution under CoW's terms; CoW's 25% service fee (CIP-75) applies to a
+      // stacked non-Ophis recipient, so the recipient nets 75%. We report the gross
+      // charged amount (the note states the 75% net); it stays not-guaranteed because
+      // the end-to-end payout to a stacked recipient has not been observed on a
+      // settled trade yet.
       return {
         chainId: c.chainId,
         chainName: CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`,
@@ -314,7 +315,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       payouts: ownFeePayouts,
       note:
         `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders, reported GROSS (Ophis takes 0% of it). ` +
-        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and swept to you in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, paid out under CoW's terms, which may take a service fee on a stacked recipient (not yet verified), so treat it as gross and not guaranteed. ` +
+        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and swept to you in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, paid out under CoW's terms, which take a 25% service fee (CIP-75) on each stacked recipient, so you receive 75% of it on hosted chains; treat it as gross and not guaranteed. ` +
         `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included. ` +
         `sovereignPaidToDate is exact, summed from executed Ophis Safe own-fee batches on Optimism and Unichain; it is keyed on the recipient address, so if several integrators share one own-fee recipient the paid-to-date is attributed to each.`,
     },
