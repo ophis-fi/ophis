@@ -339,10 +339,22 @@ _mount_ram_disk_macos() {
 # The -U flag updates if the entry already exists (idempotent).
 # Once added, the token persists across .env regenerations + reboots.
 if [[ -d observability && -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
-  if security find-generic-password -a "$USER" -s ophis-telegram-bot -w >/dev/null 2>&1; then
-    TELEGRAM_BOT_TOKEN=$(security find-generic-password -a "$USER" -s ophis-telegram-bot -w 2>/dev/null)
-    export TELEGRAM_BOT_TOKEN
-    echo "  resolved TELEGRAM_BOT_TOKEN from Keychain (service=ophis-telegram-bot)"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    # macOS: source from Keychain (keeps the token out of .env cleartext).
+    if security find-generic-password -a "$USER" -s ophis-telegram-bot -w >/dev/null 2>&1; then
+      TELEGRAM_BOT_TOKEN=$(security find-generic-password -a "$USER" -s ophis-telegram-bot -w 2>/dev/null)
+      export TELEGRAM_BOT_TOKEN
+      echo "  resolved TELEGRAM_BOT_TOKEN from Keychain (service=ophis-telegram-bot)"
+    fi
+  else
+    # Linux/WSL: no Keychain. Prefer a chmod-600 gitignored file (the Keychain
+    # equivalent — keeps the token out of .env cleartext); otherwise it is read from
+    # .env by the `source .env` above. `security` is macOS-only and must not run here.
+    if [[ -f secrets/telegram-token ]]; then
+      TELEGRAM_BOT_TOKEN=$(tr -d '\n\r' < secrets/telegram-token)
+      export TELEGRAM_BOT_TOKEN
+      echo "  resolved TELEGRAM_BOT_TOKEN from secrets/telegram-token (Linux/WSL)"
+    fi
   fi
 fi
 
