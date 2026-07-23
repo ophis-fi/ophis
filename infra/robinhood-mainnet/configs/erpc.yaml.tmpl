@@ -1,37 +1,57 @@
 # eRPC multi-provider proxy for Robinhood Chain mainnet (chain 4663).
 #
-# Robinhood Chain is an Arbitrum Orbit L2. Like Unichain, the autopilot HARD-
-# requires debug_traceTransaction (settlement decode) and the public RPC does NOT
-# serve it (verified 2026-07-02: rpc.mainnet.chain.robinhood.com exposes
-# net,web3,eth only). So this stack runs a self-hosted Nitro node (see ../nitro/)
-# as the debug/trace leg + a read-consensus voter.
+# Robinhood Chain is an Arbitrum Orbit L2. The autopilot HARD-requires
+# debug_traceTransaction (settlement decode) and the public RPC does NOT serve it
+# (re-verified 2026-07-21: rpc.mainnet.chain.robinhood.com exposes net,web3,eth
+# only, debug_traceTransaction -> -32601).
 #
-# Three upstreams:
-#   ophis-self-rbh     ophis-rbh-node:8547    self-hosted Nitro over Tailscale.
-#                                             The ONLY leg that serves debug_*/
-#                                             arbtrace_* + full receipts. Also
-#                                             votes in the read consensus.
-#   robinhood-public   rpc.mainnet.chain.robinhood.com   Robinhood's public node (reads).
-#   robinhood-alchemy  robinhood-mainnet.g.alchemy.com   Alchemy (free key) (reads).
+# TRACE IS SELF-NODE-ONLY (2026-07-23). We priced the managed providers with real
+# keys: NO provider serves debug_traceTransaction for 4663 on a free tier -
+# Dwellir, Chainstack, Alchemy and dRPC all gate debug/trace/archive behind PAID
+# plans (verified against live keys 2026-07-23). So the sovereign self-hosted Nitro
+# node (../nitro/, snapshot-restored + L1-verified) is the ONLY trace leg. debug_*
+# has no free redundancy: if the self-node is down, trace fails closed and the
+# autopilot pauses settlement (safe, not highly-available). A second trace leg
+# would need a paid provider plan or a second self-hosted node.
 #
-# The two public legs cannot serve debug_*/arbtrace_*; eRPC's unsupported-method
-# failover routes those to ophis-self-rbh. If the self-node is down, trace calls
-# fail-closed -> the autopilot pauses settlement (safe).
+# FOUR upstreams (1 trace+read, 3 read-only):
+#   ophis-self-rbh       ophis-rbh-node:8547                    self-hosted Nitro. THE debug_* leg + full receipts + read voter. Sovereign.
+#   robinhood-chainstack robinhood-mainnet.core.chainstack.com  Chainstack. READ voter (getLogs verified free 2026-07-23; NO free trace). Independent of the Alchemy domain.
+#   robinhood-public     rpc.mainnet.chain.robinhood.com        Robinhood public. reads only.
+#   robinhood-alchemy    robinhood-mainnet.g.alchemy.com        Alchemy. reads only.
 #
-# *** GATE (RPC failure-domain independence) ***
-# Robinhood is a 1-day-old chain with THIN public-RPC diversity, and Robinhood's
-# own public RPC is Alchemy-provisioned per their docs - so robinhood-public and
-# robinhood-alchemy MAY share a failure domain (correlated). Until a third truly
-# independent free Robinhood RPC provider exists (or a SECOND self-hosted Nitro
-# node on a different host + L1 is added), treat consensus as effectively
-# 2-across-2 (self-node + one public domain). The fail-closed invariants
-# (2-of-3, lowParticipants:returnError) still hold and are asserted by
-# assert-erpc-failclosed.py in CI. Revisit EXPECTED_UPSTREAM_HOSTS + this file
-# when a third independent provider lands.
+# (Dwellir was dropped: its free plan serves neither debug_* NOR eth_getLogs, so it
+# can be neither a trace leg nor a getLogs-consensus voter.)
+#
+# Reads: 3-of-4 consensus across all four. debug_* is NOT under consensus; the
+# three read-only legs return an error/method-not-found for it, so eRPC's failover
+# routes every debug_* call to ophis-self-rbh (the only leg that serves it).
+#
+# *** QUORUM: 3-of-4 ***
+# robinhood-public is Alchemy-provisioned per Robinhood's docs, so {public,
+# alchemy} MAY be ONE correlated failure domain (size 2). A 2-of-N quorum could be
+# met by that correlated pair alone. agreementThreshold:3 REQUIRES a third,
+# INDEPENDENT voter (self or chainstack) to agree, so the pair cannot force a
+# settlement read. maxParticipants:4 tolerates 1 upstream outage while staying
+# fail-closed: lowParticipantsBehavior:returnError means <3 valid responses ->
+# error, never a lone-upstream answer. Adding Chainstack as an independent voter is
+# what RESOLVES the thin-diversity GATE this config used to carry.
+# assert-erpc-failclosed.py pins 4 upstreams / 3-of-4 and the 4 expected hosts.
 #
 # Robinhood block time is ~134ms (far faster than Unichain's ~1s) -> heavy tip-
 # drift on `latest`-tagged reads. preferBlockHeadLeader + enforceHighestBlock +
-# enforceNonNullTaggedBlocks handle it without loosening consensus.
+# enforceNonNullTaggedBlocks handle it without loosening consensus for the tip-
+# sensitive reads (eth_call / state / logs / estimateGas / feeHistory).
+#
+# DISPUTE-BEHAVIOR SPLIT (2026-07-22, Codex r3632331649/r3632331675): the
+# settlement-decode inputs — eth_getTransactionReceipt, eth_getBlockByHash,
+# eth_getTransactionByHash — are addressed by IMMUTABLE hash, so a dispute is
+# never legitimate tip-drift. They use disputeBehavior:returnError (fail closed),
+# NOT preferBlockHeadLeader, so the freshest-head leg (or the correlated public+
+# alchemy pair on a 2/1/1 split) can never supply settlement-decode data that did
+# not reach the 3-of-4 threshold. Zero availability cost (immutable reads do not
+# legitimately dispute). preferBlockHeadLeader stays ONLY on the tip-sensitive
+# quote/state reads, where returnError previously failed ~30-50% of reads (#476).
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/4663
 
@@ -53,8 +73,8 @@ projects:
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              agreementThreshold: 2
+              maxParticipants: 4
+              agreementThreshold: 3
               disputeBehavior: preferBlockHeadLeader
               lowParticipantsBehavior: returnError
               punishMisbehavior:
@@ -65,12 +85,16 @@ projects:
           # === Block B: Tip-lag-sensitive observation methods ===
           # ~134ms blocks => far more tip-drift than Unichain; disputeThreshold is
           # kept high so transient near-tip disagreement doesn't cordon a leg.
-          - matchMethod: "eth_getLogs|eth_getTransactionByHash|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
+          # eth_getTransactionByHash is NOT here — it is by-hash-immutable and
+          # settlement-authoritative, so it moved to the returnError rule below
+          # (Codex r3632331649: preferBlockHeadLeader must not serve a disputed
+          # settlement-decode read via the correlated public+alchemy pair).
+          - matchMethod: "eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount"
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              agreementThreshold: 2
+              maxParticipants: 4
+              agreementThreshold: 3
               disputeBehavior: preferBlockHeadLeader
               lowParticipantsBehavior: returnError
               punishMisbehavior:
@@ -78,19 +102,46 @@ projects:
                 disputeWindow: 10m
                 sitOutPenalty: 5m
 
+          # === Settlement-decode by-hash reads: consensus, returnError-on-dispute ===
+          # eth_getBlockByHash + eth_getTransactionByHash are the two by-immutable-
+          # hash inputs to the autopilot's settlement decode (get_block_by_hash ->
+          # block.header.timestamp in autopilot/src/infra/blockchain/mod.rs, and the
+          # tx lookup). A block/tx addressed BY HASH is immutable, so honest legs
+          # return byte-identical results and a dispute is never legitimate tip-drift
+          # — it means a leg disagrees. disputeBehavior MUST be returnError here (NOT
+          # preferBlockHeadLeader): fail closed rather than let the freshest-head leg
+          # (or the correlated public+alchemy pair on a 2/1/1 split) supply
+          # settlement-decode data unchecked. Zero availability cost — these never
+          # legitimately dispute (Codex r3632331649; eth_getBlockByHash gap
+          # r3632331675). No punishMisbehavior: a near-tip leg that hasn't imported
+          # the block yet returns null (low-participants, already fail-closed), and
+          # must not be cordoned for it — same rationale as the receipt rule.
+          - matchMethod: "eth_getBlockByHash|eth_getTransactionByHash"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 4
+              agreementThreshold: 3
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+
           # === eth_getTransactionReceipt: consensus, no punishMisbehavior ===
           - matchMethod: "eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
-              maxParticipants: 3
-              agreementThreshold: 2
+              maxParticipants: 4
+              agreementThreshold: 3
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
 
           # === Block C: Catch-all retry (no consensus) ===
-          # Carries debug_*/arbtrace_* - only ophis-self-rbh serves these; the
-          # public legs don't support them, so eRPC fails over to the self-node.
+          # Carries debug_* (settlement trace). ONLY ophis-self-rbh serves it; the
+          # three read-only legs (chainstack free-plan, public, alchemy) return an
+          # error / method-not-found, so eRPC fails over to the self-node. debug_* is
+          # NOT under consensus (there is only one trace leg anyway, and trace
+          # payloads are large + format-variable). If the self-node is down, trace
+          # fails closed -> the autopilot pauses settlement (safe).
           - matchMethod: "*"
             timeout:
               duration: 30s   # debug_traceTransaction is heavier than a plain read
@@ -111,14 +162,35 @@ projects:
 
     upstreams:
       - id: ophis-self-rbh
-        # Self-hosted Nitro node (../nitro/). THE debug/arbtrace leg + a read-
-        # consensus voter. ophis-rbh-node = the node host's Tailscale name; Nitro
-        # serves JSON-RPC on 8547 (NOT op-reth's 8545).
+        # Self-hosted Nitro node (../nitro/). THE debug/trace leg + a read-consensus
+        # voter. ophis-rbh-node = the node host's Tailscale name; Nitro serves
+        # JSON-RPC on 8547 (NOT op-reth's 8545). Serves debug_* (NOT arbtrace_* -
+        # that is a dead forwarder on Orbit; see ../nitro/README.md). Live,
+        # snapshot-restored + L1-verified (nitro/verify-snapshot.sh passed 2026-07-23).
         endpoint: http://ophis-rbh-node:8547
         failsafe:
           - matchMethod: "*"
             timeout:
               duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: robinhood-chainstack
+        # Chainstack - an INDEPENDENT read-consensus voter (independent of the
+        # Alchemy failure domain). Its free plan serves eth_getLogs + the standard
+        # reads (verified with a live key 2026-07-23) but NOT debug/trace/archive
+        # (gated to a paid plan), so it is a READ leg only - debug_* fails over to
+        # ophis-self-rbh. Stable per-network host; only ${CHAINSTACK_API_KEY} (the
+        # secret) is env-substituted by render-configs.sh.
+        endpoint: https://robinhood-mainnet.core.chainstack.com/${CHAINSTACK_API_KEY}
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 8s
             retry:
               maxAttempts: 3
               delay: 200ms
@@ -142,8 +214,9 @@ projects:
 
       - id: robinhood-alchemy
         # Alchemy (Robinhood's recommended provider; free-tier key). Reads only.
-        # ${ALCHEMY_API_KEY} is substituted by render-configs.sh. NOTE the GATE
-        # above: this may share a failure domain with robinhood-public.
+        # ${ALCHEMY_API_KEY} is substituted by render-configs.sh. May share a
+        # failure domain with robinhood-public (Alchemy provisions it) - which is
+        # exactly why the quorum is 3-of-4, not 2-of-N (see header).
         endpoint: https://robinhood-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
         failsafe:
           - matchMethod: "*"
@@ -155,3 +228,18 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DESIGN NOTE - trace redundancy (for reviewers)
+#
+# There is exactly ONE trace leg (ophis-self-rbh), because free-tier providers do
+# not serve debug_traceTransaction for 4663 (priced with live keys 2026-07-23).
+# So the earlier "sovereign-first ordering" and "consensus-on-trace" options are
+# moot - there is nothing to order against or reach consensus with. To gain trace
+# redundancy later, either:
+#   (a) buy a debug/trace/archive plan from Chainstack or Dwellir (then re-add it
+#       as a trace leg, restore maxParticipants and re-run the guard), or
+#   (b) stand up a SECOND self-hosted Nitro node on a different host.
+# Until then, a self-node outage pauses settlement (fail-closed). Reads still work
+# 3-of-4 without the self-node, so only trace-dependent settlement is affected.
+# ─────────────────────────────────────────────────────────────────────────────

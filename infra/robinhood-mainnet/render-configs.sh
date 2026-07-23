@@ -432,7 +432,12 @@ is_pk_bearing() {
 unfilled=()
 for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   [[ -f "$tmpl" ]] || continue
-  if grep -qE '__FILL_AFTER_DEPLOY_[A-Z]+__' "$tmpl"; then
+  # [A-Z_]+ (not [A-Z]+): multi-word tokens like __FILL_AFTER_DEPLOY_SUBMITTER_EOA__
+  # and __FILL_AFTER_DEPLOY_CHAINSTACK_HOST__ contain an underscore; the old [A-Z]+
+  # regex silently missed them, so an unfilled multi-word placeholder slipped past
+  # this fail-closed check and only errored later at config-parse (invalid address /
+  # bad eRPC host). [A-Z_]+ catches every current token.
+  if grep -qE '__FILL_AFTER_DEPLOY_[A-Z_]+__' "$tmpl"; then
     unfilled+=("$tmpl")
   fi
 done
@@ -470,7 +475,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${ALCHEMY_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${ALCHEMY_API_KEY} ${CHAINSTACK_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out_tmp"
   # PK/secret-bearing configs stay 0600. Non-secret configs (RPC URLs,
   # contract addresses, %VAR runtime-substituted placeholders — NO secret
