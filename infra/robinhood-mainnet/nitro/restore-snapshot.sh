@@ -10,9 +10,11 @@
 # gates trust, and only then do you `docker compose up`.
 #
 # TRUST POSTURE: the default source (Titan) is operated ANONYMOUSLY. This script
-# verifies the publisher's SHA256 (integrity in transit) but that does NOT prove
-# the state is honest - see verify-snapshot.sh and the README trust section. Set
-# SNAPSHOT_URL/SNAPSHOT_SHA256 to an official Robinhood snapshot if you obtain one.
+# requires SNAPSHOT_SHA256 to be pinned out-of-band by default. A mirror-supplied
+# SHA256 proves transit integrity only, not authenticity, because it comes from
+# the same origin as the blob. See verify-snapshot.sh and the README trust
+# section. Set SNAPSHOT_URL/SNAPSHOT_SHA256 to an official Robinhood snapshot if
+# you obtain one.
 #
 # NOT YET RUN ON THIS MACHINE - authored 2026-07-22, pending the reboot. Read it
 # before executing; do not pipe-to-shell trust it.
@@ -27,6 +29,7 @@ NITRO_UID="${NITRO_UID:-1000}"                          # container user `nitro`
 # Pin these to bypass the manifest if you have an out-of-band checksum:
 SNAPSHOT_URL="${SNAPSHOT_URL:-}"
 SNAPSHOT_SHA256="${SNAPSHOT_SHA256:-}"
+I_ACCEPT_UNVERIFIED_SNAPSHOT="${I_ACCEPT_UNVERIFIED_SNAPSHOT:-}"
 
 log(){ printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die(){ printf '\033[31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -35,6 +38,27 @@ for t in curl jq sha256sum tar zstd; do command -v "$t" >/dev/null || die "missi
 
 # ── 1. resolve the file + checksum from the manifest (unless pinned) ──────────
 if [[ -z "$SNAPSHOT_URL" || -z "$SNAPSHOT_SHA256" ]]; then
+  if [[ -z "$SNAPSHOT_SHA256" && "$I_ACCEPT_UNVERIFIED_SNAPSHOT" != "1" ]]; then
+    die "SNAPSHOT_SHA256 is not pinned.
+  Refusing to trust a mirror-supplied manifest checksum by default.
+  A hash from the same origin as the snapshot proves transit integrity only, not
+  authenticity. Provide SNAPSHOT_SHA256 from a trusted out-of-band channel.
+
+  To proceed anyway with an unauthenticated third-party snapshot, explicitly set:
+    I_ACCEPT_UNVERIFIED_SNAPSHOT=1"
+  fi
+
+  [[ -n "$SNAPSHOT_SHA256" ]] || cat >&2 <<'EOF'
+
+WARNING: proceeding with an UNVERIFIED snapshot because
+I_ACCEPT_UNVERIFIED_SNAPSHOT=1 is set.
+
+The mirror-supplied SHA256 proves transit integrity only, not authenticity. It
+comes from the same origin as the snapshot blob. An out-of-band checksum from a
+trusted channel is required to authenticate the snapshot.
+
+EOF
+
   log "Fetching manifest: $MANIFEST_URL"
   MAN="$(curl -fsS --max-time 30 "$MANIFEST_URL")" || die "manifest fetch failed"
   echo "$MAN" | jq .
@@ -116,9 +140,13 @@ cat <<EOF
 $(printf '\033[1m==> Data staged.\033[0m')
 
 NEXT (do NOT skip):
-  1. ./verify-snapshot.sh        # gate trust against L1 assertions + public RPC
-  2. only if it PASSES:  docker compose --env-file .env up -d
-  3. docker compose logs -f nitro   # confirm it follows the tip, not re-syncs
+  1. start the node locally, isolated from Ophis/eRPC
+  2. L1_RPC=<ethereum-mainnet-rpc> ./verify-snapshot.sh
+  3. only if it PASSES: wire this node into eRPC/Ophis
+  4. docker compose logs -f nitro   # confirm it follows the tip, not re-syncs
+
+This is a required blocking gate. Do NOT wire the restored node into eRPC or let
+Ophis settlement trust it until verify-snapshot.sh exits successfully.
 
 You can delete the tarball to reclaim ~107 GB once the node is running healthily:
   rm "$FILE"

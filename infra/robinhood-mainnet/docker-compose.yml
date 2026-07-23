@@ -49,7 +49,8 @@ services:
   # container-to-container. The node binds :8547 on 127.0.0.1 only, so host-gateway /
   # Tailscale to a loopback port cannot reach it — the shared network is the fix.
   rpc-proxy:
-    image: ghcr.io/erpc/erpc:latest
+    # Digest resolved from :latest on 2026-07-23; bump deliberately.
+    image: ghcr.io/erpc/erpc@sha256:8bfed3d49a086f3bcf7be34ad69fd3f9abda6e53aa600e3d82e435a29a111137
     restart: always
     mem_limit: 512m
     networks:

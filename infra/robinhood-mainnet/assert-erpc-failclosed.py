@@ -27,17 +27,22 @@ rule is a consensus rule with maxParticipants:4, agreementThreshold:3 (3-of-4; t
 correlated public+alchemy pair cannot reach quorum alone) and
 lowParticipants:returnError (always fail-closed on an outage); the tip-sensitive
 reads may dispute via preferBlockHeadLeader (breaks 1-block tip-drift ties among
-upstreams that DID respond — OP #476), but the settlement-decode reads
+upstreams that DID respond — OP #476) and are therefore availability-preferring
+(single-leg-selectable on dispute), but the settlement-decode reads
 (eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt) MUST
 dispute via returnError (by-hash-immutable, so a dispute is never legitimate
-drift — Codex r3632331649/r3632331675); every consensus rule fail-closed;
-matchMethod uses only the modelled `*`/`|` matcher.
+drift — Codex r3632331649/r3632331675); matchMethod uses only the modelled `*`/`|`
+matcher.
 """
+import argparse
 import re
 import sys
 from urllib.parse import urlsplit
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:  # CI normally has PyYAML; keep local operator runs usable.
+    yaml = None
 
 CHAIN_ID = 4663
 EXPECTED_UPSTREAMS = 4
@@ -90,6 +95,7 @@ RECEIPT = ("eth_getTransactionReceipt",)
 # returnError (never preferBlockHeadLeader). Durable lock on the split above.
 RETURN_ERROR_ONLY = SETTLEMENT_DECODE + RECEIPT
 PROTECTED_METHODS = BLOCK_A + BLOCK_B + SETTLEMENT_DECODE + RECEIPT
+PRICING_SOLVENCY_METHODS = BLOCK_A
 
 # Allowed keys per structural level of the chain-4663 consensus/upstream surface.
 # Any key outside these sets fails closed (the whole point — see module docstring).
@@ -111,6 +117,120 @@ ALLOWED = {
 
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
 EXIT_FAIL = 14
+
+
+def _strip_comment(line):
+    quote = None
+    escaped = False
+    out = []
+    for ch in line:
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+        if ch == "\\" and quote:
+            out.append(ch)
+            escaped = True
+            continue
+        if ch in ("'", '"'):
+            if quote == ch:
+                quote = None
+            elif quote is None:
+                quote = ch
+            out.append(ch)
+            continue
+        if ch == "#" and quote is None:
+            break
+        out.append(ch)
+    return "".join(out).rstrip()
+
+
+def _parse_scalar(value):
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    return value
+
+
+def _split_key_value(text):
+    if ":" not in text:
+        return text, None
+    key, value = text.split(":", 1)
+    return key.strip(), value.strip()
+
+
+def _simple_yaml_load(stream):
+    """Small YAML-subset loader for this closed-world template when PyYAML is absent."""
+    raw_lines = stream.splitlines()
+    lines = []
+    for line_no, raw in enumerate(raw_lines, 1):
+        stripped = _strip_comment(raw)
+        if not stripped.strip():
+            continue
+        indent = len(stripped) - len(stripped.lstrip(" "))
+        if indent % 2:
+            raise ValueError(f"line {line_no}: odd indentation is unsupported by fallback YAML loader")
+        lines.append((indent, stripped.lstrip(" "), line_no))
+
+    def parse_block(pos, indent):
+        if pos >= len(lines):
+            return {}, pos
+        if lines[pos][0] < indent:
+            return {}, pos
+        is_seq = lines[pos][0] == indent and lines[pos][1].startswith("- ")
+        if is_seq:
+            out = []
+            while pos < len(lines) and lines[pos][0] == indent and lines[pos][1].startswith("- "):
+                _, content, _ = lines[pos]
+                rest = content[2:].strip()
+                pos += 1
+                if not rest:
+                    item, pos = parse_block(pos, indent + 2)
+                else:
+                    key, value = _split_key_value(rest)
+                    if value is None:
+                        item = _parse_scalar(rest)
+                    else:
+                        item = {key: _parse_scalar(value)}
+                        if pos < len(lines) and lines[pos][0] > indent:
+                            extra, pos = parse_block(pos, indent + 2)
+                            if isinstance(extra, dict):
+                                item.update(extra)
+                            else:
+                                raise ValueError(f"line {lines[pos - 1][2]}: cannot merge nested sequence into mapping item")
+                out.append(item)
+            return out, pos
+
+        out = {}
+        while pos < len(lines) and lines[pos][0] == indent and not lines[pos][1].startswith("- "):
+            _, content, line_no = lines[pos]
+            key, value = _split_key_value(content)
+            if value is None:
+                raise ValueError(f"line {line_no}: expected key: value")
+            pos += 1
+            if value == "":
+                child, pos = parse_block(pos, indent + 2)
+                out[key] = child
+            else:
+                out[key] = _parse_scalar(value)
+        return out, pos
+
+    parsed, pos = parse_block(0, lines[0][0] if lines else 0)
+    if pos != len(lines):
+        raise ValueError(f"line {lines[pos][2]}: fallback YAML loader could not parse this structure")
+    return parsed
+
+
+def _load_yaml(f):
+    if yaml is not None:
+        return yaml.safe_load(f)
+    return _simple_yaml_load(f.read())
 
 
 def _check_keys(node, level, path, errs):
@@ -172,11 +292,11 @@ def _consensus_failclosed(c):
     if c.get("agreementThreshold") != 3:
         return f"agreementThreshold={c.get('agreementThreshold')!r} (must be int 3; <3 lets the correlated public+alchemy pair meet quorum alone)", False
     # disputeBehavior: a DISPUTE means maxParticipants responded but fewer than
-    # agreementThreshold agree. On Robinhood's ~134ms blocks the public legs + self routinely sit
-    # 1 block apart on `latest`-tagged reads, so returnError failed ~30-50% of
-    # quote/state reads (#476). `preferBlockHeadLeader` breaks that tie by freshest
-    # block — it still requires the participants to have responded, so it is NOT a
-    # 1-of-N bypass. Both are fail-closed-enough for DISPUTES; nothing else (e.g.
+    # agreementThreshold agree. On Robinhood's ~134ms blocks the public legs + self
+    # routinely sit 1 block apart on `latest`-tagged reads, so returnError failed
+    # ~30-50% of quote/state reads (#476). `preferBlockHeadLeader` breaks that tie
+    # by freshest block; it is availability-preferring (single-leg-selectable on
+    # dispute), NOT fully fail-closed. Nothing else (e.g.
     # acceptMostCommonValidResult, onlyBlockHeadLeader) is permitted.
     if c.get("disputeBehavior") not in ("returnError", "preferBlockHeadLeader"):
         return (
@@ -191,7 +311,9 @@ def _consensus_failclosed(c):
     # settlement state unchecked. Fail closed.
     if c.get("lowParticipantsBehavior") != "returnError":
         return f"lowParticipantsBehavior={c.get('lowParticipantsBehavior')!r} (must be returnError)", False
-    return "", True
+    if c.get("disputeBehavior") == "preferBlockHeadLeader":
+        return "availability-preferring (single-leg-selectable on dispute)", True
+    return "fail-closed (returnError on dispute)", True
 
 
 def _check_rule_subtree(r, path, errs, level="rule"):
@@ -213,6 +335,8 @@ def _check_rule_subtree(r, path, errs, level="rule"):
 
 def validate(cfg):
     errs = []
+    warns = []
+    pricing_prefer_block_head_leader = []
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
@@ -270,6 +394,9 @@ def validate(cfg):
                     why, ok = _consensus_failclosed(first["consensus"])
                     if not ok:
                         errs.append(f"{m}: first-matching consensus is not fail-closed: {why}")
+                    elif first["consensus"].get("disputeBehavior") == "preferBlockHeadLeader":
+                        if m in PRICING_SOLVENCY_METHODS:
+                            pricing_prefer_block_head_leader.append(m)
                     if m in RETURN_ERROR_ONLY and first["consensus"].get("disputeBehavior") != "returnError":
                         errs.append(
                             f"{m}: settlement-decode read must use disputeBehavior:returnError, got "
@@ -279,32 +406,54 @@ def validate(cfg):
                             "(Codex r3632331649/r3632331675)")
     if networks_checked == 0:
         errs.append(f"no chain-{CHAIN_ID} network found")
-    return list(dict.fromkeys(errs))
+    pricing_prefer_block_head_leader = list(dict.fromkeys(pricing_prefer_block_head_leader))
+    if pricing_prefer_block_head_leader:
+        warns.append(
+            "pricing/solvency-relevant method(s) served by preferBlockHeadLeader consensus "
+            f"({', '.join(pricing_prefer_block_head_leader)}): availability-preferring "
+            "(single-leg-selectable on dispute), not fully fail-closed. Residual: a determined "
+            "upstream that controls head-leadership can supply a disputed read on these methods."
+        )
+    return list(dict.fromkeys(errs)), list(dict.fromkeys(warns))
 
 
-def main(path):
+def main(path, strict=False):
     try:
         with open(path, encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
+            cfg = _load_yaml(f)
     except Exception as e:  # noqa: BLE001 - any parse failure must fail closed
         print(f"ERROR (#447): cannot parse {path}: {e}", file=sys.stderr)
         return EXIT_FAIL
-    errs = validate(cfg or {})
+    errs, warns = validate(cfg or {})
     if errs:
         print(f"ERROR (#447): Robinhood eRPC config is not 3-of-4 fail-closed ({path}):", file=sys.stderr)
         for e in errs:
             print(f"  - {e}", file=sys.stderr)
         return EXIT_FAIL
+    if warns:
+        for w in warns:
+            print(f"WARNING (#447): {w}", file=sys.stderr)
+        if strict:
+            print("ERROR (#447): --strict treats availability-preferring pricing/solvency reads as fatal.", file=sys.stderr)
+            return EXIT_FAIL
     print(
-        "OK (#447): Robinhood eRPC fail-closed — closed-world schema lock passed (no unrecognized config keys); "
+        "OK (#447): Robinhood eRPC consensus guard — closed-world schema lock passed (no unrecognized config keys); "
         "exactly the 4 expected upstream hosts, https:// except the Tailscale self-node; every protected method's "
         "first-matching failsafe rule is a maxParticipants:4/agreementThreshold:3 (3-of-4) consensus block with "
-        "lowParticipants:returnError (outage fail-closed); tip-sensitive reads dispute via preferBlockHeadLeader (#476), "
-        "settlement-decode by-hash reads (block/tx/receipt) dispute via returnError (Codex r3632331649/r3632331675); "
-        "every consensus rule fail-closed."
+        "lowParticipants:returnError (outage fail-closed); tip-sensitive reads that use preferBlockHeadLeader (#476) "
+        "are availability-preferring (single-leg-selectable on dispute), not fully fail-closed; settlement-decode "
+        "by-hash reads (block/tx/receipt) dispute via returnError (Codex r3632331649/r3632331675)."
     )
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "configs/erpc.yaml.tmpl"))
+    parser = argparse.ArgumentParser(description="Validate Robinhood mainnet eRPC fail-closed consensus invariants.")
+    parser.add_argument("path", nargs="?", default="configs/erpc.yaml.tmpl")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit non-zero when pricing/solvency methods use preferBlockHeadLeader",
+    )
+    args = parser.parse_args()
+    sys.exit(main(args.path, strict=args.strict))

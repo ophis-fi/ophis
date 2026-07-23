@@ -77,7 +77,7 @@ if [[ "$NLOG" -eq 0 ]]; then
   bad "no AssertionConfirmed events found - widen FROM, or the ABI/topic differs for this rollup version; verify manually before trusting"
 else
   # data = 0x || blockHash(32) || sendRoot(32). Decode and check the node.
-  echo "$LOGS" | jq -c '.[-3:][]' | while read -r ev; do
+  while read -r ev; do
     data="$(echo "$ev" | jq -r '.data')"
     bh="0x${data:2:64}"
     # Ask the node for a block WITH this hash; must exist and be canonical.
@@ -88,7 +88,7 @@ else
     else
       bad "L1-confirmed blockHash $bh NOT found in node - snapshot header chain diverges from L1 truth"
     fi
-  done
+  done < <(echo "$LOGS" | jq -c '.[-3:][]')
 fi
 
 # ── 3. trace actually works on a near-tip tx ──────────────────────────────────
