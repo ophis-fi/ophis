@@ -60,7 +60,7 @@ overrides:
   http-proxy-middleware@>=3.0.4 <3.0.7: 3.0.7
   http-proxy-middleware@>=2.0.0 <2.0.10: 2.0.10
   piscina: 4.9.3
-  postcss: ^8.5.10
+  postcss: ^8.5.18
   yaml: ^1.10.3
   qs: ^6.14.1
   mdast-util-to-hast: ^13.2.1
@@ -112,7 +112,7 @@ importers:
         version: 5.5.1(babel-plugin-macros@3.1.0)
       '@sentry/webpack-plugin':
         specifier: ^2.10.0
-        version: 2.10.0(encoding@0.1.13)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+        version: 2.10.0(encoding@0.1.13)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       '@swc/helpers':
         specifier: ~0.5.11
         version: 0.5.17
@@ -127,16 +127,16 @@ importers:
         version: 2.18.0
       '@web3-react/eip1193':
         specifier: ^8.2.3
-        version: 8.2.3(immer@10.0.2)(react@19.1.2)
+        version: 8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
       '@web3-react/empty':
         specifier: ^8.2.3
-        version: 8.2.3(immer@10.0.2)(react@19.1.2)
+        version: 8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
       '@web3-react/metamask':
         specifier: ^8.2.4
-        version: 8.2.4(immer@10.0.2)(react@19.1.2)
+        version: 8.2.4(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
       '@web3-react/url':
         specifier: ^8.2.3
-        version: 8.2.3(bufferutil@4.0.8)(immer@10.0.2)(react@19.1.2)(utf-8-validate@5.0.10)
+        version: 8.2.3(@types/react@19.1.3)(bufferutil@4.0.8)(immer@10.0.2)(react@19.1.2)(utf-8-validate@5.0.10)
       cross-env:
         specifier: ^7.0.3
         version: 7.0.3
@@ -154,7 +154,7 @@ importers:
         version: 2.8.1
       wagmi:
         specifier: 3.1.0
-        version: 3.1.0(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.1.2))(@walletconnect/ethereum-provider@2.18.0(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
+        version: 3.1.0(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.1.2))(@types/react@19.1.3)(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
     devDependencies:
       '@babel/preset-react':
         specifier: ^7.14.5
@@ -197,10 +197,10 @@ importers:
         version: 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/next':
         specifier: 22.4.2
-        version: 22.4.2(5805bf98f08451f2a01f588b07df9150)
+        version: 22.4.2(38247896f879710975f12642635e508c)
       '@nx/react':
         specifier: 22.4.2
-        version: 22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(@types/babel__core@7.20.5)(@zkochan/js-yaml@0.0.7)(bufferutil@4.0.8)(eslint@9.37.0(jiti@2.6.1))(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.14)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)
+        version: 22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(@types/babel__core@7.20.5)(@zkochan/js-yaml@0.0.7)(bufferutil@4.0.8)(eslint@9.37.0(jiti@2.6.1))(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.19)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)
       '@nx/vite':
         specifier: 22.4.2
         version: 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(typescript@5.9.3)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)
@@ -341,7 +341,7 @@ importers:
         version: 30.2.0
       jsdom:
         specifier: ~27.0.0
-        version: 27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10)
+        version: 27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10)
       jsonc-eslint-parser:
         specifier: ^2.1.0
         version: 2.3.0
@@ -413,7 +413,7 @@ importers:
         version: 5.1.4(typescript@5.9.3)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
       vitest:
         specifier: 4.1.7
-        version: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
+        version: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
 
   apps/cowswap-frontend:
     dependencies:
@@ -3727,7 +3727,7 @@ packages:
     resolution: {integrity: sha512-zSlIxa20WvMojjpCSy8WrNpcZ61RqfTfX3XTaOeVlGJrt/8HF3YbzgFZa01yTbT4GWQLwfTcC3EB8i3XnB647Q==}
     engines: {node: '>=18'}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   '@csstools/css-tokenizer@3.0.4':
     resolution: {integrity: sha512-Vd/9EVDiu6PPJt9yAh6roZP6El1xHrdvIVGjyBsHR0RYwNHgL7FJPyIIW4fANJNG6FtyZfvlRPpFI4ZM/lubvw==}
@@ -8776,7 +8776,7 @@ packages:
     engines: {node: ^10 || ^12 || >=14}
     hasBin: true
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   available-typed-arrays@1.0.7:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
@@ -9825,7 +9825,7 @@ packages:
     resolution: {integrity: sha512-h70rUM+3PNFuaBDTLe8wF/cdWu+dOZmb7pJt8Z2sedYbAcQVQV/tEchueg3GWxwqS0cxtbxmaHEdkNACqcvsow==}
     engines: {node: ^14 || ^16 || >=18}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   css-line-break@2.1.0:
     resolution: {integrity: sha512-FHcKFCZcAha3LwfVBhCQbW2nCNbkZXn7KVUJcsT5/P8YmfsVja0FMPJr0B903j/E69HUphKiV9iQArX8SDYA4w==}
@@ -9904,19 +9904,19 @@ packages:
     resolution: {integrity: sha512-1C0C+eNaeN8OcHQa193aRgYexyJtU8XwbdieEjClw+J9d94E41LwT6ivKH0WT+fYwYWB0Zp3I3IZ7tI/BbUbrg==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   cssnano-utils@4.0.2:
     resolution: {integrity: sha512-ZR1jHg+wZ8o4c3zqf1SIUSTIvm/9mU343FMR6Obe/unskbvpGhZOo1J6d/r8D1pzkRQYuwbcH3hToOuoA2G7oQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   cssnano@6.1.2:
     resolution: {integrity: sha512-rYk5UeX7VAM/u0lNqewCdasdtPK81CgX8wJFLEIXHbV2oldWRgJAsZrdhRXkV1NJzA2g850KiFm9mMU2HxNxMA==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   csso@5.0.5:
     resolution: {integrity: sha512-0LrrStPOdJj+SPCCrGhzryycLjwcgUSHBtxNA8aIDxf0GLsRh1cKYhB00Gd1lDOS4yGH69+SNn13+TWbVHETFQ==}
@@ -11693,7 +11693,7 @@ packages:
     resolution: {integrity: sha512-soFhflCVWLfRNOPU3iv5Z9VUdT44xFRbzjLsEzSr5AQmgqPMTHdU3PMT1Cf1ssx8fLNJDA1juftYl+PUcv3MqA==}
     engines: {node: ^10 || ^12 || >= 14}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   idb-keyval@6.2.1:
     resolution: {integrity: sha512-8Sb3veuYCyrZL+VBt9LJfZjLUPWVvqn8tG28VqYNFCo43KHcKuq+b4EiXGeuaLAQWL2YmyDgMp2aSpH9JHsEQg==}
@@ -13471,6 +13471,11 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
+  nanoid@3.3.16:
+    resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
+    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
+    hasBin: true
+
   napi-postinstall@0.3.4:
     resolution: {integrity: sha512-PHI5f1O0EP5xJ9gQmFGMS6IZcrVvTjpXjz7Na41gTE7eE2hK11lg04CECCYEEjdc17EV4DO+fkGEtt7TpTaTiQ==}
     engines: {node: ^12.20.0 || ^14.18.0 || >=16.0.0}
@@ -14100,193 +14105,193 @@ packages:
     resolution: {integrity: sha512-TipgjGyzP5QzEhsOZUaIkeO5mKeMFpebWzRogWG/ysonUlnHcq5aJe0jOjpfzUU8PeSaBQnrE8ehR0QA5vs8PQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-colormin@6.1.0:
     resolution: {integrity: sha512-x9yX7DOxeMAR+BgGVnNSAxmAj98NX/YxEMNFP+SDCEeNLb2r3i6Hh1ksMsnW8Ub5SLCpbescQqn9YEbE9554Sw==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-convert-values@6.1.0:
     resolution: {integrity: sha512-zx8IwP/ts9WvUM6NkVSkiU902QZL1bwPhaVaLynPtCsOTqp+ZKbNi+s6XJg3rfqpKGA/oc7Oxk5t8pOQJcwl/w==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-discard-comments@6.0.2:
     resolution: {integrity: sha512-65w/uIqhSBBfQmYnG92FO1mWZjJ4GL5b8atm5Yw2UgrwD7HiNiSSNwJor1eCFGzUgYnN/iIknhNRVqjrrpuglw==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-discard-duplicates@6.0.3:
     resolution: {integrity: sha512-+JA0DCvc5XvFAxwx6f/e68gQu/7Z9ud584VLmcgto28eB8FqSFZwtrLwB5Kcp70eIoWP/HXqz4wpo8rD8gpsTw==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-discard-empty@6.0.3:
     resolution: {integrity: sha512-znyno9cHKQsK6PtxL5D19Fj9uwSzC2mB74cpT66fhgOadEUPyXFkbgwm5tvc3bt3NAy8ltE5MrghxovZRVnOjQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-discard-overridden@6.0.2:
     resolution: {integrity: sha512-j87xzI4LUggC5zND7KdjsI25APtyMuynXZSujByMaav2roV6OZX+8AaCUcZSWqckZpjAjRyFDdpqybgjFO0HJQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-import@14.1.0:
     resolution: {integrity: sha512-flwI+Vgm4SElObFVPpTIT7SU7R3qk2L7PyduMcokiaVKuWv9d/U+Gm/QAd8NDLuykTWTkcrjOeD2Pp1rMeBTGw==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-loader@6.2.1:
     resolution: {integrity: sha512-WbbYpmAaKcux/P66bZ40bpWsBucjx/TTgVVzRZ9yUO8yQfVBlameJ0ZGVaPfH64hNSBh63a+ICP5nqOpBA0w+Q==}
     engines: {node: '>= 12.13.0'}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
       webpack: ^5.104.1
 
   postcss-merge-longhand@6.0.5:
     resolution: {integrity: sha512-5LOiordeTfi64QhICp07nzzuTDjNSO8g5Ksdibt44d+uvIIAE1oZdRn8y/W5ZtYgRH/lnLDlvi9F8btZcVzu3w==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-merge-rules@6.1.1:
     resolution: {integrity: sha512-KOdWF0gju31AQPZiD+2Ar9Qjowz1LTChSjFFbS+e2sFgc4uHOp3ZvVX4sNeTlk0w2O31ecFGgrFzhO0RSWbWwQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-minify-font-values@6.1.0:
     resolution: {integrity: sha512-gklfI/n+9rTh8nYaSJXlCo3nOKqMNkxuGpTn/Qm0gstL3ywTr9/WRKznE+oy6fvfolH6dF+QM4nCo8yPLdvGJg==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-minify-gradients@6.0.3:
     resolution: {integrity: sha512-4KXAHrYlzF0Rr7uc4VrfwDJ2ajrtNEpNEuLxFgwkhFZ56/7gaE4Nr49nLsQDZyUe+ds+kEhf+YAUolJiYXF8+Q==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-minify-params@6.1.0:
     resolution: {integrity: sha512-bmSKnDtyyE8ujHQK0RQJDIKhQ20Jq1LYiez54WiaOoBtcSuflfK3Nm596LvbtlFcpipMjgClQGyGr7GAs+H1uA==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-minify-selectors@6.0.4:
     resolution: {integrity: sha512-L8dZSwNLgK7pjTto9PzWRoMbnLq5vsZSTu8+j1P/2GB8qdtGQfn+K1uSvFgYvgh83cbyxT5m43ZZhUMTJDSClQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-modules-extract-imports@3.1.0:
     resolution: {integrity: sha512-k3kNe0aNFQDAZGbin48pL2VNidTF0w4/eASDsxlyspobzU3wZQLOGj7L9gfRe0Jo9/4uud09DsjFNH7winGv8Q==}
     engines: {node: ^10 || ^12 || >= 14}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-modules-local-by-default@4.2.0:
     resolution: {integrity: sha512-5kcJm/zk+GJDSfw+V/42fJ5fhjL5YbFDl8nVdXkJPLLW+Vf9mTD5Xe0wqIaDnLuL2U6cDNpTr+UQ+v2HWIBhzw==}
     engines: {node: ^10 || ^12 || >= 14}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-modules-scope@3.2.0:
     resolution: {integrity: sha512-oq+g1ssrsZOsx9M96c5w8laRmvEu9C3adDSjI8oTcbfkrTE8hx/zfyobUoWIxaKPO8bt6S62kxpw5GqypEw1QQ==}
     engines: {node: ^10 || ^12 || >= 14}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-modules-values@4.0.0:
     resolution: {integrity: sha512-RDxHkAiEGI78gS2ofyvCsu7iycRv7oqw5xMWn9iMoR0N/7mf9D50ecQqUo5BZ9Zh2vH4bCUR/ktCqbB9m8vJjQ==}
     engines: {node: ^10 || ^12 || >= 14}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-modules@6.0.1:
     resolution: {integrity: sha512-zyo2sAkVvuZFFy0gc2+4O+xar5dYlaVy/ebO24KT0ftk/iJevSNyPyQellsBLlnccwh7f6V6Y4GvuKRYToNgpQ==}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-charset@6.0.2:
     resolution: {integrity: sha512-a8N9czmdnrjPHa3DeFlwqst5eaL5W8jYu3EBbTTkI5FHkfMhFZh1EGbku6jhHhIzTA6tquI2P42NtZ59M/H/kQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-display-values@6.0.2:
     resolution: {integrity: sha512-8H04Mxsb82ON/aAkPeq8kcBbAtI5Q2a64X/mnRRfPXBq7XeogoQvReqxEfc0B4WPq1KimjezNC8flUtC3Qz6jg==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-positions@6.0.2:
     resolution: {integrity: sha512-/JFzI441OAB9O7VnLA+RtSNZvQ0NCFZDOtp6QPFo1iIyawyXg0YI3CYM9HBy1WvwCRHnPep/BvI1+dGPKoXx/Q==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-repeat-style@6.0.2:
     resolution: {integrity: sha512-YdCgsfHkJ2jEXwR4RR3Tm/iOxSfdRt7jplS6XRh9Js9PyCR/aka/FCb6TuHT2U8gQubbm/mPmF6L7FY9d79VwQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-string@6.0.2:
     resolution: {integrity: sha512-vQZIivlxlfqqMp4L9PZsFE4YUkWniziKjQWUtsxUiVsSSPelQydwS8Wwcuw0+83ZjPWNTl02oxlIvXsmmG+CiQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-timing-functions@6.0.2:
     resolution: {integrity: sha512-a+YrtMox4TBtId/AEwbA03VcJgtyW4dGBizPl7e88cTFULYsprgHWTbfyjSLyHeBcK/Q9JhXkt2ZXiwaVHoMzA==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-unicode@6.1.0:
     resolution: {integrity: sha512-QVC5TQHsVj33otj8/JD869Ndr5Xcc/+fwRh4HAsFsAeygQQXm+0PySrKbr/8tkDKzW+EVT3QkqZMfFrGiossDg==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-url@6.0.2:
     resolution: {integrity: sha512-kVNcWhCeKAzZ8B4pv/DnrU1wNh458zBNp8dh4y5hhxih5RZQ12QWMuQrDgPRw3LRl8mN9vOVfHl7uhvHYMoXsQ==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-normalize-whitespace@6.0.2:
     resolution: {integrity: sha512-sXZ2Nj1icbJOKmdjXVT9pnyHQKiSAyuNQHSgRCUgThn2388Y9cGVDR+E9J9iAYbSbLHI+UUwLVl1Wzco/zgv0Q==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-ordered-values@6.0.2:
     resolution: {integrity: sha512-VRZSOB+JU32RsEAQrO94QPkClGPKJEL/Z9PCBImXMhIeK5KAYo6slP/hBYlLgrCjFxyqvn5VC81tycFEDBLG1Q==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-reduce-initial@6.1.0:
     resolution: {integrity: sha512-RarLgBK/CrL1qZags04oKbVbrrVK2wcxhvta3GCxrZO4zveibqbRPmm2VI8sSgCXwoUHEliRSbOfpR0b/VIoiw==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-reduce-transforms@6.0.2:
     resolution: {integrity: sha512-sB+Ya++3Xj1WaT9+5LOOdirAxP7dJZms3GRcYheSPi1PiTMigsxHAdkrbItHxwYHr4kt1zL7mmcHstgMYT+aiA==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-selector-parser@6.0.16:
     resolution: {integrity: sha512-A0RVJrX+IUkVZbW3ClroRWurercFhieevHB38sr2+l9eUClMqome3LmEmnhlNy+5Mr2EYN6B2Kaw9wYdd+VHiw==}
@@ -14300,19 +14305,19 @@ packages:
     resolution: {integrity: sha512-dlrahRmxP22bX6iKEjOM+c8/1p+81asjKT+V5lrgOH944ryx/OHpclnIbGsKVd3uWOXFLYJwCVf0eEkJGvO96g==}
     engines: {node: ^14 || ^16 || >= 18}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-unique-selectors@6.0.4:
     resolution: {integrity: sha512-K38OCaIrO8+PzpArzkLKB42dSARtC2tmG6PvD4b1o1Q2E9Os8jzfWFfSy/rixsHwohtsDdFtAWGjFVFUdwYaMg==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
-  postcss@8.5.14:
-    resolution: {integrity: sha512-SoSL4+OSEtR99LHFZQiJLkT59C5B1amGO1NzTwj7TT1qCUgUO6hxOvzkOYxD+vMrXBM3XJIKzokoERdqQq/Zmg==}
+  postcss@8.5.19:
+    resolution: {integrity: sha512-Mz8SaolMd8nB+G13WkORcxQKHZ/NE4xXevtkJHVuG+guo9/wYKlIMTKAqGdEmYOXR2ijPjTYNHssizdaVSUNdQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   preact-render-to-string@6.7.0:
@@ -15705,10 +15710,6 @@ packages:
     resolution: {integrity: sha512-l3BikUxvPOcn5E74dZiq5BGsTb5yEwhaTSzccU6t4sDOH8NWJCstKO5QT2CvtFoK6F0saL7p9xHAqHOlCPJygA==}
     engines: {node: '>= 8'}
 
-  source-map@0.8.0:
-    resolution: {integrity: sha512-d8EqvL+k/SOXCreS/SUzg2ciyHqBBLcN/yuRjFsbvVhHTE2pgei7oAhmPM7kWFbkX6OSMQfUq4KbkF3au9lhYQ==}
-    engines: {node: '>= 12'}
-
   source-map@0.8.0-beta.0:
     resolution: {integrity: sha512-2ymg6oRBpebeZi9UUNsgQ89bhx01TcTkmNTGnNO88imTmbSgy4nfujrgVEFKWpMTEGA11EDkTt7mqObTPdigIA==}
     engines: {node: '>= 8'}
@@ -16008,7 +16009,7 @@ packages:
     resolution: {integrity: sha512-gSTTEQ670cJNoaeIp9KX6lZmm8LJ3jPB5yJmX8Zq/wQxOsAFXV3qjWzHas3YYk1qesuVIyYWWUpZ0vSE/dTSGg==}
     engines: {node: ^14 || ^16 || >=18.0}
     peerDependencies:
-      postcss: ^8.5.10
+      postcss: ^8.5.18
 
   stylis@4.2.0:
     resolution: {integrity: sha512-Orov6g6BB1sDfYgzWfTHDOxamtX1bE/zo104Dh9e6fqJ3PooipYyfJ0pUmrZO2wAvO8YbEyeFrkV91XTsGMSrw==}
@@ -20132,9 +20133,9 @@ snapshots:
     dependencies:
       '@csstools/css-tokenizer': 3.0.4
 
-  '@csstools/css-syntax-patches-for-csstree@1.0.14(postcss@8.5.14)':
+  '@csstools/css-syntax-patches-for-csstree@1.0.14(postcss@8.5.19)':
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
   '@csstools/css-tokenizer@3.0.4': {}
 
@@ -22086,7 +22087,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@module-federation/enhanced@0.21.6(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))':
+  '@module-federation/enhanced@0.21.6(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))':
     dependencies:
       '@module-federation/bridge-react-webpack-plugin': 0.21.6
       '@module-federation/cli': 0.21.6(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)
@@ -22104,7 +22105,7 @@ snapshots:
       upath: 2.0.1
     optionalDependencies:
       typescript: 5.9.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     transitivePeerDependencies:
       - '@rspack/core'
       - bufferutil
@@ -22114,7 +22115,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@module-federation/enhanced@0.23.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))':
+  '@module-federation/enhanced@0.23.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))':
     dependencies:
       '@module-federation/bridge-react-webpack-plugin': 0.23.0
       '@module-federation/cli': 0.23.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)
@@ -22132,7 +22133,7 @@ snapshots:
       upath: 2.0.1
     optionalDependencies:
       typescript: 5.9.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     transitivePeerDependencies:
       - '@rspack/core'
       - bufferutil
@@ -22196,15 +22197,15 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@module-federation/node@2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))':
+  '@module-federation/node@2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))':
     dependencies:
-      '@module-federation/enhanced': 0.23.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      '@module-federation/enhanced': 0.23.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       '@module-federation/runtime': 0.23.0
       '@module-federation/sdk': 0.23.0
       btoa: 1.2.1
       encoding: 0.1.13
       node-fetch: 2.7.0(encoding@0.1.13)
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     optionalDependencies:
       next: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
       react: 19.1.2
@@ -22702,10 +22703,10 @@ snapshots:
       - nx
       - supports-color
 
-  '@nx/module-federation@22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(bufferutil@4.0.8)(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.14)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)':
+  '@nx/module-federation@22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(bufferutil@4.0.8)(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.19)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)':
     dependencies:
-      '@module-federation/enhanced': 0.21.6(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      '@module-federation/node': 2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      '@module-federation/enhanced': 0.21.6(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      '@module-federation/node': 2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       '@module-federation/sdk': 0.21.6
       '@nx/devkit': 22.4.2(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/js': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
@@ -22715,7 +22716,7 @@ snapshots:
       http-proxy-middleware: 3.0.7
       picocolors: 1.1.1
       tslib: 2.8.1
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     transitivePeerDependencies:
       - '@babel/traverse'
       - '@minify-html/node'
@@ -22745,18 +22746,18 @@ snapshots:
       - vue-tsc
       - webpack-cli
 
-  '@nx/next@22.4.2(5805bf98f08451f2a01f588b07df9150)':
+  '@nx/next@22.4.2(38247896f879710975f12642635e508c)':
     dependencies:
       '@babel/plugin-proposal-decorators': 7.23.7(@babel/core@7.29.7)
       '@nx/devkit': 22.4.2(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/eslint': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@zkochan/js-yaml@0.0.7)(eslint@9.37.0(jiti@2.6.1))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/js': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
-      '@nx/react': 22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(@types/babel__core@7.20.5)(@zkochan/js-yaml@0.0.7)(bufferutil@4.0.8)(eslint@9.37.0(jiti@2.6.1))(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.14)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)
+      '@nx/react': 22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(@types/babel__core@7.20.5)(@zkochan/js-yaml@0.0.7)(bufferutil@4.0.8)(eslint@9.37.0(jiti@2.6.1))(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.19)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)
       '@nx/web': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
-      '@nx/webpack': 22.4.2(@babel/traverse@7.29.7)(@rspack/core@1.6.8(@swc/helpers@0.5.17))(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(bufferutil@4.0.8)(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)))(lightningcss@1.32.0)(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(typescript@5.9.3)(utf-8-validate@5.0.10)
+      '@nx/webpack': 22.4.2(@babel/traverse@7.29.7)(@rspack/core@1.6.8(@swc/helpers@0.5.17))(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(bufferutil@4.0.8)(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)))(lightningcss@1.32.0)(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(typescript@5.9.3)(utf-8-validate@5.0.10)
       '@phenomnomnominal/tsquery': 6.1.4(typescript@5.9.3)
       '@svgr/webpack': 8.1.0
-      copy-webpack-plugin: 10.2.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      copy-webpack-plugin: 10.2.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       ignore: 5.3.2
       next: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
       semver: 7.7.3
@@ -22832,12 +22833,12 @@ snapshots:
   '@nx/nx-win32-x64-msvc@22.4.2':
     optional: true
 
-  '@nx/react@22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(@types/babel__core@7.20.5)(@zkochan/js-yaml@0.0.7)(bufferutil@4.0.8)(eslint@9.37.0(jiti@2.6.1))(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.14)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)':
+  '@nx/react@22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(@types/babel__core@7.20.5)(@zkochan/js-yaml@0.0.7)(bufferutil@4.0.8)(eslint@9.37.0(jiti@2.6.1))(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.19)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))(vitest@4.1.7)':
     dependencies:
       '@nx/devkit': 22.4.2(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/eslint': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@zkochan/js-yaml@0.0.7)(eslint@9.37.0(jiti@2.6.1))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/js': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
-      '@nx/module-federation': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(bufferutil@4.0.8)(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.14)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)
+      '@nx/module-federation': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/helpers@0.5.17)(bufferutil@4.0.8)(lightningcss@1.32.0)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(postcss@8.5.19)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)
       '@nx/rollup': 22.4.2(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/babel__core@7.20.5)(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(typescript@5.9.3)
       '@nx/web': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@phenomnomnominal/tsquery': 6.1.4(typescript@5.9.3)
@@ -22895,12 +22896,12 @@ snapshots:
       '@rollup/plugin-json': 6.1.0(rollup@4.60.4)
       '@rollup/plugin-node-resolve': 15.3.1(rollup@4.60.4)
       '@rollup/plugin-typescript': 12.1.4(rollup@4.60.4)(tslib@2.8.1)(typescript@5.9.3)
-      autoprefixer: 10.4.19(postcss@8.5.14)
+      autoprefixer: 10.4.19(postcss@8.5.19)
       concat-with-sourcemaps: 1.1.0
       picocolors: 1.1.1
       picomatch: 2.3.2
-      postcss: 8.5.14
-      postcss-modules: 6.0.1(postcss@8.5.14)
+      postcss: 8.5.19
+      postcss-modules: 6.0.1(postcss@8.5.19)
       rollup: 4.60.4
       rollup-plugin-typescript2: 0.36.0(rollup@4.60.4)(typescript@5.9.3)
       tslib: 2.8.1
@@ -22929,7 +22930,7 @@ snapshots:
       tsconfig-paths: 4.2.0
       tslib: 2.8.1
       vite: 7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3)
-      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
+      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
     transitivePeerDependencies:
       - '@babel/traverse'
       - '@swc-node/register'
@@ -22949,7 +22950,7 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       vite: 7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3)
-      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
+      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
     transitivePeerDependencies:
       - '@babel/traverse'
       - '@swc-node/register'
@@ -22977,44 +22978,44 @@ snapshots:
       - supports-color
       - verdaccio
 
-  '@nx/webpack@22.4.2(@babel/traverse@7.29.7)(@rspack/core@1.6.8(@swc/helpers@0.5.17))(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(bufferutil@4.0.8)(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)))(lightningcss@1.32.0)(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(typescript@5.9.3)(utf-8-validate@5.0.10)':
+  '@nx/webpack@22.4.2(@babel/traverse@7.29.7)(@rspack/core@1.6.8(@swc/helpers@0.5.17))(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(bufferutil@4.0.8)(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)))(lightningcss@1.32.0)(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))(typescript@5.9.3)(utf-8-validate@5.0.10)':
     dependencies:
       '@babel/core': 7.29.7
       '@nx/devkit': 22.4.2(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@nx/js': 22.4.2(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17))(nx@22.4.2(@swc-node/register@1.11.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.13.5(@swc/helpers@0.5.17)))
       '@phenomnomnominal/tsquery': 6.1.4(typescript@5.9.3)
       ajv: 8.18.0
-      autoprefixer: 10.4.19(postcss@8.5.14)
-      babel-loader: 9.1.3(@babel/core@7.29.7)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      autoprefixer: 10.4.19(postcss@8.5.19)
+      babel-loader: 9.1.3(@babel/core@7.29.7)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       browserslist: 4.28.1
-      copy-webpack-plugin: 10.2.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      css-loader: 6.11.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      css-minimizer-webpack-plugin: 5.0.1(lightningcss@1.32.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      fork-ts-checker-webpack-plugin: 7.2.13(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      copy-webpack-plugin: 10.2.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      css-loader: 6.11.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      css-minimizer-webpack-plugin: 5.0.1(lightningcss@1.32.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      fork-ts-checker-webpack-plugin: 7.2.13(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       less: 4.4.2
-      less-loader: 11.1.4(less@4.4.2)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      license-webpack-plugin: 4.0.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      less-loader: 11.1.4(less@4.4.2)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      license-webpack-plugin: 4.0.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       loader-utils: 2.0.4
-      mini-css-extract-plugin: 2.4.7(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      mini-css-extract-plugin: 2.4.7(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       parse5: 4.0.0
       picocolors: 1.1.1
-      postcss: 8.5.14
-      postcss-import: 14.1.0(postcss@8.5.14)
-      postcss-loader: 6.2.1(postcss@8.5.14)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      postcss: 8.5.19
+      postcss-import: 14.1.0(postcss@8.5.19)
+      postcss-loader: 6.2.1(postcss@8.5.19)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       rxjs: 7.8.2
       sass: 1.88.0
       sass-embedded: 1.88.0
-      sass-loader: 16.0.5(@rspack/core@1.6.8(@swc/helpers@0.5.17))(sass-embedded@1.88.0)(sass@1.88.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      source-map-loader: 5.0.0(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      style-loader: 3.3.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      terser-webpack-plugin: 5.3.14(@swc/core@1.13.5(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
-      ts-loader: 9.5.1(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      sass-loader: 16.0.5(@rspack/core@1.6.8(@swc/helpers@0.5.17))(sass-embedded@1.88.0)(sass@1.88.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      source-map-loader: 5.0.0(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      style-loader: 3.3.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      terser-webpack-plugin: 5.3.14(@swc/core@1.13.5(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
+      ts-loader: 9.5.1(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       tsconfig-paths-webpack-plugin: 4.2.0
       tslib: 2.8.1
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
-      webpack-dev-server: 5.2.6(bufferutil@4.0.8)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
+      webpack-dev-server: 5.2.6(bufferutil@4.0.8)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       webpack-node-externals: 3.0.0
-      webpack-subresource-integrity: 5.1.0(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      webpack-subresource-integrity: 5.1.0(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
     transitivePeerDependencies:
       - '@babel/traverse'
       - '@minify-html/node'
@@ -24350,12 +24351,12 @@ snapshots:
       - encoding
       - supports-color
 
-  '@sentry/webpack-plugin@2.10.0(encoding@0.1.13)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))':
+  '@sentry/webpack-plugin@2.10.0(encoding@0.1.13)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))':
     dependencies:
       '@sentry/bundler-plugin-core': 2.10.0(encoding@0.1.13)
       unplugin: 1.0.1
       uuid: 9.0.1
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -25744,7 +25745,7 @@ snapshots:
       magic-string: 0.30.17
       picocolors: 1.1.1
       std-env: 3.9.0
-      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
+      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
 
   '@vitest/expect@4.1.7':
     dependencies:
@@ -25790,7 +25791,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
+      vitest: 4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
 
   '@vitest/utils@4.1.7':
     dependencies:
@@ -25893,9 +25894,9 @@ snapshots:
 
   '@vue/shared@3.5.13': {}
 
-  '@wagmi/connectors@7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)))(@walletconnect/ethereum-provider@2.18.0(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))':
+  '@wagmi/connectors@7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)))(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))':
     dependencies:
-      '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
+      '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
       viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)
     optionalDependencies:
       '@coinbase/wallet-sdk': 4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)
@@ -25904,9 +25905,9 @@ snapshots:
       '@walletconnect/ethereum-provider': 2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10)
       typescript: 5.9.3
 
-  '@wagmi/connectors@7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)))(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))':
+  '@wagmi/connectors@7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)))(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))':
     dependencies:
-      '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
+      '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
       viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
     optionalDependencies:
       '@coinbase/wallet-sdk': 4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
@@ -25926,11 +25927,11 @@ snapshots:
       '@walletconnect/ethereum-provider': 2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10)
       typescript: 5.9.3
 
-  '@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))':
+  '@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))':
     dependencies:
       eventemitter3: 5.0.1
       mipd: 0.0.7(typescript@5.9.3)
-      viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
+      viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)
       zustand: 5.0.0(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(use-sync-external-store@1.4.0(react@19.1.2))
     optionalDependencies:
       '@tanstack/query-core': 5.90.20
@@ -25941,11 +25942,11 @@ snapshots:
       - react
       - use-sync-external-store
 
-  '@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))':
+  '@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))':
     dependencies:
       eventemitter3: 5.0.1
       mipd: 0.0.7(typescript@5.9.3)
-      viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)
+      viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
       zustand: 5.0.0(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(use-sync-external-store@1.4.0(react@19.1.2))
     optionalDependencies:
       '@tanstack/query-core': 5.90.20
@@ -26343,7 +26344,7 @@ snapshots:
       - immer
       - utf-8-validate
 
-  '@web3-react/eip1193@8.2.3(immer@10.0.2)(react@19.1.2)':
+  '@web3-react/eip1193@8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)':
     dependencies:
       '@web3-react/types': 8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
       eventemitter3: 4.0.7
@@ -26352,7 +26353,7 @@ snapshots:
       - immer
       - react
 
-  '@web3-react/empty@8.2.3(immer@10.0.2)(react@19.1.2)':
+  '@web3-react/empty@8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)':
     dependencies:
       '@web3-react/types': 8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
     transitivePeerDependencies:
@@ -26375,7 +26376,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@web3-react/metamask@8.2.4(immer@10.0.2)(react@19.1.2)':
+  '@web3-react/metamask@8.2.4(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)':
     dependencies:
       '@metamask/detect-provider': 1.2.0
       '@web3-react/types': 8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
@@ -26413,7 +26414,7 @@ snapshots:
       - immer
       - react
 
-  '@web3-react/url@8.2.3(bufferutil@4.0.8)(immer@10.0.2)(react@19.1.2)(utf-8-validate@5.0.10)':
+  '@web3-react/url@8.2.3(@types/react@19.1.3)(bufferutil@4.0.8)(immer@10.0.2)(react@19.1.2)(utf-8-validate@5.0.10)':
     dependencies:
       '@ethersproject/providers': 5.8.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       '@web3-react/types': 8.2.3(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)
@@ -27051,14 +27052,14 @@ snapshots:
 
   atomic-sleep@1.0.0: {}
 
-  autoprefixer@10.4.19(postcss@8.5.14):
+  autoprefixer@10.4.19(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
       caniuse-lite: 1.0.30001793
       fraction.js: 4.3.7
       normalize-range: 0.1.2
       picocolors: 1.1.1
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
   available-typed-arrays@1.0.7:
@@ -27100,12 +27101,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  babel-loader@9.1.3(@babel/core@7.29.7)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  babel-loader@9.1.3(@babel/core@7.29.7)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@babel/core': 7.29.7
       find-cache-dir: 4.0.0
       schema-utils: 4.3.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   babel-plugin-const-enum@1.2.0(@babel/core@7.29.7):
     dependencies:
@@ -28138,7 +28139,7 @@ snapshots:
     dependencies:
       toggle-selection: 1.0.6
 
-  copy-webpack-plugin@10.2.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  copy-webpack-plugin@10.2.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       fast-glob: 3.3.3
       glob-parent: 6.0.2
@@ -28146,7 +28147,7 @@ snapshots:
       normalize-path: 3.0.0
       schema-utils: 4.3.3
       serialize-javascript: 7.0.5
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   core-js-compat@3.48.0:
     dependencies:
@@ -28293,38 +28294,38 @@ snapshots:
 
   css-color-keywords@1.0.0: {}
 
-  css-declaration-sorter@7.2.0(postcss@8.5.14):
+  css-declaration-sorter@7.2.0(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
   css-line-break@2.1.0:
     dependencies:
       utrie: 1.0.2
     optional: true
 
-  css-loader@6.11.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  css-loader@6.11.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
-      icss-utils: 5.1.0(postcss@8.5.14)
-      postcss: 8.5.14
-      postcss-modules-extract-imports: 3.1.0(postcss@8.5.14)
-      postcss-modules-local-by-default: 4.2.0(postcss@8.5.14)
-      postcss-modules-scope: 3.2.0(postcss@8.5.14)
-      postcss-modules-values: 4.0.0(postcss@8.5.14)
+      icss-utils: 5.1.0(postcss@8.5.19)
+      postcss: 8.5.19
+      postcss-modules-extract-imports: 3.1.0(postcss@8.5.19)
+      postcss-modules-local-by-default: 4.2.0(postcss@8.5.19)
+      postcss-modules-scope: 3.2.0(postcss@8.5.19)
+      postcss-modules-values: 4.0.0(postcss@8.5.19)
       postcss-value-parser: 4.2.0
       semver: 7.8.0
     optionalDependencies:
       '@rspack/core': 1.6.8(@swc/helpers@0.5.17)
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
-  css-minimizer-webpack-plugin@5.0.1(lightningcss@1.32.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  css-minimizer-webpack-plugin@5.0.1(lightningcss@1.32.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
-      cssnano: 6.1.2(postcss@8.5.14)
+      cssnano: 6.1.2(postcss@8.5.19)
       jest-worker: 29.7.0
-      postcss: 8.5.14
+      postcss: 8.5.19
       schema-utils: 4.3.3
       serialize-javascript: 7.0.5
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     optionalDependencies:
       lightningcss: 1.32.0
 
@@ -28375,49 +28376,49 @@ snapshots:
 
   cssesc@3.0.0: {}
 
-  cssnano-preset-default@6.1.2(postcss@8.5.14):
+  cssnano-preset-default@6.1.2(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
-      css-declaration-sorter: 7.2.0(postcss@8.5.14)
-      cssnano-utils: 4.0.2(postcss@8.5.14)
-      postcss: 8.5.14
-      postcss-calc: 9.0.1(postcss@8.5.14)
-      postcss-colormin: 6.1.0(postcss@8.5.14)
-      postcss-convert-values: 6.1.0(postcss@8.5.14)
-      postcss-discard-comments: 6.0.2(postcss@8.5.14)
-      postcss-discard-duplicates: 6.0.3(postcss@8.5.14)
-      postcss-discard-empty: 6.0.3(postcss@8.5.14)
-      postcss-discard-overridden: 6.0.2(postcss@8.5.14)
-      postcss-merge-longhand: 6.0.5(postcss@8.5.14)
-      postcss-merge-rules: 6.1.1(postcss@8.5.14)
-      postcss-minify-font-values: 6.1.0(postcss@8.5.14)
-      postcss-minify-gradients: 6.0.3(postcss@8.5.14)
-      postcss-minify-params: 6.1.0(postcss@8.5.14)
-      postcss-minify-selectors: 6.0.4(postcss@8.5.14)
-      postcss-normalize-charset: 6.0.2(postcss@8.5.14)
-      postcss-normalize-display-values: 6.0.2(postcss@8.5.14)
-      postcss-normalize-positions: 6.0.2(postcss@8.5.14)
-      postcss-normalize-repeat-style: 6.0.2(postcss@8.5.14)
-      postcss-normalize-string: 6.0.2(postcss@8.5.14)
-      postcss-normalize-timing-functions: 6.0.2(postcss@8.5.14)
-      postcss-normalize-unicode: 6.1.0(postcss@8.5.14)
-      postcss-normalize-url: 6.0.2(postcss@8.5.14)
-      postcss-normalize-whitespace: 6.0.2(postcss@8.5.14)
-      postcss-ordered-values: 6.0.2(postcss@8.5.14)
-      postcss-reduce-initial: 6.1.0(postcss@8.5.14)
-      postcss-reduce-transforms: 6.0.2(postcss@8.5.14)
-      postcss-svgo: 6.0.3(postcss@8.5.14)
-      postcss-unique-selectors: 6.0.4(postcss@8.5.14)
+      css-declaration-sorter: 7.2.0(postcss@8.5.19)
+      cssnano-utils: 4.0.2(postcss@8.5.19)
+      postcss: 8.5.19
+      postcss-calc: 9.0.1(postcss@8.5.19)
+      postcss-colormin: 6.1.0(postcss@8.5.19)
+      postcss-convert-values: 6.1.0(postcss@8.5.19)
+      postcss-discard-comments: 6.0.2(postcss@8.5.19)
+      postcss-discard-duplicates: 6.0.3(postcss@8.5.19)
+      postcss-discard-empty: 6.0.3(postcss@8.5.19)
+      postcss-discard-overridden: 6.0.2(postcss@8.5.19)
+      postcss-merge-longhand: 6.0.5(postcss@8.5.19)
+      postcss-merge-rules: 6.1.1(postcss@8.5.19)
+      postcss-minify-font-values: 6.1.0(postcss@8.5.19)
+      postcss-minify-gradients: 6.0.3(postcss@8.5.19)
+      postcss-minify-params: 6.1.0(postcss@8.5.19)
+      postcss-minify-selectors: 6.0.4(postcss@8.5.19)
+      postcss-normalize-charset: 6.0.2(postcss@8.5.19)
+      postcss-normalize-display-values: 6.0.2(postcss@8.5.19)
+      postcss-normalize-positions: 6.0.2(postcss@8.5.19)
+      postcss-normalize-repeat-style: 6.0.2(postcss@8.5.19)
+      postcss-normalize-string: 6.0.2(postcss@8.5.19)
+      postcss-normalize-timing-functions: 6.0.2(postcss@8.5.19)
+      postcss-normalize-unicode: 6.1.0(postcss@8.5.19)
+      postcss-normalize-url: 6.0.2(postcss@8.5.19)
+      postcss-normalize-whitespace: 6.0.2(postcss@8.5.19)
+      postcss-ordered-values: 6.0.2(postcss@8.5.19)
+      postcss-reduce-initial: 6.1.0(postcss@8.5.19)
+      postcss-reduce-transforms: 6.0.2(postcss@8.5.19)
+      postcss-svgo: 6.0.3(postcss@8.5.19)
+      postcss-unique-selectors: 6.0.4(postcss@8.5.19)
 
-  cssnano-utils@4.0.2(postcss@8.5.14):
+  cssnano-utils@4.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  cssnano@6.1.2(postcss@8.5.14):
+  cssnano@6.1.2(postcss@8.5.19):
     dependencies:
-      cssnano-preset-default: 6.1.2(postcss@8.5.14)
+      cssnano-preset-default: 6.1.2(postcss@8.5.19)
       lilconfig: 3.1.1
-      postcss: 8.5.14
+      postcss: 8.5.19
 
   csso@5.0.5:
     dependencies:
@@ -28428,10 +28429,10 @@ snapshots:
       '@asamuzakjp/css-color': 3.1.7
       rrweb-cssom: 0.8.0
 
-  cssstyle@5.3.1(postcss@8.5.14):
+  cssstyle@5.3.1(postcss@8.5.19):
     dependencies:
       '@asamuzakjp/css-color': 4.0.5
-      '@csstools/css-syntax-patches-for-csstree': 1.0.14(postcss@8.5.14)
+      '@csstools/css-syntax-patches-for-csstree': 1.0.14(postcss@8.5.19)
       css-tree: 3.1.0
     transitivePeerDependencies:
       - postcss
@@ -29980,7 +29981,7 @@ snapshots:
 
   forever-agent@0.6.1: {}
 
-  fork-ts-checker-webpack-plugin@7.2.13(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  fork-ts-checker-webpack-plugin@7.2.13(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@babel/code-frame': 7.29.0
       chalk: 4.1.2
@@ -29995,7 +29996,7 @@ snapshots:
       semver: 7.8.0
       tapable: 2.3.0
       typescript: 5.9.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   form-data-encoder@1.7.1: {}
 
@@ -30543,14 +30544,14 @@ snapshots:
 
   html-void-elements@3.0.0: {}
 
-  html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@types/html-minifier-terser': 6.1.0
       html-minifier-terser: 6.1.0
       lodash: 4.18.1
       pretty-error: 4.0.0
       tapable: 2.3.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     optional: true
 
   html2canvas@1.4.1:
@@ -30726,9 +30727,9 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
-  icss-utils@5.1.0(postcss@8.5.14):
+  icss-utils@5.1.0(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
   idb-keyval@6.2.1: {}
 
@@ -31685,10 +31686,10 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10):
+  jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10):
     dependencies:
       '@asamuzakjp/dom-selector': 6.6.1
-      cssstyle: 5.3.1(postcss@8.5.14)
+      cssstyle: 5.3.1(postcss@8.5.19)
       data-urls: 6.0.0
       decimal.js: 10.5.0
       html-encoding-sniffer: 4.0.0
@@ -31955,10 +31956,10 @@ snapshots:
 
   layout-base@2.0.1: {}
 
-  less-loader@11.1.4(less@4.4.2)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  less-loader@11.1.4(less@4.4.2)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       less: 4.4.2
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   less@4.4.2:
     dependencies:
@@ -31981,11 +31982,11 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
-  license-webpack-plugin@4.0.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  license-webpack-plugin@4.0.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       webpack-sources: 3.3.3
     optionalDependencies:
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   lie@3.1.1:
     dependencies:
@@ -32695,10 +32696,10 @@ snapshots:
 
   min-indent@1.0.1: {}
 
-  mini-css-extract-plugin@2.4.7(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  mini-css-extract-plugin@2.4.7(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       schema-utils: 4.3.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   mini-svg-data-uri@1.4.4: {}
 
@@ -32845,6 +32846,8 @@ snapshots:
 
   nanoid@3.3.11: {}
 
+  nanoid@3.3.16: {}
+
   napi-postinstall@0.3.4: {}
 
   natural-compare@1.4.0: {}
@@ -32882,7 +32885,7 @@ snapshots:
       '@next/env': 15.5.21
       '@swc/helpers': 0.5.15
       caniuse-lite: 1.0.30001793
-      postcss: 8.5.14
+      postcss: 8.5.19
       react: 19.1.2
       react-dom: 19.1.2(react@19.1.2)
       styled-jsx: 5.1.6(@babel/core@7.29.7)(babel-plugin-macros@3.1.0)(react@19.1.2)
@@ -33638,188 +33641,188 @@ snapshots:
 
   possible-typed-array-names@1.0.0: {}
 
-  postcss-calc@9.0.1(postcss@8.5.14):
+  postcss-calc@9.0.1(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-selector-parser: 6.0.16
       postcss-value-parser: 4.2.0
 
-  postcss-colormin@6.1.0(postcss@8.5.14):
+  postcss-colormin@6.1.0(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
       caniuse-api: 3.0.0
       colord: 2.9.3
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-convert-values@6.1.0(postcss@8.5.14):
+  postcss-convert-values@6.1.0(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-discard-comments@6.0.2(postcss@8.5.14):
+  postcss-discard-comments@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-discard-duplicates@6.0.3(postcss@8.5.14):
+  postcss-discard-duplicates@6.0.3(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-discard-empty@6.0.3(postcss@8.5.14):
+  postcss-discard-empty@6.0.3(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-discard-overridden@6.0.2(postcss@8.5.14):
+  postcss-discard-overridden@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-import@14.1.0(postcss@8.5.14):
+  postcss-import@14.1.0(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
       read-cache: 1.0.0
       resolve: 1.22.11
 
-  postcss-loader@6.2.1(postcss@8.5.14)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  postcss-loader@6.2.1(postcss@8.5.19)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       cosmiconfig: 7.1.0
       klona: 2.0.6
-      postcss: 8.5.14
+      postcss: 8.5.19
       semver: 7.8.0
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
-  postcss-merge-longhand@6.0.5(postcss@8.5.14):
+  postcss-merge-longhand@6.0.5(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
-      stylehacks: 6.1.1(postcss@8.5.14)
+      stylehacks: 6.1.1(postcss@8.5.19)
 
-  postcss-merge-rules@6.1.1(postcss@8.5.14):
+  postcss-merge-rules@6.1.1(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
       caniuse-api: 3.0.0
-      cssnano-utils: 4.0.2(postcss@8.5.14)
-      postcss: 8.5.14
+      cssnano-utils: 4.0.2(postcss@8.5.19)
+      postcss: 8.5.19
       postcss-selector-parser: 6.0.16
 
-  postcss-minify-font-values@6.1.0(postcss@8.5.14):
+  postcss-minify-font-values@6.1.0(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-minify-gradients@6.0.3(postcss@8.5.14):
+  postcss-minify-gradients@6.0.3(postcss@8.5.19):
     dependencies:
       colord: 2.9.3
-      cssnano-utils: 4.0.2(postcss@8.5.14)
-      postcss: 8.5.14
+      cssnano-utils: 4.0.2(postcss@8.5.19)
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-minify-params@6.1.0(postcss@8.5.14):
+  postcss-minify-params@6.1.0(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
-      cssnano-utils: 4.0.2(postcss@8.5.14)
-      postcss: 8.5.14
+      cssnano-utils: 4.0.2(postcss@8.5.19)
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-minify-selectors@6.0.4(postcss@8.5.14):
+  postcss-minify-selectors@6.0.4(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-selector-parser: 6.0.16
 
-  postcss-modules-extract-imports@3.1.0(postcss@8.5.14):
+  postcss-modules-extract-imports@3.1.0(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-modules-local-by-default@4.2.0(postcss@8.5.14):
+  postcss-modules-local-by-default@4.2.0(postcss@8.5.19):
     dependencies:
-      icss-utils: 5.1.0(postcss@8.5.14)
-      postcss: 8.5.14
+      icss-utils: 5.1.0(postcss@8.5.19)
+      postcss: 8.5.19
       postcss-selector-parser: 7.1.0
       postcss-value-parser: 4.2.0
 
-  postcss-modules-scope@3.2.0(postcss@8.5.14):
+  postcss-modules-scope@3.2.0(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-selector-parser: 6.0.16
 
-  postcss-modules-values@4.0.0(postcss@8.5.14):
+  postcss-modules-values@4.0.0(postcss@8.5.19):
     dependencies:
-      icss-utils: 5.1.0(postcss@8.5.14)
-      postcss: 8.5.14
+      icss-utils: 5.1.0(postcss@8.5.19)
+      postcss: 8.5.19
 
-  postcss-modules@6.0.1(postcss@8.5.14):
+  postcss-modules@6.0.1(postcss@8.5.19):
     dependencies:
       generic-names: 4.0.0
-      icss-utils: 5.1.0(postcss@8.5.14)
+      icss-utils: 5.1.0(postcss@8.5.19)
       lodash.camelcase: 4.3.0
-      postcss: 8.5.14
-      postcss-modules-extract-imports: 3.1.0(postcss@8.5.14)
-      postcss-modules-local-by-default: 4.2.0(postcss@8.5.14)
-      postcss-modules-scope: 3.2.0(postcss@8.5.14)
-      postcss-modules-values: 4.0.0(postcss@8.5.14)
+      postcss: 8.5.19
+      postcss-modules-extract-imports: 3.1.0(postcss@8.5.19)
+      postcss-modules-local-by-default: 4.2.0(postcss@8.5.19)
+      postcss-modules-scope: 3.2.0(postcss@8.5.19)
+      postcss-modules-values: 4.0.0(postcss@8.5.19)
       string-hash: 1.1.3
 
-  postcss-normalize-charset@6.0.2(postcss@8.5.14):
+  postcss-normalize-charset@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-normalize-display-values@6.0.2(postcss@8.5.14):
+  postcss-normalize-display-values@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-positions@6.0.2(postcss@8.5.14):
+  postcss-normalize-positions@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-repeat-style@6.0.2(postcss@8.5.14):
+  postcss-normalize-repeat-style@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-string@6.0.2(postcss@8.5.14):
+  postcss-normalize-string@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-timing-functions@6.0.2(postcss@8.5.14):
+  postcss-normalize-timing-functions@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-unicode@6.1.0(postcss@8.5.14):
+  postcss-normalize-unicode@6.1.0(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-url@6.0.2(postcss@8.5.14):
+  postcss-normalize-url@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-normalize-whitespace@6.0.2(postcss@8.5.14):
+  postcss-normalize-whitespace@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-ordered-values@6.0.2(postcss@8.5.14):
+  postcss-ordered-values@6.0.2(postcss@8.5.19):
     dependencies:
-      cssnano-utils: 4.0.2(postcss@8.5.14)
-      postcss: 8.5.14
+      cssnano-utils: 4.0.2(postcss@8.5.19)
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
-  postcss-reduce-initial@6.1.0(postcss@8.5.14):
+  postcss-reduce-initial@6.1.0(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
       caniuse-api: 3.0.0
-      postcss: 8.5.14
+      postcss: 8.5.19
 
-  postcss-reduce-transforms@6.0.2(postcss@8.5.14):
+  postcss-reduce-transforms@6.0.2(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
 
   postcss-selector-parser@6.0.16:
@@ -33832,22 +33835,22 @@ snapshots:
       cssesc: 3.0.0
       util-deprecate: 1.0.2
 
-  postcss-svgo@6.0.3(postcss@8.5.14):
+  postcss-svgo@6.0.3(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-value-parser: 4.2.0
       svgo: 3.3.4
 
-  postcss-unique-selectors@6.0.4(postcss@8.5.14):
+  postcss-unique-selectors@6.0.4(postcss@8.5.19):
     dependencies:
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-selector-parser: 6.0.16
 
   postcss-value-parser@4.2.0: {}
 
-  postcss@8.5.14:
+  postcss@8.5.19:
     dependencies:
-      nanoid: 3.3.11
+      nanoid: 3.3.16
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -35048,14 +35051,14 @@ snapshots:
       sass-embedded-win32-ia32: 1.88.0
       sass-embedded-win32-x64: 1.88.0
 
-  sass-loader@16.0.5(@rspack/core@1.6.8(@swc/helpers@0.5.17))(sass-embedded@1.88.0)(sass@1.88.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  sass-loader@16.0.5(@rspack/core@1.6.8(@swc/helpers@0.5.17))(sass-embedded@1.88.0)(sass@1.88.0)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       neo-async: 2.6.2
     optionalDependencies:
       '@rspack/core': 1.6.8(@swc/helpers@0.5.17)
       sass: 1.88.0
       sass-embedded: 1.88.0
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   sass@1.88.0:
     dependencies:
@@ -35489,11 +35492,11 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  source-map-loader@5.0.0(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  source-map-loader@5.0.0(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       iconv-lite: 0.6.3
       source-map-js: 1.2.1
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   source-map-support@0.5.13:
     dependencies:
@@ -35515,8 +35518,6 @@ snapshots:
   source-map@0.6.1: {}
 
   source-map@0.7.4: {}
-
-  source-map@0.8.0: {}
 
   source-map@0.8.0-beta.0:
     dependencies:
@@ -35807,9 +35808,9 @@ snapshots:
       '@tokenizer/token': 0.3.0
       peek-readable: 5.4.2
 
-  style-loader@3.3.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  style-loader@3.3.4(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   style-to-object@1.0.6:
     dependencies:
@@ -35865,10 +35866,10 @@ snapshots:
       '@styled-system/variant': 5.1.5
       object-assign: 4.1.1
 
-  stylehacks@6.1.1(postcss@8.5.14):
+  stylehacks@6.1.1(postcss@8.5.19):
     dependencies:
       browserslist: 4.28.2
-      postcss: 8.5.14
+      postcss: 8.5.19
       postcss-selector-parser: 6.0.16
 
   stylis@4.2.0: {}
@@ -36024,28 +36025,28 @@ snapshots:
       type-fest: 0.16.0
       unique-string: 2.0.0
 
-  terser-webpack-plugin@5.3.14(@swc/core@1.13.5(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  terser-webpack-plugin@5.3.14(@swc/core@1.13.5(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.3.3
       serialize-javascript: 7.0.5
       terser: 5.46.0
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     optionalDependencies:
       '@swc/core': 1.13.5(@swc/helpers@0.5.17)
 
-  terser-webpack-plugin@5.6.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  terser-webpack-plugin@5.6.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.3.3
       terser: 5.46.0
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     optionalDependencies:
       '@swc/core': 1.13.5(@swc/helpers@0.5.17)
       lightningcss: 1.32.0
-      postcss: 8.5.14
+      postcss: 8.5.19
 
   terser@5.46.0:
     dependencies:
@@ -36266,7 +36267,7 @@ snapshots:
       babel-jest: 30.2.0(@babel/core@7.29.7)
       jest-util: 30.2.0
 
-  ts-loader@9.5.1(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  ts-loader@9.5.1(typescript@5.9.3)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       chalk: 4.1.2
       enhanced-resolve: 5.18.3
@@ -36274,7 +36275,7 @@ snapshots:
       semver: 7.8.0
       source-map: 0.7.4
       typescript: 5.9.3
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
   ts-mockito@2.6.1:
     dependencies:
@@ -36971,7 +36972,7 @@ snapshots:
       esbuild: 0.28.1
       fdir: 6.5.0(picomatch@2.3.2)
       picomatch: 2.3.2
-      postcss: 8.5.14
+      postcss: 8.5.19
       rollup: 4.60.4
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -36990,7 +36991,7 @@ snapshots:
       esbuild: 0.28.1
       fdir: 6.5.0(picomatch@2.3.2)
       picomatch: 2.3.2
-      postcss: 8.5.14
+      postcss: 8.5.19
       rollup: 4.60.4
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -37008,7 +37009,7 @@ snapshots:
     dependencies:
       lightningcss: 1.32.0
       picomatch: 2.3.2
-      postcss: 8.5.14
+      postcss: 8.5.19
       rolldown: 1.1.5
       tinyglobby: 0.2.17
     optionalDependencies:
@@ -37026,7 +37027,7 @@ snapshots:
     optionalDependencies:
       vite: 8.1.4(@types/node@25.9.1)(esbuild@0.28.1)(jiti@2.6.1)(less@4.4.2)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3)
 
-  vitest@4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3)):
+  vitest@4.1.7(@types/node@24.7.1)(@vitest/ui@4.1.7)(jsdom@27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10))(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3)):
     dependencies:
       '@vitest/expect': 4.1.7
       '@vitest/mocker': 4.1.7(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
@@ -37051,7 +37052,7 @@ snapshots:
     optionalDependencies:
       '@types/node': 24.7.1
       '@vitest/ui': 4.1.7(vitest@4.1.7)
-      jsdom: 27.0.0(bufferutil@4.0.8)(postcss@8.5.14)(utf-8-validate@5.0.10)
+      jsdom: 27.0.0(bufferutil@4.0.8)(postcss@8.5.19)(utf-8-validate@5.0.10)
     transitivePeerDependencies:
       - msw
 
@@ -37160,11 +37161,11 @@ snapshots:
     dependencies:
       xml-name-validator: 5.0.0
 
-  wagmi@3.1.0(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.1.2))(@walletconnect/ethereum-provider@2.18.0(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)):
+  wagmi@3.1.0(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.1.2))(@types/react@19.1.3)(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)):
     dependencies:
       '@tanstack/react-query': 5.90.20(react@19.1.2)
-      '@wagmi/connectors': 7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)))(@walletconnect/ethereum-provider@2.18.0(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
-      '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
+      '@wagmi/connectors': 7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)))(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
+      '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12))
       react: 19.1.2
       use-sync-external-store: 1.4.0(react@19.1.2)
       viem: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)
@@ -37186,7 +37187,7 @@ snapshots:
   wagmi@3.1.0(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@tanstack/query-core@5.90.20)(@tanstack/react-query@5.90.20(react@19.1.2))(@types/react@19.1.3)(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)):
     dependencies:
       '@tanstack/react-query': 5.90.20(react@19.1.2)
-      '@wagmi/connectors': 7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)))(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
+      '@wagmi/connectors': 7.0.2(@coinbase/wallet-sdk@4.3.7(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@metamask/sdk@0.33.1(bufferutil@4.0.8)(encoding@0.1.13)(utf-8-validate@5.0.10))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.0.8)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))(@wagmi/core@3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)))(@walletconnect/ethereum-provider@2.18.0(@types/react@19.1.3)(bufferutil@4.0.8)(encoding@0.1.13)(react@19.1.2)(utf-8-validate@5.0.10))(typescript@5.9.3)(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
       '@wagmi/core': 3.0.0(@tanstack/query-core@5.90.20)(@types/react@19.1.3)(immer@10.0.2)(react@19.1.2)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.1.2))(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
       react: 19.1.2
       use-sync-external-store: 1.4.0(react@19.1.2)
@@ -37450,7 +37451,7 @@ snapshots:
 
   webidl-conversions@8.0.0: {}
 
-  webpack-dev-middleware@7.4.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  webpack-dev-middleware@7.4.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       colorette: 2.0.20
       memfs: 4.17.1
@@ -37459,9 +37460,9 @@ snapshots:
       range-parser: 1.2.1
       schema-utils: 4.3.3
     optionalDependencies:
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
 
-  webpack-dev-server@5.2.6(bufferutil@4.0.8)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  webpack-dev-server@5.2.6(bufferutil@4.0.8)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       '@types/bonjour': 3.5.13
       '@types/connect-history-api-fallback': 1.5.4
@@ -37489,10 +37490,10 @@ snapshots:
       serve-index: 1.9.1
       sockjs: 0.3.24
       spdy: 4.0.2
-      webpack-dev-middleware: 7.4.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      webpack-dev-middleware: 7.4.2(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       ws: 8.21.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
     optionalDependencies:
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -37511,16 +37512,16 @@ snapshots:
 
   webpack-sources@3.4.1: {}
 
-  webpack-subresource-integrity@5.1.0(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)):
+  webpack-subresource-integrity@5.1.0(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)))(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)):
     dependencies:
       typed-assert: 1.0.9
-      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)
+      webpack: 5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)
     optionalDependencies:
-      html-webpack-plugin: 5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      html-webpack-plugin: 5.5.3(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
 
   webpack-virtual-modules@0.5.0: {}
 
-  webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14):
+  webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19):
     dependencies:
       '@types/eslint-scope': 3.7.7
       '@types/estree': 1.0.8
@@ -37543,7 +37544,7 @@ snapshots:
       neo-async: 2.6.2
       schema-utils: 4.3.3
       tapable: 2.3.0
-      terser-webpack-plugin: 5.6.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.14))
+      terser-webpack-plugin: 5.6.0(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19)(webpack@5.106.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.19))
       watchpack: 2.5.1
       webpack-sources: 3.4.1
     transitivePeerDependencies:
@@ -37711,7 +37712,7 @@ snapshots:
       pretty-bytes: 5.6.0
       rollup: 4.62.2
       rollup-plugin-terser: 7.0.2(rollup@4.62.2)
-      source-map: 0.8.0
+      source-map: 0.8.0-beta.0
       stringify-object: 3.3.0
       strip-comments: 2.0.1
       tempy: 0.6.0

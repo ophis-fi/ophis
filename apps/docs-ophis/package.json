@@ -64,7 +64,8 @@
       "svgo@<3.3.4": "^3.3.4",
       "undici": "^7.28.0",
       "webpack-dev-server": "^5.2.6",
-      "websocket-driver": ">=0.7.5 <0.8.0"
+      "websocket-driver": ">=0.7.5 <0.8.0",
+      "postcss": "^8.5.18"
     },
     "patchedDependencies": {
       "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch"
