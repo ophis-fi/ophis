@@ -410,13 +410,15 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: blockdaemon-op
-        # Keyed, Cloudflare-fronted — the ONE permitted CF upstream in this quorum.
-        # NB: this key has a LOW burst rate cap (measured 2026-07-23) — fine at current
-        # OP volume (0 steady-state 429s), but upgrade the tier (or swap to a non-CF
-        # keyed provider) if OP order-flow grows. eRPC's closed-world guard forbids a
-        # custom auth header, so URL `?apiKey=` is the only auth form available here.
-        endpoint: https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=${BLOCKDAEMON_OP_KEY}
+      - id: nodies-op
+        # Free, no-key, Cloudflare-fronted — the ONE permitted CF upstream in this quorum
+        # (replaced keyed blockdaemon-op 2026-07-24: BD's free-tier burst cap was exhausted,
+        # freezing its head ~13.6h so it contributed nothing to consensus, and we are not
+        # upgrading the BD tier). Nodies/POKT public OP gateway; verified eth_call +
+        # eth_getBalance + eth_getLogs(10 blk, 2981 logs) + a 15-call burst (0 errors) at
+        # the live head 2026-07-24. No auth form needed (eRPC's closed-world guard forbids
+        # custom auth headers, and this endpoint takes none).
+        endpoint: https://op-pokt.nodies.app
         failsafe:
           - matchMethod: "*"
             timeout:
