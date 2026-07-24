@@ -98,13 +98,17 @@ fi
 # passes this ACL. The filesystem ACL on the home dir (chmod 0700) is what
 # actually restricts cross-user access. On hosts with multiple interactive
 # users, filesystem ACL is the real defense, not the keychain -T ACL.
-security add-generic-password \
+# Feed the token to `security` on STDIN (it reads entry + retype), NOT on argv:
+# `-w "$TOKEN"` would place the bot token in the process argument list, readable
+# via `ps -eo args` by any local user for the life of the exec. `-w` with no
+# value reads from stdin and must be the last option, so the entry lands in the
+# default keychain (the login keychain, which is where render-configs.sh looks).
+printf '%s\n%s\n' "$TOKEN" "$TOKEN" | security add-generic-password \
   -a "$ACCOUNT" \
   -s "$SERVICE" \
-  -w "$TOKEN" \
   -U \
   -T /usr/bin/security \
-  "$HOME/Library/Keychains/login.keychain-db"
+  -w
 
 echo "OK. Token stored in Keychain (service=$SERVICE, account=$ACCOUNT)."
 echo ""
