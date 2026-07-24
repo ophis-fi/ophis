@@ -48,7 +48,7 @@ pub async fn cancel_orders_handler(
     // size limit *does not* provide a proper bound for this
     if cancellations.data.order_uids.len() > ORDER_UID_LIMIT {
         return Err::<&'static str, _>(OrderCancellationError::Other(anyhow!(
-            "too many orders ({} > 1024)",
+            "too many orders ({} > {ORDER_UID_LIMIT})",
             cancellations.data.order_uids.len()
         )))
         .into_response();

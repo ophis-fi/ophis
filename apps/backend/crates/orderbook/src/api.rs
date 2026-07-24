@@ -32,6 +32,7 @@ mod cancel_order;
 mod cancel_orders;
 mod debug_order;
 mod debug_simulation;
+pub mod error_code;
 mod get_app_data;
 mod get_auction;
 mod get_native_price;
@@ -49,6 +50,7 @@ mod get_user_orders;
 mod post_order;
 mod post_quote;
 mod put_app_data;
+pub mod trace_id;
 mod version;
 
 const ALLOWED_METHODS: &[axum::http::Method] = &[
@@ -346,13 +348,18 @@ pub fn handle_all_routes(
             // Must be lower case due to the HTTP-2 spec
             axum::http::HeaderName::from_static("x-auth-token"),
             axum::http::HeaderName::from_static("x-appid"),
-        ]);
+        ])
+        // Let browser clients read the trace id off responses.
+        .expose_headers(vec![trace_id::TRACE_ID_HEADER]);
 
     api_router
         .layer(DefaultBodyLimit::max(MAX_JSON_BODY_PAYLOAD as usize))
         .layer(cors)
         .layer(middleware::from_fn(summarize_request))
         .layer(middleware::from_fn(with_matched_path_metric))
+        // Inside TraceLayer (the OTel request span is active when the trace
+        // id is derived), outside every handler.
+        .layer(middleware::from_fn(trace_id::with_trace_id))
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http().make_span_with(make_span))
@@ -376,6 +383,11 @@ struct ApiMetrics {
     /// Execution time for each API request.
     #[metric(labels("method"), buckets(0.1, 0.5, 1, 2, 4, 6, 8, 10))]
     requests_duration_seconds: prometheus::HistogramVec,
+
+    /// Number of quote requests answered with the unroutable `NoLiquidity`
+    /// class (a final "no route" answer, distinct from retryable upstream
+    /// failures which are 503s).
+    no_route_responses_total: prometheus::IntCounter,
 }
 
 impl ApiMetrics {
@@ -415,6 +427,16 @@ impl ApiMetrics {
 pub struct Error {
     pub error_type: Cow<'static, str>,
     pub description: Cow<'static, str>,
+    /// Numeric Ophis error code for this `error_type` (api-dx v1 table, see
+    /// [`error_code`]). Absent for strings outside the table; CoW-hosted
+    /// chains never serve this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<u16>,
+    /// The request's trace id, mirroring the `X-Trace-Id` response header.
+    /// Stamped on error bodies only; success responses carry the header
+    /// alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
     /// Additional arbitrary data that can be attached to an API error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
@@ -424,6 +446,8 @@ pub fn error(error_type: &'static str, description: impl AsRef<str>) -> Json<Err
     Json(Error {
         error_type: error_type.into(),
         description: Cow::Owned(description.as_ref().to_owned()),
+        code: error_code::code_for(error_type),
+        trace_id: trace_id::current(),
         data: None,
     })
 }
@@ -444,6 +468,8 @@ pub fn rich_error(
     Json(Error {
         error_type: error_type.into(),
         description: Cow::Owned(description.as_ref().to_owned()),
+        code: error_code::code_for(error_type),
+        trace_id: trace_id::current(),
         data,
     })
 }
@@ -460,12 +486,33 @@ pub fn internal_error_reply() -> Response {
 // (orphan rules prevent implementing IntoResponse directly on external types)
 pub(crate) struct PriceEstimationErrorWrapper(pub(crate) PriceEstimationError);
 
+/// Marks a response body as belonging to the unroutable class (codes
+/// 2000-2002): a final "this trade has no route" answer, not a failure.
+fn unroutable_error(error_type: &'static str, description: impl AsRef<str>) -> Json<Error> {
+    rich_error(
+        error_type,
+        description,
+        serde_json::json!({ "class": error_code::UNROUTABLE_CLASS }),
+    )
+}
+
+/// Truthful signal for retryable upstream failures: 503 plus `Retry-After`,
+/// instead of disguising them as a final `NoLiquidity` answer.
+fn retryable_upstream_reply(error_type: &'static str, description: impl AsRef<str>) -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(axum::http::header::RETRY_AFTER, "1")],
+        error(error_type, description),
+    )
+        .into_response()
+}
+
 impl IntoResponse for PriceEstimationErrorWrapper {
     fn into_response(self) -> Response {
         match self.0 {
             PriceEstimationError::UnsupportedToken { token, reason } => (
                 StatusCode::BAD_REQUEST,
-                error(
+                unroutable_error(
                     "UnsupportedToken",
                     format!("Token {token:?} is unsupported: {reason:}"),
                 ),
@@ -479,13 +526,28 @@ impl IntoResponse for PriceEstimationErrorWrapper {
                 ),
             )
                 .into_response(),
-            PriceEstimationError::NoLiquidity
-            | PriceEstimationError::RateLimited
-            | PriceEstimationError::EstimatorInternal(_) => (
-                StatusCode::NOT_FOUND,
-                error("NoLiquidity", "no route found"),
-            )
-                .into_response(),
+            PriceEstimationError::NoLiquidity => {
+                ApiMetrics::instance(observe::metrics::get_storage_registry())
+                    .unwrap()
+                    .no_route_responses_total
+                    .inc();
+                (
+                    StatusCode::NOT_FOUND,
+                    unroutable_error("NoLiquidity", "no route found"),
+                )
+                    .into_response()
+            }
+            PriceEstimationError::RateLimited => retryable_upstream_reply(
+                "UpstreamRateLimited",
+                "an upstream price estimator is rate limited; retry after the indicated delay",
+            ),
+            PriceEstimationError::EstimatorInternal(err) => {
+                tracing::warn!(?err, "estimator internal error");
+                retryable_upstream_reply(
+                    "InternalServiceError",
+                    "an upstream price estimation service failed; retry after the indicated delay",
+                )
+            }
             PriceEstimationError::TradingOutsideAllowedWindow { message } => (
                 StatusCode::BAD_REQUEST,
                 error("TradingOutsideAllowedWindow", message),
@@ -498,7 +560,7 @@ impl IntoResponse for PriceEstimationErrorWrapper {
                 .into_response(),
             PriceEstimationError::InsufficientLiquidity { message } => (
                 StatusCode::BAD_REQUEST,
-                error("InsufficientLiquidity", message),
+                unroutable_error("InsufficientLiquidity", message),
             )
                 .into_response(),
             PriceEstimationError::CustomSolverError { message } => {
@@ -562,6 +624,8 @@ mod tests {
             serde_json::to_value(&Error {
                 error_type: "foo".into(),
                 description: "bar".into(),
+                code: None,
+                trace_id: None,
                 data: None,
             })
             .unwrap(),
@@ -574,12 +638,16 @@ mod tests {
             serde_json::to_value(Error {
                 error_type: "foo".into(),
                 description: "bar".into(),
+                code: Some(1000),
+                trace_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
                 data: Some(json!(42)),
             })
             .unwrap(),
             json!({
                 "errorType": "foo",
                 "description": "bar",
+                "code": 1000,
+                "traceId": "00000000-0000-0000-0000-000000000000",
                 "data": 42,
             }),
         );
@@ -656,6 +724,59 @@ mod tests {
 
             assert_eq!(body.error_type, expected_type);
             assert_eq!(body.description.as_ref(), expected_description);
+            assert_eq!(
+                body.code,
+                crate::api::error_code::code_for(&body.error_type),
+                "error bodies must carry their v1 numeric code",
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn no_liquidity_stays_404_with_code_and_unroutable_class() {
+        let response = PriceEstimationErrorWrapper(PriceEstimationError::NoLiquidity).into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert!(response.headers().get(axum::http::header::RETRY_AFTER).is_none());
+
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: Error = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body.error_type, "NoLiquidity");
+        assert_eq!(body.code, Some(2000));
+        assert_eq!(body.data, Some(json!({ "class": "unroutable" })));
+    }
+
+    #[tokio::test]
+    async fn retryable_upstream_errors_are_503_with_retry_after() {
+        let cases = [
+            (PriceEstimationError::RateLimited, "UpstreamRateLimited", 3100),
+            (
+                PriceEstimationError::EstimatorInternal(anyhow::anyhow!("boom")),
+                "InternalServiceError",
+                3000,
+            ),
+        ];
+
+        for (err, expected_type, expected_code) in cases {
+            let response = PriceEstimationErrorWrapper(err).into_response();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+            assert_eq!(
+                response
+                    .headers()
+                    .get(axum::http::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok()),
+                Some("1"),
+            );
+
+            let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let body: Error = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(body.error_type, expected_type);
+            assert_eq!(body.code, Some(expected_code));
+            // A retryable upstream failure is not an unroutable answer.
+            assert_eq!(body.data, None);
         }
     }
 
