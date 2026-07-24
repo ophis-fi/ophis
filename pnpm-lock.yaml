@@ -15,6 +15,7 @@ overrides:
   esbuild: ^0.28.1
   protobufjs: ^7.6.5
   find-my-way: ^9.7.0
+  postcss: ^8.5.18
   fast-uri: ^3.1.4
   sharp: ^0.35.0
   js-yaml: ^4.3.0
@@ -170,7 +171,7 @@ importers:
     dependencies:
       '@cowprotocol/app-data':
         specifier: ^2.5.1
-        version: 2.5.1(cross-fetch@3.2.0(encoding@0.1.13))(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
+        version: 2.5.1(cross-fetch@4.1.0(encoding@0.1.13))(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
       '@cowprotocol/cow-sdk':
         specifier: ^5.9.0
         version: 5.10.3(encoding@0.1.13)(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
@@ -244,7 +245,7 @@ importers:
     dependencies:
       '@cowprotocol/app-data':
         specifier: ^2.5.1
-        version: 2.5.1(cross-fetch@4.1.0(encoding@0.1.13))(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
+        version: 2.5.1(cross-fetch@3.2.0(encoding@0.1.13))(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
       '@cowprotocol/cow-sdk':
         specifier: ^5.9.0
         version: 5.10.3(encoding@0.1.13)(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
@@ -1604,8 +1605,8 @@ packages:
     resolution: {integrity: sha512-xglYA6q3XO5P3BNJYxVZ1IV7DLVjp1Py6nwag88YntrS+3vKHyYcMqXVS4ZztJmwz2uGvz1FWhI/4LgbR5uQDA==}
     engines: {node: '>= 10'}
 
-  '@napi-rs/wasm-runtime@1.1.4':
-    resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
+  '@napi-rs/wasm-runtime@1.1.6':
+    resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
     peerDependencies:
       '@emnapi/core': ^1.7.1
       '@emnapi/runtime': ^1.7.1
@@ -2858,8 +2859,8 @@ packages:
     cpu: [arm64]
     os: [win32]
 
-  '@tybys/wasm-util@0.10.2':
-    resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
+  '@tybys/wasm-util@0.10.3':
+    resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -3541,6 +3542,9 @@ packages:
 
   bn.js@5.2.3:
     resolution: {integrity: sha512-EAcmnPkxpntVL+DS7bO1zhcZNvCkxqtkd0ZY53h06GNQ3DEkkGZ/gKgmDv6DdZQGj9BgfSPKtJJ7Dp1GPP8f7w==}
+
+  bn.js@5.2.5:
+    resolution: {integrity: sha512-Vq886eXykuP5E6HcKSSStP3bJgrE6In5WKxVUvJ8XGpWWYs2xZHWqUwzCtGgEtBcxyd57KBFDPFoUfNzdaHCNg==}
 
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
@@ -5328,8 +5332,8 @@ packages:
   nan@2.26.2:
     resolution: {integrity: sha512-0tTvBTYkt3tdGw22nrAy50x7gpbGCCFH3AFcyS5WiUu7Eu4vWlri1woE6qHBSfy11vksDqkiwjOnlR7WV8G1Hw==}
 
-  nanoid@3.3.12:
-    resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
+  nanoid@3.3.16:
+    resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -5733,8 +5737,8 @@ packages:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
     engines: {node: '>= 0.4'}
 
-  postcss@8.5.15:
-    resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
+  postcss@8.5.22:
+    resolution: {integrity: sha512-KBDEIpLrvpv16pp3K0Fw+UCoZfopFjjgeB+0tA/aaThfEE74kKDLrgg603YvOWJyg3+WYtyq3xYsQWsIyZlPqQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   postgres@3.4.9:
@@ -5744,8 +5748,13 @@ packages:
   preact@10.24.2:
     resolution: {integrity: sha512-1cSoF0aCC8uaARATfrlz4VCBqE8LwZwRfLgkxJOQwAlQt6ayTmi0D9OF7nXid1POI5SZidFuG9CnlXbDfLqY/Q==}
 
-  preact@10.29.2:
-    resolution: {integrity: sha512-7tNmwg/7mzzAoB/8kSg6Hl37JraAZw3Z3A0JSY7VXlZwo82Xn0G7wKbNNs2qoF4ZEEsQGTwDAroNdqKs1ofJxQ==}
+  preact@10.29.7:
+    resolution: {integrity: sha512-DCHYrK/B10yUD3ZjLfhZ3WIE/9Vf9VFUODcRE2dRomTYDpJk6z6L9wecSfhfE6M9ZTHUdyQkoC46arIDhEV84Q==}
+    peerDependencies:
+      preact-render-to-string: '>=5'
+    peerDependenciesMeta:
+      preact-render-to-string:
+        optional: true
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -7483,6 +7492,7 @@ snapshots:
       - graphql
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
@@ -7540,16 +7550,17 @@ snapshots:
 
   '@coinbase/wallet-sdk@3.9.3':
     dependencies:
-      bn.js: 5.2.3
+      bn.js: 5.2.5
       buffer: 6.0.3
       clsx: 1.2.1
       eth-block-tracker: 7.1.0
       eth-json-rpc-filters: 6.0.1
       eventemitter3: 5.0.4
       keccak: 3.0.4
-      preact: 10.29.2
+      preact: 10.29.7
       sha.js: 2.4.12
     transitivePeerDependencies:
+      - preact-render-to-string
       - supports-color
 
   '@coinbase/wallet-sdk@4.3.6(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76)':
@@ -7609,6 +7620,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
@@ -8972,11 +8984,11 @@ snapshots:
       '@napi-rs/canvas-win32-x64-msvc': 0.1.100
     optional: true
 
-  '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+  '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@tybys/wasm-util': 0.10.2
+      '@tybys/wasm-util': 0.10.3
     optional: true
 
   '@noble/ciphers@1.2.1': {}
@@ -9439,7 +9451,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@napi-rs/wasm-runtime': 1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
     optional: true
 
   '@rolldown/binding-win32-arm64-msvc@1.0.3':
@@ -10706,7 +10718,7 @@ snapshots:
   '@turbo/windows-arm64@2.9.14':
     optional: true
 
-  '@tybys/wasm-util@0.10.2':
+  '@tybys/wasm-util@0.10.3':
     dependencies:
       tslib: 2.8.1
     optional: true
@@ -10870,6 +10882,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
@@ -10977,6 +10990,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
@@ -11979,6 +11993,8 @@ snapshots:
   bn.js@4.12.3: {}
 
   bn.js@5.2.3: {}
+
+  bn.js@5.2.5: {}
 
   body-parser@2.3.0:
     dependencies:
@@ -13901,7 +13917,7 @@ snapshots:
   nan@2.26.2:
     optional: true
 
-  nanoid@3.3.12: {}
+  nanoid@3.3.16: {}
 
   nanoid@5.1.11: {}
 
@@ -14444,9 +14460,9 @@ snapshots:
 
   possible-typed-array-names@1.1.0: {}
 
-  postcss@8.5.15:
+  postcss@8.5.22:
     dependencies:
-      nanoid: 3.3.12
+      nanoid: 3.3.16
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -14454,7 +14470,7 @@ snapshots:
 
   preact@10.24.2: {}
 
-  preact@10.29.2: {}
+  preact@10.29.7: {}
 
   prelude-ls@1.2.1: {}
 
@@ -15680,7 +15696,7 @@ snapshots:
       esbuild: 0.28.1
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.15
+      postcss: 8.5.22
       rollup: 4.61.0
       tinyglobby: 0.2.17
     optionalDependencies:
@@ -15758,6 +15774,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react-native
       - supports-color
       - uploadthing
@@ -15803,6 +15820,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react-native
       - supports-color
       - uploadthing
@@ -15961,6 +15979,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
@@ -16010,6 +16029,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
@@ -16064,6 +16084,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - immer
       - ioredis
+      - preact-render-to-string
       - react
       - react-native
       - supports-color
