@@ -139,7 +139,7 @@ verify_receipt() {
   echo "  Transfer→partner-fee:     $fee_transfers"
   echo ""
 
-  if [[ "$owner_match" == "0" ]]; then
+  if ! [[ "$owner_match" =~ ^[1-9][0-9]*$ ]]; then
     echo "⚠️  Settlement landed but no Trade event for $OWNER."
     echo "    Pipeline works, but this batch did NOT include your order."
     echo "    (Possible: your order is still pending in a future auction.)"

@@ -90,6 +90,28 @@ if [[ -f .env ]]; then
   )
 fi
 
+# LOW-3 (2026-07 audit): Postgres reads its password via POSTGRES_PASSWORD_FILE
+# so the DB container no longer exposes it through docker inspect. Preserve the
+# existing .env-driven operator flow by materializing the gitignored secret file
+# if it is missing.
+if [[ ! -s secrets/postgres-password ]]; then
+  if [[ -f .env ]]; then
+    # shellcheck disable=SC1091
+    set -a
+    source .env
+    set +a
+  fi
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    echo "ERROR: secrets/postgres-password is missing and POSTGRES_PASSWORD is unset." >&2
+    echo "       Create secrets/postgres-password (chmod 600) or set POSTGRES_PASSWORD in .env." >&2
+    exit 13
+  fi
+  mkdir -p secrets
+  printf '%s' "$POSTGRES_PASSWORD" > secrets/postgres-password
+  chmod 600 secrets/postgres-password
+  echo "==> wrote secrets/postgres-password from POSTGRES_PASSWORD"
+fi
+
 echo "==> render-configs.sh"
 ./render-configs.sh
 
