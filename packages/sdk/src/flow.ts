@@ -143,22 +143,47 @@ export interface EnrollOphisTraderOptions {
   readonly host?: string;
   /** Fetch implementation. Defaults to the global `fetch`. */
   readonly fetch?: typeof fetch;
+  /**
+   * Fail closed: throw on ANY enrollment failure (network error or non-2xx)
+   * instead of returning a result. Default `false` (best-effort). Only set this
+   * if you deliberately want to block the first swap until enrollment is
+   * confirmed. It is NOT needed to avoid losing rebates: enrollment is
+   * idempotent and the indexer backfills a wallet's FULL trade history on the
+   * next successful enroll, so a trade placed while the indexer is briefly down
+   * is still credited once a later enroll succeeds. Programmer errors (invalid
+   * wallet/host, no fetch impl) always throw, regardless of this flag.
+   */
+  readonly blocking?: boolean;
+}
+
+/** Outcome of {@link enrollOphisTrader}. */
+export interface EnrollOphisTraderResult {
+  /** True only when the indexer returned 2xx (the wallet is now tracked). */
+  readonly enrolled: boolean;
+  /** HTTP status of the /tier call; omitted when the request never completed (network error). */
+  readonly status?: number;
 }
 
 /**
  * Registers a trading wallet with the Ophis rebate indexer so its Ophis trades
  * are indexed and the referral rebate accrues. The indexer is owner-scoped (it
  * only fetches trades for wallets it knows), so a wallet that never connects to
- * an Ophis frontend is NEVER indexed unless enrolled here. Call this once per
- * trader wallet, on wallet-connect, before its first Ophis order.
+ * an Ophis frontend is NEVER indexed unless enrolled here. Call this per trader
+ * wallet on wallet-connect; it is idempotent (the endpoint upserts) and cheap.
  *
- * Idempotent (the endpoint upserts). Throws on a network error or non-2xx, so a
- * caller can block the first swap until enrollment succeeds.
+ * Best-effort by default: a transient indexer failure (network error or non-2xx,
+ * e.g. the indexer being briefly down) is reported in the returned
+ * `{ enrolled, status }` — NOT thrown — so the caller can still place the order.
+ * No rebate is lost: enrollment is idempotent and the indexer backfills the
+ * wallet's full history on the next successful enroll, so just call this again on
+ * the next connect/swap. Pass `{ blocking: true }` to restore the strict
+ * throw-on-any-failure gate. Invalid wallet/host or a missing fetch impl always
+ * throw (programmer errors), regardless of `blocking`.
  */
 export async function enrollOphisTrader(
   wallet: string,
   opts: EnrollOphisTraderOptions = {},
-): Promise<void> {
+): Promise<EnrollOphisTraderResult> {
   assertAddressLike(wallet, 'wallet');
   // Trim trailing slashes without a polynomial regex (a `/\/+$/` on uncontrolled
   // input is a ReDoS sink); a single linear scan is safe.
@@ -188,13 +213,28 @@ export async function enrollOphisTrader(
   if (typeof doFetch !== 'function') {
     throw new Error('Ophis: no fetch implementation available; pass opts.fetch.');
   }
-  const res = await doFetch(`${host}/tier/${wallet}`, {
-    method: 'GET',
-    headers: { accept: 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`Ophis: failed to enroll ${wallet} with the rebate indexer (HTTP ${res.status}).`);
+  let res: Response;
+  try {
+    res = await doFetch(`${host}/tier/${wallet}`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    });
+  } catch (err) {
+    // Transport/network error: the indexer was unreachable. Fail closed only when
+    // asked; otherwise report and let the caller place the order (see docstring).
+    if (opts.blocking) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(`Ophis: failed to reach the rebate indexer to enroll ${wallet} (${reason}).`);
+    }
+    return { enrolled: false };
   }
+  if (!res.ok) {
+    if (opts.blocking) {
+      throw new Error(`Ophis: failed to enroll ${wallet} with the rebate indexer (HTTP ${res.status}).`);
+    }
+    return { enrolled: false, status: res.status };
+  }
+  return { enrolled: true, status: res.status };
 }
 
 export interface OphisOrderCreationOptions {
