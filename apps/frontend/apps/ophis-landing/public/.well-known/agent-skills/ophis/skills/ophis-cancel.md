@@ -48,7 +48,8 @@ curl -sS -X DELETE "$ORDERBOOK/api/v1/orders/$uid" \
 
 ## Batch cancellation (many orders, one signature)
 
-One signature cancels up to 1024 orders via `DELETE /api/v1/orders`.
+One signature cancels up to 128 orders via `DELETE /api/v1/orders` (the
+orderbook's enforced `ORDER_UID_LIMIT`; split larger sets into batches).
 
 **Mind the singular/plural trap.** The EIP-712 type string is
 `OrderCancellations(bytes[] orderUid)`, type hash
@@ -60,7 +61,7 @@ the signature; sending a body with `orderUid` fails deserialization. The
 snippet below has each name in the only place it belongs.
 
 ```bash
-uids='["0x...", "0x..."]'   # JSON array of order UIDs (max 1024)
+uids='["0x...", "0x..."]'   # JSON array of order UIDs (max 128, enforced)
 
 jq -n --argjson chainId "$chainId" --arg verifyingContract "$SETTLEMENT" --argjson uids "$uids" '{
   types: {
@@ -117,4 +118,6 @@ default.
 - `401` / signature rejected: the cancellation must be signed by the order's
   owner key, over the pinned per-chain domain.
 - `404 NotFound`: wrong chain or wrong UID.
-- "too many orders": the batch cap is 1024 UIDs; split it.
+- "too many orders": the enforced batch cap is 128 UIDs; split it. (The
+  error message's own number can lag the enforced constant; 128 is what the
+  orderbook checks.)

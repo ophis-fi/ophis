@@ -27,7 +27,7 @@
       "type": "skill-md",
       "description": "Execute a token swap on Ophis end to end: quote, build, confirm with the user, exact approval to the pinned vault relayer, EIP-712 sign, submit. The signed order is a bounded intent with a hard minimum, settled MEV-protected in a batch auction.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-swap.md",
-      "digest": "sha256:74ec0792c9314ea4fe1fad06c2f25323a82e64dba33ac70c2485ed8113c2f31d"
+      "digest": "sha256:e17f1248b132adfb68b85b3b3129386d84db9b035c3d4ed97166618ae5bf79e2"
     },
     {
       "name": "ophis-order-status",
@@ -41,14 +41,14 @@
       "type": "skill-md",
       "description": "Cancel one or many open Ophis orders, gasless, via a signed EIP-712 cancellation, including the batch type-string trap and the on-chain hard cancel fallback.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-cancel.md",
-      "digest": "sha256:c9a7a5830c7619ac668a6fb41aed9e33466c63224981de9cf6a60da35de7a247"
+      "digest": "sha256:d0e02ee5058ad1b252c0e1fc74b412aa95f4fbe73ecac10d7bec0d08921f75fd"
     },
     {
       "name": "ophis-surplus-report",
       "type": "skill-md",
       "description": "Report the surplus (price improvement beyond the signed minimum) a wallet earned from Ophis trades, in total and per order. Read-only.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-surplus-report.md",
-      "digest": "sha256:2a84465636274bc4e50c1116ef302527405beb5cd6b5cfcde3a531a0ba30a12c"
+      "digest": "sha256:36235f4d9f0f35151a8e11c05177534c276e46f7bda1230754089e3c8872b018"
     }
   ]
 }

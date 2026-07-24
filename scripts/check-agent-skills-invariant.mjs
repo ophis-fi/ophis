@@ -131,6 +131,10 @@ const cancelBatchHash = orderRs.match(
 if (!cancelSingleHash || !cancelBatchHash) {
   fail(`could not parse the cancellation type hashes from ${MODEL_ORDER_RS}`);
 }
+// The enforced batch-cancel cap (cancel_orders_handler checks this constant;
+// its error-message text is not authoritative and has lagged it before).
+const orderUidLimit = orderRs.match(/pub const ORDER_UID_LIMIT: usize = (\d+);/)?.[1];
+if (!orderUidLimit) fail(`could not parse ORDER_UID_LIMIT from ${MODEL_ORDER_RS}`);
 
 // --- the umbrella policy block ----------------------------------------------
 
@@ -287,9 +291,19 @@ for (const [what, want] of [
   ['single type hash', cancelSingleHash && `0x${cancelSingleHash}`],
   ['batch type hash', cancelBatchHash && `0x${cancelBatchHash}`],
   ['plural JSON field', 'orderUids'],
+  ['enforced batch cap (headline)', orderUidLimit && `up to ${orderUidLimit} orders`],
+  ['enforced batch cap (snippet comment)', orderUidLimit && `max ${orderUidLimit}, enforced`],
+  ['enforced batch cap (errors section)', orderUidLimit && `batch cap is ${orderUidLimit} UIDs`],
 ]) {
   if (want && !cancelSrc.includes(want)) {
     fail(`ophis-cancel.md: missing the ${what} (${want}); it must match ${MODEL_ORDER_RS}`);
+  }
+}
+// A drifted cap literal (e.g. a stale larger number) must fail even though the
+// correct literals are present.
+for (const m of cancelSrc.matchAll(/(?:up to|max|cap is) (\d{2,})/g)) {
+  if (m[1] !== orderUidLimit) {
+    fail(`ophis-cancel.md: cap literal "${m[0]}" != ORDER_UID_LIMIT ${orderUidLimit} in ${MODEL_ORDER_RS}`);
   }
 }
 

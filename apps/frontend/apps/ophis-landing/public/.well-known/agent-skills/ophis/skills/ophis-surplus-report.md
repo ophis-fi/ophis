@@ -30,9 +30,10 @@ curl -sS "$ORDERBOOK/api/v1/users/$address/total_surplus" | jq -r '.totalSurplus
 
 `totalSurplus` is a decimal string denominated in the chain's native
 currency, in wei (the backend prices each fill's improvement into the
-native token at settlement time). Convert for display:
+native token at settlement time). Capture it and convert for display:
 
 ```bash
+totalSurplusWei=$(curl -sS "$ORDERBOOK/api/v1/users/$address/total_surplus" | jq -r '.totalSurplus')
 python3 -c "print(int('$totalSurplusWei') / 1e18, 'ETH')"
 ```
 

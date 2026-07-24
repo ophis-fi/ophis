@@ -73,20 +73,28 @@ about 30 seconds pass after the quote, re-quote first.
 
 ### Step 5: exact approval to the vault relayer
 
-Skip if the current allowance already covers the signed sell amount.
+Normalize the allowance so it EQUALS the signed sell amount (SKILL.md
+rule 4). Skipping only when it already matches means a pre-existing
+oversized or unlimited allowance is lowered, not silently left standing:
+a leftover blanket approval is exactly the drain surface the rule exists
+to remove. Tokens that reject nonzero-to-nonzero approval changes need a
+reset to 0 first.
 
 ```bash
 allowance=$(cast call "$sellToken" "allowance(address,address)(uint256)" "$owner" "$RELAYER" --rpc-url "$RPC_URL")
-# Approve EXACTLY the signed sellAmount. Never an unlimited allowance
-# (SKILL.md rule 4): the relayer consumes at most sellAmount for this order.
-if python3 -c "import sys; sys.exit(0 if int('${allowance%% *}') < int('$sellAmount') else 1)"; then
+allowance=${allowance%% *}
+if python3 -c "import sys; sys.exit(0 if int('$allowance') != int('$sellAmount') else 1)"; then
+  if python3 -c "import sys; sys.exit(0 if int('$allowance') != 0 else 1)"; then
+    cast send "$sellToken" "approve(address,uint256)" "$RELAYER" 0 \
+      --rpc-url "$RPC_URL" "${SIGNER_ARGS[@]}"
+  fi
   cast send "$sellToken" "approve(address,uint256)" "$RELAYER" "$sellAmount" \
     --rpc-url "$RPC_URL" "${SIGNER_ARGS[@]}"
 fi
 ```
 
-This is the only on-chain transaction in the flow; settlement itself costs
-the signer nothing.
+These approval transactions are the only on-chain spend in the flow;
+settlement itself costs the signer nothing.
 
 ### Step 6: build and sign the order (EIP-712)
 
