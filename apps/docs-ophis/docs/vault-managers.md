@@ -90,7 +90,7 @@ Two requirements for a token to be allowlistable:
 
 ## Live deployments
 
-The module is live and has settled real rebalances on five chains. The
+The module is live on six chains (and has settled real rebalances on five). The
 contracts are identical everywhere; the per-chain difference is which
 settlement they gate and which Chainlink feeds they read.
 
@@ -101,12 +101,11 @@ settlement they gate and which Chainlink feeds they read.
 | Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
 | Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
 | Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
+| Plasma (9745) | `0x8bfd02f98854647f4235d770a284ddbbac0bf2ca` | Canonical CoW |
 
-Plasma (9745) is next: the deploy tooling and fork preflight are verified
-against live Plasma state (canonical CoW settlement, WXPL/USDT0 allowlist), and
-it joins the table once its first vault is live.
-
-Each vault deploys its own module instance through the factory, configured
+Plasma uses the native WXPL/USDT0 allowlist (it has no USDC) with Chainlink
+XPL/USD and USDT0/USD feeds. Each vault deploys its own module instance through
+the factory, configured
 with its own Safe, curator, allowlist, and caps.
 
 ## Implementing it

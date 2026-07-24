@@ -60,9 +60,11 @@ the staleness window is 26h on BOTH legs (unlike the 2h volatile leg elsewhere).
 | maxStaleness (WXPL / USDT0) | 26h / 26h |
 | seq grace | — |
 
-Status: the fork preflight passes 3/3 against live Plasma (config verified). The
-mainnet broadcast is pending a trial `VAULT_SAFE` + `VAULT_CURATOR` and a funded
-Plasma deployer. The rebalance pair is WXPL/USDT0 (a non-stable pair), so keep
+Status: DEPLOYED + enabled on Plasma mainnet (2026-07-24) — module
+`0x905f8fd53D6568C8cd488CdbFFcb3A81fF1DEAf4`, factory
+`0x8BfD02f98854647f4235D770A284DDbBAc0bF2Ca`, on the shared trial Safe
+`0x4E2b51d89EA315949d27C906fAB1187b88F4e786` (same curator + appData as the other
+5 chains). For a new Plasma vault, the rebalance pair is WXPL/USDT0 (a non-stable pair), so keep
 `isStablePair = false` and `CHAIN_ID = 9745` when deriving the appData in Step 1,
 and fund the trial Safe with USDT0 (not USDC) for the rebalance.
 
