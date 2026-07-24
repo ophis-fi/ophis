@@ -191,19 +191,32 @@ export const GAS_PRICE_UPDATE_THRESHOLD = ms`5s`
 
 // See https://docs.blocknative.com/gas-prediction/gas-platform
 export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
-  [SupportedChainId.MAINNET]: 'https://api.blocknative.com/gasprices/blockprices',
+  // Blocknative's gas API was shut down 2026-06-19 (see the Unichain note below):
+  // the old mainnet endpoint now hard-fails (ERR_CONNECTION_RESET) and, since
+  // GasUpdater re-fetches every block, it spammed the console + churned the main
+  // thread on the swap app's default (mainnet) chain. Use Ethereum's Blockscout
+  // gas-price-oracle — same {slow,average,fast} response shape the parser already
+  // reads for Gnosis/Arbitrum/Base/Polygon/Unichain (verified live HTTP 200).
+  [SupportedChainId.MAINNET]: 'https://eth.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.GNOSIS_CHAIN]: 'https://gnosis.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.ARBITRUM_ONE]: 'https://arbitrum.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.BASE]: 'https://base.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.SEPOLIA]: '',
   [SupportedChainId.POLYGON]: 'https://polygon.blockscout.com/api/v1/gas-price-oracle',
-  [SupportedChainId.AVALANCHE]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.AVALANCHE}`,
-  [SupportedChainId.BNB]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.BNB}`,
-  [SupportedChainId.LINEA]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.LINEA}`,
+  // Blocknative shut down 2026-06-19 (see mainnet note above). Avalanche, BNB and
+  // Linea have no keyless Blockscout gas-price-oracle, so disable the fetcher with ''.
+  // GasUpdater gates on supportedChain() === !!endpoint, so an empty endpoint means no
+  // per-block fetch and no ERR_CONNECTION_RESET storm; the gasless swap just shows no
+  // gas-cost estimate on these chains, matching Sepolia/Plasma/MegaETH/HyperEVM.
+  [SupportedChainId.AVALANCHE]: '',
+  [SupportedChainId.BNB]: '',
+  [SupportedChainId.LINEA]: '',
   [SupportedChainId.PLASMA]: '', // TODO: currently (2025/10/20) unsupported by Blocknative nor blockscont
-  [SupportedChainId.INK]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.INK}`,
-  // Ophis fork: OP mainnet (chain 10)
-  [10 as unknown as SupportedChainId]: `https://api.blocknative.com/gasprices/blockprices?chainid=10`,
+  // Ink Blockscout gas-price-oracle (same {slow,average,fast} shape; verified live HTTP 200).
+  [SupportedChainId.INK]: 'https://explorer.inkonchain.com/api/v1/gas-price-oracle',
+  // Ophis fork: OP mainnet (chain 10). optimism.blockscout.com 301-redirects to the
+  // canonical explorer.optimism.io Blockscout gas oracle (verified live HTTP 200).
+  [10 as unknown as SupportedChainId]: 'https://explorer.optimism.io/api/v1/gas-price-oracle',
   // Ophis fork: Unichain mainnet (chain 130) — Blocknative gas API was shut
   // down 2026-06-19, so use Unichain's Blockscout gas-price-oracle (same
   // response shape the GasUpdater parser already reads for Gnosis/Arbitrum/
@@ -215,19 +228,27 @@ export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
   [999 as unknown as SupportedChainId]: '',
 }
 export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
-  [SupportedChainId.MAINNET]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // MAINNET now uses Blockscout (keyless) — must be null, or getHeaders() would
+  // attach the Blocknative Authorization key to every eth.blockscout.com request,
+  // disclosing the provider credential to an unrelated host. Matches the other
+  // Blockscout chains below (Gnosis/Arbitrum/Base/Polygon), which are already null.
+  [SupportedChainId.MAINNET]: null,
   [SupportedChainId.GNOSIS_CHAIN]: null,
   [SupportedChainId.ARBITRUM_ONE]: null,
   [SupportedChainId.BASE]: null,
   [SupportedChainId.SEPOLIA]: null,
   [SupportedChainId.POLYGON]: null,
-  [SupportedChainId.AVALANCHE]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
-  [SupportedChainId.BNB]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
-  [SupportedChainId.LINEA]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // Every former Blocknative chain is now Blockscout (keyless) or disabled (''). All keys
+  // MUST be null: getHeaders() attaches a truthy value as an Authorization header, which
+  // for a Blockscout host (Ink, OP) would disclose the credential to an unrelated third
+  // party. This also drops the last Blocknative API-key env references.
+  [SupportedChainId.AVALANCHE]: null,
+  [SupportedChainId.BNB]: null,
+  [SupportedChainId.LINEA]: null,
   [SupportedChainId.PLASMA]: null,
-  [SupportedChainId.INK]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
-  // Ophis fork: OP mainnet (chain 10)
-  [10 as unknown as SupportedChainId]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  [SupportedChainId.INK]: null,
+  // Ophis fork: OP mainnet (chain 10). Blockscout gas oracle needs no key.
+  [10 as unknown as SupportedChainId]: null,
   // Ophis fork: Unichain mainnet (chain 130) — Blockscout gas oracle needs no key
   [130 as unknown as SupportedChainId]: null,
   // Ophis fork: MegaETH mainnet (chain 4326) — no Blocknative key needed (endpoint empty)

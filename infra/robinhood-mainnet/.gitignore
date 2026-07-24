@@ -1,0 +1,5 @@
+.env
+rendered/
+observability-rendered/
+__pycache__/
+secrets/

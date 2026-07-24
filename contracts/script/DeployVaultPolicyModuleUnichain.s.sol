@@ -17,6 +17,10 @@ contract DeployVaultPolicyModuleUnichain is Script {
     address constant USDC_FEED = 0xbd1cD1518eFB92a92100da62D4C488c810dFd75b; // USDC/USD 18dp
     address constant ETH_FEED = 0xBcE70e194940a157f3A80566505a7E96f5238CCa; // ETH/USD 18dp
     address constant SEQ_FEED = 0x495639D9914e7D270c5dCC641BfB1d807423F813; // L2 uptime
+    uint256 constant USDC_MIN_PRICE18 = 25e16;
+    uint256 constant USDC_MAX_PRICE18 = 4e18;
+    uint256 constant ETH_MIN_PRICE18 = 500e18;
+    uint256 constant ETH_MAX_PRICE18 = 8000e18;
 
     function run() external {
         // Audit lead: cheap wrong-RPC guard (the feed liveness probe also fails
@@ -28,8 +32,11 @@ contract DeployVaultPolicyModuleUnichain is Script {
         uint256 cap = vm.envOr("VAULT_CAP", uint256(250e18));
 
         OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(USDC, IAggregatorV3(USDC_FEED), 26 hours);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(WETH, IAggregatorV3(ETH_FEED), 26 hours);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(
+            USDC, IAggregatorV3(USDC_FEED), 26 hours, USDC_MIN_PRICE18, USDC_MAX_PRICE18
+        );
+        tokens[1] =
+            OphisVaultPolicyModule.TokenFeed(WETH, IAggregatorV3(ETH_FEED), 26 hours, ETH_MIN_PRICE18, ETH_MAX_PRICE18);
 
         OphisVaultPolicyModule.ModuleConfig memory cfg = OphisVaultPolicyModule.ModuleConfig({
             safe: ISafe(safe),
@@ -40,6 +47,7 @@ contract DeployVaultPolicyModuleUnichain is Script {
             maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
+            allowNoSequencerFeed: false,
             sequencerGracePeriod: 1 hours,
             tokens: tokens
         });

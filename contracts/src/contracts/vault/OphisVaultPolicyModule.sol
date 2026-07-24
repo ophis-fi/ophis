@@ -86,16 +86,20 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         uint8 feedDecimals; // cached from feed.decimals() at deploy
         uint8 tokenDecimals; // cached from token.decimals() at deploy
         uint256 maxStaleness; // per-token accepted price age (feed heartbeat)
+        uint256 minPrice18; // lower accepted token/USD price, 18 decimals
+        uint256 maxPrice18; // upper accepted token/USD price, 18 decimals
     }
 
-    /// @dev Constructor input: a token, its token/USD feed, and the max price
-    /// age tolerated for THAT feed (sized to the feed's own heartbeat, so a
+    /// @dev Constructor input: a token, its token/USD feed, the max price age
+    /// tolerated for THAT feed (sized to the feed's own heartbeat, so a
     /// slow-heartbeat stable does not force a loose window on a fast, volatile
-    /// asset).
+    /// asset), and the accepted 18-decimal token/USD price bounds.
     struct TokenFeed {
         address token;
         IAggregatorV3 feed;
         uint256 maxStaleness;
+        uint256 minPrice18;
+        uint256 maxPrice18;
     }
 
     /// @dev Full construction config (a struct keeps the surface reviewable
@@ -112,12 +116,13 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         /// Rolling (leaky-bucket) cap on SELL-side turnover, in 18-decimal USD,
         /// drained at this much per day. Bounds a compromised curator's churn.
         uint256 dailyUsdTurnoverCap;
-        /// Chainlink L2 sequencer-uptime feed; address(0) disables the gate
-        /// (chains without one). When set, oracle reads are rejected while
-        /// the sequencer is down AND for `sequencerGracePeriod` after it
-        /// comes back (pre-outage prices can otherwise pass the staleness
-        /// check before feeds recover).
+        /// Chainlink L2 sequencer-uptime feed. address(0) is only permitted
+        /// when `allowNoSequencerFeed` explicitly opts out (chains without one).
+        /// When set, oracle reads are rejected while the sequencer is down AND
+        /// for `sequencerGracePeriod` after it comes back (pre-outage prices can
+        /// otherwise pass the staleness check before feeds recover).
         IAggregatorV3 sequencerUptimeFeed;
+        bool allowNoSequencerFeed;
         uint256 sequencerGracePeriod;
         TokenFeed[] tokens;
     }
@@ -174,7 +179,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     uint256 internal constant BPS = 10_000;
     /// @dev Hard caps on construction params (a per-vault config is expected
     /// to sit far below these).
-    uint256 internal constant MAX_SLIPPAGE_BPS_CAP = 5_000;
+    uint256 internal constant MAX_SLIPPAGE_BPS_CAP = 1_000;
     /// @dev 1 hour, deliberately tight: the oracle floor holds only at
     /// presign time, so the TTL bounds the window in which an adverse market
     /// move can be captured against a still-open order.
@@ -217,11 +222,13 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     error NonZeroSignedFee();
     error WrongAppData();
     error BadOrderFlags();
+    error BadPriceBounds(address token);
     error BadValidTo();
     error ZeroSellAmount();
     error ZeroOracleFloor();
     error BelowFloor(uint256 buyAmount, uint256 requiredFloor);
     error TurnoverCapExceeded(uint256 spentUsd, uint256 orderUsd, uint256 capUsd);
+    error SequencerFeedRequired();
     error SequencerDown();
     error SequencerStarting();
     error UnknownOrderUid();
@@ -251,8 +258,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
                 cfg.sequencerGracePeriod == 0 ||
                 cfg.sequencerGracePeriod > MAX_SEQ_GRACE_CAP
             ) revert BadConfig();
-        } else if (cfg.sequencerGracePeriod != 0) {
-            revert BadConfig();
+        } else {
+            if (!cfg.allowNoSequencerFeed) revert SequencerFeedRequired();
+            if (cfg.sequencerGracePeriod != 0) revert BadConfig();
         }
         // Defense in depth: the module's whole guarantee rests on the curator
         // having no privileged path to the Safe but this module - neither a Safe
@@ -284,11 +292,16 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             address token = cfg.tokens[i].token;
             IAggregatorV3 feed = cfg.tokens[i].feed;
             uint256 staleness = cfg.tokens[i].maxStaleness;
+            uint256 minPrice18 = cfg.tokens[i].minPrice18;
+            uint256 maxPrice18 = cfg.tokens[i].maxPrice18;
             if (token == address(0) || address(feed) == address(0)) {
                 revert ZeroAddress();
             }
             if (staleness == 0 || staleness > MAX_STALENESS_CAP) {
                 revert BadConfig();
+            }
+            if (minPrice18 == 0 || minPrice18 >= maxPrice18) {
+                revert BadPriceBounds(token);
             }
             if (tokenPolicy[token].allowed) revert BadConfig(); // duplicate
             uint8 tokenDecimals = IERC20Metadata(token).decimals();
@@ -298,13 +311,21 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             uint8 feedDecimals = feed.decimals();
             // Fail-closed liveness probe: a feed that cannot serve a valid,
             // fresh price NOW does not belong in the policy.
-            OphisChainlinkFloor.read18(feed, feedDecimals, staleness);
+            OphisChainlinkFloor.read18(
+                feed,
+                feedDecimals,
+                staleness,
+                minPrice18,
+                maxPrice18
+            );
             tokenPolicy[token] = TokenPolicy({
                 allowed: true,
                 feed: feed,
                 feedDecimals: feedDecimals,
                 tokenDecimals: tokenDecimals,
-                maxStaleness: staleness
+                maxStaleness: staleness,
+                minPrice18: minPrice18,
+                maxPrice18: maxPrice18
             });
         }
     }
@@ -325,6 +346,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         GPv2Order.Data calldata order,
         uint256 minBuyOverride
     ) external nonReentrant returns (bytes memory orderUid) {
+        _requireCuratorNotPrivileged(safe, curator);
         if (msg.sender != curator) revert NotCurator();
 
         (uint256 oracleFloor, uint256 orderUsd) = _enforcePolicy(
@@ -387,6 +409,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     /// live successor's allowance (the ERC20 allowance is shared per token, so
     /// blindly zeroing it would starve the successor).
     function cancel(bytes calldata orderUid) external nonReentrant {
+        _requireCuratorNotPrivileged(safe, curator);
         if (msg.sender != curator) revert NotCurator();
         bytes32 key = keccak256(orderUid);
         address sellToken = moduleOrderSellToken[key];
@@ -464,7 +487,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         uint256 sellPrice18 = OphisChainlinkFloor.read18(
             sellPolicy.feed,
             sellPolicy.feedDecimals,
-            sellPolicy.maxStaleness
+            sellPolicy.maxStaleness,
+            sellPolicy.minPrice18,
+            sellPolicy.maxPrice18
         );
         oracleFloor = OphisChainlinkFloor.floorBuyAmount(
             order.sellAmount,
@@ -473,7 +498,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
             OphisChainlinkFloor.read18(
                 buyPolicy.feed,
                 buyPolicy.feedDecimals,
-                buyPolicy.maxStaleness
+                buyPolicy.maxStaleness,
+                buyPolicy.minPrice18,
+                buyPolicy.maxPrice18
             ),
             buyPolicy.tokenDecimals,
             maxSlippageBps

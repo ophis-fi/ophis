@@ -57,6 +57,10 @@ contract VaultPolicyModuleUnichainReal is Test {
     address internal constant SEQUENCER_FEED = 0x495639D9914e7D270c5dCC641BfB1d807423F813;
 
     uint256 internal constant MAX_STALENESS = 26 hours; // 24h heartbeat + buffer
+    uint256 internal constant USDC_MIN_PRICE18 = 25e16;
+    uint256 internal constant USDC_MAX_PRICE18 = 4e18;
+    uint256 internal constant ETH_MIN_PRICE18 = 500e18;
+    uint256 internal constant ETH_MAX_PRICE18 = 8000e18;
     uint256 internal constant SEQ_GRACE = 1 hours;
 
     address internal constant CURATOR = address(0xC0FFEE);
@@ -75,16 +79,26 @@ contract VaultPolicyModuleUnichainReal is Test {
         owners[0] = SAFE_OWNER;
         bytes memory initializer = abi.encodeWithSelector(
             ISafeSetup.setup.selector,
-            owners, uint256(1), address(0), bytes(""), SAFE_FALLBACK, address(0), uint256(0), payable(address(0))
+            owners,
+            uint256(1),
+            address(0),
+            bytes(""),
+            SAFE_FALLBACK,
+            address(0),
+            uint256(0),
+            payable(address(0))
         );
-        address proxy = ISafeProxyFactory(SAFE_FACTORY).createProxyWithNonce(
-            SAFE_L2_SINGLETON, initializer, uint256(keccak256("ophis-b5-preflight"))
-        );
+        address proxy = ISafeProxyFactory(SAFE_FACTORY)
+            .createProxyWithNonce(SAFE_L2_SINGLETON, initializer, uint256(keccak256("ophis-b5-preflight")));
         safe = ISafeSetup(proxy);
 
         OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(USDC, IAggregatorV3(USDC_USD_FEED), MAX_STALENESS);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(WETH, IAggregatorV3(ETH_USD_FEED), MAX_STALENESS);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(
+            USDC, IAggregatorV3(USDC_USD_FEED), MAX_STALENESS, USDC_MIN_PRICE18, USDC_MAX_PRICE18
+        );
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(
+            WETH, IAggregatorV3(ETH_USD_FEED), MAX_STALENESS, ETH_MIN_PRICE18, ETH_MAX_PRICE18
+        );
 
         // Deploy through the factory with the EXACT production config. If the
         // constructor's per-feed liveness probe reverted (stale / invalid feed),
@@ -101,6 +115,7 @@ contract VaultPolicyModuleUnichainReal is Test {
                 maxTtl: 1800,
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(SEQUENCER_FEED),
+                allowNoSequencerFeed: false,
                 sequencerGracePeriod: SEQ_GRACE,
                 tokens: tokens
             })

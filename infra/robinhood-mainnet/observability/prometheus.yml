@@ -1,0 +1,65 @@
+# Prometheus scrape config for Ophis Robinhood mainnet stack (chain 4663).
+#
+# All targets live on the docker-compose internal network and resolve by
+# service name (Docker's embedded DNS). The Prometheus container scrapes
+# them every 15s and ships violations to Alertmanager.
+#
+# Metrics port map (same as OP — internal container ports are identical;
+# only the host-side port differs):
+#   - driver:    port 80   /metrics
+#   - autopilot: port 9589 /metrics (default_metrics_address)
+#   - orderbook: port 9586 /metrics (DEFAULT_METRICS_PORT)
+#   - rpc-proxy: port 4001 /metrics (eRPC metrics listener; 4000 is JSON-RPC)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    chain: robinhood
+    chain_id: "4663"
+    env: mainnet
+    stack: ophis
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  - job_name: driver
+    static_configs:
+      - targets: [driver:80]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: autopilot
+    static_configs:
+      - targets: [autopilot:9589]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: orderbook
+    static_configs:
+      - targets: [orderbook:9586]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: rpc-proxy
+    static_configs:
+      - targets: [rpc-proxy:4001]
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: [node-exporter:9100]
+    scrape_interval: 30s
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]
+    scrape_interval: 60s

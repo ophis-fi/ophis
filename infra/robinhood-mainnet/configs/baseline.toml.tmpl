@@ -1,0 +1,18 @@
+# Ophis - Robinhood Chain mainnet (chain 4663) baseline solver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
+#
+# ORBIT: WETH is the Robinhood-specific address, NOT the OP-Stack 0x4200..0006.
+weth = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+base-tokens = [
+  "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",  # WETH (Robinhood 4663)
+  "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",  # USDG (Paxos, 6 dec) - canonical stable on 4663
+]
+max-hops = 2
+max-partial-attempts = 5
+native-token-price-estimation-amount = "1000000000000000"  # 0.001 ETH
+
+# NOTE: with no on-chain UniV2/V3 liquidity sources configured, this baseline
+# returns no routes on 4663 (by design - Robinhood liquidity is Uniswap V4).
+# It is kept as a present-but-empty solver so the driver has a baseline lane;
+# real routing comes from LiFi (day-1) and a future self-run V4 dex-solver.

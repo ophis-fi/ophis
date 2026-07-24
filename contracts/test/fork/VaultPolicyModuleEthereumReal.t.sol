@@ -57,6 +57,10 @@ contract VaultPolicyModuleEthereumReal is Test {
 
     uint256 internal constant USDC_STALENESS = 26 hours;
     uint256 internal constant ETH_STALENESS = 2 hours;
+    uint256 internal constant USDC_MIN_PRICE18 = 25e16;
+    uint256 internal constant USDC_MAX_PRICE18 = 4e18;
+    uint256 internal constant ETH_MIN_PRICE18 = 500e18;
+    uint256 internal constant ETH_MAX_PRICE18 = 8000e18;
 
     address internal constant CURATOR = address(0xC0FFEE);
     address internal constant SAFE_OWNER = address(0xA11CE);
@@ -74,16 +78,26 @@ contract VaultPolicyModuleEthereumReal is Test {
         owners[0] = SAFE_OWNER;
         bytes memory initializer = abi.encodeWithSelector(
             ISafeSetup.setup.selector,
-            owners, uint256(1), address(0), bytes(""), SAFE_FALLBACK, address(0), uint256(0), payable(address(0))
+            owners,
+            uint256(1),
+            address(0),
+            bytes(""),
+            SAFE_FALLBACK,
+            address(0),
+            uint256(0),
+            payable(address(0))
         );
-        address proxy = ISafeProxyFactory(SAFE_FACTORY).createProxyWithNonce(
-            SAFE_L2_SINGLETON, initializer, uint256(keccak256("ophis-ethereum-preflight"))
-        );
+        address proxy = ISafeProxyFactory(SAFE_FACTORY)
+            .createProxyWithNonce(SAFE_L2_SINGLETON, initializer, uint256(keccak256("ophis-ethereum-preflight")));
         safe = ISafeSetup(proxy);
 
         OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(USDC, IAggregatorV3(USDC_USD_FEED), USDC_STALENESS);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(WETH, IAggregatorV3(ETH_USD_FEED), ETH_STALENESS);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(
+            USDC, IAggregatorV3(USDC_USD_FEED), USDC_STALENESS, USDC_MIN_PRICE18, USDC_MAX_PRICE18
+        );
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(
+            WETH, IAggregatorV3(ETH_USD_FEED), ETH_STALENESS, ETH_MIN_PRICE18, ETH_MAX_PRICE18
+        );
 
         // EXACT production config incl. the disabled sequencer gate (L1). A
         // passing setUp proves the real feeds serve a fresh price and the
@@ -99,6 +113,7 @@ contract VaultPolicyModuleEthereumReal is Test {
                 maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
+                allowNoSequencerFeed: true,
                 sequencerGracePeriod: 0,
                 tokens: tokens
             })
