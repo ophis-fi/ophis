@@ -301,7 +301,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let body = response_body(response).await;
         let body: serde_json::Value = serde_json::from_slice(body.as_slice()).unwrap();
-        let expected_error = json!({"errorType": "InternalServerError", "description": ""});
+        let expected_error =
+            json!({"errorType": "InternalServerError", "description": "", "code": 5000});
         assert_eq!(body, expected_error);
         // There are many other FeeAndQuoteErrors, but writing a test for each
         // would follow the same pattern as this.

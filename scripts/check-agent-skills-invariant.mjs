@@ -157,9 +157,9 @@ const orderRs = read(MODEL_ORDER_RS);
 //   OrderCancellation(bytes orderUid)        -> 0x7b41b3a6...88ec  (single)
 //   OrderCancellations(bytes[] orderUids)    -> 0x4c89efb9...588e  (batch, PLURAL field)
 //   OrderCancellations(bytes[] orderUid)     -> 0x85d264d5...a600  (WRONG: does not
-//     match any deployed constant; it is what the stale doc comment above the
-//     batch TYPE_HASH in order.rs claims, which is why the hashes below are
-//     extracted from the impl blocks, never from doc comments.)
+//     match any deployed constant; a stale doc comment above the batch
+//     TYPE_HASH in order.rs claimed it until fixed, which is why the hashes
+//     below are extracted from the impl blocks, never from doc comments.)
 const CANCEL_SINGLE_TYPE = 'OrderCancellation(bytes orderUid)';
 const CANCEL_BATCH_TYPE = 'OrderCancellations(bytes[] orderUids)';
 const CANCEL_BATCH_TYPE_WRONG_SINGULAR = 'OrderCancellations(bytes[] orderUid)';
