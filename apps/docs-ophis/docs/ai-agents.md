@@ -354,6 +354,29 @@ Ophis repo; each is being submitted to its platform's own registry, so availabil
 follows that platform's review. The MCP server and Intent API above already work
 with any of these agents today.
 
+## Markdown skill family (shell-capable agents)
+
+Agents that can run shell commands (Claude Code and similar local runtimes with
+`curl`, `jq`, and Foundry's `cast`) do not need the MCP transport at all: Ophis
+publishes a self-describing **agent-skill family** the agent reads and executes
+directly.
+
+- Index (with a sha256 digest per file, verify after download):
+  [`https://ophis.fi/.well-known/agent-skills/index.json`](https://ophis.fi/.well-known/agent-skills/index.json)
+- Umbrella skill:
+  [`https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md`](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md)
+- Sub-skills: `ophis-quote`, `ophis-swap`, `ophis-order-status`,
+  `ophis-cancel`, `ophis-surplus-report`.
+
+The umbrella's frontmatter carries a **machine-readable policy block**: the
+pinned per-chain settlement and vault-relayer contracts (the only allowed
+`approve` spenders), the EIP-712 signing domains, the orderbook hosts, and
+slippage latches. Policy-enforcing runtimes can apply it mechanically; CI in
+the Ophis repo pins the block against the deployed addresses so the published
+skills cannot drift. The skills cover the Ophis-operated chains (Optimism and
+Unichain); for other chains use the MCP server above, which resolves per-chain
+contracts via `list_chains`.
+
 ## Get a referral code
 
 Every order these adapters (or the SDK below) build already carries the Ophis
