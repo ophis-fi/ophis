@@ -79,7 +79,7 @@
       "http-proxy-middleware@>=3.0.4 <3.0.7": "3.0.7",
       "http-proxy-middleware@>=2.0.0 <2.0.10": "2.0.10",
       "piscina": "4.9.3",
-      "postcss": "^8.5.10",
+      "postcss": "^8.5.18",
       "yaml": "^1.10.3",
       "qs": "^6.14.1",
       "mdast-util-to-hast": "^13.2.1",
