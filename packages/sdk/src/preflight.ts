@@ -11,6 +11,12 @@
  *   exactly like a passed one.
  * - a per-token read failure (weird token, missing method) zeroes that value
  *   and pins its sufficiency to false, so a failed read can never report ready.
+ * - when the client exposes getChainId (viem PublicClient does), the connected
+ *   chain is verified against the chainId argument and a mismatch THROWS.
+ *   Shared deterministic addresses (the canonical vault relayer on 11 chains,
+ *   OP-stack WETH at 0x4200...0006) make a wrong-chain read look completely
+ *   plausible, so it must never be answered. Clients without getChainId
+ *   proceed unchecked; the chainId argument is then trusted.
  *
  * Zero runtime dependencies: OphisMulticallClient is structural, so any viem
  * PublicClient satisfies it as-is, but nothing here imports viem at runtime
@@ -68,6 +74,13 @@ export interface OphisMulticallClient {
     allowFailure?: boolean;
     multicallAddress?: Address;
   }): Promise<unknown>;
+  /**
+   * Optional connected-chain probe. When present (viem PublicClient has it),
+   * ophisPreflight verifies the connected chain matches its chainId argument
+   * and throws OphisPreflightError on mismatch. When absent, the preflight
+   * proceeds and trusts the chainId argument.
+   */
+  getChainId?(): Promise<number>;
 }
 
 /** One balance+allowance check request. */
@@ -128,7 +141,10 @@ const parseEntries = (raw: unknown, expected: number): MulticallEntry[] => {
         'The client did not honor the batched-read contract; refusing to guess.',
     );
   }
-  return raw.map((entry, index) => {
+  // Array.from materializes holes as undefined, so a sparse array from a
+  // misbehaving client hits the typed diagnostic below instead of a generic
+  // property-access error.
+  return Array.from(raw as ArrayLike<unknown>, (entry, index) => {
     const status = (entry as { status?: unknown } | null)?.status;
     if (status !== 'success' && status !== 'failure') {
       throw new OphisPreflightError(
@@ -166,9 +182,12 @@ const readAmount = (entry: MulticallEntry, what: string): { value: bigint; faile
  *   }
  *
  * Throws OphisPreflightError when the multicall itself fails or returns an
- * untrustworthy shape; throws TypeError on malformed inputs (including an
- * empty checks array: asking for a preflight of nothing is a caller bug, and
- * answering it would read as "ready").
+ * untrustworthy shape, and when a client exposing getChainId turns out to be
+ * connected to a different chain than `chainId` (a wrong-chain read decodes
+ * cleanly and looks plausible, so it must never be answered); throws
+ * TypeError on malformed inputs (including an empty checks array: asking for
+ * a preflight of nothing is a caller bug, and answering it would read as
+ * "ready").
  */
 export async function ophisPreflight(
   client: OphisMulticallClient,
@@ -195,6 +214,29 @@ export async function ophisPreflight(
     assertAddressLike(spender, `checks[${index}].spender`);
     return { ...check, spender };
   });
+
+  // Wrong-chain guard: when the client can report its connected chain, a
+  // mismatch with the chainId argument must throw. Shared deterministic
+  // addresses (canonical vault relayer on 11 chains, OP-stack WETH at
+  // 0x4200...0006) make a wrong-chain read decode cleanly and look plausible,
+  // which is exactly a fail-open ready. Clients without getChainId proceed
+  // unchecked and the chainId argument is trusted.
+  if (typeof client.getChainId === 'function') {
+    let connected: unknown;
+    try {
+      connected = await client.getChainId();
+    } catch (cause) {
+      throw new OphisPreflightError('Ophis: preflight could not verify the connected chain (getChainId failed).', {
+        cause,
+      });
+    }
+    if (connected !== chainId) {
+      throw new OphisPreflightError(
+        `Ophis: preflight chain mismatch: the client is connected to chain ${String(connected)} but the preflight was asked about chain ${chainId}. ` +
+          'Reading another chain would return plausible balances for the wrong network; refusing to proceed.',
+      );
+    }
+  }
 
   const contracts: OphisMulticallCall[] = resolved.flatMap((check) => [
     { address: check.token, abi: ERC20_PREFLIGHT_ABI, functionName: 'balanceOf', args: [check.owner] },

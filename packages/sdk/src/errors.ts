@@ -302,12 +302,25 @@ export interface OphisRetryOptions {
   shouldRetry?: (error: unknown, attempt: number) => boolean;
   /** Injectable waiter for tests, default a real setTimeout sleep. */
   sleep?: (ms: number) => Promise<void>;
-  /** Injectable jitter source for tests, default Math.random. */
+  /** Injectable jitter source for tests, default Math.random. Must return non-negative finite numbers; anything else throws. */
   random?: () => number;
 }
 
 /** Server-provided Retry-After values are honored only up to this ceiling. */
 const RETRY_AFTER_CAP_MS = 30_000;
+
+/**
+ * Extra random wait added on top of the Retry-After floor, as a fraction of
+ * it. Without this, every client told "Retry-After: 1" wakes on the same
+ * second and stampedes the recovering upstream in sync.
+ */
+const RETRY_AFTER_JITTER = 0.25;
+
+const assertDelayOption = (value: number, label: string): void => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new TypeError(`Ophis: ${label} must be a non-negative finite number, received ${String(value)}.`);
+  }
+};
 
 const defaultSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -336,8 +349,9 @@ const abortError = (signal?: AbortSignal): Error => {
  * Runs `fn` and retries it on transient errors with full-jitter exponential
  * backoff. The retry policy is isRetryable by default, so 429 and unroutable
  * answers are surfaced immediately, never spun on. When the failed attempt
- * carried a Retry-After (the 503 upstream band sends one), the wait is at
- * least that long, capped at 30s.
+ * carried a Retry-After (the 503 upstream band sends one), the wait floors
+ * at that value (capped at 30s) plus jitter, so synchronized clients do not
+ * all wake on the same retry second.
  *
  *   const quote = await withOphisRetry(() => fetchQuote(params));
  */
@@ -348,8 +362,17 @@ export async function withOphisRetry<T>(fn: (attempt: number) => Promise<T>, opt
   }
   const minDelayMs = options.minDelayMs ?? 250;
   const maxDelayMs = options.maxDelayMs ?? 4000;
+  assertDelayOption(minDelayMs, 'minDelayMs');
+  assertDelayOption(maxDelayMs, 'maxDelayMs');
   const shouldRetry = options.shouldRetry ?? isRetryable;
   const random = options.random ?? Math.random;
+  // A broken jitter source must fail loudly: NaN would silently poison every
+  // computed delay into a zero-wait setTimeout hot loop.
+  const sample = (): number => {
+    const value = random();
+    assertDelayOption(value, 'random() result');
+    return value;
+  };
   const sleep = options.sleep ?? ((ms: number) => defaultSleep(ms, options.signal));
 
   let attempt = 0;
@@ -362,10 +385,14 @@ export async function withOphisRetry<T>(fn: (attempt: number) => Promise<T>, opt
       // Full jitter over an exponential base, floored at half the base so
       // consecutive retries cannot collapse to a zero-delay stampede.
       const base = Math.min(maxDelayMs, minDelayMs * 2 ** attempt);
-      let delayMs = base / 2 + random() * (base / 2);
+      let delayMs = base / 2 + sample() * (base / 2);
       const retryAfterSeconds = error instanceof OphisApiError ? error.retryAfterSeconds : undefined;
       if (retryAfterSeconds !== undefined) {
-        delayMs = Math.max(delayMs, Math.min(retryAfterSeconds * 1000, RETRY_AFTER_CAP_MS));
+        // The floor itself is jittered: many clients receive the same
+        // Retry-After second, and waking them all at exactly that second
+        // re-stampedes the upstream that just asked for room.
+        const floorMs = Math.min(retryAfterSeconds * 1000, RETRY_AFTER_CAP_MS);
+        delayMs = Math.max(delayMs, floorMs + sample() * floorMs * RETRY_AFTER_JITTER);
       }
       await sleep(delayMs);
       attempt += 1;

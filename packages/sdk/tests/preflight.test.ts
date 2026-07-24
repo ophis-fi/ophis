@@ -153,6 +153,14 @@ describe('ophisPreflight', () => {
       );
     });
 
+    it('hits the typed diagnostic on a sparse result array (holes are not entries)', async () => {
+      const sparse = new Array<unknown>(2); // right length, but holes instead of entries
+      const client: OphisMulticallClient = { multicall: async () => sparse };
+      const promise = ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/allowFailure/);
+    });
+
     it('throws when a successful read decodes to a non-bigint (refuses to coerce)', async () => {
       const { client } = stubClient([{ status: 'success', result: '1000' }, ok(1n)]);
       await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
@@ -177,6 +185,50 @@ describe('ophisPreflight', () => {
       expect(result?.sufficientAllowance).toBe(false);
       expect(result?.ready).toBe(false);
       expect(approvalNeeded(result as OphisPreflightResult)).toBe(700n);
+    });
+  });
+
+  describe('connected-chain guard (wrong-chain reads are fail-open and must throw)', () => {
+    it('throws OphisPreflightError when the connected chain does not match chainId, without multicalling', async () => {
+      // The concrete trap: a Base-connected client asked about Ink (57073).
+      // Both chains resolve the canonical vault relayer and OP-stack WETH
+      // shares 0x4200...0006, so the read would decode cleanly and report a
+      // ready the user cannot fund on the chain the order targets.
+      const multicall = vi.fn(async () => [ok(10n ** 30n), ok(10n ** 30n)]);
+      const client: OphisMulticallClient = { multicall, getChainId: async () => 8453 };
+      const promise = ophisPreflight(client, 57073, [{ token: TOKEN_2, owner: OWNER, required: 1n }]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/chain mismatch/);
+      expect(multicall).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when the connected chain matches chainId', async () => {
+      const { client } = stubClient([ok(10n), ok(10n)]);
+      (client as { getChainId?: () => Promise<number> }).getChainId = async () => 10;
+      const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 10n }]);
+      expect(result?.ready).toBe(true);
+    });
+
+    it('throws OphisPreflightError with the cause when getChainId itself fails', async () => {
+      const probeFailure = new Error('RPC unreachable');
+      const client: OphisMulticallClient = {
+        multicall: async () => [ok(1n), ok(1n)],
+        getChainId: async () => {
+          throw probeFailure;
+        },
+      };
+      const promise = ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toMatchObject({ cause: probeFailure });
+    });
+
+    it('proceeds unchecked when the client has no getChainId (chainId argument is trusted)', async () => {
+      // Documented degradation for minimal clients: without a probe there is
+      // nothing to verify against; the multicall path still applies.
+      const { client } = stubClient([ok(10n), ok(10n)]);
+      expect((client as { getChainId?: unknown }).getChainId).toBeUndefined();
+      const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 10n }]);
+      expect(result?.ready).toBe(true);
     });
   });
 

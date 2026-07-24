@@ -344,7 +344,7 @@ describe('withOphisRetry', () => {
     expect(fn2).toHaveBeenCalledTimes(2);
   });
 
-  it('backs off exponentially with jitter and honors Retry-After as a floor', async () => {
+  it('backs off exponentially with jitter and honors Retry-After as a jittered floor', async () => {
     const delays: number[] = [];
     const sleep = async (ms: number) => {
       delays.push(ms);
@@ -355,24 +355,51 @@ describe('withOphisRetry', () => {
       .mockRejectedValueOnce(upstreamError(3)) // Retry-After 3s floors the 500ms base
       .mockResolvedValueOnce('ok');
     await expect(withOphisRetry(fn, { retries: 2, sleep, random: () => 1 })).resolves.toBe('ok');
-    expect(delays).toEqual([250, 3000]);
+    // Second delay: 3000ms floor + full 25% jitter on top of it. The floor is
+    // jittered so synchronized clients told the same Retry-After second do
+    // not all re-stampede the recovering upstream at once.
+    expect(delays).toEqual([250, 3750]);
   });
 
-  it('caps a hostile Retry-After at 30s', async () => {
-    const delays: number[] = [];
-    const fn = vi
-      .fn<(attempt: number) => Promise<string>>()
-      .mockRejectedValueOnce(upstreamError(86_400))
-      .mockResolvedValueOnce('ok');
-    await expect(
-      withOphisRetry(fn, {
+  it('spreads the Retry-After floor across the jitter window instead of waking everyone on the same second', async () => {
+    const delaysAt = async (random: () => number): Promise<number[]> => {
+      const delays: number[] = [];
+      const fn = vi
+        .fn<(attempt: number) => Promise<string>>()
+        .mockRejectedValueOnce(upstreamError(4))
+        .mockResolvedValueOnce('ok');
+      await withOphisRetry(fn, {
         sleep: async (ms) => {
           delays.push(ms);
         },
-        random: () => 0,
-      }),
-    ).resolves.toBe('ok');
-    expect(delays).toEqual([30_000]);
+        random,
+      });
+      return delays;
+    };
+    expect(await delaysAt(() => 0)).toEqual([4000]); // floor untouched at the low end
+    expect(await delaysAt(() => 0.5)).toEqual([4500]); // + half the 25% window
+    expect(await delaysAt(() => 1)).toEqual([5000]); // + the full 25% window
+  });
+
+  it('caps a hostile Retry-After at 30s before jitter', async () => {
+    const delaysAt = async (random: () => number): Promise<number[]> => {
+      const delays: number[] = [];
+      const fn = vi
+        .fn<(attempt: number) => Promise<string>>()
+        .mockRejectedValueOnce(upstreamError(86_400))
+        .mockResolvedValueOnce('ok');
+      await withOphisRetry(fn, {
+        sleep: async (ms) => {
+          delays.push(ms);
+        },
+        random,
+      });
+      return delays;
+    };
+    // The server value is capped at 30s; only the bounded 25% jitter window
+    // sits on top, so a hostile header cannot park the caller for a day.
+    expect(await delaysAt(() => 0)).toEqual([30_000]);
+    expect(await delaysAt(() => 1)).toEqual([37_500]);
   });
 
   it('caps the jittered backoff at maxDelayMs', async () => {
@@ -408,5 +435,25 @@ describe('withOphisRetry', () => {
   it('rejects a negative or fractional retries option loudly', async () => {
     await expect(withOphisRetry(async () => 'x', { retries: -1 })).rejects.toThrow(TypeError);
     await expect(withOphisRetry(async () => 'x', { retries: 1.5 })).rejects.toThrow(TypeError);
+  });
+
+  it('rejects NaN, negative and Infinity delay options loudly (0.3.0 API freeze)', async () => {
+    for (const bad of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+      await expect(withOphisRetry(async () => 'x', { minDelayMs: bad })).rejects.toThrow(TypeError);
+      await expect(withOphisRetry(async () => 'x', { maxDelayMs: bad })).rejects.toThrow(TypeError);
+    }
+  });
+
+  it('rejects a broken random source instead of silently producing NaN delays', async () => {
+    for (const bad of [Number.NaN, -0.5, Number.POSITIVE_INFINITY]) {
+      const fn = vi
+        .fn<(attempt: number) => Promise<string>>()
+        .mockRejectedValueOnce(upstreamError())
+        .mockResolvedValueOnce('never reached');
+      await expect(withOphisRetry(fn, { sleep: async () => {}, random: () => bad })).rejects.toThrow(
+        /random\(\) result/,
+      );
+      expect(fn).toHaveBeenCalledTimes(1); // failed before any sleep or second attempt
+    }
   });
 });
