@@ -9,6 +9,7 @@ named phase tags for major milestones.
 ## [Unreleased]
 
 ### Added
+- `@ophis/agent-skills` npm packaging for the skill family: `packages/agent-skills` commits no skill content; `scripts/package-agent-skills.mjs` stages the served family at build time (byte-for-byte copies, digests verified against the hosted discovery manifest, LICENSE notice + policy block presence enforced, package version pinned to the umbrella skill version) and the tag-driven `.github/workflows/skills-release.yml` (`skills-v*`, provenance-attested, same `NPM_TOKEN` mechanism as `sdk-release.yml`) publishes it. Nothing publishes until that tag is pushed. The agent-skills CI static lane now also runs the staging script as a release build dry run.
 - Ophis agent-skill family at `/.well-known/agent-skills/ophis/`: umbrella `SKILL.md` with a machine-readable per-chain policy block (pinned settlement + vault-relayer addresses, EIP-712 domains, orderbook hosts, slippage latches) plus five sub-skills (`ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report`) for shell-capable agents (curl/jq/cast). Discovery manifest digests regenerated; `swap-via-ophis` kept URL-stable with a cross-link. New CI gates: `scripts/check-agent-skills-invariant.mjs` (security.yml) pins the skill policy against `@ophis/sdk` and the backend cancellation type hashes; `scripts/test-agent-skills.mjs` + `.github/workflows/agent-skills-ci.yml` add static checks and a scheduled live read-only canary.
 
 ### Changed
