@@ -47,6 +47,7 @@ contract DeployVaultPolicyModuleUnichain is Script {
             maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(SEQ_FEED),
+            allowNoSequencerFeed: false,
             sequencerGracePeriod: 1 hours,
             tokens: tokens
         });

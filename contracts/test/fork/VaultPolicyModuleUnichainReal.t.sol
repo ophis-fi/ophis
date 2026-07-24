@@ -115,6 +115,7 @@ contract VaultPolicyModuleUnichainReal is Test {
                 maxTtl: 1800,
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(SEQUENCER_FEED),
+                allowNoSequencerFeed: false,
                 sequencerGracePeriod: SEQ_GRACE,
                 tokens: tokens
             })

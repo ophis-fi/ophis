@@ -85,6 +85,7 @@ contract VaultPolicyEchidna {
                 maxTtl: MAX_TTL,
                 dailyUsdTurnoverCap: CAP,
                 sequencerUptimeFeed: IAggregatorV3(address(sequencerFeed)),
+                allowNoSequencerFeed: false,
                 sequencerGracePeriod: SEQUENCER_GRACE_PERIOD,
                 tokens: tokens
             })

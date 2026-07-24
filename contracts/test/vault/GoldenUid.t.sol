@@ -117,6 +117,7 @@ contract GoldenUidTest is Test {
                 maxTtl: 1800,
                 dailyUsdTurnoverCap: 1_000_000e18,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
+                allowNoSequencerFeed: true,
                 sequencerGracePeriod: 0,
                 tokens: tokens
             })
