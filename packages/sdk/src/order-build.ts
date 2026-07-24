@@ -58,7 +58,10 @@ export function deterministicStringify(value: unknown): string {
 function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
+    // Null-prototype accumulator: assigning to a plain {} silently DROPS an own
+    // "__proto__" key (the Object.prototype setter swallows it), so that key
+    // would vanish from the serialized appData instead of round-tripping.
+    const out: Record<string, unknown> = Object.create(null);
     for (const key of Object.keys(value as Record<string, unknown>).sort()) {
       const v = (value as Record<string, unknown>)[key];
       if (v !== undefined) out[key] = sortKeys(v);
@@ -283,7 +286,10 @@ export const MAX_SLIPPAGE_BIPS = 5000;
 const DEFAULT_SLIPPAGE_BIPS = 100;
 
 export function assertAtoms(amount: string, label: string): void {
-  if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount) || amount === '0') {
+  // Reject EVERY all-zero spelling ("0", "00", "000", ...), not just the literal
+  // "0": a zero buyAmount signs an accept-any-price order (zero min-out), and a
+  // multi-character zero used to slip past the single-literal check.
+  if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount) || /^0+$/.test(amount)) {
     throw new Error(`${label}: must be a positive integer string of atoms (wei-like), got "${amount}"`);
   }
   if (BigInt(amount) > MAX_UINT256) throw new Error(`${label}: exceeds uint256 max, got "${amount}"`);

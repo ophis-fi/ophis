@@ -6,6 +6,7 @@ import {
   buildOrder,
   extractQuoteAmounts,
   assertLimitWithinSlippage,
+  assertAtoms,
   APP_DATA_VERSION,
   ORDER_TYPED_DATA_TYPES,
   MAX_SLIPPAGE_BIPS,
@@ -26,6 +27,13 @@ describe('deterministicStringify', () => {
   it('sorts object keys recursively and drops undefined', () => {
     expect(deterministicStringify({ b: 1, a: { d: 2, c: 3 } })).toBe('{"a":{"c":3,"d":2},"b":1}');
     expect(deterministicStringify({ a: undefined, b: 2 })).toBe('{"b":2}');
+  });
+
+  it('round-trips an own "__proto__" key instead of silently dropping it', () => {
+    // JSON.parse creates "__proto__" as an OWN data property; assigning it onto
+    // a plain {} accumulator would hit the Object.prototype setter and vanish.
+    const doc = JSON.parse('{"b":1,"__proto__":{"x":1}}') as Record<string, unknown>;
+    expect(deterministicStringify(doc)).toBe('{"__proto__":{"x":1},"b":1}');
   });
 });
 
@@ -111,6 +119,18 @@ describe('buildOrder', () => {
     expect(() => buildOrder({ ...base, sellToken: 'not-an-address' as never }, NOW)).toThrow();
     expect(() => buildOrder({ ...base, sellAmount: '0' }, NOW)).toThrow();
     expect(() => buildOrder({ ...base, sellAmount: '1.5' }, NOW)).toThrow();
+  });
+
+  it('rejects EVERY all-zero amount spelling ("00", "000"), not just the literal "0"', () => {
+    // Fuzz-shrunk counterexamples: "00"/"000" passed the old single-literal check,
+    // yielding a signable zero-min-out (accept-any-price) sell order.
+    expect(() => assertAtoms('0', 'buyAmount')).toThrow(/positive integer/);
+    expect(() => assertAtoms('00', 'buyAmount')).toThrow(/positive integer/);
+    expect(() => assertAtoms('000', 'buyAmount')).toThrow(/positive integer/);
+    expect(() => buildOrder({ ...base, buyAmount: '00' }, NOW)).toThrow(/positive integer/);
+    expect(() => buildOrder({ ...base, buyAmount: '000' }, NOW)).toThrow(/positive integer/);
+    // A leading zero on a nonzero amount stays accepted (unchanged semantics).
+    expect(() => assertAtoms('01', 'buyAmount')).not.toThrow();
   });
 
   it('rejects amounts above uint256 max, accepts exactly max', () => {
