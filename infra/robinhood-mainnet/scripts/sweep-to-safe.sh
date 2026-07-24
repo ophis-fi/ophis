@@ -97,6 +97,11 @@ if [[ "$BROADCAST" -eq 1 ]]; then
   command -v cast >/dev/null 2>&1 || { echo "ERROR: cast required for nonce guard" >&2; exit 6; }
   CHAIN_ID=$(cast chain-id --rpc-url "$RPC" 2>/dev/null || true)
   [[ "$CHAIN_ID" == "4663" ]] || { echo "ERROR: OPHIS_RPC chain-id must be 4663 (got ${CHAIN_ID:-unreadable})" >&2; exit 6; }
+  # The nonce guard reads through NONCE_RPC, so it must ALSO be chain 4663: a
+  # stable nonce for this EOA on the WRONG chain would otherwise pass the idle
+  # guard while the live driver is actively submitting on 4663.
+  NONCE_CHAIN_ID=$(cast chain-id --rpc-url "$NONCE_RPC" 2>/dev/null || true)
+  [[ "$NONCE_CHAIN_ID" == "4663" ]] || { echo "ERROR: OPHIS_NONCE_RPC chain-id must be 4663 (got ${NONCE_CHAIN_ID:-unreadable})" >&2; exit 6; }
   NONCE_BEFORE=$(cast nonce "$SUBMITTER_EOA" --rpc-url "$NONCE_RPC" 2>/dev/null)
   [[ -z "$NONCE_BEFORE" ]] && { echo "ERROR: failed to read nonce" >&2; exit 6; }
   echo "    nonce before: $NONCE_BEFORE"

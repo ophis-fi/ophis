@@ -33,7 +33,11 @@ FIRST_RUN_LOOKBACK="${FIRST_RUN_LOOKBACK:-50}"
 STATE_DIR="${STATE_DIR:-$HOME/.local/state/ophis/settlement-watch}"
 CURSOR="$STATE_DIR/uni-cursor"
 LOGFILE="${LOGFILE:-$HOME/Library/Logs/ophis-settlement-anomaly-watch.log}"
-TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-observability-rendered/telegram-token}"
+# Default to the deploy-user-owned secret (secrets/telegram-token, chmod 600),
+# NOT observability-rendered/telegram-token which render-configs.sh chowns to uid
+# 65534 for the alertmanager container: the host watcher runs as the deploy user
+# and could not read that 65534-owned 0600 file, which would fail-fast at startup.
+TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-secrets/telegram-token}"
 case "$TELEGRAM_BOT_TOKEN_FILE" in
   /*) ;;
   *) TELEGRAM_BOT_TOKEN_FILE="$STACK_DIR/$TELEGRAM_BOT_TOKEN_FILE" ;;
@@ -54,7 +58,10 @@ alert() {  # alert <SEVERITY> <message>
   [[ -s "$TELEGRAM_BOT_TOKEN_FILE" ]] || { log "ERROR: telegram token file empty; alert not delivered: $TELEGRAM_BOT_TOKEN_FILE"; return 1; }
   local token
   token="$(< "$TELEGRAM_BOT_TOKEN_FILE")" || { log "ERROR: telegram token file read failed; alert not delivered: $TELEGRAM_BOT_TOKEN_FILE"; return 1; }
-  curl -sm 10 -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+  # -f: fail (nonzero exit) on an HTTP 4xx/5xx too (revoked token 401, rate limit
+  # 429, service 5xx). Without it curl exits 0 on an error response and a
+  # never-delivered CRITICAL would advance the cursor, defeating fail-closed.
+  curl -fsm 10 -X POST "https://api.telegram.org/bot${token}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" \
     --data-urlencode "text=[$1] Ophis Robinhood settlement-watch: $2" >/dev/null 2>&1 \
     || { log "ERROR: telegram send failed"; return 1; }
