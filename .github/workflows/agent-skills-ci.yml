@@ -27,6 +27,7 @@ on:
       - 'packages/sdk/src/domain.ts'
       - 'packages/sdk/src/orderbook.ts'
       - 'packages/sdk/src/partner-fee.ts'
+      - 'packages/sdk/src/order-build.ts'
       - 'apps/mcp-server/src/ophis.ts'
       - 'apps/backend/crates/model/src/order.rs'
       - '.github/workflows/agent-skills-ci.yml'

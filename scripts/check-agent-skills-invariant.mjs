@@ -27,7 +27,9 @@
 //           sign keystore-first via SIGNER_ARGS and never grant unlimited
 //           approvals; no skill exports a raw private key.
 //   Gate E: fee + appData literals (volumeBps, recipient, appData version)
-//           match @ophis/sdk partner-fee.ts and the MCP APP_DATA_VERSION.
+//           match @ophis/sdk partner-fee.ts and the SDK order-build
+//           APP_DATA_VERSION (moved out of the MCP server by WP0/#899; the
+//           MCP path is kept as a parse fallback).
 //   Gate F: the slippage latches in the policy block are present and sane.
 //
 // Pure Node, no deps (mirrors scripts/check-policy-pack-addresses.mjs).
@@ -45,6 +47,12 @@ const UMBRELLA = `${SKILLS_DIR}/SKILL.md`;
 const SDK_DOMAIN = 'packages/sdk/src/domain.ts';
 const SDK_ORDERBOOK = 'packages/sdk/src/orderbook.ts';
 const SDK_PARTNER_FEE = 'packages/sdk/src/partner-fee.ts';
+// APP_DATA_VERSION's home moved in WP0 (#899): the order-build core was
+// extracted from the MCP server into the SDK, with the MCP file re-exporting.
+// The SDK location is authoritative; the MCP path is kept as a fallback so
+// this gate survives one more relocation with an exact error, not a
+// wrong-path parse.
+const SDK_ORDER_BUILD = 'packages/sdk/src/order-build.ts';
 const MCP_OPHIS = 'apps/mcp-server/src/ophis.ts';
 const MODEL_ORDER_RS = 'apps/backend/crates/model/src/order.rs';
 
@@ -116,8 +124,32 @@ if (!sdkFeeRecipient || !sdkVolumeBps || !sdkStableBps) {
   fail(`could not parse fee recipient / bps constants from ${SDK_PARTNER_FEE}`);
 }
 
-const appDataVersion = read(MCP_OPHIS).match(/APP_DATA_VERSION = '([0-9.]+)'/)?.[1];
-if (!appDataVersion) fail(`could not parse APP_DATA_VERSION from ${MCP_OPHIS}`);
+/** Parse a constant from the first location that defines it. Fail-closed with
+ *  a per-path report when no location matches (missing file vs present-but-
+ *  no-match are named separately, so a future move is an exact message). */
+function parseFirst(paths, re, what) {
+  const tried = [];
+  for (const p of paths) {
+    let src;
+    try {
+      src = read(p);
+    } catch {
+      tried.push(`${p} (file missing)`);
+      continue;
+    }
+    const m = src.match(re);
+    if (m) return m[1];
+    tried.push(`${p} (present, pattern not found)`);
+  }
+  fail(`could not parse ${what} from any known location: ${tried.join('; ')}`);
+  return undefined;
+}
+
+const appDataVersion = parseFirst(
+  [SDK_ORDER_BUILD, MCP_OPHIS],
+  /APP_DATA_VERSION = '([0-9.]+)'/,
+  'APP_DATA_VERSION',
+);
 
 const orderRs = read(MODEL_ORDER_RS);
 // The EIP-712 cancellation type strings, keccak-proven against the deployed
@@ -371,7 +403,7 @@ if (sdkStableBps && !umbrella.includes(`volumeBps: ${sdkStableBps}\``)) {
   fail(`umbrella SKILL.md stable-pair rate drifted from SDK OPHIS_STABLE_VOLUME_FEE_BPS ${sdkStableBps}`);
 }
 if (appDataVersion && !umbrella.includes(`version: "${appDataVersion}"`)) {
-  fail(`umbrella SKILL.md appData version drifted from MCP APP_DATA_VERSION ${appDataVersion}`);
+  fail(`umbrella SKILL.md appData version drifted from SDK APP_DATA_VERSION ${appDataVersion}`);
 }
 
 // --- Gate F: slippage latches ------------------------------------------------
