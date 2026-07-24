@@ -8,8 +8,9 @@
 //! Bands:
 //! - 1xxx generic API errors (1000 `API_ERROR` is the catch-all for coded
 //!   but unclassified request errors; 1001 `NOT_FOUND`; 1029 `RATE_LIMITED`,
-//!   emitted by the orderbook-native limiter and never retryable within the
-//!   same call).
+//!   reserved here so the wire shape is fixed before the orderbook-native
+//!   limiter lands in a later PR; nothing emits it yet, and a 429 is never
+//!   retryable within the same call).
 //! - 2xxx routing + quoting. 2000 `NO_ROUTE`, 2001 `UNSUPPORTED_TOKEN` and
 //!   2002 `INSUFFICIENT_LIQUIDITY` form the unroutable class: they are final
 //!   answers ("this trade has no route right now"), not failures, and carry

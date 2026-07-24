@@ -87,6 +87,21 @@ paths:
           description: Too many order placements.
         "500":
           description: Error adding an order.
+        "503":
+          description: >
+            A retryable upstream failure while quoting the order during
+            validation (`UpstreamRateLimited` code 3100, or
+            `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPostError"
       requestBody:
         description: The order to create.
         required: true
@@ -472,6 +487,20 @@ paths:
           description: No liquidity was found.
         "500":
           description: Unexpected error.
+        "503":
+          description: >
+            A retryable upstream failure (`UpstreamRateLimited` code 3100,
+            or `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
   /api/v1/quote:
     post:
       operationId: quote
@@ -1882,6 +1911,8 @@ components:
             - AppdataFromMismatch
             - MetadataSerializationFailed
             - OldOrderActivelyBidOn
+            - UpstreamRateLimited
+            - InternalServiceError
         description:
           type: string
         code:
@@ -1928,7 +1959,11 @@ components:
             - QuoteNotVerified
             - UnsupportedToken
             - NoLiquidity
+            - InsufficientLiquidity
             - UnsupportedOrderType
+            - TradingOutsideAllowedWindow
+            - TokenTemporarilySuspended
+            - CustomSolverError
             - UpstreamRateLimited
             - InternalServiceError
         description:
