@@ -347,8 +347,16 @@ jobs:
           # -> @solana/spl-token -> buffer-layout-utils. The Solana spl-token path
           # is unreachable for Ophis, dev/test-only, not in any published tarball,
           # and NO patched release exists. (audit 2026-07)
+          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg (HIGH DoS): unbounded
+          # expansion OOM. In this tree brace-expansion@5.0.7 is reached ONLY via
+          # minimatch (glob@13, eslint). brace-expansion expands the
+          # developer-authored glob PATTERN, never request/user data, so attacker
+          # input cannot reach the expansion. The only fix is 5.0.8, published
+          # 2026-07-23, still inside the 7-day release-age window the repo applies
+          # to security re-locks. REMOVE this ignore after 2026-07-30 and re-lock
+          # with the brace-expansion overrides bumped to >=5.0.8. (2026-07-25)
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
+            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg --ignore GHSA-mh99-v99m-4gvg
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
@@ -380,8 +388,19 @@ jobs:
           # static client-side SPA (Cloudflare Pages, no server / no RSC) so the
           # bypass is unreachable. Only fix is a breaking major (introduced 7.12.0,
           # fixed 8.3.0); the app pins react-router ^7.15.1. (2026-07-24)
+          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg (HIGH DoS): unbounded
+          # expansion OOM. brace-expansion@5.0.7 is reached ONLY via minimatch@10,
+          # whose consumers are all build/lint/test tooling (eslint + plugins,
+          # glob, nx, jake/filelist, fork-ts-checker, test-exclude); nothing ships
+          # in the browser bundle and the expanded string is always a
+          # developer-authored pattern, never user input. The only fix is 5.0.8,
+          # published 2026-07-23, younger than the committed 7-day
+          # minimumReleaseAge soak. REMOVE this ignore after 2026-07-30 and
+          # re-lock with the brace-expansion override bumped to >=5.0.8.
+          # (2026-07-25)
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2 \
+            --ignore GHSA-mh99-v99m-4gvg
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -407,8 +426,18 @@ jobs:
           if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
+          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg (HIGH DoS): unbounded
+          # expansion OOM. Present as 1.1.16 ONLY via serve-handler -> minimatch@3
+          # (local `serve` preview; the published site is static files, no Node
+          # runtime). minimatch expands the config-authored PATTERN, not the
+          # request path, so attacker input cannot reach the expansion. NO patched
+          # 1.x exists; the only fix is 5.0.8, published 2026-07-23, younger than
+          # the 7-day release-age window the repo applies to security re-locks.
+          # REMOVE this ignore after 2026-07-30 and re-lock with a >=5.0.8
+          # override (root already runs minimatch@3 on brace-expansion 5.x, so
+          # the cross-major pin is proven there). (2026-07-25)
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc"
+            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg
 
   cargo-audit:
     name: cargo audit (Rust deps)
