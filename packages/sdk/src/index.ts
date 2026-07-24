@@ -81,6 +81,7 @@ export {
   type OphisOrderMetadataOptions,
   type OphisAppDataInput,
   type EnrollOphisTraderOptions,
+  type EnrollOphisTraderResult,
   type OphisOrderCreationOptions,
 } from './flow.js';
 
