@@ -28,6 +28,7 @@ Related ops runbooks: `docs/operations/allowlist-governance-runbook.md`,
 - [ ] The **2-of-3 Ophis protocol Safe** created on 4663 via protocol-kit (the hosted Safe UI does not index 4663). Record its address and the 3 owner addresses, then set `OPHIS_PROTOCOL_SAFE_ROBINHOOD_MAINNET` and `OPHIS_SAFE_EXPECTED_OWNERS` in `.env` BEFORE the ceremony (Phase 1 reads them to validate the Safe).
 - [ ] A **new per-chain Tier-1-isolated submitter EOA** generated, funded ~0.02 ETH on 4663, key stored file-backed. Install the key with the history-safe form, never `echo '0x...' | ...`:
       `read -rs PK; printf '%s' "$PK" | sudo install -m 600 -o ophis-driver -g ophis-driver /dev/stdin /home/ophis-driver/.config/submitter.key; unset PK`
+- [ ] Set `ROBINHOOD_SUBMITTER_ADDR` (the submitter EOA's public 0x address) in `.env` BEFORE the ceremony. Phase 1 reads it and exits if it is empty or not a 20-byte address.
 - [ ] The Nitro node host (WSL2 or native Linux VM) provisioned, with the Docker data disk mounted (Phase 3).
 - [ ] `.env` prepared (Phase 4 lists every variable).
 - [ ] Trail of Bits tooling + codex ready for the bytecode gate in Phase 1 (the script hard-stops there).
@@ -69,6 +70,8 @@ The Safe env (`OPHIS_PROTOCOL_SAFE_ROBINHOOD_MAINNET`, `OPHIS_SAFE_EXPECTED_OWNE
 Do NOT change the verified constants: WETH9 `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`,
 USDG `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168`, LiFi 4663 router `0xB477751B76CF82d00a686A1232f5fCD772414Af3`.
 
+ALSO edit `scripts/verify-e2e-swap.sh` directly: it hardcodes its own `SETTLEMENT_ADDR="__FILL_AFTER_DEPLOY_SETTLEMENT__"` and `DRIVER_EOA="__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"`. `render-configs.sh` does NOT render scripts, so Phase 5's `verify-e2e-swap.sh` will query an invalid placeholder address until you replace those two in the script.
+
 ---
 
 ## Phase 3: Nitro node bring-up  ->  `nitro/BRINGUP.md`  (on the node VM)
@@ -83,7 +86,7 @@ WSL2/Linux distro, Docker Engine inside the distro, the restore/verify tools, th
 
 **First start.** Bring the node up so it serves RPC on `:8547`, bound to host loopback only (never expose `:8547` publicly; the shared-network alias is `ophis-rbh-node:8547`).
 
-**Trust gate (AUDIT-CHANGED: now a hard gate).** WITH THE NODE RUNNING, run `verify-snapshot.sh` (it queries the live node). It exits non-zero if the L1 `AssertionConfirmed` anchor check fails or cannot run (node/RPC unreachable, non-array response, no matching anchor). Do NOT wire the node into eRPC until it passes. It anchors the header chain to L1 only; the flat state behind those headers still rests on whether the snapshot publisher is trustworthy (see the trust section in `BRINGUP.md`).
+**Trust gate (AUDIT-CHANGED: now a hard gate).** WITH THE NODE RUNNING, run it as `L1_RPC=<ethereum-mainnet-rpc-that-serves-eth_getLogs> ./verify-snapshot.sh`. `L1_RPC` is REQUIRED (the script hard-exits without it) and is a SEPARATE variable from the node's `L1_EXECUTION_RPC`, which is not exported here. It exits non-zero if the L1 `AssertionConfirmed` anchor check fails or cannot run (node/RPC unreachable, non-array response, no matching anchor). Do NOT wire the node into eRPC until it passes. It anchors the header chain to L1 only; the flat state behind those headers still rests on whether the snapshot publisher is trustworthy (see the trust section in `BRINGUP.md`).
 
 Then expose to eRPC and make it survive reboots.
 
@@ -93,7 +96,7 @@ Then expose to eRPC and make it survive reboots.
 
 Fill `.env` (see `.env.example`). Audit-relevant variables:
 
-- `POSTGRES_PASSWORD`: `compose-up.sh` materializes the gitignored `secrets/postgres-password` from it. AUDIT-CHANGED: the DB container reads its password from that secret file (`POSTGRES_PASSWORD_FILE`), and Flyway reads `FLYWAY_PASSWORD`, so the password is no longer visible in `docker inspect`.
+- `POSTGRES_PASSWORD`: `compose-up.sh` materializes the gitignored `secrets/postgres-password` from it. AUDIT-CHANGED: the `db` container reads its password from that secret file (`POSTGRES_PASSWORD_FILE`) instead of a `POSTGRES_PASSWORD` env var, so `docker inspect` on the `db` container no longer shows it. RESIDUAL: the password is still passed as an env var into the flyway (`FLYWAY_PASSWORD`), orderbook, and autopilot containers (the latter two via `DB_WRITE_URL`/`DB_READ_URL`), so `docker inspect` on THOSE still exposes it. Treat the DB password as inspect-visible on the host until those consumers also move to secret-file inputs.
 - `TELEGRAM_BOT_TOKEN`: also place the raw token in `secrets/telegram-token` (chmod 600, owned by the deploy user). AUDIT-CHANGED: `render-configs.sh` writes the uid-65534 container copy for alertmanager, and the host `settlement-anomaly-watch.sh` reads `secrets/telegram-token` (it can no longer read the container copy). On macOS setup, `setup-telegram-keychain.sh` now feeds the token to `security` on stdin, not on argv.
 - `ALCHEMY_API_KEY` and `CHAINSTACK_API_KEY` (the BARE keys, the templates prepend the URL), `COINGECKO_API_KEY`, and `OPHIS_INTER_SERVICE_AUTH_TOKEN`.
 - LEAVE `OPHIS_DRIVER_SUBMITTER_KEY` EMPTY. The submitter PK is file-based and installed in pre-flight, read by `render-configs.sh` via sudo; a non-empty value here is rejected. `render-configs.sh` resolves the path per platform (Linux `/home/ophis-driver/.config/submitter.key`, macOS `/Users/ophis-driver/.config/submitter.key`); override with `OPHIS_SUBMITTER_KEY_PATH`. The Linux/WSL path applies to this deploy.
