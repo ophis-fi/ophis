@@ -1,0 +1,74 @@
+name: Agent skills CI
+
+# Guards the published agent-skill family at
+# apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/.
+#
+# Two lanes:
+#   static      PR/push: frontmatter shape, index.json digest + completeness,
+#               and the cross-source invariant gate (skill policy addresses /
+#               hosts / fee literals / cancellation type hashes pinned against
+#               @ophis/sdk and the backend model crate). Pure Node, no deps,
+#               no secrets. This is the merge gate.
+#   live-canary daily cron + manual dispatch: executes the read-only
+#               `ci:live-readonly` snippets from the published skills against
+#               the production orderbook (curl/jq only, no key, no secrets).
+#               A red run means the published snippets no longer work against
+#               production; it blocks no merges. Alert routing beyond the
+#               Actions UI (Telegram, per repo convention) is a pending owner
+#               decision and intentionally not wired here yet.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/**'
+      - 'apps/frontend/apps/ophis-landing/scripts/check-skill-digest.mjs'
+      - 'scripts/check-agent-skills-invariant.mjs'
+      - 'scripts/test-agent-skills.mjs'
+      - 'packages/sdk/src/domain.ts'
+      - 'packages/sdk/src/orderbook.ts'
+      - 'packages/sdk/src/partner-fee.ts'
+      - 'apps/mcp-server/src/ophis.ts'
+      - 'apps/backend/crates/model/src/order.rs'
+      - '.github/workflows/agent-skills-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/**'
+      - 'scripts/check-agent-skills-invariant.mjs'
+      - 'scripts/test-agent-skills.mjs'
+      - '.github/workflows/agent-skills-ci.yml'
+  schedule:
+    # Daily canary. Runs on main; a failure is a signal in the Actions UI,
+    # not a merge blocker for unrelated work.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: static checks (frontmatter, digests, invariants)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Run the agent-skills test suite (static)
+        run: node scripts/test-agent-skills.mjs
+
+  live-canary:
+    name: live read-only snippet canary
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Execute ci:live-readonly blocks against production
+        env:
+          SKILLS_LIVE: '1'
+        run: node scripts/test-agent-skills.mjs

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { readFileSync, existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -64,4 +65,39 @@ test('llms.txt references the OpenAPI + discovery manifests', () => {
   const llms = readFileSync(dist('llms.txt'), 'utf8')
   expect(llms).toContain('https://ophis.fi/openapi.json')
   expect(llms).toContain('/.well-known/mcp.json')
+  expect(llms).toContain('/.well-known/agent-skills/index.json')
+})
+
+test('agent-skills index advertises the whole family and every digest matches the shipped bytes', () => {
+  const manifest = json('.well-known/agent-skills/index.json')
+  const names = manifest.skills.map((s: { name: string }) => s.name)
+  expect(names).toEqual(
+    expect.arrayContaining([
+      'swap-via-ophis',
+      'ophis',
+      'ophis-quote',
+      'ophis-swap',
+      'ophis-order-status',
+      'ophis-cancel',
+      'ophis-surplus-report',
+    ]),
+  )
+  for (const skill of manifest.skills) {
+    const pathname = decodeURIComponent(new URL(skill.url).pathname)
+    const bytes = readFileSync(dist('.' + pathname))
+    const digest = 'sha256:' + createHash('sha256').update(bytes).digest('hex')
+    expect(skill.digest, `digest for ${skill.name}`).toBe(digest)
+  }
+})
+
+test('the umbrella skill policy pins the sovereign settlement + relayer, never the canonical CoW addresses', () => {
+  const umbrella = readFileSync(dist('.well-known/agent-skills/ophis/SKILL.md'), 'utf8')
+  // Optimism (10) + Unichain (130) Ophis deployments, from contracts/networks.json.
+  expect(umbrella).toContain('0x310784c7FCE12d578dA6f53460777bAc9718B859') // settlement 10
+  expect(umbrella).toContain('0x83847EaB41ad9ea43809ce71569eB2e9daF51830') // relayer 10
+  expect(umbrella).toContain('0x108A678716e5E1776036eF044CAB7064226F714E') // settlement 130
+  expect(umbrella).toContain('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb') // relayer 130
+  // The canonical CoW addresses are the wrong contracts on these chains.
+  expect(umbrella).not.toContain('0x9008D19f58AAbD9eD0D60971565AA8510560ab41')
+  expect(umbrella).not.toContain('0xC92E8bdf79f0507f65a392b0ab4667716BFE0110')
 })

@@ -8,6 +8,9 @@ named phase tags for major milestones.
 
 ## [Unreleased]
 
+### Added
+- Ophis agent-skill family at `/.well-known/agent-skills/ophis/`: umbrella `SKILL.md` with a machine-readable per-chain policy block (pinned settlement + vault-relayer addresses, EIP-712 domains, orderbook hosts, slippage latches) plus five sub-skills (`ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report`) for shell-capable agents (curl/jq/cast). Discovery manifest digests regenerated; `swap-via-ophis` kept URL-stable with a cross-link. New CI gates: `scripts/check-agent-skills-invariant.mjs` (security.yml) pins the skill policy against `@ophis/sdk` and the backend cancellation type hashes; `scripts/test-agent-skills.mjs` + `.github/workflows/agent-skills-ci.yml` add static checks and a scheduled live read-only canary.
+
 ### Changed
 - Rebate pool resized from 50% to 21.25% of net WETH fees (`POOL_SPLIT_BPS` 5000 → 2125) so the protocol retains ~55% of gross blended after CoW's hosted-chain cut. Tier weights and the pari-mutuel distribution are unchanged; only the pool size shrinks.
 

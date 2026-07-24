@@ -9,20 +9,42 @@
  *
  * Wired into the landing `prebuild` script, so both `dev` and `build` run it.
  */
-import { readFileSync } from 'fs'
-import { resolve, dirname } from 'path'
+import { readFileSync, readdirSync } from 'fs'
+import { resolve, relative, dirname } from 'path'
 import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 const publicDir = resolve(root, 'public')
-const indexPath = resolve(publicDir, '.well-known/agent-skills/index.json')
+const skillsDir = resolve(publicDir, '.well-known/agent-skills')
+const indexPath = resolve(skillsDir, 'index.json')
 
 const manifest = JSON.parse(readFileSync(indexPath, 'utf8'))
 const skills = Array.isArray(manifest.skills) ? manifest.skills : []
 
 const failures = []
+
+// Completeness: every skill markdown that ships under agent-skills/ must be
+// advertised (with a digest) in index.json, or agents can never discover or
+// verify it. README.md is collateral, not a skill, and is exempt.
+const advertisedPaths = new Set(
+  skills
+    .filter((s) => typeof s.url === 'string')
+    .map((s) => decodeURIComponent(new URL(s.url).pathname)),
+)
+const walk = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = resolve(dir, e.name)
+    return e.isDirectory() ? walk(p) : [p]
+  })
+for (const file of walk(skillsDir)) {
+  if (!file.endsWith('.md') || file.endsWith('/README.md')) continue
+  const pathname = '/.well-known/agent-skills/' + relative(skillsDir, file)
+  if (!advertisedPaths.has(pathname)) {
+    failures.push(`${relative(publicDir, file)}: shipped but not listed in index.json (undiscoverable, unverifiable)`)
+  }
+}
 for (const skill of skills) {
   if (skill.type !== 'skill-md' || typeof skill.url !== 'string') continue
   // Map the advertised URL back to the local asset under public/.
