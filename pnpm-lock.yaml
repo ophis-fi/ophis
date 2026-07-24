@@ -362,6 +362,9 @@ importers:
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
+      viem:
+        specifier: 2.48.8
+        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.3)
       vite:
         specifier: ^7.0.0
         version: 7.3.5(@types/node@22.19.17)(tsx@4.21.0)(yaml@2.9.0)

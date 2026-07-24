@@ -85,3 +85,22 @@ export {
   type OphisEthFlowParams,
   type OphisEthFlowOrder,
 } from './ethflow.js';
+
+export {
+  APP_DATA_VERSION,
+  ORDER_TYPED_DATA_TYPES,
+  MAX_SLIPPAGE_BIPS,
+  deterministicStringify,
+  buildOphisFullAppData,
+  buildOrder,
+  assertChain,
+  checksum,
+  assertAtoms,
+  assertFeeAtoms,
+  extractQuoteAmounts,
+  assertLimitWithinSlippage,
+  type Address,
+  type OphisAppData,
+  type BuildOrderParams,
+  type BuiltOrder,
+} from './order-build.js';
