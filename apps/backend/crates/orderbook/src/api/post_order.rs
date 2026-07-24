@@ -390,8 +390,11 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         let body = response_body(response).await;
         let body: serde_json::Value = serde_json::from_slice(body.as_slice()).unwrap();
-        let expected_error =
-            json!({"errorType": "DuplicatedOrder", "description": "order already exists"});
+        let expected_error = json!({
+            "errorType": "DuplicatedOrder",
+            "description": "order already exists",
+            "code": 4200,
+        });
         assert_eq!(body, expected_error);
     }
 }

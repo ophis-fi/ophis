@@ -502,13 +502,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceEstimationError"
         "404":
-          description: No route was found for the specified order.
+          description: >
+            No route was found for the specified order (`NoLiquidity`, code
+            2000). This is a final answer in the unroutable class
+            (`data.class = "unroutable"`), not a transient failure; do not
+            retry it as one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
         "422":
           description: Unable to parse request body as valid JSON.
         "429":
           description: Too many order quotes.
         "500":
           description: Unexpected error quoting an order.
+        "503":
+          description: >
+            A retryable upstream failure (`UpstreamRateLimited` code 3100,
+            or `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
   "/api/v1/solver_competition/{auction_id}":
     get:
       operationId: getSolverCompetitionByAuctionId
@@ -1801,6 +1823,29 @@ components:
       description: Empty signature bytes. Used for "presign" signatures.
       type: string
       example: 0x
+    ApiErrorCode:
+      description: >
+        Numeric Ophis error code (api-dx v1 table, frozen). Bands: 1xxx
+        generic API errors (1000 API_ERROR, 1001 NOT_FOUND, 1029
+        RATE_LIMITED); 2xxx routing and quoting, where 2000 NO_ROUTE, 2001
+        UNSUPPORTED_TOKEN and 2002 INSUFFICIENT_LIQUIDITY form the
+        unroutable class (final answers carrying `data.class =
+        "unroutable"`, not failures); 3xxx retryable upstream failures
+        (HTTP 503 with a Retry-After header); 4xxx order errors (4001-4018
+        validation, 4100-4106 balance and limits, 4200-4204 lifecycle, 4400
+        ACCOUNT_DENY_LISTED); 5xxx internal errors. Codes are additive
+        within bands and never change meaning. Only the self-hosted Ophis
+        orderbook serves this field; clients fall back to `errorType` when
+        it is absent.
+      type: integer
+      example: 2000
+    TraceId:
+      description: >
+        UUID identifying the request, mirroring the `X-Trace-Id` response
+        header. Every response carries the header; error bodies repeat the
+        id in this field. Quote it when reporting API problems.
+      type: string
+      example: "01890a5d-ac96-774b-b104-3a2c463f04b6"
     OrderPostError:
       type: object
       properties:
@@ -1839,6 +1884,13 @@ components:
             - OldOrderActivelyBidOn
         description:
           type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
       required:
         - errorType
         - description
@@ -1857,6 +1909,13 @@ components:
             - OnChainOrder
         description:
           type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
       required:
         - errorType
         - description
@@ -1870,8 +1929,19 @@ components:
             - UnsupportedToken
             - NoLiquidity
             - UnsupportedOrderType
+            - UpstreamRateLimited
+            - InternalServiceError
         description:
           type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: >
+            Additional arbitrary data attached to the error. Responses in
+            the unroutable class carry `{"class": "unroutable"}` here.
+          type: object
       required:
         - errorType
         - description
