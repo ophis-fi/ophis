@@ -59,6 +59,7 @@ contract DeployVaultPolicyModuleEthereum is Script {
             maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(address(0)), // L1: no sequencer gate
+            allowNoSequencerFeed: true,
             sequencerGracePeriod: 0,
             tokens: tokens
         });

@@ -95,6 +95,7 @@ contract OphisVaultPolicyModuleTest is Test {
             maxTtl: 1800,
             dailyUsdTurnoverCap: BIG_CAP,
             sequencerUptimeFeed: IAggregatorV3(address(0)),
+            allowNoSequencerFeed: true,
             sequencerGracePeriod: 0,
             tokens: tokenFeeds()
         });
@@ -394,6 +395,7 @@ contract OphisVaultPolicyModuleTest is Test {
     ) internal returns (OphisVaultPolicyModule seq) {
         OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
         cfg.sequencerUptimeFeed = IAggregatorV3(address(uptime));
+        cfg.allowNoSequencerFeed = false;
         cfg.sequencerGracePeriod = 900;
         seq = new OphisVaultPolicyModule(cfg);
         safe.setEnabledModule(address(seq));
@@ -718,7 +720,7 @@ contract OphisVaultPolicyModuleTest is Test {
         new OphisVaultPolicyModule(cfg);
 
         cfg = baseConfig();
-        cfg.maxSlippageBps = 5001; // over cap
+        cfg.maxSlippageBps = 1001; // over cap
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
         new OphisVaultPolicyModule(cfg);
 
@@ -749,6 +751,7 @@ contract OphisVaultPolicyModuleTest is Test {
 
         cfg = baseConfig();
         cfg.sequencerUptimeFeed = IAggregatorV3(address(usdcFeed));
+        cfg.allowNoSequencerFeed = false;
         cfg.sequencerGracePeriod = 0; // feed without grace: incoherent
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
         new OphisVaultPolicyModule(cfg);
@@ -774,6 +777,19 @@ contract OphisVaultPolicyModuleTest is Test {
         cfg.tokens = dup; // duplicate token
         vm.expectRevert(OphisVaultPolicyModule.BadConfig.selector);
         new OphisVaultPolicyModule(cfg);
+    }
+
+    function test_constructor_requires_explicit_no_sequencer_feed_opt_out() public {
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        cfg.allowNoSequencerFeed = false;
+        vm.expectRevert(OphisVaultPolicyModule.SequencerFeedRequired.selector);
+        new OphisVaultPolicyModule(cfg);
+    }
+
+    function test_constructor_allows_explicit_no_sequencer_feed_opt_out() public {
+        OphisVaultPolicyModule.ModuleConfig memory cfg = baseConfig();
+        OphisVaultPolicyModule deployed = new OphisVaultPolicyModule(cfg);
+        assertEq(address(deployed.sequencerUptimeFeed()), address(0));
     }
 
     function test_constructor_rejects_curator_that_is_a_safe_owner() public {
