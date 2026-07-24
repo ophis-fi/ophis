@@ -352,8 +352,13 @@ jobs:
           # IGNORE ip GHSA-2p57-rm9w-gvfp (HIGH SSRF): transitive
           # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
           # already pinned to latest 2.0.1. (audit 2026-06)
+          # IGNORE react-router GHSA-qwww-vcr4-c8h2 (HIGH CSRF): affects React
+          # Router RSC (React Server Components) mode ONLY; cowswap-frontend is a
+          # static client-side SPA (Cloudflare Pages, no server / no RSC) so the
+          # bypass is unreachable. Only fix is a breaking major (introduced 7.12.0,
+          # fixed 8.3.0); the app pins react-router ^7.15.1. (2026-07-24)
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
