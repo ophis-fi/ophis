@@ -7,8 +7,10 @@ name: Agent skills CI
 #   static      PR/push: frontmatter shape, index.json digest + completeness,
 #               and the cross-source invariant gate (skill policy addresses /
 #               hosts / fee literals / cancellation type hashes pinned against
-#               @ophis/sdk and the backend model crate). Pure Node, no deps,
-#               no secrets. This is the merge gate.
+#               @ophis/sdk and the backend model crate), plus a staging run of
+#               the @ophis/agent-skills npm packaging script (proves the
+#               skills-release.yml build step will not break on release day).
+#               Pure Node, no deps, no secrets. This is the merge gate.
 #   live-canary daily cron + manual dispatch: executes the read-only
 #               `ci:live-readonly` snippets from the published skills against
 #               the production orderbook (curl/jq only, no key, no secrets).
@@ -24,6 +26,8 @@ on:
       - 'apps/frontend/apps/ophis-landing/scripts/check-skill-digest.mjs'
       - 'scripts/check-agent-skills-invariant.mjs'
       - 'scripts/test-agent-skills.mjs'
+      - 'scripts/package-agent-skills.mjs'
+      - 'packages/agent-skills/**'
       - 'packages/sdk/src/domain.ts'
       - 'packages/sdk/src/orderbook.ts'
       - 'packages/sdk/src/partner-fee.ts'
@@ -37,6 +41,8 @@ on:
       - 'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/**'
       - 'scripts/check-agent-skills-invariant.mjs'
       - 'scripts/test-agent-skills.mjs'
+      - 'scripts/package-agent-skills.mjs'
+      - 'packages/agent-skills/**'
       - '.github/workflows/agent-skills-ci.yml'
   schedule:
     # Daily canary. Runs on main; a failure is a signal in the Actions UI,
@@ -59,6 +65,13 @@ jobs:
           node-version: 22
       - name: Run the agent-skills test suite (static)
         run: node scripts/test-agent-skills.mjs
+      # Same staging the skills-release.yml build step runs: digest-verified
+      # copies of the family into packages/agent-skills. Catches packaging
+      # drift (renamed file, stale manifest, version mismatch with the
+      # umbrella skill) at merge time instead of release time. Publishes
+      # nothing.
+      - name: Stage the @ophis/agent-skills npm package (release build dry run)
+        run: node scripts/package-agent-skills.mjs
 
   live-canary:
     name: live read-only snippet canary
