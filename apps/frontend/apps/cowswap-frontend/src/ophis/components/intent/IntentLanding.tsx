@@ -25,7 +25,8 @@ import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
 import { IntentInput } from './IntentInput'
 import { readIntentParam } from './intentParam'
-import { intentToUrl } from './intentToUrl'
+import { writeIntentStash } from './intentStash'
+import { extractIntentFields, intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
 import { useWarmTargetChainLists } from './useWarmTargetChainLists'
@@ -440,8 +441,32 @@ export function IntentLanding(): ReactNode {
 
   const handleSubmit = useCallback(() => {
     if (!ready || !parseState.parsed) return
-    navigate(intentToUrl(parseState.parsed, symbolToAddressResolver(symbolMap)))
-  }, [navigate, parseState.parsed, ready, symbolMap])
+    const resolveToken = symbolToAddressResolver(symbolMap)
+    // Persist the trade so it survives the wallet-connect handoff: on connect,
+    // cowswap re-derives trade state from the provider and can wipe the URL tokens
+    // (useSetupTradeState -> getDefaultTradeRawState). IntentRestoreUpdater reads
+    // this back and re-navigates to the intended trade.
+    //
+    // An EXPLICIT-chain intent stashes the chain-specific ADDRESS (fills the form
+    // reliably). A NO-chain intent stashes the chain-agnostic SYMBOL and only the
+    // parsed chain (undefined), so restore re-resolves it on the wallet's own chain:
+    // an address resolved for this page's default chain would be wrong on an L2 the
+    // user later connects.
+    const resolved = extractIntentFields(parseState.parsed, resolveToken)
+    const raw = extractIntentFields(parseState.parsed)
+    const hasChain = resolved.chainId !== undefined
+    writeIntentStash({
+      chainId: resolved.chainId,
+      sellToken: hasChain ? resolved.sellToken : raw.sellToken,
+      buyToken: hasChain ? resolved.buyToken : raw.buyToken,
+      amount: resolved.amount,
+      field: resolved.field,
+    })
+    // Pass targetChainId as the URL's fallback chain so a chainless intent still
+    // emits a chain segment (a chainless URL carrying ?sellAmount is mis-handled by
+    // SwapPageRedirect, which would apply the amount to the default pair).
+    navigate(intentToUrl(parseState.parsed, resolveToken, targetChainId))
+  }, [navigate, parseState.parsed, ready, symbolMap, targetChainId])
 
   const helper = useMemo(
     () => helperText(text, parseState.status, parseState.parsed, parseState.errorCode, parseState.errorMessage),
