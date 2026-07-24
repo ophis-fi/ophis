@@ -306,14 +306,18 @@ services:
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      # No --path.rootfs / host-root mount: mounting / into this container let
-      # node-exporter (uid 65534) read the 0600 rendered telegram token (owned
-      # by 65534) and the world-readable RPC-key configs. Only /proc and /sys
-      # are exposed now; host filesystem-usage metrics are dropped deliberately.
-      # To restore them, mount a specific non-secret path read-only, never "/".
+      - "--path.rootfs=/host"
     volumes:
       - "/proc:/host/proc:ro"
       - "/sys:/host/sys:ro"
+      # Narrowly scoped: ONLY the Docker data disk is exposed, read-only, so the
+      # node_filesystem_*{fstype="ext4"} rules in observability/alerts.yml keep
+      # paging before it fills (ENOSPC on this disk takes the node down). Mounting
+      # "/" here let node-exporter read the 0600 rendered telegram token and the
+      # RPC-key configs in the compose dir, so it is NOT mounted; the container
+      # overlay root is non-ext4 and is filtered out by the alert rules. Adjust
+      # this path if the Docker data disk is mounted elsewhere on the host.
+      - "/var/lib/docker:/host/var/lib/docker:ro"
 
 volumes:
   postgres:
