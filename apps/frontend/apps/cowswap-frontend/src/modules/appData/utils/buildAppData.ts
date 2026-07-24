@@ -7,6 +7,7 @@ import { toKeccak256 } from 'common/utils/toKeccak256'
 import type { OphisBasketTag } from 'ophis/basketMetadata'
 
 import { filterHooks, HooksFilter } from './appDataFilter'
+import { ophisReferrerForRefCode } from './ophisReferrer'
 import { removePermitHookFromHooks, typedAppDataHooksToAppDataHooks } from './typedHooks'
 
 import { UserConsentsMetadata } from '../hooks/useRwaConsentForAppData'
@@ -67,6 +68,10 @@ export async function buildAppData({
   ophisBasket,
 }: BuildAppDataParams): Promise<AppDataInfo> {
   const referrerParams: AppDataRootSchema['metadata']['referrer'] = refCode ? { code: refCode } : undefined
+  // On-chain partner attribution: for registered ON_CHAIN_PARTNER_REF_CODES only, embed the
+  // ref code at metadata.ophisReferrer.code (the field the rebate indexer credits from chain).
+  // undefined for affiliate/unknown codes → no on-chain tag (they keep the /ref/bind arm).
+  const ophisReferrer = ophisReferrerForRefCode(refCode)
 
   const quoteParams = {
     slippageBips,
@@ -92,6 +97,11 @@ export async function buildAppData({
       // like userConsent because it is an Ophis extension key not declared in CoW's
       // AppData schema; the orderbook accepts unknown metadata keys.
       ...(ophisBasket ? { ophisBasket } : {}),
+      // Ophis extension key (partner codes only). generateAppDataDoc is a NON-validating
+      // shallow merge, so this survives verbatim into the signed fullAppData; the CoW
+      // orderbook accepts it (we never call validateAppDataDoc, which rejects
+      // additionalProperties). The rebate indexer reads metadata.ophisReferrer.code.
+      ...(ophisReferrer ? { ophisReferrer } : {}),
     },
   })
 
