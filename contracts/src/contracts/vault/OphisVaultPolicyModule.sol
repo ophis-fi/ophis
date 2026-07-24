@@ -116,12 +116,13 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
         /// Rolling (leaky-bucket) cap on SELL-side turnover, in 18-decimal USD,
         /// drained at this much per day. Bounds a compromised curator's churn.
         uint256 dailyUsdTurnoverCap;
-        /// Chainlink L2 sequencer-uptime feed; address(0) disables the gate
-        /// (chains without one). When set, oracle reads are rejected while
-        /// the sequencer is down AND for `sequencerGracePeriod` after it
-        /// comes back (pre-outage prices can otherwise pass the staleness
-        /// check before feeds recover).
+        /// Chainlink L2 sequencer-uptime feed. address(0) is only permitted
+        /// when `allowNoSequencerFeed` explicitly opts out (chains without one).
+        /// When set, oracle reads are rejected while the sequencer is down AND
+        /// for `sequencerGracePeriod` after it comes back (pre-outage prices can
+        /// otherwise pass the staleness check before feeds recover).
         IAggregatorV3 sequencerUptimeFeed;
+        bool allowNoSequencerFeed;
         uint256 sequencerGracePeriod;
         TokenFeed[] tokens;
     }
@@ -178,7 +179,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     uint256 internal constant BPS = 10_000;
     /// @dev Hard caps on construction params (a per-vault config is expected
     /// to sit far below these).
-    uint256 internal constant MAX_SLIPPAGE_BPS_CAP = 5_000;
+    uint256 internal constant MAX_SLIPPAGE_BPS_CAP = 1_000;
     /// @dev 1 hour, deliberately tight: the oracle floor holds only at
     /// presign time, so the TTL bounds the window in which an adverse market
     /// move can be captured against a still-open order.
@@ -227,6 +228,7 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
     error ZeroOracleFloor();
     error BelowFloor(uint256 buyAmount, uint256 requiredFloor);
     error TurnoverCapExceeded(uint256 spentUsd, uint256 orderUsd, uint256 capUsd);
+    error SequencerFeedRequired();
     error SequencerDown();
     error SequencerStarting();
     error UnknownOrderUid();
@@ -256,8 +258,9 @@ contract OphisVaultPolicyModule is ReentrancyGuard {
                 cfg.sequencerGracePeriod == 0 ||
                 cfg.sequencerGracePeriod > MAX_SEQ_GRACE_CAP
             ) revert BadConfig();
-        } else if (cfg.sequencerGracePeriod != 0) {
-            revert BadConfig();
+        } else {
+            if (!cfg.allowNoSequencerFeed) revert SequencerFeedRequired();
+            if (cfg.sequencerGracePeriod != 0) revert BadConfig();
         }
         // Defense in depth: the module's whole guarantee rests on the curator
         // having no privileged path to the Safe but this module - neither a Safe

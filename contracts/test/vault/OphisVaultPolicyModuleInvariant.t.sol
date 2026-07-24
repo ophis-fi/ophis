@@ -166,6 +166,7 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
                 maxTtl: 1800,
                 dailyUsdTurnoverCap: CAP,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
+                allowNoSequencerFeed: true,
                 sequencerGracePeriod: 0,
                 tokens: tokens
             })

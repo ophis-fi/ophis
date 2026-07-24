@@ -113,6 +113,7 @@ contract VaultPolicyModuleEthereumReal is Test {
                 maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
+                allowNoSequencerFeed: true,
                 sequencerGracePeriod: 0,
                 tokens: tokens
             })
