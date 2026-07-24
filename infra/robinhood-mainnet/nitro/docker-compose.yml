@@ -76,8 +76,13 @@ services:
       - --http.addr=0.0.0.0
       - --http.port=8547
       - --http.api=net,web3,eth,debug,arb
-      - --http.corsdomain=*
-      - --http.vhosts=*
+      # RPC is bound to host loopback only and holds no keys; still scope HTTP
+      # virtual hosts/CORS instead of wildcarding. vhosts MUST include the
+      # container alias `ophis-rbh-node`: eRPC calls http://ophis-rbh-node:8547,
+      # so that Host header must be allowed (IP-literal Hosts like 127.0.0.1
+      # bypass vhost filtering, so host-loopback tools keep working).
+      - --http.corsdomain=localhost
+      - --http.vhosts=localhost,ophis-rbh-node
       - --ws.addr=0.0.0.0
       - --ws.port=8548
       - --ws.api=net,web3,eth,arb

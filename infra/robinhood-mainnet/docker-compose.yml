@@ -62,7 +62,8 @@ services:
       - "127.0.0.1:4003:4000"
 
   rpc-proxy-health:
-    image: busybox:stable-musl
+    # Digest resolved 2026-07-24; bump deliberately.
+    image: busybox:stable-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213
     restart: always
     depends_on:
       rpc-proxy: { condition: service_started }
@@ -75,13 +76,16 @@ services:
       start_period: 10s
 
   db:
-    image: postgres:16
+    # Digest resolved 2026-07-24; bump deliberately.
+    image: postgres:16@sha256:33f923b05f64ca54ac4401c01126a6b92afe839a0aa0a52bc5aeb5cc958e5f20
     restart: always
     mem_limit: 2g
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: ${POSTGRES_DB}
+    secrets:
+      - postgres_password
     volumes:
       - postgres:/var/lib/postgresql/data
     ports:
@@ -102,7 +106,8 @@ services:
     depends_on:
       db: { condition: service_healthy }
     environment:
-      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
+      FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
 
   orderbook:
     image: local-orderbook:latest
@@ -316,6 +321,12 @@ volumes:
   postgres:
   prometheus-data:
   alertmanager-data:
+
+secrets:
+  postgres_password:
+    # Gitignored local secret file; keep Flyway's password in FLYWAY_PASSWORD so
+    # migration startup semantics stay unchanged.
+    file: ./secrets/postgres-password
 
 networks:
   # Shared with the ./nitro compose project so rpc-proxy resolves the node as

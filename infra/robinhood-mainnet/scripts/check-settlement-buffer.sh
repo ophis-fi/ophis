@@ -20,23 +20,37 @@ if [[ "${-}" == *x* ]]; then
 fi
 
 RPC="${OPHIS_RPC:-http://localhost:4003/main/evm/4663}"
-SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
+# Must be the chain-4663 CoW Settlement contract; set after deploy.
+SETTLEMENT="${SETTLEMENT:-__FILL_AFTER_DEPLOY_SETTLEMENT__}"
 SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
 
 # token:symbol:decimals
 TOKENS=(
-  "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85:USDC:6"
-  "0x4200000000000000000000000000000000000006:WETH:18"
-  "0x7F5c764cBc14f9669B88837ca1490cCa17c31607:USDCe:6"
-  "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1:DAI:18"
-  "0x68f180fcCe6836688e9084f035309E29Bf0A2095:WBTC:8"
+  "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73:WETH:18"
+  "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168:USDG:6"
 )
+
+TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+if [[ "$SETTLEMENT" == "__FILL_AFTER_DEPLOY_SETTLEMENT__" ]]; then
+  cat <<EOF
+{
+  "ts": "$TS",
+  "settlement": "$SETTLEMENT",
+  "safe": "$SAFE",
+  "probe_failures": 0,
+  "status": "skipped",
+  "reason": "SETTLEMENT must be set to the chain-4663 CoW Settlement contract",
+  "balances": []
+}
+EOF
+  exit 0
+fi
 
 command -v cast >/dev/null 2>&1 || { echo "ERROR: cast (foundry) required" >&2; exit 3; }
 command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq required" >&2; exit 3; }
 command -v bc   >/dev/null 2>&1 || { echo "ERROR: bc required" >&2; exit 3; }
 
-TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 RESULTS_JSON='[]'
 PROBE_FAILURES=0
 
@@ -90,10 +104,10 @@ if [[ -n "${PUSHGATEWAY_URL:-}" ]]; then
     # separate failures counter so Prometheus can alert on probe
     # staleness (audit follow-up 2026-05-20).
     if [[ "$status" == "ok" ]]; then
-      curl -s --data "ophis_settlement_buffer_raw{symbol=\"$sym\",chain=\"optimism\"} $raw" \
-        "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+      curl -s --data "ophis_settlement_buffer_raw{symbol=\"$sym\",chain=\"robinhood\"} $raw" \
+        "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-robinhood" >/dev/null || true
     fi
   done
-  curl -s --data "ophis_settlement_buffer_probe_failures{chain=\"optimism\"} $PROBE_FAILURES" \
-    "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+  curl -s --data "ophis_settlement_buffer_probe_failures{chain=\"robinhood\"} $PROBE_FAILURES" \
+    "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-robinhood" >/dev/null || true
 fi
