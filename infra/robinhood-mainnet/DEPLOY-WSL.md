@@ -27,8 +27,10 @@ the main `README.md`.
    ```bash
    cd infra/robinhood-mainnet
    ./scripts/setup-ophis-driver-user.sh      # Linux branch: useradd --system ophis-driver
-   echo '0x<64-hex-submitter-pk>' | sudo install -m 600 -o ophis-driver -g ophis-driver \
-     /dev/stdin /home/ophis-driver/.config/submitter.key
+   # history-safe: the key is typed at the prompt, never on the command line,
+   # so it does not land in shell history (unlike `echo '0x...' | ...`).
+   read -rs PK; printf '%s' "$PK" | sudo install -m 600 -o ophis-driver -g ophis-driver \
+     /dev/stdin /home/ophis-driver/.config/submitter.key; unset PK
    ```
 2. **Secrets**: `cp .env.example .env && chmod 600 .env`, fill provider keys (note:
    `ALCHEMY_API_KEY` is the **bare key**, not the full URL — the template prepends

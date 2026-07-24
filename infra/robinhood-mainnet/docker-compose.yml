@@ -310,7 +310,14 @@ services:
     volumes:
       - "/proc:/host/proc:ro"
       - "/sys:/host/sys:ro"
-      - "/:/host:ro,rslave"
+      # Narrowly scoped: ONLY the Docker data disk is exposed, read-only, so the
+      # node_filesystem_*{fstype="ext4"} rules in observability/alerts.yml keep
+      # paging before it fills (ENOSPC on this disk takes the node down). Mounting
+      # "/" here let node-exporter read the 0600 rendered telegram token and the
+      # RPC-key configs in the compose dir, so it is NOT mounted; the container
+      # overlay root is non-ext4 and is filtered out by the alert rules. Adjust
+      # this path if the Docker data disk is mounted elsewhere on the host.
+      - "/var/lib/docker:/host/var/lib/docker:ro"
 
 volumes:
   postgres:
