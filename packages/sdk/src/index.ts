@@ -87,6 +87,38 @@ export {
 } from './ethflow.js';
 
 export {
+  OPHIS_ERROR_CODES,
+  OPHIS_UNROUTABLE_CODES,
+  ophisErrorBand,
+  getOphisTraceId,
+  OphisApiError,
+  OphisUnroutableError,
+  OphisRateLimitError,
+  parseOphisApiError,
+  isUnroutable,
+  isRetryable,
+  withOphisRetry,
+  type OphisErrorBand,
+  type OphisHeadersLike,
+  type OphisErrorResponse,
+  type OphisApiErrorOptions,
+  type OphisRetryOptions,
+} from './errors.js';
+
+export {
+  MULTICALL3_ADDRESS,
+  ERC20_PREFLIGHT_ABI,
+  ophisPreflight,
+  isPreflightReady,
+  approvalNeeded,
+  OphisPreflightError,
+  type OphisMulticallCall,
+  type OphisMulticallClient,
+  type OphisPreflightRequest,
+  type OphisPreflightResult,
+} from './preflight.js';
+
+export {
   APP_DATA_VERSION,
   ORDER_TYPED_DATA_TYPES,
   MAX_SLIPPAGE_BIPS,
