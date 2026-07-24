@@ -81,7 +81,9 @@ function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAft
   const recent = (ipBuckets.get(ip) ?? []).filter((t) => t >= cutoff)
   if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
     ipBuckets.set(ip, recent)
-    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((recent[0] + RATE_LIMIT_WINDOW_MS - now) / 1000)) }
+    // recent[0] is always present here (length >= MAX_REQUESTS > 0); the ?? keeps
+    // a slipped invariant from turning Retry-After into NaN.
+    return { ok: false, retryAfterSec: Math.max(1, Math.ceil(((recent[0] ?? now) + RATE_LIMIT_WINDOW_MS - now) / 1000)) }
   }
   recent.push(now)
   ipBuckets.set(ip, recent)

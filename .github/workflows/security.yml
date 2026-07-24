@@ -454,7 +454,7 @@ jobs:
         # genuine, persistent install failure.
         run: |
           for attempt in 1 2 3; do
-            if cargo install --locked cargo-audit; then
+            if cargo install --locked --version 0.22.2 cargo-audit; then
               exit 0
             fi
             echo "::warning::cargo install cargo-audit failed (attempt ${attempt}/3); retrying after backoff"
@@ -542,9 +542,19 @@ jobs:
       - name: Run gitleaks
         env:
           GITLEAKS_VERSION: 8.21.2
+          # A release TAG is immutable; a release ASSET is not -- GitHub lets an
+          # owner (or a stolen PAT) delete and re-upload bytes at the identical
+          # URL with no tag change and no notification. So pin the bytes, like
+          # .github/actions/install-osv-scanner already does. Value is from the
+          # release's own gitleaks_8.21.2_checksums.txt. Bump with the version.
+          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-delay 2 -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz gitleaks
+          rm -f /tmp/gitleaks.tar.gz
           ./gitleaks detect \
             --source . \
             --config .github/gitleaks.toml \
