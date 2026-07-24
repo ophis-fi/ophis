@@ -56,9 +56,7 @@ contract GoldenUidTest is Test {
     function opDomainSeparator() internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256(bytes("Gnosis Protocol")),
                 keccak256(bytes("v2")),
                 uint256(10),
@@ -105,10 +103,9 @@ contract GoldenUidTest is Test {
 
         MockSettlement settlement = new MockSettlement(opDomainSeparator(), RELAYER);
         MockFeed feed = new MockFeed(8, 1e8, block.timestamp);
-        OphisVaultPolicyModule.TokenFeed[] memory tokens =
-            new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(SELL, IAggregatorV3(address(feed)), 3600);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(BUY, IAggregatorV3(address(feed)), 3600);
+        OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(SELL, IAggregatorV3(address(feed)), 3600, 25e16, 4e18);
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(BUY, IAggregatorV3(address(feed)), 3600, 25e16, 4e18);
 
         OphisVaultPolicyModule module = new OphisVaultPolicyModule(
             OphisVaultPolicyModule.ModuleConfig({

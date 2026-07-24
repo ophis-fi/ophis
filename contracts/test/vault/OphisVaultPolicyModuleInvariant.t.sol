@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 pragma solidity ^0.8;
 
-import {Test} from "forge-std/Test.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
+import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "src/contracts/interfaces/IERC20.sol";
 import {GPv2Order} from "src/contracts/libraries/GPv2Order.sol";
@@ -71,14 +71,7 @@ contract Handler is Test {
         return rogue;
     }
 
-    function doRebalance(
-        uint8 sSel,
-        uint8 bSel,
-        uint96 sellAmt,
-        uint96 override_,
-        uint16 ttl,
-        uint8 badBits
-    ) external {
+    function doRebalance(uint8 sSel, uint8 bSel, uint96 sellAmt, uint96 override_, uint16 ttl, uint8 badBits) external {
         address st = _tok(sSel);
         address bt = _tok(bSel);
         uint8 dec = st == weth ? 18 : (st == usdc ? 6 : 18);
@@ -101,9 +94,7 @@ contract Handler is Test {
         });
 
         try module.rebalance(o, bound(uint256(override_), 0, 1e29)) returns (bytes memory uid) {
-            recs.push(
-                Rec(uid, o.receiver, st, bt, o.feeAmount, o.appData, o.sellAmount)
-            );
+            recs.push(Rec(uid, o.receiver, st, bt, o.feeAmount, o.appData, o.sellAmount));
         } catch {
             // policy-violating or cap-exceeding orders revert: expected
         }
@@ -156,10 +147,10 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
         usdcFeed = new MockFeed(8, 1e8, T0);
         wethFeed = new MockFeed(8, 2000e8, T0);
 
-        OphisVaultPolicyModule.TokenFeed[] memory tokens =
-            new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)), 3600);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(address(weth), IAggregatorV3(address(wethFeed)), 3600);
+        OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)), 3600, 25e16, 4e18);
+        tokens[1] =
+            OphisVaultPolicyModule.TokenFeed(address(weth), IAggregatorV3(address(wethFeed)), 3600, 500e18, 8000e18);
 
         // curator == the handler, so the fuzzer can drive rebalance/cancel.
         handler = Handler(address(0)); // placeholder; set after module (needs curator addr)
@@ -180,8 +171,7 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
             })
         );
         handler = new Handler(
-            module, safe, settlement, usdcFeed, wethFeed,
-            address(usdc), address(weth), address(rogue), APP_DATA
+            module, safe, settlement, usdcFeed, wethFeed, address(usdc), address(weth), address(rogue), APP_DATA
         );
         require(address(handler) == predictedHandler, "curator address mismatch");
         safe.setEnabledModule(address(module));
@@ -196,7 +186,7 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
         // Safe, zero fee, pinned appData, sell-kind. Must presign + record.
         handler.doRebalance(0, 1, uint96(1000e6), 0, 1000, 0);
         assertEq(handler.recCount(), 1, "clean order did not presign");
-        (bytes memory uid, , , , , , ) = handler.recs(0);
+        (bytes memory uid,,,,,,) = handler.recs(0);
         assertEq(settlement.preSignature(uid), settlement.PRE_SIGNED());
         // And a bad order (foreign receiver) must NOT record.
         handler.doRebalance(0, 1, uint96(1000e6), 0, 1000, 1);
@@ -215,16 +205,15 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
     function invariant_no_bad_presignature_survives() public view {
         uint256 n = handler.recCount();
         for (uint256 i = 0; i < n; i++) {
-            (bytes memory uid, address receiver, address sellToken, address buyToken, uint256 feeAmount, bytes32 ad, ) =
+            (bytes memory uid, address receiver, address sellToken, address buyToken, uint256 feeAmount, bytes32 ad,) =
                 handler.recs(i);
             if (settlement.preSignature(uid) != settlement.PRE_SIGNED()) continue;
             assertEq(receiver, address(safe), "presigned order with foreign receiver");
             assertEq(feeAmount, 0, "presigned order with non-zero signed fee");
             assertEq(ad, APP_DATA, "presigned order with wrong appData");
             assertTrue(
-                (sellToken == address(usdc) || sellToken == address(weth)) &&
-                (buyToken == address(usdc) || buyToken == address(weth)) &&
-                sellToken != buyToken,
+                (sellToken == address(usdc) || sellToken == address(weth))
+                    && (buyToken == address(usdc) || buyToken == address(weth)) && sellToken != buyToken,
                 "presigned order with non-allowlisted or same token"
             );
         }
@@ -249,8 +238,7 @@ contract OphisVaultPolicyModuleInvariant is StdInvariant, Test {
         uint256 liveSellAmount;
         uint256 liveCount;
         for (uint256 i = 0; i < n; i++) {
-            (bytes memory uid, , address sellToken, , , , uint256 sellAmount) =
-                handler.recs(i);
+            (bytes memory uid,, address sellToken,,,, uint256 sellAmount) = handler.recs(i);
             if (sellToken != token) continue;
             if (settlement.preSignature(uid) != settlement.PRE_SIGNED()) continue;
             // The same uid re-presigned (self-supersede) is ONE live order.

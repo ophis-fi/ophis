@@ -4,11 +4,7 @@ pragma solidity >=0.8.17 <0.9.0;
 import {IERC20} from "../../../src/contracts/interfaces/IERC20.sol";
 import {GPv2Order} from "../../../src/contracts/libraries/GPv2Order.sol";
 import {OphisVaultPolicyModule} from "../../../src/contracts/vault/OphisVaultPolicyModule.sol";
-import {
-    IAggregatorV3,
-    IGPv2Settlement,
-    ISafe
-} from "../../../src/contracts/vault/interfaces/IVaultPolicyDeps.sol";
+import {IAggregatorV3, IGPv2Settlement, ISafe} from "../../../src/contracts/vault/interfaces/IVaultPolicyDeps.sol";
 import {MockERC20, MockFeed, MockSafe, MockSettlement} from "../../vault/Mocks.sol";
 
 /// @title Echidna property harness for the vault order-policy module.
@@ -58,10 +54,11 @@ contract VaultPolicyEchidna {
         usdcFeed = new MockFeed(8, 1e8, block.timestamp);
         wethFeed = new MockFeed(8, 2000e8, block.timestamp);
 
-        OphisVaultPolicyModule.TokenFeed[] memory tokens =
-            new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)), 1 days);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(address(weth), IAggregatorV3(address(wethFeed)), 1 days);
+        OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
+        tokens[0] =
+            OphisVaultPolicyModule.TokenFeed(address(usdc), IAggregatorV3(address(usdcFeed)), 1 days, 25e16, 4e18);
+        tokens[1] =
+            OphisVaultPolicyModule.TokenFeed(address(weth), IAggregatorV3(address(wethFeed)), 1 days, 500e18, 8000e18);
 
         module = new OphisVaultPolicyModule(
             OphisVaultPolicyModule.ModuleConfig({
@@ -94,14 +91,7 @@ contract VaultPolicyEchidna {
         wethFeed.set(2000e8, block.timestamp);
     }
 
-    function rebalance(
-        uint8 sSel,
-        uint8 bSel,
-        uint96 sellAmt,
-        uint96 override_,
-        uint16 ttl,
-        uint8 badBits
-    ) public {
+    function rebalance(uint8 sSel, uint8 bSel, uint96 sellAmt, uint96 override_, uint16 ttl, uint8 badBits) public {
         _refresh();
         address st = _tok(sSel);
         address bt = _tok(bSel);
@@ -148,10 +138,8 @@ contract VaultPolicyEchidna {
             if (r.receiver != address(safe)) return false;
             if (r.feeAmount != 0) return false;
             if (r.appData != APP_DATA) return false;
-            bool okTokens =
-                (r.sellToken == address(usdc) || r.sellToken == address(weth)) &&
-                (r.buyToken == address(usdc) || r.buyToken == address(weth)) &&
-                r.sellToken != r.buyToken;
+            bool okTokens = (r.sellToken == address(usdc) || r.sellToken == address(weth))
+                && (r.buyToken == address(usdc) || r.buyToken == address(weth)) && r.sellToken != r.buyToken;
             if (!okTokens) return false;
         }
         return true;
