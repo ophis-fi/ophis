@@ -47,6 +47,7 @@
       "esbuild": "^0.28.1",
       "protobufjs": "^7.6.5",
       "find-my-way": "^9.7.0",
+      "postcss": "^8.5.18",
       "fast-uri": "^3.1.4",
       "sharp": "^0.35.0",
       "js-yaml": "^4.3.0",
