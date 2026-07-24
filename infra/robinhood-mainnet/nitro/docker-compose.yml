@@ -1,0 +1,154 @@
+# infra/robinhood-mainnet/nitro/docker-compose.yml
+# Self-hosted Arbitrum Nitro node for Robinhood Chain (chainId 4663).
+#
+# SEPARATE compose project from the main CoW stack (../docker-compose.yml),
+# mirroring how the Unichain stack runs its op-reth node in /opt/unichain-node
+# beside the orderbook stack. The main stack's eRPC proxy reaches this node over
+# Tailscale as `ophis-rbh-node:8547`.
+#
+# Two hard prerequisites (see README.md): an Ethereum L1 execution RPC and an L1
+# beacon (blob) endpoint. Robinhood posts DA as EIP-4844 blobs (Rollup mode), so
+# the beacon endpoint is NOT optional.
+
+name: robinhood-nitro
+
+services:
+  nitro:
+    # Fully-qualified tag as published by the Robinhood run-a-full-node docs
+    # (verified 2026-07-21). v3.11 alone is a MOVING alias - never deploy it.
+    # Re-check the docs before deploy; they may bump this.
+    image: offchainlabs/nitro-node:v3.11.2-3599aca
+    restart: always
+    stop_grace_period: 5m
+    # Sized for a 26 GB WSL2 VM (.wslconfig): cap the container below the VM total
+    # so the VM's own Linux + dockerd keep ~4 GB. GOMEMLIMIT sits under mem_limit
+    # so Go GC gets aggressive BEFORE the cgroup OOM-kills. RAM adequacy here is
+    # unverified (see nitro/BRINGUP.md, risk #1) - watch RSS during the restore.
+    mem_limit: 22g
+    environment:
+      GOMEMLIMIT: 18GiB
+    volumes:
+      # VERIFIED against the running v3.11.2-3599aca image (2026-07-23): it runs as
+      # user `user` (uid 1000), so the datadir is /home/USER/.arbitrum - NOT
+      # /home/nitro (an earlier revision guessed `nitro` and the node silently
+      # re-synced from genesis, hitting the pruned-blob wall). Inside .arbitrum the
+      # node stores per-chain data at "<chain-name>/nitro/", i.e.
+      #   /home/user/.arbitrum/Robinhood Chain/nitro/{l2chaindata,arbitrumdata,...}
+      # so a restored snapshot MUST land under that exact subpath (restore-snapshot.sh
+      # extracts there). The chain-name comes from robinhood-chain-info.json.
+      #
+      # BIND MOUNT to an ext4 path INSIDE the WSL2 distro (whose vhdx BRINGUP.md
+      # places on the D: NVMe). Real ext4 block device, NOT a /mnt/d/... Windows
+      # path, so no 9p penalty. Bind (not named volume) so the snapshot extracts
+      # straight into it. NITRO_DATA_DIR is set in .env.
+      - ${NITRO_DATA_DIR:-./robinhood-nitro-data}:/home/user/.arbitrum
+      # Canonical Robinhood chain-info + genesis, fetched from the Robinhood CDN
+      # (see robinhood-chain-info.md). Do NOT hand-transcribe rollup/inbox addresses.
+      - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
+      - ./robinhood-genesis.json:/config/robinhood-genesis.json:ro
+    command:
+      - --parent-chain.connection.url=${L1_EXECUTION_RPC:?set L1_EXECUTION_RPC in .env}
+      # Blob DA endpoint. MUST reach back to the rollup deploy (2026-04-30) for a
+      # from-genesis sync - a standard free beacon does NOT (see README). One
+      # fallback is supported; the *-service-urls flag does not exist.
+      - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
+      - --parent-chain.blob-client.secondary-beacon-url=${L1_BEACON_URL_FALLBACK:-}
+      - --chain.id=4663
+      - --chain.info-files=/config/robinhood-chain-info.json
+      # Low-latency tip via the Robinhood sequencer feed. Must be wss://.
+      - --node.feed.input.url=wss://feed.mainnet.chain.robinhood.com
+      # MAINNET REQUIRES the published genesis file (the testnet command omits
+      # it). Without it the node cannot init the 4663 state correctly.
+      - --init.genesis-json-file=/config/robinhood-genesis.json
+      # NOTE: --init.latest=pruned was removed - it is not in the documented
+      # mainnet command and Robinhood publishes no snapshot for it to resolve.
+      # If they ever publish one, add: --init.url=<SNAPSHOT_URL> (first start only).
+      # RPC exposed to the eRPC proxy. The LOAD-BEARING namespace is `debug`
+      # (debug_traceTransaction) - that is what the autopilot decodes settlements
+      # with. `arb` is kept for arb_* chain methods.
+      #
+      # `arbtrace` was REMOVED: verified against the Nitro v3.11.2 source
+      # (execution/gethexec/api.go, ArbTraceForwarderAPI) that the arbtrace_*
+      # namespace is a pure FORWARDER to a legacy pre-Nitro "classic" node. Orbit
+      # chains have no classic node, so every arbtrace_* call returns "arbtrace
+      # calls forwarding not configured". Enabling it advertised a trace family
+      # that cannot work. Use debug_traceTransaction, not arbtrace_*.
+      - --http.addr=0.0.0.0
+      - --http.port=8547
+      - --http.api=net,web3,eth,debug,arb
+      # RPC is bound to host loopback only and holds no keys; still scope HTTP
+      # virtual hosts/CORS instead of wildcarding. vhosts MUST include the
+      # container alias `ophis-rbh-node`: eRPC calls http://ophis-rbh-node:8547,
+      # so that Host header must be allowed (IP-literal Hosts like 127.0.0.1
+      # bypass vhost filtering, so host-loopback tools keep working).
+      - --http.corsdomain=localhost
+      - --http.vhosts=localhost,ophis-rbh-node
+      - --ws.addr=0.0.0.0
+      - --ws.port=8548
+      - --ws.api=net,web3,eth,arb
+      # This is a pure read/trace node, NOT a validator. --node.staker.enable
+      # defaults to TRUE (Watchtower strategy, verified in staker source), which
+      # runs a needless L1-watching loop and noise. Disable it.
+      - --node.staker.enable=false
+      # A non-sequencer node HARD-REQUIRES a tx forwarding target or it fatals at
+      # boot ("ForwardingTarget not set and not sequencer"). This node serves
+      # trace/reads for eRPC and does not relay user txs, so disable forwarding
+      # explicitly. (Set the sequencer URL here instead if it ever must relay.)
+      - --execution.forwarding-target=null
+      # Memory safety valve on a RAM-constrained host (~26 GB WSL2 VM). Nitro's
+      # mem-free-limit ships DISABLED; set it so the node sheds load instead of
+      # OOM-killing when free memory runs low (e.g. concurrent traces from eRPC).
+      - --node.resource-mgmt.mem-free-limit=2GB
+      # Prometheus metrics on :6070 for sync-progress + memory tracking (BRINGUP.md).
+      - --metrics
+      - --metrics-server.addr=0.0.0.0
+      - --metrics-server.port=6070
+      # State scheme MUST match the restored snapshot. The Titan snapshot is built
+      # with PathDB ("path"); the node otherwise defaults to "hash" and fails at
+      # boot with "incompatible state scheme, stored: path, provided: hash"
+      # (verified 2026-07-23). A from-genesis (non-snapshot) sync could instead use
+      # hash - but then set this consistently and never mix schemes in one datadir.
+      - --execution.caching.state-scheme=path
+      # Archive is OFF by default and that is CORRECT here. Verified in the Nitro
+      # source: the default non-archive config retains recent state by
+      # --execution.caching.block-count / .block-age, and debug_traceTransaction
+      # on a near-tip tx does not need archive. The autopilot only traces
+      # settlements seconds old, so leave archive off (archive is multi-TB). Only
+      # if just-landed traces return "missing trie node" / "state not available"
+      # would you add: --execution.caching.archive
+    ports:
+      # Bind to 127.0.0.1 only; the eRPC host reaches it over Tailscale (map the
+      # Tailscale name `ophis-rbh-node` -> this host). Never expose :8547 publicly.
+      - "127.0.0.1:8547:8547"   # HTTP JSON-RPC
+      - "127.0.0.1:8548:8548"   # WS JSON-RPC
+      - "127.0.0.1:6070:6070"   # Prometheus metrics (sync progress, memory)
+    healthcheck:
+      # Healthy = serves eth_blockNumber. Use curl, NOT wget: the nitro-node image
+      # ships curl but NOT wget (verified 2026-07-23) - the old wget probe always
+      # failed with "wget: not found", so the container showed "unhealthy" while
+      # actually serving. (Trace-readiness is verified separately via the
+      # debug_traceTransaction check in README.md.)
+      test: ["CMD-SHELL", "curl -sf -X POST http://127.0.0.1:8547 -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}' | grep -q result || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15m   # first sync
+    networks:
+      default: {}
+      # Shared external network so the eRPC proxy (separate ./.. compose project)
+      # resolves this node as ophis-rbh-node:8547 container-to-container.
+      ophis-rbh-net:
+        aliases:
+          - ophis-rbh-node
+
+# No named volumes: the datadir is a bind mount to an ext4 path inside the distro
+# (on D:), so the snapshot can be extracted directly into it. See BRINGUP.md.
+
+# Shared external network so the eRPC proxy (../docker-compose.yml, a separate compose
+# project) resolves this node as `ophis-rbh-node:8547` container-to-container — the node
+# binds :8547 on 127.0.0.1 only, so host-gateway/Tailscale to a loopback port can't reach
+# it. Created out-of-band (keepalive-node.sh + compose-up.sh do it idempotently).
+networks:
+  ophis-rbh-net:
+    external: true
+    name: ophis-rbh-net
