@@ -24,7 +24,7 @@ signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
 name = "baseline"
 endpoint = "http://baseline"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
-relative-slippage = "0.1"
+relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 # LI.FI same-chain aggregator - ENABLED (keyless). Day-1's only real liquidity
@@ -42,7 +42,7 @@ account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 name = "lifi"
 endpoint = "http://lifi-solver"
 absolute-slippage = "40000000000000000"
-relative-slippage = "0.1"
+relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [submission]

@@ -306,11 +306,14 @@ services:
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--path.rootfs=/host"
+      # No --path.rootfs / host-root mount: mounting / into this container let
+      # node-exporter (uid 65534) read the 0600 rendered telegram token (owned
+      # by 65534) and the world-readable RPC-key configs. Only /proc and /sys
+      # are exposed now; host filesystem-usage metrics are dropped deliberately.
+      # To restore them, mount a specific non-secret path read-only, never "/".
     volumes:
       - "/proc:/host/proc:ro"
       - "/sys:/host/sys:ro"
-      - "/:/host:ro,rslave"
 
 volumes:
   postgres:
