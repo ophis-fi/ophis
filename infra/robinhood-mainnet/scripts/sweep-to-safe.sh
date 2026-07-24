@@ -35,6 +35,9 @@
 #   # Override token list (comma-separated 0x addresses):
 #   TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x4200000000000000000000000000000000000006 \
 #     ./scripts/sweep-to-safe.sh
+#
+#   # Override independent nonce-observation RPC (default: OPHIS_RPC):
+#   OPHIS_NONCE_RPC=https://... ./scripts/sweep-to-safe.sh --broadcast
 
 set -euo pipefail
 umask 077
@@ -58,9 +61,12 @@ done
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CONTRACTS_DIR="$REPO_ROOT/contracts"
 RPC="${OPHIS_RPC:-http://localhost:4003/main/evm/4663}"
+NONCE_RPC="${OPHIS_NONCE_RPC:-$RPC}"
 PK_PATH="${OPHIS_SUBMITTER_KEY_PATH:-/Users/ophis-driver/.config/submitter.key}"
 
 # Sanity checks
+[[ "$RPC" =~ ^https?:// ]] || { echo "ERROR: \$OPHIS_RPC must be http(s):// URL" >&2; exit 3; }
+[[ "$NONCE_RPC" =~ ^https?:// ]] || { echo "ERROR: \$OPHIS_NONCE_RPC must be http(s):// URL" >&2; exit 3; }
 command -v forge >/dev/null 2>&1 || { echo "ERROR: forge (foundry) not in PATH" >&2; exit 3; }
 [[ -d "$CONTRACTS_DIR" ]] || { echo "ERROR: contracts dir not found at $CONTRACTS_DIR" >&2; exit 3; }
 
@@ -89,12 +95,14 @@ if [[ "$BROADCAST" -eq 1 ]]; then
   # driver is idle before broadcasting. Observe nonce over a 30s window;
   # abort if it changed (driver was active).
   command -v cast >/dev/null 2>&1 || { echo "ERROR: cast required for nonce guard" >&2; exit 6; }
-  NONCE_BEFORE=$(cast nonce "$SUBMITTER_EOA" --rpc-url "$RPC" 2>/dev/null)
+  CHAIN_ID=$(cast chain-id --rpc-url "$RPC" 2>/dev/null || true)
+  [[ "$CHAIN_ID" == "4663" ]] || { echo "ERROR: OPHIS_RPC chain-id must be 4663 (got ${CHAIN_ID:-unreadable})" >&2; exit 6; }
+  NONCE_BEFORE=$(cast nonce "$SUBMITTER_EOA" --rpc-url "$NONCE_RPC" 2>/dev/null)
   [[ -z "$NONCE_BEFORE" ]] && { echo "ERROR: failed to read nonce" >&2; exit 6; }
   echo "    nonce before: $NONCE_BEFORE"
   echo "    observing 30s for driver idle..."
   sleep 30
-  NONCE_AFTER=$(cast nonce "$SUBMITTER_EOA" --rpc-url "$RPC" 2>/dev/null)
+  NONCE_AFTER=$(cast nonce "$SUBMITTER_EOA" --rpc-url "$NONCE_RPC" 2>/dev/null)
   if [[ "$NONCE_BEFORE" != "$NONCE_AFTER" ]]; then
     echo "ABORT: driver was active during observation window (nonce $NONCE_BEFORE → $NONCE_AFTER)." >&2
     echo "       Retry during quieter period or deploy a separate sweeper EOA." >&2

@@ -23,6 +23,8 @@ SUBMITTER="__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"   # the ONLY authorized solver/s
 TRADE_TOPIC0="0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
 SETTLEMENT_TOPIC0="0x40338ce1a7c49204f0099533b1e9a7ee0a3d261f84974ab7af36105b8c4e9db4"
 # Tunables (env-overridable). Conservative defaults to avoid alert fatigue.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STACK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BALANCE_FLOOR_WEI="${BALANCE_FLOOR_WEI:-5000000000000000}"  # 0.005 ETH (matches driver min-balance posture)
 FEE_BPS_MAX="${FEE_BPS_MAX:-500}"                            # fee > 5% of sell within the same token = skim signal
 MAX_BLOCKS="${MAX_BLOCKS:-5000}"                             # per-run catch-up cap
@@ -31,26 +33,38 @@ FIRST_RUN_LOOKBACK="${FIRST_RUN_LOOKBACK:-50}"
 STATE_DIR="${STATE_DIR:-$HOME/.local/state/ophis/settlement-watch}"
 CURSOR="$STATE_DIR/uni-cursor"
 LOGFILE="${LOGFILE:-$HOME/Library/Logs/ophis-settlement-anomaly-watch.log}"
-TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/robinhood-mainnet/observability-rendered/telegram-token}"
+TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-observability-rendered/telegram-token}"
+case "$TELEGRAM_BOT_TOKEN_FILE" in
+  /*) ;;
+  *) TELEGRAM_BOT_TOKEN_FILE="$STACK_DIR/$TELEGRAM_BOT_TOKEN_FILE" ;;
+esac
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
 
 command -v cast >/dev/null 2>&1 || { echo "ERROR: cast (foundry) required" >&2; exit 3; }
 command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq required" >&2; exit 3; }
 command -v python3 >/dev/null 2>&1 || { echo "ERROR: python3 required (big-int fee math)" >&2; exit 3; }
+command -v curl >/dev/null 2>&1 || { echo "ERROR: curl required (Telegram alerts)" >&2; exit 3; }
 mkdir -p "$STATE_DIR"
 
 lc() { printf '%s' "$1" | tr 'A-F' 'a-f'; }   # bash-3.2-safe lowercase (hex only)
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$LOGFILE" >&2; }
 alert() {  # alert <SEVERITY> <message>
   log "ALERT[$1] $2"
-  [[ -r "$TELEGRAM_BOT_TOKEN_FILE" ]] || { log "WARN: telegram token file unreadable; alert not delivered"; return 0; }
-  local token; token="$(< "$TELEGRAM_BOT_TOKEN_FILE")"
+  [[ -r "$TELEGRAM_BOT_TOKEN_FILE" ]] || { log "ERROR: telegram token file unreadable; alert not delivered: $TELEGRAM_BOT_TOKEN_FILE"; return 1; }
+  [[ -s "$TELEGRAM_BOT_TOKEN_FILE" ]] || { log "ERROR: telegram token file empty; alert not delivered: $TELEGRAM_BOT_TOKEN_FILE"; return 1; }
+  local token
+  token="$(< "$TELEGRAM_BOT_TOKEN_FILE")" || { log "ERROR: telegram token file read failed; alert not delivered: $TELEGRAM_BOT_TOKEN_FILE"; return 1; }
   curl -sm 10 -X POST "https://api.telegram.org/bot${token}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" \
     --data-urlencode "text=[$1] Ophis Robinhood settlement-watch: $2" >/dev/null 2>&1 \
-    || log "WARN: telegram send failed"
+    || { log "ERROR: telegram send failed"; return 1; }
 }
 die() { log "ERROR: $1"; exit "${2:-4}"; }   # exit WITHOUT advancing the cursor -> the window is re-scanned next run
+critical_alert() { alert CRITICAL "$1" || die "critical alert delivery failed; cursor not advanced"; }
+warning_alert() { alert WARNING "$1" || log "WARN: warning alert delivery failed"; }
+
+[[ -r "$TELEGRAM_BOT_TOKEN_FILE" ]] || die "telegram token file unreadable: $TELEGRAM_BOT_TOKEN_FILE. Run ./render-configs.sh or set TELEGRAM_BOT_TOKEN_FILE."
+[[ -s "$TELEGRAM_BOT_TOKEN_FILE" ]] || die "telegram token file empty: $TELEGRAM_BOT_TOKEN_FILE. Re-run ./render-configs.sh or set TELEGRAM_BOT_TOKEN_FILE."
 
 SUBMITTER_LC="$(lc "$SUBMITTER")"; SETTLEMENT_LC="$(lc "$SETTLEMENT")"
 
@@ -68,7 +82,7 @@ TO=$(( FROM + MAX_BLOCKS - 1 )); (( TO > SAFE_HEAD )) && TO=$SAFE_HEAD
 # (c) submitter-EOA health — NEVER substitute 0 on RPC failure (check-settlement-buffer.sh lesson).
 BAL="$(cast balance "$SUBMITTER" --rpc-url "$RPC" 2>&1)" || die "cast balance: $BAL"
 [[ "$BAL" =~ ^[0-9]+$ ]] || die "non-numeric balance: $BAL"
-(( BAL < BALANCE_FLOOR_WEI )) && alert CRITICAL "submitter $SUBMITTER balance $(cast from-wei "$BAL") ETH below floor $(cast from-wei "$BALANCE_FLOOR_WEI") ETH"
+(( BAL < BALANCE_FLOOR_WEI )) && critical_alert "submitter $SUBMITTER balance $(cast from-wei "$BAL") ETH below floor $(cast from-wei "$BALANCE_FLOOR_WEI") ETH"
 
 # (b) unexpected solver/target — every Settlement completion must be our EOA.
 SETT="$(cast logs --rpc-url "$RPC" --from-block "$FROM" --to-block "$TO" --address "$SETTLEMENT" "$SETTLEMENT_TOPIC0" --json 2>&1)" \
@@ -80,14 +94,14 @@ while IFS= read -r entry; do
   [[ -z "$solver_topic" || -z "$txh" ]] && continue
   solver_lc="$(lc "0x${solver_topic: -40}")"
   if [[ "$solver_lc" != "$SUBMITTER_LC" ]]; then
-    alert CRITICAL "settlement by UNEXPECTED solver 0x${solver_topic: -40} (expected $SUBMITTER) in tx $txh"; continue
+    critical_alert "settlement by UNEXPECTED solver 0x${solver_topic: -40} (expected $SUBMITTER) in tx $txh"; continue
   fi
   # Fail CLOSED: a cast tx failure must NOT silently skip from/to validation and
   # let the cursor advance — die so the window is rescanned (like balance/logs).
   txfrom="$(cast tx "$txh" from --rpc-url "$RPC" 2>&1)" || die "cast tx from $txh (rescanning): $txfrom"
   txto="$(cast tx "$txh" to --rpc-url "$RPC" 2>&1)" || die "cast tx to $txh (rescanning): $txto"
-  [[ "$(lc "$txfrom")" != "$SUBMITTER_LC" ]] && alert CRITICAL "settle() tx $txh sent by UNEXPECTED $txfrom (expected $SUBMITTER)"
-  [[ "$(lc "$txto")"   != "$SETTLEMENT_LC" ]] && alert CRITICAL "settle() tx $txh to UNEXPECTED target $txto (expected Settlement)"
+  [[ "$(lc "$txfrom")" != "$SUBMITTER_LC" ]] && critical_alert "settle() tx $txh sent by UNEXPECTED $txfrom (expected $SUBMITTER)"
+  [[ "$(lc "$txto")"   != "$SETTLEMENT_LC" ]] && critical_alert "settle() tx $txh to UNEXPECTED target $txto (expected Settlement)"
 done < <(printf '%s' "$SETT" | jq -c '.[]?' 2>/dev/null)
 
 # (a) surplus-skim proxy — fee as bps of sell, within the SAME token (no price
@@ -109,7 +123,7 @@ while IFS= read -r entry; do
   # (fee above ~0.0009 ETH), wrapping to a tiny/negative bps and silently missing
   # the alert. Use python big-ints (fee/sell are regex-validated integers).
   bps="$(python3 -c "import sys; s=int(sys.argv[2]); print(int(sys.argv[1])*10000//s if s else 0)" "$fee" "$sell" 2>/dev/null)"
-  [[ "$bps" =~ ^[0-9]+$ ]] && (( bps > FEE_BPS_MAX )) && alert WARNING "Trade in tx $txh: fee ${bps}bps of sell (> ${FEE_BPS_MAX}bps) — possible surplus skim"
+  [[ "$bps" =~ ^[0-9]+$ ]] && (( bps > FEE_BPS_MAX )) && warning_alert "Trade in tx $txh: fee ${bps}bps of sell (> ${FEE_BPS_MAX}bps) — possible surplus skim"
 done < <(printf '%s' "$TRADES" | jq -c '.[]?' 2>/dev/null)
 
 echo "$TO" > "$CURSOR"   # advance only after a fully clean pass
