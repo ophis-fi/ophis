@@ -69,6 +69,9 @@ projects:
             enforceNonNullTaggedBlocks: true
         failsafe:
           # === Block A: Deterministic-state methods ===
+          # Residual: preferBlockHeadLeader is availability-preferring; moving
+          # eth_call specifically to disputeBehavior:returnError is the fully
+          # fail-closed option, at the known ~30-50% latest-read availability cost.
           - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt"
             timeout:
               duration: 12s

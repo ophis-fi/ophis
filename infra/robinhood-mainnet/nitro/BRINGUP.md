@@ -101,10 +101,25 @@ chmod 600 .env
 
 ## 5. Restore the snapshot (the ~107 GB step)
 
+The restore now **fails closed by default**: it will not trust the mirror-supplied
+manifest checksum on its own (a hash from the same origin as the blob proves
+transit integrity, not authenticity). Choose one:
+
 ```bash
 chmod +x restore-snapshot.sh verify-snapshot.sh
-./restore-snapshot.sh          # manifest -> resumable download -> SHA256 -> extract -> chown
+
+# (a) RECOMMENDED - authenticate with a checksum obtained OUT OF BAND from a
+#     trusted channel (e.g. chain-developers-group@robinhood.com), not the mirror:
+SNAPSHOT_SHA256=<64-hex-from-trusted-channel> ./restore-snapshot.sh
+
+# (b) Proceed with the UNVERIFIED third-party snapshot (transit integrity only,
+#     not authenticity) - only if you explicitly accept that trust tradeoff:
+I_ACCEPT_UNVERIFIED_SNAPSHOT=1 ./restore-snapshot.sh
 ```
+
+Either way: manifest -> resumable download -> SHA256 -> extract -> chown. If you
+have a trusted `SNAPSHOT_URL` too, set it alongside `SNAPSHOT_SHA256` to skip the
+manifest entirely.
 
 Budget ~2-3 h download on 100 Mbps + ~30-60 min extract. Peak disk during restore
 is ~107 GB tarball + ~181 GB extracted; D: has 1.86 TB, so fine. The script
