@@ -56,8 +56,12 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  },
   "devDependencies": {
     "typescript": "^5.5.0",
+    "viem": "^2.48.8",
     "vite": "^7.0.0",
     "vitest": "^4.1.8"
   }

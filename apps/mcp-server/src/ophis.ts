@@ -26,9 +26,8 @@ import {
   getOphisOrderbookUrl,
   getOphisOrderDomain,
   buildOphisAppDataPartnerFee,
-  buildOphisReferrerMetadata,
+  buildOphisFullAppData,
   normalizeOphisReferralCode,
-  ophisOrderReceiver,
   assertReceiverIsOwner,
   ophisDefaultPartnerFee,
   OPHIS_STABLE_VOLUME_FEE_BPS,
@@ -37,241 +36,38 @@ import {
   OPHIS_FEE_CHAIN_IDS,
   OPHIS_ORDERBOOK_URLS,
   OPHIS_SETTLEMENT_ADDRESSES,
+  assertChain,
+  checksum,
+  assertAtoms,
+  assertFeeAtoms,
+  extractQuoteAmounts,
   assignTier,
   TIERS,
+  type Address,
+  type BuiltOrder,
   type OphisOrderDomain,
   type OphisPartnerFee,
   type Tier,
 } from '@ophis/sdk'
 
-/** CoW appData schema version the live Ophis frontend emits (cow-sdk LATEST_APP_DATA_VERSION). */
-export const APP_DATA_VERSION = '1.14.0'
-
-/** The address that receives bought tokens is part of the signed payload (drain vector). */
-export type Address = `0x${string}`
-
-/** EIP-712 struct for a CoW GPv2 order. Mirrors @cowprotocol/contracts ORDER_TYPE_FIELDS. */
-export const ORDER_TYPED_DATA_TYPES = {
-  Order: [
-    { name: 'sellToken', type: 'address' },
-    { name: 'buyToken', type: 'address' },
-    { name: 'receiver', type: 'address' },
-    { name: 'sellAmount', type: 'uint256' },
-    { name: 'buyAmount', type: 'uint256' },
-    { name: 'validTo', type: 'uint32' },
-    { name: 'appData', type: 'bytes32' },
-    { name: 'feeAmount', type: 'uint256' },
-    { name: 'kind', type: 'string' },
-    { name: 'partiallyFillable', type: 'bool' },
-    { name: 'sellTokenBalance', type: 'string' },
-    { name: 'buyTokenBalance', type: 'string' },
-  ],
-} as const
-
-/**
- * Deterministic JSON: object keys sorted ascending, recursively; `undefined`
- * values dropped. Mirrors cow-sdk's `stringifyDeterministic` closely enough
- * that the orderbook accepts the doc — the orderbook only requires
- * `keccak256(submittedFullAppData) === order.appData`, and we submit the exact
- * string we hashed, so byte-for-byte parity with cow-sdk is not required.
- */
-export function deterministicStringify(value: unknown): string {
-  return JSON.stringify(sortKeys(value))
-}
-
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys)
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      const v = (value as Record<string, unknown>)[key]
-      if (v !== undefined) out[key] = sortKeys(v)
-    }
-    return out
-  }
-  return value
-}
-
-export interface OphisAppData {
-  /** The full appData JSON document (parsed). */
-  doc: Record<string, unknown>
-  /** The exact serialized string to submit as `appData` to the orderbook. */
-  fullAppData: string
-  /** keccak256 of `fullAppData` — the bytes32 that goes into the signed order. */
-  appDataHash: Address
-  /** The CIP-75 partner fee applied on this chain, or undefined where Ophis charges none. */
-  partnerFee?: OphisPartnerFee
-}
-
-/**
- * Builds the Ophis appData document for a chain: appCode "ophis", market
- * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 5 bps
- * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
- * Returns the doc, its deterministic serialization, and its keccak256 hash.
- */
-export function buildOphisAppData(
-  chainId: number,
-  slippageBips?: number,
-  referrerCode?: string,
-  source?: string,
-): OphisAppData {
-  const partnerFee = buildOphisAppDataPartnerFee(chainId)
-  const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' } }
-  if (partnerFee) metadata.partnerFee = partnerFee
-  if (slippageBips !== undefined) metadata.quote = { slippageBips }
-  // Affiliate attribution: tag the order with a referral code under
-  // metadata.ophisReferrer.code so the rebate indexer credits that code's owner
-  // for this trade's volume. buildOphisReferrerMetadata validates the grammar
-  // (throws on a malformed code) so a bad code fails the build, not silently.
-  if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode))
-  // Order-source attribution under metadata.ophisSource.app, mirroring the
-  // ophisReferrer custom-metadata pattern (production orderbooks accept unknown
-  // metadata keys). Server-set by the integration surface (e.g. the MCP build_order
-  // handler passes 'mcp'), never caller-controlled.
-  if (source !== undefined) metadata.ophisSource = { app: source }
-
-  // Lowercase 'ophis': the rebate indexer matches appCode case-sensitively against the lowercase
-  // APP_CODES set, so a capitalized appCode would drop the order (and its referral) from attribution.
-  const doc: Record<string, unknown> = { version: APP_DATA_VERSION, appCode: 'ophis', metadata }
-  const fullAppData = deterministicStringify(doc)
-  const appDataHash = keccak256(toBytes(fullAppData))
-  return { doc, fullAppData, appDataHash, partnerFee }
-}
-
-export interface BuildOrderParams {
-  chainId: number
-  owner: Address
-  sellToken: Address
-  buyToken: Address
-  /**
-   * sellAmount in atoms (uint256 decimal string). For kind 'sell' this is the
-   * EXACT amount you sell. For kind 'buy' it is the MAXIMUM you are willing to
-   * spend (slippage-adjusted UP from the quote's sellAmount).
-   */
-  sellAmount: string
-  /**
-   * buyAmount in atoms (uint256 decimal string). For kind 'sell' this is the
-   * MINIMUM you will accept (slippage-adjusted DOWN from the quote's buyAmount).
-   * For kind 'buy' it is the EXACT amount you want to receive.
-   */
-  buyAmount: string
-  kind: 'sell' | 'buy'
-  /** Order lifetime in seconds from now (default 1200 = 20 min). */
-  validForSeconds?: number
-  /** feeAmount in the signed order. CoW market orders sign 0 (fee is in surplus). */
-  feeAmount?: string
-  partiallyFillable?: boolean
-  /** Max accepted slippage in bips, capped at 5000 (50%); recorded in appData.
-   * The pure buildOrder does not itself price-check (no network); the MCP
-   * build_order HANDLER enforces this against a server-fetched quote
-   * (getQuote + assertLimitWithinSlippage). Fund safety also rests on the
-   * unconditionally-pinned receiver (proceeds can only reach the owner). */
-  slippageBips?: number
-  /**
-   * Opt in to a non-owner receiver. The proceeds leave the account — this is
-   * the autonomous-agent drain vector, so it is loudly named and off by default.
-   */
-  unsafeCustomReceiver?: Address
-  /**
-   * Affiliate referral code to embed in appData (metadata.ophisReferrer.code).
-   * Credits that code's owner for this trade's volume. Validated against the
-   * registry grammar; an invalid code throws.
-   */
-  referrerCode?: string
-  /**
-   * Order-source tag to embed in appData (metadata.ophisSource.app), e.g. 'mcp'.
-   * Server-set by the integration surface, never exposed to callers.
-   */
-  source?: string
-}
-
-export interface BuiltOrder {
-  chainId: number
-  owner: Address
-  orderbookUrl: string
-  /** The CoW order to sign (EIP-712 message). `appData` is the keccak256 hash. */
-  order: {
-    sellToken: Address
-    buyToken: Address
-    receiver: Address
-    sellAmount: string
-    buyAmount: string
-    validTo: number
-    appData: Address
-    feeAmount: string
-    kind: 'sell' | 'buy'
-    partiallyFillable: boolean
-    sellTokenBalance: 'erc20'
-    buyTokenBalance: 'erc20'
-  }
-  /** EIP-712 typed-data envelope: sign `order` against this. */
-  signing: { domain: OphisOrderDomain; types: typeof ORDER_TYPED_DATA_TYPES; primaryType: 'Order' }
-  /** The full appData string to pass to submit_order (the orderbook re-hashes it). */
-  fullAppData: string
-  appDataHash: Address
-  partnerFee?: OphisPartnerFee
-  /** Step-by-step next action for the calling agent. */
-  next: string
-}
-
-/**
- * Builds a bounded, ready-to-sign CoW order on Ophis. Pins the receiver to the
- * owner (unless unsafeCustomReceiver is set), uses the correct per-chain
- * settlement contract (Optimism and Unichain are NON-canonical) and
- * orderbook host, and embeds the CIP-75 partner fee in appData. Pure — no
- * network, no keys.
- */
-export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder {
-  const chainId = assertChain(p.chainId)
-  const owner = checksum(p.owner, 'owner')
-  const sellToken = checksum(p.sellToken, 'sellToken')
-  const buyToken = checksum(p.buyToken, 'buyToken')
-  assertAtoms(p.sellAmount, 'sellAmount')
-  assertAtoms(p.buyAmount, 'buyAmount')
-  if (p.feeAmount !== undefined) assertFeeAtoms(p.feeAmount, 'feeAmount')
-  assertSlippageCap(p)
-
-  const receiver = ophisOrderReceiver(
-    owner,
-    p.unsafeCustomReceiver ? { unsafeCustomReceiver: checksum(p.unsafeCustomReceiver, 'unsafeCustomReceiver') } : {},
-  )
-  // Hard guard immediately before the order is handed back for signing.
-  assertReceiverIsOwner(owner, receiver, { allowCustomReceiver: p.unsafeCustomReceiver !== undefined })
-
-  const { fullAppData, appDataHash, partnerFee } = buildOphisAppData(chainId, p.slippageBips, p.referrerCode, p.source)
-  const validFor = p.validForSeconds ?? 1200
-  if (!Number.isInteger(validFor) || validFor <= 0 || validFor > 60 * 60 * 24 * 365) {
-    throw new Error(`build_order: validForSeconds must be a positive integer < 1 year, got ${validFor}`)
-  }
-  const validTo = Math.floor(nowSeconds) + validFor
-
-  return {
-    chainId,
-    owner,
-    orderbookUrl: getOphisOrderbookUrl(chainId),
-    order: {
-      sellToken,
-      buyToken,
-      receiver,
-      sellAmount: p.sellAmount,
-      buyAmount: p.buyAmount,
-      validTo,
-      appData: appDataHash,
-      feeAmount: p.feeAmount ?? '0',
-      kind: p.kind,
-      partiallyFillable: p.partiallyFillable ?? false,
-      sellTokenBalance: 'erc20',
-      buyTokenBalance: 'erc20',
-    },
-    signing: { domain: getOphisOrderDomain(chainId), types: ORDER_TYPED_DATA_TYPES, primaryType: 'Order' },
-    fullAppData,
-    appDataHash,
-    partnerFee,
-    next:
-      "Sign `order` as EIP-712 typed data using `signing` (domain/types/primaryType='Order') with the owner key. " +
-      'Then call submit_order with { chainId, order, signature, signingScheme: "eip712", from: owner, fullAppData }.',
-  }
-}
+// The pure order-build core lives in @ophis/sdk (packages/sdk/src/order-build.ts)
+// since WP0 of the Odos extraction program. Re-export it under the original names
+// (buildOphisFullAppData was buildOphisAppData here) so every existing import from
+// './ophis.js' (tools.ts, tests/ophis.test.ts) compiles unchanged; behavior is
+// identical, only the file location shifted.
+export {
+  APP_DATA_VERSION,
+  ORDER_TYPED_DATA_TYPES,
+  deterministicStringify,
+  buildOphisFullAppData as buildOphisAppData,
+  buildOrder,
+  extractQuoteAmounts,
+  assertLimitWithinSlippage,
+  type Address,
+  type OphisAppData,
+  type BuildOrderParams,
+  type BuiltOrder,
+} from '@ophis/sdk'
 
 // --- validate_order: pure offline preflight --------------------------------
 
@@ -744,7 +540,7 @@ export async function getQuote(p: QuoteParams, fetchImpl: typeof fetch = fetch):
   const sellToken = checksum(p.sellToken, 'sellToken')
   const buyToken = checksum(p.buyToken, 'buyToken')
   assertAtoms(p.amount, 'amount')
-  const { fullAppData, appDataHash } = buildOphisAppData(chainId)
+  const { fullAppData, appDataHash } = buildOphisFullAppData(chainId)
   const amountKey = p.kind === 'sell' ? 'sellAmountBeforeFee' : 'buyAmountAfterFee'
   const body: Record<string, unknown> = {
     sellToken,
@@ -1014,121 +810,6 @@ export function listChains(): ChainList {
     }
   }
   return { tradeable, paused }
-}
-
-// --- internal guards -------------------------------------------------------
-
-function assertChain(chainId: number): number {
-  if (!Number.isInteger(chainId) || chainId <= 0) throw new Error(`invalid chainId: ${chainId}`)
-  return chainId
-}
-
-function checksum(addr: string, label: string): Address {
-  if (!isAddress(addr)) throw new Error(`${label}: not a valid address (${addr})`)
-  return getAddress(addr)
-}
-
-// Order amounts are uint256 on-chain; reject anything outside that range so
-// build_order never returns an un-signable / orderbook-rejected order (#608 review).
-const MAX_UINT256 = (1n << 256n) - 1n
-
-// Hard cap on accepted slippage (50%). Above this a "limit" almost certainly
-// reflects a mistake or a crafted self-fleecing order, not a real trade.
-const MAX_SLIPPAGE_BIPS = 5000
-
-// Enforced backstop when the caller OMITS slippageBips (100 bps = 1%). The prior
-// behaviour fell back to the 50% cap, so an omitted value let a limit up to 50%
-// worse than the live quote through silently. A caller that genuinely needs a
-// wider band must now ask for it explicitly (up to MAX_SLIPPAGE_BIPS).
-const DEFAULT_SLIPPAGE_BIPS = 100
-
-function assertAtoms(amount: string, label: string): void {
-  if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount) || amount === '0') {
-    throw new Error(`${label}: must be a positive integer string of atoms (wei-like), got "${amount}"`)
-  }
-  if (BigInt(amount) > MAX_UINT256) throw new Error(`${label}: exceeds uint256 max, got "${amount}"`)
-}
-
-/** Like assertAtoms but allows "0" (feeAmount is 0 for modern CoW market orders). */
-function assertFeeAtoms(amount: string, label: string): void {
-  if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount)) {
-    throw new Error(`${label}: must be a non-negative integer string of atoms, got "${amount}"`)
-  }
-  if (BigInt(amount) > MAX_UINT256) throw new Error(`${label}: exceeds uint256 max, got "${amount}"`)
-}
-
-/**
- * Cap slippageBips at MAX_SLIPPAGE_BIPS (50%). This PURE builder does not itself
- * price-check the limit (no network). The real slippage guard lives in the MCP
- * build_order HANDLER, which fetches a TRUSTED quote (getQuote) and calls
- * assertLimitWithinSlippage — a caller-supplied reference was rejected as fakeable
- * on the no-auth tool (reviewer P1). Fund safety also rests on the
- * unconditionally-pinned receiver (proceeds can only reach the owner).
- */
-function assertSlippageCap(p: BuildOrderParams): void {
-  const slip = p.slippageBips
-  if (slip !== undefined && (!Number.isInteger(slip) || slip < 0 || slip > MAX_SLIPPAGE_BIPS)) {
-    throw new Error(`slippageBips must be an integer in [0, ${MAX_SLIPPAGE_BIPS}] (<=50%), got ${slip}`)
-  }
-}
-
-/**
- * Extract the fair sell/buy atoms from a getQuote() response. CoW `/api/v1/quote`
- * returns `{ quote: { sellAmount, buyAmount, feeAmount, ... }, ... }`. Returns null
- * if the shape is unexpected (caller then treats slippage as unverified).
- */
-export function extractQuoteAmounts(quoteResponse: unknown): { sellAmount: string; buyAmount: string } | null {
-  const quote = (quoteResponse as { quote?: { sellAmount?: unknown; buyAmount?: unknown } } | null | undefined)?.quote
-  if (!quote) return null
-  const { sellAmount, buyAmount } = quote
-  if (typeof sellAmount !== 'string' || typeof buyAmount !== 'string') return null
-  if (!/^[0-9]+$/.test(sellAmount) || !/^[0-9]+$/.test(buyAmount)) return null
-  return { sellAmount, buyAmount }
-}
-
-/**
- * Enforce that the caller's signed limit is no worse than `slippageBips` (capped at
- * MAX_SLIPPAGE_BIPS; omitted defaults to DEFAULT_SLIPPAGE_BIPS = 100 bps / 1%) vs a
- * TRUSTED quote. `fair` MUST come from a
- * server-fetched quote, never from the caller (a caller-supplied reference is
- * fakeable on the public no-auth tool — reviewer P1). Throws on a violation.
- * - kind 'sell': caller buyAmount (min out) must be >= fair.buyAmount * (1 - bound).
- * - kind 'buy':  caller sellAmount (max in) must be <= fair.sellAmount * (1 + bound).
- *
- * `partnerFeeBps` (the CIP-75 partner fee embedded in the order) WIDENS the bound: on
- * fee chains the signed amounts are net of that fee, so the legit limit sits roughly
- * `partnerFeeBps` further from the raw quote. Without this allowance a correctly-built
- * fee-chain order would be false-rejected (reviewer P1). It only loosens the floor, so
- * it never lets a worse-than-(slippage+fee) limit through.
- */
-export function assertLimitWithinSlippage(
-  kind: 'sell' | 'buy',
-  sellAmount: string,
-  buyAmount: string,
-  fair: { sellAmount: string; buyAmount: string },
-  slippageBips?: number,
-  partnerFeeBps = 0,
-): void {
-  const slip = Math.min(slippageBips ?? DEFAULT_SLIPPAGE_BIPS, MAX_SLIPPAGE_BIPS)
-  const bips = Math.min(slip + Math.max(0, Math.trunc(partnerFeeBps)), 10_000)
-  const bound = BigInt(bips)
-  if (kind === 'sell') {
-    // Ceiling division: round the min-out floor UP so we never accept a limit one
-    // atom below the true slippage floor (an at-reference limit still passes).
-    const minOut = (BigInt(fair.buyAmount) * (10_000n - bound) + 9_999n) / 10_000n
-    if (BigInt(buyAmount) < minOut) {
-      throw new Error(
-        `build_order: buyAmount (min out) ${buyAmount} is below the ${bips}-bips slippage floor ${minOut} vs the live quote out ${fair.buyAmount}. Raise buyAmount or slippageBips.`,
-      )
-    }
-  } else {
-    const maxIn = (BigInt(fair.sellAmount) * (10_000n + bound)) / 10_000n
-    if (BigInt(sellAmount) > maxIn) {
-      throw new Error(
-        `build_order: sellAmount (max in) ${sellAmount} exceeds the ${bips}-bips slippage ceiling ${maxIn} vs the live quote in ${fair.sellAmount}. Lower sellAmount or raise slippageBips.`,
-      )
-    }
-  }
 }
 
 /** Cap reflected upstream error bodies so attacker/upstream-controlled text can't flood agent context. */

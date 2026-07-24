@@ -9,6 +9,7 @@ named phase tags for major milestones.
 ## [Unreleased]
 
 ### Changed
+- WP0 of the Odos extraction program: the pure order-build core (`deterministicStringify`, `buildOphisFullAppData`, `buildOrder`, `assertLimitWithinSlippage`, `extractQuoteAmounts`, the amount/address guards, `ORDER_TYPED_DATA_TYPES`, `APP_DATA_VERSION`, `MAX_SLIPPAGE_BIPS`) moved from `apps/mcp-server/src/ophis.ts` into `@ophis/sdk` (`packages/sdk/src/order-build.ts`). The MCP re-exports the same surface (`buildOphisFullAppData` under its old local name `buildOphisAppData`), so behavior and every call site are unchanged. `@ophis/sdk` now declares `viem` as a peerDependency (appData hashing + address checksumming); the rest of the SDK stays dependency-free.
 - Rebate pool resized from 50% to 21.25% of net WETH fees (`POOL_SPLIT_BPS` 5000 → 2125) so the protocol retains ~55% of gross blended after CoW's hosted-chain cut. Tier weights and the pari-mutuel distribution are unchanged; only the pool size shrinks.
 
 ### Security
