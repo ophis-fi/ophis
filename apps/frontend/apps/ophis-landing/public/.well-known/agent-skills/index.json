@@ -27,21 +27,21 @@
       "type": "skill-md",
       "description": "Execute a token swap on Ophis end to end: quote, build, confirm with the user, exact approval to the pinned vault relayer, EIP-712 sign, submit. The signed order is a bounded intent with a hard minimum, settled MEV-protected in a batch auction.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-swap.md",
-      "digest": "sha256:e17f1248b132adfb68b85b3b3129386d84db9b035c3d4ed97166618ae5bf79e2"
+      "digest": "sha256:6980dfdb9b809a1d0d9eaa7a0f188fb1af67d8d71d9d0cf7f33a0d4211c07509"
     },
     {
       "name": "ophis-order-status",
       "type": "skill-md",
       "description": "Check an Ophis order by UID: lifecycle status, executed amounts, surplus versus the signed minimum, and the settlement transaction. Read-only.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-order-status.md",
-      "digest": "sha256:0c7828692424fdf702b706973f836fa9cd0310dba34255e29da43e2e5cd5b4d1"
+      "digest": "sha256:508348251a7cd5076ea8e9a0ab22c2391a7ddbe083830d2354cb6f697a89a134"
     },
     {
       "name": "ophis-cancel",
       "type": "skill-md",
       "description": "Cancel one or many open Ophis orders, gasless, via a signed EIP-712 cancellation, including the batch type-string trap and the on-chain hard cancel fallback.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-cancel.md",
-      "digest": "sha256:d0e02ee5058ad1b252c0e1fc74b412aa95f4fbe73ecac10d7bec0d08921f75fd"
+      "digest": "sha256:72dedfe88a528ee67cb4883b3e9c437ad0470dbf789f8553d464a6c5fab38a27"
     },
     {
       "name": "ophis-surplus-report",

@@ -83,6 +83,11 @@ reset to 0 first.
 ```bash
 allowance=$(cast call "$sellToken" "allowance(address,address)(uint256)" "$owner" "$RELAYER" --rpc-url "$RPC_URL")
 allowance=${allowance%% *}
+# A failed RPC read must ABORT, never fall through: an error string in
+# $allowance would make every comparison below exit nonzero, which is
+# indistinguishable from "allowance already exact" and would silently keep
+# an oversized approval alive. Validate before comparing.
+[[ "$allowance" =~ ^[0-9]+$ ]] || { echo "allowance read failed: $allowance" >&2; exit 1; }
 if python3 -c "import sys; sys.exit(0 if int('$allowance') != int('$sellAmount') else 1)"; then
   if python3 -c "import sys; sys.exit(0 if int('$allowance') != 0 else 1)"; then
     cast send "$sellToken" "approve(address,uint256)" "$RELAYER" 0 \

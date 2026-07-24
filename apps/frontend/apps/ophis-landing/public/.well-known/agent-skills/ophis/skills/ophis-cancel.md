@@ -51,14 +51,19 @@ curl -sS -X DELETE "$ORDERBOOK/api/v1/orders/$uid" \
 One signature cancels up to 128 orders via `DELETE /api/v1/orders` (the
 orderbook's enforced `ORDER_UID_LIMIT`; split larger sets into batches).
 
-**Mind the singular/plural trap.** The EIP-712 type string is
-`OrderCancellations(bytes[] orderUid)`, type hash
-`0x4c89efb91ae246f78d2fe68b47db2fa1444a121a4f2dc3fda7a5a408c2e3588e`: the
-struct FIELD is the singular `orderUid` (an array of bytes). The JSON body
-field, however, is the plural `orderUids`. Signing a struct with a field
-named `orderUids` produces a different type hash and the orderbook rejects
-the signature; sending a body with `orderUid` fails deserialization. The
-snippet below has each name in the only place it belongs.
+**Mind the singular/plural trap.** The deployed EIP-712 type string is
+`OrderCancellations(bytes[] orderUids)`, type hash
+`0x4c89efb91ae246f78d2fe68b47db2fa1444a121a4f2dc3fda7a5a408c2e3588e`
+(verify yourself: `cast keccak` of that exact string). Both the struct
+field and the JSON body field are the PLURAL `orderUids`. The trap: the
+single-order type above uses the singular `orderUid`, and some older
+collateral states the batch string with a singular field too; that
+singular variant hashes to
+`0x85d264d56800ce1cf972242bf20d6230c1034948363a1935da26ee59ab11a600`,
+which the settlement domain never accepts, so a batch cancellation signed
+that way recovers a wrong signer and the orderbook rejects it. Remember:
+single cancel signs `orderUid`, batch cancel signs `orderUids`; CI pins
+the snippet below to the deployed hashes.
 
 ```bash
 uids='["0x...", "0x..."]'   # JSON array of order UIDs (max 128, enforced)
@@ -69,11 +74,11 @@ jq -n --argjson chainId "$chainId" --arg verifyingContract "$SETTLEMENT" --argjs
       {name:"name",type:"string"},{name:"version",type:"string"},
       {name:"chainId",type:"uint256"},{name:"verifyingContract",type:"address"}
     ],
-    OrderCancellations: [ {name:"orderUid",type:"bytes[]"} ]
+    OrderCancellations: [ {name:"orderUids",type:"bytes[]"} ]
   },
   primaryType: "OrderCancellations",
   domain: { name: "Gnosis Protocol", version: "v2", chainId: $chainId, verifyingContract: $verifyingContract },
-  message: { orderUid: $uids }
+  message: { orderUids: $uids }
 }' > /tmp/ophis-cancel-batch-typed-data.json
 
 signature=$(cast wallet sign --data --from-file /tmp/ophis-cancel-batch-typed-data.json "${SIGNER_ARGS[@]}")
@@ -114,7 +119,8 @@ default.
 
 ## Errors
 
-- `400 InvalidRequestBody` on batch: check the singular/plural trap above.
+- `400 InvalidRequestBody` on batch: the JSON body field is `orderUids`
+  (plural); see the trap above.
 - `401` / signature rejected: the cancellation must be signed by the order's
   owner key, over the pinned per-chain domain.
 - `404 NotFound`: wrong chain or wrong UID.

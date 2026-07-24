@@ -41,17 +41,20 @@ echo "$order" | jq '{
 echo "$status" | jq .
 ```
 
-- `GET /api/v1/orders/{uid}` is the order record: signed terms plus executed
-  amounts and lifecycle `status` (`open`, `fulfilled`, `cancelled`,
-  `expired`, `presignaturePending`).
-- `GET /api/v1/orders/{uid}/status` is the auction view: whether solvers are
-  actively bidding, which solver won, and the settlement transaction once
-  one exists.
+- `GET /api/v1/orders/{uid}` is the order record and the source of truth:
+  signed terms plus executed amounts and lifecycle `status` (`open`,
+  `fulfilled`, `cancelled`, `expired`, `presignaturePending`).
+- `GET /api/v1/orders/{uid}/status` is the live auction view (whether
+  solvers are actively bidding, which solver won). It covers the recent
+  competition window only: for a settled or aged order it returns 404
+  `order status not found` even though the order exists and filled. Treat
+  that 404 as "no live competition data", never as "unknown order".
 
-For per-fill detail (settlement tx hash, fee, block):
+For the settlement record (tx hash, block, executed amounts per fill),
+which keeps working long after the competition view has aged out:
 
 ```bash
-curl -sS "$ORDERBOOK/api/v1/trades?orderUid=$uid" | jq .
+curl -sS "$ORDERBOOK/api/v1/trades?orderUid=$uid" | jq '[.[] | {txHash, blockNumber, sellAmount, buyAmount}]'
 ```
 
 ## Interpreting the result for the user
@@ -78,7 +81,12 @@ test "$code" = "404"
 
 ## Errors
 
-- `404 NotFound`: no such UID on THIS chain's orderbook; check the chain
-  before telling the user the order does not exist.
+- `404 NotFound` from `GET /orders/{uid}` (the order record): no such UID
+  on THIS chain's orderbook; check the chain before telling the user the
+  order does not exist.
+- `404 order status not found` from `GET /orders/{uid}/status`: NOT proof
+  the order is unknown; the competition view ages out after settlement.
+  Answer "did it go through?" from the order record's `status` and from
+  `GET /trades?orderUid=` (the settlement tx hash), never from this 404.
 - A UID is chain-local: the same trade concept on another chain is a
   different order with a different UID.

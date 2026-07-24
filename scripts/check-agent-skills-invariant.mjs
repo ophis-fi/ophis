@@ -120,16 +120,31 @@ const appDataVersion = read(MCP_OPHIS).match(/APP_DATA_VERSION = '([0-9.]+)'/)?.
 if (!appDataVersion) fail(`could not parse APP_DATA_VERSION from ${MCP_OPHIS}`);
 
 const orderRs = read(MODEL_ORDER_RS);
+// The EIP-712 cancellation type strings, keccak-proven against the deployed
+// TYPE_HASH constants (verify: `cast keccak '<string>'`):
+//   OrderCancellation(bytes orderUid)        -> 0x7b41b3a6...88ec  (single)
+//   OrderCancellations(bytes[] orderUids)    -> 0x4c89efb9...588e  (batch, PLURAL field)
+//   OrderCancellations(bytes[] orderUid)     -> 0x85d264d5...a600  (WRONG: does not
+//     match any deployed constant; it is what the stale doc comment above the
+//     batch TYPE_HASH in order.rs claims, which is why the hashes below are
+//     extracted from the impl blocks, never from doc comments.)
 const CANCEL_SINGLE_TYPE = 'OrderCancellation(bytes orderUid)';
-const CANCEL_BATCH_TYPE = 'OrderCancellations(bytes[] orderUid)';
+const CANCEL_BATCH_TYPE = 'OrderCancellations(bytes[] orderUids)';
+const CANCEL_BATCH_TYPE_WRONG_SINGULAR = 'OrderCancellations(bytes[] orderUid)';
 const cancelSingleHash = orderRs.match(
-  /OrderCancellation\(bytes orderUid\)"\)[\s\S]{0,200}?hex!\("([0-9a-f]{64})"\)/,
+  /impl OrderCancellation \{[\s\S]{0,300}?hex!\("([0-9a-f]{64})"\)/,
 )?.[1];
 const cancelBatchHash = orderRs.match(
-  /OrderCancellations\(bytes\[\] orderUid\)"\)`?\.?[\s\S]{0,200}?hex!\("([0-9a-f]{64})"\)/,
+  /impl OrderCancellations \{[\s\S]{0,300}?hex!\("([0-9a-f]{64})"\)/,
 )?.[1];
 if (!cancelSingleHash || !cancelBatchHash) {
   fail(`could not parse the cancellation type hashes from ${MODEL_ORDER_RS}`);
+}
+if (cancelSingleHash && !cancelSingleHash.startsWith('7b41b3a6')) {
+  fail(`single-cancel TYPE_HASH in ${MODEL_ORDER_RS} is 0x${cancelSingleHash}; expected the keccak of "${CANCEL_SINGLE_TYPE}" (0x7b41b3a6...). Re-verify with cast keccak before updating this gate.`);
+}
+if (cancelBatchHash && !cancelBatchHash.startsWith('4c89efb9')) {
+  fail(`batch-cancel TYPE_HASH in ${MODEL_ORDER_RS} is 0x${cancelBatchHash}; expected the keccak of "${CANCEL_BATCH_TYPE}" (0x4c89efb9...). Re-verify with cast keccak before updating this gate.`);
 }
 // The enforced batch-cancel cap (cancel_orders_handler checks this constant;
 // its error-message text is not authoritative and has lagged it before).
@@ -291,6 +306,8 @@ for (const [what, want] of [
   ['single type hash', cancelSingleHash && `0x${cancelSingleHash}`],
   ['batch type hash', cancelBatchHash && `0x${cancelBatchHash}`],
   ['plural JSON field', 'orderUids'],
+  ['plural batch typed-data field declaration', '{name:"orderUids",type:"bytes[]"}'],
+  ['plural batch message field', 'message: { orderUids: $uids }'],
   ['enforced batch cap (headline)', orderUidLimit && `up to ${orderUidLimit} orders`],
   ['enforced batch cap (snippet comment)', orderUidLimit && `max ${orderUidLimit}, enforced`],
   ['enforced batch cap (errors section)', orderUidLimit && `batch cap is ${orderUidLimit} UIDs`],
@@ -298,6 +315,13 @@ for (const [what, want] of [
   if (want && !cancelSrc.includes(want)) {
     fail(`ophis-cancel.md: missing the ${what} (${want}); it must match ${MODEL_ORDER_RS}`);
   }
+}
+// The WRONG singular batch type string must never appear as a signable string:
+// its hash (0x85d264d5...) matches no deployed constant, so anything signed
+// with it is rejected. (The plural string does not contain it as a substring:
+// the wrong variant closes the paren right after "orderUid".)
+if (cancelSrc.includes(CANCEL_BATCH_TYPE_WRONG_SINGULAR)) {
+  fail(`ophis-cancel.md: contains the singular batch type string "${CANCEL_BATCH_TYPE_WRONG_SINGULAR}", whose hash matches no deployed constant; the deployed batch type is "${CANCEL_BATCH_TYPE}"`);
 }
 // A drifted cap literal (e.g. a stale larger number) must fail even though the
 // correct literals are present.
