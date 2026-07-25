@@ -57,9 +57,12 @@ contract FixedRateVenue {
 ///
 /// Model: the harness is BOTH the owner and the liquidator of the contract
 /// under test, so the fuzz wrappers below exercise the real ops surface
-/// (sweep + consolidate through empty-trade settle() post-interactions on a
-/// real GPv2Settlement). What is fuzzed is the FUNDS-FLOW SAFETY, not access
-/// control (the forge suite pins the auth matrix):
+/// (liquidator-role sweep + owner-role consolidate, both through empty-trade
+/// settle() post-interactions on a real GPv2Settlement). What is fuzzed is the
+/// FUNDS-FLOW SAFETY once a call is authorized, not access control: the forge
+/// suite pins the auth matrix, including that consolidate() is owner-only and
+/// the hot-key drain is impossible. Here the conservation properties must hold
+/// no matter which authorized entry point runs:
 ///
 ///   echidna_liquidator_holds_nothing, the liquidator contract never
 ///       custodies tokens or ETH, in any reachable state;

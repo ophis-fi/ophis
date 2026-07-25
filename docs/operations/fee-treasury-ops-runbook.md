@@ -6,16 +6,24 @@ ceremony: it is performed by the operator (protocol-Safe signers + the infra
 host owner), never by an agent. Agents prepare payloads; humans sign.
 
 Scope: the fee-ops Wave 2 deliverable (build-plan section 4.7, decisions
-52-57 with the recommended defaults). One constrained ops surface, distinct
-from the protocol Safe and the driver-submitter key, that can only:
+52-57 with the recommended defaults). Two operations split across two trust
+tiers:
 
-1. **sweep** accrued CIP-75 fees from the OP Settlement contract to the fee
-   Safe (`OphisFeeLiquidator.sweep`, amount 0 = full balance, address(0) =
-   native ETH), and
-2. **consolidate** multi-denomination fee dust in place into WETH with a
-   mandatory `amountOutMin` floor (`OphisFeeLiquidator.consolidate`),
-   DISABLED at launch: the venue allowlist deploys empty (decision 52) and
-   activation is a later Safe transaction, no redeploy.
+1. **sweep** (LIQUIDATOR hot key): move accrued CIP-75 fees from the OP
+   Settlement contract to the immutable fee Safe (`OphisFeeLiquidator.sweep`,
+   amount 0 = full balance, address(0) = native ETH). Safe for a hot key
+   because the destination is pinned and unbypassable.
+2. **consolidate** (OWNER Safe only): swap multi-denomination fee dust in
+   place into WETH with a mandatory `amountOutMin` floor
+   (`OphisFeeLiquidator.consolidate`). This routes through an arbitrary
+   allowlisted venue with caller-supplied calldata, so it carries the same
+   trust as `setVenue` and is OWNER-ONLY: a hot key could otherwise pass
+   `amountOutMin = 1` and venue calldata paying an attacker. The 100 bps
+   runner cap binds the off-chain runner, NOT a direct contract call, which
+   is why the contract itself gates the call to the owner Safe. Consolidation
+   is also DISABLED at launch: the venue allowlist deploys empty (decision
+   52); activation and execution are BOTH owner Safe transactions, no
+   redeploy.
 
 Ported pattern: OdosRouterV3 `liquidatorAddress` / `transferRouterFunds` /
 `swapRouterFunds` (MIT, notice retained in the contract header), narrowed:
@@ -48,11 +56,13 @@ Control relationships, worth internalizing before any ceremony:
 - The **contract** is the allowlisted solver, not the ops key. The guardian's
   instant `removeSolver(liquidator)` kills both sweep and consolidate in one
   Safe transaction regardless of key state.
-- The **ops key** only reaches the two `onlyOps` functions. It cannot change
-  the destination (immutable), the venue set, or its own successor.
-- The **owner Safe** can pause the key (`setLiquidator(0)`), rotate it, and
-  allowlist venues/output tokens, all instant, all capability-narrowing or
-  reversible. Adding solver capability is the ONLY 24h-delayed action.
+- The **ops key** (liquidator role) reaches ONLY `sweep`, whose destination is
+  the immutable fee Safe. It cannot call `consolidate` (owner-only), cannot
+  change the destination, the venue set, or its own successor.
+- The **owner Safe** can pause the key (`setLiquidator(0)`), rotate it,
+  allowlist venues/output tokens, and EXECUTE consolidations (venue routing is
+  an owner capability, not a hot-key one). All instant except adding solver
+  capability, which is the ONLY 24h-delayed action.
 
 ## 2. Ops-key custody (decision 55)
 
@@ -73,10 +83,10 @@ verbatim to this key):
   `check-settlement-buffer.sh` and messages the buffer + last-sweep age.
   The nag never signs anything.
 - Compromise response: §8. The key is deliberately low-value; the worst an
-  attacker holding ONLY this key can do is sweep fees to the fee Safe
-  (destination pinned) or, post-activation, consolidate dust into WETH
-  inside the Settlement with at most the configured slippage. Rotation is
-  one Safe transaction.
+  attacker holding ONLY this key can do is `sweep` fees to the immutable fee
+  Safe (destination pinned, no loss). The key CANNOT `consolidate` (owner-only)
+  so it never touches the arbitrary-venue routing path. Rotation is one Safe
+  transaction (`setLiquidator`).
 
 ## 3. What ships in the repo (already merged when you read this)
 
@@ -85,10 +95,12 @@ verbatim to this key):
 - `contracts/test/OphisFeeLiquidator/` (forge suite incl. fuzz)
 - `contracts/echidna/E2EFeeLiquidator.sol` (weekly fuzz lane, echidna.yml)
 - `infra/optimism-mainnet/scripts/sweep-to-safe.sh` (v2 runner, cast-send)
-- `infra/optimism-mainnet/scripts/consolidate-fee-dust.sh` (prepared, inert
-  until venue activation)
+- `infra/optimism-mainnet/scripts/consolidate-fee-dust.sh` (emits an owner
+  Safe Transaction Builder payload; does NOT sign; inert until venue
+  activation)
 - `infra/optimism-mainnet/scripts/settlement-anomaly-watch.sh` (solver-SET
-  aware; `FEE_LIQUIDATOR` env)
+  aware; `FEE_LIQUIDATOR` env; now REQUIRES `TELEGRAM_BOT_TOKEN_FILE` +
+  `TELEGRAM_CHAT_ID`, fails loud without them, and heartbeats)
 - `infra/optimism-mainnet/scripts/check-settlement-buffer.sh` (liquidator +
   last-sweep-age probe)
 - `contracts/script/SweepSettlementBuffer.s.sol` (v1, KEPT as DR fallback,
@@ -110,11 +122,15 @@ export REHEARSAL_EOA=<your funded sepolia EOA>
 cast wallet new   # -> REHEARSAL_SAFE
 cast wallet new   # -> fee-ops-rehearsal.key -> REHEARSAL_OPS
 
-# 4.2 deploy
+# 4.2 deploy. Project-scoped OFL_* env names (never bare SETTLEMENT/OWNER,
+#     which collide with ambient shell state). On a non-OP chain the mainnet
+#     defaults refuse to resolve, so ALL three addresses are explicit; an EOA
+#     owner is allowed off mainnet (loud WARN only). OFL_CONFIRM=1 is required
+#     to broadcast.
 cd contracts
-SETTLEMENT=0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce \
-FEE_SAFE=$REHEARSAL_SAFE OWNER=$REHEARSAL_EOA LIQUIDATOR=$REHEARSAL_OPS \
-PRIVATE_KEY=<deployer pk> \
+OFL_SETTLEMENT=0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce \
+OFL_FEE_SAFE=$REHEARSAL_SAFE OFL_OWNER=$REHEARSAL_EOA OFL_LIQUIDATOR=$REHEARSAL_OPS \
+OFL_CONFIRM=1 PRIVATE_KEY=<deployer pk> \
 forge script DeployFeeLiquidator --rpc-url "$RPC" --broadcast
 # record -> LIQ
 
@@ -138,13 +154,20 @@ cast send "$LIQ" "sweep(address[],uint256[])" "[<testToken>,0x000000000000000000
   --rpc-url "$RPC" --private-key <rehearsal ops pk>
 # and verify REHEARSAL_SAFE received both balances.
 
-# 4.6 pause/unpause: setLiquidator(0) from OWNER; confirm the ops key gets
-#     "OFL: caller not ops"; setLiquidator back.
+# 4.6 pause/unpause: setLiquidator(0) from OWNER; confirm the ops key sweep
+#     gets "OFL: caller not ops"; setLiquidator back.
 
-# 4.7 consolidation dry ceremony: deploy the forge-test MockVenueRouter,
-#     setVenue + setOutputToken from OWNER, run one consolidate with a
-#     hand-built calldata and amountOutMin, then setVenue(false).
+# 4.7 consolidation dry ceremony. consolidate() is OWNER-ONLY, so the OWNER
+#     key runs it (NOT the ops key). First prove the ops key is rejected, then
+#     deploy the forge-test MockVenueRouter, setVenue + setOutputToken from
+#     OWNER, run one consolidate from OWNER with hand-built calldata and
+#     amountOutMin, then setVenue(false).
+cast send "$LIQ" "consolidate((address,uint256)[],address,uint256,address,bytes)" \
+  "[(<testToken>,0)]" <tokenOut> 1 <venue> 0x --rpc-url "$RPC" --private-key <rehearsal ops pk>
+#   ^ MUST revert "OFL: caller not owner" (proves the hot key cannot consolidate)
 forge create test/OphisFeeLiquidator/Mocks.sol:MockVenueRouter --rpc-url "$RPC" --private-key <pk>
+#   then setVenue/setOutputToken and the real consolidate() are signed by the
+#   OWNER key (on mainnet this is the Safe; see §7).
 
 # 4.8 rollback rehearsal: removeSolver from the manager; confirm sweep now
 #     reverts "GPv2: not a solver".
@@ -159,14 +182,19 @@ rehearsal log (§10).
 Deployment itself grants no authority (the contract only matters once the
 timelock adds it as a solver), so the deployer is any gas-funded EOA.
 
+On chain 10 the mainnet defaults (settlement, fee Safe, owner Safe) resolve
+automatically and OWNER/FEE_SAFE are asserted to have code (they are Safes);
+`OFL_LIQUIDATOR` is the only address you pass. `OFL_CONFIRM=1` is REQUIRED to
+broadcast, so a dry-run cannot accidentally send.
+
 ```bash
 cd contracts
-# dry-run first (no PRIVATE_KEY, --sender only):
-LIQUIDATOR=<fee-ops EOA> forge script DeployFeeLiquidator \
+# dry-run first (NO OFL_CONFIRM, so it prints resolved args and does NOT send):
+OFL_LIQUIDATOR=<fee-ops EOA> forge script DeployFeeLiquidator \
   --rpc-url "$OP_MAINNET_RPC" --sender <deployer>
-# live:
-LIQUIDATOR=<fee-ops EOA> PRIVATE_KEY=<deployer pk> forge script DeployFeeLiquidator \
-  --rpc-url "$OP_MAINNET_RPC" --broadcast
+# review the printed Chain id / Owner / Fee Safe / Liquidator, THEN live:
+OFL_CONFIRM=1 OFL_LIQUIDATOR=<fee-ops EOA> PRIVATE_KEY=<deployer pk> \
+  forge script DeployFeeLiquidator --rpc-url "$OP_MAINNET_RPC" --broadcast
 ```
 
 Post-deploy verification (all must match before the timelock ceremony):
@@ -248,8 +276,16 @@ told about the liquidator. In the SAME change window as TX 2:
   `settlement-anomaly-watch.sh` (launchd plist) and
   `check-settlement-buffer.sh` (cron), and restart both.
 
-Skipping this means every sweep pages CRITICAL, which trains operators to
-ignore the pager. That is the failure mode this line exists to prevent.
+`settlement-anomaly-watch.sh` also REQUIRES `TELEGRAM_BOT_TOKEN_FILE` (a
+readable file on THIS host, no personal-home default) and `TELEGRAM_CHAT_ID`
+in its launchd env; it refuses to start without a working channel and exits
+non-zero if a CRITICAL or the periodic heartbeat fails to deliver, so a dead
+pager surfaces as a launchd job failure instead of false silence. Confirm the
+first heartbeat lands after enabling.
+
+Skipping the `FEE_LIQUIDATOR` set means every sweep pages CRITICAL, which
+trains operators to ignore the pager. That is the failure mode this line
+exists to prevent.
 
 ## 7. Routine sweeps and (later) consolidation activation
 
@@ -269,10 +305,11 @@ aggregate, or monthly before the payout batchers, whichever first. Partner
 payouts (partner-fees Phase B) read realized revenue from the `fee_sweeps`
 reconciliation table (§9), so a sweep must precede each monthly cycle.
 
-**Consolidation activation** (later, when dust value justifies it; this is
-the decision-52 "activation later via a Safe transaction"):
+**Consolidation activation AND execution are BOTH owner Safe operations**
+(consolidate() is owner-only; the fee-ops hot key cannot call it). When dust
+value justifies it (decision-52 "activation later via a Safe transaction"):
 
-1. Owner Safe TX batch:
+1. Activation, owner Safe TX batch:
    - To `LIQ`: `setVenue(0x6131B5fae19EA4f9D964eAc0408E4408b66337b5, true)`
      (KyberSwap MetaAggregationRouterV2, decision 54)
    - To `LIQ`: `setOutputToken(0x4200000000000000000000000000000000000006, true)`
@@ -281,10 +318,21 @@ the decision-52 "activation later via a Safe transaction"):
    `consolidate-fee-dust.sh` (routes + route/build) before the first run;
    the script hard-aborts if the API's router address differs from the
    allowlisted venue.
-3. First run: dry-run, then broadcast with a SMALL `AMOUNT_IN`, runner
-   slippage cap 100 bps (the script refuses more).
+3. Build the consolidation as a Safe transaction. The runner does NOT sign or
+   broadcast: it fetches the route, computes `amountOutMin` at the 100 bps cap
+   (it refuses to widen), simulates as the owner Safe, and emits a Safe
+   Transaction Builder payload:
+   ```bash
+   FEE_LIQUIDATOR=$LIQ TOKEN_IN=<dustToken> AMOUNT_IN=<small> \
+   OUT_JSON=/tmp/consolidate.json \
+     ./infra/optimism-mainnet/scripts/consolidate-fee-dust.sh
+   ```
+   Import `/tmp/consolidate.json` into the owner Safe, have the 2-of-3 signers
+   decode and verify (to == liquidator, the `amountOutMin`, the venue), sign,
+   and execute. Aggregator routes go stale in minutes, so re-run the script
+   and re-simulate immediately before execution if signing was slow.
 4. Every consolidation leaves the WETH in the Settlement; follow with a
-   normal sweep.
+   normal sweep (the hot-key path) to move it to the fee Safe.
 
 Deactivation is the mirrored Safe transaction with `false`.
 
@@ -296,19 +344,22 @@ Fastest first. All are single Safe transactions, none waits 24h:
 |---|---|
 | Anything suspicious mid-window | Guardian `removeSolver(LIQ)` (instant; kills sweep + consolidate at the settlement gate) |
 | Fee-ops key compromised | Owner `setLiquidator(0)` (pause), then `setLiquidator(newKey)` after re-keying; optionally also removeSolver while investigating |
-| Bad venue behavior post-activation | Owner `setVenue(venue, false)`; slippage floor already bounds per-tx damage to 100 bps of the consolidated dust |
+| Bad venue behavior post-activation | Owner `setVenue(venue, false)`; consolidation is owner-only so only a Safe-signed tx could have routed through it anyway |
 | Contract bug suspected | Guardian `removeSolver(LIQ)`, then treat redeploy as a fresh §5+§6 cycle |
 | Scheduled timelock op looks wrong | Safe `TimelockController.cancel(OP_ID)` inside the 24h window |
 
 Re-adding solver capability after any rollback ALWAYS re-runs the full §6
 ceremony (that is the point of the timelock).
 
-Worst-case bound while the contract is a solver: an attacker with the ops
-key can move accrued fees to the fee Safe (no loss) or, post-activation,
-consolidate dust into WETH within the slippage cap (bounded loss =
-`SLIPPAGE_BPS` of the dust consolidated per tx). The attacker cannot
-redirect funds anywhere else; both flows end inside Ophis-controlled
-addresses.
+Worst-case bound if the FEE-OPS HOT KEY is compromised while the contract is
+a solver: the attacker can only call `sweep`, which moves accrued fees to the
+IMMUTABLE fee Safe. That is NOT a loss (funds reach their intended home) and
+the attacker cannot redirect them anywhere else. The attacker CANNOT call
+`consolidate` (owner-only), so the arbitrary-venue routing path is closed to
+a hot key entirely. Venue routing requires the owner Safe (2-of-3); a
+compromised Safe is a separate, higher-tier incident bounded by the on-chain
+`amountOutMin` floor per consolidation. This is why consolidation is
+owner-gated: the hot key never touches an attacker-controllable destination.
 
 ## 9. Observability and reconciliation
 

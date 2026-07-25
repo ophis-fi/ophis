@@ -25,11 +25,21 @@ import {ReentrancyGuard} from "./mixins/ReentrancyGuard.sol";
 
 /// @title Ophis fee-treasury liquidator
 /// @notice A constrained ops surface, distinct from the protocol Safe and the
-/// driver-submitter key, that can ONLY:
-///   1. sweep accrued CIP-75 fees from the Ophis OP Settlement contract to
-///      the immutable fee Safe (`sweep`), and
-///   2. consolidate multi-denomination fee dust in place into an allowlisted
-///      output token with a mandatory minimum-out floor (`consolidate`).
+/// driver-submitter key, split across two trust tiers:
+///   1. `sweep` (liquidator role, hot key): move accrued CIP-75 fees from the
+///      Ophis OP Settlement contract to the IMMUTABLE fee Safe. Safe for a hot
+///      key because the destination is pinned and unbypassable, the worst a
+///      compromised key can do is move fees to their intended home.
+///   2. `consolidate` (OWNER only, the protocol Safe): swap multi-denomination
+///      fee dust in place into an allowlisted output token. This routes through
+///      an arbitrary allowlisted venue with caller-supplied calldata and a
+///      caller-supplied `amountOutMin`; a hot key holding both could pick
+///      `amountOutMin = 1` and venue calldata paying an attacker, draining the
+///      dust for ~1 wei. On-chain the contract cannot tell a fair route from a
+///      hostile one, so consolidation carries the SAME trust as `setVenue`:
+///      owner/Safe only. The 100 bps runner cap lives in the off-chain runner
+///      and would not bind a direct hot-key call, which is exactly why the call
+///      itself is owner-gated.
 /// Both operations are executed as empty-trade `settle()` calls with
 /// post-interactions, so this contract must be in the solver allowlist
 /// (added via the 24h Timelock + AllowListGuardian ceremony; the guardian's
@@ -38,14 +48,18 @@ import {ReentrancyGuard} from "./mixins/ReentrancyGuard.sol";
 ///
 /// Roles:
 ///   - `owner` (immutable, the protocol Safe): admin, rotate the liquidator
-///     key, allowlist venues/output tokens, and run ops itself if needed.
-///   - `liquidator` (mutable): the fee-ops key. Setting it to address(0)
-///     pauses the ops-key path without touching the solver allowlist.
+///     key, allowlist venues/output tokens, execute consolidations, and run
+///     sweeps itself if needed.
+///   - `liquidator` (mutable): the fee-ops key. Can ONLY `sweep`. Setting it to
+///     address(0) pauses the ops-key path without touching the solver
+///     allowlist.
 ///
 /// Funds-flow guarantees:
 ///   - swept funds can ONLY go to the immutable `feeSafe`;
 ///   - consolidation output can ONLY accrue inside the Settlement contract
 ///     (enforced by the balance-difference floor, not by trusting the venue);
+///   - only the owner Safe can trigger a consolidation (venue routing is not a
+///     hot-key capability);
 ///   - venue approvals are exact-amount and revoked in the same settlement,
 ///     with a post-settlement zero-allowance assertion;
 ///   - this contract itself never custodies funds.
@@ -210,12 +224,20 @@ contract OphisFeeLiquidator is ReentrancyGuard {
     /// @notice Consolidate fee dust held by the Settlement contract into
     /// `tokenOut` via an owner-allowlisted venue. The output stays in the
     /// Settlement contract; a later `sweep` moves it to the fee Safe.
+    /// @dev OWNER ONLY (the protocol Safe), NOT the liquidator hot key. Both
+    /// `amountOutMin` and `venueCallData` are attacker-controllable if this
+    /// were hot-key callable: a compromised key could pass `amountOutMin = 1`
+    /// and venue calldata routing the dust to itself, and the on-chain
+    /// balance-difference floor would still pass. The 100 bps runner cap in
+    /// consolidate-fee-dust.sh binds the SCRIPT, not a direct contract call, so
+    /// the trust boundary is enforced here: venue routing is an owner
+    /// capability, executed as a Safe transaction (see the runbook).
     /// @param inputs input tokens (`amount` 0 = full balance; native ETH not
     /// supported, sweep it, or wrap via a venue-side route from WETH dust).
     /// @param tokenOut owner-allowlisted output token (WETH per decision 53).
     /// @param amountOutMin mandatory floor on the Settlement contract's
-    /// `tokenOut` balance increase; the runner derives it from the venue
-    /// quote minus the slippage cap (100 bps default, see
+    /// `tokenOut` balance increase; the Safe transaction is built from the
+    /// venue quote minus the slippage cap (100 bps default, see
     /// consolidate-fee-dust.sh).
     /// @param venue owner-allowlisted venue router the settlement calls.
     /// @param venueCallData venue calldata built off-chain by the runner with
@@ -226,7 +248,7 @@ contract OphisFeeLiquidator is ReentrancyGuard {
         uint256 amountOutMin,
         address venue,
         bytes calldata venueCallData
-    ) external onlyOps nonReentrant returns (uint256 amountOut) {
+    ) external onlyOwner nonReentrant returns (uint256 amountOut) {
         require(inputs.length > 0, "OFL: empty consolidate");
         require(venueAllowed[venue], "OFL: venue not allowed");
         require(outputTokenAllowed[tokenOut], "OFL: output not allowed");

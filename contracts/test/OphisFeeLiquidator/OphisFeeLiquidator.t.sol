@@ -305,20 +305,74 @@ contract OphisFeeLiquidatorTest is Test {
         assertEq(address(liq).balance, 0);
     }
 
-    // --- consolidate: gating ---
+    // --- consolidate: access control (BLOCKER fix: owner-only) ---
 
-    function test_consolidate_rejects_stranger() public {
+    /// The BLOCKER: consolidate() routes through an arbitrary venue with a
+    /// caller-supplied amountOutMin, so it must NOT be reachable by the
+    /// liquidator hot key. Only the owner Safe may call it.
+    function test_consolidate_is_owner_only_not_ops_key() public {
         enableConsolidation();
+        usdc.mint(address(settlement), 1000e6);
+
+        // The liquidator hot key is rejected BEFORE any state change.
+        vm.prank(ops);
+        vm.expectRevert("OFL: caller not owner");
+        liq.consolidate(
+            oneInput(address(usdc), 0), address(weth), 1, address(venue), venueSwapData(address(usdc), 1000e6)
+        );
+
+        // A random address is rejected too.
         vm.prank(stranger);
-        vm.expectRevert("OFL: caller not ops");
-        liq.consolidate(oneInput(address(usdc), 0), address(weth), 1, address(venue), "");
+        vm.expectRevert("OFL: caller not owner");
+        liq.consolidate(
+            oneInput(address(usdc), 0), address(weth), 1, address(venue), venueSwapData(address(usdc), 1000e6)
+        );
+
+        // The owner Safe can.
+        vm.prank(ownerSafe);
+        liq.consolidate(
+            oneInput(address(usdc), 0), address(weth), 990e6, address(venue), venueSwapData(address(usdc), 1000e6)
+        );
     }
+
+    /// The exact drain scenario from the audit, proven impossible: a
+    /// compromised ops key calls consolidate() DIRECTLY (bypassing the
+    /// 100 bps script cap) with amountOutMin = 1 and venue calldata paying an
+    /// attacker. The onlyOwner gate reverts it before the venue is ever
+    /// approved or called, so no dust moves and the attacker's misdirect
+    /// never executes.
+    function test_consolidate_drain_via_ops_key_is_blocked() public {
+        enableConsolidation();
+        usdc.mint(address(settlement), 1000e6);
+        venue.setMisdirectTo(stranger); // hostile route: pay the attacker
+
+        uint256 settlementBefore = usdc.balanceOf(address(settlement));
+        uint256 attackerBefore = weth.balanceOf(stranger);
+
+        vm.prank(ops);
+        vm.expectRevert("OFL: caller not owner");
+        liq.consolidate(
+            oneInput(address(usdc), 0),
+            address(weth),
+            1, // 1 wei floor: legal on-chain, would pass the balance check
+            address(venue),
+            venueSwapData(address(usdc), 1000e6)
+        );
+
+        // Nothing moved: dust intact, attacker got nothing, no lingering
+        // approval that a follow-up call could exploit.
+        assertEq(usdc.balanceOf(address(settlement)), settlementBefore);
+        assertEq(weth.balanceOf(stranger), attackerBefore);
+        assertEq(usdc.allowance(address(settlement), address(venue)), 0);
+    }
+
+    // --- consolidate: gating (owner-executed) ---
 
     function test_consolidate_rejects_unallowed_venue() public {
         vm.prank(ownerSafe);
         liq.setOutputToken(address(weth), true);
         usdc.mint(address(settlement), 1e6);
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: venue not allowed");
         liq.consolidate(oneInput(address(usdc), 0), address(weth), 1, address(venue), "");
     }
@@ -327,7 +381,7 @@ contract OphisFeeLiquidatorTest is Test {
         vm.prank(ownerSafe);
         liq.setVenue(address(venue), true);
         usdc.mint(address(settlement), 1e6);
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: output not allowed");
         liq.consolidate(oneInput(address(usdc), 0), address(weth), 1, address(venue), "");
     }
@@ -335,7 +389,7 @@ contract OphisFeeLiquidatorTest is Test {
     function test_consolidate_rejects_zero_amount_out_min() public {
         enableConsolidation();
         usdc.mint(address(settlement), 1e6);
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: zero amountOutMin");
         liq.consolidate(oneInput(address(usdc), 0), address(weth), 0, address(venue), "");
     }
@@ -344,31 +398,31 @@ contract OphisFeeLiquidatorTest is Test {
         enableConsolidation();
         usdc.mint(address(settlement), 1e6);
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: empty consolidate");
         liq.consolidate(new OphisFeeLiquidator.ConsolidateInput[](0), address(weth), 1, address(venue), "");
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: native input");
         liq.consolidate(oneInput(address(0), 1), address(weth), 1, address(venue), "");
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: input is output");
         liq.consolidate(oneInput(address(weth), 1), address(weth), 1, address(venue), "");
 
         OphisFeeLiquidator.ConsolidateInput[] memory dup = new OphisFeeLiquidator.ConsolidateInput[](2);
         dup[0] = OphisFeeLiquidator.ConsolidateInput({token: address(usdc), amount: 1});
         dup[1] = OphisFeeLiquidator.ConsolidateInput({token: address(usdc), amount: 1});
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: duplicate input");
         liq.consolidate(dup, address(weth), 1, address(venue), "");
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: nothing to consolidate");
         liq.consolidate(oneInput(address(dai), 0), address(weth), 1, address(venue), "");
     }
 
-    // --- consolidate: behavior ---
+    // --- consolidate: behavior (owner-executed) ---
 
     function test_consolidate_happy_path_full_balance() public {
         enableConsolidation();
@@ -377,7 +431,7 @@ contract OphisFeeLiquidatorTest is Test {
 
         vm.expectEmit(address(liq));
         emit OphisFeeLiquidator.Consolidated(address(venue), address(weth), 1000e6);
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         uint256 amountOut = liq.consolidate(
             oneInput(address(usdc), 0),
             address(weth),
@@ -413,7 +467,7 @@ contract OphisFeeLiquidatorTest is Test {
         // consuming the USDC leg; the DAI approval is still revoked.
         bytes memory data = venueSwapData(address(usdc), 100e6);
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         uint256 amountOut = liq.consolidate(inputs, address(weth), 90e6, address(venue), data);
 
         assertEq(amountOut, 100e6);
@@ -428,7 +482,7 @@ contract OphisFeeLiquidatorTest is Test {
         usdc.mint(address(settlement), 10_000);
         venue.setRateBps(9_899); // delivers 9899 against a floor of 9900
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: slippage");
         liq.consolidate(
             oneInput(address(usdc), 0),
@@ -444,7 +498,7 @@ contract OphisFeeLiquidatorTest is Test {
         usdc.mint(address(settlement), 10_000);
         venue.setRateBps(9_900);
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         uint256 amountOut = liq.consolidate(
             oneInput(address(usdc), 0), address(weth), 9_900, address(venue), venueSwapData(address(usdc), 10_000)
         );
@@ -456,7 +510,7 @@ contract OphisFeeLiquidatorTest is Test {
         usdc.mint(address(settlement), 1000e6);
         venue.setMisdirectTo(stranger); // venue ignores the recipient
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: slippage");
         liq.consolidate(
             oneInput(address(usdc), 0), address(weth), 990e6, address(venue), venueSwapData(address(usdc), 1000e6)
@@ -472,7 +526,7 @@ contract OphisFeeLiquidatorTest is Test {
         // the token, so 40 of allowance would survive the settlement.
         bytes memory data =
             abi.encodeCall(MockVenueRouter.swap, (MockERC20(address(sticky)), 60e18, weth, address(settlement)));
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("OFL: allowance left");
         liq.consolidate(oneInput(address(sticky), 0), address(weth), 1, address(venue), data);
     }
@@ -484,21 +538,27 @@ contract OphisFeeLiquidatorTest is Test {
         // Venue pulls only 60 of the approved 100; the same-settle revoke
         // still zeroes the remainder, so the invariant holds.
         bytes memory data = venueSwapData(address(usdc), 60e6);
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         uint256 amountOut = liq.consolidate(oneInput(address(usdc), 0), address(weth), 50e6, address(venue), data);
         assertEq(amountOut, 60e6);
         assertEq(usdc.allowance(address(settlement), address(venue)), 0);
         assertEq(usdc.balanceOf(address(settlement)), 40e6);
     }
 
-    function test_consolidate_paused_when_liquidator_zeroed() public {
+    /// Zeroing the liquidator key does NOT disable consolidation: it is an
+    /// owner capability, orthogonal to the hot-key pause. The owner still
+    /// consolidates while the ops-key sweep path is paused.
+    function test_consolidate_unaffected_by_liquidator_pause() public {
         enableConsolidation();
-        usdc.mint(address(settlement), 1e6);
+        usdc.mint(address(settlement), 1000e6);
         vm.prank(ownerSafe);
         liq.setLiquidator(address(0));
-        vm.prank(ops);
-        vm.expectRevert("OFL: caller not ops");
-        liq.consolidate(oneInput(address(usdc), 0), address(weth), 1, address(venue), "");
+
+        vm.prank(ownerSafe);
+        uint256 amountOut = liq.consolidate(
+            oneInput(address(usdc), 0), address(weth), 990e6, address(venue), venueSwapData(address(usdc), 1000e6)
+        );
+        assertEq(amountOut, 1000e6);
     }
 
     function test_consolidate_reverts_when_not_a_solver() public {
@@ -506,7 +566,7 @@ contract OphisFeeLiquidatorTest is Test {
         usdc.mint(address(settlement), 1e6);
         vm.prank(manager);
         allowList.removeSolver(address(liq));
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         vm.expectRevert("GPv2: not a solver");
         liq.consolidate(oneInput(address(usdc), 0), address(weth), 1, address(venue), venueSwapData(address(usdc), 1e6));
     }
@@ -571,7 +631,7 @@ contract OphisFeeLiquidatorTest is Test {
         uint256 amountOutMin = (quote * (10_000 - slippageBps)) / 10_000;
         uint256 delivered = (amountIn * actualRateBps) / 10_000;
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         if (amountOutMin == 0) {
             vm.expectRevert("OFL: zero amountOutMin");
             liq.consolidate(
@@ -616,7 +676,7 @@ contract OphisFeeLiquidatorTest is Test {
         uint256 delivered = (amountIn * rateBps) / 10_000;
         vm.assume(delivered > 0);
 
-        vm.prank(ops);
+        vm.prank(ownerSafe);
         uint256 amountOut = liq.consolidate(
             oneInput(address(usdc), 0),
             address(weth),
