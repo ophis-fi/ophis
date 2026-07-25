@@ -21,7 +21,7 @@
     "prettier": "^3.3.0",
     "eslint": "^9.10.0",
     "@types/node": "^22.5.0",
-    "@cloudflare/workers-types": "^4.20260702.1"
+    "@cloudflare/workers-types": "^5.20260722.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
