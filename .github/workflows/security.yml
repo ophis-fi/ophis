@@ -441,9 +441,16 @@ jobs:
           # brace pattern, and these globs are config-authored; the published
           # site is static files with no Node runtime (serve is a local preview).
           # 1.1.16 still carries the GHSA-3jxr-9vmj-r5cp fix.
-          # Revisit when serve-handler/Docusaurus drops minimatch@3.
+          #
+          # DATED on purpose. `--ignore GHSA:YYYY-MM-DD` fails closed once the
+          # date passes, so this suppression cannot outlive the condition that
+          # justifies it (an undated --ignore is an unconditional, permanent
+          # allow-list that would also hide a NEW, reachable occurrence of the
+          # same advisory). 2026-10-31 = a ~3-month review horizon; on expiry,
+          # re-check whether serve-handler still pulls minimatch@3 and either
+          # move to 5.0.8 or renew the date with fresh evidence.
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg
+            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31
 
   cargo-audit:
     name: cargo audit (Rust deps)
