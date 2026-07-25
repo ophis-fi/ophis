@@ -65,14 +65,17 @@ export function ReceivedContent({
 }
 
 export function SolverContent({ winningSolver }: { winningSolver: SolverCompetition }): ReactNode {
-  const solver = winningSolver.solver
+  // Alt text mirrors the visible label so the raw solver id (which may be a
+  // third-party brand on sovereign chains) never renders. Falls back to the id
+  // only when no display label exists.
+  const solverLabel = winningSolver.displayName || winningSolver.solver
   return (
     <ConfirmDetailsItem withTimelineDot label={t`Winning solver`}>
       <WinningSolverContainer>
         <b>{winningSolver.displayName || winningSolver.solver}</b>
         <img
           src={winningSolver.image || AMM_LOGOS[winningSolver.solver]?.src || AMM_LOGOS.default.src}
-          alt={t`${solver} logo`}
+          alt={t`${solverLabel} logo`}
           width="16"
           height="16"
         />

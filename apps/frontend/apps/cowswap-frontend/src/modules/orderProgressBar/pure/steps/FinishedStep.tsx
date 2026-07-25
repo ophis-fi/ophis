@@ -316,7 +316,7 @@ function SolverRow({
           <styledEl.SolverLogo>
             <img
               src={solver.image || AMM_LOGOS[solver.solver]?.src || AMM_LOGOS.default.src}
-              alt={`${solver.solver} logo`}
+              alt={`${solver.displayName || solver.solver} logo`}
               width="24"
               height="24"
             />
