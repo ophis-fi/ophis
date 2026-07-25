@@ -44,11 +44,48 @@ lc() { echo "$1" | tr '[:upper:]' '[:lower:]'; }
 CHAIN_ID=$(cast chain-id --rpc-url "$RPC")
 [[ "$CHAIN_ID" == "4663" ]] || { echo "ERROR: RPC reports chainId $CHAIN_ID, expected 4663" >&2; exit 8; }
 
-# The Safe must still be a real 2-of-3 with code (re-assert; cheap, catches a
-# tampered .env between sessions).
+# Re-assert the FULL Safe identity, not just the threshold. This runs in a later
+# session than the ceremony, so .env may have changed in between - which is
+# precisely the case this is here to catch. A threshold-only check would accept
+# any contract whose getThreshold() returns 2 (a wrong 2-of-3, a 2-of-2, or a
+# non-Safe implementing that selector), and step [4/4] hands it ownership AND
+# manager IRREVERSIBLY. Mirrors deploy-mainnet-all.sh exactly.
 SAFE_CODE=$(cast code --rpc-url "$RPC" "$SAFE")
 [[ "$SAFE_CODE" != "0x" && -n "$SAFE_CODE" ]] || { echo "ERROR: Safe $SAFE has no code on 4663" >&2; exit 3; }
 [[ "$(cast call --rpc-url "$RPC" "$SAFE" "getThreshold()(uint256)")" == "2" ]] || { echo "ERROR: Safe threshold != 2" >&2; exit 3; }
+
+SAFE_OWNERS=$(cast call --rpc-url "$RPC" "$SAFE" "getOwners()(address[])" 2>/dev/null | grep -oE "0x[0-9a-fA-F]{40}")
+SAFE_OWNERS_N=$(echo "$SAFE_OWNERS" | grep -c "0x")
+[[ "$SAFE_OWNERS_N" == "3" ]] || { echo "ERROR: Safe has $SAFE_OWNERS_N owners, expected 3 (2-of-3). Refusing." >&2; exit 3; }
+
+# REQUIRED here (unlike the main ceremony, where it is recommended-but-optional):
+# a resume has no human re-confirming the printed owner list, so the owner set
+# must be machine-asserted.
+[[ -n "${OPHIS_SAFE_EXPECTED_OWNERS:-}" ]] || {
+  echo "ERROR: OPHIS_SAFE_EXPECTED_OWNERS must be set to resume." >&2
+  echo "       The resume path has no interactive owner confirmation, so the" >&2
+  echo "       owner set has to be asserted rather than eyeballed." >&2
+  exit 3; }
+EXP_N=$(echo "$OPHIS_SAFE_EXPECTED_OWNERS" | tr ',' ' ' | grep -oE "0x[0-9a-fA-F]{40}" | wc -l | tr -d ' ')
+[[ "$EXP_N" == "3" ]] || { echo "ERROR: OPHIS_SAFE_EXPECTED_OWNERS must list exactly 3 addresses (got $EXP_N)" >&2; exit 3; }
+for o in $(echo "$OPHIS_SAFE_EXPECTED_OWNERS" | tr ',' ' '); do
+  echo "$SAFE_OWNERS" | tr '[:upper:]' '[:lower:]' | grep -q "$(lc "$o")" \
+    || { echo "ERROR: expected owner $o is NOT in the Safe owner set - wrong Safe. Refusing." >&2; exit 3; }
+done
+echo "    Safe asserted: threshold=2, 3 owners, all expected owners present"
+
+# Pin the submitter too. AUTH is pinned above so a resume cannot target a
+# different deployment; leaving the submitter free would defeat that, since
+# step [3/4] grants it solver authority on that pinned production authenticator.
+# A typo (or the zero address) bricks settlement submission until a Safe tx
+# repairs it; a substituted address becomes an authorised solver outright.
+EXPECTED_DRIVER=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
+[[ "$(lc "$DRIVER")" == "$(lc "$EXPECTED_DRIVER")" ]] || {
+  echo "ERROR: ROBINHOOD_SUBMITTER_ADDR ($DRIVER) is not the submitter this" >&2
+  echo "       script resumes ($EXPECTED_DRIVER). If you genuinely intend a" >&2
+  echo "       different solver, do it as an explicit 2-of-3 Safe transaction," >&2
+  echo "       not via a resume script." >&2
+  exit 3; }
 
 # The Auth proxy must be the GATE-verified one, still pointing at the verified impl.
 IMPL_SLOT=$(cast storage --rpc-url "$RPC" "$AUTH" 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc)

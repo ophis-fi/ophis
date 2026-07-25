@@ -32,9 +32,15 @@
 #   # Override threshold (default 1e15 = 0.001 ETH):
 #   MIN_TOTAL_WEI=1e16 ./scripts/sweep-to-safe.sh --broadcast
 #
-#   # Override token list (comma-separated 0x addresses):
-#   TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x4200000000000000000000000000000000000006 \
+#   # Override token list (comma-separated 0x addresses). MIN_BASE_UNITS must be
+#   # supplied alongside it, aligned 1:1 (the forge script rejects TOKENS alone).
+#   TOKENS=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 MIN_BASE_UNITS=1e7 \
 #     ./scripts/sweep-to-safe.sh
+#
+# REQUIRED in .env before any broadcast:
+#   OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD - the destination Safe, which MUST be
+#   deployed on 4663. There is no default: the OP fee Safe has no code here, and
+#   an ERC-20 transfer to a codeless address succeeds without reverting.
 #
 #   # Override independent nonce-observation RPC (default: OPHIS_RPC):
 #   OPHIS_NONCE_RPC=https://... ./scripts/sweep-to-safe.sh --broadcast
@@ -93,6 +99,56 @@ SETTLEMENT_ADDR="${OPHIS_SETTLEMENT_ROBINHOOD:-$(read_env OPHIS_SETTLEMENT_ROBIN
   echo "       Set it in $ENV_FILE (written by the deploy ceremony)." >&2
   exit 3; }
 
+# ── Chain-specific sweep parameters ───────────────────────────────────────
+# SweepSettlementBuffer.paramsFromEnv() reads SETTLEMENT / SAFE / TOKENS /
+# MIN_BASE_UNITS from the ENVIRONMENT and silently falls back to OP-mainnet
+# constants (Settlement 0x310784c7…, USDC 0x0b2C…, WETH 0x4200…0006) for any it
+# does not find. NONE of those addresses have code on 4663, so an unparameterised
+# run here sweeps the wrong contract for the wrong tokens. Every value below is
+# therefore exported explicitly and asserted on-chain before any broadcast.
+#
+# Robinhood token set (NOT the OP set): USDG is the canonical 6-decimal stable
+# (there is no official USDC on 4663), and WETH is chain-specific - the OP
+# 0x4200..0006 predeploy does not exist on an Orbit chain.
+SWEEP_TOKENS="${TOKENS:-0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168,0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73}"
+# Aligned 1:1 with SWEEP_TOKENS. Matches the OP threshold convention:
+# 1e7 for a 6-decimal stable (10 USDG) and 3e15 for 18-decimal WETH (0.003).
+# The forge script REQUIRES this whenever TOKENS is overridden (Codex re-audit
+# MED, PR #223) so a 6-decimal token can never inherit the 1e15 unknown default.
+SWEEP_MIN_BASE_UNITS="${MIN_BASE_UNITS:-1e7,3e15}"
+
+# Destination Safe. NO default: the OP fee-recipient Safe 0x858f0F5e…CeF8 has
+# NO CODE on 4663. An ERC-20 transfer to a codeless address SUCCEEDS silently,
+# so defaulting here would move real fee revenue to an address nobody controls,
+# with no revert and no recovery. Fail closed until a Safe is actually deployed
+# on 4663 and pinned in .env.
+SWEEP_SAFE="${OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD:-$(read_env OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD)}"
+[[ "$SWEEP_SAFE" =~ ^0x[0-9a-fA-F]{40}$ ]] || {
+  echo "ERROR: OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD is not set." >&2
+  echo "       There is deliberately NO default: the OP fee-recipient Safe has no" >&2
+  echo "       code on 4663, and sweeping to a codeless address destroys the funds." >&2
+  echo "       Deploy the recipient Safe on 4663, then set it in $ENV_FILE." >&2
+  exit 3; }
+
+# Assert every address the sweep touches actually has code on THIS chain.
+# Catches a stale/copied address before it can burn a broadcast.
+assert_has_code() {  # $1=addr $2=label
+  local code
+  code=$(cast code --rpc-url "$RPC" "$1" 2>/dev/null || echo 0x)
+  [[ "$code" != "0x" && -n "$code" ]] || {
+    echo "ERROR: $2 ($1) has NO CODE on this chain - refusing to sweep." >&2
+    exit 4; }
+}
+assert_has_code "$SETTLEMENT_ADDR" "Settlement"
+assert_has_code "$SWEEP_SAFE" "fee-recipient Safe"
+IFS=',' read -r -a _sweep_toks <<< "$SWEEP_TOKENS"
+for _t in "${_sweep_toks[@]}"; do assert_has_code "$_t" "sweep token"; done
+
+export SETTLEMENT="$SETTLEMENT_ADDR"
+export SAFE="$SWEEP_SAFE"
+export TOKENS="$SWEEP_TOKENS"
+export MIN_BASE_UNITS="$SWEEP_MIN_BASE_UNITS"
+
 cd "$CONTRACTS_DIR"
 
 # Compose forge args. FOUNDRY_DENY=never sidesteps the pre-existing
@@ -105,7 +161,9 @@ COMMON_ARGS=(
 
 if [[ "$BROADCAST" -eq 1 ]]; then
   echo "==> LIVE BROADCAST mode"
-  echo "    sweep Settlement $SETTLEMENT_ADDR → Safe 0x858f0F5e…CeF8"
+  echo "    sweep Settlement $SETTLEMENT_ADDR → Safe $SWEEP_SAFE"
+  echo "    tokens:     $SWEEP_TOKENS"
+  echo "    thresholds: $SWEEP_MIN_BASE_UNITS"
   echo "    using driver-submitter EOA $SUBMITTER_EOA"
   echo ""
 
