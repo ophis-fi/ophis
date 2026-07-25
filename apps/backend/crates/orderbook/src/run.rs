@@ -183,6 +183,32 @@ pub async fn run(config: Configuration) {
         .await
         .expect("Deployed contract constants don't match the ones in this binary");
     let domain_separator = DomainSeparator::new(chain_id, *settlement_contract.address());
+
+    // Bootstrap RPC call: retry with backoff (same rationale as the
+    // vault_relayer site at run.rs:126, added in PR #86). Hoisted out of the
+    // price-estimator factory wiring so `GET /api/v1/info/contracts` serves
+    // the same boot-time value.
+    let authenticator = retry_helper::with_backoff(
+        "settlement.authenticator",
+        retry_helper::BackoffConfig::default(),
+        || async { settlement_contract.authenticator().call().await },
+    )
+    .await
+    .expect("failed to query solver authenticator address after retries");
+
+    // The contract facts served by `GET /api/v1/info/contracts` and stamped
+    // into `/api/v1/quote/draft` signing envelopes: the same boot-time
+    // on-chain values every other subsystem uses, so the endpoint cannot
+    // drift from what this orderbook actually settles against.
+    let contracts_info = api::get_contract_info::ContractsInfo {
+        chain_id,
+        settlement: *settlement_contract.address(),
+        vault_relayer,
+        authenticator,
+        hooks_trampoline: *hooks_contract.address(),
+        wrapped_native_token: *native_token.address(),
+        domain_separator,
+    };
     let db_config = crate::database::Config {
         max_pool_size: config.database.max_connections.get(),
         statement_timeout: config.database.statement_timeout,
@@ -261,15 +287,7 @@ pub async fn run(config: Configuration) {
             chain,
             settlement: *settlement_contract.address(),
             native_token: *native_token.address(),
-            // Bootstrap RPC call: retry with backoff (same rationale as the
-            // vault_relayer site at run.rs:127, added in PR #86).
-            authenticator: retry_helper::with_backoff(
-                "settlement.authenticator",
-                retry_helper::BackoffConfig::default(),
-                || async { settlement_contract.authenticator().call().await },
-            )
-            .await
-            .expect("failed to query solver authenticator address after retries"),
+            authenticator,
             block_stream: current_block_stream.clone(),
         },
         factory::Components {
@@ -508,6 +526,7 @@ pub async fn run(config: Configuration) {
         current_block_stream,
         config.hide_competition_before_deadline,
         config.api,
+        contracts_info,
     );
 
     let mut metrics_address = config.bind_address;
@@ -583,6 +602,7 @@ fn serve_api(
     current_block_stream: ethrpc::block_stream::CurrentBlockWatcher,
     hide_competition_before_deadline: bool,
     api_config: configs::orderbook::api::ApiConfig,
+    contracts_info: api::get_contract_info::ContractsInfo,
 ) -> JoinHandle<()> {
     let app = api::handle_all_routes(
         database,
@@ -595,6 +615,7 @@ fn serve_api(
         current_block_stream,
         hide_competition_before_deadline,
         api_config,
+        contracts_info,
     );
     tracing::info!(%address, "serving order book");
 

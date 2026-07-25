@@ -560,6 +560,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PriceEstimationError"
+  /api/v1/quote/draft:
+    post:
+      operationId: quoteDraft
+      summary: >-
+        Quote and build a ready-to-sign unsigned order draft in one call.
+      description: >
+        Accepts every field of a regular quote request plus `slippageBps`
+        (default 50, capped at 5000) and returns the quote together with an
+        unsigned order draft and its EIP-712 signing envelope. The signed
+        limit side derives from the quote by the slippage, kind-aware: for
+        `sell` orders the draft's `buyAmount` is the minimum out (rounded
+        up, never one atom below the slippage floor); for `buy` orders the
+        draft's `sellAmount` is the maximum in (rounded down). The draft
+        always signs `feeAmount` 0 (the fee is taken from surplus plus the
+        appData partner fee). When the request carries no appData (or the
+        zero hash), the draft defaults to the CIP-75 partner-fee document
+        and reports it in `fullAppData`; caller-provided appData passes
+        through untouched. Sign `order` as EIP-712 typed data against
+        `signing`, then submit via `POST /api/v1/orders` with the order
+        fields, the signature, and `fullAppData` (when present) as the
+        `appData` string next to `appDataHash`.
+      requestBody:
+        description: The quote parameters plus the draft slippage.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteDraftRequest"
+      responses:
+        "200":
+          description: Quote plus ready-to-sign order draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteDraftResponse"
+        "400":
+          description: >
+            Error quoting the order (every `POST /api/v1/quote` failure
+            surfaces identically here), or a draft-specific rejection:
+            `BadRequest` (code 1000) for `slippageBps` above 5000,
+            `ZeroAmount` (code 4006) when slippage rounds the minimum buy
+            amount to zero, `SellAmountOverflow` (code 4100) when the
+            slippage-adjusted amount exceeds uint256.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/QuoteDraftError"
+                  - $ref: "#/components/schemas/PriceEstimationError"
+        "404":
+          description: >
+            No route was found for the specified order (`NoLiquidity`, code
+            2000). This is a final answer in the unroutable class
+            (`data.class = "unroutable"`), not a transient failure; do not
+            retry it as one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
+        "422":
+          description: Unable to parse request body as valid JSON.
+        "429":
+          description: Too many order quotes.
+        "500":
+          description: Unexpected error building the draft.
+        "503":
+          description: >
+            A retryable upstream failure (`UpstreamRateLimited` code 3100,
+            or `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
+  /api/v1/info/contracts:
+    get:
+      operationId: getContractInfo
+      summary: On-chain contract facts for this deployment.
+      description: >
+        The settlement, vault-relayer, authenticator and hooks-trampoline
+        contracts, each with its address and full ABI, plus the EIP-712
+        signing domain (with its precomputed separator), the canonical
+        Multicall3 address for balance/allowance preflights, and the
+        wrapped native token. Values come from the orderbook's boot-time
+        on-chain wiring (the same instances it settles against), never from
+        a parallel table, so they cannot drift.
+      responses:
+        "200":
+          description: Contract info.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractInfoResponse"
+        "500":
+          description: Unexpected error.
   "/api/v1/solver_competition/{auction_id}":
     get:
       operationId: getSolverCompetitionByAuctionId
@@ -2174,6 +2274,248 @@ components:
         - quote
         - expiration
         - verified
+    QuoteDraftRequest:
+      description: >
+        A regular quote request plus the draft-only `slippageBps` knob.
+      allOf:
+        - $ref: "#/components/schemas/OrderQuoteRequest"
+        - type: object
+          properties:
+            slippageBps:
+              description: >
+                Max accepted slippage in basis points, applied to the signed
+                limit side of the draft (default 50, capped at 5000).
+              type: integer
+              default: 50
+              minimum: 0
+              maximum: 5000
+    OrderDraft:
+      description: >
+        The unsigned, ready-to-sign order: field for field the EIP-712
+        `Order` struct (see `SigningEnvelope.types`), with `appData` already
+        the bytes32 hash of the full document and `feeAmount` always "0"
+        (the fee is taken from surplus plus the appData partner fee, never
+        a signed feeAmount). `signingScheme` is echoed from the quote so
+        the eventual order creation body needs no extra decisions.
+      type: object
+      properties:
+        sellToken:
+          $ref: "#/components/schemas/Address"
+        buyToken:
+          $ref: "#/components/schemas/Address"
+        receiver:
+          description: >
+            The receiver of the buy tokens: the quoted receiver when one was
+            requested, otherwise the order owner (`from`).
+          allOf:
+            - $ref: "#/components/schemas/Address"
+        sellAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        buyAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        validTo:
+          type: integer
+        appData:
+          description: >
+            The bytes32 appData hash that goes into the signed order:
+            keccak256 of the `fullAppData` document.
+          allOf:
+            - $ref: "#/components/schemas/AppDataHash"
+        feeAmount:
+          description: Always "0".
+          allOf:
+            - $ref: "#/components/schemas/TokenAmount"
+        kind:
+          $ref: "#/components/schemas/OrderKind"
+        partiallyFillable:
+          type: boolean
+        sellTokenBalance:
+          $ref: "#/components/schemas/SellTokenSource"
+        buyTokenBalance:
+          $ref: "#/components/schemas/BuyTokenDestination"
+        signingScheme:
+          $ref: "#/components/schemas/SigningScheme"
+      required:
+        - sellToken
+        - buyToken
+        - receiver
+        - sellAmount
+        - buyAmount
+        - validTo
+        - appData
+        - feeAmount
+        - kind
+        - partiallyFillable
+        - sellTokenBalance
+        - buyTokenBalance
+        - signingScheme
+    SigningEnvelope:
+      description: >
+        EIP-712 typed-data envelope: sign the draft `order` against this
+        domain, these types, and `primaryType` "Order". The domain hashes
+        to exactly the domain separator the settlement contract enforces.
+      type: object
+      properties:
+        domain:
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Gnosis Protocol"
+            version:
+              type: string
+              example: "v2"
+            chainId:
+              type: integer
+            verifyingContract:
+              $ref: "#/components/schemas/Address"
+        types:
+          description: >
+            The `Order` struct field list, in signing order.
+          type: object
+        primaryType:
+          type: string
+          enum:
+            - Order
+      required:
+        - domain
+        - types
+        - primaryType
+    QuoteDraftResponse:
+      description: >
+        A quote plus the unsigned order draft built from it.
+      type: object
+      properties:
+        quote:
+          description: >
+            The exact response `POST /api/v1/quote` would have returned for
+            the embedded quote request (after appData defaulting, when it
+            applied).
+          allOf:
+            - $ref: "#/components/schemas/OrderQuoteResponse"
+        order:
+          $ref: "#/components/schemas/OrderDraft"
+        signing:
+          $ref: "#/components/schemas/SigningEnvelope"
+        fullAppData:
+          description: >
+            The full appData document to submit alongside the order (as the
+            order creation `appData` string, with `appDataHash` as the
+            expected hash). Present whenever the server knows the document,
+            always when it was defaulted; absent only when the caller
+            quoted with a bare pre-registered hash.
+          type: string
+        appDataHash:
+          $ref: "#/components/schemas/AppDataHash"
+        slippageBps:
+          description: The effective slippage applied to the draft.
+          type: integer
+      required:
+        - quote
+        - order
+        - signing
+        - appDataHash
+        - slippageBps
+    QuoteDraftError:
+      description: Draft-specific rejections of `POST /api/v1/quote/draft`.
+      type: object
+      properties:
+        errorType:
+          type: string
+          enum:
+            - BadRequest
+            - ZeroAmount
+            - SellAmountOverflow
+        description:
+          type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
+      required:
+        - errorType
+        - description
+    ContractWithAbi:
+      description: A deployed contract with its address and full ABI.
+      type: object
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        abi:
+          description: The complete contract ABI (JSON ABI format).
+          type: array
+          items:
+            type: object
+      required:
+        - address
+        - abi
+    ContractInfoResponse:
+      description: >
+        On-chain contract facts for this deployment, from the orderbook's
+        boot-time wiring.
+      type: object
+      properties:
+        chainId:
+          type: integer
+        settlement:
+          $ref: "#/components/schemas/ContractWithAbi"
+        vaultRelayer:
+          description: >
+            The contract to grant sell-token allowances to (never the
+            settlement contract itself).
+          allOf:
+            - $ref: "#/components/schemas/ContractWithAbi"
+        authenticator:
+          $ref: "#/components/schemas/ContractWithAbi"
+        hooksTrampoline:
+          $ref: "#/components/schemas/ContractWithAbi"
+        multicall3:
+          description: >
+            The canonical cross-chain Multicall3 deployment used by the SDK
+            balance/allowance preflight.
+          type: object
+          properties:
+            address:
+              $ref: "#/components/schemas/Address"
+        wrappedNativeToken:
+          type: object
+          properties:
+            address:
+              $ref: "#/components/schemas/Address"
+        eip712Domain:
+          description: >
+            The order-signing domain. Hashing these fields yields
+            `domainSeparator`.
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Gnosis Protocol"
+            version:
+              type: string
+              example: "v2"
+            chainId:
+              type: integer
+            verifyingContract:
+              $ref: "#/components/schemas/Address"
+        domainSeparator:
+          description: >
+            The precomputed EIP-712 domain separator the settlement
+            contract enforces, 0x-prefixed.
+          type: string
+      required:
+        - chainId
+        - settlement
+        - vaultRelayer
+        - authenticator
+        - hooksTrampoline
+        - multicall3
+        - wrappedNativeToken
+        - eip712Domain
+        - domainSeparator
     SolverCompetitionResponse:
       description: |
         The settlements submitted by every solver for a specific auction.

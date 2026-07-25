@@ -35,6 +35,7 @@ mod debug_simulation;
 pub mod error_code;
 mod get_app_data;
 mod get_auction;
+pub(crate) mod get_contract_info;
 mod get_native_price;
 mod get_order_by_uid;
 mod get_order_status;
@@ -49,6 +50,7 @@ mod get_trades_v2;
 mod get_user_orders;
 mod post_order;
 mod post_quote;
+mod post_quote_draft;
 mod put_app_data;
 mod rate_limit;
 pub mod trace_id;
@@ -75,6 +77,10 @@ pub struct AppState {
     pub quote_timeout: Duration,
     pub current_block_stream: CurrentBlockWatcher,
     pub hide_competition_before_deadline: bool,
+    /// Boot-time contract facts (addresses, EIP-712 domain) served by
+    /// `GET /api/v1/info/contracts` and stamped into `/api/v1/quote/draft`
+    /// signing envelopes.
+    pub contracts: get_contract_info::ContractsInfo,
 }
 
 impl AppState {
@@ -166,6 +172,7 @@ pub fn handle_all_routes(
     current_block_stream: CurrentBlockWatcher,
     hide_competition_before_deadline: bool,
     api_config: configs::orderbook::api::ApiConfig,
+    contracts: get_contract_info::ContractsInfo,
 ) -> Router {
     let app_data_size_limit = app_data.size_limit();
 
@@ -179,6 +186,7 @@ pub fn handle_all_routes(
         quote_timeout,
         current_block_stream,
         hide_competition_before_deadline,
+        contracts,
     });
 
     let routes = [
@@ -209,6 +217,11 @@ pub fn handle_all_routes(
             "GET",
             "/api/v1/auction",
             get(get_auction::get_auction_handler),
+        ),
+        (
+            "GET",
+            "/api/v1/info/contracts",
+            get(get_contract_info::get_contract_info_handler),
         ),
         (
             "POST",
@@ -244,6 +257,11 @@ pub fn handle_all_routes(
             "POST",
             "/api/v1/quote",
             post(post_quote::post_quote_handler),
+        ),
+        (
+            "POST",
+            "/api/v1/quote/draft",
+            post(post_quote_draft::post_quote_draft_handler),
         ),
         // /solver_competition routes (specific before parameterized)
         (
