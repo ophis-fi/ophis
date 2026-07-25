@@ -40,7 +40,10 @@ describe('deterministicStringify', () => {
 describe('buildOphisFullAppData', () => {
   it('embeds the CIP-75 partner fee on an Ophis fee chain (Optimism)', () => {
     const ad = buildOphisFullAppData(10);
-    expect(ad.partnerFee).toEqual({ volumeBps: 5, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' });
+    expect(ad.partnerFee).toEqual({
+      volumeBps: 5,
+      recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+    });
     expect(ad.doc.version).toBe(APP_DATA_VERSION);
     expect(ad.fullAppData).toContain('partnerFee');
     expect(ad.fullAppData).toContain('"appCode":"ophis"');
@@ -72,6 +75,47 @@ describe('buildOphisFullAppData', () => {
     expect(withSrc.appDataHash).not.toBe(without.appDataHash);
     expect(withSrc.appDataHash).toBe(keccak256(toBytes(withSrc.fullAppData)));
   });
+
+  it('appends extra partner-fee entries as an array (Ophis default first)', () => {
+    const partner = { volumeBps: 10, recipient: ATTACKER } as const;
+    const ad = buildOphisFullAppData(10, undefined, undefined, undefined, [partner]);
+    const entries = (ad.doc.metadata as { partnerFee: unknown }).partnerFee;
+    expect(Array.isArray(entries)).toBe(true);
+    expect(entries).toEqual([
+      { volumeBps: 5, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+      { volumeBps: 10, recipient: ATTACKER },
+    ]);
+    // The single Ophis default is still surfaced on the return for callers that
+    // read `.partnerFee`; the extras live in the doc/appData.
+    expect(ad.partnerFee).toEqual({
+      volumeBps: 5,
+      recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+    });
+    expect(ad.appDataHash).toBe(keccak256(toBytes(ad.fullAppData)));
+  });
+
+  it('keeps a single partnerFee object (byte-identical) when no extras are passed', () => {
+    const withEmpty = buildOphisFullAppData(10, undefined, undefined, undefined, []);
+    const without = buildOphisFullAppData(10);
+    expect(withEmpty.fullAppData).toBe(without.fullAppData);
+    expect((withEmpty.doc.metadata as { partnerFee: unknown }).partnerFee).toEqual({
+      volumeBps: 5,
+      recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+    });
+  });
+
+  it('rejects a malformed extra partner-fee entry (fractional bps, bad recipient)', () => {
+    expect(() =>
+      buildOphisFullAppData(10, undefined, undefined, undefined, [
+        { volumeBps: 1.5, recipient: ATTACKER },
+      ]),
+    ).toThrow(/volumeBps/);
+    expect(() =>
+      buildOphisFullAppData(10, undefined, undefined, undefined, [
+        { volumeBps: 10, recipient: 'not-an-address' as `0x${string}` },
+      ]),
+    ).toThrow(/recipient/);
+  });
 });
 
 describe('buildOrder', () => {
@@ -88,6 +132,15 @@ describe('buildOrder', () => {
   it('pins the receiver to the owner by default', () => {
     const o = buildOrder(base, NOW);
     expect(o.order.receiver.toLowerCase()).toBe(OWNER.toLowerCase());
+  });
+
+  it('embeds an extra partner fee as an array and changes the signed hash', () => {
+    const partner = { volumeBps: 10, recipient: ATTACKER } as const;
+    const plain = buildOrder(base, NOW);
+    const withPartner = buildOrder({ ...base, partnerFees: [partner] }, NOW);
+    expect(withPartner.fullAppData).toContain('"partnerFee":[');
+    expect(withPartner.order.appData).not.toBe(plain.order.appData);
+    expect(withPartner.order.appData).toBe(keccak256(toBytes(withPartner.fullAppData)));
   });
 
   it('uses the NON-canonical Ophis settlement contract on Optimism', () => {
@@ -155,7 +208,9 @@ describe('buildOrder', () => {
 
 describe('extractQuoteAmounts', () => {
   it('extracts sell/buy atoms from a CoW quote response', () => {
-    expect(extractQuoteAmounts({ quote: { sellAmount: '1000000', buyAmount: '250000000000000' } })).toEqual({
+    expect(
+      extractQuoteAmounts({ quote: { sellAmount: '1000000', buyAmount: '250000000000000' } }),
+    ).toEqual({
       sellAmount: '1000000',
       buyAmount: '250000000000000',
     });
@@ -174,7 +229,9 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
   const fair = { sellAmount: '1000000', buyAmount: '250000000000000' };
 
   it('accepts a sell min-out within slippage of the quote', () => {
-    expect(() => assertLimitWithinSlippage('sell', '1000000', fair.buyAmount, fair, 100)).not.toThrow();
+    expect(() =>
+      assertLimitWithinSlippage('sell', '1000000', fair.buyAmount, fair, 100),
+    ).not.toThrow();
     const floor = ((250000000000000n * 9900n) / 10000n).toString(); // exactly 1% below
     expect(() => assertLimitWithinSlippage('sell', '1000000', floor, fair, 100)).not.toThrow();
   });
@@ -184,8 +241,12 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
   });
 
   it('accepts a buy max-in within slippage and rejects one above', () => {
-    expect(() => assertLimitWithinSlippage('buy', fair.sellAmount, '250000000000000', fair, 100)).not.toThrow();
-    expect(() => assertLimitWithinSlippage('buy', '100000000000', '250000000000000', fair, 100)).toThrow();
+    expect(() =>
+      assertLimitWithinSlippage('buy', fair.sellAmount, '250000000000000', fair, 100),
+    ).not.toThrow();
+    expect(() =>
+      assertLimitWithinSlippage('buy', '100000000000', '250000000000000', fair, 100),
+    ).toThrow();
   });
 
   it('defaults to a 100-bps (1%) backstop when slippageBips is omitted', () => {
@@ -207,7 +268,9 @@ describe('assertLimitWithinSlippage (trusted-quote enforcement)', () => {
     // Symmetric on the buy side: a max-in 60 bips above the quote needs the fee allowance.
     const in60 = ((1000000n * (10000n + 60n)) / 10000n).toString();
     expect(() => assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50)).toThrow();
-    expect(() => assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50, 10)).not.toThrow();
+    expect(() =>
+      assertLimitWithinSlippage('buy', in60, '250000000000000', fair, 50, 10),
+    ).not.toThrow();
     // The fee allowance does NOT rescue the "min out = 1" attack (still way past the band).
     expect(() => assertLimitWithinSlippage('sell', '1000000', '1', fair, 50, 10)).toThrow();
   });

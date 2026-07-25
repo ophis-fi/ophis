@@ -63,7 +63,7 @@ surface does not paper over them:
    that cost is already priced into the quoted amounts. The embedded estimate
    is visible in `ophis.executionCost`.
 
-Two smaller deviations:
+One smaller deviation:
 
 - **Values are native-denominated, not USD.** `inValues`, `outValues` and
   `netOutValue` are denominated in the chain's native token and
@@ -71,10 +71,52 @@ Two smaller deviations:
   `priceImpact` to null rather than fabricated from a feed Ophis does not
   have. USD values return when a price feed is wired; the response shape will
   not change.
-- **`referralFee` is rejected for now.** A non-zero `referralFee` returns
-  `PARTNER_FEE_UNAVAILABLE` instead of being silently dropped, so no partner
-  discovers missing revenue weeks later. Integrator-priced fees arrive with
-  the Ophis partner-fee program; `referralCode` attribution works today.
+
+## Settlement timing
+
+Because settlement is asynchronous, the quote response carries
+`ophis.expectedSettlementSeconds`: a typical quote-to-settlement latency in
+whole seconds. It is derived from the Optimism batch cadence (the auction
+grants solvers a bounded solve window, then the winning settlement confirms a
+few blocks later) and is a **typical estimate, not a guarantee**. An order can
+wait for more than one auction, and it simply expires at `order.validTo` if it
+cannot be filled at your limit. Treat the number as a planning hint, not an SLA.
+
+Instead of busy-polling order status, you can block on a bounded long-poll:
+
+```
+GET /sor/settlement/{chainId}/{orderUid}?waitSeconds=20
+```
+
+It holds the request open until the order reaches a terminal state (settled,
+expired, or cancelled) or the bounded wait elapses, then returns
+`{ settled, terminal, pending, status, txHash, executedSellAmount,
+executedBuyAmount, order, trades }`. `waitSeconds` is clamped (default 20,
+maximum 55); if it returns `pending: true`, reconnect after
+`ophis.pollAgainAfterSeconds`. It is a long-poll, not a callback webhook: a
+stateless edge worker cannot hold a background callback past the request, so
+the wait is always bounded and there are no hidden retries.
+
+## Partner fees
+
+If the partner-fee program is enabled on this deployment, a non-zero
+`referralFee` maps to a CIP-75 Volume fee to `referralFeeRecipient`, embedded in
+the order's appData beside the Ophis protocol fee. The Odos decimal fraction
+converts to basis points: `0.001` becomes a 10 bps Volume fee. Fees are
+bps-granular, so the value is rounded to the nearest basis point; a fee too
+small to represent as at least 1 bps is rejected rather than rounded to zero.
+
+The recipient must be a **registered, active partner-fee recipient**. Register
+once with `POST /api/v1/partners`; see [Partner integration](./partners.md). A
+mapped fee above the program-wide 90 bps third-party cap is rejected with
+`PARTNER_FEE_CAP_EXCEEDED` rather than silently reduced, so you never charge
+less than you asked. A recipient's own registered cap (50 bps by default) is
+lower still and is enforced by the orderbook at submit.
+
+While the program is disabled on this deployment, a non-zero `referralFee`
+returns `PARTNER_FEE_UNAVAILABLE` instead of being silently dropped, so no
+partner discovers missing revenue weeks later. `referralCode` attribution works
+in either state.
 
 ## The three-step flow
 
@@ -173,7 +215,9 @@ GET /sor/order-status/10/{orderUid}
 ```
 
 until `status` is `fulfilled` (with `txHash` and executed amounts from the
-settlement trades), `expired`, or `cancelled`.
+settlement trades), `expired`, or `cancelled`. To avoid a tight poll loop, block
+on the bounded long-poll instead: `GET /sor/settlement/10/{orderUid}` returns as
+soon as the order settles or the wait elapses (see Settlement timing above).
 
 ## Request field mapping
 
@@ -186,12 +230,12 @@ settlement trades), `expired`, or `cancelled`.
 | `slippageLimitPercent` | Signed limit in bips (x100). Above 50%: `INVALID_SLIPPAGE`, never silently clamped |
 | `simple` | `true` maps to the fast price quality, `false` to optimal |
 | `referralCode` | Integer code becomes Ophis referral code `odos<code>` in the order's appData (attribution + rebates) |
-| `referralFee`, `referralFeeRecipient` | Non-zero fee: rejected with `PARTNER_FEE_UNAVAILABLE` until partner fees ship |
+| `referralFee`, `referralFeeRecipient` | When the partner-fee program is enabled: a non-zero fee maps to a CIP-75 Volume `metadata.partnerFee` entry (0.001 = 10 bps), capped at 90 bps (`PARTNER_FEE_CAP_EXCEEDED` above it). When disabled: `PARTNER_FEE_UNAVAILABLE`. See Partner fees above |
 | `gasPrice` | Ignored + warning (solvers pay gas) |
 | `sourceWhitelist` / `sourceBlacklist` / `poolBlacklist` | Ignored + warning: routing is decided by competing solvers |
 | `disableRFQs`, `compact` | Silent no-ops |
 | `likeAsset` | Ignored + warning |
-| `pathViz`, `pathVizImage`, `pathVizImageConfig` | Reserved, currently null + warning (route visualization is on the roadmap) |
+| `pathViz`, `pathVizImage`, `pathVizImageConfig` | Requested from the Ophis route-visualization service when it is enabled; the graph and rendered SVG come back in `pathViz`/`pathVizImage`. Flag-gated, so it degrades to null with a warning when off |
 | `permit2` | Reserved, currently null + warning (one-signature Permit2 onboarding is on the roadmap) |
 
 ## Response field mapping
@@ -204,10 +248,11 @@ settlement trades), `expired`, or `cancelled`.
 | `priceImpact` | `null` (no independent mid-price feed; nothing is fabricated) |
 | `percentDiff` | `0` |
 | `permit2Message`, `permit2Hash` | `null` until Permit2 onboarding ships |
-| `partnerFeePercent` | The Ophis fee priced into the quote (0.05 = 5 bps) |
+| `partnerFeePercent` | Total CIP-75 Volume bps embedded in the order, as a percent: the Ophis protocol fee (0.05 = 5 bps) plus any mapped `referralFee`. Already priced into `outAmounts` |
 | `pathId` | Stateless signed token, valid up to 60 s, consumed by `/sor/assemble` |
-| `pathViz`, `pathVizImage` | `null` until route visualization ships |
+| `pathViz`, `pathVizImage` | The route-visualization graph and rendered base64 SVG when requested and the feature is enabled, else `null` |
 | `blockNumber` | 0 + warning (quotes are auction-based, not block-pinned; use `ophis.expiration`) |
+| `ophis.expectedSettlementSeconds` | Typical quote-to-settlement latency in seconds (an estimate, not a guarantee). See Settlement timing |
 | `transaction` (assemble/swap) | Always `null`. Sign `ophis.order` instead |
 | `simulation` (assemble/swap) | Always `null`; the orderbook re-validates at submit |
 
@@ -215,7 +260,7 @@ settlement trades), `expired`, or `cancelled`.
 
 Errors use one envelope: `{ traceId, error: { code, numericCode, httpStatus,
 message, docs } }`. `code` is a stable string (`MULTI_TOKEN_UNSUPPORTED`,
-`PARTNER_FEE_UNAVAILABLE`, `PATH_ID_EXPIRED`, `NO_ROUTE`, ...);
+`PARTNER_FEE_CAP_EXCEEDED`, `PATH_ID_EXPIRED`, `NO_ROUTE`, ...);
 `numericCode` follows the Ophis API bands (2xxx quoting, 3xxx retryable
 upstream, 4xxx validation). Two doctrines to wire into your client:
 

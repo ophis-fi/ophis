@@ -19,6 +19,7 @@ const payload = (overrides: Partial<PathIdPayload> = {}): PathIdPayload => ({
   fee: '2260',
   slp: 30,
   ref: 'odos123',
+  pf: null,
   qid: 9858,
   iat: NOW,
   exp: NOW + 60,
@@ -41,6 +42,22 @@ describe('pathId', () => {
     expect(token).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     const back = await verifyPathId(token, [KEY], NOW);
     expect(back).toEqual(payload());
+  });
+
+  it('round-trips a mapped partner-fee entry', async () => {
+    const pf = { volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' } as const;
+    const token = await mintPathId(payload({ pf }), KEY);
+    const back = await verifyPathId(token, [KEY], NOW);
+    expect(back.pf).toEqual(pf);
+  });
+
+  it('normalizes a token minted without pf (older token) to pf: null', async () => {
+    // Simulate a pre-mapping token: mint a payload with pf omitted from the JSON.
+    const legacy = payload();
+    delete (legacy as unknown as Record<string, unknown>).pf;
+    const token = await mintPathId(legacy, KEY);
+    const back = await verifyPathId(token, [KEY], NOW);
+    expect(back.pf).toBeNull();
   });
 
   it('rejects tampered payloads', async () => {
