@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ophis-compat",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-01",
+  "observability": {
+    "enabled": true
+  },
+  // Per-IP rate limit for the public compat endpoints (60 requests / 60s, per
+  // colo), mirroring the mcp-server posture. Best-effort abuse cap; combined
+  // with the request body cap it closes the amplification path toward the
+  // orderbook. Local `wrangler dev` treats this as a no-op.
+  "unsafe": {
+    "bindings": [
+      {
+        "name": "COMPAT_RATE_LIMIT",
+        "type": "ratelimit",
+        "namespace_id": "1002",
+        "simple": { "limit": 60, "period": 60 }
+      }
+    ]
+  },
+  // Enabled chains for the compat surface (Ophis-operated orderbooks only, so
+  // nothing proxies api.cow.fi hosts). Everything else stays behind this config.
+  "vars": {
+    "COMPAT_ENABLED_CHAINS": "10,130"
+  },
+  // Custom domain (owner decision 6: compat.ophis.fi isolates the shim and
+  // keeps a cheap exit later). Provisioned by wrangler on deploy: the ophis.fi
+  // zone lives in this CF account, same mechanism as mcp.ophis.fi. First
+  // deploy also needs the COMPAT_PATHID_KEY secret (see the deploy runbook in
+  // the introducing PR): `wrangler secret put COMPAT_PATHID_KEY`.
+  "routes": [{ "pattern": "compat.ophis.fi", "custom_domain": true }]
+}
