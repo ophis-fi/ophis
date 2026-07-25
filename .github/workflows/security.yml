@@ -125,6 +125,26 @@ jobs:
       - name: Check solver registry mirrors the chain-10 driver config
         run: ./scripts/check-solver-registry-invariant.sh
 
+  basket-metadata-invariant:
+    name: Basket-metadata cross-workspace invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-07 (basket-intents Phase A). The Ophis basket ("ophis-multi-order")
+    # appData marker grammar + caps are hand-mirrored across two pnpm workspaces
+    # (no shared import): packages/sdk/src/basket-metadata.ts and
+    # apps/frontend/.../src/ophis/basketMetadata.ts. If the 32-hex basket-id
+    # grammar or the 6x6 / 6-leg caps drift between them, a marker minted on one
+    # side fails validation (or groups the wrong rows) on the other, and the
+    # rebate indexer's basket_id passthrough attributes baskets inconsistently.
+    # The script's --self-test verifies the checker itself catches drift.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Self-test the invariant checker
+        run: ./scripts/check-basket-metadata-invariant.sh --self-test
+      - name: Check basket-metadata grammar + caps match across SDK and frontend mirror
+        run: ./scripts/check-basket-metadata-invariant.sh
+
 
   infra-compose-security:
     name: Infra compose security invariants

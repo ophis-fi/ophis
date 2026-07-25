@@ -204,6 +204,47 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows[0]!.appdataRefCode).toBe('realref');
   });
 
+  it('captures a basket_id passthrough from metadata.ophisBasket.id (no fee gate)', async () => {
+    // A basket leg carries metadata.ophisBasket.id (32-hex). It is a pure analytics
+    // passthrough: attributed regardless of the volume fee, unlike the referral code.
+    const uid = '0x' + '3c'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    const basketId = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, {
+      appCode: 'ophis',
+      metadata: { ophisBasket: { id: basketId, leg: 2, legs: 6 }, partnerFee: OPHIS_FEE },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.basketId).toBe(basketId);
+  });
+
+  it('leaves basket_id NULL for a non-basket order and drops a malformed id', async () => {
+    const owner = '0xa'.padEnd(42, '0');
+    // No ophisBasket marker -> null.
+    const plainUid = '0x' + '3d'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(plainUid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(plainUid, owner, {
+      appCode: 'ophis',
+      metadata: { partnerFee: OPHIS_FEE },
+    }));
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const plain = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(plain[0]!.basketId).toBeNull();
+
+    // Malformed id (uppercase / wrong length) -> dropped to null, not stored.
+    const badUid = '0x' + '3e'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(badUid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(badUid, owner, {
+      appCode: 'ophis',
+      metadata: { ophisBasket: { id: 'NOT-HEX', leg: 1, legs: 1 }, partnerFee: OPHIS_FEE },
+    }));
+    const bad = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(bad[0]!.basketId).toBeNull();
+  });
+
   it('does NOT attribute an ophisReferrer code when no real Ophis volume fee was paid (forged / zero-fee)', async () => {
     // Symmetric with the widget-arm gate: a recognized order carrying ophisReferrer.code but NO
     // volume bps reads as volumeFeeBps = 0, so the ophisReferrer arm must NOT attribute either —
