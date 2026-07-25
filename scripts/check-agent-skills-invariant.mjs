@@ -15,7 +15,11 @@
 //           orderbook.ts), exact + case-sensitive, for every policy chain;
 //           spenders must equal the relayer; EIP-712 verifyingContract must
 //           equal the settlement; policy chains must be sovereign (non-
-//           canonical) Ophis-operated chains.
+//           canonical) Ophis-operated chains. The policy is resolved at its
+//           EXACT frontmatter path metadata.openclaw.web3.policy via the
+//           fail-closed tree parser in scripts/lib/frontmatter.mjs: a block
+//           moved anywhere else fails, because that path is what
+//           policy-enforcing agent runtimes resolve.
 //   Gate B: every 0x address literal anywhere in the family is on an explicit
 //           allowlist (policy addresses, fee recipient, documented example
 //           tokens), so a typo'd or model-hallucinated address cannot ship.
@@ -32,12 +36,14 @@
 //           MCP path is kept as a parse fallback).
 //   Gate F: the slippage latches in the policy block are present and sane.
 //
-// Pure Node, no deps (mirrors scripts/check-policy-pack-addresses.mjs).
+// Pure Node, no deps (mirrors scripts/check-policy-pack-addresses.mjs; the
+// frontmatter tree parser is the in-repo scripts/lib/frontmatter.mjs).
 // Run from anywhere. Exit 0 = OK, 1 = drift.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
+import { parseSkillFrontmatter } from './lib/frontmatter.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rel = (p) => join(REPO_ROOT, p);
@@ -184,75 +190,31 @@ const orderUidLimit = orderRs.match(/pub const ORDER_UID_LIMIT: usize = (\d+);/)
 if (!orderUidLimit) fail(`could not parse ORDER_UID_LIMIT from ${MODEL_ORDER_RS}`);
 
 // --- the umbrella policy block ----------------------------------------------
+// Parsed as a nested tree and resolved at the EXACT path agent runtimes use,
+// metadata.openclaw.web3.policy. The previous extraction matched section names
+// (`allowedContracts:` etc.) at any indentation anywhere in the frontmatter,
+// which kept passing when the whole block was moved to a wrong path (e.g.
+// metadata.policy) that runtimes would never resolve.
 
 const umbrella = read(UMBRELLA);
-const fmMatch = umbrella.match(/^---\n([\s\S]*?)\n---\n/);
-if (!fmMatch) fail(`${UMBRELLA}: missing YAML frontmatter`);
-const fm = fmMatch ? fmMatch[1] : '';
-
-/** Lines of the indented block following `name:` at any indentation. */
-function section(src, name) {
-  const lines = src.split('\n');
-  const start = lines.findIndex((l) => l.trim() === `${name}:`);
-  if (start === -1) return null;
-  const indent = lines[start].search(/\S/);
-  const out = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    if (lines[i].trim() !== '' && lines[i].search(/\S/) <= indent) break;
-    out.push(lines[i]);
-  }
-  return out;
+let umbrellaFm = {};
+try {
+  umbrellaFm = parseSkillFrontmatter(umbrella, UMBRELLA);
+} catch (e) {
+  fail(e.message);
 }
-
-/** { chainId: [addr, ...] } from a block of `NUM:` keys with `- "0x…"` items. */
-function parseChainLists(lines) {
-  const out = {};
-  let chain = null;
-  for (const l of lines ?? []) {
-    const chainMatch = l.match(/^\s*(\d+):\s*(\[.*\])?\s*$/);
-    if (chainMatch) {
-      chain = Number(chainMatch[1]);
-      out[chain] = [];
-      if (chainMatch[2]) {
-        for (const a of chainMatch[2].matchAll(/"(0x[0-9a-fA-F]{40})"/g)) out[chain].push(a[1]);
-      }
-      continue;
-    }
-    const item = l.match(/^\s*-\s*"(0x[0-9a-fA-F]{40})"/);
-    if (item && chain !== null) out[chain].push(item[1]);
-  }
-  return out;
+const policy = umbrellaFm?.metadata?.openclaw?.web3?.policy;
+const policyIsObject = policy !== null && typeof policy === 'object' && !Array.isArray(policy);
+if (!policyIsObject) {
+  fail(`${UMBRELLA}: no policy block at the exact frontmatter path metadata.openclaw.web3.policy (moving it breaks policy-enforcing agent runtimes)`);
 }
-
-const allowedContracts = parseChainLists(section(fm, 'allowedContracts'));
-const allowedSpenders = parseChainLists(section(fm, 'allowedSpenders'));
-
-const eip712 = {};
-{
-  const lines = section(fm, 'eip712Domains') ?? [];
-  let chain = null;
-  for (const l of lines) {
-    const c = l.match(/^\s*(\d+):\s*$/);
-    if (c) {
-      chain = Number(c[1]);
-      eip712[chain] = {};
-      continue;
-    }
-    const kv = l.match(/^\s*(name|version|verifyingContract):\s*"([^"]+)"/);
-    if (kv && chain !== null) eip712[chain][kv[1]] = kv[2];
-  }
-}
-
-const orderbooks = {};
-for (const l of section(fm, 'orderbooks') ?? []) {
-  const m = l.match(/^\s*(\d+):\s*"(https:\/\/[^"]+)"/);
-  if (m) orderbooks[Number(m[1])] = m[2];
-}
-
-const slippage = {};
-for (const l of section(fm, 'slippage') ?? []) {
-  const m = l.match(/^\s*(defaultBips|maxBips|requireConfirmAboveBips):\s*(\d+)/);
-  if (m) slippage[m[1]] = Number(m[2]);
+const allowedContracts = (policyIsObject && policy.allowedContracts) || {};
+const allowedSpenders = (policyIsObject && policy.allowedSpenders) || {};
+const eip712 = (policyIsObject && policy.eip712Domains) || {};
+const orderbooks = (policyIsObject && policy.orderbooks) || {};
+const slippage = (policyIsObject && policy.slippage) || {};
+if (Object.keys(allowedContracts).length === 0) {
+  fail(`${UMBRELLA}: metadata.openclaw.web3.policy.allowedContracts is missing or empty`);
 }
 
 // --- Gate A: policy <-> SDK --------------------------------------------------

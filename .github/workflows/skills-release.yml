@@ -83,35 +83,12 @@ jobs:
 
       # A docs-only package's remaining failure mode is a malformed tarball
       # (sdk-release.yml needs no equivalent: tsc failing the build covers it
-      # there). Assert the exact pack list before the token-bearing step.
+      # there). The shared gate derives the expected pack list from the staged
+      # manifest (no hand-maintained file list in this workflow) and the
+      # agent-skills-ci static lane runs the SAME script, so a family change
+      # that alters the pack list fails at merge time, not here on release day.
       - name: verify tarball contents
-        working-directory: packages/agent-skills
-        run: |
-          npm pack --dry-run --ignore-scripts --json > /tmp/pack.json
-          node -e '
-            const files = JSON.parse(require("fs").readFileSync("/tmp/pack.json", "utf8"))[0].files.map((f) => f.path).sort();
-            const want = [
-              "LICENSE",
-              "README.md",
-              "index.json",
-              "ophis/LICENSE",
-              "ophis/README.md",
-              "ophis/SKILL.md",
-              "ophis/skills/ophis-cancel.md",
-              "ophis/skills/ophis-order-status.md",
-              "ophis/skills/ophis-quote.md",
-              "ophis/skills/ophis-surplus-report.md",
-              "ophis/skills/ophis-swap.md",
-              "package.json",
-            ];
-            const missing = want.filter((w) => !files.includes(w));
-            const extra = files.filter((f) => !want.includes(f));
-            if (missing.length || extra.length) {
-              console.error("tarball mismatch; missing:", missing, "extra:", extra);
-              process.exit(1);
-            }
-            console.log("tarball contains exactly the", want.length, "expected files");
-          '
+        run: node scripts/verify-agent-skills-tarball.mjs
 
       # --ignore-scripts here too: the staging is already built explicitly
       # above, so publish must NOT re-run prepublishOnly inside this step where

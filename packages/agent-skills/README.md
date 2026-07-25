@@ -48,6 +48,7 @@ For Claude Code:
 
 ```bash
 npm i @ophis/agent-skills
+rm -rf ~/.claude/skills/ophis
 cp -R node_modules/@ophis/agent-skills/ophis ~/.claude/skills/ophis
 ```
 
@@ -56,8 +57,13 @@ Or without a project, into any agent's skill directory:
 ```bash
 npm pack @ophis/agent-skills
 tar -xzf ophis-agent-skills-*.tgz
+rm -rf /path/to/your/agent/skills/ophis
 cp -R package/ophis /path/to/your/agent/skills/ophis
 ```
+
+The `rm -rf` matters when upgrading: with an existing destination, `cp -R`
+would nest the new copy inside it (`ophis/ophis`) and the agent would keep
+loading the old skill and its old safety policy.
 
 The agent loads `ophis/SKILL.md` (the umbrella), which routes to the
 sub-skills under `ophis/skills/` per operation.

@@ -8,9 +8,14 @@
 // content is ever committed under packages/agent-skills (the copies are
 // gitignored), so the package cannot fork from the served family.
 //
+// The staging is wiped FIRST, before any fallible input is read: whatever
+// happens afterwards (a gate failing, a read or parse crashing), no stale
+// staged artifacts survive for a lifecycle-skipping pack to ship. Fail-clean
+// is structural, not a code path.
+//
 // Staged layout (everything below is a build artifact):
 //   ophis/SKILL.md            byte-for-byte copy of the umbrella skill
-//   ophis/skills/*.md         byte-for-byte copies of the five sub-skills
+//   ophis/skills/*.md         byte-for-byte copies of the sub-skills
 //   ophis/README.md           byte-for-byte copy of the family guide
 //   ophis/LICENSE             byte-for-byte copy (MIT + retained upstream notice)
 //   LICENSE                   package-root copy of the same family LICENSE
@@ -18,7 +23,7 @@
 //                             manifest: identical digests, canonical ophis.fi
 //                             URLs, same schema
 //
-// Hard gates (exit 1, staging is wiped on failure so a broken run cannot pack):
+// Hard gates (exit 1, nothing staged):
 //   1. every family skill file's sha256 equals the digest advertised in the
 //      hosted index.json (a mismatch means the manifest is stale and a release
 //      would ship bytes the canonical index does not vouch for);
@@ -26,8 +31,11 @@
 //      index.json (nothing ships unadvertised);
 //   3. the family LICENSE still carries the MIT grant AND the retained
 //      upstream skeleton copyright notice;
-//   4. the umbrella SKILL.md still carries the machine-readable
-//      metadata.openclaw.web3.policy block;
+//   4. the umbrella SKILL.md frontmatter, parsed as a nested tree
+//      (scripts/lib/frontmatter.mjs, fail-closed), carries the policy block
+//      at the EXACT path metadata.openclaw.web3.policy with a non-empty
+//      allowedContracts map (a block moved to any other path fails: agent
+//      runtimes resolve this exact path);
 //   5. the umbrella frontmatter `version` equals packages/agent-skills
 //      package.json `version`: skills-release.yml pins the git tag to
 //      package.json, this pins package.json to the family, so one version
@@ -42,6 +50,7 @@ import { readFileSync, readdirSync, writeFileSync, rmSync, mkdirSync, copyFileSy
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { parseSkillFrontmatter } from './lib/frontmatter.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const rel = (p) => join(REPO_ROOT, p);
@@ -55,6 +64,18 @@ const PKG_DIR = 'packages/agent-skills';
 const problems = [];
 const fail = (msg) => problems.push(msg);
 const sha256 = (buf) => `sha256:${createHash('sha256').update(buf).digest('hex')}`;
+
+// --- wipe FIRST, before any fallible read ------------------------------------
+// PKG_DIR is a compile-time constant and rmSync(force) cannot throw on a
+// missing path, so this cannot fail; every line below it can, and a crash
+// below then leaves an empty staging, never a stale one (issue #908 item 2).
+
+const wipeStaging = () => {
+  for (const p of ['ophis', 'LICENSE', 'index.json']) {
+    rmSync(rel(`${PKG_DIR}/${p}`), { recursive: true, force: true });
+  }
+};
+wipeStaging();
 
 // --- 1+2: the hosted manifest vouches for exactly the files we stage --------
 
@@ -97,30 +118,38 @@ if (!/Portions copyright \(c\) \d{4} Odos/.test(license)) {
   fail(`${FAMILY_DIR}/LICENSE: the retained upstream skeleton copyright notice is gone; it is a license condition and must ship with every copy`);
 }
 
-// --- 4+5: umbrella policy block present, version pinned to package.json -----
+// --- 4+5: policy block at its exact path, version pinned to package.json -----
 
 const umbrella = readFileSync(rel(`${FAMILY_DIR}/SKILL.md`), 'utf8');
-const frontmatter = umbrella.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
-if (!/^\s+openclaw:$/m.test(frontmatter) || !/^\s+policy:$/m.test(frontmatter)) {
-  fail(`${FAMILY_DIR}/SKILL.md: the metadata.openclaw.web3.policy block is missing from the frontmatter`);
+let fm = {};
+try {
+  fm = parseSkillFrontmatter(umbrella, `${FAMILY_DIR}/SKILL.md`);
+} catch (e) {
+  fail(e.message);
 }
+// The exact nested path agent runtimes resolve. A regex match on the key
+// names alone would pass with the block moved elsewhere (e.g. to
+// metadata.policy); resolving the tree path does not.
+const policy = fm?.metadata?.openclaw?.web3?.policy;
+if (!policy || typeof policy !== 'object' || Array.isArray(policy)) {
+  fail(`${FAMILY_DIR}/SKILL.md: no policy block at the exact frontmatter path metadata.openclaw.web3.policy (moving it breaks policy-enforcing agent runtimes)`);
+} else {
+  const contracts = policy.allowedContracts;
+  if (!contracts || typeof contracts !== 'object' || Array.isArray(contracts) || Object.keys(contracts).length === 0) {
+    fail(`${FAMILY_DIR}/SKILL.md: metadata.openclaw.web3.policy.allowedContracts is missing or empty`);
+  }
+}
+
 const pkg = JSON.parse(readFileSync(rel(`${PKG_DIR}/package.json`), 'utf8'));
-const umbrellaVersion = frontmatter.match(/^version: (\S+)$/m)?.[1];
-if (umbrellaVersion !== pkg.version) {
+if (fm?.version !== pkg.version) {
   fail(
-    `version drift: ${PKG_DIR}/package.json is ${pkg.version} but the umbrella SKILL.md frontmatter is ${umbrellaVersion}; ` +
+    `version drift: ${PKG_DIR}/package.json is ${pkg.version} but the umbrella SKILL.md frontmatter is ${fm?.version}; ` +
       `bump both together (the skills-v* release tag must match this same string)`,
   );
 }
 
-const wipeStaging = () => {
-  for (const p of ['ophis', 'LICENSE', 'index.json']) {
-    rmSync(rel(`${PKG_DIR}/${p}`), { recursive: true, force: true });
-  }
-};
-
 if (problems.length > 0) {
-  wipeStaging();
+  // Staging was wiped up front and nothing has been copied yet.
   console.error(`package-agent-skills: ${problems.length} problem(s), nothing staged\n`);
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
@@ -128,7 +157,6 @@ if (problems.length > 0) {
 
 // --- stage -------------------------------------------------------------------
 
-wipeStaging();
 mkdirSync(rel(`${PKG_DIR}/ophis/skills`), { recursive: true });
 
 const copies = [
@@ -143,7 +171,9 @@ for (const [src, dst] of copies) {
 
 // The packaged manifest is the family's slice of the hosted one: identical
 // digests and canonical URLs, so a consumer can verify the tarball's bytes
-// against ophis.fi without trusting npm.
+// against ophis.fi without trusting npm. It is also the single source the
+// tarball-content gate (scripts/verify-agent-skills-tarball.mjs) derives its
+// expected file list from.
 writeFileSync(
   rel(`${PKG_DIR}/index.json`),
   `${JSON.stringify({ $schema: hostedIndex.$schema, skills: familyEntries }, null, 2)}\n`,
@@ -161,5 +191,5 @@ for (const [src, dst] of copies) {
 
 console.log(
   `OK: staged @ophis/agent-skills v${pkg.version} in ${PKG_DIR} ` +
-    `(${familyFiles.length} skill files, digests verified against the hosted index, license notice intact)`,
+    `(${familyFiles.length} skill files, digests verified against the hosted index, license notice intact, policy at metadata.openclaw.web3.policy)`,
 );
