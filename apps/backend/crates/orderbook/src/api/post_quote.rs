@@ -136,6 +136,9 @@ mod tests {
                 },
                 price_quality: PriceQuality::Optimal,
                 timeout: Default::default(),
+                path_viz: false,
+                path_viz_image: false,
+                path_viz_image_config: None,
             }
         );
     }
@@ -284,6 +287,8 @@ mod tests {
             id: Some(0),
             verified: false,
             protocol_fee_bps: Some("2".to_string()),
+            path_viz: None,
+            path_viz_image: None,
         };
         let response = (StatusCode::OK, Json(order_quote_response.clone())).into_response();
         assert_eq!(response.status(), StatusCode::OK);

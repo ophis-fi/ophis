@@ -276,6 +276,37 @@ pub async fn run(config: Configuration) {
         web3: web3.clone(),
     })));
 
+    // pathviz (Wave 2). Ships disabled via the `--enable-pathviz` kill
+    // switch; when off, the service is absent and both the quote fields and
+    // the `/pathviz` endpoints behave as if the feature did not exist. The
+    // provider is captured here (a clone) before `web3` is moved into the
+    // order simulator further down.
+    let pathviz_service = if config.pathviz.enabled {
+        let registry = match &config.pathviz.venues_file {
+            Some(path) => match crate::pathviz::VenueRegistry::load(path) {
+                Ok(registry) => {
+                    tracing::info!(venues = registry.len(), "pathviz venue registry loaded");
+                    registry
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        ?err,
+                        "pathviz: venue registry load failed; venues degrade to bare addresses"
+                    );
+                    crate::pathviz::VenueRegistry::default()
+                }
+            },
+            None => crate::pathviz::VenueRegistry::default(),
+        };
+        Some(Arc::new(crate::pathviz::PathVizService::new(
+            token_info_fetcher.clone(),
+            Some(web3.provider.clone()),
+            Arc::new(registry),
+        )))
+    } else {
+        None
+    };
+
     let code_fetcher = Arc::new(CachedCodeFetcher::new(Arc::new(web3.clone())));
 
     let mut price_estimator_factory = PriceEstimatorFactory::new(
@@ -500,7 +531,7 @@ pub async fn run(config: Configuration) {
         .iter()
         .map(Into::into)
         .collect();
-    let quotes = QuoteHandler::new(
+    let mut quotes = QuoteHandler::new(
         order_validator,
         optimal_quoter,
         app_data.clone(),
@@ -509,6 +540,9 @@ pub async fn run(config: Configuration) {
         config.shared.enable_sell_equals_buy_volume_fee,
     )
     .with_fast_quoter(fast_quoter);
+    if let Some(service) = &pathviz_service {
+        quotes = quotes.with_pathviz(service.clone());
+    }
 
     let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel();
     let serve_api = serve_api(
@@ -527,6 +561,7 @@ pub async fn run(config: Configuration) {
         config.hide_competition_before_deadline,
         config.api,
         contracts_info,
+        pathviz_service,
     );
 
     let mut metrics_address = config.bind_address;
@@ -603,6 +638,7 @@ fn serve_api(
     hide_competition_before_deadline: bool,
     api_config: configs::orderbook::api::ApiConfig,
     contracts_info: api::get_contract_info::ContractsInfo,
+    pathviz: Option<Arc<crate::pathviz::PathVizService>>,
 ) -> JoinHandle<()> {
     let app = api::handle_all_routes(
         database,
@@ -616,6 +652,7 @@ fn serve_api(
         hide_competition_before_deadline,
         api_config,
         contracts_info,
+        pathviz,
     );
     tracing::info!(%address, "serving order book");
 

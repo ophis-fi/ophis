@@ -275,6 +275,90 @@ paths:
                 $ref: "#/components/schemas/CompetitionOrderStatus"
         "400":
           description: Invalid order UID.
+  "/api/v1/orders/{UID}/pathviz":
+    get:
+      operationId: getOrderPathViz
+      summary: Route/surplus visualization graph for an order (pathviz).
+      description: >
+        Returns a `PathVizGraph` describing how the order flowed through the
+        solver competition and, once settled, the on-chain venues, plus the
+        surplus callout. Quote-stage orders disclose solver names only (no
+        venue column). 404 when the pathviz feature is disabled or the order
+        is unknown. CoW-hosted chains never serve this endpoint.
+      parameters:
+        - in: path
+          name: UID
+          schema:
+            $ref: "#/components/schemas/UID"
+          required: true
+        - in: query
+          name: pathVizImage
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include the rendered base64 SVG as `svgBase64`.
+      responses:
+        "200":
+          description: The visualization graph (and optional rendered SVG).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  context:
+                    type: string
+                    enum:
+                      - quotedOnly
+                      - executing
+                      - traded
+                    description: Lifecycle stage the graph describes.
+                  settlementTxHash:
+                    $ref: "#/components/schemas/TransactionHash"
+                  graph:
+                    $ref: "#/components/schemas/PathVizGraph"
+                  svgBase64:
+                    type: string
+                    description: Rendered SVG, present only when `pathVizImage=true`.
+                  generatedAt:
+                    type: string
+                    description: ISO-8601 UTC generation timestamp.
+                required:
+                  - context
+                  - graph
+                  - generatedAt
+        "400":
+          description: Invalid order UID.
+        "404":
+          description: pathviz is disabled or the order was not found.
+  "/api/v1/orders/{UID}/pathviz.svg":
+    get:
+      operationId: getOrderPathVizSvg
+      summary: Route/surplus visualization as a raw SVG (pathviz).
+      description: >
+        Renders the order's `PathVizGraph` to a self-contained SVG served
+        under a strict Content-Security-Policy (`default-src 'none'`) with
+        `X-Content-Type-Options: nosniff`. Traded orders are immutable and
+        served with a long, immutable cache; pre-settlement views use a short
+        max-age. Render options are accepted as query parameters mirroring
+        `PathVizImageConfig`.
+      parameters:
+        - in: path
+          name: UID
+          schema:
+            $ref: "#/components/schemas/UID"
+          required: true
+      responses:
+        "200":
+          description: The rendered SVG.
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid order UID or malformed render options.
+        "404":
+          description: pathviz is disabled or the order was not found.
   "/api/v1/transactions/{txHash}/orders":
     get:
       operationId: getOrdersByTxHash
@@ -2156,6 +2240,153 @@ components:
             validFor:
               description: Number (`uint32`) of seconds that the order should be valid for.
               type: integer
+    PathVizImageConfig:
+      description: >
+        Render options for the pathviz SVG (`pathVizImageConfig`; Odos
+        wire-name parity). Every color is an optional hex string
+        (`^#(?:[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$`); absent colors fall back to
+        the Ophis dark-cosmic defaults. Width/height are clamped, not
+        rejected.
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [dark, light]
+          description: Base theme; `dark` (Ophis cosmic) is the default.
+        linkColors:
+          type: array
+          items:
+            type: string
+          description: Six-color link spectrum override.
+        nodeColor:
+          type: string
+        nodeTextColor:
+          type: string
+        legendTextColor:
+          type: string
+        surplusColor:
+          type: string
+        backgroundColor:
+          type: string
+        width:
+          type: integer
+          minimum: 320
+          maximum: 2400
+        height:
+          type: integer
+          minimum: 200
+          maximum: 1600
+        showLegend:
+          type: boolean
+        showSurplus:
+          type: boolean
+    PathVizGraph:
+      description: >
+        Server-rendered route/surplus visualization model. `schemaVersion` is
+        1, labeled EXPERIMENTAL for 60 days from first ship, then stable and
+        additive-only. All atom amounts are decimal strings. Adds, over the
+        Odos surface, the solver-competition column and the surplus callout.
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+          example: 1
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              kind:
+                type: string
+                enum: [token, solver, venue, overflow]
+              column:
+                type: integer
+                description: Layout column 0..3 (input, solver, venue, output).
+              address:
+                type: string
+            required:
+              - id
+              - label
+              - kind
+              - column
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              from:
+                type: string
+              to:
+                type: string
+              kind:
+                type: string
+                enum: [route, bid, matched]
+              amountAtoms:
+                type: string
+              amountDisplay:
+                type: string
+              tokenSymbol:
+                type: string
+            required:
+              - from
+              - to
+              - kind
+        solvers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              winner:
+                type: boolean
+              executedSellAtoms:
+                type: string
+              executedBuyAtoms:
+                type: string
+            required:
+              - name
+              - winner
+        surplus:
+          type: object
+          description: >
+            Present once settled. The callout wording is
+            "surplus returned vs your signed minimum".
+          properties:
+            amountAtoms:
+              type: string
+            tokenSymbol:
+              type: string
+            amountDisplay:
+              type: string
+            percent:
+              type: number
+          required:
+            - amountAtoms
+            - tokenSymbol
+        fee:
+          type: object
+          properties:
+            amountAtoms:
+              type: string
+            tokenSymbol:
+              type: string
+            amountDisplay:
+              type: string
+            bps:
+              type: string
+          required:
+            - amountAtoms
+            - tokenSymbol
+      required:
+        - schemaVersion
+        - nodes
+        - links
+        - solvers
     OrderQuoteRequest:
       description: Request fee and price quote.
       allOf:
@@ -2234,6 +2465,27 @@ components:
                 as values greater than the default will be capped to the default.
                 Note that reducing the timeout can result in worse quotes because
                 the reduced timeout might be too slow for some price estimators.
+            pathViz:
+              type: boolean
+              default: false
+              description: >
+                Request a route visualization graph (`pathViz`) in the response
+                (pathviz feature; Odos wire-name parity). At quote time the graph
+                discloses solver names only, not the on-chain venue column. A
+                visualization failure never fails the quote: the field is simply
+                absent. Only served when the feature is enabled; ignored on
+                CoW-hosted chains.
+            pathVizImage:
+              type: boolean
+              default: false
+              description: >
+                Request a rendered base64 SVG (`pathVizImage`) in the response.
+            pathVizImageConfig:
+              allOf:
+                - $ref: "#/components/schemas/PathVizImageConfig"
+              description: >
+                Render options for `pathVizImage`. Ignored unless `pathVizImage`
+                is set.
           required:
             - sellToken
             - buyToken
@@ -2277,6 +2529,19 @@ components:
             the volume-based fee policy. Only present when a volume fee is configured.
           type: string
           example: "2"
+        pathViz:
+          description: >
+            The route visualization graph, present only when the request set
+            `pathViz` and assembly succeeded (pathviz warns-and-degrades, so a
+            visualization failure leaves this absent rather than failing the
+            quote).
+          allOf:
+            - $ref: "#/components/schemas/PathVizGraph"
+        pathVizImage:
+          description: >
+            The rendered visualization as a base64-encoded SVG, present only
+            when the request set `pathVizImage` and rendering succeeded.
+          type: string
       required:
         - quote
         - expiration

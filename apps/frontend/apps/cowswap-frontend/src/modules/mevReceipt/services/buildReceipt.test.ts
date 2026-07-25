@@ -54,7 +54,9 @@ describe('buildReceipt', () => {
       recipient: '0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E',
     })
     expect(receipt.surplusVsQuote).toBeCloseTo(0.19, 2)
-    expect(receipt.receiptVersion).toBe('2')
+    expect(receipt.receiptVersion).toBe('3')
+    // v3 carries the optional pathViz field; null unless one was supplied.
+    expect(receipt.pathVizSvgBase64).toBeNull()
     expect(typeof receipt.generatedAt).toBe('string')
   })
 
@@ -115,7 +117,7 @@ describe('exportJson', () => {
     const parsed = JSON.parse(json)
     expect(parsed.orderUid).toBe(receipt.orderUid)
     expect(parsed.partnerFee).toEqual(receipt.partnerFee)
-    expect(parsed.receiptVersion).toBe('2')
+    expect(parsed.receiptVersion).toBe('3')
     expect(parsed.executedBuyAmount).toBe(receipt.executedBuyAmount)
   })
 
@@ -147,5 +149,35 @@ describe('exportPdf', () => {
     const blob = exportPdf(receipt)
     expect(blob.type).toBe('application/pdf')
     expect(blob.size).toBeGreaterThan(500)
+  })
+
+  it('embeds a pathviz image when a rasterized diagram is supplied', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 10 })
+    // 1x1 transparent PNG data URL.
+    const dataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    const withImage = exportPdf(receipt, { dataUrl, width: 1920, height: 1080 })
+    const without = exportPdf(receipt)
+    expect(withImage.type).toBe('application/pdf')
+    // The embedded PNG makes the document strictly larger.
+    expect(withImage.size).toBeGreaterThan(without.size)
+  })
+})
+
+describe('buildReceipt pathViz field (v3)', () => {
+  it('threads a supplied pathVizSvgBase64 through to the receipt', () => {
+    const receipt = buildReceipt({
+      order: FIXTURE_ORDER,
+      trade: FIXTURE_TRADE,
+      chainId: 10,
+      pathVizSvgBase64: 'PHN2Zz48L3N2Zz4=',
+    })
+    expect(receipt.pathVizSvgBase64).toBe('PHN2Zz48L3N2Zz4=')
+    expect(receipt.receiptVersion).toBe('3')
+  })
+
+  it('defaults pathVizSvgBase64 to null when absent', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 10 })
+    expect(receipt.pathVizSvgBase64).toBeNull()
   })
 })

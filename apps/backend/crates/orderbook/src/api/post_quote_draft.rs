@@ -547,6 +547,8 @@ mod tests {
             id: Some(42),
             verified: true,
             protocol_fee_bps: None,
+            path_viz: None,
+            path_viz_image: None,
         }
     }
 

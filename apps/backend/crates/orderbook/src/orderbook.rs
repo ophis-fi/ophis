@@ -613,6 +613,20 @@ impl Orderbook {
         Ok(status)
     }
 
+    /// The on-chain settlement transaction hash for an order, when it has
+    /// been traded and indexed. Used by pathviz to fetch the settlement
+    /// receipt for the venue column.
+    pub async fn settlement_tx_hash(&self, uid: &OrderUid) -> Result<Option<B256>> {
+        let trades = self
+            .database
+            .trades(&TradeFilter {
+                owner: None,
+                order_uid: Some(*uid),
+            })
+            .await?;
+        Ok(trades.first().and_then(|trade| trade.tx_hash))
+    }
+
     fn parse_interactions_and_wrappers(
         &self,
         full_app_data: &str,

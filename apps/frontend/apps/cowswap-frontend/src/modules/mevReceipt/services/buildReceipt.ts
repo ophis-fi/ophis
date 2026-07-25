@@ -44,7 +44,7 @@ const calcSurplus = (executedBuy: string, quotedBuy: string): number | null => {
   return num / denom
 }
 
-export const buildReceipt = ({ order, trade, chainId }: BuildReceiptInput): MevProofReceipt => ({
+export const buildReceipt = ({ order, trade, chainId, pathVizSvgBase64 }: BuildReceiptInput): MevProofReceipt => ({
   orderUid: order.uid,
   chainId,
   owner: order.owner,
@@ -60,6 +60,7 @@ export const buildReceipt = ({ order, trade, chainId }: BuildReceiptInput): MevP
   status: order.status,
   partnerFee: extractPartnerFee(order.fullAppData),
   surplusVsQuote: trade ? calcSurplus(order.executedBuyAmount, order.buyAmount) : null,
-  receiptVersion: '2',
+  pathVizSvgBase64: pathVizSvgBase64 ?? null,
+  receiptVersion: '3',
   generatedAt: new Date().toISOString(),
 })
