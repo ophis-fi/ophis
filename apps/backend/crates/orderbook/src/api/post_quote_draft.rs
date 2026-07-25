@@ -28,7 +28,7 @@
 
 use {
     super::{AppState, error, get_contract_info::ContractsInfo},
-    alloy::primitives::{Address, U256},
+    alloy::primitives::{Address, U256, U512, ruint::UintTryFrom},
     axum::{
         Json,
         extract::State,
@@ -37,9 +37,9 @@ use {
     },
     app_data::AppDataHash,
     model::{
-        order::{BuyTokenDestination, OrderCreationAppData, OrderKind, SellTokenSource},
-        quote::{OrderQuoteRequest, OrderQuoteResponse},
-        signature::SigningScheme,
+        order::{BuyTokenDestination, OrderCreationAppData, OrderData, OrderKind, SellTokenSource},
+        quote::{OrderQuoteRequest, OrderQuoteResponse, OrderQuoteSide, SellAmount},
+        signature::{SigningScheme, hashed_eip712_message},
     },
     number::serialization::HexOrDecimalU256,
     serde::{Deserialize, Serialize},
@@ -127,7 +127,24 @@ pub struct QuoteDraftResponse {
     /// embedded quote request.
     pub quote: OrderQuoteResponse,
     pub order: OrderDraft,
-    pub signing: SigningEnvelope,
+    /// EIP-712 typed-data envelope to sign `order` against. Present only for
+    /// schemes where signing the typed data is what the orderbook accepts
+    /// (`eip712`, and `eip1271` where the wallet contract verifies the same
+    /// order hash). Absent for `ethsign` (personal-sign `orderDigest`
+    /// instead) and `presign` (no off-chain signature), so a client can
+    /// never sign a mismatched envelope.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signing: Option<SigningEnvelope>,
+    /// The 32-byte EIP-712 order digest (`0x`-prefixed), i.e. the order hash
+    /// the settlement contract recovers signatures against. For `ethsign`
+    /// this is exactly what the client `personal_sign`s. Present for every
+    /// scheme that produces an off-chain signature (`eip712`, `ethsign`,
+    /// `eip1271`); absent for `presign`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order_digest: Option<String>,
+    /// Human-readable instruction for producing a submittable signature
+    /// under the order's `signingScheme`.
+    pub signing_note: String,
     /// The full appData document to submit alongside the order. Present
     /// whenever the server knows the document (always when it was
     /// defaulted); absent only when the caller quoted with a bare hash.
@@ -200,12 +217,16 @@ fn app_data_is_absent(app_data: &OrderCreationAppData) -> bool {
 
 /// Minimum out for a sell draft: the quoted buy amount reduced by
 /// `slippage_bps`, rounded UP (never one atom below the true slippage
-/// floor; mirrors `@ophis/sdk`).
+/// floor; mirrors `@ophis/sdk`). The multiply is widened to 512 bits so a
+/// large-but-representable quote (near `U256::MAX`, whose `* factor / 10000`
+/// still fits in 256 bits) is not spuriously rejected; the overflow error is
+/// reserved for a genuinely out-of-range FINAL result.
 fn min_buy_amount(quoted_buy: U256, slippage_bps: u16) -> Result<U256, DraftError> {
-    let scaled = quoted_buy
-        .checked_mul(U256::from(BPS_BASE - slippage_bps))
-        .ok_or(DraftError::AmountOverflow)?
-        .div_ceil(U256::from(BPS_BASE));
+    // U256 * U256 -> U512 (256 + 256 bits), so a near-max quote does not
+    // overflow the intermediate.
+    let numerator = quoted_buy.widening_mul(U256::from(BPS_BASE - slippage_bps));
+    let scaled = div_ceil_u512(numerator, U512::from(BPS_BASE));
+    let scaled = U256::uint_try_from(scaled).map_err(|_| DraftError::AmountOverflow)?;
     if scaled.is_zero() {
         return Err(DraftError::ZeroMinBuyAmount);
     }
@@ -213,35 +234,68 @@ fn min_buy_amount(quoted_buy: U256, slippage_bps: u16) -> Result<U256, DraftErro
 }
 
 /// Maximum in for a buy draft: the quoted total sell amount raised by
-/// `slippage_bps`, rounded DOWN (mirrors `@ophis/sdk`).
+/// `slippage_bps`, rounded DOWN (mirrors `@ophis/sdk`). Widened like
+/// [`min_buy_amount`]; here a result above `U256::MAX` is a real overflow
+/// (raising a near-max sell amount) and is reported as one.
 fn max_sell_amount(quoted_sell: U256, slippage_bps: u16) -> Result<U256, DraftError> {
-    Ok(quoted_sell
-        .checked_mul(U256::from(BPS_BASE + slippage_bps))
-        .ok_or(DraftError::AmountOverflow)?
-        / U256::from(BPS_BASE))
+    let numerator = quoted_sell.widening_mul(U256::from(BPS_BASE + slippage_bps));
+    let scaled = numerator / U512::from(BPS_BASE);
+    U256::uint_try_from(scaled).map_err(|_| DraftError::AmountOverflow)
+}
+
+/// Ceiling division on 512-bit unsigned integers: `(numerator + base - 1) /
+/// base`. `numerator` here is at most `U256::MAX * 9999`, far inside 512
+/// bits, so the `+ (base - 1)` cannot overflow.
+fn div_ceil_u512(numerator: U512, base: U512) -> U512 {
+    (numerator + (base - U512::from(1u64))) / base
 }
 
 /// Assembles the draft from a computed quote. Pure: everything on-chain or
 /// stateful already happened in the quote.
+///
+/// `side` is the ORIGINAL request side, needed to sign the amount the caller
+/// actually authorized: the underlying quoter scales a `sellAmountBeforeFee`
+/// sell so `quote.sell_amount = beforeFee - fee`, so folding the fee back
+/// reconstructs the caller's total. A `sellAmountAfterFee` sell is NOT
+/// scaled: `quote.sell_amount` already IS the exact amount the caller wants
+/// to sell, so folding the fee there would sign an order authorizing MORE
+/// than requested.
 fn build_draft(
     quote_response: OrderQuoteResponse,
     contracts: &ContractsInfo,
     slippage_bps: u16,
+    side: OrderQuoteSide,
 ) -> Result<QuoteDraftResponse, DraftError> {
     let quote = &quote_response.quote;
 
-    // The signed sell side always carries the quote's fee: the order signs
-    // feeAmount 0, so the fee lives inside sellAmount (zero for the
-    // fee-from-surplus quotes this orderbook serves today, but the draft
-    // must stay correct if a nonzero fee_amount ever reappears).
-    let total_sell = quote
-        .sell_amount
-        .checked_add(quote.fee_amount)
-        .ok_or(DraftError::AmountOverflow)?;
+    // The order signs feeAmount 0, so any network fee must be reflected in
+    // the sellAmount instead. Fold it in every case EXCEPT a
+    // `sellAmountAfterFee` sell, whose `quote.sell_amount` is already the
+    // caller's exact, authorized sell amount.
+    let fold_fee = !matches!(
+        side,
+        OrderQuoteSide::Sell {
+            sell_amount: SellAmount::AfterFee { .. },
+        }
+    );
+    let sell_before_slippage = if fold_fee {
+        quote
+            .sell_amount
+            .checked_add(quote.fee_amount)
+            .ok_or(DraftError::AmountOverflow)?
+    } else {
+        quote.sell_amount
+    };
 
     let (sell_amount, buy_amount) = match quote.kind {
-        OrderKind::Sell => (total_sell, min_buy_amount(quote.buy_amount, slippage_bps)?),
-        OrderKind::Buy => (max_sell_amount(total_sell, slippage_bps)?, quote.buy_amount),
+        OrderKind::Sell => (
+            sell_before_slippage,
+            min_buy_amount(quote.buy_amount, slippage_bps)?,
+        ),
+        OrderKind::Buy => (
+            max_sell_amount(sell_before_slippage, slippage_bps)?,
+            quote.buy_amount,
+        ),
     };
 
     let app_data_hash = quote.app_data.hash();
@@ -252,10 +306,11 @@ fn build_draft(
         OrderCreationAppData::Hash { .. } => None,
     };
 
+    let receiver = quote.receiver.unwrap_or(quote_response.from);
     let order = OrderDraft {
         sell_token: quote.sell_token,
         buy_token: quote.buy_token,
-        receiver: quote.receiver.unwrap_or(quote_response.from),
+        receiver,
         sell_amount,
         buy_amount,
         valid_to: quote.valid_to,
@@ -268,7 +323,93 @@ fn build_draft(
         signing_scheme: quote.signing_scheme,
     };
 
-    let signing = SigningEnvelope {
+    // The order digest the settlement recovers signatures against: the
+    // EIP-712 message hash over the exact order fields being signed.
+    let order_digest = order_digest(&order, receiver, contracts);
+    let (signing, order_digest, signing_note) =
+        signing_payload(order.signing_scheme, order_digest, contracts);
+
+    Ok(QuoteDraftResponse {
+        quote: quote_response,
+        order,
+        signing,
+        order_digest,
+        signing_note,
+        full_app_data,
+        app_data_hash,
+        slippage_bps,
+    })
+}
+
+/// The EIP-712 order digest (`0x`-prefixed) for a draft: `keccak256(0x1901 ||
+/// domainSeparator || hashStruct(order))`, i.e. the order hash the settlement
+/// contract recovers a signature against. Computed from the exact order
+/// fields so it matches what a submitted order hashes to.
+fn order_digest(order: &OrderDraft, receiver: Address, contracts: &ContractsInfo) -> String {
+    let data = OrderData {
+        sell_token: order.sell_token,
+        buy_token: order.buy_token,
+        receiver: Some(receiver),
+        sell_amount: order.sell_amount,
+        buy_amount: order.buy_amount,
+        valid_to: order.valid_to,
+        app_data: order.app_data,
+        fee_amount: order.fee_amount,
+        kind: order.kind,
+        partially_fillable: order.partially_fillable,
+        sell_token_balance: order.sell_token_balance,
+        buy_token_balance: order.buy_token_balance,
+    };
+    hashed_eip712_message(&contracts.domain_separator, &data.hash_struct()).to_string()
+}
+
+/// Resolves the per-scheme signing payload so no scheme yields an
+/// unsubmittable draft: the typed-data envelope is returned only where
+/// signing it is what the orderbook accepts, `ethsign` gets the digest to
+/// personal-sign, and `presign` gets neither plus a note about its on-chain
+/// flow.
+fn signing_payload(
+    scheme: SigningScheme,
+    digest: String,
+    contracts: &ContractsInfo,
+) -> (Option<SigningEnvelope>, Option<String>, String) {
+    match scheme {
+        SigningScheme::Eip712 => (
+            Some(signing_envelope(contracts)),
+            Some(digest),
+            "Sign `order` as EIP-712 typed data using `signing` (domain/types/primaryType), then \
+             submit to POST /api/v1/orders with signingScheme \"eip712\"."
+                .to_string(),
+        ),
+        SigningScheme::Eip1271 => (
+            Some(signing_envelope(contracts)),
+            Some(digest),
+            "Your smart-contract wallet must verify the order hash (`orderDigest`, equivalently \
+             the EIP-712 `signing` payload). Submit the contract signature bytes with \
+             signingScheme \"eip1271\"."
+                .to_string(),
+        ),
+        SigningScheme::EthSign => (
+            None,
+            Some(digest),
+            "personal_sign (EIP-191) the 32-byte `orderDigest`, then submit that signature with \
+             signingScheme \"ethsign\". Do not sign the typed data directly: it would recover \
+             under the wrong scheme and be rejected."
+                .to_string(),
+        ),
+        SigningScheme::PreSign => (
+            None,
+            None,
+            "No off-chain signature. Submit the order unsigned (empty signature) with \
+             signingScheme \"presign\" and from set to the owner, then broadcast \
+             setPreSignature(orderUid, true) on-chain from the owner to authorize it."
+                .to_string(),
+        ),
+    }
+}
+
+fn signing_envelope(contracts: &ContractsInfo) -> SigningEnvelope {
+    SigningEnvelope {
         domain: json!({
             "name": "Gnosis Protocol",
             "version": "v2",
@@ -277,16 +418,7 @@ fn build_draft(
         }),
         types: order_typed_data_types(),
         primary_type: "Order",
-    };
-
-    Ok(QuoteDraftResponse {
-        quote: quote_response,
-        order,
-        signing,
-        full_app_data,
-        app_data_hash,
-        slippage_bps,
-    })
+    }
 }
 
 /// The EIP-712 `Order` struct, mirroring `ORDER_TYPED_DATA_TYPES` in
@@ -321,6 +453,10 @@ pub async fn post_quote_draft_handler(
     }
 
     let mut quote_request = request.quote;
+    // The original side decides how the caller's authorized sell amount is
+    // reconstructed in `build_draft` (before-fee folds the fee, after-fee
+    // does not); capture it before any request mutation.
+    let side = quote_request.side;
     if app_data_is_absent(&quote_request.app_data) {
         quote_request.app_data = OrderCreationAppData::Full {
             full: default_draft_app_data(slippage_bps),
@@ -335,7 +471,7 @@ pub async fn post_quote_draft_handler(
         }
     };
 
-    match build_draft(quote_response, &state.contracts, slippage_bps) {
+    match build_draft(quote_response, &state.contracts, slippage_bps, side) {
         Ok(draft) => (StatusCode::OK, Json(draft)).into_response(),
         Err(err) => err.into_response(),
     }
@@ -349,8 +485,36 @@ mod tests {
         bigdecimal::BigDecimal,
         chrono::{TimeZone, Utc},
         model::{DomainSeparator, quote::OrderQuote},
+        number::nonzero::NonZeroU256,
         std::str::FromStr,
     };
+
+    /// A `sellAmountBeforeFee` sell side (the variant that folds the fee back
+    /// into the signed amount). The inner value is irrelevant to
+    /// `build_draft`, which only reads the variant.
+    fn sell_before() -> OrderQuoteSide {
+        OrderQuoteSide::Sell {
+            sell_amount: SellAmount::BeforeFee {
+                value: NonZeroU256::try_from(1).unwrap(),
+            },
+        }
+    }
+
+    /// A `sellAmountAfterFee` sell side (the variant that must NOT fold the
+    /// fee: `quote.sell_amount` already is the caller's exact sell amount).
+    fn sell_after() -> OrderQuoteSide {
+        OrderQuoteSide::Sell {
+            sell_amount: SellAmount::AfterFee {
+                value: NonZeroU256::try_from(1).unwrap(),
+            },
+        }
+    }
+
+    fn buy_side() -> OrderQuoteSide {
+        OrderQuoteSide::Buy {
+            buy_amount_after_fee: NonZeroU256::try_from(1).unwrap(),
+        }
+    }
 
     fn quote_response(
         kind: OrderKind,
@@ -457,6 +621,7 @@ mod tests {
             quote_response(OrderKind::Sell, 1_000_000, 3_000_001, 0, full_app_data()),
             &test_contracts_info(),
             50,
+            sell_before(),
         )
         .unwrap();
         // sellAmount is exact; buyAmount = ceil(3_000_001 * 9950 / 10000).
@@ -470,6 +635,7 @@ mod tests {
             quote_response(OrderKind::Sell, 1_000_000, 3_000_001, 0, full_app_data()),
             &test_contracts_info(),
             0,
+            sell_before(),
         )
         .unwrap();
         assert_eq!(draft.order.buy_amount, U256::from(3_000_001u64));
@@ -481,6 +647,7 @@ mod tests {
             quote_response(OrderKind::Buy, 1_000_001, 3_000_000, 0, full_app_data()),
             &test_contracts_info(),
             50,
+            buy_side(),
         )
         .unwrap();
         // buyAmount is exact; sellAmount = floor(1_000_001 * 10050 / 10000).
@@ -489,22 +656,41 @@ mod tests {
     }
 
     #[test]
-    fn quoted_fee_folds_into_the_signed_sell_amount() {
-        // The order signs feeAmount 0, so a nonzero quoted fee must live
-        // inside sellAmount on both kinds.
-        let draft = build_draft(
+    fn before_fee_sell_folds_the_quoted_fee_but_after_fee_does_not() {
+        // The order signs feeAmount 0. For a sellAmountBeforeFee sell the
+        // quoter scaled quote.sell_amount down by the fee, so folding it back
+        // reconstructs the caller's authorized total.
+        let before = build_draft(
             quote_response(OrderKind::Sell, 1_000_000, 3_000_000, 500, full_app_data()),
             &test_contracts_info(),
             0,
+            sell_before(),
         )
         .unwrap();
-        assert_eq!(draft.order.sell_amount, U256::from(1_000_500u64));
-        assert_eq!(draft.order.fee_amount, U256::ZERO);
+        assert_eq!(before.order.sell_amount, U256::from(1_000_500u64));
+        assert_eq!(before.order.fee_amount, U256::ZERO);
 
+        // For a sellAmountAfterFee sell, quote.sell_amount IS the exact amount
+        // the caller authorized; folding the fee would over-authorize. This is
+        // the P1 regression: the signed order must sell exactly 1_000_000.
+        let after = build_draft(
+            quote_response(OrderKind::Sell, 1_000_000, 3_000_000, 500, full_app_data()),
+            &test_contracts_info(),
+            0,
+            sell_after(),
+        )
+        .unwrap();
+        assert_eq!(after.order.sell_amount, U256::from(1_000_000u64));
+        assert_eq!(after.order.fee_amount, U256::ZERO);
+    }
+
+    #[test]
+    fn buy_draft_folds_the_quoted_fee_into_the_max_in() {
         let draft = build_draft(
             quote_response(OrderKind::Buy, 1_000_000, 3_000_000, 500, full_app_data()),
             &test_contracts_info(),
             100,
+            buy_side(),
         )
         .unwrap();
         // floor((1_000_000 + 500) * 10100 / 10000)
@@ -517,13 +703,14 @@ mod tests {
             quote_response(OrderKind::Sell, 1, 100, 0, full_app_data()),
             &test_contracts_info(),
             0,
+            sell_before(),
         )
         .unwrap();
         assert_eq!(draft.order.receiver, Address::repeat_byte(0x01));
 
         let mut response = quote_response(OrderKind::Sell, 1, 100, 0, full_app_data());
         response.quote.receiver = Some(Address::repeat_byte(0x04));
-        let draft = build_draft(response, &test_contracts_info(), 0).unwrap();
+        let draft = build_draft(response, &test_contracts_info(), 0, sell_before()).unwrap();
         assert_eq!(draft.order.receiver, Address::repeat_byte(0x04));
     }
 
@@ -535,6 +722,7 @@ mod tests {
             quote_response(OrderKind::Sell, 1_000_000, 0, 0, full_app_data()),
             &test_contracts_info(),
             50,
+            sell_before(),
         );
         assert!(matches!(result, Err(DraftError::ZeroMinBuyAmount)));
 
@@ -544,24 +732,51 @@ mod tests {
             quote_response(OrderKind::Sell, 1_000_000, 1, 0, full_app_data()),
             &test_contracts_info(),
             50,
+            sell_before(),
         )
         .unwrap();
         assert_eq!(draft.order.buy_amount, U256::from(1u64));
     }
 
     #[test]
-    fn overflowing_slippage_math_is_rejected() {
+    fn large_representable_amounts_are_not_spuriously_overflowed() {
+        // Near-U256::MAX quote amounts whose slippage-scaled result still fits
+        // in 256 bits must return a value, not AmountOverflow (the widened
+        // 512-bit intermediate). A naive `checked_mul(9950)` overflowed here.
+        let big = U256::MAX / U256::from(2); // ~5.8e76, * 9950 overflows u256
+        let mut response = quote_response(OrderKind::Sell, 1, 0, 0, full_app_data());
+        response.quote.sell_amount = U256::from(1_000_000u64);
+        response.quote.buy_amount = big;
+        let draft = build_draft(response, &test_contracts_info(), 50, sell_before()).unwrap();
+        // ceil(big * 9950 / 10000): representable, < big, > 0.
+        let expected = div_ceil_u512(big.widening_mul(U256::from(9950u64)), U512::from(10_000u64));
+        assert_eq!(draft.order.buy_amount, U256::uint_try_from(expected).unwrap());
+        assert!(draft.order.buy_amount < big && !draft.order.buy_amount.is_zero());
+
+        // The same on the buy side: max-in of a near-max sell that still fits.
+        let mut response = quote_response(OrderKind::Buy, 0, 3_000_000, 0, full_app_data());
+        response.quote.sell_amount = big;
+        let draft = build_draft(response, &test_contracts_info(), 50, buy_side()).unwrap();
+        assert!(draft.order.sell_amount > big);
+    }
+
+    #[test]
+    fn genuinely_out_of_range_slippage_math_is_rejected() {
+        // A max-in that truly exceeds U256 (raising a max-value sell) is a
+        // real overflow.
         let mut response = quote_response(OrderKind::Buy, 0, 3_000_000, 0, full_app_data());
         response.quote.sell_amount = U256::MAX;
         assert!(matches!(
-            build_draft(response, &test_contracts_info(), 50),
+            build_draft(response, &test_contracts_info(), 50, buy_side()),
             Err(DraftError::AmountOverflow)
         ));
 
-        let mut response = quote_response(OrderKind::Sell, 1, 0, 0, full_app_data());
-        response.quote.buy_amount = U256::MAX;
+        // Folding a fee that pushes the sell amount past U256 also overflows.
+        let mut response = quote_response(OrderKind::Sell, 0, 100, 0, full_app_data());
+        response.quote.sell_amount = U256::MAX;
+        response.quote.fee_amount = U256::from(1u64);
         assert!(matches!(
-            build_draft(response, &test_contracts_info(), 50),
+            build_draft(response, &test_contracts_info(), 0, sell_before()),
             Err(DraftError::AmountOverflow)
         ));
     }
@@ -572,6 +787,7 @@ mod tests {
             quote_response(OrderKind::Sell, 1, 100, 0, full_app_data()),
             &test_contracts_info(),
             0,
+            sell_before(),
         )
         .unwrap();
         let full = draft.full_app_data.as_deref().unwrap();
@@ -590,6 +806,7 @@ mod tests {
             quote_response(OrderKind::Sell, 1, 100, 0, OrderCreationAppData::Hash { hash }),
             &test_contracts_info(),
             0,
+            sell_before(),
         )
         .unwrap();
         assert_eq!(draft.full_app_data, None);
@@ -603,14 +820,16 @@ mod tests {
             quote_response(OrderKind::Sell, 1, 100, 0, full_app_data()),
             &contracts,
             0,
+            sell_before(),
         )
         .unwrap();
 
-        let domain = &draft.signing.domain;
+        let signing = draft.signing.as_ref().expect("eip712 draft carries an envelope");
+        let domain = &signing.domain;
         assert_eq!(domain["name"], "Gnosis Protocol");
         assert_eq!(domain["version"], "v2");
-        assert_eq!(draft.signing.primary_type, "Order");
-        let types = &draft.signing.types["Order"];
+        assert_eq!(signing.primary_type, "Order");
+        let types = &signing.types["Order"];
         assert_eq!(types.as_array().unwrap().len(), 12);
         assert_eq!(types[0]["name"], "sellToken");
         assert_eq!(types[6], serde_json::json!({"name": "appData", "type": "bytes32"}));
@@ -629,11 +848,80 @@ mod tests {
     }
 
     #[test]
+    fn order_digest_is_the_eip712_hash_of_the_signed_order() {
+        let contracts = test_contracts_info();
+        let draft = build_draft(
+            quote_response(OrderKind::Sell, 1_000_000, 3_000_000, 0, full_app_data()),
+            &contracts,
+            50,
+            sell_before(),
+        )
+        .unwrap();
+
+        // Independently recompute the digest from the returned order fields.
+        let data = OrderData {
+            sell_token: draft.order.sell_token,
+            buy_token: draft.order.buy_token,
+            receiver: Some(draft.order.receiver),
+            sell_amount: draft.order.sell_amount,
+            buy_amount: draft.order.buy_amount,
+            valid_to: draft.order.valid_to,
+            app_data: draft.order.app_data,
+            fee_amount: draft.order.fee_amount,
+            kind: draft.order.kind,
+            partially_fillable: draft.order.partially_fillable,
+            sell_token_balance: draft.order.sell_token_balance,
+            buy_token_balance: draft.order.buy_token_balance,
+        };
+        let expected =
+            hashed_eip712_message(&contracts.domain_separator, &data.hash_struct()).to_string();
+        assert_eq!(draft.order_digest.as_deref(), Some(expected.as_str()));
+        assert!(expected.starts_with("0x") && expected.len() == 66);
+    }
+
+    #[test]
+    fn signing_payload_never_returns_a_mismatched_envelope() {
+        let contracts = test_contracts_info();
+        let build = |scheme: SigningScheme| {
+            let mut response =
+                quote_response(OrderKind::Sell, 1_000_000, 3_000_000, 0, full_app_data());
+            response.quote.signing_scheme = scheme;
+            build_draft(response, &contracts, 50, sell_before()).unwrap()
+        };
+
+        // eip712: typed-data envelope AND digest.
+        let eip712 = build(SigningScheme::Eip712);
+        assert!(eip712.signing.is_some());
+        assert!(eip712.order_digest.is_some());
+        assert!(eip712.signing_note.contains("eip712"));
+
+        // eip1271: envelope AND digest (the contract verifies the order hash).
+        let eip1271 = build(SigningScheme::Eip1271);
+        assert!(eip1271.signing.is_some());
+        assert!(eip1271.order_digest.is_some());
+        assert!(eip1271.signing_note.contains("eip1271"));
+
+        // ethsign: NO typed-data envelope (it would recover under the wrong
+        // scheme), but the digest to personal_sign.
+        let ethsign = build(SigningScheme::EthSign);
+        assert!(ethsign.signing.is_none());
+        assert_eq!(ethsign.order_digest.as_deref(), eip712.order_digest.as_deref());
+        assert!(ethsign.signing_note.contains("personal_sign"));
+
+        // presign: no signature payload at all; note points to the on-chain flow.
+        let presign = build(SigningScheme::PreSign);
+        assert!(presign.signing.is_none());
+        assert!(presign.order_digest.is_none());
+        assert!(presign.signing_note.contains("setPreSignature"));
+    }
+
+    #[test]
     fn response_serializes_camel_case_with_decimal_string_amounts() {
         let draft = build_draft(
             quote_response(OrderKind::Sell, 1_000_000, 3_000_000, 0, full_app_data()),
             &test_contracts_info(),
             50,
+            sell_before(),
         )
         .unwrap();
         let value = serde_json::to_value(&draft).unwrap();
@@ -646,6 +934,8 @@ mod tests {
         assert_eq!(value["slippageBps"], 50);
         assert_eq!(value["quote"]["id"], 42);
         assert!(value["fullAppData"].is_string());
+        assert!(value["signingNote"].is_string());
+        assert!(value["orderDigest"].as_str().unwrap().starts_with("0x"));
         assert!(
             value["appDataHash"]
                 .as_str()

@@ -53,16 +53,31 @@ fn bare_abi(abi: &'static str, name: &'static str) -> Value {
     parsed
 }
 
+// The settlement and authenticator ABIs come from the Foundry DEPLOYMENT
+// artifacts (`contracts/deployments/optimism-mainnet/`), not the trimmed Rust
+// binding artifacts under `apps/backend/contracts/artifacts/`. The bindings
+// expose only the subset the backend calls; the deployment ABI is the full
+// interface of the actually-deployed contract, so decision 9's "full ABI"
+// promise holds and clients can encode every real operation (the settlement's
+// `preSignature`/`freeFilledAmountStorage`/`freePreSignatureStorage`/
+// `getStorageAt`/`simulateDelegatecallInternal`, the authenticator's proxy
+// and manager-transfer methods). The interface is identical across Ophis
+// chains (same contract fork), so the chain-10 deployment ABI is canonical
+// for every served chain, mirroring the single-embedded-ABI design.
+
 static SETTLEMENT_ABI: LazyLock<Value> = LazyLock::new(|| {
     artifact_abi(
-        include_str!("../../../../contracts/artifacts/GPv2Settlement.json"),
+        include_str!(
+            "../../../../../../contracts/deployments/optimism-mainnet/GPv2Settlement.json"
+        ),
         "GPv2Settlement",
     )
 });
 
 /// Generated once via `forge inspect src/contracts/GPv2VaultRelayer.sol:GPv2VaultRelayer abi`
-/// from the `contracts/` Foundry workspace (the Rust contract artifacts have
-/// no standalone vault-relayer entry).
+/// from the `contracts/` Foundry workspace (there is no deployment artifact
+/// for the vault relayer, which the settlement deploys internally; the source
+/// ABI is the complete interface: `batchSwapWithFee` + `transferFromAccounts`).
 static VAULT_RELAYER_ABI: LazyLock<Value> = LazyLock::new(|| {
     bare_abi(
         include_str!("abis/GPv2VaultRelayer.abi.json"),
@@ -72,11 +87,17 @@ static VAULT_RELAYER_ABI: LazyLock<Value> = LazyLock::new(|| {
 
 static AUTHENTICATOR_ABI: LazyLock<Value> = LazyLock::new(|| {
     artifact_abi(
-        include_str!("../../../../contracts/artifacts/GPv2AllowListAuthentication.json"),
+        include_str!(
+            "../../../../../../contracts/deployments/optimism-mainnet/\
+             GPv2AllowListAuthentication.json"
+        ),
         "GPv2AllowListAuthentication",
     )
 });
 
+// HooksTrampoline is an external CoW contract with no deployment artifact in
+// this repo; its binding artifact is already the complete interface
+// (`execute` + `settlement`).
 static HOOKS_TRAMPOLINE_ABI: LazyLock<Value> = LazyLock::new(|| {
     artifact_abi(
         include_str!("../../../../contracts/artifacts/HooksTrampoline.json"),
@@ -202,6 +223,31 @@ pub(crate) mod tests {
 
         // The vault relayer ABI is complete, not a fragment.
         assert!(abi_entry_names(&body["vaultRelayer"]["abi"]).contains(&"transferFromAccounts"));
+
+        // Full deployment ABIs, not the trimmed backend bindings: the
+        // settlement's on-chain-only public methods and the authenticator's
+        // proxy/manager surface must be encodable by clients. These names are
+        // absent from apps/backend/contracts/artifacts/*.json.
+        let settlement_abi = abi_entry_names(&body["settlement"]["abi"]);
+        for method in [
+            "preSignature",
+            "freeFilledAmountStorage",
+            "freePreSignatureStorage",
+            "getStorageAt",
+            "simulateDelegatecallInternal",
+        ] {
+            assert!(
+                settlement_abi.contains(&method),
+                "settlement ABI must include the deployed method {method}",
+            );
+        }
+        let authenticator_abi = abi_entry_names(&body["authenticator"]["abi"]);
+        for method in ["upgradeTo", "proposeManager", "acceptManagership"] {
+            assert!(
+                authenticator_abi.contains(&method),
+                "authenticator ABI must include the deployed method {method}",
+            );
+        }
     }
 
     #[test]
