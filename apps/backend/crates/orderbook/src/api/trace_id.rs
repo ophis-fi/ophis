@@ -7,7 +7,10 @@
 //! otherwise. Success responses carry the id header-only; error bodies
 //! additionally repeat it as a `traceId` field, stamped centrally in
 //! [`crate::api::error`] / [`crate::api::rich_error`] through the task-local
-//! scoped here, so no individual handler has to thread it through.
+//! scoped here, so no individual handler has to thread it through. The same
+//! id is logged as `x_trace_id` on the `request_summary` event, so an operator
+//! can find a request from the id a client quotes even when no OTel tracing
+//! layer is active and the span's `trace_id` field is all zeros.
 
 use {
     axum::{

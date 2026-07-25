@@ -43,6 +43,10 @@ const CODES: &[(&str, u16)] = &[
     ("InvalidRequestBody", 1000),
     ("InvalidTradeFilter", 1000),
     ("InvalidLimit", 1000),
+    // The paginated user-orders handler serves this legacy SCREAMING_SNAKE
+    // spelling (get_user_orders.rs); it names the same condition as
+    // `InvalidLimit`, so it shares 1000 per the multiple-spellings rule above.
+    ("LIMIT_OUT_OF_BOUNDS", 1000),
     ("MethodNotAllowed", 1000),
     ("SellAmountDoesNotCoverFee", 1000),
     ("OldOrderActivelyBidOn", 1000),
