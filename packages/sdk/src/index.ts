@@ -22,6 +22,18 @@ export {
 } from './referral.js';
 
 export {
+  OPHIS_BASKET_ID_RE,
+  MAX_BASKET_SELL_TOKENS,
+  MAX_BASKET_BUY_TOKENS,
+  MAX_BASKET_LEGS,
+  assertOphisBasketId,
+  newOphisBasketId,
+  assertOphisBasketLegs,
+  buildOphisBasketMetadata,
+  type OphisBasketTag,
+} from './basket-metadata.js';
+
+export {
   getOphisOrderbookUrl,
   OPHIS_ORDERBOOK_URLS,
 } from './orderbook.js';
