@@ -3054,10 +3054,6 @@ msgstr "hours"
 msgid "Order out of market"
 msgstr "Order out of market"
 
-#: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
-msgid "{solver} logo"
-msgstr "{solver} logo"
-
 #: apps/cowswap-frontend/src/modules/erc20Approve/hooks/useApproveCallback.tsx
 msgid "Approve {tokenSymbol}"
 msgstr "Approve {tokenSymbol}"
@@ -3820,6 +3816,10 @@ msgstr "Edit"
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "View settlement transaction →"
 msgstr "View settlement transaction →"
+
+#: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
+msgid "{solverLabel} logo"
+msgstr "{solverLabel} logo"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderEstimatedExecutionPrice/OrderEstimatedExecutionPrice.pure.tsx
 msgid "The order remains open. Execution requires adequate allowance. Approve the token to proceed."

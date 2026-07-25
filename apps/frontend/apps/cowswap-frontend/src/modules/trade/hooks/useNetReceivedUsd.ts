@@ -59,13 +59,23 @@ export function useNetReceivedUsd(info: ReceiveAmountInfo | null): NetReceivedUs
 
     const { amountAfterFees, amountBeforeFees } = getOrderTypeReceiveAmounts(info)
 
+    // On a cross-chain swap getOrderTypeReceiveAmounts subtracts the bridge fee
+    // (in destination currency, sell orders only) from the net, but
+    // getTotalCosts sums only network + partner + protocol fees. Feed the same
+    // bridge amount into getTotalCosts so netAmount == amountBeforeFees -
+    // totalCosts holds and the tooltip agrees with the accordion header, which
+    // also passes the bridge fee into getTotalCosts (in the swap leg's
+    // intermediate currency). Undefined for normal swaps and buy orders, where
+    // no bridge amount is deducted from the net, so getTotalCosts is unchanged.
+    const bridgeCost = info.isSell ? info.costs.bridgeFee?.amountInDestinationCurrency : undefined
+
     return {
       // Quoted costs can exceed the output (dust trades, spiking bridge fees):
       // a zero or negative net is not a headline, it is a broken trade, and the
       // quote layer surfaces that error separately. Hide the row.
       netAmount: amountAfterFees.greaterThan(0) ? amountAfterFees : null,
       grossAmount: amountBeforeFees,
-      totalCosts: getTotalCosts(info),
+      totalCosts: getTotalCosts(info, bridgeCost),
       kind: (info.isSell ? 'receive' : 'pay') as NetReceivedKind,
     }
   }, [info])

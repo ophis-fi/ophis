@@ -39,6 +39,17 @@ describe('useSolversInfo', () => {
     )
   })
 
+  it('renders external solver brands through the neutral alias (never the raw brand)', () => {
+    const { result } = renderHook(() => useSolversInfo(OPTIMISM))
+
+    // The internal id is retained for attribution, but no rendered string names the brand.
+    expect(result.current['kyberswap'].solverId).toBe('kyberswap')
+    expect(result.current['kyberswap'].displayName).toBe('External solver')
+    expect(result.current['odos'].displayName).toBe('External solver')
+    expect(result.current['odos'].displayName?.toLowerCase()).not.toContain('odos')
+    expect(result.current['odos'].description?.toLowerCase()).not.toContain('odos')
+  })
+
   it('lets a CMS entry win over the registry on solver-id collision', () => {
     const cmsEntry: SolverInfo = {
       solverId: 'baseline',

@@ -1,11 +1,36 @@
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 
-import { getOphisSolversForChain, OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_SOLVERS } from './solvers'
+import {
+  getOphisSolversForChain,
+  OPHIS_EXTERNAL_SOLVER_LABEL,
+  OPHIS_SOLVER_REGISTRY_CHAIN_ID,
+  OPHIS_SOLVERS,
+  ophisSolverPublicDescription,
+  ophisSolverPublicLabel,
+} from './solvers'
 
 // Repo-root driver config for the chain-10 orderbook. Six levels up from
 // src/ophis: src -> cowswap-frontend -> apps -> frontend -> apps -> root.
 const DRIVER_CONFIG_PATH = resolve(__dirname, '../../../../../../infra/optimism-mainnet/configs/driver.toml.tmpl')
+
+// Third-party / competitor brand tokens that must never appear in any rendered
+// solver string. Ophis public copy never names a competitor (standing rule).
+const BANNED_BRAND_TOKENS = [
+  'odos',
+  'kyberswap',
+  'kyber',
+  'okx',
+  'velora',
+  'paraswap',
+  'enso',
+  'lifi',
+  'li.fi',
+  'openocean',
+  'dodo',
+  '1inch',
+  'oneinch',
+]
 
 function readDriverSolverNames(): string[] {
   const toml = readFileSync(DRIVER_CONFIG_PATH, 'utf8')
@@ -21,15 +46,13 @@ function readDriverSolverNames(): string[] {
 }
 
 describe('OPHIS_SOLVERS registry', () => {
-  it('has unique lowercase solver ids and non-empty display data', () => {
+  it('has unique lowercase solver ids on at least one chain', () => {
     const ids = OPHIS_SOLVERS.map((solver) => solver.solverId)
 
     expect(new Set(ids).size).toBe(ids.length)
 
     for (const solver of OPHIS_SOLVERS) {
       expect(solver.solverId).toBe(solver.solverId.toLowerCase())
-      expect(solver.displayName.length).toBeGreaterThan(0)
-      expect(solver.description.length).toBeGreaterThan(0)
       expect(solver.chainIds.length).toBeGreaterThan(0)
     }
   })
@@ -55,5 +78,35 @@ describe('OPHIS_SOLVERS registry', () => {
 
     expect(driverNames.length).toBeGreaterThan(0)
     expect(registryIds).toEqual(driverNames)
+  })
+})
+
+describe('solver display-alias layer', () => {
+  it('labels the Ophis baseline solver plainly', () => {
+    expect(ophisSolverPublicLabel('baseline')).toBe('Baseline')
+    expect(ophisSolverPublicLabel('BASELINE')).toBe('Baseline')
+    expect(ophisSolverPublicDescription('baseline')).toMatch(/Ophis baseline/i)
+  })
+
+  it('neutralizes every external / competitor solver brand', () => {
+    for (const solver of OPHIS_SOLVERS) {
+      if (solver.solverId === 'baseline') continue
+      expect(ophisSolverPublicLabel(solver.solverId)).toBe(OPHIS_EXTERNAL_SOLVER_LABEL)
+    }
+  })
+
+  it('neutralizes unknown solver ids by default (safe by default)', () => {
+    expect(ophisSolverPublicLabel('some-new-aggregator')).toBe(OPHIS_EXTERNAL_SOLVER_LABEL)
+  })
+
+  it('never leaks a competitor brand in any rendered solver string', () => {
+    for (const solver of OPHIS_SOLVERS) {
+      const rendered = `${ophisSolverPublicLabel(solver.solverId)} ${ophisSolverPublicDescription(solver.solverId)}`
+      const lower = rendered.toLowerCase()
+
+      for (const brand of BANNED_BRAND_TOKENS) {
+        expect(lower).not.toContain(brand)
+      }
+    }
   })
 })
