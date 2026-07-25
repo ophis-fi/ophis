@@ -574,13 +574,20 @@ paths:
         up, never one atom below the slippage floor); for `buy` orders the
         draft's `sellAmount` is the maximum in (rounded down). The draft
         always signs `feeAmount` 0 (the fee is taken from surplus plus the
-        appData partner fee). When the request carries no appData (or the
-        zero hash), the draft defaults to the CIP-75 partner-fee document
-        and reports it in `fullAppData`; caller-provided appData passes
-        through untouched. Sign `order` as EIP-712 typed data against
-        `signing`, then submit via `POST /api/v1/orders` with the order
-        fields, the signature, and `fullAppData` (when present) as the
-        `appData` string next to `appDataHash`.
+        appData partner fee). A `sellAmountAfterFee` sell signs exactly the
+        amount requested; a `sellAmountBeforeFee` sell (and every buy) folds
+        the network fee into the signed sell amount. When the request carries
+        no appData (or the zero hash), the draft defaults to the CIP-75
+        partner-fee document and reports it in `fullAppData`; caller-provided
+        appData passes through untouched. Produce the signature per
+        `order.signingScheme`, as `signingNote` spells out: `eip712` signs
+        the `signing` typed-data envelope; `ethsign` `personal_sign`s the
+        32-byte `orderDigest`; `eip1271` has the wallet contract verify the
+        order hash; `presign` submits the order unsigned and authorizes it
+        with an on-chain `setPreSignature`. Then submit via
+        `POST /api/v1/orders` with the order fields, the signature, and
+        `fullAppData` (when present) as the `appData` string next to
+        `appDataHash`.
       requestBody:
         description: The quote parameters plus the draft slippage.
         required: true
@@ -2396,7 +2403,28 @@ components:
         order:
           $ref: "#/components/schemas/OrderDraft"
         signing:
-          $ref: "#/components/schemas/SigningEnvelope"
+          description: >
+            EIP-712 typed-data envelope to sign `order` against. Present only
+            where signing the typed data is what the orderbook accepts for
+            `order.signingScheme` (`eip712`, and `eip1271` where the wallet
+            contract verifies the same order hash). Absent for `ethsign`
+            (personal-sign `orderDigest` instead) and `presign` (no off-chain
+            signature), so a client can never sign a mismatched envelope.
+          allOf:
+            - $ref: "#/components/schemas/SigningEnvelope"
+        orderDigest:
+          description: >
+            The 32-byte EIP-712 order digest (`0x`-prefixed): the order hash
+            the settlement contract recovers signatures against. For
+            `ethsign` this is exactly what the client `personal_sign`s.
+            Present for every scheme that produces an off-chain signature
+            (`eip712`, `ethsign`, `eip1271`); absent for `presign`.
+          type: string
+        signingNote:
+          description: >
+            Human-readable instruction for producing a submittable signature
+            under `order.signingScheme`.
+          type: string
         fullAppData:
           description: >
             The full appData document to submit alongside the order (as the
@@ -2413,7 +2441,7 @@ components:
       required:
         - quote
         - order
-        - signing
+        - signingNote
         - appDataHash
         - slippageBps
     QuoteDraftError:
