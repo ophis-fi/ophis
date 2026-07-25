@@ -7,7 +7,7 @@ import { proposeRebateBatch, getNextSafeNonce } from '../batch/propose.js';
 import { getProposalStatus, waitForExecution } from '../batch/poll.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from '../batch/dryRun.js';
 import { computePartnerFees } from './computePartnerFees.js';
-import { currentCarriedUsdByRecipient } from './liability.js';
+import { currentCarriedUsdByRecipient, carriedQuarantinedLiabilityWei } from './liability.js';
 import { isScreenedOut, resolveSanctionsList } from './screening.js';
 import { notify, alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
@@ -272,10 +272,21 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
 
   const readBalance = deps.readSafeWethBalanceWei ?? defaultReadSafeWethBalanceWei;
   const balance = await readBalance({ rpcUrl: deps.rpcUrl, weth });
-  const reserved = await sumQueuedReservedWei();
+  // Reserve BOTH (i) other programs' queued (unsigned) proposals AND the partner program's own
+  // already-queued paid proposals -- `sumQueuedReservedWei` -- AND (ii) the partner program's own
+  // carried/quarantined liability -- `carriedQuarantinedLiabilityWei` -- so proposing a fresh
+  // paid batch under an underfunded Safe can never leave a carried/quarantined obligation
+  // unfunded. This mirrors what the rebate/affiliate batchers reserve (the full partner
+  // liability), so R + P + A <= B holds across all three consumers. (Codex symmetric-reservation)
+  const queuedReserved = await sumQueuedReservedWei();
+  const ownCarriedQuarantined = await carriedQuarantinedLiabilityWei();
+  const reserved = queuedReserved + ownCarriedQuarantined;
   let remaining = balance > reserved ? balance - reserved : 0n;
   if (reserved > 0n) {
-    log.info({ balanceWei: balance.toString(), reservedWei: reserved.toString(), remainingWei: remaining.toString() }, 'partner-fee propose: reserved WETH committed to queued partner/rebate/affiliate proposals');
+    log.info(
+      { balanceWei: balance.toString(), queuedReservedWei: queuedReserved.toString(), ownCarriedQuarantinedWei: ownCarriedQuarantined.toString(), remainingWei: remaining.toString() },
+      'partner-fee propose: reserved queued partner/rebate/affiliate proposals + own carried/quarantined liability',
+    );
   }
 
   const simulate = deps.simulate ?? buildEthCallSimulator({ chainId: PARTNER_FEE_CHAIN, rpcUrl: deps.rpcUrl });

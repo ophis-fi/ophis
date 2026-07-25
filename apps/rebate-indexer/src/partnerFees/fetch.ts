@@ -1,7 +1,12 @@
-import { sql } from '../db/index.js';
 import { attributePartnerFees } from './parsePartnerFees.js';
 import { alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
+
+// db is imported lazily (like migrate.ts / pricer.ts) so the pure config helpers
+// (resolvePartnerFeeFeeds, assertFeedsConfigFeeFree) can be loaded without DATABASE_URL set.
+async function getSql() {
+  return (await import('../db/index.js')).sql;
+}
 
 const log = logger.child({ module: 'partner-fee-fetch' });
 
@@ -45,6 +50,42 @@ export interface PartnerFeeFeed {
   readonly url: string;
 }
 
+// Chains ASSERTED to have an EMPTY autopilot `[fee-policies]` section, so the ONLY protocol
+// fees on a settled trade are the appData `partnerFee` Volume entries. The positional
+// attribution (parsePartnerFees.ts) maps `protocolFeeAmounts[i]` to the i-th kept partnerFee
+// entry, which is money-safe ONLY under this invariant: a config-driven protocol fee would
+// PREPEND an extra slot and could, when a partner entry is ALSO dropped (unregistered /
+// suspended), coincidentally match the slot count and MIS-ATTRIBUTE a config fee to a real
+// partner. The exact-count guard alone does not catch that coincidence, so the poller REFUSES
+// (fail loud) to poll any chain not asserted here. This set MUST be kept in sync with the
+// backend autopilot configs (`infra/<chain>/configs/autopilot.toml` `[fee-policies]`); adding
+// a chain here without verifying its `[fee-policies]` is EMPTY is a money-path regression.
+// Reading the remote autopilot config from the indexer is impractical (separate deployment),
+// so this asserted set is the feasible fail-closed enforcement -- mirroring the fail-closed
+// SOVEREIGN_OWN_FEE_RECIPIENTS allowlist pattern (ownFee/recipients.ts).
+const CONFIG_FEE_FREE_CHAINS: ReadonlySet<number> = new Set<number>([
+  10, //  Optimism  (autopilot.toml [fee-policies] verified empty, 2026-07)
+  130, // Unichain  (sovereign, same empty [fee-policies] posture)
+]);
+
+/**
+ * Fail loud if any fed chain is NOT asserted config-fee-free. Called on every poll (over both
+ * env-resolved and test-injected feeds), so a future config change or a second fed chain with a
+ * config protocol fee can never silently shift partner slots off index and mis-attribute.
+ */
+export function assertFeedsConfigFeeFree(feeds: readonly PartnerFeeFeed[]): void {
+  for (const f of feeds) {
+    if (!CONFIG_FEE_FREE_CHAINS.has(f.chainId)) {
+      throw new Error(
+        `partner-fee feed: chain ${f.chainId} is NOT asserted config-fee-free; refusing to poll. ` +
+          `The positional fee->partner attribution is only money-safe when the chain's autopilot ` +
+          `[fee-policies] is EMPTY. Verify it, then add ${f.chainId} to CONFIG_FEE_FREE_CHAINS in ` +
+          `src/partnerFees/fetch.ts. (fail-closed: never mis-attribute a config fee to a partner)`,
+      );
+    }
+  }
+}
+
 /**
  * Parse `PARTNER_FEE_FEED_URLS` into per-chain feeds. Format: comma-separated
  * `<chainId>=<url>` (e.g. `10=https://rebates.ophis.fi/restricted/api/v1/partner_fees`). A
@@ -82,6 +123,7 @@ export function resolvePartnerFeeFeeds(raw = process.env.PARTNER_FEE_FEED_URLS):
     seen.add(chainId);
     feeds.push({ chainId, url });
   }
+  assertFeedsConfigFeeFree(feeds); // fail loud on a chain not asserted config-fee-free
   return feeds;
 }
 
@@ -111,6 +153,7 @@ async function defaultFeedFetcher(feed: PartnerFeeFeed, minBlock: bigint, minLog
 
 /** Read the persisted cursor for a chain (defaults to genesis on first run). */
 async function loadCursor(chainId: number): Promise<{ block: bigint; logIndex: bigint }> {
+  const sql = await getSql();
   const [row] = await sql<{ next_block: string; next_log_index: string }[]>`
     SELECT next_block::text AS next_block, next_log_index::text AS next_log_index
     FROM partner_fee_cursor WHERE chain_id = ${chainId}
@@ -120,6 +163,7 @@ async function loadCursor(chainId: number): Promise<{ block: bigint; logIndex: b
 
 /** Persist the resume cursor for a chain (upsert). */
 async function saveCursor(chainId: number, block: bigint, logIndex: bigint): Promise<void> {
+  const sql = await getSql();
   await sql`
     INSERT INTO partner_fee_cursor (chain_id, next_block, next_log_index, updated_at)
     VALUES (${chainId}, ${block.toString()}, ${logIndex.toString()}, now())
@@ -139,6 +183,7 @@ async function insertTrade(row: {
   feeToken: `0x${string}`;
   feeAmount: bigint;
 }): Promise<void> {
+  const sql = await getSql();
   await sql`
     INSERT INTO partner_fee_trades
       (trade_uid, recipient, chain_id, block_number, log_index, volume_bps, fee_token, fee_amount)
@@ -170,6 +215,9 @@ export interface PartnerFeeFetchDeps {
 export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number }> {
   const feeds = deps.feeds ?? resolvePartnerFeeFeeds();
   const fetcher = deps.fetcher ?? defaultFeedFetcher;
+  // Re-assert even for injected feeds (resolvePartnerFeeFeeds already asserts the env path), so a
+  // test or a direct caller can never bypass the config-fee-free guard.
+  assertFeedsConfigFeeFree(feeds);
   if (feeds.length === 0) {
     log.debug('no partner-fee feeds configured (PARTNER_FEE_FEED_URLS unset); skipping');
     return { inserted: 0, skipped: 0 };

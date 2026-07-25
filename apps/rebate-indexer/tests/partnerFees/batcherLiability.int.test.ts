@@ -168,13 +168,40 @@ describe('partner liability subtracted from the rebate DIRECT distributable', ()
     expect(r.poolWei).toBe(1n * ONE); // nothing reserved -> full delta
   });
 
-  it('liability takes only the LATEST entry per recipient (running carry never double-counts)', async () => {
+  it('the CARRIED rollup takes only the LATEST entry per recipient (running carry never double-counts)', async () => {
     const sql = await getSql();
-    // Cycle 1: carried 0.3. Cycle 2 (later): the same recipient now paid 0.5 (proposed).
+    // Cycle 1: carried 0.3 (consumed into cycle 2). Cycle 2 (later): the same recipient paid 0.5.
     await seedPartnerLiability(sql, '2026-04-01', 'executed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'carried', 15);
     await seedPartnerLiability(sql, MAY, 'proposed', 'cc'.repeat(20), ONE / 2n, 'paid');
-    // Only the latest (0.5 paid, not executed) counts -- NOT 0.3 + 0.5.
+    // The carried 0.3 was consumed into the 0.5 paid (latest entry is paid); liability = 0.5.
     expect(await liability()).toBe(ONE / 2n);
+  });
+
+  it('a SUPERSEDED still-queued PAID entry is NOT dropped (both in-flight amounts reserved)', async () => {
+    const sql = await getSql();
+    // Recipient paid 0.3 in Apr (proposed, unexecuted), then paid 0.5 AGAIN in May (proposed).
+    // A paid entry resets carry to 0, so the newer entry does NOT roll up the older one -- both
+    // are independent in-flight payments earmarked in the Safe. A latest-only view would DROP
+    // the Apr 0.3; the (a)+(b) union keeps both.
+    await seedPartnerLiability(sql, '2026-04-01', 'proposed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'paid');
+    await seedPartnerLiability(sql, MAY, 'proposed', 'cc'.repeat(20), ONE / 2n, 'paid');
+    expect(await liability()).toBe((ONE * 3n) / 10n + ONE / 2n); // 0.8, NOT 0.5
+  });
+
+  it('the rebate distributable reserves BOTH superseded in-flight payments (R + P <= new-fees delta)', async () => {
+    const sql = await getSql();
+    await seedRebateBasis(sql, MAY, 9n * ONE); // rebate basis (separate table)
+    await seedWallet(sql, 'aa'.repeat(20), 100_000);
+    // Two independent in-flight partner payments to the same recipient (superseded-paid case).
+    await seedPartnerLiability(sql, '2026-03-01', 'proposed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'paid');
+    await seedPartnerLiability(sql, '2026-04-01', 'proposed', 'cc'.repeat(20), ONE / 2n, 'paid');
+    mockBalanceWei = 10n * ONE; // newFees delta = 1 WETH; partner liability P = 0.8
+    const r = await runBatcher(JUN);
+    // distributable = (10 - 9) - 0.8 = 0.2 WETH (the OLD latest-only bug would leave 0.5).
+    expect(r.poolWei).toBe(ONE / 5n);
+    const [entry] = await sql<{ a: string }[]>`SELECT weth_amount_wei::text AS a FROM rebate_batch_entries`;
+    // R + P <= new-fees delta: rebate paid (25% of 0.2 = 0.05) + partner 0.8 = 0.85 <= 1.0.
+    expect(BigInt(entry!.a) + (ONE * 8n) / 10n).toBeLessThanOrEqual(1n * ONE);
   });
 
   it('when balance is fully partner-owed the rebate pays NOTHING (no_recipients)', async () => {

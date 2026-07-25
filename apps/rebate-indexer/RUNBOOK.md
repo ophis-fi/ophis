@@ -149,10 +149,44 @@ partner-owed 80% must never be paid twice. Enforced by:
 Regression-locked by `tests/partnerFees/batcherLiability.int.test.ts` and
 `tests/partnerFees/affiliateReservation.test.ts`.
 
+`outstandingPartnerLiabilityWei()` is the UNION of two disjoint parts: (a) the
+carried/quarantined ROLLUP (each recipient's latest entry when it is
+carried/quarantined -- latest-only, because the running carry folds into the
+newest entry), plus (b) EVERY still-earmarked PAID entry whose batch is not yet
+executed (summed across ALL of them, NOT latest-only, so a recipient paid in a
+proposed-but-unexecuted batch who re-earns next cycle keeps BOTH in-flight amounts
+reserved). All three consumers reserve this same view: the rebate batcher and
+affiliate over-draw guard reserve the full (a)+(b); the partner proposer reserves
+the already-queued proposals plus its own (a) carried/quarantined, so a fresh paid
+batch can never strand a carried obligation.
+
 The liability is a WETH-wei `owed_wei` snapshot taken at each entry's cycle price;
 for a carried entry that snapshot can drift a little from its eventual re-priced
 payout (amounts are sub-$25), so treat it as a conservative reservation, not the
 exact payout. The exact payout is always the current-price conversion at proposal.
+
+### Operational precondition: fund the Safe to at least the total outstanding partner liability
+
+The reservation math (`R + P + A <= B`) holds ONLY while the Ophis Safe's WETH
+balance `B` is at least the total outstanding partner liability `P` plus whatever
+the rebate/affiliate cycles pay. Keep the Safe funded to at least `P` (surface it
+with `pnpm cli partner-fee-accrue`, which prints the current outstanding liability,
+and the `check-settlement-buffer` ops probe). If the Safe is under-funded, the
+partner proposer BLOCKS (leaves the batch `computed`, alerts, retries next run)
+rather than queuing a payout it cannot cover -- and the hard backstop is the Safe
+MultiSend's ATOMIC revert: a proposal that would over-draw simply reverts on
+execution and moves no funds, so under-funding can never cause a partial or wrong
+payout, only a deferral.
+
+### Chain-config safety assumption (fail-closed)
+
+The positional fee->partner attribution is money-safe ONLY on chains whose
+autopilot `[fee-policies]` is empty (so the only protocol fees are the appData
+`partnerFee` entries). `CONFIG_FEE_FREE_CHAINS` in `src/partnerFees/fetch.ts`
+asserts this per chain and the poller REFUSES to poll any chain not listed
+(fail-loud). Before adding a chain to `PARTNER_FEE_FEED_URLS`, verify its
+autopilot `[fee-policies]` is empty and add it to `CONFIG_FEE_FREE_CHAINS`; a
+config protocol fee would prepend a slot and could mis-attribute to a partner.
 
 ### Carry-over and threshold
 A recipient whose owed is below `MIN_PARTNER_PAYOUT_USD` ($25) CARRIES: nothing is

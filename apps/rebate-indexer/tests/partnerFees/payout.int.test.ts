@@ -128,3 +128,48 @@ describe('partner-fee accrual', () => {
     expect(await liability()).toBe(wei(80)); // but still owed (quarantined) -> reserved
   });
 });
+
+describe('partner proposer symmetric reservation', () => {
+  async function propose(balanceWei: bigint) {
+    const { proposePartnerFeeBatches } = await import('../../src/partnerFees/payout.js');
+    return proposePartnerFeeBatches({
+      rpcUrl: 'http://rpc.test/',
+      proposerPrivateKey: ('0x' + '11'.repeat(32)) as `0x${string}`,
+      proposeEnabled: true,
+      readSafeWethBalanceWei: async () => balanceWei,
+      getNextNonce: async () => 0,
+      simulate: async () => ({ ok: true }),
+      propose: async (p) => {
+        await p.onBeforeSubmit?.();
+        return { safeTxHash: ('0x' + 'ab'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '99'.repeat(20)) as `0x${string}`, nonce: 0 };
+      },
+      waitForExecution: async () => ({ executed: false, isSuccessful: null, transactionHash: null }),
+    });
+  }
+
+  it('BLOCKS a paid batch that would leave its own carried liability unfunded', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100); // owed 80 -> paid 0.04 WETH
+    await seedTrade(sql, R2, 10); //  owed 8  -> carried 0.004 WETH
+    await accrue(JUN);
+    // Safe holds 0.042 WETH: enough for the 0.04 paid ALONE, but not while reserving the 0.004
+    // carried obligation. Without the symmetric reservation this would propose and strand the carry.
+    const r = await propose(wei(80) + wei(2)); // 0.042 WETH (owed 80 + 2 dollars of headroom)
+    expect(r.blocked).toBe(1);
+    expect(r.proposed).toBe(0);
+    const [b] = await sql<{ status: string }[]>`SELECT status FROM partner_fee_batches`;
+    expect(b!.status).toBe('computed'); // left for a funded retry
+  });
+
+  it('proposes once the Safe covers the paid batch AND the reserved carried liability', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100); // paid 0.04
+    await seedTrade(sql, R2, 10); //  carried 0.004
+    await accrue(JUN);
+    const r = await propose(wei(100)); // 0.05 WETH: covers 0.04 paid + 0.004 reserved carried
+    expect(r.proposed).toBe(1);
+    expect(r.blocked).toBe(0);
+    const [b] = await sql<{ status: string }[]>`SELECT status FROM partner_fee_batches`;
+    expect(b!.status).toBe('proposed');
+  });
+});

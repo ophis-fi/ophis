@@ -21,33 +21,72 @@ import { sql } from '../db/index.js';
 
 /**
  * The WETH (wei) Ophis currently OWES partners and has NOT yet paid out on-chain -- i.e. the
- * partner-owed WETH still sitting in the Safe. Computed over each recipient's LATEST entry
- * (DISTINCT ON, newest cycle first), summing `owed_wei` UNLESS that entry is already
- * `paid` AND its batch `executed` (money left the Safe -> discharged). Everything else is
- * outstanding:
- *   - carried / quarantined (never paid; the collected WETH sits in the Safe);
- *   - paid but the batch is not yet executed (queued in the Safe, not yet signed/executed).
- * Taking only the LATEST entry per recipient avoids double-counting the running carry across
- * the cycles it accumulated through. Returns 0n when there are no partner batches (so the
- * rebate/affiliate batchers are byte-unaffected until the first partner cycle records).
+ * partner-owed WETH still sitting in the Safe. The UNION of two disjoint components:
+ *
+ *   (a) the carried/quarantined ROLLUP: each recipient's LATEST entry (DISTINCT ON, newest
+ *       cycle first) when that latest entry is `carried` or `quarantined`. Latest-only is
+ *       correct here because the running carry accumulates INTO the latest entry (an older
+ *       carried entry's amount is folded into the newer one via carriedUsd(prev)), so summing
+ *       older carried entries too would double-count.
+ *
+ *   (b) the in-flight PAID amounts: EVERY `paid` entry whose batch is NOT yet `executed`
+ *       (its WETH is earmarked in the Safe but has not settled). This must sum ALL such
+ *       entries, NOT just the latest per recipient: a recipient paid in a proposed-but-
+ *       unexecuted batch who then earns a NEW payable entry next cycle has TWO independent
+ *       in-flight payments in the Safe (the newer entry does NOT roll up the older paid one --
+ *       a paid entry resets the carry to 0). A latest-only view DROPS the older still-queued
+ *       payment and UNDER-reserves it; summing every non-executed paid entry captures it.
+ *
+ * (a) and (b) are disjoint by status (carried/quarantined vs paid), so their sum never
+ * double-counts. Returns 0n when there are no partner batches (so the rebate/affiliate
+ * batchers are byte-unaffected until the first partner cycle records).
  */
 export async function outstandingPartnerLiabilityWei(): Promise<bigint> {
-  const [row] = await sql<{ liability: string }[]>`
+  const rollup = await carriedQuarantinedLiabilityWei();
+  const inflight = await inflightPaidLiabilityWei();
+  return rollup + inflight;
+}
+
+/**
+ * Component (a): the carried/quarantined rollup = Σ owed_wei over each recipient's LATEST
+ * entry, but only when that latest entry is `carried` or `quarantined` (a `paid` latest entry
+ * consumed the carry into the paid amount, so its carry is 0 and it is captured by (b)
+ * instead). Exposed so the partner PROPOSER can reserve its own not-yet-payable obligations
+ * symmetrically with how the rebate/affiliate batchers reserve the full liability.
+ */
+export async function carriedQuarantinedLiabilityWei(): Promise<bigint> {
+  const [row] = await sql<{ wei: string }[]>`
     WITH latest AS (
       SELECT DISTINCT ON (e.recipient)
         e.recipient,
-        e.status        AS entry_status,
-        e.owed_wei,
-        b.status        AS batch_status
+        e.status   AS entry_status,
+        e.owed_wei
       FROM partner_fee_batch_entries e
       JOIN partner_fee_batches b ON b.id = e.batch_id
       ORDER BY e.recipient, b.cycle_month DESC, b.id DESC
     )
-    SELECT COALESCE(SUM(owed_wei), 0)::text AS liability
+    SELECT COALESCE(SUM(owed_wei), 0)::text AS wei
     FROM latest
-    WHERE NOT (entry_status = 'paid' AND batch_status = 'executed')
+    WHERE entry_status IN ('carried', 'quarantined')
   `;
-  return BigInt(row?.liability ?? '0');
+  return BigInt(row?.wei ?? '0');
+}
+
+/**
+ * Component (b): the in-flight paid amounts = Σ owed_wei over EVERY `paid` entry whose batch
+ * is NOT `executed` (the WETH is earmarked in the Safe but has not settled -- computed,
+ * proposing, proposed, or a reverted `failed` batch where the atomic MultiSend never moved
+ * funds). Sums ALL such entries, not the latest per recipient, so a superseded still-queued
+ * payment is never dropped.
+ */
+export async function inflightPaidLiabilityWei(): Promise<bigint> {
+  const [row] = await sql<{ wei: string }[]>`
+    SELECT COALESCE(SUM(e.owed_wei), 0)::text AS wei
+    FROM partner_fee_batch_entries e
+    JOIN partner_fee_batches b ON b.id = e.batch_id
+    WHERE e.status = 'paid' AND b.status <> 'executed'
+  `;
+  return BigInt(row?.wei ?? '0');
 }
 
 /** One recipient's current carried-forward USD balance (sub-threshold, never paid). */
