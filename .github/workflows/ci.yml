@@ -32,6 +32,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint || echo "no lint targets yet"
       - run: pnpm typecheck || echo "no typecheck targets yet"
+      # Hard gate (no `|| echo` fallback). functions/ belongs to no package
+      # workspace and is excluded from the build manifest below, because
+      # Cloudflare compiles Pages Functions server-side. That left these four
+      # public endpoints typechecked by NOTHING: a bare `Cannot find name` for
+      # a deleted `const` shipped to production and 500'd /api/bungee/* for
+      # twelve days (esbuild emits undeclared identifiers as global refs rather
+      # than erroring). This is the only typecheck they get.
+      - run: pnpm typecheck:functions
       # Hard gate (no `|| echo` fallback): the /api/intent recognition +
       # injection-safety validators are now the SOLE filter between the LLM and
       # the swap UI (the fixed token allow-list was removed), so a regression

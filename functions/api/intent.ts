@@ -141,7 +141,9 @@ function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAft
   const recent: number[] = []
   for (const t of bucket) if (t >= cutoff) recent.push(t)
   if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfterSec = Math.max(1, Math.ceil((recent[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
+    // recent[0] is always present here (length >= MAX_REQUESTS > 0); the ?? keeps
+    // a slipped invariant from turning Retry-After into NaN.
+    const retryAfterSec = Math.max(1, Math.ceil(((recent[0] ?? now) + RATE_LIMIT_WINDOW_MS - now) / 1000))
     ipBuckets.set(ip, recent)
     return { ok: false, retryAfterSec }
   }
@@ -658,7 +660,7 @@ function stripFences(s: string): string {
   const trimmed = s.trim()
   const fence = /^```(?:json)?\n?([\s\S]*?)\n?```$/i
   const m = trimmed.match(fence)
-  return m ? m[1].trim() : trimmed
+  return m?.[1]?.trim() ?? trimmed
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {

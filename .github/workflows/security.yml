@@ -347,16 +347,12 @@ jobs:
           # -> @solana/spl-token -> buffer-layout-utils. The Solana spl-token path
           # is unreachable for Ophis, dev/test-only, not in any published tarball,
           # and NO patched release exists. (audit 2026-07)
-          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg (HIGH DoS): unbounded
-          # expansion OOM. In this tree brace-expansion@5.0.7 is reached ONLY via
-          # minimatch (glob@13, eslint). brace-expansion expands the
-          # developer-authored glob PATTERN, never request/user data, so attacker
-          # input cannot reach the expansion. The only fix is 5.0.8, published
-          # 2026-07-23, still inside the 7-day release-age window the repo applies
-          # to security re-locks. REMOVE this ignore after 2026-07-30 and re-lock
-          # with the brace-expansion overrides bumped to >=5.0.8. (2026-07-25)
+          # NOTE: #910's GHSA-mh99-v99m-4gvg ignore was REMOVED here -- this
+          # workspace is now actually patched (brace-expansion 5.0.8 via the
+          # ">=5.0.0 <5.0.8" override in package.json), so no suppression is
+          # needed. Only apps/docs-ophis still carries that ignore; see there.
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg --ignore GHSA-mh99-v99m-4gvg
+            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
@@ -388,19 +384,15 @@ jobs:
           # static client-side SPA (Cloudflare Pages, no server / no RSC) so the
           # bypass is unreachable. Only fix is a breaking major (introduced 7.12.0,
           # fixed 8.3.0); the app pins react-router ^7.15.1. (2026-07-24)
-          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg (HIGH DoS): unbounded
-          # expansion OOM. brace-expansion@5.0.7 is reached ONLY via minimatch@10,
-          # whose consumers are all build/lint/test tooling (eslint + plugins,
-          # glob, nx, jake/filelist, fork-ts-checker, test-exclude); nothing ships
-          # in the browser bundle and the expanded string is always a
-          # developer-authored pattern, never user input. The only fix is 5.0.8,
-          # published 2026-07-23, younger than the committed 7-day
-          # minimumReleaseAge soak. REMOVE this ignore after 2026-07-30 and
-          # re-lock with the brace-expansion override bumped to >=5.0.8.
-          # (2026-07-25)
+          # NOTE: #910's GHSA-mh99-v99m-4gvg ignore was REMOVED here -- this
+          # workspace is now actually patched (brace-expansion 5.0.8, its only
+          # consumer being minimatch@10). The 7-day soak that motivated the
+          # suppression was handled with the procedure this workspace's own
+          # pnpm-workspace.yaml documents: temporarily name-exclude, install to
+          # pin 5.0.8 in the committed lockfile, then remove the exclusion, so
+          # frozen-lockfile installs use it without re-resolving.
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2 \
-            --ignore GHSA-mh99-v99m-4gvg
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -426,18 +418,39 @@ jobs:
           if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
-          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg (HIGH DoS): unbounded
-          # expansion OOM. Present as 1.1.16 ONLY via serve-handler -> minimatch@3
-          # (local `serve` preview; the published site is static files, no Node
-          # runtime). minimatch expands the config-authored PATTERN, not the
-          # request path, so attacker input cannot reach the expansion. NO patched
-          # 1.x exists; the only fix is 5.0.8, published 2026-07-23, younger than
-          # the 7-day release-age window the repo applies to security re-locks.
-          # REMOVE this ignore after 2026-07-30 and re-lock with a >=5.0.8
-          # override (root already runs minimatch@3 on brace-expansion 5.x, so
-          # the cross-major pin is proven there). (2026-07-25)
+          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg / CVE-2026-14257 (HIGH DoS,
+          # unbounded expansion -> OOM, published 2026-07-24). This is the ONLY
+          # workspace that still needs the ignore: #910 applied it to all three,
+          # but root and apps/frontend are now genuinely ON 5.0.8 (their only
+          # consumer is minimatch@10), so their ignores were dropped.
+          #
+          # docs-ophis cannot take 5.0.8. The advisory range is `introduced 0,
+          # fixed 5.0.8`, so the only remedy is the 5.x line -- but 5.x dropped
+          # the CommonJS default export, and this workspace reaches
+          # brace-expansion@1.1.16 solely via serve-handler -> minimatch@3.1.5,
+          # whose `require('brace-expansion')` then throws
+          # `TypeError: expand is not a function` (verified against this
+          # workspace's real node_modules; it breaks the build outright).
+          #
+          # NB #910's note that "root already runs minimatch@3 on brace-expansion
+          # 5.x, so the cross-major pin is proven there" is the opposite of what
+          # happens: that pairing exists on main and is already BROKEN with the
+          # same TypeError. It is not evidence the pin is safe.
+          #
+          # Not reachable here regardless: the DoS needs an attacker-supplied
+          # brace pattern, and these globs are config-authored; the published
+          # site is static files with no Node runtime (serve is a local preview).
+          # 1.1.16 still carries the GHSA-3jxr-9vmj-r5cp fix.
+          #
+          # DATED on purpose. `--ignore GHSA:YYYY-MM-DD` fails closed once the
+          # date passes, so this suppression cannot outlive the condition that
+          # justifies it (an undated --ignore is an unconditional, permanent
+          # allow-list that would also hide a NEW, reachable occurrence of the
+          # same advisory). 2026-10-31 = a ~3-month review horizon; on expiry,
+          # re-check whether serve-handler still pulls minimatch@3 and either
+          # move to 5.0.8 or renew the date with fresh evidence.
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg
+            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31
 
   cargo-audit:
     name: cargo audit (Rust deps)
@@ -454,7 +467,7 @@ jobs:
         # genuine, persistent install failure.
         run: |
           for attempt in 1 2 3; do
-            if cargo install --locked cargo-audit; then
+            if cargo install --locked --version 0.22.2 cargo-audit; then
               exit 0
             fi
             echo "::warning::cargo install cargo-audit failed (attempt ${attempt}/3); retrying after backoff"
@@ -542,9 +555,19 @@ jobs:
       - name: Run gitleaks
         env:
           GITLEAKS_VERSION: 8.21.2
+          # A release TAG is immutable; a release ASSET is not -- GitHub lets an
+          # owner (or a stolen PAT) delete and re-upload bytes at the identical
+          # URL with no tag change and no notification. So pin the bytes, like
+          # .github/actions/install-osv-scanner already does. Value is from the
+          # release's own gitleaks_8.21.2_checksums.txt. Bump with the version.
+          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-delay 2 -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz gitleaks
+          rm -f /tmp/gitleaks.tar.gz
           ./gitleaks detect \
             --source . \
             --config .github/gitleaks.toml \
