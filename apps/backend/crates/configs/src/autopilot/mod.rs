@@ -165,10 +165,16 @@ pub struct Configuration {
     #[serde(default)]
     pub price_estimation: PriceEstimation,
 
-    /// Self-serve partner-fee recipient registry (partner-fees Phase A). The
-    /// autopilot consults the same active-recipient snapshot as the orderbook,
-    /// as a defense-in-depth filter over partner-fee policies; only
-    /// `refresh_interval` is used here (`registration_enabled` is orderbook-only).
+    /// Self-serve partner-fee recipient registry (partner-fees Phase A).
+    /// `registration_enabled` is the MASTER ENABLE for the whole feature and the
+    /// autopilot honors it exactly as the orderbook does: when false the
+    /// autopilot uses the Ophis-only policy and drops ALL third-party partner
+    /// fees; when true it consults the same active-recipient snapshot as the
+    /// orderbook (a defense-in-depth filter). It MUST be set identically in BOTH
+    /// the orderbook and autopilot configs, or partner fees are honored at
+    /// ingress but silently dropped at settlement (registered partners earn
+    /// nothing). `refresh_interval` sets how quickly a registration or suspension
+    /// takes effect here.
     #[serde(default)]
     pub partner_fee_registry: crate::partner_fee_registry::PartnerFeeRegistryConfig,
 }
