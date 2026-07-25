@@ -107,6 +107,24 @@ jobs:
       - name: Check tiers.ts mirror across rebate-indexer + packages/sdk + cowswap-frontend
         run: ./scripts/check-tier-invariant.sh
 
+  solver-registry-invariant:
+    name: Solver registry cross-workspace invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-07 (ux-quoting). The frontend static solver registry
+    # (apps/frontend/apps/cowswap-frontend/src/ophis/solvers.ts) mirrors the
+    # [[solver]] name entries in infra/optimism-mainnet/configs/driver.toml.tmpl
+    # across pnpm workspaces (no shared import). It feeds the "up to N solvers"
+    # row and the order progress-bar ladder on chain 10; drift would show users
+    # a wrong solver count or a ladder missing live solvers. A jest mirror test
+    # gives the same signal in the frontend lane, but the frontend jest suite
+    # is not a repo-root CI gate, so this script is the hard gate.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check solver registry mirrors the chain-10 driver config
+        run: ./scripts/check-solver-registry-invariant.sh
+
 
   infra-compose-security:
     name: Infra compose security invariants

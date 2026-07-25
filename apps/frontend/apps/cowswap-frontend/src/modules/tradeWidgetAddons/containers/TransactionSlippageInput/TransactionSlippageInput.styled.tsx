@@ -2,6 +2,32 @@ import { FancyButton, UI } from '@cowprotocol/ui'
 
 import styled from 'styled-components/macro'
 
+export const PresetButton = styled(FancyButton)<{ active: boolean }>`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(${({ active }) => (active ? UI.COLOR_PRIMARY : UI.COLOR_PRIMARY_OPACITY_50)});
+  transition: background-color 0.2s;
+  height: auto;
+  margin: 4px 0 4px 4px;
+  border-radius: 12px; // 16px from parent - 4px for margin
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 400;
+
+  :hover {
+    cursor: pointer;
+    background: var(${UI.COLOR_PRIMARY});
+  }
+
+  &:disabled {
+    border: none;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+`
+
 export const AutoButton = styled(FancyButton)<{ active: boolean }>`
   display: flex;
   align-items: center;

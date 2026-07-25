@@ -5,6 +5,7 @@ import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { useBridgeQuoteAmounts } from 'modules/bridge'
 import {
   getTotalCosts,
+  NetReceivedRow,
   TradeFeesAndCosts,
   TradeTotalCostsDetails,
   useDerivedTradeState,
@@ -27,6 +28,7 @@ import { NetworkCostsTooltipSuffix } from '../../pure/NetworkCostsTooltipSuffix'
 import { RowDeadline } from '../RowDeadline'
 import { RowQuoteId } from '../RowQuoteId'
 import { RowSlippage } from '../RowSlippage'
+import { RowSolverCompetition } from '../RowSolverCompetition'
 
 interface TradeRateDetailsProps {
   deadline: number
@@ -101,11 +103,15 @@ export function TradeRateDetails({
       />
       {slippageRow} {/* Always show slippage inside accordion */}
       <RowDeadline deadline={deadline} />
+      <RowSolverCompetition />
       <RowQuoteId quoteId={quoteId} isVerified={quoteVerified} expiration={quoteExpiration} />
     </>
   )
   return (
     <>
+      {/* Ophis ux-quoting decision 59: always-visible net-of-costs headline above the fee accordion. */}
+      <NetReceivedRow receiveAmountInfo={receiveAmountInfo} />
+
       <TradeTotalCostsDetails
         totalCosts={getTotalCosts(
           swapReceiveAmountInfo,
