@@ -9,6 +9,7 @@ import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
 import { getNonWethTokenBalances } from './safe/balances.js';
+import { outstandingPartnerLiabilityWei } from './partnerFees/liability.js';
 import { alerts } from './telegram/alerter.js';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { logger } from './logger.js';
@@ -238,7 +239,24 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   const weth = WETH_BY_CHAIN[deps.chainId]!;
   const client = createPublicClient({ transport: http(deps.rpcUrl) });
   const netFee = await client.readContract({ address: weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
-  const pool = (netFee * BigInt(POOL_SPLIT_BPS)) / 10_000n;
+
+  // 1a. MONEY-CORRECTNESS (partner-fees Phase B): reserve the WETH owed to partners but NOT
+  //     yet paid out — it still sits in this same Ophis Safe. Without this, the partner-owed
+  //     80% would be counted as distributable and could be paid out TWICE: once to a partner
+  //     (the partner batcher), once as a rebate. The monthly pipeline runs partner accrual
+  //     FIRST (cron), so this liability is up to date before we read the Safe. `reservedBalance`
+  //     backs the POOL pool; the DIRECT delta subtracts the same liability below. Returns 0n
+  //     when no partner batch exists, so the live rebate deploy is byte-inert until the first
+  //     partner cycle records.
+  const partnerLiabilityWei = await outstandingPartnerLiabilityWei();
+  const reservedBalance = netFee > partnerLiabilityWei ? netFee - partnerLiabilityWei : 0n;
+  const pool = (reservedBalance * BigInt(POOL_SPLIT_BPS)) / 10_000n;
+  if (partnerLiabilityWei > 0n) {
+    log.info(
+      { balanceWei: netFee.toString(), partnerLiabilityWei: partnerLiabilityWei.toString(), reservedBalanceWei: reservedBalance.toString() },
+      'reserved outstanding partner liability from the rebate distributable (no double-pay)',
+    );
+  }
 
   // 1b. Issue #360 safety net — runs EVERY batcher cycle, regardless of the WETH
   //     pool. The rebate pool is WETH-only, so any value the Safe holds in OTHER
@@ -492,10 +510,23 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
         .catch((e) => log.warn({ err: e }, 'basis-rebaseline alert failed'));
       previousBasis = netFee;
     }
-    distributable = netFee > previousBasis ? netFee - previousBasis : 0n;
+    // newFees = balance - basis. Then SUBTRACT the outstanding partner liability (money-
+    // correctness): the partner-earmarked WETH sits in the Safe and is counted in `balance`,
+    // so the raw delta would rebate fees owed to partners. Reserving it here is the DIRECT-mode
+    // mirror of the POOL reservation above; both clamp at 0. (Partner accrual ran first this
+    // cycle, so the liability is current.)
+    const newFees = netFee > previousBasis ? netFee - previousBasis : 0n;
+    distributable = newFees > partnerLiabilityWei ? newFees - partnerLiabilityWei : 0n;
     log.info(
-      { batchId, balanceWei: netFee.toString(), previousBasisWei: previousBasis.toString(), newFeesWei: distributable.toString() },
-      'direct-mode accrual basis',
+      {
+        batchId,
+        balanceWei: netFee.toString(),
+        previousBasisWei: previousBasis.toString(),
+        newFeesWei: newFees.toString(),
+        partnerLiabilityWei: partnerLiabilityWei.toString(),
+        distributableWei: distributable.toString(),
+      },
+      'direct-mode accrual basis (net of partner liability)',
     );
     // Persist the recomputed distributable so /status, /batches and the reconciler
     // report this direct cycle's real pool (newFees), not the stale pool-split-of-balance

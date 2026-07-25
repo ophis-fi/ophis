@@ -3,6 +3,10 @@ import { runFetcher, backfillOwnFee } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher } from './batcher.js';
+import { runPartnerFeeFetch } from './partnerFees/fetch.js';
+import { runPartnerFeePricer } from './partnerFees/pricePartnerFees.js';
+import { accruePartnerFees, proposePartnerFeeBatches } from './partnerFees/payout.js';
+import { outstandingPartnerLiabilityWei } from './partnerFees/liability.js';
 import { sql } from './db/index.js';
 import { logger } from './logger.js';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -84,6 +88,29 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   },
   async ['dry-run-monthly']() {
     await cmds['simulate-batch']!([]);
+  },
+  // One-shot partner-fee feed poll + price (partner-fees Phase B). Idempotent; needs
+  // PARTNER_FEE_FEED_URLS configured or it is a no-op.
+  async ['partner-fee-fetch']() {
+    const f = await runPartnerFeeFetch();
+    const p = await runPartnerFeePricer();
+    log.info({ ...f, ...p }, 'partner-fee fetch+price complete');
+  },
+  // Record the settled-month partner-fee ledger (flag/key-independent). Establishes the
+  // outstanding liability the rebate/affiliate batchers reserve.
+  async ['partner-fee-accrue']() {
+    const r = await accruePartnerFees({});
+    const liability = await outstandingPartnerLiabilityWei();
+    log.info({ ...r, outstandingLiabilityWei: liability.toString() }, 'partner-fee accrual complete');
+  },
+  // Dry-run the monthly partner-fee payout (accrue, then propose in dry-run mode — records the
+  // ledger + dry-runs transfers, never submits a Safe tx).
+  async ['partner-fee-dry-run']() {
+    await accruePartnerFees({});
+    const rpcUrl = process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com';
+    const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY ?? (('0x' + '00'.repeat(32)) as `0x${string}`);
+    const r = await proposePartnerFeeBatches({ rpcUrl, proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled: false });
+    console.log(JSON.stringify(r, null, 2));
   },
   async ['rotate-proposer'](args) {
     const newKey = args.find((a) => a.startsWith('--new-key='))?.split('=')[1];

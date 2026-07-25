@@ -10,6 +10,9 @@ import { resolveAffiliatePayoutEnabled } from './affiliate/payoutPlan.js';
 import { OWN_FEE_GUARANTEED_CHAIN_IDS } from './affiliate/rates.js';
 import { accrueOwnFee, proposeOwnFeeBatches, reconcileOwnFeeBatches } from './ownFee/payout.js';
 import { resolveOwnFeePayoutEnabled } from './ownFee/payoutPlan.js';
+import { runPartnerFeeFetch } from './partnerFees/fetch.js';
+import { runPartnerFeePricer } from './partnerFees/pricePartnerFees.js';
+import { accruePartnerFees, proposePartnerFeeBatches, reconcilePartnerFeeBatches, resolvePartnerFeePayoutEnabled } from './partnerFees/payout.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
@@ -78,6 +81,18 @@ async function runPipelineSteps(): Promise<void> {
   const scored = await runScorer();
   log.info(scored, 'scorer complete');
 
+  // Partner-fee accrual feed (partner-fees Phase B): pull new fee-bearing trades from the
+  // restricted feed and price their collected fee. Nightly, like the main pricer; the monthly
+  // batcher (below) consumes the priced trades. Wrapped so a restricted-feed / pricing outage
+  // never breaks the main pipeline (the feature is inert until PARTNER_FEE_FEED_URLS is set).
+  try {
+    const pf = await runPartnerFeeFetch();
+    const pfp = await runPartnerFeePricer();
+    log.info({ fetched: pf.inserted, skipped: pf.skipped, priced: pfp.priced, priceFailed: pfp.failed }, 'partner-fee fetch+price complete');
+  } catch (err) {
+    log.error({ err }, 'partner-fee fetch/price failed (non-fatal to the rest of the pipeline)');
+  }
+
   // tierer.ts has no batch refresh — it's read-on-demand. Nothing to call here.
 
   // Reconcile open Safe batches EVERY night (independent of the 1st-of-month
@@ -96,6 +111,9 @@ async function runPipelineSteps(): Promise<void> {
     // the Safe service on its OWN chain 10/130). Read-only, so also safe to run always.
     const ofrec = await reconcileOwnFeeBatches({});
     log.info(ofrec, 'own-fee reconcile complete');
+    // Same nightly heal for partner-fee batches (separate table, same Gnosis Safe service).
+    const pfrec = await reconcilePartnerFeeBatches({});
+    log.info(pfrec, 'partner-fee reconcile complete');
   } catch (err) {
     log.error({ err }, 'reconcile failed (non-fatal; observability only)');
     await alerts.alert('reconcile', `Nightly batch reconciliation failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
@@ -132,6 +150,17 @@ async function runPipelineSteps(): Promise<void> {
       } catch (err) {
         log.error({ err, chainId }, 'own-fee accrual failed (non-fatal to the rest of the cycle)');
       }
+    }
+    // Partner-fee ACCRUAL (partner-fees Phase B) — MUST run FIRST, BEFORE the rebate batcher
+    // and affiliate payout (money-correctness): it records this cycle's partner-owed ledger,
+    // which is the outstanding liability those two batchers SUBTRACT to avoid paying the same
+    // WETH twice. Flag- AND proposer-key-INDEPENDENT (records the ledger regardless), so it sits
+    // here in the key-independent section. Wrapped so one failure never blocks the rest of the
+    // cycle. The proposal (below) is separately flag-gated.
+    try {
+      await accruePartnerFees({});
+    } catch (err) {
+      log.error({ err }, 'partner-fee accrual failed (non-fatal to the rest of the cycle)');
     }
     const proposeEnabled = resolveBatcherProposeEnabled();
     const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
@@ -182,6 +211,20 @@ async function runPipelineSteps(): Promise<void> {
           } catch (err) {
             log.error({ err, chainId }, 'own-fee proposal failed (non-fatal to the rest of the cycle)');
           }
+        }
+      }
+      // Partner-fee PROPOSAL (partner-fees Phase B). Needs the proposer key (this branch) AND
+      // PARTNER_FEE_PAYOUT_ENABLED (default OFF). Accrual (above) already recorded the current
+      // cycle's 'computed' batch flag- and key-independently, so this proposes EVERY un-proposed
+      // 'computed' batch (current cycle + any back-months a previously-off flag left behind) as a
+      // WETH MultiSend on the Gnosis Ophis Safe; execution still needs the 2-of-3 signature. Its
+      // over-draw guard reserves the already-queued rebate/affiliate proposals, the mirror of
+      // their reservation of the partner liability. Wrapped so a failure never blocks the report.
+      if (resolvePartnerFeePayoutEnabled()) {
+        try {
+          await proposePartnerFeeBatches({ rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+        } catch (err) {
+          log.error({ err }, 'partner-fee proposal failed (non-fatal to the rest of the cycle)');
         }
       }
     }

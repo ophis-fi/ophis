@@ -1,0 +1,234 @@
+import { sql } from '../db/index.js';
+import { attributePartnerFees } from './parsePartnerFees.js';
+import { alerts } from '../telegram/alerter.js';
+import { logger } from '../logger.js';
+
+const log = logger.child({ module: 'partner-fee-fetch' });
+
+// Cursor poller over the restricted partner-fee accrual feed (partner-fees Phase B).
+// Consumes GET /restricted/api/v1/partner_fees (Phase A, PR #926): a (block_number,
+// log_index)-cursored feed of settled fee-bearing trades with the full appData, returning
+// `{ trades, nextBlock?, nextLogIndex? }`. This poller attributes each trade's collected
+// protocolFeeAmounts to its NON-Ophis partner recipients (parsePartnerFees.ts) and inserts
+// idempotent partner_fee_trades rows. It NEVER prices or pays -- pricing is the nightly
+// pricer, payout is the monthly batcher.
+
+/** Page size per feed request. The feed caps at 10_000; 1_000 keeps memory bounded. */
+const FEED_LIMIT = 1_000;
+/** Safety bound on pages per run so a runaway/looping feed can't spin forever. */
+const MAX_PAGES_PER_RUN = 10_000;
+
+/** One raw trade row from the feed (camelCase, string amounts) -- mirrors PartnerFeeFeedRow. */
+interface FeedTrade {
+  blockNumber: number;
+  logIndex: number;
+  orderUid: string;
+  owner: string;
+  sellToken: string;
+  buyToken: string;
+  sellAmount: string;
+  buyAmount: string;
+  protocolFeeAmounts: string[];
+  protocolFeeTokens: string[];
+  fullAppData: string | null;
+}
+
+interface FeedResponse {
+  trades: FeedTrade[];
+  nextBlock?: number;
+  nextLogIndex?: number;
+}
+
+/** A configured feed: one Ophis-operated chain's restricted endpoint. */
+export interface PartnerFeeFeed {
+  readonly chainId: number;
+  readonly url: string;
+}
+
+/**
+ * Parse `PARTNER_FEE_FEED_URLS` into per-chain feeds. Format: comma-separated
+ * `<chainId>=<url>` (e.g. `10=https://rebates.ophis.fi/restricted/api/v1/partner_fees`). A
+ * bare URL with no `chainId=` prefix defaults to Optimism (10), the launch chain. Unset/empty
+ * => no feeds (the feature stays inert until configured). Throws on a malformed entry
+ * (fail-loud, mirroring the other money-path env parsers).
+ */
+export function resolvePartnerFeeFeeds(raw = process.env.PARTNER_FEE_FEED_URLS): PartnerFeeFeed[] {
+  const trimmed = raw?.trim();
+  if (!trimmed) return [];
+  const feeds: PartnerFeeFeed[] = [];
+  const seen = new Set<number>();
+  for (const part of trimmed.split(',')) {
+    const entry = part.trim();
+    if (!entry) continue;
+    const eq = entry.indexOf('=');
+    let chainId: number;
+    let url: string;
+    if (eq === -1) {
+      chainId = 10; // bare URL -> Optimism launch chain
+      url = entry;
+    } else {
+      chainId = Number(entry.slice(0, eq));
+      url = entry.slice(eq + 1).trim();
+    }
+    if (!Number.isInteger(chainId) || chainId <= 0) {
+      throw new Error(`PARTNER_FEE_FEED_URLS: invalid chainId in "${entry}" (use "<chainId>=<url>")`);
+    }
+    if (!/^https?:\/\//.test(url)) {
+      throw new Error(`PARTNER_FEE_FEED_URLS: invalid url in "${entry}" (must be http(s))`);
+    }
+    if (seen.has(chainId)) {
+      throw new Error(`PARTNER_FEE_FEED_URLS: duplicate chainId ${chainId} (one feed per chain)`);
+    }
+    seen.add(chainId);
+    feeds.push({ chainId, url });
+  }
+  return feeds;
+}
+
+export type FeedFetcher = (feed: PartnerFeeFeed, minBlock: bigint, minLogIndex: bigint, limit: number) => Promise<FeedResponse>;
+
+/** Default HTTP fetcher for the restricted feed. Injectable so tests use an msw mock or stub. */
+async function defaultFeedFetcher(feed: PartnerFeeFeed, minBlock: bigint, minLogIndex: bigint, limit: number): Promise<FeedResponse> {
+  const u = new URL(feed.url);
+  u.searchParams.set('min_block', minBlock.toString());
+  u.searchParams.set('min_log_index', minLogIndex.toString());
+  u.searchParams.set('limit', String(limit));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    // The feed lives under /restricted/ behind a WAF; pass an optional shared secret so the
+    // poller is authenticated at the edge without leaking it into the URL/logs.
+    const auth = process.env.PARTNER_FEE_FEED_AUTH?.trim();
+    if (auth) headers.authorization = auth;
+    const res = await fetch(u, { headers, signal: controller.signal });
+    if (!res.ok) throw new Error(`partner-fee feed ${feed.url} returned HTTP ${res.status}`);
+    return (await res.json()) as FeedResponse;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Read the persisted cursor for a chain (defaults to genesis on first run). */
+async function loadCursor(chainId: number): Promise<{ block: bigint; logIndex: bigint }> {
+  const [row] = await sql<{ next_block: string; next_log_index: string }[]>`
+    SELECT next_block::text AS next_block, next_log_index::text AS next_log_index
+    FROM partner_fee_cursor WHERE chain_id = ${chainId}
+  `;
+  return { block: BigInt(row?.next_block ?? '0'), logIndex: BigInt(row?.next_log_index ?? '0') };
+}
+
+/** Persist the resume cursor for a chain (upsert). */
+async function saveCursor(chainId: number, block: bigint, logIndex: bigint): Promise<void> {
+  await sql`
+    INSERT INTO partner_fee_cursor (chain_id, next_block, next_log_index, updated_at)
+    VALUES (${chainId}, ${block.toString()}, ${logIndex.toString()}, now())
+    ON CONFLICT (chain_id) DO UPDATE
+      SET next_block = EXCLUDED.next_block, next_log_index = EXCLUDED.next_log_index, updated_at = now()
+  `;
+}
+
+/** Insert one attributed partner-fee trade row (idempotent on the (trade_uid, recipient) PK). */
+async function insertTrade(row: {
+  tradeUid: `0x${string}`;
+  recipient: `0x${string}`;
+  chainId: number;
+  blockNumber: bigint;
+  logIndex: bigint;
+  volumeBps: number;
+  feeToken: `0x${string}`;
+  feeAmount: bigint;
+}): Promise<void> {
+  await sql`
+    INSERT INTO partner_fee_trades
+      (trade_uid, recipient, chain_id, block_number, log_index, volume_bps, fee_token, fee_amount)
+    VALUES (
+      decode(${row.tradeUid.slice(2)}, 'hex'),
+      decode(${row.recipient.slice(2)}, 'hex'),
+      ${row.chainId}, ${row.blockNumber.toString()}, ${row.logIndex.toString()},
+      ${row.volumeBps}, decode(${row.feeToken.slice(2)}, 'hex'), ${row.feeAmount.toString()}
+    )
+    ON CONFLICT (trade_uid, recipient) DO NOTHING
+  `;
+}
+
+export interface PartnerFeeFetchDeps {
+  /** Feeds to poll (default: parsed from PARTNER_FEE_FEED_URLS). */
+  readonly feeds?: readonly PartnerFeeFeed[];
+  /** Injected HTTP fetcher (default: defaultFeedFetcher). */
+  readonly fetcher?: FeedFetcher;
+}
+
+/**
+ * Poll every configured feed from its cursor to the drain point, attributing + inserting
+ * partner-fee trades. Idempotent (ON CONFLICT DO NOTHING) so an overlapping re-read never
+ * duplicates. Advances the cursor to `(lastTrade.block, lastTrade.logIndex + 1)` after every
+ * page, so a crash mid-run resumes exactly after the last durably-inserted trade -- no trade
+ * in a partially-returned block is ever skipped OR double-counted. Skipped (ambiguous)
+ * attributions are surfaced via a capped alert; they are NOT inserted (fail-safe under-count).
+ */
+export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number }> {
+  const feeds = deps.feeds ?? resolvePartnerFeeFeeds();
+  const fetcher = deps.fetcher ?? defaultFeedFetcher;
+  if (feeds.length === 0) {
+    log.debug('no partner-fee feeds configured (PARTNER_FEE_FEED_URLS unset); skipping');
+    return { inserted: 0, skipped: 0 };
+  }
+
+  let inserted = 0;
+  let skipped = 0;
+  const skippedExamples: string[] = [];
+
+  for (const feed of feeds) {
+    let cursor = await loadCursor(feed.chainId);
+    for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
+      const resp = await fetcher(feed, cursor.block, cursor.logIndex, FEED_LIMIT);
+      const trades = resp.trades ?? [];
+      for (const t of trades) {
+        const result = attributePartnerFees(t);
+        if (result.skipped) {
+          skipped++;
+          if (skippedExamples.length < 10) skippedExamples.push(`${t.orderUid} (${result.reason})`);
+          log.warn({ orderUid: t.orderUid, reason: result.reason, chainId: feed.chainId }, 'partner-fee attribution skipped (ambiguous slot mapping); not accrued');
+          continue;
+        }
+        for (const a of result.attributions) {
+          await insertTrade({
+            tradeUid: t.orderUid as `0x${string}`,
+            recipient: a.recipient,
+            chainId: feed.chainId,
+            blockNumber: BigInt(t.blockNumber),
+            logIndex: BigInt(t.logIndex),
+            volumeBps: a.volumeBps,
+            feeToken: a.feeToken,
+            feeAmount: a.feeAmount,
+          });
+          inserted++;
+        }
+      }
+      // Advance the cursor to just AFTER the last processed trade, so a mid-run crash resumes
+      // without re-reading (idempotent anyway) or skipping the block's remaining trades.
+      if (trades.length > 0) {
+        const last = trades[trades.length - 1]!;
+        cursor = { block: BigInt(last.blockNumber), logIndex: BigInt(last.logIndex) + 1n };
+        await saveCursor(feed.chainId, cursor.block, cursor.logIndex);
+      }
+      // A full page sets nextBlock; its absence means the window is drained.
+      if (resp.nextBlock === undefined || resp.nextBlock === null) break;
+      if (page === MAX_PAGES_PER_RUN - 1) {
+        log.warn({ chainId: feed.chainId }, 'partner-fee fetch hit the per-run page cap; will continue next run');
+      }
+    }
+  }
+
+  if (skipped > 0) {
+    void alerts
+      .alert(
+        'partner-fee-fetch',
+        `${skipped} partner-fee trade(s) this run had an AMBIGUOUS fee->recipient mapping (a dropped/suspended entry or unexpected slot) and were NOT accrued (fail-safe under-count). Review: ${skippedExamples.join(', ')}${skipped > skippedExamples.length ? `, +${skipped - skippedExamples.length} more` : ''}.`,
+      )
+      .catch((e) => log.warn({ err: e }, 'partner-fee skip alert failed'));
+  }
+  log.info({ inserted, skipped, feeds: feeds.length }, 'partner-fee fetch complete');
+  return { inserted, skipped };
+}

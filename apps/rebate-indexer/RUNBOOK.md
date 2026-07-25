@@ -106,3 +106,96 @@ and routes its single hostname to Caddy on `127.0.0.1:80`.
 
 ### Adding a new chain to the payout footprint (post-Phase-1)
 Out of scope for v1. When ready, edit `src/safe/addresses.ts` `WETH_BY_CHAIN`, deploy the Safe MultiSendCallOnly on the new chain (CREATE2 via `@safe-global/safe-deployments`), and bridge WETH to that chain's Safe address.
+
+## Partner fees (partner-fees Phase B) -- MONEY PATH
+
+Self-serve integrators register a fee recipient (Phase A registry) and attach a
+`metadata.partnerFee` Volume entry. Ophis collects it at settlement, keeps 20%,
+and pays the partner 80% monthly in WETH from the same Gnosis Ophis Safe the
+rebate + affiliate batchers use (decision 18). Two-reviewer gate (reopens audit
+C3/F6).
+
+### How the money moves
+1. **Nightly fetch + price** (`runPartnerFeeFetch` + `runPartnerFeePricer`, in the
+   02:00 UTC pipeline). Polls the restricted feed
+   `GET /restricted/api/v1/partner_fees` (Phase A, PR #926) per chain from
+   `PARTNER_FEE_FEED_URLS`, attributes each trade's collected `protocolFeeAmounts`
+   to its non-Ophis partner recipients, and inserts `partner_fee_trades`. Prices
+   each collected fee into `fee_usd`. Idempotent (cursor + `(trade_uid, recipient)`
+   PK).
+2. **Monthly accrual** (`accruePartnerFees`, 1st of month, runs FIRST -- before the
+   rebate + affiliate batchers). Sums each partner's new priced fees, adds the
+   carry, applies the 80% split + $25 minimum + sanctions screening, and records a
+   `partner_fee_batches` row + `partner_fee_batch_entries` (paid / carried /
+   quarantined), stamping the consumed trades so their fee is never counted twice.
+   This establishes the **outstanding partner liability**.
+3. **Monthly proposal** (`proposePartnerFeeBatches`, gated by
+   `PARTNER_FEE_PAYOUT_ENABLED`, default OFF). Dry-runs the paid transfers
+   (quarantining any that revert), guards the Safe balance net of queued
+   proposals, and proposes one WETH MultiSend; execution needs the 2-of-3 human
+   signature.
+
+### MONEY-CORRECTNESS invariant (the double-spend guard)
+Partner fees land in the SAME Safe as rebates + affiliate payouts. The
+partner-owed 80% must never be paid twice. Enforced by:
+- **Ordering:** partner accrual runs FIRST each cycle (cron), before the rebate +
+  affiliate computation.
+- **Rebate:** the DIRECT-mode distributable AND the POOL pool base SUBTRACT
+  `outstandingPartnerLiabilityWei()` (`src/partnerFees/liability.ts`).
+- **Affiliate:** `planAffiliatePayout` reserves the partner liability in its
+  over-draw guard (its available-balance basis subtracts it).
+- **Partner proposal:** reserves the already-queued rebate + affiliate proposals,
+  the mirror image.
+Regression-locked by `tests/partnerFees/batcherLiability.int.test.ts` and
+`tests/partnerFees/affiliateReservation.test.ts`.
+
+The liability is a WETH-wei `owed_wei` snapshot taken at each entry's cycle price;
+for a carried entry that snapshot can drift a little from its eventual re-priced
+payout (amounts are sub-$25), so treat it as a conservative reservation, not the
+exact payout. The exact payout is always the current-price conversion at proposal.
+
+### Carry-over and threshold
+A recipient whose owed is below `MIN_PARTNER_PAYOUT_USD` ($25) CARRIES: nothing is
+paid, `carried_usd` rolls forward and is re-evaluated next cycle. A quarantined
+recipient (sanctions/list screen at payout, or a dry-run transfer revert) also
+carries so the amount is never lost and is re-attempted once cleared. `owed_usd`
+= `0.8 * Σ(new fee_usd) + carried_usd(prev)`.
+
+### Attribution safety (why a partner might not be paid for a trade)
+On Optimism the only protocol fees are the appData `partnerFee` entries (no
+config fees), so the indexer maps `protocolFeeAmounts[i]` to the i-th kept entry
+positionally. If a partnerFee entry was dropped at settlement (unregistered /
+suspended recipient), the slot count no longer matches and the trade is SKIPPED
+(fail-safe UNDER-count, surfaced via a `partner-fee-fetch` alert) rather than
+mis-attributed. Investigate skips before flipping any registration on.
+
+### Enabling the program
+1. Set `PARTNER_FEE_FEED_URLS=10=https://rebates.ophis.fi/restricted/api/v1/partner_fees`
+   (comma-separated `<chainId>=<url>` per Ophis-operated chain); optional
+   `PARTNER_FEE_FEED_AUTH` for the WAF secret. Accrual + the liability reservation
+   start working immediately (payout still gated).
+2. Confirm the internal test partner order settles and shows up:
+   `pnpm cli partner-fee-accrue` then `pnpm cli partner-fee-dry-run`.
+3. Flip `PARTNER_FEE_PAYOUT_ENABLED=true` only after the dry-run looks right. The
+   monthly proposal then queues a Safe MultiSend for the 2-of-3 signers.
+
+### Sanctions / list screening
+`PARTNER_FEE_SANCTIONS_LIST` = comma-separated all-lowercase 0x addresses to block
+at payout (plus the built-in zero address). A malformed entry throws (fail-loud).
+A screened recipient is quarantined (carried forward, re-attempted once removed
+from the list).
+
+### CLI
+- `pnpm cli partner-fee-fetch` -- one-shot feed poll + price.
+- `pnpm cli partner-fee-accrue` -- record the settled-month ledger + print the
+  outstanding liability.
+- `pnpm cli partner-fee-dry-run` -- accrue then dry-run the payout (no Safe tx).
+
+### Realized-revenue reconciliation (fee_sweeps)
+The fee-ops `fee_sweeps` reconciliation table (its PR #920) does NOT yet exist in
+this repo -- the RUNBOOK's fee-treasury section already notes it is a separate
+indexer PR. Partner-fee accrual therefore uses the restricted FEED as the accrual
+source (the executed `order_execution.protocol_fee_amounts`), which is the
+authoritative on-chain collected amount. When `fee_sweeps` lands, wire a
+reconciliation check (Σ paid partner WETH + Ophis retained ≈ swept realized
+revenue) as a follow-up; it is not required for correctness of the accrual.
