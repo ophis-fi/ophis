@@ -1105,8 +1105,288 @@ paths:
           description: Order not found.
         "500":
           description: Internal error.
+  /api/v1/partners:
+    post:
+      operationId: registerPartner
+      summary: "Register a self-serve partner-fee recipient. [UNSTABLE]"
+      description: >
+        Registers a partner-fee recipient, auto-activated at the default
+        per-partner cap. The caller must prove control of the recipient key: the
+        request carries an EIP-191 `personal_sign` over the exact message
+
+
+          Ophis Partner Fee registration
+
+          Recipient: <lowercase 0x address>
+
+          Label: <label>
+
+          Issued: <issuedAt>
+
+
+        and the recovered signer must equal `recipient`. The `label` is bound
+        into the signed message, so a relayer cannot substitute a different
+        label. `issuedAt` must be within 300 seconds of the server clock.
+        Registration is immutable: a
+        second registration of the same recipient (or label) returns 409.
+
+
+        Ships disabled: while the feature is off the endpoint returns 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerRegistrationRequest"
+      responses:
+        "201":
+          description: The recipient was registered and auto-activated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerResponse"
+        "400":
+          description: >
+            Invalid label, signature, or an expired `issuedAt`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "403":
+          description: Self-serve partner-fee registration is not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "409":
+          description: The recipient or label is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "500":
+          description: Internal error.
+  "/api/v1/partners/{address}":
+    get:
+      operationId: getPartner
+      summary: "Look up a registered partner-fee recipient. [UNSTABLE]"
+      description: Returns the registration record for a partner-fee recipient.
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "#/components/schemas/Address"
+          required: true
+      responses:
+        "200":
+          description: The partner registration record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerResponse"
+        "400":
+          description: Invalid address.
+        "404":
+          description: No partner registered for this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "500":
+          description: Internal error.
+  "/restricted/api/v1/partner_fees":
+    get:
+      operationId: getPartnerFeeFeed
+      summary: "Partner-fee accrual feed (WAF-gated). [UNSTABLE]"
+      description: >
+        Returns the fee-bearing trades in a block window with the full
+        `appData`, so the payout pipeline can attribute each fee to its
+        recipient. Accrual-ready data only: no split, pricing, or payout is
+        computed here. Restricted to authenticated consumers by infra/WAF rules.
+      parameters:
+        - in: query
+          name: min_block
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: Inclusive lower block bound (default 0).
+        - in: query
+          name: min_log_index
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: >
+            Cursor within `min_block`: only trades at `log_index >=
+            min_log_index` in that block are returned (higher blocks are
+            unaffected). Default 0. Set from a prior response's `nextLogIndex`.
+        - in: query
+          name: max_block
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: Inclusive upper block bound (default unbounded).
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: Page size (default 1000, capped at 10000).
+      responses:
+        "200":
+          description: The fee-bearing trades in the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerFeeFeedResponse"
+        "500":
+          description: Internal error.
 components:
   schemas:
+    PartnerRegistrationRequest:
+      type: object
+      properties:
+        recipient:
+          $ref: "#/components/schemas/Address"
+        label:
+          description: "Human-readable partner label, matching `[a-z0-9_-]{3,64}`."
+          type: string
+          example: "my-partner_1"
+        issuedAt:
+          description: Unix seconds the registration message was issued at.
+          type: integer
+          format: int64
+        signature:
+          description: >
+            EIP-191 `personal_sign` signature over the registration message, as
+            a 0x-prefixed 65-byte hex string (r || s || v).
+          type: string
+      required:
+        - recipient
+        - label
+        - issuedAt
+        - signature
+    PartnerResponse:
+      type: object
+      properties:
+        recipient:
+          $ref: "#/components/schemas/Address"
+        label:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - suspended
+        maxVolumeBps:
+          description: Per-partner Volume-policy bps cap (1..=90, default 50).
+          type: integer
+          format: int32
+      required:
+        - recipient
+        - label
+        - status
+        - maxVolumeBps
+    PartnerRegistrationError:
+      type: object
+      properties:
+        errorType:
+          type: string
+          enum:
+            - InvalidPartnerSignature
+            - PartnerRegistrationExpired
+            - InvalidPartnerLabel
+            - PartnerAlreadyRegistered
+            - PartnerNotFound
+            - PartnerRegistrationDisabled
+        description:
+          type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
+      required:
+        - errorType
+        - description
+    PartnerFeeFeedRow:
+      type: object
+      properties:
+        blockNumber:
+          type: integer
+          format: int64
+        logIndex:
+          type: integer
+          format: int64
+        orderUid:
+          $ref: "#/components/schemas/UID"
+        owner:
+          $ref: "#/components/schemas/Address"
+        sellToken:
+          $ref: "#/components/schemas/Address"
+        buyToken:
+          $ref: "#/components/schemas/Address"
+        sellAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        buyAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        protocolFeeAmounts:
+          description: >
+            The actually-applied protocol fee amounts from `order_execution`,
+            aligned by `fee_policies.application_order`. The partner fee is the
+            Volume entry among these; the payout pipeline attributes it using
+            `fullAppData` and the order's fee policies. NOT the trade network fee.
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenAmount"
+        protocolFeeTokens:
+          description: The token of each executed protocol fee, aligned to `protocolFeeAmounts`.
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        fullAppData:
+          description: The raw `appData` document, or null if not stored.
+          type: string
+          nullable: true
+      required:
+        - blockNumber
+        - logIndex
+        - orderUid
+        - owner
+        - sellToken
+        - buyToken
+        - sellAmount
+        - buyAmount
+        - protocolFeeAmounts
+        - protocolFeeTokens
+    PartnerFeeFeedResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartnerFeeFeedRow"
+        nextBlock:
+          description: >
+            Cursor block to resume from (set `min_block` to this value). Present
+            only when the page was full; absent once the window is drained.
+          type: integer
+          format: int64
+        nextLogIndex:
+          description: >
+            Cursor log index to resume from within `nextBlock` (set
+            `min_log_index` to this value). Together with `nextBlock` it resumes
+            strictly after the last returned row, so no trade in a
+            partially-returned block is skipped.
+          type: integer
+          format: int64
+      required:
+        - trades
     TransactionHash:
       description: 32 byte digest encoded as a hex with `0x` prefix.
       type: string

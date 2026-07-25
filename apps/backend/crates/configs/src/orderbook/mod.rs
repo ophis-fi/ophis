@@ -163,6 +163,12 @@ pub struct Configuration {
     /// disabled.
     #[serde(default)]
     pub pathviz: PathVizConfig,
+
+    /// Self-serve partner-fee recipient registry (partner-fees Phase A). Ships
+    /// with `registration-enabled` off (the master switch); while off the
+    /// registry is neither loaded nor consulted and only the Ophis Safe passes.
+    #[serde(default)]
+    pub partner_fee_registry: crate::partner_fee_registry::PartnerFeeRegistryConfig,
 }
 
 impl Configuration {
@@ -262,6 +268,7 @@ pub mod test_util {
                 }),
                 hide_competition_before_deadline: false,
                 pathviz: Default::default(),
+                partner_fee_registry: Default::default(),
             }
         }
     }
@@ -446,6 +453,7 @@ mod tests {
             price_estimation: Default::default(),
             order_simulation: Default::default(),
             pathviz: Default::default(),
+            partner_fee_registry: Default::default(),
         };
 
         let serialized = toml::to_string_pretty(&config).unwrap();

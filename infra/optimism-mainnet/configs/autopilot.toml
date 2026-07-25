@@ -74,6 +74,14 @@ address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
 
 [fee-policies]
 
+# Partner-fee recipient registry (partner-fees Phase A). The autopilot consults
+# the same active-recipient snapshot as the orderbook as a defense-in-depth
+# filter over partner-fee policies; `refresh-interval` sets how quickly a
+# suspension or new registration takes effect here. (`registration-enabled` is
+# orderbook-only and ignored by the autopilot.)
+[partner-fee-registry]
+refresh-interval = "30s"
+
 [database]
 write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"

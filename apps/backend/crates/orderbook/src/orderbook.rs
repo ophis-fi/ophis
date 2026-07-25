@@ -418,7 +418,12 @@ impl Orderbook {
         };
 
         if let Some(full_app_data) = full_app_data {
-            let validated_app_data = Validator::new(usize::MAX)
+            // Read path (replaced-order lookup): use the permissive recipient
+            // policy so a stored order always parses. Partner-fee recipient
+            // enforcement happens at ingress via the registry-aware validator;
+            // re-enforcing it here would let a later suspension brick an order
+            // that already passed ingress.
+            let validated_app_data = Validator::permissive(usize::MAX)
                 .validate(full_app_data.as_bytes())
                 .map_err(AddOrderError::InvalidAppData)?;
 
@@ -841,7 +846,7 @@ mod tests {
 
         let database_replica = database.clone();
         let app_data = Arc::new(crate::app_data::Registry::new(
-            Validator::new(8192),
+            Validator::permissive(8192),
             database.clone(),
             None,
         ));

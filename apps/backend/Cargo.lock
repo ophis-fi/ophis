@@ -6021,6 +6021,8 @@ version = "0.1.0"
 dependencies = [
  "account-balances",
  "alloy",
+ "alloy-signer",
+ "alloy-signer-local",
  "anyhow",
  "app-data",
  "async-trait",

@@ -164,6 +164,13 @@ pub struct Configuration {
     /// 1inch, quote verification, balance overrides, etc.).
     #[serde(default)]
     pub price_estimation: PriceEstimation,
+
+    /// Self-serve partner-fee recipient registry (partner-fees Phase A). The
+    /// autopilot consults the same active-recipient snapshot as the orderbook,
+    /// as a defense-in-depth filter over partner-fee policies; only
+    /// `refresh_interval` is used here (`registration_enabled` is orderbook-only).
+    #[serde(default)]
+    pub partner_fee_registry: crate::partner_fee_registry::PartnerFeeRegistryConfig,
 }
 
 impl Configuration {
@@ -227,6 +234,7 @@ impl Configuration {
             http_client: Default::default(),
             order_quoting: TestDefault::test_default(),
             price_estimation: TestDefault::test_default(),
+            partner_fee_registry: Default::default(),
         }
     }
 
@@ -258,6 +266,7 @@ impl Configuration {
             http_client: Default::default(),
             order_quoting: TestDefault::test_default(),
             price_estimation: TestDefault::test_default(),
+            partner_fee_registry: Default::default(),
         }
     }
 

@@ -42,6 +42,8 @@ mod get_order_pathviz;
 mod get_order_status;
 mod get_orders_by_tx;
 mod get_orders_by_uid;
+mod get_partner;
+mod get_partner_fees;
 mod get_solver_competition;
 mod get_solver_competition_v2;
 mod get_token_metadata;
@@ -50,6 +52,7 @@ mod get_trades;
 mod get_trades_v2;
 mod get_user_orders;
 mod post_order;
+mod post_partner;
 mod post_quote;
 mod post_quote_draft;
 mod put_app_data;
@@ -85,6 +88,11 @@ pub struct AppState {
     /// Present only when pathviz is enabled (`--enable-pathviz`); `None`
     /// makes the `/pathviz` routes answer 404.
     pub pathviz: Option<Arc<crate::pathviz::PathVizService>>,
+    /// Whether the self-serve partner-fee registration endpoint
+    /// (`POST /api/v1/partners`) is enabled (partner-fees Phase A). Ships
+    /// `false`; when disabled the endpoint returns 403 and no third party can
+    /// register, so the registry stays empty (flag-off posture).
+    pub partner_fee_registration_enabled: bool,
 }
 
 impl AppState {
@@ -178,6 +186,7 @@ pub fn handle_all_routes(
     api_config: configs::orderbook::api::ApiConfig,
     contracts: get_contract_info::ContractsInfo,
     pathviz: Option<Arc<crate::pathviz::PathVizService>>,
+    partner_fee_registration_enabled: bool,
 ) -> Router {
     let app_data_size_limit = app_data.size_limit();
 
@@ -193,6 +202,7 @@ pub fn handle_all_routes(
         hide_competition_before_deadline,
         contracts,
         pathviz,
+        partner_fee_registration_enabled,
     });
 
     let routes = [
@@ -320,6 +330,18 @@ pub fn handle_all_routes(
             get(get_total_surplus::get_total_surplus_handler),
         ),
         ("GET", "/api/v1/version", get(version::version_handler)),
+        // Partner-fee self-serve registry (partner-fees Phase A). Registration
+        // is gated by `partner_fee_registration_enabled` (ships off).
+        (
+            "POST",
+            "/api/v1/partners",
+            post(post_partner::post_partner_handler),
+        ),
+        (
+            "GET",
+            "/api/v1/partners/{address}",
+            get(get_partner::get_partner_handler),
+        ),
         // Routes under `/restricted/api/` are not exposed publicly. WAF and
         // infra rules restrict access to authenticated partners.
         // New internal-only endpoints MUST use this prefix.
@@ -327,6 +349,14 @@ pub fn handle_all_routes(
             "GET",
             "/restricted/api/v1/debug/order/{uid}",
             get(debug_order::debug_order_handler),
+        ),
+        // WAF-gated accrual feed consumed by the Phase B payout pipeline: the
+        // fee-bearing trades in a block window, with the full app-data so the
+        // indexer can attribute each fee to its recipient.
+        (
+            "GET",
+            "/restricted/api/v1/partner_fees",
+            get(get_partner_fees::get_partner_fees_handler),
         ),
         (
             "GET",
