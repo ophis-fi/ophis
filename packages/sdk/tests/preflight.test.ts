@@ -236,23 +236,78 @@ describe('ophisPreflight', () => {
       expect(isPreflightReady(results)).toBe(false);
     });
 
-    it('zeroes a failed balance read and can never report ready off it', async () => {
+    it('throws on a half-failed pair: balanceOf failed while allowance answered (unexplainable as a token revert)', async () => {
+      // A genuine non-ERC20 or reverting token fails BOTH calls of its pair.
+      // Exactly one failing is only explainable by a chunk split or partial
+      // transport failure, so zeroing it would be answering a batch that was
+      // not one snapshot.
       const { client } = stubClient([fail(), ok(10n ** 30n)]);
-      const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]);
-      expect(result?.balance).toBe(0n);
-      expect(result?.balanceReadFailed).toBe(true);
-      expect(result?.sufficientBalance).toBe(false);
-      expect(result?.ready).toBe(false);
+      const promise = ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/inconsistent read pair/);
+      await expect(promise).rejects.toThrow(TOKEN);
+      // Both entry states are named for support.
+      await expect(promise).rejects.toThrow(/balanceOf failed \(Error\) while allowance succeeded/);
     });
 
-    it('zeroes a failed allowance read; approvalNeeded then assumes nothing is approved', async () => {
+    it('throws on the other half-pair orientation: allowance failed while balanceOf answered', async () => {
       const { client } = stubClient([ok(10n ** 30n), fail()]);
-      const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 700n }]);
-      expect(result?.allowance).toBe(0n);
-      expect(result?.allowanceReadFailed).toBe(true);
-      expect(result?.sufficientAllowance).toBe(false);
-      expect(result?.ready).toBe(false);
-      expect(approvalNeeded(result as OphisPreflightResult)).toBe(700n);
+      const promise = ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 700n }]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/balanceOf succeeded while allowance failed/);
+    });
+
+    it('throws on a transport-shaped failure in a mixed batch, even though the whole pair failed', async () => {
+      // A chunk that dies on transport stamps its rejection reason on every
+      // call of that chunk (viem 2.48.8): the pair fails together, slipping
+      // past the pair rule, but the chain never answered those reads.
+      const transport = Object.assign(new Error('fetch failed'), { name: 'HttpRequestError' });
+      const { client } = stubClient([
+        ok(1_000n),
+        ok(1_000n),
+        { status: 'failure', error: transport, result: undefined },
+        { status: 'failure', error: transport, result: undefined },
+      ]);
+      const promise = ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 500n },
+        { token: TOKEN_2, owner: OWNER, required: 500n },
+      ]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/transport-shaped error HttpRequestError/);
+      await expect(promise).rejects.toThrow(TOKEN_2);
+    });
+
+    it('finds the transport shape down the cause chain (viem nests it under ContractFunctionExecutionError)', async () => {
+      const nested = Object.assign(new Error('multicall failed'), {
+        name: 'ContractFunctionExecutionError',
+        cause: Object.assign(new Error('took too long'), { name: 'TimeoutError' }),
+      });
+      const { client } = stubClient([
+        ok(1_000n),
+        ok(1_000n),
+        { status: 'failure', error: nested, result: undefined },
+        { status: 'failure', error: nested, result: undefined },
+      ]);
+      const promise = ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 500n },
+        { token: TOKEN_2, owner: OWNER, required: 500n },
+      ]);
+      await expect(promise).rejects.toThrow(/transport-shaped error TimeoutError/);
+    });
+
+    it('keeps zeroing a full-pair revert-shaped failure (the transport list is widening-only, not load-bearing)', async () => {
+      // Plain revert-shaped errors on BOTH calls of the pair stay the
+      // documented not-ready path; approvalNeeded then assumes nothing is
+      // approved.
+      const { client } = stubClient([ok(1_000n), ok(1_000n), fail(), fail()]);
+      const results = await ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 500n },
+        { token: TOKEN_2, owner: OWNER, required: 700n },
+      ]);
+      expect(results[1]?.ready).toBe(false);
+      expect(results[1]?.balanceReadFailed).toBe(true);
+      expect(results[1]?.allowanceReadFailed).toBe(true);
+      expect(approvalNeeded(results[1] as OphisPreflightResult)).toBe(700n);
     });
   });
 

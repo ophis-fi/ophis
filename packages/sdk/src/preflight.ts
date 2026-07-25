@@ -16,14 +16,29 @@
  *   pointless approve prompt. An all-failure batch is indistinguishable from
  *   an outage without trusting error shapes, so it is never answered; per
  *   token zeroing applies only to PARTIAL failures.
- * - the batch is one eth_call snapshot: chunking is disabled (batchSize: 0),
- *   so every balance and allowance in a preflight is read at one block and a
- *   token's two reads can never straddle a state change. (viem allows a
- *   client-level batch.multicall.batchSize to override the per-call value;
- *   even then, a chunk that fails only ever produces failure entries, which
- *   the guards above refuse to answer or zero fail-closed.)
- * - a per-token read failure (weird token, missing method) zeroes that value
- *   and pins its sufficiency to false, so a failed read can never report ready.
+ * - the batch is one eth_call snapshot FOR CLIENTS THAT HONOR batchSize: 0,
+ *   so every balance and allowance is read at one block and a token's two
+ *   reads cannot straddle a state change. viem PublicClients honor it by
+ *   default: in viem 2.48.8 the multicall action destructures batchSize from
+ *   the client-level batch.multicall config object with the per-call
+ *   parameter only as the fallback default, so our 0 wins unless the client
+ *   was constructed with an explicit batch.multicall.batchSize, which then
+ *   overrides the per-call value and can re-enable chunking.
+ * - clients that chunk anyway (that viem config, or any arbitrary structural
+ *   implementation, which this interface cannot force to honor batchSize)
+ *   are covered by two guards instead. Pair consistency: each check's
+ *   (balanceOf, allowance) pair must fail or succeed together, because a
+ *   genuine non-ERC20 or reverting token fails BOTH its calls; a half-failed
+ *   pair is only explainable by a chunk split or a partial transport failure
+ *   and THROWS. Transport shapes: a failure entry whose error chain carries
+ *   a transport-shaped name THROWS instead of zeroing, even when its pair
+ *   partner failed too. The transport name list is diagnostic-informed and
+ *   widening-only (a false positive refuses to answer, the fail-closed
+ *   direction); the pair rule and the all-failure rule are the load-bearing
+ *   gates.
+ * - a per-token read failure (weird token, missing method) that fails the
+ *   WHOLE pair with revert-shaped errors zeroes both values and pins their
+ *   sufficiency to false, so a failed read can never report ready.
  * - when the client exposes getChainId (viem PublicClient does), the connected
  *   chain is verified against the chainId argument and a mismatch THROWS.
  *   Shared deterministic addresses (the canonical vault relayer on 11 chains,
@@ -211,15 +226,100 @@ const readAmount = (entry: MulticallEntry, what: string): { value: bigint; faile
 };
 
 /**
+ * Failure-entry error names that indicate the CALL never reached the chain
+ * (viem transport layer), as opposed to the chain answering "this call
+ * reverts". In viem 2.48.8 a rejected chunk attaches its rejection reason to
+ * every call of that chunk, so these names surface when chunking happened
+ * anyway and a chunk died on transport; a genuine per-token failure inside a
+ * successful aggregate3 wraps RawContractError / AbiDecodingZeroDataError
+ * (revert-shaped) and never carries these.
+ *
+ * Diagnostic-informed, NOT load-bearing: the pair-consistency rule and the
+ * all-failure rule are the structural gates; this list only WIDENS the throw
+ * set (a false positive refuses to answer, which is the fail-closed
+ * direction). Unknown or absent error names deliberately do NOT widen:
+ * treating every opaque shape as transport would turn the diagnostic into a
+ * load-bearing gate in reverse and break custom clients that surface plain
+ * revert errors.
+ */
+const TRANSPORT_ERROR_NAMES: ReadonlySet<string> = new Set([
+  'HttpRequestError',
+  'RpcRequestError',
+  'TimeoutError',
+  'WebSocketRequestError',
+]);
+
+/** Collects error names down the cause chain (viem nests the transport error under ContractFunctionExecutionError). */
+const errorNameChain = (error: unknown): string[] => {
+  const names: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current !== null && typeof current === 'object'; depth += 1) {
+    const name = (current as { name?: unknown }).name;
+    if (typeof name === 'string') names.push(name);
+    current = (current as { cause?: unknown }).cause;
+  }
+  return names;
+};
+
+const describeEntry = (entry: MulticallEntry): string =>
+  entry.status === 'success' ? 'succeeded' : `failed (${errorNameChain(entry.error).join(' -> ') || 'no error name'})`;
+
+/**
+ * The mixed-batch guards for one check's (balanceOf, allowance) pair. Both
+ * exist because batchSize: 0 cannot be enforced on an arbitrary structural
+ * client (and viem lets a client-level batch.multicall.batchSize override the
+ * per-call value), so chunking may happen anyway and one chunk can die on
+ * transport while another succeeds, slipping past the all-failure gate.
+ *
+ * 1. Transport shape (widening-only): a failure whose error chain carries a
+ *    transport-shaped name was never answered by the chain; zeroing it would
+ *    report "insufficient funds" off a network error, so it throws even when
+ *    the pair partner failed too.
+ * 2. Pair consistency (load-bearing): a genuine non-ERC20 or reverting token
+ *    fails BOTH calls of its pair. Exactly one call failing is unexplainable
+ *    as a token revert; only a chunk split or partial transport failure
+ *    produces it, so it throws with both entry states named.
+ */
+const assertPairAnswerable = (token: Address, balanceEntry: MulticallEntry, allowanceEntry: MulticallEntry): void => {
+  for (const [call, entry] of [
+    ['balanceOf', balanceEntry],
+    ['allowance', allowanceEntry],
+  ] as const) {
+    if (entry.status !== 'failure') continue;
+    const transportName = errorNameChain(entry.error).find((name) => TRANSPORT_ERROR_NAMES.has(name));
+    if (transportName !== undefined) {
+      throw new OphisPreflightError(
+        `Ophis: ${call}(${token}) failed with the transport-shaped error ${transportName}; the call never reached the chain, ` +
+          'so zeroing it would report insufficient funds off a network failure. Refusing to answer.',
+        { cause: entry.error },
+      );
+    }
+  }
+  const balanceFailed = balanceEntry.status === 'failure';
+  if (balanceFailed !== (allowanceEntry.status === 'failure')) {
+    throw new OphisPreflightError(
+      `Ophis: inconsistent read pair for ${token}: balanceOf ${describeEntry(balanceEntry)} while allowance ${describeEntry(allowanceEntry)}. ` +
+        'A genuine token revert fails both calls of a pair; a half-failed pair is only explainable by a chunk split or ' +
+        'partial transport failure, so no result is returned.',
+      { cause: balanceFailed ? balanceEntry.error : allowanceEntry.error },
+    );
+  }
+};
+
+/**
  * Batched Multicall3 preflight for one or more orders on a chain. Two reads
  * per check (balanceOf, allowance), all in a single eth_call against the
- * canonical Multicall3 (chunking disabled, so the whole batch is one block
- * snapshot), with per-token failures tolerated (allowFailure) and zeroed
- * fail-closed. A batch in which EVERY call failed throws instead: that shape
- * is what a viem allowFailure batch degrades to during an RPC outage, and
- * answering it would read as zero balances. Note the single-check corollary:
- * one check whose balanceOf AND allowance both fail is an all-failure batch
- * and throws rather than reporting not-ready.
+ * canonical Multicall3 (chunking disabled via batchSize: 0, so on clients
+ * that honor it the whole batch is one block snapshot), with per-token
+ * failures tolerated (allowFailure) and zeroed fail-closed ONLY when a
+ * check's whole (balanceOf, allowance) pair failed with revert-shaped
+ * errors. Everything else throws: an all-failure batch (what a viem
+ * allowFailure batch degrades to during an RPC outage; answering would read
+ * as zero balances), a half-failed pair (unexplainable as a token revert;
+ * only a chunk split or partial transport failure produces it), and any
+ * failure whose error chain is transport-shaped. Note the single-check
+ * corollary: one check whose balanceOf AND allowance both fail is an
+ * all-failure batch and throws rather than reporting not-ready.
  *
  *   const [check] = await ophisPreflight(publicClient, 10, [
  *     { token: sellToken, owner, required: sellAmount + feeAmount },
@@ -308,8 +408,11 @@ export async function ophisPreflight(
   assertNotTotalFailure(entries);
 
   return resolved.map((check, index) => {
-    const balance = readAmount(entries[index * 2] as MulticallEntry, `balanceOf(${check.token})`);
-    const allowance = readAmount(entries[index * 2 + 1] as MulticallEntry, `allowance(${check.token})`);
+    const balanceEntry = entries[index * 2] as MulticallEntry;
+    const allowanceEntry = entries[index * 2 + 1] as MulticallEntry;
+    assertPairAnswerable(check.token, balanceEntry, allowanceEntry);
+    const balance = readAmount(balanceEntry, `balanceOf(${check.token})`);
+    const allowance = readAmount(allowanceEntry, `allowance(${check.token})`);
     // Sufficiency is pinned false on a failed read even though the zeroed
     // value already implies it (required > 0n is enforced above): the pin
     // survives any future loosening of that input guard.
