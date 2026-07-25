@@ -66,26 +66,47 @@ paths:
         outside of the original order's limit price.
       responses:
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order has been accepted.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/UID"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error during order validation.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderPostError"
         "403":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: "Forbidden, your account is deny-listed."
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No route was found quoting the order.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "429":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Too many order placements.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error adding an order.
         "503":
           description: >
@@ -94,6 +115,8 @@ paths:
             `InternalServiceError` code 3000). The response carries a
             `Retry-After` header (seconds); retry after that delay.
           headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
             Retry-After:
               description: Seconds to wait before retrying the request.
               schema:
@@ -127,18 +150,33 @@ paths:
               $ref: "#/components/schemas/OrderCancellations"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order(s) are cancelled.
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Malformed signature.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderCancellationError"
         "401":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid signature.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: One or more orders were not found and no orders were cancelled.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
   "/api/v1/orders/by_uids":
     post:
@@ -159,6 +197,9 @@ paths:
                 $ref: "#/components/schemas/UID"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: |
             The resulting full order data based on the request. Each element of the array is
             an object of the following format:
@@ -191,8 +232,14 @@ paths:
                     required:
                       - error
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Request array size larger than 128 or unable to parse request body as valid JSON.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Could not decode array values as order UID.
   "/api/v1/orders/{UID}":
     get:
@@ -206,14 +253,23 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Order"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order was not found.
     delete:
       operationId: cancelOrder
@@ -241,18 +297,33 @@ paths:
               $ref: "#/components/schemas/OrderCancellation"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order cancelled.
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Malformed signature.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderCancellationError"
         "401":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid signature.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order was not found.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
   "/api/v1/orders/{UID}/status":
     get:
@@ -266,6 +337,9 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >-
             The order status with a list of solvers that proposed solutions (if
             applicable).
@@ -274,6 +348,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/CompetitionOrderStatus"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID.
   "/api/v1/orders/{UID}/pathviz":
     get:
@@ -300,6 +377,9 @@ paths:
           description: Include the rendered base64 SVG as `svgBase64`.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The visualization graph (and optional rendered SVG).
           content:
             application/json:
@@ -328,8 +408,14 @@ paths:
                   - graph
                   - generatedAt
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: pathviz is disabled or the order was not found.
   "/api/v1/orders/{UID}/pathviz.svg":
     get:
@@ -350,14 +436,23 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The rendered SVG.
           content:
             image/svg+xml:
               schema:
                 type: string
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID or malformed render options.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: pathviz is disabled or the order was not found.
   "/api/v1/transactions/{txHash}/orders":
     get:
@@ -371,6 +466,9 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order(s).
           content:
             application/json:
@@ -379,6 +477,9 @@ paths:
                 items:
                   $ref: "#/components/schemas/Order"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid transaction hash.
   /api/v1/trades:
     get:
@@ -406,6 +507,9 @@ paths:
           required: false
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: |-
             ### If `owner` is specified:
 
@@ -463,6 +567,9 @@ paths:
           required: false
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: |-
             ### If `owner` is specified:
 
@@ -495,6 +602,9 @@ paths:
         you need access.**
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Batch auction.
           content:
             application/json:
@@ -533,6 +643,9 @@ paths:
           required: false
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The orders.
           content:
             application/json:
@@ -541,6 +654,9 @@ paths:
                 items:
                   $ref: "#/components/schemas/Order"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Problem with parameters like limit being too large.
   "/api/v1/token/{token}/native_price":
     get:
@@ -560,16 +676,28 @@ paths:
             $ref: "#/components/schemas/Address"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The estimated native price.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NativePriceResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error finding the price.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No liquidity was found.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unexpected error.
         "503":
           description: >
@@ -577,6 +705,8 @@ paths:
             or `InternalServiceError` code 3000). The response carries a
             `Retry-After` header (seconds); retry after that delay.
           headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
             Retry-After:
               description: Seconds to wait before retrying the request.
               schema:
@@ -603,18 +733,27 @@ paths:
               $ref: "#/components/schemas/OrderQuoteRequest"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Quoted order.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderQuoteResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error quoting order.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PriceEstimationError"
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             No route was found for the specified order (`NoLiquidity`, code
             2000). This is a final answer in the unroutable class
@@ -625,10 +764,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceEstimationError"
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "429":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Too many order quotes.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unexpected error quoting an order.
         "503":
           description: >
@@ -636,6 +784,8 @@ paths:
             or `InternalServiceError` code 3000). The response carries a
             `Retry-After` header (seconds); retry after that delay.
           headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
             Retry-After:
               description: Seconds to wait before retrying the request.
               schema:
@@ -681,12 +831,18 @@ paths:
               $ref: "#/components/schemas/QuoteDraftRequest"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Quote plus ready-to-sign order draft.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuoteDraftResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Error quoting the order (every `POST /api/v1/quote` failure
             surfaces identically here), or a draft-specific rejection:
@@ -701,6 +857,9 @@ paths:
                   - $ref: "#/components/schemas/QuoteDraftError"
                   - $ref: "#/components/schemas/PriceEstimationError"
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             No route was found for the specified order (`NoLiquidity`, code
             2000). This is a final answer in the unroutable class
@@ -711,10 +870,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/PriceEstimationError"
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "429":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Too many order quotes.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unexpected error building the draft.
         "503":
           description: >
@@ -722,6 +890,8 @@ paths:
             or `InternalServiceError` code 3000). The response carries a
             `Retry-After` header (seconds); retry after that delay.
           headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
             Retry-After:
               description: Seconds to wait before retrying the request.
               schema:
@@ -744,12 +914,18 @@ paths:
         a parallel table, so they cannot drift.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Contract info.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContractInfoResponse"
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unexpected error.
   "/api/v1/solver_competition/{auction_id}":
     get:
@@ -766,14 +942,23 @@ paths:
             type: integer
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid auction ID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this auction id.
   "/api/v1/solver_competition/by_tx_hash/{tx_hash}":
     get:
@@ -791,14 +976,23 @@ paths:
             $ref: "#/components/schemas/TransactionHash"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid transaction hash.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this `tx_hash`.
   /api/v1/solver_competition/latest:
     get:
@@ -809,12 +1003,18 @@ paths:
         Returns the competition information for the last seen auction_id.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available.
   "/api/v2/solver_competition/{auction_id}":
     get:
@@ -830,14 +1030,23 @@ paths:
             type: integer
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid auction ID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this auction id.
   "/api/v2/solver_competition/by_tx_hash/{tx_hash}":
     get:
@@ -854,14 +1063,23 @@ paths:
             $ref: "#/components/schemas/TransactionHash"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid transaction hash.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this `tx_hash`.
   /api/v2/solver_competition/latest:
     get:
@@ -871,12 +1089,18 @@ paths:
         Returns the competition information for the last seen auction_id.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available.
   /api/v1/version:
     get:
@@ -887,6 +1111,9 @@ paths:
         https://github.com/cowprotocol/services).
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Version
           content:
             text/plain: {}
@@ -902,14 +1129,23 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Full `appData`.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataObject"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid app data hash.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No full `appData` stored for this hash.
     put:
       operationId: registerAppDataByHash
@@ -933,22 +1169,37 @@ paths:
               $ref: "#/components/schemas/AppDataObject"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` already exists.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` was successfully registered.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error validating full `appData`
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error storing the full `appData`
   /api/v1/app_data:
     put:
@@ -966,22 +1217,37 @@ paths:
               $ref: "#/components/schemas/AppDataObject"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` already exists.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` was successfully registered.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error validating full `appData`
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error storing the full `appData`
   "/api/v1/users/{address}/total_surplus":
     get:
@@ -1000,12 +1266,18 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The total surplus.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TotalSurplus"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid address.
   "/restricted/api/v1/debug/simulation":
     post:
@@ -1023,21 +1295,36 @@ paths:
               $ref: "#/components/schemas/SimulationRequest"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Simulation request returned.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderSimulation"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Invalid JSON body, or `appData` is not valid JSON.
         "405":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order simulation endpoint is not enabled.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Request body failed schema validation: missing required field,
             wrong field type, zero `sellAmount`, or unrecognised `kind` value.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   "/restricted/api/v1/debug/simulation/{uid}":
     get:
@@ -1063,20 +1350,35 @@ paths:
             simulation uses the latest block.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Simulation request returned.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderSimulation"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Malformed path parameter (invalid order UID format) or invalid
             `block_number` query parameter.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order not found.
         "405":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order simulation endpoint is not enabled.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   "/restricted/api/v1/debug/order/{uid}":
     get:
@@ -1094,16 +1396,28 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Debug report returned.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DebugOrderResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID (malformed hex or wrong length).
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order not found.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   /api/v1/partners:
     post:
@@ -1140,12 +1454,18 @@ paths:
               $ref: "#/components/schemas/PartnerRegistrationRequest"
       responses:
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The recipient was registered and auto-activated.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PartnerResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Invalid label, signature, or an expired `issuedAt`.
           content:
@@ -1153,18 +1473,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/PartnerRegistrationError"
         "403":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Self-serve partner-fee registration is not enabled.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PartnerRegistrationError"
         "409":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The recipient or label is already registered.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PartnerRegistrationError"
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   "/api/v1/partners/{address}":
     get:
@@ -1179,20 +1508,32 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The partner registration record.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PartnerResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid address.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No partner registered for this address.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PartnerRegistrationError"
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   "/restricted/api/v1/partner_fees":
     get:
@@ -1237,14 +1578,27 @@ paths:
           description: Page size (default 1000, capped at 10000).
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The fee-bearing trades in the window.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PartnerFeeFeedResponse"
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
 components:
+  headers:
+    TraceId:
+      description: >
+        UUID identifying the request, mirroring the `traceId` field of error
+        bodies. Quote it when reporting API problems.
+      schema:
+        $ref: "#/components/schemas/TraceId"
   schemas:
     PartnerRegistrationRequest:
       type: object
@@ -2343,7 +2697,8 @@ components:
       description: >
         UUID identifying the request, mirroring the `X-Trace-Id` response
         header. Every response carries the header; error bodies repeat the
-        id in this field. Quote it when reporting API problems.
+        id in this field. Served by the self-hosted Ophis orderbook only.
+        Quote it when reporting API problems.
       type: string
       example: "01890a5d-ac96-774b-b104-3a2c463f04b6"
     OrderPostError:
