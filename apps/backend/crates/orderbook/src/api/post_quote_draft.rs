@@ -605,10 +605,15 @@ mod tests {
     #[test]
     fn default_app_data_passes_the_backends_own_validator_and_fee_floor() {
         // The defaulted document must survive order ingress: valid JSON,
-        // Volume policy, allowlisted recipient.
-        let validated = app_data::Validator::new(8192)
-            .validate(default_draft_app_data(DEFAULT_SLIPPAGE_BPS).as_bytes())
-            .expect("the default draft appData must validate");
+        // Volume policy, allowlisted recipient. Use the compile-time Ophis-allow
+        // policy (the Ophis Safe is always allowed): the same base the live
+        // registry composes on top of, and exactly what a defaulted draft targets.
+        let validated = app_data::Validator::new(
+            8192,
+            std::sync::Arc::new(app_data::AllowlistRecipientPolicy),
+        )
+        .validate(default_draft_app_data(DEFAULT_SLIPPAGE_BPS).as_bytes())
+        .expect("the default draft appData must validate");
         let fee = validated.protocol.partner_fee.iter().next().unwrap();
         assert_eq!(fee.recipient, app_data::OPHIS_PARTNER_FEE_RECIPIENT);
         // The 5 bps draft rate must clear the non-stable ingress floor for

@@ -20,7 +20,8 @@
 //! - 3xxx retryable upstream failures. Served as HTTP 503 with a
 //!   `Retry-After` header; clients may retry after the indicated delay.
 //! - 4xxx order errors: 4001-4018 signature/field validation, 4100-4106
-//!   balance + limits, 4200-4204 order lifecycle, 4400 access.
+//!   balance + limits, 4200-4204 order lifecycle, 4300-4305 partner-fee
+//!   registration, 4400 access.
 //! - 5xxx internal errors.
 //!
 //! CoW-hosted chains never return these codes; only the self-hosted
@@ -95,6 +96,13 @@ const CODES: &[(&str, u16)] = &[
     ("OrderFullyExecuted", 4202),
     ("OrderExpired", 4203),
     ("OnChainOrder", 4204),
+    // 4300-4305: partner-fee registration (partner-fees Phase A).
+    ("InvalidPartnerSignature", 4300),
+    ("PartnerRegistrationExpired", 4301),
+    ("InvalidPartnerLabel", 4302),
+    ("PartnerAlreadyRegistered", 4303),
+    ("PartnerNotFound", 4304),
+    ("PartnerRegistrationDisabled", 4305),
     // 4400: access.
     ("Forbidden", 4400),
     // 5xxx: internal errors.
@@ -203,6 +211,7 @@ mod tests {
                     | 4001..=4018
                     | 4100..=4106
                     | 4200..=4204
+                    | 4300..=4305
                     | 4400
                     | 5000..=5001
             );

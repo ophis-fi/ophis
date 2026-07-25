@@ -8,8 +8,10 @@ use {
     serde::{Deserialize, Deserializer, Serialize, Serializer, de},
     serde_with::serde_as,
     std::{
+        collections::HashMap,
         fmt::{self, Display},
         slice::Iter,
+        sync::Arc,
     },
 };
 
@@ -44,6 +46,83 @@ pub const PARTNER_FEE_RECIPIENT_ALLOWLIST: &[Address] = &[
 /// named so the per-recipient fee floor and the autopilot clamp can key on it.
 pub const OPHIS_PARTNER_FEE_RECIPIENT: Address =
     address!("0x858f0F5eE954846D47155F5203c04aF1819eCeF8");
+
+/// The program-wide cap on a THIRD-PARTY partner's Volume-policy bps
+/// (partner-fees Phase A). No self-serve registered partner can charge more
+/// than this, even if a future admin path sets a higher per-partner
+/// `max_volume_bps`: the registry snapshot clamps every cap down to this value
+/// before it reaches the [`RecipientPolicy`]. Sits under the autopilot's 100 bps
+/// operator clamp (`max_partner_fee`), so the auto-activation worst case is a
+/// bounded 0.9% (owner decision 16 / 19; the plan's C3/F6 bounding control).
+/// Pinned in lockstep with `packages/sdk/src/partner-fee.ts`
+/// (`OPHIS_MAX_PARTNER_REQUEST_BPS`).
+pub const MAX_THIRD_PARTY_VOLUME_BPS: u64 = 90;
+
+/// Maximum number of `partnerFee` entries a single app-data document may carry.
+/// Bounds the per-order fee-stacking surface and the registry lookups the
+/// ingress validator performs per order.
+pub const MAX_PARTNER_FEE_ENTRIES: usize = 3;
+
+/// The partner share of net partner-fee revenue, in bps (owner decision 20):
+/// the partner earns 80%, Ophis retains 20%. Defined once here and shared so
+/// the Phase B accrual pipeline reads a single source of truth (mirrored in
+/// `apps/rebate-indexer/src/partnerFees/split.ts` as
+/// `PARTNER_FEE_PARTNER_SHARE_BPS`). Phase A ships no payout logic; this is the
+/// accrual-ready constant only.
+pub const PARTNER_FEE_PARTNER_SHARE_BPS: u64 = 8000;
+
+/// Upper Volume-bps ceiling `validate()` applies to the always-allowed Ophis
+/// recipient: the 100% (10000 bps) autopilot-clamp ceiling. `validate()` is
+/// token-blind, so the true lower bound (the token-pair floor) is enforced in
+/// the order validator and the autopilot; on the upper side the only real bound
+/// is the operator-set `max_partner_fee`. Keeping the Ophis ceiling at 10000
+/// preserves the pre-registry behavior where any Volume bps to the Ophis Safe
+/// is accepted at `validate()`.
+const OPHIS_VALIDATE_VOLUME_CEILING_BPS: u64 = 10_000;
+
+/// Decides whether a `partnerFee` recipient may receive a fee and, if so, the
+/// maximum Volume-policy bps it may charge at ingress. This is the single
+/// abstraction that makes partner-fee validation registry-aware without the
+/// `app-data` crate depending on the database: the orderbook and autopilot wire
+/// a Postgres-backed snapshot (`shared::partner_fee_registry::PartnerFeeRegistry`)
+/// that implements this trait, while tests and read paths use the built-in
+/// policies below.
+pub trait RecipientPolicy: Send + Sync {
+    /// The maximum Volume-policy bps `recipient` may charge, or `None` if the
+    /// recipient is not permitted to receive a partner fee at all.
+    fn allowed_volume_bps(&self, recipient: &Address) -> Option<u64>;
+}
+
+/// Recipient policy backed solely by the compile-time
+/// [`PARTNER_FEE_RECIPIENT_ALLOWLIST`] (the Ophis Safe). This is the pre-registry
+/// behavior: it allows only the always-allowed Ophis recipient and rejects every
+/// third party. Used as the default/test policy and as the base the live
+/// registry composes on top of (the Ophis Safe is always allowed regardless of
+/// registry contents).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AllowlistRecipientPolicy;
+
+impl RecipientPolicy for AllowlistRecipientPolicy {
+    fn allowed_volume_bps(&self, recipient: &Address) -> Option<u64> {
+        PARTNER_FEE_RECIPIENT_ALLOWLIST
+            .contains(recipient)
+            .then_some(OPHIS_VALIDATE_VOLUME_CEILING_BPS)
+    }
+}
+
+/// Recipient policy that permits ANY recipient at the uncapped ceiling. Used on
+/// READ paths only (e.g. the replaced-order app-data lookup): those paths must
+/// parse stored orders unconditionally so that suspending a recipient in the
+/// registry never bricks an order that already passed ingress. Never wire this
+/// into an ingress path.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PermissiveRecipientPolicy;
+
+impl RecipientPolicy for PermissiveRecipientPolicy {
+    fn allowed_volume_bps(&self, _recipient: &Address) -> Option<u64> {
+        Some(OPHIS_VALIDATE_VOLUME_CEILING_BPS)
+    }
+}
 
 /// Standard Ophis volume fee (0.10%) and the reduced same-chain-stablecoin /
 /// boosted rate (0.01%). These MUST stay in lockstep with the frontend
@@ -349,20 +428,44 @@ impl serde::Serialize for FeePolicy {
 pub struct Validator {
     /// App data size limit (in bytes).
     size_limit: usize,
+    /// Decides which partner-fee recipients are permitted and their per-partner
+    /// Volume-bps cap. Production wires the live registry snapshot; read paths
+    /// use [`PermissiveRecipientPolicy`]; tests use [`AllowlistRecipientPolicy`].
+    recipient_policy: Arc<dyn RecipientPolicy>,
 }
 
 #[cfg(any(test, feature = "test_helpers"))]
 impl Default for Validator {
     fn default() -> Self {
-        Self { size_limit: 8192 }
+        Self {
+            size_limit: 8192,
+            recipient_policy: Arc::new(AllowlistRecipientPolicy),
+        }
     }
 }
 
 impl Validator {
     /// Creates a new app data [`Validator`] with the provided app data
-    /// `size_limit` (in bytes).
-    pub fn new(size_limit: usize) -> Self {
-        Self { size_limit }
+    /// `size_limit` (in bytes) and partner-fee `recipient_policy`. Ingress
+    /// callers pass the live registry snapshot so partner-fee validation is
+    /// registry-aware (resolution 6: output-hooks rebases onto this
+    /// constructor).
+    pub fn new(size_limit: usize, recipient_policy: Arc<dyn RecipientPolicy>) -> Self {
+        Self {
+            size_limit,
+            recipient_policy,
+        }
+    }
+
+    /// Creates a [`Validator`] that permits any partner-fee recipient
+    /// ([`PermissiveRecipientPolicy`]). For READ paths only (e.g. the
+    /// replaced-order app-data lookup): stored orders must parse unconditionally
+    /// so a later suspension never bricks them. Never use on an ingress path.
+    pub fn permissive(size_limit: usize) -> Self {
+        Self {
+            size_limit,
+            recipient_policy: Arc::new(PermissiveRecipientPolicy),
+        }
     }
 
     /// Returns the app data size limit (in bytes).
@@ -387,7 +490,7 @@ impl Validator {
 
         let document = String::from_utf8(full_app_data.to_vec())?;
         let protocol = parse(full_app_data)?;
-        validate_partner_fees(&protocol.partner_fee)?;
+        validate_partner_fees(self.recipient_policy.as_ref(), &protocol.partner_fee)?;
 
         Ok(ValidatedAppData {
             hash: AppDataHash(hash_full_app_data(full_app_data)),
@@ -397,42 +500,69 @@ impl Validator {
     }
 }
 
-/// Rejects partner-fee entries whose `Surplus` or `PriceImprovement` policies
-/// exceed CIP-75 bps caps, AND whose `recipient` is not registered in
-/// [`PARTNER_FEE_RECIPIENT_ALLOWLIST`]. Volume-policy bps are bounded
-/// downstream by the operator-set global `max_partner_fee`; the recipient
-/// check applies uniformly to all policy variants.
-fn validate_partner_fees(partner_fees: &PartnerFees) -> Result<()> {
+/// Validates the partner-fee entries of an app-data document against the
+/// registry-aware `policy` (partner-fees Phase A). Enforces, in order:
+///
+/// 1. the per-document entry cap ([`MAX_PARTNER_FEE_ENTRIES`]);
+/// 2. that each `recipient` is permitted by `policy` (the always-allowed Ophis
+///    Safe, or a registered + active third-party recipient); an unknown or
+///    suspended recipient is rejected;
+/// 3. Volume policy only: `Surplus`/`PriceImprovement` partner fees carry no
+///    enforced lower bound, so accepting them would reopen the fee-bypass the
+///    Volume floor closes (an attacker would just switch policy variant);
+/// 4. that the AGGREGATE Volume bps to any one recipient, summed across ALL its
+///    entries in the document, does not exceed its registered per-partner cap
+///    (already clamped to [`MAX_THIRD_PARTY_VOLUME_BPS`] by the registry). The
+///    sum is checked, not each entry, so repeating a recipient across multiple
+///    entries cannot stack past its cap (e.g. two 50 bps entries for a
+///    50-bps-capped recipient is rejected).
+///
+/// The token-pair-aware Volume MINIMUM (the floor) is enforced in the order
+/// validator (which has the sell/buy tokens in scope) and re-applied as an
+/// upward clamp in the autopilot; this layer is token-blind. On the upper side
+/// the Ophis recipient is bounded only by the operator-set global
+/// `max_partner_fee`; a third party is additionally capped here.
+fn validate_partner_fees(policy: &dyn RecipientPolicy, partner_fees: &PartnerFees) -> Result<()> {
+    let count = partner_fees.iter().count();
+    if count > MAX_PARTNER_FEE_ENTRIES {
+        return Err(anyhow!(
+            "partner fee document declares {count} entries, exceeding the maximum \
+             of {MAX_PARTNER_FEE_ENTRIES}"
+        ));
+    }
+    // Running Volume-bps total per recipient, so the per-partner cap binds
+    // against the aggregate rather than each entry.
+    let mut per_recipient_bps: HashMap<Address, u64> = HashMap::new();
     for fee in partner_fees.iter() {
-        if !PARTNER_FEE_RECIPIENT_ALLOWLIST.contains(&fee.recipient) {
+        let Some(max_bps) = policy.allowed_volume_bps(&fee.recipient) else {
             return Err(anyhow!(
-                "partner fee recipient {recipient:?} is not on the registered \
-                 partner-fee recipient allowlist. If this is a legitimate new \
-                 partner, add the address to PARTNER_FEE_RECIPIENT_ALLOWLIST in \
-                 crates/app-data/src/app_data.rs after independent verification \
-                 of the recipient multisig.",
+                "partner fee recipient {recipient:?} is not a registered, active \
+                 partner-fee recipient. Third parties must register via \
+                 POST /api/v1/partners (auto-activated at the default cap); the \
+                 Ophis partner-fee Safe is always allowed.",
                 recipient = fee.recipient,
             ));
-        }
-        // Ophis charges a CIP-75 VOLUME fee only. A fee to an allowlisted
-        // (Ophis-controlled) recipient using the Surplus or PriceImprovement
-        // policy is rejected outright: those variants carry no enforced lower
-        // bound, so accepting them would reopen the fee-bypass that the Volume
-        // floor closes (an attacker would just switch policy variant). The
-        // Volume minimum-bps floor is token-pair-aware and enforced in the order
-        // validator (which has the sell/buy tokens in scope) and re-applied as an
-        // upward clamp in the autopilot; nothing token-blind to check here. A
-        // Volume fee has no per-order upper cap at validation: it is bounded above
-        // only by the autopilot's operator-set global `max_partner_fee`.
+        };
         match fee.policy {
             FeePolicy::Surplus { .. } | FeePolicy::PriceImprovement { .. } => {
                 return Err(anyhow!(
-                    "partner fee to an Ophis-allowlisted recipient must use the \
-                     Volume policy; Surplus/PriceImprovement partner fees are not \
-                     accepted (no enforced lower bound)."
+                    "partner fee to recipient {recipient:?} must use the Volume \
+                     policy; Surplus/PriceImprovement partner fees are not \
+                     accepted (no enforced lower bound).",
+                    recipient = fee.recipient,
                 ));
             }
-            FeePolicy::Volume { .. } => continue,
+            FeePolicy::Volume { bps } => {
+                let total = per_recipient_bps.entry(fee.recipient).or_insert(0);
+                *total = total.saturating_add(bps);
+                if *total > max_bps {
+                    return Err(anyhow!(
+                        "aggregate partner fee of {total} bps to recipient \
+                         {recipient:?} exceeds the registered cap of {max_bps} bps",
+                        recipient = fee.recipient,
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -1176,7 +1306,7 @@ mod tests {
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
             err.to_string()
-                .contains("is not on the registered partner-fee recipient allowlist"),
+                .contains("is not a registered, active"),
             "unexpected error: {err}"
         );
     }
@@ -1192,7 +1322,7 @@ mod tests {
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
             err.to_string()
-                .contains("is not on the registered partner-fee recipient allowlist"),
+                .contains("is not a registered, active"),
             "unexpected error: {err}"
         );
     }
@@ -1212,8 +1342,169 @@ mod tests {
         let err = validator.validate(doc.as_bytes()).unwrap_err();
         assert!(
             err.to_string()
-                .contains("is not on the registered partner-fee recipient allowlist"),
+                .contains("is not a registered, active"),
             "unexpected error: {err}"
         );
+    }
+
+    /// A test recipient policy that registers an arbitrary third party at a
+    /// chosen cap (mirrors what the live Postgres-backed registry produces).
+    struct TestRegistryPolicy {
+        recipient: Address,
+        cap: u64,
+    }
+
+    impl RecipientPolicy for TestRegistryPolicy {
+        fn allowed_volume_bps(&self, recipient: &Address) -> Option<u64> {
+            // The Ophis Safe is always allowed (uncapped at validate), exactly
+            // as the live registry composes it on top of the snapshot.
+            if PARTNER_FEE_RECIPIENT_ALLOWLIST.contains(recipient) {
+                return Some(OPHIS_VALIDATE_VOLUME_CEILING_BPS);
+            }
+            (recipient == &self.recipient).then_some(self.cap)
+        }
+    }
+
+    const THIRD_PARTY: Address = address!("0xabababababababababababababababababababab");
+
+    fn validator_with(policy: impl RecipientPolicy + 'static) -> Validator {
+        Validator::new(8192, Arc::new(policy))
+    }
+
+    #[test]
+    fn registered_third_party_within_cap_is_accepted() {
+        // A registered, active third party at the 50 bps default cap: a Volume
+        // fee at or below the cap validates.
+        let validator = validator_with(TestRegistryPolicy {
+            recipient: THIRD_PARTY,
+            cap: 50,
+        });
+        for bps in [1u64, 25, 50] {
+            let doc = partner_fee_json(&format!(
+                r#"{{ "volumeBps": {bps}, "recipient": "{THIRD_PARTY:?}" }}"#
+            ));
+            validator
+                .validate(doc.as_bytes())
+                .unwrap_or_else(|err| panic!("{bps} bps within the 50 bps cap was rejected: {err}"));
+        }
+    }
+
+    #[test]
+    fn registered_third_party_over_cap_is_rejected() {
+        // Above the registered per-partner cap: rejected. This is the ingress
+        // bound that keeps the auto-activation worst case bounded (C3/F6).
+        let validator = validator_with(TestRegistryPolicy {
+            recipient: THIRD_PARTY,
+            cap: 50,
+        });
+        let doc = partner_fee_json(&format!(
+            r#"{{ "volumeBps": 51, "recipient": "{THIRD_PARTY:?}" }}"#
+        ));
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the registered cap"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn duplicate_entries_cannot_stack_past_the_per_partner_cap() {
+        // Two 50 bps Volume entries to the SAME 50-bps-capped recipient sum to
+        // 100 bps and must be rejected: the cap binds against the aggregate, not
+        // per entry, so duplicate-entry stacking cannot exceed it.
+        let validator = validator_with(TestRegistryPolicy {
+            recipient: THIRD_PARTY,
+            cap: 50,
+        });
+        let one = format!(r#"{{ "volumeBps": 50, "recipient": "{THIRD_PARTY:?}" }}"#);
+        let doc = partner_fee_json(&format!("[{one},{one}]"));
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("aggregate partner fee"),
+            "unexpected error: {err}"
+        );
+
+        // Two entries summing to exactly the cap (30 + 20) are accepted.
+        let doc = partner_fee_json(&format!(
+            r#"[{{ "volumeBps": 30, "recipient": "{THIRD_PARTY:?}" }},
+                {{ "volumeBps": 20, "recipient": "{THIRD_PARTY:?}" }}]"#
+        ));
+        validator
+            .validate(doc.as_bytes())
+            .expect("entries summing to exactly the cap must be accepted");
+    }
+
+    #[test]
+    fn unregistered_third_party_is_rejected_even_when_registry_has_others() {
+        // A recipient the policy does not know is rejected, regardless of other
+        // registered recipients (suspension produces the same None result).
+        let validator = validator_with(TestRegistryPolicy {
+            recipient: THIRD_PARTY,
+            cap: 50,
+        });
+        let doc = partner_fee_json(
+            r#"{ "volumeBps": 10, "recipient": "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd" }"#,
+        );
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("is not a registered, active"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn third_party_surplus_policy_is_rejected() {
+        // Volume-only applies to third parties too: a Surplus fee to a
+        // registered third party is rejected (no enforced lower bound).
+        let validator = validator_with(TestRegistryPolicy {
+            recipient: THIRD_PARTY,
+            cap: 90,
+        });
+        let doc = partner_fee_json(&format!(
+            r#"{{ "surplusBps": 20, "maxVolumeBps": 50, "recipient": "{THIRD_PARTY:?}" }}"#
+        ));
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("must use the Volume policy"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn entry_cap_rejects_more_than_max_entries() {
+        // More than MAX_PARTNER_FEE_ENTRIES fee entries is rejected even when
+        // every recipient is allowlisted and every policy is Volume.
+        let validator = Validator::default();
+        let one = r#"{ "volumeBps": 10, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#;
+        let doc = partner_fee_json(&format!("[{one},{one},{one},{one}]"));
+        let err = validator.validate(doc.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeding the maximum"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn entry_cap_allows_exactly_max_entries() {
+        let validator = Validator::default();
+        let one = r#"{ "volumeBps": 10, "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8" }"#;
+        let doc = partner_fee_json(&format!("[{one},{one},{one}]"));
+        validator
+            .validate(doc.as_bytes())
+            .expect("exactly MAX_PARTNER_FEE_ENTRIES entries must validate");
+    }
+
+    #[test]
+    fn permissive_policy_accepts_any_recipient() {
+        // Read paths use the permissive policy so stored orders always parse,
+        // even for a recipient that would be rejected at ingress (e.g. after a
+        // later suspension).
+        let validator = Validator::permissive(8192);
+        let doc = partner_fee_json(
+            r#"{ "volumeBps": 100, "recipient": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }"#,
+        );
+        validator
+            .validate(doc.as_bytes())
+            .expect("permissive policy must accept any recipient on read paths");
     }
 }

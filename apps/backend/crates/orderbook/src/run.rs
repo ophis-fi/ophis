@@ -10,7 +10,7 @@ use {
         quoter::QuoteHandler,
     },
     account_balances::{self, BalanceSimulator},
-    alloy::providers::Provider,
+    alloy::{primitives::Address, providers::Provider},
     anyhow::{Context, Result, anyhow},
     app_data::Validator,
     bad_tokens::list_based::DenyListedTokens,
@@ -42,6 +42,7 @@ use {
     shared::{
         order_quoting::{self, OrderQuoter},
         order_validation::{OrderValidPeriodConfiguration, OrderValidator},
+        partner_fee_registry::PartnerFeeRegistry,
     },
     simulator::swap_simulator::SwapSimulator,
     std::{future::Future, net::SocketAddr, sync::Arc, time::Duration},
@@ -443,7 +444,45 @@ pub async fn run(config: Configuration) {
     // them.
     let fast_quoter = create_quoter(fast_price_estimator, QuoteVerificationMode::Unverified);
 
-    let app_data_validator = Validator::new(config.app_data_size_limit);
+    // Partner-fee recipient enforcement policy (partner-fees Phase A). The
+    // `registration-enabled` flag is the MASTER SWITCH for the whole feature: OFF
+    // (default, every checked-in config) means the registry is neither loaded nor
+    // consulted, and the app-data validator uses the compile-time Ophis-only
+    // policy, so ONLY the always-allowed Ophis partner-fee Safe passes and an
+    // active partner_fee_recipients row is NOT honored. That reproduces the
+    // pre-registry behavior byte for byte. ON wires the live 30s registry
+    // snapshot as the ingress source of truth for third-party recipients (the
+    // per-row `status` suspend is then the granular control).
+    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config
+        .partner_fee_registry
+        .registration_enabled
+    {
+        let partner_fee_registry = Arc::new(PartnerFeeRegistry::empty());
+        let pool = postgres_write.pool.clone();
+        let loader = move || {
+            let pool = pool.clone();
+            async move {
+                let mut ex = pool.acquire().await?;
+                let rows = database::partner_fee_recipients::active_recipients(&mut ex).await?;
+                anyhow::Ok(
+                    rows.into_iter()
+                        .map(|(recipient, cap)| (Address::from(recipient.0), cap.max(0) as u64))
+                        .collect::<Vec<_>>(),
+                )
+            }
+        };
+        if let Err(err) = partner_fee_registry.refresh(&loader).await {
+            tracing::warn!(?err, "initial partner-fee registry load failed; starting empty");
+        }
+        partner_fee_registry
+            .clone()
+            .spawn(config.partner_fee_registry.refresh_interval, loader);
+        partner_fee_registry
+    } else {
+        Arc::new(app_data::AllowlistRecipientPolicy)
+    };
+
+    let app_data_validator = Validator::new(config.app_data_size_limit, recipient_policy);
     let chainalysis_oracle = ChainalysisOracle::Instance::deployed(&web3.provider)
         .await
         .ok();
@@ -562,6 +601,7 @@ pub async fn run(config: Configuration) {
         config.api,
         contracts_info,
         pathviz_service,
+        config.partner_fee_registry.registration_enabled,
     );
 
     let mut metrics_address = config.bind_address;
@@ -639,6 +679,7 @@ fn serve_api(
     api_config: configs::orderbook::api::ApiConfig,
     contracts_info: api::get_contract_info::ContractsInfo,
     pathviz: Option<Arc<crate::pathviz::PathVizService>>,
+    partner_fee_registration_enabled: bool,
 ) -> JoinHandle<()> {
     let app = api::handle_all_routes(
         database,
@@ -653,6 +694,7 @@ fn serve_api(
         api_config,
         contracts_info,
         pathviz,
+        partner_fee_registration_enabled,
     );
     tracing::info!(%address, "serving order book");
 

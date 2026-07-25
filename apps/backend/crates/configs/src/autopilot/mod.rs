@@ -164,6 +164,19 @@ pub struct Configuration {
     /// 1inch, quote verification, balance overrides, etc.).
     #[serde(default)]
     pub price_estimation: PriceEstimation,
+
+    /// Self-serve partner-fee recipient registry (partner-fees Phase A).
+    /// `registration_enabled` is the MASTER ENABLE for the whole feature and the
+    /// autopilot honors it exactly as the orderbook does: when false the
+    /// autopilot uses the Ophis-only policy and drops ALL third-party partner
+    /// fees; when true it consults the same active-recipient snapshot as the
+    /// orderbook (a defense-in-depth filter). It MUST be set identically in BOTH
+    /// the orderbook and autopilot configs, or partner fees are honored at
+    /// ingress but silently dropped at settlement (registered partners earn
+    /// nothing). `refresh_interval` sets how quickly a registration or suspension
+    /// takes effect here.
+    #[serde(default)]
+    pub partner_fee_registry: crate::partner_fee_registry::PartnerFeeRegistryConfig,
 }
 
 impl Configuration {
@@ -227,6 +240,7 @@ impl Configuration {
             http_client: Default::default(),
             order_quoting: TestDefault::test_default(),
             price_estimation: TestDefault::test_default(),
+            partner_fee_registry: Default::default(),
         }
     }
 
@@ -258,6 +272,7 @@ impl Configuration {
             http_client: Default::default(),
             order_quoting: TestDefault::test_default(),
             price_estimation: TestDefault::test_default(),
+            partner_fee_registry: Default::default(),
         }
     }
 
