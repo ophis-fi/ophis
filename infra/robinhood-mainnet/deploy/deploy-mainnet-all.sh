@@ -55,7 +55,10 @@
 
 set -euo pipefail
 
-REPO_ROOT="/Users/scep/greg"
+# Derive the repo root from THIS script's location (infra/robinhood-mainnet/deploy/)
+# so the ceremony runs from a clean worktree instead of a hardcoded checkout that
+# may sit on another branch with live-infra edits. Override with REPO_ROOT=... .
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 ENV_FILE="$REPO_ROOT/infra/robinhood-mainnet/.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then

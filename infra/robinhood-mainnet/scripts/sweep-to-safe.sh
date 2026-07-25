@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Sweep accumulated CIP-75 partner-fee buffer from the Ophis OP Settlement
-# contract to the partner-fee recipient Safe.
+# Sweep accumulated CIP-75 partner-fee buffer from the Ophis Robinhood (4663)
+# Settlement contract to the partner-fee recipient Safe.
 #
 # Mechanism: `forge script SweepSettlementBuffer` constructs a `settle()`
 # call with empty trades + post-interactions that transfer the Settlement
@@ -8,7 +8,7 @@
 # (allowlisted as solver via Safe vote 2026-05-20) signs and broadcasts.
 #
 # Background: docs/audits/2026-05-20-cip75-partner-fee-bypass.md option B1.
-# On our OP fork at 0x310784c7…, CIP-75 fees accumulate in Settlement
+# On our sovereign forks, CIP-75 fees accumulate in Settlement
 # rather than transferring atomically to the recipient. Without this sweep,
 # the buffer is recycled into future-trader price improvement (CoW's
 # default behavior on chains they operate), netting Ophis $0 revenue.
@@ -70,8 +70,28 @@ PK_PATH="${OPHIS_SUBMITTER_KEY_PATH:-/Users/ophis-driver/.config/submitter.key}"
 command -v forge >/dev/null 2>&1 || { echo "ERROR: forge (foundry) not in PATH" >&2; exit 3; }
 [[ -d "$CONTRACTS_DIR" ]] || { echo "ERROR: contracts dir not found at $CONTRACTS_DIR" >&2; exit 3; }
 
-# Driver-submitter EOA (must match the PK at PK_PATH)
-SUBMITTER_EOA="0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+# Driver-submitter EOA (must match the PK at PK_PATH) and the Settlement to
+# sweep. BOTH are read from the stack .env, which the deploy ceremony writes,
+# so they can never drift from what was actually deployed/allowlisted on 4663.
+# These were previously hardcoded to the OP stack's submitter and Settlement -
+# copied over with the scaffold and never re-pointed, which would have run every
+# forge simulation as the wrong sender against the wrong contract.
+ENV_FILE="$REPO_ROOT/infra/robinhood-mainnet/.env"
+read_env() {  # $1=key -> value from .env ("" if absent); tr strips quotes/spaces
+  [[ -f "$ENV_FILE" ]] || return 0
+  grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\042\047 ' || true
+}
+SUBMITTER_EOA="${ROBINHOOD_SUBMITTER_ADDR:-$(read_env ROBINHOOD_SUBMITTER_ADDR)}"
+SETTLEMENT_ADDR="${OPHIS_SETTLEMENT_ROBINHOOD:-$(read_env OPHIS_SETTLEMENT_ROBINHOOD)}"
+
+[[ "$SUBMITTER_EOA" =~ ^0x[0-9a-fA-F]{40}$ ]] || {
+  echo "ERROR: ROBINHOOD_SUBMITTER_ADDR is not a 20-byte address." >&2
+  echo "       Set it in $ENV_FILE (written by deploy/deploy-mainnet-all.sh)." >&2
+  exit 3; }
+[[ "$SETTLEMENT_ADDR" =~ ^0x[0-9a-fA-F]{40}$ ]] || {
+  echo "ERROR: OPHIS_SETTLEMENT_ROBINHOOD is not a 20-byte address." >&2
+  echo "       Set it in $ENV_FILE (written by the deploy ceremony)." >&2
+  exit 3; }
 
 cd "$CONTRACTS_DIR"
 
@@ -85,7 +105,7 @@ COMMON_ARGS=(
 
 if [[ "$BROADCAST" -eq 1 ]]; then
   echo "==> LIVE BROADCAST mode"
-  echo "    sweep Settlement 0x310784c7… → Safe 0x858f0F5e…CeF8"
+  echo "    sweep Settlement $SETTLEMENT_ADDR → Safe 0x858f0F5e…CeF8"
   echo "    using driver-submitter EOA $SUBMITTER_EOA"
   echo ""
 
