@@ -55,7 +55,10 @@
 
 set -euo pipefail
 
-REPO_ROOT="/Users/scep/greg"
+# Derive the repo root from THIS script's location (infra/robinhood-mainnet/deploy/)
+# so the ceremony runs from a clean worktree instead of a hardcoded checkout that
+# may sit on another branch with live-infra edits. Override with REPO_ROOT=... .
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 ENV_FILE="$REPO_ROOT/infra/robinhood-mainnet/.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -95,6 +98,38 @@ CHAIN_ID=$(cast chain-id --rpc-url "$RPC")
 if [[ "$CHAIN_ID" != "4663" ]]; then
   echo "ERROR: RPC $RPC reports chainId $CHAIN_ID, expected 4663 (Robinhood)" >&2
   exit 8
+fi
+
+# ALREADY-RAN GUARD. This script is NOT safe to re-run once [2/4] has succeeded:
+# [1/4] is idempotent (hardhat-deploy reuses deployments/robinhood-mainnet/*),
+# but [2/4] shells out to `cast send --create` with no existence check, so a
+# re-run silently redeploys Balances/Signatures/HooksTrampoline at NEW addresses
+# - burning gas and orphaning the three that passed the [GATE] - and then fails
+# at addSolver anyway once the Ledger is no longer manager. The deployment
+# records are committed to the repo, so a clean checkout hits exactly this path.
+# Refuse early and point at the resume script.
+DEPLOYMENTS_DIR="$REPO_ROOT/contracts/deployments/robinhood-mainnet"
+if [[ -f "$DEPLOYMENTS_DIR/GPv2Settlement.json" ]]; then
+  echo "ERROR: $DEPLOYMENTS_DIR/GPv2Settlement.json already exists - the ceremony has run." >&2
+  echo "" >&2
+  # grep rather than python3: this guard must still report correctly on a host
+  # where python3 is missing or shimmed, since its whole job is to stop a
+  # destructive re-run before anything else in the script gets to depend on it.
+  EXISTING_AUTH=$(grep -m1 '"address"' "$DEPLOYMENTS_DIR/GPv2AllowListAuthentication_Proxy.json" 2>/dev/null | grep -oE '0x[0-9a-fA-F]{40}' | head -1 || echo "")
+  if [[ -n "$EXISTING_AUTH" ]]; then
+    EX_OWNER=$(cast call --rpc-url "$RPC" "$EXISTING_AUTH" "owner()(address)" 2>/dev/null || echo "?")
+    echo "       Auth proxy $EXISTING_AUTH owner() = $EX_OWNER" >&2
+    if [[ "$(echo "$EX_OWNER" | tr '[:upper:]' '[:lower:]')" == "$(echo "${SAFE:-}" | tr '[:upper:]' '[:lower:]')" ]]; then
+      echo "       => COMPLETE: authority already held by the Safe. Nothing to do." >&2
+    else
+      echo "       => PARTIAL: authority not yet handed off. Resume with:" >&2
+      echo "            bash deploy/resume-step3-4.sh" >&2
+    fi
+  fi
+  echo "" >&2
+  echo "       To deploy a genuinely NEW set of contracts, move the deployments" >&2
+  echo "       directory aside first - deliberately, not by re-running this." >&2
+  exit 13
 fi
 
 # Validate the Safe BEFORE the ceremony: step [4] hands Auth ownership + manager
