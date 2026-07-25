@@ -32,10 +32,12 @@
  *   pair is only explainable by a chunk split or a partial transport failure
  *   and THROWS. Transport shapes: a failure entry whose error chain carries
  *   a transport-shaped name THROWS instead of zeroing, even when its pair
- *   partner failed too. The transport name list is diagnostic-informed and
- *   widening-only (a false positive refuses to answer, the fail-closed
- *   direction); the pair rule and the all-failure rule are the load-bearing
- *   gates.
+ *   partner failed too. The two guards cover DIFFERENT chunk alignments and
+ *   neither is redundant: the pair rule catches a chunk that SPLITS a pair,
+ *   the transport list catches a chunk that ALIGNS to whole pairs (where the
+ *   pair rule is blind because both halves fail together). Widening the
+ *   transport list is the fail-closed direction; omitting a name from it is a
+ *   fail-open whenever chunks happen to align.
  * - a per-token read failure (weird token, missing method) that fails the
  *   WHOLE pair with revert-shaped errors zeroes both values and pins their
  *   sufficiency to false, so a failed read can never report ready.
@@ -205,12 +207,16 @@ const parseEntries = (raw: unknown, expected: number): MulticallEntry[] => {
 const assertNotTotalFailure = (entries: readonly MulticallEntry[]): void => {
   if (!entries.every((entry) => entry.status === 'failure')) return;
   const errors = entries.map((entry) => entry.error).filter((error) => error !== undefined);
-  const names = [...new Set(errors.map((error) => (error instanceof Error ? error.name : typeof error)))];
+  const names = [
+    ...new Set(errors.map((error) => (error instanceof Error ? error.name : typeof error))),
+  ];
   throw new OphisPreflightError(
     `Ophis: every call in the preflight batch failed (${entries.length} of ${entries.length}); this is indistinguishable ` +
       'from an RPC outage, so no result is returned (answering would read as zero balances).' +
       (names.length > 0 ? ` Underlying error names (diagnostic only): ${names.join(', ')}.` : ''),
-    errors.length > 0 ? { cause: new AggregateError(errors, 'every preflight call failed') } : undefined,
+    errors.length > 0
+      ? { cause: new AggregateError(errors, 'every preflight call failed') }
+      : undefined,
   );
 };
 
@@ -234,19 +240,39 @@ const readAmount = (entry: MulticallEntry, what: string): { value: bigint; faile
  * successful aggregate3 wraps RawContractError / AbiDecodingZeroDataError
  * (revert-shaped) and never carries these.
  *
- * Diagnostic-informed, NOT load-bearing: the pair-consistency rule and the
- * all-failure rule are the structural gates; this list only WIDENS the throw
- * set (a false positive refuses to answer, which is the fail-closed
- * direction). Unknown or absent error names deliberately do NOT widen:
- * treating every opaque shape as transport would turn the diagnostic into a
- * load-bearing gate in reverse and break custom clients that surface plain
- * revert errors.
+ * LOAD-BEARING when a chunk aligns to pair boundaries. An earlier revision of
+ * this comment called the list merely diagnostic, on the reasoning that the
+ * pair-consistency rule is the real gate. That holds only while a chunk SPLITS
+ * a pair. If the configured chunk size aligns to complete (balanceOf,
+ * allowance) pairs -- e.g. batch.multicall.batchSize: 104 -- a dead chunk
+ * fails both halves of every pair it covers, so pair consistency sees a
+ * consistent pair and stays silent; if any other chunk succeeded, the
+ * all-failure rule stays silent too. In that window this list is the ONLY
+ * remaining gate, and a missing name is returned to the caller as zero
+ * balances. So an omission here is a fail-open, not a lost diagnostic.
+ *
+ * Widening is still the safe direction (a false positive refuses to answer),
+ * but unknown or absent error names deliberately do NOT widen: treating every
+ * opaque shape as transport would break custom clients that surface plain
+ * revert errors. Add a name only when it can NEVER be a token revert.
  */
 const TRANSPORT_ERROR_NAMES: ReadonlySet<string> = new Set([
   'HttpRequestError',
   'RpcRequestError',
   'TimeoutError',
   'WebSocketRequestError',
+  // Socket closed under an IN-FLIGHT request. viem 2.48.8 hands this over BARE
+  // at utils/rpc/socket.js:54 (`request.onError?.(new SocketClosedError(...))`),
+  // with no RpcRequestError/WebSocketRequestError above it -- so the cause-chain
+  // walk finds nothing without this entry. The sibling path,
+  // utils/rpc/webSocket.js:52/72, wraps it in WebSocketRequestError and was
+  // already covered; only the in-flight path leaks.
+  'SocketClosedError',
+  // EIP-1193 connection loss, thrown bare from utils/buildRequest.js:81/84
+  // (codes 4900 / 4901). "The provider is disconnected" is never a token
+  // revert, so zeroing on it would report insufficient funds off an outage.
+  'ProviderDisconnectedError',
+  'ChainDisconnectedError',
 ]);
 
 /** Collects error names down the cause chain (viem nests the transport error under ContractFunctionExecutionError). */
@@ -262,7 +288,9 @@ const errorNameChain = (error: unknown): string[] => {
 };
 
 const describeEntry = (entry: MulticallEntry): string =>
-  entry.status === 'success' ? 'succeeded' : `failed (${errorNameChain(entry.error).join(' -> ') || 'no error name'})`;
+  entry.status === 'success'
+    ? 'succeeded'
+    : `failed (${errorNameChain(entry.error).join(' -> ') || 'no error name'})`;
 
 /**
  * The mixed-batch guards for one check's (balanceOf, allowance) pair. Both
@@ -271,22 +299,32 @@ const describeEntry = (entry: MulticallEntry): string =>
  * per-call value), so chunking may happen anyway and one chunk can die on
  * transport while another succeeds, slipping past the all-failure gate.
  *
- * 1. Transport shape (widening-only): a failure whose error chain carries a
- *    transport-shaped name was never answered by the chain; zeroing it would
- *    report "insufficient funds" off a network error, so it throws even when
- *    the pair partner failed too.
- * 2. Pair consistency (load-bearing): a genuine non-ERC20 or reverting token
- *    fails BOTH calls of its pair. Exactly one call failing is unexplainable
- *    as a token revert; only a chunk split or partial transport failure
- *    produces it, so it throws with both entry states named.
+ * They cover different chunk alignments; neither subsumes the other.
+ *
+ * 1. Transport shape: a failure whose error chain carries a transport-shaped
+ *    name was never answered by the chain; zeroing it would report
+ *    "insufficient funds" off a network error, so it throws even when the pair
+ *    partner failed too. This is the ONLY gate when a chunk aligns to whole
+ *    pairs, because then rule 2 is blind (both halves fail together).
+ * 2. Pair consistency: a genuine non-ERC20 or reverting token fails BOTH calls
+ *    of its pair. Exactly one call failing is unexplainable as a token revert;
+ *    only a chunk split or partial transport failure produces it, so it throws
+ *    with both entry states named. This is the ONLY gate when a chunk splits a
+ *    pair with an error shape absent from the transport list.
  */
-const assertPairAnswerable = (token: Address, balanceEntry: MulticallEntry, allowanceEntry: MulticallEntry): void => {
+const assertPairAnswerable = (
+  token: Address,
+  balanceEntry: MulticallEntry,
+  allowanceEntry: MulticallEntry,
+): void => {
   for (const [call, entry] of [
     ['balanceOf', balanceEntry],
     ['allowance', allowanceEntry],
   ] as const) {
     if (entry.status !== 'failure') continue;
-    const transportName = errorNameChain(entry.error).find((name) => TRANSPORT_ERROR_NAMES.has(name));
+    const transportName = errorNameChain(entry.error).find((name) =>
+      TRANSPORT_ERROR_NAMES.has(name),
+    );
     if (transportName !== undefined) {
       throw new OphisPreflightError(
         `Ophis: ${call}(${token}) failed with the transport-shaped error ${transportName}; the call never reached the chain, ` +
@@ -344,10 +382,14 @@ export async function ophisPreflight(
 ): Promise<OphisPreflightResult[]> {
   assertValidChainId(chainId);
   if (!client || typeof client.multicall !== 'function') {
-    throw new TypeError('Ophis: client must expose a multicall method (any viem PublicClient works).');
+    throw new TypeError(
+      'Ophis: client must expose a multicall method (any viem PublicClient works).',
+    );
   }
   if (!Array.isArray(checks) || checks.length === 0) {
-    throw new TypeError('Ophis: checks must be a non-empty array. A preflight of nothing would report ready.');
+    throw new TypeError(
+      'Ophis: checks must be a non-empty array. A preflight of nothing would report ready.',
+    );
   }
 
   const resolved = checks.map((check, index) => {
@@ -374,9 +416,12 @@ export async function ophisPreflight(
     try {
       connected = await client.getChainId();
     } catch (cause) {
-      throw new OphisPreflightError('Ophis: preflight could not verify the connected chain (getChainId failed).', {
-        cause,
-      });
+      throw new OphisPreflightError(
+        'Ophis: preflight could not verify the connected chain (getChainId failed).',
+        {
+          cause,
+        },
+      );
     }
     if (connected !== chainId) {
       throw new OphisPreflightError(
@@ -387,8 +432,18 @@ export async function ophisPreflight(
   }
 
   const contracts: OphisMulticallCall[] = resolved.flatMap((check) => [
-    { address: check.token, abi: ERC20_PREFLIGHT_ABI, functionName: 'balanceOf', args: [check.owner] },
-    { address: check.token, abi: ERC20_PREFLIGHT_ABI, functionName: 'allowance', args: [check.owner, check.spender] },
+    {
+      address: check.token,
+      abi: ERC20_PREFLIGHT_ABI,
+      functionName: 'balanceOf',
+      args: [check.owner],
+    },
+    {
+      address: check.token,
+      abi: ERC20_PREFLIGHT_ABI,
+      functionName: 'allowance',
+      args: [check.owner, check.spender],
+    },
   ]);
 
   let raw: unknown;
@@ -397,11 +452,19 @@ export async function ophisPreflight(
     // the whole batch is ONE aggregate eth_call: every balance and allowance
     // comes from the same block, and a token's two reads cannot straddle a
     // state change.
-    raw = await client.multicall({ contracts, allowFailure: true, batchSize: 0, multicallAddress: MULTICALL3_ADDRESS });
+    raw = await client.multicall({
+      contracts,
+      allowFailure: true,
+      batchSize: 0,
+      multicallAddress: MULTICALL3_ADDRESS,
+    });
   } catch (cause) {
     // The silent-skip lesson: an RPC failure must throw, never surface as a
     // result. A preflight that cannot read the chain has not passed.
-    throw new OphisPreflightError('Ophis: preflight multicall failed; chain state could not be read.', { cause });
+    throw new OphisPreflightError(
+      'Ophis: preflight multicall failed; chain state could not be read.',
+      { cause },
+    );
   }
 
   const entries = parseEntries(raw, contracts.length);
@@ -438,7 +501,9 @@ export async function ophisPreflight(
  * is_ready over one result or a batch: true only when every check is ready.
  * An empty batch is NOT ready (nothing was verified).
  */
-export function isPreflightReady(results: OphisPreflightResult | readonly OphisPreflightResult[]): boolean {
+export function isPreflightReady(
+  results: OphisPreflightResult | readonly OphisPreflightResult[],
+): boolean {
   if (Array.isArray(results)) {
     const batch = results as readonly OphisPreflightResult[];
     return batch.length > 0 && batch.every((result) => result.ready);
