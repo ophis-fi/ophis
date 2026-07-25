@@ -21,8 +21,15 @@ export type BasketLegStatus =
   | 'expired' // passed validTo without filling
   | 'failed' // signature/submit failed
 
-/** Statuses at which a leg is still cancellable (open and unfilled). */
-export const CANCELLABLE_LEG_STATUSES: readonly BasketLegStatus[] = ['open', 'signing']
+/**
+ * Statuses at which a leg is still cancellable (or retry-cancellable):
+ *  - open / signing: resting or mid-signature, not yet filled.
+ *  - cancelling: a cancel was requested but has not confirmed (e.g. the user
+ *    declined the soft-cancel signature). Kept here so a REJECTED batch-cancel
+ *    leaves the legs retryable in-session rather than stranded.
+ * A filled / cancelled / expired / failed leg is terminal and never re-touched.
+ */
+export const CANCELLABLE_LEG_STATUSES: readonly BasketLegStatus[] = ['open', 'signing', 'cancelling']
 
 /** A single composed leg with its quote-derived amounts and live status. */
 export interface BasketLeg extends DecomposedLeg {

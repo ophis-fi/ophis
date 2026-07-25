@@ -1,9 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
 
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useSetAtom } from 'jotai'
+import { useAtomCallback } from 'jotai/utils'
 
-import { cancellableBasketLegsAtom, updateBasketLegAtom } from '../state/multiOrder.atoms'
+import { basketDraftAtom, updateBasketLegAtom } from '../state/multiOrder.atoms'
 import { BasketDraft, BasketLeg } from '../types'
+import { CancelCandidate, runLegCancellation } from '../pure/cancellation'
 import { PlacedLeg, runBasketPlacement } from '../pure/placement'
 
 /** Sign + submit ONE leg; resolves with its order uid. Injected by the container
@@ -11,7 +13,7 @@ import { PlacedLeg, runBasketPlacement } from '../pure/placement'
 export type PlaceBasketLegFn = (leg: BasketLeg, index: number) => Promise<string>
 
 /** Soft-cancel a set of placed, still-open legs. Injected by the container
- *  (wires the CoW soft-cancel / DELETE order path). */
+ *  (wires the CoW soft-cancel / DELETE order path). Rejects if the user declines. */
 export type CancelBasketLegsFn = (placed: readonly PlacedLeg<BasketLeg>[]) => Promise<void>
 
 export interface UseBasketPlacementResult {
@@ -27,8 +29,15 @@ export interface UseBasketPlacementResult {
 
 /**
  * Orchestrate stepped basket placement. The sequencing + abort-and-cancel logic
- * is pure (pure/placement.ts, unit tested); this hook binds it to the per-leg
- * status atoms and exposes the mandatory manual cancel-of-unfilled action.
+ * (pure/placement.ts) and the status-aware cancellation (pure/cancellation.ts)
+ * are pure and unit tested; this hook binds them to the per-leg status atoms.
+ *
+ * Cancellation consults LIVE leg status via useAtomCallback rather than the
+ * stale leg snapshots the sequencer captured at placement time, so:
+ *  - a leg that FILLED during the placement window is never marked cancelled
+ *    (a filled CoW order cannot be cancelled on-chain), and
+ *  - a REJECTED soft-cancel leaves its legs at 'cancelling', which is a
+ *    cancellable status, so the manual retry action re-enables for them.
  */
 export function useBasketPlacement(
   draft: BasketDraft | null,
@@ -36,9 +45,31 @@ export function useBasketPlacement(
   cancelLegs: CancelBasketLegsFn,
 ): UseBasketPlacementResult {
   const updateLeg = useSetAtom(updateBasketLegAtom)
-  const cancellableLegs = useAtomValue(cancellableBasketLegsAtom)
   const [isPlacing, setIsPlacing] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Status-aware cancellation over the LIVE draft. Never rejects (runLegCancellation
+  // handles its own errors), so the placement sequencer's cancel step is safe.
+  const cancelWithStatus = useAtomCallback(
+    useCallback(
+      async (get, set, candidates: CancelCandidate[]): Promise<void> => {
+        await runLegCancellation({
+          candidates,
+          getStatus: (leg) => get(basketDraftAtom)?.legs.find((l) => l.leg === leg)?.status,
+          setStatus: (leg, status) => set(updateBasketLegAtom, { leg, patch: { status } }),
+          cancel: async (legs) => {
+            const current = get(basketDraftAtom)
+            const placed: PlacedLeg<BasketLeg>[] = legs.flatMap((c) => {
+              const live = current?.legs.find((l) => l.leg === c.leg)
+              return live ? [{ leg: live, orderUid: c.orderUid }] : []
+            })
+            await cancelLegs(placed)
+          },
+        })
+      },
+      [cancelLegs],
+    ),
+  )
 
   const place = useCallback(async () => {
     if (!draft) return
@@ -55,11 +86,9 @@ export function useBasketPlacement(
           updateLeg({ leg: leg.leg, patch: { status: 'open', orderUid } })
           return orderUid
         },
-        cancelLegs: async (placed) => {
-          for (const p of placed) updateLeg({ leg: p.leg.leg, patch: { status: 'cancelling' } })
-          await cancelLegs(placed)
-          for (const p of placed) updateLeg({ leg: p.leg.leg, patch: { status: 'cancelled' } })
-        },
+        // Status-aware: skips legs that filled mid-placement; leaves legs at
+        // 'cancelling' (retryable) if the soft-cancel is rejected.
+        cancelLegs: (placed) => cancelWithStatus(placed.map((p) => ({ leg: p.leg.leg, orderUid: p.orderUid }))),
         onLegFailed: (leg, _index, error) =>
           updateLeg({ leg: leg.leg, patch: { status: 'failed', error: error instanceof Error ? error.message : String(error) } }),
       })
@@ -67,22 +96,27 @@ export function useBasketPlacement(
       setIsPlacing(false)
       abortRef.current = null
     }
-  }, [draft, placeLeg, cancelLegs, updateLeg])
+  }, [draft, placeLeg, cancelWithStatus, updateLeg])
 
   const abort = useCallback(() => {
     abortRef.current?.abort()
   }, [])
 
-  const cancelUnfilled = useCallback(async () => {
-    if (cancellableLegs.length === 0) return
-    const placed: PlacedLeg<BasketLeg>[] = cancellableLegs
-      .filter((l): l is BasketLeg & { orderUid: string } => Boolean(l.orderUid))
-      .map((l) => ({ leg: l, orderUid: l.orderUid }))
-    if (placed.length === 0) return
-    for (const p of placed) updateLeg({ leg: p.leg.leg, patch: { status: 'cancelling' } })
-    await cancelLegs(placed)
-    for (const p of placed) updateLeg({ leg: p.leg.leg, patch: { status: 'cancelled' } })
-  }, [cancellableLegs, cancelLegs, updateLeg])
+  // Manual retry: cancel every still-cancellable placed leg, reading fresh state.
+  const cancelUnfilled = useAtomCallback(
+    useCallback(
+      async (get): Promise<void> => {
+        const current = get(basketDraftAtom)
+        if (!current) return
+        const candidates: CancelCandidate[] = current.legs
+          .filter((l): l is BasketLeg & { orderUid: string } => Boolean(l.orderUid))
+          .map((l) => ({ leg: l.leg, orderUid: l.orderUid }))
+        if (candidates.length === 0) return
+        await cancelWithStatus(candidates)
+      },
+      [cancelWithStatus],
+    ),
+  )
 
   return { isPlacing, place, abort, cancelUnfilled }
 }

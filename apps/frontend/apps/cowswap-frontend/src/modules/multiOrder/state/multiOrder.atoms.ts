@@ -1,6 +1,6 @@
 import { atom } from 'jotai'
 
-import { BasketDraft, BasketLeg, BasketLegStatus } from '../types'
+import { BasketDraft, BasketLeg, CANCELLABLE_LEG_STATUSES } from '../types'
 
 /**
  * Raw composition the basket widget collects before decomposition: up to 6 sell
@@ -51,10 +51,10 @@ export const updateBasketLegAtom = atom(null, (get, set, { leg, patch }: UpdateB
   set(basketDraftAtom, { ...draft, legs: nextLegs })
 })
 
-/** Derived: the still-open (cancellable) legs of the active basket. */
+/** Derived: the still-cancellable (or retry-cancellable) legs of the active
+ *  basket. Includes 'cancelling' so a rejected batch-cancel stays retryable. */
 export const cancellableBasketLegsAtom = atom<BasketLeg[]>((get) => {
   const draft = get(basketDraftAtom)
   if (!draft) return []
-  const open: BasketLegStatus[] = ['open', 'signing']
-  return draft.legs.filter((l) => open.includes(l.status))
+  return draft.legs.filter((l) => CANCELLABLE_LEG_STATUSES.includes(l.status))
 })
