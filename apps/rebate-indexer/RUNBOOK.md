@@ -53,6 +53,16 @@ Last-resort operator handbook. If a scenario isn't here, open an incident note a
 
 ## Routine ops
 
+### Fee-treasury sweeps feed the payout pool (documentation reference)
+OP-chain CIP-75 fees accrue in the Settlement contract and reach the fee
+Safe only via the fee-treasury sweep (OphisFeeLiquidator; runner
+`infra/optimism-mainnet/scripts/sweep-to-safe.sh`). A sweep must precede
+each monthly batch cycle or the pool understates realized revenue. The
+planned `fee_sweeps` reconciliation table (Swept-event ingestion, buffer
+probe, `GET /fees/ops`) is a separate indexer PR; until it lands, realized
+revenue = the liquidator's `Swept` event log. Full procedure, ceremonies,
+and rollback: `docs/operations/fee-treasury-ops-runbook.md`.
+
 ### Monthly batch — pre-execute ritual
 On the 1st of each month at ~02:30 UTC you'll get a `💸 Batch ready to sign` Telegram message.
 

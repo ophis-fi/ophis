@@ -19,7 +19,12 @@ umask 077
 
 RPC="${OPHIS_RPC:-http://localhost:4001/main/evm/10}"
 SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
-SUBMITTER="0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"   # the ONLY authorized solver/submitter EOA
+SUBMITTER="0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"   # driver-submitter EOA (authorized solver)
+# Fee-ops: the OphisFeeLiquidator CONTRACT is the second authorized solver
+# once the timelock addSolver ceremony completes. Set this env IN THE SAME
+# RELEASE as the first sweep or every sweep pages CRITICAL (runbook §6).
+# Empty = pre-deployment behavior (submitter is the only authorized solver).
+FEE_LIQUIDATOR="${FEE_LIQUIDATOR:-}"
 TRADE_TOPIC0="0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
 SETTLEMENT_TOPIC0="0x40338ce1a7c49204f0099533b1e9a7ee0a3d261f84974ab7af36105b8c4e9db4"
 # Tunables (env-overridable). Conservative defaults to avoid alert fatigue.
@@ -53,6 +58,17 @@ alert() {  # alert <SEVERITY> <message>
 die() { log "ERROR: $1"; exit "${2:-4}"; }   # exit WITHOUT advancing the cursor -> the window is re-scanned next run
 
 SUBMITTER_LC="$(lc "$SUBMITTER")"; SETTLEMENT_LC="$(lc "$SETTLEMENT")"
+FEE_LIQUIDATOR_LC="$(lc "$FEE_LIQUIDATOR")"
+
+# Fee-ops: resolve the liquidator's CURRENT ops key once per run so the
+# from-check below follows on-chain rotations instead of a stale env pin.
+# Fail CLOSED (die -> rescan) if the read fails while the contract is set.
+LIQ_EOA_LC=""
+if [[ -n "$FEE_LIQUIDATOR" ]]; then
+  LIQ_EOA="$(cast call "$FEE_LIQUIDATOR" "liquidator()(address)" --rpc-url "$RPC" 2>&1)" \
+    || die "cast call liquidator(): $LIQ_EOA"
+  LIQ_EOA_LC="$(lc "$LIQ_EOA")"
+fi
 
 HEAD="$(cast block-number --rpc-url "$RPC" 2>&1)" || die "cast block-number: $HEAD"
 [[ "$HEAD" =~ ^[0-9]+$ ]] || die "non-numeric head: $HEAD"
@@ -79,15 +95,30 @@ while IFS= read -r entry; do
   txh="$(printf '%s' "$entry" | jq -r '.transactionHash // empty')"
   [[ -z "$solver_topic" || -z "$txh" ]] && continue
   solver_lc="$(lc "0x${solver_topic: -40}")"
-  if [[ "$solver_lc" != "$SUBMITTER_LC" ]]; then
-    alert CRITICAL "settlement by UNEXPECTED solver 0x${solver_topic: -40} (expected $SUBMITTER) in tx $txh"; continue
+  # The authorized-solver SET: the driver-submitter EOA plus (post-fee-ops
+  # deployment) the OphisFeeLiquidator contract. Anything else is CRITICAL.
+  if [[ "$solver_lc" != "$SUBMITTER_LC" && ( -z "$FEE_LIQUIDATOR" || "$solver_lc" != "$FEE_LIQUIDATOR_LC" ) ]]; then
+    alert CRITICAL "settlement by UNEXPECTED solver 0x${solver_topic: -40} (authorized: $SUBMITTER${FEE_LIQUIDATOR:+ + $FEE_LIQUIDATOR}) in tx $txh"; continue
   fi
   # Fail CLOSED: a cast tx failure must NOT silently skip from/to validation and
   # let the cursor advance — die so the window is rescanned (like balance/logs).
   txfrom="$(cast tx "$txh" from --rpc-url "$RPC" 2>&1)" || die "cast tx from $txh (rescanning): $txfrom"
   txto="$(cast tx "$txh" to --rpc-url "$RPC" 2>&1)" || die "cast tx to $txh (rescanning): $txto"
-  [[ "$(lc "$txfrom")" != "$SUBMITTER_LC" ]] && alert CRITICAL "settle() tx $txh sent by UNEXPECTED $txfrom (expected $SUBMITTER)"
-  [[ "$(lc "$txto")"   != "$SETTLEMENT_LC" ]] && alert CRITICAL "settle() tx $txh to UNEXPECTED target $txto (expected Settlement)"
+  if [[ "$solver_lc" == "$SUBMITTER_LC" ]]; then
+    # Driver settlement: signed by the submitter EOA, straight to Settlement.
+    [[ "$(lc "$txfrom")" != "$SUBMITTER_LC" ]] && alert CRITICAL "settle() tx $txh sent by UNEXPECTED $txfrom (expected $SUBMITTER)"
+    [[ "$(lc "$txto")"   != "$SETTLEMENT_LC" ]] && alert CRITICAL "settle() tx $txh to UNEXPECTED target $txto (expected Settlement)"
+  else
+    # Fee sweep/consolidation: the liquidator CONTRACT is the solver; the tx
+    # targets the liquidator and is signed by its current on-chain ops key.
+    # The owner-Safe path (owner runs sweep via Safe exec) has a different
+    # from/to shape: rare + manual, so WARNING not CRITICAL.
+    if [[ "$(lc "$txto")" != "$FEE_LIQUIDATOR_LC" ]]; then
+      alert WARNING "fee-ops settle() tx $txh routed via UNEXPECTED target $txto (expected liquidator $FEE_LIQUIDATOR; owner-Safe path?)"
+    elif [[ -n "$LIQ_EOA_LC" && "$(lc "$txfrom")" != "$LIQ_EOA_LC" ]]; then
+      alert CRITICAL "fee-ops settle() tx $txh signed by UNEXPECTED $txfrom (on-chain liquidator() is $LIQ_EOA)"
+    fi
+  fi
 done < <(printf '%s' "$SETT" | jq -c '.[]?' 2>/dev/null)
 
 # (a) surplus-skim proxy — fee as bps of sell, within the SAME token (no price
