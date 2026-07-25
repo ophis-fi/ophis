@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState } from 'react'
 
 import { buildReceipt } from '../services/buildReceipt'
 import { exportJson } from '../services/exportJson'
 import { exportPdf } from '../services/exportPdf'
+import { fetchPathViz } from '../services/fetchPathViz'
+import { svgToPng } from '../services/svgToPng'
 import type { BuildReceiptInput } from '../types'
 
 interface DownloadReceiptButtonProps {
@@ -27,21 +29,39 @@ export const DownloadReceiptButton: React.FC<DownloadReceiptButtonProps> = ({
   className,
   children,
 }) => {
-  const onClick = useCallback(() => {
-    const receipt = buildReceipt(input)
-    const shortUid = receipt.orderUid.slice(0, 10)
-    if (format === 'pdf') {
-      const blob = exportPdf(receipt)
-      triggerDownload(blob, `ophis-receipt-${shortUid}.pdf`)
-    } else {
-      const json = exportJson(receipt)
-      const blob = new Blob([json], { type: 'application/json' })
-      triggerDownload(blob, `ophis-receipt-${shortUid}.json`)
+  const [busy, setBusy] = useState(false)
+
+  const onClick = useCallback(async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      // Best-effort pathviz fetch (Optimism only, 3 s cap). A failure leaves
+      // the field null and the receipt is produced without the diagram.
+      const pathVizSvgBase64 = await fetchPathViz({ orderUid: input.order.uid, chainId: input.chainId })
+      const receipt = buildReceipt({ ...input, pathVizSvgBase64 })
+      const shortUid = receipt.orderUid.slice(0, 10)
+
+      if (format === 'pdf') {
+        const rasterized = pathVizSvgBase64 ? await svgToPng(pathVizSvgBase64) : null
+        const blob = exportPdf(receipt, rasterized)
+        triggerDownload(blob, `ophis-receipt-${shortUid}.pdf`)
+      } else {
+        const json = exportJson(receipt)
+        const blob = new Blob([json], { type: 'application/json' })
+        triggerDownload(blob, `ophis-receipt-${shortUid}.json`)
+      }
+    } finally {
+      setBusy(false)
     }
-  }, [input, format])
+  }, [busy, input, format])
 
   return (
-    <button onClick={onClick} className={className} aria-label={`Download ${format.toUpperCase()} receipt`}>
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className={className}
+      aria-label={`Download ${format.toUpperCase()} receipt`}
+    >
       {children ?? `Download ${format.toUpperCase()} receipt`}
     </button>
   )
