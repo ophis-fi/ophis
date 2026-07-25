@@ -326,6 +326,30 @@ describe('withOphisRetry', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  it('a return-true-always predicate still never retries 429 (terminal classes precede the predicate)', async () => {
+    const err = parseOphisApiError({ status: 429, headers: { 'Retry-After': '1' } });
+    const shouldRetry = vi.fn(() => true);
+    const fn = vi.fn(async () => {
+      throw err;
+    });
+    await expect(withOphisRetry(fn, { sleep: async () => {}, shouldRetry })).rejects.toBe(err);
+    expect(fn).toHaveBeenCalledTimes(1);
+    // The predicate is never even consulted for a terminal class: it can
+    // narrow the default policy, it cannot resurrect 429.
+    expect(shouldRetry).not.toHaveBeenCalled();
+  });
+
+  it('a return-true-always predicate still never retries an unroutable answer', async () => {
+    const err = parseOphisApiError({ status: 404, body: { errorType: 'NoLiquidity', description: '', code: 2000 } });
+    const shouldRetry = vi.fn(() => true);
+    const fn = vi.fn(async () => {
+      throw err;
+    });
+    await expect(withOphisRetry(fn, { sleep: async () => {}, shouldRetry })).rejects.toBe(err);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(shouldRetry).not.toHaveBeenCalled();
+  });
+
   it('does not retry foreign errors by default, but honors a custom predicate', async () => {
     const boom = new Error('ECONNRESET');
     const fn = vi.fn(async () => {

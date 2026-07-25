@@ -59,10 +59,13 @@ describe('ophisPreflight', () => {
     expect(isPreflightReady(result as OphisPreflightResult)).toBe(true);
     expect(approvalNeeded(result as OphisPreflightResult)).toBe(0n);
 
-    // One batched call: balanceOf + allowance against the pinned Multicall3.
+    // One batched call: balanceOf + allowance against the pinned Multicall3,
+    // with chunking disabled (batchSize: 0) so the whole batch is a single
+    // eth_call and every read comes from the same block snapshot.
     expect(multicall).toHaveBeenCalledTimes(1);
     const args = multicall.mock.calls[0]?.[0] as MulticallArgs;
     expect(args.allowFailure).toBe(true);
+    expect(args.batchSize).toBe(0);
     expect(args.multicallAddress).toBe(MULTICALL3_ADDRESS);
     expect(args.contracts).toEqual([
       { address: TOKEN, abi: ERC20_PREFLIGHT_ABI, functionName: 'balanceOf', args: [OWNER] },
@@ -166,6 +169,71 @@ describe('ophisPreflight', () => {
       await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
         /expected bigint/,
       );
+    });
+
+    it('throws on a total outage: every entry failure (viem swallows the rejected aggregate call)', async () => {
+      // With allowFailure: true, viem does NOT reject when the aggregate
+      // eth_call fails; it returns one failure entry per contract. Answering
+      // that shape would zero every balance and show "insufficient funds"
+      // during an RPC outage.
+      const transportError = Object.assign(new Error('HTTP request failed'), { name: 'HttpRequestError' });
+      const { client } = stubClient([
+        { status: 'failure', error: transportError, result: undefined },
+        { status: 'failure', error: transportError, result: undefined },
+        { status: 'failure', error: transportError, result: undefined },
+        { status: 'failure', error: transportError, result: undefined },
+      ]);
+      const promise = ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 1n },
+        { token: TOKEN_2, owner: OWNER, required: 1n },
+      ]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/every call in the preflight batch failed/);
+      // The underlying errors ride along for support, names as diagnostic only.
+      await expect(promise).rejects.toThrow(/HttpRequestError/);
+      const caught = await promise.catch((error: unknown) => error);
+      expect((caught as OphisPreflightError).cause).toBeInstanceOf(AggregateError);
+      expect(((caught as OphisPreflightError).cause as AggregateError).errors).toContain(transportError);
+    });
+
+    it('throws on a single check whose both reads failed (deliberate: an all-failure batch, not a not-ready)', async () => {
+      // Behavior change vs 0.3.0-rc: one check with balanceOf AND allowance
+      // both failing IS the all-failure shape and is indistinguishable from
+      // an outage, so it throws instead of reporting not-ready.
+      const { client } = stubClient([fail(), fail()]);
+      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
+        /every call in the preflight batch failed/,
+      );
+    });
+
+    it('still throws on an all-failure batch when entries carry no error field (message stays typed)', async () => {
+      const { client } = stubClient([
+        { status: 'failure', result: undefined },
+        { status: 'failure', result: undefined },
+      ]);
+      const promise = ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      const caught = await promise.catch((error: unknown) => error);
+      expect((caught as OphisPreflightError).cause).toBeUndefined();
+    });
+
+    it('keeps per-token zeroing for PARTIAL failures: mixed batch zeroes the failed token and pins ready false', async () => {
+      const { client } = stubClient([ok(1_000n), ok(1_000n), fail(), fail()]);
+      const results = await ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 500n },
+        { token: TOKEN_2, owner: OWNER, required: 500n },
+      ]);
+      expect(results[0]?.ready).toBe(true);
+      expect(results[1]).toMatchObject({
+        ready: false,
+        balance: 0n,
+        allowance: 0n,
+        balanceReadFailed: true,
+        allowanceReadFailed: true,
+        sufficientBalance: false,
+        sufficientAllowance: false,
+      });
+      expect(isPreflightReady(results)).toBe(false);
     });
 
     it('zeroes a failed balance read and can never report ready off it', async () => {

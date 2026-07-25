@@ -9,6 +9,19 @@
  * - a rejected multicall THROWS (OphisPreflightError). It never degrades into
  *   an "everything is ready" result, because a silently skipped check reads
  *   exactly like a passed one.
+ * - a batch in which EVERY call failed also THROWS. viem with
+ *   allowFailure: true does not reject when the aggregate eth_call itself
+ *   fails (network or RPC outage): it returns one failure entry per contract,
+ *   which would zero every balance and surface as "insufficient funds" or a
+ *   pointless approve prompt. An all-failure batch is indistinguishable from
+ *   an outage without trusting error shapes, so it is never answered; per
+ *   token zeroing applies only to PARTIAL failures.
+ * - the batch is one eth_call snapshot: chunking is disabled (batchSize: 0),
+ *   so every balance and allowance in a preflight is read at one block and a
+ *   token's two reads can never straddle a state change. (viem allows a
+ *   client-level batch.multicall.batchSize to override the per-call value;
+ *   even then, a chunk that fails only ever produces failure entries, which
+ *   the guards above refuse to answer or zero fail-closed.)
  * - a per-token read failure (weird token, missing method) zeroes that value
  *   and pins its sufficiency to false, so a failed read can never report ready.
  * - when the client exposes getChainId (viem PublicClient does), the connected
@@ -73,6 +86,8 @@ export interface OphisMulticallClient {
     contracts: readonly OphisMulticallCall[];
     allowFailure?: boolean;
     multicallAddress?: Address;
+    /** Calldata chunk size limit; 0 disables chunking so the batch stays one eth_call (one block snapshot). */
+    batchSize?: number;
   }): Promise<unknown>;
   /**
    * Optional connected-chain probe. When present (viem PublicClient has it),
@@ -132,6 +147,8 @@ export class OphisPreflightError extends Error {
 interface MulticallEntry {
   status: 'success' | 'failure';
   result?: unknown;
+  /** The per-call error viem attaches to failure entries; surfaced when an all-failure batch throws. */
+  error?: unknown;
 }
 
 const parseEntries = (raw: unknown, expected: number): MulticallEntry[] => {
@@ -152,8 +169,34 @@ const parseEntries = (raw: unknown, expected: number): MulticallEntry[] => {
           'Expected { status: "success" | "failure" } entries (viem multicall with allowFailure: true).',
       );
     }
-    return { status, result: (entry as { result?: unknown }).result };
+    return {
+      status,
+      result: (entry as { result?: unknown }).result,
+      error: (entry as { error?: unknown }).error,
+    };
   });
+};
+
+/**
+ * An all-failure batch must throw, never answer. viem with allowFailure: true
+ * swallows a rejected aggregate eth_call (network or RPC outage) into one
+ * failure entry per contract, bypassing the try/catch around the call, and
+ * zeroing everything would show the user "insufficient funds" during an
+ * outage. A batch whose every call failed is indistinguishable from that
+ * outage without trusting error shapes, so refusing to answer is the
+ * fail-closed choice even in the rare universal-revert case. The underlying
+ * error names ride along as a diagnostic only; they never gate the decision.
+ */
+const assertNotTotalFailure = (entries: readonly MulticallEntry[]): void => {
+  if (!entries.every((entry) => entry.status === 'failure')) return;
+  const errors = entries.map((entry) => entry.error).filter((error) => error !== undefined);
+  const names = [...new Set(errors.map((error) => (error instanceof Error ? error.name : typeof error)))];
+  throw new OphisPreflightError(
+    `Ophis: every call in the preflight batch failed (${entries.length} of ${entries.length}); this is indistinguishable ` +
+      'from an RPC outage, so no result is returned (answering would read as zero balances).' +
+      (names.length > 0 ? ` Underlying error names (diagnostic only): ${names.join(', ')}.` : ''),
+    errors.length > 0 ? { cause: new AggregateError(errors, 'every preflight call failed') } : undefined,
+  );
 };
 
 /** A successful uint256 read must decode to bigint; anything else is a client contract violation, not a zero. */
@@ -170,8 +213,13 @@ const readAmount = (entry: MulticallEntry, what: string): { value: bigint; faile
 /**
  * Batched Multicall3 preflight for one or more orders on a chain. Two reads
  * per check (balanceOf, allowance), all in a single eth_call against the
- * canonical Multicall3, with per-token failures tolerated (allowFailure) and
- * zeroed fail-closed.
+ * canonical Multicall3 (chunking disabled, so the whole batch is one block
+ * snapshot), with per-token failures tolerated (allowFailure) and zeroed
+ * fail-closed. A batch in which EVERY call failed throws instead: that shape
+ * is what a viem allowFailure batch degrades to during an RPC outage, and
+ * answering it would read as zero balances. Note the single-check corollary:
+ * one check whose balanceOf AND allowance both fail is an all-failure batch
+ * and throws rather than reporting not-ready.
  *
  *   const [check] = await ophisPreflight(publicClient, 10, [
  *     { token: sellToken, owner, required: sellAmount + feeAmount },
@@ -245,7 +293,11 @@ export async function ophisPreflight(
 
   let raw: unknown;
   try {
-    raw = await client.multicall({ contracts, allowFailure: true, multicallAddress: MULTICALL3_ADDRESS });
+    // batchSize: 0 disables viem's calldata chunking (default 1024 bytes), so
+    // the whole batch is ONE aggregate eth_call: every balance and allowance
+    // comes from the same block, and a token's two reads cannot straddle a
+    // state change.
+    raw = await client.multicall({ contracts, allowFailure: true, batchSize: 0, multicallAddress: MULTICALL3_ADDRESS });
   } catch (cause) {
     // The silent-skip lesson: an RPC failure must throw, never surface as a
     // result. A preflight that cannot read the chain has not passed.
@@ -253,6 +305,7 @@ export async function ophisPreflight(
   }
 
   const entries = parseEntries(raw, contracts.length);
+  assertNotTotalFailure(entries);
 
   return resolved.map((check, index) => {
     const balance = readAmount(entries[index * 2] as MulticallEntry, `balanceOf(${check.token})`);

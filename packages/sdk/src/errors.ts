@@ -298,7 +298,14 @@ export interface OphisRetryOptions {
   maxDelayMs?: number;
   /** Abort waiting between attempts (the in-flight attempt itself is the caller's to wire). */
   signal?: AbortSignal;
-  /** Retry predicate, default isRetryable. A custom one still cannot make withOphisRetry loop forever. */
+  /**
+   * Retry predicate, default isRetryable. A custom one can only NARROW the
+   * policy: it cannot make withOphisRetry loop forever, and it is never
+   * consulted for the terminal classes (OphisRateLimitError,
+   * OphisUnroutableError), which are rethrown unconditionally. Retrying a 429
+   * spends a rate budget the server just said is exhausted, and retrying an
+   * unroutable answer retries a fact.
+   */
   shouldRetry?: (error: unknown, attempt: number) => boolean;
   /** Injectable waiter for tests, default a real setTimeout sleep. */
   sleep?: (ms: number) => Promise<void>;
@@ -347,8 +354,10 @@ const abortError = (signal?: AbortSignal): Error => {
 
 /**
  * Runs `fn` and retries it on transient errors with full-jitter exponential
- * backoff. The retry policy is isRetryable by default, so 429 and unroutable
- * answers are surfaced immediately, never spun on. When the failed attempt
+ * backoff. The retry policy is isRetryable by default, and 429 and unroutable
+ * answers are surfaced immediately, never spun on: those two classes are
+ * rethrown before any shouldRetry predicate runs, so a custom predicate
+ * cannot opt back into them. When the failed attempt
  * carried a Retry-After (the 503 upstream band sends one), the wait floors
  * at that value (capped at 30s) plus jitter, so synchronized clients do not
  * all wake on the same retry second.
@@ -381,6 +390,11 @@ export async function withOphisRetry<T>(fn: (attempt: number) => Promise<T>, opt
     try {
       return await fn(attempt);
     } catch (error) {
+      // The terminal classes are rethrown BEFORE the predicate is consulted:
+      // a caller-supplied shouldRetry can narrow the default policy but can
+      // never resurrect 429 or an unroutable answer, or the advertised
+      // never-retried-in-call invariant would hold only for the default.
+      if (error instanceof OphisRateLimitError || error instanceof OphisUnroutableError) throw error;
       if (attempt >= retries || !shouldRetry(error, attempt)) throw error;
       // Full jitter over an exponential base, floored at half the base so
       // consecutive retries cannot collapse to a zero-delay stampede.
