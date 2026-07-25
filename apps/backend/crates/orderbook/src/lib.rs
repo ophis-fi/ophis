@@ -7,6 +7,7 @@ mod ipfs;
 mod ipfs_app_data;
 pub mod order_simulator;
 pub mod orderbook;
+pub mod pathviz;
 mod quoter;
 pub mod run;
 pub mod solver_competition;

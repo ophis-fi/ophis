@@ -1,0 +1,26 @@
+# pathviz venue registry -- Optimism mainnet (chain 10).
+#
+# Maps on-chain settlement counterparties to human labels for the pathviz
+# venue column. Seeded from the driver custom allowlist
+# (`custom_allowlist::OPTIMISM_MAINNET`), which is the set of aggregator
+# routers Ophis settles through. Any counterparty NOT listed here degrades
+# to its bare 0x address in the diagram -- the renderer never fabricates a
+# label (owner decision 27).
+#
+# OWNERSHIP: infra ops. When a new aggregator router or a directly-integrated
+# AMM/PMM is added to the driver allowlist, add the matching label here in
+# the same change so user-facing images stay legible. Addresses are
+# EIP-55-checksummed and matched case-insensitively at load.
+
+[venues]
+# Aggregator routers (router == ERC-20 spender unless noted).
+"0x6131B5fae19EA4f9D964eAc0408E4408b66337b5" = "KyberSwap"
+"0x6A000F20005980200259B80c5102003040001068" = "Velora"
+"0xDd5E9B947c99Aa60bab00ca4631Dce63b49983E7" = "OKX (router)"
+"0x68D6B739D2020067D1e2F713b999dA97E4d54812" = "OKX (spender)"
+"0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680" = "Odos"
+"0xF75584eF6673aD213a685a1B58Cc0330B8eA22Cf" = "Enso"
+"0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE" = "LI.FI"
+"0x6352a56caadC4F1E25CD6c75970Fa768A3304e64" = "OpenOcean"
+"0x8b09DB11ea380d6454D2592D334FFC319ce6EF3E" = "DODO (router)"
+"0xa492d6eABcdc3E204676f15B950bBdD448080364" = "DODO (spender)"

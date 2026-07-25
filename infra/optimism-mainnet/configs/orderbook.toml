@@ -89,3 +89,13 @@ burst = 20
 # CF-Connecting-IP is trustworthy here because the host is only reachable
 # through the Cloudflare tunnel; set to false if that ever changes.
 trust-cf-connecting-ip = true
+
+# Server-rendered route/surplus visualization (pathviz, Wave 2). SHIPS
+# DISABLED (the --enable-pathviz kill switch). While off, the quote
+# pathViz/pathVizImage fields stay absent and the /pathviz endpoints answer
+# 404. To enable: flip `enabled` and uncomment `venues-file` once the
+# registry (pathviz-venues.toml, owned by infra ops) is mounted at that path;
+# unknown venues degrade to bare 0x addresses.
+[pathviz]
+enabled = false
+# venues-file = "/configs/pathviz-venues.toml"

@@ -38,6 +38,7 @@ mod get_auction;
 pub(crate) mod get_contract_info;
 mod get_native_price;
 mod get_order_by_uid;
+mod get_order_pathviz;
 mod get_order_status;
 mod get_orders_by_tx;
 mod get_orders_by_uid;
@@ -81,6 +82,9 @@ pub struct AppState {
     /// `GET /api/v1/info/contracts` and stamped into `/api/v1/quote/draft`
     /// signing envelopes.
     pub contracts: get_contract_info::ContractsInfo,
+    /// Present only when pathviz is enabled (`--enable-pathviz`); `None`
+    /// makes the `/pathviz` routes answer 404.
+    pub pathviz: Option<Arc<crate::pathviz::PathVizService>>,
 }
 
 impl AppState {
@@ -173,6 +177,7 @@ pub fn handle_all_routes(
     hide_competition_before_deadline: bool,
     api_config: configs::orderbook::api::ApiConfig,
     contracts: get_contract_info::ContractsInfo,
+    pathviz: Option<Arc<crate::pathviz::PathVizService>>,
 ) -> Router {
     let app_data_size_limit = app_data.size_limit();
 
@@ -187,6 +192,7 @@ pub fn handle_all_routes(
         current_block_stream,
         hide_competition_before_deadline,
         contracts,
+        pathviz,
     });
 
     let routes = [
@@ -252,6 +258,19 @@ pub fn handle_all_routes(
             "GET",
             "/api/v1/orders/{uid}/status",
             get(get_order_status::get_status_handler),
+        ),
+        // pathviz: JSON graph and the raw self-contained SVG. Both 404 when
+        // the feature is disabled. The `.svg` literal segment is matched
+        // before the parameterized nothing-follows case.
+        (
+            "GET",
+            "/api/v1/orders/{uid}/pathviz",
+            get(get_order_pathviz::get_order_pathviz_handler),
+        ),
+        (
+            "GET",
+            "/api/v1/orders/{uid}/pathviz.svg",
+            get(get_order_pathviz::get_order_pathviz_svg_handler),
         ),
         (
             "POST",
