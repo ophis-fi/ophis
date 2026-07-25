@@ -45,6 +45,7 @@
   "scripts": {
     "build": "node ../../scripts/package-agent-skills.mjs",
     "test": "node ../../scripts/test-agent-skills.mjs",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run build"
   }
 }
