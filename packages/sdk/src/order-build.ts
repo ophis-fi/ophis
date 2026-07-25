@@ -83,20 +83,53 @@ export interface OphisAppData {
 }
 
 /**
+ * Normalizes and well-formedness-checks a caller-supplied extra partner-fee
+ * entry (an integrator-priced CIP-75 Volume fee, e.g. the compat surface's
+ * mapped Odos `referralFee`). The recipient is checksummed and `volumeBps` must
+ * be a non-negative integer; the ingress orderbook is the authority on the
+ * registry cap and Volume-only policy, this only guarantees a well-formed
+ * appData object so a malformed entry never reaches the wire.
+ */
+function normalizeExtraPartnerFee(entry: OphisPartnerFee): OphisPartnerFee {
+  if (!Number.isInteger(entry.volumeBps) || entry.volumeBps < 0) {
+    throw new Error(
+      `partnerFee volumeBps must be a non-negative integer, got ${String(entry.volumeBps)}`,
+    );
+  }
+  return {
+    volumeBps: entry.volumeBps,
+    recipient: checksum(entry.recipient, 'partnerFee.recipient'),
+  };
+}
+
+/**
  * Builds the Ophis appData document for a chain: appCode "ophis", market
  * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 5 bps
  * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
+ *
+ * `extraPartnerFees` appends integrator-priced CIP-75 Volume entries (the compat
+ * surface maps an Odos `referralFee` to one). When any are present,
+ * `metadata.partnerFee` serializes as an ARRAY (Ophis default first, then the
+ * extras) — the shape the app-data `Validator` accepts, `PartnerFees`
+ * deserializing a single object OR an array. With no extras the field stays a
+ * single object, byte-identical to the pre-existing behavior.
  */
 export function buildOphisFullAppData(
   chainId: number,
   slippageBips?: number,
   referrerCode?: string,
   source?: string,
+  extraPartnerFees?: readonly OphisPartnerFee[],
 ): OphisAppData {
   const partnerFee = buildOphisAppDataPartnerFee(chainId);
+  const extras = (extraPartnerFees ?? []).map(normalizeExtraPartnerFee);
   const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' } };
-  if (partnerFee) metadata.partnerFee = partnerFee;
+  if (extras.length > 0) {
+    metadata.partnerFee = [...(partnerFee ? [partnerFee] : []), ...extras];
+  } else if (partnerFee) {
+    metadata.partnerFee = partnerFee;
+  }
   if (slippageBips !== undefined) metadata.quote = { slippageBips };
   // Affiliate attribution: tag the order with a referral code under
   // metadata.ophisReferrer.code so the rebate indexer credits that code's owner
@@ -162,6 +195,13 @@ export interface BuildOrderParams {
    * Server-set by the integration surface, never exposed to callers.
    */
   source?: string;
+  /**
+   * Extra integrator-priced CIP-75 Volume partner-fee entries to embed beside
+   * the Ophis default (the compat surface maps an Odos `referralFee` to one).
+   * When present, `metadata.partnerFee` serializes as an array. The ingress
+   * orderbook validates each recipient against the partner-fee registry.
+   */
+  partnerFees?: readonly OphisPartnerFee[];
 }
 
 export interface BuiltOrder {
@@ -217,17 +257,22 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
       : {},
   );
   // Hard guard immediately before the order is handed back for signing.
-  assertReceiverIsOwner(owner, receiver, { allowCustomReceiver: p.unsafeCustomReceiver !== undefined });
+  assertReceiverIsOwner(owner, receiver, {
+    allowCustomReceiver: p.unsafeCustomReceiver !== undefined,
+  });
 
   const { fullAppData, appDataHash, partnerFee } = buildOphisFullAppData(
     chainId,
     p.slippageBips,
     p.referrerCode,
     p.source,
+    p.partnerFees,
   );
   const validFor = p.validForSeconds ?? 1200;
   if (!Number.isInteger(validFor) || validFor <= 0 || validFor > 60 * 60 * 24 * 365) {
-    throw new Error(`build_order: validForSeconds must be a positive integer < 1 year, got ${validFor}`);
+    throw new Error(
+      `build_order: validForSeconds must be a positive integer < 1 year, got ${validFor}`,
+    );
   }
   const validTo = Math.floor(nowSeconds) + validFor;
 
@@ -249,7 +294,11 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
       sellTokenBalance: 'erc20',
       buyTokenBalance: 'erc20',
     },
-    signing: { domain: getOphisOrderDomain(chainId), types: ORDER_TYPED_DATA_TYPES, primaryType: 'Order' },
+    signing: {
+      domain: getOphisOrderDomain(chainId),
+      types: ORDER_TYPED_DATA_TYPES,
+      primaryType: 'Order',
+    },
     fullAppData,
     appDataHash,
     partnerFee,
@@ -290,9 +339,12 @@ export function assertAtoms(amount: string, label: string): void {
   // "0": a zero buyAmount signs an accept-any-price order (zero min-out), and a
   // multi-character zero used to slip past the single-literal check.
   if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount) || /^0+$/.test(amount)) {
-    throw new Error(`${label}: must be a positive integer string of atoms (wei-like), got "${amount}"`);
+    throw new Error(
+      `${label}: must be a positive integer string of atoms (wei-like), got "${amount}"`,
+    );
   }
-  if (BigInt(amount) > MAX_UINT256) throw new Error(`${label}: exceeds uint256 max, got "${amount}"`);
+  if (BigInt(amount) > MAX_UINT256)
+    throw new Error(`${label}: exceeds uint256 max, got "${amount}"`);
 }
 
 /** Like assertAtoms but allows "0" (feeAmount is 0 for modern CoW market orders). */
@@ -300,7 +352,8 @@ export function assertFeeAtoms(amount: string, label: string): void {
   if (typeof amount !== 'string' || !/^[0-9]+$/.test(amount)) {
     throw new Error(`${label}: must be a non-negative integer string of atoms, got "${amount}"`);
   }
-  if (BigInt(amount) > MAX_UINT256) throw new Error(`${label}: exceeds uint256 max, got "${amount}"`);
+  if (BigInt(amount) > MAX_UINT256)
+    throw new Error(`${label}: exceeds uint256 max, got "${amount}"`);
 }
 
 /**
@@ -314,7 +367,9 @@ export function assertFeeAtoms(amount: string, label: string): void {
 function assertSlippageCap(p: BuildOrderParams): void {
   const slip = p.slippageBips;
   if (slip !== undefined && (!Number.isInteger(slip) || slip < 0 || slip > MAX_SLIPPAGE_BIPS)) {
-    throw new Error(`slippageBips must be an integer in [0, ${MAX_SLIPPAGE_BIPS}] (<=50%), got ${slip}`);
+    throw new Error(
+      `slippageBips must be an integer in [0, ${MAX_SLIPPAGE_BIPS}] (<=50%), got ${slip}`,
+    );
   }
 }
 
@@ -326,8 +381,9 @@ function assertSlippageCap(p: BuildOrderParams): void {
 export function extractQuoteAmounts(
   quoteResponse: unknown,
 ): { sellAmount: string; buyAmount: string } | null {
-  const quote = (quoteResponse as { quote?: { sellAmount?: unknown; buyAmount?: unknown } } | null | undefined)
-    ?.quote;
+  const quote = (
+    quoteResponse as { quote?: { sellAmount?: unknown; buyAmount?: unknown } } | null | undefined
+  )?.quote;
   if (!quote) return null;
   const { sellAmount, buyAmount } = quote;
   if (typeof sellAmount !== 'string' || typeof buyAmount !== 'string') return null;

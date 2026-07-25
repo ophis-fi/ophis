@@ -44,6 +44,7 @@ interface StubOptions {
   quote?: () => Response;
   orders?: (init?: RequestInit) => Response;
   orderByUid?: () => Response;
+  trades?: () => Response;
   onRequest?: (url: string, init?: RequestInit) => void;
 }
 
@@ -73,12 +74,23 @@ const stubFetch = (opts: StubOptions = {}): typeof fetch =>
       )();
     }
     if (url.includes('/api/v1/trades')) {
-      return Response.json([{ txHash: '0xfeed', orderUid: UID }]);
+      return (opts.trades ?? (() => Response.json([{ txHash: '0xfeed', orderUid: UID }])))();
     }
     throw new Error(`unexpected upstream call: ${url}`);
   }) as typeof fetch;
 
-const deps = (fetchImpl: typeof fetch): Deps => ({ fetchImpl, nowMs: () => NOW_MS });
+// A controllable clock so the settlement long-poll can be tested without real
+// waits: `sleep` advances the fake clock instead of blocking.
+const deps = (fetchImpl: typeof fetch): Deps => {
+  let clock = NOW_MS;
+  return {
+    fetchImpl,
+    nowMs: () => clock,
+    sleep: async (ms: number) => {
+      clock += ms;
+    },
+  };
+};
 
 const post = (path: string, body: unknown): Request =>
   new Request(`https://compat.ophis.fi${path}`, {
@@ -131,6 +143,7 @@ describe('POST /sor/quote/v3', () => {
 
     // ophis block: draft + envelope + async semantics
     expect(body.ophis.settlementModel).toBe('batch-auction-async');
+    expect(body.ophis.expectedSettlementSeconds).toBe(24); // configured/derived baseline
     expect(body.ophis.valueCurrency).toBe('native');
     expect(body.ophis.assemblable).toBe(true);
     expect(body.ophis.quoteId).toBe(9858);
@@ -205,7 +218,10 @@ describe('POST /sor/quote/v3', () => {
       deps(
         stubFetch({
           quote: () =>
-            Response.json({ errorType: 'NoLiquidity', description: 'no route found' }, { status: 404 }),
+            Response.json(
+              { errorType: 'NoLiquidity', description: 'no route found' },
+              { status: 404 },
+            ),
         }),
       ),
     );
@@ -220,7 +236,11 @@ describe('POST /sor/quote/v3', () => {
     const res = await handleRequest(
       post('/sor/quote/v3', quoteBody()),
       ENV,
-      deps(stubFetch({ quote: () => Response.json({ errorType: 'InternalServerError' }, { status: 500 }) })),
+      deps(
+        stubFetch({
+          quote: () => Response.json({ errorType: 'InternalServerError' }, { status: 500 }),
+        }),
+      ),
     );
     expect(res.status).toBe(503);
     expect(res.headers.get('retry-after')).toBe('1');
@@ -247,7 +267,11 @@ describe('POST /sor/quote/v3', () => {
   });
 
   it('rejects unsupported chains listing the enabled set', async () => {
-    const res = await handleRequest(post('/sor/quote/v3', quoteBody({ chainId: 1 })), ENV, deps(stubFetch()));
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ chainId: 1 })),
+      ENV,
+      deps(stubFetch()),
+    );
     expect(res.status).toBe(400);
     const body = (await res.json()) as Record<string, any>;
     expect(body.error.code).toBe('UNSUPPORTED_CHAIN');
@@ -259,6 +283,228 @@ describe('POST /sor/quote/v3', () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as Record<string, any>;
     expect(body.error.code).toBe('CONFIG_MISSING');
+  });
+});
+
+describe('referralFee -> partnerFee mapping', () => {
+  const PARTNER = OTHER; // a valid, checksummed recipient address
+  const feeEnv: Env = { COMPAT_PATHID_KEY: 'test-key', COMPAT_PARTNER_FEE_ENABLED: 'true' };
+
+  it('rejects a non-zero referralFee while the program is disabled (default)', async () => {
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.001, referralFeeRecipient: PARTNER })),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.error.code).toBe('PARTNER_FEE_UNAVAILABLE');
+    expect(body.error.numericCode).toBe(4902);
+  });
+
+  it('maps referralFee 0.001 to a 10 bps partnerFee entry when enabled', async () => {
+    let quoteAppData: string | undefined;
+    const impl = stubFetch({
+      onRequest: (url, init) => {
+        if (url.includes('/api/v1/quote') && init?.method === 'POST') {
+          quoteAppData = (JSON.parse(String(init.body)) as { appData: string }).appData;
+        }
+      },
+    });
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.001, referralFeeRecipient: PARTNER })),
+      feeEnv,
+      deps(impl),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, any>;
+    // metadata.partnerFee is now an array: Ophis default (5 bps) + partner (10 bps).
+    // Keys are deterministically sorted, so recipient precedes volumeBps.
+    expect(body.ophis.fullAppData).toContain('"partnerFee":[');
+    expect(body.ophis.fullAppData).toContain(`"recipient":"${PARTNER}","volumeBps":10`);
+    // The quote request carried the same appData the draft signs.
+    expect(quoteAppData).toBe(body.ophis.fullAppData);
+    // partnerFeePercent reflects total embedded volume bps: 5 + 10 = 15 bps.
+    expect(body.partnerFeePercent).toBe(0.15);
+    const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
+    expect(codes).toContain('PARTNER_FEE_MAPPED');
+  });
+
+  it('rejects a mapped fee above the 90 bps program cap (never a silent clamp)', async () => {
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.01, referralFeeRecipient: PARTNER })),
+      feeEnv,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.error.code).toBe('PARTNER_FEE_CAP_EXCEEDED');
+    expect(body.error.numericCode).toBe(4915);
+  });
+
+  it('rejects a fee too small to represent (sub-1-bps) and a missing recipient', async () => {
+    const tiny = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.00004, referralFeeRecipient: PARTNER })),
+      feeEnv,
+      deps(stubFetch()),
+    );
+    expect(tiny.status).toBe(400);
+    expect(((await tiny.json()) as Record<string, any>).error.code).toBe('INVALID_REQUEST');
+
+    const noRecipient = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.001 })),
+      feeEnv,
+      deps(stubFetch()),
+    );
+    expect(noRecipient.status).toBe(400);
+    expect(((await noRecipient.json()) as Record<string, any>).error.code).toBe('INVALID_ADDRESS');
+  });
+
+  it('carries the mapped fee through the quote -> assemble round-trip', async () => {
+    const quoteRes = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.001, referralFeeRecipient: PARTNER })),
+      feeEnv,
+      deps(stubFetch()),
+    );
+    const quote = (await quoteRes.json()) as Record<string, any>;
+    const assembleRes = await handleRequest(
+      post('/sor/assemble', { userAddr: USER, pathId: quote.pathId }),
+      feeEnv,
+      deps(stubFetch()),
+    );
+    expect(assembleRes.status).toBe(200);
+    const assembly = (await assembleRes.json()) as Record<string, any>;
+    // The reassembled draft signs the same appData (partner fee included).
+    expect(assembly.ophis.fullAppData).toBe(quote.ophis.fullAppData);
+    expect(assembly.ophis.fullAppData).toContain(`"recipient":"${PARTNER}"`);
+  });
+});
+
+describe('pathViz flag wiring (#924)', () => {
+  const FAKE_GRAPH = { schemaVersion: 1, nodes: [], links: [], solvers: [] };
+  const quoteWithViz = () =>
+    Response.json({ ...liveQuoteBody, pathViz: FAKE_GRAPH, pathVizImage: 'c3ZnLWJhc2U2NA==' });
+
+  it('populates pathViz/pathVizImage when requested and the feature answers', async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    const impl = stubFetch({
+      quote: quoteWithViz,
+      onRequest: (url, init) => {
+        if (url.includes('/api/v1/quote') && init?.method === 'POST') {
+          sentBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        }
+      },
+    });
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ pathViz: true, pathVizImage: true })),
+      ENV,
+      deps(impl),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(sentBody?.pathViz).toBe(true);
+    expect(sentBody?.pathVizImage).toBe(true);
+    expect(body.pathViz).toEqual(FAKE_GRAPH);
+    expect(body.pathVizImage).toBe('c3ZnLWJhc2U2NA==');
+    // No unavailable warning when the feature answered.
+    const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
+    expect(codes).not.toContain('PATH_VIZ_UNAVAILABLE');
+  });
+
+  it('degrades to null + warning when pathViz is requested but the feature is off', async () => {
+    // Default stub omits pathViz (kill switch off / degraded).
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ pathViz: true })),
+      ENV,
+      deps(stubFetch()),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.pathViz).toBeNull();
+    expect(body.pathVizImage).toBeNull();
+    const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
+    expect(codes).toContain('PATH_VIZ_UNAVAILABLE');
+  });
+
+  it('does not request pathViz when the caller did not ask (no wasted work, no warning)', async () => {
+    let sentBody: Record<string, unknown> | undefined;
+    const impl = stubFetch({
+      onRequest: (url, init) => {
+        if (url.includes('/api/v1/quote') && init?.method === 'POST') {
+          sentBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        }
+      },
+    });
+    const res = await handleRequest(post('/sor/quote/v3', quoteBody()), ENV, deps(impl));
+    const body = (await res.json()) as Record<string, any>;
+    expect(sentBody?.pathViz).toBeUndefined();
+    expect(body.pathViz).toBeNull();
+    const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
+    expect(codes).not.toContain('PATH_VIZ_UNAVAILABLE');
+  });
+});
+
+describe('GET /sor/settlement/{chainId}/{orderUid} (Mode B1 long-poll)', () => {
+  it('returns immediately when the order is already settled', async () => {
+    const res = await handleRequest(
+      new Request(`https://compat.ophis.fi/sor/settlement/10/${UID}`),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.settled).toBe(true);
+    expect(body.terminal).toBe(true);
+    expect(body.pending).toBe(false);
+    expect(body.status).toBe('fulfilled');
+    expect(body.txHash).toBe('0xfeed');
+  });
+
+  it('resolves once a pending order settles, within the bounded wait', async () => {
+    let polls = 0;
+    const impl = stubFetch({
+      orderByUid: () =>
+        Response.json({ status: 'open', executedSellAmount: '0', executedBuyAmount: '0' }),
+      trades: () => {
+        polls += 1;
+        // No settlement trade on the first two polls, then one appears.
+        return polls < 3 ? Response.json([]) : Response.json([{ txHash: '0xfeed', orderUid: UID }]);
+      },
+    });
+    const res = await handleRequest(
+      new Request(`https://compat.ophis.fi/sor/settlement/10/${UID}?waitSeconds=30`),
+      ENV,
+      deps(impl),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.settled).toBe(true);
+    expect(body.txHash).toBe('0xfeed');
+    expect(polls).toBe(3);
+  });
+
+  it('returns pending (bounded, no unbounded retry) when the wait elapses', async () => {
+    const impl = stubFetch({
+      orderByUid: () =>
+        Response.json({ status: 'open', executedSellAmount: '0', executedBuyAmount: '0' }),
+      trades: () => Response.json([]),
+    });
+    const res = await handleRequest(
+      new Request(`https://compat.ophis.fi/sor/settlement/10/${UID}?waitSeconds=5`),
+      ENV,
+      deps(impl),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.settled).toBe(false);
+    expect(body.pending).toBe(true);
+    expect(body.ophis.pollAgainAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it('rejects a malformed uid', async () => {
+    const res = await handleRequest(
+      new Request('https://compat.ophis.fi/sor/settlement/10/0xbad'),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(400);
   });
 });
 
@@ -326,6 +572,7 @@ describe('POST /sor/assemble', () => {
       fee: '2260',
       slp: 30,
       ref: null,
+      pf: null,
       qid: 9858,
       iat: NOW_S - 120,
       exp: NOW_S - 60,
@@ -477,7 +724,9 @@ describe('POST /sor/submit', () => {
     };
     const refused = await handleRequest(post('/sor/submit', submitBody), ENV, deps(stubFetch()));
     expect(refused.status).toBe(400);
-    expect(((await refused.json()) as Record<string, any>).error.code).toBe('RECEIVER_NOT_ACKNOWLEDGED');
+    expect(((await refused.json()) as Record<string, any>).error.code).toBe(
+      'RECEIVER_NOT_ACKNOWLEDGED',
+    );
 
     const acked = await handleRequest(
       post('/sor/submit', { ...submitBody, acceptNonOwnerReceiver: true }),
@@ -523,7 +772,11 @@ describe('GET /sor/order-status/{chainId}/{orderUid}', () => {
 
 describe('worker plumbing', () => {
   it('serves /healthz without rate limiting', async () => {
-    const res = await handleRequest(new Request('https://compat.ophis.fi/healthz'), ENV, deps(stubFetch()));
+    const res = await handleRequest(
+      new Request('https://compat.ophis.fi/healthz'),
+      ENV,
+      deps(stubFetch()),
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, any>;
     expect(body.status).toBe('ok');
@@ -582,7 +835,11 @@ describe('worker plumbing', () => {
   });
 
   it('404s unknown routes with the endpoint list', async () => {
-    const res = await handleRequest(new Request('https://compat.ophis.fi/nope'), ENV, deps(stubFetch()));
+    const res = await handleRequest(
+      new Request('https://compat.ophis.fi/nope'),
+      ENV,
+      deps(stubFetch()),
+    );
     expect(res.status).toBe(404);
     expect(((await res.json()) as Record<string, any>).error.code).toBe('NOT_FOUND');
   });
@@ -601,7 +858,11 @@ describe('worker plumbing', () => {
 // Live read-only integration against the Optimism orderbook. Quotes and builds
 // only; NEVER signs or submits. Run: COMPAT_LIVE=1 pnpm --filter @ophis/compat-api test
 describe.runIf(process.env.COMPAT_LIVE === '1')('live Optimism integration (read-only)', () => {
-  const liveDeps: Deps = { fetchImpl: (...args) => fetch(...args), nowMs: () => Date.now() };
+  const liveDeps: Deps = {
+    fetchImpl: (...args) => fetch(...args),
+    nowMs: () => Date.now(),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  };
   const liveEnv: Env = { COMPAT_PATHID_KEY: 'live-integration-test-key' };
 
   it('quote -> assemble round-trip on chain 10', async () => {

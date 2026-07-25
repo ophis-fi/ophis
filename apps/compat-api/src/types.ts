@@ -11,7 +11,7 @@
  * semantics. Where the original semantics cannot be honored, the response says
  * so with structural nulls and named warnings; nothing is fabricated.
  */
-import type { Address, BuiltOrder } from '@ophis/sdk';
+import type { Address, BuiltOrder, OphisPartnerFee } from '@ophis/sdk';
 
 // --- environment -----------------------------------------------------------
 
@@ -31,6 +31,48 @@ export interface Env {
   COMPAT_PATHID_KEY_PREVIOUS?: string;
   /** Comma-separated chainIds served by this deployment. Default "10,130". */
   COMPAT_ENABLED_CHAINS?: string;
+  /**
+   * Master switch for mapping a non-zero Odos `referralFee` to a CIP-75 Volume
+   * `metadata.partnerFee` entry. Flip in lockstep with the backend's
+   * `partner-fee-registry.registration-enabled`: while the backend program is
+   * off, an unregistered recipient's order is rejected at ingress, so the safer
+   * default is to reject the fee here with a clear code rather than mint a draft
+   * that fails at submit. "true"/"1" enables the mapping. Default off.
+   */
+  COMPAT_PARTNER_FEE_ENABLED?: string;
+  /**
+   * Typical quote-to-settlement latency in seconds, surfaced as
+   * `ophis.expectedSettlementSeconds`. Defaults to DEFAULT_SETTLEMENT_BASELINE_SECONDS
+   * (derived from the OP autopilot run-loop). Override with a measured value as
+   * settlement telemetry accrues. An estimate, never a guarantee.
+   */
+  COMPAT_SETTLEMENT_BASELINE_SECONDS?: string;
+}
+
+/** Truthy env flag helper ("true"/"1", case-insensitive). */
+export const envFlag = (value: string | undefined): boolean =>
+  value === '1' || (typeof value === 'string' && value.toLowerCase() === 'true');
+
+/**
+ * Default typical quote-to-settlement latency (seconds) surfaced as
+ * `ophis.expectedSettlementSeconds`. DERIVATION (Optimism, self-hosted
+ * orderbook): the autopilot run-loop grants solvers a 20 s `solve-deadline`
+ * (infra/optimism-mainnet/configs/autopilot.toml `[run-loop] solve-deadline`),
+ * after which the winning settlement confirms in ~1-2 Optimism blocks at the
+ * 2 s block time (`[current-block] poll-interval`), i.e. ~20 s + ~4 s ~= 24 s
+ * for an order picked up in the next auction. It is a typical figure, not a
+ * bound: an order can miss an auction and wait further, or expire unfilled at
+ * `validTo`. Configurable via COMPAT_SETTLEMENT_BASELINE_SECONDS; replace with a
+ * measured baseline as telemetry accrues.
+ */
+export const DEFAULT_SETTLEMENT_BASELINE_SECONDS = 24;
+
+/** Resolves the configured (or default) settlement baseline in whole seconds. */
+export function settlementBaselineSeconds(env: Env): number {
+  const raw = env.COMPAT_SETTLEMENT_BASELINE_SECONDS;
+  if (raw === undefined) return DEFAULT_SETTLEMENT_BASELINE_SECONDS;
+  const n = Number.parseInt(raw.trim(), 10);
+  return Number.isInteger(n) && n > 0 && n <= 3600 ? n : DEFAULT_SETTLEMENT_BASELINE_SECONDS;
 }
 
 /** Chains enabled by default: the Ophis-operated orderbooks (never CoW-hosted). */
@@ -59,6 +101,12 @@ export function enabledChains(env: Env): number[] {
 export const COMPAT_ERRORS = {
   INVALID_REQUEST: { httpStatus: 400, numericCode: 4900 },
   MULTI_TOKEN_UNSUPPORTED: { httpStatus: 400, numericCode: 4901 },
+  /**
+   * Only emitted while the partner-fee program is disabled on this deployment
+   * (COMPAT_PARTNER_FEE_ENABLED off). Once enabled, a non-zero `referralFee` is
+   * mapped to a `metadata.partnerFee` entry instead. Kept in the taxonomy for
+   * stability (integrators may branch on 4902).
+   */
   PARTNER_FEE_UNAVAILABLE: { httpStatus: 400, numericCode: 4902 },
   UNSUPPORTED_CHAIN: { httpStatus: 400, numericCode: 4903 },
   INVALID_SLIPPAGE: { httpStatus: 400, numericCode: 4904 },
@@ -72,6 +120,15 @@ export const COMPAT_ERRORS = {
   APP_DATA_MISMATCH: { httpStatus: 400, numericCode: 4912 },
   UPSTREAM_VALIDATION: { httpStatus: 400, numericCode: 4913 },
   BODY_TOO_LARGE: { httpStatus: 413, numericCode: 4914 },
+  /**
+   * A mapped `referralFee` exceeds the program-wide third-party Volume cap
+   * (MAX_THIRD_PARTY_VOLUME_BPS = 90 bps). Rejected rather than clamped down: a
+   * silent reduction would strand the partner's expected revenue, the same
+   * doctrine that governed the original hard reject. A recipient's own
+   * registered cap (default 50 bps) is lower still and enforced by the orderbook
+   * at submit, surfaced as UPSTREAM_VALIDATION.
+   */
+  PARTNER_FEE_CAP_EXCEEDED: { httpStatus: 400, numericCode: 4915 },
   NO_ROUTE: { httpStatus: 404, numericCode: 2000 },
   NOT_FOUND: { httpStatus: 404, numericCode: 1001 },
   RATE_LIMITED: { httpStatus: 429, numericCode: 1029 },
@@ -131,6 +188,7 @@ export type CompatWarningCode =
   | 'SOURCE_FILTERS_IGNORED'
   | 'LIKE_ASSET_IGNORED'
   | 'REFERRAL_FEE_RECIPIENT_IGNORED'
+  | 'PARTNER_FEE_MAPPED'
   | 'PATH_VIZ_UNAVAILABLE'
   | 'PERMIT2_UNAVAILABLE'
   | 'SIMULATION_UNAVAILABLE'
@@ -163,7 +221,20 @@ export interface CompatQuoteRequest {
   slippageBips: number;
   /** Ophis referral code mapped from the integer referralCode (`odos<code>`), or null. */
   referrerCode: string | null;
+  /**
+   * The integrator-priced CIP-75 Volume partner-fee entry mapped from a non-zero
+   * Odos `referralFee` + `referralFeeRecipient`, or null. Embedded in the order's
+   * appData beside the Ophis default fee; the orderbook validates the recipient
+   * against the partner-fee registry.
+   */
+  partnerFee: OphisPartnerFee | null;
   priceQuality: 'fast' | 'optimal';
+  /** Odos `pathViz` flag: request the route-visualization graph in the response. */
+  pathViz: boolean;
+  /** Odos `pathVizImage` flag: request a rendered base64 SVG in the response. */
+  pathVizImage: boolean;
+  /** Odos `pathVizImageConfig`: opaque render options, passed through to the orderbook. */
+  pathVizImageConfig: Record<string, unknown> | null;
   warnings: CompatWarning[];
 }
 
@@ -209,6 +280,8 @@ export interface PathIdPayload {
   slp: number;
   /** normalized Ophis referral code, or null */
   ref: string | null;
+  /** mapped integrator partner-fee entry (Odos referralFee), or null */
+  pf: OphisPartnerFee | null;
   /** orderbook quote id, or null */
   qid: number | null;
   /** unix seconds: mint time and expiry (min(iat+60, quote expiration)) */
@@ -222,6 +295,14 @@ export interface PathIdPayload {
 export interface OphisBlock {
   /** Ophis settles via competitive batch auctions; settlement is asynchronous. */
   settlementModel: 'batch-auction-async';
+  /**
+   * Typical quote-to-settlement latency in whole seconds (Mode B1 measurement):
+   * an order enters the next batch auction, solvers get a bounded solve window,
+   * and the winning settlement confirms a few Optimism blocks later. An estimate
+   * from the configured/derived baseline, NOT a guarantee; an order can wait
+   * further or expire unfilled at `order.validTo`. See the migration guide.
+   */
+  expectedSettlementSeconds: number;
   /** Owner decision 7: values are native-denominated until a USD feed is chosen. */
   valueCurrency: 'native';
   assemblable: boolean;
@@ -266,8 +347,14 @@ export interface CompatQuoteResponse {
   permit2Hash: null;
   partnerFeePercent: number;
   pathId: string | null;
-  pathViz: null;
-  pathVizImage: null;
+  /**
+   * The Ophis route-visualization graph (a `PathVizGraph`) when `pathViz` was
+   * requested and the pathviz feature is enabled, else null. Off by default: the
+   * pathviz kill switch ships disabled, so this degrades to null with a warning.
+   */
+  pathViz: Record<string, unknown> | null;
+  /** The rendered base64 SVG when `pathVizImage` was requested and available, else null. */
+  pathVizImage: string | null;
   blockNumber: number;
   ophis: OphisBlock;
 }

@@ -63,16 +63,29 @@ async function throwUpstream(res: Response, label: string): Promise<never> {
     description: parsed.message,
   };
   if (parsed instanceof OphisUnroutableError) {
-    throw new CompatError('NO_ROUTE', `No route for this pair/amount right now. This is an answer, not a transient failure; retrying the same request cannot change it.`, { upstream });
+    throw new CompatError(
+      'NO_ROUTE',
+      `No route for this pair/amount right now. This is an answer, not a transient failure; retrying the same request cannot change it.`,
+      { upstream },
+    );
   }
   if (parsed instanceof OphisRateLimitError || res.status >= 500) {
-    const code = parsed instanceof OphisRateLimitError ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_UNAVAILABLE';
-    throw new CompatError(code, `${label}: orderbook temporarily unavailable (upstream ${res.status}).`, {
-      upstream,
-      retryAfterSeconds: (parsed as OphisApiError).retryAfterSeconds ?? 1,
-    });
+    const code =
+      parsed instanceof OphisRateLimitError ? 'UPSTREAM_RATE_LIMITED' : 'UPSTREAM_UNAVAILABLE';
+    throw new CompatError(
+      code,
+      `${label}: orderbook temporarily unavailable (upstream ${res.status}).`,
+      {
+        upstream,
+        retryAfterSeconds: (parsed as OphisApiError).retryAfterSeconds ?? 1,
+      },
+    );
   }
-  throw new CompatError('UPSTREAM_VALIDATION', `${label}: orderbook rejected the request (${parsed.message}).`, { upstream });
+  throw new CompatError(
+    'UPSTREAM_VALIDATION',
+    `${label}: orderbook rejected the request (${parsed.message}).`,
+    { upstream },
+  );
 }
 
 /**
@@ -88,9 +101,13 @@ async function parseOkJson(res: Response, label: string): Promise<unknown> {
     return await res.json();
   } catch (err) {
     console.error(`compat-api upstream ${label} returned a non-JSON ${res.status} body`, err);
-    throw new CompatError('UPSTREAM_UNAVAILABLE', `${label}: orderbook returned a malformed response.`, {
-      retryAfterSeconds: 1,
-    });
+    throw new CompatError(
+      'UPSTREAM_UNAVAILABLE',
+      `${label}: orderbook returned a malformed response.`,
+      {
+        retryAfterSeconds: 1,
+      },
+    );
   }
 }
 
@@ -104,6 +121,14 @@ export interface OrderbookQuote {
   quoteId: number | null;
   /** ISO 8601 quote expiration from the orderbook. */
   expiration: string | null;
+  /**
+   * The `PathVizGraph` from the orderbook (pathviz #924), present only when the
+   * request set `pathViz` AND the feature is enabled and assembly succeeded. The
+   * quote endpoint warns-and-degrades, so this stays null on any viz failure.
+   */
+  pathViz: Record<string, unknown> | null;
+  /** Rendered base64 SVG (`pathVizImage`) when requested and available, else null. */
+  pathVizImage: string | null;
 }
 
 const asAtoms = (v: unknown): string | null =>
@@ -120,6 +145,12 @@ export interface FetchQuoteParams {
   fullAppData: string;
   appDataHash: string;
   validForSeconds: number;
+  /** Request the pathviz route graph in the quote response (Odos wire-name parity). */
+  pathViz?: boolean;
+  /** Request the rendered base64 SVG in the quote response. */
+  pathVizImage?: boolean;
+  /** Opaque pathviz render options, passed through to the orderbook. */
+  pathVizImageConfig?: Record<string, unknown> | null;
 }
 
 /** `POST /api/v1/quote` with the exact appData the draft will sign, so the quoted amounts already price the partner fee. */
@@ -127,7 +158,7 @@ export async function fetchOrderbookQuote(
   p: FetchQuoteParams,
   fetchImpl: typeof fetch,
 ): Promise<OrderbookQuote> {
-  const body = {
+  const body: Record<string, unknown> = {
     sellToken: p.sellToken,
     buyToken: p.buyToken,
     from: p.from,
@@ -144,6 +175,12 @@ export async function fetchOrderbookQuote(
     appDataHash: p.appDataHash,
     validFor: p.validForSeconds,
   };
+  // pathviz (#924): opt-in quote-time route graph. The orderbook warns-and-degrades
+  // (a viz failure or the disabled kill switch just omits the fields), so this is
+  // safe to always request when the caller asked for it.
+  if (p.pathViz) body.pathViz = true;
+  if (p.pathVizImage) body.pathVizImage = true;
+  if (p.pathVizImageConfig) body.pathVizImageConfig = p.pathVizImageConfig;
   const url = `${getOphisOrderbookUrl(p.chainId)}/api/v1/quote`;
   const res = await timedFetch(
     fetchImpl,
@@ -163,16 +200,28 @@ export async function fetchOrderbookQuote(
     };
     id?: unknown;
     expiration?: unknown;
+    // pathViz/pathVizImage are siblings of `quote` on OrderQuoteResponse,
+    // skip_serializing_if = None so absent unless requested + rendered.
+    pathViz?: unknown;
+    pathVizImage?: unknown;
   };
   const q = json.quote;
   const sellAmount = asAtoms(q?.sellAmount);
   const buyAmount = asAtoms(q?.buyAmount);
   const feeAmount = asAtoms(q?.feeAmount);
   if (!q || !sellAmount || !buyAmount || !feeAmount || typeof q.validTo !== 'number') {
-    throw new CompatError('UPSTREAM_UNAVAILABLE', 'quote: orderbook returned an unexpected shape.', {
-      retryAfterSeconds: 1,
-    });
+    throw new CompatError(
+      'UPSTREAM_UNAVAILABLE',
+      'quote: orderbook returned an unexpected shape.',
+      {
+        retryAfterSeconds: 1,
+      },
+    );
   }
+  const pathViz =
+    json.pathViz !== null && typeof json.pathViz === 'object' && !Array.isArray(json.pathViz)
+      ? (json.pathViz as Record<string, unknown>)
+      : null;
   return {
     sellAmount,
     buyAmount,
@@ -182,6 +231,8 @@ export async function fetchOrderbookQuote(
     gasPriceWei: asAtoms(q.gasPrice),
     quoteId: typeof json.id === 'number' ? json.id : null,
     expiration: typeof json.expiration === 'string' ? json.expiration : null,
+    pathViz,
+    pathVizImage: typeof json.pathVizImage === 'string' ? json.pathVizImage : null,
   };
 }
 
@@ -221,9 +272,13 @@ export async function relayOrder(
   if (!res.ok) await throwUpstream(res, 'submit');
   const uid = (await parseOkJson(res, 'submit')) as unknown;
   if (typeof uid !== 'string' || !/^0x[0-9a-fA-F]{112}$/.test(uid)) {
-    throw new CompatError('UPSTREAM_UNAVAILABLE', 'submit: orderbook returned an unexpected shape.', {
-      retryAfterSeconds: 1,
-    });
+    throw new CompatError(
+      'UPSTREAM_UNAVAILABLE',
+      'submit: orderbook returned an unexpected shape.',
+      {
+        retryAfterSeconds: 1,
+      },
+    );
   }
   return uid;
 }

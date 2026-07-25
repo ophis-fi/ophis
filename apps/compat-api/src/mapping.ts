@@ -12,16 +12,28 @@
  *                            the cap is INVALID_SLIPPAGE, never silently clamped)
  *   simple                -> priceQuality 'fast' (true) / 'optimal' (false)
  *   referralCode (int)    -> appData metadata.ophisReferrer.code = `odos<code>`
- *   referralFee > 0       -> PARTNER_FEE_UNAVAILABLE (hard reject until partner
- *                            fees ship; a silent drop would strand expected revenue)
+ *   referralFee (decimal) -> a CIP-75 Volume metadata.partnerFee entry with
+ *                            referralFeeRecipient (0.001 fraction = 10 volumeBps),
+ *                            once the partner-fee program is enabled; capped at
+ *                            the program's 90 bps third-party ceiling. While the
+ *                            program is off it is rejected (PARTNER_FEE_UNAVAILABLE)
+ *                            rather than silently dropped.
  *   gasPrice              -> ignored + warning (solvers pay gas)
  *   source/pool filters   -> ignored + warning (solver competition replaces routing filters)
  *   disableRFQs, compact  -> silent no-ops (no RFQ lane; one response shape)
  *   likeAsset             -> ignored + warning
- *   pathViz*              -> reserved null + warning (until pathviz ships)
+ *   pathViz*              -> requested from the orderbook pathviz endpoint when
+ *                            the feature is enabled, else null + warning
  *   permit2               -> reserved null + warning (until permit2-witness ships)
  */
-import { checksum, MAX_SLIPPAGE_BIPS, normalizeOphisReferralCode, type Address } from '@ophis/sdk';
+import {
+  checksum,
+  isZeroAddress,
+  MAX_SLIPPAGE_BIPS,
+  normalizeOphisReferralCode,
+  type Address,
+  type OphisPartnerFee,
+} from '@ophis/sdk';
 
 import {
   CompatError,
@@ -31,6 +43,19 @@ import {
   type CompatSubmitRequest,
   type CompatWarning,
 } from './types.js';
+
+/**
+ * Program-wide cap on a THIRD-PARTY partner's Volume-policy bps. Mirrors the
+ * Rust constant `MAX_THIRD_PARTY_VOLUME_BPS` in
+ * apps/backend/crates/app-data/src/app_data.rs (partner-fees Phase A, #926). A
+ * recipient's OWN registered cap (default 50 bps) may be lower and is enforced
+ * by the orderbook at ingress; this is the ceiling the compat surface can know
+ * statically without a registry read.
+ */
+const MAX_THIRD_PARTY_VOLUME_BPS = 90;
+
+/** Smallest representable Volume fee (1 bps = 0.0001 as an Odos decimal fraction). */
+const MIN_MAPPABLE_VOLUME_BPS = 1;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -62,7 +87,10 @@ const BASKET_ROADMAP_MESSAGE =
   'Ophis basket intents ship (multi-asset orders are on the public roadmap); until then, decompose ' +
   'the request into single-pair calls.';
 
-export function parseQuoteRequest(body: unknown): CompatQuoteRequest {
+export function parseQuoteRequest(
+  body: unknown,
+  opts: { partnerFeeEnabled?: boolean } = {},
+): CompatQuoteRequest {
   if (!isRecord(body)) {
     throw new CompatError('INVALID_REQUEST', 'Request body must be a JSON object.');
   }
@@ -133,19 +161,61 @@ export function parseQuoteRequest(body: unknown): CompatQuoteRequest {
     }
   }
 
-  // referralFee: hard reject until partner fees ship (owner decision 8). A
-  // loud failure beats a partner silently losing expected revenue.
+  // referralFee -> a CIP-75 Volume partner-fee entry (partner-fees Phase A, #926).
+  // The decimal fraction maps to volume bps (0.001 = 10 bps). The cap is enforced
+  // loudly (reject, never a silent clamp-down that would strand a partner's
+  // expected revenue). While the program is disabled on this deployment the fee
+  // is rejected rather than mapped into a draft that the orderbook refuses at
+  // ingress.
   const referralFee = body.referralFee;
+  let partnerFee: OphisPartnerFee | null = null;
   if (referralFee !== undefined && referralFee !== null) {
     if (typeof referralFee !== 'number' || !Number.isFinite(referralFee) || referralFee < 0) {
       throw new CompatError('INVALID_REQUEST', 'referralFee: must be a non-negative number.');
     }
     if (referralFee > 0) {
-      throw new CompatError(
-        'PARTNER_FEE_UNAVAILABLE',
-        'referralFee: integrator-priced fees are not live on this surface yet (the partner-fee program ships next). ' +
-          'Until then a non-zero referralFee is rejected rather than silently dropped, so no expected revenue is lost. ' +
-          'referralCode-only attribution works today.',
+      if (!opts.partnerFeeEnabled) {
+        throw new CompatError(
+          'PARTNER_FEE_UNAVAILABLE',
+          'referralFee: integrator-priced partner fees are not enabled on this deployment yet. ' +
+            'When the partner-fee program is live, a non-zero referralFee maps to a CIP-75 Volume ' +
+            'fee to referralFeeRecipient; until then it is rejected rather than silently dropped, so no ' +
+            'expected revenue is lost. referralCode-only attribution works today.',
+        );
+      }
+      const recipient = compatChecksum(body.referralFeeRecipient, 'referralFeeRecipient');
+      if (isZeroAddress(recipient)) {
+        throw new CompatError(
+          'INVALID_REQUEST',
+          'referralFeeRecipient: required non-zero address when referralFee > 0 (the fee needs a payee).',
+        );
+      }
+      // Odos referralFee is a decimal fraction of volume; 0.001 = 0.1% = 10 bps.
+      // CIP-75 Volume fees are bps-granular, so round to the nearest bps.
+      const volumeBps = Math.round(referralFee * 10_000);
+      if (volumeBps < MIN_MAPPABLE_VOLUME_BPS) {
+        throw new CompatError(
+          'INVALID_REQUEST',
+          `referralFee ${referralFee} is smaller than the minimum representable Volume fee ` +
+            `(0.0001 = 1 bps); raise it or drop it.`,
+        );
+      }
+      if (volumeBps > MAX_THIRD_PARTY_VOLUME_BPS) {
+        throw new CompatError(
+          'PARTNER_FEE_CAP_EXCEEDED',
+          `referralFee ${referralFee} maps to ${volumeBps} bps, above the program's ` +
+            `${MAX_THIRD_PARTY_VOLUME_BPS} bps third-party cap. Lower it. (A silent clamp-down is refused: ` +
+            `it would charge less than you asked and strand your expected revenue.)`,
+        );
+      }
+      partnerFee = { volumeBps, recipient };
+      warnings.push(
+        warning(
+          'PARTNER_FEE_MAPPED',
+          `referralFee ${referralFee} maps to a ${volumeBps} bps CIP-75 Volume fee to ${recipient}. ` +
+            `The recipient must be a registered, active partner-fee recipient (POST /api/v1/partners); ` +
+            `its own registered cap (default 50 bps) is enforced by the orderbook at submit.`,
+        ),
       );
     }
   }
@@ -202,14 +272,12 @@ export function parseQuoteRequest(body: unknown): CompatQuoteRequest {
   if (body.likeAsset === true) {
     warnings.push(warning('LIKE_ASSET_IGNORED', 'likeAsset was ignored on this surface.'));
   }
-  if (body.pathViz === true || body.pathVizImage === true || body.pathVizImageConfig != null) {
-    warnings.push(
-      warning(
-        'PATH_VIZ_UNAVAILABLE',
-        'pathViz/pathVizImage are reserved and currently null; route visualization ships in a later release.',
-      ),
-    );
-  }
+  // pathViz/pathVizImage/pathVizImageConfig: requested from the orderbook's
+  // pathviz endpoint when the feature is enabled. No parse-time warning; the
+  // quote path warns-and-degrades to null only if the feature is off/degraded.
+  const pathViz = body.pathViz === true;
+  const pathVizImage = body.pathVizImage === true;
+  const pathVizImageConfig = isRecord(body.pathVizImageConfig) ? body.pathVizImageConfig : null;
   if (body.permit2 === true) {
     warnings.push(
       warning(
@@ -228,7 +296,11 @@ export function parseQuoteRequest(body: unknown): CompatQuoteRequest {
     userAddr,
     slippageBips,
     referrerCode,
+    partnerFee,
     priceQuality,
+    pathViz,
+    pathVizImage,
+    pathVizImageConfig,
     warnings,
   };
 }
@@ -272,7 +344,10 @@ export function parseSubmitRequest(body: unknown): CompatSubmitRequest {
   const from = compatChecksum(body.from, 'from');
   const o = body.order;
   if (!isRecord(o)) {
-    throw new CompatError('INVALID_REQUEST', 'order: required object (the ophis.order draft, signed).');
+    throw new CompatError(
+      'INVALID_REQUEST',
+      'order: required object (the ophis.order draft, signed).',
+    );
   }
   const sellToken = compatChecksum(o.sellToken, 'order.sellToken');
   const buyToken = compatChecksum(o.buyToken, 'order.buyToken');
@@ -281,9 +356,17 @@ export function parseSubmitRequest(body: unknown): CompatSubmitRequest {
   const buyAmount = assertCompatAtoms(o.buyAmount, 'order.buyAmount');
   const feeAmount = o.feeAmount;
   if (typeof feeAmount !== 'string' || !/^[0-9]{1,64}$/.test(feeAmount)) {
-    throw new CompatError('INVALID_AMOUNT', 'order.feeAmount: must be a non-negative integer string of atoms.');
+    throw new CompatError(
+      'INVALID_AMOUNT',
+      'order.feeAmount: must be a non-negative integer string of atoms.',
+    );
   }
-  if (typeof o.validTo !== 'number' || !Number.isInteger(o.validTo) || o.validTo <= 0 || o.validTo > 0xffffffff) {
+  if (
+    typeof o.validTo !== 'number' ||
+    !Number.isInteger(o.validTo) ||
+    o.validTo <= 0 ||
+    o.validTo > 0xffffffff
+  ) {
     throw new CompatError('INVALID_REQUEST', 'order.validTo: must be a uint32 unix timestamp.');
   }
   if (typeof o.appData !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(o.appData)) {
@@ -296,7 +379,10 @@ export function parseSubmitRequest(body: unknown): CompatSubmitRequest {
     throw new CompatError('INVALID_REQUEST', 'order.partiallyFillable: must be a boolean.');
   }
   if (o.sellTokenBalance !== 'erc20' || o.buyTokenBalance !== 'erc20') {
-    throw new CompatError('INVALID_REQUEST', "order.sellTokenBalance/buyTokenBalance: must be 'erc20'.");
+    throw new CompatError(
+      'INVALID_REQUEST',
+      "order.sellTokenBalance/buyTokenBalance: must be 'erc20'.",
+    );
   }
   if (typeof body.fullAppData !== 'string' || body.fullAppData.length > MAX_FULL_APP_DATA_BYTES) {
     throw new CompatError(

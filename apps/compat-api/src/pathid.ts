@@ -94,6 +94,13 @@ export async function verifyPathId(
     throw invalid();
   }
   const p = payload as Partial<PathIdPayload> | null;
+  const pfOk =
+    p?.pf === null ||
+    p?.pf === undefined ||
+    (typeof p.pf === 'object' &&
+      typeof (p.pf as { volumeBps?: unknown }).volumeBps === 'number' &&
+      Number.isInteger((p.pf as { volumeBps: number }).volumeBps) &&
+      typeof (p.pf as { recipient?: unknown }).recipient === 'string');
   if (
     !p ||
     p.v !== 1 ||
@@ -109,7 +116,8 @@ export async function verifyPathId(
     typeof p.exp !== 'number' ||
     (p.usr !== null && typeof p.usr !== 'string') ||
     (p.ref !== null && typeof p.ref !== 'string') ||
-    (p.qid !== null && typeof p.qid !== 'number')
+    (p.qid !== null && typeof p.qid !== 'number') ||
+    !pfOk
   ) {
     throw invalid();
   }
@@ -119,5 +127,6 @@ export async function verifyPathId(
       `pathId expired at ${p.exp} (unix seconds). Request a fresh quote from /sor/quote/v3.`,
     );
   }
-  return p as PathIdPayload;
+  // Older tokens minted before the partner-fee mapping carry no `pf`; treat as null.
+  return { ...p, pf: p.pf ?? null } as PathIdPayload;
 }

@@ -23,7 +23,20 @@
   // Enabled chains for the compat surface (Ophis-operated orderbooks only, so
   // nothing proxies api.cow.fi hosts). Everything else stays behind this config.
   "vars": {
-    "COMPAT_ENABLED_CHAINS": "10,130"
+    "COMPAT_ENABLED_CHAINS": "10,130",
+    // Master switch for mapping a non-zero Odos `referralFee` to a CIP-75 Volume
+    // `metadata.partnerFee` entry (partner-fees Phase A, #926). MUST be flipped
+    // in lockstep with the backend's `partner-fee-registry.registration-enabled`:
+    // while the backend program is off, an unregistered recipient's order is
+    // rejected at ingress, so the safer default is to reject the fee here rather
+    // than mint a draft that fails at submit. Ships off.
+    "COMPAT_PARTNER_FEE_ENABLED": "false",
+    // Typical quote-to-settlement latency (seconds), surfaced as
+    // `ophis.expectedSettlementSeconds` (Mode B1). Default 24 is derived from the
+    // OP autopilot run-loop (20 s solve-deadline + ~2 blocks confirmation);
+    // replace with a measured value as settlement telemetry accrues. An estimate,
+    // never a guarantee.
+    "COMPAT_SETTLEMENT_BASELINE_SECONDS": "24"
   },
   // Custom domain (owner decision 6: compat.ophis.fi isolates the shim and
   // keeps a cheap exit later). Provisioned by wrangler on deploy: the ophis.fi
