@@ -21,13 +21,16 @@ const CUSTOM_SPENDER = '0x1111111111111111111111111111111111111111' as const;
 type MulticallArgs = Parameters<OphisMulticallClient['multicall']>[0];
 
 /** Stub client returning viem-shaped allowFailure entries. */
-const stubClient = (results: readonly { status: 'success' | 'failure'; result?: unknown; error?: unknown }[]) => {
+const stubClient = (
+  results: readonly { status: 'success' | 'failure'; result?: unknown; error?: unknown }[],
+) => {
   const multicall = vi.fn(async (_args: MulticallArgs) => results);
   return { client: { multicall } as OphisMulticallClient, multicall };
 };
 
 const ok = (result: bigint) => ({ status: 'success', result }) as const;
-const fail = () => ({ status: 'failure', error: new Error('execution reverted'), result: undefined }) as const;
+const fail = () =>
+  ({ status: 'failure', error: new Error('execution reverted'), result: undefined }) as const;
 
 describe('OphisMulticallClient structural typing', () => {
   it('is satisfied by a real viem PublicClient with no cast (decision 13)', () => {
@@ -42,7 +45,9 @@ describe('OphisMulticallClient structural typing', () => {
 describe('ophisPreflight', () => {
   it('reports ready when balance and allowance both cover required', async () => {
     const { client, multicall } = stubClient([ok(1_000n), ok(500n)]);
-    const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 500n }]);
+    const [result] = await ophisPreflight(client, 10, [
+      { token: TOKEN, owner: OWNER, required: 500n },
+    ]);
     expect(result).toMatchObject({
       token: TOKEN,
       owner: OWNER,
@@ -69,7 +74,12 @@ describe('ophisPreflight', () => {
     expect(args.multicallAddress).toBe(MULTICALL3_ADDRESS);
     expect(args.contracts).toEqual([
       { address: TOKEN, abi: ERC20_PREFLIGHT_ABI, functionName: 'balanceOf', args: [OWNER] },
-      { address: TOKEN, abi: ERC20_PREFLIGHT_ABI, functionName: 'allowance', args: [OWNER, OP_RELAYER] },
+      {
+        address: TOKEN,
+        abi: ERC20_PREFLIGHT_ABI,
+        functionName: 'allowance',
+        args: [OWNER, OP_RELAYER],
+      },
     ]);
   });
 
@@ -91,7 +101,9 @@ describe('ophisPreflight', () => {
 
   it('flags approval_needed when the allowance is short but the balance covers', async () => {
     const { client } = stubClient([ok(1_000n), ok(300n)]);
-    const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 800n }]);
+    const [result] = await ophisPreflight(client, 10, [
+      { token: TOKEN, owner: OWNER, required: 800n },
+    ]);
     expect(result?.ready).toBe(false);
     expect(result?.sufficientBalance).toBe(true);
     expect(result?.sufficientAllowance).toBe(false);
@@ -100,7 +112,9 @@ describe('ophisPreflight', () => {
 
   it('flags an insufficient balance', async () => {
     const { client } = stubClient([ok(100n), ok(10_000n)]);
-    const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 800n }]);
+    const [result] = await ophisPreflight(client, 10, [
+      { token: TOKEN, owner: OWNER, required: 800n },
+    ]);
     expect(result?.ready).toBe(false);
     expect(result?.sufficientBalance).toBe(false);
     expect(result?.sufficientAllowance).toBe(true);
@@ -136,24 +150,24 @@ describe('ophisPreflight', () => {
     it('throws when the client returns a non-array', async () => {
       const { client } = stubClient([]);
       (client as { multicall: unknown }).multicall = async () => 'nonsense';
-      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toBeInstanceOf(
-        OphisPreflightError,
-      );
+      await expect(
+        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toBeInstanceOf(OphisPreflightError);
     });
 
     it('throws when the result count does not match the request (truncated batch)', async () => {
       const { client } = stubClient([ok(1n)]); // 1 entry for 2 calls
-      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
-        /expected 2/,
-      );
+      await expect(
+        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toThrow(/expected 2/);
     });
 
     it('throws when entries lack allowFailure statuses (client ignored the contract)', async () => {
       const flat = [1_000n, 500n]; // allowFailure:false shape
       const client: OphisMulticallClient = { multicall: async () => flat };
-      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
-        /allowFailure/,
-      );
+      await expect(
+        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toThrow(/allowFailure/);
     });
 
     it('hits the typed diagnostic on a sparse result array (holes are not entries)', async () => {
@@ -166,9 +180,9 @@ describe('ophisPreflight', () => {
 
     it('throws when a successful read decodes to a non-bigint (refuses to coerce)', async () => {
       const { client } = stubClient([{ status: 'success', result: '1000' }, ok(1n)]);
-      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
-        /expected bigint/,
-      );
+      await expect(
+        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toThrow(/expected bigint/);
     });
 
     it('throws on a total outage: every entry failure (viem swallows the rejected aggregate call)', async () => {
@@ -176,7 +190,9 @@ describe('ophisPreflight', () => {
       // eth_call fails; it returns one failure entry per contract. Answering
       // that shape would zero every balance and show "insufficient funds"
       // during an RPC outage.
-      const transportError = Object.assign(new Error('HTTP request failed'), { name: 'HttpRequestError' });
+      const transportError = Object.assign(new Error('HTTP request failed'), {
+        name: 'HttpRequestError',
+      });
       const { client } = stubClient([
         { status: 'failure', error: transportError, result: undefined },
         { status: 'failure', error: transportError, result: undefined },
@@ -193,7 +209,66 @@ describe('ophisPreflight', () => {
       await expect(promise).rejects.toThrow(/HttpRequestError/);
       const caught = await promise.catch((error: unknown) => error);
       expect((caught as OphisPreflightError).cause).toBeInstanceOf(AggregateError);
-      expect(((caught as OphisPreflightError).cause as AggregateError).errors).toContain(transportError);
+      expect(((caught as OphisPreflightError).cause as AggregateError).errors).toContain(
+        transportError,
+      );
+    });
+
+    // ---- regression: aligned-chunk transport death (review finding, 2026-07-25) ----
+    // A chunk that aligns to COMPLETE (balanceOf, allowance) pairs defeats the
+    // pair-consistency rule: both halves of each pair fail together, and that
+    // rule only fires on a HALF-failed pair. If another chunk succeeds, the
+    // all-failure rule does not fire either. In that window the transport-name
+    // list is the ONLY remaining gate, so a transport error missing from it is
+    // answered as zero balances -- the exact fail-open this module prevents.
+    // viem 2.48.8 hands a BARE SocketClosedError to in-flight requests at
+    // utils/rpc/socket.js:54 (the webSocket.js path wraps it in
+    // WebSocketRequestError and was already covered).
+    it('throws when an aligned chunk dies on a bare SocketClosedError while another chunk succeeds', async () => {
+      const socketClosed = Object.assign(new Error('The socket has been closed.'), {
+        name: 'SocketClosedError',
+      });
+      const { client } = stubClient([
+        { status: 'failure', error: socketClosed, result: undefined },
+        { status: 'failure', error: socketClosed, result: undefined },
+        ok(1_000n),
+        ok(1_000n),
+      ]);
+      const promise = ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 1n },
+        { token: TOKEN_2, owner: OWNER, required: 1n },
+      ]);
+      await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
+      await expect(promise).rejects.toThrow(/SocketClosedError/);
+    });
+
+    it('throws on a bare ProviderDisconnectedError in an aligned chunk (EIP-1193 4900)', async () => {
+      const disconnected = Object.assign(new Error('provider disconnected'), {
+        name: 'ProviderDisconnectedError',
+      });
+      const { client } = stubClient([
+        { status: 'failure', error: disconnected, result: undefined },
+        { status: 'failure', error: disconnected, result: undefined },
+        ok(1_000n),
+        ok(1_000n),
+      ]);
+      await expect(
+        ophisPreflight(client, 10, [
+          { token: TOKEN, owner: OWNER, required: 1n },
+          { token: TOKEN_2, owner: OWNER, required: 1n },
+        ]),
+      ).rejects.toThrow(/ProviderDisconnectedError/);
+    });
+
+    it('still zeroes an aligned chunk that failed with a genuine revert (widening must not swallow real reverts)', async () => {
+      const { client } = stubClient([fail(), fail(), ok(1_000n), ok(1_000n)]);
+      const results = await ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 1n },
+        { token: TOKEN_2, owner: OWNER, required: 1n },
+      ]);
+      expect(results[0]?.balance).toBe(0n);
+      expect(results[0]?.allowance).toBe(0n);
+      expect(results[1]?.balance).toBe(1_000n);
     });
 
     it('throws on a single check whose both reads failed (deliberate: an all-failure batch, not a not-ready)', async () => {
@@ -201,9 +276,9 @@ describe('ophisPreflight', () => {
       // both failing IS the all-failure shape and is indistinguishable from
       // an outage, so it throws instead of reporting not-ready.
       const { client } = stubClient([fail(), fail()]);
-      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
-        /every call in the preflight batch failed/,
-      );
+      await expect(
+        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toThrow(/every call in the preflight batch failed/);
     });
 
     it('still throws on an all-failure batch when entries carry no error field (message stays typed)', async () => {
@@ -319,7 +394,9 @@ describe('ophisPreflight', () => {
       // ready the user cannot fund on the chain the order targets.
       const multicall = vi.fn(async () => [ok(10n ** 30n), ok(10n ** 30n)]);
       const client: OphisMulticallClient = { multicall, getChainId: async () => 8453 };
-      const promise = ophisPreflight(client, 57073, [{ token: TOKEN_2, owner: OWNER, required: 1n }]);
+      const promise = ophisPreflight(client, 57073, [
+        { token: TOKEN_2, owner: OWNER, required: 1n },
+      ]);
       await expect(promise).rejects.toBeInstanceOf(OphisPreflightError);
       await expect(promise).rejects.toThrow(/chain mismatch/);
       expect(multicall).not.toHaveBeenCalled();
@@ -328,7 +405,9 @@ describe('ophisPreflight', () => {
     it('proceeds when the connected chain matches chainId', async () => {
       const { client } = stubClient([ok(10n), ok(10n)]);
       (client as { getChainId?: () => Promise<number> }).getChainId = async () => 10;
-      const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 10n }]);
+      const [result] = await ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 10n },
+      ]);
       expect(result?.ready).toBe(true);
     });
 
@@ -350,7 +429,9 @@ describe('ophisPreflight', () => {
       // nothing to verify against; the multicall path still applies.
       const { client } = stubClient([ok(10n), ok(10n)]);
       expect((client as { getChainId?: unknown }).getChainId).toBeUndefined();
-      const [result] = await ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 10n }]);
+      const [result] = await ophisPreflight(client, 10, [
+        { token: TOKEN, owner: OWNER, required: 10n },
+      ]);
       expect(result?.ready).toBe(true);
     });
   });
@@ -363,35 +444,41 @@ describe('ophisPreflight', () => {
 
     it('rejects a client without a multicall method', async () => {
       await expect(
-        ophisPreflight({} as OphisMulticallClient, 10, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+        ophisPreflight({} as OphisMulticallClient, 10, [
+          { token: TOKEN, owner: OWNER, required: 1n },
+        ]),
       ).rejects.toThrow(TypeError);
     });
 
     it('rejects a non-positive or non-bigint required amount', async () => {
       const { client } = stubClient([ok(1n), ok(1n)]);
-      await expect(ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 0n }])).rejects.toThrow(
-        TypeError,
-      );
       await expect(
-        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 100 as unknown as bigint }]),
+        ophisPreflight(client, 10, [{ token: TOKEN, owner: OWNER, required: 0n }]),
+      ).rejects.toThrow(TypeError);
+      await expect(
+        ophisPreflight(client, 10, [
+          { token: TOKEN, owner: OWNER, required: 100 as unknown as bigint },
+        ]),
       ).rejects.toThrow(TypeError);
     });
 
     it('rejects malformed addresses and an invalid chainId', async () => {
       const { client } = stubClient([ok(1n), ok(1n)]);
       await expect(
-        ophisPreflight(client, 10, [{ token: '0xnope' as `0x${string}`, owner: OWNER, required: 1n }]),
+        ophisPreflight(client, 10, [
+          { token: '0xnope' as `0x${string}`, owner: OWNER, required: 1n },
+        ]),
       ).rejects.toThrow(TypeError);
-      await expect(ophisPreflight(client, 0, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
-        TypeError,
-      );
+      await expect(
+        ophisPreflight(client, 0, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toThrow(TypeError);
     });
 
     it('rejects an unsupported chain when the default spender cannot be resolved', async () => {
       const { client } = stubClient([ok(1n), ok(1n)]);
-      await expect(ophisPreflight(client, 424242, [{ token: TOKEN, owner: OWNER, required: 1n }])).rejects.toThrow(
-        /vault relayer/,
-      );
+      await expect(
+        ophisPreflight(client, 424242, [{ token: TOKEN, owner: OWNER, required: 1n }]),
+      ).rejects.toThrow(/vault relayer/);
     });
   });
 });
