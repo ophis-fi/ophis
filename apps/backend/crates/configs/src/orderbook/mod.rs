@@ -6,6 +6,7 @@ use {
         http_client::HttpClient,
         order_quoting::OrderQuoting,
         orderbook::{
+            api::ApiConfig,
             ipfs::IpfsConfig,
             native_price::NativePriceConfig,
             order_validation::OrderValidationConfig,
@@ -23,6 +24,7 @@ use {
     },
 };
 
+pub mod api;
 pub mod ipfs;
 pub mod native_price;
 pub mod order_validation;
@@ -74,6 +76,10 @@ pub struct Configuration {
     /// Bind address for the Orderbook.
     #[serde(default = "default_bind_address")]
     pub bind_address: SocketAddr,
+
+    /// Settings for the public HTTP API server itself (rate limiting).
+    #[serde(default)]
+    pub api: ApiConfig,
 
     /// Configuration for the order validation system.
     #[serde(default)]
@@ -203,6 +209,7 @@ pub mod test_util {
             Self {
                 shared: Default::default(),
                 bind_address: default_bind_address(),
+                api: Default::default(),
                 order_validation: Default::default(),
                 banned_users: Default::default(),
                 ipfs: Default::default(),
@@ -256,6 +263,12 @@ mod tests {
         eip1271-skip-creation-validation = true
         hide-competition-before-deadline = true
 
+        [api.rate-limit]
+        enabled = false
+        requests-per-second = 5
+        burst = 20
+        trust-cf-connecting-ip = true
+
         [banned-users]
         addresses = ["0xdead000000000000000000000000000000000000"]
 
@@ -293,6 +306,10 @@ mod tests {
         assert_eq!(config.banned_users.addresses.len(), 1);
         assert!(config.eip1271_skip_creation_validation);
         assert!(config.hide_competition_before_deadline);
+        assert!(!config.api.rate_limit.enabled);
+        assert_eq!(config.api.rate_limit.requests_per_second.get(), 5);
+        assert_eq!(config.api.rate_limit.burst.get(), 20);
+        assert!(config.api.rate_limit.trust_cf_connecting_ip);
         assert_eq!(
             config.order_simulation.map(|config| config.gas_limit),
             Some(U256::from(123456789u64))
@@ -366,6 +383,7 @@ mod tests {
         let config = Configuration {
             shared: Default::default(),
             bind_address: default_bind_address(),
+            api: Default::default(),
             order_validation: OrderValidationConfig {
                 min_order_validity_period: Duration::from_secs(120),
                 max_order_validity_period: Duration::from_secs(7200),

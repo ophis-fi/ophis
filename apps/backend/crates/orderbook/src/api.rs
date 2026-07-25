@@ -50,6 +50,7 @@ mod get_user_orders;
 mod post_order;
 mod post_quote;
 mod put_app_data;
+mod rate_limit;
 pub mod trace_id;
 mod version;
 
@@ -164,6 +165,7 @@ pub fn handle_all_routes(
     quote_timeout: Duration,
     current_block_stream: CurrentBlockWatcher,
     hide_competition_before_deadline: bool,
+    api_config: configs::orderbook::api::ApiConfig,
 ) -> Router {
     let app_data_size_limit = app_data.size_limit();
 
@@ -352,7 +354,18 @@ pub fn handle_all_routes(
         // Let browser clients read the trace id off responses.
         .expose_headers(vec![trace_id::TRACE_ID_HEADER]);
 
+    let rate_limiter = Arc::new(rate_limit::RateLimiter::new(api_config.rate_limit));
+
     api_router
+        // Innermost layer: runs after routing but before every handler, so
+        // the observability layers below (logging, metrics, trace id) all see
+        // and annotate the 429s it produces. SHIPS DISABLED (api-dx decision
+        // 10): with `enabled = false` (every checked-in config) it forwards
+        // every request untouched.
+        .layer(middleware::from_fn_with_state(
+            rate_limiter,
+            rate_limit::enforce,
+        ))
         .layer(DefaultBodyLimit::max(MAX_JSON_BODY_PAYLOAD as usize))
         .layer(cors)
         .layer(middleware::from_fn(summarize_request))
@@ -400,6 +413,7 @@ impl ApiMetrics {
         StatusCode::UNAUTHORIZED,
         StatusCode::FORBIDDEN,
         StatusCode::NOT_FOUND,
+        StatusCode::TOO_MANY_REQUESTS,
         StatusCode::INTERNAL_SERVER_ERROR,
         StatusCode::SERVICE_UNAVAILABLE,
     ];

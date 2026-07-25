@@ -507,6 +507,7 @@ pub async fn run(config: Configuration) {
         config.price_estimation.quote_timeout,
         current_block_stream,
         config.hide_competition_before_deadline,
+        config.api,
     );
 
     let mut metrics_address = config.bind_address;
@@ -581,6 +582,7 @@ fn serve_api(
     quote_timeout: Duration,
     current_block_stream: ethrpc::block_stream::CurrentBlockWatcher,
     hide_competition_before_deadline: bool,
+    api_config: configs::orderbook::api::ApiConfig,
 ) -> JoinHandle<()> {
     let app = api::handle_all_routes(
         database,
@@ -592,6 +594,7 @@ fn serve_api(
         quote_timeout,
         current_block_stream,
         hide_competition_before_deadline,
+        api_config,
     );
     tracing::info!(%address, "serving order book");
 
@@ -603,9 +606,15 @@ fn serve_api(
                 return;
             }
         };
-        if let Err(err) = axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_receiver)
-            .await
+        // ConnectInfo exposes the socket peer address to the rate limiter's
+        // client-key fallback (used when `CF-Connecting-IP` is absent or
+        // untrusted).
+        if let Err(err) = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_receiver)
+        .await
         {
             tracing::error!(?err, "server error");
         }

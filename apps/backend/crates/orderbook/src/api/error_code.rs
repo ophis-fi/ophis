@@ -8,8 +8,10 @@
 //! Bands:
 //! - 1xxx generic API errors (1000 `API_ERROR` is the catch-all for coded
 //!   but unclassified request errors; 1001 `NOT_FOUND`; 1029 `RATE_LIMITED`,
-//!   reserved here so the wire shape is fixed before the orderbook-native
-//!   limiter lands in a later PR; nothing emits it yet, and a 429 is never
+//!   emitted on 429 responses by the orderbook-native limiter in
+//!   [`super::rate_limit`] together with a `Retry-After` header -- the
+//!   limiter ships disabled in every config, so production serves no 1029
+//!   until the coordinated docs-table + limiter flip; a 429 is never
 //!   retryable within the same call).
 //! - 2xxx routing + quoting. 2000 `NO_ROUTE`, 2001 `UNSUPPORTED_TOKEN` and
 //!   2002 `INSUFFICIENT_LIQUIDITY` form the unroutable class: they are final
