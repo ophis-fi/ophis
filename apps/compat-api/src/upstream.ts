@@ -36,7 +36,11 @@ async function timedFetch(
   try {
     return await fetchImpl(url, { ...init, signal: controller.signal });
   } catch (err) {
-    throw new CompatError('UPSTREAM_UNAVAILABLE', `${label}: orderbook unreachable (${(err as Error)?.message ?? 'fetch failed'}).`, {
+    // Keep the raw transport detail server-side only (correlate by the request
+    // traceId in the logs); the client-facing body stays a fixed generic string
+    // so an internal hostname or error string never leaks into a public response.
+    console.error(`compat-api upstream ${label} unreachable`, err);
+    throw new CompatError('UPSTREAM_UNAVAILABLE', `${label}: orderbook temporarily unreachable.`, {
       retryAfterSeconds: 1,
     });
   } finally {
@@ -69,6 +73,25 @@ async function throwUpstream(res: Response, label: string): Promise<never> {
     });
   }
   throw new CompatError('UPSTREAM_VALIDATION', `${label}: orderbook rejected the request (${parsed.message}).`, { upstream });
+}
+
+/**
+ * Parses the JSON of an OK upstream response. A 2xx whose body is not valid
+ * JSON is the same fault class as a valid-JSON-wrong-shape body (a broken
+ * upstream), so it maps to the same 503 UPSTREAM_UNAVAILABLE + Retry-After,
+ * not a 500 INTERNAL_ERROR. Without this, an HTML error page served with a 200
+ * (a proxy hiccup) would surface to integrators as "our bug, do not retry"
+ * instead of "upstream blip, retry".
+ */
+async function parseOkJson(res: Response, label: string): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (err) {
+    console.error(`compat-api upstream ${label} returned a non-JSON ${res.status} body`, err);
+    throw new CompatError('UPSTREAM_UNAVAILABLE', `${label}: orderbook returned a malformed response.`, {
+      retryAfterSeconds: 1,
+    });
+  }
 }
 
 export interface OrderbookQuote {
@@ -129,7 +152,7 @@ export async function fetchOrderbookQuote(
     'quote',
   );
   if (!res.ok) await throwUpstream(res, 'quote');
-  const json = (await res.json()) as {
+  const json = (await parseOkJson(res, 'quote')) as {
     quote?: {
       sellAmount?: unknown;
       buyAmount?: unknown;
@@ -196,7 +219,7 @@ export async function relayOrder(
     'submit',
   );
   if (!res.ok) await throwUpstream(res, 'submit');
-  const uid = (await res.json()) as unknown;
+  const uid = (await parseOkJson(res, 'submit')) as unknown;
   if (typeof uid !== 'string' || !/^0x[0-9a-fA-F]{112}$/.test(uid)) {
     throw new CompatError('UPSTREAM_UNAVAILABLE', 'submit: orderbook returned an unexpected shape.', {
       retryAfterSeconds: 1,
@@ -217,7 +240,7 @@ export async function fetchOrder(
     throw new CompatError('NOT_FOUND', `Order ${orderUid} not found on chain ${chainId}.`);
   }
   if (!res.ok) await throwUpstream(res, 'order-status');
-  return (await res.json()) as Record<string, unknown>;
+  return (await parseOkJson(res, 'order-status')) as Record<string, unknown>;
 }
 
 /** `GET /api/v1/trades?orderUid=`: settlement trades for the order (empty until settled). */

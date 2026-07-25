@@ -111,8 +111,18 @@ const assertChainEnabled = (env: Env, chainId: number): void => {
 };
 
 async function readJsonBody(request: Request): Promise<unknown> {
+  // Reject an over-cap body BEFORE buffering it: a declared Content-Length past
+  // the cap fails immediately, so an arbitrarily large payload is never read
+  // into memory first.
+  const declaredLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+    throw new CompatError('BODY_TOO_LARGE', `Request body exceeds ${MAX_BODY_BYTES} bytes.`);
+  }
   const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) {
+  // Measure encoded BYTES, not UTF-16 code units: a multibyte body could carry
+  // up to ~3x the cap in bytes while text.length stayed under it. This is the
+  // authoritative check for a chunked/undeclared body that slipped the header.
+  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
     throw new CompatError('BODY_TOO_LARGE', `Request body exceeds ${MAX_BODY_BYTES} bytes.`);
   }
   try {
@@ -358,12 +368,15 @@ function assemblyResponse(
 
 async function handleAssemble(env: Env, deps: Deps, request: Request, traceId: string): Promise<Response> {
   const req = parseAssembleRequest(await readJsonBody(request));
+  // The CURRENT key must be present. A previous-only configuration (rotation
+  // half-applied) is a misconfiguration, not a valid state, and must fail as
+  // loudly as an unset key rather than quietly accepting stale tokens.
+  if (typeof env.COMPAT_PATHID_KEY !== 'string' || env.COMPAT_PATHID_KEY.length === 0) {
+    throw new CompatError('CONFIG_MISSING', 'Server misconfiguration: pathId signing key is not set.');
+  }
   const keys = [env.COMPAT_PATHID_KEY, env.COMPAT_PATHID_KEY_PREVIOUS].filter(
     (k): k is string => typeof k === 'string' && k.length > 0,
   );
-  if (keys.length === 0) {
-    throw new CompatError('CONFIG_MISSING', 'Server misconfiguration: pathId signing key is not set.');
-  }
   const nowSeconds = Math.floor(deps.nowMs() / 1000);
   const payload = await verifyPathId(req.pathId, keys, nowSeconds);
   assertChainEnabled(env, payload.cid);

@@ -106,7 +106,7 @@ The response carries the familiar surface plus the `ophis` block:
     "settlementModel": "batch-auction-async",
     "valueCurrency": "native",
     "assemblable": true,
-    "order": { "sellToken": "0x0b2C...", "buyAmount": "536512439786768443", ... },
+    "order": { "sellToken": "0x0b2C...", "buyAmount": "536512451951951043", ... },
     "signing": { "domain": { ... }, "types": { ... }, "primaryType": "Order" },
     "fullAppData": "{...}",
     "submit": { "url": "/sor/submit", "method": "POST" },

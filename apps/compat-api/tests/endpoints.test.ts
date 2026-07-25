@@ -228,6 +228,24 @@ describe('POST /sor/quote/v3', () => {
     expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
   });
 
+  it('maps a non-JSON 200 upstream body to a retryable 503, not a 500', async () => {
+    // Same fault class as valid-JSON-wrong-shape (broken upstream), so the
+    // integrator gets identical "retry" guidance instead of "our bug".
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody()),
+      ENV,
+      deps(
+        stubFetch({
+          quote: () => new Response('<html>502 Bad Gateway</html>', { status: 200 }),
+        }),
+      ),
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBe('1');
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+  });
+
   it('rejects unsupported chains listing the enabled set', async () => {
     const res = await handleRequest(post('/sor/quote/v3', quoteBody({ chainId: 1 })), ENV, deps(stubFetch()));
     expect(res.status).toBe(400);
@@ -331,6 +349,20 @@ describe('POST /sor/assemble', () => {
       deps(stubFetch()),
     );
     expect(res.status).toBe(200);
+  });
+
+  it('treats a previous-only key set as a misconfiguration (CONFIG_MISSING)', async () => {
+    const pathId = await mintedPathId();
+    // Current key unset, only the previous one present: a half-applied rotation.
+    // It must fail as loudly as an unset key rather than quietly accept tokens.
+    const halfRotated: Env = { COMPAT_PATHID_KEY_PREVIOUS: 'test-key' };
+    const res = await handleRequest(
+      post('/sor/assemble', { userAddr: USER, pathId }),
+      halfRotated,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(500);
+    expect(((await res.json()) as Record<string, any>).error.code).toBe('CONFIG_MISSING');
   });
 });
 
@@ -515,6 +547,38 @@ describe('worker plumbing', () => {
       deps(stubFetch()),
     );
     expect(res.status).toBe(413);
+  });
+
+  it('rejects an over-cap Content-Length before buffering the body', async () => {
+    // A truthful over-cap Content-Length must fail immediately; the body here is
+    // small, so a 413 proves the header check fired before any read.
+    const res = await handleRequest(
+      new Request('https://compat.ophis.fi/sor/quote/v3', {
+        method: 'POST',
+        headers: { 'content-length': String(70 * 1024) },
+        body: '{}',
+      }),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as Record<string, any>).error.code).toBe('BODY_TOO_LARGE');
+  });
+
+  it('measures body size in bytes, not UTF-16 units', async () => {
+    // Each of these emoji is 2 UTF-16 units but 4 UTF-8 bytes; ~48k of them is
+    // under the cap by string length yet well over it in bytes.
+    const multibyte = '\u{1F600}'.repeat(48 * 1024);
+    const res = await handleRequest(
+      new Request('https://compat.ophis.fi/sor/quote/v3', {
+        method: 'POST',
+        body: `{"pad":"${multibyte}"}`,
+      }),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as Record<string, any>).error.code).toBe('BODY_TOO_LARGE');
   });
 
   it('404s unknown routes with the endpoint list', async () => {
