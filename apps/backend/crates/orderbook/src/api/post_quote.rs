@@ -1,7 +1,7 @@
 use {
     super::post_order::{AppDataValidationErrorWrapper, PartialValidationErrorWrapper},
     crate::{
-        api::{AppState, error, rich_error},
+        api::{ApiMetrics, AppState, error, rich_error},
         quoter::OrderQuoteError,
     },
     axum::{
@@ -10,6 +10,7 @@ use {
         response::{IntoResponse, Response},
     },
     model::quote::OrderQuoteRequest,
+    price_estimation::PriceEstimationError,
     reqwest::StatusCode,
     shared::order_quoting::CalculateQuoteError,
     std::sync::Arc,
@@ -43,6 +44,15 @@ impl IntoResponse for CalculateQuoteErrorWrapper {
     fn into_response(self) -> Response {
         match self.0 {
             CalculateQuoteError::Price { source, .. } => {
+                // Counted here rather than in the shared wrapper: order
+                // validation and the native price endpoint answer through that
+                // wrapper too, and this metric is about quote requests.
+                if matches!(source, PriceEstimationError::NoLiquidity) {
+                    ApiMetrics::instance(observe::metrics::get_storage_registry())
+                        .unwrap()
+                        .no_route_responses_total
+                        .inc();
+                }
                 super::PriceEstimationErrorWrapper(source).into_response()
             }
             CalculateQuoteError::SellAmountDoesNotCoverFee { fee_amount } => (
@@ -96,7 +106,7 @@ mod tests {
         number::nonzero::NonZeroU256,
         reqwest::StatusCode,
         serde_json::json,
-        shared::order_quoting::CalculateQuoteError,
+        shared::order_quoting::{CalculateQuoteError, EstimatorKind},
         std::{str::FromStr, time::Duration},
     };
 
@@ -311,5 +321,29 @@ mod tests {
         assert_eq!(body, expected_error);
         // There are many other FeeAndQuoteErrors, but writing a test for each
         // would follow the same pattern as this.
+    }
+
+    /// The counter is documented as "quote requests", but the wrapper it used
+    /// to live in also serves /native_price and order validation. Written
+    /// against the pre-fix code the first assertion fails.
+    #[test]
+    fn no_route_metric_counts_quotes_only() {
+        let metrics = ApiMetrics::instance(observe::metrics::get_storage_registry()).unwrap();
+        let before = metrics.no_route_responses_total.get();
+
+        let _ = crate::api::PriceEstimationErrorWrapper(PriceEstimationError::NoLiquidity)
+            .into_response();
+        assert_eq!(
+            metrics.no_route_responses_total.get(),
+            before,
+            "the shared wrapper must not move a quote-scoped counter",
+        );
+
+        let _ = CalculateQuoteErrorWrapper(CalculateQuoteError::Price {
+            estimator_kind: EstimatorKind::Regular,
+            source: PriceEstimationError::NoLiquidity,
+        })
+        .into_response();
+        assert_eq!(metrics.no_route_responses_total.get(), before + 1);
     }
 }

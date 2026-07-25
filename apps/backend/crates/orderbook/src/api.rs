@@ -126,6 +126,12 @@ async fn summarize_request(req: Request<axum::body::Body>, next: Next) -> Respon
         user_agent,
         status,
         elapsed = ?timer.elapsed(),
+        // The id the client sees in `X-Trace-Id`. Deliberately NOT named
+        // `trace_id`: that span field is all zeros whenever no OTel layer is
+        // active, which is exactly when the fallback id is the only one the
+        // client can quote back. `summarize_request` is layered inside
+        // `with_trace_id`, so this is always populated during a request.
+        x_trace_id = trace_id::current(),
         "request_summary",
     );
 
@@ -607,17 +613,11 @@ impl IntoResponse for PriceEstimationErrorWrapper {
                 ),
             )
                 .into_response(),
-            PriceEstimationError::NoLiquidity => {
-                ApiMetrics::instance(observe::metrics::get_storage_registry())
-                    .unwrap()
-                    .no_route_responses_total
-                    .inc();
-                (
-                    StatusCode::NOT_FOUND,
-                    unroutable_error("NoLiquidity", "no route found"),
-                )
-                    .into_response()
-            }
+            PriceEstimationError::NoLiquidity => (
+                StatusCode::NOT_FOUND,
+                unroutable_error("NoLiquidity", "no route found"),
+            )
+                .into_response(),
             PriceEstimationError::RateLimited => retryable_upstream_reply(
                 "UpstreamRateLimited",
                 "an upstream price estimator is rate limited; retry after the indicated delay",

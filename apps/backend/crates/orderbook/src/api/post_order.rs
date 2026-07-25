@@ -1,6 +1,6 @@
 use {
     crate::{
-        api::{AppState, error},
+        api::{AppState, error, unroutable_error},
         orderbook::{AddOrderError, OrderReplacementError},
     },
     axum::{
@@ -104,7 +104,11 @@ impl IntoResponse for PartialValidationErrorWrapper {
                 .into_response(),
             PartialValidationError::UnsupportedToken { token, reason } => (
                 StatusCode::BAD_REQUEST,
-                error(
+                // Code 2001 is documented as always carrying the unroutable
+                // marker (error_code.rs). The estimator path already attaches
+                // it; this validation path must agree, or /api/v1/quote emits
+                // two different bodies for the same code.
+                unroutable_error(
                     "UnsupportedToken",
                     format!("Token {token:?} is unsupported: {reason}"),
                 ),
@@ -396,5 +400,23 @@ mod tests {
             "code": 4200,
         });
         assert_eq!(body, expected_error);
+    }
+
+    /// Code 2001 is documented as always carrying the unroutable marker, but
+    /// this validation path used the plain `error` builder, so /api/v1/quote
+    /// emitted two different bodies for the same code.
+    #[tokio::test]
+    async fn unsupported_token_carries_the_unroutable_class() {
+        let response = PartialValidationErrorWrapper(PartialValidationError::UnsupportedToken {
+            token: Default::default(),
+            reason: "token is deny listed".to_string(),
+        })
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response_body(response).await;
+        let body: serde_json::Value = serde_json::from_slice(body.as_slice()).unwrap();
+        assert_eq!(body["errorType"], json!("UnsupportedToken"));
+        assert_eq!(body["code"], json!(2001));
+        assert_eq!(body["data"], json!({ "class": "unroutable" }));
     }
 }

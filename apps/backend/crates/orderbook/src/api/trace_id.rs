@@ -7,7 +7,10 @@
 //! otherwise. Success responses carry the id header-only; error bodies
 //! additionally repeat it as a `traceId` field, stamped centrally in
 //! [`crate::api::error`] / [`crate::api::rich_error`] through the task-local
-//! scoped here, so no individual handler has to thread it through.
+//! scoped here, so no individual handler has to thread it through. The same
+//! id is logged as `x_trace_id` on the `request_summary` event, so an operator
+//! can find a request from the id a client quotes even when no OTel tracing
+//! layer is active and the span's `trace_id` field is all zeros.
 
 use {
     axum::{
@@ -134,5 +137,38 @@ mod tests {
     #[tokio::test]
     async fn no_trace_id_outside_a_request_scope() {
         assert_eq!(current(), None);
+    }
+
+    /// The header is set by middleware on every response, so the spec has to
+    /// declare it on every response or generated clients cannot see it. Guards
+    /// against a new endpoint landing without the declaration. Hand-rolled
+    /// line parsing because the crate has no yaml dev-dependency, matching
+    /// `error_code::tests::every_openapi_error_type_has_a_code`.
+    #[test]
+    fn every_openapi_response_declares_the_header() {
+        let openapi = include_str!("../../openapi.yml");
+        let mut responses = 0;
+        let mut lines = openapi.lines().peekable();
+        while let Some(line) = lines.next() {
+            if !(line.starts_with("        \"") && line.ends_with("\":")) {
+                continue;
+            }
+            responses += 1;
+            // Blank lines occur inside `description: |-` blocks, so they do
+            // not terminate the response object.
+            let declared = std::iter::from_fn(|| {
+                lines.next_if(|next| next.starts_with("          ") || next.is_empty())
+            })
+            .any(|next| next.trim() == "$ref: \"#/components/headers/TraceId\"");
+            assert!(
+                declared,
+                "openapi response {line} does not declare X-Trace-Id"
+            );
+        }
+        // Guard against the parser silently matching nothing after a reshuffle.
+        assert!(
+            responses >= 90,
+            "expected to find the openapi responses, got {responses}",
+        );
     }
 }
