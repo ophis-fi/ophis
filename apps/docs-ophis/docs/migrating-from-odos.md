@@ -103,8 +103,13 @@ If the partner-fee program is enabled on this deployment, a non-zero
 `referralFee` maps to a CIP-75 Volume fee to `referralFeeRecipient`, embedded in
 the order's appData beside the Ophis protocol fee. The Odos decimal fraction
 converts to basis points: `0.001` becomes a 10 bps Volume fee. Fees are
-bps-granular, so the value is rounded to the nearest basis point; a fee too
-small to represent as at least 1 bps is rejected rather than rounded to zero.
+bps-granular, so the value is rounded to the nearest basis point. The mapped
+entry is floored on its own bps, and the compat surface has no on-chain token
+registry to establish stable or boosted eligibility, so it enforces the
+conservative per-pair minimum of **4 bps**: a fee smaller than 4 bps
+(`0.0004`) is rejected rather than mapped to a draft the orderbook would reject
+at submit. The reduced 1 bps floor applies only to stable and boosted pairs,
+which the compat surface cannot establish.
 
 The recipient must be a **registered, active partner-fee recipient**. Register
 once with `POST /api/v1/partners`; see [Partner integration](./partners.md). A
@@ -230,7 +235,7 @@ soon as the order settles or the wait elapses (see Settlement timing above).
 | `slippageLimitPercent` | Signed limit in bips (x100). Above 50%: `INVALID_SLIPPAGE`, never silently clamped |
 | `simple` | `true` maps to the fast price quality, `false` to optimal |
 | `referralCode` | Integer code becomes Ophis referral code `odos<code>` in the order's appData (attribution + rebates) |
-| `referralFee`, `referralFeeRecipient` | When the partner-fee program is enabled: a non-zero fee maps to a CIP-75 Volume `metadata.partnerFee` entry (0.001 = 10 bps), capped at 90 bps (`PARTNER_FEE_CAP_EXCEEDED` above it). When disabled: `PARTNER_FEE_UNAVAILABLE`. See Partner fees above |
+| `referralFee`, `referralFeeRecipient` | When the partner-fee program is enabled: a non-zero fee maps to a CIP-75 Volume `metadata.partnerFee` entry (0.001 = 10 bps), minimum 4 bps (`0.0004`; below that is rejected), capped at 90 bps (`PARTNER_FEE_CAP_EXCEEDED` above it). When disabled: `PARTNER_FEE_UNAVAILABLE`. See Partner fees above |
 | `gasPrice` | Ignored + warning (solvers pay gas) |
 | `sourceWhitelist` / `sourceBlacklist` / `poolBlacklist` | Ignored + warning: routing is decided by competing solvers |
 | `disableRFQs`, `compact` | Silent no-ops |
