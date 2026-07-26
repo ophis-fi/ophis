@@ -4,6 +4,7 @@ import { Trans } from '@lingui/react/macro'
 
 import { Badge } from 'ophis/ds/Badge'
 
+import { allLegsQuoted, canConfirmBasket } from '../basketReady'
 import { BasketDraft, BasketTier } from '../../types'
 
 export interface BasketConfirmProps {
@@ -27,6 +28,11 @@ const TIER_LABEL: Record<BasketTier, ReactNode> = {
  * best-effort together, and any that do not fill can be cancelled in one click.
  */
 export function BasketConfirm({ draft, batchAvailable, isPlacing, onConfirm, onCancel }: BasketConfirmProps): ReactNode {
+  // Only allow placement once EVERY leg has a validated quote (a defined min-buy).
+  // Starting the sequential loop while any quote is still loading or failed would
+  // sign legs with no min-out and expose a partial basket.
+  const quotesReady = allLegsQuoted(draft.legs)
+  const canConfirm = canConfirmBasket(draft, isPlacing)
   return (
     <div>
       <h3>
@@ -79,7 +85,13 @@ export function BasketConfirm({ draft, batchAvailable, isPlacing, onConfirm, onC
         ) : null}
       </p>
 
-      <button type="button" onClick={onConfirm} disabled={isPlacing}>
+      {!quotesReady ? (
+        <p>
+          <Trans>Waiting for every leg to be quoted before you can place the basket.</Trans>
+        </p>
+      ) : null}
+
+      <button type="button" onClick={onConfirm} disabled={!canConfirm}>
         <Trans>Place basket</Trans>
       </button>
       <button type="button" onClick={onCancel} disabled={isPlacing}>
