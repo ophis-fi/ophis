@@ -50,6 +50,15 @@ fn chain_slug(chain_id: eth::ChainId) -> &'static str {
         // GET https://aggregator-api.kyberswap.com/unichain/api/v1/routes
         // returns real Uniswap-v4 routes for USDC→WETH on chain 130.
         eth::ChainId::Unichain => "unichain",
+        // KyberSwap slug for Robinhood — verified live 2026-07-26:
+        // GET https://aggregator-api.kyberswap.com/robinhood/api/v1/routes
+        // returns a real route for WETH→USDG on chain 4663 (0.1 WETH ->
+        // 191.09 USDG, ~$191), routed through the same CREATE2
+        // MetaAggregationRouterV2 (0x6131B5fae…37b5) as OP / HyperEVM / Unichain.
+        // REQUIRED: this match falls through to a panic!, so adding
+        // ChainId::Robinhood without a slug here would crash the kyberswap
+        // solver at startup rather than fail to deserialize.
+        eth::ChainId::Robinhood => "robinhood",
         // KyberSwap doesn't deploy on Gnosis / Goerli / Plasma / Ink in v1 —
         // panic clearly rather than silently picking a wrong slug.
         other => panic!("unsupported KyberSwap chain: {other:?}"),

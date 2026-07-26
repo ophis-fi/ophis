@@ -85,6 +85,7 @@ const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
     (130, UNICHAIN_MAINNET),
     (999, HYPEREVM_MAINNET),
+    (4663, ROBINHOOD_MAINNET),
 ];
 
 /// Optimism mainnet (chain 10). Verified against upstream docs.
@@ -139,6 +140,38 @@ const OPTIMISM_MAINNET: &[Address] = &[
 const HYPEREVM_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 (same CREATE2 address as OP).
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+];
+
+/// Robinhood mainnet (chain 4663). KyberSwap + LI.FI as of 2026-07-26. Velora
+/// and Odos explicitly do NOT support 4663 (both return an unsupported-network
+/// error listing their chains); OKX is parked. When another aggregator adds
+/// 4663, append its router/spender here after upstream verification.
+///
+/// NOTE: the LI.FI entry is a per-chain LiFiDiamond address (as on Optimism) —
+/// the Unichain diamond has no code on 4663, so its address does not carry over.
+const ROBINHOOD_MAINNET: &[Address] = &[
+    // KyberSwap MetaAggregationRouterV2. Router == ERC-20 spender.
+    // AUTHENTICATION: this is byte-for-byte the SAME CREATE2-deterministic
+    // address already allowlisted above for OP / HyperEVM / Unichain, each
+    // sourced from KyberSwap's canonical contracts-and-addresses docs. That
+    // prior-verified match is what justifies the entry — a poisoned routes
+    // response could not introduce a NEW address here, only agree with one we
+    // already trust. `cast code` on 4663 (13,724 bytes) and a live routes query
+    // (0.1 WETH -> 191.09 USDG) are corroboration that it is deployed and used
+    // on this chain, not the basis for trusting it.
+    // Load-bearing for the same reason as Unichain: KyberSwap routes Uniswap v4,
+    // where Robinhood's stock/stable liquidity lives and which baseline cannot read.
+    address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+    // LiFiDiamond on Robinhood — serves as both `tx.to` and ERC-20 spender.
+    // AUTHENTICATED 2026-07-26 against LI.FI's canonical public deployment
+    // records (github.com/lifinance/contracts -> deployments/robinhood.json,
+    // LiFiDiamond; config/networks.json confirms robinhood == chainId 4663),
+    // which is independent of the quote endpoint this gate defends against.
+    // On-chain/API evidence (verified LiFiDiamond with LI.FI facets on
+    // Blockscout, 254-byte proxy, live quote match) is corroboration only:
+    // eth_getCode proves existence, never control. Matches the solver-level
+    // LIFI_ROUTER_ALLOWLIST.
+    address!("B477751B76CF82d00a686A1232f5fCD772414Af3"),
 ];
 
 /// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +
