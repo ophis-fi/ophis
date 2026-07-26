@@ -101,6 +101,30 @@ describe('parseQuoteRequest', () => {
     ).toBe('PARTNER_FEE_CAP_EXCEEDED');
   });
 
+  it('rejects a mapped fee below the 4-bps non-stable per-pair floor', () => {
+    // 0.0002 = 2 bps, below the backend non-stable partner-fee floor (4 bps).
+    // The compat surface cannot establish the reduced 1-bps stable/boosted floor
+    // without an on-chain token registry, so it rejects rather than mint a draft
+    // that /sor/submit refuses.
+    for (const fee of [0.0001, 0.0002, 0.0003]) {
+      expect(
+        errCode(() =>
+          parseQuoteRequest(
+            { ...golden(), referralFee: fee, referralFeeRecipient: OTHER },
+            { partnerFeeEnabled: true },
+          ),
+        ),
+      ).toBe('INVALID_REQUEST');
+    }
+    // 4 bps (the floor) is accepted.
+    expect(
+      parseQuoteRequest(
+        { ...golden(), referralFee: 0.0004, referralFeeRecipient: OTHER },
+        { partnerFeeEnabled: true },
+      ).partnerFee?.volumeBps,
+    ).toBe(4);
+  });
+
   it('rejects a sub-1-bps fee, a missing recipient, and a zero recipient', () => {
     expect(
       errCode(() =>

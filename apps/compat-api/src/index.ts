@@ -202,15 +202,26 @@ async function quoteCore(env: Env, deps: Deps, req: CompatQuoteRequest): Promise
     deps.fetchImpl,
   );
 
-  // pathViz warns-and-degrades: if the caller asked for it but the feature is
-  // off (kill switch) or a viz assembly failed, the orderbook omits the fields
-  // and we surface null plus a named warning instead of a hard failure.
-  const pathVizRequested = req.pathViz || req.pathVizImage || req.pathVizImageConfig !== null;
-  if (pathVizRequested && quote.pathViz === null && quote.pathVizImage === null) {
+  // pathViz warns-and-degrades: if the caller asked for an artifact but the
+  // feature is off (kill switch) or that artifact's assembly failed, the
+  // orderbook omits the field and we surface null plus a named warning instead
+  // of a hard failure. Each artifact is checked independently: the graph can
+  // render while the image degrades to null (or vice versa), so a partial
+  // failure still warns about exactly the missing piece.
+  if (req.pathViz && quote.pathViz === null) {
     warnings.push(
       warning(
         'PATH_VIZ_UNAVAILABLE',
-        'pathViz/pathVizImage were requested but are not available on this deployment right now ' +
+        'pathViz (the route graph) was requested but is not available on this deployment right now ' +
+          '(route visualization is flag-gated and degrades to null); the quote itself is unaffected.',
+      ),
+    );
+  }
+  if (req.pathVizImage && quote.pathVizImage === null) {
+    warnings.push(
+      warning(
+        'PATH_VIZ_UNAVAILABLE',
+        'pathVizImage (the rendered SVG) was requested but is not available on this deployment right now ' +
           '(route visualization is flag-gated and degrades to null); the quote itself is unaffected.',
       ),
     );
@@ -468,6 +479,18 @@ async function handleAssemble(
     throw new CompatError(
       'USER_MISMATCH',
       'userAddr does not match the account this pathId was quoted for.',
+    );
+  }
+  // Re-check the partner-fee master switch at assemble time. A pathId minted with
+  // a mapped partner fee while the flag was on stays valid for up to 60s; if the
+  // flag is turned off in that window, assembling it would produce a partner-fee
+  // draft the now-disabled backend rejects at ingress. Refuse it here so the flag
+  // protection holds end to end rather than only at quote time.
+  if (payload.pf && !envFlag(env.COMPAT_PARTNER_FEE_ENABLED)) {
+    throw new CompatError(
+      'PARTNER_FEE_UNAVAILABLE',
+      'This pathId carries an integrator partner fee, but the partner-fee program is not enabled on ' +
+        'this deployment. Re-quote without referralFee, or wait until the program is live.',
     );
   }
 
@@ -787,9 +810,17 @@ const SETTLEMENT_POLL_INTERVAL_MS = 2_500;
 const SETTLEMENT_DEFAULT_WAIT_SECONDS = 20;
 const SETTLEMENT_MAX_WAIT_SECONDS = 55;
 
-/** Terminal order states: fulfilled is settled; expired/cancelled are terminal-not-settled. */
-const isSettled = (status: string, trades: unknown[]): boolean =>
-  status === 'fulfilled' || trades.length > 0;
+/**
+ * Terminal settlement. `fulfilled` is the authoritative fully-settled status.
+ * A trade alone is NOT sufficient for a partiallyFillable order: it stays `open`
+ * after a partial fill and is still live, so treating any trade as terminal would
+ * stop the long-poll while more of the order can still settle. For a fill-or-kill
+ * order (partiallyFillable false) a settlement trade does mean it is done, so that
+ * is accepted too (it covers the brief window before the indexer flips the status
+ * to `fulfilled`).
+ */
+const isSettled = (status: string, partiallyFillable: boolean, trades: unknown[]): boolean =>
+  status === 'fulfilled' || (!partiallyFillable && trades.length > 0);
 const isTerminalUnsettled = (status: string): boolean =>
   status === 'expired' || status === 'cancelled';
 
@@ -833,7 +864,8 @@ async function handleSettlementAwait(
       fetchTrades(chainId, orderUid, deps.fetchImpl),
     ]);
     const status = typeof order.status === 'string' ? order.status : 'unknown';
-    const settled = isSettled(status, trades);
+    const partiallyFillable = order.partiallyFillable === true;
+    const settled = isSettled(status, partiallyFillable, trades);
     const terminal = settled || isTerminalUnsettled(status);
     if (terminal || deps.nowMs() >= deadlineMs) {
       const lastTrade =

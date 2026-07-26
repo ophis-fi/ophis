@@ -23,6 +23,15 @@ import { buildOphisReferrerMetadata } from './referral.js';
 /** CoW appData schema version the live Ophis frontend emits (cow-sdk LATEST_APP_DATA_VERSION). */
 export const APP_DATA_VERSION = '1.14.0';
 
+/**
+ * Maximum number of `metadata.partnerFee` entries a single appData document may
+ * carry. Mirrors the Rust constant `MAX_PARTNER_FEE_ENTRIES` in
+ * apps/backend/crates/app-data/src/app_data.rs (partner-fees Phase A): the
+ * orderbook rejects any document above this at ingress. On an Ophis fee chain the
+ * default fee consumes one of the slots.
+ */
+export const MAX_PARTNER_FEE_ENTRIES = 3;
+
 /** The address that receives bought tokens is part of the signed payload (drain vector). */
 export type Address = `0x${string}`;
 
@@ -124,6 +133,19 @@ export function buildOphisFullAppData(
 ): OphisAppData {
   const partnerFee = buildOphisAppDataPartnerFee(chainId);
   const extras = (extraPartnerFees ?? []).map(normalizeExtraPartnerFee);
+  // The backend rejects any appData with more than MAX_PARTNER_FEE_ENTRIES
+  // partner-fee entries. On an Ophis fee chain the default entry already consumes
+  // one slot, so the extras budget is one smaller there. Fail loudly at build
+  // time rather than mint a draft the orderbook refuses at ingress.
+  const totalEntries = (partnerFee ? 1 : 0) + extras.length;
+  if (totalEntries > MAX_PARTNER_FEE_ENTRIES) {
+    throw new Error(
+      `partner fee document would carry ${totalEntries} entries, exceeding the maximum of ` +
+        `${MAX_PARTNER_FEE_ENTRIES}` +
+        (partnerFee ? ` (the Ophis default fee already uses one slot on this chain)` : '') +
+        `. Pass at most ${MAX_PARTNER_FEE_ENTRIES - (partnerFee ? 1 : 0)} extra partner-fee entries.`,
+    );
+  }
   const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' } };
   if (extras.length > 0) {
     metadata.partnerFee = [...(partnerFee ? [partnerFee] : []), ...extras];
