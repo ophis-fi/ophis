@@ -52,6 +52,13 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
         widget,
         userConsent,
         refCode,
+        // Explicitly undefined, not omitted. `utm` is REQUIRED-but-nullable on
+        // BuildAppDataParams (`utm: UtmParams | undefined`), so leaving it out
+        // does not compile — it broke the Cloudflare Pages deploy on main with
+        // TS2345. This preserves the intent stated in the doc comment above
+        // (utm is deferred to the production route wiring, owner decision) while
+        // satisfying the type: no UTM data is attached to a basket leg.
+        utm: undefined,
         // The leg's basket marker; buildAppData spreads this into metadata.ophisBasket.
         ophisBasket: marker,
       })
