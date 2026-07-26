@@ -129,11 +129,30 @@ export interface PartnerFeeStats {
 
 /** Aggregate, non-wallet-scoped public stats. Safe to expose (no per-partner detail). */
 export async function getPartnerFeeStats(): Promise<PartnerFeeStats> {
+  // pendingOwedUsd = everything owed to partners but not yet PAID on-chain, as three DISJOINT
+  // parts (so it does NOT read ~0 right after accrual stamps the trades, and never double-counts
+  // the running carry):
+  //   (a) in-flight PAID entries in an unexecuted batch (owed_usd) -- accrued + queued but unsettled;
+  //   (b) the carried/quarantined ROLLUP (latest entry per recipient's carried_usd) -- accrued, sub-threshold;
+  //   (c) the not-yet-accrued current-cycle share (unbatched priced trades * 80%).
+  // (a) uses owed_usd of paid entries, (b) uses carried_usd of the LATEST carried/quarantined
+  // entry (so the carry accumulation is counted once), (c) uses fee_usd of trades no batch has
+  // consumed. A fee is in exactly one of the three.
   const [row] = await sql<{ partners: string; paid_weth: string; pending_owed_usd: string }[]>`
+    WITH latest AS (
+      SELECT DISTINCT ON (e.recipient) e.recipient, e.status AS entry_status, e.carried_usd
+      FROM partner_fee_batch_entries e
+      JOIN partner_fee_batches b ON b.id = e.batch_id
+      ORDER BY e.recipient, b.cycle_month DESC, b.id DESC
+    )
     SELECT
       (SELECT COUNT(DISTINCT recipient) FROM partner_fee_trades)::text AS partners,
       COALESCE((SELECT SUM(paid_wei::numeric) / 1e18 FROM partner_fee_batch_entries WHERE paid_wei IS NOT NULL), 0)::text AS paid_weth,
-      COALESCE((SELECT SUM(fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000 FROM partner_fee_trades WHERE batch_id IS NULL AND fee_usd IS NOT NULL), 0)::text AS pending_owed_usd
+      (
+        COALESCE((SELECT SUM(e.owed_usd) FROM partner_fee_batch_entries e JOIN partner_fee_batches b ON b.id = e.batch_id WHERE e.status = 'paid' AND b.status <> 'executed'), 0)
+        + COALESCE((SELECT SUM(carried_usd) FROM latest WHERE entry_status IN ('carried','quarantined')), 0)
+        + COALESCE((SELECT SUM(fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000 FROM partner_fee_trades WHERE batch_id IS NULL AND fee_usd IS NOT NULL), 0)
+      )::text AS pending_owed_usd
   `;
   return {
     partners: parseInt(row?.partners ?? '0', 10),

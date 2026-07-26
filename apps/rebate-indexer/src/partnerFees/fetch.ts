@@ -1,3 +1,4 @@
+import { createPublicClient, http } from 'viem';
 import { attributePartnerFees } from './parsePartnerFees.js';
 import { alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
@@ -6,6 +7,24 @@ import { logger } from '../logger.js';
 // (resolvePartnerFeeFeeds, assertFeedsConfigFeeFree) can be loaded without DATABASE_URL set.
 async function getSql() {
   return (await import('../db/index.js')).sql;
+}
+
+/** Resolve a per-chain RPC URL for block-timestamp enrichment (reuses the settle-decoder env). */
+const DEFAULT_RPC: Record<number, string> = { 10: 'https://mainnet.optimism.io', 130: 'https://mainnet.unichain.org' };
+function partnerFeeRpc(chainId: number): string {
+  return process.env[`PARTNER_FEE_RPC_URL_${chainId}`] ?? process.env[`SETTLE_RPC_URL_${chainId}`] ?? DEFAULT_RPC[chainId] ?? 'https://mainnet.optimism.io';
+}
+
+/** Fetch a settlement block's UTC timestamp, or null on failure (retried next run). Injectable. */
+export type BlockTimestampFetcher = (chainId: number, blockNumber: bigint) => Promise<Date | null>;
+async function defaultBlockTimestamp(chainId: number, blockNumber: bigint): Promise<Date | null> {
+  try {
+    const client = createPublicClient({ transport: http(partnerFeeRpc(chainId)) });
+    const block = await client.getBlock({ blockNumber });
+    return new Date(Number(block.timestamp) * 1000);
+  } catch {
+    return null;
+  }
 }
 
 const log = logger.child({ module: 'partner-fee-fetch' });
@@ -193,7 +212,7 @@ async function insertTrade(row: {
       ${row.chainId}, ${row.blockNumber.toString()}, ${row.logIndex.toString()},
       ${row.volumeBps}, decode(${row.feeToken.slice(2)}, 'hex'), ${row.feeAmount.toString()}
     )
-    ON CONFLICT (trade_uid, recipient) DO NOTHING
+    ON CONFLICT (trade_uid, recipient, chain_id, block_number, log_index) DO NOTHING
   `;
 }
 
@@ -202,6 +221,38 @@ export interface PartnerFeeFetchDeps {
   readonly feeds?: readonly PartnerFeeFeed[];
   /** Injected HTTP fetcher (default: defaultFeedFetcher). */
   readonly fetcher?: FeedFetcher;
+  /** Injected block-timestamp fetcher (default: on-chain getBlock). */
+  readonly blockTimestamp?: BlockTimestampFetcher;
+}
+
+/** Rows to enrich per run so a large backlog is bounded (re-runs drain the rest). */
+const TIMESTAMP_BACKFILL_LIMIT = 5_000;
+
+/**
+ * Enrich `block_timestamp` for settlement rows that lack it, so the monthly accrual can apply a
+ * calendar-month cutoff. One RPC per distinct (chain, block); a failure leaves the row null and
+ * is retried next run (the accrual holds null-timestamp rows out until enriched -- fail-safe, so
+ * a trade is never attributed to the wrong month).
+ */
+async function backfillBlockTimestamps(fetcher: BlockTimestampFetcher): Promise<{ enriched: number }> {
+  const sql = await getSql();
+  const rows = await sql<{ chain_id: number; block_number: string }[]>`
+    SELECT DISTINCT chain_id, block_number::text AS block_number
+    FROM partner_fee_trades WHERE block_timestamp IS NULL
+    ORDER BY chain_id, block_number
+    LIMIT ${TIMESTAMP_BACKFILL_LIMIT}
+  `;
+  let enriched = 0;
+  for (const r of rows) {
+    const ts = await fetcher(r.chain_id, BigInt(r.block_number));
+    if (!ts) continue;
+    await sql`
+      UPDATE partner_fee_trades SET block_timestamp = ${ts.toISOString()}
+      WHERE chain_id = ${r.chain_id} AND block_number = ${r.block_number} AND block_timestamp IS NULL
+    `;
+    enriched++;
+  }
+  return { enriched };
 }
 
 /**
@@ -212,7 +263,7 @@ export interface PartnerFeeFetchDeps {
  * in a partially-returned block is ever skipped OR double-counted. Skipped (ambiguous)
  * attributions are surfaced via a capped alert; they are NOT inserted (fail-safe under-count).
  */
-export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number }> {
+export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number; enriched: number }> {
   const feeds = deps.feeds ?? resolvePartnerFeeFeeds();
   const fetcher = deps.fetcher ?? defaultFeedFetcher;
   // Re-assert even for injected feeds (resolvePartnerFeeFeeds already asserts the env path), so a
@@ -220,7 +271,7 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
   assertFeedsConfigFeeFree(feeds);
   if (feeds.length === 0) {
     log.debug('no partner-fee feeds configured (PARTNER_FEE_FEED_URLS unset); skipping');
-    return { inserted: 0, skipped: 0 };
+    return { inserted: 0, skipped: 0, enriched: 0 };
   }
 
   let inserted = 0;
@@ -277,6 +328,17 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
       )
       .catch((e) => log.warn({ err: e }, 'partner-fee skip alert failed'));
   }
-  log.info({ inserted, skipped, feeds: feeds.length }, 'partner-fee fetch complete');
-  return { inserted, skipped };
+
+  // Enrich settlement block timestamps (for the monthly accrual's calendar-month cutoff).
+  // Best-effort: a failure leaves rows null and is retried next run; the accrual holds
+  // null-timestamp rows out until enriched, so nothing is mis-attributed to the wrong month.
+  let enriched = 0;
+  try {
+    ({ enriched } = await backfillBlockTimestamps(deps.blockTimestamp ?? defaultBlockTimestamp));
+  } catch (err) {
+    log.warn({ err }, 'partner-fee block-timestamp backfill failed (retried next run)');
+  }
+
+  log.info({ inserted, skipped, enriched, feeds: feeds.length }, 'partner-fee fetch complete');
+  return { inserted, skipped, enriched };
 }

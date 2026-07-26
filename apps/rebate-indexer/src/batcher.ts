@@ -240,21 +240,22 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   const client = createPublicClient({ transport: http(deps.rpcUrl) });
   const netFee = await client.readContract({ address: weth, abi: ERC20, functionName: 'balanceOf', args: [OPHIS_SAFE_ADDRESS] });
 
-  // 1a. MONEY-CORRECTNESS (partner-fees Phase B): reserve the WETH owed to partners but NOT
-  //     yet paid out — it still sits in this same Ophis Safe. Without this, the partner-owed
-  //     80% would be counted as distributable and could be paid out TWICE: once to a partner
-  //     (the partner batcher), once as a rebate. The monthly pipeline runs partner accrual
-  //     FIRST (cron), so this liability is up to date before we read the Safe. `reservedBalance`
-  //     backs the POOL pool; the DIRECT delta subtracts the same liability below. Returns 0n
-  //     when no partner batch exists, so the live rebate deploy is byte-inert until the first
-  //     partner cycle records.
+  // 1a. MONEY-CORRECTNESS (partner-fees Phase B): the WETH owed to partners but NOT yet paid
+  //     out still sits in this same Ophis Safe, so the rebate must never distribute it. We work
+  //     in the NON-PARTNER balance = Safe WETH balance minus the full outstanding partner
+  //     liability. The POOL pool is a fraction of it; the DIRECT basis is tracked in this same
+  //     non-partner space (see step 3b) so the basis difference -- not a second explicit
+  //     subtraction -- withholds partner-owed WETH, and OLD debt already baked into a prior
+  //     basis is never double-withheld. The monthly pipeline runs partner accrual FIRST (cron),
+  //     so this liability is current. 0n when no partner batch exists, so the live rebate
+  //     deploy is byte-inert until the first partner cycle records.
   const partnerLiabilityWei = await outstandingPartnerLiabilityWei();
-  const reservedBalance = netFee > partnerLiabilityWei ? netFee - partnerLiabilityWei : 0n;
-  const pool = (reservedBalance * BigInt(POOL_SPLIT_BPS)) / 10_000n;
+  const nonPartnerBalance = netFee > partnerLiabilityWei ? netFee - partnerLiabilityWei : 0n;
+  const pool = (nonPartnerBalance * BigInt(POOL_SPLIT_BPS)) / 10_000n;
   if (partnerLiabilityWei > 0n) {
     log.info(
-      { balanceWei: netFee.toString(), partnerLiabilityWei: partnerLiabilityWei.toString(), reservedBalanceWei: reservedBalance.toString() },
-      'reserved outstanding partner liability from the rebate distributable (no double-pay)',
+      { balanceWei: netFee.toString(), partnerLiabilityWei: partnerLiabilityWei.toString(), nonPartnerBalanceWei: nonPartnerBalance.toString() },
+      'excluded outstanding partner liability from the rebate distributable (no double-pay)',
     );
   }
 
@@ -474,13 +475,13 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       const envSeed = parseFeeBasisSeed(); // throws on a set-but-malformed value
       if (envSeed !== undefined) {
         previousBasis = envSeed;
-        if (envSeed < netFee) {
+        if (envSeed < nonPartnerBalance) {
           void alerts
-            .alert('batcher', `Direct-rebate FIRST cycle ${cycleMonth} seeded BELOW the current balance (REBATE_FEE_BASIS_WEI): will rebate ${(netFee - envSeed).toString()} wei of ALREADY-ACCRUED fees, not just this month's accrual. Confirm this is intended.`)
+            .alert('batcher', `Direct-rebate FIRST cycle ${cycleMonth} seeded BELOW the current non-partner balance (REBATE_FEE_BASIS_WEI): will rebate ${(nonPartnerBalance - envSeed).toString()} wei of ALREADY-ACCRUED fees, not just this month's accrual. Confirm this is intended.`)
             .catch((e) => log.warn({ err: e }, 'first-cycle-seed alert failed'));
         }
       } else {
-        previousBasis = netFee; // unset / 0-rejected -> baseline = current balance (rebate nothing this cycle)
+        previousBasis = nonPartnerBalance; // unset / 0-rejected -> baseline = current non-partner balance (rebate nothing this cycle)
       }
     }
     // Re-baseline a STALE basis. The direct basis only tracks DIRECT payouts, so it is
@@ -500,33 +501,33 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
           LIMIT 1
         `
       ).length > 0;
-    if (poolPaidSince || netFee < previousBasis) {
+    if (poolPaidSince || nonPartnerBalance < previousBasis) {
       log.warn(
-        { batchId, previousBasisWei: previousBasis.toString(), balanceWei: netFee.toString(), poolPaidSince },
-        'stale direct basis (pool payout or withdrawal since last direct cycle); re-baselining to current balance',
+        { batchId, previousBasisWei: previousBasis.toString(), nonPartnerBalanceWei: nonPartnerBalance.toString(), poolPaidSince },
+        'stale direct basis (pool payout or withdrawal since last direct cycle); re-baselining to current non-partner balance',
       );
       void alerts
-        .alert('batcher', `Direct-rebate cycle ${cycleMonth}: the recorded basis (${previousBasis.toString()} wei) is stale — ${poolPaidSince ? 'a POOL-mode payout executed' : 'the Safe balance fell below it (a withdrawal)'} since the last direct cycle. Re-baselining to the current balance (${netFee.toString()} wei); fees that arrived in the gap are absorbed (seed REBATE_FEE_BASIS_WEI to capture them). Avoid toggling REBATE_DIRECT_MODE mid-program.`)
+        .alert('batcher', `Direct-rebate cycle ${cycleMonth}: the recorded basis (${previousBasis.toString()} wei) is stale (${poolPaidSince ? 'a POOL-mode payout executed' : 'the Safe non-partner balance fell below it (a withdrawal)'} since the last direct cycle). Re-baselining to the current non-partner balance (${nonPartnerBalance.toString()} wei); fees that arrived in the gap are absorbed (seed REBATE_FEE_BASIS_WEI to capture them). Avoid toggling REBATE_DIRECT_MODE mid-program.`)
         .catch((e) => log.warn({ err: e }, 'basis-rebaseline alert failed'));
-      previousBasis = netFee;
+      previousBasis = nonPartnerBalance;
     }
-    // newFees = balance - basis. Then SUBTRACT the outstanding partner liability (money-
-    // correctness): the partner-earmarked WETH sits in the Safe and is counted in `balance`,
-    // so the raw delta would rebate fees owed to partners. Reserving it here is the DIRECT-mode
-    // mirror of the POOL reservation above; both clamp at 0. (Partner accrual ran first this
-    // cycle, so the liability is current.)
-    const newFees = netFee > previousBasis ? netFee - previousBasis : 0n;
-    distributable = newFees > partnerLiabilityWei ? newFees - partnerLiabilityWei : 0n;
+    // distributable = the increase in the NON-PARTNER balance since the basis. The basis is
+    // itself tracked in non-partner space (recorded as nonPartnerBalance - paidWei), so the OLD
+    // partner liability present at basis time is in BOTH the basis and the current nonPartnerBalance
+    // and CANCELS -- only the liability ACCRUED SINCE the basis is withheld. This is why we do NOT
+    // subtract partnerLiabilityWei a second time here (that was the double-withhold bug: old debt
+    // is already absorbed by the basis). newFees(non-partner) = nonPartnerBalance - previousBasis.
+    distributable = nonPartnerBalance > previousBasis ? nonPartnerBalance - previousBasis : 0n;
     log.info(
       {
         batchId,
         balanceWei: netFee.toString(),
-        previousBasisWei: previousBasis.toString(),
-        newFeesWei: newFees.toString(),
         partnerLiabilityWei: partnerLiabilityWei.toString(),
+        nonPartnerBalanceWei: nonPartnerBalance.toString(),
+        previousBasisWei: previousBasis.toString(),
         distributableWei: distributable.toString(),
       },
-      'direct-mode accrual basis (net of partner liability)',
+      'direct-mode accrual basis (non-partner balance)',
     );
     // Persist the recomputed distributable so /status, /batches and the reconciler
     // report this direct cycle's real pool (newFees), not the stale pool-split-of-balance
@@ -541,7 +542,8 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   //    already alerted regardless of pool.)
   if (directMode ? distributable === 0n : wallets.length === 0 || pool === 0n) {
     await db.update(schema.rebateBatches)
-      .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: netFee } : {}) })
+      // Basis recorded in NON-PARTNER space so partner-owed WETH is never counted as new fees.
+      .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: nonPartnerBalance } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info(
       { batchId, directMode, reason: directMode ? 'no new fees' : pool === 0n ? 'zero pool' : 'no wallets' },
@@ -568,9 +570,9 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   //     result every run, wedging the cycle. (Codex P2, post-floor)
   if (shares.size === 0) {
     // DIRECT mode: new fees arrived but no wallet qualified (all below the floor)
-    // -> keep them as profit by advancing the basis to the current balance.
+    // -> keep them as profit by advancing the basis to the current non-partner balance.
     await db.update(schema.rebateBatches)
-      .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: netFee } : {}) })
+      .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: nonPartnerBalance } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor)');
     // No payout this cycle → NO fee conversion (see the no_recipients path above). (Codex #474)
@@ -696,13 +698,14 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     status: 'proposed',
     safeProposalHash: safeTxHash,
     proposedAt: new Date(),
-    // DIRECT mode: record the accrual basis = balance - rebates PAID = the TRUE
-    // post-payout Safe balance (Safe MultiSend is atomic, so exactly `good` leaves). A
-    // quarantined recipient's unpaid rebate stays in the Safe BELOW this basis and is
-    // NOT redistributed next cycle (surfaced per-recipient above for manual retry). The
-    // status-filtered read + the pending-guard ensure this is only read once the payout
-    // settles (skipped if it reverts). (Codex post-merge P2-4; sharp-edges CRITICAL-1/2)
-    ...(directMode ? { feeBasisWethWei: netFee - paidWei } : {}),
+    // DIRECT mode: record the accrual basis = NON-PARTNER balance - rebates PAID = the TRUE
+    // post-payout non-partner Safe balance (Safe MultiSend is atomic, so exactly `good` leaves).
+    // Tracking the basis in non-partner space is what makes next cycle withhold only the partner
+    // liability ACCRUED SINCE this basis (the old debt cancels), never double-withholding it. A
+    // quarantined recipient's unpaid rebate stays in the Safe BELOW this basis and is NOT
+    // redistributed next cycle. The status-filtered read + the pending-guard ensure this is only
+    // read once the payout settles. (Codex post-merge P2-4; sharp-edges CRITICAL-1/2)
+    ...(directMode ? { feeBasisWethWei: nonPartnerBalance - paidWei } : {}),
   }).where(eq(schema.rebateBatches.id, batchId));
 
   // 9. Fire-and-forget polling for finality.

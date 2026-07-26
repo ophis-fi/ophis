@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, isNotNull, lt } from 'drizzle-orm';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { db, schema, sql } from '../db/index.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
@@ -85,6 +85,12 @@ export async function accruePartnerFees(deps: PartnerFeeAccrualDeps = {}): Promi
   const label = settledLabel(now);
   const sanctions = deps.sanctions ?? resolveSanctionsList(); // throws on a malformed list (fail-loud)
   const fetchPrice = deps.fetchWethUsdPrice ?? defaultFetchWethUsdPrice;
+  // MONTH-END CUTOFF (P2.8): consume ONLY trades that settled BEFORE the start of `now`'s month
+  // (== the end of the settled month). This keeps a first-of-month pre-drain trade (settled
+  // 00:00-02:00 on the 1st, before this ~02:00 run) OUT of the previous month's batch. A trade
+  // with an un-enriched (NULL) block_timestamp is HELD (not accrued) until the poller enriches
+  // it, so a trade is never attributed to the wrong month.
+  const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
   const [existing] = await db.select().from(schema.partnerFeeBatches).where(eq(schema.partnerFeeBatches.cycleMonth, label));
   if (existing && (PROPOSED_STATUSES as readonly string[]).includes(existing.status)) {
@@ -109,6 +115,7 @@ export async function accruePartnerFees(deps: PartnerFeeAccrualDeps = {}): Promi
     SELECT encode(recipient, 'hex') AS recipient_hex, SUM(fee_usd)::text AS fee_usd
     FROM partner_fee_trades
     WHERE batch_id IS NULL AND fee_usd IS NOT NULL
+      AND block_timestamp IS NOT NULL AND block_timestamp < ${monthEnd.toISOString()}
     GROUP BY recipient
   `;
 
@@ -186,6 +193,10 @@ export async function accruePartnerFees(deps: PartnerFeeAccrualDeps = {}): Promi
           and(
             isNull(schema.partnerFeeTrades.batchId),
             isNotNull(schema.partnerFeeTrades.feeUsd),
+            // Same month-end cutoff as the sum above, so a post-cutoff trade is never STAMPED
+            // (consumed) without being credited into this month's owed.
+            isNotNull(schema.partnerFeeTrades.blockTimestamp),
+            lt(schema.partnerFeeTrades.blockTimestamp, monthEnd),
             inArray(schema.partnerFeeTrades.recipient, entries.map((e) => e.recipient)),
           ),
         );
@@ -219,6 +230,8 @@ export interface PartnerFeeProposeDeps {
   readonly waitForExecution?: typeof waitForExecution;
   /** Injected dry-run simulator (default: on-chain eth_call). */
   readonly simulate?: (batch: readonly Transfer[]) => Promise<{ ok: boolean; reason?: string }>;
+  /** Sanctions/list screening set re-checked at PROPOSAL time (default: resolveSanctionsList()). */
+  readonly sanctions?: ReadonlySet<string>;
 }
 
 async function defaultReadSafeWethBalanceWei(args: { rpcUrl: string; weth: `0x${string}` }): Promise<bigint> {
@@ -265,11 +278,12 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
   const payable = computed.filter((b) => b.totalOwedWei > 0n);
   if (payable.length === 0) return { checked: 0, proposed: 0, blocked: 0 };
 
-  if (!deps.proposeEnabled) {
-    log.info({ computed: payable.length }, 'partner-fee dry-run: computed batches recorded, not proposing');
-    return { checked: payable.length, proposed: 0, blocked: 0, dryRun: true };
-  }
-
+  // NOTE (P2.6): the dry-run (proposeEnabled=false) runs the FULL plan -- re-screen, dry-run
+  // simulate, quarantine, AND the Safe-balance over-draw check -- and skips ONLY the Safe
+  // submission, so an operator's dry-run validates exactly what a real run would do. DB writes
+  // (quarantine, total updates, proposal) happen only when `persist` (proposeEnabled) is true.
+  const persist = deps.proposeEnabled;
+  const screen = deps.sanctions ?? resolveSanctionsList(); // throws on a malformed list (fail-loud)
   const readBalance = deps.readSafeWethBalanceWei ?? defaultReadSafeWethBalanceWei;
   const balance = await readBalance({ rpcUrl: deps.rpcUrl, weth });
   // Reserve BOTH (i) other programs' queued (unsigned) proposals AND the partner program's own
@@ -295,6 +309,16 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
   let proposed = 0;
   let blocked = 0;
 
+  // Quarantine one recipient's entry (persisted only in a real run): carried_usd rolls the owed
+  // forward so a cleared recipient is re-attempted next cycle and the amount is never lost.
+  async function quarantine(batchId: number, to: `0x${string}`): Promise<void> {
+    if (!persist) return;
+    await sql`
+      UPDATE partner_fee_batch_entries SET status = 'quarantined', carried_usd = owed_usd
+      WHERE batch_id = ${batchId} AND recipient = decode(${to.slice(2)}, 'hex')
+    `;
+  }
+
   for (const batch of payable) {
     const cycle = batch.cycleMonth.slice(0, 7);
     const paidEntries = await sql<{ recipient_hex: string; owed_wei: string }[]>`
@@ -304,25 +328,30 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
     let transfers: Transfer[] = paidEntries.map((e) => ({ to: `0x${e.recipient_hex}` as `0x${string}`, amount: BigInt(e.owed_wei) }));
     if (transfers.length === 0) continue;
 
-    // Dry-run + quarantine (mirrors the rebate batcher): a recipient whose WETH.transfer
-    // reverts is QUARANTINED (owed carries forward), never proposed.
+    // P2.5 RE-SCREEN at proposal time: the sanctions/list may have changed since accrual, so a
+    // newly-blocked recipient must be quarantined BEFORE the simulate/submit, never paid.
+    const sanctioned = transfers.filter((t) => isScreenedOut(t.to, screen));
+    if (sanctioned.length > 0) {
+      for (const s of sanctioned) await quarantine(batch.id, s.to);
+      transfers = transfers.filter((t) => !isScreenedOut(t.to, screen));
+      log.warn({ cycle, sanctionedCount: sanctioned.length }, 'partner-fee: recipients screened out at proposal (sanctions/list); owed carries forward');
+      await alerts.alert('partner-fee-payout', `Partner-fee ${cycle}: ${sanctioned.length} recipient(s) SCREENED OUT at proposal (sanctions/list changed since accrual); owed carries forward. Investigate.`).catch(() => {});
+    }
+
+    // Dry-run + quarantine (runs in BOTH modes; mirrors the rebate batcher): a recipient whose
+    // WETH.transfer reverts is QUARANTINED, never proposed.
     const { good, bad } = await isolateBadRecipients(transfers, simulate);
     if (bad.length > 0) {
-      for (const b of bad) {
-        // owed_usd stays the record of what was owed; carried_usd rolls it forward so a cleared
-        // recipient is re-attempted next cycle and the amount is never lost.
-        await sql`
-          UPDATE partner_fee_batch_entries
-          SET status = 'quarantined', carried_usd = owed_usd
-          WHERE batch_id = ${batch.id} AND recipient = decode(${b.to.slice(2)}, 'hex')
-        `;
-      }
+      for (const b of bad) await quarantine(batch.id, b.to);
       const quarantinedWei = bad.reduce((acc, t) => acc + t.amount, 0n);
-      const newTotal = good.reduce((acc, t) => acc + t.amount, 0n);
-      await db.update(schema.partnerFeeBatches).set({ totalOwedWei: newTotal, updatedAt: new Date() }).where(eq(schema.partnerFeeBatches.id, batch.id));
-      log.warn({ cycle, badCount: bad.length, quarantinedWei: quarantinedWei.toString() }, 'partner-fee: recipients quarantined at dry-run; owed carries forward');
+      log.warn({ cycle, badCount: bad.length, quarantinedWei: quarantinedWei.toString(), persist }, 'partner-fee: recipients quarantined at dry-run; owed carries forward');
       await alerts.alert('partner-fee-payout', `Partner-fee ${cycle}: ${bad.length} recipient(s) QUARANTINED (transfer reverted at dry-run); their owed carries forward and is re-attempted next cycle. Investigate.`).catch(() => {});
       transfers = good;
+    }
+    // Persist the reduced total after any screen/dry-run quarantine (real run only).
+    if (persist && (sanctioned.length > 0 || bad.length > 0)) {
+      const newTotal = transfers.reduce((acc, t) => acc + t.amount, 0n);
+      await db.update(schema.partnerFeeBatches).set({ totalOwedWei: newTotal, updatedAt: new Date() }).where(eq(schema.partnerFeeBatches.id, batch.id));
     }
     if (transfers.length === 0) {
       // Everything quarantined: nothing to propose. Leave 'computed' so a cleared recipient
@@ -339,6 +368,14 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
       continue;
     }
 
+    // DRY-RUN: everything above (screen + simulate + balance check) ran for operator validation;
+    // skip ONLY the Safe submission. Model the reservation so later batches see the same picture.
+    if (!persist) {
+      remaining -= owedWei;
+      log.info({ cycle, batchId: batch.id, owedWei: owedWei.toString(), recipients: transfers.length }, 'partner-fee dry-run: would propose (Safe submission skipped)');
+      continue;
+    }
+
     if (nextNonce === undefined) nextNonce = await readNonce({ rpcUrl: deps.rpcUrl });
     const outcome = await proposeComputedBatch(batch, transfers, deps, nextNonce);
     if (outcome === 'proposed') {
@@ -350,7 +387,7 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
       nextNonce++;
     }
   }
-  return { checked: payable.length, proposed, blocked };
+  return { checked: payable.length, proposed, blocked, dryRun: persist ? undefined : true };
 }
 
 async function proposeComputedBatch(
@@ -394,6 +431,7 @@ async function proposeComputedBatch(
       if (r.executed) {
         await db.update(schema.partnerFeeBatches).set({ status: r.isSuccessful ? 'executed' : 'failed', safeTxHash: r.transactionHash ?? undefined, updatedAt: new Date() }).where(eq(schema.partnerFeeBatches.id, batch.id));
         if (r.isSuccessful) await markPartnerFeeEntriesPaid(batch.id);
+        else await carryFailedBatchEntries(batch.id); // P2.7: execution reverted -> carry the owed forward
       }
     })
     .catch((err) => log.error({ err, batchId: batch.id }, 'partner-fee polling failed'));
@@ -406,6 +444,18 @@ async function proposeComputedBatch(
 /** Mark the PAID entries of an executed partner batch as paid (atomic MultiSend = all paid). */
 async function markPartnerFeeEntriesPaid(batchId: number): Promise<void> {
   await sql`UPDATE partner_fee_batch_entries SET paid_wei = owed_wei WHERE batch_id = ${batchId} AND status = 'paid'`;
+}
+
+/**
+ * P2.7 retry/carry-forward: a batch whose Safe execution FAILED (reverted) moved NO funds (the
+ * MultiSend is atomic), so its 'paid' entries were never paid and would otherwise be stranded in
+ * a terminally-'failed' batch. Convert them to 'carried' (carried_usd = owed_usd) so the next
+ * monthly accrual reads them via currentCarriedUsdByRecipient and re-attempts them -- the amount
+ * is never lost. The failed batch's cycle stays 'failed' (its own month is closed); the carry
+ * lands in the next cycle.
+ */
+async function carryFailedBatchEntries(batchId: number): Promise<void> {
+  await sql`UPDATE partner_fee_batch_entries SET status = 'carried', carried_usd = owed_usd WHERE batch_id = ${batchId} AND status = 'paid'`;
 }
 
 /**
@@ -449,8 +499,9 @@ export async function reconcilePartnerFeeBatches(opts: { now?: Date } = {}): Pro
         await alerts.alert('partner-fee-reconcile', `Partner-fee ${cycle} EXECUTED on-chain (tx ${status.transactionHash}).`).catch(() => {});
       } else {
         advancedFailed++;
-        log.error({ cycle, batchId: row.id, txHash: status.transactionHash }, 'partner-fee batch EXECUTION FAILED on-chain; recipients NOT paid');
-        await alerts.alert('partner-fee-reconcile', `Partner-fee ${cycle} Safe execution FAILED on-chain (tx ${status.transactionHash}); recipients were NOT paid. Investigate before re-proposing.`).catch(() => {});
+        await carryFailedBatchEntries(row.id); // P2.7: reverted -> carry the owed forward for retry
+        log.error({ cycle, batchId: row.id, txHash: status.transactionHash }, 'partner-fee batch EXECUTION FAILED on-chain; recipients NOT paid; owed carried forward for next cycle');
+        await alerts.alert('partner-fee-reconcile', `Partner-fee ${cycle} Safe execution FAILED on-chain (tx ${status.transactionHash}); recipients were NOT paid. Their owed has been carried forward and will be re-attempted next cycle.`).catch(() => {});
       }
       continue;
     }

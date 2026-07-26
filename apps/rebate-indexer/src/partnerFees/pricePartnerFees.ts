@@ -22,29 +22,42 @@ export async function runPartnerFeePricer(): Promise<{ priced: number; failed: n
   const refPriceCache = new Map<number, number>(); // chain -> USD-ref native_price, per run
   let priced = 0;
   let failed = 0;
-  let cursorUid: Buffer = Buffer.alloc(0); // empty bytea sorts before every trade_uid
-  let cursorRecipient: Buffer = Buffer.alloc(0);
+  // Keyset cursor over the FULL primary key (trade_uid, recipient, chain_id, block_number,
+  // log_index): (trade_uid, recipient) alone is NOT unique now that a partiallyFillable order's
+  // multiple settlements each persist, so a narrower cursor could loop or skip rows.
+  let cUid: Buffer = Buffer.alloc(0); // empty bytea sorts before every trade_uid
+  let cRecipient: Buffer = Buffer.alloc(0);
+  let cChain = -1;
+  let cBlock = -1n;
+  let cLog = -1n;
 
   for (;;) {
     const rows = await sql<{
       trade_uid: Buffer;
       recipient: Buffer;
       chain_id: number;
+      block_number: string;
+      log_index: string;
       fee_token: Buffer;
       fee_amount: string;
       volume_bps: number;
     }[]>`
-      SELECT trade_uid, recipient, chain_id, fee_token, fee_amount::text AS fee_amount, volume_bps
+      SELECT trade_uid, recipient, chain_id, block_number::text AS block_number, log_index::text AS log_index,
+             fee_token, fee_amount::text AS fee_amount, volume_bps
       FROM partner_fee_trades
-      WHERE fee_usd IS NULL AND (trade_uid, recipient) > (${cursorUid}, ${cursorRecipient})
-      ORDER BY trade_uid, recipient
+      WHERE fee_usd IS NULL
+        AND (trade_uid, recipient, chain_id, block_number, log_index) > (${cUid}, ${cRecipient}, ${cChain}, ${cBlock.toString()}, ${cLog.toString()})
+      ORDER BY trade_uid, recipient, chain_id, block_number, log_index
       LIMIT 1000
     `;
     if (rows.length === 0) break;
 
     for (const r of rows) {
-      cursorUid = r.trade_uid;
-      cursorRecipient = r.recipient; // advance by PK regardless of outcome
+      cUid = r.trade_uid;
+      cRecipient = r.recipient;
+      cChain = r.chain_id;
+      cBlock = BigInt(r.block_number);
+      cLog = BigInt(r.log_index); // advance by full PK regardless of outcome
       try {
         const feeUsd = await priceTrade(
           {
@@ -61,6 +74,7 @@ export async function runPartnerFeePricer(): Promise<{ priced: number; failed: n
           UPDATE partner_fee_trades
           SET fee_usd = ${feeUsd}, value_usd = ${valueUsd}, priced_at = now()
           WHERE trade_uid = ${r.trade_uid} AND recipient = ${r.recipient}
+            AND chain_id = ${r.chain_id} AND block_number = ${r.block_number} AND log_index = ${r.log_index}
         `;
         priced++;
       } catch (err) {

@@ -355,11 +355,15 @@ export const partnerFeeTrades = pgTable(
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     feeUsd: numeric('fee_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
+    blockTimestamp: timestamp('block_timestamp', { withTimezone: true }),
     batchId: integer('batch_id').references(() => partnerFeeBatches.id),
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.tradeUid, t.recipient] }),
+    // PK includes settlement identity (chain, block, log) so a partiallyFillable order's
+    // multiple settlements each persist (see migration 0019). recipient distinguishes multiple
+    // partners on one trade.
+    pk: primaryKey({ columns: [t.tradeUid, t.recipient, t.chainId, t.blockNumber, t.logIndex] }),
     recipientIdx: index('partner_fee_trades_recipient_idx').on(t.recipient),
   }),
 );

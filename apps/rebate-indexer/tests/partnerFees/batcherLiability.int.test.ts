@@ -204,6 +204,38 @@ describe('partner liability subtracted from the rebate DIRECT distributable', ()
     expect(BigInt(entry!.a) + (ONE * 8n) / 10n).toBeLessThanOrEqual(1n * ONE);
   });
 
+  it('TWO unpaid PAID cycles for one recipient reserve BOTH (fix 1: not DISTINCT ON) -> $160', async () => {
+    const sql = await getSql();
+    // Two separate cycles each paid the same recipient $80 (0.04 WETH at $2000), both proposed
+    // and unexecuted. A DISTINCT ON (recipient) view would collapse to one $80; the union sums both.
+    const eighty = ONE / 25n; // 0.04 WETH = $80 at $2000
+    await seedPartnerLiability(sql, '2026-04-01', 'proposed', 'cc'.repeat(20), eighty, 'paid');
+    await seedPartnerLiability(sql, MAY, 'proposed', 'cc'.repeat(20), eighty, 'paid');
+    expect(await liability()).toBe(eighty * 2n); // $160, NOT $80
+  });
+
+  it('does NOT double-withhold OLD partner debt across cycles (fix 4: 20/100/20 => 80)', async () => {
+    const sql = await getSql();
+    // Cycle N (May, FIRST rebate cycle): balance 9 WETH, 2 WETH partner liability present.
+    // First cycle -> basis = non-partner balance = 9 - 2 = 7 WETH; rebates nothing.
+    await seedPartnerLiability(sql, '2026-03-01', 'proposed', 'cc'.repeat(20), 2n * ONE, 'paid');
+    mockBalanceWei = 9n * ONE;
+    const n = await runBatcher(new Date('2026-05-01T02:00:00Z'));
+    expect(n.status).toBe('no_recipients');
+    const [mayRow] = await sql<{ b: string }[]>`SELECT fee_basis_weth_wei::text AS b FROM rebate_batches WHERE cycle_month = ${MAY}`;
+    expect(BigInt(mayRow!.b)).toBe(7n * ONE); // basis recorded in NON-PARTNER space (9 - 2), not 9
+
+    // Cycle N+1 (June): +10 WETH new fees (balance 19), +2 WETH NEW partner liability (total 4).
+    await seedPartnerLiability(sql, '2026-04-01', 'proposed', 'cc'.repeat(20), 2n * ONE, 'paid');
+    await seedWallet(sql, 'aa'.repeat(20), 100_000); // gold, so there IS a recipient
+    mockBalanceWei = 19n * ONE;
+    const n1 = await runBatcher(JUN);
+    // nonPartnerBalance = 19 - 4 = 15; distributable = 15 - 7 = 8 WETH. The OLD 2 WETH debt is
+    // already baked into the basis (7) and is NOT withheld a second time. The double-withhold bug
+    // gave 6 (basis 9 raw, newFees 10, minus full liability 4).
+    expect(n1.poolWei).toBe(8n * ONE);
+  });
+
   it('when balance is fully partner-owed the rebate pays NOTHING (no_recipients)', async () => {
     const sql = await getSql();
     await seedRebateBasis(sql, MAY, 9n * ONE);

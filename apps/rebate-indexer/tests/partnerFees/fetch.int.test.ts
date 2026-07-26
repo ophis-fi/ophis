@@ -39,7 +39,8 @@ async function getSql() {
 }
 async function runFetch() {
   const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
-  return runPartnerFeeFetch({ feeds: [{ chainId: 10, url: FEED }] });
+  // Inject the block-timestamp fetcher so the enrichment pass never hits a real RPC.
+  return runPartnerFeeFetch({ feeds: [{ chainId: 10, url: FEED }], blockTimestamp: async () => new Date('2026-05-15T00:00:00Z') });
 }
 
 beforeAll(async () => {
@@ -110,5 +111,28 @@ describe('partner-fee feed ingestion', () => {
   it('REFUSES to poll a chain not asserted config-fee-free (fail loud, before any DB write)', async () => {
     const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
     await expect(runPartnerFeeFetch({ feeds: [{ chainId: 8453, url: FEED }] })).rejects.toThrow(/config-fee-free/i);
+  });
+
+  it('preserves BOTH settlements of a partiallyFillable order (same uid, distinct block/log)', async () => {
+    const sql = await getSql();
+    const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
+    const uidA = uid(42);
+    // One order uid settling TWICE (block 200 log 1, then block 201 log 5), each collecting a
+    // distinct partner fee. The old (trade_uid, recipient) PK would ON CONFLICT DO NOTHING the
+    // second -> discard 2000. The widened PK persists both.
+    const twoSettlements = [
+      { blockNumber: 200, logIndex: 1, orderUid: uidA, owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '3000'], protocolFeeTokens: [BUY, BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
+      { blockNumber: 201, logIndex: 5, orderUid: uidA, owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '2000'], protocolFeeTokens: [BUY, BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
+    ];
+    const r = await runPartnerFeeFetch({
+      feeds: [{ chainId: 10, url: FEED }],
+      blockTimestamp: async () => new Date('2026-05-15T00:00:00Z'),
+      fetcher: async (_feed, minBlock) => (minBlock === 0n ? { trades: twoSettlements } : { trades: [] }),
+    });
+    expect(r.inserted).toBe(2); // BOTH settlements' fees, not one
+    const rows = await sql<{ fee_amount: string; block: string }[]>`
+      SELECT fee_amount::text AS fee_amount, block_number::text AS block FROM partner_fee_trades
+      WHERE recipient = decode(${PARTNER_A.slice(2)}, 'hex') ORDER BY block_number`;
+    expect(rows.map((x) => x.fee_amount)).toEqual(['3000', '2000']);
   });
 });

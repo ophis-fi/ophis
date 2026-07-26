@@ -28,43 +28,55 @@ CREATE TABLE partner_fee_cursor (
 );
 
 -- ─── Per-partner accrued fee trades ──────────────────────────────────────────
--- One row per (settled fee-bearing trade, partner recipient). A single trade can
--- carry up to MAX_PARTNER_FEE_ENTRIES (3) distinct partner recipients, hence the
--- composite PK (trade_uid, recipient). Re-ingesting the same feed row is idempotent
--- (ON CONFLICT DO NOTHING): the poller can safely re-read a partially-returned block.
+-- One row per (settlement, partner recipient). The PK includes the SETTLEMENT IDENTITY
+-- (chain_id, block_number, log_index) because a partiallyFillable order settles MORE than
+-- once under the SAME order uid at DISTINCT (block, log). A PK of (trade_uid, recipient)
+-- alone would collide across those settlements and ON CONFLICT DO NOTHING would DISCARD the
+-- later settlements' collected fees, underpaying the partner after the cursor advanced past
+-- them. Widening the PK to the full settlement identity preserves every settlement's fee.
+-- Re-ingesting the SAME feed row is still idempotent (ON CONFLICT DO NOTHING): the poller can
+-- safely re-read a partially-returned block. A single trade can also carry up to
+-- MAX_PARTNER_FEE_ENTRIES (3) distinct partner recipients, hence `recipient` in the key too.
 --
--- recipient   = the partner's fee recipient (== the on-chain WETH payout address),
---               validated registered+active at order-creation time by Phase A ingress.
--- volume_bps  = the partner's flat Volume rate from appData metadata.partnerFee.
--- fee_token   = the token the protocol fee was actually collected in (the buy/surplus
---               token for a sell order), read from the feed's protocolFeeTokens.
--- fee_amount  = the ACTUALLY-COLLECTED protocol fee amount (uint256 wei) for THIS
---               recipient, read from the feed's protocolFeeAmounts. This is the money.
--- value_usd   = USD value of the trade volume at pricing time (reporting only).
--- fee_usd     = USD value of the collected fee_amount (priced from fee_token/fee_amount);
---               NULL until the nightly pricer prices it. The payout basis sums this.
--- batch_id    = the payout cycle that ACCOUNTED this trade (NULL = not yet accounted).
---               Set when a monthly batch consumes the trade into a recipient's owed,
---               so a trade's fee is never counted into two cycles (no double-pay).
+-- recipient       = the partner's fee recipient (== the on-chain WETH payout address),
+--                   validated registered+active at order-creation time by Phase A ingress.
+-- volume_bps      = the partner's flat Volume rate from appData metadata.partnerFee.
+-- fee_token       = the token the protocol fee was actually collected in (the buy/surplus
+--                   token for a sell order), read from the feed's protocolFeeTokens.
+-- fee_amount      = the ACTUALLY-COLLECTED protocol fee amount (uint256 wei) for THIS
+--                   settlement + recipient, read from the feed's protocolFeeAmounts. The money.
+-- value_usd       = USD value of the trade volume at pricing time (reporting only).
+-- fee_usd         = USD value of the collected fee_amount (priced from fee_token/fee_amount);
+--                   NULL until the nightly pricer prices it. The payout basis sums this.
+-- block_timestamp = the settlement block's UTC timestamp; NULL until the poller enriches it
+--                   from the chain. The monthly accrual uses it as the calendar-month cutoff so
+--                   pre-drain (first-of-month 00:00-02:00) trades are NOT stamped to the prior
+--                   month. A trade is not accrued until its timestamp is known (fail-safe).
+-- batch_id        = the payout cycle that ACCOUNTED this trade (NULL = not yet accounted).
+--                   Set when a monthly batch consumes the trade into a recipient's owed, so a
+--                   trade's fee is never counted into two cycles (no double-pay).
 CREATE TABLE partner_fee_trades (
-  trade_uid    BYTEA NOT NULL,
-  recipient    BYTEA NOT NULL,
-  chain_id     INTEGER NOT NULL,
-  block_number BIGINT NOT NULL,
-  log_index    BIGINT NOT NULL,
-  volume_bps   INTEGER NOT NULL,
-  fee_token    BYTEA NOT NULL,
-  fee_amount   NUMERIC(78,0) NOT NULL,
-  value_usd    NUMERIC(20,4),
-  fee_usd      NUMERIC(20,4),
-  priced_at    TIMESTAMPTZ,
-  batch_id     INTEGER,
-  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (trade_uid, recipient)
+  trade_uid       BYTEA NOT NULL,
+  recipient       BYTEA NOT NULL,
+  chain_id        INTEGER NOT NULL,
+  block_number    BIGINT NOT NULL,
+  log_index       BIGINT NOT NULL,
+  volume_bps      INTEGER NOT NULL,
+  fee_token       BYTEA NOT NULL,
+  fee_amount      NUMERIC(78,0) NOT NULL,
+  value_usd       NUMERIC(20,4),
+  fee_usd         NUMERIC(20,4),
+  priced_at       TIMESTAMPTZ,
+  block_timestamp TIMESTAMPTZ,
+  batch_id        INTEGER,
+  fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (trade_uid, recipient, chain_id, block_number, log_index)
 );
 
 -- Unpriced work queue (the nightly pricer scans fee_usd IS NULL).
 CREATE INDEX partner_fee_trades_unpriced_idx ON partner_fee_trades (priced_at) WHERE fee_usd IS NULL;
+-- Un-timestamped work queue (the poller backfills block_timestamp IS NULL rows).
+CREATE INDEX partner_fee_trades_untimed_idx ON partner_fee_trades (block_number) WHERE block_timestamp IS NULL;
 -- The monthly batcher reads the priced, NOT-yet-accounted trades per recipient.
 CREATE INDEX partner_fee_trades_unbatched_idx ON partner_fee_trades (recipient) WHERE batch_id IS NULL;
 

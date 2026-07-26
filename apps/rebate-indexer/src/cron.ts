@@ -154,13 +154,17 @@ async function runPipelineSteps(): Promise<void> {
     // Partner-fee ACCRUAL (partner-fees Phase B) — MUST run FIRST, BEFORE the rebate batcher
     // and affiliate payout (money-correctness): it records this cycle's partner-owed ledger,
     // which is the outstanding liability those two batchers SUBTRACT to avoid paying the same
-    // WETH twice. Flag- AND proposer-key-INDEPENDENT (records the ledger regardless), so it sits
-    // here in the key-independent section. Wrapped so one failure never blocks the rest of the
-    // cycle. The proposal (below) is separately flag-gated.
+    // WETH twice. Flag- AND proposer-key-INDEPENDENT (records the ledger regardless). If it
+    // THROWS, we FAIL CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle,
+    // because both distribute the SAME Ophis Safe and, without an up-to-date partner liability,
+    // could pay out WETH owed to partners. Own-fee (a separate sovereign Safe) is unaffected.
+    let partnerAccrualOk = true;
     try {
       await accruePartnerFees({});
     } catch (err) {
-      log.error({ err }, 'partner-fee accrual failed (non-fatal to the rest of the cycle)');
+      partnerAccrualOk = false;
+      log.error({ err }, 'partner-fee accrual FAILED; fail-closed: SKIPPING the rebate batcher + affiliate payout this cycle (shared Safe must not be distributed against a stale/absent partner liability)');
+      await alerts.alert('partner-fee', 'Partner-fee accrual FAILED on the 1st. FAIL-CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle (they share the Ophis Safe and could otherwise spend WETH owed to partners against a stale/absent liability). Fix accrual and re-trigger the pipeline.').catch(() => {});
     }
     const proposeEnabled = resolveBatcherProposeEnabled();
     const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
@@ -168,33 +172,40 @@ async function runPipelineSteps(): Promise<void> {
       log.error('SAFE_PROPOSER_PRIVATE_KEY missing; skipping batcher');
       await alerts.alert('batcher', 'SAFE_PROPOSER_PRIVATE_KEY env var missing — no proposal made');
     } else {
-      const result = await runBatcher({
-        chainId: 100,
-        rpcUrl: gnosisRpc(),
-        proposerPrivateKey: proposerKey as `0x${string}`,
-        proposeEnabled,
-      });
-      batcherRan = true; // batcher executed (any result — proposed / no_recipients / dry-run)
-      if (result.status === 'proposed') {
-        await alerts.batchReady({
-          cycle: new Date().toISOString().slice(0, 7),
-          pool: (Number(result.poolWei) / 1e18).toFixed(5),
-          count: result.recipientCount,
-          safeQueueUrl: 'https://app.safe.global/transactions/queue?safe=gno:0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
-          topRecipient: 'see /batches/' + result.batchId,
+      // Shared-Safe distribution (rebate + affiliate) runs ONLY when partner accrual
+      // succeeded (fail-closed): both draw from the same Ophis Safe and must never distribute
+      // it against a stale/absent partner liability.
+      if (partnerAccrualOk) {
+        const result = await runBatcher({
+          chainId: 100,
+          rpcUrl: gnosisRpc(),
+          proposerPrivateKey: proposerKey as `0x${string}`,
+          proposeEnabled,
         });
-      }
-      // Affiliate payout — runs AFTER the rebate batcher (it reads this cycle's
-      // rebate pool for the double-spend guard) and is independently flag-gated
-      // (AFFILIATE_PAYOUT_ENABLED, default OFF). A separate Safe MultiSend at the
-      // next free nonce; execution still needs the 2-of-3 signature. Wrapped so a
-      // payout failure never blocks the report or the heartbeat.
-      if (resolveAffiliatePayoutEnabled()) {
-        try {
-          await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
-        } catch (err) {
-          log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+        batcherRan = true; // batcher executed (any result: proposed / no_recipients / dry-run)
+        if (result.status === 'proposed') {
+          await alerts.batchReady({
+            cycle: new Date().toISOString().slice(0, 7),
+            pool: (Number(result.poolWei) / 1e18).toFixed(5),
+            count: result.recipientCount,
+            safeQueueUrl: 'https://app.safe.global/transactions/queue?safe=gno:0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+            topRecipient: 'see /batches/' + result.batchId,
+          });
         }
+        // Affiliate payout: runs AFTER the rebate batcher (it reads this cycle's
+        // rebate pool for the double-spend guard) and is independently flag-gated
+        // (AFFILIATE_PAYOUT_ENABLED, default OFF). A separate Safe MultiSend at the
+        // next free nonce; execution still needs the 2-of-3 signature. Wrapped so a
+        // payout failure never blocks the report or the heartbeat.
+        if (resolveAffiliatePayoutEnabled()) {
+          try {
+            await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+          } catch (err) {
+            log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+          }
+        }
+      } else {
+        log.error('skipping rebate batcher + affiliate payout this cycle: partner accrual failed (fail-closed, shared Safe)');
       }
       // Sovereign per-recipient own-fee PROPOSAL (phase B). Needs the proposer key
       // (this branch) AND OWN_FEE_PAYOUT_ENABLED (default OFF). Accrual (phase A) ran
@@ -219,8 +230,9 @@ async function runPipelineSteps(): Promise<void> {
       // 'computed' batch (current cycle + any back-months a previously-off flag left behind) as a
       // WETH MultiSend on the Gnosis Ophis Safe; execution still needs the 2-of-3 signature. Its
       // over-draw guard reserves the already-queued rebate/affiliate proposals, the mirror of
-      // their reservation of the partner liability. Wrapped so a failure never blocks the report.
-      if (resolvePartnerFeePayoutEnabled()) {
+      // their reservation of the partner liability. Gated on partnerAccrualOk (a failed accrual
+      // left no fresh 'computed' batch for this cycle). Wrapped so a failure never blocks the report.
+      if (partnerAccrualOk && resolvePartnerFeePayoutEnabled()) {
         try {
           await proposePartnerFeeBatches({ rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
         } catch (err) {

@@ -140,14 +140,21 @@ Partner fees land in the SAME Safe as rebates + affiliate payouts. The
 partner-owed 80% must never be paid twice. Enforced by:
 - **Ordering:** partner accrual runs FIRST each cycle (cron), before the rebate +
   affiliate computation.
-- **Rebate:** the DIRECT-mode distributable AND the POOL pool base SUBTRACT
-  `outstandingPartnerLiabilityWei()` (`src/partnerFees/liability.ts`).
+- **Fail-closed:** if partner accrual THROWS on the 1st, the rebate batcher AND the
+  affiliate payout are SKIPPED that cycle (they share the Safe and must not be
+  distributed against a stale/absent liability). Own-fee (a separate sovereign Safe)
+  still runs. Fix accrual and re-trigger the pipeline.
+- **Rebate:** the rebate works in the NON-PARTNER balance (Safe WETH minus the full
+  `outstandingPartnerLiabilityWei()`). DIRECT mode tracks its basis in that same
+  non-partner space, so OLD partner debt already baked into a prior basis is NOT
+  withheld twice; only the liability ACCRUED SINCE the basis is withheld. (`src/batcher.ts`)
 - **Affiliate:** `planAffiliatePayout` reserves the partner liability in its
   over-draw guard (its available-balance basis subtracts it).
 - **Partner proposal:** reserves the already-queued rebate + affiliate proposals,
   the mirror image.
-Regression-locked by `tests/partnerFees/batcherLiability.int.test.ts` and
-`tests/partnerFees/affiliateReservation.test.ts`.
+Regression-locked by `tests/partnerFees/batcherLiability.int.test.ts` (incl. the
+20/100/20 => 80 non-double-withhold case), `tests/partnerFees/affiliateReservation.test.ts`,
+and `tests/partnerFees/cronFailClosed.test.ts`.
 
 `outstandingPartnerLiabilityWei()` is the UNION of two disjoint parts: (a) the
 carried/quarantined ROLLUP (each recipient's latest entry when it is
@@ -191,9 +198,25 @@ config protocol fee would prepend a slot and could mis-attribute to a partner.
 ### Carry-over and threshold
 A recipient whose owed is below `MIN_PARTNER_PAYOUT_USD` ($25) CARRIES: nothing is
 paid, `carried_usd` rolls forward and is re-evaluated next cycle. A quarantined
-recipient (sanctions/list screen at payout, or a dry-run transfer revert) also
-carries so the amount is never lost and is re-attempted once cleared. `owed_usd`
+recipient (sanctions/list screen re-checked at payout, or a dry-run transfer revert)
+also carries so the amount is never lost and is re-attempted once cleared. `owed_usd`
 = `0.8 * Σ(new fee_usd) + carried_usd(prev)`.
+
+A batch whose Safe execution FAILS (reverts) moved NO funds (atomic MultiSend), so
+its `paid` entries are converted BACK to `carried` (retry path) and re-attempted
+next cycle instead of being stranded in a terminally-`failed` batch. The dry-run
+(`BATCHER_PROPOSE_ENABLED=false`) runs the FULL plan -- re-screen, simulate,
+quarantine, and the Safe over-draw check -- and skips ONLY the Safe submission, so an
+operator dry-run validates exactly what a real run would do (no DB writes).
+
+### Month-end cutoff
+The monthly accrual consumes ONLY trades whose settlement `block_timestamp` is before
+the start of the run's month (the end of the settled month), so a first-of-month
+pre-drain trade (settled 00:00-02:00 on the 1st) is not stamped to the previous
+month. The poller enriches `block_timestamp` from the chain (`PARTNER_FEE_RPC_URL_<id>`
+/ `SETTLE_RPC_URL_<id>`); a trade with a not-yet-enriched (NULL) timestamp is HELD out
+of accrual until enriched, so a trade is never attributed to the wrong month (its
+total is never lost -- it accrues in a later cycle once timestamped).
 
 ### Attribution safety (why a partner might not be paid for a trade)
 On Optimism the only protocol fees are the appData `partnerFee` entries (no
