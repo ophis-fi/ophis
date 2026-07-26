@@ -73,7 +73,21 @@ const DEFAULT_GAS_UNITS: u64 = 1_500_000;
 ///     for a USDC->WETH route with `fromAddress`/`toAddress` = the Settlement.
 ///
 /// **If LI.FI redeploys the diamond**: add the new address here after
-/// independent on-chain verification — do NOT take it from a quote response.
+/// independent verification — do NOT take it from a quote response.
+///
+/// **What counts as "independent" (learned the hard way, 2026-07-26).**
+/// `eth_getCode` is NOT authentication. It proves only that *some* bytecode
+/// exists at an address; it says nothing about who deployed or controls it, and
+/// an attacker who could poison a quote response could equally deploy a
+/// same-shaped proxy at the address they returned. Verified-source and a
+/// contract *name* on an explorer are likewise insufficient — LI.FI's diamond is
+/// open source, so anyone can deploy and verify a copy. Cross-chain owner /
+/// deployer comparison also does not work: LI.FI uses a DIFFERENT owner and
+/// deployer per chain (checked on 10 / 130 / 4663).
+/// The trust anchor that DOES work is LI.FI's canonical public deployment
+/// records at github.com/lifinance/contracts (`deployments/<network>.json` plus
+/// `config/networks.json` for the chain-id mapping). Authenticate there first;
+/// treat on-chain and API evidence as corroboration.
 const LIFI_ROUTER_ALLOWLIST: &[Address] = &[
     // LiFiDiamond on Unichain (130).
     // EIP-55: 0x864b314D4C5a0399368609581d3E8933a63b9232 (raw bytes lowercased).
@@ -87,17 +101,22 @@ const LIFI_ROUTER_ALLOWLIST: &[Address] = &[
         0x12, 0x31, 0xde, 0xb6, 0xf5, 0x74, 0x9e, 0xf6, 0xce, 0x69, 0x43, 0xa2, 0x75, 0xa1, 0xd3,
         0xe7, 0x48, 0x6f, 0x4e, 0xae,
     ]),
-    // Robinhood (4663). NOTE: this is NOT a LiFiDiamond — LI.FI routes 4663 via a
-    // DIFFERENT router, so the Unichain/Optimism diamond addresses above do not
-    // apply here (eth_getCode for the Unichain diamond returns 0x on 4663).
-    // Without this entry EVERY 4663 quote fails the router-poisoning guard.
-    // EIP-55: 0xB477751B76CF82d00a686A1232f5fCD772414Af3. Verified 2026-07-26 by
-    // BOTH methods the doc above requires:
-    //   - eth_getCode on https://rpc.mainnet.chain.robinhood.com returns 254 bytes
-    //     (the same EIP-2535 fallback-proxy shape as the verified diamonds), and
-    //   - a live GET /v1/quote (fromChain=toChain=4663, USDG->WETH, from/to =
-    //     Settlement) returns this exact address as BOTH transactionRequest.to and
-    //     estimate.approvalAddress (tool: "fly").
+    // LiFiDiamond on Robinhood (4663). Per-chain address, like Optimism's above —
+    // the Unichain diamond has NO code on 4663, so without this entry every 4663
+    // quote fails the router-poisoning guard.
+    // EIP-55: 0xB477751B76CF82d00a686A1232f5fCD772414Af3.
+    //
+    // AUTHENTICATED 2026-07-26 from LI.FI's canonical public deployment records —
+    // github.com/lifinance/contracts, `deployments/robinhood.json` -> LiFiDiamond,
+    // with `config/networks.json` confirming robinhood == chainId 4663. That repo
+    // is the trust anchor here: it is independent of the quote endpoint this
+    // allowlist exists to defend against.
+    //
+    // Corroboration only (NOT authentication — see the note above the allowlist):
+    // Blockscout shows a verified contract named LiFiDiamond carrying LI.FI's own
+    // facets (LiFiIntentEscrowFacet, AcrossFacetV4, GlacisFacet, …); eth_getCode
+    // returns 254 bytes; and a live quote returns it as transactionRequest.to and
+    // estimate.approvalAddress.
     Address::new([
         0xb4, 0x77, 0x75, 0x1b, 0x76, 0xcf, 0x82, 0xd0, 0x0a, 0x68, 0x6a, 0x12, 0x32, 0xf5, 0xfc,
         0xd7, 0x72, 0x41, 0x4a, 0xf3,
