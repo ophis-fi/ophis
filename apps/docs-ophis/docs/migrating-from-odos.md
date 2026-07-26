@@ -109,9 +109,11 @@ registry to establish stable or boosted eligibility, so it enforces the
 conservative per-pair minimum of **4 bps**. The fee is rounded to the nearest
 basis point first, so a `referralFee` that rounds to fewer than 4 bps (below
 `0.00035`) is rejected rather than mapped to a draft the orderbook would reject
-at submit; `0.00035` and above round to at least 4 bps and are accepted. The
-reduced 1 bps floor applies only to stable and boosted pairs, which the compat
-surface cannot establish.
+at submit; `0.00035` and above round to at least 4 bps and clear this minimum
+check. Clearing the floor is not acceptance on its own: the 90 bps maximum
+(`PARTNER_FEE_CAP_EXCEEDED` above it) and the recipient's own registered cap
+still apply. The reduced 1 bps floor applies only to stable and boosted pairs,
+which the compat surface cannot establish.
 
 The recipient must be a **registered, active partner-fee recipient**. Register
 once with `POST /api/v1/partners`; see [Partner integration](./partners.md). A
