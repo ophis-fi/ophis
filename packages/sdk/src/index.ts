@@ -134,6 +134,7 @@ export {
   APP_DATA_VERSION,
   ORDER_TYPED_DATA_TYPES,
   MAX_SLIPPAGE_BIPS,
+  MAX_PARTNER_FEE_ENTRIES,
   deterministicStringify,
   buildOphisFullAppData,
   buildOrder,
