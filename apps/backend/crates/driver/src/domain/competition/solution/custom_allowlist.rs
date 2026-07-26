@@ -24,6 +24,36 @@
 //! added here in the same PR — verified independently against upstream
 //! docs, NOT taken from an API response (that's the attack vector this
 //! gate prevents).
+//!
+//! ## What counts as verification (2026-07-26)
+//!
+//! `eth_getCode` is NOT verification. It proves only that *some* bytecode
+//! exists at an address — never who deployed or controls it. An attacker
+//! able to poison an API response could deploy a same-shaped contract at
+//! the address they returned. An explorer's "verified source" plus a
+//! contract *name* is likewise insufficient: these routers are open
+//! source, so anyone can deploy and verify a copy under the same name.
+//!
+//! Acceptable bases for an entry, in order of preference:
+//!   1. The upstream's canonical deployment records (e.g. LI.FI publishes
+//!      `deployments/<network>.json` at github.com/lifinance/contracts;
+//!      KyberSwap and Velora publish per-chain address docs).
+//!   2. A byte-for-byte match with an address ALREADY allowlisted for
+//!      another chain from source (1) — a poisoned response cannot
+//!      introduce a NEW address that way, only agree with a trusted one.
+//!      This is why the CREATE2-deterministic KyberSwap / Velora / Enso /
+//!      OpenOcean entries are sound.
+//! On-chain and API evidence is corroboration that a contract is deployed
+//! and in use — never the basis for trusting it.
+//!
+//! PROVENANCE AUDIT STATUS: the LI.FI entries (chains 10 / 130 / 4663) were
+//! re-authenticated against LI.FI's canonical repo on 2026-07-26 and all
+//! three matched. NOT yet re-authenticated to standard (1) or (2): the OKX
+//! router/spender pair, the Odos routers, and the DODO router/approve-proxy
+//! pair, whose notes still cite an API response plus a code-size check.
+//! Their addresses may well be correct — the point is the recorded basis is
+//! not sufficient. Re-authenticate them from upstream sources before
+//! relying on them further.
 
 use {
     crate::domain::competition::solution::interaction,
@@ -120,7 +150,13 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
     address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
     // LI.FI LiFiDiamond on Optimism (10) -- tx.to == approvalAddress.
-    // Per-chain diamond; verified 2026-07-06 via li.quest (5176 B).
+    // Per-chain diamond. Provenance upgraded 2026-07-26: previously recorded as
+    // "verified via li.quest + code size", which is API-plus-existence and does
+    // NOT establish control (see the note on LIFI_ROUTER_ALLOWLIST). Now
+    // AUTHENTICATED against LI.FI's canonical deployment records --
+    // github.com/lifinance/contracts, deployments/optimism.json -> LiFiDiamond
+    // matches this address exactly. Address unchanged; only the basis for
+    // trusting it is now sound.
     address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
     // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
     // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).
