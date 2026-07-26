@@ -15,7 +15,9 @@
 //! the funds source AND the on-chain receiver encoded into the calldata).
 //!
 //! LI.FI is a same-chain + cross-chain aggregator; we use it for SAME-CHAIN
-//! swaps ONLY. We request `fromChain == toChain == 130`, and reject — defense
+//! swaps ONLY. We request `fromChain == toChain` (the configured chain — the
+//! solver is chain-generic; only LIFI_ROUTER_ALLOWLIST is per-chain), and
+//! reject — defense
 //! in depth — any response whose `action` is cross-chain or whose
 //! `includedSteps` contain a bridge step (a bridge's calldata is not
 //! deferred-settlement-safe).
@@ -85,6 +87,21 @@ const LIFI_ROUTER_ALLOWLIST: &[Address] = &[
         0x12, 0x31, 0xde, 0xb6, 0xf5, 0x74, 0x9e, 0xf6, 0xce, 0x69, 0x43, 0xa2, 0x75, 0xa1, 0xd3,
         0xe7, 0x48, 0x6f, 0x4e, 0xae,
     ]),
+    // Robinhood (4663). NOTE: this is NOT a LiFiDiamond — LI.FI routes 4663 via a
+    // DIFFERENT router, so the Unichain/Optimism diamond addresses above do not
+    // apply here (eth_getCode for the Unichain diamond returns 0x on 4663).
+    // Without this entry EVERY 4663 quote fails the router-poisoning guard.
+    // EIP-55: 0xB477751B76CF82d00a686A1232f5fCD772414Af3. Verified 2026-07-26 by
+    // BOTH methods the doc above requires:
+    //   - eth_getCode on https://rpc.mainnet.chain.robinhood.com returns 254 bytes
+    //     (the same EIP-2535 fallback-proxy shape as the verified diamonds), and
+    //   - a live GET /v1/quote (fromChain=toChain=4663, USDG->WETH, from/to =
+    //     Settlement) returns this exact address as BOTH transactionRequest.to and
+    //     estimate.approvalAddress (tool: "fly").
+    Address::new([
+        0xb4, 0x77, 0x75, 0x1b, 0x76, 0xcf, 0x82, 0xd0, 0x0a, 0x68, 0x6a, 0x12, 0x32, 0xf5, 0xfc,
+        0xd7, 0x72, 0x41, 0x4a, 0xf3,
+    ]),
 ];
 
 fn validate_router_allowlist(address: &Address, role: &str) -> Result<(), Error> {
@@ -127,8 +144,8 @@ pub struct Lifi {
     client: super::Client,
     /// Base URL including a trailing slash, e.g. `https://li.quest/v1/`.
     base_url: reqwest::Url,
-    /// Numeric chain id (130). Sent as `fromChain`/`toChain` and used to reject
-    /// any cross-chain route.
+    /// Numeric chain id (130 Unichain, 4663 Robinhood). Sent as
+    /// `fromChain`/`toChain` and used to reject any cross-chain route.
     chain_id: u64,
     /// CoW settlement contract — pinned as `fromAddress` AND `toAddress` so the
     /// calldata is executable by the settlement (arbitrary caller) and the
