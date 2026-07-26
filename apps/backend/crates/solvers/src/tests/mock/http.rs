@@ -97,6 +97,45 @@ pub struct ServerHandle {
     assert_failed: Arc<AtomicBool>,
 }
 
+impl ServerHandle {
+    /// Blocks until every declared expectation has been consumed, panicking
+    /// after `timeout`.
+    ///
+    /// WHY THIS EXISTS. `Drop` asserts that all expectations were met, which is
+    /// a race whenever the solver issues one request CONCURRENTLY with the one
+    /// whose response ends the solve. The OKX solver fetches `/swap` and
+    /// `/approve-transaction` in parallel; when `/swap` reports no liquidity the
+    /// order is skipped and `solve()` can return — dropping this handle — while
+    /// the `/approve-transaction` request is still in flight. The Drop assert
+    /// then fires with "mock server did not receive enough requests", but only
+    /// sometimes, depending on scheduler timing.
+    ///
+    /// Measured before this fix: `tests::okx::not_found::sell` failed ~1 run in
+    /// 5 under whole-crate parallel execution (and passed in isolation, which is
+    /// what made it easy to dismiss). That was tolerable only because CI did not
+    /// run `-p solvers`; it does now.
+    ///
+    /// Call this at the end of a test that has concurrently-issued expectations.
+    /// Note it cannot mask a genuinely missing request — it still fails, just
+    /// deterministically and with a clearer message.
+    pub async fn wait_for_expectations(&self, timeout: std::time::Duration) {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if self.expectations.lock().unwrap().is_empty() {
+                return;
+            }
+            if std::time::Instant::now() >= deadline {
+                let left = self.expectations.lock().unwrap().len();
+                panic!(
+                    "timed out after {timeout:?} waiting for mock expectations to be consumed; \
+                     {left} still outstanding"
+                );
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+}
+
 impl Drop for ServerHandle {
     fn drop(&mut self) {
         // Don't cause mass hysteria!
