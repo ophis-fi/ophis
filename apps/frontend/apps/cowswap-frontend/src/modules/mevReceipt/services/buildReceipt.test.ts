@@ -28,7 +28,11 @@ const FIXTURE_ORDER_PI = {
     version: '1.4.0',
     appCode: 'greg',
     metadata: {
-      partnerFee: { priceImprovementBps: 2500, maxVolumeBps: 50, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+      partnerFee: {
+        priceImprovementBps: 2500,
+        maxVolumeBps: 50,
+        recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+      },
     },
   }),
 }
@@ -61,7 +65,11 @@ describe('buildReceipt', () => {
   })
 
   it('handles missing trade (open or expired order)', () => {
-    const receipt = buildReceipt({ order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' }, trade: null, chainId: 11155111 })
+    const receipt = buildReceipt({
+      order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' },
+      trade: null,
+      chainId: 11155111,
+    })
     expect(receipt.settlementTxHash).toBeNull()
     expect(receipt.settlementBlock).toBeNull()
     expect(receipt.executedBuyAmount).toBe('0')
@@ -89,13 +97,66 @@ describe('buildReceipt', () => {
     })
   })
 
+  it('selects the Ophis-recipient entry from an array partnerFee (compat referral order)', () => {
+    // A compat order that mapped an Odos referralFee serializes partnerFee as an
+    // ARRAY: the Ophis default fee plus the integrator fee. The receipt reports
+    // the Ophis protocol fee, not the third party's.
+    const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+    const order = {
+      ...FIXTURE_ORDER,
+      fullAppData: JSON.stringify({
+        metadata: {
+          partnerFee: [
+            { volumeBps: 5, recipient: OPHIS_SAFE },
+            { volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' },
+          ],
+        },
+      }),
+    }
+    expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee).toEqual({
+      type: 'volume',
+      volumeBps: 5,
+      recipient: OPHIS_SAFE,
+    })
+  })
+
+  it('finds the Ophis entry regardless of its position in the array', () => {
+    const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+    const order = {
+      ...FIXTURE_ORDER,
+      fullAppData: JSON.stringify({
+        metadata: {
+          partnerFee: [
+            { volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' },
+            { volumeBps: 5, recipient: OPHIS_SAFE },
+          ],
+        },
+      }),
+    }
+    expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee?.recipient).toBe(OPHIS_SAFE)
+  })
+
+  it('returns null for an array partnerFee with no Ophis-recipient entry', () => {
+    const order = {
+      ...FIXTURE_ORDER,
+      fullAppData: JSON.stringify({
+        metadata: {
+          partnerFee: [{ volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' }],
+        },
+      }),
+    }
+    expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee).toBeNull()
+  })
+
   it('decodes a price-improvement fee missing its required maxVolumeBps cap to null', () => {
     // maxVolumeBps is the CIP-75-mandated ceiling; a PI fee without it is
     // malformed/foreign appData, so we report no fee rather than an uncapped one.
     const order = {
       ...FIXTURE_ORDER,
       fullAppData: JSON.stringify({
-        metadata: { partnerFee: { priceImprovementBps: 2500, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' } },
+        metadata: {
+          partnerFee: { priceImprovementBps: 2500, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+        },
       }),
     }
     expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee).toBeNull()
@@ -140,7 +201,11 @@ describe('exportPdf', () => {
   })
 
   it('does not throw on a not-yet-settled order (no trade)', () => {
-    const receipt = buildReceipt({ order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' }, trade: null, chainId: 11155111 })
+    const receipt = buildReceipt({
+      order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' },
+      trade: null,
+      chainId: 11155111,
+    })
     expect(() => exportPdf(receipt)).not.toThrow()
   })
 

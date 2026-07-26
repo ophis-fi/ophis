@@ -116,6 +116,30 @@ describe('buildOphisFullAppData', () => {
       ]),
     ).toThrow(/recipient/);
   });
+
+  it('enforces the 3-entry total, accounting for the default fee slot', () => {
+    const entry = (bps: number) => ({ volumeBps: bps, recipient: ATTACKER });
+    // Chain 10 adds the Ophis default (1 slot), so 2 extras = 3 total is the max.
+    expect(() =>
+      buildOphisFullAppData(10, undefined, undefined, undefined, [entry(6), entry(7)]),
+    ).not.toThrow();
+    // 3 extras + the default = 4 entries, above the cap: throws.
+    expect(() =>
+      buildOphisFullAppData(10, undefined, undefined, undefined, [entry(6), entry(7), entry(8)]),
+    ).toThrow(/exceeding the maximum of 3/);
+    // On a non-fee chain (no default slot) 3 extras is exactly the cap.
+    expect(() =>
+      buildOphisFullAppData(5, undefined, undefined, undefined, [entry(6), entry(7), entry(8)]),
+    ).not.toThrow();
+    expect(() =>
+      buildOphisFullAppData(5, undefined, undefined, undefined, [
+        entry(6),
+        entry(7),
+        entry(8),
+        entry(9),
+      ]),
+    ).toThrow(/exceeding the maximum of 3/);
+  });
 });
 
 describe('buildOrder', () => {

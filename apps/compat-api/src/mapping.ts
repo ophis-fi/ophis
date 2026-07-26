@@ -54,8 +54,18 @@ import {
  */
 const MAX_THIRD_PARTY_VOLUME_BPS = 90;
 
-/** Smallest representable Volume fee (1 bps = 0.0001 as an Odos decimal fraction). */
-const MIN_MAPPABLE_VOLUME_BPS = 1;
+/**
+ * Minimum mappable Volume fee. The backend enforces a per-pair partner-fee floor
+ * on EACH entry (`enforce_partner_fee_floor` / `partner_fee_floor_bps` in
+ * apps/backend/crates/shared/src/order_validation.rs): a non-stable, non-boosted
+ * pair floors at `OPHIS_NON_STABLE_FLOOR_BPS` = 4 bps, and only stable/boosted
+ * pairs floor at the reduced 1 bps. The Ophis default 5-bps entry does not rescue
+ * the separate integrator entry, which is floored on its own bps. The compat
+ * surface has no on-chain token registry to establish stable/boosted eligibility,
+ * so it enforces the conservative 4-bps floor: a mapped fee of 1-3 bps would
+ * otherwise return a signable draft the orderbook rejects at submit.
+ */
+const MIN_MAPPABLE_VOLUME_BPS = 4;
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -196,8 +206,11 @@ export function parseQuoteRequest(
       if (volumeBps < MIN_MAPPABLE_VOLUME_BPS) {
         throw new CompatError(
           'INVALID_REQUEST',
-          `referralFee ${referralFee} is smaller than the minimum representable Volume fee ` +
-            `(0.0001 = 1 bps); raise it or drop it.`,
+          `referralFee ${referralFee} maps to ${volumeBps} bps, below the ${MIN_MAPPABLE_VOLUME_BPS} bps ` +
+            `partner-fee floor the orderbook enforces per entry for a non-stable pair. Raise it to at least ` +
+            `${MIN_MAPPABLE_VOLUME_BPS} bps (${MIN_MAPPABLE_VOLUME_BPS / 10_000}) or drop it. The reduced 1 bps ` +
+            `floor applies only to stable or boosted pairs, which this surface cannot establish without an ` +
+            `on-chain token registry.`,
         );
       }
       if (volumeBps > MAX_THIRD_PARTY_VOLUME_BPS) {

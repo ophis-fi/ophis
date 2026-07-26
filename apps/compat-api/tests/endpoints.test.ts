@@ -378,6 +378,27 @@ describe('referralFee -> partnerFee mapping', () => {
     expect(assembly.ophis.fullAppData).toBe(quote.ophis.fullAppData);
     expect(assembly.ophis.fullAppData).toContain(`"recipient":"${PARTNER}"`);
   });
+
+  it('refuses to assemble a still-valid partner-fee pathId after the flag is turned off', async () => {
+    // Mint while the program is enabled.
+    const quoteRes = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ referralFee: 0.001, referralFeeRecipient: PARTNER })),
+      feeEnv,
+      deps(stubFetch()),
+    );
+    const quote = (await quoteRes.json()) as Record<string, any>;
+    // Assemble after the master switch is flipped off (ENV has it disabled): the
+    // pathId is still within its 60s window but its partner fee is now refused.
+    const assembleRes = await handleRequest(
+      post('/sor/assemble', { userAddr: USER, pathId: quote.pathId }),
+      ENV,
+      deps(stubFetch()),
+    );
+    expect(assembleRes.status).toBe(400);
+    expect(((await assembleRes.json()) as Record<string, any>).error.code).toBe(
+      'PARTNER_FEE_UNAVAILABLE',
+    );
+  });
 });
 
 describe('pathViz flag wiring (#924)', () => {
@@ -406,6 +427,42 @@ describe('pathViz flag wiring (#924)', () => {
     expect(body.pathViz).toEqual(FAKE_GRAPH);
     expect(body.pathVizImage).toBe('c3ZnLWJhc2U2NA==');
     // No unavailable warning when the feature answered.
+    const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
+    expect(codes).not.toContain('PATH_VIZ_UNAVAILABLE');
+  });
+
+  it('warns per missing artifact when the graph renders but the image degrades', async () => {
+    // Graph present, image null: only the pathVizImage warning must fire, and the
+    // graph is still returned. The old both-null check missed this partial case.
+    const impl = stubFetch({
+      quote: () => Response.json({ ...liveQuoteBody, pathViz: FAKE_GRAPH, pathVizImage: null }),
+    });
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ pathViz: true, pathVizImage: true })),
+      ENV,
+      deps(impl),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.pathViz).toEqual(FAKE_GRAPH);
+    expect(body.pathVizImage).toBeNull();
+    const warns = body.ophis.warnings.filter(
+      (w: { code: string }) => w.code === 'PATH_VIZ_UNAVAILABLE',
+    );
+    expect(warns).toHaveLength(1);
+    expect(warns[0].message).toContain('pathVizImage');
+  });
+
+  it('does not warn about an artifact the caller did not request (image null but only graph asked)', async () => {
+    const impl = stubFetch({
+      quote: () => Response.json({ ...liveQuoteBody, pathViz: FAKE_GRAPH, pathVizImage: null }),
+    });
+    const res = await handleRequest(
+      post('/sor/quote/v3', quoteBody({ pathViz: true })),
+      ENV,
+      deps(impl),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.pathViz).toEqual(FAKE_GRAPH);
     const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
     expect(codes).not.toContain('PATH_VIZ_UNAVAILABLE');
   });
@@ -478,6 +535,53 @@ describe('GET /sor/settlement/{chainId}/{orderUid} (Mode B1 long-poll)', () => {
     expect(body.settled).toBe(true);
     expect(body.txHash).toBe('0xfeed');
     expect(polls).toBe(3);
+  });
+
+  it('does not treat a partial fill of a partiallyFillable order as terminal', async () => {
+    // A partiallyFillable order stays `open` after its first partial fill and is
+    // still live. A trade alone must NOT stop the poll (the old trades.length>0
+    // check would have returned terminal here and stopped early).
+    const impl = stubFetch({
+      orderByUid: () =>
+        Response.json({
+          status: 'open',
+          partiallyFillable: true,
+          executedSellAmount: '400000000',
+          executedBuyAmount: '200000000000000000',
+        }),
+      trades: () => Response.json([{ txHash: '0xpartial', orderUid: UID }]),
+    });
+    const res = await handleRequest(
+      new Request(`https://compat.ophis.fi/sor/settlement/10/${UID}?waitSeconds=5`),
+      ENV,
+      deps(impl),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.settled).toBe(false);
+    expect(body.pending).toBe(true);
+  });
+
+  it('treats a fill-or-kill order with a trade as settled even before the status flips', async () => {
+    // partiallyFillable false + a trade = fully done (covers the indexer-lag
+    // window before status becomes `fulfilled`).
+    const impl = stubFetch({
+      orderByUid: () =>
+        Response.json({
+          status: 'open',
+          partiallyFillable: false,
+          executedSellAmount: '1000000000',
+          executedBuyAmount: '538500000000000000',
+        }),
+      trades: () => Response.json([{ txHash: '0xfeed', orderUid: UID }]),
+    });
+    const res = await handleRequest(
+      new Request(`https://compat.ophis.fi/sor/settlement/10/${UID}?waitSeconds=5`),
+      ENV,
+      deps(impl),
+    );
+    const body = (await res.json()) as Record<string, any>;
+    expect(body.settled).toBe(true);
+    expect(body.txHash).toBe('0xfeed');
   });
 
   it('returns pending (bounded, no unbounded retry) when the wait elapses', async () => {
