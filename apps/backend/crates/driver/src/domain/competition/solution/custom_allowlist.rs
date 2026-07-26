@@ -154,9 +154,10 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // "verified via li.quest + code size", which is API-plus-existence and does
     // NOT establish control (see the note on LIFI_ROUTER_ALLOWLIST). Now
     // AUTHENTICATED against LI.FI's canonical deployment records --
-    // github.com/lifinance/contracts, deployments/optimism.json -> LiFiDiamond
-    // matches this address exactly. Address unchanged; only the basis for
-    // trusting it is now sound.
+    // github.com/lifinance/contracts @ 24b24e0f112e542d3992aa42de31c31f6c84dc4c (immutable commit, not a mutable
+    // branch path), deployments/optimism.json -> LiFiDiamond matches this
+    // address exactly. Address unchanged; only the basis for trusting it is
+    // now sound.
     address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
     // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
     // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).

@@ -99,8 +99,9 @@ const LIFI_ROUTER_ALLOWLIST: &[Address] = &[
     // EIP-55 0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE.
     // Provenance upgraded 2026-07-26: the earlier "verified via li.quest +
     // eth_getCode" note was API-plus-existence, which does not establish
-    // control. AUTHENTICATED against github.com/lifinance/contracts,
-    // deployments/optimism.json -> LiFiDiamond. Address unchanged.
+    // control. AUTHENTICATED against github.com/lifinance/contracts @
+    // 24b24e0f112e542d3992aa42de31c31f6c84dc4c, deployments/optimism.json ->
+    // LiFiDiamond. Address unchanged.
     Address::new([
         0x12, 0x31, 0xde, 0xb6, 0xf5, 0x74, 0x9e, 0xf6, 0xce, 0x69, 0x43, 0xa2, 0x75, 0xa1, 0xd3,
         0xe7, 0x48, 0x6f, 0x4e, 0xae,

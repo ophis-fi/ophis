@@ -312,7 +312,11 @@ async fn buy_disabled() {
     assert_eq!(solution, json!({ "solutions": [] }),);
 }
 
-// QUARANTINED 2026-07-26 — pre-existing failure, NOT a production issue.
+// QUARANTINED 2026-07-26 — pre-existing failure, NOT REACHABLE IN THE CURRENT
+// PRODUCTION CONFIGURATION. (Earlier wording here said "not a production issue"
+// and "the live sell path is unaffected"; a Codex review correctly pushed back
+// that this is stronger than the evidence supports. It is a latent correctness
+// bug that would bite if buy-mode were ever enabled, including accidentally.)
 //
 // This test drives two solves against one mock: a `buy` order (which must use
 // the OKX V5 API: chainId / slippage / swapMode=exactOut) and then a `sell`
@@ -326,14 +330,24 @@ async fn buy_disabled() {
 // sell-only`), which reworked the sell path; the test was not updated.
 //
 // Why quarantining is acceptable rather than fixing now:
-//   - The standalone `sell` test PASSES, so the live sell path is unaffected.
-//     The failure needs `buy_orders_endpoint` CONFIGURED, which is exactly the
-//     combination production does not run: the rendered OKX configs leave
-//     `buy_orders_endpoint` unset, and the driver's MAX_CUSTOM_ALLOWANCE gate
-//     documents OKX buy-mode as a KNOWN INCOMPATIBILITY (it emits U256::MAX
-//     allowances, which the driver rejects by design).
-//   - OKX is parked entirely (its API passphrase is missing), so neither mode
-//     can run today.
+//   - The failure needs `buy_orders_endpoint` CONFIGURED, which production does
+//     not do: the rendered OKX configs leave it unset, and the driver's
+//     MAX_CUSTOM_ALLOWANCE gate documents OKX buy-mode as a KNOWN
+//     INCOMPATIBILITY (it emits U256::MAX allowances the driver rejects by
+//     design). OKX is also parked entirely (its API passphrase is missing).
+//   - Evidence that current sell-only operation is fine — but note this is
+//     supporting evidence, NOT proof: the standalone `sell` and `sell_twice`
+//     tests pass, `handle_sell_order` always uses the V6 sell endpoint, and the
+//     approval cache is keyed by (token, side). What is NOT established is that
+//     the mixed configuration is harmless.
+//
+// REQUIRED FOLLOW-UP (Codex review, 2026-07-26): add a NON-ignored test that
+// configures `buy_orders_endpoint` and issues a SELL-ONLY auction. That isolates
+// the defect to the buy-then-sell sequence and positively proves the sell path
+// is unaffected by merely having buy-mode configured — instead of inferring it.
+// Not done here only because it means duplicating ~240 lines of mock JSON or
+// refactoring the currently-passing `sell` test; it should be done before OKX is
+// un-parked, and definitely before buy-mode is re-enabled.
 //
 // This was invisible because CI's cargo-test job only covered 4 crates and not
 // `solvers`. That gap is closed in the same change as this quarantine, so the
