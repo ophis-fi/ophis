@@ -142,15 +142,23 @@ const HYPEREVM_MAINNET: &[Address] = &[
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 
-/// Robinhood mainnet (chain 4663). LI.FI ONLY on day 1 — of the aggregators
-/// Ophis runs, no other one supports 4663 yet (KyberSwap / OKX / Velora / Odos /
-/// OpenOcean / DODO / Enso all absent as of 2026-07-26). When one adds 4663,
-/// append its router/spender here after upstream verification.
+/// Robinhood mainnet (chain 4663). KyberSwap + LI.FI as of 2026-07-26. Velora
+/// and Odos explicitly do NOT support 4663 (both return an unsupported-network
+/// error listing their chains); OKX is parked. When another aggregator adds
+/// 4663, append its router/spender here after upstream verification.
 ///
 /// NOTE: unlike every other chain in this table, the LI.FI entry is NOT a
 /// LiFiDiamond — LI.FI routes 4663 through a different router, so neither the
 /// Unichain nor the Optimism diamond address applies (both return 0x code here).
 const ROBINHOOD_MAINNET: &[Address] = &[
+    // KyberSwap MetaAggregationRouterV2 — the SAME CREATE2-deterministic address
+    // already allowlisted for OP / HyperEVM / Unichain above. Router == ERC-20
+    // spender. Verified 2026-07-26 on chain 4663: `cast code` returns 13,724
+    // bytes, and a live routes query (WETH->USDG, 0.1 WETH -> 191.09 USDG) returns
+    // this exact router. KyberSwap is the load-bearing lane here for the same
+    // reason as Unichain — it can route Uniswap v4, which is where Robinhood's
+    // stock/stable liquidity lives and which the baseline solver cannot read.
+    address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
     // LI.FI router on Robinhood — serves as both `tx.to` and ERC-20 spender.
     // Verified 2026-07-26 by two independent methods: `eth_getCode` on
     // rpc.mainnet.chain.robinhood.com returns 254 bytes (EIP-2535 fallback-proxy
