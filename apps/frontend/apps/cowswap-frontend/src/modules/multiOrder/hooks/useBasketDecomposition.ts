@@ -21,9 +21,11 @@ export interface UseBasketDecompositionResult {
   readonly legs: DecomposedLeg[] | null
   readonly error: string | null
   /** Snapshot the current composition into a signable draft: mints a fresh basket
-   *  id, stamps a shared validTo, and assigns per-leg 1-based indices. Throws the
-   *  same errors as the pure decomposer on an invalid composition. */
-  readonly createDraft: (tier: BasketTier, validForSeconds?: number) => BasketDraft
+   *  id, stamps the composing `owner` + a shared validTo, and assigns per-leg
+   *  1-based indices. Throws the same errors as the pure decomposer on an invalid
+   *  composition, and on a missing owner (a basket must be composed by a connected
+   *  account so placement/cancel can guard against a wallet switch). */
+  readonly createDraft: (tier: BasketTier, owner: string, validForSeconds?: number) => BasketDraft
 }
 
 /**
@@ -50,7 +52,8 @@ export function useBasketDecomposition(
   }, [composition])
 
   const createDraft = useCallback(
-    (tier: BasketTier, validForSeconds = DEFAULT_VALID_FOR_SECONDS): BasketDraft => {
+    (tier: BasketTier, owner: string, validForSeconds = DEFAULT_VALID_FOR_SECONDS): BasketDraft => {
+      if (!owner) throw new Error('basket: cannot compose a basket without a connected account')
       const decomposed = decomposeBasket(toComposition(composition))
       const id = newOphisBasketId()
       const validTo = Math.floor(Date.now() / 1000) + validForSeconds
@@ -59,7 +62,7 @@ export function useBasketDecomposition(
         leg: i + 1, // 1-based, matches appData ophisBasket.leg
         status: 'pending',
       }))
-      return { id, chainId, validTo, tier, legs: basketLegs }
+      return { id, owner, chainId, validTo, tier, legs: basketLegs }
     },
     [composition, chainId],
   )

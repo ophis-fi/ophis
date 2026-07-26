@@ -46,6 +46,9 @@ export interface BasketLeg extends DecomposedLeg {
 export interface BasketDraft {
   /** 32-hex basket id shared by every leg's appData ophisBasket.id. */
   readonly id: string
+  /** The account that composed this basket. Placement/cancel guard against the
+   *  CURRENT account so a wallet switch cannot act on a stale basket. */
+  readonly owner: string
   readonly chainId: number
   /** Shared order deadline (unix seconds); every leg signs the same validTo. */
   readonly validTo: number

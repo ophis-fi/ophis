@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DecomposedLeg } from '../pure/decomposition'
+import { legQuoteKey, legsQuoteSignature } from '../pure/quoteSignature'
 import { BasketLegQuote } from '../types'
 
 /** One leg's quote request (the port the container wires to CoW's quote API). */
@@ -20,9 +21,7 @@ export interface BasketLegQuoteRequest {
  */
 export type BasketQuoteFn = (req: BasketLegQuoteRequest, signal: AbortSignal) => Promise<{ buyAmountAtoms: string }>
 
-function legKey(leg: DecomposedLeg): string {
-  return `${leg.sellIndex}:${leg.buyIndex}`
-}
+const legKey = legQuoteKey
 
 export interface UseBasketQuotesResult {
   readonly quotes: Record<string, BasketLegQuote>
@@ -47,10 +46,9 @@ export function useBasketQuotes(
   const runIdRef = useRef(0)
 
   // Stable identity for the leg set so the effect only re-fans on real changes.
-  const legsSig = useMemo(
-    () => (legs ? legs.map((l) => `${legKey(l)}@${l.sellAmount}`).join('|') : ''),
-    [legs],
-  )
+  // Includes the sell/buy TOKEN addresses (legsQuoteSignature), so swapping a
+  // token at the same slot/amount re-fans instead of reusing the stale pair's quote.
+  const legsSig = useMemo(() => legsQuoteSignature(legs), [legs])
 
   useEffect(() => {
     if (!legs || legs.length === 0 || !owner) {

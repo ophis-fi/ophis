@@ -203,6 +203,30 @@ describe('decomposeBasket', () => {
     ).toThrow(/also appears as a buy token/)
   })
 
+  it('rejects a duplicate SELL token (case-insensitive)', () => {
+    expect(() =>
+      decomposeBasket({
+        sells: [
+          { token: A, amount: '10' },
+          { token: A.toUpperCase(), amount: '20' }, // same token, mixed case
+        ],
+        buys: [{ token: B, weight: 1n }],
+      }),
+    ).toThrow(/duplicate sell token/)
+  })
+
+  it('rejects a duplicate BUY token (case-insensitive)', () => {
+    expect(() =>
+      decomposeBasket({
+        sells: [{ token: A, amount: '10' }],
+        buys: [
+          { token: B, weight: 1n },
+          { token: B.toUpperCase(), weight: 1n },
+        ],
+      }),
+    ).toThrow(/duplicate buy token/)
+  })
+
   it('rejects unsignable sell amounts', () => {
     expect(() => decomposeBasket({ sells: [{ token: A, amount: '0' }], buys: [{ token: B, weight: 1n }] })).toThrow()
     expect(() => decomposeBasket({ sells: [{ token: A, amount: '-5' }], buys: [{ token: B, weight: 1n }] })).toThrow()

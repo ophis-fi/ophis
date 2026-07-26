@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useWalletClient } from 'wagmi'
 
@@ -31,25 +31,42 @@ export function useBatchPresign(chainId: number): UseBatchPresignResult {
   const { data: walletClient } = useWalletClient()
   const [capable, setCapable] = useState<boolean | undefined>(undefined)
   const [isDetecting, setIsDetecting] = useState(false)
+  // Monotonic detect run id: a capability detection is only applied if it is the
+  // latest run, so a slow detection that resolves AFTER the wallet/chain changed
+  // cannot overwrite the reset state with a stale answer.
+  const detectRunRef = useRef(0)
+
+  // Capability is per (wallet account + chain). Reset it whenever either changes
+  // so a batch capability detected for one account/chain never leaks into another
+  // (the walletClient identity changes on account or chain switch in wagmi). This
+  // also invalidates any in-flight detect via the run id.
+  useEffect(() => {
+    detectRunRef.current += 1
+    setCapable(undefined)
+    setIsDetecting(false)
+  }, [walletClient, chainId])
 
   const detect = useCallback(async (): Promise<boolean> => {
     if (!walletClient) {
       setCapable(false)
       return false
     }
+    const runId = ++detectRunRef.current
     setIsDetecting(true)
     try {
       // viem EIP-5792 action; guarded so a wallet without it degrades to stepped.
       const getCapabilities = (walletClient as { getCapabilities?: () => Promise<Eip5792Capabilities> }).getCapabilities
       const caps = typeof getCapabilities === 'function' ? await getCapabilities.call(walletClient) : undefined
       const result = detectAtomicBatchCapability(caps ?? undefined, chainId)
+      // Ignore a completion from a superseded run (wallet/chain changed meanwhile).
+      if (runId !== detectRunRef.current) return false
       setCapable(result)
       return result
     } catch {
-      setCapable(false)
+      if (runId === detectRunRef.current) setCapable(false)
       return false
     } finally {
-      setIsDetecting(false)
+      if (runId === detectRunRef.current) setIsDetecting(false)
     }
   }, [walletClient, chainId])
 

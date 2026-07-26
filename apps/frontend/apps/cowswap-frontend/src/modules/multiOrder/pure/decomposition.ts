@@ -17,6 +17,8 @@
  *
  * Pure: no React, no wallet, no network. Unit-tested in isolation.
  */
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+
 import { MAX_BASKET_LEGS, MAX_BASKET_SELL_TOKENS, MAX_BASKET_BUY_TOKENS } from 'ophis/basketMetadata'
 
 /** One sell input: a token and the EXACT atom amount (uint256 decimal string) sold. */
@@ -110,6 +112,18 @@ function parseAtoms(amount: string, label: string): bigint {
 
 const MAX_UINT256 = (1n << 256n) - 1n
 
+/** First token that appears more than once in the list (case-insensitive via
+ *  areAddressesEqual), or undefined when all are distinct. O(n^2) is fine for
+ *  n <= 6. */
+function firstDuplicateToken(tokens: readonly string[]): string | undefined {
+  for (let i = 0; i < tokens.length; i++) {
+    for (let j = i + 1; j < tokens.length; j++) {
+      if (areAddressesEqual(tokens[i], tokens[j])) return tokens[j]
+    }
+  }
+  return undefined
+}
+
 export interface BasketComposition {
   readonly sells: readonly BasketSellInput[]
   readonly buys: readonly BasketBuyInput[]
@@ -144,11 +158,19 @@ export function decomposeBasket(composition: BasketComposition): DecomposedLeg[]
       throw new Error('basket: every buy weight must be a positive bigint')
     }
   }
+  // Per-side uniqueness: a token may appear at most once among the sells and at
+  // most once among the buys. Two sell rows for the same token (or two buy rows)
+  // are almost certainly a mistake, and would split/allocate that token twice.
+  // Address comparison via areAddressesEqual (never === / toLowerCase, per AGENTS.md).
+  const dupSell = firstDuplicateToken(sells.map((s) => s.token))
+  if (dupSell) throw new Error(`basket: duplicate sell token ${dupSell}`)
+  const dupBuy = firstDuplicateToken(buys.map((b) => b.token))
+  if (dupBuy) throw new Error(`basket: duplicate buy token ${dupBuy}`)
+
   // No sell token may equal a buy token (a self-swap leg is meaningless and the
   // orderbook rejects sellToken == buyToken).
-  const buyTokens = new Set(buys.map((b) => b.token.toLowerCase()))
   for (const s of sells) {
-    if (buyTokens.has(s.token.toLowerCase())) {
+    if (buys.some((b) => areAddressesEqual(s.token, b.token))) {
       throw new Error(`basket: sell token ${s.token} also appears as a buy token`)
     }
   }
