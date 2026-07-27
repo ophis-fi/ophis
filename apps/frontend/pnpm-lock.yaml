@@ -102,6 +102,9 @@ patchedDependencies:
   eslint-plugin-import@2.32.0:
     hash: 2b2144212b828d6473494229619a5c1e31775a88e8446d61a471f54a238c8fc4
     path: patches/eslint-plugin-import@2.32.0.patch
+  eslint-plugin-jsx-a11y@6.10.2:
+    hash: ef5bae7034a1edf722ff8d26626ef8caa9d6c395d4217d363f6892689779d7b4
+    path: patches/eslint-plugin-jsx-a11y@6.10.2.patch
   eslint-plugin-react@7.37.5:
     hash: 94c29334c56476f26d7dd2662c9dc2fd2a2ae58d2ee4dfb2066aa25e58ac2b21
     path: patches/eslint-plugin-react@7.37.5.patch
@@ -299,7 +302,7 @@ importers:
         version: 29.0.1(@typescript-eslint/eslint-plugin@8.46.0(@typescript-eslint/parser@8.46.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint@9.37.0(jiti@2.6.1))(jest@30.2.0(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(ts-node@10.9.1(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.7.1)(typescript@5.9.3)))(typescript@5.9.3)
       eslint-plugin-jsx-a11y:
         specifier: 6.10.2
-        version: 6.10.2(eslint@9.37.0(jiti@2.6.1))
+        version: 6.10.2(patch_hash=ef5bae7034a1edf722ff8d26626ef8caa9d6c395d4217d363f6892689779d7b4)(eslint@9.37.0(jiti@2.6.1))
       eslint-plugin-lingui:
         specifier: ^0.10.1
         version: 0.10.1(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3)
@@ -29136,7 +29139,7 @@ snapshots:
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.6.1(@typescript-eslint/parser@8.46.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.32.0)(eslint@9.37.0(jiti@2.6.1))
       eslint-plugin-import: 2.32.0(patch_hash=2b2144212b828d6473494229619a5c1e31775a88e8446d61a471f54a238c8fc4)(@typescript-eslint/parser@8.46.0(eslint@9.37.0(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1)(eslint@9.37.0(jiti@2.6.1))
-      eslint-plugin-jsx-a11y: 6.10.2(eslint@9.37.0(jiti@2.6.1))
+      eslint-plugin-jsx-a11y: 6.10.2(patch_hash=ef5bae7034a1edf722ff8d26626ef8caa9d6c395d4217d363f6892689779d7b4)(eslint@9.37.0(jiti@2.6.1))
       eslint-plugin-react: 7.37.5(patch_hash=94c29334c56476f26d7dd2662c9dc2fd2a2ae58d2ee4dfb2066aa25e58ac2b21)(eslint@9.37.0(jiti@2.6.1))
       eslint-plugin-react-hooks: 7.0.0(eslint@9.37.0(jiti@2.6.1))
       globals: 16.4.0
@@ -29233,7 +29236,7 @@ snapshots:
       - supports-color
       - typescript
 
-  eslint-plugin-jsx-a11y@6.10.2(eslint@9.37.0(jiti@2.6.1)):
+  eslint-plugin-jsx-a11y@6.10.2(patch_hash=ef5bae7034a1edf722ff8d26626ef8caa9d6c395d4217d363f6892689779d7b4)(eslint@9.37.0(jiti@2.6.1)):
     dependencies:
       aria-query: 5.3.2
       array-includes: 3.1.9
