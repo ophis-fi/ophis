@@ -1,5 +1,5 @@
 # Runtime dependencies for toxic-pool-utils at the reviewed revision.
 # Keep exact pins; install the scanner itself separately with --no-deps.
-web3==7.13.0
+web3==7.15.0
 eth-abi==5.2.0
 python-dotenv==1.1.1
