@@ -31,7 +31,10 @@
     ],
     "patchedDependencies": {
       "@cowprotocol/sdk-config@2.0.0": "patches/@cowprotocol__sdk-config@2.0.0.patch",
-      "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch"
+      "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch",
+      "eslint-plugin-react@7.37.5": "patches/eslint-plugin-react@7.37.5.patch",
+      "eslint-plugin-import@2.32.0": "patches/eslint-plugin-import@2.32.0.patch",
+      "eslint-plugin-jsx-a11y@6.10.2": "patches/eslint-plugin-jsx-a11y@6.10.2.patch"
     },
     "overrides": {
       "adm-zip": "^0.6.0",
