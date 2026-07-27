@@ -32,9 +32,8 @@ the main `README.md`.
    read -rs PK; printf '%s' "$PK" | sudo install -m 600 -o ophis-driver -g ophis-driver \
      /dev/stdin /home/ophis-driver/.config/submitter.key; unset PK
    ```
-2. **Secrets**: `cp .env.example .env && chmod 600 .env`, fill provider keys (note:
-   `ALCHEMY_API_KEY` is the **bare key**, not the full URL — the template prepends
-   `https://.../v2/`), CoinGecko key, inter-service token. For alerting:
+2. **Secrets**: `cp .env.example .env && chmod 600 .env`, fill the CoinGecko
+   key and mandatory inter-service token. eRPC uses no provider keys. For alerting:
    `mkdir -p secrets && printf '%s' '<bot-token>' > secrets/telegram-token && chmod 600 secrets/telegram-token`.
 3. **Fill contract addresses**: replace every `__FILL_AFTER_DEPLOY_*__` in `configs/*.tmpl`
    (SETTLEMENT, BALANCES, SIGNATURES, ETHFLOW, HOOKS, SUBMITTER_EOA) — see `FILL-IN-AFTER-DEPLOY.md`.

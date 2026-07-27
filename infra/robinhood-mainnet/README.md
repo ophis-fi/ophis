@@ -2,10 +2,8 @@
 
 This stack runs the Ophis deployment on **Robinhood Chain mainnet (chain 4663)**, an
 **Arbitrum Orbit L2**. It serves user intents, runs a solver auction, and settles
-through the sovereign `GPv2Settlement` deployed on Robinhood. This is a **draft
-scaffold**: several gates below MUST be cleared before it can carry real volume.
-
-**SCAFFOLD STATUS - not yet deployable.** Open items are flagged inline as `GATE:`.
+through the sovereign `GPv2Settlement` deployed on Robinhood. The production
+deployment runs on Cadia and its security-sensitive configuration fails closed.
 
 ## Two hard prerequisites (same shape as Unichain, different internals)
 
@@ -30,7 +28,7 @@ scaffold**: several gates below MUST be cleared before it can carry real volume.
 | driver        | 8411        | Solver engine + settlement submitter |
 | baseline      | 9310        | On-chain liquidity solver - ships EMPTY (Robinhood liquidity is Uniswap V4) |
 | lifi-solver   | 9311        | LI.FI same-chain aggregator - the ONLY supported lane on 4663 today |
-| rpc-proxy     | 4003        | eRPC 3-of-4 consensus proxy (chain 4663) |
+| rpc-proxy     | 4003        | Sovereign eRPC proxy to Cadia Nitro (chain 4663) |
 | prometheus    | 9096        | Metrics (observability profile) |
 | alertmanager  | 9097        | Telegram alerts (observability profile) |
 | jaeger UI     | 16688       | Distributed tracing |
@@ -45,12 +43,9 @@ eRPC endpoint: `http://rpc-proxy:4000/main/evm/4663`.
 
 - **GATE (node):** self-hosted Nitro node synced + `debug_traceTransaction` trace-verified
   on a recent tx (see `nitro/README.md`). Without it the autopilot pauses settlement.
-- **GATE (RPC independence) — RESOLVED (Chainstack added 2026-07-23):** the 4 eRPC upstreams
-  are self-node + Chainstack + Robinhood-public + Alchemy. Robinhood-public is
-  Alchemy-provisioned, so `{public, alchemy}` may share a failure domain, but Chainstack is a
-  third independent read voter and `agreementThreshold:3` stops that correlated pair reaching
-  consensus alone. A 2nd independent Nitro node would still add *trace* redundancy (see the
-  trace-redundancy DESIGN NOTE in `configs/erpc.yaml.tmpl`).
+- **RPC availability:** Cadia Nitro is the sole authoritative upstream. If it is
+  unavailable, Ophis fails closed and pauses settlement. True high availability
+  requires a second independently hosted Nitro node.
 - **GATE (native pricing):** confirm CoinGecko lists chain 4663 (a 1-day-old chain usually
   is not) AND/OR that Uniswap V3 pools on 4663 hold real depth. See the native-pricing GATE
   in `configs/orderbook.toml.tmpl`. If neither holds, a custom V4 native-price source is
@@ -84,13 +79,11 @@ docker compose ps             # verify all services healthy
 
 ## eRPC Upstreams
 
-Like Unichain, the autopilot needs `debug_traceTransaction`, which the public RPC does not
-serve - so the self-hosted **Nitro** node is the only `debug`/`arbtrace` leg, plus a read
-voter, alongside three read legs (Chainstack — independent — plus Robinhood-public and
-Alchemy). Reads use 3-of-4 consensus; `debug_`/`arbtrace_`
-route only to the self-node. If the self-node is down, trace fails closed and the autopilot
-pauses settlement (safe). The fail-closed invariants are enforced by
-`assert-erpc-failclosed.py` in CI (chain 4663). See the RPC-independence GATE above.
+The autopilot needs `debug_traceTransaction`, which the public RPC does not serve.
+The self-hosted **Nitro** node is therefore the only authoritative eRPC upstream
+for reads and traces. The public endpoint is used only by out-of-band node
+verification. If Nitro is down, settlement pauses. CI locks this topology through
+`assert-erpc-failclosed.py`.
 
 ## Solver Status
 

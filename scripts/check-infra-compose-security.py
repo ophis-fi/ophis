@@ -52,9 +52,14 @@ for path in STACKS:
 
     if path.parent.name == 'robinhood-mainnet':
         for svc in TRIO:
-            if 'ophis-rbh-net' in service_block(text, svc):
+            block = service_block(text, svc)
+            if 'ophis-rbh-net' in block:
                 errors.append(
                     f'{path.relative_to(ROOT)} exposes signing service {svc} to ophis-rbh-net'
+                )
+            if f'{TOKEN}: ${{{TOKEN}:?' not in block:
+                errors.append(
+                    f'{path.relative_to(ROOT)} permits {svc} without mandatory {TOKEN}'
                 )
 
 if errors:

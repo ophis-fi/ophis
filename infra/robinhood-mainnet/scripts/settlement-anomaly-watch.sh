@@ -77,9 +77,8 @@ SUBMITTER_LC="$(lc "$SUBMITTER")"; SETTLEMENT_LC="$(lc "$SETTLEMENT")"
 
 HEAD="$(cast block-number --rpc-url "$RPC" 2>&1)" || die "cast block-number: $HEAD"
 [[ "$HEAD" =~ ^[0-9]+$ ]] || die "non-numeric head: $HEAD"
-# Stay TIP_LAG_BLOCKS behind head: the freshest blocks fail eRPC 3-of-4 consensus
-# (eth_getLogs) while upstream indexers catch up, so scanning to head would `die`
-# every run and never advance the cursor (mirrors verify-e2e-swap.sh's TIP_LAG).
+# Stay TIP_LAG_BLOCKS behind head so recently indexed logs are not missed during
+# reorgs or rapid tip movement.
 SAFE_HEAD=$(( HEAD - TIP_LAG_BLOCKS )); (( SAFE_HEAD < 0 )) && SAFE_HEAD=0
 if [[ -r "$CURSOR" ]]; then FROM=$(( $(cat "$CURSOR") + 1 )); else FROM=$(( SAFE_HEAD - FIRST_RUN_LOOKBACK )); fi
 (( FROM < 0 )) && FROM=0

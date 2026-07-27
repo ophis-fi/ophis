@@ -42,7 +42,7 @@ services:
       retries: 5
       start_period: 15s
 
-  # eRPC 3-of-4 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs in
+  # Sovereign eRPC proxy for Robinhood (chain 4663). The self-hosted Nitro node runs in
   # the SEPARATE ./nitro compose project. erpc.yaml's debug/trace leg targets
   # ophis-rbh-node:8547; both projects join the shared external network `ophis-rbh-net`
   # (the nitro service is aliased `ophis-rbh-node` there) so this proxy reaches the node
@@ -128,7 +128,7 @@ services:
       ETH_RPC_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/robinhood-mainnet/.env}
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./rendered/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
@@ -161,7 +161,7 @@ services:
       ETH_RPC_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/robinhood-mainnet/.env}
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./rendered/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -183,7 +183,7 @@ services:
       ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
       ADDR: 0.0.0.0:80
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
     volumes:
       - ./rendered/driver.toml:/driver.toml:ro
