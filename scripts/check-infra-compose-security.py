@@ -25,15 +25,24 @@ def service_block(text: str, service: str) -> str:
     nxt = re.search(r'^  [A-Za-z0-9_.-]+:\n', text[start:], re.MULTILINE)
     return text[match.start(): start + (nxt.start() if nxt else len(text[start:]))]
 
+
+def has_directly_pinned_erpc_image(block: str) -> bool:
+    """Match only the active Compose image field, never comments or other scalars."""
+    return bool(re.search(
+        r'(?m)^    image:\s*(?P<quote>["\']?)'
+        r'ghcr\.io/erpc/erpc(?:[:][^@\s"\']+)?@sha256:[0-9a-f]{64}'
+        r'(?P=quote)\s*(?:#.*)?$',
+        block,
+    ))
+
+
 errors: list[str] = []
 for path in STACKS:
     text = path.read_text()
     if 'ghcr.io/erpc/erpc:latest' in text:
         errors.append(f'{path.relative_to(ROOT)} uses mutable ghcr.io/erpc/erpc:latest')
     rpc_proxy = service_block(text, 'rpc-proxy')
-    directly_pinned_erpc = bool(
-        re.search(r'image:\s*ghcr\.io/erpc/erpc(?:[:][^@\s]+)?@sha256:[0-9a-f]{64}', rpc_proxy)
-    )
+    directly_pinned_erpc = has_directly_pinned_erpc_image(rpc_proxy)
     if rpc_proxy and ERPC_PIN not in text and not directly_pinned_erpc:
         errors.append(f'{path.relative_to(ROOT)} has rpc-proxy but does not require a pinned ERPC_IMAGE')
 
