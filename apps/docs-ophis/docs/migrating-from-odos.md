@@ -183,9 +183,40 @@ curl -sS -X POST https://compat.ophis.fi/sor/submit \
 ```
 
 When assemblable production quotes are restored, build `signed-order.json`
-from that same quote: copy `quote.ophis.order`,
-`quote.ophis.fullAppData`, and `quote.ophis.quoteId`, then add the actual
-signature and signing account. Do not reuse values from another quote.
+from that same quote. The submit envelope must have this shape (the values
+below are placeholders):
+
+```json
+{
+  "chainId": 10,
+  "order": {
+    "sellToken": "0x...",
+    "buyToken": "0x...",
+    "receiver": "0x...",
+    "sellAmount": "...",
+    "buyAmount": "...",
+    "validTo": 0,
+    "appData": "0x...",
+    "feeAmount": "0",
+    "kind": "sell",
+    "partiallyFillable": false,
+    "sellTokenBalance": "erc20",
+    "buyTokenBalance": "erc20"
+  },
+  "signature": "0x...",
+  "signingScheme": "eip712",
+  "from": "0x...",
+  "fullAppData": "...",
+  "quoteId": 0
+}
+```
+
+Set the positive top-level `chainId` to the chain used for the quote, copy
+`order`, `fullAppData`, and `quoteId` from `quote.ophis`, put the actual
+signature in `signature`, and put the signing account address under the exact
+`from` key. Do not reuse values from another quote. `signingScheme` defaults to
+`eip712` when omitted; include it explicitly as shown when using the typed-data
+signature from the preceding step.
 
 The relay re-validates everything (appData hash, receiver pinning, amount
 bounds) and forwards the order to the Ophis orderbook. It holds no keys and
