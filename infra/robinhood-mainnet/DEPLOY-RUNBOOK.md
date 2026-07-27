@@ -98,9 +98,10 @@ Fill `.env` (see `.env.example`). Audit-relevant variables:
 
 - `POSTGRES_PASSWORD`: `compose-up.sh` materializes the gitignored `secrets/postgres-password` from it. AUDIT-CHANGED: the `db` container reads its password from that secret file (`POSTGRES_PASSWORD_FILE`) instead of a `POSTGRES_PASSWORD` env var, so `docker inspect` on the `db` container no longer shows it. RESIDUAL: the password is still passed as an env var into the flyway (`FLYWAY_PASSWORD`), orderbook, and autopilot containers (the latter two via `DB_WRITE_URL`/`DB_READ_URL`), so `docker inspect` on THOSE still exposes it. Treat the DB password as inspect-visible on the host until those consumers also move to secret-file inputs.
 - `TELEGRAM_BOT_TOKEN`: also place the raw token in `secrets/telegram-token` (chmod 600, owned by the deploy user). AUDIT-CHANGED: `render-configs.sh` writes the uid-65534 container copy for alertmanager, and the host `settlement-anomaly-watch.sh` reads `secrets/telegram-token` (it can no longer read the container copy). On macOS setup, `setup-telegram-keychain.sh` now feeds the token to `security` on stdin, not on argv.
-- `ALCHEMY_API_KEY` and `CHAINSTACK_API_KEY` (the BARE keys, the templates prepend the URL), `COINGECKO_API_KEY`, and `OPHIS_INTER_SERVICE_AUTH_TOKEN`.
+- `COINGECKO_API_KEY` and mandatory `OPHIS_INTER_SERVICE_AUTH_TOKEN`.
 - LEAVE `OPHIS_DRIVER_SUBMITTER_KEY` EMPTY. The submitter PK is file-based and installed in pre-flight, read by `render-configs.sh` via sudo; a non-empty value here is rejected. `render-configs.sh` resolves the path per platform (Linux `/home/ophis-driver/.config/submitter.key`, macOS `/Users/ophis-driver/.config/submitter.key`); override with `OPHIS_SUBMITTER_KEY_PATH`. The Linux/WSL path applies to this deploy.
-- Leave `ROBINHOOD_RPC_INTERNAL` EMPTY. Setting it bypasses the eRPC 3-of-4 consensus proxy; `compose-up.sh` refuses to start unless you also set `ALLOW_RPC_BYPASS=1`.
+- Leave `ROBINHOOD_RPC_INTERNAL` EMPTY. Setting it bypasses the supervised
+  sovereign eRPC proxy; `compose-up.sh` refuses unless explicitly acknowledged.
 
 Then `./compose-up.sh`. It sources `.env`, materializes the postgres secret, runs `render-configs.sh` (which fails closed if any `__FILL_AFTER_DEPLOY_*__` placeholder remains), and brings the stack up.
 

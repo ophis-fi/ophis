@@ -76,8 +76,7 @@ if [[ -f .env ]]; then
     if [[ -n "${ROBINHOOD_RPC_INTERNAL:-}" ]] && [[ "${ALLOW_RPC_BYPASS:-}" != "1" ]]; then
       echo "" >&2
       echo "*** REFUSING: ROBINHOOD_RPC_INTERNAL is set in .env ***" >&2
-      echo "    This BYPASSES the eRPC 3-of-4 consensus path and downgrades" >&2
-      echo "    the stack to single-provider posture. compose-up.sh blocks" >&2
+    echo "    This BYPASSES the supervised sovereign eRPC path. compose-up.sh blocks" >&2
       echo "    this independently of render-configs.sh so an after-render" >&2
       echo "    edit of .env doesn't slip through." >&2
       echo "" >&2
@@ -195,7 +194,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   #
   # Fix: stop the downstream consumers first, force-recreate rpc-proxy,
   # wait for healthcheck, then start the consumers. Adds ~10s to deploy
-  # but preserves "driver always operates against 3-of-4 consensus"
+  # but preserves "driver always operates against the supervised RPC proxy"
   # across deploy windows.
   #
   # Trailing `|| true` removed: if a service fails to stop/start, we

@@ -10,8 +10,8 @@ app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"
 
-# Skip eth_createAccessList preflight. Post-eRPC the bare-call path is 3-of-4
-# consensus-protected (subject to the RPC-independence GATE in erpc.yaml.tmpl).
+# Skip eth_createAccessList preflight. The bare-call path uses the supervised
+# sovereign eRPC proxy and fails closed with Cadia Nitro.
 disable-access-list-simulation = true
 
 [contracts]
