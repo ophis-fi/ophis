@@ -118,9 +118,6 @@ services:
       args: *backend-build-args
     restart: always
     mem_limit: 2g
-    networks:
-      default: {}
-      ophis-rbh-net: {}
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
@@ -153,9 +150,6 @@ services:
       args: *backend-build-args
     restart: always
     mem_limit: 1g
-    networks:
-      default: {}
-      ophis-rbh-net: {}
     depends_on:
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
@@ -181,9 +175,6 @@ services:
       args: *backend-build-args
     restart: always
     mem_limit: 2g
-    networks:
-      default: {}
-      ophis-rbh-net: {}
     depends_on:
       baseline: { condition: service_healthy }
       lifi-solver: { condition: service_healthy }

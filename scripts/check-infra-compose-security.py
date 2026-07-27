@@ -9,6 +9,7 @@ STACKS = [
     ROOT / 'infra' / 'hyperevm-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'megaeth-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'optimism-mainnet' / 'docker-compose.yml',
+    ROOT / 'infra' / 'robinhood-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'unichain-mainnet' / 'docker-compose.yml',
 ]
 TRIO = ('orderbook', 'autopilot', 'driver')
@@ -29,12 +30,23 @@ for path in STACKS:
     text = path.read_text()
     if 'ghcr.io/erpc/erpc:latest' in text:
         errors.append(f'{path.relative_to(ROOT)} uses mutable ghcr.io/erpc/erpc:latest')
-    if 'rpc-proxy:' in text and ERPC_PIN not in text:
+    rpc_proxy = service_block(text, 'rpc-proxy')
+    directly_pinned_erpc = bool(
+        re.search(r'image:\s*ghcr\.io/erpc/erpc(?:[:][^@\s]+)?@sha256:[0-9a-f]{64}', rpc_proxy)
+    )
+    if rpc_proxy and ERPC_PIN not in text and not directly_pinned_erpc:
         errors.append(f'{path.relative_to(ROOT)} has rpc-proxy but does not require a pinned ERPC_IMAGE')
 
     present = {svc: TOKEN in service_block(text, svc) for svc in TRIO if service_block(text, svc)}
     if present and len(set(present.values())) != 1:
         errors.append(f'{path.relative_to(ROOT)} has partial {TOKEN} coverage: {present}')
+
+    if path.parent.name == 'robinhood-mainnet':
+        for svc in TRIO:
+            if 'ophis-rbh-net' in service_block(text, svc):
+                errors.append(
+                    f'{path.relative_to(ROOT)} exposes signing service {svc} to ophis-rbh-net'
+                )
 
 if errors:
     for error in errors:
