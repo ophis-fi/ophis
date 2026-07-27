@@ -68,7 +68,7 @@ fn bare_abi(abi: &'static str, name: &'static str) -> Value {
 static SETTLEMENT_ABI: LazyLock<Value> = LazyLock::new(|| {
     artifact_abi(
         include_str!(
-            "../../../../../../contracts/deployments/optimism-mainnet/GPv2Settlement.json"
+            "../../../../contracts/deployments/optimism-mainnet/GPv2Settlement.json"
         ),
         "GPv2Settlement",
     )
@@ -88,7 +88,7 @@ static VAULT_RELAYER_ABI: LazyLock<Value> = LazyLock::new(|| {
 static AUTHENTICATOR_ABI: LazyLock<Value> = LazyLock::new(|| {
     artifact_abi(
         include_str!(
-            "../../../../../../contracts/deployments/optimism-mainnet/\
+            "../../../../contracts/deployments/optimism-mainnet/\
              GPv2AllowListAuthentication.json"
         ),
         "GPv2AllowListAuthentication",

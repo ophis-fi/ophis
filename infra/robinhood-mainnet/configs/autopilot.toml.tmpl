@@ -7,11 +7,11 @@ simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
 native-price-timeout = "5s"
 
 [contracts]
-settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
-balances = "__FILL_AFTER_DEPLOY_BALANCES__"
-signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
 native-token = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
-hooks = "__FILL_AFTER_DEPLOY_HOOKS__"
+hooks = "0x68593257dfd7f392abfbb410b212be0b6242ac0e"
 balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical; likely absent on 4663 (unused while baseline empty)
 
 [ethflow]
@@ -21,7 +21,7 @@ skip-event-sync = true
 # EthFlow (native-ETH sells) is DEFERRED for day-1 (like Unichain's first cut).
 # Leave commented until CoWSwapEthFlow is deployed on 4663 and wired to the
 # Settlement + WETH 0x0Bd7...D73. Then uncomment and set the address + start block.
-# contracts = ["__FILL_AFTER_DEPLOY_ETHFLOW__"]
+# contracts = ["0x0000000000000000000000000000000000000000"] # EthFlow not deployed on 4663
 # indexing-start = 0
 
 [logging]
@@ -45,7 +45,7 @@ type = "Alloy"
 [[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
-address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
 # LI.FI same-chain aggregator - the ONLY lane that supports 4663 today (verified
 # 2026-07-02: li.quest/v1/chains lists 4663; live same-chain quote routes via
@@ -53,7 +53,7 @@ address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
 [[drivers]]
 name = "lifi"
 url = "http://driver/lifi"
-address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
 [fee-policies]
 

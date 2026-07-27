@@ -503,6 +503,11 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   fi
   mv -f "$out_tmp" "$out"
 
+  # Native Linux bind mounts preserve numeric ownership; the driver image runs as 10001.
+  if is_pk_bearing "$name" && [[ "$(uname -s)" == "Linux" ]]; then
+    sudo chown 10001:10001 "$out"
+  fi
+
   if is_pk_bearing "$name"; then
     echo "  rendered  $name  → RAM-disk ($RAM_PK_MOUNT)"
   else

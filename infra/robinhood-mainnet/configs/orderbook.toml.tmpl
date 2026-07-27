@@ -16,12 +16,12 @@ simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
 # Phase-1 Ledger ceremony (see FILL-IN-AFTER-DEPLOY.md). render-configs.sh
 # refuses to render while any __FILL_AFTER_DEPLOY_*__ placeholder remains.
 [shared.contracts]
-settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
-balances = "__FILL_AFTER_DEPLOY_BALANCES__"
-signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
 # ORBIT: WETH is chain-specific, NOT the OP-Stack 0x4200..0006 predeploy.
 native-token = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
-hooks = "__FILL_AFTER_DEPLOY_HOOKS__"
+hooks = "0x68593257dfd7f392abfbb410b212be0b6242ac0e"
 # Balancer V2 Vault canonical address. NOTE: likely NOT deployed on 4663; harmless
 # while the baseline ships empty (never called). Verify + wire only if a native
 # Balancer source is ever added.

@@ -125,7 +125,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "Robinhood: 0 successful settlements in 1h despite active auctions"
-          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance __FILL_AFTER_DEPLOY_SUBMITTER_EOA__ --rpc-url https://rpc.mainnet.chain.robinhood.com`."
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance 0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665 --rpc-url https://rpc.mainnet.chain.robinhood.com`."
 
       - alert: OphisUniSettlementFailureRateHigh
         expr: |
