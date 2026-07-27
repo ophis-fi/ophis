@@ -123,12 +123,23 @@ if [[ ! -L rendered/driver.toml ]]; then
   exit 8
 fi
 target=$(readlink rendered/driver.toml)
-if [[ ! -s "$target" ]]; then
+if [[ ! -e "$target" ]]; then
   echo "ERROR: rendered/driver.toml -> $target, but the target is empty/missing." >&2
   echo "       The RAM-disk may have been unmounted between render and verify." >&2
   exit 9
 fi
-echo "  ok: rendered/driver.toml -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
+case "$(uname -s)" in
+  Darwin) target_size=$(stat -f '%z' "$target") ;;
+  Linux)  target_size=$(stat -c '%s' "$target") ;;
+  *)      echo "ERROR: unsupported platform $(uname -s) for driver config validation" >&2; exit 9 ;;
+esac
+if [[ "$target_size" -eq 0 ]]; then
+  echo "ERROR: rendered/driver.toml -> $target, but the target is empty." >&2
+  exit 9
+fi
+# Validate with file metadata only. On native Linux the file is 0600 and owned
+# by the driver's UID (10001), so the deploy user must not try to read it.
+echo "  ok: rendered/driver.toml -> $target ($target_size bytes)"
 
 echo ""
 # Sharp-edges HIGH-2 (2026-05-20): the observability profile (prometheus +
