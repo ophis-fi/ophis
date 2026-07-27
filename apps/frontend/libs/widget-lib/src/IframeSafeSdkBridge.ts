@@ -3,21 +3,27 @@ export class IframeSafeSdkBridge {
 
   constructor(
     private appWindow: Window,
-    private iframeWidow: Window,
+    private iframeWindow: Window,
+    private iframeOrigin: string,
+    private parentOrigin?: string,
   ) {
     this.forwardSdkMessage = (event: MessageEvent<unknown>) => {
-      if (!isSafeMessage(event.data)) {
-        return
-      }
-
-      if (typeof window !== 'undefined' && event.origin === window.location.origin) {
+      if (!this.parentOrigin || !isSafeMessage(event.data)) {
         return
       }
 
       if (isSafeMessageRequest(event.data)) {
-        this.appWindow.parent.postMessage(event.data, '*')
-      } else if (isSafeMessageResponse(event.data)) {
-        this.iframeWidow.postMessage(event.data, '*')
+        if (event.source !== this.iframeWindow || event.origin !== this.iframeOrigin) {
+          return
+        }
+
+        this.appWindow.parent.postMessage(event.data, this.parentOrigin)
+      } else if (
+        isSafeMessageResponse(event.data) &&
+        event.source === this.appWindow.parent &&
+        event.origin === this.parentOrigin
+      ) {
+        this.iframeWindow.postMessage(event.data, this.iframeOrigin)
       }
     }
 

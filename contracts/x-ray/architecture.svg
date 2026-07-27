@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1224" height="800" viewBox="0 0 490 320" font-family="Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 8 6" refX="8" refY="3"
+      markerWidth="4" markerHeight="3" orient="auto">
+      <path d="M0.5,0.5 L7,3 L0.5,5.5" fill="none" stroke="#94A3B8"
+        stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+    </marker>
+    <filter id="shadow" x="-6%" y="-8%" width="112%" height="128%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.8"
+        flood-color="#000" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+  <rect width="490" height="320" fill="#F8F9FB" rx="3"/>
+  <text x="245" y="11" text-anchor="middle" font-size="6" font-weight="700" fill="#1E293B">Ophis protocol authority and value flow</text>
+  <rect x="170" y="16" width="150" height="10" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="175" y="18.5" width="5" height="5" rx="2.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <text x="183" y="22.5" font-size="3.5" fill="#1E293B">Actor</text>
+  <rect x="215" y="18.5" width="5" height="5" rx="1.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="216" y="19.5" width="0.8" height="3" rx="0.4" fill="#3B82F6"/>
+  <text x="223" y="22.5" font-size="3.5" fill="#1E293B">Protocol</text>
+  <rect x="263" y="18.5" width="5" height="5" rx="1.5" fill="#fff" stroke="#E2E5EA" stroke-width="0.4"/>
+  <rect x="264" y="19.5" width="0.8" height="3" rx="0.4" fill="#F59E0B"/>
+  <text x="271" y="22.5" font-size="3.5" fill="#1E293B">External</text>
+  <path d="M72.3,52.0 C72.3,73.0 95.2,73.0 95.2,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M154.3,52.0 C154.3,73.0 95.2,73.0 95.2,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M95.2,114.0 C95.2,135.0 131.8,135.0 131.8,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M131.8,176.0 C131.8,197.0 241.4,197.0 241.4,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M241.4,238.0 C241.4,259.0 406.4,259.0 406.4,280.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M249.9,52.0 C249.9,73.0 240.8,73.0 240.8,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M240.8,94.0 C240.8,125.0 241.1,125.0 241.1,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M241.1,156.0 C241.1,187.0 241.4,187.0 241.4,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M241.4,238.0 C241.4,259.0 206.4,259.0 206.4,280.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M241.4,238.0 C241.4,259.0 302.0,259.0 302.0,280.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M356.7,52.0 C356.7,73.0 343.8,73.0 343.8,94.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M343.8,114.0 C343.8,135.0 311.8,135.0 311.8,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M343.8,114.0 C343.8,135.0 413.8,135.0 413.8,156.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M311.8,176.0 C311.8,197.0 359.1,197.0 359.1,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M359.1,218.0 C359.1,249.0 406.4,249.0 406.4,280.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <path d="M311.8,176.0 C311.8,197.0 241.4,197.0 241.4,218.0" fill="none" stroke="#94A3B8" stroke-width="0.5" marker-end="url(#ah)"/>
+  <g filter="url(#shadow)">
+    <rect x="42.3" y="32.0" width="60.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="45.3" y="35.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="72.3" y="43.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Timelock</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="124.3" y="32.0" width="60.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="127.3" y="35.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="154.3" y="43.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Guardian</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="30.0" y="94.0" width="130.4" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="33.0" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="95.2" y="105.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Allowlist Authenticator</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="81.0" y="156.0" width="101.6" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="84.0" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="131.8" y="167.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Authorized Solver</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="197.8" y="218.0" width="87.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="200.8" y="221.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="241.4" y="229.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">CoW Settlement</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="367.6" y="280.0" width="77.6" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="370.6" y="283.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="406.4" y="291.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">VaultRelayer</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="206.3" y="32.0" width="87.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="209.3" y="35.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="249.9" y="43.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Fee Liquidator</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="176.4" y="280.0" width="60.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="179.4" y="283.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="206.4" y="291.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Fee Safe</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="258.4" y="280.0" width="87.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="261.4" y="283.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="302.0" y="291.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Approved Venue</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="315.5" y="32.0" width="82.4" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="318.5" y="35.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="356.7" y="43.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Vault Curator</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="288.2" y="94.0" width="111.2" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="291.2" y="97.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="343.8" y="105.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Vault Policy Module</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="277.8" y="156.0" width="68.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="280.8" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="311.8" y="167.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Vault Safe</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="367.8" y="156.0" width="92.0" height="20" rx="3" fill="#fff" stroke="#E2E5EA" stroke-width="0.5"/>
+    <rect x="370.8" y="159.0" width="1.4" height="14" rx="0.6" fill="#3B82F6"/>
+    <text x="413.8" y="167.8" text-anchor="middle" font-size="4.8" font-weight="600" fill="#1E293B">Chainlink Feeds</text>
+  </g>
+  <rect x="57.7" y="68.0" width="52.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="83.7" y="73.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">add solver / manager</text>
+  <rect x="115.1" y="66.0" width="35.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="132.7" y="71.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">remove solver</text>
+  <rect x="99.5" y="130.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="113.5" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">authorizes</text>
+  <rect x="169.0" y="192.0" width="35.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="186.6" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">settle / swap</text>
+  <rect x="300.3" y="254.0" width="47.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="323.9" y="259.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">creator-only calls</text>
+  <rect x="216.5" y="182.0" width="49.6" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="241.3" y="187.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">sweep / consolidate</text>
+  <rect x="209.9" y="254.0" width="28.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="223.9" y="259.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">swept fees</text>
+  <rect x="244.5" y="246.0" width="54.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="271.7" y="251.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">exact approval + call</text>
+  <rect x="326.7" y="68.0" width="47.2" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="350.3" y="73.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">rebalance / cancel</text>
+  <rect x="306.6" y="130.0" width="42.4" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="327.8" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">module execution</text>
+  <rect x="356.4" y="130.0" width="44.8" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="378.8" y="135.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">price / sequencer</text>
+  <rect x="362.8" y="244.0" width="40.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="382.8" y="249.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">exact allowance</text>
+  <rect x="256.6" y="192.0" width="40.0" height="6.0" rx="1" fill="#F8F9FB"/>
+  <text x="276.6" y="197.0" font-size="4" fill="#1E293B" font-weight="500" text-anchor="middle">presigned order</text>
+</svg>
