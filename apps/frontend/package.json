@@ -31,7 +31,10 @@
     ],
     "patchedDependencies": {
       "@cowprotocol/sdk-config@2.0.0": "patches/@cowprotocol__sdk-config@2.0.0.patch",
-      "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch"
+      "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch",
+      "eslint-plugin-react@7.37.5": "patches/eslint-plugin-react@7.37.5.patch",
+      "eslint-plugin-import@2.32.0": "patches/eslint-plugin-import@2.32.0.patch",
+      "eslint-plugin-jsx-a11y@6.10.2": "patches/eslint-plugin-jsx-a11y@6.10.2.patch"
     },
     "overrides": {
       "adm-zip": "^0.6.0",
@@ -105,9 +108,6 @@
       "on-headers": "^1.1.0",
       "@babel/plugin-transform-modules-systemjs": "^7.29.4",
       "minimatch": "^10.2.3",
-      "eslint-plugin-import>minimatch": "^3.1.2",
-      "eslint-plugin-jsx-a11y>minimatch": "^3.1.2",
-      "eslint-plugin-react>minimatch": "^3.1.2",
       "svgo": "^3.3.4",
       "sharp": "^0.35.0",
       "tmp": "^0.2.6",
