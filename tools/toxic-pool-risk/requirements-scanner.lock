@@ -1226,9 +1226,9 @@ pydantic-core==2.46.4 \
     --hash=sha256:fc3e9034a63de20e15e8ade85358bc6efc614008cab72898b4b4952bea0509ff \
     --hash=sha256:fd8b3d9fd264be37976686c7f65cd52a83f5e84f4bfd2adf9c1d469676bbb6ae
     # via pydantic
-python-dotenv==1.1.1 \
-    --hash=sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc \
-    --hash=sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab
+python-dotenv==1.2.2 \
+    --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
+    --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
     # via -r requirements-scanner.txt
 pyunormalize==17.0.0 \
     --hash=sha256:0949a3e56817e287febcaf1b0cc4b5adf0bb107628d379335938040947eec792 \
@@ -1389,9 +1389,9 @@ urllib3==2.7.0 \
     # via
     #   requests
     #   types-requests
-web3==7.13.0 \
-    --hash=sha256:281795e0f5d404c1374e1771f6710bb43e0c975f3141366eb1680763edfb4806 \
-    --hash=sha256:4da7e953300577b7dadbaf430e5fd4479b127b1ad4910234b230fdcb8a49f735
+web3==7.15.0 \
+    --hash=sha256:2a2bcbab8fcf120c2256ddbdc88fcc80a47c100ad758659a980e9fab66609171 \
+    --hash=sha256:bbeba510aaa4eb3c99662d911db9d2a648ab40f608cf0269065f7db1d1d0b0c0
     # via -r requirements-scanner.txt
 websockets==15.0.1 \
     --hash=sha256:0701bc3cfcb9164d04a14b149fd74be7347a530ad3bbf15ab2c678a2cd3dd9a2 \

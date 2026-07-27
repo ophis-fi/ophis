@@ -53,6 +53,15 @@ def normalize_reason(reason: Any) -> str:
     return " ".join(reason.split())[:500]
 
 
+def optional_string_list(container: dict[str, Any], key: str, field: str) -> list[str]:
+    value = container.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ValidationError(f"{field} must be a string array")
+    return value
+
+
 def normalize_row(row: Any) -> tuple[str, dict[str, Any]]:
     if not isinstance(row, dict):
         raise ValidationError("each scanner row must be an object")
@@ -64,9 +73,7 @@ def normalize_row(row: Any) -> tuple[str, dict[str, Any]]:
     flag = row.get("ui_flag")
     if flag not in ALLOWED_FLAGS:
         raise ValidationError(f"pool {address} has unsupported ui_flag {flag!r}")
-    row_errors = row.get("errors") or []
-    if not isinstance(row_errors, list) or any(not isinstance(item, str) for item in row_errors):
-        raise ValidationError(f"pool {address} errors must be a string array")
+    row_errors = optional_string_list(row, "errors", f"pool {address} errors")
 
     reasons = [normalize_reason(item) for item in (row.get("ui_reasons") or [])]
     if row_errors:
@@ -118,9 +125,7 @@ def normalize(
     declared_count = require_int(raw.get("pool_count"), "pool_count")
     if declared_count != len(rows):
         raise ValidationError(f"pool_count mismatch: declared {declared_count}, found {len(rows)}")
-    top_errors = raw.get("errors") or []
-    if not isinstance(top_errors, list) or any(not isinstance(item, str) for item in top_errors):
-        raise ValidationError("errors must be a string array")
+    top_errors = list(optional_string_list(raw, "errors", "errors"))
     factories = raw.get("factories") or []
     if not isinstance(factories, list):
         raise ValidationError("factories must be an array")
@@ -128,11 +133,9 @@ def normalize(
         if not isinstance(factory, dict):
             raise ValidationError("each factory summary must be an object")
         family = str(factory.get("family") or factory.get("factory") or "unknown")
-        factory_errors = factory.get("errors") or []
-        if not isinstance(factory_errors, list) or any(
-            not isinstance(item, str) for item in factory_errors
-        ):
-            raise ValidationError(f"factory {family} errors must be a string array")
+        factory_errors = optional_string_list(
+            factory, "errors", f"factory {family} errors"
+        )
         if factory.get("unsupported"):
             top_errors.append(f"factory {family} is unsupported")
         top_errors.extend(f"factory {family}: {item}" for item in factory_errors)
@@ -158,7 +161,7 @@ def normalize(
         "generatedAt": iso8601(generated_at),
         "headBlock": head_block,
         "headTimestamp": iso8601(head_time),
-        "expiresAt": iso8601(generated_at + timedelta(seconds=max_age_seconds)),
+        "expiresAt": iso8601(head_time + timedelta(seconds=max_age_seconds)),
         "coverage": "curve-provider-context-v1",
         "scanner": {
             "repository": "https://github.com/wavey0x/toxic-pool-utils",
