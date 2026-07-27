@@ -2,4 +2,4 @@
 # Keep exact pins; install the scanner itself separately with --no-deps.
 web3==7.13.0
 eth-abi==5.2.0
-python-dotenv==1.1.1
+python-dotenv==1.2.2
