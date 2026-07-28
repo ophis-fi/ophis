@@ -12,7 +12,10 @@ import { getLogo } from './NetworksList.utils'
 
 import { useDeprecatedChains } from '../../hooks/useDeprecatedChains'
 
-const NEW_NETWORK_IDS: Set<TargetChainId> = new Set([130 as unknown as TargetChainId]) // Ophis fork: Unichain
+const NEW_NETWORK_IDS: Set<TargetChainId> = new Set([
+  130 as unknown as TargetChainId, // Ophis fork: Unichain
+  4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
+])
 
 export interface NetworksListProps {
   currentChainId: SupportedChainId | null

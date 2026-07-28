@@ -359,41 +359,45 @@ groups:
       #     a broken scrape — the actual visibility we cared about.
       # ────────────────────────────────────────────────────────────
 
-      # `OphisUniErpcUpstreamBlockHeadLagging` — chronic-lag root-cause
-      # detector. Standalone signal — no longer paired with a Cordoned
+      # `OphisRbhErpcUpstreamBlockHeadLagging` — chronic-lag detector.
+      # Standalone signal — no longer paired with a Cordoned
       # alert (see above for why those were dropped). The block_head_lag
       # gauge is simpler than the stale_latest_block_total counter (which
-      # is a per-category rate and harder to interpret). Threshold of 5
-      # blocks = ~5 seconds of Robinhood ~1s block time = real lag, not
-      # microsecond drift.
-      - alert: OphisUniErpcUpstreamBlockHeadLagging
-        expr: erpc_upstream_block_head_lag{network="evm:4663"} > 5
+      # is a per-category rate and harder to interpret).
+      # Robinhood produces a block roughly every 134ms. Its official gateway
+      # normally trails the sequencer-fed Cadia node by 6–26 blocks (under
+      # four seconds), so the copied Unichain threshold of five blocks was a
+      # permanent false positive. Seventy-five blocks is roughly ten seconds:
+      # high enough to ignore normal gateway publication delay, but low enough
+      # to warn well before a sustained stale voter affects availability.
+      - alert: OphisRbhErpcUpstreamBlockHeadLagging
+        expr: erpc_upstream_block_head_lag{network="evm:4663"} > 75
         for: 15m
         labels:
           severity: warning
           chain: robinhood
         annotations:
-          summary: "Robinhood eRPC upstream {{ $labels.upstream }} >5 blocks behind for 15m"
+          summary: "Robinhood eRPC upstream {{ $labels.upstream }} >75 blocks behind for 15m"
           description: |
-            The {{ $labels.upstream }} upstream has been more than 5 blocks
-            behind the median for 15 minutes. This is the dominant root
-            cause of dispute churn on Block A consensus methods (eth_call,
-            eth_getBalance) — the chronically-lagging upstream returns
-            stale state, gets disputed, eventually gets cordoned by
-            punishMisbehavior.
+            The {{ $labels.upstream }} upstream has remained more than 75
+            Robinhood blocks (approximately ten seconds) behind the freshest
+            observed head for 15 minutes.
 
-            For ophis-self-uni (op-reth on the VM reached over
-            Tailscale as ophis-rbh-node:8545): SSH check op-node + op-reth sync.
-              ssh -p 24005 root@<VM_IP> \
+            For ophis-self-rbh, connect to Cadia over Tailscale and check the
+            Nitro node on port 8547:
+              tailscale ssh clement@cadia-wsl \
                 'curl -s -H content-type:application/json \
-                  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
-                  http://localhost:8545'
-            See docs/operations/*.private.md for the private VM IP.
-            Expected `false` for healthy. If `{result: {...}}`, op-node
-            is still bootstrapping.
+                  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}" \
+                  http://localhost:8547'
+            Healthy is {"result":false}. Also inspect the sequencer-feed and
+            parent-chain errors in `docker logs robinhood-nitro-nitro-1`.
 
-            For robinhood-public / publicnode-uni: provider-side regression.
-            Consider hot-swap if sustained > 1h.
+            For robinhood-official, compare eth_blockNumber directly with
+            Cadia. The public endpoint is the independent read voter and Nitro
+            transaction-forwarding target; do not remove or replace it merely
+            for normal sub-ten-second publication delay. Escalate or hot-swap
+            only when this alert is sustained and protected-read availability
+            is measurably degraded.
 
   - name: ophis-uni-latency
     interval: 30s

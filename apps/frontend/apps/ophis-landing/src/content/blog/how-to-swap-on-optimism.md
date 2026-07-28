@@ -24,7 +24,7 @@ Step for step, this is the same flow as on any other Ophis chain. What is differ
 
 ## A sovereign deployment: own orderbook, own settlement
 
-On most of its chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. On Optimism and Unichain, Ophis is sovereign: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address:
+On most of its chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. On Optimism, Unichain, and Robinhood Chain, Ophis is sovereign: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address:
 
 ```
 0x310784c7FCE12d578dA6f53460777bAc9718B859

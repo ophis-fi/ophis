@@ -29,7 +29,7 @@ export interface Env {
   COMPAT_PATHID_KEY?: string;
   /** Previous pathId key, honored for verification only (two-key rotation window). */
   COMPAT_PATHID_KEY_PREVIOUS?: string;
-  /** Comma-separated chainIds served by this deployment. Default "10,130". */
+  /** Comma-separated chainIds served by this deployment. Default "10,130,4663". */
   COMPAT_ENABLED_CHAINS?: string;
   /**
    * Master switch for mapping a non-zero Odos `referralFee` to a CIP-75 Volume
@@ -76,7 +76,7 @@ export function settlementBaselineSeconds(env: Env): number {
 }
 
 /** Chains enabled by default: the Ophis-operated orderbooks (never CoW-hosted). */
-export const DEFAULT_ENABLED_CHAINS: readonly number[] = Object.freeze([10, 130]);
+export const DEFAULT_ENABLED_CHAINS: readonly number[] = Object.freeze([10, 130, 4663]);
 
 export function enabledChains(env: Env): number[] {
   const raw = env.COMPAT_ENABLED_CHAINS;

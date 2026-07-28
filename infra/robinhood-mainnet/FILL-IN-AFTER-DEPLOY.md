@@ -19,7 +19,7 @@ Ophis Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF` (`owner()` and
 | Balances | `0x5f315a204e7971fc29a66fef3a5773f6b0202fac` |
 | Signatures | `0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810` |
 | HooksTrampoline | `0x68593257dfd7f392abfbb410b212be0b6242ac0e` |
-| Allowlisted submitter | `0x7A956C269a12f1B897367663b536EB5dd29f3fBb` |
+| Active allowlisted submitter | `0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665` |
 
 `domainSeparator` = `0xb6fd90ec7e83ea8ffa46bfbcd6649a2ec3e7c19027fc7e4fd412355d946cba65`
 (independently recomputed from chainId 4663 + the Settlement address).

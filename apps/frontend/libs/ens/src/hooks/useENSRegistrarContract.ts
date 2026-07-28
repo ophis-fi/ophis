@@ -14,6 +14,7 @@ const ENS_REGISTRAR_ADDRESSES: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: null,
   // Ophis fork: no ENS registrar on Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: null,
+  [4663 as unknown as SupportedChainId]: null,
   // Ophis fork: no ENS registrar on MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: no ENS registrar on HyperEVM mainnet (chain 999)

@@ -43,7 +43,7 @@ The properties that decide safety for an agent:
 - **Gasless (after a one-time approval).** Solvers pay the settlement gas. The
   one on-chain step is a single ERC-20 approval to the vault relayer before the
   first sell of a token; after that, swaps need no native gas token.
-- **Reach.** 12 EVM chains as source or destination, plus native Bitcoin and
+- **Reach.** 13 EVM chains as source or destination, plus native Bitcoin and
   Solana as destinations through NEAR Intents.
 
 ## Where other venues sit

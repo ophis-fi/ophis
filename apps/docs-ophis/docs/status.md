@@ -25,6 +25,7 @@ state directly.
 | Rebate indexer | [rebates.ophis.fi/health](https://rebates.ophis.fi/health) | JSON. `last_pipeline_run_at` is the nightly-pipeline liveness signal (it advances at 02:00 UTC daily); `last_fetch` is insert-only and only moves on a new tagged trade, so a stale `last_fetch` during a quiet period is normal. |
 | Optimism orderbook | [optimism-mainnet.ophis.fi](https://optimism-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 10 (see below). |
 | Unichain orderbook | [unichain-mainnet.ophis.fi](https://unichain-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 130 (see below). |
+| Robinhood orderbook | [robinhood-mainnet.ophis.fi](https://robinhood-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 4663 (see below). |
 
 ## Settlement model per chain
 
@@ -34,9 +35,10 @@ Ophis settles across two kinds of chains:
   Avalanche, Linea, Ink, and Plasma. Orders settle through CoW Protocol's
   production orderbooks (`api.cow.fi`) using the canonical CoW contracts. Their
   status mirrors [CoW Protocol's status](https://status.cow.fi).
-- **Ophis-operated chains**: Optimism (chain 10) and Unichain (chain 130). Orders
-  settle through Ophis's self-hosted orderbooks at `optimism-mainnet.ophis.fi` and
-  `unichain-mainnet.ophis.fi` using Ophis-deployed (non-canonical) `GPv2Settlement`
+- **Ophis-operated chains**: Optimism (chain 10), Unichain (chain 130), and
+  Robinhood Chain (chain 4663). Orders settle through Ophis's self-hosted
+  orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, and
+  `robinhood-mainnet.ophis.fi` using Ophis-deployed (non-canonical) `GPv2Settlement`
   contracts. Always resolve per-chain settlement and orderbook hosts via the
   `@ophis/sdk` helpers or the MCP `list_chains` tool rather than hardcoding addresses.
 

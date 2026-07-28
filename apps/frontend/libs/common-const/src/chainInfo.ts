@@ -32,6 +32,9 @@ import { TokenWithLogo } from './types'
 const UNICHAIN_LOGO_DATA_URI =
   'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9Im5vbmUiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEyIiBmaWxsPSIjRjUwREI0Ii8+PHBhdGggdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTIgMTIpIHNjYWxlKC43NCkgdHJhbnNsYXRlKC0xMiAtMTIpIiBmaWxsPSIjZmZmIiBkPSJNMjEgMTEuODI5QTguODMgOC44MyAwIDAgMSAxMi4xNzEgM2gtLjM0MnY4LjgyOUgzdi4zNDJBOC44MyA4LjgzIDAgMCAxIDExLjgyOSAyMWguMzQydi04LjgyOUgyMXoiLz48L3N2Zz4=' as HttpsString
 
+const ROBINHOOD_LOGO_DATA_URI =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiMwMEM4MDUiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNNyA2aDUuN2MzIDAgNC44IDEuNSA0LjggNCAwIDEuOC0uOCAzLjEtMi4zIDMuN0wxOCAxOGgtNGwtMi4zLTMuN0gxMVYxOEg3VjZ6bTQgM3YyLjVoMS40Yy44IDAgMS4yLS40IDEuMi0xLjNTMTMuMiA5IDEyLjQgOUgxMXoiLz48L3N2Zz4=' as HttpsString
+
 // Ophis fork (2026-05-20): MegaETH (4326) and HyperEVM (999) chain
 // definitions removed from the frontend. Backend scaffolding for these
 // chains is preserved in `infra/megaeth-mainnet/` + `infra/hyperevm-mainnet/`
@@ -200,6 +203,24 @@ export const CHAIN_INFO: ChainInfoMap = {
     urlAlias: 'unichain',
     nativeCurrency: NATIVE_CURRENCIES[130 as unknown as SupportedChainId],
   },
+  [4663 as unknown as SupportedChainId]: {
+    docs: 'https://docs.robinhood.com/crypto/robinhood-chain' as HttpsString,
+    bridge: 'https://robinhood.com' as HttpsString,
+    explorer: 'https://robinhoodchain.blockscout.com' as HttpsString,
+    infoLink: 'https://robinhood.com/crypto/robinhood-chain' as HttpsString,
+    logo: {
+      light: ROBINHOOD_LOGO_DATA_URI,
+      dark: ROBINHOOD_LOGO_DATA_URI,
+    },
+    addressPrefix: 'rbh',
+    label: 'Robinhood Chain',
+    eip155Label: 'Robinhood Chain',
+    explorerTitle: 'Robinhood Chain Blockscout',
+    color: '#00C805',
+    name: 'robinhood',
+    urlAlias: 'robinhood',
+    nativeCurrency: NATIVE_CURRENCIES[4663 as unknown as SupportedChainId],
+  },
   // MegaETH (4326) + HyperEVM (999) intentionally not in CHAIN_INFO —
   // see top-of-file comment for context (removed 2026-05-20).
 }
@@ -221,6 +242,7 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
   130 as unknown as SupportedChainId, // Ophis fork: Unichain
+  4663 as unknown as SupportedChainId, // Ophis fork: Robinhood Chain
 ]
 
 /**
@@ -240,6 +262,7 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM,
   130 as unknown as TargetChainId, // Ophis fork: Unichain
+  4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
 ]

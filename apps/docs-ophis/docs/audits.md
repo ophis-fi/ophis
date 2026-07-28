@@ -52,7 +52,7 @@ outcome regardless.
 ## Smart contracts
 
 Ophis runs its **own deployment** of CoW Protocol's GPv2 settlement stack on
-Optimism and Unichain. The contracts that hold or move value are **immutable**: they have
+Optimism, Unichain, and Robinhood Chain. The contracts that hold or move value are **immutable**: they have
 no admin, no owner, and no proxy, so no operator (and no compromise of Ophis's
 backend or frontend) can upgrade, pause, or re-point them:
 

@@ -745,6 +745,7 @@ const CHAIN_NAMES: Record<number, string> = {
   56: 'BNB Chain',
   100: 'Gnosis',
   130: 'Unichain',
+  4663: 'Robinhood Chain',
   137: 'Polygon',
   999: 'HyperEVM',
   4326: 'MegaETH',
@@ -838,7 +839,7 @@ const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11'
 const NATIVE_SYMBOL: Record<number, string> = {
   1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL', 999: 'HYPE',
   4326: 'ETH', 8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
-  57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
+  4663: 'ETH', 57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
 }
 
 /**
@@ -853,6 +854,7 @@ const PUBLIC_RPCS: Record<number, string[]> = {
   56: ['https://bsc-rpc.publicnode.com', 'https://binance.llamarpc.com'],
   100: ['https://gnosis-rpc.publicnode.com'],
   130: ['https://mainnet.unichain.org'],
+  4663: ['https://rpc.mainnet.chain.robinhood.com'],
   137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.llamarpc.com'],
   8453: ['https://base-rpc.publicnode.com', 'https://base.llamarpc.com'],
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.llamarpc.com'],
@@ -869,7 +871,7 @@ const GECKO_NETWORK: Record<number, string> = {
 
 /** KyberSwap aggregator path-slug per chain (the public beat-the-market reference). */
 const KYBER_SLUG: Record<number, string> = {
-  1: 'ethereum', 10: 'optimism', 130: 'unichain', 56: 'bsc', 137: 'polygon', 8453: 'base',
+  1: 'ethereum', 10: 'optimism', 130: 'unichain', 4663: 'robinhood', 56: 'bsc', 137: 'polygon', 8453: 'base',
   42161: 'arbitrum', 43114: 'avalanche', 59144: 'linea',
 }
 

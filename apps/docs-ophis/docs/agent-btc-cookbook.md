@@ -8,7 +8,7 @@ sidebar_label: Native BTC for agents
 # Swap into native Bitcoin from an agent
 
 Among intent-based batch-auction swap venues, Ophis packages a gasless,
-hard-limit path to **native Bitcoin** next to 12 EVM chains. The cross-chain
+hard-limit path to **native Bitcoin** next to 13 EVM chains. The cross-chain
 rail (NEAR Intents) is shared by several venues; what Ophis packages is the
 keyless, bounded agent path onto it. This page shows how an agent
 or bot moves an EVM position into native BTC (or SOL) after a one-time

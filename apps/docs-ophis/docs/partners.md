@@ -1,7 +1,7 @@
 ---
 id: partners
 title: Partner integration (SDK)
-description: Add Ophis as a swap route inside your own tool with @ophis/sdk plus cow-sdk. Works on Optimism and Unichain (self-hosted) and every CoW-hosted chain, signs with a vault Safe via EIP-1271, and earns a cross-chain WETH rebate.
+description: Add Ophis as a swap route inside your own tool with @ophis/sdk plus cow-sdk. Works on Optimism, Unichain, and Robinhood Chain (self-hosted) and every CoW-hosted chain, signs with a vault Safe via EIP-1271, and earns a cross-chain WETH rebate.
 sidebar_label: Partner integration
 sidebar_position: 4
 ---
@@ -103,18 +103,18 @@ SigningScheme.EIP712`, produce a normal EIP-712 signature, and send the token
 approval from the EOA itself (not a Safe transaction).
 
 That is the whole integration. The sections below explain what each helper does
-per chain (Optimism and Unichain are self-hosted, the others are CoW-hosted) and the lower-level
+per chain (Optimism, Unichain, and Robinhood Chain are self-hosted, the others are CoW-hosted) and the lower-level
 primitives, if you would rather wire the steps yourself.
 
-## Two cases: self-hosted (Optimism, Unichain) vs CoW-hosted chains
+## Two cases: self-hosted (Optimism, Unichain, Robinhood Chain) vs CoW-hosted chains
 
 Ophis serves two kinds of chain, and they differ only in **where the order is
 posted** and **which settlement contract signs**:
 
-| | Self-hosted (Optimism, Unichain) | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
+| | Self-hosted (Optimism, Unichain, Robinhood Chain) | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
 | --- | --- | --- |
-| Orderbook host | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`) | `api.cow.fi/<chain>` (cow-sdk default) |
-| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default) |
+| Orderbook host | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`) | `api.cow.fi/<chain>` (cow-sdk default) |
+| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default) |
 | Partner fee | `buildOphisAppDataPartnerFee(chainId)` | `buildOphisAppDataPartnerFee(chainId)` |
 | Fee enforcement | Enforced floor at settlement | Carried in `appData`, validated by CoW |
 
@@ -169,7 +169,7 @@ const fullAppData = await stringifyDeterministic(doc); // deterministic, never J
 const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32, signed as order.appData
 ```
 
-On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge is
+On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the partner rate you charge is
 **5 bps** (1 bp on a same-chain stablecoin pair), the same as everywhere else.
 The backend additionally enforces an anti-abuse **minimum**: it rejects
 (HTTP 400) any order to the Ophis recipient whose fee falls below **4 bps** on a
@@ -234,7 +234,7 @@ settlement). Resolve the relayer per chain with `getOphisVaultRelayer(chainId)`
 from `@ophis/sdk`: it returns the canonical `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110`
 on CoW-hosted chains and the Ophis-operated relayers (Optimism `0x83847EaB41ad9ea43809ce71569eB2e9daF51830`,
 Unichain `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb`) on the self-hosted chains.
-**Do not use cow-sdk's relayer address on Optimism or Unichain** (the
+**Do not use cow-sdk's relayer address on an Ophis-operated chain** (the
 Ophis-operated chains): cow-sdk only knows the canonical relayer, but the Ophis OP
 settlement pulls from the Ophis relayer, so an approval to the canonical address
 leaves first sells unfillable. The `approve` moves no funds: it only lets the
@@ -266,7 +266,7 @@ if (OPHIS_FEE_CHAIN_IDS.includes(chainId)) {
 
 The fee recipient is one CREATE2-deterministic Safe on every chain, so the
 fragment is identical everywhere; only the host and settlement differ, and only
-on the Ophis-operated chains (Optimism and Unichain). CoW-hosted chains do not
+on the Ophis-operated chains (Optimism, Unichain, and Robinhood Chain). CoW-hosted chains do not
 enforce the floor, so the 1 bp stable rate there is your choice, kept consistent
 with the Ophis-operated chains.
 
@@ -276,7 +276,7 @@ An SDK integration earns on three layers, and all three numbers are published:
 
 1. **Your users pay the reduced 5 bps partner rate** (1 bp on same-chain
    stablecoin pairs) instead of the 10 bps retail rate the Ophis front-end
-   charges. On Optimism and Unichain that 5 bps is all-in; on CoW-hosted
+   charges. On Optimism, Unichain, and Robinhood Chain that 5 bps is all-in; on CoW-hosted
    chains, CoW Protocol's own fees apply on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
 2. **You earn a share of the fee Ophis keeps** on every trade you route: 8%
@@ -299,7 +299,7 @@ operator is **layer 3**: your own fee entry, charged on top of the 5 bps base.
 You keep 100% of your entry; the base is the only cost, and it is charged to
 the trade alongside your fee, not deducted from it. A bot that sets its own
 fee to 80 bps keeps the full 80 bps and its users pay 85 bps all-in (your 80
-plus the 5 bps base) on Optimism and Unichain, still under the roughly 85 to
+plus the 5 bps base) on Optimism, Unichain, and Robinhood Chain, still under the roughly 85 to
 90 bps wallet swap products charge
 ([MetaMask Swaps charges 0.875%](https://support.metamask.io/trade/swap/user-guide-swaps/)).
 On CoW-hosted chains, add the upstream CoW Protocol fees from
@@ -348,7 +348,7 @@ How your fee reaches you depends on the chain:
   can total up to 100 bps. CoW's 25% is a CIP-75 default and is negotiable with
   CoW DAO. We confirm the end-to-end payout to your recipient on the first settled
   trade.
-- **Optimism and Unichain (Ophis-operated):** a stacked own-fee to a
+- **Optimism, Unichain, and Robinhood Chain (Ophis-operated):** a stacked own-fee to a
   third-party recipient is paid to you through a two-step onboarding, both of
   which Ophis now supports end to end:
   1. *Ingress (allowlisting).* Your recipient is added to the backend
@@ -436,8 +436,10 @@ next-payout time (those stay on the signature-gated partner dashboard).
 
 ### What Ophis guarantees, and what accrues under CoW terms
 
-Only **Optimism (10)** and **Unichain (130)** are Ophis-operated, where Ophis controls
-settlement end to end. On the CoW-hosted chains, partner fees are disbursed by CoW under
+Optimism (10), Unichain (130), and Robinhood Chain (4663) are Ophis-operated.
+The earnings indexer and automated sovereign payout currently cover chains 10
+and 130; Robinhood fee and rebate reporting remains unavailable until that
+indexer lane is deployed. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
 **sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis
 pays the **referral rebate** from its Safe regardless of chain, and it now also pays a
@@ -588,6 +590,8 @@ await ethFlow.createOrder(built.orderTuple, { value: built.value });
 ```
 
 Native ETH is supported on Optimism, Unichain, Base, and the other CoW-hosted chains.
+Robinhood Chain currently requires wrapping native ETH to WETH first because
+EthFlow is not deployed there.
 The order carries the Ophis partner fee exactly as an ERC-20 order does.
 
 ## Caveats
@@ -596,9 +600,9 @@ The order carries the Ophis partner fee exactly as an ERC-20 order does.
   the Ophis base fee and can earn referral attribution through its `appCode`, but
   it cannot stack your own fee on top, redirect the recipient, or control
   per-order `appData`: those need the SDK.
-- **Optimism and Unichain are the self-hosted chains.** Other chains are CoW-hosted, where
+- **Optimism, Unichain, and Robinhood Chain are the self-hosted chains.** Other chains are CoW-hosted, where
   Ophis charges the fee but cannot enforce a floor or an on-chain discount.
-- **Do not use the `api.cow.fi` host on Optimism.** It silently bypasses the
+- **Do not use the `api.cow.fi` host on an Ophis-operated chain.** It bypasses the
   Ophis solver and charges no Ophis fee.
 
 ## Quick reference
