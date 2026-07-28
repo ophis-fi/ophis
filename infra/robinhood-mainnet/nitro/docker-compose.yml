@@ -90,11 +90,10 @@ services:
       # defaults to TRUE (Watchtower strategy, verified in staker source), which
       # runs a needless L1-watching loop and noise. Disable it.
       - --node.staker.enable=false
-      # A non-sequencer node HARD-REQUIRES a tx forwarding target or it fatals at
-      # boot ("ForwardingTarget not set and not sequencer"). This node serves
-      # trace/reads for eRPC and does not relay user txs, so disable forwarding
-      # explicitly. (Set the sequencer URL here instead if it ever must relay.)
-      - --execution.forwarding-target=null
+      # The driver submits through eRPC, which may select this node for
+      # eth_sendRawTransaction. Forward writes to Robinhood's public sequencer
+      # gateway; keeping this non-null is settlement-critical.
+      - --execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:-https://rpc.mainnet.chain.robinhood.com}
       # Memory safety valve on a RAM-constrained host (~26 GB WSL2 VM). Nitro's
       # mem-free-limit ships DISABLED; set it so the node sheds load instead of
       # OOM-killing when free memory runs low (e.g. concurrent traces from eRPC).

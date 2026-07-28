@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce Robinhood's zero-budget sovereign RPC trust boundary."""
+"""Lock Robinhood's zero-budget RPC trust and transaction-relay topology."""
 
 from __future__ import annotations
 
@@ -7,9 +7,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Closed-world lock: every active line in the authoritative eRPC template must
-# match this reviewed configuration. Comments may evolve without weakening the
-# trust boundary; adding an upstream, directive, placeholder, or override fails.
 EXPECTED_ACTIVE_LINES = """
 logLevel: warn
 projects:
@@ -18,10 +15,24 @@ projects:
       - architecture: evm
         evm:
           chainId: 4663
+          enforceBlockAvailability: false
+          servedTip:
+            enabledFor:
+              - latest
           integrity:
-            enforceHighestBlock: true
+            enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 2
+              agreementThreshold: 2
+              maxWaitOnResult: 5s
+              maxWaitOnEmpty: 5s
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
           - matchMethod: "*"
             timeout:
               duration: 30s
@@ -48,6 +59,18 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 12s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
 """.strip()
 
 
@@ -60,25 +83,23 @@ def active_lines(text: str) -> str:
 
 
 def main(path: str, strict: bool = False) -> int:
-    del strict  # Retained for compatibility with the existing CI invocation.
+    del strict
     source = Path(path)
     try:
         actual = active_lines(source.read_text())
     except OSError as exc:
         print(f"ERROR: cannot read {source}: {exc}", file=sys.stderr)
         return 14
-
     if actual != EXPECTED_ACTIVE_LINES:
         print(
-            "ERROR: Robinhood sovereign RPC config changed outside the reviewed "
-            "closed-world shape (one internal Cadia Nitro upstream).",
+            "ERROR: Robinhood RPC config changed outside the reviewed shape "
+            "(2-of-2 protected reads, self-only traces, forwarding-capable writes).",
             file=sys.stderr,
         )
         return 14
-
     print(
-        "OK: Robinhood sovereign RPC guard — exactly one internal Cadia Nitro "
-        "upstream; no external provider, placeholder, or claimed quorum."
+        "OK: Robinhood RPC guard — 2-of-2 protected reads, self-only traces, "
+        "and a forwarding-capable transaction path."
     )
     return 0
 
