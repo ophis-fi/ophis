@@ -93,7 +93,7 @@ Two requirements for a token to be allowlistable:
 The `@ophis/safe-swap` vault-order builder works on every chain with a live
 Ophis or CoW orderbook:
 
-- **Ophis self-hosted:** Optimism and Unichain.
+- **Ophis self-hosted:** Optimism, Unichain, and Robinhood Chain (4663).
 - **CoW-hosted:** Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB
   Smart Chain, Avalanche, Linea, Ink, and **Plasma (9745)**.
 
