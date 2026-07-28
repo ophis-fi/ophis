@@ -228,6 +228,8 @@ const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Ob
   // verified on-chain: EthFlow.cowSwapSettlement() == Ophis Unichain settlement, 2026-06-30). The
   // chain is LIVE, so native-ETH sells must index here or their rebates silently never accrue.
   130: '0x38c03729153bccf6a281daf41d7c6a14c543f1d7',
+  // Robinhood (4663): Ophis-deployed eth-flow, live from block 21,574,754.
+  4663: '0xc1ee77e8a1b85d5eed702a9bb435f434408a4d29',
 });
 /** Lowercased owner addresses for O(1) "is this an Ophis eth-flow contract" checks. */
 const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ETHFLOW_OWNER_BY_CHAIN));

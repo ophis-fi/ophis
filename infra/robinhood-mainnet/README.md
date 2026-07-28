@@ -37,6 +37,11 @@ enabled because the autopilot requires `debug_traceTransaction`.
 Chain: **4663 (Robinhood)**, ~134ms blocks. Domain: **robinhood-mainnet.ophis.fi**.
 eRPC endpoint: `http://rpc-proxy:4000/main/evm/4663`.
 
+Native ETH sells use the ownerless Ophis ETH Flow contract
+`0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29`, deployed at block
+`21,574,754` on 2026-07-28 and constructor-wired to the sovereign Settlement
+and Robinhood WETH.
+
 ---
 
 ## Production invariants
