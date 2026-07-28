@@ -3,8 +3,12 @@
 Last-resort operator handbook. If a scenario isn't here, open an incident note and add it.
 
 ## How to reach the system
-- SSH: `ssh root@ophis-rebates.aleph.cloud`
+- Host: Cadia (Tailscale-only SSH; production hostname/user are stored in the
+  `CADIA_REBATES_SSH_*` GitHub environment secrets)
+- SSH: `ssh <CADIA_REBATES_SSH_USER>@<CADIA_REBATES_SSH_HOST>`
+- Working directory: `/srv/ophis/apps/rebate-indexer`
 - Logs: `docker compose logs -f indexer`
+- Tunnel logs: `docker compose logs -f cloudflared`
 - Health: `curl -fsS https://rebates.ophis.fi/health`
 - Status: `curl -fsS https://rebates.ophis.fi/status`
 - DB shell: `docker compose exec pg psql -U rebates`
@@ -46,7 +50,10 @@ Last-resort operator handbook. If a scenario isn't here, open an incident note a
    ```bash
    cast wallet new                                   # save PK in macOS Keychain `ophis-rebate-proposer`
    ```
-4. Update Aleph VM env: `ssh root@ophis-rebates.aleph.cloud "sed -i 's/^SAFE_PROPOSER_PRIVATE_KEY=.*/SAFE_PROPOSER_PRIVATE_KEY=<new>/' /srv/rebate-indexer/.env && docker compose restart indexer"`.
+4. Update Cadia's protected `.env` at
+   `/srv/ophis/apps/rebate-indexer/.env`, then run
+   `docker compose restart indexer`. Never put the key on a command line or in
+   shell history.
 5. In Safe → Settings → Transaction service → add the new proposer EOA.
 6. Remove the compromised proposer from Safe → Settings → Transaction service.
 7. The old key is now inert because Safe Transaction Service refuses its signatures.
@@ -77,7 +84,20 @@ On the 1st of each month at ~02:30 UTC you'll get a `💸 Batch ready to sign` T
 
 ### Rotating the Telegram bot token
 1. Talk to BotFather → `/revoke` → `/newbot`.
-2. Update `TELEGRAM_BOT_TOKEN` in Aleph VM `.env`; `docker compose restart indexer`.
+2. Update `TELEGRAM_BOT_TOKEN` in Cadia's `.env`; `docker compose restart indexer`.
+
+### Cloudflare tunnel disconnected (`530` / error `1033`)
+The existing `ophis-rebates` tunnel runs as the `cloudflared` Compose service
+and routes its single hostname to Caddy on `127.0.0.1:80`.
+
+1. Confirm the origin: `curl -fsS http://127.0.0.1/health`.
+2. Inspect the replica: `docker compose ps cloudflared` and
+   `docker compose logs --tail=100 cloudflared`.
+3. Confirm public ingress: `curl -fsS https://rebates.ophis.fi/health`.
+4. If the token was rotated, write the new `TUNNEL_TOKEN` only to Cadia's
+   mode-0600 `.env`, then run `docker compose up -d cloudflared`.
+5. Do not create a replacement tunnel or DNS record during an incident; the
+   persistent tunnel ID and hostname route remain the production identity.
 
 ### Adding a new chain to the payout footprint (post-Phase-1)
 Out of scope for v1. When ready, edit `src/safe/addresses.ts` `WETH_BY_CHAIN`, deploy the Safe MultiSendCallOnly on the new chain (CREATE2 via `@safe-global/safe-deployments`), and bridge WETH to that chain's Safe address.

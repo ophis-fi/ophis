@@ -22,7 +22,7 @@ state directly.
 | Explorer | [explorer.ophis.fi](https://explorer.ophis.fi) | Order/trade search. |
 | Intent API | `POST https://ophis.fi/api/intent` | See [Intent API](/intent-api). |
 | MCP server | `https://mcp.ophis.fi/mcp` | Streamable-HTTP; a request without an `Accept: text/event-stream` header returns HTTP 406: that is expected, not an outage. See [AI agents](/ai-agents). |
-| Rebate indexer | [rebates.ophis.fi/health](https://rebates.ophis.fi/health) | JSON. `last_pipeline_run_at` is the nightly-pipeline liveness signal (it advances at 02:00 UTC daily); `last_fetch` is insert-only and only moves on a new tagged trade, so a stale `last_fetch` during a quiet period is normal. |
+| Rebate indexer | [rebates.ophis.fi/health](https://rebates.ophis.fi/health) | JSON. The indexer and its recovered ledger run on Cadia behind the persistent `ophis-rebates` Cloudflare Tunnel. `last_pipeline_run_at` is the nightly-pipeline liveness signal (it advances at 02:00 UTC daily); `last_fetch` is insert-only and only moves on a new tagged trade, so a stale `last_fetch` during a quiet period is normal. Cloudflare `530` / error `1033` means the tunnel replica is disconnected, not that the hostname changed. |
 | Optimism orderbook | [optimism-mainnet.ophis.fi](https://optimism-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 10 (see below). |
 | Unichain orderbook | [unichain-mainnet.ophis.fi](https://unichain-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 130 (see below). |
 | Robinhood orderbook | [robinhood-mainnet.ophis.fi](https://robinhood-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 4663 (see below). |
