@@ -9,6 +9,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
+import { ROBINHOOD_CHAIN_LOGO } from './robinhood'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
@@ -58,7 +59,7 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
   ),
   // Ophis fork: WETH on Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
+    ROBINHOOD_CHAIN_LOGO,
     4663 as unknown as SupportedChainId,
     ROBINHOOD_WETH_ADDRESS,
     18,
@@ -149,7 +150,7 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
   ),
   // Native ETH on Robinhood Chain (chain 4663).
   [4663 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
+    ROBINHOOD_CHAIN_LOGO,
     4663 as unknown as SupportedChainId,
     NATIVE_CURRENCY_ADDRESS,
     18,

@@ -22,6 +22,7 @@ import {
 } from '@cowprotocol/cow-sdk'
 
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
+import { ROBINHOOD_CHAIN_LOGO } from './robinhood'
 import { TokenWithLogo } from './types'
 
 // Official Unichain brand mark (pink #F50DB4 web3icons glyph, MIT) inlined as a
@@ -31,9 +32,6 @@ import { TokenWithLogo } from './types'
 // 130 entry below. Consumed via <img src> (CSP img-src allows data:).
 const UNICHAIN_LOGO_DATA_URI =
   'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9Im5vbmUiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEyIiBmaWxsPSIjRjUwREI0Ii8+PHBhdGggdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTIgMTIpIHNjYWxlKC43NCkgdHJhbnNsYXRlKC0xMiAtMTIpIiBmaWxsPSIjZmZmIiBkPSJNMjEgMTEuODI5QTguODMgOC44MyAwIDAgMSAxMi4xNzEgM2gtLjM0MnY4LjgyOUgzdi4zNDJBOC44MyA4LjgzIDAgMCAxIDExLjgyOSAyMWguMzQydi04LjgyOUgyMXoiLz48L3N2Zz4=' as HttpsString
-
-const ROBINHOOD_LOGO_DATA_URI =
-  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTIiIGZpbGw9IiMwMEM4MDUiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNNyA2aDUuN2MzIDAgNC44IDEuNSA0LjggNCAwIDEuOC0uOCAzLjEtMi4zIDMuN0wxOCAxOGgtNGwtMi4zLTMuN0gxMVYxOEg3VjZ6bTQgM3YyLjVoMS40Yy44IDAgMS4yLS40IDEuMi0xLjNTMTMuMiA5IDEyLjQgOUgxMXoiLz48L3N2Zz4=' as HttpsString
 
 // Ophis fork (2026-05-20): MegaETH (4326) and HyperEVM (999) chain
 // definitions removed from the frontend. Backend scaffolding for these
@@ -209,8 +207,8 @@ export const CHAIN_INFO: ChainInfoMap = {
     explorer: 'https://robinhoodchain.blockscout.com' as HttpsString,
     infoLink: 'https://robinhood.com/crypto/robinhood-chain' as HttpsString,
     logo: {
-      light: ROBINHOOD_LOGO_DATA_URI,
-      dark: ROBINHOOD_LOGO_DATA_URI,
+      light: ROBINHOOD_CHAIN_LOGO,
+      dark: ROBINHOOD_CHAIN_LOGO,
     },
     addressPrefix: 'rbh',
     label: 'Robinhood Chain',
