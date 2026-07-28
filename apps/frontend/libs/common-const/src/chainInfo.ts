@@ -22,7 +22,7 @@ import {
 } from '@cowprotocol/cow-sdk'
 
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
-import { ROBINHOOD_CHAIN_LOGO } from './robinhood'
+import { ROBINHOOD_CHAIN_LOGO } from './robinhood.const'
 import { TokenWithLogo } from './types'
 
 // Official Unichain brand mark (pink #F50DB4 web3icons glyph, MIT) inlined as a

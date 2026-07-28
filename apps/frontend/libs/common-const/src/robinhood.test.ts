@@ -2,7 +2,7 @@ import type { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { CHAIN_INFO } from './chainInfo'
 import { NATIVE_CURRENCIES, WRAPPED_NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
-import { ROBINHOOD_CHAIN_LOGO } from './robinhood'
+import { ROBINHOOD_CHAIN_LOGO } from './robinhood.const'
 
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 

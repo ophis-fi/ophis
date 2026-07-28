@@ -17,7 +17,7 @@ index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd
 +    logoUrl: "https://files.cow.fi/tokens/HYPE.png"
 +  },
 +  // Ophis fork — chain 10 (Optimism): WETH at 0x4200…0006 (canonical OP WETH)
-+  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 130: createWrappedTokenForChain(130, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
++  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 130: createWrappedTokenForChain(130, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 4663: createWrappedTokenForChain(4663, "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73", wrappedNativeCurrencyEth)
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
@@ -51,7 +51,7 @@ index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e
 +    logoUrl: "https://files.cow.fi/tokens/HYPE.png"
 +  },
 +  // Ophis fork — chain 10 (Optimism): WETH at 0x4200…0006 (canonical OP WETH)
-+  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 130: createWrappedTokenForChain(130, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth)
++  10: createWrappedTokenForChain(10, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 130: createWrappedTokenForChain(130, "0x4200000000000000000000000000000000000006", wrappedNativeCurrencyEth), 4663: createWrappedTokenForChain(4663, "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73", wrappedNativeCurrencyEth)
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
