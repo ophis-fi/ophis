@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 
 import { COW_CDN, SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
-import { ALL_SUPPORTED_CHAIN_IDS, getAddressKey, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getAddressKey, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type { TokenInfo, TokenList } from '@uniswap/token-lists'
 
+import { EXPLORER_SUPPORTED_CHAIN_IDS } from 'const/supportedChains'
 import useSWR, { SWRResponse } from 'swr'
 
 import { NATIVE_TOKEN_PER_NETWORK } from '../const'
@@ -108,7 +109,7 @@ function useTokenListByUrl(tokenListUrl: string): SWRResponse<TokenListPerNetwor
   })
 }
 
-const SUPPORTED_CHAIN_IDS_SET = new Set(ALL_SUPPORTED_CHAIN_IDS)
+const SUPPORTED_CHAIN_IDS_SET = new Set(EXPLORER_SUPPORTED_CHAIN_IDS)
 
 function fetcher(tokenListUrl: string): Promise<TokenListPerNetwork> {
   return fetch(tokenListUrl)
