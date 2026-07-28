@@ -11,7 +11,7 @@ coverAlt: "Ophis emblem with Unichain and supported chain logos"
 
 To swap on Unichain, open [swap.ophis.fi/#/130/swap](https://swap.ophis.fi/#/130/swap), connect your wallet, pick or describe the pair, and sign an EIP-712 order. You never broadcast a transaction and you pay no gas for the swap itself: a network of competing solvers fills the order and settles it on-chain in a batch, MEV-protected by construction. The rest of this guide walks through each step, explains what happens after you sign, and covers the cost (a flat 0.10% fee, 0.01% for same-chain stablecoin-to-stablecoin trades).
 
-Context in two sentences. Unichain is chain id 130, one of the twelve chains Ophis supports. [Ophis](https://ophis.fi/) is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Unichain it runs a deployment of its own, which matters in one specific way covered below.
+Context in two sentences. Unichain is chain id 130, one of the 13 EVM chains Ophis supports. [Ophis](https://ophis.fi/) is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Unichain it runs a deployment of its own, which matters in one specific way covered below.
 
 ## Swap on Unichain, step by step
 
@@ -49,7 +49,7 @@ Trade enough and part of it comes back. Rebate tiers run on rolling 30-day volum
 
 ## Swapping on Unichain from an AI agent
 
-The same rails are exposed to agents. Ophis runs a remote MCP server at [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp), keyless and unauthenticated, with twelve tools that cover every supported chain, Unichain included. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner. `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
+The same rails are exposed to agents. Ophis runs a remote MCP server at [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp), keyless and unauthenticated, with fourteen tools that cover every supported chain, Unichain included. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
 
 For the full safety model (bounded orders, pinned receivers, and what to lock down before an agent signs unattended), read [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/) and the [AI agent docs](https://docs.ophis.fi/ai-agents).
 

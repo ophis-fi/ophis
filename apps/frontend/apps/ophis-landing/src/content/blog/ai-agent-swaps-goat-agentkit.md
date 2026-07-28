@@ -127,7 +127,7 @@ Both snippets pass a `referralCode`. Every order carries the Ophis partner fee p
 
 ## Not writing TypeScript? Use the MCP server
 
-If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at [mcp.ophis.fi/mcp](https://mcp.ophis.fi/mcp): keyless, unauthenticated, all 13 supported chains, 12 tools from `parse_intent` to `submit_order`, and the same rule that the agent signs locally with its own key. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
+If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at [mcp.ophis.fi/mcp](https://mcp.ophis.fi/mcp): keyless, unauthenticated, all 13 supported chains, fourteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
 
 ## FAQ
 

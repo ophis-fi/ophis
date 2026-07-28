@@ -1,7 +1,7 @@
 ---
 id: intro
-title: Introduction
-description: Ophis is an intent-based DEX aggregator, describe a swap in natural language and a competitive solver auction fills it MEV-protected.
+title: Ophis DEX Aggregator Documentation
+description: Ophis is an intent-based DEX aggregator across 13 EVM chains. Describe a swap in natural language and a competitive solver auction fills it MEV-protected.
 slug: /
 sidebar_label: Introduction
 sidebar_position: 1

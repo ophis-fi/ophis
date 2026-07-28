@@ -128,8 +128,9 @@ are not source chains, you cannot start a swap from a Solana or Bitcoin
 balance. You paste a destination address and sign with your EVM wallet;
 NEAR Intents brokers the bridge.
 
-236 tokens are recognised across stablecoins, ETH/BTC pegs, DeFi
-blue-chips, AI/RWA, memes, and gaming.
+The current token catalog covers stablecoins, ETH/BTC pegs, DeFi
+blue-chips, AI/RWA, memes, and gaming. The in-app token selector is the
+live source of truth because token availability can change by chain.
 
 :::tip[Building on Ophis?]
 
