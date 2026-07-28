@@ -109,7 +109,11 @@ services:
     network_mode: host
     depends_on: [caddy]
     environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN must be set}
+      # Do not use Compose's required-value interpolation here: Compose expands
+      # the whole model even for `docker compose up pg`, which would make the
+      # local quickstart require a production credential. cloudflared validates
+      # the token when this service is actually started.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     # This legacy tunnel has no dashboard-managed ingress rule. Pin its single
     # public hostname to the local Caddy listener explicitly; without --url,
     # cloudflared connects successfully but returns 503 for every request.
