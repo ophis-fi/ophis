@@ -50,6 +50,20 @@ jobs:
           # Tailscale-SSH node can wait indefinitely for an auth method on an
           # ephemeral tagged runner, while `tailscale ssh` authenticates the
           # runner's tailnet identity directly and verifies the node identity.
+          # rsync invokes its remote shell as `rsh -l user host command`, while
+          # the Tailscale wrapper accepts `user@host command`; adapt that one
+          # calling-convention difference without weakening either identity check.
+          TAILSCALE_RSH="$RUNNER_TEMP/tailscale-rsh"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'set -euo pipefail' \
+            'remote_user=' \
+            'if [ "${1:-}" = "-l" ]; then remote_user=$2; shift 2; fi' \
+            'remote_host=$1; shift' \
+            'if [ -n "$remote_user" ]; then remote_host="$remote_user@$remote_host"; fi' \
+            'exec tailscale ssh "$remote_host" "$@"' \
+            > "$TAILSCALE_RSH"
+          chmod 700 "$TAILSCALE_RSH"
           # The VM builds the image locally — no GHCR push needed. We rsync
           # the minimal source subset (excluding workspace siblings the
           # indexer doesn't import + node_modules + the VM's .env file).
@@ -62,7 +76,7 @@ jobs:
           # NB: comments must NOT appear between \-continued lines — a comment
           # after a trailing \ ends the command early (Codex #471 P1).
           rsync -az --delete \
-            -e "tailscale ssh" \
+            -e "$TAILSCALE_RSH" \
             --exclude="node_modules" \
             --exclude="dist" \
             --exclude=".turbo" \
