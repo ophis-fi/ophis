@@ -9,7 +9,6 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
-import { ROBINHOOD_CHAIN_LOGO } from './robinhood.const'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
@@ -24,6 +23,7 @@ const UNICHAIN_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
 
 // Ophis fork: Robinhood Chain mainnet (4663) WETH9.
 const ROBINHOOD_WETH_ADDRESS = '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'
+const ETHEREUM_TOKEN_LOGO = WRAPPED_NATIVE_CURRENCIES_SDK[SupportedChainId.MAINNET].logoUrl
 
 // Ophis fork: MegaETH mainnet (chain 4326) WETH address.
 // MegaETH is an OP-Stack rollup, so the predeploy slot 0x4200…0006 is the
@@ -59,7 +59,7 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
   ),
   // Ophis fork: WETH on Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: new TokenWithLogo(
-    ROBINHOOD_CHAIN_LOGO,
+    ETHEREUM_TOKEN_LOGO,
     4663 as unknown as SupportedChainId,
     ROBINHOOD_WETH_ADDRESS,
     18,
@@ -150,7 +150,7 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
   ),
   // Native ETH on Robinhood Chain (chain 4663).
   [4663 as unknown as SupportedChainId]: new TokenWithLogo(
-    ROBINHOOD_CHAIN_LOGO,
+    ETHEREUM_TOKEN_LOGO,
     4663 as unknown as SupportedChainId,
     NATIVE_CURRENCY_ADDRESS,
     18,
