@@ -93,7 +93,7 @@ services:
       # The driver submits through eRPC, which may select this node for
       # eth_sendRawTransaction. Forward writes to Robinhood's public sequencer
       # gateway; keeping this non-null is settlement-critical.
-      - --execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:-https://rpc.mainnet.chain.robinhood.com}
+      - --execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:?set ROBINHOOD_TX_FORWARDING_TARGET in nitro/.env}
       # Memory safety valve on a RAM-constrained host (~26 GB WSL2 VM). Nitro's
       # mem-free-limit ships DISABLED; set it so the node sheds load instead of
       # OOM-killing when free memory runs low (e.g. concurrent traces from eRPC).

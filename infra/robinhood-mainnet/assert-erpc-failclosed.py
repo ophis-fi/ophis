@@ -61,6 +61,9 @@ projects:
               jitter: 50ms
       - id: robinhood-official
         endpoint: https://rpc.mainnet.chain.robinhood.com
+        ignoreMethods:
+          - eth_blockNumber
+          - eth_getBlockByNumber
         failsafe:
           - matchMethod: "*"
             timeout:
