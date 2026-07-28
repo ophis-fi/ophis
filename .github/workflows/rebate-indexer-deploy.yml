@@ -25,12 +25,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      # Join the tailnet as an ephemeral, tagged CI node so the deploy reaches the
-      # Cadia over Tailscale (tailnet DNS, sshd port 22) instead of exposing SSH.
-      # This lets us close public SSH on the box. Requires the TS_AUTHKEY secret
-      # (ephemeral, pre-authorized, tag:ci) and the CADIA_REBATES_SSH_* production
-      # secrets. Authentication is Tailscale SSH identity-based; no reusable SSH
-      # private key is stored in GitHub.
+      # Join the tailnet as an ephemeral, tagged CI node so the deploy reaches
+      # Cadia's tailnet-only sshd listener instead of exposing SSH publicly.
+      # Tailscale SSH itself is intentionally not used here: tag:ci is allowed
+      # network access but not an interactive Tailscale SSH login.
       - name: Connect to Tailscale (ephemeral CI node)
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
         with:
@@ -41,29 +39,20 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
           SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
+          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.CADIA_REBATES_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEY: ${{ secrets.CADIA_REBATES_SSH_HOST_KEY }}
         run: |
-          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ]; then
-            echo "::error::CADIA_REBATES_SSH_HOST/USER must be set."
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PORT" ] ||
+             [ -z "$SSH_PRIVATE_KEY" ] || [ -z "$SSH_HOST_KEY" ]; then
+            echo "::error::CADIA_REBATES_SSH_* production secrets must be set."
             exit 1
           fi
-          # Use the Tailscale client as the remote shell. OpenSSH against a
-          # Tailscale-SSH node can wait indefinitely for an auth method on an
-          # ephemeral tagged runner, while `tailscale ssh` authenticates the
-          # runner's tailnet identity directly and verifies the node identity.
-          # rsync invokes its remote shell as `rsh -l user host command`, while
-          # the Tailscale wrapper accepts `user@host command`; adapt that one
-          # calling-convention difference without weakening either identity check.
-          TAILSCALE_RSH="$RUNNER_TEMP/tailscale-rsh"
-          printf '%s\n' \
-            '#!/usr/bin/env bash' \
-            'set -euo pipefail' \
-            'remote_user=' \
-            'if [ "${1:-}" = "-l" ]; then remote_user=$2; shift 2; fi' \
-            'remote_host=$1; shift' \
-            'if [ -n "$remote_user" ]; then remote_host="$remote_user@$remote_host"; fi' \
-            'exec tailscale ssh "$remote_host" "$@"' \
-            > "$TAILSCALE_RSH"
-          chmod 700 "$TAILSCALE_RSH"
+          install -m 700 -d "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/ssh/deploy_key"
+          printf '%s\n' "$SSH_HOST_KEY" > "$RUNNER_TEMP/ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/ssh/deploy_key" "$RUNNER_TEMP/ssh/known_hosts"
+          SSH_COMMAND="ssh -i $RUNNER_TEMP/ssh/deploy_key -p $SSH_PORT -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
           # The VM builds the image locally — no GHCR push needed. We rsync
           # the minimal source subset (excluding workspace siblings the
           # indexer doesn't import + node_modules + the VM's .env file).
@@ -76,7 +65,7 @@ jobs:
           # NB: comments must NOT appear between \-continued lines — a comment
           # after a trailing \ ends the command early (Codex #471 P1).
           rsync -az --delete \
-            -e "$TAILSCALE_RSH" \
+            -e "$SSH_COMMAND" \
             --exclude="node_modules" \
             --exclude="dist" \
             --exclude=".turbo" \
@@ -99,8 +88,12 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
           SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
+          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
         run: |
-          tailscale ssh "$SSH_USER@$SSH_HOST" \
+          ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
+            "$SSH_USER@$SSH_HOST" \
             "set -e
              cd /srv/ophis/apps/rebate-indexer
              docker compose up -d --build

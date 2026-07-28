@@ -3,9 +3,14 @@
 Last-resort operator handbook. If a scenario isn't here, open an incident note and add it.
 
 ## How to reach the system
-- Host: Cadia (Tailscale-only SSH; production hostname/user are stored in the
-  `CADIA_REBATES_SSH_*` GitHub environment secrets)
-- SSH: `ssh <CADIA_REBATES_SSH_USER>@<CADIA_REBATES_SSH_HOST>`
+- Host: Cadia. Deployment SSH listens only on Cadia's Tailscale address, port
+  `2222`; it is not exposed on the public network.
+- CI access: the `production` GitHub environment stores
+  `CADIA_REBATES_SSH_HOST`, `CADIA_REBATES_SSH_USER`,
+  `CADIA_REBATES_SSH_PORT`, `CADIA_REBATES_SSH_PRIVATE_KEY`, and the pinned
+  `CADIA_REBATES_SSH_HOST_KEY`. The runner joins Tailscale as `tag:ci` before
+  opening the key-authenticated SSH connection.
+- Operator SSH: `ssh -p 2222 <CADIA_REBATES_SSH_USER>@<CADIA_REBATES_SSH_HOST>`
 - Working directory: `/srv/ophis/apps/rebate-indexer`
 - Logs: `docker compose logs -f indexer`
 - Tunnel logs: `docker compose logs -f cloudflared`
