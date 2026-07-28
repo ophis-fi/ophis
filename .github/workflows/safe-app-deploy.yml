@@ -84,6 +84,11 @@ jobs:
       - name: build SDK (Safe App typechecks + bundles against its emitted .d.ts)
         run: pnpm --filter @ophis/sdk build
 
+      - name: build Safe swap library
+        # @ophis/safe-app imports the workspace package through its emitted
+        # dist declarations. Keep this in sync with the blocking CI build order.
+        run: pnpm --filter @ophis/safe-swap build
+
       - name: build safe-app
         # tsc -b && vite build -> apps/safe-app/dist. public/{_headers,manifest.json,ophis-icon.svg}
         # are copied verbatim to dist/ root (Vite default publicDir), so safe.ophis.fi/manifest.json
