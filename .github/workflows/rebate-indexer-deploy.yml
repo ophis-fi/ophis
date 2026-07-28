@@ -39,25 +39,17 @@ jobs:
 
       - name: rsync source to Cadia
         env:
-          SSH_HOST:     ${{ secrets.CADIA_REBATES_SSH_HOST }}
-          SSH_USER:     ${{ secrets.CADIA_REBATES_SSH_USER }}
-          SSH_PORT:     ${{ secrets.CADIA_REBATES_SSH_PORT }}
-          SSH_HOST_KEY: ${{ secrets.CADIA_REBATES_SSH_HOST_KEY }}
+          SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
+          SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
         run: |
-          mkdir -p ~/.ssh
-          # Pin Cadia's Tailscale SSH host key instead of trusting whatever
-          # answers on the tailnet IP. `ssh-keyscan >> known_hosts` was TOFU
-          # per-run, i.e. NO host authentication: anything that could answer on
-          # the tailnet hostname got an authenticated session + the full repo.
-          # SSH_HOST_KEY must hold the known_hosts line for Cadia, e.g.
-          # `<tailnet-host> ssh-ed25519 AAAA...` (capture once with
-          # `ssh-keyscan -p <port> <host>`). Fail closed if it is unset so the
-          # deploy never silently reverts to trusting an unknown host.
-          if [ -z "$SSH_HOST_KEY" ]; then
-            echo "::error::CADIA_REBATES_SSH_HOST_KEY is not set; refusing an unpinned connection."
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ]; then
+            echo "::error::CADIA_REBATES_SSH_HOST/USER must be set."
             exit 1
           fi
-          echo "$SSH_HOST_KEY" >> ~/.ssh/known_hosts
+          # Use the Tailscale client as the remote shell. OpenSSH against a
+          # Tailscale-SSH node can wait indefinitely for an auth method on an
+          # ephemeral tagged runner, while `tailscale ssh` authenticates the
+          # runner's tailnet identity directly and verifies the node identity.
           # The VM builds the image locally — no GHCR push needed. We rsync
           # the minimal source subset (excluding workspace siblings the
           # indexer doesn't import + node_modules + the VM's .env file).
@@ -70,7 +62,7 @@ jobs:
           # NB: comments must NOT appear between \-continued lines — a comment
           # after a trailing \ ends the command early (Codex #471 P1).
           rsync -az --delete \
-            -e "ssh -p $SSH_PORT -o BatchMode=yes -o StrictHostKeyChecking=yes" \
+            -e "tailscale ssh" \
             --exclude="node_modules" \
             --exclude="dist" \
             --exclude=".turbo" \
@@ -93,9 +85,8 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
           SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
-          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
         run: |
-          ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes "$SSH_USER@$SSH_HOST" \
+          tailscale ssh "$SSH_USER@$SSH_HOST" \
             "set -e
              cd /srv/ophis/apps/rebate-indexer
              docker compose up -d --build
