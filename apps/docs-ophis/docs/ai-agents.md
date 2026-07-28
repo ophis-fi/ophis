@@ -124,7 +124,7 @@ If you'd rather make a single REST call than wire up the full toolset, use the
 2. **Read.** Receive a `ParsedIntent` with normalized `sellToken`,
    `buyToken`, `amount`, and `chain` entities.
 3. **Build a deep link.** Map the chain slug to its chain ID and
-   construct `https://ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
+   construct `https://swap.ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
 4. **Hand off.** Open the link for the user to review and sign. Ophis
    never auto-signs, every order requires explicit wallet approval.
 
@@ -219,7 +219,7 @@ def build_deeplink(parsed: dict) -> str:
 
 
 intent = parse_intent("swap 100 USDC for ETH on Base")
-print(build_deeplink(intent))  # https://ophis.fi/#/8453/swap/USDC/ETH
+print(build_deeplink(intent))  # https://swap.ophis.fi/#/8453/swap/USDC/ETH
 ```
 
 ## LangChain tool

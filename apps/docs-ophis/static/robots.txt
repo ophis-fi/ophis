@@ -14,6 +14,9 @@ Allow: /
 User-agent: ChatGPT-User
 Allow: /
 
+User-agent: anthropic-ai
+Allow: /
+
 User-agent: OAI-SearchBot
 Allow: /
 
@@ -26,7 +29,16 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
+User-agent: Perplexity-User
+Allow: /
+
 User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: CCBot
 Allow: /
 
 Sitemap: https://docs.ophis.fi/sitemap.xml

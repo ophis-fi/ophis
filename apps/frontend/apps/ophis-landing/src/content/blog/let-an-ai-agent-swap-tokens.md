@@ -53,7 +53,7 @@ server:
 https://mcp.ophis.fi/mcp
 ```
 
-It exposes twelve tools:
+It exposes fourteen tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -63,12 +63,14 @@ It exposes twelve tools:
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
 | `lookup_tier` | Look up a wallet's 30-day volume tier and rebate status. |
+| `get_integrator_earnings` | Read routed volume, own-fee accrual, referral rebates, and paid-to-date figures for an appCode. |
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
 | `get_balances` | Read a wallet's native and ERC-20 balances on one chain. |
 | `get_portfolio` | Read a wallet's token balances across multiple chains. |
 | `get_gas` | Fetch the current gas price for a chain. |
 | `get_token_chart` | Fetch a token's OHLCV price chart. |
 | `expected_surplus` | Estimate how much better an Ophis sell-quote beats the open market. |
+| `validate_order` | Validate a proposed order against Ophis safety and routing invariants before signing. |
 
 Point any MCP client (Claude, Cursor, or your own agent loop) at the URL:
 
@@ -102,7 +104,7 @@ import requests
 CHAIN_IDS = {
     "ethereum": 1, "optimism": 10, "unichain": 130, "bnb": 56, "gnosis": 100,
     "polygon": 137, "base": 8453, "ink": 57073, "linea": 59144,
-    "arbitrum": 42161, "avalanche": 43114, "plasma": 9745,
+    "arbitrum": 42161, "avalanche": 43114, "plasma": 9745, "robinhood": 4663,
 }
 
 @tool
@@ -120,7 +122,7 @@ def ophis_swap_intent(text: str) -> dict:
         raise ValueError(f"unmapped chain {chain!r}; never silently misroute")
     chain_id = CHAIN_IDS.get(chain, 1)  # no chain named: default to Ethereum
     sell, buy = by_type.get("sellToken", "_"), by_type.get("buyToken", "_")
-    return {"intent": parsed, "deeplink": f"https://ophis.fi/#/{chain_id}/swap/{sell}/{buy}"}
+    return {"intent": parsed, "deeplink": f"https://swap.ophis.fi/#/{chain_id}/swap/{sell}/{buy}"}
 ```
 
 The tool returns both the structured intent (so the agent can reason about the
