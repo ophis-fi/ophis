@@ -71,6 +71,16 @@ export const SOVEREIGN_CHAIN_IDS: ReadonlySet<number> = new Set([
   ROBINHOOD_CHAIN_ID,
 ]);
 
+/**
+ * Chains where the own-fee Safe payout pipeline is configured end to end.
+ * Robinhood is sovereign for affiliate keep-rate accounting, but stays out of
+ * this set until its WETH, Safe transaction service, and cron payout lane exist.
+ */
+export const OWN_FEE_GUARANTEED_CHAIN_IDS: ReadonlySet<number> = new Set([
+  OPTIMISM_CHAIN_ID,
+  UNICHAIN_CHAIN_ID,
+]);
+
 /** Fraction of the gross fee Ophis keeps after CoW's cut, scaled by 1e4.
  *  Sovereign chains keep 100% (10_000); every hosted chain keeps 75% (7_500). */
 export function keepFractionBps(chainId: number): number {

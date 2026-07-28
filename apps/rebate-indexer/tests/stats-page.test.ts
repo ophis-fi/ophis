@@ -92,13 +92,14 @@ describe('renderStatsPage', () => {
 });
 
 describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', () => {
-  it('matches the sovereign driver configs: 4 solvers on Optimism, 8 competing on Unichain', () => {
+  it('matches the sovereign driver configs', () => {
     // Counts mirror the [[solver]] blocks in
     // infra/optimism-mainnet/configs/driver.toml.tmpl and
     // infra/unichain-mainnet/configs/driver.toml.tmpl.
     expect(EXECUTION_FACTS.solverCompetition.sovereignChains).toEqual([
       { chainId: 10, solvers: 4 },
       { chainId: 130, solvers: 8 },
+      { chainId: 4663, solvers: 1 },
     ]);
   });
 
@@ -112,9 +113,9 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
 });
 
 describe('PRODUCTION_CHAIN_IDS (public /stats allow-list)', () => {
-  it('lists exactly the 12 named mainnet chains', () => {
+  it('lists exactly the 13 named mainnet chains', () => {
     expect([...PRODUCTION_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
-      1, 10, 56, 100, 130, 137, 8453, 9745, 42161, 43114, 57073, 59144,
+      1, 10, 56, 100, 130, 137, 4663, 8453, 9745, 42161, 43114, 57073, 59144,
     ]);
   });
 

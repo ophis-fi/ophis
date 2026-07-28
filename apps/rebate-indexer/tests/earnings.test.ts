@@ -33,7 +33,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(e.routedVolumeUsd.hosted).toBe(200_000); // Base
     expect(e.routedVolumeUsd.total).toBe(350_000);
     expect(e.routedVolumeUsd.sovereign + e.routedVolumeUsd.hosted).toBe(e.routedVolumeUsd.total);
-    expect(e.sovereignChains).toEqual([10, 130]);
+    expect(e.sovereignChains).toEqual([10, 130, 4663]);
   });
 
   it('scopes GUARANTEED own-fee to the sovereign chains and labels hosted as gross, not guaranteed', () => {
@@ -48,6 +48,29 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     // ...and be disclosed as gross (Ophis takes 0% of the own-fee).
     expect(e.ownFeeAccruedUsd.note).toContain('GROSS');
     expect(e.ownFeeAccruedUsd.recipient).toBe(RECIPIENT);
+  });
+
+  it('keeps Robinhood routed volume sovereign without guaranteeing its own-fee payout', () => {
+    const input: EarningsInput = {
+      ...fullInput,
+      byChain: [
+        {
+          chainId: 4663,
+          volumeUsd: 20_000,
+          trades: 2,
+          ophisFeeBase: 20_000 * 10,
+          ownFeeBase: 20_000 * 25,
+        },
+      ],
+    };
+    const e = assembleEarnings('robinhood-app', input, NOW);
+    expect(e.routedVolumeUsd).toMatchObject({ sovereign: 20_000, hosted: 0 });
+    expect(e.ophisFeeAccruedUsd).toMatchObject({ sovereign: 20, hosted: 0 });
+    expect(e.ownFeeAccruedUsd).toMatchObject({
+      sovereignGuaranteed: 0,
+      hostedAccrued: 50,
+    });
+    expect(e.ownFeeAccruedUsd.note).toContain('includes Robinhood until that payout lane exists');
   });
 
   it('reports the Ophis base fee (informational) split the same way', () => {
