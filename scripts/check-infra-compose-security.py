@@ -61,6 +61,16 @@ for path in STACKS:
                 errors.append(
                     f'{path.relative_to(ROOT)} permits {svc} without mandatory {TOKEN}'
                 )
+        nitro_compose = path.parent / 'nitro' / 'docker-compose.yml'
+        nitro_text = nitro_compose.read_text()
+        if '--execution.forwarding-target=null' in nitro_text:
+            errors.append(
+                f'{nitro_compose.relative_to(ROOT)} disables settlement transaction forwarding'
+            )
+        if '--execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:' not in nitro_text:
+            errors.append(
+                f'{nitro_compose.relative_to(ROOT)} does not configure a transaction forwarding target'
+            )
 
 if errors:
     for error in errors:

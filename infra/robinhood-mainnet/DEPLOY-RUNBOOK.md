@@ -111,13 +111,18 @@ Then `./compose-up.sh`. It sources `.env`, materializes the postgres secret, run
 
 - `SETTLEMENT=<deployed-4663-settlement> ./scripts/check-settlement-buffer.sh`. AUDIT-CHANGED: `SETTLEMENT` is now env-configurable and the script exits with a `skipped` JSON if it is still the placeholder; it monitors the WETH9/USDG buffers on 4663 (was querying Optimism addresses before).
 - `./scripts/verify-e2e-swap.sh --owner <0xUserWallet>` after placing a test order (the `--owner` arg is required). AUDIT-CHANGED: it reports VERIFIED only when the Trade-event match count for that owner is a positive integer (it no longer passes on an empty count).
-- `python3 assert-erpc-failclosed.py configs/erpc.yaml.tmpl`. AUDIT-CHANGED: it now reports the `preferBlockHeadLeader` pricing residual accurately instead of certifying it as fully fail-closed. See the decision below.
+- `python3 assert-erpc-failclosed.py configs/erpc.yaml.tmpl`. It must certify
+  2-of-2 protected reads, self-only traces, and forwarding-capable writes.
 
 ---
 
 ## Audit-introduced decisions (make these consciously)
 
-1. **eRPC `eth_call` uses `preferBlockHeadLeader`** (single-upstream-selectable on a dispute) for availability, because `returnError` there failed ~30-50% of `latest` reads (#476). This is acceptable for day-1, where quote pricing comes from LiFi's off-chain API. BEFORE you enable a self-run pricing solver (a V4Quoter reading prices through `eth_call`), flip that consensus rule to `disputeBehavior: returnError` (fully fail-closed) and accept the availability cost. The by-hash settlement-decode reads are already `returnError`.
+1. **Protected reads require Cadia and Robinhood's official public RPC to agree.** Before
+   enabling a self-run pricing solver, verify `eth_call` succeeds through eRPC
+   and that intentionally stopping either voter makes it fail closed. Do not
+   weaken `agreementThreshold: 2`; add a second independently verified Nitro
+   node if higher availability is required.
 2. **node-exporter disk metrics** mount only `/var/lib/docker` read-only (so the disk-full alerts keep paging without exposing the compose-dir secrets). If the Docker data disk is mounted elsewhere on this VM, edit that one path in `docker-compose.yml`.
 3. **Image digests** (eRPC, postgres, busybox) are pinned by `@sha256`. Bump them deliberately when you update, not implicitly.
 
