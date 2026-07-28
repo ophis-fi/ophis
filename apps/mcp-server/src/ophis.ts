@@ -871,7 +871,7 @@ const GECKO_NETWORK: Record<number, string> = {
 
 /** KyberSwap aggregator path-slug per chain (the public beat-the-market reference). */
 const KYBER_SLUG: Record<number, string> = {
-  1: 'ethereum', 10: 'optimism', 130: 'unichain', 4663: 'robinhood', 56: 'bsc', 137: 'polygon', 8453: 'base',
+  1: 'ethereum', 10: 'optimism', 130: 'unichain', 56: 'bsc', 137: 'polygon', 8453: 'base',
   42161: 'arbitrum', 43114: 'avalanche', 59144: 'linea',
 }
 

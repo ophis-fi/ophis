@@ -121,7 +121,7 @@ const OPHIS_HYPEREVM_VAULT_RELAYER = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205
 const OPHIS_UNICHAIN_VAULT_RELAYER = '0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb' as const;
 
 /** Ophis-deployed GPv2VaultRelayer on Robinhood Chain (4663), read from settlement.vaultRelayer(). */
-const OPHIS_ROBINHOOD_VAULT_RELAYER = '0xB52c38097c19cD38238C62DD36027a7918efa890' as const;
+const OPHIS_ROBINHOOD_VAULT_RELAYER = '0xB52C38097c19cd38238c62DD36027a7918eFa890' as const;
 
 export const OPHIS_VAULT_RELAYER_ADDRESSES: Readonly<Partial<Record<number, `0x${string}`>>> = Object.freeze({
   1: CANONICAL_COW_VAULT_RELAYER,
