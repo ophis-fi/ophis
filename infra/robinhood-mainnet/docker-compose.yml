@@ -324,6 +324,32 @@ services:
       # this path if the Docker data disk is mounted elsewhere on the host.
       - "/var/lib/docker:/host/var/lib/docker:ro"
 
+  # Refunds every expired, unfilled EthFlow order so user ETH cannot remain
+  # stranded in the ownerless contract. Use a dedicated low-value EOA to avoid
+  # nonce contention with the settlement submitter.
+  refunder:
+    image: local-refunder:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: refunder
+      args: *backend-build-args
+    restart: always
+    mem_limit: 512m
+    depends_on:
+      db: { condition: service_healthy }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_URL: ${DB_READ_URL}
+      NODE_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
+      CHAIN_ID: "4663"
+      ETHFLOW_CONTRACTS: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29"
+      REFUNDER_PK: ${OPHIS_REFUNDER_PK:?dedicated Robinhood refunder key must be set}
+      MIN_PRICE_DEVIATION_BPS: "-1000000"
+      MIN_VALIDITY_DURATION: "2m"
+      LOOKBACK_TIME: "30d"
+
 volumes:
   postgres:
   prometheus-data:

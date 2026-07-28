@@ -12,6 +12,7 @@ const UID = ('0x' + '0a'.repeat(56)) as `0x${string}`;
 const WETH = '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1' as `0x${string}`;   // a non-reference token
 const USDC_E = '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83' as `0x${string}`;  // gnosis (100) USD reference, 6dp
 const UNI_USDC = '0x078d782b760474a361dda0af3839290b0ef57ad6' as `0x${string}`; // unichain (130) USD reference, 6dp
+const ROBINHOOD_USDG = '0x5fc5360d0400a0fd4f2af552add042d716f1d168' as `0x${string}`;
 
 beforeEach(() => mockNativePrice.mockReset());
 
@@ -41,6 +42,17 @@ describe('priceTrade — stablecoin self-pricing', () => {
     const usd = await priceTrade({ tradeUid: UID, chainId: 100, sellToken: USDC_E, sellAmount: 10_000_000_000n });
     expect(usd).toBeCloseTo(10_000, 2);
     expect(mockNativePrice).not.toHaveBeenCalled(); // short-circuit, no oracle/network
+  });
+
+  it('self-prices Robinhood USDG at its verified 6 decimals', async () => {
+    const usd = await priceTrade({
+      tradeUid: UID,
+      chainId: 4663,
+      sellToken: ROBINHOOD_USDG,
+      sellAmount: 12_345_000_000n,
+    });
+    expect(usd).toBeCloseTo(12_345, 2);
+    expect(mockNativePrice).not.toHaveBeenCalled();
   });
 });
 

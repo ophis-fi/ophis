@@ -5,4 +5,4 @@ import type { HttpsString } from '@cowprotocol/cow-sdk'
  * Keep chain and native-token selectors on the same first-party asset.
  */
 export const ROBINHOOD_CHAIN_LOGO =
-  'https://cdn.robinhood.com/assets/generated_assets/hoodchain_docsite/rh_favicon_120.png' as HttpsString
+  'https://cdn.robinhood.com/assets/generated_assets/hoodchain_docsite/feather-light.svg' as HttpsString

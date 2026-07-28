@@ -9,7 +9,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
-import { ROBINHOOD_CHAIN_LOGO } from './robinhood'
+import { ROBINHOOD_CHAIN_LOGO } from './robinhood.const'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'

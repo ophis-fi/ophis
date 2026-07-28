@@ -76,6 +76,18 @@ for path in STACKS:
             errors.append(
                 f'{nitro_env.relative_to(ROOT)} does not document the transaction forwarding target'
             )
+        refunder = service_block(text, 'refunder')
+        required_refunder_fields = (
+            'CHAIN_ID: "4663"',
+            'ETHFLOW_CONTRACTS: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29"',
+            'REFUNDER_PK: ${OPHIS_REFUNDER_PK:?',
+            'MIN_PRICE_DEVIATION_BPS: "-1000000"',
+        )
+        for field in required_refunder_fields:
+            if field not in refunder:
+                errors.append(
+                    f'{path.relative_to(ROOT)} Robinhood refunder is missing {field}'
+                )
 
 if errors:
     for error in errors:
