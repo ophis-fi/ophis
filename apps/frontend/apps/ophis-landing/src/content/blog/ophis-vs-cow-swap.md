@@ -32,7 +32,7 @@ Ophis supports thirteen chains: Ethereum, Optimism, BNB, Gnosis, Unichain, Robin
 | Chains | Orderbook | Settlement |
 | --- | --- | --- |
 | Ethereum, BNB, Gnosis, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, Linea | CoW Protocol's, via api.cow.fi | CoW Protocol's canonical audited GPv2 contracts |
-| Optimism, Unichain | Ophis-operated (sovereign) | A bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address |
+| Optimism, Unichain, Robinhood Chain | Ophis-operated (sovereign) | A bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address |
 
 On the ten hosted chains, an Ophis order is an order in CoW's orderbook, settled by the same contracts CoW Swap uses there. On Optimism, Unichain, and Robinhood Chain, Ophis runs the stack itself: its own orderbook and its own settlement deployment. On Optimism that contract is 0x310784c7FCE12d578dA6f53460777bAc9718B859.
 

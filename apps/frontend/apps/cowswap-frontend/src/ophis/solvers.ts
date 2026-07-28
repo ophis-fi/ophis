@@ -28,6 +28,7 @@
 
 /** Chain id of the Ophis-operated Optimism orderbook. */
 export const OPHIS_SOLVER_REGISTRY_CHAIN_ID = 10
+export const OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID = 4663
 
 export interface OphisStaticSolverInfo {
   /**
@@ -44,13 +45,19 @@ export interface OphisStaticSolverInfo {
  * maintainers only; that brand string is never rendered (see the alias layer).
  */
 export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
-  { solverId: 'baseline', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // Ophis baseline solver
+  {
+    solverId: 'baseline',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+  }, // Ophis baseline solver
   { solverId: 'okx', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // OKX OnchainOS (external)
   { solverId: 'kyberswap', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
   { solverId: 'velora', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
   { solverId: 'odos', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator (API sunset 2026-07-30)
   { solverId: 'enso', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external routing engine
-  { solverId: 'lifi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregation layer
+  {
+    solverId: 'lifi',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+  }, // external aggregation layer
   { solverId: 'openocean', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
   { solverId: 'dodo', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
 ]

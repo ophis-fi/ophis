@@ -68,7 +68,7 @@ describe('getOphisVaultRelayer', () => {
     expect(getOphisVaultRelayer(10)).not.toBe(CANONICAL_RELAYER);
     expect(getOphisVaultRelayer(130)).toBe('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'); // Unichain (confirmed via settlement.vaultRelayer())
     expect(getOphisVaultRelayer(130)).not.toBe(CANONICAL_RELAYER);
-    expect(getOphisVaultRelayer(4663)).toBe('0xB52c38097c19cD38238C62DD36027a7918efa890');
+    expect(getOphisVaultRelayer(4663)).toBe('0xB52C38097c19cd38238c62DD36027a7918eFa890');
     expect(getOphisVaultRelayer(4663)).not.toBe(CANONICAL_RELAYER);
   });
 

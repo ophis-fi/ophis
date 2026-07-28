@@ -186,6 +186,7 @@ CHAIN_SLUG_TO_ID = {
     "avalanche": 43114,
     "plasma": 9745,
     "unichain": 130,
+    "robinhood": 4663,
 }
 
 

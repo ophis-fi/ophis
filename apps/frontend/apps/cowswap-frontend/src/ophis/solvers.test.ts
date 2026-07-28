@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import {
   getOphisSolversForChain,
   OPHIS_EXTERNAL_SOLVER_LABEL,
+  OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
   OPHIS_SOLVER_REGISTRY_CHAIN_ID,
   OPHIS_SOLVERS,
   ophisSolverPublicDescription,
@@ -59,6 +60,10 @@ describe('OPHIS_SOLVERS registry', () => {
 
   it('filters by chain', () => {
     expect(getOphisSolversForChain(OPHIS_SOLVER_REGISTRY_CHAIN_ID).length).toBe(OPHIS_SOLVERS.length)
+    expect(getOphisSolversForChain(OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID).map(({ solverId }) => solverId)).toEqual([
+      'baseline',
+      'lifi',
+    ])
     expect(getOphisSolversForChain(1).length).toBe(0)
   })
 
