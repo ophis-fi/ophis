@@ -26,9 +26,9 @@ projects:
           # state poller can trail its real head. Forward the concrete block
           # request and let 2-of-2 consensus fail closed on a missing result.
           enforceBlockAvailability: false
-          # Advertise only the freshest tip both voters have observed. Without
-          # this, Cadia's feed can lead the public gateway by a few blocks and
-          # consumers immediately request state the second voter cannot serve.
+          # Pin latest-tagged reads and block-head responses to the freshest tip
+          # both voters have observed. This avoids treating normal head skew as
+          # a dispute while preserving strict 2-of-2 result agreement.
           servedTip:
             enabledFor:
               - latest
@@ -86,6 +86,12 @@ projects:
 
       - id: robinhood-official
         endpoint: https://rpc.mainnet.chain.robinhood.com
+        # Block-head inputs drive the shared block stream and settlement
+        # deadlines. Route them only through the header-anchored Cadia node;
+        # strict equality at "latest" is impossible on this fast chain.
+        ignoreMethods:
+          - eth_blockNumber
+          - eth_getBlockByNumber
         failsafe:
           - matchMethod: "*"
             timeout:

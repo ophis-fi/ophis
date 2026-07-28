@@ -67,9 +67,14 @@ for path in STACKS:
             errors.append(
                 f'{nitro_compose.relative_to(ROOT)} disables settlement transaction forwarding'
             )
-        if '--execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:' not in nitro_text:
+        if '--execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:?' not in nitro_text:
             errors.append(
-                f'{nitro_compose.relative_to(ROOT)} does not configure a transaction forwarding target'
+                f'{nitro_compose.relative_to(ROOT)} does not require a transaction forwarding target'
+            )
+        nitro_env = path.parent / 'nitro' / '.env.example'
+        if 'ROBINHOOD_TX_FORWARDING_TARGET=' not in nitro_env.read_text():
+            errors.append(
+                f'{nitro_env.relative_to(ROOT)} does not document the transaction forwarding target'
             )
 
 if errors:
