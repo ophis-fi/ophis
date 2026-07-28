@@ -1,4 +1,4 @@
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { ALL_SUPPORTED_CHAINS_MAP, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { CHAIN_INFO } from './chainInfo'
 import { NATIVE_CURRENCIES, WRAPPED_NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
@@ -13,7 +13,7 @@ describe('Robinhood official branding', () => {
       dark: ROBINHOOD_CHAIN_LOGO,
     })
     expect(NATIVE_CURRENCIES[ROBINHOOD_CHAIN_ID].logoURI).toBe(
-      WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET].logoURI,
+      ALL_SUPPORTED_CHAINS_MAP[SupportedChainId.MAINNET].nativeCurrency.logoUrl,
     )
     expect(WRAPPED_NATIVE_CURRENCIES[ROBINHOOD_CHAIN_ID].logoURI).toBe(
       WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET].logoURI,
