@@ -43,6 +43,7 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
             ...ALL_SUPPORTED_CHAIN_IDS,
             10 as unknown as SupportedChainId,
             130 as unknown as SupportedChainId,
+            4663 as unknown as SupportedChainId,
           ],
           rpcMap: RPC_URLS,
           showQrModal: true,

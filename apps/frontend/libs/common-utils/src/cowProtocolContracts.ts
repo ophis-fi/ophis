@@ -34,6 +34,14 @@ const OPHIS_UNICHAIN_VAULT_RELAYER: `0x${string}` = '0xaB29E2a859704C914E55566Ae
 // through this address. Do NOT zero it — that silently disables native-ETH orders.
 const OPHIS_UNICHAIN_ETH_FLOW: `0x${string}` = '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7'
 
+// Ophis fork: Robinhood Chain mainnet (4663). Contracts verified on-chain
+// after the sovereign deployment ceremony. EthFlow is not deployed: users
+// wrap native ETH to WETH before creating an ERC-20 order.
+const OPHIS_ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
+const OPHIS_ROBINHOOD_SETTLEMENT: `0x${string}` = '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD'
+const OPHIS_ROBINHOOD_VAULT_RELAYER: `0x${string}` = '0xB52c38097c19cD38238C62DD36027a7918efa890'
+const OPHIS_ROBINHOOD_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
+
 // Ophis fork: MegaETH mainnet (chain 4326) contract addresses
 // Settlement + VaultRelayer deployed 2026-05-15 (CREATE2-deterministic, same as OP).
 // Update these once contracts are live. The zero-address sentinel keeps the
@@ -78,6 +86,7 @@ export const COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS: AddressPerChain = {
     : (COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS_PROD as AddressPerChain)),
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_SETTLEMENT,
   [OPHIS_UNICHAIN_CHAIN_ID]: OPHIS_UNICHAIN_SETTLEMENT,
+  [OPHIS_ROBINHOOD_CHAIN_ID]: OPHIS_ROBINHOOD_SETTLEMENT,
   [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_SETTLEMENT,
   [OPHIS_HYPEREVM_CHAIN_ID]: OPHIS_HYPEREVM_SETTLEMENT,
 }
@@ -96,6 +105,7 @@ export const COW_PROTOCOL_VAULT_RELAYER_ADDRESS: AddressPerChain = {
     : (COW_PROTOCOL_VAULT_RELAYER_ADDRESS_PROD as AddressPerChain)),
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_VAULT_RELAYER,
   [OPHIS_UNICHAIN_CHAIN_ID]: OPHIS_UNICHAIN_VAULT_RELAYER,
+  [OPHIS_ROBINHOOD_CHAIN_ID]: OPHIS_ROBINHOOD_VAULT_RELAYER,
   [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_VAULT_RELAYER,
   [OPHIS_HYPEREVM_CHAIN_ID]: OPHIS_HYPEREVM_VAULT_RELAYER,
 }
@@ -116,6 +126,8 @@ export const COW_PROTOCOL_ETH_FLOW_ADDRESS: AddressPerChain = {
   [OPHIS_OPTIMISM_CHAIN_ID]: OPHIS_OP_ETH_FLOW,
   // ETH Flow IS live on Unichain (2026-06-29): native-ETH sells via 0x38C0…F1D7.
   [OPHIS_UNICHAIN_CHAIN_ID]: OPHIS_UNICHAIN_ETH_FLOW,
+  // EthFlow is not deployed on Robinhood; sentinel zero disables native sells.
+  [OPHIS_ROBINHOOD_CHAIN_ID]: OPHIS_ROBINHOOD_ETH_FLOW,
   // ETH Flow not deployed on MegaETH for Ophis; sentinel zero disables EthFlow UI.
   [OPHIS_MEGAETH_CHAIN_ID]: OPHIS_MEGAETH_ETH_FLOW,
   // EthFlow deployed on HyperEVM (2026-05-17): native HYPE sells go through

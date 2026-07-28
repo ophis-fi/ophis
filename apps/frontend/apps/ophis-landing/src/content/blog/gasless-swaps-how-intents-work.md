@@ -63,7 +63,7 @@ that would need it.
 
 The limit you signed still bounds the outcome. Solvers compete to beat your
 quote, and when one does, the Ophis fee takes no share of the price improvement
-beyond the signed quote. On Optimism and Unichain, where Ophis runs its own
+beyond the signed quote. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own
 settlement, 100% of that improvement is paid to you as surplus; on the chains
 that settle through CoW Protocol, CoW Protocol keeps half.
 
@@ -105,8 +105,9 @@ added attack surface. An agent that signs orders instead of broadcasting
 transactions needs neither; the full integration pattern is in
 [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
-**Multichain traders.** Ophis settles on 12 chains: Ethereum, Optimism, BNB,
-Gnosis, Unichain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, and Linea.
+**Multichain traders.** Ophis settles on 13 chains: Ethereum, Optimism, BNB,
+Gnosis, Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
+Ink, and Linea.
 They do not all share one gas token. Pre-funding a native balance on every
 chain you might trade on is dead capital and real friction; signed orders
 remove the prerequisite entirely.
@@ -126,7 +127,7 @@ Your order carries a hard limit price that you signed, and it cannot settle
 below that price. If the market never reaches your limit before expiry, the
 order expires at zero cost to you. If the market moves in your favor, solvers
 still compete for the fill, and the improvement beyond your signed quote comes
-back to you as surplus (100% of it on Optimism and Unichain; on chains that
+back to you as surplus (100% of it on Optimism, Unichain, and Robinhood Chain; on chains that
 settle through CoW Protocol, CoW Protocol keeps half).
 
 ### Who pays the solver?

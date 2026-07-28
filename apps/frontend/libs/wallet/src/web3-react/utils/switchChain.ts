@@ -55,6 +55,8 @@ const WALLET_RPC_SUGGESTION: Record<SupportedChainId, HttpsString | null> = {
   [10 as unknown as SupportedChainId]: optimism.rpcUrls.default.http[0],
   // Ophis fork: Unichain (chain 130)
   [130 as unknown as SupportedChainId]: unichain.rpcUrls.default.http[0] as HttpsString,
+  // Ophis fork: Robinhood Chain (chain 4663)
+  [4663 as unknown as SupportedChainId]: 'https://rpc.mainnet.chain.robinhood.com' as HttpsString,
 }
 
 // TODO: Add proper return type annotation

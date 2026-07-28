@@ -56,8 +56,9 @@ including key export and arbitrary contract calls.
 On the 10 non-sovereign chains, Ophis uses CoW Protocol's canonical GPv2
 contracts, so the EIP-712 order domain is byte-identical to CoW Swap's. A policy
 that allowlists that domain therefore authorizes CoW-native order flow on that
-chain too, not Ophis exclusively. Only **Optimism (10)** and **Unichain (130)**
-run an Ophis-deployed settlement, so only those two carry an Ophis-exclusive
+chain too, not Ophis exclusively. **Optimism (10)**, **Unichain (130)**, and
+**Robinhood Chain (4663)** run Ophis-deployed settlements, so those three carry
+an Ophis-exclusive
 domain. If you need Ophis-exclusive routing on a shared-domain chain, also
 enforce the orderbook host and appData in your in-code policy gate.
 

@@ -23,7 +23,7 @@
   // Enabled chains for the compat surface (Ophis-operated orderbooks only, so
   // nothing proxies api.cow.fi hosts). Everything else stays behind this config.
   "vars": {
-    "COMPAT_ENABLED_CHAINS": "10,130",
+    "COMPAT_ENABLED_CHAINS": "10,130,4663",
     // Master switch for mapping a non-zero Odos `referralFee` to a CIP-75 Volume
     // `metadata.partnerFee` entry (partner-fees Phase A, #926). MUST be flipped
     // in lockstep with the backend's `partner-fee-registry.registration-enabled`:

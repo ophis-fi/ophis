@@ -219,7 +219,7 @@ Rules:
   "shiba inu" -> SHIB.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
 - Chain canonical values: lowercase slugs. Allowed (mirrors SORTED_CHAIN_IDS in the FE — chains the NetworkSelector actually surfaces):
-    ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon, unichain
+    ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon, robinhood, unichain
 - Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "arbitrum one"/"arb" -> arbitrum.
 - Amount: numeric string only ("100", "1.5"). "a hundred" -> "100". "a thousand" -> "1000". No units. No suffix multipliers like "k" / "m".
 - ETH disambiguation: chain only when preceded by "on"/"via"/"using"; otherwise it is a token.
@@ -263,6 +263,7 @@ const CHAIN_VALUES = new Set([
   'optimism',
   'plasma',
   'polygon',
+  'robinhood',
   'unichain',
 ])
 

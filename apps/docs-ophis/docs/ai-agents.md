@@ -170,7 +170,7 @@ import requests
 
 OPHIS = "https://ophis.fi"
 
-# The 12 EVM chains the Intent API can return, mapped to their chain IDs.
+# The 13 EVM chains the Intent API can return, mapped to their chain IDs.
 # Keep in sync with the API's supported-network list; build_deeplink()
 # raises on any future slug not listed here rather than misrouting it.
 CHAIN_SLUG_TO_ID = {
@@ -412,10 +412,11 @@ if you prefer to vendor them.
 
 ### 1. Resolve the orderbook host from the chain ID
 
-:::danger[Optimism and Unichain do not live on api.cow.fi]
+:::danger[Optimism, Unichain, and Robinhood Chain do not live on api.cow.fi]
 
-Optimism and Unichain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
-their orderbooks at `optimism-mainnet.ophis.fi` and `unichain-mainnet.ophis.fi`.
+Optimism, Unichain, and Robinhood Chain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
+their orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`,
+and `robinhood-mainnet.ophis.fi`.
 Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
 Ophis) **silently bypasses the Ophis solver and zeroes the partner fee**. Resolve
 hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
@@ -464,7 +465,7 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge
+// On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the partner rate you charge
 // is 5 bps (1 bp stable pairs). The backend also enforces an anti-abuse MINIMUM:
 // it rejects (HTTP 400) any order to the Ophis fee recipient whose fee is below
 // 4 bps non-stable (or 1 bp for a same-chain stablecoin pair), or that uses a
@@ -493,10 +494,11 @@ CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
 `signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
 chains do **not** use CoW's canonical settlement.
 
-:::danger[The Optimism and Unichain settlements are not the canonical CoW one]
+:::danger[The Optimism, Unichain, and Robinhood Chain settlements are not the canonical CoW one]
 
-On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, and on Unichain it is
-`0x108A678716e5E1776036eF044CAB7064226F714E`, **not** the canonical
+On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, on Unichain it is
+`0x108A678716e5E1776036eF044CAB7064226F714E`, and on Robinhood Chain it is
+`0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, **not** the canonical
 `0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
 order with the SDK default yields a domain separator the deployed contract
 rejects, every order fails. Build the domain from the chain ID instead.

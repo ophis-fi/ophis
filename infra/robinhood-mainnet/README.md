@@ -5,18 +5,18 @@ This stack runs the Ophis deployment on **Robinhood Chain mainnet (chain 4663)**
 through the sovereign `GPv2Settlement` deployed on Robinhood. The production
 deployment runs on Cadia and its security-sensitive configuration fails closed.
 
-## Two hard prerequisites (same shape as Unichain, different internals)
+## Deployed state
 
-1. **Sovereign contracts are not deployed yet.** The GPv2 core + 2-of-3 Safe governance
-   ceremony must run first. The on-chain foundation is ready (verified 2026-07-02): the
-   CREATE2 deployer `0x4e59b44847...B4956C`, Safe 1.3.0 + 1.4.1 factories/singletons, and
-   canonical WETH9 `0x0Bd7D308...cAD73` are all present, so the Unichain deploy ceremony
-   transfers with Orbit gas adjustments. See `FILL-IN-AFTER-DEPLOY.md`. (The ceremony
-   script itself - `deploy/` - is the next deliverable after this scaffold.)
-2. **A self-hosted Nitro node must be reachable** at `ophis-rbh-node:8547` over Tailscale,
-   with `debug,arb,arbtrace` enabled. The autopilot HARD-requires `debug_traceTransaction`
-   and the public RPC does not serve it. See **`nitro/README.md`** - this is the biggest
-   lift and the main divergence from the OP-Stack playbook.
+- `GPv2Settlement`: `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`
+- `GPv2VaultRelayer`: `0xB52C38097c19cd38238c62DD36027a7918eFa890`
+- `GPv2AllowListAuthentication`: `0x5c802B14d9E132717aE78D42B19a4c517876F2E7`
+- Protocol Safe: `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`
+- Active allowlisted submitter: `0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665`
+
+The sovereign contracts were deployed on 2026-07-25 and protocol authority is
+held by the 2-of-3 Safe. Cadia runs the stack and the self-hosted Nitro node at
+`ophis-rbh-node:8547`; the node must remain synced with `debug,arb,arbtrace`
+enabled because the autopilot requires `debug_traceTransaction`.
 
 ---
 
@@ -39,7 +39,7 @@ eRPC endpoint: `http://rpc-proxy:4000/main/evm/4663`.
 
 ---
 
-## Gates to clear before go-live
+## Production invariants
 
 - **GATE (node):** self-hosted Nitro node synced + `debug_traceTransaction` trace-verified
   on a recent tx (see `nitro/README.md`). Without it the autopilot pauses settlement.
@@ -50,14 +50,13 @@ eRPC endpoint: `http://rpc-proxy:4000/main/evm/4663`.
   is not) AND/OR that Uniswap V3 pools on 4663 hold real depth. See the native-pricing GATE
   in `configs/orderbook.toml.tmpl`. If neither holds, a custom V4 native-price source is
   needed. Per the 2026-07-02 audit, do not trust a shallow V3 TWAP for fee/rebate valuation.
-- **GATE (LiFi router allowlist):** on 4663 LiFi's router is
+- **LiFi router allowlist:** on 4663 LiFi's router is
   `0xB477751B76CF82d00a686A1232f5fCD772414Af3`, NOT the usual LiFiDiamond. Add it to
   `dex::lifi::LIFI_ROUTER_ALLOWLIST` AND `driver custom_allowlist::ROBINHOOD_MAINNET`, or
   every quote fails the same-chain safety check. See `configs/lifi.toml.tmpl`.
-- **GATE (backend chain wiring):** chain 4663 must be added to the backend `Chain` enum
-  (`apps/backend/crates/chain/src/lib.rs`, block_time 100ms) and the solvers `ChainId` enum,
-  plus the frontend / @ophis/sdk / rebate-indexer touch-points. See the port checklist in
-  memory (`2026-07-02-robinhood-chain-port-research.md`). This scaffold is the infra layer only.
+- **Chain wiring:** chain 4663 is wired into the backend and solver chain enums.
+  The frontend, Safe app, compatibility API, MCP server, and `@ophis/sdk` must
+  retain their checked Robinhood URL and deployed-contract mappings.
 
 ---
 

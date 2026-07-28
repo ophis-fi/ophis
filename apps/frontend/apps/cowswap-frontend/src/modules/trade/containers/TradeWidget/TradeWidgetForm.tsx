@@ -220,6 +220,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
     !(buyToken.chainId in SupportedChainId) &&
     buyToken.chainId !== 10 &&
     buyToken.chainId !== 130 &&
+    buyToken.chainId !== 4663 &&
     buyToken.chainId !== 4326 &&
     buyToken.chainId !== 999
 

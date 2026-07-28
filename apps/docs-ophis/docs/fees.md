@@ -1,7 +1,7 @@
 ---
 id: fees
 title: Fees & rebates
-description: Ophis charges a flat 0.10% (10 bps) fee on trade volume, 0.01% on same-chain stablecoin pairs. On Optimism and Unichain that is the all-in cost and 100% of price improvement is returned; on CoW-hosted chains upstream CoW Protocol fees apply on top.
+description: Ophis charges a flat 0.10% (10 bps) fee on trade volume, 0.01% on same-chain stablecoin pairs. On Optimism, Unichain, and Robinhood Chain that is the all-in cost and 100% of price improvement is returned; on CoW-hosted chains upstream CoW Protocol fees apply on top.
 sidebar_label: Fees & rebates
 sidebar_position: 3
 ---
@@ -17,7 +17,7 @@ complete number per chain type, with nothing left out:
 
 ## The all-in cost, per chain
 
-| | Ophis-operated chains (Optimism, Unichain) | CoW-hosted chains (the other 10) |
+| | Ophis-operated chains (Optimism, Unichain, Robinhood Chain) | CoW-hosted chains (the other 10) |
 | --- | --- | --- |
 | Ophis fee | 0.10% (0.01% stable pairs) | 0.10% (0.01% stable pairs) |
 | Upstream protocol fee | **None** | CoW Protocol volume fee: 0.02% (0.003% on correlated pairs such as stablecoins) |
@@ -27,7 +27,7 @@ complete number per chain type, with nothing left out:
 Why the difference: on the 10 CoW-hosted chains, orders settle through CoW
 Protocol's hosted orderbook and solver network, which charges its own
 [protocol fees](https://docs.cow.fi/governance/fees) on top of the Ophis fee.
-On **Optimism and Unichain**, Ophis operates the entire stack itself
+On **Optimism, Unichain, and Robinhood Chain**, Ophis operates the entire stack itself
 (settlement contracts, orderbook, solvers), so there is no upstream fee and no
 improvement capture: the flat Ophis fee is the whole cost, and every basis
 point a solver wins beyond your quote is yours.
@@ -55,7 +55,7 @@ skim a cut of that upside, and Ophis does not.
 
 Where the order settles still matters:
 
-- **Optimism and Unichain:** 100% of the price improvement is returned to you.
+- **Optimism, Unichain, and Robinhood Chain:** 100% of the price improvement is returned to you.
 - **CoW-hosted chains:** CoW Protocol's own fee model retains 50% of the quote
   improvement (capped at 0.98% of volume) before the remainder is returned to
   you. That is an upstream protocol fee, not an Ophis fee, and it applies to
@@ -67,7 +67,7 @@ Where the order settles still matters:
 A typical DEX or aggregator charges an interface fee of **0.25% to 0.30%** on
 most swaps. Ophis charges **0.10% (10 bps)** on volatile pairs and **0.01%
 (1 bp)** on same-chain stablecoin pairs. The tables below are the all-in rate on
-**Optimism and Unichain**; on the CoW-hosted chains, use the all-in there
+**Optimism, Unichain, and Robinhood Chain**; on the CoW-hosted chains, use the all-in there
 (0.12% volatile / 0.013% stables) in the Ophis column, and the gap is still what
 you keep on every trade.
 
@@ -86,7 +86,7 @@ you keep on every trade.
 | $100,000 | $250 | $300 | **$10** | **$240 to $290** | $13 | $237 to $287 |
 
 The same flat rate applies to every trade, no matter the size, so the savings
-scale directly with your volume. On Optimism and Unichain, add the full price
+scale directly with your volume. On Optimism, Unichain, and Robinhood Chain, add the full price
 improvement a solver wins on top of these numbers; on CoW-hosted chains, add
 the post-capture remainder (see the all-in table above).
 
@@ -128,7 +128,7 @@ Wallets below $20,000 of 30-day volume are unranked and do not share in the pool
 Your current tier and progress to the next one are shown on the swap page. Add
 the returned **surplus** on top of every figure above: the rebate is a refund
 of fee, the savings table is fee you never paid, and the surplus is upside the
-solver found for you (returned 100% on Optimism and Unichain, post-capture on
+solver found for you (returned 100% on Optimism, Unichain, and Robinhood Chain, post-capture on
 CoW-hosted chains).
 
 ## How it's collected
@@ -138,7 +138,7 @@ the order's `appData` and taken from the trade output at settlement. The Ophis
 swap app writes `10` (0.10%) retail; the `@ophis/sdk` partner path writes `5`
 (0.05%), or `1` on same-chain stablecoin pairs.
 
-On the **Ophis-operated stacks (Optimism, Unichain)**, the backend also enforces
+On the **Ophis-operated stacks (Optimism, Unichain, Robinhood Chain)**, the backend also enforces
 an **anti-abuse minimum** at settlement, so a fee is guaranteed on chain rather
 than relying on the frontend: it rejects any order to the Ophis fee recipient
 whose partner fee falls below **4 bps** on a non-stable pair (or **1 bp** on a

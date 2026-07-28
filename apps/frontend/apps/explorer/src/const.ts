@@ -100,6 +100,8 @@ export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = {
   [10 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
   // Ophis fork: WETH on Unichain mainnet (chain 130) — OP-Stack predeploy slot
   [130 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
+  // Ophis fork: WETH on Robinhood Chain mainnet (chain 4663)
+  [4663 as unknown as SupportedChainId]: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
   // Ophis fork: WETH on MegaETH mainnet (chain 4326) — predeploy slot, TBD post-deploy.
   [4326 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
   // Ophis fork: WHYPE on HyperEVM mainnet (chain 999). NOT an OP-Stack chain,
@@ -118,6 +120,13 @@ export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
   } as TokenErc20,
   // Ophis fork: ETH on Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: {
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    name: 'Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  } as TokenErc20,
+  // Ophis fork: ETH on Robinhood Chain mainnet (chain 4663)
+  [4663 as unknown as SupportedChainId]: {
     address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
     name: 'Ether',
     symbol: 'ETH',
