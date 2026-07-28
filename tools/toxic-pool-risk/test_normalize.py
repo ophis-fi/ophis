@@ -61,6 +61,29 @@ class NormalizeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "stale"):
             normalize(raw, expected_chain_id=10, now=NOW)
 
+    def test_expiry_is_bounded_by_scanned_head_time(self):
+        raw = scanner_output()
+        raw["head_timestamp"] = int((NOW - timedelta(hours=5, minutes=59)).timestamp())
+        feed = normalize(raw, expected_chain_id=10, now=NOW)
+        self.assertEqual(feed["expiresAt"], "2026-07-27T12:01:00Z")
+
+    def test_rejects_falsy_non_list_top_level_errors(self):
+        for malformed in ("", False, 0, {}):
+            with self.subTest(malformed=malformed):
+                raw = scanner_output()
+                raw["errors"] = malformed
+                with self.assertRaisesRegex(ValidationError, "errors must be a string array"):
+                    normalize(raw, expected_chain_id=10, now=NOW)
+
+    def test_null_or_missing_top_level_errors_default_to_empty(self):
+        for raw in (scanner_output(), scanner_output()):
+            raw["errors"] = None
+            feed = normalize(raw, expected_chain_id=10, now=NOW)
+            self.assertEqual(feed["errors"], [])
+        raw = scanner_output()
+        del raw["errors"]
+        self.assertEqual(normalize(raw, expected_chain_id=10, now=NOW)["errors"], [])
+
     def test_rejects_duplicate_case_insensitive_address(self):
         row = {"pool": POOL, "ui_flag": "none", "ui_reasons": []}
         raw = scanner_output(row)

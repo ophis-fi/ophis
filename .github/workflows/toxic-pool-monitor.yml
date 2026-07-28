@@ -157,11 +157,12 @@ jobs:
           if [[ "$JOB_STATUS" != "success" ]]; then
             message="CRITICAL: Ophis Optimism toxic-pool scan failed. ${RUN_URL}"
           elif [[ -f risk-output/published/optimism.json ]]; then
-            read -r critical high scan_errors < <(
-              python -c 'import json; c=json.load(open("risk-output/published/optimism.json"))["counts"]; print(c["critical"], c["high"], c["scan_error"])'
+            read -r feed_status critical high scan_errors < <(
+              python -c 'import json; f=json.load(open("risk-output/published/optimism.json")); c=f["counts"]; print(f["status"], c["critical"], c["high"], c["scan_error"])'
             )
-            if (( critical > 0 || high > 0 || scan_errors > 0 )); then
-              message="WARNING: Ophis Optimism Curve scan: critical=${critical}, high=${high}, scan_error=${scan_errors}. ${RUN_URL}"
+            if [[ "$feed_status" != "complete" ]] ||
+               (( critical > 0 || high > 0 || scan_errors > 0 )); then
+              message="WARNING: Ophis Optimism Curve scan: status=${feed_status}, critical=${critical}, high=${high}, scan_error=${scan_errors}. ${RUN_URL}"
             fi
           fi
           [[ -z "$message" ]] && exit 0
