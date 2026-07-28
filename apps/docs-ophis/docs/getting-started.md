@@ -109,7 +109,7 @@ For the full lifecycle, see [How it works](./architecture.md).
 
 Ophis surfaces **13 EVM chains** as full source _and_ destination in the
 network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
-Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, and Unichain
+Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain
 (plus the Sepolia testnet). On any of these you can both pay from and receive into
 your EVM wallet.
 
@@ -118,7 +118,8 @@ your EVM wallet.
 | Ethereum | Arbitrum One | Avalanche |
 | Base | BNB Smart Chain | Gnosis Chain |
 | Ink | Linea | Optimism |
-| Plasma | Polygon | Unichain |
+| Plasma | Polygon | Robinhood Chain |
+| Unichain | | |
 
 In addition, **Solana** and **Bitcoin** are available as cross-chain
 _destinations only_ via [NEAR Intents](https://near.org/intents): trade

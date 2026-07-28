@@ -61,7 +61,7 @@ export const faqLd = {
       name: 'Who runs the solvers?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own stack, Ophis currently operates the solver itself, competing across several routing strategies (a baseline router plus multiple DEX aggregators) per batch; the on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
+        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own stack, Ophis operates its own solvers. Available routing strategies vary by chain; Robinhood currently has one active LI.FI lane. The on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
       },
     },
     {
@@ -121,7 +121,7 @@ your funds move only when a solver settles the batch.
 
 13 EVM chains as source / destination: Ethereum, Arbitrum One, Avalanche,
 Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma,
-Polygon, and Unichain. Plus **Solana** and **Bitcoin** as cross-chain
+Polygon, Robinhood Chain, and Unichain. Plus **Solana** and **Bitcoin** as cross-chain
 destinations via NEAR Intents. See [Getting started](./getting-started.md#supported-networks).
 
 ### Is my trade protected from MEV?

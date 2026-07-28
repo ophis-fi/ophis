@@ -1,3 +1,4 @@
+import { EXPLORER_SUPPORTED_CHAIN_IDS } from 'const/supportedChains'
 import {
   GetOrderApi,
   MultipleOrders,
@@ -12,6 +13,10 @@ import { RAW_ORDER } from '../data'
 const networkIdSearchListRemaining = [Network.MAINNET, Network.SEPOLIA]
 
 describe('tryGetOrderOnAllNetworks', () => {
+  test('includes Robinhood in the default cross-network search list', () => {
+    expect(EXPLORER_SUPPORTED_CHAIN_IDS).toContain(4663)
+  })
+
   test('Should consult other networks when the order is empty', async () => {
     const network = Network.SEPOLIA
     const txHash = '0xTest_txHash'
