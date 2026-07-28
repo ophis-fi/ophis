@@ -98,6 +98,27 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  # Production ingress is an outbound-only Cloudflare Tunnel replica. The
+  # existing `ophis-rebates` tunnel and rebates.ophis.fi DNS route remain
+  # Cloudflare-managed; the origin URL is pinned below. Keep TUNNEL_TOKEN only
+  # in the deployment .env (mode 0600); it is never committed or passed through
+  # to the indexer container.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.3
+    restart: unless-stopped
+    network_mode: host
+    depends_on: [caddy]
+    environment:
+      # Do not use Compose's required-value interpolation here: Compose expands
+      # the whole model even for `docker compose up pg`, which would make the
+      # local quickstart require a production credential. cloudflared validates
+      # the token when this service is actually started.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    # This legacy tunnel has no dashboard-managed ingress rule. Pin its single
+    # public hostname to the local Caddy listener explicitly; without --url,
+    # cloudflared connects successfully but returns 503 for every request.
+    command: tunnel --no-autoupdate --url http://127.0.0.1:80 run
+
 volumes:
   pg_data:
   caddy_data:
