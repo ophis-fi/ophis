@@ -3,13 +3,13 @@ import type { CowEnv, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { getEthFlowContractAddresses } from './common'
 
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+const ROBINHOOD_ETH_FLOW = '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29'
 
 describe('getEthFlowContractAddresses', () => {
   it.each(['prod' as CowEnv, 'staging' as CowEnv])(
-    'fails closed for Robinhood before EthFlow deployment in %s',
+    'uses the deployed Robinhood EthFlow in %s',
     (env) => {
-      expect(getEthFlowContractAddresses(env, ROBINHOOD_CHAIN_ID)).toBe(ZERO_ADDRESS)
+      expect(getEthFlowContractAddresses(env, ROBINHOOD_CHAIN_ID)).toBe(ROBINHOOD_ETH_FLOW)
     },
   )
 })

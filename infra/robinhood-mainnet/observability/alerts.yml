@@ -499,7 +499,7 @@ groups:
           summary: "Robinhood driver gas_price_cap policy violated (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
           description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override. If context='submit_settlement' the broadcast was ABORTED (settle tx is not on-chain); if context='cancel_settlement' the broadcast PROCEEDED anyway to avoid nonce-stuck (cancellation is 21k gas — bounded drain). Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine Robinhood fee surge while a solver-override pushed past the cap; (3) repeated RBF bumps cascading above policy. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://rpc.mainnet.chain.robinhood.com`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
 
-  - name: ophis-uni-ethflow
+  - name: ophis-robinhood-ethflow
     interval: 30s
     rules:
       # Audit HIGH-2 defense-in-depth (2026-05-18): WETH WETH9 parity
@@ -516,7 +516,7 @@ groups:
       # a subgraph alerter, or have the rebate-indexer (which already
       # listens for cow-fi events) tail EthFlow logs.
       # TODO once metric producer lands: re-evaluate threshold.
-      - alert: OphisUniEthFlowTransferFailed
+      - alert: OphisRobinhoodEthFlowTransferFailed
         expr: |
           increase(ethflow_eth_transfer_failed_total[10m]) > 0
         for: 0m
@@ -525,7 +525,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "Robinhood EthFlow refund/transfer failed — investigate WETH or recipient state"
-          description: "EthFlow at 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7 emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x4200000000000000000000000000000000000006)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
+          description: "EthFlow at 0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29 emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash, decode orderData.owner, and confirm the Robinhood WETH codehash via `cast code 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73 | cast keccak`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
 
   - name: ophis-uni-sanctions-oracle
     interval: 30s

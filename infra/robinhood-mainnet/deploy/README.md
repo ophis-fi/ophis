@@ -70,7 +70,9 @@ This is where an OP-Stack runbook would bite you:
    interaction runs (baseline/LiFi do not), so deploy + wiring still pass. Confirm the
    vault has code before ever adding a Balancer-routing solver.
 3. **Safe hosted service** likely does not index 4663 - operate the Safe via protocol-kit / CLI.
-4. **WETH** is `0x0Bd7D308...cAD73` (not the OP `0x4200..0006`); relevant for the frontend and a later EthFlow deploy, which is deferred here.
+4. **WETH** is `0x0Bd7D308...cAD73` (not the OP `0x4200..0006`). Ophis ETH Flow
+   is live at `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` (block `21,574,754`,
+   tx `0x2a53f63922138e6a014e5edc79ef108283f74cbc0864f6288ad95e434dd21dcf`).
 
 ## After the ceremony
 

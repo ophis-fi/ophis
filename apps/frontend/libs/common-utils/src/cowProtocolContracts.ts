@@ -35,12 +35,12 @@ const OPHIS_UNICHAIN_VAULT_RELAYER: `0x${string}` = '0xaB29E2a859704C914E55566Ae
 const OPHIS_UNICHAIN_ETH_FLOW: `0x${string}` = '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7'
 
 // Ophis fork: Robinhood Chain mainnet (4663). Contracts verified on-chain
-// after the sovereign deployment ceremony. EthFlow is not deployed: users
-// wrap native ETH to WETH before creating an ERC-20 order.
+// after the sovereign deployment ceremony. EthFlow was deployed 2026-07-28
+// and is constructor-wired to the settlement and Robinhood WETH below.
 const OPHIS_ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const OPHIS_ROBINHOOD_SETTLEMENT: `0x${string}` = '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD'
 const OPHIS_ROBINHOOD_VAULT_RELAYER: `0x${string}` = '0xB52C38097c19cd38238c62DD36027a7918eFa890'
-const OPHIS_ROBINHOOD_ETH_FLOW: `0x${string}` = '0x0000000000000000000000000000000000000000'
+const OPHIS_ROBINHOOD_ETH_FLOW: `0x${string}` = '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29'
 
 // Ophis fork: MegaETH mainnet (chain 4326) contract addresses
 // Settlement + VaultRelayer deployed 2026-05-15 (CREATE2-deterministic, same as OP).

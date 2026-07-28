@@ -77,7 +77,7 @@ export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504', // OP — deployed 2026-06-07 (tx 0xc0316c2c…c48e) + sdk patch
   130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7', // Unichain — EthFlow deployed 2026-06-29 (Codex+ToB+Verity reviewed)
-  4663: '0x0000000000000000000000000000000000000000', // Robinhood — not deployed; fail closed in prod and staging
+  4663: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29', // Robinhood — deployed 2026-07-28, tx 0x2a53f639…21dcf
   4326: '0x0000000000000000000000000000000000000000', // MegaETH — not deployed
   999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B', // HyperEVM — PR #61 (deployed) + PR #65 (sdk patch)
 }
