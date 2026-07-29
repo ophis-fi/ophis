@@ -23,7 +23,7 @@ projects:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -44,8 +44,8 @@ projects:
               jitter: 50ms
     upstreamDefaults:
       evm:
-        statePollerInterval: 1s
-        statePollerDebounce: 300ms
+        statePollerInterval: 10s
+        statePollerDebounce: 1s
     upstreams:
       - id: ophis-self-rbh
         endpoint: http://ophis-rbh-node:8547
@@ -59,11 +59,12 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
-      - id: robinhood-official
-        endpoint: https://rpc.mainnet.chain.robinhood.com
+      - id: robinhood-goldsky
+        endpoint: ${GOLDSKY_ROBINHOOD_RPC_URL}
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
+          - eth_getLogs
         failsafe:
           - matchMethod: "*"
             timeout:
