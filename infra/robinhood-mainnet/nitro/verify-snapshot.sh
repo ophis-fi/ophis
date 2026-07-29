@@ -21,8 +21,8 @@
 #   header stateRoot. So a snapshot with tampered balances/storage/code can serve
 #   silently-wrong traces even while every block hash matches. There is no cheap
 #   local check that closes this; the only real defenses are (a) a trusted
-#   publisher, or (b) re-deriving state from DA, which the blob gap makes
-#   impossible here. Passing this gate lowers, but does not eliminate, the risk of
+#   publisher, or (b) re-deriving state from DA using the Blobscan archive
+#   adapter. Passing this gate lowers, but does not eliminate, the risk of
 #   an anonymous snapshot. Weigh that before pointing settlement at this leg.
 #
 # NOT YET RUN - authored 2026-07-22. Requires `cast` (foundry) + jq + curl.
