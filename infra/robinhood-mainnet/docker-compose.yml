@@ -57,7 +57,7 @@ services:
       default: {}
       ophis-rbh-net: {}
     environment:
-      GOLDSKY_ROBINHOOD_RPC_URL: ${GOLDSKY_ROBINHOOD_RPC_URL:?GOLDSKY_ROBINHOOD_RPC_URL must be set}
+      GOLDSKY_ROBINHOOD_RPC_SECRET: ${GOLDSKY_ROBINHOOD_RPC_SECRET:?Goldsky Robinhood RPC secret must be set}
     volumes:
       - ./rendered/erpc.yaml:/erpc.yaml:ro
     ports:

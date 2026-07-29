@@ -33,7 +33,9 @@ the main `README.md`.
      /dev/stdin /home/ophis-driver/.config/submitter.key; unset PK
    ```
 2. **Secrets**: `cp .env.example .env && chmod 600 .env`, fill the CoinGecko
-   key and mandatory inter-service token. eRPC uses no provider keys. For alerting:
+   key, mandatory inter-service token, and `GOLDSKY_ROBINHOOD_RPC_SECRET`
+   (`gs_edge_...`, secret only—not the full URL). Protected eRPC reads require
+   this independent Goldsky voter and Compose refuses to start without it. For alerting:
    `mkdir -p secrets && printf '%s' '<bot-token>' > secrets/telegram-token && chmod 600 secrets/telegram-token`.
 3. **Fill contract addresses**: replace every `__FILL_AFTER_DEPLOY_*__` in `configs/*.tmpl`
    (SETTLEMENT, BALANCES, SIGNATURES, ETHFLOW, HOOKS, SUBMITTER_EOA) — see `FILL-IN-AFTER-DEPLOY.md`.
