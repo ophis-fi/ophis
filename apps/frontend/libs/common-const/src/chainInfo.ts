@@ -22,7 +22,12 @@ import {
 } from '@cowprotocol/cow-sdk'
 
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
-import { ROBINHOOD_CHAIN_LOGO } from './robinhood.const'
+import {
+  ROBINHOOD_CHAIN_BRIDGE,
+  ROBINHOOD_CHAIN_DOCS,
+  ROBINHOOD_CHAIN_EXPLORER,
+  ROBINHOOD_CHAIN_LOGO,
+} from './robinhood.const'
 import { TokenWithLogo } from './types'
 
 // Official Unichain brand mark (pink #F50DB4 web3icons glyph, MIT) inlined as a
@@ -202,10 +207,10 @@ export const CHAIN_INFO: ChainInfoMap = {
     nativeCurrency: NATIVE_CURRENCIES[130 as unknown as SupportedChainId],
   },
   [4663 as unknown as SupportedChainId]: {
-    docs: 'https://docs.robinhood.com/crypto/robinhood-chain' as HttpsString,
-    bridge: 'https://robinhood.com' as HttpsString,
-    explorer: 'https://robinhoodchain.blockscout.com' as HttpsString,
-    infoLink: 'https://robinhood.com/crypto/robinhood-chain' as HttpsString,
+    docs: ROBINHOOD_CHAIN_DOCS,
+    bridge: ROBINHOOD_CHAIN_BRIDGE,
+    explorer: ROBINHOOD_CHAIN_EXPLORER,
+    infoLink: ROBINHOOD_CHAIN_DOCS,
     logo: {
       light: ROBINHOOD_CHAIN_LOGO,
       dark: ROBINHOOD_CHAIN_LOGO,

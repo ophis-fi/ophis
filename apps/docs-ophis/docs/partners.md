@@ -46,7 +46,13 @@ domain, the receiver pin, and the `sendOrder` wire shape. **The same code works 
 every served chain** because the helpers branch on `chainId` internally.
 
 ```ts
-import { OrderBookApi, MetadataApi, SigningScheme, SupportedChainId, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+import {
+  OrderBookApi,
+  MetadataApi,
+  SigningScheme,
+  SupportedChainId,
+  stringifyDeterministic,
+} from '@cowprotocol/cow-sdk';
 import type { OrderCreation } from '@cowprotocol/cow-sdk';
 import { keccak256, toUtf8Bytes } from 'ethers';
 import {
@@ -94,7 +100,14 @@ const orderBookApi = new OrderBookApi({
 // buildOphisOrderCreation is dependency-free, so it returns a plain object; cast it to
 // cow-sdk's OrderCreation for sendOrder (the wire shape already matches at runtime).
 await orderBookApi.sendOrder(
-  buildOphisOrderCreation({ order, owner, fullAppData, appDataHash, signature, signingScheme }) as unknown as OrderCreation,
+  buildOphisOrderCreation({
+    order,
+    owner,
+    fullAppData,
+    appDataHash,
+    signature,
+    signingScheme,
+  }) as unknown as OrderCreation,
 );
 ```
 
@@ -111,12 +124,12 @@ primitives, if you would rather wire the steps yourself.
 Ophis serves two kinds of chain, and they differ only in **where the order is
 posted** and **which settlement contract signs**:
 
-| | Self-hosted (Optimism, Unichain, Robinhood Chain) | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
-| --- | --- | --- |
-| Orderbook host | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`) | `api.cow.fi/<chain>` (cow-sdk default) |
-| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default) |
-| Partner fee | `buildOphisAppDataPartnerFee(chainId)` | `buildOphisAppDataPartnerFee(chainId)` |
-| Fee enforcement | Enforced floor at settlement | Carried in `appData`, validated by CoW |
+|                                          | Self-hosted (Optimism, Unichain, Robinhood Chain)                                                                                                                                                       | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Orderbook host                           | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`)                                                                            | `api.cow.fi/<chain>` (cow-sdk default)                                                           |
+| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default)                     |
+| Partner fee                              | `buildOphisAppDataPartnerFee(chainId)`                                                                                                                                                                  | `buildOphisAppDataPartnerFee(chainId)`                                                           |
+| Fee enforcement                          | Enforced floor at settlement                                                                                                                                                                            | Carried in `appData`, validated by CoW                                                           |
 
 On CoW-hosted chains you change **nothing** about host or settlement (cow-sdk
 defaults are correct); you only add the Ophis `partnerFee` fragment. On
@@ -147,7 +160,11 @@ const orderBookApi = new OrderBookApi({
 ```ts
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
 import { keccak256, toUtf8Bytes } from 'ethers';
-import { buildOphisAppDataPartnerFee, ophisVolumeBpsForPair, OPHIS_PARTNER_FEE_RECIPIENT } from '@ophis/sdk';
+import {
+  buildOphisAppDataPartnerFee,
+  ophisVolumeBpsForPair,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+} from '@ophis/sdk';
 
 // The standard fragment is { volumeBps: 5, recipient }, the CIP-75 Volume shape
 // at the SDK partner rate (the Ophis front-end charges its own 10 bps retail rate;
@@ -215,7 +232,7 @@ The Ophis Optimism orderbook supports the `eip1271` signing scheme, so a Safe
    `sellTokenBalance`, `buyTokenBalance`).
 2. Have the vault Safe produce the EIP-1271 signature (`isValidSignature`).
 3. Submit with `orderBookApi.sendOrder({ ...order, from: vaultSafe, signingScheme:
-   SigningScheme.EIP1271, signature, appData: fullAppData, appDataHash })` (import
+SigningScheme.EIP1271, signature, appData: fullAppData, appDataHash })` (import
    `SigningScheme` from `@cowprotocol/cow-sdk`).
 
 The order is **signed** with `appData` set to the bytes32 hash, but the **submit
@@ -251,7 +268,12 @@ Use cow-sdk exactly as you do today (its default `api.cow.fi` host and canonical
 settlement are correct), and add **only** the Ophis partner-fee fragment:
 
 ```ts
-import { buildOphisAppDataPartnerFee, ophisVolumeBpsForPair, OPHIS_PARTNER_FEE_RECIPIENT, OPHIS_FEE_CHAIN_IDS } from '@ophis/sdk';
+import {
+  buildOphisAppDataPartnerFee,
+  ophisVolumeBpsForPair,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_FEE_CHAIN_IDS,
+} from '@ophis/sdk';
 
 if (OPHIS_FEE_CHAIN_IDS.includes(chainId)) {
   // Standard rate: buildOphisAppDataPartnerFee(chainId). For a same-chain
@@ -289,10 +311,10 @@ An SDK integration earns on three layers, and all three numbers are published:
 What layer 2 pays per **$1,000,000 of referred monthly volume** (non-stable,
 labeled estimates; exact value depends on chain mix):
 
-| Tier | Share of net fee | Roughly, per $1M/month |
-| --- | --- | --- |
-| Self-serve (8%) | 8% of the fee Ophis keeps | $30 to $40 in WETH |
-| Partner (12%) | 12% of the fee Ophis keeps | $45 to $60 in WETH |
+| Tier            | Share of net fee           | Roughly, per $1M/month |
+| --------------- | -------------------------- | ---------------------- |
+| Self-serve (8%) | 8% of the fee Ophis keeps  | $30 to $40 in WETH     |
+| Partner (12%)   | 12% of the fee Ophis keeps | $45 to $60 in WETH     |
 
 Layer 2 alone is not a business; it is a kicker. The business case for an
 operator is **layer 3**: your own fee entry, charged on top of the 5 bps base.
@@ -351,10 +373,10 @@ How your fee reaches you depends on the chain:
 - **Optimism, Unichain, and Robinhood Chain (Ophis-operated):** a stacked own-fee to a
   third-party recipient is paid to you through a two-step onboarding, both of
   which Ophis now supports end to end:
-  1. *Ingress (allowlisting).* Your recipient is added to the backend
+  1. _Ingress (allowlisting)._ Your recipient is added to the backend
      fee-recipient allowlist, so your order settles and your fee is charged (a
      reviewed backend change plus a redeploy; the onboarding step is below).
-  2. *Payout.* Ophis meters your charged own-fee per settled trade and pays it
+  2. _Payout._ Ophis meters your charged own-fee per settled trade and pays it
      to your recipient monthly in WETH from the sovereign chain's Ophis Safe,
      taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once
      you are allowlisted and we have enabled and funded it for your recipient;
@@ -374,14 +396,21 @@ the net fee Ophis keeps, paid back to you monthly in WETH. Tag each order with
 your referral code and Ophis pays it out each cycle.
 
 ```ts
-import { ophisVolumeBpsForPair, OPHIS_PARTNER_FEE_RECIPIENT, buildOphisReferrerMetadata } from '@ophis/sdk';
+import {
+  ophisVolumeBpsForPair,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  buildOphisReferrerMetadata,
+} from '@ophis/sdk';
 
 const doc = await new MetadataApi().generateAppDataDoc({
   appCode: 'ophis', // REQUIRED: 'ophis', NOT your app's name (see below)
   metadata: {
     // Same partner-fee fragment as above: reduced 1 bp for a same-chain
     // stablecoin pair, else the 5 bps partner rate. The rebate is on top of the fee.
-    partnerFee: { recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: ophisVolumeBpsForPair(isStablePair) },
+    partnerFee: {
+      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+      volumeBps: ophisVolumeBpsForPair(isStablePair),
+    },
     ...buildOphisReferrerMetadata('your-code'), // -> metadata.ophisReferrer.code
     hooks: {},
   },
@@ -400,7 +429,7 @@ orders with it. Higher tiers earn a larger share. See the
 attributes orders carrying the Ophis appCode; an order with a custom appCode still
 settles and pays the fee, but earns no rebate, and there is no error anywhere. Your
 own identity is the referral code in `metadata.ophisReferrer.code`, a separate field
-from `appCode` (which records *which app* placed the order, always `'ophis'` here).
+from `appCode` (which records _which app_ placed the order, always `'ophis'` here).
 
 **2. Each order-owner wallet must be registered with the indexer.** The indexer
 fetches trades per tracked owner (CoW's trades API cannot be enumerated globally),
@@ -483,14 +512,14 @@ Three earnings streams appear:
   "generatedAt": "2026-07-04T09:00:00.000Z",
   "sovereignChains": [10, 130],
   "disclaimer": "Earnings on Optimism (10) and Unichain (130) are settled and paid by Ophis end to end. Figures on CoW-hosted chains are accrued at settlement, paid out by CoW under CoW terms; not guaranteed by Ophis. ...",
-  "routedVolumeUsd":   { "total": 350000, "sovereign": 150000, "hosted": 200000 },
+  "routedVolumeUsd": { "total": 350000, "sovereign": 150000, "hosted": 200000 },
   "ophisFeeAccruedUsd": { "total": 350, "sovereign": 150, "hosted": 200 },
   "ownFeeAccruedUsd": {
     "total": 975,
-    "sovereignGuaranteed": 375,       // OP + Unichain: charged, paid monthly once onboarded + enabled
-    "hostedAccrued": 600,             // CoW-hosted: disbursed by CoW under CoW terms
+    "sovereignGuaranteed": 375, // OP + Unichain: charged, paid monthly once onboarded + enabled
+    "hostedAccrued": 600, // CoW-hosted: disbursed by CoW under CoW terms
     "recipient": "0xYourOwnFeeRecipient",
-    "sovereignPaidToDateWeth": 0.05,  // EXACT WETH paid from executed Ophis Safe own-fee batches
+    "sovereignPaidToDateWeth": 0.05, // EXACT WETH paid from executed Ophis Safe own-fee batches
     "sovereignPaidToDateUsd": 150,
     "payouts": [
       {
@@ -499,10 +528,10 @@ Three earnings streams appear:
         "chainName": "Optimism",
         "txHash": "0x...",
         "explorerUrl": "https://optimistic.etherscan.io/tx/0x...",
-        "amountWeth": 0.05
-      }
+        "amountWeth": 0.05,
+      },
     ],
-    "note": "Own-fee is the partner-fee entry you stack to your own recipient ..."
+    "note": "Own-fee is the partner-fee entry you stack to your own recipient ...",
   },
   "referral": {
     "registered": true,
@@ -515,15 +544,31 @@ Three earnings streams appear:
         "chainName": "Gnosis",
         "txHash": "0x...",
         "explorerUrl": "https://gnosisscan.io/tx/0x...",
-        "amountWeth": 1.0
-      }
+        "amountWeth": 1.0,
+      },
     ],
-    "note": "Referral rebate Ophis pays your wallet monthly ... per referrer wallet."
+    "note": "Referral rebate Ophis pays your wallet monthly ... per referrer wallet.",
   },
   "byChain": [
-    { "chainId": 10, "chainName": "Optimism", "sovereign": true, "routedVolumeUsd": 100000, "trades": 5, "ophisFeeAccruedUsd": 100, "ownFeeAccruedUsd": 250 },
-    { "chainId": 8453, "chainName": "Base", "sovereign": false, "routedVolumeUsd": 200000, "trades": 10, "ophisFeeAccruedUsd": 200, "ownFeeAccruedUsd": 600 }
-  ]
+    {
+      "chainId": 10,
+      "chainName": "Optimism",
+      "sovereign": true,
+      "routedVolumeUsd": 100000,
+      "trades": 5,
+      "ophisFeeAccruedUsd": 100,
+      "ownFeeAccruedUsd": 250,
+    },
+    {
+      "chainId": 8453,
+      "chainName": "Base",
+      "sovereign": false,
+      "routedVolumeUsd": 200000,
+      "trades": 10,
+      "ophisFeeAccruedUsd": 200,
+      "ownFeeAccruedUsd": 600,
+    },
+  ],
 }
 ```
 
@@ -576,22 +621,33 @@ const appDataHash = keccak256(toUtf8Bytes(fullAppData));
 
 // 2. Build the eth-flow order. `owner` is the taker; `buyToken` is what they receive.
 const built = buildOphisEthFlowOrder({
-  chainId, owner, buyToken, sellAmount, buyAmount,
-  fullAppData, appDataHash, validTo, quoteId,
+  chainId,
+  owner,
+  buyToken,
+  sellAmount,
+  buyAmount,
+  fullAppData,
+  appDataHash,
+  validTo,
+  quoteId,
   hashAppData: (s) => keccak256(toUtf8Bytes(s)), // optional: fail closed on a hash mismatch
 });
 
 // 3. Upload the full appData so solvers honor the partner fee (the on-chain order
 //    only commits the hash), then call createOrder with the exact value.
-const orderBookApi = new OrderBookApi({ chainId, baseUrls: { [chainId]: getOphisOrderbookUrl(chainId) } });
+const orderBookApi = new OrderBookApi({
+  chainId,
+  baseUrls: { [chainId]: getOphisOrderbookUrl(chainId) },
+});
 await orderBookApi.uploadAppData(appDataHash, built.appDataToUpload);
 // built.ethFlowContract + built.abi give you the contract; call with value === built.value:
 await ethFlow.createOrder(built.orderTuple, { value: built.value });
 ```
 
-Native ETH is supported on Optimism, Unichain, Base, and the other CoW-hosted chains.
-Robinhood Chain currently requires wrapping native ETH to WETH first because
-EthFlow is not deployed there.
+Native ETH is supported on Optimism, Unichain, Robinhood Chain, Base, and the
+other CoW-hosted chains. Robinhood uses the Ophis-operated EthFlow deployment at
+`0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29`; resolve it through
+`getOphisEthFlowAddress(4663)` rather than hardcoding it.
 The order carries the Ophis partner fee exactly as an ERC-20 order does.
 
 ## Caveats
@@ -607,11 +663,11 @@ The order carries the Ophis partner fee exactly as an ERC-20 order does.
 
 ## Quick reference
 
-| Step | Optimism | CoW-hosted chains |
-| --- | --- | --- |
-| Orderbook host | `getOphisOrderbookUrl(10)` | cow-sdk default `api.cow.fi/<chain>` |
-| EIP-712 domain | `getOphisOrderDomain(10)` | cow-sdk default (canonical settlement) |
-| Partner fee | `volumeBps: ophisVolumeBpsForPair(isStablePair)` to the Ophis recipient (>= floor on OP) | same; `buildOphisAppDataPartnerFee(chainId)` for the 5 bps partner rate |
-| Rebate tag | `buildOphisReferrerMetadata(code)` | `buildOphisReferrerMetadata(code)` |
-| Receiver | `assertReceiverIsOwner(vault, receiver)` | `assertReceiverIsOwner(vault, receiver)` |
-| Signing | EIP-1271 (Safe / MPC) | EIP-1271 (Safe / MPC) |
+| Step           | Optimism                                                                                 | CoW-hosted chains                                                       |
+| -------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Orderbook host | `getOphisOrderbookUrl(10)`                                                               | cow-sdk default `api.cow.fi/<chain>`                                    |
+| EIP-712 domain | `getOphisOrderDomain(10)`                                                                | cow-sdk default (canonical settlement)                                  |
+| Partner fee    | `volumeBps: ophisVolumeBpsForPair(isStablePair)` to the Ophis recipient (>= floor on OP) | same; `buildOphisAppDataPartnerFee(chainId)` for the 5 bps partner rate |
+| Rebate tag     | `buildOphisReferrerMetadata(code)`                                                       | `buildOphisReferrerMetadata(code)`                                      |
+| Receiver       | `assertReceiverIsOwner(vault, receiver)`                                                 | `assertReceiverIsOwner(vault, receiver)`                                |
+| Signing        | EIP-1271 (Safe / MPC)                                                                    | EIP-1271 (Safe / MPC)                                                   |

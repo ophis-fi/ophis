@@ -41,7 +41,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Settle: on-chain, MEV-protected',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles your order in a batch where every trade clears at the same uniform price, via CoW Protocol batch auctions, so there is no front-running, no sandwiching, and no priority-gas auction. Ophis takes no cut of surplus: on the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) 100% of any price surplus goes to you, the trader; on CoW-hosted chains CoW Protocol retains 50% of quote improvement.',
+      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain; on Robinhood Chain, paying a higher priority fee does not buy earlier sequencer ordering. Ophis takes no cut of surplus: on the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) 100% of price surplus goes to the trader; on CoW-hosted chains CoW Protocol retains 50% of quote improvement.',
     },
   ],
 };
@@ -99,9 +99,10 @@ competing across several routing strategies, see [How it works](./architecture.m
 ### 3 · Settle, on-chain, MEV-protected
 
 The winning solver settles your order in a batch where every trade
-clears at the same uniform price. There's no front-running, no
-sandwiching, and no priority-gas auction to win, because the protocol
-does not reorder transactions for value.
+clears at the same uniform price. Your signed limit price is enforced
+on-chain, and Ophis orders are not exposed as public-mempool router swaps.
+On Robinhood Chain, the sequencer is first-come-first-served, so paying a
+higher priority fee does not buy an earlier place in the ordering.
 
 For the full lifecycle, see [How it works](./architecture.md).
 
@@ -113,13 +114,13 @@ Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and
 (plus the Sepolia testnet). On any of these you can both pay from and receive into
 your EVM wallet.
 
-| | | |
-| --- | --- | --- |
-| Ethereum | Arbitrum One | Avalanche |
-| Base | BNB Smart Chain | Gnosis Chain |
-| Ink | Linea | Optimism |
-| Plasma | Polygon | Robinhood Chain |
-| Unichain | | |
+|          |                 |                 |
+| -------- | --------------- | --------------- |
+| Ethereum | Arbitrum One    | Avalanche       |
+| Base     | BNB Smart Chain | Gnosis Chain    |
+| Ink      | Linea           | Optimism        |
+| Plasma   | Polygon         | Robinhood Chain |
+| Unichain |                 |                 |
 
 In addition, **Solana** and **Bitcoin** are available as cross-chain
 _destinations only_ via [NEAR Intents](https://near.org/intents): trade
@@ -131,6 +132,23 @@ NEAR Intents brokers the bridge.
 The current token catalog covers stablecoins, ETH/BTC pegs, DeFi
 blue-chips, AI/RWA, memes, and gaming. The in-app token selector is the
 live source of truth because token availability can change by chain.
+
+### Robinhood Stock Tokens
+
+Robinhood Chain includes tokenized equities and ETFs. Ophis verifies a selected
+Stock Token against Robinhood's live canonical deployment registry and shows its
+corporate-action multiplier and trading restrictions in the swap form. A split
+can change the share-equivalent display without rebasing the raw ERC-20 balance;
+the executable trade price remains the signed Ophis solver quote.
+
+- [Robinhood Chain network configuration](https://docs.robinhood.com/chain/connecting/)
+- [Stock Token integration and multiplier](https://docs.robinhood.com/chain/stock-tokens/)
+- [Bridge assets to Robinhood Chain](https://docs.robinhood.com/chain/bridging/)
+
+Swaps are gasless. Wallet approvals, wrapping, and other direct transactions
+still require ETH. Robinhood's public RPC is rate-limited; production
+integrations should use a supervised provider endpoint and reserve the public
+RPC for wallet configuration and fallback use.
 
 :::tip[Building on Ophis?]
 

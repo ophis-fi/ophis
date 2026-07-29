@@ -1,0 +1,59 @@
+name: Robinhood mainnet canary
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/robinhood-mainnet-canary.mjs'
+      - '.github/workflows/robinhood-mainnet-canary.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/robinhood-mainnet-canary.mjs'
+      - '.github/workflows/robinhood-mainnet-canary.yml'
+  schedule:
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: canary self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - run: node scripts/robinhood-mainnet-canary.mjs --self-test
+
+  live:
+    name: live chain, contracts, assets, and orderbook
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Run read-only Robinhood production canary
+        env:
+          ROBINHOOD_CANARY_RPC_URL: ${{ secrets.ROBINHOOD_CANARY_RPC_URL }}
+        run: node scripts/robinhood-mainnet-canary.mjs
+
+      - name: Alert operations
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.OPHIS_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.OPHIS_TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+            echo "Telegram alerting is not configured; relying on Actions notifications"
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 15 \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=CRITICAL: Ophis Robinhood mainnet canary failed. ${RUN_URL}" >/dev/null
