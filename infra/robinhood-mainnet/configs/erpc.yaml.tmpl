@@ -1,12 +1,13 @@
 # Zero-budget eRPC proxy for Robinhood Chain mainnet (chain 4663).
 #
-# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and Robinhood's official
-# public RPC. Cadia was restored from a third-party snapshot whose flat state
-# cannot be proven from the header anchor alone, so it must never be the sole
-# authority for balances, code, storage, calls, logs, transaction data, or
-# receipts.
+# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and an independent
+# Goldsky Edge RPC. Cadia was restored from a third-party snapshot whose flat
+# state cannot be proven from the header anchor alone, so it must never be the
+# sole authority for balances, code, storage, calls, logs, transaction data, or
+# receipts. The secret-bearing Goldsky URL is expanded from the container
+# environment at config load and is never rendered to disk.
 #
-# TRACES: debug_* is self-node-only because the public endpoint does not expose
+# TRACES: debug_* is self-node-only because the managed endpoint does not expose
 # it. If Cadia is unavailable, trace-dependent settlement fails closed.
 #
 # TRANSACTION RELAY: Cadia Nitro forwards writes to Robinhood's official public
@@ -39,7 +40,7 @@ projects:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -67,8 +68,11 @@ projects:
 
     upstreamDefaults:
       evm:
-        statePollerInterval: 1s
-        statePollerDebounce: 300ms
+        # Robinhood produces blocks far faster than either application's need
+        # for topology discovery. Polling both tips every second wastes the
+        # bounded free Edge allowance without improving servedTip safety.
+        statePollerInterval: 10s
+        statePollerDebounce: 1s
 
     upstreams:
       - id: ophis-self-rbh
@@ -84,14 +88,19 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: robinhood-official
-        endpoint: https://rpc.mainnet.chain.robinhood.com
+      - id: robinhood-goldsky
+        endpoint: ${GOLDSKY_ROBINHOOD_RPC_URL}
         # Block-head inputs drive the shared block stream and settlement
         # deadlines. Route them only through the header-anchored Cadia node;
         # strict equality at "latest" is impossible on this fast chain.
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
+          # Autopilot indexes logs by immutable blockHash. Receipts/logs are
+          # committed by the L2 block header already anchored by Cadia's node,
+          # so these high-volume reads do not rely on unproven flat snapshot
+          # state and can remain self-node-only without consuming Edge quota.
+          - eth_getLogs
         failsafe:
           - matchMethod: "*"
             timeout:
