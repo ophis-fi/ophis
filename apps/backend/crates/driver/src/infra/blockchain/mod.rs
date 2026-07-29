@@ -295,11 +295,14 @@ impl Ethereum {
 /// EIP-1559 permits the base fee to grow 12.5% per full block, so a one-block
 /// margin is insufficient on fast chains: by the time a protected simulation
 /// reaches both upstreams, its gas price can already be below the served block's
-/// base fee. Doubling covers six consecutive maximum-growth blocks. This affects
-/// only `eth_call`/`eth_estimateGas`; transaction submission obtains a fresh
-/// EIP-1559 estimate.
+/// base fee. Compound six maximum-growth blocks, rounding each increase up. This
+/// affects only `eth_call`/`eth_estimateGas`; transaction submission obtains a
+/// fresh EIP-1559 estimate.
 fn replay_safe_simulation_gas_price(current: u128) -> u128 {
-    current.saturating_mul(2)
+    (0..6).fold(current, |fee, _| {
+        let increase = fee / 8 + u128::from(fee % 8 != 0);
+        fee.saturating_add(increase)
+    })
 }
 
 impl fmt::Debug for Ethereum {
@@ -319,9 +322,9 @@ mod tests {
 
     #[test]
     fn simulation_gas_price_covers_multiple_fast_blocks() {
-        assert_eq!(replay_safe_simulation_gas_price(8), 16);
-        assert_eq!(replay_safe_simulation_gas_price(9), 18);
-        assert_eq!(replay_safe_simulation_gas_price(22_252_001), 44_504_002);
+        assert_eq!(replay_safe_simulation_gas_price(8), 20);
+        assert_eq!(replay_safe_simulation_gas_price(9), 23);
+        assert_eq!(replay_safe_simulation_gas_price(22_252_001), 45_111_186);
     }
 
     #[test]
