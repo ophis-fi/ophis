@@ -1,4 +1,4 @@
-import { TokenWithLogo, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
+import { TokenWithLogo, WETH_MAINNET } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { getTokenLogoUrls } from './getTokenLogoUrls'
@@ -15,7 +15,7 @@ describe('getTokenLogoUrls', () => {
     )
   })
 
-  it('uses the USDC logo for Robinhood USDG even without token-list metadata', () => {
+  it('uses the official USDG logo for Robinhood USDG even without token-list metadata', () => {
     const token = new TokenWithLogo(
       undefined,
       ROBINHOOD_CHAIN_ID,
@@ -25,7 +25,7 @@ describe('getTokenLogoUrls', () => {
       'Global Dollar',
     )
 
-    expect(getTokenLogoUrls(token)[0]).toBe(USDC_MAINNET.logoURI)
+    expect(getTokenLogoUrls(token)[0]).toBe('https://swap.ophis.fi/logos/token-usdg.svg')
     expect(getTokenLogoUrls(token)[0]).toMatch(/^https:\/\//)
   })
 
