@@ -1,4 +1,4 @@
-import { cowprotocolTokenLogoUrl, TokenWithLogo, WETH_MAINNET } from '@cowprotocol/common-const'
+import { cowprotocolTokenLogoUrl, TokenWithLogo, USDG_LOGO_URL, WETH_MAINNET } from '@cowprotocol/common-const'
 import { uriToHttp } from '@cowprotocol/common-utils'
 import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -7,8 +7,6 @@ import { trustTokenLogoUrl } from './trustTokenLogoUrl'
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const ROBINHOOD_USDG_ADDRESS = '0x5fc5360d0400a0fd4f2af552add042d716f1d168'
 const ROBINHOOD_WETH_ADDRESS = '0x0bd7d308f8e1639fab988df18a8011f41eacad73'
-const USDG_LOGO_URL = 'https://swap.ophis.fi/logos/token-usdg.svg'
-
 export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
   const fallbackUrls = token?.address ? getTokenLogoFallbacks(token.address, token.chainId as SupportedChainId) : []
 

@@ -635,8 +635,9 @@ export const USDC_UNICHAIN = new TokenWithLogo(
 // canonical six-decimal dollar stablecoin, so chain-generic "USDC" selectors
 // intentionally resolve to USDG here (the same compatibility pattern Plasma
 // uses for USDT).
+export const USDG_LOGO_URL = 'https://swap.ophis.fi/logos/token-usdg.svg'
 export const USDG_ROBINHOOD = new TokenWithLogo(
-  USDC_MAINNET.logoURI,
+  USDG_LOGO_URL,
   4663 as unknown as SupportedChainId,
   '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
   6,
@@ -844,12 +845,9 @@ const BASE_STABLECOINS = [
   EURE_BASE.address,
 ].map((t) => t.toLowerCase())
 
-const POLYGON_STABLECOINS = [
-  USDC_POLYGON.address,
-  USDT_POLYGON.address,
-  DAI_POLYGON.address,
-  EURE_POLYGON.address,
-].map((t) => t.toLowerCase())
+const POLYGON_STABLECOINS = [USDC_POLYGON.address, USDT_POLYGON.address, DAI_POLYGON.address, EURE_POLYGON.address].map(
+  (t) => t.toLowerCase(),
+)
 
 const AVALANCHE_STABLECOINS = [USDC_AVALANCHE.address, USDT_AVALANCHE.address].map((t) => t.toLowerCase())
 
