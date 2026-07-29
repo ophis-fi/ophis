@@ -23,7 +23,7 @@ projects:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -64,6 +64,7 @@ projects:
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
+          - eth_getLogs
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -96,12 +97,12 @@ def main(path: str, strict: bool = False) -> int:
     if actual != EXPECTED_ACTIVE_LINES:
         print(
             "ERROR: Robinhood RPC config changed outside the reviewed shape "
-            "(2-of-2 protected reads, self-only traces, forwarding-capable writes).",
+            "(2-of-2 protected state reads, self-only logs/traces, forwarding-capable writes).",
             file=sys.stderr,
         )
         return 14
     print(
-        "OK: Robinhood RPC guard — 2-of-2 protected reads, self-only traces, "
+        "OK: Robinhood RPC guard — 2-of-2 protected state reads, self-only logs/traces, "
         "and a forwarding-capable transaction path."
     )
     return 0

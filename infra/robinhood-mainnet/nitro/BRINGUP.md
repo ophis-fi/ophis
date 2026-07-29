@@ -6,8 +6,9 @@ The ordered procedure to stand up the self-hosted Nitro node on THIS machine
 This node is the **sovereign tie-breaker leg** of the hybrid trace setup: two
 managed providers (Dwellir/Chainstack) carry trace availability now, and this node
 is added as an independent third leg once it is restored and L1-verified. Because
-of a fatal blob-DA gap, this node is brought up **from a snapshot**, not from
-genesis - see `README.md` "From-genesis sync is NOT possible".
+This procedure preserves the original snapshot-backed availability node. For the
+independently executed genesis node, use `docker-compose.genesis.yml` and the
+README's "From-genesis sync through the zero-budget archive adapter" section.
 
 > Status 2026-07-22: disk D: formatted; WSL2 2.7.10 installed (`--no-distribution`);
 > `.wslconfig` written to `C:\Users\clement\.wslconfig`. **A reboot is pending** to

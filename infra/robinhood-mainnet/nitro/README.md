@@ -28,7 +28,7 @@ from Ethereum L1. You MUST supply two L1 endpoints:
 | Prereq | What | Free options |
 |--------|------|--------------|
 | **L1 execution RPC** | An Ethereum mainnet JSON-RPC (`--parent-chain.connection.url`). Nitro reads the SequencerInbox batches from here. | Own Ethereum node (best), or a free-tier provider, or `https://ethereum-rpc.publicnode.com`. |
-| **L1 beacon (blob) endpoint** | An Ethereum consensus/beacon API (`--parent-chain.blob-client.beacon-url`). Robinhood posts DA as **EIP-4844 blobs** (Rollup mode, NOT AnyTrust), and blobs live on the beacon chain, not the execution layer. | Must reach back to the rollup's deployment - see "From-genesis sync is not possible" below. A standard free beacon API does NOT. One fallback is supported via `--parent-chain.blob-client.secondary-beacon-url`. |
+| **L1 beacon (blob) endpoint** | An Ethereum consensus/beacon API (`--parent-chain.blob-client.beacon-url`). Robinhood posts DA as **EIP-4844 blobs** (Rollup mode, NOT AnyTrust), and blobs live on the beacon chain, not the execution layer. | A standard free Beacon API serves the current tip. The local Blobscan adapter supplies old blobs by L1-derived versioned hash through `--parent-chain.blob-client.secondary-beacon-url`. |
 | **Robinhood chain-info JSON** | The Orbit rollup config (`--chain.info-json` or `--chain.info-files`) describing chainId 4663, its rollup/inbox/bridge L1 addresses, and genesis. | Published by Robinhood - see `robinhood-chain-info.md` in this dir. Pull the canonical file from the live docs before deploy; do not hand-transcribe rollup addresses. |
 
 **DA mode is Rollup (blobs), not AnyTrust** - so there is NO DAC / `--node.data-availability.*`
@@ -36,10 +36,11 @@ config. If you see AnyTrust flags in a copied Arbitrum runbook, they do not appl
 
 ---
 
-## From-genesis sync is NOT possible (measured 2026-07-21)
+## From-genesis sync through the zero-budget archive adapter
 
-**Read this before provisioning anything.** It is the binding constraint on the whole
-deployment, and it is not a hardware problem - a bigger machine does not fix it.
+**Read this before provisioning anything.** Standard beacon APIs cannot provide all
+historical DA for this chain. The Compose stack therefore includes a narrow,
+fail-closed Blobscan compatibility service.
 
 The rollup deployed at Ethereum L1 block `24994238`, timestamp **2026-04-30 16:51:59 UTC**.
 Nitro syncs by replaying the chain's DA (EIP-4844 blobs) from that point. Blobs are not
@@ -56,8 +57,8 @@ Measured against `ethereum-beacon-api.publicnode.com`, sampling consecutive slot
 | 45d | 10 | 6 |
 | 3d | 10 | 9 |
 
-So retention on that endpoint is roughly **45-50 days** - and the chain is **82 days old**.
-Roughly the **first 32-37 days of DA is unreachable**, and a from-genesis sync stalls there.
+So retention on that endpoint was roughly **45-50 days**. The gap grows continuously,
+and a direct from-genesis sync against that endpoint stalls.
 
 Note the ~45-50d figure is specific to that endpoint and to the post-Fusaka era (responses
 report `"version":"fulu"`, i.e. PeerDAS data columns). It is NOT the classic ~18-day
@@ -71,18 +72,32 @@ for i in $(seq 0 9); do
 done
 ```
 
-### The two ways out
+### Zero-budget archive path
 
-1. **An archive beacon provider** whose blob retention reaches past 2026-04-30. Verify with
-   the loop above *before paying* - retention depth is rarely advertised accurately. Nitro
-   v3.11.2 calls `/eth/v1/beacon/blobs/{slot}` and the `blob_sidecars` fallback was
-   REMOVED in v3.10.0, so a provider exposing only `blob_sidecars` (Blobscan,
-   base-org/blob-archiver, several provider docs) will NOT satisfy it without a
-   translating proxy. Use `--parent-chain.blob-client.beacon-url`, plus
-   `--parent-chain.blob-client.secondary-beacon-url` for a fallback. As of 2026-07-21
-   no free source of the April-May 2026 blob range was found at all - budget for a paid
-   archive-beacon provider and prove its depth with the pre-purchase curl above.
-2. **Restore from a database snapshot**, then follow the tip - which reduces the blob
+Blobscan preserves old blob bytes, but its API is not Nitro's Beacon API. The local
+`blob-archive` service translates Nitro's request:
+
+`/eth/v1/beacon/blobs/{slot}?versioned_hashes=0x...`
+
+into Blobscan lookups by versioned hash and returns only the requested blob bytes. This
+does **not** make Blobscan a state or consensus trust root:
+
+- Nitro obtains the expected versioned hashes from canonical Ethereum L1 batch
+  transactions.
+- Nitro v3.11.2 recomputes each blob's KZG commitment and versioned hash and rejects a
+  mismatch (`util/headerreader/blob_client.go`).
+- The adapter rejects unscoped slot requests, invalid hashes, malformed blobs, partial
+  results, and archive errors. Immutable responses are cached by versioned hash.
+- The normal beacon endpoint remains primary for the current tip; the adapter is the
+  archive fallback.
+
+This makes an independently executed genesis derivation possible without a paid archive
+provider or a trusted database snapshot. It still depends on Blobscan for historical
+availability; cached blobs gradually remove that operational dependency.
+
+### Snapshot fallback
+
+1. **Restore from a database snapshot**, then follow the tip - which reduces the blob
    requirement to hours and lets a free endpoint serve it.
    - Robinhood publishes **no** official snapshot (`--init.url` placeholder left blank).
      Both `robinhood-snapshots.offchainlabs.com` and `snapshot.arbitrum.foundation`
@@ -112,14 +127,14 @@ done
      and only up to ~6 days behind tip; it does not close the flat-state hole.
    - The only sound assurances are: (a) get the snapshot from a **trusted publisher** over
      TLS with an out-of-band checksum (Titan is anonymous, so this fails), or (b) re-derive
-     state by executing from DA - which on this chain is exactly what the blob gap makes
-     impossible. So an anonymous snapshot is a **reputational bet**, not a verifiable one.
+     state by executing from DA using the archive adapter. So an anonymous snapshot is a
+     **reputational bet**, not a verifiable one.
    - If used anyway: keep `--init.import-wasm=false` (default; its own flag help says the
      wasm dir "contains executable code - only use with highly trusted source") and let the
      node rebuild wasm locally; verify the SHA256; and treat every trace as only as
      trustworthy as Titan.
 
-3. **Skip self-hosting entirely (VERIFIED AVAILABLE).** Managed providers already serve
+2. **Skip self-hosting entirely (VERIFIED AVAILABLE).** Managed providers already serve
    `debug_traceTransaction` for 4663 today - confirmed on provider docs 2026-07-22:
    [Dwellir](https://www.dwellir.com/docs/robinhood/debug_traceTransaction) (dedicated
    method page, archive + Nitro debug_* namespace),

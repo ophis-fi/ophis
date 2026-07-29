@@ -39,7 +39,7 @@ projects:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -95,6 +95,13 @@ projects:
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
+          # Robinhood produces ~7.5 blocks/s and autopilot indexes each canonical
+          # block by hash. The free gateway cannot sustain that permanent log
+          # stream and its 429s previously rejected otherwise-valid Kyber routes.
+          # Keep settlement state/simulation reads 2-of-2 while the independent
+          # genesis node derives; switch logs to the two local verified nodes at
+          # promotion time.
+          - eth_getLogs
         failsafe:
           - matchMethod: "*"
             timeout:

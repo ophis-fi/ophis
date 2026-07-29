@@ -1,0 +1,66 @@
+# Add-on for a second, independently derived Robinhood node.
+#
+# Start with:
+#   docker compose -f docker-compose.yml -f docker-compose.genesis.yml \
+#     --profile genesis-verify up -d --build blob-archive nitro nitro-genesis
+#
+# This service never reads the Titan snapshot. Its empty datadir is initialized
+# from the published Robinhood genesis and all L2 state is executed from L1 DA.
+
+services:
+  nitro-genesis:
+    profiles: ["genesis-verify"]
+    image: offchainlabs/nitro-node:v3.11.2-3599aca
+    restart: always
+    stop_grace_period: 5m
+    mem_limit: 9g
+    environment:
+      GOMEMLIMIT: 7GiB
+    depends_on:
+      blob-archive:
+        condition: service_healthy
+    volumes:
+      - ${NITRO_GENESIS_DATA_DIR:?set NITRO_GENESIS_DATA_DIR in nitro/.env}:/home/user/.arbitrum
+      - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
+      - ./robinhood-genesis.json:/config/robinhood-genesis.json:ro
+    command:
+      - --parent-chain.connection.url=${L1_EXECUTION_RPC:?set L1_EXECUTION_RPC in .env}
+      - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
+      - --parent-chain.blob-client.secondary-beacon-url=${L1_BEACON_URL_FALLBACK:-http://blob-archive:3500}
+      - --chain.id=4663
+      - --chain.info-files=/config/robinhood-chain-info.json
+      - --node.feed.input.url=wss://feed.mainnet.chain.robinhood.com
+      - --init.genesis-json-file=/config/robinhood-genesis.json
+      - --http.addr=0.0.0.0
+      - --http.port=8547
+      - --http.api=net,web3,eth,debug,arb
+      - --http.corsdomain=localhost
+      - --http.vhosts=localhost,ophis-rbh-node-verified
+      - --ws.addr=0.0.0.0
+      - --ws.port=8548
+      - --ws.api=net,web3,eth,arb
+      - --node.staker.enable=false
+      # Verification node accepts no writes. The official sequencer endpoint is
+      # introduced only when this node is promoted to the production read role.
+      - --execution.forwarding-target=null
+      - --node.resource-mgmt.mem-free-limit=1GB
+      - --metrics
+      - --metrics-server.addr=0.0.0.0
+      - --metrics-server.port=6070
+      # A clean derivation uses HashDB and never imports flat snapshot state.
+      - --execution.caching.state-scheme=hash
+    ports:
+      - "127.0.0.1:8557:8547"
+      - "127.0.0.1:8558:8548"
+      - "127.0.0.1:6071:6070"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -X POST http://127.0.0.1:8547 -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_blockNumber\",\"params\":[]}' | grep -q result || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 24h
+    networks:
+      default: {}
+      ophis-rbh-net:
+        aliases:
+          - ophis-rbh-node-verified
