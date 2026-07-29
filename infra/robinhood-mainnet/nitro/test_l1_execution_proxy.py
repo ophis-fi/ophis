@@ -1,4 +1,5 @@
 import importlib.util
+import urllib.error
 from pathlib import Path
 from unittest import TestCase, main, mock
 
@@ -45,6 +46,57 @@ class L1ExecutionProxyTest(TestCase):
                 proxy.dispatch(request), {"jsonrpc": "2.0", "id": 1, "result": []}
             )
             fallback.assert_called_once()
+
+    def test_dispatches_json_rpc_batch_in_order(self) -> None:
+        requests = [
+            {"jsonrpc": "2.0", "method": "eth_chainId", "params": [], "id": 1},
+            {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 2},
+        ]
+        with mock.patch.object(
+            proxy,
+            "dispatch",
+            side_effect=[
+                {"jsonrpc": "2.0", "id": 1, "result": "0x1"},
+                {"jsonrpc": "2.0", "id": 2, "result": "0x2"},
+            ],
+        ):
+            self.assertEqual(
+                proxy.dispatch_payload(requests),
+                [
+                    {"jsonrpc": "2.0", "id": 1, "result": "0x1"},
+                    {"jsonrpc": "2.0", "id": 2, "result": "0x2"},
+                ],
+            )
+
+    def test_general_network_failure_uses_fallback(self) -> None:
+        request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        with (
+            mock.patch.object(
+                proxy,
+                "_post",
+                side_effect=urllib.error.URLError("upstream unavailable"),
+            ),
+            mock.patch.object(
+                proxy,
+                "_rate_limited_fallback_request",
+                return_value={"jsonrpc": "2.0", "id": 1, "result": "0x1"},
+            ) as fallback,
+        ):
+            self.assertEqual(proxy.dispatch(request)["result"], "0x1")
+            fallback.assert_called_once_with(request)
+
+    def test_no_backoff_after_final_failed_attempt(self) -> None:
+        request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        with (
+            mock.patch.object(proxy, "_post", return_value={"error": {"code": -32005}}),
+            mock.patch.object(proxy.time, "sleep") as sleep,
+            mock.patch.object(proxy.time, "monotonic", return_value=10.0),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "remained unavailable"):
+                proxy._rate_limited_fallback_request(request)
+            self.assertNotIn(mock.call(4), sleep.call_args_list)
+            self.assertIn(mock.call(1), sleep.call_args_list)
+            self.assertIn(mock.call(2), sleep.call_args_list)
 
 
 if __name__ == "__main__":

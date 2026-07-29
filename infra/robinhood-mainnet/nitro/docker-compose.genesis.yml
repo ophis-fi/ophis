@@ -35,9 +35,9 @@ services:
     image: offchainlabs/nitro-node:v3.11.2-3599aca
     restart: always
     stop_grace_period: 5m
-    mem_limit: 9g
+    mem_limit: 6g
     environment:
-      GOMEMLIMIT: 7GiB
+      GOMEMLIMIT: 4.5GiB
     depends_on:
       blob-archive:
         condition: service_healthy

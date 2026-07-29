@@ -84,7 +84,8 @@ def _rate_limited_fallback_request(
             _last_log_request = time.monotonic()
             if response and not _is_retryable(response):
                 return response
-            time.sleep(min(2**attempt, 4))
+            if attempt + 1 < MAX_ATTEMPTS:
+                time.sleep(min(2**attempt, 4))
     raise RuntimeError("historical log upstream remained unavailable")
 
 
@@ -109,11 +110,24 @@ def dispatch(payload: dict[str, object]) -> dict[str, object]:
             logs.extend(result)
         return {"jsonrpc": "2.0", "id": payload.get("id"), "result": logs}
 
-    response = _post(GENERAL_UPSTREAM, payload)
+    try:
+        response = _post(GENERAL_UPSTREAM, payload)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return _rate_limited_fallback_request(payload)
     if _is_retryable(response):
         # A bounded fallback for transient dRPC routing/capacity failures.
         return _rate_limited_fallback_request(payload)
     return response
+
+
+def dispatch_payload(payload: object) -> object:
+    if isinstance(payload, list):
+        if not payload or any(not isinstance(item, dict) for item in payload):
+            raise ValueError("invalid JSON-RPC batch")
+        return [dispatch(item) for item in payload]
+    if isinstance(payload, dict):
+        return dispatch(payload)
+    raise ValueError("invalid JSON-RPC payload")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -140,9 +154,7 @@ class Handler(BaseHTTPRequestHandler):
             if length <= 0 or length > MAX_BODY_BYTES:
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length))
-            if not isinstance(payload, dict):
-                raise ValueError("JSON-RPC batching is not supported")
-            self._write(200, dispatch(payload))
+            self._write(200, dispatch_payload(payload))
         except (OSError, RuntimeError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
             self.log_error("L1 request failed: %s", exc)
             self._write(

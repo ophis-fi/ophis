@@ -11,9 +11,11 @@ Set a new empty ext4 directory in `nitro/.env`:
 NITRO_GENESIS_DATA_DIR=/home/clement/robinhood-nitro-genesis-data
 ```
 
-The path must differ from `NITRO_DATA_DIR`. Then:
+The path must differ from `NITRO_DATA_DIR`. Export the same value for the
+directory-creation command, then:
 
 ```bash
+export NITRO_GENESIS_DATA_DIR=/home/clement/robinhood-nitro-genesis-data
 install -d -m 700 "$NITRO_GENESIS_DATA_DIR"
 docker compose -f docker-compose.yml -f docker-compose.genesis.yml \
   --profile genesis-verify up -d --build blob-archive nitro nitro-genesis
@@ -22,6 +24,10 @@ docker compose -f docker-compose.yml -f docker-compose.genesis.yml \
 `blob-archive` fills the pruned April/May Beacon-API gap from Blobscan. Nitro
 recomputes every KZG commitment and compares its versioned hash with Ethereum L1;
 malformed or substituted blob data stops derivation.
+
+The archive adapter deliberately does not persist upstream blob bodies before
+Nitro verifies their KZG commitment and versioned hash. This prevents a
+well-formed substituted response from poisoning derivation across retries.
 
 The genesis service caps L1 `eth_getLogs` ranges at 50 blocks. Its internal
 `l1-execution-proxy` uses dRPC for general historical reads and sends serialized,

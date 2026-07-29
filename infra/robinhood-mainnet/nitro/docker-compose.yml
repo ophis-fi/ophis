@@ -27,8 +27,6 @@ services:
       - ALL
     tmpfs:
       - /tmp:size=32m,mode=1777
-    volumes:
-      - blob-archive-cache:/var/cache/blob-archive
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:3500/healthz"]
       interval: 30s
@@ -47,9 +45,9 @@ services:
     # so the VM's own Linux + dockerd keep ~4 GB. GOMEMLIMIT sits under mem_limit
     # so Go GC gets aggressive BEFORE the cgroup OOM-kills. RAM adequacy here is
     # unverified (see nitro/BRINGUP.md, risk #1) - watch RSS during the restore.
-    mem_limit: 22g
+    mem_limit: 16g
     environment:
-      GOMEMLIMIT: 18GiB
+      GOMEMLIMIT: 13GiB
     depends_on:
       blob-archive:
         condition: service_healthy
@@ -168,11 +166,6 @@ services:
       ophis-rbh-net:
         aliases:
           - ophis-rbh-node
-
-volumes:
-  # Immutable blobs are cached by their L1-derived versioned hash. This cache is
-  # disposable and never contains node state or secrets.
-  blob-archive-cache:
 
 # Shared external network so the eRPC proxy (../docker-compose.yml, a separate compose
 # project) resolves this node as `ophis-rbh-node:8547` container-to-container — the node

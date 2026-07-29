@@ -109,8 +109,11 @@ fi
 log "debug_traceTransaction on a near-tip tx (the reason this node exists)"
 TX="$(cast block latest --rpc-url "$NODE_RPC" --json | jq -r '.transactions[0] // empty')"
 if [[ -z "$TX" ]]; then
-  echo "  latest block had no txs; trying a few back"
-  for b in 1 2 3 4 5; do TX="$(cast block $((NODE_HEAD-b)) --rpc-url "$NODE_RPC" --json | jq -r '.transactions[0] // empty')"; [[ -n "$TX" ]] && break; done
+  echo "  latest block had no txs; searching up to 1024 blocks back"
+  for ((b=1; b<=1024 && NODE_HEAD-b>=0; b++)); do
+    TX="$(cast block $((NODE_HEAD-b)) --rpc-url "$NODE_RPC" --json | jq -r '.transactions[0] // empty')"
+    [[ -n "$TX" ]] && break
+  done
 fi
 if [[ -n "$TX" ]]; then
   if cast rpc debug_traceTransaction "$TX" '{"tracer":"callTracer"}' --rpc-url "$NODE_RPC" >/dev/null 2>&1; then
@@ -119,7 +122,7 @@ if [[ -n "$TX" ]]; then
     bad "debug_traceTransaction failed for $TX - check the 'debug' namespace is enabled and the tx is near-tip"
   fi
 else
-  echo "  (no recent tx found to trace; re-run when the chain has traffic)"
+  bad "no transaction found in the latest 1025 blocks; trace capability was not proven"
 fi
 
 # ── verdict ───────────────────────────────────────────────────────────────────
