@@ -21,6 +21,22 @@ const chains = [
   ['Linea', 59144, 'SupportedChainId.LINEA'],
 ];
 
+const selectorEntries = [
+  'SupportedChainId.MAINNET',
+  'SupportedChainId.BNB',
+  'SupportedChainId.BASE',
+  'SupportedChainId.ARBITRUM_ONE',
+  'SupportedChainId.POLYGON',
+  'SupportedChainId.AVALANCHE',
+  'SupportedChainId.LINEA',
+  'SupportedChainId.PLASMA',
+  'SupportedChainId.INK',
+  'SupportedChainId.GNOSIS_CHAIN',
+  'AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId',
+  '130 as unknown as SupportedChainId',
+  '4663 as unknown as SupportedChainId',
+];
+
 const sovereign = [
   {
     name: 'Optimism',
@@ -50,14 +66,30 @@ const gettingStarted = read('apps/docs-ophis/docs/getting-started.md');
 const agentPolicies = read('apps/docs-ophis/docs/agent-wallet-policies.md');
 const faq = read('apps/docs-ophis/docs/faq.mdx');
 
+const selectorMatch = chainInfo.match(/export const SORTED_CHAIN_IDS:[^=]+=\s*\[([\s\S]*?)\n\]/);
+assert.ok(selectorMatch, 'could not parse canonical SORTED_CHAIN_IDS');
+const selectorIds = selectorMatch[1]
+  .split('\n')
+  .map((line) =>
+    line
+      .replace(/\/\/.*$/, '')
+      .trim()
+      .replace(/,$/, ''),
+  )
+  .filter(Boolean);
+assert.deepEqual(
+  selectorIds,
+  selectorEntries,
+  `network selector must expose exactly ${selectorEntries.length} canonical EVM chains`,
+);
+
 for (const [name, chainId, configKey] of chains) {
   assert.ok(
     `${sdkConfig}\n${chainInfo}`.includes(configKey),
     `${name} (${chainId}) is missing from canonical application chain configuration`,
   );
-  assert.match(
-    `${gettingStarted}\n${faq}`,
-    new RegExp(name.replace('Robinhood Chain', 'Robinhood Chain')),
+  assert.ok(
+    `${gettingStarted}\n${faq}`.includes(name),
     `${name} is missing from public supported-chain documentation`,
   );
 }
@@ -70,11 +102,7 @@ assert.match(
 );
 
 for (const chain of sovereign) {
-  assert.match(
-    sdkOrderbook,
-    new RegExp(chain.orderbook.replaceAll('.', '\\.')),
-    `${chain.name} orderbook drift`,
-  );
+  assert.ok(sdkOrderbook.includes(chain.orderbook), `${chain.name} orderbook drift`);
   assert.ok(
     sdkDomain.includes(chain.settlement),
     `${chain.name} settlement is missing from @ophis/sdk`,
@@ -83,22 +111,19 @@ for (const chain of sovereign) {
     agentPolicies.includes(chain.settlement),
     `${chain.name} settlement drifted in wallet-policy docs`,
   );
-  assert.match(
-    `${gettingStarted}\n${faq}`,
-    new RegExp(`Optimism, Unichain, and Robinhood Chain`),
+  assert.ok(
+    `${gettingStarted}\n${faq}`.includes('Optimism, Unichain, and Robinhood Chain'),
     'public docs must identify all three Ophis-operated chains together',
   );
 }
 
 const robinhoodConstants = read('apps/frontend/libs/common-const/src/robinhood.const.ts');
-assert.match(
-  robinhoodConstants,
-  /https:\/\/docs\.robinhood\.com\/chain\//,
+assert.ok(
+  robinhoodConstants.includes("'https://docs.robinhood.com/chain/'"),
   'Robinhood docs URL must be current',
 );
-assert.doesNotMatch(
-  `${chainInfo}\n${robinhoodConstants}`,
-  /docs\.robinhood\.com\/crypto\/robinhood-chain/,
+assert.ok(
+  !`${chainInfo}\n${robinhoodConstants}`.includes('docs.robinhood.com/crypto/robinhood-chain'),
   'removed Robinhood docs URL reappeared',
 );
 

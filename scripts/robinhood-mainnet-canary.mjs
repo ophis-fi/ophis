@@ -5,8 +5,9 @@ import assert from 'node:assert/strict';
 const CHAIN_ID = 4663;
 const PUBLIC_RPC = 'https://rpc.mainnet.chain.robinhood.com';
 const ORDERBOOK = 'https://robinhood-mainnet.ophis.fi';
-const STOCK_API = 'https://api.robinhood.com/rhj';
-const TOKEN_LIST = 'https://tokens.uniswap.org';
+const ASSET_FACADE =
+  process.env.ROBINHOOD_ASSET_FACADE_URL || 'https://swap.ophis.fi/api/robinhood/assets';
+const TOKEN_LIST = 'https://ipfs.io/ipns/tokens.uniswap.org';
 
 const CONTRACTS = {
   settlement: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD',
@@ -84,11 +85,14 @@ async function liveCanary() {
     assert.equal(decodeUint(result), decimals, `${name} decimals drift`);
   }
 
-  const assetsPayload = await fetchJson(`${STOCK_API}/assets`);
+  const assetsPayload = await fetchJson(ASSET_FACADE);
   const assets = assetsPayload.assets ?? [];
-  assert.ok(assets.length >= 80, `official Stock Token API returned only ${assets.length} assets`);
+  assert.ok(
+    assets.length >= 80,
+    `deployed Stock Token facade returned only ${assets.length} assets`,
+  );
   const aapl = assets.find((asset) => asset.tokenSymbol === 'AAPL');
-  assert.ok(aapl, 'AAPL missing from official Stock Token API');
+  assert.ok(aapl, 'AAPL missing from deployed Stock Token facade');
   const aaplDeployment = aapl.deployments?.find((deployment) => deployment.chainId === CHAIN_ID);
   assert.ok(aaplDeployment?.contractAddress, 'AAPL has no Robinhood mainnet deployment');
   await assertContract('AAPL Stock Token', aaplDeployment.contractAddress);

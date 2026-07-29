@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isRobinhoodAsset } from '../../functions/api/robinhood/assets.ts';
+import { isRobinhoodAsset, sanitizeRobinhoodAsset } from '../../functions/api/robinhood/assets.ts';
 
 const asset = {
   id: 'apple',
@@ -23,6 +23,8 @@ test('accepts the documented Robinhood Stock Token shape', () => {
 
 test('rejects malformed nested metadata before it reaches the swap UI', () => {
   assert.equal(isRobinhoodAsset({ ...asset, currentMultiplier: 'not-a-number' }), false);
+  assert.equal(isRobinhoodAsset({ ...asset, currentMultiplier: '0' }), false);
+  assert.equal(isRobinhoodAsset({ ...asset, currentMultiplier: '0.000000000000000000' }), false);
   assert.equal(
     isRobinhoodAsset({
       ...asset,
@@ -31,4 +33,23 @@ test('rejects malformed nested metadata before it reaches the swap UI', () => {
     false,
   );
   assert.equal(isRobinhoodAsset({ ...asset, tradingCapabilities: { market: 'tradable' } }), false);
+  assert.equal(isRobinhoodAsset({ ...asset, tokenName: 'x'.repeat(257) }), false);
+  assert.equal(
+    isRobinhoodAsset({
+      ...asset,
+      deployments: Array.from({ length: 9 }, () => asset.deployments[0]),
+    }),
+    false,
+  );
+});
+
+test('projects only validated documented fields', () => {
+  const sanitized = sanitizeRobinhoodAsset({
+    ...asset,
+    ignoredTopLevel: 'not proxied',
+    deployments: [{ ...asset.deployments[0], ignoredNested: 'not proxied' }],
+  });
+  assert.ok(sanitized);
+  assert.equal('ignoredTopLevel' in sanitized, false);
+  assert.equal('ignoredNested' in sanitized.deployments[0], false);
 });
