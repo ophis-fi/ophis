@@ -12,7 +12,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 GENERAL_UPSTREAM = "https://eth.drpc.org"
-LOG_UPSTREAM = "https://rpc.flashbots.net"
+LOG_UPSTREAM = "https://rpc.mevblocker.io"
 MAX_BODY_BYTES = 1_048_576
 MAX_LOG_BLOCKS = 50
 MIN_LOG_INTERVAL = 0.25

@@ -48,7 +48,7 @@ services:
       - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
       - ./robinhood-genesis.json:/config/robinhood-genesis.json:ro
     command:
-      # dRPC serves general historical reads; serialized Flashbots requests serve
+      # dRPC serves general historical reads; serialized MEV Blocker requests serve
       # <=50-block eth_getLogs. This is isolated from production-node quota.
       - --parent-chain.connection.url=http://l1-execution-proxy:8545
       - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}

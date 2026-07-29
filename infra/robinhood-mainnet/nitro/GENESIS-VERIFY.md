@@ -25,7 +25,7 @@ malformed or substituted blob data stops derivation.
 
 The genesis service caps L1 `eth_getLogs` ranges at 50 blocks. Its internal
 `l1-execution-proxy` uses dRPC for general historical reads and sends serialized,
-backed-off log requests to Flashbots' public Ethereum RPC. Backfill
+backed-off log requests to MEV Blocker's public Ethereum RPC. Backfill
 quota/failures cannot affect the production snapshot node.
 
 ## Monitor
