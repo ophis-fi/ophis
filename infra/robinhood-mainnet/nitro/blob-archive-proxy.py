@@ -13,6 +13,7 @@ root.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -48,7 +49,10 @@ def _validate_blob(value: object) -> str:
 
 
 def _cache_path(versioned_hash: str) -> Path:
-    return CACHE_DIR / f"{versioned_hash.lower()}.json"
+    # Decouple the filesystem path from request data even after strict hash
+    # validation. This also gives static analysis a path-traversal proof.
+    cache_key = hashlib.sha256(versioned_hash.lower().encode("ascii")).hexdigest()
+    return CACHE_DIR / f"{cache_key}.json"
 
 
 def fetch_blob(versioned_hash: str) -> str:
@@ -78,6 +82,7 @@ def fetch_blob(versioned_hash: str) -> str:
         try:
             os.unlink(temporary_name)
         except FileNotFoundError:
+            # os.replace() consumed the temporary path on the success path.
             pass
     return blob
 

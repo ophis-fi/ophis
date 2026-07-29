@@ -1,8 +1,7 @@
 import json
 import tempfile
-import unittest
 from pathlib import Path
-from unittest import mock
+from unittest import TestCase, main, mock
 
 import importlib.util
 
@@ -13,7 +12,7 @@ proxy = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(proxy)
 
 
-class BlobArchiveProxyTest(unittest.TestCase):
+class BlobArchiveProxyTest(TestCase):
     def test_rejects_bad_blob_length(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid length"):
             proxy._validate_blob("0x00")
@@ -41,4 +40,4 @@ class BlobArchiveProxyTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
