@@ -187,6 +187,12 @@ const HYPEREVM_MAINNET: &[Address] = &[
 /// NOTE: the LI.FI entry is a per-chain LiFiDiamond address (as on Optimism) —
 /// the Unichain diamond has no code on 4663, so its address does not carry over.
 const ROBINHOOD_MAINNET: &[Address] = &[
+    // OphisUniswapV4Adapter V1. Deterministic CREATE2 deployment through the
+    // canonical 0x4e59 deployer with salt
+    // keccak256("OPHIS_ROBINHOOD_UNISWAP_V4_ADAPTER_V1"). Its immutable
+    // constructor pins Settlement, Uniswap PoolManager, WETH, and USDG; only
+    // Settlement can call it and output can only return to Settlement.
+    address!("8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae"),
     // KyberSwap MetaAggregationRouterV2. Router == ERC-20 spender.
     // AUTHENTICATION: this is byte-for-byte the SAME CREATE2-deterministic
     // address already allowlisted above for OP / HyperEVM / Unichain, each

@@ -88,4 +88,9 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve Robinhood WETH/USDG orders directly through Uniswap V4
+    UniswapV4 {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
 }
