@@ -10,6 +10,7 @@
 #   driver:            8411
 #   baseline:          9310
 #   lifi-solver:       9311
+#   uniswap-v4-solver: 9313
 #   rpc-proxy (eRPC):  4003   (OP=4001, HL=4000, Uni=4002)
 #   prometheus:        9096
 #   alertmanager:      9097
@@ -179,6 +180,7 @@ services:
       baseline: { condition: service_healthy }
       lifi-solver: { condition: service_healthy }
       kyberswap-solver: { condition: service_healthy }
+      uniswap-v4-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
@@ -270,6 +272,33 @@ services:
     command: ["kyberswap", "--config", "/kyberswap.toml"]
     ports:
       - "127.0.0.1:9312:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Ophis-owned direct lane for the canonical Robinhood ETH/USDG Uniswap V4
+  # pool. Uses only the sovereign RPC and immutable on-chain contracts.
+  uniswap-v4-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/uniswap-v4.toml:/uniswap-v4.toml:ro
+    command: ["uniswapv4", "--config", "/uniswap-v4.toml"]
+    ports:
+      - "127.0.0.1:9313:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

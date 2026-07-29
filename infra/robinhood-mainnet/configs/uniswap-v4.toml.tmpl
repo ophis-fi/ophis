@@ -1,0 +1,21 @@
+# Ophis — direct Robinhood Uniswap V4 solver.
+#
+# Quotes are read from Uniswap's canonical V4Quoter through the sovereign eRPC
+# proxy. Execution is restricted to the immutable Ophis adapter for the
+# canonical native ETH/USDG pool; no aggregator or paid API is involved.
+
+node-url = "http://rpc-proxy:4000/main/evm/4663"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+wrapped-native = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+relative-slippage = "0.01"
+relative-minimum-surplus = "0"
+strict-output-simulation = true
+strict-market-output-simulation = "all"
+internalize-interactions = false
+
+[dex]
+chain-id = "4663"
+adapter = "0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae"
+quoter = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
+wrapped-native = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+stablecoin = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
