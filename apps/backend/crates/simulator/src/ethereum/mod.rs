@@ -7,7 +7,11 @@ use {
     anyhow::{Result, anyhow},
     chain::Chain,
     eth_domain_types::AccessList,
-    ethrpc::{Web3, alloy::ProviderLabelingExt, block_stream::CurrentBlockWatcher},
+    ethrpc::{
+        Web3,
+        alloy::{ProviderLabelingExt, errors::is_revert_error_payload},
+        block_stream::CurrentBlockWatcher,
+    },
     gas_price_estimation::{Eip1559EstimationExt, GasPriceEstimating},
     std::sync::Arc,
     thiserror::Error,
@@ -137,11 +141,13 @@ impl Ethereum {
 }
 
 /// Fast chains can advance several blocks while a quorum RPC request is in
-/// flight. Doubling the simulation-only gas price covers six consecutive
-/// maximum EIP-1559 base-fee increases. Transaction submission performs a
-/// separate, fresh estimate.
+/// flight. Compound six maximum EIP-1559 base-fee increases, rounding each
+/// increase up. Transaction submission performs a separate, fresh estimate.
 fn replay_safe_simulation_gas_price(current: u128) -> u128 {
-    current.saturating_mul(2)
+    (0..6).fold(current, |fee, _| {
+        let increase = fee / 8 + u128::from(fee % 8 != 0);
+        fee.saturating_add(increase)
+    })
 }
 
 impl std::fmt::Debug for Ethereum {
@@ -161,8 +167,8 @@ mod tests {
 
     #[test]
     fn simulation_gas_price_covers_multiple_fast_blocks() {
-        assert_eq!(replay_safe_simulation_gas_price(8), 16);
-        assert_eq!(replay_safe_simulation_gas_price(22_252_001), 44_504_002);
+        assert_eq!(replay_safe_simulation_gas_price(8), 20);
+        assert_eq!(replay_safe_simulation_gas_price(22_252_001), 45_111_186);
     }
 
     #[test]
@@ -195,12 +201,7 @@ impl Error {
         match self {
             Self::ContractRpc(_) | Self::AccessList(_) => true,
             Self::GasPrice(_) | Self::Other(_) => false,
-            Self::Rpc(RpcError::ErrorResp(err)) => {
-                let message = err.message.to_lowercase();
-                err.as_revert_data().is_some()
-                    || err.code == 3
-                    || message.contains("execution reverted")
-            }
+            Self::Rpc(RpcError::ErrorResp(err)) => is_revert_error_payload(err),
             Self::Rpc(_) => false,
         }
     }
