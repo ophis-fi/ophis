@@ -50,7 +50,9 @@ export function isRobinhoodAsset(value: unknown): boolean {
     typeof asset.currentMultiplier !== 'string' ||
     !MULTIPLIER.test(asset.currentMultiplier) ||
     !isOptionalString(asset.pendingMultiplier) ||
-    (typeof asset.pendingMultiplier === 'string' && !MULTIPLIER.test(asset.pendingMultiplier)) ||
+    (typeof asset.pendingMultiplier === 'string' &&
+      asset.pendingMultiplier !== '' &&
+      !MULTIPLIER.test(asset.pendingMultiplier)) ||
     !isOptionalString(asset.pendingMultiplierEffectiveTime) ||
     !isOptionalString(asset.logoUrl) ||
     !isTradingCapabilities(asset.tradingCapabilities) ||
