@@ -10,6 +10,7 @@
  */
 import { ReactNode, useMemo, useState } from 'react'
 
+import { getChainInfo } from '@cowprotocol/common-const'
 import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -19,20 +20,6 @@ import styled from 'styled-components/macro'
 import { useTradeNavigate } from 'modules/trade'
 
 import { useTrending, type TrendingToken } from '../../hooks/useTrending'
-
-const CHAIN_LABEL: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  56: 'BNB',
-  100: 'Gnosis',
-  137: 'Polygon',
-  4663: 'Robinhood Chain',
-  8453: 'Base',
-  42161: 'Arbitrum',
-  43114: 'Avalanche',
-  57073: 'Ink',
-  59144: 'Linea',
-}
 
 const Panel = styled.aside`
   width: 300px;
@@ -226,6 +213,7 @@ export function OphisTrending(): ReactNode {
   const routeChainId = Number(params.chainId)
   const { chainId: walletChainId } = useWalletInfo()
   const chainId = walletChainId ?? routeChainId
+  const chainLabel = getChainInfo(chainId as SupportedChainId)?.label
   const inputCurrencyId = params.inputCurrencyId
   const tradeNavigate = useTradeNavigate()
   const [dismissed, setDismissed] = useState(false)
@@ -258,7 +246,7 @@ export function OphisTrending(): ReactNode {
       <Head>
         {TrendGlyph}
         <Title>Trending</Title>
-        {CHAIN_LABEL[chainId] && <Chip>{CHAIN_LABEL[chainId]}</Chip>}
+        {chainLabel && <Chip>{chainLabel}</Chip>}
       </Head>
       <Sub>Biggest movers · last 1h</Sub>
 

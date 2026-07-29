@@ -1,6 +1,6 @@
-import { cowprotocolTokenLogoUrl, TokenWithLogo } from '@cowprotocol/common-const'
+import { cowprotocolTokenLogoUrl, TokenWithLogo, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { uriToHttp } from '@cowprotocol/common-utils'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { trustTokenLogoUrl } from './trustTokenLogoUrl'
 
@@ -26,7 +26,7 @@ export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
 
 function getTokenLogoFallbacks(address: string, chainId: SupportedChainId): string[] {
   const logos: string[] = []
-  const addressKey = address.toLowerCase()
+  const addressKey = getAddressKey(address)
 
   // Robinhood's canonical Stock Token list currently omits logoURI, while its
   // first-party asset registry publishes every logo at this address-derived URL.
@@ -34,10 +34,10 @@ function getTokenLogoFallbacks(address: string, chainId: SupportedChainId): stri
   // retain their familiar USDC and WETH marks even when discovered outside the
   // app's canonical token constants and arrive without logoURI.
   if (chainId === ROBINHOOD_CHAIN_ID) {
-    if (addressKey === ROBINHOOD_USDG_ADDRESS) {
-      logos.push('/logos/token-usdc.png')
-    } else if (addressKey === ROBINHOOD_WETH_ADDRESS) {
-      logos.push('/logos/token-weth.png')
+    if (areAddressesEqual(address, ROBINHOOD_USDG_ADDRESS) && USDC_MAINNET.logoURI) {
+      logos.push(USDC_MAINNET.logoURI)
+    } else if (areAddressesEqual(address, ROBINHOOD_WETH_ADDRESS) && WETH_MAINNET.logoURI) {
+      logos.push(WETH_MAINNET.logoURI)
     } else {
       logos.push(`https://cdn.robinhood.com/ncw_assets/logos/${addressKey}.png`)
     }
