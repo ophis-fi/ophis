@@ -1,5 +1,6 @@
 <aside class="robinhood-banner" aria-label="Product announcement">
   <a href="https://swap.ophis.fi/#/4663/swap">
+    <img src="/logos/robinhood-feather.svg" alt="" aria-hidden="true" />
     <strong>Robinhood Chain is live on Ophis.</strong>
     <span>Trade now <span aria-hidden="true">→</span></span>
   </a>
@@ -28,6 +29,12 @@
   .robinhood-banner span {
     white-space: nowrap;
   }
+  .robinhood-banner img {
+    width: 16px;
+    height: 21px;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 1px 3px rgb(33 0 52 / 35%));
+  }
   .robinhood-banner a:hover span {
     text-decoration: underline;
     text-underline-offset: 3px;
@@ -40,6 +47,10 @@
     .robinhood-banner a {
       padding-inline: 12px;
       font-size: 12px;
+    }
+    .robinhood-banner img {
+      width: 14px;
+      height: 18px;
     }
   }
 </style>
