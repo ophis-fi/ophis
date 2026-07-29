@@ -3,6 +3,7 @@ use {
     alloy_primitives::U256,
     alloy_provider::{Provider, network::TransactionBuilder},
     alloy_rpc_types::TransactionRequest,
+    alloy_transport::RpcError,
     anyhow::{Result, anyhow},
     chain::Chain,
     eth_domain_types::AccessList,
@@ -60,7 +61,9 @@ impl Ethereum {
         // default value we estimate the current gas price upfront. But because it's
         // extremely rare that tokens behave that way we are fine with falling back to
         // the node specific fallback value instead of failing the whole call.
-        Some(self.inner.gas.estimate().await.ok()?.effective(base_fee))
+        Some(replay_safe_simulation_gas_price(
+            self.inner.gas.estimate().await.ok()?.effective(base_fee),
+        ))
     }
 
     pub fn chain(&self) -> Chain {
@@ -133,6 +136,14 @@ impl Ethereum {
     }
 }
 
+/// Fast chains can advance several blocks while a quorum RPC request is in
+/// flight. Doubling the simulation-only gas price covers six consecutive
+/// maximum EIP-1559 base-fee increases. Transaction submission performs a
+/// separate, fresh estimate.
+fn replay_safe_simulation_gas_price(current: u128) -> u128 {
+    current.saturating_mul(2)
+}
+
 impl std::fmt::Debug for Ethereum {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("Ethereum")
@@ -141,6 +152,22 @@ impl std::fmt::Debug for Ethereum {
             .field("contracts", &self.inner.contracts)
             .field("gas", &"Arc<NativeGasEstimator>")
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replay_safe_simulation_gas_price;
+
+    #[test]
+    fn simulation_gas_price_covers_multiple_fast_blocks() {
+        assert_eq!(replay_safe_simulation_gas_price(8), 16);
+        assert_eq!(replay_safe_simulation_gas_price(22_252_001), 44_504_002);
+    }
+
+    #[test]
+    fn simulation_gas_price_saturates() {
+        assert_eq!(replay_safe_simulation_gas_price(u128::MAX), u128::MAX);
     }
 }
 
@@ -156,4 +183,25 @@ pub enum Error {
     AccessList(String),
     #[error("other error: {0:?}")]
     Other(anyhow::Error),
+}
+
+impl Error {
+    /// Returns whether the failure proves that EVM execution reverted.
+    ///
+    /// RPC gateways also encode quorum failures, rate limits, and upstream
+    /// timeouts as JSON-RPC error responses. Treating every response as an EVM
+    /// revert incorrectly voids otherwise valid winning solutions.
+    pub(super) fn is_revert(&self) -> bool {
+        match self {
+            Self::ContractRpc(_) | Self::AccessList(_) => true,
+            Self::GasPrice(_) | Self::Other(_) => false,
+            Self::Rpc(RpcError::ErrorResp(err)) => {
+                let message = err.message.to_lowercase();
+                err.as_revert_data().is_some()
+                    || err.code == 3
+                    || message.contains("execution reverted")
+            }
+            Self::Rpc(_) => false,
+        }
+    }
 }
