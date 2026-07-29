@@ -1,11 +1,10 @@
 # Zero-budget eRPC proxy for Robinhood Chain mainnet (chain 4663).
 #
-# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and an independent
-# Goldsky Edge RPC. Cadia was restored from a third-party snapshot whose flat
+# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and Robinhood's official
+# public RPC. Cadia was restored from a third-party snapshot whose flat
 # state cannot be proven from the header anchor alone, so it must never be the
 # sole authority for balances, code, storage, calls, logs, transaction data, or
-# receipts. The Goldsky host/path is pinned here; only its credential is expanded
-# from the container environment at config load and is never rendered to disk.
+# receipts. The official endpoint is free and requires no provider credential.
 #
 # TRACES: debug_* is self-node-only because the managed endpoint does not expose
 # it. If Cadia is unavailable, trace-dependent settlement fails closed.
@@ -88,11 +87,8 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: robinhood-goldsky
-        # Pin the independent provider identity in reviewed configuration.
-        # Only the credential is supplied at runtime, so a malformed .env cannot
-        # silently redirect the second voter to Cadia, plaintext, or another host.
-        endpoint: https://edge.goldsky.com/standard/evm/4663?secret=${GOLDSKY_ROBINHOOD_RPC_SECRET}
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
         # Block-head inputs drive the shared block stream and settlement
         # deadlines. Route them only through the header-anchored Cadia node;
         # strict equality at "latest" is impossible on this fast chain.

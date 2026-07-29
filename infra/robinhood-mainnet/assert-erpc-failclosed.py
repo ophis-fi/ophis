@@ -59,8 +59,8 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
-      - id: robinhood-goldsky
-        endpoint: https://edge.goldsky.com/standard/evm/4663?secret=${GOLDSKY_ROBINHOOD_RPC_SECRET}
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
