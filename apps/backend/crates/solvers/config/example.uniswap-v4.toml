@@ -1,6 +1,6 @@
 node-url = "http://localhost:8545"
-chain-id = 4663
 settlement = "0x0000000000000000000000000000000000000000"
+wrapped-native = "0x0bd7d308f8e1639fab988df18a8011f41eacad73"
 relative-slippage = "0.01"
 relative-minimum-surplus = "0"
 strict-output-simulation = true

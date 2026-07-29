@@ -39,5 +39,6 @@ pub struct Config {
     pub block_stream: Option<CurrentBlockWatcher>,
     pub internalize_interactions: bool,
     pub output_guard: crate::domain::dex::OutputGuard,
+    pub wrapped_native: Address,
     pub wrapped_native_balance_slot: u8,
 }

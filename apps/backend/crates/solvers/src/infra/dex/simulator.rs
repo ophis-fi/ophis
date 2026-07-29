@@ -23,7 +23,7 @@ use {
 /// but the eth-flow contract that owns such an order holds NATIVE ETH -- not
 /// WETH -- at simulation time (it wraps to WETH only during real settlement, via
 /// a pre-hook). See `eth_flow_balance_override`.
-const WRAPPED_NATIVE: Address = address!("4200000000000000000000000000000000000006");
+pub const DEFAULT_WRAPPED_NATIVE: Address = address!("4200000000000000000000000000000000000006");
 
 /// The wrapped-native `balanceOf` mapping slot is CHAIN-DEPENDENT even though
 /// the predeploy ADDRESS is not: OP mainnet's 0x4200..06 is WETH9 (balances at
@@ -60,6 +60,7 @@ pub const DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT: u8 = 3;
 fn eth_flow_balance_override(
     owner: Address,
     swap: &dex::Swap,
+    wrapped_native: Address,
     balance_slot: u8,
 ) -> Option<(B256, B256)> {
     // The zero address is the anonymous-quote sentinel (from = 0x0) and can
@@ -67,7 +68,7 @@ fn eth_flow_balance_override(
     // sim run a swap that reverts with "ERC20: transfer to the zero address",
     // turning the graceful "sim unavailable" path (which quotes are exempt from)
     // into a hard error. Skip it -- such quotes fall through to Ok(None).
-    if owner.is_zero() || swap.input.token.0 != WRAPPED_NATIVE {
+    if owner.is_zero() || swap.input.token.0 != wrapped_native {
         return None;
     }
     let value = B256::from(swap.input.amount.to_be_bytes::<32>());
@@ -91,6 +92,7 @@ pub struct Simulator {
     web3: DynProvider,
     settlement: Address,
     authenticator: Address,
+    wrapped_native: Address,
     wrapped_native_balance_slot: u8,
 }
 
@@ -100,12 +102,14 @@ impl Simulator {
         url: &reqwest::Url,
         settlement: Address,
         authenticator: Address,
+        wrapped_native: Address,
         wrapped_native_balance_slot: u8,
     ) -> Self {
         Self {
             web3: blockchain::rpc(url).provider,
             settlement,
             authenticator,
+            wrapped_native,
             wrapped_native_balance_slot,
         }
     }
@@ -144,10 +148,13 @@ impl Simulator {
         // Grant the owner the wrapped-native sell balance for eth-flow orders,
         // whose owner (the eth-flow contract) holds native ETH, not WETH, until
         // settlement wraps it. See `eth_flow_balance_override`.
-        if let Some((slot, value)) =
-            eth_flow_balance_override(owner, swap, self.wrapped_native_balance_slot)
-        {
-            overrides = overrides.with_state_diff(WRAPPED_NATIVE, [(slot, value)]);
+        if let Some((slot, value)) = eth_flow_balance_override(
+            owner,
+            swap,
+            self.wrapped_native,
+            self.wrapped_native_balance_slot,
+        ) {
+            overrides = overrides.with_state_diff(self.wrapped_native, [(slot, value)]);
         }
 
         let swapper_calls_arg = swap
@@ -235,10 +242,13 @@ impl Simulator {
         // Grant the owner the wrapped-native sell balance for eth-flow orders,
         // whose owner (the eth-flow contract) holds native ETH, not WETH, until
         // settlement wraps it. See `eth_flow_balance_override`.
-        if let Some((slot, value)) =
-            eth_flow_balance_override(owner, swap, self.wrapped_native_balance_slot)
-        {
-            overrides = overrides.with_state_diff(WRAPPED_NATIVE, [(slot, value)]);
+        if let Some((slot, value)) = eth_flow_balance_override(
+            owner,
+            swap,
+            self.wrapped_native,
+            self.wrapped_native_balance_slot,
+        ) {
+            overrides = overrides.with_state_diff(self.wrapped_native, [(slot, value)]);
         }
 
         let swapper_calls_arg = swap
@@ -365,6 +375,38 @@ impl Error {
 #[cfg(test)]
 mod tests {
     use {super::*, alloy::primitives::b256};
+
+    #[test]
+    fn eth_flow_override_uses_configured_wrapped_native() {
+        let robinhood_weth = address!("0bd7d308f8e1639fab988df18a8011f41eacad73");
+        let owner = address!("c1ee77e8a1b85d5eed702a9bb435f434408a4d29");
+        let amount = U256::from(10u64);
+        let swap = dex::Swap {
+            calls: vec![],
+            input: eth::Asset {
+                token: robinhood_weth.into(),
+                amount,
+            },
+            output: eth::Asset {
+                token: address!("5fc5360d0400a0fd4f2af552add042d716f1d168").into(),
+                amount: U256::from(1u64),
+            },
+            allowance: dex::Allowance {
+                spender: Address::ZERO,
+                amount: dex::Amount::new(amount),
+            },
+            gas: eth::Gas::default(),
+        };
+
+        assert!(eth_flow_balance_override(owner, &swap, DEFAULT_WRAPPED_NATIVE, 3).is_none());
+        assert_eq!(
+            eth_flow_balance_override(owner, &swap, robinhood_weth, 3),
+            Some((
+                wrapped_native_balance_slot(owner, 3),
+                B256::from(amount.to_be_bytes::<32>()),
+            )),
+        );
+    }
 
     #[test]
     fn wrapped_native_balance_slot_matches_onchain() {

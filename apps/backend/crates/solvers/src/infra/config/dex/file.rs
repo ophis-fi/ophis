@@ -110,6 +110,12 @@ struct Config {
     #[serde(default = "default_strict_output_simulation")]
     strict_output_simulation: bool,
 
+    /// Address of the chain's wrapped-native token. The strict eth-flow
+    /// simulation uses this address for its temporary post-wrap balance
+    /// override. Defaults to the canonical OP-stack predeploy.
+    #[serde(default = "default_wrapped_native")]
+    wrapped_native: eth::Address,
+
     /// Storage slot of the wrapped-native token's `balanceOf` mapping, used by
     /// the eth-flow simulation balance override. CHAIN-DEPENDENT despite the
     /// shared 0x4200..06 predeploy address: OP mainnet = WETH9 = slot 3 (the
@@ -210,6 +216,10 @@ fn default_strict_output_simulation() -> bool {
     true
 }
 
+fn default_wrapped_native() -> eth::Address {
+    crate::infra::dex::simulator::DEFAULT_WRAPPED_NATIVE
+}
+
 fn default_wrapped_native_balance_slot() -> u8 {
     crate::infra::dex::simulator::DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT
 }
@@ -304,6 +314,7 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
         gas_offset: eth::Gas(config.gas_offset),
         block_stream,
         internalize_interactions: config.internalize_interactions,
+        wrapped_native: config.wrapped_native,
         wrapped_native_balance_slot: config.wrapped_native_balance_slot,
         output_guard: crate::domain::dex::OutputGuard {
             max_output_reference_factor: config.max_output_reference_factor,
