@@ -23,7 +23,7 @@ projects:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -44,7 +44,7 @@ projects:
               jitter: 50ms
     upstreamDefaults:
       evm:
-        statePollerInterval: 10s
+        statePollerInterval: 1s
         statePollerDebounce: 1s
     upstreams:
       - id: ophis-self-rbh
@@ -60,11 +60,10 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
       - id: robinhood-goldsky
-        endpoint: ${GOLDSKY_ROBINHOOD_RPC_URL}
+        endpoint: https://edge.goldsky.com/standard/evm/4663?secret=${GOLDSKY_ROBINHOOD_RPC_SECRET}
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
-          - eth_getLogs
         failsafe:
           - matchMethod: "*"
             timeout:

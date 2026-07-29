@@ -99,6 +99,10 @@ Fill `.env` (see `.env.example`). Audit-relevant variables:
 - `POSTGRES_PASSWORD`: `compose-up.sh` materializes the gitignored `secrets/postgres-password` from it. AUDIT-CHANGED: the `db` container reads its password from that secret file (`POSTGRES_PASSWORD_FILE`) instead of a `POSTGRES_PASSWORD` env var, so `docker inspect` on the `db` container no longer shows it. RESIDUAL: the password is still passed as an env var into the flyway (`FLYWAY_PASSWORD`), orderbook, and autopilot containers (the latter two via `DB_WRITE_URL`/`DB_READ_URL`), so `docker inspect` on THOSE still exposes it. Treat the DB password as inspect-visible on the host until those consumers also move to secret-file inputs.
 - `TELEGRAM_BOT_TOKEN`: also place the raw token in `secrets/telegram-token` (chmod 600, owned by the deploy user). AUDIT-CHANGED: `render-configs.sh` writes the uid-65534 container copy for alertmanager, and the host `settlement-anomaly-watch.sh` reads `secrets/telegram-token` (it can no longer read the container copy). On macOS setup, `setup-telegram-keychain.sh` now feeds the token to `security` on stdin, not on argv.
 - `COINGECKO_API_KEY` and mandatory `OPHIS_INTER_SERVICE_AUTH_TOKEN`.
+- `GOLDSKY_ROBINHOOD_RPC_SECRET`: mandatory `gs_edge_...` credential for the
+  independent 2-of-2 read voter. Store the secret only, not a URL; the reviewed
+  HTTPS Goldsky host, chain ID 4663, and URL shape are pinned in
+  `configs/erpc.yaml.tmpl`. Compose refuses to start when it is empty.
 - LEAVE `OPHIS_DRIVER_SUBMITTER_KEY` EMPTY. The submitter PK is file-based and installed in pre-flight, read by `render-configs.sh` via sudo; a non-empty value here is rejected. `render-configs.sh` resolves the path per platform (Linux `/home/ophis-driver/.config/submitter.key`, macOS `/Users/ophis-driver/.config/submitter.key`); override with `OPHIS_SUBMITTER_KEY_PATH`. The Linux/WSL path applies to this deploy.
 - Leave `ROBINHOOD_RPC_INTERNAL` EMPTY. Setting it bypasses the supervised
   sovereign eRPC proxy; `compose-up.sh` refuses unless explicitly acknowledged.

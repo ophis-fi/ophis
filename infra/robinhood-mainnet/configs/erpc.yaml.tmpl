@@ -4,8 +4,8 @@
 # Goldsky Edge RPC. Cadia was restored from a third-party snapshot whose flat
 # state cannot be proven from the header anchor alone, so it must never be the
 # sole authority for balances, code, storage, calls, logs, transaction data, or
-# receipts. The secret-bearing Goldsky URL is expanded from the container
-# environment at config load and is never rendered to disk.
+# receipts. The Goldsky host/path is pinned here; only its credential is expanded
+# from the container environment at config load and is never rendered to disk.
 #
 # TRACES: debug_* is self-node-only because the managed endpoint does not expose
 # it. If Cadia is unavailable, trace-dependent settlement fails closed.
@@ -40,7 +40,7 @@ projects:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -68,10 +68,10 @@ projects:
 
     upstreamDefaults:
       evm:
-        # Robinhood produces blocks far faster than either application's need
-        # for topology discovery. Polling both tips every second wastes the
-        # bounded free Edge allowance without improving servedTip safety.
-        statePollerInterval: 10s
+        # Keep servedTip observations aligned with autopilot's one-second block
+        # poll. A slower voter cadence would make protected latest-tagged state
+        # reads authoritative at a stale common tip on this ~134 ms chain.
+        statePollerInterval: 1s
         statePollerDebounce: 1s
 
     upstreams:
@@ -89,18 +89,16 @@ projects:
               jitter: 50ms
 
       - id: robinhood-goldsky
-        endpoint: ${GOLDSKY_ROBINHOOD_RPC_URL}
+        # Pin the independent provider identity in reviewed configuration.
+        # Only the credential is supplied at runtime, so a malformed .env cannot
+        # silently redirect the second voter to Cadia, plaintext, or another host.
+        endpoint: https://edge.goldsky.com/standard/evm/4663?secret=${GOLDSKY_ROBINHOOD_RPC_SECRET}
         # Block-head inputs drive the shared block stream and settlement
         # deadlines. Route them only through the header-anchored Cadia node;
         # strict equality at "latest" is impossible on this fast chain.
         ignoreMethods:
           - eth_blockNumber
           - eth_getBlockByNumber
-          # Autopilot indexes logs by immutable blockHash. Receipts/logs are
-          # committed by the L2 block header already anchored by Cadia's node,
-          # so these high-volume reads do not rely on unproven flat snapshot
-          # state and can remain self-node-only without consuming Edge quota.
-          - eth_getLogs
         failsafe:
           - matchMethod: "*"
             timeout:
