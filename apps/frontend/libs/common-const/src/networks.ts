@@ -1,6 +1,8 @@
 import { mapSupportedNetworks, SupportedChainId, HttpsString } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
+import { ROBINHOOD_CHAIN_PUBLIC_RPC } from './robinhood.const'
+
 // Ophis fork (Phase 3.3 F1, 2026-05-20): the upstream cowswap default
 // fell through to `https://<chain>.infura.io/v3/<public-key>` with a
 // shared rate-limited key. Every visitor of ophis.fi hit Infura 13+
@@ -34,8 +36,7 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   // Ophis fork: Unichain (chain 130) added at frontend layer
   [130 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_130'] as HttpsString) || undefined,
   // Ophis fork: Robinhood Chain (chain 4663)
-  [4663 as unknown as SupportedChainId]:
-    (process.env['REACT_APP_NETWORK_URL_4663'] as HttpsString) || undefined,
+  [4663 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_4663'] as HttpsString) || undefined,
 }
 
 // Ophis fork (F1, 2026-05-20): defaults switched from Infura (which
@@ -67,7 +68,10 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
   // Robinhood's official keyless public RPC.
   [4663 as unknown as SupportedChainId]: {
-    url: `https://rpc.mainnet.chain.robinhood.com`,
+    // Wallet-safe fallback only. Robinhood documents this endpoint as
+    // rate-limited; production deployments should set
+    // REACT_APP_NETWORK_URL_4663 to their supervised/provider RPC.
+    url: ROBINHOOD_CHAIN_PUBLIC_RPC,
     usesInfura: false,
   },
 }

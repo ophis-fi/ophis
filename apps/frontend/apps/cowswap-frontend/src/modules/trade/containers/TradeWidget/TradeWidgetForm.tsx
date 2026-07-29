@@ -9,6 +9,7 @@ import { ButtonOutlined, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from '@cowpro
 import { useIsSafeWallet, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { RobinhoodAssetContext } from 'ophis/components/RobinhoodAssetContext'
 import SVG from 'react-inlinesvg'
 import { Nullish } from 'types'
 
@@ -258,6 +259,12 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
             ) : (
               <>
                 {topContent}
+                <RobinhoodAssetContext
+                  chainId={chainId}
+                  sellToken={sellToken}
+                  buyToken={buyToken}
+                  sellBalance={inputCurrencyInfo.balance}
+                />
                 <div>
                   <CurrencyInputPanel
                     id="input-currency-input"
