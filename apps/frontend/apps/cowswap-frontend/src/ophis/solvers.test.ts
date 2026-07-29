@@ -62,6 +62,7 @@ describe('OPHIS_SOLVERS registry', () => {
     expect(getOphisSolversForChain(OPHIS_SOLVER_REGISTRY_CHAIN_ID).length).toBe(OPHIS_SOLVERS.length)
     expect(getOphisSolversForChain(OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID).map(({ solverId }) => solverId)).toEqual([
       'baseline',
+      'kyberswap',
       'lifi',
     ])
     expect(getOphisSolversForChain(1).length).toBe(0)

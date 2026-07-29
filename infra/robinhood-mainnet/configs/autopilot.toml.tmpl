@@ -48,12 +48,16 @@ name = "baseline"
 url = "http://driver/baseline"
 address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
-# LI.FI same-chain aggregator - the ONLY lane that supports 4663 today (verified
-# 2026-07-02: li.quest/v1/chains lists 4663; live same-chain quote routes via
-# Fly.trade + Rialto). Second solver is a self-run Uniswap V4 dex-solver (follow-up).
+# LI.FI same-chain aggregator (verified 2026-07-02: li.quest/v1/chains lists
+# 4663; live same-chain quote routes via Fly.trade + Rialto).
 [[drivers]]
 name = "lifi"
 url = "http://driver/lifi"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
+name = "kyberswap"
+url = "http://driver/kyberswap"
 address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
 [fee-policies]
@@ -66,6 +70,7 @@ read-url = "%DB_READ_URL"
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
   { name = "lifi", url = "http://driver/lifi" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
 ]
 
 [price-estimation]

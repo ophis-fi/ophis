@@ -52,11 +52,12 @@ estimators = [
 ]
 
 [order-quoting]
-# Day-1 LiFi-only (the sole aggregator that supports 4663). Keep this in sync
+# Keep the independent Robinhood lanes in sync
 # with autopilot.toml.tmpl [order-quoting].price-estimation-drivers.
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
   { name = "lifi", url = "http://driver/lifi" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
 ]
 
 [price-estimation]

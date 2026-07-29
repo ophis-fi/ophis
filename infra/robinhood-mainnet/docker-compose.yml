@@ -180,6 +180,7 @@ services:
     depends_on:
       baseline: { condition: service_healthy }
       lifi-solver: { condition: service_healthy }
+      kyberswap-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
@@ -229,7 +230,7 @@ services:
       retries: 6
       start_period: 30s
 
-  # LI.FI same-chain aggregator - day-1's only supported lane on 4663. Keyless.
+  # LI.FI same-chain aggregator lane. Keyless.
   lifi-solver:
     image: local-baseline:latest
     build:
@@ -246,6 +247,31 @@ services:
     command: ["lifi", "--config", "/lifi.toml"]
     ports:
       - "127.0.0.1:9311:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Independent keyless Robinhood lane. Kyber builds routes over deployed
+  # on-chain DEXs while the solver and driver both enforce the router allowlist.
+  kyberswap-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/kyberswap.toml:/kyberswap.toml:ro
+    command: ["kyberswap", "--config", "/kyberswap.toml"]
+    ports:
+      - "127.0.0.1:9312:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s
