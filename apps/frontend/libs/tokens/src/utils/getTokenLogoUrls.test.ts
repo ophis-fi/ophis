@@ -1,4 +1,4 @@
-import { TokenWithLogo } from '@cowprotocol/common-const'
+import { TokenWithLogo, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { getTokenLogoUrls } from './getTokenLogoUrls'
@@ -25,7 +25,8 @@ describe('getTokenLogoUrls', () => {
       'Global Dollar',
     )
 
-    expect(getTokenLogoUrls(token)[0]).toBe('/logos/token-usdc.png')
+    expect(getTokenLogoUrls(token)[0]).toBe(USDC_MAINNET.logoURI)
+    expect(getTokenLogoUrls(token)[0]).toMatch(/^https:\/\//)
   })
 
   it('uses the familiar WETH logo for Robinhood WETH even without token-list metadata', () => {
@@ -38,6 +39,7 @@ describe('getTokenLogoUrls', () => {
       'Wrapped Ether',
     )
 
-    expect(getTokenLogoUrls(token)[0]).toBe('/logos/token-weth.png')
+    expect(getTokenLogoUrls(token)[0]).toBe(WETH_MAINNET.logoURI)
+    expect(getTokenLogoUrls(token)[0]).toMatch(/^https:\/\//)
   })
 })
