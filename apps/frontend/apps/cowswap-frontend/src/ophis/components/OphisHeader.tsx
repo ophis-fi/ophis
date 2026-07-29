@@ -25,11 +25,17 @@ const HeaderStack = styled.div<{ $transparent: boolean }>`
   left: 0;
   right: 0;
   z-index: 50;
+  width: 100%;
+  min-width: 0;
+  align-self: stretch;
+  box-sizing: border-box;
 `
 
 const Announcement = styled.a`
+  width: 100%;
   min-height: 38px;
   padding: 8px 20px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -70,6 +76,8 @@ const Bar = styled.header<{ $transparent: boolean }>`
   justify-content: space-between;
   padding: 22px 36px;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(2, 0, 13, 0.86)')};
   backdrop-filter: ${({ $transparent }) => ($transparent ? 'none' : 'blur(16px)')};
   border-bottom: 1px solid ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
