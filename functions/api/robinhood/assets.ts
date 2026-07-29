@@ -17,60 +17,163 @@ interface RobinhoodAssetsPayload {
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const MULTIPLIER = /^(?:0|[1-9]\d{0,29})(?:\.\d{1,18})?$/;
 const MAX_ASSETS = 500;
+const MAX_RESPONSE_BYTES = 1_000_000;
+const MAX_DEPLOYMENTS = 8;
+const MAX_CAPABILITY_SESSIONS = 8;
+const MAX_CAPABILITY_TYPES = 8;
 
-function isOptionalString(value: unknown): boolean {
-  return value === undefined || typeof value === 'string';
+interface SanitizedDeployment {
+  chainId: number;
+  contractAddress: string;
 }
 
-function isTradingCapabilities(value: unknown): boolean {
-  if (value === undefined) return true;
+interface SanitizedAsset {
+  id: string;
+  tokenSymbol: string;
+  tokenName: string;
+  deployments: SanitizedDeployment[];
+  currentMultiplier: string;
+  pendingMultiplier?: string;
+  pendingMultiplierEffectiveTime?: string;
+  logoUrl?: string;
+  status: string;
+  tradingCapabilities?: Record<string, Record<string, string | undefined>>;
+}
+
+function boundedString(value: unknown, maxLength: number): string | undefined {
+  return typeof value === 'string' && value.length <= maxLength ? value : undefined;
+}
+
+function positiveMultiplier(value: unknown): value is string {
+  return typeof value === 'string' && MULTIPLIER.test(value) && BigInt(value.replace('.', '')) > 0n;
+}
+
+async function readLimitedBody(response: Response): Promise<string> {
+  if (!response.body) return '';
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let body = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return body + decoder.decode();
+    size += value.byteLength;
+    if (size > MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      throw new Error('response too large');
+    }
+    body += decoder.decode(value, { stream: true });
+  }
+}
+
+function sanitizeTradingCapabilities(
+  value: unknown,
+): SanitizedAsset['tradingCapabilities'] | undefined | false {
+  if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
 
-  return Object.values(value).every(
-    (session) =>
-      session === undefined ||
-      (session !== null &&
-        typeof session === 'object' &&
-        !Array.isArray(session) &&
-        Object.values(session).every(
-          (status) => status === undefined || typeof status === 'string',
-        )),
-  );
+  const sessions = Object.entries(value);
+  if (sessions.length > MAX_CAPABILITY_SESSIONS) return false;
+  const sanitized: NonNullable<SanitizedAsset['tradingCapabilities']> = {};
+  for (const [sessionName, session] of sessions) {
+    if (
+      sessionName.length > 32 ||
+      !session ||
+      typeof session !== 'object' ||
+      Array.isArray(session)
+    ) {
+      return false;
+    }
+    const capabilityEntries = Object.entries(session);
+    if (capabilityEntries.length > MAX_CAPABILITY_TYPES) return false;
+    const capabilities: Record<string, string | undefined> = {};
+    for (const [capabilityName, status] of capabilityEntries) {
+      if (
+        capabilityName.length > 32 ||
+        (status !== undefined && boundedString(status, 64) === undefined)
+      ) {
+        return false;
+      }
+      capabilities[capabilityName] = status as string | undefined;
+    }
+    sanitized[sessionName] = capabilities;
+  }
+  return sanitized;
+}
+
+export function sanitizeRobinhoodAsset(value: unknown): SanitizedAsset | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const asset = value as Record<string, unknown>;
+  const id = boundedString(asset.id, 128);
+  const tokenSymbol = boundedString(asset.tokenSymbol, 32);
+  const tokenName = boundedString(asset.tokenName, 256);
+  const status = boundedString(asset.status, 64);
+  const pendingMultiplier =
+    asset.pendingMultiplier === undefined ? undefined : boundedString(asset.pendingMultiplier, 64);
+  const pendingMultiplierEffectiveTime =
+    asset.pendingMultiplierEffectiveTime === undefined
+      ? undefined
+      : boundedString(asset.pendingMultiplierEffectiveTime, 64);
+  const logoUrl = asset.logoUrl === undefined ? undefined : boundedString(asset.logoUrl, 2_048);
+  const tradingCapabilities = sanitizeTradingCapabilities(asset.tradingCapabilities);
+
+  if (
+    id === undefined ||
+    tokenSymbol === undefined ||
+    tokenName === undefined ||
+    status === undefined ||
+    !positiveMultiplier(asset.currentMultiplier) ||
+    (asset.pendingMultiplier !== undefined && pendingMultiplier === undefined) ||
+    (pendingMultiplier !== undefined &&
+      pendingMultiplier !== '' &&
+      !MULTIPLIER.test(pendingMultiplier)) ||
+    (asset.pendingMultiplierEffectiveTime !== undefined &&
+      pendingMultiplierEffectiveTime === undefined) ||
+    (asset.logoUrl !== undefined && logoUrl === undefined) ||
+    tradingCapabilities === false ||
+    !Array.isArray(asset.deployments) ||
+    asset.deployments.length === 0 ||
+    asset.deployments.length > MAX_DEPLOYMENTS
+  ) {
+    return undefined;
+  }
+
+  const deployments: SanitizedDeployment[] = [];
+  for (const value of asset.deployments) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const deployment = value as Record<string, unknown>;
+    if (
+      !Number.isSafeInteger(deployment.chainId) ||
+      typeof deployment.contractAddress !== 'string' ||
+      !ADDRESS.test(deployment.contractAddress)
+    ) {
+      return undefined;
+    }
+    deployments.push({
+      chainId: deployment.chainId as number,
+      contractAddress: deployment.contractAddress,
+    });
+  }
+
+  return {
+    id,
+    tokenSymbol,
+    tokenName,
+    deployments,
+    currentMultiplier: asset.currentMultiplier,
+    ...(pendingMultiplier === undefined ? {} : { pendingMultiplier }),
+    ...(pendingMultiplierEffectiveTime === undefined ? {} : { pendingMultiplierEffectiveTime }),
+    ...(logoUrl === undefined ? {} : { logoUrl }),
+    status,
+    ...(tradingCapabilities === undefined ? {} : { tradingCapabilities }),
+  };
 }
 
 export function isRobinhoodAsset(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-
-  const asset = value as Record<string, unknown>;
-  if (
-    typeof asset.id !== 'string' ||
-    typeof asset.tokenSymbol !== 'string' ||
-    typeof asset.tokenName !== 'string' ||
-    typeof asset.status !== 'string' ||
-    typeof asset.currentMultiplier !== 'string' ||
-    !MULTIPLIER.test(asset.currentMultiplier) ||
-    !isOptionalString(asset.pendingMultiplier) ||
-    (typeof asset.pendingMultiplier === 'string' &&
-      asset.pendingMultiplier !== '' &&
-      !MULTIPLIER.test(asset.pendingMultiplier)) ||
-    !isOptionalString(asset.pendingMultiplierEffectiveTime) ||
-    !isOptionalString(asset.logoUrl) ||
-    !isTradingCapabilities(asset.tradingCapabilities) ||
-    !Array.isArray(asset.deployments) ||
-    asset.deployments.length === 0
-  ) {
-    return false;
-  }
-
-  return asset.deployments.every(
-    (deployment) =>
-      deployment !== null &&
-      typeof deployment === 'object' &&
-      !Array.isArray(deployment) &&
-      Number.isSafeInteger((deployment as Record<string, unknown>).chainId) &&
-      typeof (deployment as Record<string, unknown>).contractAddress === 'string' &&
-      ADDRESS.test((deployment as Record<string, unknown>).contractAddress as string),
-  );
+  return sanitizeRobinhoodAsset(value) !== undefined;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -107,15 +210,18 @@ export const onRequest: PagesFunction = async ({ request }) => {
   }
 
   try {
-    const payload = (await response.json()) as Partial<RobinhoodAssetsPayload>;
-    if (
-      !Array.isArray(payload.assets) ||
-      payload.assets.length > MAX_ASSETS ||
-      !payload.assets.every(isRobinhoodAsset)
-    ) {
+    const contentLength = Number(response.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+      throw new Error('response too large');
+    }
+    const body = await readLimitedBody(response);
+    const payload = JSON.parse(body) as Partial<RobinhoodAssetsPayload>;
+    if (!Array.isArray(payload.assets) || payload.assets.length > MAX_ASSETS) {
       throw new Error('invalid payload');
     }
-    return json({ assets: payload.assets });
+    const assets = payload.assets.map(sanitizeRobinhoodAsset);
+    if (assets.some((asset) => asset === undefined)) throw new Error('invalid asset');
+    return json({ assets });
   } catch {
     return json({ error: 'Invalid Robinhood asset registry response' }, 502);
   }
