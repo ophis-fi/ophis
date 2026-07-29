@@ -26,9 +26,13 @@ export const Mark = styled.div`
   border-radius: 9px;
   background: #00c805;
   color: #051006;
-  font-size: 15px;
-  font-weight: 900;
   box-shadow: 0 6px 18px rgba(0, 200, 5, 0.2);
+
+  img {
+    width: 15px;
+    height: 19px;
+    object-fit: contain;
+  }
 `
 
 export const Content = styled.div`

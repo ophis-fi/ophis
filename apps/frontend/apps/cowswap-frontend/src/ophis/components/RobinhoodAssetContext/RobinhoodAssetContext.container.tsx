@@ -15,6 +15,11 @@ import type { RobinhoodStockAsset } from './types'
 
 const ROBINHOOD_CHAIN_ID = 4663
 const ONE_18 = 10n ** 18n
+const ROBINHOOD_MARK = (
+  <styledEl.Mark>
+    <img src="/robinhood-feather.svg" alt="" aria-hidden="true" />
+  </styledEl.Mark>
+)
 
 function tokenAddress(currency: Currency | null): string | undefined {
   return currency?.chainId === ROBINHOOD_CHAIN_ID && currency.isToken ? currency.address : undefined
@@ -56,7 +61,7 @@ function RobinhoodAssetContextContent({
   if (isError && assets.length === 0) {
     return (
       <styledEl.Panel $attention>
-        <styledEl.Mark>!</styledEl.Mark>
+        {ROBINHOOD_MARK}
         <styledEl.Content>
           <strong>
             <Trans>Robinhood Stock Token metadata is temporarily unavailable</Trans>
@@ -76,7 +81,7 @@ function RobinhoodAssetContextContent({
   if (selectedAssets.length === 0) {
     return (
       <styledEl.Panel $attention={false}>
-        <styledEl.Mark>R</styledEl.Mark>
+        {ROBINHOOD_MARK}
         <styledEl.Content>
           <strong>
             <Trans>Robinhood Chain · gasless intent</Trans>
@@ -99,7 +104,7 @@ function RobinhoodAssetContextContent({
 
   return (
     <styledEl.Panel $attention={restrictedAssets.length > 0 || hasPendingMultiplier}>
-      <styledEl.Mark>R</styledEl.Mark>
+      {ROBINHOOD_MARK}
       <styledEl.Content>
         <strong>
           <Trans>{selectedSymbols} · official Robinhood Stock Token</Trans>
