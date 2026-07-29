@@ -149,7 +149,10 @@ export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggre
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: {
     headline: 'Ophis aggregates liquidity across Robinhood Chain.',
-    sources: [{ solver: 'LI.FI', covers: 'aggregator covering available Robinhood Chain liquidity venues' }],
+    sources: [
+      { solver: 'LI.FI', covers: 'aggregator covering available Robinhood Chain liquidity venues' },
+      { solver: 'KyberSwap', covers: 'independent route builder covering Ekubo and Uniswap liquidity' },
+    ],
   },
 }
 

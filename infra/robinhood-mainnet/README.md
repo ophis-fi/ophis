@@ -93,14 +93,15 @@ settlement pauses. CI locks this topology through `assert-erpc-failclosed.py`.
 
 | Solver     | 4663 support | Status |
 |------------|--------------|--------|
-| lifi       | Confirmed (li.quest lists 4663; live same-chain quote via Fly.trade/Rialto) | **Active - the day-1 lane** |
-| baseline   | n/a - ships empty (Robinhood is Uniswap V4) | Inactive |
-| kyberswap / okx / velora / odos / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
+| lifi       | Confirmed (li.quest lists 4663; live same-chain quotes) | **Active** |
+| kyberswap  | Confirmed (`robinhood` API; live Ekubo/Uniswap routes) | **Active** |
+| baseline   | n/a - ships empty (unsupported pool types) | Inactive |
+| okx / velora / odos / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
 
-Single-lane (LiFi) at first means no competitive auction, so surplus is thin until a second
-solver joins. Planned 2nd lane: a self-run **Uniswap V4 dex-solver** (V4Quoter +
-UniversalRouter), reporting the router slippage-floor as clearing price (sole-solver chains
-zero the auction on an optimistic bid - the Unichain native-buy lesson).
+LI.FI and KyberSwap compete independently. Kyber's route builder reaches the
+deployed Robinhood DEX liquidity while the solver and driver enforce a static
+router allowlist. A fully self-hosted pool-specific solver remains desirable
+because both active lanes still depend on external route APIs.
 
 ## Common Failures
 

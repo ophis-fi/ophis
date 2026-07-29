@@ -2,10 +2,9 @@
 #
 # TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
 #
-# Baseline ships EMPTY on Robinhood day-1: the flagship liquidity is Uniswap V4
-# (stocks/stables), which the built-in UniV2/V3 baseline reader cannot route.
-# Day-1 routing is LiFi-only (the sole aggregator supporting 4663). A self-run
-# Uniswap V4 dex-solver (V4Quoter + UniversalRouter) is the planned 2nd lane.
+# Baseline ships EMPTY on Robinhood: the active liquidity includes protocols
+# the built-in UniV2/V3 baseline reader cannot route. KyberSwap and LI.FI are
+# independent execution lanes; Kyber currently reaches Ekubo and Uniswap pools.
 app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"
@@ -27,8 +26,8 @@ absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
-# LI.FI same-chain aggregator - ENABLED (keyless). Day-1's only real liquidity
-# lane on 4663. SELL output reports estimate.toAmountMin (the guaranteed on-chain
+# LI.FI same-chain aggregator - ENABLED (keyless). SELL output reports
+# estimate.toAmountMin (the guaranteed on-chain
 # floor). Same-chain only.
 #
 # *** CONFIG GATE (LiFi router allowlist) ***
@@ -43,6 +42,16 @@ name = "lifi"
 endpoint = "http://lifi-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# KyberSwap Robinhood lane. The backend pins chain 4663 to the `robinhood`
+# endpoint and validates the CREATE2 MetaAggregationRouterV2 in both the solver
+# and driver allowlists before accepting calldata.
+[[solver]]
+name = "kyberswap"
+endpoint = "http://kyberswap-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
 [submission]
@@ -65,6 +74,5 @@ base-tokens = [
   "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",  # USDG (Paxos Global Dollar, 6 dec) - the canonical stable; NO official USDC on 4663
 ]
 
-# NO [[liquidity.*]] AMM sources on 4663 by design. The baseline reader has
-# nothing to route (Uniswap here is V4, which it cannot read). Add a native V4
-# dex-solver as the 2nd lane rather than a baseline AMM source.
+# NO [[liquidity.*]] AMM sources on 4663: the baseline reader cannot model all
+# active pool types. The Kyber lane supplies independently built on-chain routes.

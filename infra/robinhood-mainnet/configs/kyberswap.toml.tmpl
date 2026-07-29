@@ -1,0 +1,17 @@
+# Ophis — Robinhood Chain mainnet (chain 4663) KyberSwap solver config.
+#
+# KyberSwap is an independent, keyless execution lane. Its Robinhood endpoint
+# returns live routes through the chain's deployed DEX liquidity (including
+# Ekubo and Uniswap) and builds calldata for the statically allowlisted
+# MetaAggregationRouterV2.
+
+node-url = "${ROBINHOOD_MAINNET_RPC}"
+
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+
+[dex]
+chain-id = "4663"
+
+# Stable per-deployment client ID avoids KyberSwap's shared anonymous bucket.
+# This is identification only; no API credential is required.
+client-id = "ophis-robinhood-mainnet"
