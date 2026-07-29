@@ -69,6 +69,18 @@ const Announcement = styled.a`
   }
 `
 
+const AnnouncementLogo = styled.img`
+  width: 16px;
+  height: 21px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 1px 3px rgba(33, 0, 52, 0.35));
+
+  @media (max-width: 600px) {
+    width: 14px;
+    height: 18px;
+  }
+`
+
 const Bar = styled.header<{ $transparent: boolean }>`
   position: relative;
   display: flex;
@@ -136,6 +148,7 @@ export function OphisHeader({ children, transparent = false }: Props): ReactNode
   return (
     <HeaderStack $transparent={transparent}>
       <Announcement href="/#/4663/swap" aria-label="Robinhood Chain is live on Ophis. Trade now">
+        <AnnouncementLogo src="/robinhood-feather.svg" alt="" aria-hidden="true" />
         Robinhood Chain is live on Ophis. <span>Trade now →</span>
       </Announcement>
       <Bar $transparent={transparent} className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}>
