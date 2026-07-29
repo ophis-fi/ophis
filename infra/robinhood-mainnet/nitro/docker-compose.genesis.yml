@@ -8,6 +8,28 @@
 # from the published Robinhood genesis and all L2 state is executed from L1 DA.
 
 services:
+  l1-execution-proxy:
+    profiles: ["genesis-verify"]
+    build:
+      context: .
+      dockerfile: Dockerfile.l1-execution-proxy
+    image: local/ophis-l1-deriver:1
+    restart: always
+    mem_limit: 128m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8545/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   nitro-genesis:
     profiles: ["genesis-verify"]
     image: offchainlabs/nitro-node:v3.11.2-3599aca
@@ -19,12 +41,16 @@ services:
     depends_on:
       blob-archive:
         condition: service_healthy
+      l1-execution-proxy:
+        condition: service_healthy
     volumes:
       - ${NITRO_GENESIS_DATA_DIR:?set NITRO_GENESIS_DATA_DIR in nitro/.env}:/home/user/.arbitrum
       - ./robinhood-chain-info.json:/config/robinhood-chain-info.json:ro
       - ./robinhood-genesis.json:/config/robinhood-genesis.json:ro
     command:
-      - --parent-chain.connection.url=${L1_EXECUTION_RPC:?set L1_EXECUTION_RPC in .env}
+      # dRPC serves general historical reads; serialized Flashbots requests serve
+      # <=50-block eth_getLogs. This is isolated from production-node quota.
+      - --parent-chain.connection.url=http://l1-execution-proxy:8545
       - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
       - --parent-chain.blob-client.secondary-beacon-url=${L1_BEACON_URL_FALLBACK:-http://blob-archive:3500}
       - --chain.id=4663
@@ -40,6 +66,8 @@ services:
       - --ws.port=8548
       - --ws.api=net,web3,eth,arb
       - --node.staker.enable=false
+      - --node.inbox-reader.default-blocks-to-read=50
+      - --node.inbox-reader.max-blocks-to-read=50
       # Verification node accepts no writes. The official sequencer endpoint is
       # introduced only when this node is promoted to the production read role.
       - --execution.forwarding-target=null

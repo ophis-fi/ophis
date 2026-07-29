@@ -23,6 +23,11 @@ docker compose -f docker-compose.yml -f docker-compose.genesis.yml \
 recomputes every KZG commitment and compares its versioned hash with Ethereum L1;
 malformed or substituted blob data stops derivation.
 
+The genesis service caps L1 `eth_getLogs` ranges at 50 blocks. Its internal
+`l1-execution-proxy` uses dRPC for general historical reads and sends serialized,
+backed-off log requests to Flashbots' public Ethereum RPC. Backfill
+quota/failures cannot affect the production snapshot node.
+
 ## Monitor
 
 The verification node is host-loopback port `8557`; production remains on `8547`.
