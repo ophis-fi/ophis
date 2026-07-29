@@ -13,16 +13,13 @@ root.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 HASH_RE = re.compile(r"^0x01[0-9a-fA-F]{62}$")
 PATH_RE = re.compile(r"^/eth/v1/beacon/blobs/([0-9]+)$")
@@ -30,7 +27,6 @@ EXPECTED_HEX_LENGTH = 2 + 131_072 * 2
 MAX_BLOBS_PER_REQUEST = 16
 
 BLOBSCAN_BASE_URL = os.environ.get("BLOBSCAN_BASE_URL", "https://api.blobscan.com").rstrip("/")
-CACHE_DIR = Path(os.environ.get("BLOB_CACHE_DIR", "/var/cache/blob-archive"))
 UPSTREAM_TIMEOUT_SECONDS = float(os.environ.get("UPSTREAM_TIMEOUT_SECONDS", "30"))
 LISTEN_HOST = os.environ.get("LISTEN_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "3500"))
@@ -48,43 +44,17 @@ def _validate_blob(value: object) -> str:
     return value.lower()
 
 
-def _cache_path(versioned_hash: str) -> Path:
-    # Decouple the filesystem path from request data even after strict hash
-    # validation. This also gives static analysis a path-traversal proof.
-    cache_key = hashlib.sha256(versioned_hash.lower().encode("ascii")).hexdigest()
-    return CACHE_DIR / f"{cache_key}.json"
-
-
 def fetch_blob(versioned_hash: str) -> str:
     if not HASH_RE.fullmatch(versioned_hash):
         raise ValueError("invalid EIP-4844 versioned hash")
 
-    cache_path = _cache_path(versioned_hash)
-    try:
-        return _validate_blob(json.loads(cache_path.read_text(encoding="utf-8")))
-    except FileNotFoundError:
-        pass
-
     url = f"{BLOBSCAN_BASE_URL}/blobs/{versioned_hash.lower()}/data"
     request = urllib.request.Request(url, headers={"User-Agent": "ophis-blob-archive/1"})
     with urllib.request.urlopen(request, timeout=UPSTREAM_TIMEOUT_SECONDS) as response:
-        blob = _validate_blob(json.load(response))
-
-    CACHE_DIR.mkdir(mode=0o750, parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix=".blob-", dir=CACHE_DIR)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as temporary:
-            json.dump(blob, temporary)
-            temporary.flush()
-            os.fsync(temporary.fileno())
-        os.replace(temporary_name, cache_path)
-    finally:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            # os.replace() consumed the temporary path on the success path.
-            pass
-    return blob
+        # Do not cache before Nitro's KZG/versioned-hash verification. A
+        # well-formed but substituted upstream blob must be retried from the
+        # recovered archive rather than poison a persistent local cache.
+        return _validate_blob(json.load(response))
 
 
 class Handler(BaseHTTPRequestHandler):

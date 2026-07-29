@@ -87,13 +87,15 @@ does **not** make Blobscan a state or consensus trust root:
 - Nitro v3.11.2 recomputes each blob's KZG commitment and versioned hash and rejects a
   mismatch (`util/headerreader/blob_client.go`).
 - The adapter rejects unscoped slot requests, invalid hashes, malformed blobs, partial
-  results, and archive errors. Immutable responses are cached by versioned hash.
+  results and archive errors. Responses are not persisted before Nitro performs
+  its KZG/versioned-hash verification.
 - The normal beacon endpoint remains primary for the current tip; the adapter is the
   archive fallback.
 
 This makes an independently executed genesis derivation possible without a paid archive
 provider or a trusted database snapshot. It still depends on Blobscan for historical
-availability; cached blobs gradually remove that operational dependency.
+availability; malformed or substituted responses remain retryable after the
+archive recovers.
 
 ### Snapshot fallback
 
