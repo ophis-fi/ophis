@@ -67,7 +67,10 @@ notify() {
 # --- Tier 1: liveness (orderbook reachable?), retried for transient blips ---
 vcode=000
 for _ in 1 2 3; do
-  vcode="$(curl -sS -m 12 -o /dev/null -w '%{http_code}' "$VERSION_URL" 2>/dev/null || echo 000)"
+  # NB: no `|| echo 000` here. curl's -w already prints 000 on a connection
+  # failure, so the fallback CONCATENATED and the alert read "HTTP 000000".
+  vcode="$(curl -sS -m 12 -o /dev/null -w '%{http_code}' "$VERSION_URL" 2>/dev/null)"
+  [[ -n "$vcode" ]] || vcode=000
   [[ "$vcode" == "200" ]] && break
   sleep 4
 done
@@ -105,7 +108,8 @@ echo up >"$STATE_FILE"
 qcode=000
 for _ in 1 2 3; do
   qcode="$(curl -sS -m 25 -o /dev/null -w '%{http_code}' -X POST "$QUOTE_URL" \
-    -H 'content-type: application/json' -d "$QUOTE_BODY" 2>/dev/null || echo 000)"
+    -H 'content-type: application/json' -d "$QUOTE_BODY" 2>/dev/null)"
+  [[ -n "$qcode" ]] || qcode=000
   [[ "$qcode" == "200" ]] && break
   sleep 5
 done
