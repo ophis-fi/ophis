@@ -564,17 +564,28 @@ projects:
       # every rule remains fail-closed. Exactly one CF-fronted upstream (publicnode)
       # → a single-CDN compromise still can't poison a full quorum.
       #
-      # Per-method quorum margin, measured 2026-07-30 (paced, with retries):
+      # Per-method quorum margin, re-measured 2026-07-30 AFTER the zan lane was keyed:
+      #   eth_call / eth_getLogs / eth_estimateGas ..................... 3 of 3 lanes
       #   eth_getCode / eth_getStorageAt / eth_getBalance / txCount .... 3 of 3 lanes
-      #   eth_feeHistory ............................................... 3 of 3 lanes
-      #   eth_call / eth_getLogs / eth_estimateGas .... 2 of 3 (zan blocks these)
+      #   eth_feeHistory / eth_getTransactionByHash .................... 3 of 3 lanes
       #   eth_getTransactionReceipt ................... 2 of 3 (publicnode archive-gated)
-      # The two thin sets rely on DIFFERENT pairs — pricing on publicnode+tenderly,
-      # receipts on zan+tenderly — so no single non-tenderly lane failing takes out
-      # both. Tenderly is in both pairs and is this set's concentration risk.
+      #
+      # CORRECTED: this table previously said "eth_call / eth_getLogs /
+      # eth_estimateGas .... 2 of 3 (zan blocks these)". That was true only of zan's
+      # UNREGISTERED tier and went stale the moment the lane was keyed — it survived
+      # into the merged config and was caught in review. A margin table that
+      # understates coverage is not harmless: this file's whole safety argument is
+      # "count the lanes that can actually serve each method", so a wrong count here
+      # invites exactly the 2-lane preferBlockHeadLeader hole it is meant to prevent.
+      # RE-MEASURE THIS TABLE whenever a lane's credentials or tier change.
+      #
+      # eth_getTransactionReceipt is the only remaining thin method, and it is the
+      # reason its rule is disputeBehavior:returnError rather than
+      # preferBlockHeadLeader — with two responders a leader tie-break is
+      # attacker-selectable, so it must fail closed instead.
       #
       # Block A/B tolerate a 1-block skew via disputeBehavior:preferBlockHeadLeader,
-      # so a 2-lane margin is workable there. The RECEIPT rule is strict
+      # which is safe now that all three lanes serve them. The RECEIPT rule is strict
       # (disputeBehavior:returnError): it needs BOTH zan and tenderly to answer and
       # agree, and if either is rate-limited lowParticipantsBehavior:returnError
       # makes it fail CLOSED (safe — the driver refuses to conclude Executed/Reverted
