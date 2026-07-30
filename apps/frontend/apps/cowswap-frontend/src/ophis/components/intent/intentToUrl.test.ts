@@ -1,4 +1,4 @@
-import { intentToUrl } from './intentToUrl'
+import { extractIntentFields, intentToUrl } from './intentToUrl'
 import type { ParsedIntent } from './types'
 
 const make = (entities: ParsedIntent['entities']): ParsedIntent => ({ intent: 'swap', entities })
@@ -38,7 +38,7 @@ describe('intentToUrl', () => {
     expect(url).toBe('/swap/USDC/ETH')
   })
 
-  it('full intent: amount + chain + sell + buy → URL', () => {
+  it('full intent: amount + chain + sell + buy → URL with human sell amount', () => {
     const url = intentToUrl(
       make([
         { type: 'amount', value: '100', raw: '100', start: 5, end: 8 },
@@ -47,8 +47,36 @@ describe('intentToUrl', () => {
         { type: 'chain', value: 'optimism', raw: 'optimism', start: 25, end: 33 },
       ]),
     )
-    // amount intentionally not encoded (per-token decimals scaling deferred to V2)
-    expect(url).toBe('/10/swap/USDC/ETH')
+    // Amount is HUMAN units (not atomic): cowswap's useSetupTradeAmountsFromUrl
+    // scales it by the token decimals via tryParseCurrencyAmount.
+    expect(url).toBe('/10/swap/USDC/ETH?sellAmount=100')
+  })
+
+  it('buy-only intent fills buyAmount', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '500', raw: '500', start: 4, end: 7 },
+        { type: 'buyToken', value: 'COW', raw: 'cow', start: 8, end: 11 },
+      ]),
+    )
+    expect(url).toBe('/swap/_/COW?buyAmount=500')
+  })
+
+  it('amount with no token is dropped (nothing to bind it to)', () => {
+    const url = intentToUrl(make([{ type: 'amount', value: '100', raw: '100', start: 0, end: 3 }]))
+    expect(url).toBe('/swap')
+  })
+
+  it('sell amount survives token->address resolution', () => {
+    const USDC = '0xA0b86991c6218b36c1d19d4a2e9Eb0cE3606eB48'
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 0, end: 3 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 4, end: 8 },
+      ]),
+      (s) => (s === 'USDC' ? USDC : null),
+    )
+    expect(url).toBe(`/swap/${USDC}?sellAmount=100`)
   })
 
   it('unknown chain slug is dropped', () => {
@@ -109,5 +137,87 @@ describe('intentToUrl with a token resolver', () => {
       resolve,
     )
     expect(url).toBe(`/8453/swap/${USDC_ADDR}`)
+  })
+})
+
+describe('extractIntentFields', () => {
+  const USDC_ADDR = '0xA0b86991c6218b36c1d19d4a2e9Eb0cE3606eB48'
+  const resolve = (s: string): string | null => (s === 'USDC' ? USDC_ADDR : null)
+
+  it('returns raw symbols when no resolver is passed (chain-agnostic stash)', () => {
+    const f = extractIntentFields(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 0, end: 3 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 4, end: 8 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 9, end: 12 },
+      ]),
+    )
+    expect(f).toEqual({ chainId: undefined, sellToken: 'USDC', buyToken: 'ETH', amount: '100', field: 'sell' })
+  })
+
+  it('resolves symbols to addresses when a resolver is passed', () => {
+    const f = extractIntentFields(make([{ type: 'sellToken', value: 'USDC', raw: 'usdc', start: 0, end: 4 }]), resolve)
+    expect(f.sellToken).toBe(USDC_ADDR)
+  })
+
+  it('detects the amount side and parses the chain', () => {
+    const f = extractIntentFields(
+      make([
+        { type: 'chain', value: 'optimism', raw: 'optimism', start: 0, end: 8 },
+        { type: 'buyToken', value: 'COW', raw: 'cow', start: 9, end: 12 },
+        { type: 'amount', value: '5', raw: '5', start: 13, end: 14 },
+      ]),
+    )
+    expect(f).toEqual({ chainId: 10, sellToken: undefined, buyToken: 'COW', amount: '5', field: 'buy' })
+  })
+})
+
+describe('intentToUrl amount side + fallback chain', () => {
+  it('binds a buy-side amount to buyAmount ("buy 500 COW with USDC")', () => {
+    // amount(4) is adjacent to the BUY token COW(8), far from the SELL token USDC(18)
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '500', raw: '500', start: 4, end: 7 },
+        { type: 'buyToken', value: 'COW', raw: 'cow', start: 8, end: 11 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 18, end: 22 },
+      ]),
+    )
+    expect(url).toBe('/swap/USDC/COW?buyAmount=500')
+  })
+
+  it('binds a sell-side amount to sellAmount ("swap 100 USDC for ETH")', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 5, end: 8 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 9, end: 13 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 18, end: 21 },
+      ]),
+    )
+    expect(url).toBe('/swap/USDC/ETH?sellAmount=100')
+  })
+
+  it('emits the fallback chain segment when the intent names none', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'amount', value: '100', raw: '100', start: 5, end: 8 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 9, end: 13 },
+        { type: 'buyToken', value: 'ETH', raw: 'eth', start: 18, end: 21 },
+      ]),
+      undefined,
+      8453,
+    )
+    expect(url).toBe('/8453/swap/USDC/ETH?sellAmount=100')
+  })
+
+  it('parsed chain still wins over the fallback', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'chain', value: 'optimism', raw: 'optimism', start: 0, end: 8 },
+        { type: 'sellToken', value: 'USDC', raw: 'usdc', start: 9, end: 13 },
+      ]),
+      undefined,
+      8453,
+    )
+    expect(url).toBe('/10/swap/USDC')
   })
 })
