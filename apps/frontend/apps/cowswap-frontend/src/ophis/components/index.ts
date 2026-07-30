@@ -18,4 +18,4 @@ export { ReferralCta } from './ReferralCta'
 
 export { OphisTrending } from './Trending/OphisTrending'
 
-export { RoutePanel } from './RoutePanel/RoutePanel'
+export { RoutePanel } from './RoutePanel'
