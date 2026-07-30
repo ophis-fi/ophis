@@ -3,3 +3,4 @@
 web3==7.15.0
 eth-abi==5.2.0
 python-dotenv==1.2.2
+setuptools==83.0.0
