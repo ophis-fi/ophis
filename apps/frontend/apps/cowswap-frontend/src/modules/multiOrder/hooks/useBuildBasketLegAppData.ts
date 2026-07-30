@@ -7,7 +7,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 import { OphisBasketTag } from 'ophis/basketMetadata'
 
 import { affiliateTraderSavedCodeAtom } from 'modules/affiliate'
-import { AppDataInfo, buildAppData } from 'modules/appData'
+import { AppDataInfo, buildAppData, resolveOphisPartnerFee } from 'modules/appData'
 import { useAppCode, useAppDataHooks } from 'modules/appData/hooks'
 import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForAppData'
 import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
@@ -16,8 +16,6 @@ import { useUtm } from 'modules/utm'
 import { useVolumeFee } from 'modules/volumeFee'
 
 import { BuildBasketLegAppDataFn } from './useBasketPlacement'
-
-import { resolveBasketLegPartnerFee } from '../pure/legPartnerFee'
 
 /**
  * The concrete per-leg appData builder: gathers the same appData params the
@@ -34,7 +32,8 @@ import { resolveBasketLegPartnerFee } from '../pure/legPartnerFee'
  * PARTNER FEE: resolved by `resolveBasketLegPartnerFee`, which is the swap
  * AppDataUpdater's fee decision extracted into a pure, tested function so a
  * basket leg and an equivalent single swap on the same chain cannot drift apart.
- * See `../pure/legPartnerFee.ts` for why each step drops the fee.
+ * See `modules/appData/utils/resolveOphisPartnerFee.ts` for why each step
+ * drops the fee. It is the same function the swap path uses.
  *
  * Before this was wired, every basket leg went out with no `partnerFee` at all,
  * so a 6-leg basket earned Ophis nothing.
@@ -50,7 +49,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
 
   const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
-  const partnerFee = resolveBasketLegPartnerFee(widgetPartnerFee, volumeFee, chainId)
+  const partnerFee = resolveOphisPartnerFee(widgetPartnerFee, volumeFee, chainId)
 
   return useCallback(
     async (_leg, marker: OphisBasketTag): Promise<AppDataInfo> => {

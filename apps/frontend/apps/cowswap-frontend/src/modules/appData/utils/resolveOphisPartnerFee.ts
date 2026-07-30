@@ -1,16 +1,16 @@
 import { ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
 
-import { shouldEmitOphisPartnerFee } from 'modules/appData/updater/shouldEmitOphisPartnerFee'
+import { shouldEmitOphisPartnerFee } from '../updater/shouldEmitOphisPartnerFee'
 
 /**
- * Resolve the `metadata.partnerFee` a single basket leg must carry.
+ * Resolve the `metadata.partnerFee` an order must carry, from the widget
+ * override and the volumeFee pipeline.
  *
- * This is the swap path's fee decision, extracted so it can be asserted rather
- * than re-typed. `AppDataUpdater` performs exactly these three steps inline and
- * then passes the result to `AppDataInfoUpdater` as `volumeFee`, which hands it
- * to `buildAppData` as `partnerFee`. A basket leg is an ordinary CoW order, so
- * it must arrive at the same answer for the same chain, or a basket would be
- * cheaper than the equivalent single swaps and Ophis would earn nothing on it.
+ * THE single implementation of this decision. `AppDataUpdater` calls it for
+ * ordinary swaps and `useBuildBasketLegAppData` calls it for basket legs, so
+ * the two cannot drift: a basket leg is an ordinary CoW order and must arrive
+ * at the same answer for the same chain, or a basket would be cheaper than the
+ * equivalent single swaps.
  *
  * Order matters and each step drops the fee for a different reason:
  *
@@ -25,9 +25,10 @@ import { shouldEmitOphisPartnerFee } from 'modules/appData/updater/shouldEmitOph
  *   3. Falling back to `volumeFee` picks up that pipeline, which is also the
  *      path a widget consumer's own volumeBps override arrives on.
  *
- * Keep in lockstep with `modules/appData/updater/AppDataUpdater.tsx`.
+ * Exported from the `modules/appData` barrel: other modules must consume it
+ * from there, never by reaching into `updater/`.
  */
-export function resolveBasketLegPartnerFee<TWidgetFee, TVolumeFee>(
+export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   widgetPartnerFee: TWidgetFee | undefined,
   volumeFee: TVolumeFee | undefined,
   chainId: number | undefined,

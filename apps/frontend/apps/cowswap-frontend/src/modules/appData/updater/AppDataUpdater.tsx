@@ -10,11 +10,10 @@ import { useReplacedOrderUid } from 'modules/trade/state/alternativeOrder'
 import { useUtm } from 'modules/utm'
 import { useVolumeFee } from 'modules/volumeFee'
 
-import { ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
-
 import { AppDataHooksUpdater } from './AppDataHooksUpdater'
 import { AppDataInfoUpdater, UseAppDataParams } from './AppDataInfoUpdater'
-import { shouldEmitOphisPartnerFee } from './shouldEmitOphisPartnerFee'
+
+import { resolveOphisPartnerFee } from '../utils/resolveOphisPartnerFee'
 
 import { useAppCode, useAppDataHooks } from '../hooks'
 import { useRwaConsentForAppData } from '../hooks/useRwaConsentForAppData'
@@ -45,14 +44,13 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // not the recipient value; the recipient itself is the Ophis Safe via
   // partnerFeeDefault.ts.
   const ophisAppDataPartnerFeeRaw = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
-  const ophisAppDataPartnerFeeGated = shouldEmitOphisPartnerFee(chainId) ? ophisAppDataPartnerFeeRaw : undefined
   // OP (and any future self-hosted chain) mandates the CIP-75 Volume policy and
   // rejects the price-improvement fallback at ingress, so suppress it there. The
   // floor Volume fee for OP is carried by the volumeFee pipeline below
   // (ophisVolumeOnlyFloorFee, surfaced via volumeFeeAtom) whether the flag is on
   // or off, so the displayed fee and this on-chain appData fee come from the same
   // source and never diverge. On CoW-hosted chains the PI shape passes through.
-  const ophisAppDataPartnerFee = ophisAppDataPartnerFeeForChain(ophisAppDataPartnerFeeGated, chainId)
+  const partnerFee = resolveOphisPartnerFee(ophisAppDataPartnerFeeRaw, volumeFee, chainId)
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
@@ -67,7 +65,7 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
       orderClass={orderClass}
       utm={utm}
       typedHooks={typedHooks}
-      volumeFee={ophisAppDataPartnerFee ?? volumeFee}
+      volumeFee={partnerFee}
       replacedOrderUid={replacedOrderUid}
       userConsent={userConsent}
       refCode={refCode}
