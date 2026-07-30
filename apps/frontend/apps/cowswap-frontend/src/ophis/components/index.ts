@@ -17,3 +17,5 @@ export { OphisBeatMarket } from './BeatMarket/OphisBeatMarket'
 export { ReferralCta } from './ReferralCta'
 
 export { OphisTrending } from './Trending/OphisTrending'
+
+export { RoutePanel } from './RoutePanel/RoutePanel'

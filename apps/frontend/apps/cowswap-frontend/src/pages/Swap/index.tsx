@@ -13,7 +13,7 @@ import { PageTitle } from 'modules/application'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
 
-import { OphisTrending, ReferralCta } from 'ophis/components'
+import { OphisTrending, ReferralCta, RoutePanel } from 'ophis/components'
 
 import { Routes } from 'common/constants/routes'
 import { HydrateAtom } from 'common/state/HydrateAtom'
@@ -36,18 +36,31 @@ const DcaCta = (
   </InlineBanner>
 )
 
-// The swap widget stays centered (margin auto). On wide viewports the Trending
-// panel floats to its right without affecting the widget's own (dynamic) sizing;
-// on narrower viewports (where there is no room beside the widget) it drops into
+// The swap widget stays centered (margin auto). On wide viewports the side rail
+// floats to its right without affecting the widget's own (dynamic) sizing; on
+// narrower viewports (where there is no room beside the widget) it drops into
 // normal flow, centered below the widget, instead of being hidden.
 const SwapStage = styled.div`
   position: relative;
   width: 100%;
 `
 
-const TrendingFloat = styled.div`
+// ONE rail, not one float per panel. Each panel decides for itself whether to
+// render, so the rail collapses cleanly: nothing at all on a chain with no
+// solvers and no trending data.
+//
+// The geometry is deliberately unchanged from the single Trending float it
+// replaces (same 250px offset, same 1181px gate, same z-index). Widening the
+// offset is not free: TradeWidget expands its own max-width to 590px and 700px
+// for the token-select views (modules/trade/containers/TradeWidget/styled.tsx),
+// so a 700px widget already reaches centre + 350 and there is no
+// `overflow-x: hidden` anywhere to catch an overlap. Move the gate before the
+// offset.
+const SideRail = styled.div`
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
   margin-top: 16px;
 
   @media (min-width: 1181px) {
@@ -56,7 +69,7 @@ const TrendingFloat = styled.div`
     left: 50%;
     margin-left: 250px;
     margin-top: 0;
-    display: block;
+    align-items: stretch;
     z-index: 1;
   }
 `
@@ -79,13 +92,14 @@ export function SwapPage(): ReactNode {
         {/* Partner iframe embeds keep the plain DCA banner: the referral CTA
             would route partner users to /profile inside the host's iframe. */}
         <SwapWidget topContent={isInjectedWidget() ? DcaCta : <ReferralCta fallback={DcaCta} />} />
-        {/* Full app only. In an injected widget (partner iframe embeds) the panel is
+        {/* Full app only. In an injected widget (partner iframe embeds) the rail is
             not mounted at all, so it never renders in or resizes a partner embed and
-            never fetches GeckoTerminal from one. */}
+            no panel ever fetches a third-party API from one. */}
         {!isInjectedWidget() && (
-          <TrendingFloat>
+          <SideRail>
+            <RoutePanel />
             <OphisTrending />
-          </TrendingFloat>
+          </SideRail>
         )}
       </SwapStage>
     </HydrateAtom>
