@@ -15,6 +15,7 @@
   const THIRD_OWNER = '0x746ad9c63cca6d3a8588731d60fb87deab4da46a'
   const LEGACY_PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v0'
   const PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v1'
+  const CEREMONY_BROWSER_LOCK = 'ophisFeeSafeRobinhoodCeremony:v1'
   const EXPECTED_CODE_HASHES = new Map([
     [FACTORY, '0x50c3cdc4074750a7a974204a716c999edd37482f907608d960b2b025ee0b3317'],
     [SINGLETON, '0x1fe2df852ba3299d6534ef416eefa406e56ced995bca886ab7a553e6d0c5e1c4'],
@@ -43,6 +44,7 @@
   const sameAddresses = (actual, expected) =>
     JSON.stringify(normalizeAddresses(actual)) === JSON.stringify(normalizeAddresses(expected))
   let pendingTransaction = null
+  let storageReadSucceeded = false
 
   function parsePendingTransaction(value, requireVersionMarker) {
     if (!value) return null
@@ -66,12 +68,14 @@
   }
 
   function readPendingTransaction() {
+    storageReadSucceeded = false
     try {
       const storedValue = window.localStorage.getItem(PENDING_TRANSACTION_KEY)
       const storedTransaction = parsePendingTransaction(storedValue, true)
       if (storedValue && !storedTransaction) window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
 
       const legacyValue = window.localStorage.getItem(LEGACY_PENDING_TRANSACTION_KEY)
+      storageReadSucceeded = true
       let legacyTransaction = null
       let legacyNeedsNormalization = false
       if (/^0x[0-9a-f]{64}$/i.test(legacyValue || '')) {
@@ -96,23 +100,33 @@
       ) {
         pendingTransaction = legacyTransaction
         if (legacyNeedsNormalization) {
+          const unchangedLegacy = window.localStorage.getItem(LEGACY_PENDING_TRANSACTION_KEY) === legacyValue
+          if (unchangedLegacy) {
+            rememberPendingTransaction(
+              pendingTransaction.hash,
+              pendingTransaction.sender,
+              pendingTransaction.nonce,
+              pendingTransaction.nonceProvisional,
+            )
+          } else {
+            return rereadPendingTransaction()
+          }
+        }
+        return pendingTransaction
+      }
+      pendingTransaction = storedTransaction || legacyTransaction || pendingTransaction
+      if (pendingTransaction && legacyNeedsNormalization) {
+        const unchangedLegacy = window.localStorage.getItem(LEGACY_PENDING_TRANSACTION_KEY) === legacyValue
+        if (unchangedLegacy) {
           rememberPendingTransaction(
             pendingTransaction.hash,
             pendingTransaction.sender,
             pendingTransaction.nonce,
             pendingTransaction.nonceProvisional,
           )
+        } else {
+          return rereadPendingTransaction()
         }
-        return pendingTransaction
-      }
-      pendingTransaction = storedTransaction || legacyTransaction || pendingTransaction
-      if (pendingTransaction && legacyNeedsNormalization) {
-        rememberPendingTransaction(
-          pendingTransaction.hash,
-          pendingTransaction.sender,
-          pendingTransaction.nonce,
-          pendingTransaction.nonceProvisional,
-        )
       }
     } catch {
       // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
@@ -121,8 +135,11 @@
   }
 
   function rereadPendingTransaction() {
+    const inMemoryTransaction = pendingTransaction
     pendingTransaction = null
-    return readPendingTransaction()
+    const storedTransaction = readPendingTransaction()
+    if (!storageReadSucceeded) pendingTransaction = inMemoryTransaction
+    return pendingTransaction || storedTransaction
   }
 
   function rememberPendingTransaction(transactionHash, sender, nonce, nonceProvisional) {
@@ -154,8 +171,16 @@
         const storedValue = window.localStorage.getItem(key)
         if (!storedValue) continue
         const storedHash = storedTransactionHash(storedValue)
-        if (storedHash === expectedHash.toLowerCase()) window.localStorage.removeItem(key)
+        if (storedHash === expectedHash.toLowerCase()) {
+          // Web Locks serializes current tabs; this immediate re-read also
+          // protects against a cached pre-lock ceremony tab replacing the key.
+          if (window.localStorage.getItem(key) === storedValue) window.localStorage.removeItem(key)
+          else newerLockExists = true
+        }
         else newerLockExists = true
+      }
+      for (const key of [LEGACY_PENDING_TRANSACTION_KEY, PENDING_TRANSACTION_KEY]) {
+        if (window.localStorage.getItem(key)) newerLockExists = true
       }
       return !newerLockExists
     } catch {
@@ -256,6 +281,39 @@
         const lockAfterConfirmation = rereadPendingTransaction()
         if (!lockAfterConfirmation || lockAfterConfirmation.hash.toLowerCase() !== transaction.hash.toLowerCase()) {
           throw new Error('A newer ceremony transaction lock appeared during confirmation; retirement refused')
+        }
+        const [receiptAfterConfirmation, transactionAfterConfirmation] = await Promise.all([
+          provider.request({
+            method: 'eth_getTransactionReceipt',
+            params: [transaction.hash],
+          }),
+          provider.request({
+            method: 'eth_getTransactionByHash',
+            params: [transaction.hash],
+          }),
+        ])
+        if (receiptAfterConfirmation) return { receipt: receiptAfterConfirmation, replaced: false }
+        if (transactionAfterConfirmation) {
+          throw new Error(`Transaction reappeared while confirmation was open; retry remains locked: ${transaction.hash}`)
+        }
+        const [confirmedAfterConfirmation, pendingAfterConfirmation] = await Promise.all([
+          provider.request({
+            method: 'eth_getTransactionCount',
+            params: [transaction.sender, 'latest'],
+          }),
+          provider.request({
+            method: 'eth_getTransactionCount',
+            params: [transaction.sender, 'pending'],
+          }),
+        ])
+        if (nonce && BigInt(confirmedAfterConfirmation) > BigInt(nonce)) {
+          return { receipt: null, replaced: true }
+        }
+        if (
+          (nonce && BigInt(pendingAfterConfirmation) > BigInt(nonce)) ||
+          (!nonce && BigInt(pendingAfterConfirmation) !== BigInt(confirmedAfterConfirmation))
+        ) {
+          throw new Error(`A replacement appeared during confirmation; retry remains locked: ${transaction.hash}`)
         }
         return { receipt: null, replaced: false, dropped: true }
       }
@@ -543,5 +601,29 @@
     }
   }
 
-  button.addEventListener('click', deployAndConfigure)
+  async function runExclusiveCeremony() {
+    if (!navigator.locks?.request) {
+      setStatus('REFUSED / STOPPED\nThis wallet browser does not support the cross-tab Web Locks safety API.')
+      return
+    }
+    await navigator.locks.request(CEREMONY_BROWSER_LOCK, { ifAvailable: true }, async (lock) => {
+      if (!lock) {
+        setStatus('REFUSED / STOPPED\nAnother tab is already running the Robinhood Safe ceremony.')
+        return
+      }
+      await deployAndConfigure()
+    })
+  }
+
+  if (window.__OPHIS_FEE_SAFE_TEST_HOOKS__) {
+    Object.assign(window.__OPHIS_FEE_SAFE_TEST_HOOKS__, {
+      forgetPendingTransaction,
+      readPendingTransaction,
+      rememberPendingTransaction,
+      rereadPendingTransaction,
+      waitForPendingResolution,
+    })
+  }
+
+  button.addEventListener('click', runExclusiveCeremony)
 })()
