@@ -115,7 +115,11 @@ request-sharing = { path = "crates/request-sharing" }
 reqwest = "0.13"
 retry-helper = { path = "crates/retry-helper" }
 rstest = "0.26"
-ruint = { version = "1.17.2", default-features = false }
+# 1.20.0 is the RUSTSEC-2026-0220 patch floor: Uint::{overflowing,checked,
+# saturating,wrapping}_{shl,shr} returned false-negative overflow flags, which
+# made checked_* return Some instead of None and could hang to_base_be in a
+# formatting loop. Do not lower this below 1.20.0.
+ruint = { version = "1.20.0", default-features = false }
 rust_decimal = { version = "1.35.0", default-features = false }
 s3 = { path = "crates/s3" }
 scopeguard = "1.2.0"
