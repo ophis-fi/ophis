@@ -88,6 +88,13 @@ for path in STACKS:
                 errors.append(
                     f'{path.relative_to(ROOT)} Robinhood refunder is missing {field}'
                 )
+        for solver_config in ('lifi.toml.tmpl', 'kyberswap.toml.tmpl', 'uniswap-v4.toml.tmpl'):
+            config_path = path.parent / 'configs' / solver_config
+            config_text = config_path.read_text()
+            if 'wrapped-native-balance-slot = 51' not in config_text:
+                errors.append(
+                    f'{config_path.relative_to(ROOT)} does not use the verified aeWETH balance slot 51'
+                )
 
 if errors:
     for error in errors:
