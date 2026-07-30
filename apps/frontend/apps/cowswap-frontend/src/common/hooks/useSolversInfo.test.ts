@@ -5,7 +5,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { renderHook } from '@testing-library/react'
 
-import { OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_SOLVERS } from 'ophis/solvers'
+import { getOphisSolversForChain, OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_SOLVERS } from 'ophis/solvers'
 
 import { useSolversInfo } from './useSolversInfo'
 
@@ -32,7 +32,10 @@ describe('useSolversInfo', () => {
   it('falls back to the full static registry on the sovereign chain when the CMS is empty', () => {
     const { result } = renderHook(() => useSolversInfo(OPTIMISM))
 
-    expect(Object.keys(result.current).length).toBe(OPHIS_SOLVERS.length)
+    // Count the entries registered FOR THIS CHAIN, not the whole registry.
+    // OPHIS_SOLVERS spans every sovereign chain, so comparing against its
+    // total silently broke when the 4663-only uniswap-v4 entry was added.
+    expect(Object.keys(result.current).length).toBe(getOphisSolversForChain(OPTIMISM).length)
     expect(result.current['baseline'].displayName).toBe('Baseline')
     expect(result.current['kyberswap'].solverNetworks).toEqual(
       expect.arrayContaining([{ chainId: OPTIMISM, env: 'prod' }]),
@@ -45,9 +48,20 @@ describe('useSolversInfo', () => {
     // The internal id is retained for attribution, but no rendered string names the brand.
     expect(result.current['kyberswap'].solverId).toBe('kyberswap')
     expect(result.current['kyberswap'].displayName).toBe('External solver')
-    expect(result.current['odos'].displayName).toBe('External solver')
-    expect(result.current['odos'].displayName?.toLowerCase()).not.toContain('odos')
-    expect(result.current['odos'].description?.toLowerCase()).not.toContain('odos')
+    expect(result.current['velora'].displayName).toBe('External solver')
+    expect(result.current['velora'].displayName?.toLowerCase()).not.toContain('velora')
+    expect(result.current['velora'].description?.toLowerCase()).not.toContain('velora')
+
+    // Assert the rule, not one example: no registry entry may leak its brand
+    // into rendered copy. Pinning this to a specific solver id is what made the
+    // test break when the retired Odos entry was removed.
+    for (const { solverId } of OPHIS_SOLVERS) {
+      const rendered = result.current[solverId]
+      if (!rendered || solverId === 'baseline' || solverId === 'uniswap-v4') continue
+      expect(rendered.displayName).toBe('External solver')
+      expect(rendered.displayName?.toLowerCase()).not.toContain(solverId.toLowerCase())
+      expect(rendered.description?.toLowerCase()).not.toContain(solverId.toLowerCase())
+    }
   })
 
   it('lets a CMS entry win over the registry on solver-id collision', () => {
@@ -63,7 +77,10 @@ describe('useSolversInfo', () => {
 
     expect(result.current['baseline'].displayName).toBe('CMS Baseline')
     // The registry still fills the other slots.
-    expect(Object.keys(result.current).length).toBe(OPHIS_SOLVERS.length)
+    // Count the entries registered FOR THIS CHAIN, not the whole registry.
+    // OPHIS_SOLVERS spans every sovereign chain, so comparing against its
+    // total silently broke when the 4663-only uniswap-v4 entry was added.
+    expect(Object.keys(result.current).length).toBe(getOphisSolversForChain(OPTIMISM).length)
   })
 
   it('does not add registry entries on CoW-hosted chains', () => {

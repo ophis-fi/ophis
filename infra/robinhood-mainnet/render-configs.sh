@@ -414,13 +414,12 @@ fi
 # secret-substitution to a non-listed file will fail-closed before the
 # stack starts.
 # baseline, orderbook, autopilot, kyberswap, velora now all use .tmpl
-# (ROBINHOOD_RPC_INTERNAL must thread through). driver.toml (PK), okx.toml (OKX
-# secrets) and odos.toml (Odos x-api-key) bear secrets and must land on the
-# RAM-disk.
+# (ROBINHOOD_RPC_INTERNAL must thread through). driver.toml (PK) and okx.toml
+# (OKX secrets) bear secrets and must land on the RAM-disk.
 # Day-1 is LiFi-only: only driver.toml bears the submitter PK. LiFi is keyless.
 # erpc.yaml contains no credentials and renders to ./rendered/ 0644 so the
 # nonroot erpc container can read it. When aggregator
-# lanes with real credentials (OKX/Odos/Enso) are added later, add their toml here.
+# lanes with real credentials (OKX/Enso) are added later, add their toml here.
 PK_BEARING_NAMES=(driver.toml)
 
 is_pk_bearing() {
@@ -554,12 +553,12 @@ while IFS= read -r f; do
       continue
     fi
     # uuid-shaped api-key (8-4-4-4-12 hex w/ dashes) — covers BOTH the OKX
-    # api-key AND the Odos x-api-key (same format). Both their templates set
-    # `api-key = "${...}"`, and both okx.toml + odos.toml are in
+    # api-key (same format as other uuid keys). Its template sets
+    # `api-key = "${...}"`, and okx.toml is in
     # PK_BEARING_NAMES (RAM-disk symlinks, skipped by `! -L`); this guard
     # fail-closes if either ever leaks into a non-RAM-disk rendered file.
     if grep -qE 'api-key = "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"' "$f" 2>/dev/null; then
-      violating_files+=("$f (uuid api-key: OKX / Odos / Enso)")
+      violating_files+=("$f (uuid api-key: OKX / Enso)")
       continue
     fi
     # OKX secret-key: 32-char hex.

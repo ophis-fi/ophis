@@ -141,7 +141,7 @@ echo ""
 # running solver pinned to the old mounted file (Docker only recreates on image/
 # config change, and render-configs.sh rewrites atomically via temp+mv).
 CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot \
-  kyberswap-solver velora-solver odos-solver openocean-solver dodo-solver okx-solver \
+  kyberswap-solver velora-solver openocean-solver dodo-solver okx-solver \
   lifi-solver enso-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
@@ -165,7 +165,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
   DOWNSTREAM=(driver orderbook autopilot \
-    kyberswap-solver velora-solver odos-solver openocean-solver dodo-solver okx-solver \
+    kyberswap-solver velora-solver openocean-solver dodo-solver okx-solver \
     lifi-solver enso-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
@@ -203,6 +203,24 @@ if [[ -f observability-rendered/alertmanager.yml ]] && \
   # someone ever downgrades. Sharp-edges PR #203 review MED-2.
   docker compose --profile observability up -d --no-deps --force-recreate alertmanager
 fi
+
+# Retire the odos-solver container on hosts that ran it before it was removed
+# from docker-compose.yml (Odos shut down 2026-07-30; its API returns 410).
+# See the identical block in infra/optimism-mainnet/compose-up.sh for why this
+# is an explicit removal rather than `--remove-orphans` on the `up` below:
+# profile-gated services would be torn down as orphans.
+# Safe to delete once every host has deployed past this commit.
+RETIRED_SERVICES=(odos-solver)
+for retired in "${RETIRED_SERVICES[@]}"; do
+  retired_ids=$(docker ps -aq \
+    --filter "label=com.docker.compose.project=unichain-mainnet" \
+    --filter "label=com.docker.compose.service=${retired}" 2>/dev/null || true)
+  if [[ -n "$retired_ids" ]]; then
+    echo "==> removing retired service container: ${retired}"
+    # shellcheck disable=SC2086
+    docker rm -f $retired_ids
+  fi
+done
 
 echo ""
 echo "==> docker compose $PROFILES_ARG up -d --build $*"
