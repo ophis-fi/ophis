@@ -15,6 +15,7 @@
   const THIRD_OWNER = '0x746ad9c63cca6d3a8588731d60fb87deab4da46a'
   const LEGACY_PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v0'
   const PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v1'
+  const RECONCILED_TRANSACTION_KEY = 'ophisFeeSafeReconciledTransaction:v2'
   const CEREMONY_BROWSER_LOCK = 'ophisFeeSafeRobinhoodCeremony:v1'
   const EXPECTED_CODE_HASHES = new Map([
     [FACTORY, '0x50c3cdc4074750a7a974204a716c999edd37482f907608d960b2b025ee0b3317'],
@@ -45,6 +46,7 @@
     JSON.stringify(normalizeAddresses(actual)) === JSON.stringify(normalizeAddresses(expected))
   let pendingTransaction = null
   let storageReadSucceeded = false
+  const reconciledTransactionHashes = new Set()
 
   function parsePendingTransaction(value, requireVersionMarker) {
     if (!value) return null
@@ -128,6 +130,13 @@
           return rereadPendingTransaction()
         }
       }
+      if (pendingTransaction) {
+        const normalizedPendingHash = pendingTransaction.hash.toLowerCase()
+        const reconciledHash = window.localStorage.getItem(RECONCILED_TRANSACTION_KEY)?.toLowerCase()
+        if (reconciledTransactionHashes.has(normalizedPendingHash) || reconciledHash === normalizedPendingHash) {
+          pendingTransaction = null
+        }
+      }
     } catch {
       // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
     }
@@ -143,6 +152,7 @@
   }
 
   function rememberPendingTransaction(transactionHash, sender, nonce, nonceProvisional) {
+    reconciledTransactionHashes.delete(transactionHash.toLowerCase())
     pendingTransaction = {
       hash: transactionHash,
       sender: sender.toLowerCase(),
@@ -164,25 +174,22 @@
   }
 
   function forgetPendingTransaction(expectedHash) {
-    pendingTransaction = null
+    const normalizedExpectedHash = expectedHash.toLowerCase()
     try {
-      let newerLockExists = false
       for (const key of [LEGACY_PENDING_TRANSACTION_KEY, PENDING_TRANSACTION_KEY]) {
         const storedValue = window.localStorage.getItem(key)
         if (!storedValue) continue
         const storedHash = storedTransactionHash(storedValue)
-        if (storedHash === expectedHash.toLowerCase()) {
-          // Web Locks serializes current tabs; this immediate re-read also
-          // protects against a cached pre-lock ceremony tab replacing the key.
-          if (window.localStorage.getItem(key) === storedValue) window.localStorage.removeItem(key)
-          else newerLockExists = true
-        }
-        else newerLockExists = true
+        if (storedHash !== normalizedExpectedHash) return false
       }
-      for (const key of [LEGACY_PENDING_TRANSACTION_KEY, PENDING_TRANSACTION_KEY]) {
-        if (window.localStorage.getItem(key)) newerLockExists = true
-      }
-      return !newerLockExists
+      // localStorage has no atomic compare-and-delete. Keep the reconciled hash
+      // as a durable tombstone so a cached pre-Web-Locks tab cannot replace it
+      // between a comparison and deletion. The next broadcast atomically
+      // supersedes both records, while this page ignores the reconciled hash.
+      window.localStorage.setItem(RECONCILED_TRANSACTION_KEY, normalizedExpectedHash)
+      reconciledTransactionHashes.add(normalizedExpectedHash)
+      pendingTransaction = null
+      return true
     } catch {
       // Fail closed if storage cannot prove that the reconciled lock is still current.
       return false
@@ -344,6 +351,13 @@
       method: 'eth_getTransactionCount',
       params: [transaction.from, 'pending'],
     })
+    const confirmedNonce = await provider.request({
+      method: 'eth_getTransactionCount',
+      params: [transaction.from, 'latest'],
+    })
+    if (BigInt(pendingNonce) !== BigInt(confirmedNonce)) {
+      throw new Error('The sender already has a pending transaction; broadcast refused')
+    }
     const transactionHash = await provider.request({
       method: 'eth_sendTransaction',
       params: [transaction],

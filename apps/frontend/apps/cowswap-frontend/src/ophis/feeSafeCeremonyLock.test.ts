@@ -6,6 +6,7 @@ const HASH_B = `0x${'b'.repeat(64)}`
 const SENDER = `0x${'1'.repeat(40)}`
 const V0 = 'ophisFeeSafePendingTransaction:v0'
 const V1 = 'ophisFeeSafePendingTransaction:v1'
+const V2 = 'ophisFeeSafeReconciledTransaction:v2'
 
 type Hooks = {
   forgetPendingTransaction(hash: string): boolean
@@ -49,11 +50,24 @@ function loadCeremony() {
 }
 
 describe('Robinhood fee Safe ceremony lock', () => {
-  test('removes only a matching lock', () => {
+  test('marks a matching lock reconciled without deleting its durable tombstone', () => {
     const { hooks, values } = loadCeremony()
     hooks.rememberPendingTransaction(HASH_A, SENDER, '0x1', false)
     expect(hooks.forgetPendingTransaction(HASH_A)).toBe(true)
-    expect(values.size).toBe(0)
+    expect(values.get(V0)).toBe(HASH_A)
+    expect(JSON.parse(values.get(V1) || '{}').hash).toBe(HASH_A)
+    expect(values.get(V2)).toBe(HASH_A)
+    expect(hooks.readPendingTransaction()).toBeNull()
+  })
+
+  test('recognizes a persisted reconciliation tombstone after reload', () => {
+    const firstPage = loadCeremony()
+    firstPage.hooks.rememberPendingTransaction(HASH_A, SENDER, '0x1', false)
+    expect(firstPage.hooks.forgetPendingTransaction(HASH_A)).toBe(true)
+
+    const secondPage = loadCeremony()
+    for (const [key, value] of firstPage.values) secondPage.values.set(key, value)
+    expect(secondPage.hooks.readPendingTransaction()).toBeNull()
   })
 
   test('retains a replacement hash during conditional cleanup', () => {
