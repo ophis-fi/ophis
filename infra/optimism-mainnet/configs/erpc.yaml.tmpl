@@ -465,6 +465,23 @@ projects:
         # measured 0/12 THROUGH THE PROXY. WHY NOT drpc: keyless tier returns "You
         # reached Public endpoint rate limit" (code 15) on eth_call and receipts
         # under load, which failed the receipt rule outright (ErrConsensusDispute).
+        #
+        # WHY NOT nodies (#898), which this change supersedes: nodies is a fine
+        # endpoint in isolation — measured 2026-07-30 at op-pokt.nodies.app it was
+        # 12/12 on a burst and served eth_call, eth_feeHistory AND receipts. But it
+        # is Cloudflare-fronted, so pairing it with publicnode would put TWO CF lanes
+        # in the quorum and break the ≤1-CF invariant; and while it was live in the
+        # 07-29..07-30 config, eRPC logged it as ErrEndpointCapacityExceeded, "Rate
+        # limit exceeded on Nodies public endpoints", under the per-block state
+        # poller.
+        # FAIRNESS CAVEAT: during that window its two co-lanes were official-op (hard
+        # 429) and rate-capped tenderly, so nodies was absorbing the whole stack's
+        # load plus retry amplification — harsher than it would face in a healthy
+        # trio. It is therefore a REASONABLE CANDIDATE to revisit (it would give
+        # receipts a 3rd lane), but it would have to displace publicnode to keep the
+        # CF invariant, and publicnode is the lane with sustained clean-load evidence.
+        # Swapping a proven-live lane for an unproven one mid-incident was not worth
+        # the risk; revisit deliberately, and verify receipts THROUGH THE PROXY.
         endpoint: https://api.zan.top/opt-mainnet
         failsafe:
           - matchMethod: "*"
