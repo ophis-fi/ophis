@@ -73,6 +73,7 @@
 
       const legacyValue = window.localStorage.getItem(LEGACY_PENDING_TRANSACTION_KEY)
       let legacyTransaction = null
+      let legacyNeedsNormalization = false
       if (/^0x[0-9a-f]{64}$/i.test(legacyValue || '')) {
         legacyTransaction = {
           hash: legacyValue,
@@ -84,6 +85,7 @@
         // Migrate the short-lived version that accidentally stored v1-shaped
         // JSON under the v0 key.
         legacyTransaction = parsePendingTransaction(legacyValue, false)
+        legacyNeedsNormalization = Boolean(legacyTransaction)
       }
 
       // An older open tab can advance the ceremony and update only v0. Its
@@ -93,13 +95,34 @@
         (!storedTransaction || legacyTransaction.hash.toLowerCase() !== storedTransaction.hash.toLowerCase())
       ) {
         pendingTransaction = legacyTransaction
+        if (legacyNeedsNormalization) {
+          rememberPendingTransaction(
+            pendingTransaction.hash,
+            pendingTransaction.sender,
+            pendingTransaction.nonce,
+            pendingTransaction.nonceProvisional,
+          )
+        }
         return pendingTransaction
       }
       pendingTransaction = storedTransaction || legacyTransaction || pendingTransaction
+      if (pendingTransaction && legacyNeedsNormalization) {
+        rememberPendingTransaction(
+          pendingTransaction.hash,
+          pendingTransaction.sender,
+          pendingTransaction.nonce,
+          pendingTransaction.nonceProvisional,
+        )
+      }
     } catch {
       // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
     }
     return pendingTransaction
+  }
+
+  function rereadPendingTransaction() {
+    pendingTransaction = null
+    return readPendingTransaction()
   }
 
   function rememberPendingTransaction(transactionHash, sender, nonce, nonceProvisional) {
@@ -118,13 +141,26 @@
     }
   }
 
-  function forgetPendingTransaction() {
+  function storedTransactionHash(value) {
+    if (/^0x[0-9a-f]{64}$/i.test(value || '')) return value.toLowerCase()
+    return parsePendingTransaction(value, false)?.hash.toLowerCase() || null
+  }
+
+  function forgetPendingTransaction(expectedHash) {
     pendingTransaction = null
     try {
-      window.localStorage.removeItem(LEGACY_PENDING_TRANSACTION_KEY)
-      window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
+      let newerLockExists = false
+      for (const key of [LEGACY_PENDING_TRANSACTION_KEY, PENDING_TRANSACTION_KEY]) {
+        const storedValue = window.localStorage.getItem(key)
+        if (!storedValue) continue
+        const storedHash = storedTransactionHash(storedValue)
+        if (storedHash === expectedHash.toLowerCase()) window.localStorage.removeItem(key)
+        else newerLockExists = true
+      }
+      return !newerLockExists
     } catch {
-      // Storage may be unavailable even though the in-memory transaction was reconciled.
+      // Fail closed if storage cannot prove that the reconciled lock is still current.
+      return false
     }
   }
 
@@ -185,6 +221,11 @@
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
     if (consecutiveMissingChecks === 120) {
+      await assertRobinhoodChain(provider)
+      const lockBeforeConfirmation = rereadPendingTransaction()
+      if (!lockBeforeConfirmation || lockBeforeConfirmation.hash.toLowerCase() !== transaction.hash.toLowerCase()) {
+        throw new Error('A newer ceremony transaction lock appeared; stale retirement refused')
+      }
       const [confirmedNonce, nextPendingNonce] = await Promise.all([
         provider.request({
           method: 'eth_getTransactionCount',
@@ -203,13 +244,19 @@
       } else if (BigInt(nextPendingNonce) !== BigInt(confirmedNonce)) {
         throw new Error(`The sender still has a pending transaction; legacy retry remains locked: ${transaction.hash}`)
       }
-      if (
-        window.confirm(
-          `The wallet RPC no longer knows transaction ${transaction.hash}, and the sender has no pending ` +
+      const warning = nonce
+        ? `The wallet RPC no longer knows transaction ${transaction.hash}, its nonce was not consumed, and no ` +
+          'same-nonce replacement is pending. Only continue if your wallet also marks it as dropped. Retire this ' +
+          'stale hash and recheck Safe state?'
+        : `The wallet RPC no longer knows legacy transaction ${transaction.hash}, and the sender has no pending ` +
           'transactions. Only continue if your wallet also marks it as dropped. Retire this stale hash and ' +
-          'recheck Safe state?',
-        )
-      ) {
+          'recheck Safe state?'
+      if (window.confirm(warning)) {
+        await assertRobinhoodChain(provider)
+        const lockAfterConfirmation = rereadPendingTransaction()
+        if (!lockAfterConfirmation || lockAfterConfirmation.hash.toLowerCase() !== transaction.hash.toLowerCase()) {
+          throw new Error('A newer ceremony transaction lock appeared during confirmation; retirement refused')
+        }
         return { receipt: null, replaced: false, dropped: true }
       }
     }
@@ -221,7 +268,9 @@
     if (!transaction) return
     setStatus(`Previous transaction still requires reconciliation: ${transaction.hash}\nWaiting for its receipt or nonce replacement…`)
     const { receipt, replaced, dropped } = await waitForPendingResolution(provider, transaction)
-    forgetPendingTransaction()
+    if (!forgetPendingTransaction(transaction.hash)) {
+      throw new Error('A newer ceremony transaction lock exists; reconcile it before continuing')
+    }
     if (receipt && receipt.status !== '0x1') throw new Error(`Previous transaction reverted: ${transaction.hash}`)
     if (replaced || dropped) {
       const reason = replaced ? 'nonce was consumed by a replacement' : 'hash was confirmed dropped'
@@ -257,7 +306,9 @@
     }
     setStatus(`${label} broadcast: ${transactionHash}\nWaiting for confirmation…`)
     const { receipt } = await waitForPendingResolution(provider, pendingTransaction)
-    forgetPendingTransaction()
+    if (!forgetPendingTransaction(transactionHash)) {
+      throw new Error('A newer ceremony transaction lock exists; reconcile it before continuing')
+    }
     if (receipt && receipt.status !== '0x1') throw new Error(`Transaction reverted: ${transactionHash}`)
     return transactionHash
   }
