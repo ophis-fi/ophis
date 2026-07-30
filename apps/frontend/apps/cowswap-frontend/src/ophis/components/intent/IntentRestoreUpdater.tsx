@@ -33,6 +33,7 @@ import { useEffect, useRef } from 'react'
 
 import { usePrevious } from '@cowprotocol/common-hooks'
 import { useWalletInfo } from '@cowprotocol/wallet'
+
 import { useLocation, useNavigate } from 'react-router'
 
 import { clearIntentStash, readIntentStash } from './intentStash'

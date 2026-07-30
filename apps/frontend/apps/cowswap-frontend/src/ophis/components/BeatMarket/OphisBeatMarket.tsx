@@ -16,10 +16,10 @@ import { ReactNode, useMemo } from 'react'
 
 import { FiatAmount, TokenAmount } from '@cowprotocol/ui'
 
+import styled from 'styled-components/macro'
+
 import { useGetReceiveAmountInfo } from 'modules/trade'
 import { useUsdAmount } from 'modules/usdAmount'
-
-import styled from 'styled-components/macro'
 
 import { useBeatMarket } from '../../hooks/useBeatMarket'
 
@@ -56,9 +56,7 @@ export function OphisBeatMarket(): ReactNode {
   // Computed before any early return so the USD hook is always called (rules of hooks).
   const savedAmount = useMemo(
     () =>
-      ophisAmount && marketAmount && ophisAmount.greaterThan(marketAmount)
-        ? ophisAmount.subtract(marketAmount)
-        : null,
+      ophisAmount && marketAmount && ophisAmount.greaterThan(marketAmount) ? ophisAmount.subtract(marketAmount) : null,
     [ophisAmount, marketAmount],
   )
   const savedUsd = useUsdAmount(savedAmount).value

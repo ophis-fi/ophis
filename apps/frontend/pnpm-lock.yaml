@@ -669,6 +669,9 @@ importers:
       launchdarkly-react-client-sdk:
         specifier: ^3.0.4
         version: 3.0.8(react-dom@19.1.2(react@19.1.2))(react@19.1.2)
+      lightweight-charts:
+        specifier: ^3.3.0
+        version: 3.8.0
       limiter:
         specifier: ^3.0.0
         version: 3.0.0

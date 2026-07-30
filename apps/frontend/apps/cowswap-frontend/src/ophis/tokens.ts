@@ -149,8 +149,18 @@ export const lineHeight = {
 } as const
 
 export const textStyles = {
-  display1: { size: fontSize['4xl'], weight: fontWeight.bold, lineHeight: lineHeight.display, family: fontFamily.display },
-  display2: { size: fontSize['3xl'], weight: fontWeight.bold, lineHeight: lineHeight.display, family: fontFamily.display },
+  display1: {
+    size: fontSize['4xl'],
+    weight: fontWeight.bold,
+    lineHeight: lineHeight.display,
+    family: fontFamily.display,
+  },
+  display2: {
+    size: fontSize['3xl'],
+    weight: fontWeight.bold,
+    lineHeight: lineHeight.display,
+    family: fontFamily.display,
+  },
   h1: { size: fontSize['2xl'], weight: fontWeight.bold, lineHeight: lineHeight.heading, family: fontFamily.display },
   h2: { size: fontSize.xl, weight: fontWeight.bold, lineHeight: lineHeight.heading, family: fontFamily.primary },
   h3: { size: fontSize.lg, weight: fontWeight.bold, lineHeight: lineHeight.heading, family: fontFamily.primary },
@@ -221,16 +231,43 @@ export const gradient = {
 export const semantic = {
   light: {
     bg: { page: colors.white, surface: colors.white, subtle: colors.neutral[10], muted: colors.neutral[20] },
-    text: { primary: colors.neutral[100], secondary: colors.neutral[70], muted: colors.neutral[50], inverse: colors.white },
+    text: {
+      primary: colors.neutral[100],
+      secondary: colors.neutral[70],
+      muted: colors.neutral[50],
+      inverse: colors.white,
+    },
     border: { subtle: colors.neutral[20], default: colors.neutral[30], strong: colors.neutral[50] },
-    accent: { primary: colors.brand[60], hover: colors.brand[70], pressed: colors.brand[80], subtleBg: colors.brand[10], text: colors.brand[70] },
+    accent: {
+      primary: colors.brand[60],
+      hover: colors.brand[70],
+      pressed: colors.brand[80],
+      subtleBg: colors.brand[10],
+      text: colors.brand[70],
+    },
     state: { success: colors.green[50], warning: colors.yellow[40], danger: colors.red[50], info: colors.blue[50] },
   },
   dark: {
-    bg: { page: colors.neutral[100], surface: colors.neutral[90], subtle: colors.neutral[80], muted: colors.neutral[70] },
-    text: { primary: colors.neutral[10], secondary: colors.neutral[30], muted: colors.neutral[50], inverse: colors.neutral[100] },
+    bg: {
+      page: colors.neutral[100],
+      surface: colors.neutral[90],
+      subtle: colors.neutral[80],
+      muted: colors.neutral[70],
+    },
+    text: {
+      primary: colors.neutral[10],
+      secondary: colors.neutral[30],
+      muted: colors.neutral[50],
+      inverse: colors.neutral[100],
+    },
     border: { subtle: colors.neutral[80], default: colors.neutral[70], strong: colors.neutral[50] },
-    accent: { primary: colors.brand[50], hover: colors.brand[40], pressed: colors.brand[30], subtleBg: colors.brand[90], text: colors.brand[30] },
+    accent: {
+      primary: colors.brand[50],
+      hover: colors.brand[40],
+      pressed: colors.brand[30],
+      subtleBg: colors.brand[90],
+      text: colors.brand[30],
+    },
     state: { success: colors.green[40], warning: colors.yellow[30], danger: colors.red[40], info: colors.blue[40] },
   },
 } as const

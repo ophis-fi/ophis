@@ -61,18 +61,14 @@ const Mark = styled.img`
   height: 100%;
   display: block;
   animation: ${rotate} 8s linear infinite;
-  filter: brightness(0) saturate(100%) invert(75%) sepia(60%) saturate(550%)
-    hue-rotate(345deg) brightness(95%) contrast(95%);
+  filter: brightness(0) saturate(100%) invert(75%) sepia(60%) saturate(550%) hue-rotate(345deg) brightness(95%)
+    contrast(95%);
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
 `
 
-export function OphisLogoLoader({
-  size = 96,
-  ariaLabel = 'Loading',
-  className,
-}: Props): ReactNode {
+export function OphisLogoLoader({ size = 96, ariaLabel = 'Loading', className }: Props): ReactNode {
   return (
     <Wrapper $size={size} className={className} role="status" aria-label={ariaLabel}>
       <Mark src="/ophis-logo-full.svg" alt="" aria-hidden="true" />

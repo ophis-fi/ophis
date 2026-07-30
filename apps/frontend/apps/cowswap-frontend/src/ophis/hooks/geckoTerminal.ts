@@ -27,8 +27,16 @@ export interface TrendingToken {
 
 /** GeckoTerminal network slug per chain. Unlisted chains return an empty list. */
 export const GECKO_NETWORK: Record<number, string> = {
-  1: 'eth', 10: 'optimism', 56: 'bsc', 100: 'xdai', 137: 'polygon_pos',
-  8453: 'base', 42161: 'arbitrum', 43114: 'avax', 57073: 'ink', 59144: 'linea',
+  1: 'eth',
+  10: 'optimism',
+  56: 'bsc',
+  100: 'xdai',
+  137: 'polygon_pos',
+  8453: 'base',
+  42161: 'arbitrum',
+  43114: 'avax',
+  57073: 'ink',
+  59144: 'linea',
 }
 
 const GECKO_BASE = 'https://api.geckoterminal.com/api/v2'
@@ -82,7 +90,11 @@ export function parseTrending(raw: unknown): TrendingToken[] {
       | null
       | undefined
     >
-    included?: Array<{ id?: string; attributes?: { address?: string; symbol?: string; name?: string; image_url?: string } } | null | undefined>
+    included?: Array<
+      | { id?: string; attributes?: { address?: string; symbol?: string; name?: string; image_url?: string } }
+      | null
+      | undefined
+    >
   }
   const tokensById = new Map<string, { address: string; symbol: string; name: string; logo: string | null }>()
   // Array.isArray + per-element optional chaining: a malformed body where `data` /

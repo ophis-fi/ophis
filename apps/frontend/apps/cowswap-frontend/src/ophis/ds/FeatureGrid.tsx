@@ -28,11 +28,7 @@ const Grid = styled.div<{ $minCardWidth: string; $gap: string }>`
   gap: ${({ $gap }) => $gap};
 `
 
-export function FeatureGrid({
-  minCardWidth = '260px',
-  gap = '16px',
-  children,
-}: FeatureGridProps): ReactNode {
+export function FeatureGrid({ minCardWidth = '260px', gap = '16px', children }: FeatureGridProps): ReactNode {
   return (
     <Grid $minCardWidth={minCardWidth} $gap={gap}>
       {children}

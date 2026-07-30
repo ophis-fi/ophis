@@ -98,13 +98,7 @@ const Body = styled.div`
   gap: 48px;
 `
 
-export function PageShell({
-  width = 'narrow',
-  eyebrow,
-  title,
-  lede,
-  children,
-}: PageShellProps): ReactNode {
+export function PageShell({ width = 'narrow', eyebrow, title, lede, children }: PageShellProps): ReactNode {
   return (
     <Outer>
       <Inner $width={width}>

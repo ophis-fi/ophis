@@ -7,7 +7,12 @@ const inc = (id: string, address: string, extra: Record<string, unknown> = {}) =
   attributes: { address, symbol: 'AAA', name: 'Token A', ...extra },
 })
 const pool = (baseId: string, attrs: Record<string, unknown> = {}) => ({
-  attributes: { base_token_price_usd: '1.5', reserve_in_usd: '50000', price_change_percentage: { h1: '3.214' }, ...attrs },
+  attributes: {
+    base_token_price_usd: '1.5',
+    reserve_in_usd: '50000',
+    price_change_percentage: { h1: '3.214' },
+    ...attrs,
+  },
   relationships: { base_token: { data: { id: baseId } } },
 })
 
@@ -45,13 +50,22 @@ describe('parseTrending', () => {
       included: [inc('t1', TOK_A, { image_url: 'https://assets.coingecko.com/a.png' })],
     })
     expect(out).toEqual([
-      { symbol: 'AAA', name: 'Token A', address: TOK_A, priceUsd: 1.5, change1h: 3.21, logo: 'https://assets.coingecko.com/a.png' },
+      {
+        symbol: 'AAA',
+        name: 'Token A',
+        address: TOK_A,
+        priceUsd: 1.5,
+        change1h: 3.21,
+        logo: 'https://assets.coingecko.com/a.png',
+      },
     ])
   })
 
   it('excludes low-liquidity (< $20k) and non-positive-price pools', () => {
     expect(parseTrending({ data: [pool('t1', { reserve_in_usd: '1000' })], included: [inc('t1', TOK_A)] })).toEqual([])
-    expect(parseTrending({ data: [pool('t1', { base_token_price_usd: '0' })], included: [inc('t1', TOK_A)] })).toEqual([])
+    expect(parseTrending({ data: [pool('t1', { base_token_price_usd: '0' })], included: [inc('t1', TOK_A)] })).toEqual(
+      [],
+    )
   })
 
   it('drops tokens with a non-0x40hex address (the address is a swap navigation target)', () => {
@@ -59,7 +73,10 @@ describe('parseTrending', () => {
   })
 
   it('nulls an untrusted logo host but keeps the token', () => {
-    const [t] = parseTrending({ data: [pool('t1')], included: [inc('t1', TOK_A, { image_url: 'https://evil.com/x.png' })] })
+    const [t] = parseTrending({
+      data: [pool('t1')],
+      included: [inc('t1', TOK_A, { image_url: 'https://evil.com/x.png' })],
+    })
     expect(t?.logo).toBeNull()
     expect(t?.address).toBe(TOK_A)
   })

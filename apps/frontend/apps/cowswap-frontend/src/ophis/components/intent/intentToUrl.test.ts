@@ -1,4 +1,5 @@
 import { extractIntentFields, intentToUrl } from './intentToUrl'
+
 import type { ParsedIntent } from './types'
 
 const make = (entities: ParsedIntent['entities']): ParsedIntent => ({ intent: 'swap', entities })
