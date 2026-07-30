@@ -51,7 +51,13 @@ const BASE_URL = 'https://coins.llama.fi/prices/current'
  */
 const FAILED_FETCH_ERROR = 'Failed to fetch'
 
-const fetchRateLimited = fetchWithRateLimit({
+/**
+ * Shared DefiLlama budget. Exported so every caller of coins.llama.fi goes
+ * through ONE limiter: a second instance would mean two independent 2 req/s
+ * budgets against the same host, which is how you earn the 1-minute 429
+ * cool-off that DEFILLAMA_RATE_LIMIT_TIMEOUT exists to absorb.
+ */
+export const defillamaFetchRateLimited = fetchWithRateLimit({
   // Allow 2 requests per second
   rateLimit: {
     tokensPerInterval: 2,
@@ -74,7 +80,7 @@ export async function getDefillamaUsdPrice(currency: Token): Promise<Fraction | 
   const key = `${platform}:${getAddressKey(currency.address)}`
   const url = `${BASE_URL}/${key}`
 
-  return fetchRateLimited(url)
+  return defillamaFetchRateLimited(url)
     .then((res) => res.json())
     .catch((error) => {
       if (error.message.includes(FAILED_FETCH_ERROR)) {

@@ -6,14 +6,13 @@ import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
+import { OphisTrending, PriceChart, ReferralCta, RoutePanel } from 'ophis/components'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { PageTitle } from 'modules/application'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
-
-import { OphisTrending, ReferralCta, RoutePanel } from 'ophis/components'
 
 import { Routes } from 'common/constants/routes'
 import { HydrateAtom } from 'common/state/HydrateAtom'
@@ -32,7 +31,7 @@ const DcaLink = styled(NavLink)`
 const DcaCta = (
   <InlineBanner bannerType={StatusColorVariant.Info} iconSize={32}>
     <strong>New: Set up a DCA.</strong> Buy on a schedule. MEV-protected, gas-free.{' '}
-    <DcaLink to='/advanced'>Try it &rarr;</DcaLink>
+    <DcaLink to="/advanced">Try it &rarr;</DcaLink>
   </InlineBanner>
 )
 
@@ -97,6 +96,10 @@ export function SwapPage(): ReactNode {
             no panel ever fetches a third-party API from one. */}
         {!isInjectedWidget() && (
           <SideRail>
+            {/* Chart first: it is the highest-value content when the rail drops
+                into normal flow below the widget on narrow viewports, where the
+                Route panel's copy is already reachable in the fee accordion. */}
+            <PriceChart />
             <RoutePanel />
             <OphisTrending />
           </SideRail>
