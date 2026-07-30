@@ -64,9 +64,14 @@ export interface MevProofReceipt {
   readonly partnerFee: PartnerFeeInfo | null
   /** Fractional surplus over the quoted minimum buyAmount; null if not settled. (executed - quoted) / quoted */
   readonly surplusVsQuote: number | null
-  /** Ophis's receipt schema version. Bumped to '2' when partnerFee became a
-   * discriminated union (priceImprovement | volume); v1 only carried volumeBps. */
-  readonly receiptVersion: '2'
+  /** Base64-encoded pathviz SVG for this order (route/surplus diagram), when
+   * one could be fetched (Optimism only, best-effort); null otherwise. */
+  readonly pathVizSvgBase64: string | null
+  /** Ophis's receipt schema version. Bumped to '3' when the optional
+   * `pathVizSvgBase64` field was added; '2' introduced the discriminated
+   * partnerFee union, v1 only carried volumeBps. v3 is a pure superset of v2
+   * (only an optional field was added), so a v2 reader ignores the new field. */
+  readonly receiptVersion: '3'
   /** ISO-8601 UTC timestamp of receipt creation. */
   readonly generatedAt: string
 }
@@ -92,4 +97,6 @@ export interface BuildReceiptInput {
     readonly sellAmount: string
   } | null
   readonly chainId: number
+  /** Optional base64 pathviz SVG, fetched best-effort before building. */
+  readonly pathVizSvgBase64?: string | null
 }

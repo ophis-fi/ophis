@@ -70,7 +70,7 @@ createCowSwapWidget(container, {
 | Field | Default (via `@ophis/widget-react`) | Notes |
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
-| `appCode` | `ophis` | Tags orders in appData. Set your own e.g. `"MyDapp-via-Ophis"`. |
+| `appCode` | `ophis` | Tags orders in appData. Set it to a referral code you have minted and activated to earn the [affiliate rebate](./affiliate.md) on widget orders (an arbitrary label earns nothing). |
 | `partnerFee.bps` | `5` (0.05%, the SDK partner rate) | Same-chain stable pairs are reduced server-side. |
 | `partnerFee.recipient` | Ophis Safe | Always pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
@@ -91,10 +91,10 @@ embedded against a third-party origin.
 ## Notes
 
 - The widget is GPL-3.0, like the rest of Ophis.
-- Optimism and Unichain orders settle on the Ophis self-hosted orderbooks; the
+- Optimism, Unichain, and Robinhood Chain orders settle on the Ophis self-hosted orderbooks; the
   CoW-hosted chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche,
   Linea, Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
-  widget app, 12 chains in total.
+  widget app, 13 chains in total.
 - **Self-hosting an Ophis fork?** The host must allow third-party framing (CSP
   `frame-ancestors *`, no `X-Frame-Options: SAMEORIGIN`), or integrators'
   iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is

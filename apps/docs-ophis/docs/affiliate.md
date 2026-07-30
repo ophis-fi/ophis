@@ -1,7 +1,7 @@
 ---
 id: affiliate
 title: Affiliate program
-description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH on net-new wallets, for life.
+description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH, for life.
 sidebar_label: Affiliate program
 sidebar_position: 4
 ---
@@ -36,8 +36,9 @@ There are two tiers, and both numbers are published:
 | How to get it | Mint a code on the swap page | [Contact us](https://business.ophis.fi) to upgrade your code |
 
 - Paid **monthly in WETH**, from the Ophis fee Safe, on-chain.
-- Counts only **net-new wallets**: wallets that had not traded on Ophis before
-  arriving through your link.
+- **Through your referral link,** counts only **net-new wallets**: wallets that
+  had not traded on Ophis before arriving through the link. Volume you route
+  yourself through the SDK or widget is not net-new gated.
 - **Lifetime** attribution: once a referred wallet is bound to your code, you keep
   earning on its trades for as long as it trades.
 
@@ -55,9 +56,13 @@ smallest of three earning layers: see
 
 ## How attribution and payout work
 
-- **Attribution is off-chain and net-new.** A referred wallet is bound to your
-  code on its first qualifying activity. One referrer per referred wallet, and the
-  first valid bind wins.
+- **Attribution is off-chain.** A wallet that arrives through your referral link
+  is bound to your code on its first qualifying activity and must be net-new (no
+  prior Ophis trades). One referrer per referred wallet, and the first valid bind
+  wins. Integrators who route their own flow attribute differently: tagging orders
+  with your active code through the [SDK](./partners.md) or [widget](./widget.md)
+  credits that volume to you with no bind, and the net-new rule does not apply
+  there.
 - **Payout is monthly, in WETH.** At the end of each cycle, Ophis tallies the fees
   earned from your referrals' trades and batches the WETH owed to you in a single
   monthly payout from the fee Safe.

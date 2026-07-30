@@ -53,6 +53,9 @@ pub struct QuoteHandler {
     app_data: Arc<app_data::Registry>,
     volume_fee: Option<VolumeFeeConfig>,
     volume_fee_policy: VolumeFeePolicy,
+    /// Present only when pathviz is enabled (`--enable-pathviz`). Drives the
+    /// optional `pathViz`/`pathVizImage` response fields.
+    pathviz: Option<Arc<crate::pathviz::PathVizService>>,
 }
 
 impl QuoteHandler {
@@ -76,11 +79,18 @@ impl QuoteHandler {
             app_data,
             volume_fee,
             volume_fee_policy,
+            pathviz: None,
         }
     }
 
     pub fn with_fast_quoter(mut self, fast_quoter: Arc<dyn OrderQuoting>) -> Self {
         self.fast_quoter = fast_quoter;
+        self
+    }
+
+    /// Enable pathviz assembly for `pathViz`/`pathVizImage` quote requests.
+    pub fn with_pathviz(mut self, service: Arc<crate::pathviz::PathVizService>) -> Self {
+        self.pathviz = Some(service);
         self
     }
 }
@@ -170,7 +180,7 @@ impl QuoteHandler {
             request.sell_token,
         )
         .map_err(|err| OrderQuoteError::CalculateQuote(err.into()))?;
-        let response = OrderQuoteResponse {
+        let mut response = OrderQuoteResponse {
             quote: OrderQuote {
                 sell_token: request.sell_token,
                 buy_token: request.buy_token,
@@ -211,7 +221,30 @@ impl QuoteHandler {
             id: quote.id,
             verified: quote.data.verified,
             protocol_fee_bps: adjusted_quote.protocol_fee_bps,
+            path_viz: None,
+            path_viz_image: None,
         };
+
+        // pathviz quote-time view (owner decision 22: solver name only, no
+        // venue column). Best-effort: a viz failure never fails the quote.
+        if (request.path_viz || request.path_viz_image)
+            && let Some(service) = &self.pathviz
+        {
+            let (graph, image) = service
+                .build_quote_view(
+                    request.sell_token,
+                    request.buy_token,
+                    adjusted_quote.sell_amount.to_string(),
+                    adjusted_quote.buy_amount.to_string(),
+                    quote.data.solver,
+                    request.path_viz,
+                    request.path_viz_image,
+                    request.path_viz_image_config.as_ref(),
+                )
+                .await;
+            response.path_viz = graph;
+            response.path_viz_image = image;
+        }
 
         tracing::debug!(?response, "finished computing quote");
         Ok(response)

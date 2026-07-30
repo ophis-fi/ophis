@@ -12,12 +12,11 @@ use {
         domain::{auction, dex::*, eth::*, order},
         infra::dex::velora as velora_dex,
     },
-    alloy::primitives::{address, U256},
+    alloy::primitives::{U256, address},
 };
 
 /// CoW Settlement contract — same address on every CoW chain.
-const SETTLEMENT_CONTRACT: Address =
-    address!("0x9008d19f58aabd9ed0d60971565aa8510560ab41");
+const SETTLEMENT_CONTRACT: Address = address!("0x9008d19f58aabd9ed0d60971565aa8510560ab41");
 
 /// Augustus V6.2 router — same address on every Velora-supported chain.
 const AUGUSTUS_V6_2_ROUTER: alloy::primitives::Address =
@@ -44,6 +43,7 @@ async fn swap_sell_live_op_mainnet() {
         side: order::Side::Sell,
         amount: Amount::new(U256::from(100_000_000_000_000_000_u128)), // 0.1 WETH
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -53,7 +53,15 @@ async fn swap_sell_live_op_mainnet() {
         Ok(v) => v,
         Err(e) => panic!("Velora try_new failed: {e:?}"),
     };
-    let swap = match velora.swap(&order, &slippage, &auction::Tokens(std::collections::HashMap::new()), false).await {
+    let swap = match velora
+        .swap(
+            &order,
+            &slippage,
+            &auction::Tokens(std::collections::HashMap::new()),
+            false,
+        )
+        .await
+    {
         Ok(s) => s,
         Err(e) => panic!("Velora swap failed: {e:?}"),
     };
@@ -90,6 +98,7 @@ async fn swap_buy_live_op_mainnet() {
         side: order::Side::Buy,
         amount: Amount::new(buy_amount),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
@@ -99,15 +108,32 @@ async fn swap_buy_live_op_mainnet() {
         Ok(v) => v,
         Err(e) => panic!("Velora try_new failed: {e:?}"),
     };
-    let swap = match velora.swap(&order, &slippage, &auction::Tokens(std::collections::HashMap::new()), false).await {
+    let swap = match velora
+        .swap(
+            &order,
+            &slippage,
+            &auction::Tokens(std::collections::HashMap::new()),
+            false,
+        )
+        .await
+    {
         Ok(s) => s,
         Err(e) => panic!("Velora BUY swap failed: {e:?}"),
     };
 
-    assert_eq!(swap.input.token, order.sell, "input is the sell token (USDC)");
-    assert_eq!(swap.output.token, order.buy, "output is the buy token (WETH)");
+    assert_eq!(
+        swap.input.token, order.sell,
+        "input is the sell token (USDC)"
+    );
+    assert_eq!(
+        swap.output.token, order.buy,
+        "output is the buy token (WETH)"
+    );
     // Exact-out: the output MUST equal exactly what we asked to receive.
-    assert_eq!(swap.output.amount, buy_amount, "exactOut output must match request");
+    assert_eq!(
+        swap.output.amount, buy_amount,
+        "exactOut output must match request"
+    );
     assert_eq!(swap.allowance.spender, AUGUSTUS_V6_2_ROUTER);
     // exactOut safety invariant: modeled input (user charge) == allowance ==
     // the slippage-padded max input, so a full-approval pull never reaches the
@@ -144,12 +170,18 @@ async fn buy_with_partner_fee_is_rejected_before_network() {
         side: order::Side::Buy,
         amount: Amount::new(U256::from(45_900_000_000_000_000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: SETTLEMENT_CONTRACT,
     };
 
     let velora = velora_dex::Velora::try_new(config).expect("try_new");
     let err = velora
-        .swap(&order, &Slippage::one_percent(), &auction::Tokens(std::collections::HashMap::new()), false)
+        .swap(
+            &order,
+            &Slippage::one_percent(),
+            &auction::Tokens(std::collections::HashMap::new()),
+            false,
+        )
         .await
         .expect_err("BUY + partner fee must be rejected");
     assert!(

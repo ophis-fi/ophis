@@ -28,6 +28,13 @@ const GAS_PRICE_BUMP_PERMIL: u64 = 125;
 
 const TIMEOUT_5_BLOCKS: Duration = Duration::from_secs(60);
 
+// Refund gas is deliberately bounded instead of obtained with eth_estimateGas.
+// Different RPC clients may return slightly different valid estimates, which a
+// strict quorum proxy correctly reports as a dispute. The batch cap in the
+// refund service keeps this conservative limit below the Robinhood block limit.
+const REFUND_BASE_GAS: u64 = 500_000;
+const REFUND_GAS_PER_ORDER: u64 = 250_000;
+
 pub struct Submitter {
     pub web3: Web3,
     pub signer_address: Address,
@@ -60,10 +67,14 @@ impl ChainWrite for Submitter {
             self.gas_parameters_of_last_tx = Some(gas_price);
             self.nonce_of_last_submission = Some(nonce);
 
+            let gas_limit = REFUND_BASE_GAS.saturating_add(
+                REFUND_GAS_PER_ORDER.saturating_mul(encoded_ethflow_orders.len() as u64),
+            );
             let ethflow_contract =
                 CoWSwapEthFlow::Instance::new(ethflow_contract, self.web3.provider.clone());
             let tx_result = ethflow_contract
-            .invalidateOrdersIgnoringNotAllowed(encoded_ethflow_orders)
+                .invalidateOrdersIgnoringNotAllowed(encoded_ethflow_orders)
+            .gas(gas_limit)
             // Gas conversions are lossy but technically the should not have decimal points even though they're floats
             .max_priority_fee_per_gas(gas_price.max_priority_fee_per_gas)
             .max_fee_per_gas(gas_price.max_fee_per_gas)

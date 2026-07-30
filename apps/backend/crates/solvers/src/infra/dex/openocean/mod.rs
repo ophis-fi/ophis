@@ -238,8 +238,7 @@ impl OpenOcean {
                     reason: format!(
                         "/swap returned chainId {} but this solver is wired to \
                          chain {}",
-                        data.chain_id,
-                        self.chain_id as u64
+                        data.chain_id, self.chain_id as u64
                     ),
                 });
             }
@@ -386,11 +385,7 @@ impl OpenOcean {
             return Ok(());
         }
 
-        let reason = if !message.is_empty() {
-            message
-        } else {
-            error
-        };
+        let reason = if !message.is_empty() { message } else { error };
 
         // OpenOcean uses 429 for rate limiting; otherwise treat
         // "not found"-style messages as no route.
@@ -412,7 +407,6 @@ impl OpenOcean {
         })
     }
 }
-
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreationError {
@@ -504,10 +498,7 @@ mod tests {
     #[test]
     fn wei_to_decimal_string_matches_token_decimals() {
         // 1.5 USDC (6 decimals).
-        assert_eq!(
-            wei_to_decimal_string(U256::from(1_500_000_u128), 6),
-            "1.5"
-        );
+        assert_eq!(wei_to_decimal_string(U256::from(1_500_000_u128), 6), "1.5");
         // 1 WETH (18 decimals).
         assert_eq!(
             wei_to_decimal_string(U256::from(1_000_000_000_000_000_000_u128), 18),

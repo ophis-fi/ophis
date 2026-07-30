@@ -13,7 +13,7 @@ use {
     },
     ::observe::metrics,
     alloy::primitives::{Address, U256},
-    app_data::PARTNER_FEE_RECIPIENT_ALLOWLIST,
+    app_data::RecipientPolicy,
     chrono::{DateTime, Utc},
     configs::{
         autopilot::fee_policy::{
@@ -28,7 +28,10 @@ use {
     prometheus::IntCounterVec,
     rust_decimal::Decimal,
     shared::{arguments::TokenBucketFeeOverride, fee::VolumeFeePolicy},
-    std::collections::HashSet,
+    std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    },
 };
 
 #[derive(prometheus_metric_storage::MetricStorage)]
@@ -108,6 +111,11 @@ pub struct ProtocolFees {
     max_partner_fee: FeeFactor,
     upcoming_fee_policies: Option<UpcomingProtocolFees>,
     volume_fee_policy: VolumeFeePolicy,
+    /// Registry-aware partner-fee recipient policy (partner-fees Phase A). The
+    /// same snapshot the orderbook ingress validator consults; here it is the
+    /// defense-in-depth filter that drops a partner fee whose recipient is not
+    /// the Ophis Safe and not a registered, active third party.
+    recipient_policy: Arc<dyn RecipientPolicy>,
 }
 
 impl ProtocolFees {
@@ -115,6 +123,7 @@ impl ProtocolFees {
         config: &FeePoliciesConfig,
         volume_fee_bucket_overrides: Vec<TokenBucketFeeOverride>,
         enable_sell_equals_buy_volume_fee: bool,
+        recipient_policy: Arc<dyn RecipientPolicy>,
     ) -> Self {
         // Ophis retail-rate cap invariant (defense-in-depth). `max_partner_fee` is
         // the operator-set UPPER cap applied to every partner fee in
@@ -158,6 +167,7 @@ impl ProtocolFees {
                 config.upcoming_policies.clone(),
             ),
             volume_fee_policy,
+            recipient_policy,
         }
     }
 
@@ -166,6 +176,7 @@ impl ProtocolFees {
         order: &boundary::Order,
         quote: &domain::Quote,
         max_partner_fee: f64,
+        recipient_policy: &dyn RecipientPolicy,
     ) -> Vec<Policy> {
         /// Number of basis points that make up 100%.
         const MAX_BPS: u32 = 10_000;
@@ -248,79 +259,95 @@ impl ProtocolFees {
         };
 
         let mut accumulated = Decimal::ZERO;
+        // Volume bps already allocated to each recipient, so the registered
+        // per-partner cap binds against the SUM of a recipient's entries, not per
+        // entry. This closes the duplicate-entry stacking bypass on paths that
+        // skip ingress (eth-flow / on-chain orders, stale DB rows), where the
+        // autopilot is the only per-partner cap enforcement. The Ophis Safe's cap
+        // is the 100% validate ceiling, so this never binds for the Ophis
+        // recipient; it binds third parties to their 1..=90 bps cap.
+        let mut per_recipient_allocated_bps: HashMap<Address, u64> = HashMap::new();
 
         parsed_app_data
             .partner_fee
             .iter()
             .filter(|partner_fee| {
                 // Defense-in-depth against the orderbook validator: the same
-                // allowlist check fires at order ingest, but pre-existing DB
+                // registry check fires at order ingest, but pre-existing DB
                 // rows or any future direct-DB-write path would bypass it.
-                // Filter the partner_fee list here too — a non-allowlisted
-                // recipient is dropped silently (with a metric so ops can
-                // detect attempts), the order itself continues without the
-                // fee policy.
-                let allowed = PARTNER_FEE_RECIPIENT_ALLOWLIST.contains(&partner_fee.recipient);
+                // Filter the partner_fee list here too: a recipient that is
+                // neither the Ophis Safe nor a registered, active third party is
+                // dropped silently (with a metric so ops can detect attempts),
+                // the order itself continues without the fee policy. Reads the
+                // same registry snapshot as ingress, so a suspended recipient is
+                // dropped here on the next refresh even for an order that
+                // predates the suspension.
+                let allowed = recipient_policy
+                    .allowed_volume_bps(&partner_fee.recipient)
+                    .is_some();
                 if !allowed {
                     Metrics::get()
                         .partner_fee_dropped
-                        .with_label_values(&["recipient_not_in_allowlist"])
+                        .with_label_values(&["recipient_not_registered"])
                         .inc();
                     tracing::warn!(
                         order_uid = %order.metadata.uid,
                         recipient = ?partner_fee.recipient,
-                        "partner fee policy dropped: recipient not in allowlist \
-                         (defense-in-depth — orderbook validator should have \
-                         rejected at ingest; this fires on stale DB rows or \
-                         bypass paths)"
+                        "partner fee policy dropped: recipient not registered / \
+                         active (defense-in-depth; orderbook validator should \
+                         have rejected at ingest; this fires on stale DB rows, \
+                         bypass paths, or a recipient suspended after the order \
+                         was created)"
                     );
                 }
                 allowed
             })
             .map(move |partner_fee| {
-                match partner_fee.policy {
-                    app_data::FeePolicy::Volume { bps } => {
-                        // Defense-in-depth floor mirroring the orderbook ingress
-                        // validator: any path that skips ingress (eth-flow /
-                        // on-chain orders) or a stale DB row must still never settle
-                        // a Volume fee to an allowlisted recipient below the
-                        // token-pair-aware minimum. Clamp UP only — never reduce the
-                        // user's signed fee; this only raises anomalous sub-floor fees
-                        // that ingress should already have rejected.
-                        let bps = bps.max(app_data::partner_fee_floor_bps(
-                            order.data.sell_token,
-                            order.data.buy_token,
-                            partner_fee.recipient,
-                        ));
-                        // Convert bps to decimal percentage
-                        let fee_decimal = Decimal::from(bps) / Decimal::from(MAX_BPS);
-                        // Create policy and update accumulator
-                        let factor =
-                            fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
-                        Policy::Volume { factor }
-                    }
-                    // Ophis charges a Volume fee only. A Surplus or PriceImprovement
-                    // partner fee can only reach an allowlisted recipient here via a
-                    // path that skipped the orderbook ingress (which rejects those
-                    // variants) — i.e. eth-flow / on-chain orders or a stale DB row.
-                    // Those variants carry no enforced lower bound, so neutralize them
-                    // to a floor Volume fee (the token-pair minimum) instead of
-                    // honoring a potentially near-zero surplus fee. Defense-in-depth:
-                    // the normal order path never reaches this arm.
+                // The recipient passed the filter, so its per-partner cap is Some.
+                let cap_bps = recipient_policy
+                    .allowed_volume_bps(&partner_fee.recipient)
+                    .unwrap_or(0);
+                // Base bps before the per-partner cap. A Volume fee floors UP to
+                // the token-pair minimum (clamp UP only, never reducing the user's
+                // signed fee; this only raises anomalous sub-floor fees ingress
+                // should already have rejected). A Surplus/PriceImprovement fee can
+                // only reach an allowlisted recipient here via a path that skipped
+                // the orderbook ingress (which rejects those variants): eth-flow /
+                // on-chain orders or a stale DB row. Those variants carry no
+                // enforced lower bound, so neutralize them to the floor Volume fee
+                // instead of honoring a potentially near-zero surplus fee.
+                let base_bps = match partner_fee.policy {
+                    app_data::FeePolicy::Volume { bps } => bps.max(app_data::partner_fee_floor_bps(
+                        order.data.sell_token,
+                        order.data.buy_token,
+                        partner_fee.recipient,
+                    )),
                     app_data::FeePolicy::Surplus { .. }
                     | app_data::FeePolicy::PriceImprovement { .. } => {
                         let _ = &quote; // quote is unused for the neutralized fee
-                        let bps = app_data::partner_fee_floor_bps(
+                        app_data::partner_fee_floor_bps(
                             order.data.sell_token,
                             order.data.buy_token,
                             partner_fee.recipient,
-                        );
-                        let fee_decimal = Decimal::from(bps) / Decimal::from(MAX_BPS);
-                        let factor =
-                            fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
-                        Policy::Volume { factor }
+                        )
                     }
-                }
+                };
+                // Clamp DOWN to the recipient's remaining per-partner budget, so
+                // the recipient's TOTAL Volume bps across all its entries never
+                // exceeds its registered cap. The per-partner cap therefore binds
+                // on every path AND against the aggregate, not per entry.
+                let allocated = per_recipient_allocated_bps
+                    .entry(partner_fee.recipient)
+                    .or_insert(0);
+                let remaining = cap_bps.saturating_sub(*allocated);
+                let effective_bps = base_bps.min(remaining);
+                *allocated = allocated.saturating_add(effective_bps);
+                // Convert bps to a decimal percentage and compound against the
+                // operator-set global cap as before.
+                let fee_decimal = Decimal::from(effective_bps) / Decimal::from(MAX_BPS);
+                let factor =
+                    fee_factor_from_capped(fee_decimal, max_partner_fee, &mut accumulated);
+                Policy::Volume { factor }
             })
             .collect::<Vec<_>>()
     }
@@ -343,8 +370,12 @@ impl ProtocolFees {
             solver: Address::ZERO,
         });
 
-        let partner_fee =
-            Self::get_partner_fee(order, &reference_quote, self.max_partner_fee.get());
+        let partner_fee = Self::get_partner_fee(
+            order,
+            &reference_quote,
+            self.max_partner_fee.get(),
+            self.recipient_policy.as_ref(),
+        );
 
         if surplus_capturing_jit_order_owners.contains(&order.metadata.owner) {
             return boundary::order::to_domain(order, partner_fee, quote);
@@ -478,7 +509,7 @@ mod test {
             max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps retail
             ..Default::default()
         };
-        let _ = ProtocolFees::new(&config, vec![], false);
+        let _ = ProtocolFees::new(&config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
     }
 
     #[test]
@@ -489,7 +520,7 @@ mod test {
                 max_partner_fee: FeeFactor::new(factor),
                 ..Default::default()
             };
-            let _ = ProtocolFees::new(&config, vec![], false);
+            let _ = ProtocolFees::new(&config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
         }
     }
 
@@ -526,7 +557,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3; // 30%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: The compounded percentage (1 + 0.05) * (1 + 0.20) - 1 = 0.26 < 0.3
         // (not capped)
@@ -567,7 +598,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3; // 30%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: Empty vector since there are no partner fees
         assert_eq!(result, vec![]);
@@ -606,7 +637,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3; // 30%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: 0 bps clamped UP to the 4 bps floor (default tokens are
         // non-stable; 4 bps = 0.0004), never settling a sub-floor Volume fee.
@@ -651,7 +682,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3;
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
         assert_eq!(
             result,
             vec![],
@@ -693,7 +724,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3;
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
         assert_eq!(
             result.len(),
             1,
@@ -734,7 +765,7 @@ mod test {
         };
 
         let max_partner_fee = 0.0; // 0%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: All fees are capped to zero but still appear
         assert_eq!(
@@ -779,7 +810,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3; // 30%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: Single fee capped at 0.3 (instead of 0.5)
         assert_eq!(
@@ -823,7 +854,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3; // 30%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: With compounding:
         // First fee: 0.1
@@ -879,7 +910,7 @@ mod test {
         };
 
         let max_partner_fee = 0.3; // 30%
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
         // Expected: With compounding, fees accumulate as follows:
         // First fee: 0.1
@@ -928,7 +959,7 @@ mod test {
             },
             ..Default::default()
         };
-        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0, &app_data::AllowlistRecipientPolicy);
         match policies.first().expect("expected at least one policy") {
             Policy::Volume { factor } => *factor,
             other => panic!("expected neutralized Policy::Volume, got {other:?}"),
@@ -953,7 +984,7 @@ mod test {
             },
             ..Default::default()
         };
-        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0);
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 1.0, &app_data::AllowlistRecipientPolicy);
         match policies.first().expect("expected at least one policy") {
             Policy::Volume { factor } => *factor,
             other => panic!("expected neutralized Policy::Volume, got {other:?}"),
@@ -999,7 +1030,7 @@ mod test {
             },
             ..Default::default()
         };
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01, &app_data::AllowlistRecipientPolicy);
         assert_eq!(result, vec![]);
     }
 
@@ -1014,7 +1045,83 @@ mod test {
             },
             ..Default::default()
         };
-        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01);
+        let result = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01, &app_data::AllowlistRecipientPolicy);
         assert_eq!(result, vec![]);
+    }
+
+    /// Builds an order whose app-data repeats a Volume partner fee to
+    /// `recipient` `times` times at `bps` each.
+    fn order_with_repeated_volume_fee(recipient: Address, bps: u64, times: usize) -> boundary::Order {
+        let entry = format!(r#"{{ "volumeBps": {bps}, "recipient": "{recipient:?}" }}"#);
+        let entries = vec![entry; times].join(",");
+        boundary::Order {
+            metadata: OrderMetadata {
+                full_app_data: Some(format!(
+                    r#"{{ "metadata": {{ "partnerFee": [{entries}] }} }}"#
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn flag_off_policy_honors_no_third_party_fee_even_with_active_registry_row() {
+        use shared::partner_fee_registry::PartnerFeeRegistry;
+
+        let third_party = Address::new([0xab; 20]);
+        // A live registry WOULD honor this active recipient...
+        let registry = PartnerFeeRegistry::with_recipients([(third_party, 50)]);
+        assert!(
+            registry.allowed_volume_bps(&third_party).is_some(),
+            "sanity: the registry would honor this recipient"
+        );
+        // ...but with the flag OFF, run.rs wires the Ophis-only
+        // AllowlistRecipientPolicy, which drops the third-party fee entirely, so
+        // the active registry row is NOT honored (flag is a true master switch).
+        let order = order_with_repeated_volume_fee(third_party, 50, 1);
+        let result = ProtocolFees::get_partner_fee(
+            &order,
+            &Default::default(),
+            0.01,
+            &app_data::AllowlistRecipientPolicy,
+        );
+        assert_eq!(
+            result,
+            vec![],
+            "flag-off must honor no third-party partner fee even with an active registry row"
+        );
+    }
+
+    #[test]
+    fn per_partner_cap_binds_on_eth_flow_path_against_the_aggregate() {
+        use shared::partner_fee_registry::PartnerFeeRegistry;
+
+        // A registered third party at the 90 bps program cap.
+        let third_party = Address::new([0xab; 20]);
+        let registry = PartnerFeeRegistry::with_recipients([(third_party, 90)]);
+
+        // Three 90-bps entries to the SAME recipient on an eth-flow order (which
+        // skips ingress, so the autopilot is the only per-partner cap
+        // enforcement). The operator global clamp is 100 bps; the per-partner cap
+        // (90) must be the binding limit, not 100 and not the ~272 bps that
+        // per-entry clamping plus compounding would yield.
+        let order = order_with_repeated_volume_fee(third_party, 90, 3);
+        let policies = ProtocolFees::get_partner_fee(&order, &Default::default(), 0.01, &registry);
+
+        // Compound the emitted per-entry factors the way settlement does.
+        let total = policies
+            .iter()
+            .map(|policy| match policy {
+                Policy::Volume { factor } => factor.get(),
+                other => panic!("expected Policy::Volume, got {other:?}"),
+            })
+            .fold(1.0_f64, |acc, factor| acc * (1.0 + factor))
+            - 1.0;
+        let cap = 90.0 / 10_000.0;
+        assert!(
+            total <= cap + 1e-9,
+            "eth-flow aggregate fee {total} exceeds the per-partner cap {cap}"
+        );
     }
 }

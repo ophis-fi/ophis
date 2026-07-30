@@ -6,6 +6,7 @@ export const TENDERLY_AVAILABLE: Record<SupportedChainId, boolean> = {
   [10 as unknown as SupportedChainId]: false,
   // Ophis fork: Tenderly not configured for Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: false,
+  [4663 as unknown as SupportedChainId]: false,
   // Ophis fork: Tenderly not configured for MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: false,
   // Ophis fork: Tenderly does not support HyperEVM mainnet (chain 999)

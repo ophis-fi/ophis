@@ -205,6 +205,14 @@ msgstr "My Custom Hooks ({customHooksCount})"
 msgid "Ophis solvers search Uniswap, 1inch, Matcha, Sushi and more to find you the best price."
 msgstr "Ophis solvers search Uniswap, 1inch, Matcha, Sushi and more to find you the best price."
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
+msgid "{legCount} legs"
+msgstr "{legCount} legs"
+
+#: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowSolverCompetition/index.tsx
+msgid "up to {totalSolvers} solvers"
+msgstr "up to {totalSolvers} solvers"
+
 #: apps/cowswap-frontend/src/modules/trade/pure/PartnerFeeRow/index.tsx
 msgid "{label} ({feeAsPercent}%)"
 msgstr "{label} ({feeAsPercent}%)"
@@ -574,6 +582,12 @@ msgstr "Adding this app/hook grants it access to your wallet actions and trading
 msgid "(View on Explorer)"
 msgstr "(View on Explorer)"
 
+#. placeholder {0}: leg.leg
+#. placeholder {1}: legs.length
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketStatus/BasketStatus.pure.tsx
+msgid "Leg {0}/{1}"
+msgstr "Leg {0}/{1}"
+
 #: apps/cowswap-frontend/src/modules/tokensList/pure/SelectTokenModal/MobileChainSelector.tsx
 msgid "View all {totalChains} networks"
 msgstr "View all {totalChains} networks"
@@ -656,6 +670,10 @@ msgstr "Import intermediate token"
 msgid "I understand"
 msgstr "I understand"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "batch available"
+msgstr "batch available"
+
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/Toggle.tsx
 msgid "Partial approval"
 msgstr "Partial approval"
@@ -688,6 +706,10 @@ msgstr "Overview"
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowModalContent/configs.ts
 msgid "Loading operation"
 msgstr "Loading operation"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Waiting for every leg to be quoted before you can place the basket."
+msgstr "Waiting for every leg to be quoted before you can place the basket."
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 #: apps/cowswap-frontend/src/modules/ordersTable/state/tabs/ordersTableTabs.constants.ts
@@ -1019,6 +1041,10 @@ msgstr "No hooks match your search."
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.utils.tsx
 msgid "Try adjusting your search term or filters"
 msgstr "Try adjusting your search term or filters"
+
+#: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowSolverCompetition/index.tsx
+msgid "Your order goes into a batch auction where up to {totalSolvers} independent solvers compete to give you the best execution. The winning solver must at least match the minimum you signed; any improvement is returned to you as surplus."
+msgstr "Your order goes into a batch auction where up to {totalSolvers} independent solvers compete to give you the best execution. The winning solver must at least match the minimum you signed; any improvement is returned to you as surplus."
 
 #: apps/cowswap-frontend/src/modules/wallet/pure/WalletModal/styled.tsx
 msgid "New to decentralised applications?"
@@ -1548,6 +1574,10 @@ msgstr "Filled orders"
 msgid "Volume (24h)"
 msgstr "Volume (24h)"
 
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "If a solver settles your order at a better price, the surplus is returned to you on top."
+msgstr "If a solver settles your order at a better price, the surplus is returned to you on top."
+
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/TwapOrderStatus/TwapOrderStatus.pure.tsx
 msgid "Order partially filled"
 msgstr "Order partially filled"
@@ -1608,6 +1638,10 @@ msgstr "Revoke {tokenSymbol} approval"
 #: apps/cowswap-frontend/src/legacy/components/AppziButton/index.tsx
 msgid "Provide Feedback"
 msgstr "Provide Feedback"
+
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "Gas for this transaction is paid by your wallet on top of the amounts shown."
+msgstr "Gas for this transaction is paid by your wallet on top of the amounts shown."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/HookDappDetails/index.tsx
 msgid "Wallet support"
@@ -1694,6 +1728,10 @@ msgstr "Order cancelled"
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step2.tsx
 msgid "Expired before creation"
 msgstr "Expired before creation"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Place basket"
+msgstr "Place basket"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "Collapse"
@@ -1850,6 +1888,10 @@ msgstr "Ophis 404 not found"
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/LegacyApproveButton/index.tsx
 msgid "Allow Ophis to use your <0/>"
 msgstr "Allow Ophis to use your <0/>"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
+msgid "Swap several tokens at once. Ophis splits your basket into up to {MAX_BASKET_LEGS} single-pair orders that share one deadline. Best-effort together, not atomic."
+msgstr "Swap several tokens at once. Ophis splits your basket into up to {MAX_BASKET_LEGS} single-pair orders that share one deadline. Best-effort together, not atomic."
 
 #: apps/cowswap-frontend/src/modules/twap/utils/deadlinePartsDisplay.ts
 msgid "days"
@@ -2165,6 +2207,10 @@ msgstr "Your position has 0 liquidity, and is not earning fees."
 msgid "Unsupported wallet detected"
 msgstr "Unsupported wallet detected"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Buy (min)"
+msgstr "Buy (min)"
+
 #: apps/cowswap-frontend/src/modules/trade/pure/TradeConfirmation/getPendingText.ts
 msgid "Confirm approval"
 msgstr "Confirm approval"
@@ -2280,9 +2326,17 @@ msgstr "The estimated amount you'll receive after bridge costs."
 msgid "on-chain"
 msgstr "on-chain"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
+msgid "Add buy token ({buyCount}/{MAX_BASKET_BUY_TOKENS})"
+msgstr "Add buy token ({buyCount}/{MAX_BASKET_BUY_TOKENS})"
+
 #: apps/cowswap-frontend/src/pages/Account/index.tsx
 msgid "Tokens overview"
 msgstr "Tokens overview"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketBadge/BasketBadge.pure.tsx
+msgid "Basket {leg}/{legs}"
+msgstr "Basket {leg}/{legs}"
 
 #: apps/cowswap-frontend/src/modules/notifications/containers/NotificationsList/index.tsx
 msgid "<0>Enable trade alerts</0> for fills and expiries"
@@ -2295,6 +2349,10 @@ msgstr "Swap refunded"
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/HighFeeWarning/highFeeWarningHelpers.ts
 msgid "Bridge costs are at least {formattedBridgeFeePercentage}% of the swap amount"
 msgstr "Bridge costs are at least {formattedBridgeFeePercentage}% of the swap amount"
+
+#: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowSolverCompetition/index.tsx
+msgid "Solver competition"
+msgstr "Solver competition"
 
 #: apps/cowswap-frontend/src/modules/twap/containers/ActionButtons/index.tsx
 #: apps/cowswap-frontend/src/utils/orderUtils/getUiOrderType.ts
@@ -2411,6 +2469,7 @@ msgstr "You're all caught up"
 #: apps/cowswap-frontend/src/common/pure/ReceiveAmountInfo/index.tsx
 #: apps/cowswap-frontend/src/common/pure/TradeDetailsAccordion/index.tsx
 #: apps/cowswap-frontend/src/modules/trade/pure/FreeFeeRow/index.tsx
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "Fee"
 msgstr "Fee"
 
@@ -2437,6 +2496,10 @@ msgstr "Reduce your slippage by breaking big orders into smaller ones"
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/RowQuoteId.container.tsx
 msgid "Copied!"
 msgstr "Copied!"
+
+#: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowSolverCompetition/index.tsx
+msgid "1 solver"
+msgstr "1 solver"
 
 #: apps/cowswap-frontend/src/modules/notifications/pure/NotificationSettingsPopover.tsx
 msgid "Trade alerts enabled"
@@ -3012,6 +3075,10 @@ msgstr "Top"
 msgid "Estimated amount that will be sold in each part of the order."
 msgstr "Estimated amount that will be sold in each part of the order."
 
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "You pay (net)"
+msgstr "You pay (net)"
+
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWidget/tooltips.tsx
 msgid "Part duration"
@@ -3024,10 +3091,6 @@ msgstr "hours"
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TopSections.tsx
 msgid "Order out of market"
 msgstr "Order out of market"
-
-#: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
-msgid "{solver} logo"
-msgstr "{solver} logo"
 
 #: apps/cowswap-frontend/src/modules/erc20Approve/hooks/useApproveCallback.tsx
 msgid "Approve {tokenSymbol}"
@@ -3212,6 +3275,11 @@ msgstr "Still searching"
 msgid "check"
 msgstr "check"
 
+#. placeholder {0}: legs.length
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketStatus/BasketStatus.pure.tsx
+msgid "Basket of {0} orders. Legs settle independently. This is not an atomic swap."
+msgstr "Basket of {0} orders. Legs settle independently. This is not an atomic swap."
+
 #: apps/cowswap-frontend/src/common/containers/MultipleOrdersCancellationModal/index.tsx
 msgid "Are you sure you want to cancel {ordersCount} orders?"
 msgstr "Are you sure you want to cancel {ordersCount} orders?"
@@ -3235,6 +3303,10 @@ msgstr "Bridge failed on"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.utils.tsx
 msgid "No cancelled orders found"
 msgstr "No cancelled orders found"
+
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "Network costs and the Ophis fee are already included in this amount."
+msgstr "Network costs and the Ophis fee are already included in this amount."
 
 #: apps/cowswap-frontend/src/common/pure/ConfirmationPendingContent/ConfirmationPendingContent.tsx
 msgid "The {operationLabel} is submitted."
@@ -3500,6 +3572,10 @@ msgstr "This is the recommended slippage tolerance based on current gas prices &
 msgid "buy"
 msgstr "buy"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
+msgid "Add sell token ({sellCount}/{MAX_BASKET_SELL_TOKENS})"
+msgstr "Add sell token ({sellCount}/{MAX_BASKET_SELL_TOKENS})"
+
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapConfirmModal/useLabelsAndTooltips.tsx
 msgid "Maximum sent"
 msgstr "Maximum sent"
@@ -3507,6 +3583,10 @@ msgstr "Maximum sent"
 #: apps/cowswap-frontend/src/modules/trade/pure/LimitOrdersPromoBanner/index.tsx
 msgid "More intuitive UI and improved design"
 msgstr "More intuitive UI and improved design"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
+msgid "Compose a basket"
+msgstr "Compose a basket"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/HookDappDetails/index.tsx
 msgid "External"
@@ -3711,6 +3791,10 @@ msgstr "Dismiss notification"
 msgid "Selling {symbol} is not supported"
 msgstr "Selling {symbol} is not supported"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Review your basket"
+msgstr "Review your basket"
+
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Row/WarningTooltip/WarningTooltip.pure.tsx
 msgid "before that time."
 msgstr "before that time."
@@ -3787,6 +3871,10 @@ msgstr "Edit"
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "View settlement transaction →"
 msgstr "View settlement transaction →"
+
+#: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
+msgid "{solverLabel} logo"
+msgstr "{solverLabel} logo"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderEstimatedExecutionPrice/OrderEstimatedExecutionPrice.pure.tsx
 msgid "The order remains open. Execution requires adequate allowance. Approve the token to proceed."
@@ -3877,6 +3965,10 @@ msgstr "Confirm Action"
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "more"
 msgstr "more"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
+msgid "Review basket"
+msgstr "Review basket"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/containers/HookSearchInput/index.tsx
 msgid "Clear search input"
@@ -4089,6 +4181,10 @@ msgstr "more signature is"
 msgid "When you swap (sell) <0/>, solvers handle the transaction by purchasing the required tokens, depositing them into the pool, and issuing LP tokens to you in return, all in a gas-less operation."
 msgstr "When you swap (sell) <0/>, solvers handle the transaction by purchasing the required tokens, depositing them into the pool, and issuing LP tokens to you in return, all in a gas-less operation."
 
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "You receive (net)"
+msgstr "You receive (net)"
+
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowBanner/index.tsx
 msgid "Lower minimal slippage (instead of {minEthFlowSlippageToSignificant}% minimum)"
 msgstr "Lower minimal slippage (instead of {minEthFlowSlippageToSignificant}% minimum)"
@@ -4161,6 +4257,10 @@ msgstr "No open orders found"
 msgid "Approve <0/> and {contextDefaultText}"
 msgstr "Approve <0/> and {contextDefaultText}"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Leg"
+msgstr "Leg"
+
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapConfirmModal/useLabelsAndTooltips.tsx
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/index.tsx
 msgid "Minimum receive"
@@ -4208,6 +4308,7 @@ msgid "Connect your wallet"
 msgstr "Connect your wallet"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/index.tsx
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
 msgid "Back"
 msgstr "Back"
 
@@ -4508,6 +4609,11 @@ msgstr "The order will start when it is validated and executed in your Safe."
 msgid "Confirm with your wallet"
 msgstr "Confirm with your wallet"
 
+#. placeholder {0}: draft.legs.length
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Ophis places these as {0} independent orders sharing one deadline. They are submitted best-effort together, but they are not atomic: some legs may fill while others do not. Unfilled legs can be cancelled in one click."
+msgstr "Ophis places these as {0} independent orders sharing one deadline. They are submitted best-effort together, but they are not atomic: some legs may fill while others do not. Unfilled legs can be cancelled in one click."
+
 #: apps/cowswap-frontend/src/modules/orderProgressBar/constants.ts
 msgid "Limit orders on Ophis capture surplus - so if the price moves in your favor, you're likely to get more than you asked for."
 msgstr "Limit orders on Ophis capture surplus - so if the price moves in your favor, you're likely to get more than you asked for."
@@ -4523,6 +4629,11 @@ msgstr "Avg. execution price"
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/constants.tsx
 msgid "Hook position mismatch:"
 msgstr "Hook position mismatch:"
+
+#. placeholder {0}: TIER_LABEL[draft.tier]
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "Signing: {0}."
+msgstr "Signing: {0}."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/containers/IframeDappContainer/index.tsx
 msgid "Loading hook..."
@@ -4544,6 +4655,10 @@ msgstr "Not compatible with current wallet type"
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
 msgid "Swap from"
 msgstr "Swap from"
+
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "+ gas"
+msgstr "+ gas"
 
 #: apps/cowswap-frontend/src/modules/accountProxy/pure/AccountCard/DefaultAccountContent.tsx
 msgid "on explorer"
@@ -4738,6 +4853,10 @@ msgstr "At current gas prices, your remaining {nativeSymbol} balance after confi
 #: apps/cowswap-frontend/src/common/pure/OrderSummary/summaryTemplates.tsx
 msgid "for at least"
 msgstr "for at least"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "one signature per leg"
+msgstr "one signature per leg"
 
 #: apps/cowswap-frontend/src/modules/accountProxy/pure/WalletNotConnected/index.tsx
 msgid "Connect wallet to recover funds"
@@ -5014,6 +5133,7 @@ msgstr "Wallet"
 
 #: apps/cowswap-frontend/src/common/pure/BridgeReceiveAmountInfo/index.tsx
 #: apps/cowswap-frontend/src/common/pure/ReceiveAmountInfo/index.tsx
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "Before costs"
 msgstr "Before costs"
 
@@ -5029,6 +5149,10 @@ msgstr "Something went wrong. But don't worry! <0>Ophis solvers</0> are searchin
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "The first part of your TWAP order will become active as soon as you confirm the order below."
 msgstr "The first part of your TWAP order will become active as soon as you confirm the order below."
+
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "Total costs"
+msgstr "Total costs"
 
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
 msgid "In order to protect your funds, you will need to remove the approval on this contract."
@@ -5278,6 +5402,10 @@ msgstr "MEV is lethal these days!"
 msgid "FREE"
 msgstr "FREE"
 
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketStatus/BasketStatus.pure.tsx
+msgid "Cancel {cancellableCount} unfilled legs"
+msgstr "Cancel {cancellableCount} unfilled legs"
+
 #: apps/cowswap-frontend/src/modules/twap/const.ts
 msgid "1 Week"
 msgstr "1 Week"
@@ -5312,6 +5440,10 @@ msgstr "Cancelling {ordersCount} orders"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 msgid "Cancelled"
 msgstr "Cancelled"
+
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
+msgid "one batched signature"
+msgstr "one batched signature"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/PermitHookApp/index.tsx
 msgid "Invalid parameters"
@@ -5426,6 +5558,7 @@ msgstr "Loading bridge data <0/>"
 
 #: apps/cowswap-frontend/src/common/pure/OrderSummary/summaryTemplates.tsx
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
+#: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
 #: apps/cowswap-frontend/src/modules/orders/containers/BridgingSuccessNotification/index.tsx
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "Sell"
@@ -5486,6 +5619,10 @@ msgstr "Your order was successfully cancelled."
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/HookTooltip/index.tsx
 msgid "Post"
 msgstr "Post"
+
+#: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
+msgid "Network costs and the Ophis fee are already included in this amount you pay."
+msgstr "Network costs and the Ophis fee are already included in this amount you pay."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/BuildHookApp/index.tsx
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/PermitHookApp/index.tsx

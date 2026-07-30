@@ -11,8 +11,12 @@ bind-address = "0.0.0.0:80"
 # ("relative URL without a base"). Point at the eRPC 2-of-3 proxy, same as the
 # OP stack's canonical orderbook.toml. The single-provider bypass
 # (UNICHAIN_RPC_INTERNAL) still applies to the driver via its ETHRPC env.
-node-url = "http://rpc-proxy:4000/main/evm/130"
-simulation-node-url = "http://rpc-proxy:4000/main/evm/130"
+# Anchored to the SELF node (host-gateway alias, same route as erpc.yaml's
+# debug leg): auctions must be cut at a head every sim participant can serve.
+# Cutting at the eRPC max-head (fastest public upstream) starved all solves
+# whenever the self node trailed the leader (2026-07-18 incident).
+node-url = "http://ophis-uni-node:8545"
+simulation-node-url = "http://ophis-uni-node:8545"
 
 # Override every contract address — Unichain mainnet (chain 130) needs explicit
 # Ophis-deployed addresses since upstream's contracts registry doesn't include
@@ -65,3 +69,17 @@ amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
 [price-estimation.coin-gecko]
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+# Orderbook-native rate limiter (api-dx decision 10). SHIPS DISABLED: the
+# limiter and the published limits table flip on together in a later window,
+# with one consistent set of numbers derived from Cloudflare traffic data.
+# Flipping `enabled` here without publishing that table recreates the Odos
+# docs/limiter mismatch; do not flip it unilaterally. The numbers below are
+# the placeholder defaults, not published commitments.
+[api.rate-limit]
+enabled = false
+requests-per-second = 5
+burst = 20
+# CF-Connecting-IP is trustworthy here because the host is only reachable
+# through the Cloudflare tunnel; set to false if that ever changes.
+trust-cf-connecting-ip = true

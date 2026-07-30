@@ -10,6 +10,7 @@ pub mod native_price;
 pub mod native_price_estimators;
 pub mod order_quoting;
 pub mod orderbook;
+pub mod partner_fee_registry;
 pub mod price_estimation;
 pub mod rate_limit;
 pub mod shared;

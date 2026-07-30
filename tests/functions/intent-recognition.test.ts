@@ -111,6 +111,12 @@ test('chains: a chain in routing context (on base) is still accepted', () => {
   assert.equal(intent.isValidEntity(ent('chain', 'base', 'base', text), text), true)
 })
 
+test('chains: canonical Robinhood Chain name is accepted before the swap operands', () => {
+  const text = 'On Robinhood Chain, swap ETH for USDG'
+  assert.equal(intent.valueDerivesFromRaw('chain', 'robinhood', 'Robinhood Chain'), true)
+  assert.equal(intent.isValidEntity(ent('chain', 'robinhood', 'Robinhood Chain', text), text), true)
+})
+
 test('amount: a numeric amount derived from raw is accepted, junk is not', () => {
   const text = 'swap 100 usdc for eth'
   assert.equal(intent.isValidEntity(ent('amount', '100', '100', text), text), true)

@@ -1,0 +1,5 @@
+# These scripts run inside the Linux WSL2 distro (and any Linux deploy host). CRLF
+# endings make bash fail on the shebang (bash\r), so pin LF regardless of the cloning
+# platform core.autocrlf. Blobs renormalized to LF 2026-07-23 (WSL/Linux deploy port).
+*.sh text eol=lf
+*.py text eol=lf

@@ -461,9 +461,7 @@ mod tests {
         // Foreign address rejected in either role.
         assert!(validate_dodo_address(&Address::ZERO, &DODO_ROUTE_PROXY, "router").is_err());
         // SWAPPED roles rejected (the union allowlist used to accept these).
-        assert!(
-            validate_dodo_address(&DODO_APPROVE_PROXY, &DODO_ROUTE_PROXY, "router").is_err()
-        );
+        assert!(validate_dodo_address(&DODO_APPROVE_PROXY, &DODO_ROUTE_PROXY, "router").is_err());
         assert!(
             validate_dodo_address(&DODO_ROUTE_PROXY, &DODO_APPROVE_PROXY, "approve target")
                 .is_err()

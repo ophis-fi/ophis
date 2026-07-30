@@ -10,8 +10,11 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:network-docs": "node scripts/check-network-docs-invariant.mjs",
+    "test:robinhood-canary": "node scripts/robinhood-mainnet-canary.mjs --self-test",
     "test:functions": "node scripts/test-functions.mjs",
     "typecheck": "turbo run typecheck",
+    "typecheck:functions": "tsc -p functions --noEmit",
     "format": "prettier -w \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore"
   },
   "devDependencies": {
@@ -19,7 +22,8 @@
     "typescript": "^5.5.0",
     "prettier": "^3.3.0",
     "eslint": "^9.10.0",
-    "@types/node": "^22.5.0"
+    "@types/node": "^22.5.0",
+    "@cloudflare/workers-types": "^5.20260722.1"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -37,6 +41,7 @@
       "workerd"
     ],
     "overrides": {
+      "axios": "^1.18.0",
       "form-data": "^2.5.4",
       "underscore": "^1.12.1",
       "@babel/traverse": "^7.23.2",
@@ -44,14 +49,27 @@
       "ws": "^8.21.0",
       "tmp": "^0.2.6",
       "esbuild": "^0.28.1",
-      "protobufjs": "^7.6.3",
-      "js-yaml": "^4.2.0",
+      "protobufjs": "^7.6.5",
+      "find-my-way": "^9.7.0",
+      "postcss": "8.5.19",
+      "fast-uri": "^3.1.4",
+      "sharp": "^0.35.0",
+      "js-yaml": "^4.3.0",
+      "brace-expansion@<1.1.16": ">=1.1.16",
+      "brace-expansion@>=2.0.0 <2.1.2": ">=2.1.2",
+      "brace-expansion@>=5.0.0 <5.0.8": ">=5.0.8",
       "vite": "^7.0.0",
       "@grpc/grpc-js": "1.14.4",
-      "hono": "^4.12.25",
+      "hono": "4.12.27",
+      "@hono/node-server": "2.0.10",
       "number-to-bn>bn.js": "^4.12.3",
       "ethjs-unit>bn.js": "^4.12.3",
-      "@metamask/utils>uuid": "^11.1.1"
+      "@metamask/utils>uuid": "^11.1.1",
+      "body-parser@<2.3.0": "^2.3.0",
+      "dockerode>uuid": "^11.1.1",
+      "jayson>uuid": "^11.1.1",
+      "@metamask/sdk>uuid": "^11.1.1",
+      "@metamask/sdk-communication-layer>uuid": "^11.1.1"
     }
   }
 }

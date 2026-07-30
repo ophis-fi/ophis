@@ -39,6 +39,11 @@ pub enum Chain {
     KatanaMainnet = 747474,
     MantleTestnet = 5003,      // Mantle Sepolia (paused 2026-05-04)
     MantleMainnet = 5000,
+    // Ophis addition — Robinhood Chain, an Arbitrum Orbit (Nitro) L2 settling to
+    // Ethereum L1 via blobs. Native gas is ETH. Sovereign GPv2 deployed 2026-07-25.
+    // NOTE: unlike the OP-stack chains above, WETH is chain-specific
+    // (0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73), NOT the 0x4200..0006 predeploy.
+    Robinhood = 4663,
 }
 
 impl Chain {
@@ -76,6 +81,7 @@ impl Chain {
             Self::KatanaMainnet => "Katana",
             Self::MantleTestnet => "Mantle / Sepolia",
             Self::MantleMainnet => "Mantle",
+            Self::Robinhood => "Robinhood",
         }
     }
 
@@ -100,7 +106,10 @@ impl Chain {
             | Self::KatanaTestnet
             | Self::KatanaMainnet
             | Self::MantleTestnet
-            | Self::MantleMainnet => U256::from(10u128.pow(17)),
+            | Self::MantleMainnet
+            // Robinhood: native gas is ETH, so the same 0.1 ETH probe as the
+            // other ETH-native chains.
+            | Self::Robinhood => U256::from(10u128.pow(17)),
             Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
             Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
             Self::Hardhat => {
@@ -143,6 +152,12 @@ impl Chain {
             // Mantle: 1s blocks.
             Self::MantleTestnet => Duration::from_millis(1_000),
             Self::MantleMainnet => Duration::from_millis(1_000),
+            // Robinhood: Arbitrum Orbit sub-second blocks. Measured 100.0 ms mean
+            // over a 20,000-block sample (2026-07-26). This is the FASTEST chain in
+            // the enum by 2.5x (next is ArbitrumOne at 250ms), so anything derived
+            // from block counts rather than wall-clock gets proportionally tighter
+            // here — see `blocks_in` callers before assuming a default is safe.
+            Self::Robinhood => Duration::from_millis(100),
         }
     }
 
@@ -184,6 +199,7 @@ impl TryFrom<u64> for Chain {
             x if x == Self::KatanaMainnet as u64 => Self::KatanaMainnet,
             x if x == Self::MantleTestnet as u64 => Self::MantleTestnet,
             x if x == Self::MantleMainnet as u64 => Self::MantleMainnet,
+            x if x == Self::Robinhood as u64 => Self::Robinhood,
             _ => Err(ChainIdNotSupported)?,
         };
         Ok(network)

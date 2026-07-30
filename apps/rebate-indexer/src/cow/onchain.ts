@@ -15,7 +15,7 @@
  * (default OFF). Base (8453) first; the API fetcher keeps running on all chains.
  */
 import { decodeFunctionData, type PublicClient } from 'viem';
-import { TRADE_EVENT, SETTLE_FN, GPV2_SETTLEMENT } from './settleAbi.js';
+import { TRADE_EVENT, SETTLE_FN, settlementAddressFor } from './settleAbi.js';
 import { getRpcClient } from '../rpc/client.js';
 import { orderbookBase, getOrder } from './client.js';
 import { resolveAppData } from './appDataResolver.js';
@@ -323,6 +323,10 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
   }
 
   const client = getRpcClient(chainId);
+  // The GPv2Settlement to scan: the sovereign Ophis deployment on OP/Unichain, else
+  // the canonical shared address. A hardcoded canonical address scanned the WRONG
+  // contract on the sovereign chains and found zero Ophis trades there.
+  const settlement = settlementAddressFor(chainId);
   // Reorg safety (ToB F3): read only up to the FINALIZED head. Base is an OP-stack L2
   // whose UNSAFE head can reorg for minutes, so a small fixed block lag (8 blocks ~16s)
   // is not enough for a money path. Finalized never reorgs, and a daily/monthly rebate
@@ -356,7 +360,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
     let logs: TradeLog[];
     try {
       logs = (await client.getLogs({
-        address: GPV2_SETTLEMENT,
+        address: settlement,
         event: TRADE_EVENT,
         fromBlock: from,
         toBlock: to,

@@ -41,6 +41,7 @@ const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: n
   10:       { token: '0x0b2c639c533813f4aa9d7837caf62653d097ff85', decimals: 6 },  // USDC optimism (native; np is per-atom since the 2026-07-06 oracle fix)
   9745:     { token: '0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb', decimals: 6 },  // USDT0 plasma (decimals-verified on-chain 2026-06-16; CoW native_price confirmed; USDT-native chain, no liquid USDC; replaces the removed Linea-placeholder)
   130:      { token: '0x078d782b760474a361dda0af3839290b0ef57ad6', decimals: 6 },  // USDC unichain (native Circle USDC; symbol+decimals verified on-chain 2026-06-30). Unichain's sovereign native_price is PER-ATOM (verified: 6-dec USDC ~6.4e8), as is OP's since the 2026-07-06 oracle fix, so NO decimals correction applies on either sovereign chain -- both price like the hosted chains.
+  4663:     { token: '0x5fc5360d0400a0fd4f2af552add042d716f1d168', decimals: 6 },  // USDG Robinhood (canonical Paxos stable; address + decimals verified in infra/robinhood-mainnet/nitro/robinhood-chain-info.md)
 };
 
 // Per-trade rebate-volume contribution ceiling (USD). A trade's recorded value is

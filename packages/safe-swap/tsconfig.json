@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*"],
+  // Env-gated fork integration tests: exec-safe pulls protocol-kit's bundled viem
+  // into the program, so viem's Address resolves ambiguously across the two viem
+  // copies under tsc here. These tests are validated by RUNNING them against real
+  // OP + Unichain forks (pnpm test:fork), not by this strict typecheck.
+  "exclude": ["test/fork/**"]
+}

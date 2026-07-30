@@ -66,27 +66,65 @@ paths:
         outside of the original order's limit price.
       responses:
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order has been accepted.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/UID"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error during order validation.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderPostError"
         "403":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: "Forbidden, your account is deny-listed."
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No route was found quoting the order.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "429":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Too many order placements.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error adding an order.
+        "503":
+          description: >
+            A retryable upstream failure while quoting the order during
+            validation (`UpstreamRateLimited` code 3100, or
+            `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPostError"
       requestBody:
         description: The order to create.
         required: true
@@ -112,18 +150,33 @@ paths:
               $ref: "#/components/schemas/OrderCancellations"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order(s) are cancelled.
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Malformed signature.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderCancellationError"
         "401":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid signature.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: One or more orders were not found and no orders were cancelled.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
   "/api/v1/orders/by_uids":
     post:
@@ -144,6 +197,9 @@ paths:
                 $ref: "#/components/schemas/UID"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: |
             The resulting full order data based on the request. Each element of the array is
             an object of the following format:
@@ -176,8 +232,14 @@ paths:
                     required:
                       - error
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Request array size larger than 128 or unable to parse request body as valid JSON.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Could not decode array values as order UID.
   "/api/v1/orders/{UID}":
     get:
@@ -191,14 +253,23 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Order"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order was not found.
     delete:
       operationId: cancelOrder
@@ -226,18 +297,33 @@ paths:
               $ref: "#/components/schemas/OrderCancellation"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order cancelled.
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Malformed signature.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderCancellationError"
         "401":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid signature.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order was not found.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
   "/api/v1/orders/{UID}/status":
     get:
@@ -251,6 +337,9 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >-
             The order status with a list of solvers that proposed solutions (if
             applicable).
@@ -259,7 +348,112 @@ paths:
               schema:
                 $ref: "#/components/schemas/CompetitionOrderStatus"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID.
+  "/api/v1/orders/{UID}/pathviz":
+    get:
+      operationId: getOrderPathViz
+      summary: Route/surplus visualization graph for an order (pathviz).
+      description: >
+        Returns a `PathVizGraph` describing how the order flowed through the
+        solver competition and, once settled, the on-chain venues, plus the
+        surplus callout. Quote-stage orders disclose solver names only (no
+        venue column). 404 when the pathviz feature is disabled or the order
+        is unknown. CoW-hosted chains never serve this endpoint.
+      parameters:
+        - in: path
+          name: UID
+          schema:
+            $ref: "#/components/schemas/UID"
+          required: true
+        - in: query
+          name: pathVizImage
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include the rendered base64 SVG as `svgBase64`.
+      responses:
+        "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: The visualization graph (and optional rendered SVG).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  context:
+                    type: string
+                    enum:
+                      - quotedOnly
+                      - executing
+                      - traded
+                    description: Lifecycle stage the graph describes.
+                  settlementTxHash:
+                    $ref: "#/components/schemas/TransactionHash"
+                  graph:
+                    $ref: "#/components/schemas/PathVizGraph"
+                  svgBase64:
+                    type: string
+                    description: Rendered SVG, present only when `pathVizImage=true`.
+                  generatedAt:
+                    type: string
+                    description: ISO-8601 UTC generation timestamp.
+                required:
+                  - context
+                  - graph
+                  - generatedAt
+        "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Invalid order UID.
+        "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: pathviz is disabled or the order was not found.
+  "/api/v1/orders/{UID}/pathviz.svg":
+    get:
+      operationId: getOrderPathVizSvg
+      summary: Route/surplus visualization as a raw SVG (pathviz).
+      description: >
+        Renders the order's `PathVizGraph` to a self-contained SVG served
+        under a strict Content-Security-Policy (`default-src 'none'`) with
+        `X-Content-Type-Options: nosniff`. Traded orders are immutable and
+        served with a long, immutable cache; pre-settlement views use a short
+        max-age. Render options are accepted as query parameters mirroring
+        `PathVizImageConfig`.
+      parameters:
+        - in: path
+          name: UID
+          schema:
+            $ref: "#/components/schemas/UID"
+          required: true
+      responses:
+        "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: The rendered SVG.
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Invalid order UID or malformed render options.
+        "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: pathviz is disabled or the order was not found.
   "/api/v1/transactions/{txHash}/orders":
     get:
       operationId: getOrdersByTxHash
@@ -272,6 +466,9 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order(s).
           content:
             application/json:
@@ -280,6 +477,9 @@ paths:
                 items:
                   $ref: "#/components/schemas/Order"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid transaction hash.
   /api/v1/trades:
     get:
@@ -307,6 +507,9 @@ paths:
           required: false
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: |-
             ### If `owner` is specified:
 
@@ -364,6 +567,9 @@ paths:
           required: false
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: |-
             ### If `owner` is specified:
 
@@ -396,6 +602,9 @@ paths:
         you need access.**
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Batch auction.
           content:
             application/json:
@@ -434,6 +643,9 @@ paths:
           required: false
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The orders.
           content:
             application/json:
@@ -442,6 +654,9 @@ paths:
                 items:
                   $ref: "#/components/schemas/Order"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Problem with parameters like limit being too large.
   "/api/v1/token/{token}/native_price":
     get:
@@ -461,17 +676,45 @@ paths:
             $ref: "#/components/schemas/Address"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The estimated native price.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NativePriceResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error finding the price.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No liquidity was found.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unexpected error.
+        "503":
+          description: >
+            A retryable upstream failure (`UpstreamRateLimited` code 3100,
+            or `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
   /api/v1/quote:
     post:
       operationId: quote
@@ -490,25 +733,200 @@ paths:
               $ref: "#/components/schemas/OrderQuoteRequest"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Quoted order.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderQuoteResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error quoting order.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PriceEstimationError"
         "404":
-          description: No route was found for the specified order.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: >
+            No route was found for the specified order (`NoLiquidity`, code
+            2000). This is a final answer in the unroutable class
+            (`data.class = "unroutable"`), not a transient failure; do not
+            retry it as one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "429":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Too many order quotes.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unexpected error quoting an order.
+        "503":
+          description: >
+            A retryable upstream failure (`UpstreamRateLimited` code 3100,
+            or `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
+  /api/v1/quote/draft:
+    post:
+      operationId: quoteDraft
+      summary: >-
+        Quote and build a ready-to-sign unsigned order draft in one call.
+      description: >
+        Accepts every field of a regular quote request plus `slippageBps`
+        (default 50, capped at 5000) and returns the quote together with an
+        unsigned order draft and its EIP-712 signing envelope. The signed
+        limit side derives from the quote by the slippage, kind-aware: for
+        `sell` orders the draft's `buyAmount` is the minimum out (rounded
+        up, never one atom below the slippage floor); for `buy` orders the
+        draft's `sellAmount` is the maximum in (rounded down). The draft
+        always signs `feeAmount` 0 (the fee is taken from surplus plus the
+        appData partner fee). A `sellAmountAfterFee` sell signs exactly the
+        amount requested; a `sellAmountBeforeFee` sell (and every buy) folds
+        the network fee into the signed sell amount. When the request carries
+        no appData (or the zero hash), the draft defaults to the CIP-75
+        partner-fee document and reports it in `fullAppData`; caller-provided
+        appData passes through untouched. Produce the signature per
+        `order.signingScheme`, as `signingNote` spells out: `eip712` signs
+        the `signing` typed-data envelope; `ethsign` `personal_sign`s the
+        32-byte `orderDigest`; `eip1271` has the wallet contract verify the
+        order hash; `presign` submits the order unsigned and authorizes it
+        with an on-chain `setPreSignature`. Then submit via
+        `POST /api/v1/orders` with the order fields, the signature, and
+        `fullAppData` (when present) as the `appData` string next to
+        `appDataHash`.
+      requestBody:
+        description: The quote parameters plus the draft slippage.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteDraftRequest"
+      responses:
+        "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Quote plus ready-to-sign order draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteDraftResponse"
+        "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: >
+            Error quoting the order (every `POST /api/v1/quote` failure
+            surfaces identically here), or a draft-specific rejection:
+            `BadRequest` (code 1000) for `slippageBps` above 5000,
+            `ZeroAmount` (code 4006) when slippage rounds the minimum buy
+            amount to zero, `SellAmountOverflow` (code 4100) when the
+            slippage-adjusted amount exceeds uint256.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/QuoteDraftError"
+                  - $ref: "#/components/schemas/PriceEstimationError"
+        "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: >
+            No route was found for the specified order (`NoLiquidity`, code
+            2000). This is a final answer in the unroutable class
+            (`data.class = "unroutable"`), not a transient failure; do not
+            retry it as one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
+        "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Unable to parse request body as valid JSON.
+        "429":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Too many order quotes.
+        "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Unexpected error building the draft.
+        "503":
+          description: >
+            A retryable upstream failure (`UpstreamRateLimited` code 3100,
+            or `InternalServiceError` code 3000). The response carries a
+            `Retry-After` header (seconds); retry after that delay.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            Retry-After:
+              description: Seconds to wait before retrying the request.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceEstimationError"
+  /api/v1/info/contracts:
+    get:
+      operationId: getContractInfo
+      summary: On-chain contract facts for this deployment.
+      description: >
+        The settlement, vault-relayer, authenticator and hooks-trampoline
+        contracts, each with its address and full ABI, plus the EIP-712
+        signing domain (with its precomputed separator), the canonical
+        Multicall3 address for balance/allowance preflights, and the
+        wrapped native token. Values come from the orderbook's boot-time
+        on-chain wiring (the same instances it settles against), never from
+        a parallel table, so they cannot drift.
+      responses:
+        "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Contract info.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractInfoResponse"
+        "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Unexpected error.
   "/api/v1/solver_competition/{auction_id}":
     get:
       operationId: getSolverCompetitionByAuctionId
@@ -524,14 +942,23 @@ paths:
             type: integer
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid auction ID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this auction id.
   "/api/v1/solver_competition/by_tx_hash/{tx_hash}":
     get:
@@ -549,14 +976,23 @@ paths:
             $ref: "#/components/schemas/TransactionHash"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid transaction hash.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this `tx_hash`.
   /api/v1/solver_competition/latest:
     get:
@@ -567,12 +1003,18 @@ paths:
         Returns the competition information for the last seen auction_id.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available.
   "/api/v2/solver_competition/{auction_id}":
     get:
@@ -588,14 +1030,23 @@ paths:
             type: integer
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid auction ID.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this auction id.
   "/api/v2/solver_competition/by_tx_hash/{tx_hash}":
     get:
@@ -612,14 +1063,23 @@ paths:
             $ref: "#/components/schemas/TransactionHash"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid transaction hash.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available for this `tx_hash`.
   /api/v2/solver_competition/latest:
     get:
@@ -629,12 +1089,18 @@ paths:
         Returns the competition information for the last seen auction_id.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Competition
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SolverCompetitionResponse"
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No competition information available.
   /api/v1/version:
     get:
@@ -645,6 +1111,9 @@ paths:
         https://github.com/cowprotocol/services).
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Version
           content:
             text/plain: {}
@@ -660,14 +1129,23 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Full `appData`.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataObject"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid app data hash.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: No full `appData` stored for this hash.
     put:
       operationId: registerAppDataByHash
@@ -691,22 +1169,37 @@ paths:
               $ref: "#/components/schemas/AppDataObject"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` already exists.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` was successfully registered.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error validating full `appData`
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error storing the full `appData`
   /api/v1/app_data:
     put:
@@ -724,22 +1217,37 @@ paths:
               $ref: "#/components/schemas/AppDataObject"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` already exists.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The full `appData` was successfully registered.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppDataHash"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error validating full `appData`
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Unable to parse request body as valid JSON.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Error storing the full `appData`
   "/api/v1/users/{address}/total_surplus":
     get:
@@ -758,12 +1266,18 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: The total surplus.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TotalSurplus"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid address.
   "/restricted/api/v1/debug/simulation":
     post:
@@ -781,21 +1295,36 @@ paths:
               $ref: "#/components/schemas/SimulationRequest"
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Simulation request returned.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderSimulation"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Invalid JSON body, or `appData` is not valid JSON.
         "405":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order simulation endpoint is not enabled.
         "422":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Request body failed schema validation: missing required field,
             wrong field type, zero `sellAmount`, or unrecognised `kind` value.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   "/restricted/api/v1/debug/simulation/{uid}":
     get:
@@ -821,20 +1350,35 @@ paths:
             simulation uses the latest block.
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Simulation request returned.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderSimulation"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: >
             Malformed path parameter (invalid order UID format) or invalid
             `block_number` query parameter.
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order not found.
         "405":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order simulation endpoint is not enabled.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
   "/restricted/api/v1/debug/order/{uid}":
     get:
@@ -852,19 +1396,351 @@ paths:
           required: true
       responses:
         "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Debug report returned.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DebugOrderResponse"
         "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Invalid order UID (malformed hex or wrong length).
         "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Order not found.
         "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Internal error.
+  /api/v1/partners:
+    post:
+      operationId: registerPartner
+      summary: "Register a self-serve partner-fee recipient. [UNSTABLE]"
+      description: >
+        Registers a partner-fee recipient, auto-activated at the default
+        per-partner cap. The caller must prove control of the recipient key: the
+        request carries an EIP-191 `personal_sign` over the exact message
+
+
+          Ophis Partner Fee registration
+
+          Recipient: <lowercase 0x address>
+
+          Label: <label>
+
+          Issued: <issuedAt>
+
+
+        and the recovered signer must equal `recipient`. The `label` is bound
+        into the signed message, so a relayer cannot substitute a different
+        label. `issuedAt` must be within 300 seconds of the server clock.
+        Registration is immutable: a
+        second registration of the same recipient (or label) returns 409.
+
+
+        Ships disabled: while the feature is off the endpoint returns 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartnerRegistrationRequest"
+      responses:
+        "201":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: The recipient was registered and auto-activated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerResponse"
+        "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: >
+            Invalid label, signature, or an expired `issuedAt`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "403":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Self-serve partner-fee registration is not enabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "409":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: The recipient or label is already registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Internal error.
+  "/api/v1/partners/{address}":
+    get:
+      operationId: getPartner
+      summary: "Look up a registered partner-fee recipient. [UNSTABLE]"
+      description: Returns the registration record for a partner-fee recipient.
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "#/components/schemas/Address"
+          required: true
+      responses:
+        "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: The partner registration record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerResponse"
+        "400":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Invalid address.
+        "404":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: No partner registered for this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerRegistrationError"
+        "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: Internal error.
+  "/restricted/api/v1/partner_fees":
+    get:
+      operationId: getPartnerFeeFeed
+      summary: "Partner-fee accrual feed (WAF-gated). [UNSTABLE]"
+      description: >
+        Returns the fee-bearing trades in a block window with the full
+        `appData`, so the payout pipeline can attribute each fee to its
+        recipient. Accrual-ready data only: no split, pricing, or payout is
+        computed here. Restricted to authenticated consumers by infra/WAF rules.
+      parameters:
+        - in: query
+          name: min_block
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: Inclusive lower block bound (default 0).
+        - in: query
+          name: min_log_index
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: >
+            Cursor within `min_block`: only trades at `log_index >=
+            min_log_index` in that block are returned (higher blocks are
+            unaffected). Default 0. Set from a prior response's `nextLogIndex`.
+        - in: query
+          name: max_block
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: Inclusive upper block bound (default unbounded).
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int64
+          required: false
+          description: Page size (default 1000, capped at 10000).
+      responses:
+        "200":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          description: The fee-bearing trades in the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerFeeFeedResponse"
+        "500":
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
           description: Internal error.
 components:
+  headers:
+    TraceId:
+      description: >
+        UUID identifying the request, mirroring the `traceId` field of error
+        bodies. Quote it when reporting API problems.
+      schema:
+        $ref: "#/components/schemas/TraceId"
   schemas:
+    PartnerRegistrationRequest:
+      type: object
+      properties:
+        recipient:
+          $ref: "#/components/schemas/Address"
+        label:
+          description: "Human-readable partner label, matching `[a-z0-9_-]{3,64}`."
+          type: string
+          example: "my-partner_1"
+        issuedAt:
+          description: Unix seconds the registration message was issued at.
+          type: integer
+          format: int64
+        signature:
+          description: >
+            EIP-191 `personal_sign` signature over the registration message, as
+            a 0x-prefixed 65-byte hex string (r || s || v).
+          type: string
+      required:
+        - recipient
+        - label
+        - issuedAt
+        - signature
+    PartnerResponse:
+      type: object
+      properties:
+        recipient:
+          $ref: "#/components/schemas/Address"
+        label:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - suspended
+        maxVolumeBps:
+          description: Per-partner Volume-policy bps cap (1..=90, default 50).
+          type: integer
+          format: int32
+      required:
+        - recipient
+        - label
+        - status
+        - maxVolumeBps
+    PartnerRegistrationError:
+      type: object
+      properties:
+        errorType:
+          type: string
+          enum:
+            - InvalidPartnerSignature
+            - PartnerRegistrationExpired
+            - InvalidPartnerLabel
+            - PartnerAlreadyRegistered
+            - PartnerNotFound
+            - PartnerRegistrationDisabled
+        description:
+          type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
+      required:
+        - errorType
+        - description
+    PartnerFeeFeedRow:
+      type: object
+      properties:
+        blockNumber:
+          type: integer
+          format: int64
+        logIndex:
+          type: integer
+          format: int64
+        orderUid:
+          $ref: "#/components/schemas/UID"
+        owner:
+          $ref: "#/components/schemas/Address"
+        sellToken:
+          $ref: "#/components/schemas/Address"
+        buyToken:
+          $ref: "#/components/schemas/Address"
+        sellAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        buyAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        protocolFeeAmounts:
+          description: >
+            The actually-applied protocol fee amounts from `order_execution`,
+            aligned by `fee_policies.application_order`. The partner fee is the
+            Volume entry among these; the payout pipeline attributes it using
+            `fullAppData` and the order's fee policies. NOT the trade network fee.
+          type: array
+          items:
+            $ref: "#/components/schemas/TokenAmount"
+        protocolFeeTokens:
+          description: The token of each executed protocol fee, aligned to `protocolFeeAmounts`.
+          type: array
+          items:
+            $ref: "#/components/schemas/Address"
+        fullAppData:
+          description: The raw `appData` document, or null if not stored.
+          type: string
+          nullable: true
+      required:
+        - blockNumber
+        - logIndex
+        - orderUid
+        - owner
+        - sellToken
+        - buyToken
+        - sellAmount
+        - buyAmount
+        - protocolFeeAmounts
+        - protocolFeeTokens
+    PartnerFeeFeedResponse:
+      type: object
+      properties:
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/PartnerFeeFeedRow"
+        nextBlock:
+          description: >
+            Cursor block to resume from (set `min_block` to this value). Present
+            only when the page was full; absent once the window is drained.
+          type: integer
+          format: int64
+        nextLogIndex:
+          description: >
+            Cursor log index to resume from within `nextBlock` (set
+            `min_log_index` to this value). Together with `nextBlock` it resumes
+            strictly after the last returned row, so no trade in a
+            partially-returned block is skipped.
+          type: integer
+          format: int64
+      required:
+        - trades
     TransactionHash:
       description: 32 byte digest encoded as a hex with `0x` prefix.
       type: string
@@ -1801,6 +2677,30 @@ components:
       description: Empty signature bytes. Used for "presign" signatures.
       type: string
       example: 0x
+    ApiErrorCode:
+      description: >
+        Numeric Ophis error code (api-dx v1 table, frozen). Bands: 1xxx
+        generic API errors (1000 API_ERROR, 1001 NOT_FOUND, 1029
+        RATE_LIMITED); 2xxx routing and quoting, where 2000 NO_ROUTE, 2001
+        UNSUPPORTED_TOKEN and 2002 INSUFFICIENT_LIQUIDITY form the
+        unroutable class (final answers carrying `data.class =
+        "unroutable"`, not failures); 3xxx retryable upstream failures
+        (HTTP 503 with a Retry-After header); 4xxx order errors (4001-4018
+        validation, 4100-4106 balance and limits, 4200-4204 lifecycle, 4400
+        ACCOUNT_DENY_LISTED); 5xxx internal errors. Codes are additive
+        within bands and never change meaning. Only the self-hosted Ophis
+        orderbook serves this field; clients fall back to `errorType` when
+        it is absent.
+      type: integer
+      example: 2000
+    TraceId:
+      description: >
+        UUID identifying the request, mirroring the `X-Trace-Id` response
+        header. Every response carries the header; error bodies repeat the
+        id in this field. Served by the self-hosted Ophis orderbook only.
+        Quote it when reporting API problems.
+      type: string
+      example: "01890a5d-ac96-774b-b104-3a2c463f04b6"
     OrderPostError:
       type: object
       properties:
@@ -1837,8 +2737,17 @@ components:
             - AppdataFromMismatch
             - MetadataSerializationFailed
             - OldOrderActivelyBidOn
+            - UpstreamRateLimited
+            - InternalServiceError
         description:
           type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
       required:
         - errorType
         - description
@@ -1857,6 +2766,13 @@ components:
             - OnChainOrder
         description:
           type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
       required:
         - errorType
         - description
@@ -1869,9 +2785,24 @@ components:
             - QuoteNotVerified
             - UnsupportedToken
             - NoLiquidity
+            - InsufficientLiquidity
             - UnsupportedOrderType
+            - TradingOutsideAllowedWindow
+            - TokenTemporarilySuspended
+            - CustomSolverError
+            - UpstreamRateLimited
+            - InternalServiceError
         description:
           type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: >
+            Additional arbitrary data attached to the error. Responses in
+            the unroutable class carry `{"class": "unroutable"}` here.
+          type: object
       required:
         - errorType
         - description
@@ -1944,6 +2875,153 @@ components:
             validFor:
               description: Number (`uint32`) of seconds that the order should be valid for.
               type: integer
+    PathVizImageConfig:
+      description: >
+        Render options for the pathviz SVG (`pathVizImageConfig`; Odos
+        wire-name parity). Every color is an optional hex string
+        (`^#(?:[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$`); absent colors fall back to
+        the Ophis dark-cosmic defaults. Width/height are clamped, not
+        rejected.
+      type: object
+      properties:
+        theme:
+          type: string
+          enum: [dark, light]
+          description: Base theme; `dark` (Ophis cosmic) is the default.
+        linkColors:
+          type: array
+          items:
+            type: string
+          description: Six-color link spectrum override.
+        nodeColor:
+          type: string
+        nodeTextColor:
+          type: string
+        legendTextColor:
+          type: string
+        surplusColor:
+          type: string
+        backgroundColor:
+          type: string
+        width:
+          type: integer
+          minimum: 320
+          maximum: 2400
+        height:
+          type: integer
+          minimum: 200
+          maximum: 1600
+        showLegend:
+          type: boolean
+        showSurplus:
+          type: boolean
+    PathVizGraph:
+      description: >
+        Server-rendered route/surplus visualization model. `schemaVersion` is
+        1, labeled EXPERIMENTAL for 60 days from first ship, then stable and
+        additive-only. All atom amounts are decimal strings. Adds, over the
+        Odos surface, the solver-competition column and the surplus callout.
+      type: object
+      properties:
+        schemaVersion:
+          type: integer
+          example: 1
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              kind:
+                type: string
+                enum: [token, solver, venue, overflow]
+              column:
+                type: integer
+                description: Layout column 0..3 (input, solver, venue, output).
+              address:
+                type: string
+            required:
+              - id
+              - label
+              - kind
+              - column
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              from:
+                type: string
+              to:
+                type: string
+              kind:
+                type: string
+                enum: [route, bid, matched]
+              amountAtoms:
+                type: string
+              amountDisplay:
+                type: string
+              tokenSymbol:
+                type: string
+            required:
+              - from
+              - to
+              - kind
+        solvers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              winner:
+                type: boolean
+              executedSellAtoms:
+                type: string
+              executedBuyAtoms:
+                type: string
+            required:
+              - name
+              - winner
+        surplus:
+          type: object
+          description: >
+            Present once settled. The callout wording is
+            "surplus returned vs your signed minimum".
+          properties:
+            amountAtoms:
+              type: string
+            tokenSymbol:
+              type: string
+            amountDisplay:
+              type: string
+            percent:
+              type: number
+          required:
+            - amountAtoms
+            - tokenSymbol
+        fee:
+          type: object
+          properties:
+            amountAtoms:
+              type: string
+            tokenSymbol:
+              type: string
+            amountDisplay:
+              type: string
+            bps:
+              type: string
+          required:
+            - amountAtoms
+            - tokenSymbol
+      required:
+        - schemaVersion
+        - nodes
+        - links
+        - solvers
     OrderQuoteRequest:
       description: Request fee and price quote.
       allOf:
@@ -2022,6 +3100,27 @@ components:
                 as values greater than the default will be capped to the default.
                 Note that reducing the timeout can result in worse quotes because
                 the reduced timeout might be too slow for some price estimators.
+            pathViz:
+              type: boolean
+              default: false
+              description: >
+                Request a route visualization graph (`pathViz`) in the response
+                (pathviz feature; Odos wire-name parity). At quote time the graph
+                discloses solver names only, not the on-chain venue column. A
+                visualization failure never fails the quote: the field is simply
+                absent. Only served when the feature is enabled; ignored on
+                CoW-hosted chains.
+            pathVizImage:
+              type: boolean
+              default: false
+              description: >
+                Request a rendered base64 SVG (`pathVizImage`) in the response.
+            pathVizImageConfig:
+              allOf:
+                - $ref: "#/components/schemas/PathVizImageConfig"
+              description: >
+                Render options for `pathVizImage`. Ignored unless `pathVizImage`
+                is set.
           required:
             - sellToken
             - buyToken
@@ -2065,10 +3164,286 @@ components:
             the volume-based fee policy. Only present when a volume fee is configured.
           type: string
           example: "2"
+        pathViz:
+          description: >
+            The route visualization graph, present only when the request set
+            `pathViz` and assembly succeeded (pathviz warns-and-degrades, so a
+            visualization failure leaves this absent rather than failing the
+            quote).
+          allOf:
+            - $ref: "#/components/schemas/PathVizGraph"
+        pathVizImage:
+          description: >
+            The rendered visualization as a base64-encoded SVG, present only
+            when the request set `pathVizImage` and rendering succeeded.
+          type: string
       required:
         - quote
         - expiration
         - verified
+    QuoteDraftRequest:
+      description: >
+        A regular quote request plus the draft-only `slippageBps` knob.
+      allOf:
+        - $ref: "#/components/schemas/OrderQuoteRequest"
+        - type: object
+          properties:
+            slippageBps:
+              description: >
+                Max accepted slippage in basis points, applied to the signed
+                limit side of the draft (default 50, capped at 5000).
+              type: integer
+              default: 50
+              minimum: 0
+              maximum: 5000
+    OrderDraft:
+      description: >
+        The unsigned, ready-to-sign order: field for field the EIP-712
+        `Order` struct (see `SigningEnvelope.types`), with `appData` already
+        the bytes32 hash of the full document and `feeAmount` always "0"
+        (the fee is taken from surplus plus the appData partner fee, never
+        a signed feeAmount). `signingScheme` is echoed from the quote so
+        the eventual order creation body needs no extra decisions.
+      type: object
+      properties:
+        sellToken:
+          $ref: "#/components/schemas/Address"
+        buyToken:
+          $ref: "#/components/schemas/Address"
+        receiver:
+          description: >
+            The receiver of the buy tokens: the quoted receiver when one was
+            requested, otherwise the order owner (`from`).
+          allOf:
+            - $ref: "#/components/schemas/Address"
+        sellAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        buyAmount:
+          $ref: "#/components/schemas/TokenAmount"
+        validTo:
+          type: integer
+        appData:
+          description: >
+            The bytes32 appData hash that goes into the signed order:
+            keccak256 of the `fullAppData` document.
+          allOf:
+            - $ref: "#/components/schemas/AppDataHash"
+        feeAmount:
+          description: Always "0".
+          allOf:
+            - $ref: "#/components/schemas/TokenAmount"
+        kind:
+          $ref: "#/components/schemas/OrderKind"
+        partiallyFillable:
+          type: boolean
+        sellTokenBalance:
+          $ref: "#/components/schemas/SellTokenSource"
+        buyTokenBalance:
+          $ref: "#/components/schemas/BuyTokenDestination"
+        signingScheme:
+          $ref: "#/components/schemas/SigningScheme"
+      required:
+        - sellToken
+        - buyToken
+        - receiver
+        - sellAmount
+        - buyAmount
+        - validTo
+        - appData
+        - feeAmount
+        - kind
+        - partiallyFillable
+        - sellTokenBalance
+        - buyTokenBalance
+        - signingScheme
+    SigningEnvelope:
+      description: >
+        EIP-712 typed-data envelope: sign the draft `order` against this
+        domain, these types, and `primaryType` "Order". The domain hashes
+        to exactly the domain separator the settlement contract enforces.
+      type: object
+      properties:
+        domain:
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Gnosis Protocol"
+            version:
+              type: string
+              example: "v2"
+            chainId:
+              type: integer
+            verifyingContract:
+              $ref: "#/components/schemas/Address"
+        types:
+          description: >
+            The `Order` struct field list, in signing order.
+          type: object
+        primaryType:
+          type: string
+          enum:
+            - Order
+      required:
+        - domain
+        - types
+        - primaryType
+    QuoteDraftResponse:
+      description: >
+        A quote plus the unsigned order draft built from it.
+      type: object
+      properties:
+        quote:
+          description: >
+            The exact response `POST /api/v1/quote` would have returned for
+            the embedded quote request (after appData defaulting, when it
+            applied).
+          allOf:
+            - $ref: "#/components/schemas/OrderQuoteResponse"
+        order:
+          $ref: "#/components/schemas/OrderDraft"
+        signing:
+          description: >
+            EIP-712 typed-data envelope to sign `order` against. Present only
+            where signing the typed data is what the orderbook accepts for
+            `order.signingScheme` (`eip712`, and `eip1271` where the wallet
+            contract verifies the same order hash). Absent for `ethsign`
+            (personal-sign `orderDigest` instead) and `presign` (no off-chain
+            signature), so a client can never sign a mismatched envelope.
+          allOf:
+            - $ref: "#/components/schemas/SigningEnvelope"
+        orderDigest:
+          description: >
+            The 32-byte EIP-712 order digest (`0x`-prefixed): the order hash
+            the settlement contract recovers signatures against. For
+            `ethsign` this is exactly what the client `personal_sign`s.
+            Present for every scheme that produces an off-chain signature
+            (`eip712`, `ethsign`, `eip1271`); absent for `presign`.
+          type: string
+        signingNote:
+          description: >
+            Human-readable instruction for producing a submittable signature
+            under `order.signingScheme`.
+          type: string
+        fullAppData:
+          description: >
+            The full appData document to submit alongside the order (as the
+            order creation `appData` string, with `appDataHash` as the
+            expected hash). Present whenever the server knows the document,
+            always when it was defaulted; absent only when the caller
+            quoted with a bare pre-registered hash.
+          type: string
+        appDataHash:
+          $ref: "#/components/schemas/AppDataHash"
+        slippageBps:
+          description: The effective slippage applied to the draft.
+          type: integer
+      required:
+        - quote
+        - order
+        - signingNote
+        - appDataHash
+        - slippageBps
+    QuoteDraftError:
+      description: Draft-specific rejections of `POST /api/v1/quote/draft`.
+      type: object
+      properties:
+        errorType:
+          type: string
+          enum:
+            - BadRequest
+            - ZeroAmount
+            - SellAmountOverflow
+        description:
+          type: string
+        code:
+          $ref: "#/components/schemas/ApiErrorCode"
+        traceId:
+          $ref: "#/components/schemas/TraceId"
+        data:
+          description: Additional arbitrary data attached to the error.
+          type: object
+      required:
+        - errorType
+        - description
+    ContractWithAbi:
+      description: A deployed contract with its address and full ABI.
+      type: object
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        abi:
+          description: The complete contract ABI (JSON ABI format).
+          type: array
+          items:
+            type: object
+      required:
+        - address
+        - abi
+    ContractInfoResponse:
+      description: >
+        On-chain contract facts for this deployment, from the orderbook's
+        boot-time wiring.
+      type: object
+      properties:
+        chainId:
+          type: integer
+        settlement:
+          $ref: "#/components/schemas/ContractWithAbi"
+        vaultRelayer:
+          description: >
+            The contract to grant sell-token allowances to (never the
+            settlement contract itself).
+          allOf:
+            - $ref: "#/components/schemas/ContractWithAbi"
+        authenticator:
+          $ref: "#/components/schemas/ContractWithAbi"
+        hooksTrampoline:
+          $ref: "#/components/schemas/ContractWithAbi"
+        multicall3:
+          description: >
+            The canonical cross-chain Multicall3 deployment used by the SDK
+            balance/allowance preflight.
+          type: object
+          properties:
+            address:
+              $ref: "#/components/schemas/Address"
+        wrappedNativeToken:
+          type: object
+          properties:
+            address:
+              $ref: "#/components/schemas/Address"
+        eip712Domain:
+          description: >
+            The order-signing domain. Hashing these fields yields
+            `domainSeparator`.
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Gnosis Protocol"
+            version:
+              type: string
+              example: "v2"
+            chainId:
+              type: integer
+            verifyingContract:
+              $ref: "#/components/schemas/Address"
+        domainSeparator:
+          description: >
+            The precomputed EIP-712 domain separator the settlement
+            contract enforces, 0x-prefixed.
+          type: string
+      required:
+        - chainId
+        - settlement
+        - vaultRelayer
+        - authenticator
+        - hooksTrampoline
+        - multicall3
+        - wrappedNativeToken
+        - eip712Domain
+        - domainSeparator
     SolverCompetitionResponse:
       description: |
         The settlements submitted by every solver for a specific auction.

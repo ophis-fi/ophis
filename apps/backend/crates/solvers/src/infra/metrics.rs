@@ -85,6 +85,7 @@ pub enum Dex {
     Lifi,
     Enso,
     Bitget,
+    UniswapV4,
 }
 
 impl Dex {
@@ -99,6 +100,7 @@ impl Dex {
             Dex::Lifi => "lifi",
             Dex::Enso => "enso",
             Dex::Bitget => "bitget",
+            Dex::UniswapV4 => "uniswap-v4",
         }
     }
 }

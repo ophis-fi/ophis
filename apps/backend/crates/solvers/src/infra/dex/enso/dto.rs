@@ -14,10 +14,7 @@
 //! is BOTH the call target AND the ERC-20 spender.
 
 use {
-    crate::domain::eth,
-    alloy::primitives::U256,
-    bytes_hex::BytesHex,
-    serde::Deserialize,
+    crate::domain::eth, alloy::primitives::U256, bytes_hex::BytesHex, serde::Deserialize,
     serde_with::serde_as,
 };
 

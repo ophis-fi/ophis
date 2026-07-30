@@ -7,6 +7,7 @@ import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { computePublicStats } from './stats.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
@@ -524,37 +525,15 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
     const chainIds = [...PRODUCTION_CHAIN_IDS];
-    const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
-      SELECT
-        COALESCE(SUM(value_usd), 0)::text AS vol,
-        COUNT(*)::text                    AS trades,
-        COUNT(DISTINCT wallet)::text      AS traders,
-        COUNT(DISTINCT chain_id)::text    AS chains,
-        -- AVG ignores NULLs, so this is the average over PRICED trades only.
-        -- It avoids dividing priced volume by the all-trades count (which would
-        -- understate while some trades are still awaiting a price).
-        ROUND(AVG(value_usd)::numeric, 2)::text AS avg_trade
-      FROM trades
-      WHERE chain_id = ANY(${chainIds})
-    `;
-    const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
-      SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n
-      FROM trades
-      WHERE chain_id = ANY(${chainIds})
-      GROUP BY chain_id
-      ORDER BY SUM(value_usd) DESC NULLS LAST, COUNT(*) DESC
-    `;
-    const t = totalsRows[0];
+    // Aggregation (with the eth-flow-router exclusion on the distinct-trader count)
+    // lives in computePublicStats so it is unit-testable against a real DB.
+    const data = await computePublicStats(sql, chainIds);
     const stats: PublicStats = {
-      totalVolumeUsd: Number(t?.vol ?? '0'),
-      totalTrades: Number(t?.trades ?? '0'),
-      distinctTraders: Number(t?.traders ?? '0'),
-      chainsActive: Number(t?.chains ?? '0'),
-      byChain: byChainRows.map((r) => ({
-        chainId: r.chain_id,
-        volumeUsd: Number(r.vol ?? '0'),
-        trades: Number(r.n),
-      })),
+      totalVolumeUsd: data.totalVolumeUsd,
+      totalTrades: data.totalTrades,
+      distinctTraders: data.distinctTraders,
+      chainsActive: data.chainsActive,
+      byChain: data.byChain,
       generatedAt: new Date().toISOString(),
     };
 
@@ -570,10 +549,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         )
         .send(renderStatsPage(stats));
     }
-    // Lifetime average trade size over PRICED trades only (SQL AVG ignores
-    // NULLs), so it is not skewed low by trades still awaiting a price. Null
-    // until at least one priced trade is indexed. Lagging-only, no extra signal.
-    const avgTradeUsd = t?.avg_trade != null ? Number(t.avg_trade) : null;
+    // Lifetime average trade size over PRICED trades only (computed in
+    // computePublicStats via SQL AVG, which ignores NULLs), so it is not skewed low
+    // by trades still awaiting a price. Null until the first priced trade.
+    const avgTradeUsd = data.avgTradeUsd;
     return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
   });
 

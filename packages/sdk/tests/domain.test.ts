@@ -13,11 +13,13 @@ const CANONICAL_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110';
 const OPHIS_OP_RELAYER = '0x83847EaB41ad9ea43809ce71569eB2e9daF51830';
 
 describe('getOphisSettlementAddress', () => {
-  it('returns the Ophis-deployed settlement for the self-hosted chains (OP 10, Unichain 130), NOT canonical', () => {
+  it('returns the Ophis-deployed settlement for the self-hosted chains, NOT canonical', () => {
     expect(getOphisSettlementAddress(10)).toBe(OPHIS_OP);
     expect(getOphisSettlementAddress(10)).not.toBe(CANONICAL);
     expect(getOphisSettlementAddress(130)).toBe('0x108A678716e5E1776036eF044CAB7064226F714E'); // Unichain (verified on-chain)
     expect(getOphisSettlementAddress(130)).not.toBe(CANONICAL);
+    expect(getOphisSettlementAddress(4663)).toBe('0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD');
+    expect(getOphisSettlementAddress(4663)).not.toBe(CANONICAL);
   });
 
   it('returns the canonical CoW settlement for CoW-aligned chains', () => {
@@ -61,11 +63,13 @@ describe('getOphisOrderDomain', () => {
 });
 
 describe('getOphisVaultRelayer', () => {
-  it('returns the Ophis relayer for the self-hosted chains (OP 10, Unichain 130), NOT canonical (the approval footgun)', () => {
+  it('returns the Ophis relayer for the self-hosted chains, NOT canonical (the approval footgun)', () => {
     expect(getOphisVaultRelayer(10)).toBe(OPHIS_OP_RELAYER);
     expect(getOphisVaultRelayer(10)).not.toBe(CANONICAL_RELAYER);
     expect(getOphisVaultRelayer(130)).toBe('0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb'); // Unichain (confirmed via settlement.vaultRelayer())
     expect(getOphisVaultRelayer(130)).not.toBe(CANONICAL_RELAYER);
+    expect(getOphisVaultRelayer(4663)).toBe('0xB52C38097c19cd38238c62DD36027a7918eFa890');
+    expect(getOphisVaultRelayer(4663)).not.toBe(CANONICAL_RELAYER);
   });
 
   it('returns the canonical CoW relayer for CoW-hosted chains', () => {

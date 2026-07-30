@@ -37,14 +37,18 @@ import yaml
 
 CHAIN_ID = 10
 EXPECTED_UPSTREAMS = 3
-# The 3 intended INDEPENDENT failure domains (operator / DNS / network). Pinned by
-# hostname so a sibling host, IP-literal, or extra provider cannot pose as a 3rd
-# domain. A deliberate provider change (or the self node's IP rotating — see the
-# template's "UPDATE THIS ENDPOINT" note) MUST update this set.
+# The 3 intended INDEPENDENT failure domains, pinned by hostname so a sibling host,
+# IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
+# change MUST update this set (that is the point — see module docstring).
+# 2026-07-23: replaced the free publicnode+self-node pair with two KEYED providers
+# after a free-tier-429 outage. Distinct failure domains AND ≤1 Cloudflare-fronted
+# host in the quorum: validationcloud=istio(non-CF), blockdaemon=Cloudflare,
+# tenderly=Google DNS. The key lives in the URL path/query via ${...KEY} envsubst;
+# the host is literal here and in the template so urlsplit can pin it.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "optimism-rpc.publicnode.com",
+    "mainnet.optimism.validationcloud.io",
+    "svc.blockdaemon.com",
     "optimism.gateway.tenderly.co",
-    "100.77.53.81",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus

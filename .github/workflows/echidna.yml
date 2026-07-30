@@ -1,7 +1,8 @@
 name: Echidna fuzz
 
 # Runs the Trail of Bits Echidna property-based fuzzer against the
-# AllowList authentication harness at contracts/echidna/E2EAllowList.sol.
+# harnesses under contracts/echidna/ (AllowList authentication,
+# AllowListGuardian, and the OphisFeeLiquidator funds-flow harness).
 #
 # Two triggers:
 #   - workflow_dispatch (operator-triggered with a custom test budget)
@@ -27,7 +28,7 @@ permissions:
 
 jobs:
   echidna:
-    name: Echidna — AllowList + AllowListGuardian
+    name: "Echidna: AllowList + AllowListGuardian + FeeLiquidator"
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -87,8 +88,8 @@ jobs:
               set -eo pipefail
               solc-select use 0.7.6 >/dev/null 2>&1
               export FOUNDRY_EVM_VERSION=istanbul
-              # contract name == file stem for both harnesses.
-              for h in E2EAllowList E2EAllowListGuardian; do
+              # contract name == file stem for all harnesses.
+              for h in E2EAllowList E2EAllowListGuardian E2EFeeLiquidator; do
                 echo "=== echidna ${h} ==="
                 echidna "echidna/${h}.sol" \
                   --contract "${h}" \

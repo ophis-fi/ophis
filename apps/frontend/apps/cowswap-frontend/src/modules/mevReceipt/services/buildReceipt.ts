@@ -1,10 +1,24 @@
+import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
+
 import type { BuildReceiptInput, MevProofReceipt, PartnerFeeInfo } from '../types'
+
+const isOphisRecipient = (entry: unknown): boolean =>
+  !!entry &&
+  typeof entry === 'object' &&
+  typeof (entry as { recipient?: unknown }).recipient === 'string' &&
+  (entry as { recipient: string }).recipient.toLowerCase() === OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
 
 const extractPartnerFee = (fullAppData: string | null): PartnerFeeInfo | null => {
   if (!fullAppData) return null
   try {
     const parsed = JSON.parse(fullAppData)
-    const pf = parsed?.metadata?.partnerFee
+    const raw = parsed?.metadata?.partnerFee
+    // metadata.partnerFee is a single object (SDK/front-end orders) OR an array
+    // (a compat order that mapped an Odos referralFee stacks the integrator entry
+    // beside the Ophis default). For the array, pick the Ophis-recipient entry:
+    // this receipt reports the Ophis protocol fee, not a third party's fee. A
+    // single object is used as-is, whatever its recipient (unchanged behavior).
+    const pf = Array.isArray(raw) ? (raw.find(isOphisRecipient) ?? null) : raw
     if (!pf || typeof pf.recipient !== 'string') return null
     // Ophis-scoped decode: only the two fee models Ophis can produce are
     // recognised. CIP-75's surplus and tiered-array models never appear in
@@ -44,7 +58,7 @@ const calcSurplus = (executedBuy: string, quotedBuy: string): number | null => {
   return num / denom
 }
 
-export const buildReceipt = ({ order, trade, chainId }: BuildReceiptInput): MevProofReceipt => ({
+export const buildReceipt = ({ order, trade, chainId, pathVizSvgBase64 }: BuildReceiptInput): MevProofReceipt => ({
   orderUid: order.uid,
   chainId,
   owner: order.owner,
@@ -60,6 +74,7 @@ export const buildReceipt = ({ order, trade, chainId }: BuildReceiptInput): MevP
   status: order.status,
   partnerFee: extractPartnerFee(order.fullAppData),
   surplusVsQuote: trade ? calcSurplus(order.executedBuyAmount, order.buyAmount) : null,
-  receiptVersion: '2',
+  pathVizSvgBase64: pathVizSvgBase64 ?? null,
+  receiptVersion: '3',
   generatedAt: new Date().toISOString(),
 })

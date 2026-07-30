@@ -1,0 +1,56 @@
+<aside class="robinhood-banner" aria-label="Product announcement">
+  <a href="https://swap.ophis.fi/#/4663/swap">
+    <img src="/logos/robinhood-feather.svg" alt="" aria-hidden="true" />
+    <strong>Robinhood Chain is live on Ophis.</strong>
+    <span>Trade now <span aria-hidden="true">→</span></span>
+  </a>
+</aside>
+
+<style>
+  .robinhood-banner {
+    position: relative;
+    z-index: 51;
+    background: linear-gradient(90deg, #7b2cff, #c92cf2 48%, #f2a63e);
+    color: #fff;
+    text-align: center;
+  }
+  .robinhood-banner a {
+    min-height: 38px;
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1.3;
+    text-decoration: none;
+  }
+  .robinhood-banner span {
+    white-space: nowrap;
+  }
+  .robinhood-banner img {
+    width: 16px;
+    height: 21px;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 1px 3px rgb(33 0 52 / 35%));
+  }
+  .robinhood-banner a:hover span {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .robinhood-banner a:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: -4px;
+  }
+  @media (max-width: 520px) {
+    .robinhood-banner a {
+      padding-inline: 12px;
+      font-size: 12px;
+    }
+    .robinhood-banner img {
+      width: 14px;
+      height: 18px;
+    }
+  }
+</style>

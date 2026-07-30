@@ -40,7 +40,10 @@ fn try_new_succeeds_on_optimism() {
 #[test]
 fn try_new_succeeds_on_mainnet() {
     let config = make_config(ChainId::Mainnet);
-    assert!(Velora::try_new(config).is_ok(), "Velora must accept Mainnet");
+    assert!(
+        Velora::try_new(config).is_ok(),
+        "Velora must accept Mainnet"
+    );
 }
 
 #[test]
@@ -52,13 +55,19 @@ fn try_new_succeeds_on_base() {
 #[test]
 fn try_new_succeeds_on_arbitrum() {
     let config = make_config(ChainId::ArbitrumOne);
-    assert!(Velora::try_new(config).is_ok(), "Velora must accept ArbitrumOne");
+    assert!(
+        Velora::try_new(config).is_ok(),
+        "Velora must accept ArbitrumOne"
+    );
 }
 
 #[test]
 fn try_new_succeeds_on_polygon() {
     let config = make_config(ChainId::Polygon);
-    assert!(Velora::try_new(config).is_ok(), "Velora must accept Polygon");
+    assert!(
+        Velora::try_new(config).is_ok(),
+        "Velora must accept Polygon"
+    );
 }
 
 #[test]
@@ -70,7 +79,10 @@ fn try_new_succeeds_on_bnb() {
 #[test]
 fn try_new_succeeds_on_avalanche() {
     let config = make_config(ChainId::Avalanche);
-    assert!(Velora::try_new(config).is_ok(), "Velora must accept Avalanche");
+    assert!(
+        Velora::try_new(config).is_ok(),
+        "Velora must accept Avalanche"
+    );
 }
 
 #[test]
@@ -169,14 +181,20 @@ fn try_new_accepts_both_partner_fee_fields() {
     let mut config = make_config(ChainId::Optimism);
     config.partner_address = Some(SETTLEMENT);
     config.partner_fee_bps = Some(25);
-    assert!(Velora::try_new(config).is_ok(), "both fields set — must succeed");
+    assert!(
+        Velora::try_new(config).is_ok(),
+        "both fields set — must succeed"
+    );
 }
 
 #[test]
 fn try_new_accepts_neither_partner_fee_field() {
     let config = make_config(ChainId::Optimism);
     // already None / None in default — must succeed.
-    assert!(Velora::try_new(config).is_ok(), "neither fee field set — must succeed");
+    assert!(
+        Velora::try_new(config).is_ok(),
+        "neither fee field set — must succeed"
+    );
 }
 
 // Smoke check that the public re-exports needed by tests/run.rs are

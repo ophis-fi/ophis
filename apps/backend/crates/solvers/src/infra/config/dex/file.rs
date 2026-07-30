@@ -110,6 +110,22 @@ struct Config {
     #[serde(default = "default_strict_output_simulation")]
     strict_output_simulation: bool,
 
+    /// Address of the chain's wrapped-native token. The strict eth-flow
+    /// simulation uses this address for its temporary post-wrap balance
+    /// override. Defaults to the canonical OP-stack predeploy.
+    #[serde(default = "default_wrapped_native")]
+    wrapped_native: eth::Address,
+
+    /// Storage slot of the wrapped-native token's `balanceOf` mapping, used by
+    /// the eth-flow simulation balance override. CHAIN-DEPENDENT despite the
+    /// shared 0x4200..06 predeploy address: OP mainnet = WETH9 = slot 3 (the
+    /// default); Unichain's newer WETH98-style predeploy = slot 0 (verified
+    /// on-chain 2026-07-18). A wrong slot silently grants no balance and
+    /// fail-closes every eth-flow (native ETH) sell on buffer-exposed buy
+    /// tokens.
+    #[serde(default = "default_wrapped_native_balance_slot")]
+    wrapped_native_balance_slot: u8,
+
     /// OUTPUT-side anti-siphon: when to run the strict output-delivery
     /// simulation for MARKET SELL swaps (defaults to `buffer-exposed`).
     ///
@@ -200,6 +216,14 @@ fn default_strict_output_simulation() -> bool {
     true
 }
 
+fn default_wrapped_native() -> eth::Address {
+    crate::infra::dex::simulator::DEFAULT_WRAPPED_NATIVE
+}
+
+fn default_wrapped_native_balance_slot() -> u8 {
+    crate::infra::dex::simulator::DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT
+}
+
 /// Loads the base solver configuration from a TOML file.
 ///
 /// # Panics
@@ -219,33 +243,32 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
     // CoW Protocol contracts have the same address.
     let default_contracts = contracts::Contracts::for_chain_id(eth::ChainId::Mainnet);
     let (settlement, authenticator) = if let Some(settlement) = config.settlement {
-        let authenticator =
-            {
-                let web3 = blockchain::rpc(&config.node_url);
-                let settlement =
-                    ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
-                // Bootstrap RPC call: retry with backoff so transient eRPC
-                // consensus failures during HL stack restart bursts don't
-                // crash-loop the container. See the `retry-helper` crate.
-                retry_helper::with_backoff(
-                    "settlement.authenticator",
-                    retry_helper::BackoffConfig::default(),
-                    || async { settlement.authenticator().call().await },
-                )
-                .await
-                .unwrap_or_else(|_| {
-                    // Intentionally redacted: the alloy `TransportError` Debug
-                    // can echo the configured RPC URL, which on some providers
-                    // embeds an API key. The per-attempt error is already
-                    // tracing::warn!-logged by `with_backoff` with secrets
-                    // handled via tracing's redaction; the panic only needs
-                    // to surface that all retries exhausted.
-                    panic!(
-                        "settlement.authenticator() read exhausted retries; see preceding \
+        let authenticator = {
+            let web3 = blockchain::rpc(&config.node_url);
+            let settlement =
+                ::contracts::GPv2Settlement::Instance::new(settlement, web3.provider.clone());
+            // Bootstrap RPC call: retry with backoff so transient eRPC
+            // consensus failures during HL stack restart bursts don't
+            // crash-loop the container. See the `retry-helper` crate.
+            retry_helper::with_backoff(
+                "settlement.authenticator",
+                retry_helper::BackoffConfig::default(),
+                || async { settlement.authenticator().call().await },
+            )
+            .await
+            .unwrap_or_else(|_| {
+                // Intentionally redacted: the alloy `TransportError` Debug
+                // can echo the configured RPC URL, which on some providers
+                // embeds an API key. The per-attempt error is already
+                // tracing::warn!-logged by `with_backoff` with secrets
+                // handled via tracing's redaction; the panic only needs
+                // to surface that all retries exhausted.
+                panic!(
+                    "settlement.authenticator() read exhausted retries; see preceding \
                          tracing::warn! logs for per-attempt error detail"
-                    )
-                })
-            };
+                )
+            })
+        };
         (settlement, authenticator)
     } else {
         (
@@ -291,6 +314,8 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
         gas_offset: eth::Gas(config.gas_offset),
         block_stream,
         internalize_interactions: config.internalize_interactions,
+        wrapped_native: config.wrapped_native,
+        wrapped_native_balance_slot: config.wrapped_native_balance_slot,
         output_guard: crate::domain::dex::OutputGuard {
             max_output_reference_factor: config.max_output_reference_factor,
             strict_output_simulation: config.strict_output_simulation,

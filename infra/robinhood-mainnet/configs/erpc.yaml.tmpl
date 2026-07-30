@@ -1,0 +1,114 @@
+# Zero-budget eRPC proxy for Robinhood Chain mainnet (chain 4663).
+#
+# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and Robinhood's official
+# public RPC. Cadia was restored from a third-party snapshot whose flat
+# state cannot be proven from the header anchor alone, so it must never be the
+# sole authority for balances, code, storage, calls, logs, transaction data, or
+# receipts. The official endpoint is free and requires no provider credential.
+#
+# TRACES: debug_* is self-node-only because the managed endpoint does not expose
+# it. If Cadia is unavailable, trace-dependent settlement fails closed.
+#
+# TRANSACTION RELAY: Cadia Nitro forwards writes to Robinhood's official public
+# endpoint via --execution.forwarding-target. eRPC can also submit directly to
+# that endpoint.
+
+logLevel: warn
+
+projects:
+  - id: main
+
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 4663
+          # Robinhood's official gateway does not expose eth_syncing, so eRPC's
+          # state poller can trail its real head. Forward the concrete block
+          # request and let 2-of-2 consensus fail closed on a missing result.
+          enforceBlockAvailability: false
+          # Pin latest-tagged reads and block-head responses to the freshest tip
+          # both voters have observed. This avoids treating normal head skew as
+          # a dispute while preserving strict 2-of-2 result agreement.
+          servedTip:
+            enabledFor:
+              - latest
+          integrity:
+            # Do not exclude a voter merely for being a few fast Robinhood blocks
+            # behind. Consensus compares the requested block's response; latest-
+            # tag disagreement still returns an error under 2-of-2.
+            enforceHighestBlock: false
+            enforceNonNullTaggedBlocks: true
+        failsafe:
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 2
+              agreementThreshold: 2
+              # Give the independent public voter a bounded completion window
+              # instead of cancelling it when the local result arrives first.
+              maxWaitOnResult: 5s
+              # eRPC arms this cap on the first response of any kind. Keep it
+              # aligned with maxWaitOnResult so its 50ms default cannot cancel
+              # the second voter before quorum forms.
+              maxWaitOnEmpty: 5s
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+
+          - matchMethod: "*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+    upstreamDefaults:
+      evm:
+        # Keep servedTip observations aligned with autopilot's one-second block
+        # poll. A slower voter cadence would make protected latest-tagged state
+        # reads authoritative at a stale common tip on this ~134 ms chain.
+        statePollerInterval: 1s
+        statePollerDebounce: 1s
+
+    upstreams:
+      - id: ophis-self-rbh
+        endpoint: http://ophis-rbh-node:8547
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
+        # Block-head inputs drive the shared block stream and settlement
+        # deadlines. Route them only through the header-anchored Cadia node;
+        # strict equality at "latest" is impossible on this fast chain.
+        ignoreMethods:
+          - eth_blockNumber
+          - eth_getBlockByNumber
+          # Robinhood produces ~7.5 blocks/s and autopilot indexes each canonical
+          # block by hash. The free gateway cannot sustain that permanent log
+          # stream and its 429s previously rejected otherwise-valid Kyber routes.
+          # Keep settlement state/simulation reads 2-of-2 while the independent
+          # genesis node derives; switch logs to the two local verified nodes at
+          # promotion time.
+          - eth_getLogs
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 12s
+            retry:
+              maxAttempts: 3
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms

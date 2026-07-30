@@ -21,6 +21,11 @@ const OPTIMISM_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
 // predeploy slot 0x4200…0006.
 const UNICHAIN_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
 
+// Ophis fork: Robinhood Chain mainnet (4663) WETH9.
+const ROBINHOOD_WETH_ADDRESS = '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'
+const ETHEREUM_NATIVE_TOKEN_LOGO = ALL_SUPPORTED_CHAINS_MAP[SupportedChainId.MAINNET].nativeCurrency.logoUrl
+const ETHEREUM_WRAPPED_TOKEN_LOGO = WRAPPED_NATIVE_CURRENCIES_SDK[SupportedChainId.MAINNET].logoUrl
+
 // Ophis fork: MegaETH mainnet (chain 4326) WETH address.
 // MegaETH is an OP-Stack rollup, so the predeploy slot 0x4200…0006 is the
 // expected WETH9 address. Confirmed 2026-05-15 — code exists at slot.
@@ -49,6 +54,15 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     undefined,
     130 as unknown as SupportedChainId,
     UNICHAIN_WETH_ADDRESS,
+    18,
+    'WETH',
+    'Wrapped Ether',
+  ),
+  // Ophis fork: WETH on Robinhood Chain mainnet (chain 4663)
+  [4663 as unknown as SupportedChainId]: new TokenWithLogo(
+    ETHEREUM_WRAPPED_TOKEN_LOGO,
+    4663 as unknown as SupportedChainId,
+    ROBINHOOD_WETH_ADDRESS,
     18,
     'WETH',
     'Wrapped Ether',
@@ -130,6 +144,15 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
   [130 as unknown as SupportedChainId]: new TokenWithLogo(
     undefined,
     130 as unknown as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'ETH',
+    'Ether',
+  ),
+  // Native ETH on Robinhood Chain (chain 4663).
+  [4663 as unknown as SupportedChainId]: new TokenWithLogo(
+    ETHEREUM_NATIVE_TOKEN_LOGO,
+    4663 as unknown as SupportedChainId,
     NATIVE_CURRENCY_ADDRESS,
     18,
     'ETH',

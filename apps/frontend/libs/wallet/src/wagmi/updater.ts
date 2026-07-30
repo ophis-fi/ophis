@@ -26,7 +26,8 @@ function useWalletInfo(): WalletInfo {
   // from the FE list in PR #167 (2026-05-21); leaving them in this
   // whitelist would let wagmi attempt to route to chains that aren't in
   // SUPPORTED_CHAINS and re-trigger the P0 crash (see wagmi/config.ts).
-  const isChainIdUnsupported = !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 130
+  const isChainIdUnsupported =
+    !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 130 && chainId !== 4663
 
   return useMemo(
     () => ({

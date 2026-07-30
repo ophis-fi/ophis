@@ -22,3 +22,12 @@ out/
 
 # Dotenv file
 .env
+
+# Fuzz campaign generated artifacts (harness + specs are tracked, corpus/coverage are not)
+fizz_data/corpus_medusa/
+fizz_data/corpus_echidna/
+fizz_data/crytic-export/
+fizz_data/logs_medusa/
+test/fizz/**/corpus-medusa/
+test/fizz/**/crytic-export/
+test/fizz/**/slither_results.json

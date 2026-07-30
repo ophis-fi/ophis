@@ -75,10 +75,11 @@ export const STAGING_MIGRATED_CONTRACT_NETWORKS = [SupportedChainId.MAINNET]
 // @cowprotocol/sdk-config + @cowprotocol/sdk-trading landed. See
 // cowProtocolContracts.ts for the full rationale.
 const OPHIS_ETHFLOW_OVERRIDES: Partial<Record<number, string>> = {
-  10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',     // OP — deployed 2026-06-07 (tx 0xc0316c2c…c48e) + sdk patch
-  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7',    // Unichain — EthFlow deployed 2026-06-29 (Codex+ToB+Verity reviewed)
-  4326: '0x0000000000000000000000000000000000000000',   // MegaETH — not deployed
-  999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B',    // HyperEVM — PR #61 (deployed) + PR #65 (sdk patch)
+  10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504', // OP — deployed 2026-06-07 (tx 0xc0316c2c…c48e) + sdk patch
+  130: '0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7', // Unichain — EthFlow deployed 2026-06-29 (Codex+ToB+Verity reviewed)
+  4663: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29', // Robinhood — deployed 2026-07-28, tx 0x2a53f639…21dcf
+  4326: '0x0000000000000000000000000000000000000000', // MegaETH — not deployed
+  999: '0xd031Ce1C577caD1530BD8283CaA6a6a106A5b61B', // HyperEVM — PR #61 (deployed) + PR #65 (sdk patch)
 }
 
 export function getEthFlowContractAddresses(env: CowEnv, chainId: SupportedChainId): string {
@@ -109,6 +110,8 @@ export const V_COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on Unichain (chain 130)
   [130 as unknown as SupportedChainId]: null,
+  // Ophis fork: vCOW not deployed on Robinhood Chain (4663)
+  [4663 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on HyperEVM mainnet (chain 999)
@@ -132,6 +135,8 @@ export const COW_CONTRACT_ADDRESS: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: null,
   // Ophis fork: COW token not deployed on Unichain (chain 130)
   [130 as unknown as SupportedChainId]: null,
+  // Ophis fork: COW token not deployed on Robinhood Chain (4663)
+  [4663 as unknown as SupportedChainId]: null,
   // Ophis fork: COW token not deployed on MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: COW token not deployed on HyperEVM mainnet (chain 999)
@@ -163,6 +168,7 @@ export const ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD: Record<SupportedChainId, numbe
   [10 as unknown as SupportedChainId]: 200,
   // Ophis fork: Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: 200,
+  [4663 as unknown as SupportedChainId]: 200,
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: 200,
   // Ophis fork: HyperEVM mainnet (chain 999)
@@ -191,45 +197,69 @@ export const GAS_PRICE_UPDATE_THRESHOLD = ms`5s`
 
 // See https://docs.blocknative.com/gas-prediction/gas-platform
 export const GAS_FEE_ENDPOINTS: Record<SupportedChainId, string> = {
-  [SupportedChainId.MAINNET]: 'https://api.blocknative.com/gasprices/blockprices',
+  // Blocknative's gas API was shut down 2026-06-19 (see the Unichain note below):
+  // the old mainnet endpoint now hard-fails (ERR_CONNECTION_RESET) and, since
+  // GasUpdater re-fetches every block, it spammed the console + churned the main
+  // thread on the swap app's default (mainnet) chain. Use Ethereum's Blockscout
+  // gas-price-oracle — same {slow,average,fast} response shape the parser already
+  // reads for Gnosis/Arbitrum/Base/Polygon/Unichain (verified live HTTP 200).
+  [SupportedChainId.MAINNET]: 'https://eth.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.GNOSIS_CHAIN]: 'https://gnosis.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.ARBITRUM_ONE]: 'https://arbitrum.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.BASE]: 'https://base.blockscout.com/api/v1/gas-price-oracle',
   [SupportedChainId.SEPOLIA]: '',
   [SupportedChainId.POLYGON]: 'https://polygon.blockscout.com/api/v1/gas-price-oracle',
-  [SupportedChainId.AVALANCHE]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.AVALANCHE}`,
-  [SupportedChainId.BNB]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.BNB}`,
-  [SupportedChainId.LINEA]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.LINEA}`,
+  // Blocknative shut down 2026-06-19 (see mainnet note above). Avalanche, BNB and
+  // Linea have no keyless Blockscout gas-price-oracle, so disable the fetcher with ''.
+  // GasUpdater gates on supportedChain() === !!endpoint, so an empty endpoint means no
+  // per-block fetch and no ERR_CONNECTION_RESET storm; the gasless swap just shows no
+  // gas-cost estimate on these chains, matching Sepolia/Plasma/MegaETH/HyperEVM.
+  [SupportedChainId.AVALANCHE]: '',
+  [SupportedChainId.BNB]: '',
+  [SupportedChainId.LINEA]: '',
   [SupportedChainId.PLASMA]: '', // TODO: currently (2025/10/20) unsupported by Blocknative nor blockscont
-  [SupportedChainId.INK]: `https://api.blocknative.com/gasprices/blockprices?chainid=${SupportedChainId.INK}`,
-  // Ophis fork: OP mainnet (chain 10)
-  [10 as unknown as SupportedChainId]: `https://api.blocknative.com/gasprices/blockprices?chainid=10`,
+  // Ink Blockscout gas-price-oracle (same {slow,average,fast} shape; verified live HTTP 200).
+  [SupportedChainId.INK]: 'https://explorer.inkonchain.com/api/v1/gas-price-oracle',
+  // Ophis fork: OP mainnet (chain 10). optimism.blockscout.com 301-redirects to the
+  // canonical explorer.optimism.io Blockscout gas oracle (verified live HTTP 200).
+  [10 as unknown as SupportedChainId]: 'https://explorer.optimism.io/api/v1/gas-price-oracle',
   // Ophis fork: Unichain mainnet (chain 130) — Blocknative gas API was shut
   // down 2026-06-19, so use Unichain's Blockscout gas-price-oracle (same
   // response shape the GasUpdater parser already reads for Gnosis/Arbitrum/
   // Base/Polygon; verified live HTTP 200).
   [130 as unknown as SupportedChainId]: 'https://unichain.blockscout.com/api/v1/gas-price-oracle',
+  // Robinhood Chain Blockscout gas oracle.
+  [4663 as unknown as SupportedChainId]: 'https://robinhoodchain.blockscout.com/api/v1/gas-price-oracle',
   // Ophis fork: MegaETH mainnet (chain 4326) — Blocknative does not support MegaETH yet
   [4326 as unknown as SupportedChainId]: '',
   // Ophis fork: HyperEVM mainnet (chain 999) — Blocknative does not support HyperEVM
   [999 as unknown as SupportedChainId]: '',
 }
 export const GAS_API_KEYS: Record<SupportedChainId, string | null> = {
-  [SupportedChainId.MAINNET]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // MAINNET now uses Blockscout (keyless) — must be null, or getHeaders() would
+  // attach the Blocknative Authorization key to every eth.blockscout.com request,
+  // disclosing the provider credential to an unrelated host. Matches the other
+  // Blockscout chains below (Gnosis/Arbitrum/Base/Polygon), which are already null.
+  [SupportedChainId.MAINNET]: null,
   [SupportedChainId.GNOSIS_CHAIN]: null,
   [SupportedChainId.ARBITRUM_ONE]: null,
   [SupportedChainId.BASE]: null,
   [SupportedChainId.SEPOLIA]: null,
   [SupportedChainId.POLYGON]: null,
-  [SupportedChainId.AVALANCHE]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
-  [SupportedChainId.BNB]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
-  [SupportedChainId.LINEA]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  // Every former Blocknative chain is now Blockscout (keyless) or disabled (''). All keys
+  // MUST be null: getHeaders() attaches a truthy value as an Authorization header, which
+  // for a Blockscout host (Ink, OP) would disclose the credential to an unrelated third
+  // party. This also drops the last Blocknative API-key env references.
+  [SupportedChainId.AVALANCHE]: null,
+  [SupportedChainId.BNB]: null,
+  [SupportedChainId.LINEA]: null,
   [SupportedChainId.PLASMA]: null,
-  [SupportedChainId.INK]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
-  // Ophis fork: OP mainnet (chain 10)
-  [10 as unknown as SupportedChainId]: process.env['REACT_APP_BLOCKNATIVE_API_KEY'] || null,
+  [SupportedChainId.INK]: null,
+  // Ophis fork: OP mainnet (chain 10). Blockscout gas oracle needs no key.
+  [10 as unknown as SupportedChainId]: null,
   // Ophis fork: Unichain mainnet (chain 130) — Blockscout gas oracle needs no key
   [130 as unknown as SupportedChainId]: null,
+  [4663 as unknown as SupportedChainId]: null,
   // Ophis fork: MegaETH mainnet (chain 4326) — no Blocknative key needed (endpoint empty)
   [4326 as unknown as SupportedChainId]: null,
   // Ophis fork: HyperEVM mainnet (chain 999) — no Blocknative key needed (endpoint empty)

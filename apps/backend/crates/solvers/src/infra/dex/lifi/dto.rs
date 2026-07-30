@@ -17,10 +17,7 @@
 //! without breaking deserialization.
 
 use {
-    crate::domain::eth,
-    alloy::primitives::U256,
-    bytes_hex::BytesHex,
-    serde::Deserialize,
+    crate::domain::eth, alloy::primitives::U256, bytes_hex::BytesHex, serde::Deserialize,
     serde_with::serde_as,
 };
 

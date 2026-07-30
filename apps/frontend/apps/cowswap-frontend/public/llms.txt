@@ -1,14 +1,14 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); on the Ophis-operated chains Optimism and Unichain that is the all-in cost, while on CoW-hosted chains CoW Protocol's own fees apply on top (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator across 13 EVM chains, including Robinhood Chain. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it MEV-protected, and you sign the resulting order with your own wallet. Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); on the Ophis-operated chains Optimism, Unichain, and Robinhood Chain that is the all-in cost, while on CoW-hosted chains CoW Protocol's own fees apply on top (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-protected**: orders settle off-chain via a batch auction; sandwich attacks are structurally absent, not best-effort.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Flat, published-all-in fee**: a flat 0.10% (10 bps) Ophis fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. On Optimism and Unichain that is the entire cost (example: swap 1,000 USDC on Optimism, fee = 1 USDC all-in). On CoW-hosted chains, CoW Protocol adds a 0.02% protocol volume fee (0.003% on correlated pairs), making the fixed all-in 0.12% / 0.013% there.
-- **Surplus**: Ophis takes no share of price improvement on any chain. On Optimism and Unichain, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume) upstream before the remainder is returned.
+- **Flat, published-all-in fee**: a flat 0.10% (10 bps) Ophis fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. On Optimism, Unichain, and Robinhood Chain that is the entire cost (example: swap 1,000 USDC on Optimism, fee = 1 USDC all-in). On CoW-hosted chains, CoW Protocol adds a 0.02% protocol volume fee (0.003% on correlated pairs), making the fixed all-in 0.12% / 0.013% there.
+- **Surplus**: Ophis takes no share of price improvement on any chain. On Optimism, Unichain, and Robinhood Chain, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume) upstream before the remainder is returned.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
 ## Routes
@@ -38,7 +38,7 @@ Ophis is designed to be agent-friendly. The intent endpoint above accepts free-f
 3. Construct a deep-link: `https://swap.ophis.fi/#/<chainId>/swap/<sellTokenSymbol>/<buyTokenSymbol>?inputCurrency=<amount>`.
 4. Open the link for the user to review and sign. Ophis never auto-signs, every order requires explicit wallet approval.
 
-Agents that submit orders programmatically should use the CoW Protocol orderbook API directly. Ophis surfaces 12 EVM source/destination chains in the network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, and Unichain, plus Sepolia for integration testing. Orderbook endpoints for the CoW-aligned chains live at `api.cow.fi`; Ophis-specific orderbook deployments (Optimism mainnet via `optimism-mainnet.ophis.fi`, Unichain via `unichain-mainnet.ophis.fi`) follow the same schema. See [https://docs.cow.fi/cow-protocol/reference/apis/orderbook](https://docs.cow.fi/cow-protocol/reference/apis/orderbook) for the API contract.
+Agents that submit orders programmatically should use `@ophis/sdk` or the Ophis MCP server so the orderbook URL and EIP-712 signing domain are resolved safely per chain. Ophis surfaces 13 EVM source/destination chains in the network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain, plus Sepolia for integration testing. CoW-hosted chain endpoints live at `api.cow.fi`; Ophis-operated deployments use `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, and `robinhood-mainnet.ophis.fi`. All follow the same orderbook schema. See [Ophis AI agent integration](https://docs.ophis.fi/ai-agents) for the safe programmatic flow.
 
 Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-sign model is the trust boundary; bypassing it for payment automation would compromise self-custody.
 
@@ -52,6 +52,6 @@ Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-s
 ## Optional
 
 - [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis): Full source code (frontend, intent proxy, indexer, infra runbooks).
-- [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts. Ophis deploys bytecode-identical GPv2Settlement at its own non-canonical addresses on the Ophis-operated networks (Optimism, Unichain); resolve the exact address via `@ophis/sdk` or the MCP `list_chains` tool.
+- [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts): Underlying settlement contracts. Ophis deploys bytecode-identical GPv2Settlement at its own non-canonical addresses on the Ophis-operated networks (Optimism, Unichain, Robinhood Chain); resolve the exact address via `@ophis/sdk` or the MCP `list_chains` tool.
 - [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol): CoW Protocol docs, the settlement primitives Ophis is built on.
 - [Full docs text](https://docs.ophis.fi/llms-full.txt): the entire documentation concatenated into one file for LLM context windows.

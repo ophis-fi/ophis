@@ -1,0 +1,172 @@
+name: Optimism toxic-pool monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: Scanner deployment window
+        required: false
+        default: '7'
+        type: choice
+        options: ['1', '7', '183']
+      reconcile_current:
+        description: Reconcile current factory pool lists
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Incremental discovery. A separate daily run covers the full deployment
+    # window and reconciles the factories' current pool lists.
+    - cron: '23 */3 * * *'
+    - cron: '41 2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: optimism-toxic-pool-monitor
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CHAIN_ID: '10'
+      SCANNER_REVISION: f188c245cbb05fd6d629d960f3f4c3cbfa6b83f5
+      RPC_URL_OPTIMISM: ${{ secrets.OPHIS_OPTIMISM_READ_RPC_URL }}
+    steps:
+      - name: Check out Ophis
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # External code stays outside the Ophis source tree and is fixed to the
+      # reviewed revision. Do not vendor or modify it until licensing is clear.
+      - name: Check out toxic-pool-utils
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: wavey0x/toxic-pool-utils
+          ref: f188c245cbb05fd6d629d960f3f4c3cbfa6b83f5
+          path: .external/toxic-pool-utils
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/toxic-pool-risk/requirements-scanner.lock
+
+      - name: Validate configuration
+        run: |
+          set -euo pipefail
+          test -n "${RPC_URL_OPTIMISM:-}" || {
+            echo "::error::OPHIS_OPTIMISM_READ_RPC_URL is not configured"
+            exit 1
+          }
+          case "${{ github.event_name }}" in
+            workflow_dispatch) WINDOW_DAYS="${{ inputs.window_days }}" ;;
+            schedule)
+              if [[ "${{ github.event.schedule }}" == "41 2 * * *" ]]; then
+                WINDOW_DAYS=183
+              else
+                WINDOW_DAYS=7
+              fi
+              ;;
+          esac
+          printf 'WINDOW_DAYS=%s\n' "$WINDOW_DAYS" >> "$GITHUB_ENV"
+
+      - name: Install isolated scanner dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --require-hashes \
+            -r tools/toxic-pool-risk/requirements-scanner.lock
+          python -m pip install --disable-pip-version-check --no-deps --no-build-isolation \
+            ./.external/toxic-pool-utils
+
+      - name: Scan Optimism
+        run: |
+          set -euo pipefail
+          mkdir -p risk-output/raw risk-output/published
+          extra=()
+          if [[ "${{ github.event.schedule }}" == "41 2 * * *" ]] ||
+             [[ "${{ inputs.reconcile_current }}" == "true" ]]; then
+            extra+=(--reconcile-current)
+          fi
+          toxic-scanner scan \
+            --chain-id "$CHAIN_ID" \
+            --window-days "$WINDOW_DAYS" \
+            --out risk-output/raw/optimism-scanner.json \
+            "${extra[@]}"
+
+      - name: Normalize and validate risk feed
+        env:
+          TOXIC_SCANNER_REVISION: ${{ env.SCANNER_REVISION }}
+        run: |
+          set -euo pipefail
+          python tools/toxic-pool-risk/normalize.py \
+            --input risk-output/raw/optimism-scanner.json \
+            --output risk-output/published/optimism.json \
+            --chain-id "$CHAIN_ID" \
+            --max-age-seconds 21600
+          python -m json.tool risk-output/published/optimism.json >/dev/null
+
+      - name: Write job summary
+        if: success()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          feed = json.loads(Path("risk-output/published/optimism.json").read_text())
+          counts = feed["counts"]
+          summary = (
+              "## Optimism Curve provider-context scan\n\n"
+              f"- Head block: `{feed['headBlock']}`\n"
+              f"- Status: `{feed['status']}`\n"
+              f"- Critical: **{counts['critical']}**\n"
+              f"- High: **{counts['high']}**\n"
+              f"- Scan errors: **{counts['scan_error']}**\n"
+              f"- Feed hash: `{feed['contentHash']}`\n"
+          )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write(summary)
+          PY
+
+      - name: Upload scanner evidence and normalized snapshot
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: optimism-liquidity-risk-${{ github.run_id }}-${{ github.run_attempt }}
+          path: risk-output/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Alert operations
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.OPHIS_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.OPHIS_TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+            echo "Telegram alerting is not configured; relying on Actions notifications"
+            exit 0
+          fi
+          message=""
+          if [[ "$JOB_STATUS" != "success" ]]; then
+            message="CRITICAL: Ophis Optimism toxic-pool scan failed. ${RUN_URL}"
+          elif [[ -f risk-output/published/optimism.json ]]; then
+            read -r feed_status critical high scan_errors < <(
+              python -c 'import json; f=json.load(open("risk-output/published/optimism.json")); c=f["counts"]; print(f["status"], c["critical"], c["high"], c["scan_error"])'
+            )
+            if [[ "$feed_status" != "complete" ]] ||
+               (( critical > 0 || high > 0 || scan_errors > 0 )); then
+              message="WARNING: Ophis Optimism Curve scan: status=${feed_status}, critical=${critical}, high=${high}, scan_error=${scan_errors}. ${RUN_URL}"
+            fi
+          fi
+          [[ -z "$message" ]] && exit 0
+          curl --fail --silent --show-error --max-time 15 \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${message}" >/dev/null

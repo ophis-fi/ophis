@@ -238,9 +238,7 @@ fn base_token_pairs(base_tokens: &[Address]) -> impl Iterator<Item = TokenPair> 
 #[cfg(test)]
 mod tests {
     use {
-        super::*,
-        liquidity_sources::uniswap_v2::pool_fetching::Pool,
-        maplit::hashmap,
+        super::*, liquidity_sources::uniswap_v2::pool_fetching::Pool, maplit::hashmap,
         model::TokenPair,
     };
 

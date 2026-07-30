@@ -1,0 +1,88 @@
+# Ophis - Robinhood Chain mainnet (chain 4663) driver config.
+#
+# TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
+#
+# Baseline ships EMPTY on Robinhood: the active liquidity includes protocols
+# the built-in UniV2/V3 baseline reader cannot route. KyberSwap and LI.FI are
+# independent execution lanes; Kyber currently reaches Ekubo and Uniswap pools.
+app-data-fetching-enabled = true
+orderbook-url = "http://orderbook"
+tx-gas-limit = "30000000"
+
+# Skip eth_createAccessList preflight. The bare-call path uses the supervised
+# sovereign eRPC proxy and fails closed with Cadia Nitro.
+disable-access-list-simulation = true
+
+[contracts]
+gp-v2-settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+weth = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
+
+[[solver]]
+name = "baseline"
+endpoint = "http://baseline"
+absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
+relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# LI.FI same-chain aggregator - ENABLED (keyless). SELL output reports
+# estimate.toAmountMin (the guaranteed on-chain
+# floor). Same-chain only.
+#
+# *** CONFIG GATE (LiFi router allowlist) ***
+# On 4663 LiFi's swap router / approvalAddress is 0xB477751B76CF82d00a686A1232f5fCD772414Af3
+# (verified 2026-07-02), NOT the usual LiFiDiamond 0x864b31...b9232. The lane pins
+# a router == approvalAddress allowlist to the diamond, so
+# dex::lifi::LIFI_ROUTER_ALLOWLIST AND driver custom_allowlist::ROBINHOOD_MAINNET
+# MUST both include 0xB477751B... or every 4663 quote fails the same-chain safety
+# check. Verify the router per pair (not just WETH->USDG) before enabling in prod.
+[[solver]]
+name = "lifi"
+endpoint = "http://lifi-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# KyberSwap Robinhood lane. The backend pins chain 4663 to the `robinhood`
+# endpoint and validates the CREATE2 MetaAggregationRouterV2 in both the solver
+# and driver allowlists before accepting calldata.
+[[solver]]
+name = "kyberswap"
+endpoint = "http://kyberswap-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# Direct, zero-budget Uniswap V4 lane. Quotes use the canonical V4Quoter over
+# Cadia's supervised RPC; execution is pair-restricted by the immutable Ophis
+# adapter and independently allowlisted by the driver.
+[[solver]]
+name = "uniswap-v4"
+endpoint = "http://uniswap-v4-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[submission]
+# Robinhood L2 gas is ~0.02 gwei. 5 gwei cap is far above realistic traffic.
+gas-price-cap = "5000000000"
+
+# Submission mempools - raced in parallel. Both are Robinhood-operated (public
+# RPC + sequencer), so they share an operator failure domain; a 3rd independent
+# relay would tighten the anti-correlation floor (tracked as a resilience
+# follow-up, same posture as the Unichain first cut).
+[[submission.mempool]]
+url = "https://sequencer.mainnet.chain.robinhood.com"
+
+[[submission.mempool]]
+url = "https://rpc.mainnet.chain.robinhood.com"
+
+[liquidity]
+base-tokens = [
+  "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",  # WETH (Robinhood 4663)
+  "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",  # USDG (Paxos Global Dollar, 6 dec) - the canonical stable; NO official USDC on 4663
+]
+
+# NO [[liquidity.*]] AMM sources on 4663: the baseline reader cannot model all
+# active pool types. The Kyber lane supplies independently built on-chain routes.

@@ -104,6 +104,26 @@ export default {
         version: "0.4.11",
       },
     ],
+    // Ophis-authored vault contracts require >=0.8.17 and live under
+    // paths.sources, so `hardhat compile` fails without a matching compiler.
+    // They are DELIBERATELY listed as per-file overrides rather than appended
+    // to `compilers`: GPv2 sources declare `pragma solidity >=0.7.6 <0.9.0`,
+    // and Hardhat resolves each file to the HIGHEST configured compiler that
+    // satisfies its pragma. A global 0.8.x entry would silently rebuild
+    // GPv2Settlement / GPv2AllowListAuthentication under 0.8 -- changing
+    // deployed bytecode (breaking the deploy-ceremony codehash gate) and
+    // their arithmetic semantics. Foundry remains the source of truth for
+    // vault deployments; these artifacts exist only so hardhat can compile.
+    overrides: {
+      "src/contracts/vault/OphisVaultPolicyModule.sol": { version: "0.8.28" },
+      "src/contracts/vault/OphisVaultPolicyModuleFactory.sol": {
+        version: "0.8.28",
+      },
+      "src/contracts/vault/OphisChainlinkFloor.sol": { version: "0.8.28" },
+      "src/contracts/vault/interfaces/IVaultPolicyDeps.sol": {
+        version: "0.8.28",
+      },
+    },
   },
   networks: {
     hardhat: {

@@ -38,6 +38,7 @@ export const CHAIN_NAME: Record<number, string> = {
   100: 'Gnosis',
   130: 'Unichain',
   137: 'Polygon',
+  4663: 'Robinhood Chain',
   8453: 'Base',
   9745: 'Plasma',
   42161: 'Arbitrum',
@@ -70,6 +71,8 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
  *     baseline ships without on-chain AMM sources on Unichain and cannot bid, so
  *     8 aggregators compete: okx, kyberswap, velora, odos, openocean, dodo,
  *     lifi, enso)
+ *   - infra/robinhood-mainnet/configs/driver.toml.tmpl (LI.FI is the one active
+ *     bidding lane; baseline has no verified Robinhood liquidity source)
  */
 export const EXECUTION_FACTS = {
   mevProtection: 'batch-auction',
@@ -79,6 +82,7 @@ export const EXECUTION_FACTS = {
     sovereignChains: [
       { chainId: 10, solvers: 4 },
       { chainId: 130, solvers: 8 },
+      { chainId: 4663, solvers: 1 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
@@ -147,8 +151,8 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <li><strong>MEV-protected batch settlement</strong>Orders settle in batch auctions, not the public mempool. No sandwiching, no frontrunning of your order flow.</li>
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
   <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
-  <li><strong>Solver competition on every order</strong>On Unichain, 8 aggregator solvers compete per auction (plus a baseline that ships without on-chain AMM sources there); on Optimism, 4 solvers compete, where Ophis runs the full settlement stack. Other chains draw on CoW Protocol's solver network.</li>
-  <li class="wide"><strong>Where the price improvement goes</strong>On Optimism and Unichain, 100% of price improvement is returned to the trader, and the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
+  <li><strong>Solver competition on every order</strong>On Unichain, 8 aggregator solvers compete per auction (plus a baseline that ships without on-chain AMM sources there); on Optimism, 4 solvers compete; Robinhood currently has one active LI.FI lane. Other chains draw on CoW Protocol's solver network.</li>
+  <li class="wide"><strong>Where the price improvement goes</strong>On Optimism, Unichain, and Robinhood Chain, 100% of price improvement is returned to the trader, and the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
 </ul>
 <h2>Settled volume by chain</h2>
 <table>
@@ -163,7 +167,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains active</div></div>
 </div>
-<p class="note">MEV-protected, gasless, surplus returned to the trader, across 12 EVM chains with Solana and Bitcoin destinations. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">MEV-protected, gasless, surplus returned to the trader, across 13 EVM chains with Solana and Bitcoin destinations. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; swap.ophis.fi</span><span>Updated ${updated}</span></div>
 </div></body></html>`;
 }

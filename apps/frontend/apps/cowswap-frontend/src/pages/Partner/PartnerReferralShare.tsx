@@ -72,7 +72,7 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
 export function PartnerEmptyReferees({ rate }: { rate: number }): ReactNode {
   return (
     <>
-      <p>No referees yet. Here is how the program works:</p>
+      <p>No referees yet. Here is how referrals work:</p>
       <ol>
         <li>Share your code or link above.</li>
         <li>A net-new wallet trades on Ophis after using it, and is bound to you for life.</li>

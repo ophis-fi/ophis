@@ -10,8 +10,12 @@
 # an empty ${UNICHAIN_RPC_INTERNAL} fails TOML parse. Hardcode the eRPC proxy,
 # same as the OP stack's canonical autopilot.toml. The driver keeps the
 # UNICHAIN_RPC_INTERNAL single-provider bypass via its ETHRPC env.
-node-url = "http://rpc-proxy:4000/main/evm/130"
-simulation-node-url = "http://rpc-proxy:4000/main/evm/130"
+# Anchored to the SELF node (host-gateway alias, same route as erpc.yaml's
+# debug leg): auctions must be cut at a head every sim participant can serve.
+# Cutting at the eRPC max-head (fastest public upstream) starved all solves
+# whenever the self node trailed the leader (2026-07-18 incident).
+node-url = "http://ophis-uni-node:8545"
+simulation-node-url = "http://ophis-uni-node:8545"
 
 # Per-order wait while the run loop fetches a missing native (ETH-denominated)
 # token price. CoinGecko simple/token_price typically answers in 200-500ms;

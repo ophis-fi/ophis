@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# Sweep accumulated CIP-75 partner-fee buffer from the Ophis OP Settlement
-# contract to the partner-fee recipient Safe.
+# Sweep accumulated CIP-75 partner-fee buffer from the Ophis UNICHAIN
+# Settlement contract to the partner-fee recipient Safe.
 #
 # Mechanism: `forge script SweepSettlementBuffer` constructs a `settle()`
 # call with empty trades + post-interactions that transfer the Settlement
 # contract's USDC/WETH/etc balance to the Safe. The driver-submitter EOA
-# (allowlisted as solver via Safe vote 2026-05-20) signs and broadcasts.
+# (allowlisted as solver) signs and broadcasts.
 #
 # Background: docs/audits/2026-05-20-cip75-partner-fee-bypass.md option B1.
-# On our OP fork at 0x310784c7…, CIP-75 fees accumulate in Settlement
+# On Unichain at 0x108A6787…714E, CIP-75 fees accumulate in Settlement
 # rather than transferring atomically to the recipient. Without this sweep,
 # the buffer is recycled into future-trader price improvement (CoW's
 # default behavior on chains they operate), netting Ophis $0 revenue.
+#
+# NOTE (2026-07-17): this script lives under infra/unichain-mainnet/ and
+# targets the UNICHAIN settlement + submitter + tokens. It previously
+# carried the OP submitter/settlement defaults by copy-paste, so a Unichain
+# sweep failed its authenticator check / targeted the wrong contracts.
 #
 # Safety:
 #   - Defaults to DRY-RUN (no --broadcast). `--broadcast` flag required for
@@ -64,8 +69,21 @@ PK_PATH="${OPHIS_SUBMITTER_KEY_PATH:-/Users/ophis-driver/.config/submitter.key}"
 command -v forge >/dev/null 2>&1 || { echo "ERROR: forge (foundry) not in PATH" >&2; exit 3; }
 [[ -d "$CONTRACTS_DIR" ]] || { echo "ERROR: contracts dir not found at $CONTRACTS_DIR" >&2; exit 3; }
 
-# Driver-submitter EOA (must match the PK at PK_PATH)
-SUBMITTER_EOA="0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+# Driver-submitter EOA (must match the PK at PK_PATH). UNICHAIN submitter -
+# NOT the OP one (0x92B9…); the OP address would fail the Unichain
+# authenticator's solver check.
+SUBMITTER_EOA="${OPHIS_SUBMITTER_EOA:-0x7A956C269a12f1B897367663b536EB5dd29f3fBb}"
+
+# UNICHAIN settlement + tradeable tokens for SweepSettlementBuffer.s.sol,
+# which otherwise defaults to the OP settlement + OP token set. Exported so
+# forge picks them up via vm.envOr / vm.envString.
+export SETTLEMENT="${SETTLEMENT:-0x108A678716e5E1776036eF044CAB7064226F714E}"
+# Unichain canonical WETH (18) + USDC (6), per infra/unichain-mainnet/configs.
+export TOKENS="${TOKENS:-0x4200000000000000000000000000000000000006,0x078d782b760474a361dda0af3839290b0ef57ad6}"
+# Per-token base-unit thresholds parallel to TOKENS: 0.001 WETH (1e15), $10
+# USDC (1e7). The Solidity script reads MIN_BASE_UNITS (NOT MIN_TOKEN_WEIS) and
+# REQUIRES it when TOKENS is overridden, else it aborts.
+export MIN_BASE_UNITS="${MIN_BASE_UNITS:-1000000000000000,10000000}"
 
 cd "$CONTRACTS_DIR"
 
@@ -79,7 +97,8 @@ COMMON_ARGS=(
 
 if [[ "$BROADCAST" -eq 1 ]]; then
   echo "==> LIVE BROADCAST mode"
-  echo "    sweep Settlement 0x310784c7… → Safe 0x858f0F5e…CeF8"
+  echo "    sweep Settlement $SETTLEMENT → Safe 0x858f0F5e…CeF8"
+  echo "    tokens: $TOKENS"
   echo "    using driver-submitter EOA $SUBMITTER_EOA"
   echo ""
 

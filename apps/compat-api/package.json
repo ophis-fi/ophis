@@ -1,0 +1,31 @@
+{
+  "name": "@ophis/compat-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ophis sync-quote compat surface (Cloudflare Worker). Accepts the Odos v3 request shape (PathRequestV3 field names, single token in/out), answers with the QuoteResponse field surface plus a namespaced ophis block carrying an unsigned CoW order draft, the EIP-712 signing envelope, and explicit async-settlement semantics. Holds no keys; quote/build/relay only.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build:sdk": "pnpm --filter @ophis/sdk build",
+    "predev": "pnpm run build:sdk",
+    "predeploy": "pnpm run build:sdk",
+    "deploy": "wrangler deploy",
+    "predry-run": "pnpm run build:sdk",
+    "dry-run": "wrangler deploy --dry-run --outdir=dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@ophis/sdk": "workspace:*",
+    "viem": "^2.48.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260529.1",
+    "@types/node": "^22.5.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.0.0",
+    "vitest": "^4.1.8",
+    "wrangler": "^4.95.0"
+  }
+}

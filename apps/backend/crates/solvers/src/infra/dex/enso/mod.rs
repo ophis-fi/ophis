@@ -194,7 +194,10 @@ impl Enso {
             if !route.tx.value.is_zero() {
                 return Err(Error::Api {
                     code: -1,
-                    reason: format!("Enso route requires non-zero native value {}", route.tx.value),
+                    reason: format!(
+                        "Enso route requires non-zero native value {}",
+                        route.tx.value
+                    ),
                 });
             }
 

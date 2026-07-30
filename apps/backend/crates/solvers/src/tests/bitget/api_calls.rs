@@ -92,6 +92,7 @@ async fn swap_sell_all_chains() {
             side: crate::domain::order::Side::Sell,
             amount: Amount::new(U256::from(tc.sell_amount)),
             buy_limit: Default::default(),
+            solve_fee: Default::default(),
             owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
         };
 
@@ -166,6 +167,7 @@ async fn swap_buy_not_supported() {
         side: crate::domain::order::Side::Buy,
         amount: Amount::new(U256::from(1000000000_u128)),
         buy_limit: Default::default(),
+        solve_fee: Default::default(),
         owner: address!("0x6f9ffea7370310cd0f890dfde5e0e061059dcfb8"),
     };
 

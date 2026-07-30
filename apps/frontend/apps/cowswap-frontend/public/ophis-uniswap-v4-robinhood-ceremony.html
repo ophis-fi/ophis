@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <title>Ophis Uniswap V4 Adapter — Robinhood deployment ceremony</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #0b0e0d; color: #f5f7f6; }
+      body { margin: 0; padding: 24px; display: grid; min-height: 100vh; place-items: center; box-sizing: border-box; }
+      main { width: min(760px, 100%); background: #141917; border: 1px solid #3d5148; border-radius: 20px; padding: 24px; box-sizing: border-box; }
+      h1 { margin-top: 0; font-size: 28px; }
+      .warning { color: #ffcf66; }
+      dl { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; }
+      dt { color: #9eaaa4; }
+      dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+      button { width: 100%; margin-top: 18px; padding: 16px; border: 0; border-radius: 12px; background: #10ed82; color: #07130d; font-size: 17px; font-weight: 750; }
+      button:disabled { opacity: .55; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #090c0b; border-radius: 10px; padding: 14px; min-height: 42px; }
+      @media (max-width: 560px) { dl { grid-template-columns: 1fr; gap: 4px; } dd { margin-bottom: 8px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Ophis Uniswap V4 Adapter</h1>
+      <p class="warning">One-time deterministic, ownerless deployment on Robinhood Chain. Never enter a seed phrase here.</p>
+      <dl>
+        <dt>Chain</dt><dd>Robinhood Chain (4663)</dd>
+        <dt>Required sender</dt><dd>0x0494F503912C101Bfd76b88e4F5D8A33de284d1A</dd>
+        <dt>CREATE2 deployer</dt><dd>0x4e59b44847b379578588920cA78FbF26c0B4956C</dd>
+        <dt>Expected adapter</dt><dd>0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae</dd>
+        <dt>Settlement</dt><dd>0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD</dd>
+        <dt>PoolManager</dt><dd>0x8366a39cc670b4001a1121b8f6a443a643e40951</dd>
+        <dt>Pair</dt><dd>WETH / USDG, Uniswap V4 0.05%</dd>
+        <dt>Transaction value</dt><dd>0 ETH</dd>
+      </dl>
+      <button id="deploy" type="button">Verify and request deployment</button>
+      <pre id="status">Ready. Open only inside your wallet's browser.</pre>
+    </main>
+    <script src="/ophis-uniswap-v4-robinhood-ceremony.js"></script>
+  </body>
+</html>

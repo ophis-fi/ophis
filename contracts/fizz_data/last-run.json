@@ -1,0 +1,491 @@
+{
+  "version": 1,
+  "createdAt": "2026-07-15T18:50:22.273Z",
+  "projectRoot": ".",
+  "suiteDir": "test/fizz",
+  "metaDir": "fizz_data",
+  "contracts": [
+    {
+      "name": "AllowListGuardian",
+      "sourcePath": "src/contracts/AllowListGuardian.sol",
+      "sourceHash": "sha256:16f9a678619c9653a5044b355277e54daf827facc9349268d91b7bcbe11d4250",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "authenticator_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "timelock_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "guardian_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "addSolver",
+          "inputs": [
+            {
+              "name": "solver",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "addSolver(address)"
+        },
+        {
+          "name": "removeSolver",
+          "inputs": [
+            {
+              "name": "solver",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "removeSolver(address)"
+        },
+        {
+          "name": "setGuardian",
+          "inputs": [
+            {
+              "name": "newGuardian",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setGuardian(address)"
+        },
+        {
+          "name": "setManager",
+          "inputs": [
+            {
+              "name": "newManager",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "setManager(address)"
+        }
+      ]
+    },
+    {
+      "name": "GPv2AllowListAuthentication",
+      "sourcePath": "src/contracts/GPv2AllowListAuthentication.sol",
+      "sourceHash": "sha256:42ecdcc23ed0499b5a953ad18590d726c6b4282a0c5102bbb6f905b6cac94b58",
+      "constructor": {
+        "inputs": [],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "acceptManagership",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "acceptManagership()"
+        },
+        {
+          "name": "addSolver",
+          "inputs": [
+            {
+              "name": "solver",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "addSolver(address)"
+        },
+        {
+          "name": "cancelManagerTransfer",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "cancelManagerTransfer()"
+        },
+        {
+          "name": "initializeManager",
+          "inputs": [
+            {
+              "name": "manager_",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "initializeManager(address)"
+        },
+        {
+          "name": "proposeManager",
+          "inputs": [
+            {
+              "name": "manager_",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "proposeManager(address)"
+        },
+        {
+          "name": "removeSolver",
+          "inputs": [
+            {
+              "name": "solver",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "removeSolver(address)"
+        },
+        {
+          "name": "setManager",
+          "inputs": [
+            {
+              "name": "manager_",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "setManager(address)"
+        },
+        {
+          "name": "simulateDelegatecall",
+          "inputs": [
+            {
+              "name": "targetContract",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "calldataPayload",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "simulateDelegatecall(address,bytes)"
+        },
+        {
+          "name": "simulateDelegatecallInternal",
+          "inputs": [
+            {
+              "name": "targetContract",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "calldataPayload",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "simulateDelegatecallInternal(address,bytes)"
+        }
+      ]
+    }
+  ],
+  "handlers": {
+    "AllowListGuardianHandler.sol": "sha256:90b4a3121ad7c18ef8e3146bdc079566673ae013f3e79d83a62dd58ad37ea931",
+    "GPv2AllowListAuthenticationHandler.sol": "sha256:a8261319fcb5687ccdc2eb633cd876e853f823404c689e14f989fbb11d25881c",
+    "Handlers.sol": "sha256:174ebae8624b008240ad8381f8e4c1bed078e253659479858d9c3d929a449b0a"
+  },
+  "properties": [
+    {
+      "id": "GL-01",
+      "checkbox": "-",
+      "functionName": "property_guardianAuthorityIsX1Binding",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-02",
+      "checkbox": "x",
+      "functionName": "property_noUnauthorizedGuardianAddOrRotate",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-03",
+      "checkbox": "x",
+      "functionName": "property_noUnauthorizedGuardianRemove",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-04",
+      "checkbox": "x",
+      "functionName": "property_directAuthExactAccessControl",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-05",
+      "checkbox": "x",
+      "functionName": "property_adminAuthorityPersistsAcrossHandoffs",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-06",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-07",
+      "checkbox": "-",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-08",
+      "checkbox": "x",
+      "functionName": "property_crossContractStorageIsolation",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-09",
+      "checkbox": "x",
+      "functionName": "property_noStaleOrNonExactAccept",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-10",
+      "checkbox": "-",
+      "functionName": "property_managerWriterSetExact",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-11",
+      "checkbox": "-",
+      "functionName": "property_pendingManagerWriterSetExact",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-12",
+      "checkbox": "-",
+      "functionName": "property_guardianWriterSetExact",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-13",
+      "checkbox": "x",
+      "functionName": "property_guardianNeverZero",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-14",
+      "checkbox": "x",
+      "functionName": "property_timelockAndAuthenticatorImmutable",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-15",
+      "checkbox": "-",
+      "functionName": "property_managerZeroOnlyViaDirectSetManager",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-16",
+      "checkbox": "x",
+      "functionName": "property_adminSlotNeverDrifts",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-17",
+      "checkbox": "x",
+      "functionName": "property_initializerPermanentlyClosed",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "GL-18",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "GL-19",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-01",
+      "checkbox": "x",
+      "functionName": "property_solverSetAbsorbingAndIdempotent",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-02",
+      "checkbox": "x",
+      "functionName": "property_proposeCancelRoundTrip",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-03",
+      "checkbox": "x",
+      "functionName": "property_cancelIsSafeNoOp",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-04",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-05",
+      "checkbox": "x",
+      "functionName": "property_guardianAddSolverPostcondition",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-06",
+      "checkbox": "x",
+      "functionName": "property_guardianRemoveSolverPostcondition",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-07",
+      "checkbox": "x",
+      "functionName": "property_guardianSetManagerPostcondition",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-08",
+      "checkbox": "x",
+      "functionName": "property_guardianSetGuardianTouchesNoAuth",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-09",
+      "checkbox": "x",
+      "functionName": "property_directAddSolverIffManager",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-10",
+      "checkbox": "x",
+      "functionName": "property_directRemoveSolverIffManager",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-11",
+      "checkbox": "x",
+      "functionName": "property_solverOpFrameCondition",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-12",
+      "checkbox": "x",
+      "functionName": "property_directSetManagerAtomicPair",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-13",
+      "checkbox": "x",
+      "functionName": "property_proposeManagerUnconditional",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-14",
+      "checkbox": "x",
+      "functionName": "property_acceptManagershipAtomicPair",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-15",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-16",
+      "checkbox": "x",
+      "functionName": "property_acceptNeverZerosManager",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-17",
+      "checkbox": "x",
+      "functionName": "property_crossRoleRejection",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-18",
+      "checkbox": "x",
+      "functionName": "property_guardianCannotSelfEntrench",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-19",
+      "checkbox": "x",
+      "functionName": "property_pendingManagerSlotProtected",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-20",
+      "checkbox": "x",
+      "functionName": "property_noOnChainDelayEnforced",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-21",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-22",
+      "checkbox": "x",
+      "functionName": "property_evictLivenessWhileX1Held",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-23",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-24",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    },
+    {
+      "id": "SP-25",
+      "checkbox": "x",
+      "functionName": "property_adminRescueAlwaysLive",
+      "file": "test/fizz/Properties.sol"
+    },
+    {
+      "id": "SP-26",
+      "checkbox": "x",
+      "functionName": null,
+      "file": null
+    }
+  ]
+}

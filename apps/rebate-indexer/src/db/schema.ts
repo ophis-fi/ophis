@@ -75,6 +75,13 @@ export const trades = pgTable(
     // code. Accrual attributes such a trade to the code owner (migration 0009).
     appdataRefCode: text('appdata_ref_code'),
 
+    // Basket (multi-order) marker from appData (metadata.ophisBasket.id), grammar-
+    // validated (32-hex) by the fetcher. NULL when the order was not a basket leg.
+    // Pure analytics passthrough: NOT fee-gated (earns no rebate), no FK, written on
+    // INSERT only (immutable on the upsert conflict). Lets basket volume be grouped
+    // and measured after the fact (migration 0020, basket-intents Phase A).
+    basketId: text('basket_id'),
+
     // Integrator OWN-FEE (partner-fee stacking, migration 0014). CoW's partnerFee is
     // an ARRAY; an integrator can stack their own recipient entry next to the Ophis
     // base entry. These capture the FIRST non-Ophis flat-Volume entry so

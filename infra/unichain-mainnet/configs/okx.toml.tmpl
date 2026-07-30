@@ -8,6 +8,13 @@
 
 node-url = "${UNICHAIN_MAINNET_RPC}"
 
+# Unichain's 0x4200..06 wrapped-native predeploy stores balances at mapping
+# slot 0 (WETH98-style), NOT WETH9's slot 3 (the binary default, correct on
+# OP). The eth-flow sim balance override writes to this slot; a wrong slot
+# silently grants nothing and fail-closes every native-ETH sell (2026-07-18
+# incident). Verified on-chain 2026-07-18.
+wrapped-native-balance-slot = 0
+
 # Ophis-fork settlement contract on Unichain. Fill after Phase-1 Ledger ceremony.
 settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
 

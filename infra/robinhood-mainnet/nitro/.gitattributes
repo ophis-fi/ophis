@@ -1,0 +1,3 @@
+# These scripts run inside the Linux WSL2 distro. CRLF endings make bash fail on
+# the shebang/`\r`, so pin LF regardless of the cloning platform's autocrlf.
+*.sh text eol=lf

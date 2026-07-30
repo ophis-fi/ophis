@@ -20,16 +20,18 @@ if [[ "${-}" == *x* ]]; then
 fi
 
 RPC="${OPHIS_RPC:-http://localhost:4002/main/evm/130}"
-SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
+# Unichain (130) Ophis settlement - NOT the OP one (0x310784c7...B859); this
+# script previously carried the OP address by copy-paste, silently monitoring
+# the wrong contract's buffer.
+SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
 SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
 
-# token:symbol:decimals
+# token:symbol:decimals - UNICHAIN canonical tokens (the previous list was
+# the OP token set, copy-pasted with the OP settlement address; fees can only
+# accrue in tokens the driver actually trades, per configs/baseline.toml.tmpl).
 TOKENS=(
-  "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85:USDC:6"
   "0x4200000000000000000000000000000000000006:WETH:18"
-  "0x7F5c764cBc14f9669B88837ca1490cCa17c31607:USDCe:6"
-  "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1:DAI:18"
-  "0x68f180fcCe6836688e9084f035309E29Bf0A2095:WBTC:8"
+  "0x078d782b760474a361dda0af3839290b0ef57ad6:USDC:6"
 )
 
 command -v cast >/dev/null 2>&1 || { echo "ERROR: cast (foundry) required" >&2; exit 3; }
@@ -90,10 +92,10 @@ if [[ -n "${PUSHGATEWAY_URL:-}" ]]; then
     # separate failures counter so Prometheus can alert on probe
     # staleness (audit follow-up 2026-05-20).
     if [[ "$status" == "ok" ]]; then
-      curl -s --data "ophis_settlement_buffer_raw{symbol=\"$sym\",chain=\"optimism\"} $raw" \
-        "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+      curl -s --data "ophis_settlement_buffer_raw{symbol=\"$sym\",chain=\"unichain\"} $raw" \
+        "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-unichain" >/dev/null || true
     fi
   done
-  curl -s --data "ophis_settlement_buffer_probe_failures{chain=\"optimism\"} $PROBE_FAILURES" \
-    "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+  curl -s --data "ophis_settlement_buffer_probe_failures{chain=\"unichain\"} $PROBE_FAILURES" \
+    "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-unichain" >/dev/null || true
 fi

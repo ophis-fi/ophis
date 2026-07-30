@@ -61,6 +61,22 @@ services:
       # Affiliate payout proposal gate (default OFF — the deploy is inert until
       # flipped; the monthly report still shows affiliate owed regardless).
       AFFILIATE_PAYOUT_ENABLED: ${AFFILIATE_PAYOUT_ENABLED:-false}
+      # On-chain settle() decoder in DISCOVERY-ONLY mode on the sovereign chains
+      # (OP 10, Unichain 130), so traders who settled on our self-hosted backends
+      # but never entered tracked_wallets are cataloged into `trades` and counted on
+      # /stats. Discovery rows force volume_fee_bps=0 / fee_verified=false, so they
+      # credit ZERO rebate and are excluded from every money path (the fee-crediting
+      # decoder stays hard-disabled: FEE_VERIFICATION_IMPLEMENTED=false). getRpcClient
+      # resolves keyless OP/Unichain RPC defaults; override with SETTLE_RPC_URL_10 /
+      # SETTLE_RPC_URL_130 for a keyed archive endpoint if the backfill lags. Start
+      # blocks = each sovereign GPv2Settlement's first activity (from the orderbook
+      # DBs). Defaults ACTIVATE the feature; set SETTLE_DECODER_CHAINS='' to disable.
+      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130}
+      SETTLE_DECODER_DISCOVERY_ONLY: ${SETTLE_DECODER_DISCOVERY_ONLY:-true}
+      SETTLE_SCAN_START_BLOCK_10: ${SETTLE_SCAN_START_BLOCK_10:-151586936}
+      SETTLE_SCAN_START_BLOCK_130: ${SETTLE_SCAN_START_BLOCK_130:-51998330}
+      SETTLE_RPC_URL_10: ${SETTLE_RPC_URL_10:-}
+      SETTLE_RPC_URL_130: ${SETTLE_RPC_URL_130:-}
     ports:
       # Bind to loopback only. Caddy reaches the indexer over the compose network
       # (reverse_proxy indexer:8080) and the deploy health-check curls
@@ -81,6 +97,27 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+
+  # Production ingress is an outbound-only Cloudflare Tunnel replica. The
+  # existing `ophis-rebates` tunnel and rebates.ophis.fi DNS route remain
+  # Cloudflare-managed; the origin URL is pinned below. Keep TUNNEL_TOKEN only
+  # in the deployment .env (mode 0600); it is never committed or passed through
+  # to the indexer container.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.3
+    restart: unless-stopped
+    network_mode: host
+    depends_on: [caddy]
+    environment:
+      # Do not use Compose's required-value interpolation here: Compose expands
+      # the whole model even for `docker compose up pg`, which would make the
+      # local quickstart require a production credential. cloudflared validates
+      # the token when this service is actually started.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    # This legacy tunnel has no dashboard-managed ingress rule. Pin its single
+    # public hostname to the local Caddy listener explicitly; without --url,
+    # cloudflared connects successfully but returns 503 for every request.
+    command: tunnel --no-autoupdate --url http://127.0.0.1:80 run
 
 volumes:
   pg_data:

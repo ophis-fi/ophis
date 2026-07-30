@@ -98,7 +98,7 @@
           "value": "{{CHAIN_ID}}"
         },
         {
-          "_comment": "The Ophis settlement contract for this chain. On the 10 non-sovereign chains this equals the canonical GPv2 address, which is shared with CoW Swap; only Optimism and Unichain carry an Ophis-exclusive verifyingContract.",
+          "_comment": "The Ophis settlement contract for this chain. On the 10 non-sovereign chains this equals the canonical GPv2 address, which is shared with CoW Swap; Optimism, Unichain, and Robinhood Chain carry Ophis-exclusive verifyingContracts.",
           "field_source": "ethereum_typed_data_domain",
           "field": "verifyingContract",
           "operator": "eq",

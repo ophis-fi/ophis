@@ -23,11 +23,18 @@ use {
 /// but the eth-flow contract that owns such an order holds NATIVE ETH -- not
 /// WETH -- at simulation time (it wraps to WETH only during real settlement, via
 /// a pre-hook). See `eth_flow_balance_override`.
-const WRAPPED_NATIVE: Address = address!("4200000000000000000000000000000000000006");
+pub const DEFAULT_WRAPPED_NATIVE: Address = address!("4200000000000000000000000000000000000006");
 
-/// WETH9 stores `balanceOf` at storage slot 3 (verified on-chain 2026-07-06:
-/// keccak256(pad32(holder) || pad32(3)) held the settlement's WETH balance).
-const WRAPPED_NATIVE_BALANCE_SLOT: u8 = 3;
+/// The wrapped-native `balanceOf` mapping slot is CHAIN-DEPENDENT even though
+/// the predeploy ADDRESS is not: OP mainnet's 0x4200..06 is WETH9 (balances at
+/// slot 3, verified on-chain 2026-07-06), while Unichain's is the newer
+/// OP-stack WETH98-style predeploy (balances at slot 0, verified on-chain
+/// 2026-07-18: the settlement's live balance sat at keccak(pad32(holder) ||
+/// pad32(0)) and the slot-3 key was empty). Writing the eth-flow override to
+/// the wrong slot silently grants nothing -> Swapper's balance guard trips ->
+/// every eth-flow order fail-closes. Configure per chain via
+/// `wrapped-native-balance-slot`; this default matches WETH9 (OP).
+pub const DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT: u8 = 3;
 
 /// When the swap sells the wrapped native, returns the `(slot, value)` storage
 /// override that grants `owner` a `sell.amount` WETH balance for the simulation.
@@ -50,25 +57,32 @@ const WRAPPED_NATIVE_BALANCE_SLOT: u8 = 3;
 /// post-wrap SELL-side balance. The realized OUTPUT is still measured for real
 /// (Swapper `realizedOut`), so faking the sell balance cannot blind the
 /// anti-siphon guard: an under-delivering DEX is still rejected.
-fn eth_flow_balance_override(owner: Address, swap: &dex::Swap) -> Option<(B256, B256)> {
+fn eth_flow_balance_override(
+    owner: Address,
+    swap: &dex::Swap,
+    wrapped_native: Address,
+    balance_slot: u8,
+) -> Option<(B256, B256)> {
     // The zero address is the anonymous-quote sentinel (from = 0x0) and can
     // never hold or transfer ERC20 tokens. Granting it a balance would make the
     // sim run a swap that reverts with "ERC20: transfer to the zero address",
     // turning the graceful "sim unavailable" path (which quotes are exempt from)
     // into a hard error. Skip it -- such quotes fall through to Ok(None).
-    if owner.is_zero() || swap.input.token.0 != WRAPPED_NATIVE {
+    if owner.is_zero() || swap.input.token.0 != wrapped_native {
         return None;
     }
     let value = B256::from(swap.input.amount.to_be_bytes::<32>());
-    Some((wrapped_native_balance_slot(owner), value))
+    Some((wrapped_native_balance_slot(owner, balance_slot), value))
 }
 
 /// Storage slot of `balanceOf[owner]` in the wrapped-native token, i.e. the
-/// Solidity mapping slot `keccak256(abi.encode(owner, uint256(SLOT)))`.
-fn wrapped_native_balance_slot(owner: Address) -> B256 {
+/// Solidity mapping slot `keccak256(abi.encode(owner, uint256(SLOT)))`. The
+/// mapping's base slot is chain-dependent -- see
+/// [`DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT`].
+fn wrapped_native_balance_slot(owner: Address, balance_slot: u8) -> B256 {
     let mut key = [0u8; 64];
     key[12..32].copy_from_slice(owner.as_slice());
-    key[63] = WRAPPED_NATIVE_BALANCE_SLOT;
+    key[63] = balance_slot;
     keccak256(key)
 }
 
@@ -78,15 +92,25 @@ pub struct Simulator {
     web3: DynProvider,
     settlement: Address,
     authenticator: Address,
+    wrapped_native: Address,
+    wrapped_native_balance_slot: u8,
 }
 
 impl Simulator {
     /// Create a new simulator for computing DEX swap gas usage.
-    pub fn new(url: &reqwest::Url, settlement: Address, authenticator: Address) -> Self {
+    pub fn new(
+        url: &reqwest::Url,
+        settlement: Address,
+        authenticator: Address,
+        wrapped_native: Address,
+        wrapped_native_balance_slot: u8,
+    ) -> Self {
         Self {
             web3: blockchain::rpc(url).provider,
             settlement,
             authenticator,
+            wrapped_native,
+            wrapped_native_balance_slot,
         }
     }
 
@@ -124,8 +148,13 @@ impl Simulator {
         // Grant the owner the wrapped-native sell balance for eth-flow orders,
         // whose owner (the eth-flow contract) holds native ETH, not WETH, until
         // settlement wraps it. See `eth_flow_balance_override`.
-        if let Some((slot, value)) = eth_flow_balance_override(owner, swap) {
-            overrides = overrides.with_state_diff(WRAPPED_NATIVE, [(slot, value)]);
+        if let Some((slot, value)) = eth_flow_balance_override(
+            owner,
+            swap,
+            self.wrapped_native,
+            self.wrapped_native_balance_slot,
+        ) {
+            overrides = overrides.with_state_diff(self.wrapped_native, [(slot, value)]);
         }
 
         let swapper_calls_arg = swap
@@ -213,8 +242,13 @@ impl Simulator {
         // Grant the owner the wrapped-native sell balance for eth-flow orders,
         // whose owner (the eth-flow contract) holds native ETH, not WETH, until
         // settlement wraps it. See `eth_flow_balance_override`.
-        if let Some((slot, value)) = eth_flow_balance_override(owner, swap) {
-            overrides = overrides.with_state_diff(WRAPPED_NATIVE, [(slot, value)]);
+        if let Some((slot, value)) = eth_flow_balance_override(
+            owner,
+            swap,
+            self.wrapped_native,
+            self.wrapped_native_balance_slot,
+        ) {
+            overrides = overrides.with_state_diff(self.wrapped_native, [(slot, value)]);
         }
 
         let swapper_calls_arg = swap
@@ -343,14 +377,77 @@ mod tests {
     use {super::*, alloy::primitives::b256};
 
     #[test]
+    fn eth_flow_override_uses_configured_wrapped_native() {
+        let robinhood_weth = address!("0bd7d308f8e1639fab988df18a8011f41eacad73");
+        let owner = address!("c1ee77e8a1b85d5eed702a9bb435f434408a4d29");
+        let amount = U256::from(10u64);
+        let swap = dex::Swap {
+            calls: vec![],
+            input: eth::Asset {
+                token: robinhood_weth.into(),
+                amount,
+            },
+            output: eth::Asset {
+                token: address!("5fc5360d0400a0fd4f2af552add042d716f1d168").into(),
+                amount: U256::from(1u64),
+            },
+            allowance: dex::Allowance {
+                spender: Address::ZERO,
+                amount: dex::Amount::new(amount),
+            },
+            gas: eth::Gas::default(),
+        };
+
+        assert!(eth_flow_balance_override(owner, &swap, DEFAULT_WRAPPED_NATIVE, 3).is_none());
+        assert_eq!(
+            eth_flow_balance_override(owner, &swap, robinhood_weth, 3),
+            Some((
+                wrapped_native_balance_slot(owner, 3),
+                B256::from(amount.to_be_bytes::<32>()),
+            )),
+        );
+    }
+
+    #[test]
     fn wrapped_native_balance_slot_matches_onchain() {
         // Verified on-chain 2026-07-06 against OP WETH (0x4200..06): a stateDiff
         // written at THIS slot made `balanceOf(0x764f..6504)` return the override
         // value, proving slot 3 + the keccak256(abi.encode(owner, slot)) layout.
         let owner = address!("764fe4aa1ff493cf39931c7923c8ff5837596504");
         assert_eq!(
-            wrapped_native_balance_slot(owner),
+            wrapped_native_balance_slot(owner, 3),
             b256!("55576e8f9be9c279e97c3d9148807514bf90c4c718d2ff153be89caecfadc1a1"),
+        );
+    }
+
+    #[test]
+    fn wrapped_native_balance_slot_matches_unichain_onchain() {
+        // Unichain's 0x4200..06 predeploy stores balances at mapping slot 0, NOT
+        // WETH9's slot 3. Verified on-chain 2026-07-18 (incident: every eth-flow
+        // order fail-closed because the override wrote to the dead slot-3 key):
+        // - the settlement's LIVE balance sat at keccak(pad32(holder)||pad32(0))
+        //   while the slot-3 key read empty;
+        // - an eth_call stateDiff at the eth-flow contract's slot-0 key read
+        //   back through balanceOf, at the slot-3 key it did not.
+        let ethflow = address!("38c03729153bccf6a281daf41d7c6a14c543f1d7");
+        assert_eq!(
+            wrapped_native_balance_slot(ethflow, 0),
+            b256!("bbf2b036c70cfa6194535e13d6a373c99dbf3ce152eb448755c768ae9da2e34a"),
+        );
+        let settlement = address!("108a678716e5e1776036ef044cab7064226f714e");
+        assert_eq!(
+            wrapped_native_balance_slot(settlement, 0),
+            b256!("dacd2a9610dc8623051117c26da13093742d154c3ea72b5c4e0ff3a502a3e375"),
+        );
+        // Same holders under WETH9's slot 3 give DIFFERENT keys (the ones that
+        // were verified EMPTY on Unichain).
+        assert_eq!(
+            wrapped_native_balance_slot(ethflow, 3),
+            b256!("fe2b01d8e5f403db266a76a5bcb84c1fd3e54c52ff8c907d4cf09ad1cb4f3417"),
+        );
+        assert_eq!(
+            wrapped_native_balance_slot(settlement, 3),
+            b256!("7961f33f11549ab7edbb235ad1e0cdc4a5a9f7db7e56b5572200a1b234f1b37c"),
         );
     }
 
