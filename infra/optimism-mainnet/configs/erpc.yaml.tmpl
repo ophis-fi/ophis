@@ -1,6 +1,6 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape: 2-of-3 consensus across validationcloud + blockdaemon + tenderly.**
+# **Current shape: 2-of-3 consensus across validationcloud + nodies + tenderly.**
 #
 # Iteration history:
 #  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
@@ -22,23 +22,26 @@
 # 2026-07-23 keyed migration: replaced the free publicnode(Cloudflare) + dead
 # self-host(100.77.53.81) with two KEYED providers after a free-tier-429 outage
 # (tenderly's keyless gateway 429'd under load, amplified by the dead self-node's
-# 8s participant timeout, collapsing the quorum). See the per-upstream comments in
-# the `upstreams:` block below for the full rationale. Full detail lives there;
-# this header is the top-level summary.
+# 8s participant timeout, collapsing the quorum).
+# 2026-07-24: swapped the keyed blockdaemon-op → free no-key nodies-op (BD's
+# free-tier burst cap was exhausted, freezing its head ~13.6h; not upgrading BD).
+# This leaves only ONE keyed provider (validationcloud) — see the availability
+# note below. See the per-upstream comments in the `upstreams:` block for the full
+# rationale. This header is the top-level summary.
 #
 #   validationcloud-op  mainnet.optimism.validationcloud.io  Validation Cloud
 #                                                             CDN: istio-envoy (NON-Cloudflare)
 #                                                             auth: KEYED (URL path)
-#   blockdaemon-op      svc.blockdaemon.com                  Blockdaemon
+#   nodies-op           op-pokt.nodies.app                   Nodies / POKT
 #                                                             CDN: Cloudflare
-#                                                             auth: KEYED (URL ?apiKey)
+#                                                             auth: NONE (free public tier)
 #   tenderly-op         optimism.gateway.tenderly.co         Tenderly
 #                                                             DNS: Google Cloud, free public tier
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
-# invariant that AT MOST ONE upstream is Cloudflare-fronted (blockdaemon):**
+# invariant that AT MOST ONE upstream is Cloudflare-fronted (nodies):**
 #
-#  - Cloudflare compromise → only blockdaemon is hijacked. validationcloud
+#  - Cloudflare compromise → only nodies is hijacked. validationcloud
 #    (istio / non-CF) and tenderly (Google DNS) return the real answer →
 #    dispute → returnError → driver does NOT settle against forged state.
 #  - Validation Cloud OR Tenderly/Google compromise → the other two form
@@ -57,12 +60,23 @@
 #
 # Rationale (replace-not-expand): N=3 keeps the 2-of-3 invariant defensible;
 # expanding N>3 under eRPC's random sampling (maxParticipants:3) would silently
-# weaken the model to "attacker needs ≥2 of N". TWO upstreams are now KEYED
-# (validationcloud, blockdaemon) for rate-limit reliability — the free-tier 429
-# that caused the outage is gone; tenderly stays free/public as the redundant
-# 3rd. Per-block consensus equality is sound on OP: post-Bedrock block contents
-# are deterministic per L2 block number; only tip drift on "latest" varies,
-# handled by `enforceHighestBlock`.
+# weaken the model to "attacker needs ≥2 of N".
+#
+# **Availability note (2026-07-24):** only ONE upstream is now KEYED
+# (validationcloud); nodies and tenderly are both FREE public tiers. A correlated
+# free-tier rate-limit hitting BOTH under a load spike would leave only
+# validationcloud → below quorum → lowParticipants:returnError (driver pauses,
+# safe but unavailable). Accepted regression from the prior two-keyed backbone:
+# blockdaemon's keyed endpoint was itself rate-limited to death (a dead backbone,
+# not a reliable one), so nodies is a net availability GAIN (3 working upstreams
+# vs the effective 2-of-2 a frozen BD left). If OP order-flow grows, restore a
+# two-keyed backbone by putting a keyed free-tier provider (Chainstack / BlastAPI /
+# Infura) in place of a free lane. nodies verified clean on eth_call + getBalance +
+# getLogs + a 15-call burst 2026-07-24.
+#
+# Per-block consensus equality is sound on OP: post-Bedrock block contents are
+# deterministic per L2 block number; only tip drift on "latest" varies, handled
+# by `enforceHighestBlock`.
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/10
 
@@ -381,23 +395,23 @@ projects:
         statePollerDebounce: 1s
 
     upstreams:
-      # ─── KEYED consensus backbone (2026-07-23) ───
-      # Replaced the free publicnode-op (Cloudflare DNS) with two DEDICATED,
-      # authenticated providers. Rationale: the 2026-07-23 outage was free-tier
-      # fragility — Tenderly's keyless gateway 429'd under load and collapsed the
-      # quorum (publicnode alone < agreementThreshold=2). Keyed endpoints have no
-      # per-IP free-tier rate limit. publicnode was DROPPED (not kept as a 4th)
-      # because it is Cloudflare-fronted and Blockdaemon is ALSO Cloudflare: two CF
-      # upstreams in a 2-of-3 could be poisoned identically by a single CDN
+      # ─── Consensus backbone (2026-07-23 keyed migration; 2026-07-24 nodies swap) ───
+      # The 2026-07-23 outage was free-tier fragility — Tenderly's keyless gateway
+      # 429'd under load and collapsed the quorum (publicnode alone < threshold=2).
+      # publicnode was DROPPED (not kept as a 4th) because it is Cloudflare-fronted:
+      # two CF upstreams in a 2-of-3 could be poisoned identically by a single CDN
       # compromise and satisfy quorum. Invariant = ≤1 CF-fronted upstream per quorum.
-      # Validation Cloud (istio-envoy / own infra, non-CF) supplies the CDN diversity;
-      # Tenderly (Google DNS) is the third failure domain.
-      # Host is LITERAL (so the CI fail-closed guard's urlsplit can pin the failure
-      # domain); only the secret KEY resolves from .env (${VALIDATIONCLOUD_OP_KEY} /
-      # ${BLOCKDAEMON_OP_KEY}) via render-configs.sh envsubst — NEVER committed. Both
-      # keys arrived via chat 2026-07-23 → rotate on next maintenance window.
+      # Validation Cloud (istio-envoy / own infra, non-CF) supplies the CDN diversity.
+      # 2026-07-24: keyed blockdaemon-op (CF, rate-limited to death) → free no-key
+      # nodies-op (CF) — like-for-like on the ≤1-CF invariant (nodies is now the sole
+      # CF lane), but it leaves only ONE keyed provider; see the header availability note.
+      # Hosts are LITERAL (so the CI fail-closed guard's urlsplit can pin the failure
+      # domain); the keyed provider's secret KEY resolves from .env
+      # (${VALIDATIONCLOUD_OP_KEY}) via render-configs.sh envsubst — NEVER committed.
+      # Key arrived via chat 2026-07-23 → rotate on next maintenance window.
+      # (BLOCKDAEMON_OP_KEY is now unused; nodies takes no auth.)
       - id: validationcloud-op
-        # Keyed, non-CF (istio-envoy). The CDN-diverse anchor vs blockdaemon/CF.
+        # Keyed, non-CF (istio-envoy). The CDN-diverse anchor + the sole KEYED lane.
         endpoint: https://mainnet.optimism.validationcloud.io/v1/${VALIDATIONCLOUD_OP_KEY}
         failsafe:
           - matchMethod: "*"
@@ -410,13 +424,15 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: blockdaemon-op
-        # Keyed, Cloudflare-fronted — the ONE permitted CF upstream in this quorum.
-        # NB: this key has a LOW burst rate cap (measured 2026-07-23) — fine at current
-        # OP volume (0 steady-state 429s), but upgrade the tier (or swap to a non-CF
-        # keyed provider) if OP order-flow grows. eRPC's closed-world guard forbids a
-        # custom auth header, so URL `?apiKey=` is the only auth form available here.
-        endpoint: https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=${BLOCKDAEMON_OP_KEY}
+      - id: nodies-op
+        # Free, no-key, Cloudflare-fronted — the ONE permitted CF upstream in this quorum
+        # (replaced keyed blockdaemon-op 2026-07-24: BD's free-tier burst cap was exhausted,
+        # freezing its head ~13.6h so it contributed nothing to consensus, and we are not
+        # upgrading the BD tier). Nodies/POKT public OP gateway; verified eth_call +
+        # eth_getBalance + eth_getLogs(10 blk, 2981 logs) + a 15-call burst (0 errors) at
+        # the live head 2026-07-24. No auth form needed (eRPC's closed-world guard forbids
+        # custom auth headers, and this endpoint takes none).
+        endpoint: https://op-pokt.nodies.app
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -446,20 +462,21 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      # ─── Consensus set (2026-07-23): validationcloud + blockdaemon + tenderly ───
-      # 2-of-3, agreementThreshold=2, maxParticipants=3. Two KEYED providers
-      # (validationcloud = istio non-CF, blockdaemon = CF) are the reliable backbone;
-      # tenderly (Google DNS, free) is the redundant 3rd for failure-domain diversity.
-      # When tenderly 429s, the two keyed providers still form the quorum → no outage
-      # (this is the fix for the 2026-07-23 free-tier-fragility incident that the dead
-      # self-node 100.77.53.81 amplified). Exactly one CF-fronted upstream (blockdaemon)
-      # → a single-CDN compromise can't poison a full quorum. Supersedes the free
-      # 2-of-2 (publicnode+tenderly) AND the dead self-host.
+      # ─── Consensus set (2026-07-24): validationcloud + nodies + tenderly ───
+      # 2-of-3, agreementThreshold=2, maxParticipants=3. validationcloud (istio non-CF)
+      # is the sole KEYED lane; nodies (CF) and tenderly (Google DNS) are both FREE
+      # public tiers. Exactly one CF-fronted upstream (nodies) → a single-CDN compromise
+      # can't poison a full quorum. Supersedes the free 2-of-2 (publicnode+tenderly), the
+      # dead self-host, AND the frozen keyed blockdaemon-op (rate-limited to death 07-24).
+      # AVAILABILITY WARNING: with only one keyed lane, a correlated free-tier 429 on BOTH
+      # nodies AND tenderly under a load spike drops to validationcloud-only → below
+      # quorum → fail-closed (driver pauses). Restore a two-keyed backbone (add a keyed
+      # free-tier provider in place of a free lane) if OP order-flow grows. See header.
       #
       # #841 self-host (46.255.204.207, op-reth) is now OPTIONAL, not load-bearing. If
       # re-added, keep the ≤1-CF-per-quorum invariant and either swap a lane (stay at 3)
       # or bump to 2-of-4 — the latter ALSO needs assert-erpc-failclosed.py's
       # EXPECTED_UPSTREAMS + EXPECTED_UPSTREAM_HOSTS updated. drpc/meowrpc/omnia remain
-      # disqualified (all Cloudflare-fronted → a 2-CF quorum with blockdaemon defeats
-      # the fork-poisoning threat model).
+      # disqualified (all Cloudflare-fronted → a 2-CF quorum defeats the fork-poisoning
+      # threat model).
 

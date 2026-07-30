@@ -41,13 +41,15 @@ EXPECTED_UPSTREAMS = 3
 # IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
 # change MUST update this set (that is the point — see module docstring).
 # 2026-07-23: replaced the free publicnode+self-node pair with two KEYED providers
-# after a free-tier-429 outage. Distinct failure domains AND ≤1 Cloudflare-fronted
-# host in the quorum: validationcloud=istio(non-CF), blockdaemon=Cloudflare,
-# tenderly=Google DNS. The key lives in the URL path/query via ${...KEY} envsubst;
-# the host is literal here and in the template so urlsplit can pin it.
+# after a free-tier-429 outage. 2026-07-24: swapped the keyed blockdaemon-op (its free
+# burst cap was exhausted, freezing its head ~13.6h with nothing to add to consensus) for
+# the free no-key nodies-op (Nodies/POKT gateway). Distinct failure domains AND ≤1
+# Cloudflare-fronted host in the quorum: validationcloud=istio(non-CF), nodies=Cloudflare,
+# tenderly=Google DNS. Keyed hosts carry their key in the URL via ${...KEY} envsubst; every
+# host is literal here and in the template so urlsplit can pin it.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "mainnet.optimism.validationcloud.io",
-    "svc.blockdaemon.com",
+    "op-pokt.nodies.app",
     "optimism.gateway.tenderly.co",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
