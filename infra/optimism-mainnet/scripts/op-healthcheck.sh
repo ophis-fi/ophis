@@ -49,11 +49,44 @@ CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
 # ~7h outage shipped a stale build that way). Overridable as the deploy path moves.
 DEPLOY_DIR="${OPHIS_OP_DEPLOY_DIR:-/Users/scep/greg-wt/op-deploy-0730/infra/optimism-mainnet}"
 STATE_DIR="$HOME/.local/state/ophis"
-STATE_FILE="$STATE_DIR/op-health.state"   # up | down  (orderbook liveness)
+# STATE_FILE holds WHAT THE RECIPIENT CURRENTLY BELIEVES (the last state we
+# successfully delivered), NOT what we last observed. Any mismatch between belief
+# and observation is a message we still owe, so every run retries until it lands.
+#
+# Getting this wrong is subtle and was a real bug (Codex review, 2026-07-30): the
+# first version wrote "down" to mean BOTH "the service is down" AND "we already
+# paged". So when a RECOVERED send failed, state stayed "down" — and a genuine
+# SECOND outage was then read as "already paged" and never announced. One file
+# cannot encode two facts. Modelling belief instead collapses it to one rule:
+#   observed != believed  ->  owe a message; send it; on success believe = observed
+# The failed-recovery case then resolves correctly on its own: the recipient still
+# believes "down", the service is down again, belief already matches reality, so
+# nothing is owed and nothing is missed.
+STATE_FILE="$STATE_DIR/op-health.state"   # up | down  (BELIEF, not observation)
 QFAIL_FILE="$STATE_DIR/op-health.qfail"   # consecutive PRICING-failed runs
 QSENT_FILE="$STATE_DIR/op-health.qalerted" # exists => DEGRADED page was DELIVERED
 DEGRADED_AFTER=3                          # ~15 min (5-min interval) before a DEGRADED alert
 mkdir -p "$STATE_DIR"
+
+# Single-instance lock. Every state update here is an unlocked read-modify-write, so
+# two overlapping runs can both read "up", both page, and both write "down" (double
+# page), or both miss the QSENT_FILE marker and double-send DEGRADED, or lose a
+# QFAIL increment and delay the threshold. launchd will not re-enter a StartInterval
+# job on its own, but `launchctl kickstart` and manual operator runs do — and both
+# happened during the 2026-07-30 incident while the agent was scheduled.
+# mkdir is atomic on every filesystem we care about, so it needs no flock.
+LOCK_DIR="$STATE_DIR/op-health.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  # Reap a lock orphaned by a kill -9 / power loss rather than wedging forever.
+  if [[ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]]; then
+    echo "stale lock older than 15min — reclaiming" >&2
+    rm -rf "$LOCK_DIR"; mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+  else
+    echo "another op-healthcheck run is in progress — skipping this tick" >&2
+    exit 0
+  fi
+fi
+trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
 
 # Returns 0 ONLY if Telegram accepted the message (HTTP 200). Callers MUST gate the
 # persisted transition state on this — see "delivery-gated state" below.
@@ -110,6 +143,12 @@ prev="$(cat "$STATE_FILE" 2>/dev/null || echo init)"
 # (A tighter alternative is a completion marker written by op-boot-start.sh; uptime
 # needs no cross-script coupling, which is why it is used here.)
 BOOT_GRACE="${OPHIS_BOOT_GRACE_SECONDS:-600}"
+# A non-numeric override must not abort the run inside (( )) and take the monitor
+# down; fall back to the default and say so.
+if ! [[ "$BOOT_GRACE" =~ ^[0-9]+$ ]]; then
+  echo "OPHIS_BOOT_GRACE_SECONDS='${BOOT_GRACE}' is not numeric — using 600" >&2
+  BOOT_GRACE=600
+fi
 # kern.boottime prints: { sec = 1784657227, usec = 380592 } Tue Jul 21 20:07:07 2026
 # Take the FIRST number. Matching on "sec" is a trap: a greedy .*sec matches the
 # "sec" inside "usec" and yields the microseconds field (caught in testing — it
@@ -123,11 +162,14 @@ if [[ "$vcode" != "200" && "$boot_epoch" =~ ^[0-9]+$ ]]; then
   fi
 fi
 
-if [[ "$vcode" != "200" ]]; then
-  alerted=no
-  # Already paged for this outage? Keep the state and stay quiet.
-  [[ "$prev" == "down" ]] && alerted=yes
-  if [[ "$prev" != "down" ]]; then
+observed=up
+[[ "$vcode" == "200" ]] || observed=down
+
+# One rule for both directions: if belief != observation we owe a message. Sending
+# it is what updates the belief, so a failed send simply leaves the debt in place
+# and the next run retries. No branch can "consume" a transition without delivering.
+if [[ "$observed" != "$prev" ]]; then
+  if [[ "$observed" == "down" ]]; then
     # NOTE (2026-07-30): the old text here said "Usual cause: colima stopped. Fix:
     # cd ~/greg/... && ./compose-up.sh". Both halves were wrong and cost real time:
     #   - colima was UP during the 07-30 incident; the actual cause was every eRPC
@@ -144,29 +186,21 @@ Triage in order, do NOT redeploy first:
 4. RPC quorum: curl -s -X POST http://127.0.0.1:4001/main/evm/10 -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"0x4200000000000000000000000000000000000006\",\"data\":\"0x313ce567\"},\"latest\"]}'
    ErrConsensusLowParticipants/Dispute = upstreams rate-limited or a lane is dead.
 Only if the stack must be rebuilt: cd ${DEPLOY_DIR} && ./compose-up.sh (needs sudo; must be a clean origin/main worktree)"; then
-      alerted=yes
+      echo down >"$STATE_FILE"
+    fi
+  else
+    if notify "✅ Ophis OP backend RECOVERED — orderbook reachable again."; then
+      echo up >"$STATE_FILE"
     fi
   fi
-  # DELIVERY-GATED STATE: "down" means "we have SUCCESSFULLY paged for this outage",
-  # not merely "we noticed it". If the send failed we leave the previous state alone,
-  # so the next 5-minute run re-enters this branch and retries the page until it
-  # lands. Consequence worth knowing: if we never managed to page, we also never send
-  # a RECOVERED ping — which is correct, since there was no page to close out.
-  if [[ "$alerted" == "yes" ]]; then
-    echo down >"$STATE_FILE"
-  fi
-  echo 0 >"$QFAIL_FILE"
-  exit 0
 fi
 
-# Orderbook is up. Only clear the "down" state once the RECOVERED ping is delivered,
-# for the same reason: otherwise a failed recovery send is lost silently.
-if [[ "$prev" == "down" ]]; then
-  if notify "✅ Ophis OP backend RECOVERED — orderbook reachable again."; then
-    echo up >"$STATE_FILE"
-  fi
-else
-  echo up >"$STATE_FILE"
+if [[ "$observed" == "down" ]]; then
+  # Pricing is meaningless while the orderbook is unreachable; reset the debounce so
+  # a recovery does not immediately inherit a stale DEGRADED count.
+  echo 0 >"$QFAIL_FILE"
+  rm -f "$QSENT_FILE"
+  exit 0
 fi
 
 # --- Tier 2: pricing (can it quote a realistic swap?), cross-run debounced ---
@@ -179,21 +213,33 @@ for _ in 1 2 3; do
   sleep 5
 done
 qfail="$(cat "$QFAIL_FILE" 2>/dev/null || echo 0)"
+# Corrupt/blank counter must not wedge the script: under `set -u` a non-numeric
+# value here is treated as a variable NAME by the arithmetic below and aborts the
+# run, which would take the monitor down silently. Fail back to 0 instead.
+[[ "$qfail" =~ ^[0-9]+$ ]] || qfail=0
 
 if [[ "$qcode" == "200" ]]; then
-  # Only clear the "we paged" marker once the RECOVERED ping actually lands.
-  if [[ -f "$QSENT_FILE" ]]; then
-    if notify "✅ Ophis OP swap pricing RECOVERED."; then rm -f "$QSENT_FILE"; fi
-  fi
+  qobserved=ok
   echo 0 >"$QFAIL_FILE"
 else
-  qfail=$(( ${qfail:-0} + 1 ))
+  qfail=$(( qfail + 1 ))
   echo "$qfail" >"$QFAIL_FILE"
-  # `-ge` + a delivery marker, not `-eq`. With `-eq` a failed send at exactly the
-  # threshold was unrecoverable: qfail kept climbing past it, so the equality never
-  # held again and the DEGRADED page was lost for the rest of the outage. Now we
-  # retry every run until delivery succeeds, then the marker stops the repeats.
-  if [[ "$qfail" -ge "$DEGRADED_AFTER" && ! -f "$QSENT_FILE" ]]; then
+  qobserved=ok
+  [[ "$qfail" -ge "$DEGRADED_AFTER" ]] && qobserved=degraded
+fi
+
+# Same belief model as tier 1: QSENT_FILE's presence IS the belief ("recipient has
+# been told pricing is degraded"). Only a delivered message changes it, so a failed
+# send is retried on the next run instead of being silently consumed. `-ge`, not the
+# original `-eq`: with equality a send that failed at exactly the threshold was
+# unrecoverable, because qfail kept climbing and the equality never held again.
+qbelief=ok
+[[ -f "$QSENT_FILE" ]] && qbelief=degraded
+
+if [[ "$qobserved" != "$qbelief" ]]; then
+  if [[ "$qobserved" == "ok" ]]; then
+    if notify "✅ Ophis OP swap pricing RECOVERED."; then rm -f "$QSENT_FILE"; fi
+  else
     if notify "🟠 Ophis OP swap pricing DEGRADED — orderbook is UP but /quote keeps failing (HTTP ${qcode}) for ~15 min on a realistic amount.
 This is the tier that catches an RPC-quorum failure while liveness looks green (2026-07-30: /quote 500 'all gas estimators failed' while /version was 200).
 1. Check the eRPC quorum first (see the DOWN-alert command) — a lane rate-limited or dead is the likeliest cause.
