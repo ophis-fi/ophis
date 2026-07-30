@@ -13,7 +13,8 @@
   const EXPECTED_SAFE = '0x858f0f5ee954846d47155f5203c04af1819ecef8'
   const SECOND_OWNER = '0xbec5b03ffdcac50071693e87bfdb88baa6710199'
   const THIRD_OWNER = '0x746ad9c63cca6d3a8588731d60fb87deab4da46a'
-  const PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v0'
+  const LEGACY_PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v0'
+  const PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v1'
   const EXPECTED_CODE_HASHES = new Map([
     [FACTORY, '0x50c3cdc4074750a7a974204a716c999edd37482f907608d960b2b025ee0b3317'],
     [SINGLETON, '0x1fe2df852ba3299d6534ef416eefa406e56ced995bca886ab7a553e6d0c5e1c4'],
@@ -46,31 +47,62 @@
   function readPendingTransaction() {
     try {
       const storedValue = window.localStorage.getItem(PENDING_TRANSACTION_KEY)
-      if (!storedValue) return pendingTransaction
-      // Accept the hash-only value written by the previous ceremony version.
-      if (/^0x[0-9a-f]{64}$/i.test(storedValue)) {
-        pendingTransaction = { hash: storedValue, sender: EXPECTED_SENDER, nonce: null }
-        return pendingTransaction
+      if (storedValue) {
+        const storedTransaction = JSON.parse(storedValue)
+        if (
+          /^0x[0-9a-f]{64}$/i.test(storedTransaction?.hash) &&
+          /^0x[0-9a-f]{40}$/i.test(storedTransaction?.sender) &&
+          /^0x[0-9a-f]+$/i.test(storedTransaction?.nonce) &&
+          typeof storedTransaction?.nonceProvisional === 'boolean'
+        ) {
+          pendingTransaction = storedTransaction
+          return pendingTransaction
+        }
+        window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
       }
-      const storedTransaction = JSON.parse(storedValue)
-      if (
-        /^0x[0-9a-f]{64}$/i.test(storedTransaction?.hash) &&
-        /^0x[0-9a-f]{40}$/i.test(storedTransaction?.sender) &&
-        /^0x[0-9a-f]+$/i.test(storedTransaction?.nonce)
-      ) {
-        pendingTransaction = storedTransaction
-        return pendingTransaction
+      // Migrate the raw hash written and understood by already-open v0 tabs.
+      const legacyValue = window.localStorage.getItem(LEGACY_PENDING_TRANSACTION_KEY)
+      if (/^0x[0-9a-f]{64}$/i.test(legacyValue || '')) {
+        pendingTransaction = {
+          hash: legacyValue,
+          sender: EXPECTED_SENDER,
+          nonce: null,
+          nonceProvisional: true,
+        }
+      } else if (legacyValue) {
+        // Migrate the short-lived version that accidentally stored v1-shaped
+        // JSON under the v0 key.
+        const legacyTransaction = JSON.parse(legacyValue)
+        if (
+          /^0x[0-9a-f]{64}$/i.test(legacyTransaction?.hash) &&
+          /^0x[0-9a-f]{40}$/i.test(legacyTransaction?.sender) &&
+          /^0x[0-9a-f]+$/i.test(legacyTransaction?.nonce)
+        ) {
+          pendingTransaction = { ...legacyTransaction, nonceProvisional: true }
+          rememberPendingTransaction(
+            pendingTransaction.hash,
+            pendingTransaction.sender,
+            pendingTransaction.nonce,
+            true,
+          )
+        }
       }
-      window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
     } catch {
       // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
     }
     return pendingTransaction
   }
 
-  function rememberPendingTransaction(transactionHash, sender, nonce) {
-    pendingTransaction = { hash: transactionHash, sender: sender.toLowerCase(), nonce }
+  function rememberPendingTransaction(transactionHash, sender, nonce, nonceProvisional) {
+    pendingTransaction = {
+      hash: transactionHash,
+      sender: sender.toLowerCase(),
+      nonce,
+      nonceProvisional,
+    }
     try {
+      // Keep v0 as a raw hash so an already-open older tab cannot delete or bypass the lock.
+      window.localStorage.setItem(LEGACY_PENDING_TRANSACTION_KEY, transactionHash)
       window.localStorage.setItem(PENDING_TRANSACTION_KEY, JSON.stringify(pendingTransaction))
     } catch {
       // Some wallet browsers disable storage; retain the in-memory lock for this page.
@@ -80,6 +112,7 @@
   function forgetPendingTransaction() {
     pendingTransaction = null
     try {
+      window.localStorage.removeItem(LEGACY_PENDING_TRANSACTION_KEY)
       window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
     } catch {
       // Storage may be unavailable even though the in-memory transaction was reconciled.
@@ -128,9 +161,10 @@
         params: [transaction.hash],
       })
       consecutiveMissingChecks = submittedTransaction ? 0 : consecutiveMissingChecks + 1
-      if (!nonce) {
-        nonce = submittedTransaction?.nonce || null
-        if (nonce) rememberPendingTransaction(transaction.hash, transaction.sender, nonce)
+      if (submittedTransaction?.nonce && (transaction.nonceProvisional || submittedTransaction.nonce !== nonce)) {
+        nonce = submittedTransaction.nonce
+        transaction.nonceProvisional = false
+        rememberPendingTransaction(transaction.hash, transaction.sender, nonce, false)
       }
       if (nonce) {
         const confirmedNonce = await provider.request({
@@ -141,14 +175,30 @@
       }
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
-    if (
-      consecutiveMissingChecks === 120 &&
-      window.confirm(
-        `The wallet RPC no longer knows transaction ${transaction.hash}, and its nonce was not consumed. ` +
-        'Only continue if your wallet also marks it as dropped. Retire this stale hash and recheck Safe state?',
-      )
-    ) {
-      return { receipt: null, replaced: false, dropped: true }
+    if (consecutiveMissingChecks === 120 && nonce) {
+      const [confirmedNonce, nextPendingNonce] = await Promise.all([
+        provider.request({
+          method: 'eth_getTransactionCount',
+          params: [transaction.sender, 'latest'],
+        }),
+        provider.request({
+          method: 'eth_getTransactionCount',
+          params: [transaction.sender, 'pending'],
+        }),
+      ])
+      if (BigInt(confirmedNonce) > BigInt(nonce)) return { receipt: null, replaced: true }
+      if (BigInt(nextPendingNonce) > BigInt(nonce)) {
+        throw new Error(`A same-nonce replacement is still pending; retry remains locked: ${transaction.hash}`)
+      }
+      if (
+        window.confirm(
+          `The wallet RPC no longer knows transaction ${transaction.hash}, its nonce was not consumed, and no ` +
+          'same-nonce replacement is pending. Only continue if your wallet also marks it as dropped. Retire this ' +
+          'stale hash and recheck Safe state?',
+        )
+      ) {
+        return { receipt: null, replaced: false, dropped: true }
+      }
     }
     throw new Error(`Receipt timeout; verify transaction manually: ${transaction.hash}`)
   }
@@ -178,15 +228,20 @@
       method: 'eth_sendTransaction',
       params: [transaction],
     })
-    const submittedTransaction = await provider.request({
-      method: 'eth_getTransactionByHash',
-      params: [transactionHash],
-    })
-    rememberPendingTransaction(
-      transactionHash,
-      transaction.from,
-      submittedTransaction?.nonce || pendingNonce,
-    )
+    // Persist before any fallible follow-up RPC call. The pre-send pending
+    // count is provisional until the submitted transaction becomes visible.
+    rememberPendingTransaction(transactionHash, transaction.from, pendingNonce, true)
+    try {
+      const submittedTransaction = await provider.request({
+        method: 'eth_getTransactionByHash',
+        params: [transactionHash],
+      })
+      if (submittedTransaction?.nonce) {
+        rememberPendingTransaction(transactionHash, transaction.from, submittedTransaction.nonce, false)
+      }
+    } catch {
+      // Receipt polling will enrich the provisional nonce once the transaction appears.
+    }
     setStatus(`${label} broadcast: ${transactionHash}\nWaiting for confirmation…`)
     const { receipt } = await waitForPendingResolution(provider, pendingTransaction)
     forgetPendingTransaction()
