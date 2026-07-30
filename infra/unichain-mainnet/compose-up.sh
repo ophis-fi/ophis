@@ -204,6 +204,24 @@ if [[ -f observability-rendered/alertmanager.yml ]] && \
   docker compose --profile observability up -d --no-deps --force-recreate alertmanager
 fi
 
+# Retire the odos-solver container on hosts that ran it before it was removed
+# from docker-compose.yml (Odos shut down 2026-07-30; its API returns 410).
+# See the identical block in infra/optimism-mainnet/compose-up.sh for why this
+# is an explicit removal rather than `--remove-orphans` on the `up` below:
+# profile-gated services would be torn down as orphans.
+# Safe to delete once every host has deployed past this commit.
+RETIRED_SERVICES=(odos-solver)
+for retired in "${RETIRED_SERVICES[@]}"; do
+  retired_ids=$(docker ps -aq \
+    --filter "label=com.docker.compose.project=unichain-mainnet" \
+    --filter "label=com.docker.compose.service=${retired}" 2>/dev/null || true)
+  if [[ -n "$retired_ids" ]]; then
+    echo "==> removing retired service container: ${retired}"
+    # shellcheck disable=SC2086
+    docker rm -f $retired_ids
+  fi
+done
+
 echo ""
 echo "==> docker compose $PROFILES_ARG up -d --build $*"
 docker compose $PROFILES_ARG up -d --build "$@"

@@ -273,6 +273,31 @@ if [[ -f observability-rendered/alertmanager.yml ]] && \
   docker compose --profile observability up -d --no-deps --force-recreate alertmanager
 fi
 
+# Retire the odos-solver container on hosts that ran it before it was removed
+# from docker-compose.yml (Odos shut down 2026-07-30; its API returns 410).
+#
+# Deleting a service from the compose file does NOT stop an already-running
+# container: it becomes an orphan, and `restart: always` keeps it alive with its
+# rendered config still bind-mounted. We do NOT pass `--remove-orphans` to the
+# `up` below to fix that, because this stack is profile-gated: compose treats a
+# service whose profile is inactive as an orphan too, so a run without
+# `--profile observability` would tear down prometheus/alertmanager/node-exporter.
+#
+# Matching on compose's own labels rather than a derived container name keeps
+# this correct regardless of the -1 suffix or any container_name override.
+# Safe to delete once every host has deployed past this commit.
+RETIRED_SERVICES=(odos-solver)
+for retired in "${RETIRED_SERVICES[@]}"; do
+  retired_ids=$(docker ps -aq \
+    --filter "label=com.docker.compose.project=optimism-mainnet" \
+    --filter "label=com.docker.compose.service=${retired}" 2>/dev/null || true)
+  if [[ -n "$retired_ids" ]]; then
+    echo "==> removing retired service container: ${retired}"
+    # shellcheck disable=SC2086
+    docker rm -f $retired_ids
+  fi
+done
+
 echo ""
 echo "==> docker compose $PROFILES_ARG up -d --build $*"
 docker compose $PROFILES_ARG up -d --build "$@"
