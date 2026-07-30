@@ -14,12 +14,9 @@ import { ReactNode, useCallback, useMemo, useState } from 'react'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { symbolToAddressResolver, useTokenForChainMapBySymbol } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
+
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
-
-import { CosmicStarfield } from '../CosmicStarfield'
-import { OphisFooter } from '../OphisFooter'
-import { OphisHeader } from '../OphisHeader'
 
 import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
@@ -27,9 +24,14 @@ import { IntentInput } from './IntentInput'
 import { readIntentParam } from './intentParam'
 import { writeIntentStash } from './intentStash'
 import { extractIntentFields, intentToUrl } from './intentToUrl'
-import type { ParsedIntent } from './types'
 import { useIntentParse } from './useIntentParse'
 import { useWarmTargetChainLists } from './useWarmTargetChainLists'
+
+import { CosmicStarfield } from '../CosmicStarfield'
+import { OphisFooter } from '../OphisFooter'
+import { OphisHeader } from '../OphisHeader'
+
+import type { ParsedIntent } from './types'
 
 const Page = styled.main`
   width: 100vw;
@@ -116,9 +118,15 @@ const Backdrop = styled.div`
   }
 
   @keyframes ophis-hero-blob {
-    0%   { transform: translate3d(0, 0, 0) scale(1); }
-    50%  { transform: translate3d(-3%, 2%, 0) scale(1.06); }
-    100% { transform: translate3d(2%, -2%, 0) scale(0.97); }
+    0% {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(-3%, 2%, 0) scale(1.06);
+    }
+    100% {
+      transform: translate3d(2%, -2%, 0) scale(0.97);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -145,7 +153,10 @@ const OpenSwapButton = styled(Link)`
   color: #ffd9a8;
   text-decoration: none;
   backdrop-filter: blur(8px);
-  transition: background 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+  transition:
+    background 140ms ease-out,
+    border-color 140ms ease-out,
+    color 140ms ease-out;
   &:hover {
     background: rgba(242, 166, 62, 0.24);
     border-color: rgba(242, 166, 62, 0.85);
@@ -187,12 +198,24 @@ const Hero = styled.section`
   & > * {
     animation: ${fadeInUp} 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  & > *:nth-child(1) { animation-delay: 0ms; }
-  & > *:nth-child(2) { animation-delay: 80ms; }
-  & > *:nth-child(3) { animation-delay: 160ms; }
-  & > *:nth-child(4) { animation-delay: 240ms; }
-  & > *:nth-child(5) { animation-delay: 320ms; }
-  & > *:nth-child(n+6) { animation-delay: 400ms; }
+  & > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  & > *:nth-child(2) {
+    animation-delay: 80ms;
+  }
+  & > *:nth-child(3) {
+    animation-delay: 160ms;
+  }
+  & > *:nth-child(4) {
+    animation-delay: 240ms;
+  }
+  & > *:nth-child(5) {
+    animation-delay: 320ms;
+  }
+  & > *:nth-child(n + 6) {
+    animation-delay: 400ms;
+  }
 
   @media (prefers-reduced-motion: reduce) {
     & > * {
@@ -278,11 +301,12 @@ const ContinueButton = styled.button<{ $active: boolean }>`
   letter-spacing: 0.01em;
   cursor: ${({ $active }) => ($active ? 'pointer' : 'not-allowed')};
   background: ${({ $active }) =>
-    $active
-      ? 'linear-gradient(135deg, #F2A63E 0%, #D960B5 60%, #4F1DCA 100%)'
-      : 'rgba(245, 239, 230, 0.08)'};
+    $active ? 'linear-gradient(135deg, #F2A63E 0%, #D960B5 60%, #4F1DCA 100%)' : 'rgba(245, 239, 230, 0.08)'};
   color: ${({ $active }) => ($active ? '#0a0414' : 'rgba(245, 239, 230, 0.4)')};
-  transition: transform 80ms ease-out, box-shadow 160ms ease-out, filter 160ms ease-out;
+  transition:
+    transform 80ms ease-out,
+    box-shadow 160ms ease-out,
+    filter 160ms ease-out;
   box-shadow: ${({ $active }) =>
     $active ? '0 12px 36px rgba(242, 166, 62, 0.32), 0 0 0 1px rgba(242, 166, 62, 0.4)' : 'none'};
   &:hover {
@@ -340,7 +364,11 @@ const SwapDirectlyButton = styled(Link)`
   border: 1px solid rgba(242, 166, 62, 0.55);
   color: #ffd9a8;
   backdrop-filter: blur(8px);
-  transition: background 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out, transform 80ms ease-out;
+  transition:
+    background 140ms ease-out,
+    border-color 140ms ease-out,
+    color 140ms ease-out,
+    transform 80ms ease-out;
   &:hover {
     background: rgba(242, 166, 62, 0.24);
     border-color: rgba(242, 166, 62, 0.85);
@@ -485,7 +513,9 @@ export function IntentLanding(): ReactNode {
             wordmark on its left side, so the lockup was a redundant
             second-logo Clement flagged. Keep only the secondary CTA on
             the right. */}
-        <OpenSwapButton to="/1/swap/_/_" data-ophis-cta>Open Trade →</OpenSwapButton>
+        <OpenSwapButton to="/1/swap/_/_" data-ophis-cta>
+          Open Trade →
+        </OpenSwapButton>
       </OphisHeader>
 
       <Hero>
@@ -494,7 +524,8 @@ export function IntentLanding(): ReactNode {
           Nothing lost. Nothing created. Everything <em>traded.</em>
         </Tagline>
         <Sub>
-          Describe your trade, ophis identifies the tokens, the chain, and the amount, then takes you to a pre-filled trade.
+          Describe your trade, ophis identifies the tokens, the chain, and the amount, then takes you to a pre-filled
+          trade.
         </Sub>
 
         <InputBlock>

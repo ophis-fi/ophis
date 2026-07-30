@@ -46,7 +46,9 @@ const useWalletInfoMock = useWalletInfo as jest.MockedFunction<typeof useWalletI
 const useDerivedTradeStateMock = useDerivedTradeState as jest.MockedFunction<typeof useDerivedTradeState>
 const getChartMock = getDefillamaPriceChart as jest.MockedFunction<typeof getDefillamaPriceChart>
 
-const WETH = { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH' }
+// chainId lives on the CURRENCY now: the chart derives it from the token it is
+// charting so the two can never disagree during a chain switch.
+const WETH = { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', chainId: 10 }
 
 // The styled panel and the chart's own text colour both read from the theme, so
 // render through a provider exactly as the app does.

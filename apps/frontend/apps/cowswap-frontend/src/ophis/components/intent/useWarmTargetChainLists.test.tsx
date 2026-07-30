@@ -1,10 +1,10 @@
+import { createStore, Provider } from 'jotai'
 import { ReactNode, Suspense } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { fetchTokenList, listsStatesByChainAtom } from '@cowprotocol/tokens'
 
 import { renderHook, waitFor } from '@testing-library/react'
-import { createStore, Provider } from 'jotai'
 
 import { useWarmTargetChainLists } from './useWarmTargetChainLists'
 
@@ -22,7 +22,15 @@ function makeList(source: string) {
     source,
     list: {
       name: source,
-      tokens: [{ chainId: BASE, address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', symbol: 'USDC', decimals: 6, name: 'USD Coin' }],
+      tokens: [
+        {
+          chainId: BASE,
+          address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+          symbol: 'USDC',
+          decimals: 6,
+          name: 'USD Coin',
+        },
+      ],
     },
   }
 }
@@ -66,7 +74,10 @@ describe('useWarmTargetChainLists', () => {
     // fetch resolves. The warm must re-check and skip, not re-enable the user's disabled list.
     let resolveFetch: () => void = () => undefined
     mockFetchTokenList.mockImplementation(
-      (src: { source: string }) => new Promise((res) => { resolveFetch = () => res(makeList(src.source)) }),
+      (src: { source: string }) =>
+        new Promise((res) => {
+          resolveFetch = () => res(makeList(src.source))
+        }),
     )
     const store = createStore()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -78,7 +89,7 @@ describe('useWarmTargetChainLists', () => {
     // User disables a Base list mid-fetch.
     store.set(listsStatesByChainAtom, {
       [BASE]: { 'user-pick': { source: 'user-pick', isEnabled: false, list: { name: 'u', tokens: [] } } },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     await new Promise((r) => setTimeout(r, 0)) // let the hook re-render so its latest-ref updates
 
@@ -94,7 +105,7 @@ describe('useWarmTargetChainLists', () => {
     const store = createStore()
     store.set(listsStatesByChainAtom, {
       [BASE]: { existing: { source: 'existing', isEnabled: false, list: { name: 'x', tokens: [] } } },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
     renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) })

@@ -18,8 +18,6 @@
  */
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useWalletInfo } from '@cowprotocol/wallet'
-
 import { createChart, IChartApi, UTCTimestamp } from 'lightweight-charts'
 import { useTheme } from 'styled-components/macro'
 
@@ -34,7 +32,6 @@ const RANGES: readonly PriceChartRange[] = ['1D', '7D', '1M', '1Y']
 const CHART_HEIGHT = 120
 
 export function PriceChart(): ReactNode {
-  const { chainId } = useWalletInfo()
   const tradeState = useDerivedTradeState()
   const [range, setRange] = useState<PriceChartRange>('1M')
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -48,6 +45,10 @@ export function PriceChart(): ReactNode {
   // so the panel still has something to show before an output token is picked.
   const currency = tradeState?.outputCurrency ?? tradeState?.inputCurrency
   const tokenAddress = currency && 'address' in currency ? currency.address : undefined
+  // Take the chain from the CURRENCY, not from useWalletInfo(). The wallet chain
+  // lags a URL-driven chain switch (useSetupTradeState.ts:41-44), and a token
+  // paired with the wrong chain silently charts a different asset or nothing.
+  const chainId = currency?.chainId
 
   const { points, isLoading } = usePriceChartData(chainId, tokenAddress, range)
 

@@ -23,8 +23,9 @@
  * resolver returns null (symbol unknown on that chain, or its list isn't
  * loaded) we fall back to the bare symbol, so the URL is always valid.
  */
-import type { ParsedIntent } from './types'
 import { chainSlugToId } from './chainMap'
+
+import type { ParsedIntent } from './types'
 
 // URL amount keys — mirror TRADE_URL_SELL_AMOUNT_KEY / TRADE_URL_BUY_AMOUNT_KEY
 // in modules/trade/const/tradeUrl (kept as literals so this stays a
@@ -78,7 +79,7 @@ export function extractIntentFields(
   }
 
   const resolve = (symbol: string | undefined): string | undefined =>
-    symbol === undefined ? undefined : resolveToken?.(symbol) ?? symbol
+    symbol === undefined ? undefined : (resolveToken?.(symbol) ?? symbol)
 
   // Bind the amount to the positionally-nearest token, so "buy 500 COW with USDC"
   // (amount adjacent to the BUY token) fills the buy side, while "swap 100 USDC for
@@ -134,7 +135,8 @@ export function intentToUrl(
   // cowswap's amount updater ignores an amount whose currency isn't loaded yet and
   // re-applies once it is, so this is always safe.
   if (amount) {
-    const amountKey = field === 'buy' ? (buyToken ? BUY_AMOUNT_KEY : undefined) : sellToken ? SELL_AMOUNT_KEY : undefined
+    const amountKey =
+      field === 'buy' ? (buyToken ? BUY_AMOUNT_KEY : undefined) : sellToken ? SELL_AMOUNT_KEY : undefined
     if (amountKey) url += `?${amountKey}=${encodeURIComponent(amount)}`
   }
 

@@ -32,9 +32,38 @@ const GA4_HOST = 'swap.ophis.fi'
 // EEA member states + UK + Switzerland — kept cookieless until the visitor
 // opts in, for GDPR/ePrivacy compliance. Shared with the consent banner copy.
 export const EEA_CONSENT_REGIONS = [
-  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU',
-  'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES',
-  'SE', 'IS', 'LI', 'NO', 'GB', 'CH',
+  'AT',
+  'BE',
+  'BG',
+  'HR',
+  'CY',
+  'CZ',
+  'DK',
+  'EE',
+  'FI',
+  'FR',
+  'DE',
+  'GR',
+  'HU',
+  'IE',
+  'IT',
+  'LV',
+  'LT',
+  'LU',
+  'MT',
+  'NL',
+  'PL',
+  'PT',
+  'RO',
+  'SK',
+  'SI',
+  'ES',
+  'SE',
+  'IS',
+  'LI',
+  'NO',
+  'GB',
+  'CH',
 ]
 
 export function initGa4(): void {
@@ -48,7 +77,7 @@ export function initGa4(): void {
   // Match Google's canonical gtag exactly: push the live `arguments` object.
   // gtag.js recognises an arguments-object push as a command; a copied rest
   // array is not processed identically.
-  // eslint-disable-next-line prefer-rest-params
+
   w.gtag = function gtag(): void {
     w.dataLayer.push(arguments)
   }

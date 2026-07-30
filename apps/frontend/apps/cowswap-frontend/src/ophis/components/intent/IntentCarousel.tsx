@@ -66,20 +66,8 @@ const Viewport = styled.div`
   overflow: hidden;
   /* Soft fade at both edges so chips don't appear/disappear with a hard
      cut, matches the cosmic backdrop's diffuse aesthetic. */
-  mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    #000 8%,
-    #000 92%,
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    #000 8%,
-    #000 92%,
-    transparent 100%
-  );
+  mask-image: linear-gradient(to right, transparent 0%, #000 8%, #000 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 8%, #000 92%, transparent 100%);
 `
 
 const Track = styled.div`

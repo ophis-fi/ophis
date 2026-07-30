@@ -24,14 +24,22 @@
 
 set -euo pipefail
 
-AUTOPILOT=infra/optimism-mainnet/configs/autopilot.toml
+# Every chain the registry declares must be pinned. A chain listed in solvers.ts
+# but absent here can drift silently: that is exactly how chain 10 came to claim
+# 9 competing solvers when its autopilot dispatched 4.
+#   <registry chain-id constant>|<autopilot config>
+CHAIN_PINS=(
+  "OPHIS_SOLVER_REGISTRY_CHAIN_ID|infra/optimism-mainnet/configs/autopilot.toml"
+  "OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID|infra/unichain-mainnet/configs/autopilot.toml.tmpl"
+  "OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID|infra/robinhood-mainnet/configs/autopilot.toml.tmpl"
+)
 REGISTRY=apps/frontend/apps/cowswap-frontend/src/ophis/solvers.ts
 
 # Interpreter override for dev machines whose PATH python3 is a policy shim
 # (e.g. CHECK_SOLVER_PYTHON=/usr/bin/python3). CI uses the default.
 PYTHON_BIN=${CHECK_SOLVER_PYTHON:-python3}
 
-for f in "$AUTOPILOT" "$REGISTRY"; do
+for f in "$REGISTRY"; do
   [[ -f "$f" ]] || { echo "ERROR: $f missing" >&2; exit 1; }
 done
 
@@ -52,7 +60,7 @@ PY
 }
 
 extract_registry() {
-  ${PYTHON_BIN} - "$1" <<'PY'
+  ${PYTHON_BIN} - "$1" "$2" <<'PY'
 import re, sys, json
 with open(sys.argv[1]) as f:
     src = f.read()
@@ -66,10 +74,11 @@ entries = re.findall(
     r"\{[^{}]*solverId\s*:\s*'([^']+)'[^{}]*chainIds\s*:\s*\[([^\]]*)\][^{}]*\}",
     m.group(1),
 )
+chain_const = sys.argv[2]
 names = [
     solver_id
     for solver_id, chain_ids in entries
-    if 'OPHIS_SOLVER_REGISTRY_CHAIN_ID' in chain_ids
+    if chain_const in chain_ids
 ]
 if not names:
     print('NO_REGISTRY_SOLVERS_FOUND', file=sys.stderr); sys.exit(3)
@@ -95,20 +104,39 @@ self_test() {
   fi
 }
 
+AUTOPILOT="${CHAIN_PINS[0]#*|}"
 self_test
 
-AUTOPILOT_SET=$(extract_autopilot "$AUTOPILOT")
-REGISTRY_SET=$(extract_registry "$REGISTRY")
+drifted=0
+for pin in "${CHAIN_PINS[@]}"; do
+  chain_const="${pin%%|*}"
+  autopilot_file="${pin#*|}"
 
-if [[ "$AUTOPILOT_SET" == "$REGISTRY_SET" ]]; then
-  echo "OK: solver registry mirrors ${AUTOPILOT} (extractor self-test passed)"
-  echo "  $AUTOPILOT_SET"
+  if [[ ! -f "$autopilot_file" ]]; then
+    echo "ERROR: $autopilot_file missing (pinned for $chain_const)" >&2
+    exit 1
+  fi
+
+  autopilot_set=$(extract_autopilot "$autopilot_file")
+  registry_set=$(extract_registry "$REGISTRY" "$chain_const")
+
+  if [[ "$autopilot_set" == "$registry_set" ]]; then
+    echo "OK: $chain_const mirrors $autopilot_file"
+    echo "  $autopilot_set"
+    continue
+  fi
+
+  drifted=1
+  echo "FATAL: solver registry drift on $chain_const" >&2
+  echo "  autopilot $autopilot_file: $autopilot_set" >&2
+  echo "  registry  $REGISTRY:       $registry_set" >&2
+done
+
+if [[ "$drifted" == "0" ]]; then
+  echo "OK: solver registry mirrors every pinned autopilot (extractor self-test passed)"
   exit 0
 fi
 
-echo "FATAL: solver registry drift" >&2
-echo "  autopilot $AUTOPILOT: $AUTOPILOT_SET" >&2
-echo "  registry  $REGISTRY: $REGISTRY_SET" >&2
 echo "  The registry feeds the user-facing 'up to N solvers' count on chain 10." >&2
 echo "  A lane only competes if the AUTOPILOT dispatches an auction to it, so a lane" >&2
 echo "  present in driver.toml.tmpl but absent from autopilot.toml must NOT be in the" >&2

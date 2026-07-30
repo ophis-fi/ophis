@@ -17,12 +17,24 @@
  * createTextNode) — never via innerHTML — so user input cannot inject
  * markup.
  */
-import { ClipboardEvent, DragEvent, ForwardedRef, forwardRef, KeyboardEvent, ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import {
+  ClipboardEvent,
+  DragEvent,
+  ForwardedRef,
+  forwardRef,
+  KeyboardEvent,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from 'react'
 
 import styled from 'styled-components/macro'
 
-import type { Entity, EntityType } from './types'
 import { entityLogo } from './tokenAssets'
+
+import type { Entity, EntityType } from './types'
 
 // Cosmic palette — chips sit on the dark indigo input surface, with
 // type-specific accents in the brand's coral/magenta/indigo trio.
@@ -68,7 +80,10 @@ const Editor = styled.div`
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
-  transition: border-color 160ms ease-out, box-shadow 160ms ease-out, background 160ms ease-out;
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out,
+    background 160ms ease-out;
   overflow-wrap: break-word;
 
   &:hover {
@@ -78,7 +93,9 @@ const Editor = styled.div`
   &:focus {
     border-color: #f2a63e;
     background: rgba(8, 4, 24, 0.78);
-    box-shadow: 0 0 0 4px rgba(242, 166, 62, 0.18), 0 12px 32px rgba(0, 0, 0, 0.45);
+    box-shadow:
+      0 0 0 4px rgba(242, 166, 62, 0.18),
+      0 12px 32px rgba(0, 0, 0, 0.45);
   }
 
   &:empty::before {
@@ -201,9 +218,7 @@ function expandRange(text: string, e: Entity): { start: number; end: number } {
 
 function buildSegments(text: string, entities: Entity[]): Segment[] {
   if (entities.length === 0) return [{ text }]
-  const sorted = [...entities]
-    .map((e) => ({ entity: e, ...expandRange(text, e) }))
-    .sort((a, b) => a.start - b.start)
+  const sorted = [...entities].map((e) => ({ entity: e, ...expandRange(text, e) })).sort((a, b) => a.start - b.start)
   const out: Segment[] = []
   let cursor = 0
   for (const r of sorted) {
@@ -455,23 +470,26 @@ export const IntentInput = forwardRef(function IntentInput(
   // accepts <img>/<style>/styled spans, including markup that could
   // carry `data-entity-chip="true"` to fool the rebuild-skip heuristic.
   // Self-XSS scope only, but trivially fixable here.
-  const handlePaste = useCallback((e: ClipboardEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const text = e.clipboardData.getData('text/plain').replace(/[\r\n]+/g, ' ')
-    if (!text) return
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0) return
-    const range = sel.getRangeAt(0)
-    range.deleteContents()
-    range.insertNode(document.createTextNode(text))
-    range.collapse(false)
-    sel.removeAllRanges()
-    sel.addRange(range)
-    const el = editorRef.current
-    if (!el) return
-    const next = readPlainTextValue(el).replace(/\n+/g, ' ')
-    if (next !== value) onChange(next)
-  }, [onChange, value])
+  const handlePaste = useCallback(
+    (e: ClipboardEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      const text = e.clipboardData.getData('text/plain').replace(/[\r\n]+/g, ' ')
+      if (!text) return
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return
+      const range = sel.getRangeAt(0)
+      range.deleteContents()
+      range.insertNode(document.createTextNode(text))
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+      const el = editorRef.current
+      if (!el) return
+      const next = readPlainTextValue(el).replace(/\n+/g, ' ')
+      if (next !== value) onChange(next)
+    },
+    [onChange, value],
+  )
 
   // Phase 3 audit M (2026-05-19): onDrop sibling to onPaste.
   //
@@ -490,37 +508,40 @@ export const IntentInput = forwardRef(function IntentInput(
   // as paste; we deliberately don't try to insert at the drop point
   // because contenteditable's drop-position resolution is browser-
   // specific and would lose this handler's plain-text guarantee.
-  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const dt = e.dataTransfer
-    const plain = dt.getData('text/plain') || dt.getData('text/uri-list')
-    const text = plain.replace(/[\r\n]+/g, ' ').trim()
-    if (!text) return
-    const el = editorRef.current
-    if (!el) return
-    // Use a caret position consistent with where the user clicked LAST
-    // (focus position), not the drop coordinates — simpler and safer.
-    // If the editor doesn't have focus, append at the end.
-    const sel = window.getSelection()
-    let range: Range
-    if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).endContainer)) {
-      range = sel.getRangeAt(0)
-    } else {
-      range = document.createRange()
-      range.selectNodeContents(el)
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const dt = e.dataTransfer
+      const plain = dt.getData('text/plain') || dt.getData('text/uri-list')
+      const text = plain.replace(/[\r\n]+/g, ' ').trim()
+      if (!text) return
+      const el = editorRef.current
+      if (!el) return
+      // Use a caret position consistent with where the user clicked LAST
+      // (focus position), not the drop coordinates — simpler and safer.
+      // If the editor doesn't have focus, append at the end.
+      const sel = window.getSelection()
+      let range: Range
+      if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).endContainer)) {
+        range = sel.getRangeAt(0)
+      } else {
+        range = document.createRange()
+        range.selectNodeContents(el)
+        range.collapse(false)
+      }
+      range.deleteContents()
+      range.insertNode(document.createTextNode(text))
       range.collapse(false)
-    }
-    range.deleteContents()
-    range.insertNode(document.createTextNode(text))
-    range.collapse(false)
-    if (sel) {
-      sel.removeAllRanges()
-      sel.addRange(range)
-    }
-    const next = readPlainTextValue(el).replace(/\n+/g, ' ')
-    if (next !== value) onChange(next)
-  }, [onChange, value])
+      if (sel) {
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      const next = readPlainTextValue(el).replace(/\n+/g, ' ')
+      if (next !== value) onChange(next)
+    },
+    [onChange, value],
+  )
 
   // Suppress the dragover/dragenter default so the drop event fires
   // reliably across browsers (Firefox in particular needs preventDefault

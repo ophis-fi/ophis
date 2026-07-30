@@ -27,9 +27,9 @@
  */
 import { ReactNode } from 'react'
 
-import { useWalletInfo } from '@cowprotocol/wallet'
-
 import { Trans } from '@lingui/react/macro'
+
+import { useTradeState } from 'modules/trade'
 
 import * as styledEl from './RoutePanel.styled'
 import { useOphisSolverCopy } from './useOphisSolverCopy'
@@ -37,7 +37,14 @@ import { useOphisSolverCopy } from './useOphisSolverCopy'
 import { getOphisSolversForChain } from '../../solvers'
 
 export function RoutePanel(): ReactNode {
-  const { chainId } = useWalletInfo()
+  // The TRADE's chain, not the wallet's. useSetupTradeState applies the URL
+  // state first and switches the wallet asynchronously ("the network chaning
+  // process takes some time", useSetupTradeState.ts:41-44), so during that
+  // window useWalletInfo() still reports the old chain. Keying off it would
+  // show four Optimism solvers on a Unichain trade, or render this panel at all
+  // when a sovereign-chain wallet opens an Ethereum trade.
+  const { state } = useTradeState()
+  const chainId = state?.chainId ?? undefined
   // The SOVEREIGN registry, not the CMS-merged map. See the note above.
   const solvers = getOphisSolversForChain(chainId)
   const solverCopy = useOphisSolverCopy()
@@ -77,7 +84,10 @@ export function RoutePanel(): ReactNode {
 
       <styledEl.Footer>
         <span>
-          <Trans>No route is picked before you sign. The winning solver chooses venues at settlement.</Trans>
+          <Trans>
+            No route is picked before you sign. Solvers build their routes during the auction, and the winning one is
+            executed at settlement.
+          </Trans>
         </span>
         <span>
           {/*

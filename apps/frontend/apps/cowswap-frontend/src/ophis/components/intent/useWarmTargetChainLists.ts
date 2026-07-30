@@ -1,10 +1,9 @@
+import { useAtomValue, useSetAtom } from 'jotai'
 import { useEffect, useRef } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { DEFAULT_TOKENS_LISTS, fetchTokenList, listsStatesByChainAtom, upsertListsAtom } from '@cowprotocol/tokens'
 import type { ListState } from '@cowprotocol/tokens'
-
-import { useAtomValue, useSetAtom } from 'jotai'
 
 /**
  * Pre-load the intent's TARGET chain token lists so the CTA can emit token

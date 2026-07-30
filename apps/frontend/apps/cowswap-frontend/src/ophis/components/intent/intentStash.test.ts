@@ -53,10 +53,7 @@ describe('intentStash', () => {
   })
 
   it('defaults an unknown field to sell', () => {
-    sessionStorage.setItem(
-      INTENT_STASH_KEY,
-      JSON.stringify({ sellToken: 'USDC', field: 'weird', ts: Date.now() }),
-    )
+    sessionStorage.setItem(INTENT_STASH_KEY, JSON.stringify({ sellToken: 'USDC', field: 'weird', ts: Date.now() }))
     expect(readIntentStash()?.field).toBe('sell')
   })
 })

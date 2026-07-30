@@ -1,14 +1,16 @@
-import { useWalletInfo } from '@cowprotocol/wallet'
-
 import { render, screen } from '@testing-library/react'
+
+import { useTradeState } from 'modules/trade'
 
 import { RoutePanel } from './RoutePanel.container'
 
 import { getOphisSolversForChain } from '../../solvers'
 
-jest.mock('@cowprotocol/wallet', () => ({
-  ...jest.requireActual('@cowprotocol/wallet'),
-  useWalletInfo: jest.fn(),
+// NOT jest.requireActual: the modules/trade barrel transitively loads
+// TradeWidgetForm -> RobinhoodAssetContext -> data.ts, which does not run under
+// jest. Only the one hook this component uses is needed.
+jest.mock('modules/trade', () => ({
+  useTradeState: jest.fn(),
 }))
 
 // The lingui macro compiles <Trans> into the runtime '@lingui/react' Trans, so
@@ -39,14 +41,16 @@ jest.mock('@lingui/react', () => ({
   },
 }))
 
-const useWalletInfoMock = useWalletInfo as jest.MockedFunction<typeof useWalletInfo>
+const useTradeStateMock = useTradeState as jest.MockedFunction<typeof useTradeState>
 
 const OPTIMISM = 10
 const ROBINHOOD = 4663
 const ETHEREUM = 1
 
+// The panel keys off the TRADE's chain, not the wallet's, because the wallet
+// lags a URL-driven chain switch.
 const onChain = (chainId: number): void => {
-  useWalletInfoMock.mockReturnValue({ chainId, account: undefined } as never)
+  useTradeStateMock.mockReturnValue({ state: { chainId }, updateState: jest.fn() } as never)
 }
 
 /**

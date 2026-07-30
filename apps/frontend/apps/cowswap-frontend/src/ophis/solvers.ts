@@ -142,7 +142,16 @@ export function ophisSolverPublicDescription(solverId: string): string {
   return 'An external solver competing in the Ophis batch auction to give you the best execution.'
 }
 
-/** Registry entries competing on `chainId` (empty for CoW-hosted chains). */
-export function getOphisSolversForChain(chainId: number): OphisStaticSolverInfo[] {
+/**
+ * Registry entries competing on `chainId`, empty for CoW-hosted chains.
+ *
+ * Accepts `undefined` and answers empty, matching the other chain predicates
+ * (`isVolumeOnlyChain`, `shouldEmitOphisPartnerFee`). "No chain yet" and "a chain
+ * Ophis does not operate" are the same answer here, and pushing the guard to
+ * every caller is how one of them forgets it.
+ */
+export function getOphisSolversForChain(chainId: number | undefined): OphisStaticSolverInfo[] {
+  if (chainId === undefined) return []
+
   return OPHIS_SOLVERS.filter((solver) => solver.chainIds.includes(chainId))
 }

@@ -35,6 +35,8 @@ const DcaCta = (
   </InlineBanner>
 )
 
+const SIDE_RAIL_MAX_HEIGHT = 'calc(100vh - 180px)'
+
 // The swap widget stays centered (margin auto). On wide viewports the side rail
 // floats to its right without affecting the widget's own (dynamic) sizing; on
 // narrower viewports (where there is no room beside the widget) it drops into
@@ -42,6 +44,12 @@ const DcaCta = (
 const SwapStage = styled.div`
   position: relative;
   width: 100%;
+
+  /* Reserve the rail's maximum height so the footer never sits under it. The
+     rail is absolute at this breakpoint and contributes no height of its own. */
+  @media (min-width: 1181px) {
+    min-height: ${SIDE_RAIL_MAX_HEIGHT};
+  }
 `
 
 // ONE rail, not one float per panel. Each panel decides for itself whether to
@@ -58,9 +66,18 @@ const SwapStage = styled.div`
 const SideRail = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 16px;
   margin-top: 16px;
+  /* Centre the stack below the widget on narrow viewports. NOT align-items:
+     center: every panel sets align-self: flex-start, which wins over it. The
+     float this replaced centred via justify-content in a ROW flex, so switching
+     to a column silently left-pinned them. */
+  align-items: stretch;
+
+  & > * {
+    margin-left: auto;
+    margin-right: auto;
+  }
 
   @media (min-width: 1181px) {
     position: absolute;
@@ -68,8 +85,19 @@ const SideRail = styled.div`
     left: 50%;
     margin-left: 250px;
     margin-top: 0;
-    align-items: stretch;
     z-index: 1;
+    /* Absolutely positioned, so the rail adds no height to SwapStage. With a
+       nine-row route panel plus six trending rows the stack can outgrow the
+       widget, and z-index 1 would then paint it over the Marginer and footer.
+       Bound it and scroll internally; SwapStage reserves the same maximum. */
+    max-height: ${SIDE_RAIL_MAX_HEIGHT};
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    & > * {
+      margin-left: 0;
+      margin-right: 0;
+    }
   }
 `
 
