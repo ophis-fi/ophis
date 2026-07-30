@@ -35,7 +35,7 @@
 #                                                           (archive-gated)
 #   zan-op              api.zan.top                   ZAN (Ant Digital Technologies)
 #                                                      CDN: none detected (NON-Cloudflare)
-#                                                      auth: KEYED (${ZAN_OP_KEY}, URL path)
+#                                                      auth: KEYED (${ZAN_API_KEY}, URL path)
 #                                                      serves ALL protected methods
 #   tenderly-op         optimism.gateway.tenderly.co  Tenderly
 #                                                      DNS: Google Cloud, free public tier
@@ -496,7 +496,7 @@ projects:
         # "Block T" fail-closed rule was removed with it.
         #
         # Host is LITERAL so the CI guard's urlsplit can pin the failure domain; only
-        # ${ZAN_OP_KEY} resolves from .env via render-configs.sh envsubst — NEVER
+        # ${ZAN_API_KEY} resolves from .env via render-configs.sh envsubst — NEVER
         # committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file carrying
         # this key lands on the RAM-disk, not the SSD.
         #
@@ -524,7 +524,7 @@ projects:
         # CF invariant, and publicnode is the lane with sustained clean-load evidence.
         # Swapping a proven-live lane for an unproven one mid-incident was not worth
         # the risk; revisit deliberately, and verify receipts THROUGH THE PROXY.
-        endpoint: https://api.zan.top/node/v1/opt/mainnet/${ZAN_OP_KEY}
+        endpoint: https://api.zan.top/node/v1/opt/mainnet/${ZAN_API_KEY}
         failsafe:
           - matchMethod: "*"
             timeout:
