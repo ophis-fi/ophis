@@ -4,12 +4,12 @@
 
 ## Build with Ophis
 
-- [AI agent integration](https://docs.ophis.fi/ai-agents): hosted MCP server at https://mcp.ophis.fi/mcp (tools: parse_intent, resolve_token, get_quote, build_order, submit_order, lookup_tier, list_chains, get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus), plus Intent-API recipes for LangChain / AutoGPT / function-calling agents. The human always signs: the signature is the trust boundary.
+- [AI agent integration](https://docs.ophis.fi/ai-agents): hosted MCP server at https://mcp.ophis.fi/mcp (fourteen tools: parse_intent, resolve_token, get_quote, build_order, submit_order, lookup_tier, get_integrator_earnings, list_chains, get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus, validate_order), plus Intent-API recipes for LangChain / AutoGPT / function-calling agents. The human or agent wallet always signs locally: the signature is the trust boundary.
 - [Intent API](https://docs.ophis.fi/intent-api): `POST https://ophis.fi/api/intent` with `{"text": "swap 100 USDC for ETH on Base"}` returns `{ok, data: {intent, entities}}`. OpenAPI spec: https://ophis.fi/openapi.json
 
 ## Fees
 
-Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); SDK/MCP partner integrations charge a reduced 0.05% (5 bps). On the Ophis-operated chains (Optimism, Unichain) the flat Ophis fee is the all-in cost and 100% of any price improvement a solver wins beyond your signed quote stays with you. On CoW-hosted chains, CoW Protocol charges its own fees on top (0.02% volume fee, 0.003% correlated, plus 50% of quote improvement capped at 0.98% of volume), so the fixed all-in there is 0.12% / 0.013%. See [The all-in cost, per chain](https://docs.ophis.fi/fees#the-all-in-cost-per-chain).
+Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); SDK/MCP partner integrations charge a reduced 0.05% (5 bps). On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the flat Ophis fee is the all-in cost and 100% of any price improvement a solver wins beyond your signed quote stays with you. On CoW-hosted chains, CoW Protocol charges its own fees on top (0.02% volume fee, 0.003% correlated, plus 50% of quote improvement capped at 0.98% of volume), so the fixed all-in there is 0.12% / 0.013%. See [The all-in cost, per chain](https://docs.ophis.fi/fees#the-all-in-cost-per-chain).
 
 Worked examples:
 - Swap $10,000 USDC to ETH on Optimism (a volatile pair): fee is 0.10% = $10 all-in. On a CoW-hosted chain: 0.12% = $12 fixed all-in. See [Volatile pair](https://docs.ophis.fi/fees#volatile-pair-eg-usdc-to-eth-010-flat).

@@ -15,6 +15,7 @@ pub mod order_events;
 pub mod order_execution;
 pub mod order_history;
 pub mod orders;
+pub mod partner_fee_recipients;
 pub mod quotes;
 pub mod reference_scores;
 pub mod settlement_executions;
@@ -62,6 +63,7 @@ pub const TABLES: &[&str] = &[
     "last_indexed_blocks",
     "onchain_order_invalidations",
     "onchain_placed_orders",
+    "partner_fee_recipients",
     "presignature_events",
     "proposed_jit_orders",
     "quotes",

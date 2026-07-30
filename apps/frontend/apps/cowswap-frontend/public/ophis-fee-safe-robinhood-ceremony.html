@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <title>Ophis fee Safe — Robinhood deployment ceremony</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #0b0e0d; color: #f5f7f6; }
+      body { margin: 0; padding: 24px; display: grid; min-height: 100vh; place-items: center; box-sizing: border-box; }
+      main { width: min(760px, 100%); background: #141917; border: 1px solid #3d5148; border-radius: 20px; padding: 24px; box-sizing: border-box; }
+      h1 { margin-top: 0; font-size: 28px; }
+      .warning { color: #ffcf66; }
+      dl { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; }
+      dt { color: #9eaaa4; }
+      dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace; }
+      button { width: 100%; margin-top: 18px; padding: 16px; border: 0; border-radius: 12px; background: #10ed82; color: #07130d; font-size: 17px; font-weight: 750; }
+      button:disabled { opacity: .55; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #090c0b; border-radius: 10px; padding: 14px; min-height: 42px; }
+      @media (max-width: 560px) { dl { grid-template-columns: 1fr; gap: 4px; } dd { margin-bottom: 8px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Ophis fee-recipient Safe</h1>
+      <p class="warning">Three on-chain transactions and two Safe signatures create the deterministic Safe and configure its 2-of-3 owners. Never enter a seed phrase here.</p>
+      <dl>
+        <dt>Chain</dt><dd>Robinhood Chain (4663)</dd>
+        <dt>Required sender</dt><dd>0x0494F503912C101Bfd76b88e4F5D8A33de284d1A</dd>
+        <dt>Safe factory</dt><dd>0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67</dd>
+        <dt>Expected Safe</dt><dd>0x858f0F5eE954846D47155F5203c04aF1819eCeF8</dd>
+        <dt>Final owners</dt><dd>0x0494…d1A, 0xBeC5…0199, 0x746A…a46A</dd>
+        <dt>Final threshold</dt><dd>2 of 3</dd>
+        <dt>Transaction value</dt><dd>0 ETH (all three)</dd>
+      </dl>
+      <button id="deploy" type="button">Verify and configure Safe</button>
+      <pre id="status">Ready. Open only inside your wallet's browser.</pre>
+    </main>
+    <script src="/ophis-fee-safe-robinhood-ceremony.js"></script>
+  </body>
+</html>

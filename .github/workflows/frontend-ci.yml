@@ -1,0 +1,90 @@
+name: frontend CI
+
+# WHY THIS EXISTS.
+#
+# `apps/frontend` (the CoW Swap fork) is deliberately OUTSIDE the root pnpm
+# workspace — upstream ships its own package manager and lockfile — so none of
+# the repo's other PR checks build or type-check it. The only thing that ever
+# compiled it was `cloudflare-deploy.yml`, which triggers on `push: main`.
+#
+# That combination means a type error reaches production before anyone sees it:
+# the PR is green, the merge lands, and the DEPLOY fails. On 2026-07-26 exactly
+# that happened. `fix(basket): wire per-leg ophisBasket marker` omitted the
+# required-but-nullable `utm` field from a `buildAppData` call, and:
+#
+#   - the PR passed every check,
+#   - the Cloudflare Pages deploy then failed with TS2345 for ~11 HOURS,
+#   - SIX subsequent merges shipped nothing, because each deploy hit the same
+#     pre-existing type error and aborted before publishing.
+#
+# It was found by accident. Nothing alerts on a red deploy — it is not a PR
+# check, so it is invisible in the PR UI.
+#
+# This workflow closes that gap: it type-checks the frontend on PRs that touch
+# it. Verified against the real defect — with the `utm` fix reverted, this job's
+# command reproduces the exact error at the exact file and line:
+#   useBuildBasketLegAppData.ts(46,27): error TS2345 ...
+# and passes once restored.
+#
+# WHY TYPECHECK AND NOT THE FULL BUILD. The production build needs repo secrets
+# (REACT_APP_OPHIS_VOLUME_FEE_BPS, Bungee affiliate id, ...). Requiring them
+# would either expose secrets to PRs or make the job fail on forks. The failure
+# class we are gating — a type error — is fully caught by `tsc`, which needs no
+# secrets. If a future breakage slips through as a BUNDLER (not type) error,
+# promote this to `pnpm run build:cowswap` on a secret-bearing trigger.
+#
+# COST: path-scoped to apps/frontend/**, so PRs that do not touch the frontend
+# skip it entirely. pnpm's store is cached via setup-node.
+
+on:
+  pull_request:
+    paths:
+      - "apps/frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: frontend (typecheck cowswap)
+    runs-on: ubuntu-latest
+    steps:
+      # Actions pinned to commit SHAs, matching cloudflare-deploy.yml (audit
+      # finding M3, 2026-05-09): tag refs are mutable, SHAs are not.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            apps/frontend/pnpm-lock.yaml
+
+      # Mirrors cloudflare-deploy.yml's install step. Lifecycle scripts are NOT
+      # disabled here for the same reason as the deploy: the cowswap tree needs
+      # them (patch-package, native deps like @swc/core and esbuild linking
+      # their platform binaries). Keeping the two installs identical is the
+      # point — a gate that installs differently from the deploy can pass while
+      # the deploy fails.
+      - name: install cowswap deps
+        working-directory: apps/frontend
+        run: pnpm install --frozen-lockfile
+
+      # `nx run cowswap-frontend:typecheck`. No secrets required.
+      - name: typecheck cowswap-frontend
+        working-directory: apps/frontend
+        run: pnpm typecheck

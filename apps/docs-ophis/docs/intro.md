@@ -1,7 +1,7 @@
 ---
 id: intro
-title: Introduction
-description: Ophis is an intent-based DEX aggregator, describe a swap in natural language and a competitive solver auction fills it MEV-protected.
+title: Ophis DEX Aggregator Documentation
+description: Ophis is an intent-based DEX aggregator across 13 EVM chains. Describe a swap in natural language and a competitive solver auction fills it MEV-protected.
 slug: /
 sidebar_label: Introduction
 sidebar_position: 1
@@ -37,7 +37,7 @@ swap 100 USDC for ETH on Base
 - **Flat, transparent fee.** A flat 0.10% (10 bps) Ophis fee on trade
   volume applies to every trade, 0.01% (1 bp) on same-chain stablecoin
   pairs. Example: swap 1,000 USDC and the Ophis fee is 0.10%, or 1 USDC.
-  On the Ophis-operated chains (Optimism, Unichain) that is the all-in
+  On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) that is the all-in
   cost; on CoW-hosted chains [CoW Protocol's own fees apply on
   top](./fees.md).
 - **Open.** The full frontend, intent-parser proxy, and infra runbooks

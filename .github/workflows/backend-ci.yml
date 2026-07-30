@@ -13,10 +13,14 @@ name: backend CI
 # never-running check (the same property rebate-indexer-ci.yml has).
 #
 # COST / FUTURE PERF: there is no Rust build cache yet (consistent with the
-# repo's other cargo jobs in security.yml). A backend PR cold-compiles the 4
-# crates' dependency graph (~10-20 min). If that becomes a bottleneck, add
-# `Swatinem/rust-cache@<pinned-sha>` (workspaces: apps/backend) after checkout:
-# a pure perf win, no correctness change.
+# repo's other cargo jobs in security.yml). A backend PR cold-compiles the
+# workspace dependency graph (~10-20 min). The 2026-07-26 widening (whole-
+# workspace --all-targets check + 5 more test crates) adds to that: --all-targets
+# also builds test/bench targets, notably the e2e crate. That cost is the point
+# -- it is what catches a struct change that breaks a crate nobody tests. If it
+# becomes a bottleneck, add `Swatinem/rust-cache@<pinned-sha>`
+# (workspaces: apps/backend) after checkout: a pure perf win, no correctness
+# change. Do NOT claw back coverage before adding the cache.
 
 on:
   pull_request:
@@ -38,7 +42,7 @@ permissions:
 
 jobs:
   floor-tests:
-    name: backend (cargo test, partner-fee floor crates)
+    name: backend (cargo check all-targets + test, Ophis-diverged crates)
     runs-on: ubuntu-latest
     # The OP partner-fee floor's RUNTIME enforcement lives in the Rust backend:
     # the ingress floor (shared::order_validation::enforce_partner_fee_floor),
@@ -69,9 +73,39 @@ jobs:
           done
           echo "::error::cargo fetch failed after 3 attempts"
           exit 1
-      - name: cargo test (floor-enforcement crates, lib unit tests)
+      # COMPILE GATE for the WHOLE workspace, including test-only targets.
+      #
+      # Why this exists: the cargo test step below builds only the crates it
+      # names, so a change that breaks a crate nobody tests compiles fine in CI
+      # and is discovered by hand later. That is exactly what happened with #924
+      # (pathviz Wave 2): it added three fields to OrderQuoteRequest without
+      # updating the struct literal in crates/e2e/tests/e2e/ethflow.rs, and
+      # `cargo check --all-targets` stayed red on main for days because nothing
+      # in CI ran it. --all-targets is load-bearing here: the e2e tests are
+      # #[ignore]d and never RUN in CI, but they must still COMPILE, and only
+      # --all-targets builds them.
+      - name: cargo check (whole workspace, all targets - incl. tests/benches)
         working-directory: apps/backend
-        run: cargo test --offline --locked --lib -p app-data -p shared -p autopilot -p orderbook
+        run: cargo check --offline --locked --workspace --all-targets
+
+      # Unit tests. The first four crates are the OP partner-fee floor set this
+      # job was created for. The rest were added 2026-07-26 after the Robinhood
+      # (4663) wiring landed in crates the job did not cover -- chain, solvers,
+      # driver, liquidity-sources and price-estimation all gained chain-specific
+      # logic, and a `cargo test -p solvers` failure had gone unnoticed on main
+      # for the same reason. These five are where Ophis diverges most from
+      # upstream (chain enums, solver lanes, router allowlists, native pricing),
+      # so they are the ones worth gating on.
+      #
+      # Still scoped to --lib on purpose: the workspace's integration/e2e tests
+      # need testcontainers and a running node, are #[ignore]d, and --lib skips
+      # them (the compile gate above still type-checks them).
+      - name: cargo test (Ophis-diverged crates, lib unit tests)
+        working-directory: apps/backend
+        run: |
+          cargo test --offline --locked --lib \
+            -p app-data -p shared -p autopilot -p orderbook \
+            -p chain -p solvers -p driver -p liquidity-sources -p price-estimation
 
       # Lightweight Rust STATIC analysis on exactly the Ophis-diverged money-path
       # crates. CodeQL does not cover Rust here (codeql-config paths-ignore

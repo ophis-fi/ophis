@@ -21,7 +21,7 @@ fi
 
 RPC="${OPHIS_RPC:-http://localhost:4003/main/evm/4663}"
 # Must be the chain-4663 CoW Settlement contract; set after deploy.
-SETTLEMENT="${SETTLEMENT:-__FILL_AFTER_DEPLOY_SETTLEMENT__}"
+SETTLEMENT="${SETTLEMENT:-0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD}"
 SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
 
 # token:symbol:decimals
@@ -32,7 +32,7 @@ TOKENS=(
 
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-if [[ "$SETTLEMENT" == "__FILL_AFTER_DEPLOY_SETTLEMENT__" ]]; then
+if [[ "$SETTLEMENT" == "0x0000000000000000000000000000000000000000" ]]; then
   cat <<EOF
 {
   "ts": "$TS",

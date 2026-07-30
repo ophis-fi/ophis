@@ -1,0 +1,51 @@
+{
+  "name": "@ophis/agent-skills",
+  "version": "0.1.0",
+  "description": "The Ophis agent-skill family as an npm package: markdown skills (quote, swap, order status, cancel, surplus report) with a machine-readable per-chain policy block, for AI agents with shell access. Packaged unmodified from the canonical family served at ophis.fi/.well-known/agent-skills/.",
+  "license": "MIT",
+  "files": [
+    "ophis",
+    "index.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ophis-fi/ophis.git",
+    "directory": "packages/agent-skills"
+  },
+  "homepage": "https://docs.ophis.fi/ai-agents",
+  "bugs": "https://github.com/ophis-fi/ophis/issues",
+  "keywords": [
+    "ophis",
+    "agent-skills",
+    "skill",
+    "skill-md",
+    "ai-agent",
+    "agent",
+    "claude",
+    "mcp",
+    "dex",
+    "dex-aggregator",
+    "defi",
+    "swap",
+    "intent",
+    "intent-based",
+    "mev-protection",
+    "gasless",
+    "eip-712",
+    "web3",
+    "ethereum",
+    "optimism",
+    "unichain"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node ../../scripts/package-agent-skills.mjs",
+    "test": "node ../../scripts/test-agent-skills.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build"
+  }
+}

@@ -7,13 +7,10 @@
  * as trades.appdata_ref_code - the widget top-level appCode or the SDK
  * metadata.ophisReferrer.code both land there).
  *
- * HARD SCOPING CONSTRAINT (a hostile review flagged this): only Optimism (10) and
- * Unichain (130) are Ophis-operated, where Ophis controls settlement and payout end
- * to end. On the CoW-hosted chains, partner fees are disbursed by CoW's weekly script
- * under CoW's terms; Ophis neither pays nor guarantees them. So the "guaranteed"
- * figures are sovereign-only; hosted figures are ACCRUED (indexed from settlement) and
- * explicitly labeled "accrued at settlement, paid out by CoW under CoW terms; not
- * guaranteed by Ophis", never as Ophis-guaranteed earnings.
+ * HARD SCOPING CONSTRAINT: Optimism (10), Unichain (130), and Robinhood (4663)
+ * are Ophis-operated settlement stacks. The separate own-fee payout pipeline is
+ * currently complete only on Optimism and Unichain, so Robinhood own-fee accrual
+ * must remain explicitly non-guaranteed until its Safe payout lane exists.
  *
  * SECURITY INVARIANT (mirror of stats-page.ts / the admin-only /status route): a
  * public surface must NOT expose current-cycle 30-day volume or next-payout timing
@@ -22,7 +19,7 @@
  * already-executed Safe batches. It never returns a 30d figure, an estimated
  * current-cycle earning, or a next-payout timestamp (those stay sig-gated on /partner).
  */
-import { SOVEREIGN_CHAIN_IDS } from './affiliate/rates.js';
+import { OWN_FEE_GUARANTEED_CHAIN_IDS, SOVEREIGN_CHAIN_IDS } from './affiliate/rates.js';
 import { SOVEREIGN_OWN_FEE_RECIPIENTS } from './ownFee/recipients.js';
 import { CHAIN_NAME, PRODUCTION_CHAIN_IDS } from './stats-page.js';
 
@@ -67,7 +64,7 @@ function round(n: number, dp = 6): number {
 export interface EarningsChainRow {
   chainId: number;
   chainName: string;
-  /** true for Optimism (10) and Unichain (130): Ophis controls payout end to end. */
+  /** true when Ophis operates the chain's orderbook and settlement stack. */
   sovereign: boolean;
   routedVolumeUsd: number;
   trades: number;
@@ -223,10 +220,13 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
     if (c.sovereign) {
       volSov += c.routedVolumeUsd;
       ophisSov += c.ophisFeeAccruedUsd;
-      ownSov += c.ownFeeAccruedUsd;
     } else {
       volHosted += c.routedVolumeUsd;
       ophisHosted += c.ophisFeeAccruedUsd;
+    }
+    if (OWN_FEE_GUARANTEED_CHAIN_IDS.has(c.chainId)) {
+      ownSov += c.ownFeeAccruedUsd;
+    } else {
       ownHosted += c.ownFeeAccruedUsd;
     }
   }
@@ -286,7 +286,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   const sovereignPaidToDateWeth = round(Number(ownPaidWeiTotal) / 1e18);
 
   const disclaimer =
-    `Earnings on Optimism (10) and Unichain (130) are settled and paid by Ophis end to end. ` +
+    `Trades on Optimism (10), Unichain (130), and Robinhood (4663) settle through Ophis-operated stacks. ` +
+    `Own-fee payouts are currently guaranteed only on Optimism and Unichain. ` +
     `Figures on CoW-hosted chains are ${HOSTED_ACCRUAL_LABEL}. ` +
     `Routed volume is cumulative (lifetime); this surface never reports a 30-day figure or a next-payout time.`;
 
@@ -315,7 +316,8 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       payouts: ownFeePayouts,
       note:
         `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders, reported GROSS (Ophis takes 0% of it). ` +
-        `sovereignGuaranteed (Optimism, Unichain) is settled by Ophis end to end and swept to you in full; hostedAccrued is ${HOSTED_ACCRUAL_LABEL}, paid out under CoW's terms, which take a 25% service fee (CIP-75) on each stacked recipient, so you receive 75% of it on hosted chains; treat it as gross and not guaranteed. ` +
+        `sovereignGuaranteed (Optimism, Unichain) is swept through the configured Ophis own-fee payout lanes. ` +
+        `hostedAccrued is the backwards-compatible field for every non-guaranteed own-fee accrual: it includes Robinhood until that payout lane exists, while CoW-hosted amounts are ${HOSTED_ACCRUAL_LABEL} and subject to CoW's terms. Treat this field as gross and not guaranteed. ` +
         `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included. ` +
         `sovereignPaidToDate is exact, summed from executed Ophis Safe own-fee batches on Optimism and Unichain; it is keyed on the recipient address, so if several integrators share one own-fee recipient the paid-to-date is attributed to each.`,
     },
@@ -466,7 +468,7 @@ export async function getIntegratorEarnings(appCode: string, now: Date): Promise
   // a landed tx and PAID entries are summed -- exact, already-settled, no timing leak.
   // NOTE (documented in the response note): if two appCodes ever share one recipient, the
   // paid-to-date is attributed to BOTH -- the ledger is recipient-keyed, not appCode-keyed.
-  const sovereignChainIds = [...SOVEREIGN_CHAIN_IDS]; // mutable copy for array binding
+  const sovereignChainIds = [...OWN_FEE_GUARANTEED_CHAIN_IDS]; // mutable copy for array binding
   const ownFeePaidRows = await sql<
     { cycle_month: string; chain_id: number; tx_hex: string | null; paid_wei: string; weth_usd: string | null }[]
   >`

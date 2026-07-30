@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 
 import { COW_CDN, SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
-import { ALL_SUPPORTED_CHAIN_IDS, getAddressKey, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getAddressKey, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type { TokenInfo, TokenList } from '@uniswap/token-lists'
 
+import { EXPLORER_SUPPORTED_CHAIN_IDS } from 'const/supportedChains'
 import useSWR, { SWRResponse } from 'swr'
 
 import { NATIVE_TOKEN_PER_NETWORK } from '../const'
@@ -17,6 +18,8 @@ const INITIAL_TOKEN_LIST_PER_NETWORK: TokenListPerNetwork = {
   [10 as unknown as SupportedChainId]: {},
   // Ophis fork: Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: {},
+  // Ophis fork: Robinhood Chain mainnet (chain 4663)
+  [4663 as unknown as SupportedChainId]: {},
   // Ophis fork: MegaETH mainnet (chain 4326)
   [4326 as unknown as SupportedChainId]: {},
   // Ophis fork: HyperEVM mainnet (chain 999)
@@ -39,6 +42,8 @@ const COINGECKO_CHAINS: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: 'optimistic-ethereum',
   // Ophis fork: Unichain mainnet (chain 130) — CoinGecko 'unichain' platform slug
   [130 as unknown as SupportedChainId]: 'unichain',
+  // CoinGecko Robinhood Chain platform slug.
+  [4663 as unknown as SupportedChainId]: 'robinhood',
   // Ophis fork: MegaETH mainnet (chain 4326) — CoinGecko has no MegaETH platform
   // slug yet; null disables remote token-list fetches gracefully.
   [4326 as unknown as SupportedChainId]: null,
@@ -104,7 +109,7 @@ function useTokenListByUrl(tokenListUrl: string): SWRResponse<TokenListPerNetwor
   })
 }
 
-const SUPPORTED_CHAIN_IDS_SET = new Set(ALL_SUPPORTED_CHAIN_IDS)
+const SUPPORTED_CHAIN_IDS_SET = new Set(EXPLORER_SUPPORTED_CHAIN_IDS)
 
 function fetcher(tokenListUrl: string): Promise<TokenListPerNetwork> {
   return fetch(tokenListUrl)

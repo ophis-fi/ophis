@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { db, schema, sql } from '../db/index.js';
-import { SOVEREIGN_CHAIN_IDS } from '../affiliate/rates.js';
+import { OWN_FEE_GUARANTEED_CHAIN_IDS } from '../affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
 import { priceTrade } from '../pricer.js';
 import { proposeRebateBatch, getNextSafeNonce } from '../batch/propose.js';
@@ -130,7 +130,7 @@ export async function accrueOwnFee(deps: OwnFeeAccrualDeps): Promise<{ status: s
   assertOwnFeeRecipientsSane(allowlist);
 
   // Sovereign-only: own fee is swept to the Ophis Safe and paid back on the SAME chain.
-  if (!SOVEREIGN_CHAIN_IDS.has(deps.chainId)) {
+  if (!OWN_FEE_GUARANTEED_CHAIN_IDS.has(deps.chainId)) {
     throw new Error(`accrueOwnFee: chain ${deps.chainId} is not sovereign; own-fee accrual is Optimism/Unichain only`);
   }
   const weth = WETH_BY_CHAIN[deps.chainId];
@@ -282,7 +282,7 @@ async function accrueOwnFeeMonth(
  * an unrelated Tx Service lookup. Same #360 spirit the fee conversion uses. (Codex #474)
  */
 export async function proposeOwnFeeBatches(deps: OwnFeeProposeDeps): Promise<{ checked: number; proposed: number; blocked: number; dryRun?: boolean }> {
-  if (!SOVEREIGN_CHAIN_IDS.has(deps.chainId)) {
+  if (!OWN_FEE_GUARANTEED_CHAIN_IDS.has(deps.chainId)) {
     throw new Error(`proposeOwnFeeBatches: chain ${deps.chainId} is not sovereign; own-fee payout is Optimism/Unichain only`);
   }
   const weth = WETH_BY_CHAIN[deps.chainId];

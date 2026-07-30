@@ -7,22 +7,23 @@ simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
 native-price-timeout = "5s"
 
 [contracts]
-settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
-balances = "__FILL_AFTER_DEPLOY_BALANCES__"
-signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
 native-token = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
-hooks = "__FILL_AFTER_DEPLOY_HOOKS__"
+hooks = "0x68593257dfd7f392abfbb410b212be0b6242ac0e"
 balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"  # canonical; likely absent on 4663 (unused while baseline empty)
 
 [ethflow]
 # The sovereign Robinhood settlement is NOT in CoW's canonical contracts registry,
 # so index Settlement events from LATEST forward (no genesis backfill).
 skip-event-sync = true
-# EthFlow (native-ETH sells) is DEFERRED for day-1 (like Unichain's first cut).
-# Leave commented until CoWSwapEthFlow is deployed on 4663 and wired to the
-# Settlement + WETH 0x0Bd7...D73. Then uncomment and set the address + start block.
-# contracts = ["__FILL_AFTER_DEPLOY_ETHFLOW__"]
-# indexing-start = 0
+# EthFlow deployed at block 21,574,754 on 2026-07-28. Constructor-wired to
+# Settlement 0x886d9f…e57cD + WETH 0x0Bd7…cAD73; WETH allowance to Vault Relayer
+# 0xB52C…a890 is MAX. With skip-event-sync=true, restart autopilot before accepting
+# native orders; historical events are intentionally not backfilled.
+contracts = ["0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29"]
+indexing-start = 21574754
 
 [logging]
 filter = "warn,autopilot=debug,shared=info,price_estimation=info"
@@ -45,15 +46,24 @@ type = "Alloy"
 [[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
-address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
-# LI.FI same-chain aggregator - the ONLY lane that supports 4663 today (verified
-# 2026-07-02: li.quest/v1/chains lists 4663; live same-chain quote routes via
-# Fly.trade + Rialto). Second solver is a self-run Uniswap V4 dex-solver (follow-up).
+# LI.FI same-chain aggregator (verified 2026-07-02: li.quest/v1/chains lists
+# 4663; live same-chain quote routes via Fly.trade + Rialto).
 [[drivers]]
 name = "lifi"
 url = "http://driver/lifi"
-address = "__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
+name = "kyberswap"
+url = "http://driver/kyberswap"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
+name = "uniswap-v4"
+url = "http://driver/uniswap-v4"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
 [fee-policies]
 
@@ -65,6 +75,8 @@ read-url = "%DB_READ_URL"
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
   { name = "lifi", url = "http://driver/lifi" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+  { name = "uniswap-v4", url = "http://driver/uniswap-v4" },
 ]
 
 [price-estimation]

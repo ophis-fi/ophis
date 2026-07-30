@@ -22,6 +22,9 @@ fi
 RPC="${OPHIS_RPC:-http://localhost:4001/main/evm/10}"
 SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
 SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
+# Fee-ops: deployed OphisFeeLiquidator. Empty = pre-deployment (liquidator
+# block reports "unset"). Set in the same release as the first sweep.
+FEE_LIQUIDATOR="${FEE_LIQUIDATOR:-}"
 
 # token:symbol:decimals
 TOKENS=(
@@ -70,11 +73,40 @@ for entry in "${TOKENS[@]}"; do
     '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
 done
 
+# Fee-ops liquidator probe: solver status, current ops key, and the age of
+# the last successful sweep (lastSweepAt is set on-chain by every sweep).
+# Same never-silently-zero rule as the balance probes: RPC failure surfaces
+# as status "error", never as fake data.
+LIQ_JSON='{"address": null, "status": "unset"}'
+if [[ -n "$FEE_LIQUIDATOR" ]]; then
+  NOW_EPOCH=$(date -u +%s)
+  if is_solver=$(cast call "$SETTLEMENT" "authenticator()(address)" --rpc-url "$RPC" 2>/dev/null \
+       | xargs -I{} cast call {} "isSolver(address)(bool)" "$FEE_LIQUIDATOR" --rpc-url "$RPC" 2>/dev/null) \
+     && liq_eoa=$(cast call "$FEE_LIQUIDATOR" "liquidator()(address)" --rpc-url "$RPC" 2>/dev/null) \
+     && last_sweep=$(cast call "$FEE_LIQUIDATOR" "lastSweepAt()(uint256)" --rpc-url "$RPC" 2>/dev/null | awk '{print $1}'); then
+    if [[ "$last_sweep" =~ ^[0-9]+$ && "$last_sweep" != "0" ]]; then
+      sweep_age=$((NOW_EPOCH - last_sweep))
+    else
+      sweep_age=null
+      last_sweep=null
+    fi
+    LIQ_JSON=$(jq -nc \
+      --arg addr "$FEE_LIQUIDATOR" --arg solver "$is_solver" --arg eoa "$liq_eoa" \
+      --argjson last "$last_sweep" --argjson age "$sweep_age" \
+      '{address: $addr, status: "ok", is_solver: ($solver == "true"),
+        ops_eoa: $eoa, last_sweep_at: $last, last_sweep_age_s: $age}')
+  else
+    LIQ_JSON=$(jq -nc --arg addr "$FEE_LIQUIDATOR" '{address: $addr, status: "error"}')
+    PROBE_FAILURES=$((PROBE_FAILURES + 1))
+  fi
+fi
+
 cat <<EOF
 {
   "ts": "$TS",
   "settlement": "$SETTLEMENT",
   "safe": "$SAFE",
+  "liquidator": $LIQ_JSON,
   "probe_failures": $PROBE_FAILURES,
   "balances": $RESULTS_JSON
 }
@@ -96,4 +128,11 @@ if [[ -n "${PUSHGATEWAY_URL:-}" ]]; then
   done
   curl -s --data "ophis_settlement_buffer_probe_failures{chain=\"optimism\"} $PROBE_FAILURES" \
     "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+  # Fee-ops: sweep staleness (only when the probe succeeded and a sweep
+  # has ever happened; never push a fake 0 age).
+  sweep_age_metric=$(echo "$LIQ_JSON" | jq -r 'select(.status == "ok") | .last_sweep_age_s // empty')
+  if [[ -n "$sweep_age_metric" && "$sweep_age_metric" != "null" ]]; then
+    curl -s --data "ophis_fee_liquidator_last_sweep_age_seconds{chain=\"optimism\"} $sweep_age_metric" \
+      "$PUSHGATEWAY_URL/metrics/job/settlement-buffer/instance/ophis-op" >/dev/null || true
+  fi
 fi

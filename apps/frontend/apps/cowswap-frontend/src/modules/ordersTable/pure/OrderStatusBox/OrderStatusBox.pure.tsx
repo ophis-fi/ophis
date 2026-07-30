@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useMemo } from 'react'
 
 import orderPresignaturePending from '@cowprotocol/assets/cow-swap/order-presignature-pending.svg'
 import { Command } from '@cowprotocol/types'
@@ -8,6 +8,8 @@ import SVG from 'react-inlinesvg'
 import styled, { css, keyframes } from 'styled-components/macro'
 
 import { OrderStatus } from 'legacy/state/orders/actions'
+
+import { BasketBadge, readBasketTag } from 'modules/multiOrder'
 
 import { ParsedOrder } from 'utils/orderUtils/parseOrder'
 
@@ -118,6 +120,18 @@ type OrderStatusBoxProps = {
 export function OrderStatusBox({ order, widthAuto, withWarning, onClick, WarningTooltip }: OrderStatusBoxProps) {
   const { title, color, background } = getOrderStatusTitleAndColor(order)
 
+  // Ophis basket grouping badge: if this order's appData carries an ophisBasket
+  // marker, tag the row so a user sees which orders were placed together as one
+  // basket (the legs are still independent, non-atomic CoW orders).
+  const basketTag = useMemo(() => {
+    if (!order.fullAppData) return null
+    try {
+      return readBasketTag(JSON.parse(order.fullAppData))
+    } catch {
+      return null
+    }
+  }, [order.fullAppData])
+
   const content = (
     <StatusContent>
       {withWarning && WarningTooltip}
@@ -125,6 +139,7 @@ export function OrderStatusBox({ order, widthAuto, withWarning, onClick, Warning
         <SVG src={orderPresignaturePending} description={t`signing`} />
       )}
       {title}
+      {basketTag && <BasketBadge leg={basketTag.leg} legs={basketTag.legs} />}
     </StatusContent>
   )
 

@@ -18,8 +18,8 @@ umask 077
 [[ "${-}" == *x* ]] && { echo "REFUSING to run under set -x (secret hygiene)" >&2; exit 2; }
 
 RPC="${OPHIS_RPC:-http://localhost:4003/main/evm/4663}"
-SETTLEMENT="__FILL_AFTER_DEPLOY_SETTLEMENT__"
-SUBMITTER="__FILL_AFTER_DEPLOY_SUBMITTER_EOA__"   # the ONLY authorized solver/submitter EOA
+SETTLEMENT="0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+SUBMITTER="0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"   # the ONLY authorized solver/submitter EOA
 TRADE_TOPIC0="0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
 SETTLEMENT_TOPIC0="0x40338ce1a7c49204f0099533b1e9a7ee0a3d261f84974ab7af36105b8c4e9db4"
 # Tunables (env-overridable). Conservative defaults to avoid alert fatigue.
@@ -77,9 +77,8 @@ SUBMITTER_LC="$(lc "$SUBMITTER")"; SETTLEMENT_LC="$(lc "$SETTLEMENT")"
 
 HEAD="$(cast block-number --rpc-url "$RPC" 2>&1)" || die "cast block-number: $HEAD"
 [[ "$HEAD" =~ ^[0-9]+$ ]] || die "non-numeric head: $HEAD"
-# Stay TIP_LAG_BLOCKS behind head: the freshest blocks fail eRPC 3-of-4 consensus
-# (eth_getLogs) while upstream indexers catch up, so scanning to head would `die`
-# every run and never advance the cursor (mirrors verify-e2e-swap.sh's TIP_LAG).
+# Stay TIP_LAG_BLOCKS behind head so recently indexed logs are not missed during
+# reorgs or rapid tip movement.
 SAFE_HEAD=$(( HEAD - TIP_LAG_BLOCKS )); (( SAFE_HEAD < 0 )) && SAFE_HEAD=0
 if [[ -r "$CURSOR" ]]; then FROM=$(( $(cat "$CURSOR") + 1 )); else FROM=$(( SAFE_HEAD - FIRST_RUN_LOOKBACK )); fi
 (( FROM < 0 )) && FROM=0

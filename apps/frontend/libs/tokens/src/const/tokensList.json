@@ -228,6 +228,13 @@
       "source": "https://ipfs.io/ipns/tokens.uniswap.org"
     }
   ],
+  "4663": [
+    {
+      "priority": 1,
+      "enabledByDefault": true,
+      "source": "https://ipfs.io/ipns/tokens.uniswap.org"
+    }
+  ],
   "4326": [
     {
       "priority": 1,

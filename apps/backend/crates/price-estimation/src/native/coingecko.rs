@@ -90,6 +90,13 @@ impl CoinGecko {
             // 130 -> id "unichain". Load-bearing: the v3-TWAP primary estimator is
             // blind to Unichain's v4-native liquidity, so CoinGecko is the fallback.
             Chain::Unichain => "unichain".to_string(),
+            // Verified 2026-07-26 via CoinGecko /asset_platforms: chain_identifier
+            // 4663 -> id "robinhood" (native_coin_id "ethereum"). Load-bearing for
+            // the same reason as Unichain above: Robinhood's marquee stock/stable
+            // liquidity is Uniswap v4, which the v3-TWAP primary estimator cannot
+            // see, so CoinGecko is the fallback. This was an OPEN GATE in the stack
+            // config ("a brand-new chain usually is NOT listed") — it is listed now.
+            Chain::Robinhood => "robinhood".to_string(),
             Chain::Sepolia
             | Chain::Goerli
             | Chain::Hardhat

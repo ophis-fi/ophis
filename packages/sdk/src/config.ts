@@ -4,7 +4,13 @@ import {
 } from './partner-fee.js';
 
 /** Ophis-operated chains (where Ophis runs its own stack and the partner fee accrues). */
-export const OPHIS_CHAIN_IDS = Object.freeze({ optimism: 10, unichain: 130, megaeth: 4326, hyperevm: 999 } as const);
+export const OPHIS_CHAIN_IDS = Object.freeze({
+  optimism: 10,
+  unichain: 130,
+  robinhood: 4663,
+  megaeth: 4326,
+  hyperevm: 999,
+} as const);
 
 export interface OphisDefaults {
   readonly chainId: number;

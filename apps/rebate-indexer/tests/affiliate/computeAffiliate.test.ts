@@ -6,6 +6,7 @@ import {
 } from '../../src/affiliate/computeAffiliate.js';
 import {
   OPTIMISM_CHAIN_ID,
+  ROBINHOOD_CHAIN_ID,
   UNICHAIN_CHAIN_ID,
   SOVEREIGN_CHAIN_IDS,
   keepFractionBps,
@@ -16,15 +17,16 @@ import {
 } from '../../src/affiliate/rates.js';
 
 describe('keepFractionBps — sovereign chains keep the full fee (no CoW cut)', () => {
-  it('Optimism (10) and Unichain (130) keep 100%; hosted chains keep 75%', () => {
+  it('sovereign chains keep 100%; hosted chains keep 75%', () => {
     expect(keepFractionBps(OPTIMISM_CHAIN_ID)).toBe(10_000);
     expect(keepFractionBps(UNICHAIN_CHAIN_ID)).toBe(10_000); // Unichain is Ophis-sovereign, 0% CoW cut
+    expect(keepFractionBps(ROBINHOOD_CHAIN_ID)).toBe(10_000);
     expect(keepFractionBps(1)).toBe(7_500); // mainnet, CoW-hosted
     expect(keepFractionBps(100)).toBe(7_500); // gnosis, CoW-hosted
   });
 
-  it('SOVEREIGN_CHAIN_IDS is exactly {10, 130} — the single source of truth for the keep rate', () => {
-    expect([...SOVEREIGN_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 130]);
+  it('SOVEREIGN_CHAIN_IDS is the single source of truth for the keep rate', () => {
+    expect([...SOVEREIGN_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 130, 4663]);
     expect(SOVEREIGN_CHAIN_IDS.has(1)).toBe(false);
     expect(SOVEREIGN_CHAIN_IDS.has(8453)).toBe(false);
   });

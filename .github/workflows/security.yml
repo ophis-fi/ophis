@@ -107,6 +107,44 @@ jobs:
       - name: Check tiers.ts mirror across rebate-indexer + packages/sdk + cowswap-frontend
         run: ./scripts/check-tier-invariant.sh
 
+  solver-registry-invariant:
+    name: Solver registry cross-workspace invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-07 (ux-quoting). The frontend static solver registry
+    # (apps/frontend/apps/cowswap-frontend/src/ophis/solvers.ts) mirrors the
+    # [[solver]] name entries in infra/optimism-mainnet/configs/driver.toml.tmpl
+    # across pnpm workspaces (no shared import). It feeds the "up to N solvers"
+    # row and the order progress-bar ladder on chain 10; drift would show users
+    # a wrong solver count or a ladder missing live solvers. A jest mirror test
+    # gives the same signal in the frontend lane, but the frontend jest suite
+    # is not a repo-root CI gate, so this script is the hard gate.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check solver registry mirrors the chain-10 driver config
+        run: ./scripts/check-solver-registry-invariant.sh
+
+  basket-metadata-invariant:
+    name: Basket-metadata cross-workspace invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-07 (basket-intents Phase A). The Ophis basket ("ophis-multi-order")
+    # appData marker grammar + caps are hand-mirrored across two pnpm workspaces
+    # (no shared import): packages/sdk/src/basket-metadata.ts and
+    # apps/frontend/.../src/ophis/basketMetadata.ts. If the 32-hex basket-id
+    # grammar or the 6x6 / 6-leg caps drift between them, a marker minted on one
+    # side fails validation (or groups the wrong rows) on the other, and the
+    # rebate indexer's basket_id passthrough attributes baskets inconsistently.
+    # The script's --self-test verifies the checker itself catches drift.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Self-test the invariant checker
+        run: ./scripts/check-basket-metadata-invariant.sh --self-test
+      - name: Check basket-metadata grammar + caps match across SDK and frontend mirror
+        run: ./scripts/check-basket-metadata-invariant.sh
+
 
   infra-compose-security:
     name: Infra compose security invariants
@@ -154,6 +192,29 @@ jobs:
           node-version: 22
       - name: Diff policy-pack addresses against @ophis/sdk domain map
         run: node scripts/check-policy-pack-addresses.mjs
+
+  agent-skills-invariant:
+    name: Agent-skill family invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-07-24. The published agent-skill family
+    # (.well-known/agent-skills/ophis/) pins third-party agents to the Ophis
+    # settlement + vault-relayer contracts, orderbook hosts, fee literals and
+    # cancellation EIP-712 type hashes. All of those are hand-maintained copies
+    # of authoritative values in @ophis/sdk and the backend model crate; a
+    # drifted copy would have agents approving the wrong contract or signing
+    # against a rejected domain. Same class as the policy-pack gate above,
+    # same style of pure-Node check (no deps). Also lints the snippets:
+    # read-only skills must stay read-only, execution skills sign
+    # keystore-first and never grant unlimited approvals.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 22
+      - name: Diff agent-skill policy against @ophis/sdk + backend constants
+        run: node scripts/check-agent-skills-invariant.mjs
 
   slither:
     name: Slither (Solidity)
@@ -217,8 +278,10 @@ jobs:
               rc_allow_reader=$?
               slither reader/SettlementStorageReader.sol --compile-force-framework solc --json /out/settlement-reader.json
               rc_settle_reader=$?
+              slither OphisFeeLiquidator.sol --compile-force-framework solc --json /out/fee-liquidator.json
+              rc_fee_liquidator=$?
               set -e
-              for rc in $rc_settlement $rc_auth $rc_vault $rc_allow_reader $rc_settle_reader; do
+              for rc in $rc_settlement $rc_auth $rc_vault $rc_allow_reader $rc_settle_reader $rc_fee_liquidator; do
                 if [ "$rc" != "0" ] && [ "$rc" != "255" ]; then
                   echo "Slither crashed with rc=$rc (not a findings code)"
                   exit $rc
@@ -229,7 +292,8 @@ jobs:
           for f in /tmp/slither-out/settlement.json /tmp/slither-out/auth.json \
                    /tmp/slither-out/vault.json \
                    /tmp/slither-out/allowlist-reader.json \
-                   /tmp/slither-out/settlement-reader.json; do
+                   /tmp/slither-out/settlement-reader.json \
+                   /tmp/slither-out/fee-liquidator.json; do
             if [ ! -s "$f" ]; then
               echo "FAIL: $f is missing or empty -- slither did not produce output"
               exit 2
@@ -246,7 +310,8 @@ jobs:
             /tmp/slither-out/auth.json \
             /tmp/slither-out/vault.json \
             /tmp/slither-out/allowlist-reader.json \
-            /tmp/slither-out/settlement-reader.json
+            /tmp/slither-out/settlement-reader.json \
+            /tmp/slither-out/fee-liquidator.json
 
       - name: Upload Slither JSON
         if: always()
@@ -324,6 +389,10 @@ jobs:
           # -> @solana/spl-token -> buffer-layout-utils. The Solana spl-token path
           # is unreachable for Ophis, dev/test-only, not in any published tarball,
           # and NO patched release exists. (audit 2026-07)
+          # NOTE: #910's GHSA-mh99-v99m-4gvg ignore was REMOVED here -- this
+          # workspace is now actually patched (brace-expansion 5.0.8 via the
+          # ">=5.0.0 <5.0.8" override in package.json), so no suppression is
+          # needed. Only apps/docs-ophis still carries that ignore; see there.
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
 
@@ -352,8 +421,20 @@ jobs:
           # IGNORE ip GHSA-2p57-rm9w-gvfp (HIGH SSRF): transitive
           # Trezor -> socks -> ip, Node-only / browser-unreachable, no patch,
           # already pinned to latest 2.0.1. (audit 2026-06)
+          # IGNORE react-router GHSA-qwww-vcr4-c8h2 (HIGH CSRF): affects React
+          # Router RSC (React Server Components) mode ONLY; cowswap-frontend is a
+          # static client-side SPA (Cloudflare Pages, no server / no RSC) so the
+          # bypass is unreachable. Only fix is a breaking major (introduced 7.12.0,
+          # fixed 8.3.0); the app pins react-router ^7.15.1. (2026-07-24)
+          # NOTE: #910's GHSA-mh99-v99m-4gvg ignore was REMOVED here -- this
+          # workspace is now actually patched (brace-expansion 5.0.8, its only
+          # consumer being minimatch@10). The 7-day soak that motivated the
+          # suppression was handled with the procedure this workspace's own
+          # pnpm-workspace.yaml documents: temporarily name-exclude, install to
+          # pin 5.0.8 in the committed lockfile, then remove the exclusion, so
+          # frozen-lockfile installs use it without re-resolving.
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -379,8 +460,39 @@ jobs:
           if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
+          # IGNORE brace-expansion GHSA-mh99-v99m-4gvg / CVE-2026-14257 (HIGH DoS,
+          # unbounded expansion -> OOM, published 2026-07-24). This is the ONLY
+          # workspace that still needs the ignore: #910 applied it to all three,
+          # but root and apps/frontend are now genuinely ON 5.0.8 (their only
+          # consumer is minimatch@10), so their ignores were dropped.
+          #
+          # docs-ophis cannot take 5.0.8. The advisory range is `introduced 0,
+          # fixed 5.0.8`, so the only remedy is the 5.x line -- but 5.x dropped
+          # the CommonJS default export, and this workspace reaches
+          # brace-expansion@1.1.16 solely via serve-handler -> minimatch@3.1.5,
+          # whose `require('brace-expansion')` then throws
+          # `TypeError: expand is not a function` (verified against this
+          # workspace's real node_modules; it breaks the build outright).
+          #
+          # NB #910's note that "root already runs minimatch@3 on brace-expansion
+          # 5.x, so the cross-major pin is proven there" is the opposite of what
+          # happens: that pairing exists on main and is already BROKEN with the
+          # same TypeError. It is not evidence the pin is safe.
+          #
+          # Not reachable here regardless: the DoS needs an attacker-supplied
+          # brace pattern, and these globs are config-authored; the published
+          # site is static files with no Node runtime (serve is a local preview).
+          # 1.1.16 still carries the GHSA-3jxr-9vmj-r5cp fix.
+          #
+          # DATED on purpose. `--ignore GHSA:YYYY-MM-DD` fails closed once the
+          # date passes, so this suppression cannot outlive the condition that
+          # justifies it (an undated --ignore is an unconditional, permanent
+          # allow-list that would also hide a NEW, reachable occurrence of the
+          # same advisory). 2026-10-31 = a ~3-month review horizon; on expiry,
+          # re-check whether serve-handler still pulls minimatch@3 and either
+          # move to 5.0.8 or renew the date with fresh evidence.
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc"
+            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31
 
   cargo-audit:
     name: cargo audit (Rust deps)
@@ -397,7 +509,7 @@ jobs:
         # genuine, persistent install failure.
         run: |
           for attempt in 1 2 3; do
-            if cargo install --locked cargo-audit; then
+            if cargo install --locked --version 0.22.2 cargo-audit; then
               exit 0
             fi
             echo "::warning::cargo install cargo-audit failed (attempt ${attempt}/3); retrying after backoff"
@@ -485,9 +597,19 @@ jobs:
       - name: Run gitleaks
         env:
           GITLEAKS_VERSION: 8.21.2
+          # A release TAG is immutable; a release ASSET is not -- GitHub lets an
+          # owner (or a stolen PAT) delete and re-upload bytes at the identical
+          # URL with no tag change and no notification. So pin the bytes, like
+          # .github/actions/install-osv-scanner already does. Value is from the
+          # release's own gitleaks_8.21.2_checksums.txt. Bump with the version.
+          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz gitleaks
+          set -euo pipefail
+          curl -sSfL --retry 3 --retry-delay 2 -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz gitleaks
+          rm -f /tmp/gitleaks.tar.gz
           ./gitleaks detect \
             --source . \
             --config .github/gitleaks.toml \

@@ -22,6 +22,18 @@ export {
 } from './referral.js';
 
 export {
+  OPHIS_BASKET_ID_RE,
+  MAX_BASKET_SELL_TOKENS,
+  MAX_BASKET_BUY_TOKENS,
+  MAX_BASKET_LEGS,
+  assertOphisBasketId,
+  newOphisBasketId,
+  assertOphisBasketLegs,
+  buildOphisBasketMetadata,
+  type OphisBasketTag,
+} from './basket-metadata.js';
+
+export {
   getOphisOrderbookUrl,
   OPHIS_ORDERBOOK_URLS,
 } from './orderbook.js';
@@ -85,3 +97,55 @@ export {
   type OphisEthFlowParams,
   type OphisEthFlowOrder,
 } from './ethflow.js';
+
+export {
+  OPHIS_ERROR_CODES,
+  OPHIS_UNROUTABLE_CODES,
+  ophisErrorBand,
+  getOphisTraceId,
+  OphisApiError,
+  OphisUnroutableError,
+  OphisRateLimitError,
+  parseOphisApiError,
+  isUnroutable,
+  isRetryable,
+  withOphisRetry,
+  type OphisErrorBand,
+  type OphisHeadersLike,
+  type OphisErrorResponse,
+  type OphisApiErrorOptions,
+  type OphisRetryOptions,
+} from './errors.js';
+
+export {
+  MULTICALL3_ADDRESS,
+  ERC20_PREFLIGHT_ABI,
+  ophisPreflight,
+  isPreflightReady,
+  approvalNeeded,
+  OphisPreflightError,
+  type OphisMulticallCall,
+  type OphisMulticallClient,
+  type OphisPreflightRequest,
+  type OphisPreflightResult,
+} from './preflight.js';
+
+export {
+  APP_DATA_VERSION,
+  ORDER_TYPED_DATA_TYPES,
+  MAX_SLIPPAGE_BIPS,
+  MAX_PARTNER_FEE_ENTRIES,
+  deterministicStringify,
+  buildOphisFullAppData,
+  buildOrder,
+  assertChain,
+  checksum,
+  assertAtoms,
+  assertFeeAtoms,
+  extractQuoteAmounts,
+  assertLimitWithinSlippage,
+  type Address,
+  type OphisAppData,
+  type BuildOrderParams,
+  type BuiltOrder,
+} from './order-build.js';

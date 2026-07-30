@@ -13,6 +13,27 @@
 name: robinhood-nitro
 
 services:
+  blob-archive:
+    build:
+      context: .
+      dockerfile: Dockerfile.blob-archive
+    image: local/ophis-blob-archive:1
+    restart: always
+    mem_limit: 256m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:3500/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   nitro:
     # Fully-qualified tag as published by the Robinhood run-a-full-node docs
     # (verified 2026-07-21). v3.11 alone is a MOVING alias - never deploy it.
@@ -24,9 +45,12 @@ services:
     # so the VM's own Linux + dockerd keep ~4 GB. GOMEMLIMIT sits under mem_limit
     # so Go GC gets aggressive BEFORE the cgroup OOM-kills. RAM adequacy here is
     # unverified (see nitro/BRINGUP.md, risk #1) - watch RSS during the restore.
-    mem_limit: 22g
+    mem_limit: 16g
     environment:
-      GOMEMLIMIT: 18GiB
+      GOMEMLIMIT: 13GiB
+    depends_on:
+      blob-archive:
+        condition: service_healthy
     volumes:
       # VERIFIED against the running v3.11.2-3599aca image (2026-07-23): it runs as
       # user `user` (uid 1000), so the datadir is /home/USER/.arbitrum - NOT
@@ -52,7 +76,10 @@ services:
       # from-genesis sync - a standard free beacon does NOT (see README). One
       # fallback is supported; the *-service-urls flag does not exist.
       - --parent-chain.blob-client.beacon-url=${L1_BEACON_URL:?set L1_BEACON_URL in .env}
-      - --parent-chain.blob-client.secondary-beacon-url=${L1_BEACON_URL_FALLBACK:-}
+      # Blobscan permanently retains historical blobs. The local compatibility
+      # service returns only blobs requested by their L1-derived versioned hash;
+      # Nitro recomputes and checks each KZG commitment before accepting it.
+      - --parent-chain.blob-client.secondary-beacon-url=${L1_BEACON_URL_FALLBACK:-http://blob-archive:3500}
       - --chain.id=4663
       - --chain.info-files=/config/robinhood-chain-info.json
       # Low-latency tip via the Robinhood sequencer feed. Must be wss://.
@@ -90,11 +117,10 @@ services:
       # defaults to TRUE (Watchtower strategy, verified in staker source), which
       # runs a needless L1-watching loop and noise. Disable it.
       - --node.staker.enable=false
-      # A non-sequencer node HARD-REQUIRES a tx forwarding target or it fatals at
-      # boot ("ForwardingTarget not set and not sequencer"). This node serves
-      # trace/reads for eRPC and does not relay user txs, so disable forwarding
-      # explicitly. (Set the sequencer URL here instead if it ever must relay.)
-      - --execution.forwarding-target=null
+      # The driver submits through eRPC, which may select this node for
+      # eth_sendRawTransaction. Forward writes to Robinhood's public sequencer
+      # gateway; keeping this non-null is settlement-critical.
+      - --execution.forwarding-target=${ROBINHOOD_TX_FORWARDING_TARGET:?set ROBINHOOD_TX_FORWARDING_TARGET in nitro/.env}
       # Memory safety valve on a RAM-constrained host (~26 GB WSL2 VM). Nitro's
       # mem-free-limit ships DISABLED; set it so the node sheds load instead of
       # OOM-killing when free memory runs low (e.g. concurrent traces from eRPC).
@@ -140,9 +166,6 @@ services:
       ophis-rbh-net:
         aliases:
           - ophis-rbh-node
-
-# No named volumes: the datadir is a bind mount to an ext4 path inside the distro
-# (on D:), so the snapshot can be extracted directly into it. See BRINGUP.md.
 
 # Shared external network so the eRPC proxy (../docker-compose.yml, a separate compose
 # project) resolves this node as `ophis-rbh-node:8547` container-to-container — the node

@@ -29,10 +29,18 @@ jobs:
         #   - apps/frontend/   (cowswap-frontend + cow-fi)
         #   - apps/rebate-indexer/
         #   - packages/sdk/
+        # Python covers the 18 tracked .py files, none of which are in
+        # paths-ignore. That includes three CI security gates
+        # (scripts/osv-gate.py, scripts/check-infra-compose-security.py,
+        # scripts/slither-baseline.py), the per-chain
+        # infra/*/assert-erpc-failclosed.py assertions, and the partner
+        # integration adapters that build swap requests.
         include:
           - language: javascript-typescript
             build-mode: none
           - language: actions
+            build-mode: none
+          - language: python
             build-mode: none
     steps:
       # SHA-pin every action per repo policy (see security.yml). Mutable

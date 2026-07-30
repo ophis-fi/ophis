@@ -122,6 +122,9 @@ Known production references (update **all**; the byte-array one is the backend):
 
 **Custody / monitoring (sweep + drift), or fees keep flowing to the old Safe:**
 - `contracts/script/SweepSettlementBuffer.s.sol` (`DEFAULT_SAFE`)
+- `contracts/script/DeployFeeLiquidator.s.sol` (`DEFAULT_FEE_SAFE`) AND the
+  deployed `OphisFeeLiquidator` itself (immutable pin, step 2 of the
+  procedure: redeploy + re-ceremony, old contract evicted)
 - `infra/optimism-mainnet/scripts/sweep-to-safe.sh`,
   `infra/optimism-mainnet/scripts/check-settlement-buffer.sh`,
   `infra/optimism-mainnet/scripts/verify-e2e-swap.sh`,
@@ -151,10 +154,27 @@ migration; it documents the Safe at seed time).
 
 1. **Sweep first.** Run the OP settlement-buffer sweep so accrued fees land in
    the **currently-controlled** Safe before anything changes
-   (`infra/optimism-mainnet/scripts/sweep-to-safe.sh`). If the old Safe is
-   compromised, sweep with `SAFE=<new-address>` instead so the buffer goes
-   straight to the replacement.
-2. **One reviewed change adds (does not yet replace) the recipient.** In a single
+   (`infra/optimism-mainnet/scripts/sweep-to-safe.sh`). NOTE the v2 runner
+   sweeps through `OphisFeeLiquidator`, whose destination is **immutable**:
+   it can only ever pay the OLD Safe. If the old Safe is compromised, do NOT
+   use the v2 runner; use the DR fallback
+   (`contracts/script/SweepSettlementBuffer.s.sol` with `SAFE=<new-address>`
+   and the driver-submitter key) so the buffer goes straight to the
+   replacement, and have the guardian evict the old liquidator contract
+   (`AllowListGuardian.removeSolver`) so nobody can sweep to the hostile
+   Safe in the meantime.
+2. **Redeploy the fee liquidator (MANDATORY, not polish).**
+   `OphisFeeLiquidator.feeSafe` is an immutable constructor pin (by design:
+   the sweep destination is not a config knob). Rotating the fee Safe
+   therefore REQUIRES deploying a NEW `OphisFeeLiquidator` with the new Safe
+   and walking the full ceremony in
+   `fee-treasury-ops-runbook.md` (deploy, verify pins, 24h timelock
+   `addSolver`, watcher-SET update), plus a guardian `removeSolver` of the
+   OLD liquidator contract. The 24h timelock latency is on the critical path
+   of a planned rotation: START THIS STEP FIRST. During the gap, sweeps run
+   via the DR fallback only. Definition of done for the rotation includes
+   the old liquidator evicted and the new one live.
+3. **One reviewed change adds (does not yet replace) the recipient.** In a single
    PR, update every file from the grep above: **add** the new address to
    `PARTNER_FEE_RECIPIENT_ALLOWLIST` (raw bytes) **while keeping the old entry**
    (so in-flight and not-yet-migrated orders stay accepted), and flip the
@@ -164,7 +184,7 @@ migration; it documents the Safe at seed time).
    **Do not hot-patch the production allowlist out of band.** The allowlist is the
    enforcement boundary, so widening it must go through review like any other
    recipient change, that auditability is the whole point of the constant.
-3. **Local gates:**
+4. **Local gates:**
 
    ```bash
    bash scripts/check-partner-fee-invariant.sh            # exit 0
@@ -173,23 +193,23 @@ migration; it documents the Safe at seed time).
    pnpm -C packages/sdk test
    ```
 
-4. **PR** with pre-merge Codex + all security tools (treat as an external-API /
+5. **PR** with pre-merge Codex + all security tools (treat as an external-API /
    on-chain-config change). The `Partner-fee cross-workspace invariant` gate runs
    in CI.
-5. **Merge, then deploy backend-first.** The reviewed OP backend (allowlist now
+6. **Merge, then deploy backend-first.** The reviewed OP backend (allowlist now
    holds **both** old + new) → frontend (swap.ophis.fi) → republish `@ophis/sdk`
    (bump patch; `npm-ophis-token` Keychain) → redeploy/restart the rebate-indexer
    (`ophis-rebates-vm`) → update the deployed sweep config + the cron drift
    monitor. Backend-first means a new-recipient order is accepted the instant the
    frontend starts emitting it, while the old recipient keeps working throughout.
-6. **Integrator migration window (planned rotations, do not skip).** `@ophis/sdk`
+7. **Integrator migration window (planned rotations, do not skip).** `@ophis/sdk`
    is a **public npm package**; external agents build their own orders with
    `buildOphisAppDataPartnerFee` and keep emitting the **old** recipient until
    they upgrade. Announce the new recipient and a deprecation cutoff for the old
    one, and **monitor for orders still carrying the old recipient** (appData
    recipient in the orderbook / autopilot logs). Keep the old recipient
    allowlisted for the whole window.
-7. **Retire the old recipient (second reviewed change).** Open a second PR that
+8. **Retire the old recipient (second reviewed change).** Open a second PR that
    **removes** the old address from `PARTNER_FEE_RECIPIENT_ALLOWLIST`, merge it,
    and redeploy the OP backend so only the new Safe is accepted. Timing depends on
    the trigger:
@@ -197,10 +217,10 @@ migration; it documents the Safe at seed time).
      old-recipient orders have stopped. Removing it earlier rejects not-yet-migrated
      SDK integrators.
    - **Compromise:** the old Safe is hostile, so every order still paying it is a
-     loss. Retire the old recipient **as soon as the new path is live** (step 5),
+     loss. Retire the old recipient **as soon as the new path is live** (step 6),
      accepting that in-flight and un-migrated orders are rejected until clients
      upgrade. Communicate the forced cutoff urgently.
-8. **Secure the old Safe.** If it was compromised, moving its remaining balance is
+9. **Secure the old Safe.** If it was compromised, moving its remaining balance is
    a separate Safe transaction handled by the signers, out of scope of this code
    rotation.
 

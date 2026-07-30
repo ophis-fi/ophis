@@ -1,0 +1,101 @@
+name: Publish @ophis/agent-skills to npm
+
+# Publishes packages/agent-skills to npm on a `skills-v*` tag (e.g.
+# `skills-v0.1.0`). Mirrors sdk-release.yml. The package ships no code: it is
+# the agent-skill family served at ophis.fi/.well-known/agent-skills/ophis/,
+# staged at build time by scripts/package-agent-skills.mjs (byte-for-byte
+# copies, digest-verified against the hosted discovery manifest, never
+# content-forked into the package directory). Requires the repo secret
+# NPM_TOKEN (an npm automation token with publish rights to the @ophis scope).
+# Provenance is attested via OIDC (id-token: write). Runs only on a release
+# tag, so it costs near-zero minutes.
+#
+# Security: the only secret (NPM_TOKEN) is passed via env: (never inline in a
+# run:), no untrusted github.event.* input is interpolated, and all actions are
+# pinned to commit SHAs.
+
+on:
+  push:
+    tags:
+      - 'skills-v*'
+
+permissions:
+  contents: read
+  id-token: write # npm provenance attestation
+
+jobs:
+  publish:
+    name: stage + verify + publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      # Bind the published version to the reviewed tag: the skills-v<x.y.z> tag
+      # suffix must equal packages/agent-skills/package.json `version` (which
+      # the staging script in turn pins to the umbrella SKILL.md frontmatter
+      # version, so one string flows tag -> package -> skill). The tag is read
+      # from the GITHUB_REF_NAME env var (never interpolated into the shell) to
+      # avoid expression injection.
+      - name: verify tag matches package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          PKG_VERSION="$(node -p "require('./packages/agent-skills/package.json').version")"
+          TAG_VERSION="${TAG#skills-v}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $TAG (version $TAG_VERSION) != package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+          echo "tag matches package version $PKG_VERSION"
+
+      # --ignore-scripts: do NOT run third-party dependency lifecycle scripts
+      # during install in this token-bearing publish job (pnpm 9 runs them by
+      # default). The staging build is invoked explicitly below, so disabling
+      # dependency install scripts is safe and removes a supply-chain code-exec
+      # surface on the runner that holds NPM_TOKEN.
+      - name: install
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Stage the package from the canonical family: digest-verified copies +
+      # the family slice of the discovery manifest + the LICENSE with the
+      # retained upstream notice. Any drift (stale digest, missing notice,
+      # version mismatch with the umbrella skill) fails here.
+      - name: build
+        run: pnpm --filter @ophis/agent-skills build
+
+      # The static agent-skills suite: the cross-source invariant gate (policy
+      # addresses / hosts / fee literals / cancellation type hashes pinned
+      # against @ophis/sdk and the backend model crate), the digest +
+      # completeness gate, and frontmatter shape checks.
+      - name: test
+        run: pnpm --filter @ophis/agent-skills test
+
+      # A docs-only package's remaining failure mode is a malformed tarball
+      # (sdk-release.yml needs no equivalent: tsc failing the build covers it
+      # there). The shared gate derives the expected pack list from the staged
+      # manifest (no hand-maintained file list in this workflow) and the
+      # agent-skills-ci static lane runs the SAME script, so a family change
+      # that alters the pack list fails at merge time, not here on release day.
+      - name: verify tarball contents
+        run: node scripts/verify-agent-skills-tarball.mjs
+
+      # --ignore-scripts here too: the staging is already built explicitly
+      # above, so publish must NOT re-run prepublishOnly inside this step where
+      # NODE_AUTH_TOKEN is in env. Publishing the pre-built artifact with no
+      # lifecycle scripts removes the last untrusted-code window next to the
+      # token.
+      - name: publish
+        run: pnpm --filter @ophis/agent-skills publish --no-git-checks --access public --provenance --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

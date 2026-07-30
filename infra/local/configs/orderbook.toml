@@ -17,3 +17,13 @@ estimators = [[{ type = "Driver", name = "baseline", url = "http://driver/baseli
 
 [order-quoting]
 price-estimation-drivers = [{ name = "baseline", url = "http://driver/baseline" }]
+
+# Orderbook-native rate limiter (api-dx decision 10). SHIPS DISABLED (see the
+# mainnet configs for the coordinated docs-table + limiter flip rule). No
+# Cloudflare fronts the local stack, so CF-Connecting-IP is client-controlled
+# here and must not be trusted.
+[api.rate-limit]
+enabled = false
+requests-per-second = 5
+burst = 20
+trust-cf-connecting-ip = false

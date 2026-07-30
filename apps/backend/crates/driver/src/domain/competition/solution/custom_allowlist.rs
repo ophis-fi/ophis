@@ -24,6 +24,36 @@
 //! added here in the same PR — verified independently against upstream
 //! docs, NOT taken from an API response (that's the attack vector this
 //! gate prevents).
+//!
+//! ## What counts as verification (2026-07-26)
+//!
+//! `eth_getCode` is NOT verification. It proves only that *some* bytecode
+//! exists at an address — never who deployed or controls it. An attacker
+//! able to poison an API response could deploy a same-shaped contract at
+//! the address they returned. An explorer's "verified source" plus a
+//! contract *name* is likewise insufficient: these routers are open
+//! source, so anyone can deploy and verify a copy under the same name.
+//!
+//! Acceptable bases for an entry, in order of preference:
+//!   1. The upstream's canonical deployment records (e.g. LI.FI publishes
+//!      `deployments/<network>.json` at github.com/lifinance/contracts;
+//!      KyberSwap and Velora publish per-chain address docs).
+//!   2. A byte-for-byte match with an address ALREADY allowlisted for
+//!      another chain from source (1) — a poisoned response cannot
+//!      introduce a NEW address that way, only agree with a trusted one.
+//!      This is why the CREATE2-deterministic KyberSwap / Velora / Enso /
+//!      OpenOcean entries are sound.
+//! On-chain and API evidence is corroboration that a contract is deployed
+//! and in use — never the basis for trusting it.
+//!
+//! PROVENANCE AUDIT STATUS: the LI.FI entries (chains 10 / 130 / 4663) were
+//! re-authenticated against LI.FI's canonical repo on 2026-07-26 and all
+//! three matched. NOT yet re-authenticated to standard (1) or (2): the OKX
+//! router/spender pair, the Odos routers, and the DODO router/approve-proxy
+//! pair, whose notes still cite an API response plus a code-size check.
+//! Their addresses may well be correct — the point is the recorded basis is
+//! not sufficient. Re-authenticate them from upstream sources before
+//! relying on them further.
 
 use {
     crate::domain::competition::solution::interaction,
@@ -85,6 +115,7 @@ const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
     (130, UNICHAIN_MAINNET),
     (999, HYPEREVM_MAINNET),
+    (4663, ROBINHOOD_MAINNET),
 ];
 
 /// Optimism mainnet (chain 10). Verified against upstream docs.
@@ -119,7 +150,14 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
     address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
     // LI.FI LiFiDiamond on Optimism (10) -- tx.to == approvalAddress.
-    // Per-chain diamond; verified 2026-07-06 via li.quest (5176 B).
+    // Per-chain diamond. Provenance upgraded 2026-07-26: previously recorded as
+    // "verified via li.quest + code size", which is API-plus-existence and does
+    // NOT establish control (see the note on LIFI_ROUTER_ALLOWLIST). Now
+    // AUTHENTICATED against LI.FI's canonical deployment records --
+    // github.com/lifinance/contracts @ 24b24e0f112e542d3992aa42de31c31f6c84dc4c (immutable commit, not a mutable
+    // branch path), deployments/optimism.json -> LiFiDiamond matches this
+    // address exactly. Address unchanged; only the basis for trusting it is
+    // now sound.
     address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
     // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
     // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).
@@ -139,6 +177,44 @@ const OPTIMISM_MAINNET: &[Address] = &[
 const HYPEREVM_MAINNET: &[Address] = &[
     // KyberSwap MetaAggregationRouterV2 (same CREATE2 address as OP).
     address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+];
+
+/// Robinhood mainnet (chain 4663). KyberSwap + LI.FI as of 2026-07-26. Velora
+/// and Odos explicitly do NOT support 4663 (both return an unsupported-network
+/// error listing their chains); OKX is parked. When another aggregator adds
+/// 4663, append its router/spender here after upstream verification.
+///
+/// NOTE: the LI.FI entry is a per-chain LiFiDiamond address (as on Optimism) —
+/// the Unichain diamond has no code on 4663, so its address does not carry over.
+const ROBINHOOD_MAINNET: &[Address] = &[
+    // OphisUniswapV4Adapter V1. Deterministic CREATE2 deployment through the
+    // canonical 0x4e59 deployer with salt
+    // keccak256("OPHIS_ROBINHOOD_UNISWAP_V4_ADAPTER_V1"). Its immutable
+    // constructor pins Settlement, Uniswap PoolManager, WETH, and USDG; only
+    // Settlement can call it and output can only return to Settlement.
+    address!("8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae"),
+    // KyberSwap MetaAggregationRouterV2. Router == ERC-20 spender.
+    // AUTHENTICATION: this is byte-for-byte the SAME CREATE2-deterministic
+    // address already allowlisted above for OP / HyperEVM / Unichain, each
+    // sourced from KyberSwap's canonical contracts-and-addresses docs. That
+    // prior-verified match is what justifies the entry — a poisoned routes
+    // response could not introduce a NEW address here, only agree with one we
+    // already trust. `cast code` on 4663 (13,724 bytes) and a live routes query
+    // (0.1 WETH -> 191.09 USDG) are corroboration that it is deployed and used
+    // on this chain, not the basis for trusting it.
+    // Load-bearing for the same reason as Unichain: KyberSwap routes Uniswap v4,
+    // where Robinhood's stock/stable liquidity lives and which baseline cannot read.
+    address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+    // LiFiDiamond on Robinhood — serves as both `tx.to` and ERC-20 spender.
+    // AUTHENTICATED 2026-07-26 against LI.FI's canonical public deployment
+    // records (github.com/lifinance/contracts -> deployments/robinhood.json,
+    // LiFiDiamond; config/networks.json confirms robinhood == chainId 4663),
+    // which is independent of the quote endpoint this gate defends against.
+    // On-chain/API evidence (verified LiFiDiamond with LI.FI facets on
+    // Blockscout, 254-byte proxy, live quote match) is corroboration only:
+    // eth_getCode proves existence, never control. Matches the solver-level
+    // LIFI_ROUTER_ALLOWLIST.
+    address!("B477751B76CF82d00a686A1232f5fCD772414Af3"),
 ];
 
 /// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +

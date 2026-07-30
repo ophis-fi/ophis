@@ -89,6 +89,7 @@ test('/stats returns public cumulative JSON for an API client', async () => {
       sovereignChains: [
         { chainId: 10, solvers: 4 },
         { chainId: 130, solvers: 8 },
+        { chainId: 4663, solvers: 1 },
       ],
       hostedChains: 'CoW Protocol solver network',
     },
@@ -124,7 +125,7 @@ test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, 
   expect(body.appCode).toBe('acme-dapp');
   expect(typeof body.disclaimer).toBe('string');
   expect(body.disclaimer).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
-  expect(body.sovereignChains).toEqual([10, 130]);
+  expect(body.sovereignChains).toEqual([10, 130, 4663]);
   expect(body.routedVolumeUsd).toMatchObject({ total: 0, sovereign: 0, hosted: 0 });
   expect(body.ownFeeAccruedUsd).toMatchObject({ sovereignGuaranteed: 0, hostedAccrued: 0 });
   expect(body.referral.registered).toBe(false);

@@ -418,7 +418,12 @@ impl Orderbook {
         };
 
         if let Some(full_app_data) = full_app_data {
-            let validated_app_data = Validator::new(usize::MAX)
+            // Read path (replaced-order lookup): use the permissive recipient
+            // policy so a stored order always parses. Partner-fee recipient
+            // enforcement happens at ingress via the registry-aware validator;
+            // re-enforcing it here would let a later suspension brick an order
+            // that already passed ingress.
+            let validated_app_data = Validator::permissive(usize::MAX)
                 .validate(full_app_data.as_bytes())
                 .map_err(AddOrderError::InvalidAppData)?;
 
@@ -611,6 +616,20 @@ impl Orderbook {
             OrderEventLabel::Invalid => dto::order::Status::Open,
         };
         Ok(status)
+    }
+
+    /// The on-chain settlement transaction hash for an order, when it has
+    /// been traded and indexed. Used by pathviz to fetch the settlement
+    /// receipt for the venue column.
+    pub async fn settlement_tx_hash(&self, uid: &OrderUid) -> Result<Option<B256>> {
+        let trades = self
+            .database
+            .trades(&TradeFilter {
+                owner: None,
+                order_uid: Some(*uid),
+            })
+            .await?;
+        Ok(trades.first().and_then(|trade| trade.tx_hash))
     }
 
     fn parse_interactions_and_wrappers(
@@ -827,7 +846,7 @@ mod tests {
 
         let database_replica = database.clone();
         let app_data = Arc::new(crate::app_data::Registry::new(
-            Validator::new(8192),
+            Validator::permissive(8192),
             database.clone(),
             None,
         ));

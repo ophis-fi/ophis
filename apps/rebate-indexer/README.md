@@ -21,15 +21,19 @@ See [`RUNBOOK.md`](./RUNBOOK.md) for incident response.
 
 ## GitHub secrets required for deploy
 
-The deploy workflow builds the Docker image on the VM via `docker compose up --build`,
-so no container registry credential is required. Just SSH:
+The deploy workflow joins the tailnet as an ephemeral `tag:ci` node and builds
+the Docker image on Cadia via `docker compose up --build`, so no container
+registry credential is required. Configure these secrets in the `production`
+GitHub environment:
 
 | Secret | Source | Notes |
 |---|---|---|
-| `ALEPH_REBATES_SSH_KEY` | locally `ssh-keygen -t ed25519 -f <deploy-key>` | put the public key in the VM's `~/.ssh/authorized_keys`; the private half is this secret |
-| `ALEPH_REBATES_SSH_HOST` | Aleph dashboard | the VM's reachable IP or hostname |
-| `ALEPH_REBATES_SSH_USER` | n/a | typically `root` on Aleph VMs |
-| `ALEPH_REBATES_SSH_PORT` | Aleph dashboard | the SSH port (Aleph maps :22 → a high port like `<ssh-port>`) |
+| `TS_AUTHKEY` | Tailscale admin console | ephemeral, pre-authorized auth key permitted to use `tag:ci` |
+| `CADIA_REBATES_SSH_PRIVATE_KEY` | dedicated deploy key | private half of the key whose public half is in Cadia's `~/.ssh/authorized_keys` |
+| `CADIA_REBATES_SSH_HOST` | `tailscale ip -4` on Cadia | Cadia's Tailscale IPv4 address; the SSH listener is bound only to this address |
+| `CADIA_REBATES_SSH_USER` | Cadia operator configuration | unprivileged deploy user with access to `/srv/ophis` and Docker |
+| `CADIA_REBATES_SSH_PORT` | Cadia sshd configuration | tailnet-only deploy listener port (`2222` currently) |
+| `CADIA_REBATES_SSH_HOST_KEY` | `ssh-keyscan -p <port> <host>` over Tailscale | complete pinned `known_hosts` line, including `[host]:port` |
 
 The `.env` file on the VM is **not** synced by the deploy workflow — it lives at
 `/srv/ophis/apps/rebate-indexer/.env` and is managed out-of-band (operator updates

@@ -106,7 +106,7 @@ const config: Config = {
         name: 'Ophis',
         url: 'https://ophis.fi',
         logo: 'https://docs.ophis.fi/img/ophis-icon.svg',
-        sameAs: ['https://github.com/ophis-fi/ophis', 'https://x.com/ophisfi'],
+        sameAs: ['https://github.com/ophis-fi/ophis', 'https://x.com/ophisfi', 'https://t.me/ophisfi'],
       }),
     },
   ],
@@ -136,7 +136,7 @@ const config: Config = {
           priority: 0.5,
           // /search is a utility page (local lunr search), not content; without
           // this it was advertised as the sitemap's first URL.
-          ignorePatterns: ['/search'],
+          ignorePatterns: ['**/search/**'],
         },
       } satisfies Preset.Options,
     ],
@@ -238,7 +238,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Best-execution, MEV-protected trading across 12 EVM chains. © Ophis ${new Date().getFullYear()}.`,
+      copyright: `Best-execution, MEV-protected trading across 13 EVM chains. © Ophis ${new Date().getFullYear()}.`,
     },
     prism: {
       theme: prismThemes.oneLight,

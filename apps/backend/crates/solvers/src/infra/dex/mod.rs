@@ -13,6 +13,7 @@ pub mod odos;
 pub mod okx;
 pub mod openocean;
 pub mod simulator;
+pub mod uniswap_v4;
 pub mod velora;
 
 pub use self::simulator::Simulator;
@@ -28,6 +29,7 @@ pub enum Dex {
     Dodo(Box<dodo::Dodo>),
     Lifi(Box<lifi::Lifi>),
     Enso(Box<enso::Enso>),
+    UniswapV4(Box<uniswap_v4::UniswapV4>),
 }
 
 impl Dex {
@@ -57,6 +59,7 @@ impl Dex {
             Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
             Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
             Dex::Enso(enso) => enso.swap(order, slippage).await?,
+            Dex::UniswapV4(uniswap) => uniswap.swap(order, slippage, is_quote).await?,
         };
         Ok(swap)
     }
@@ -224,6 +227,16 @@ impl From<enso::Error> for Error {
             enso::Error::OrderNotSupported => Self::OrderNotSupported,
             enso::Error::NotFound => Self::NotFound,
             enso::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<uniswap_v4::Error> for Error {
+    fn from(err: uniswap_v4::Error) -> Self {
+        match err {
+            uniswap_v4::Error::OrderNotSupported => Self::OrderNotSupported,
+            uniswap_v4::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }

@@ -42,6 +42,7 @@ describe('OPHIS_ETHFLOW_ADDRESSES', () => {
   it('uses the Ophis-operated override for OP + Unichain and canonical for CoW-hosted', () => {
     expect(OPHIS_ETHFLOW_ADDRESSES[10]).toBe(OP_ETHFLOW);
     expect(OPHIS_ETHFLOW_ADDRESSES[130]).toBe('0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7'); // Unichain EthFlow (verified on-chain)
+    expect(OPHIS_ETHFLOW_ADDRESSES[4663]).toBe('0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29'); // Robinhood EthFlow (verified on-chain)
     expect(OPHIS_ETHFLOW_ADDRESSES[1]).toBe(CANONICAL);
     expect(OPHIS_ETHFLOW_ADDRESSES[8453]).toBe(CANONICAL);
     expect(OPHIS_ETHFLOW_ADDRESSES[42161]).toBe(CANONICAL);
@@ -66,6 +67,7 @@ describe('OPHIS_ETHFLOW_ADDRESSES', () => {
 describe('isOphisEthFlowChain / getOphisEthFlowAddress', () => {
   it('is true for supported chains, false for unsupported (incl. 999/4326)', () => {
     expect(isOphisEthFlowChain(10)).toBe(true);
+    expect(isOphisEthFlowChain(4663)).toBe(true);
     expect(isOphisEthFlowChain(8453)).toBe(true);
     expect(isOphisEthFlowChain(999)).toBe(false); // HyperEVM: no live orderbook
     expect(isOphisEthFlowChain(4326)).toBe(false); // MegaETH

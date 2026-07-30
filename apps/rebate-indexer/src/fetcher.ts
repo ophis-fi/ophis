@@ -39,6 +39,10 @@ export interface PendingTrade {
   /** Referral code from appData (metadata.ophisReferrer.code), normalized +
    *  grammar-validated, or null when absent/malformed. */
   appdataRefCode: string | null;
+  /** Basket id from appData (metadata.ophisBasket.id), grammar-validated (32-hex),
+   *  or null when the order was not a basket leg. Pure analytics passthrough:
+   *  groups the legs of one basket for after-the-fact volume measurement. */
+  basketId: string | null;
   /** Gross volume-fee rate (bps) from appData metadata.partnerFee.volumeBps,
    *  clamped to [1, GROSS_FEE_BPS]; null when absent/unreadable (accrual then
    *  treats it as the legacy retail rate). */
@@ -224,6 +228,8 @@ const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Ob
   // verified on-chain: EthFlow.cowSwapSettlement() == Ophis Unichain settlement, 2026-06-30). The
   // chain is LIVE, so native-ETH sells must index here or their rebates silently never accrue.
   130: '0x38c03729153bccf6a281daf41d7c6a14c543f1d7',
+  // Robinhood (4663): Ophis-deployed eth-flow, live from block 21,574,754.
+  4663: '0xc1ee77e8a1b85d5eed702a9bb435f434408a4d29',
 });
 /** Lowercased owner addresses for O(1) "is this an Ophis eth-flow contract" checks. */
 const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ETHFLOW_OWNER_BY_CHAIN));
@@ -293,6 +299,7 @@ export function attributeOrder(
 ): PendingTrade | null {
   let appCode: AppCode | undefined;
   let appdataRefCode: string | null = null;
+  let basketId: string | null = null;
   let volumeFeeBps: number | null = null;
   let ownFee: { bps: number; recipient: `0x${string}` } | null = null;
   try {
@@ -302,6 +309,7 @@ export function attributeOrder(
         widget?: { appCode?: unknown };
         ophisReferrer?: { code?: unknown };
         referrer?: { code?: unknown };
+        ophisBasket?: { id?: unknown };
       };
     };
     const lower = (v: unknown): string | undefined => (typeof v === 'string' ? v.toLowerCase() : undefined);
@@ -351,6 +359,15 @@ export function attributeOrder(
     ) {
       appdataRefCode = topAppCode;
     }
+    // Basket (multi-order) passthrough: metadata.ophisBasket.id groups the legs
+    // of one basket. Pure analytics, NO fee gate (it earns no rebate), unlike
+    // the referral code above. Grammar-validated to the 32-hex basket-id shape
+    // (mirror of packages/sdk/src/basket-metadata.ts OPHIS_BASKET_ID_RE); a
+    // malformed value is dropped to NULL rather than stored.
+    const rawBasket = m?.metadata?.ophisBasket?.id;
+    if (typeof rawBasket === 'string' && /^[0-9a-f]{32}$/.test(rawBasket)) {
+      basketId = rawBasket;
+    }
   } catch {
     appCode = undefined;
   }
@@ -382,6 +399,7 @@ export function attributeOrder(
     buyAmount: ctx.executedBuy,
     appCode,
     appdataRefCode,
+    basketId,
     volumeFeeBps,
     // API attribution runs under the owner-allowlist, so its fee is authoritative. The
     // settle() decoder overrides this to false for a discovery (catalog-only) row.
@@ -629,6 +647,9 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             appCode: r.appCode,
             partnerFeeWei: null,
             appdataRefCode: r.appdataRefCode,
+            // basket_id is written on INSERT only (first-index-wins), NOT in the
+            // on-conflict set below, mirroring appdata_ref_code's immutability.
+            basketId: r.basketId,
             volumeFeeBps: r.volumeFeeBps,
             feeVerified: r.feeVerified,
             ownFeeBps: r.ownFeeBps,

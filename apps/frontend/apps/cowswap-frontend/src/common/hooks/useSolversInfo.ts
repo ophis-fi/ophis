@@ -5,6 +5,13 @@ import { isBarnBackendEnv } from '@cowprotocol/common-utils'
 import { SolverInfo, solversInfoAtom } from '@cowprotocol/core'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
+import {
+  getOphisSolversForChain,
+  ophisSolverPublicDescription,
+  ophisSolverPublicLabel,
+  OphisStaticSolverInfo,
+} from 'ophis/solvers'
+
 export function useSolversInfo(chainId: SupportedChainId): Record<string, SolverInfo> {
   const allSolversInfo = useAtomValue(solversInfoAtom)
 
@@ -12,7 +19,7 @@ export function useSolversInfo(chainId: SupportedChainId): Record<string, Solver
     // Filters by 'staging' for non-prod (dev/local/"barn") environments because the `solversInfoAtom` data (via CMS mapping) uses 'staging' for these cases.
     const envToFilter = isBarnBackendEnv ? 'staging' : 'prod'
 
-    return allSolversInfo.reduce<Record<string, SolverInfo>>((acc, info) => {
+    const cmsSolvers = allSolversInfo.reduce<Record<string, SolverInfo>>((acc, info) => {
       if (
         info.solverNetworks.some(
           ({ env: solverEnv, chainId: solverChainId }) => solverEnv === envToFilter && solverChainId === chainId,
@@ -23,5 +30,34 @@ export function useSolversInfo(chainId: SupportedChainId): Record<string, Solver
 
       return acc
     }, {})
+
+    // Ophis: sovereign chains (self-hosted orderbook) are unknown to the CoW
+    // CMS, so backfill from the static registry. The CMS wins on collision;
+    // registry entries only fill the gaps.
+    return getOphisSolversForChain(chainId).reduce<Record<string, SolverInfo>>((acc, staticInfo) => {
+      const key = staticInfo.solverId.toLowerCase()
+
+      if (!acc[key]) {
+        acc[key] = staticSolverToSolverInfo(staticInfo)
+      }
+
+      return acc
+    }, cmsSolvers)
   }, [chainId, allSolversInfo])
+}
+
+function staticSolverToSolverInfo(staticInfo: OphisStaticSolverInfo): SolverInfo {
+  return {
+    // Internal id kept for CMS matching and attribution; the rendered strings
+    // below come from the display-alias layer so no competitor brand leaks.
+    solverId: staticInfo.solverId,
+    displayName: ophisSolverPublicLabel(staticInfo.solverId),
+    description: ophisSolverPublicDescription(staticInfo.solverId),
+    // Both envs: the sovereign orderbook has no barn counterpart, and local/dev
+    // builds filter by 'staging', so a prod-only entry would vanish there.
+    solverNetworks: staticInfo.chainIds.flatMap((solverChainId) => [
+      { chainId: solverChainId as SupportedChainId, env: 'prod' as const },
+      { chainId: solverChainId as SupportedChainId, env: 'staging' as const },
+    ]),
+  }
 }

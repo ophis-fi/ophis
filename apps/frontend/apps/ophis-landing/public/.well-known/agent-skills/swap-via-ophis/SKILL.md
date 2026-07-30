@@ -69,3 +69,12 @@ monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package e
   Always resolve the per-chain settlement domain via `list_chains` or the SDK.
 - Ophis intentionally does not implement HTTP-native payment automation; the
   user's wallet signature is the trust boundary.
+
+## The full skill family
+
+For shell-capable agents (curl, jq, Foundry's cast) there is a complete
+Ophis skill family, quote / swap / order status / cancel / surplus report,
+with a machine-readable contract-pinning policy, at
+https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md (per-file sha256
+digests in https://ophis.fi/.well-known/agent-skills/index.json). This page
+stays as the compact MCP-first overview.

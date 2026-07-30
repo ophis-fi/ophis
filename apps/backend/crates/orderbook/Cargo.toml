@@ -43,11 +43,13 @@ humantime = { workspace = true }
 humantime-serde = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 model = { workspace = true }
+moka = { workspace = true, features = ["future", "sync"] }
 multibase = { workspace = true }
 num = { workspace = true }
 number = { workspace = true }
 observe = { workspace = true }
 order-validation = { workspace = true }
+pathviz = { workspace = true }
 price-estimation = { workspace = true }
 prometheus = { workspace = true }
 prometheus-metric-storage = { workspace = true }
@@ -73,8 +75,11 @@ tower = { workspace = true }
 tower-http = { workspace = true, features = ["cors", "trace"] }
 tracing = { workspace = true }
 url = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
+alloy-signer = { workspace = true }
+alloy-signer-local = { workspace = true }
 configs = { workspace = true, features = ["test-util"] }
 mockall = { workspace = true }
 shared = { workspace = true, features = ["test-util"] }

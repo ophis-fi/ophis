@@ -839,6 +839,14 @@ impl EthFlowTradeIntent {
             sell_token_balance: SellTokenSource::Erc20,
             price_quality: PriceQuality::Optimal,
             timeout: Default::default(),
+            // Added by #924 (pathviz Wave 2). This helper models the quote
+            // request the FRONTEND builds for an EthFlow trade, which does not
+            // ask for a path visualization, so all three stay off. They carry
+            // #[serde(default)] on the wire, but a struct literal must still
+            // name them — which is why #924 broke this file's compilation.
+            path_viz: false,
+            path_viz_image: false,
+            path_viz_image_config: None,
         }
     }
 }

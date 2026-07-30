@@ -6021,6 +6021,8 @@ version = "0.1.0"
 dependencies = [
  "account-balances",
  "alloy",
+ "alloy-signer",
+ "alloy-signer-local",
  "anyhow",
  "app-data",
  "async-trait",
@@ -6047,11 +6049,13 @@ dependencies = [
  "mimalloc",
  "mockall",
  "model",
+ "moka",
  "multibase",
  "num",
  "number",
  "observe",
  "order-validation",
+ "pathviz",
  "poison-recovery",
  "price-estimation",
  "prometheus",
@@ -6077,6 +6081,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "url",
+ "uuid",
  "vergen",
 ]
 
@@ -6148,6 +6153,16 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "pathviz"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "model",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "pbkdf2"
