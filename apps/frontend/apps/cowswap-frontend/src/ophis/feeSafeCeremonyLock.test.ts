@@ -100,8 +100,9 @@ describe('Robinhood fee Safe ceremony lock', () => {
       nonce: null,
       nonceProvisional: true,
     })
+    const rejection = expect(resolution).rejects.toThrow('newer ceremony transaction lock')
     await jest.runAllTimersAsync()
-    await expect(resolution).rejects.toThrow('newer ceremony transaction lock')
+    await rejection
     jest.useRealTimers()
   })
 })
