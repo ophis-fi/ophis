@@ -41,30 +41,44 @@
   const normalizeAddresses = (addresses) => addresses.map((address) => address.toLowerCase()).sort()
   const sameAddresses = (actual, expected) =>
     JSON.stringify(normalizeAddresses(actual)) === JSON.stringify(normalizeAddresses(expected))
-  let pendingTransactionHash = null
+  let pendingTransaction = null
 
-  function readPendingTransactionHash() {
+  function readPendingTransaction() {
     try {
-      const storedHash = window.localStorage.getItem(PENDING_TRANSACTION_KEY)
-      if (storedHash && /^0x[0-9a-f]{64}$/i.test(storedHash)) pendingTransactionHash = storedHash
-      else if (storedHash) window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
+      const storedValue = window.localStorage.getItem(PENDING_TRANSACTION_KEY)
+      if (!storedValue) return pendingTransaction
+      // Accept the hash-only value written by the previous ceremony version.
+      if (/^0x[0-9a-f]{64}$/i.test(storedValue)) {
+        pendingTransaction = { hash: storedValue, sender: EXPECTED_SENDER, nonce: null }
+        return pendingTransaction
+      }
+      const storedTransaction = JSON.parse(storedValue)
+      if (
+        /^0x[0-9a-f]{64}$/i.test(storedTransaction?.hash) &&
+        /^0x[0-9a-f]{40}$/i.test(storedTransaction?.sender) &&
+        /^0x[0-9a-f]+$/i.test(storedTransaction?.nonce)
+      ) {
+        pendingTransaction = storedTransaction
+        return pendingTransaction
+      }
+      window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
     } catch {
       // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
     }
-    return pendingTransactionHash
+    return pendingTransaction
   }
 
-  function rememberPendingTransaction(transactionHash) {
-    pendingTransactionHash = transactionHash
+  function rememberPendingTransaction(transactionHash, sender, nonce) {
+    pendingTransaction = { hash: transactionHash, sender: sender.toLowerCase(), nonce }
     try {
-      window.localStorage.setItem(PENDING_TRANSACTION_KEY, transactionHash)
+      window.localStorage.setItem(PENDING_TRANSACTION_KEY, JSON.stringify(pendingTransaction))
     } catch {
       // Some wallet browsers disable storage; retain the in-memory lock for this page.
     }
   }
 
   function forgetPendingTransaction() {
-    pendingTransactionHash = null
+    pendingTransaction = null
     try {
       window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
     } catch {
@@ -99,37 +113,84 @@
     }
   }
 
-  async function waitForReceipt(provider, transactionHash) {
+  async function waitForPendingResolution(provider, transaction) {
+    let nonce = transaction.nonce
+    let consecutiveMissingChecks = 0
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [transactionHash] })
-      if (receipt) return receipt
+      const receipt = await provider.request({
+        method: 'eth_getTransactionReceipt',
+        params: [transaction.hash],
+      })
+      if (receipt) return { receipt, replaced: false }
+
+      const submittedTransaction = await provider.request({
+        method: 'eth_getTransactionByHash',
+        params: [transaction.hash],
+      })
+      consecutiveMissingChecks = submittedTransaction ? 0 : consecutiveMissingChecks + 1
+      if (!nonce) {
+        nonce = submittedTransaction?.nonce || null
+        if (nonce) rememberPendingTransaction(transaction.hash, transaction.sender, nonce)
+      }
+      if (nonce) {
+        const confirmedNonce = await provider.request({
+          method: 'eth_getTransactionCount',
+          params: [transaction.sender, 'latest'],
+        })
+        if (BigInt(confirmedNonce) > BigInt(nonce)) return { receipt: null, replaced: true }
+      }
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
-    throw new Error(`Receipt timeout; verify transaction manually: ${transactionHash}`)
+    if (
+      consecutiveMissingChecks === 120 &&
+      window.confirm(
+        `The wallet RPC no longer knows transaction ${transaction.hash}, and its nonce was not consumed. ` +
+        'Only continue if your wallet also marks it as dropped. Retire this stale hash and recheck Safe state?',
+      )
+    ) {
+      return { receipt: null, replaced: false, dropped: true }
+    }
+    throw new Error(`Receipt timeout; verify transaction manually: ${transaction.hash}`)
   }
 
   async function reconcilePendingTransaction(provider) {
-    const transactionHash = readPendingTransactionHash()
-    if (!transactionHash) return
-    setStatus(`Previous transaction still requires reconciliation: ${transactionHash}\nWaiting for its receipt…`)
-    const receipt = await waitForReceipt(provider, transactionHash)
+    const transaction = readPendingTransaction()
+    if (!transaction) return
+    setStatus(`Previous transaction still requires reconciliation: ${transaction.hash}\nWaiting for its receipt or nonce replacement…`)
+    const { receipt, replaced, dropped } = await waitForPendingResolution(provider, transaction)
     forgetPendingTransaction()
-    if (receipt.status !== '0x1') throw new Error(`Previous transaction reverted: ${transactionHash}`)
+    if (receipt && receipt.status !== '0x1') throw new Error(`Previous transaction reverted: ${transaction.hash}`)
+    if (replaced || dropped) {
+      const reason = replaced ? 'nonce was consumed by a replacement' : 'hash was confirmed dropped'
+      setStatus(`Previous transaction ${reason}.\nRechecking canonical Safe state…`)
+    }
   }
 
   async function broadcastAndConfirm(provider, transaction, label) {
     // The initial network switch is not sufficient: wallets may change chains
     // while the user reviews a confirmation prompt.
     await assertRobinhoodChain(provider)
+    const pendingNonce = await provider.request({
+      method: 'eth_getTransactionCount',
+      params: [transaction.from, 'pending'],
+    })
     const transactionHash = await provider.request({
       method: 'eth_sendTransaction',
       params: [transaction],
     })
-    rememberPendingTransaction(transactionHash)
+    const submittedTransaction = await provider.request({
+      method: 'eth_getTransactionByHash',
+      params: [transactionHash],
+    })
+    rememberPendingTransaction(
+      transactionHash,
+      transaction.from,
+      submittedTransaction?.nonce || pendingNonce,
+    )
     setStatus(`${label} broadcast: ${transactionHash}\nWaiting for confirmation…`)
-    const receipt = await waitForReceipt(provider, transactionHash)
+    const { receipt } = await waitForPendingResolution(provider, pendingTransaction)
     forgetPendingTransaction()
-    if (receipt.status !== '0x1') throw new Error(`Transaction reverted: ${transactionHash}`)
+    if (receipt && receipt.status !== '0x1') throw new Error(`Transaction reverted: ${transactionHash}`)
     return transactionHash
   }
 
@@ -348,11 +409,11 @@
       ].join('\n'))
       button.textContent = 'Safe configured'
     } catch (error) {
-      const unresolvedHash = readPendingTransactionHash()
-      if (unresolvedHash) {
+      const unresolvedTransaction = readPendingTransaction()
+      if (unresolvedTransaction) {
         setStatus([
           'TRANSACTION STILL PENDING — RETRY LOCKED',
-          unresolvedHash,
+          unresolvedTransaction.hash,
           error?.message || String(error),
           'Keep this page open or press the button after reloading to resume receipt reconciliation.',
         ].join('\n'))
