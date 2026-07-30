@@ -141,7 +141,7 @@ echo ""
 # running solver pinned to the old mounted file (Docker only recreates on image/
 # config change, and render-configs.sh rewrites atomically via temp+mv).
 CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot \
-  kyberswap-solver velora-solver odos-solver openocean-solver dodo-solver okx-solver \
+  kyberswap-solver velora-solver openocean-solver dodo-solver okx-solver \
   lifi-solver enso-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
@@ -165,7 +165,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
   DOWNSTREAM=(driver orderbook autopilot \
-    kyberswap-solver velora-solver odos-solver openocean-solver dodo-solver okx-solver \
+    kyberswap-solver velora-solver openocean-solver dodo-solver okx-solver \
     lifi-solver enso-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy

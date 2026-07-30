@@ -383,7 +383,7 @@ fi
 # Templates that contain substituted SECRETS (after envsubst) MUST land
 # on the RAM-disk; everything else stays in ./rendered/ on disk. The
 # canonical list covers the submitter PK, the OKX credentials (api-key +
-# secret-key + passphrase), and the Odos + Enso API keys. The post-render
+# secret-key + passphrase), and the Enso API key. The post-render
 # assertion below scans all non-PK_BEARING files for both PK and
 # OKX-shaped secret literals, so a future template-edit that adds a
 # secret-substitution to a non-listed file will fail-closed before the
@@ -392,9 +392,9 @@ fi
 # (free upstreams), but the keyed validationcloud/blockdaemon migration puts two
 # live provider keys in it. Route it to the RAM-disk like every other secret-
 # bearing render (Time-Machine / APFS-snapshot / Spotlight protection) rather than
-# leaving it on the FileVault SSD — matches how odos/enso/okx keys are handled, and
+# leaving it on the FileVault SSD — matches how enso/okx keys are handled, and
 # the post-render leak assertion below cannot pattern-match these key shapes anyway.
-PK_BEARING_NAMES=(driver.toml okx.toml odos.toml enso.toml erpc.yaml)
+PK_BEARING_NAMES=(driver.toml okx.toml enso.toml erpc.yaml)
 
 is_pk_bearing() {
   local n="$1"
@@ -432,7 +432,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ODOS_API_KEY} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.

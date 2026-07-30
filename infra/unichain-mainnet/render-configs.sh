@@ -405,9 +405,9 @@ fi
 # stack starts.
 # baseline, orderbook, autopilot, kyberswap, velora now all use .tmpl
 # (UNICHAIN_RPC_INTERNAL must thread through). driver.toml (PK), okx.toml (OKX
-# secrets) and odos.toml (Odos x-api-key) bear secrets and must land on the
+# secrets) bear secrets and must land on the
 # RAM-disk.
-PK_BEARING_NAMES=(driver.toml okx.toml odos.toml enso.toml)
+PK_BEARING_NAMES=(driver.toml okx.toml enso.toml)
 
 is_pk_bearing() {
   local n="$1"
@@ -465,7 +465,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${UNICHAIN_MAINNET_RPC} ${UNICHAIN_RPC_INTERNAL} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ODOS_API_KEY} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${UNICHAIN_MAINNET_RPC} ${UNICHAIN_RPC_INTERNAL} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out_tmp"
   # PK/secret-bearing configs stay 0600. Non-secret configs (RPC URLs,
   # contract addresses, %VAR runtime-substituted placeholders — NO secret
@@ -529,13 +529,12 @@ while IFS= read -r f; do
       violating_files+=("$f (PK literal)")
       continue
     fi
-    # uuid-shaped api-key (8-4-4-4-12 hex w/ dashes) — covers BOTH the OKX
-    # api-key AND the Odos x-api-key (same format). Both their templates set
-    # `api-key = "${...}"`, and both okx.toml + odos.toml are in
+    # uuid-shaped api-key (8-4-4-4-12 hex w/ dashes) — covers the OKX
+    # api-key. Its template sets `api-key = "${...}"` and okx.toml is in
     # PK_BEARING_NAMES (RAM-disk symlinks, skipped by `! -L`); this guard
-    # fail-closes if either ever leaks into a non-RAM-disk rendered file.
+    # fail-closes if it ever leaks into a non-RAM-disk rendered file.
     if grep -qE 'api-key = "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"' "$f" 2>/dev/null; then
-      violating_files+=("$f (uuid api-key: OKX / Odos / Enso)")
+      violating_files+=("$f (uuid api-key: OKX / Enso)")
       continue
     fi
     # OKX secret-key: 32-char hex.

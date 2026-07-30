@@ -55,7 +55,6 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
     chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
   { solverId: 'velora', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
-  { solverId: 'odos', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator (API sunset 2026-07-30)
   { solverId: 'enso', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external routing engine
   {
     solverId: 'lifi',
