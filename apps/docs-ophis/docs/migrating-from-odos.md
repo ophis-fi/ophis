@@ -112,12 +112,17 @@ surface does not paper over them:
 
 Four more that will bite you in production if you do not plan for them:
 
-4. **EOA signing schemes only.** `signingScheme` accepts `eip712` or `ethsign`
-   and rejects anything else with `INVALID_REQUEST`. CoW's `presign` and
-   `eip1271` schemes are not exposed, so a **Safe, smart account, MPC signer or
-   DAO treasury has no path through this surface**. This is a regression versus
-   Odos, whose limit-order router validated contract wallets. If your signer is
-   a contract, use the [SDK](./partners.md), which reaches the schemes directly.
+4. **Contract-wallet signing schemes are not exposed.** `signingScheme` accepts
+   `eip712` or `ethsign` and rejects anything else with `INVALID_REQUEST`. CoW's
+   `presign` and `eip1271` are not available, so **anything whose signature is
+   validated by a contract has no path here**: a Safe, a smart account, or a
+   DAO treasury module. This is a regression versus Odos, whose limit-order
+   router shipped a signature validator and tested contract wallets. Use the
+   [SDK](./partners.md), which reaches those schemes directly.
+
+   This is about *who validates the signature*, not about key custody. A
+   threshold-ECDSA MPC signer that controls an ordinary EOA produces a standard
+   EIP-712 or `ethsign` signature and works here unchanged.
 5. **Native ETH is not supported, in or out.** There is no ethflow wrapping on
    this surface. Both the `0xEeee…EEeE` sentinel and the zero address are
    forwarded to the orderbook as if they were ERC-20s and currently surface as
@@ -364,9 +369,12 @@ dangerous one is 3000.
 | 4006 `TOO_SLIPPERY` | slippage unrealistic | 4904 `INVALID_SLIPPAGE` | above `MAX_SLIPPAGE_BIPS` | Number changes, and see point 6 |
 | 4007 `SAME_INPUT_OUTPUT` | tokens identical | 4900 `INVALID_REQUEST` | same condition | Number changes |
 | 4011/4012/4018/4019 `*_TOKEN_AMOUNT` | bad amount | 4906 `INVALID_AMOUNT` | same condition | Number changes |
-| 4015 `INVALID_TOKEN_PROPORTIONS` | proportions do not sum to 1 | 4900 `INVALID_REQUEST` | single output must be 1 | Number changes |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (0 < p < 1) | proportions do not sum to 1 | **4901** `MULTI_TOKEN_UNSUPPORTED` | a partial share is a split intent | **Different code and class** |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (p <= 0, p > 1, non-numeric) | same on Odos | 4900 `INVALID_REQUEST` | malformed, not unsupported | Number changes |
 | 4016 `TOKEN_ROUTING_UNAVAILABLE` | no route for the pair | 2000 `NO_ROUTE` | same meaning, different band | Band changes |
-| 4201 `USER_ADDR_REQ` | `userAddr` missing | 4900 `INVALID_REQUEST` | same condition | Number changes |
+| 4201 `USER_ADDR_REQ` on `/sor/quote/v3` | `userAddr` missing | **200 OK** | quote-only is a supported mode, not an error | **Delete the branch** |
+| 4201 `USER_ADDR_REQ` on `/sor/swap/v3` | `userAddr` missing | **4911** `NOT_ASSEMBLABLE` | needs an owner to draft an order for | Different code |
+| 4201 `USER_ADDR_REQ` on `/sor/assemble` | `userAddr` missing | **4905** `INVALID_ADDRESS` | fails address validation | Different code |
 | 5001 `SWAP_UNAVAILABLE` | route unavailable | 2000 `NO_ROUTE` | same meaning, different band | Band changes |
 | n/a | none | **4901** `MULTI_TOKEN_UNSUPPORTED` | multi-token, or a single output whose proportion is neither 1 nor a whole share | New branch |
 | n/a | none | **4902** `PARTNER_FEE_UNAVAILABLE` | integrator fees are off on this deployment | New branch |
