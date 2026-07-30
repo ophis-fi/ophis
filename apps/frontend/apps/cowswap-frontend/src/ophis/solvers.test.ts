@@ -59,11 +59,14 @@ describe('OPHIS_SOLVERS registry', () => {
   })
 
   it('filters by chain', () => {
-    expect(getOphisSolversForChain(OPHIS_SOLVER_REGISTRY_CHAIN_ID).length).toBe(OPHIS_SOLVERS.length)
+    expect(getOphisSolversForChain(OPHIS_SOLVER_REGISTRY_CHAIN_ID)).toEqual(
+      OPHIS_SOLVERS.filter(({ chainIds }) => chainIds.includes(OPHIS_SOLVER_REGISTRY_CHAIN_ID)),
+    )
     expect(getOphisSolversForChain(OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID).map(({ solverId }) => solverId)).toEqual([
       'baseline',
       'kyberswap',
       'lifi',
+      'uniswap-v4',
     ])
     expect(getOphisSolversForChain(1).length).toBe(0)
   })
@@ -92,6 +95,12 @@ describe('solver display-alias layer', () => {
     expect(ophisSolverPublicLabel('baseline')).toBe('Baseline')
     expect(ophisSolverPublicLabel('BASELINE')).toBe('Baseline')
     expect(ophisSolverPublicDescription('baseline')).toMatch(/Ophis baseline/i)
+  })
+
+  it('labels the Ophis-operated direct solver distinctly', () => {
+    expect(ophisSolverPublicLabel('uniswap-v4')).toBe('Ophis direct solver')
+    expect(ophisSolverPublicLabel('UNISWAP-V4')).toBe('Ophis direct solver')
+    expect(ophisSolverPublicDescription('uniswap-v4')).toMatch(/Ophis-operated direct solver/i)
   })
 
   it('neutralizes every external / competitor solver brand', () => {

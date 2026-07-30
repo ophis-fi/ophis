@@ -152,6 +152,7 @@ export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggre
     sources: [
       { solver: 'LI.FI', covers: 'aggregator covering available Robinhood Chain liquidity venues' },
       { solver: 'KyberSwap', covers: 'independent route builder covering Ekubo and Uniswap liquidity' },
+      { solver: 'Uniswap V4', covers: 'direct adapter to canonical Robinhood Chain liquidity' },
     ],
   },
 }

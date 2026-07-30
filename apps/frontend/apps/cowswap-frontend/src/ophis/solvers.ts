@@ -61,12 +61,10 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
     solverId: 'lifi',
     chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregation layer
+  { solverId: 'uniswap-v4', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'openocean', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
   { solverId: 'dodo', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
 ]
-
-/** Solver ids operated by Ophis itself. Everything else is an external brand. */
-const OPHIS_OWN_SOLVER_IDS = new Set(['baseline'])
 
 /** Neutral, brand-free label shown for every external (non-Ophis) solver. */
 export const OPHIS_EXTERNAL_SOLVER_LABEL = 'External solver'
@@ -79,14 +77,24 @@ export const OPHIS_EXTERNAL_SOLVER_LABEL = 'External solver'
  * leak its brand into rendered copy without an explicit opt-in here.
  */
 export function ophisSolverPublicLabel(solverId: string): string {
-  return OPHIS_OWN_SOLVER_IDS.has(solverId.toLowerCase()) ? 'Baseline' : OPHIS_EXTERNAL_SOLVER_LABEL
+  const normalizedSolverId = solverId.toLowerCase()
+
+  if (normalizedSolverId === 'baseline') return 'Baseline'
+  if (normalizedSolverId === 'uniswap-v4') return 'Ophis direct solver'
+
+  return OPHIS_EXTERNAL_SOLVER_LABEL
 }
 
 /** Brand-neutral description shown in the solver tooltip. */
 export function ophisSolverPublicDescription(solverId: string): string {
-  return OPHIS_OWN_SOLVER_IDS.has(solverId.toLowerCase())
-    ? 'Ophis baseline solver routing over on-chain liquidity.'
-    : 'An external solver competing in the Ophis batch auction to give you the best execution.'
+  const normalizedSolverId = solverId.toLowerCase()
+
+  if (normalizedSolverId === 'baseline') return 'Ophis baseline solver routing over on-chain liquidity.'
+  if (normalizedSolverId === 'uniswap-v4') {
+    return 'Ophis-operated direct solver routing through canonical on-chain liquidity.'
+  }
+
+  return 'An external solver competing in the Ophis batch auction to give you the best execution.'
 }
 
 /** Registry entries competing on `chainId` (empty for CoW-hosted chains). */
