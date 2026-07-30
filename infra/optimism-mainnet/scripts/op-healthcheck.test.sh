@@ -28,7 +28,10 @@ PYBIN=""
 for cand in "python3" "uv run python"; do
   if $cand -c 'print(1)' >/dev/null 2>&1; then PYBIN="$cand"; break; fi
 done
-[[ -n "$PYBIN" ]] || { echo "SKIP: no working python3 (tried python3, uv run python)"; exit 0; }
+# FAIL, do not skip. A suite that exits 0 having run zero assertions reports green
+# while the state machine is entirely untested — the same false-confidence this file
+# exists to prevent, and inconsistent with the fail-closed fixture checks below.
+[[ -n "$PYBIN" ]] || { echo "FATAL: no working python3 (tried: python3, uv run python) — cannot run the fixture, refusing to report success"; exit 1; }
 
 # --- fixture: replies with whatever status code $WORK/mode contains --------------
 cat > "$WORK/fixture.py" <<'PY'
@@ -133,6 +136,51 @@ run "$SD"
 ck "second instance backed off" "$(grep -c 'another op-healthcheck run is in progress' "$WORK/out.log")" "1"
 ck "state untouched by the skipped run" "$(st "$SD")" "up"
 rmdir "$SD/op-health.lock" 2>/dev/null
+
+echo
+echo "TEST 8 (REGRESSION): first run on a healthy service must NOT send a phantom"
+echo "        RECOVERED just because there is no state file yet"
+SD="$WORK/s8"; mkdir -p "$SD"; rm -f "$SD/op-health.state"; mode 200
+run "$SD"
+ck "no phantom RECOVERED attempted" "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "0"
+ck "belief seeded to 'up' silently" "$(st "$SD")" "up"
+
+echo
+echo "TEST 9 (REGRESSION): first run on a DOWN service must still page"
+SD="$WORK/s9"; mkdir -p "$SD"; rm -f "$SD/op-health.state"; mode 502
+run "$SD"
+ck "DOWN page attempted on first observation" "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "1"
+ck "belief not advanced (send failed)" "$(st "$SD")" ""
+
+echo
+echo "TEST 10 (REGRESSION): a liveness outage must not erase a DELIVERED pricing"
+echo "         belief, and a still-failing quote must not report RECOVERED"
+SD="$WORK/s10"; mkdir -p "$SD"; echo down > "$SD/op-health.state"
+: > "$SD/op-health.qalerted"        # pricing degradation was already delivered
+echo 0 > "$SD/op-health.qfail"      # debounce reset by the outage path
+mode 502                            # liveness still down
+run "$SD"
+ck "pricing belief survives the outage" "$([ -f "$SD/op-health.qalerted" ] && echo kept || echo erased)" "kept"
+mode 500                            # liveness ok? no - fixture returns 500 for both; use 200 next
+mode 200
+# quote endpoint shares the fixture, so a 200 here means pricing genuinely recovered
+run "$SD"
+ck "delivered degradation cleared only after a real 200 (send failed -> kept)" \
+   "$([ -f "$SD/op-health.qalerted" ] && echo kept || echo erased)" "kept"
+
+echo
+echo "TEST 11 (REGRESSION): corrupt counter '08' must not abort the arithmetic"
+SD="$WORK/s11"; mkdir -p "$SD"; echo up > "$SD/op-health.state"; printf '08\n' > "$SD/op-health.qfail"; mode 502
+run "$SD" OPHIS_BOOT_GRACE_SECONDS=0
+ck "survived octal-looking counter" "$(grep -c 'value too great for base\|invalid arithmetic' "$WORK/out.log")" "0"
+
+echo
+echo "TEST 12 (REGRESSION): an uncreatable lock dir must FAIL LOUD, not skip silently"
+SD="$WORK/s12"; mkdir -p "$SD"; echo up > "$SD/op-health.state"; mode 200
+sed -e "s|^STATE_DIR=.*|STATE_DIR=\"/proc/nonexistent-readonly/ophis\"|" -e "s|^BASE=.*|BASE=\"$BASE_URL\"|" "$SRC" > "$WORK/hc_ro.sh"
+( export TELEGRAM_BOT_TOKEN_ENV_FILE="$WORK/bad-tg.env" OPHIS_BOOT_GRACE_SECONDS=0; bash "$WORK/hc_ro.sh" ) >"$WORK/ro.log" 2>&1
+rc=$?
+ck "exits non-zero rather than pretending success" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
 
 echo
 echo "RESULT: $pass passed, $fail failed"
