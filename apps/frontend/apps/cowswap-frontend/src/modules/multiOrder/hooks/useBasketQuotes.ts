@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { VolumeFee } from 'modules/volumeFee'
+
 import { DecomposedLeg } from '../pure/decomposition'
 import { legQuoteKey, legsQuoteSignature } from '../pure/quoteSignature'
+import { ResolveLegPartnerFeeFn } from './useBasketLegPartnerFee'
 import { BasketLegQuote } from '../types'
 
 /** One leg's quote request (the port the container wires to CoW's quote API). */
@@ -12,6 +15,14 @@ export interface BasketLegQuoteRequest {
   readonly buyToken: string
   readonly sellAmountAtoms: string
   readonly validTo: number
+  /**
+   * The Volume fee this leg's order will carry, resolved from the leg's OWN
+   * pair. Must be passed to the quote so the buy amount shown to the user is
+   * net of the fee their order actually deducts. Quoting fee-free and then
+   * signing with a fee overstates the output and makes a tight minimum-buy
+   * limit less fillable than the screen implied. Undefined = fee-exempt leg.
+   */
+  readonly partnerFee: VolumeFee | undefined
 }
 
 /**
@@ -41,6 +52,7 @@ export function useBasketQuotes(
   chainId: number,
   validTo: number,
   quoteFn: BasketQuoteFn,
+  resolveLegPartnerFee: ResolveLegPartnerFeeFn,
 ): UseBasketQuotesResult {
   const [quotes, setQuotes] = useState<Record<string, BasketLegQuote>>({})
   const runIdRef = useRef(0)
@@ -74,6 +86,7 @@ export function useBasketQuotes(
           buyToken: leg.buyToken,
           sellAmountAtoms: leg.sellAmount.toString(),
           validTo,
+          partnerFee: resolveLegPartnerFee(leg),
         },
         controller.signal,
       )

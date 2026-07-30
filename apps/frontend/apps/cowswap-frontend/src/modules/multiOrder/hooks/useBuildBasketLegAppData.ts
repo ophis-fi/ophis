@@ -13,8 +13,8 @@ import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForA
 import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useUtm } from 'modules/utm'
-import { useVolumeFee } from 'modules/volumeFee'
 
+import { useBasketLegPartnerFee } from './useBasketLegPartnerFee'
 import { BuildBasketLegAppDataFn } from './useBasketPlacement'
 
 /**
@@ -29,14 +29,22 @@ import { BuildBasketLegAppDataFn } from './useBasketPlacement'
  * `orderClass` is fixed to 'market' (basket legs are market orders). Returns a
  * function keyed to the current wallet's appData context.
  *
- * PARTNER FEE: resolved by `resolveBasketLegPartnerFee`, which is the swap
- * AppDataUpdater's fee decision extracted into a pure, tested function so a
- * basket leg and an equivalent single swap on the same chain cannot drift apart.
- * See `modules/appData/utils/resolveOphisPartnerFee.ts` for why each step
- * drops the fee. It is the same function the swap path uses.
+ * PARTNER FEE: resolved from THE LEG'S OWN PAIR, not from the swap form.
  *
- * Before this was wired, every basket leg went out with no `partnerFee` at all,
- * so a 6-leg basket earned Ophis nothing.
+ * Two layers, both shared with the swap path so they cannot drift:
+ *   - `useBasketLegPartnerFee` resolves the Volume fee for this leg's sell/buy
+ *     pair (stable, boosted and correlated rates are pair properties).
+ *   - `resolveOphisPartnerFee` then applies the chain gate, which is the same
+ *     function `AppDataUpdater` uses.
+ *
+ * The `leg` argument is load-bearing. An earlier version of this hook discarded
+ * it and resolved one fee from `useVolumeFee()`, i.e. from whatever pair the
+ * swap form happened to hold, then applied that to every leg. In a mixed basket
+ * that charges a stable leg the standard rate, or a non-stable leg 1 bp, which
+ * the backend fee floor rejects at ingress.
+ *
+ * Before any of this was wired, every basket leg went out with no `partnerFee`
+ * at all, so a 6-leg basket earned Ophis nothing.
  */
 export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAppDataFn {
   const { chainId } = useWalletInfo()
@@ -45,18 +53,19 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
   const typedHooks = useAppDataHooks()
   const userConsent = useRwaConsentForAppData()
   const utm = useUtm()
-  const volumeFee = useVolumeFee()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
 
+  const resolveLegPartnerFee = useBasketLegPartnerFee()
   const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
-  const partnerFee = resolveOphisPartnerFee(widgetPartnerFee, volumeFee, chainId)
 
   return useCallback(
-    async (_leg, marker: OphisBasketTag): Promise<AppDataInfo> => {
+    async (leg, marker: OphisBasketTag): Promise<AppDataInfo> => {
       if (!appCodeWithWidgetMetadata) {
         throw new Error('basket: appData metadata is not ready yet (no connected wallet context)')
       }
       const { appCode: code, environment, widget } = appCodeWithWidgetMetadata
+      const partnerFee = resolveOphisPartnerFee(widgetPartnerFee, resolveLegPartnerFee(leg), chainId)
+
       return buildAppData({
         appCode: code,
         environment,
@@ -68,13 +77,22 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
         refCode,
         utm,
         // Mirrors AppDataInfoUpdater, which passes its `volumeFee` prop through
-        // to buildAppData's `partnerFee`. Without this every basket leg settles
-        // at zero Ophis fee, so a 6-leg basket would earn nothing.
+        // to buildAppData's `partnerFee`.
         partnerFee,
         // The leg's basket marker; buildAppData spreads this into metadata.ophisBasket.
         ophisBasket: marker,
       })
     },
-    [appCodeWithWidgetMetadata, slippageBips, typedHooks, userConsent, refCode, utm, partnerFee],
+    [
+      appCodeWithWidgetMetadata,
+      slippageBips,
+      typedHooks,
+      userConsent,
+      refCode,
+      utm,
+      widgetPartnerFee,
+      resolveLegPartnerFee,
+      chainId,
+    ],
   )
 }

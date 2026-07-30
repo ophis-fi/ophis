@@ -1,6 +1,5 @@
 import { atom } from 'jotai'
 
-import { STABLECOINS } from '@cowprotocol/common-const'
 import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { walletInfoAtom } from '@cowprotocol/wallet'
@@ -14,160 +13,107 @@ import { tradeQuotesAtom } from 'modules/tradeQuote'
 
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
-import {
-  OPHIS_FLAT_VOLUME_FEE_ENABLED,
-  OPHIS_PARTNER_FEE_RECIPIENT,
-  OPHIS_STABLE_VOLUME_BPS,
-  ophisVolumeOnlyFloorFee,
-} from 'ophis/partnerFeeDefault'
-import { OPHIS_BOOSTED_VOLUME_BPS, isBoostedToken } from 'ophis/boostedTokens'
-
-import { isCorrelatedTrade } from './isCorrelatedTrade'
 import { safeAppFeeAtom } from './safeAppFeeAtom'
 
+import { isBoostedPair, resolveVolumeFeeForPair, VolumeFeePair } from '../pure/resolveVolumeFeeForPair'
 import { VolumeFee } from '../types'
 
+/**
+ * The Volume fee for the pair currently in the swap form.
+ *
+ * The DECISION lives in `resolveVolumeFeeForPair` (modules/volumeFee/pure) so
+ * that it can also be applied to a pair that is NOT the one on screen, which is
+ * what a basket leg needs. This atom's remaining job is to gather inputs: read
+ * the trade state, resolve the bridge-adjusted output address on a cross-chain
+ * trade, and hand one pair plus the ambient config to the pure resolver.
+ */
 export const volumeFeeAtom = atom<VolumeFee | undefined>((get) => {
-  const widgetPartnerFee = get(widgetPartnerFeeAtom)
-  const safeAppFee = get(safeAppFeeAtom)
-  const shouldSkipFee = get(shouldSkipFeeAtom)
+  const { chainId } = get(walletInfoAtom)
+  const pair = get(tradeVolumeFeePairAtom)
 
-  // Correlated-token trades (e.g. a like-kind wrap) are fee-exempt by design on
-  // EVERY chain, matching CoW. On OP this means no Ophis fee is emitted OR
-  // displayed: the order carries no partnerFee, so it stays in sync and the
-  // backend floor does not apply (the floor only raises a PRESENT sub-floor fee,
-  // it does not force a fee onto a fee-exempt order). This is intentional, not the
-  // free-rider bypass the floor closes, so the OP floor branch below is skipped here.
-  if (!widgetPartnerFee && shouldSkipFee) {
-    return undefined
+  // No trade state yet. Fall through the resolver with a pair that matches no
+  // token set, which keeps the Volume-only floor reachable exactly as before:
+  // the floor depends on the chain, not on the tokens.
+  const resolvedPair: VolumeFeePair = pair ?? {
+    chainId,
+    sellTokenAddress: '',
+    buyTokenAddress: '',
   }
 
-  // When the Ophis flat-fee flag is on, the Ophis volume fee (widgetPartnerFee,
-  // carrying OPHIS_DEFAULT_PARTNER_FEE) is the single source of truth for BOTH the
-  // quote display and the on-chain appData fee (the direct appData fee is
-  // suppressed in injectedWidgetAppDataPartnerFeeAtom). It must therefore win over
-  // a Safe-App fee; otherwise enabling the flag inside a Safe App silently drops
-  // the Ophis fee in favour of the Safe's recipient instead of charging flat bps. (Review P2)
-  if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
-    // The reduced-rate branches below rewrite the fee bps, so they must only ever
-    // touch OPHIS'S OWN partner fee. If a host integrator embeds this widget with
-    // their own partnerFee (a different recipient), leave it intact rather than
-    // silently overriding their configured fee with an Ophis rate.
-    if (
-      widgetPartnerFee &&
-      widgetPartnerFee.recipient.toLowerCase() === OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
-    ) {
-      // Boosted-token trades (the ALEPH flagship) pay the reduced "max rebate" rate
-      // when EITHER side is a boosted token, REGARDLESS of the trader's volume tier.
-      // Same single-atom source so quote display and on-chain appData stay in lockstep.
-      if (get(isBoostedTradeAtom)) {
-        return { ...widgetPartnerFee, volumeBps: OPHIS_BOOSTED_VOLUME_BPS }
-      }
-      // Stablecoin-to-stablecoin (same-chain) pairs pay the reduced flat rate (1 bp)
-      // instead of the standard volume fee. Same single-atom source, so quote display
-      // and on-chain appData stay in lockstep at the reduced rate.
-      if (get(isStableStableTradeAtom)) {
-        return { ...widgetPartnerFee, volumeBps: OPHIS_STABLE_VOLUME_BPS }
-      }
-    }
-    return widgetPartnerFee
-  }
-
-  // Flat-fee flag OFF: on a self-hosted Volume-only chain (Optimism) the backend
-  // enforces a fee FLOOR and would reject a sub-floor fee or let an ABSENT one
-  // ride free, so emit the floor Volume fee HERE (the single volumeFee source) so
-  // the displayed fee row and the on-chain appData fee stay in lockstep (the
-  // appData price-improvement fallback is suppressed on OP). The correlated-trade
-  // skip above still applies; a host integrator's own partnerFee (widgetPartnerFee)
-  // takes precedence and is left intact (handled by the final return).
-  if (!widgetPartnerFee) {
-    const opFloorFee = get(ophisOpFloorVolumeFeeAtom)
-    if (opFloorFee) return opFloorFee
-  }
-
-  // Ophis Fee won't be enabled when in Widget mode, thus it takes precedence here
-  return safeAppFee || widgetPartnerFee
+  return resolveVolumeFeeForPair(resolvedPair, {
+    widgetPartnerFee: get(widgetPartnerFeeAtom),
+    safeAppFee: get(safeAppFeeAtom),
+    correlatedTokens: get(correlatedTokensAtom)[chainId],
+  })
 })
 
 /**
- * The Ophis floor Volume fee on a self-hosted Volume-only chain (Optimism), or
- * undefined off those chains. On OP the backend floors the fee, so the Ophis fee
- * must be present at >= the floor regardless of the flat-volume flag; surfacing it
- * from this single source keeps the displayed fee and the on-chain appData fee in
- * lockstep. Reduced 1 bp rate for same-chain stable or boosted pairs.
+ * The pair the swap form is currently quoting, shaped for the pure resolver, or
+ * undefined before a trade state exists.
+ *
+ * Three details are carried over from the atoms this replaced, and each one
+ * changes the fee if dropped:
+ *
+ *   - `chainId` is the connected WALLET's chain, which is what the stablecoin
+ *     set and the Volume-only floor keyed on. `boostedChainId` is the TRADE's
+ *     chain, which is what the boosted lookup keyed on, so a boost still matches
+ *     the actual tokens while the wallet is mid-chain-switch. They differ only
+ *     during that switch, and preserving the split keeps this refactor behaviour
+ *     preserving rather than behaviour changing.
+ *   - on a CROSS-CHAIN trade the buy address is replaced by the bridge
+ *     intermediate token (or '' when it cannot be resolved). Only the correlated
+ *     check ever used that substitution.
+ *   - `isCrossChain` is passed explicitly rather than inferred. The bridge
+ *     intermediate lives on the SELL chain, so it can be in this chain's
+ *     stablecoin or boosted set; without the flag, bridging out of a boosted
+ *     token would silently take the reduced rate, which the swap path never did.
  */
-const ophisOpFloorVolumeFeeAtom = atom<VolumeFee | undefined>((get) => {
-  const { chainId } = get(walletInfoAtom)
-  const reducedRate = get(isStableStableTradeAtom) || get(isBoostedTradeAtom)
-  return ophisVolumeOnlyFloorFee(chainId, reducedRate)
-})
-
-const shouldSkipFeeAtom = atom<boolean>((get) => {
+const tradeVolumeFeePairAtom = atom<VolumeFeePair | undefined>((get) => {
   const { chainId } = get(walletInfoAtom)
   const { inputCurrency, outputCurrency } = get(derivedTradeStateAtom) || {}
-  const correlatedTokens = get(correlatedTokensAtom)[chainId]
 
-  if (!inputCurrency || !outputCurrency || !correlatedTokens) return false
+  if (!inputCurrency || !outputCurrency) return undefined
 
-  const inputCurrencyAddress = getAddressKey(getCurrencyAddress(inputCurrency))
+  const isCrossChain = inputCurrency.chainId !== outputCurrency.chainId
+  const sellTokenAddress = getAddressKey(getCurrencyAddress(inputCurrency))
+  let buyTokenAddress = getAddressKey(getCurrencyAddress(outputCurrency))
 
-  let outputCurrencyAddress = getAddressKey(getCurrencyAddress(outputCurrency))
-
-  if (inputCurrency.chainId !== outputCurrency.chainId) {
-    const tradeQuotes = get(tradeQuotesAtom)
-    const bridgeQuote = tradeQuotes[inputCurrencyAddress]?.bridgeQuote ?? null
-
+  if (isCrossChain) {
+    const bridgeQuote = get(tradeQuotesAtom)[sellTokenAddress]?.bridgeQuote ?? null
     const bridgeOutputAddr = getBridgeIntermediateTokenAddress(bridgeQuote)
-    outputCurrencyAddress = bridgeOutputAddr ? getAddressKey(bridgeOutputAddr) : ''
+    buyTokenAddress = bridgeOutputAddr ? getAddressKey(bridgeOutputAddr) : ''
   }
 
-  return isCorrelatedTrade(inputCurrencyAddress, outputCurrencyAddress, correlatedTokens)
+  return {
+    chainId,
+    sellTokenAddress,
+    buyTokenAddress,
+    boostedChainId: inputCurrency.chainId,
+    isCrossChain,
+  }
 })
 
 /**
- * True when EITHER side of a SAME-CHAIN trade is a boosted token (the ALEPH
- * flagship), so the reduced OPHIS_BOOSTED_VOLUME_BPS "max rebate" rate applies
- * regardless of the trader's volume tier. Cross-chain (bridge) trades return
- * false and keep the standard rate (a bridged leg's fee placement is ambiguous).
- * Exported so the swap-box badge can show when a boost is active.
+ * True when the current trade qualifies for the reduced boosted rate (the ALEPH
+ * flagship), so the swap-box badge can show that a boost is active.
+ *
+ * Still an atom because the badge subscribes to it, but the predicate now comes
+ * from the same pure function the fee itself uses, so the badge and the charged
+ * rate can no longer disagree.
  */
 export const isBoostedTradeAtom = atom<boolean>((get) => {
-  const { inputCurrency, outputCurrency } = get(derivedTradeStateAtom) || {}
+  const pair = get(tradeVolumeFeePairAtom)
 
-  if (!inputCurrency || !outputCurrency) return false
-  if (inputCurrency.chainId !== outputCurrency.chainId) return false
-  // Key the lookup on the TRADE's chain (not the connected wallet's): the boost must
-  // match the actual tokens even if the wallet is momentarily on a different chain.
-  const chainId = inputCurrency.chainId
-
-  return (
-    isBoostedToken(chainId, getCurrencyAddress(inputCurrency)) ||
-    isBoostedToken(chainId, getCurrencyAddress(outputCurrency))
-  )
+  return pair ? isBoostedPair(pair) : false
 })
 
 /**
- * True when BOTH sides of a SAME-CHAIN trade are stablecoins, so the reduced
- * OPHIS_STABLE_VOLUME_BPS (1 bp) applies. Cross-chain (bridge) trades return
- * false and keep the standard rate: a bridged output lives on another chain and
- * is not covered by this chain's stablecoin set, and erring toward the standard
- * fee avoids ever under-charging a non-stable bridge leg.
+ * The host integrator's partnerFee with its FlexibleConfig resolved for the
+ * current chain and trade type, or the Ophis fee under the flat-fee flag.
+ * Exported so any surface resolving a fee for a NON-form pair (basket legs) can
+ * feed the same ambient input into `resolveVolumeFeeForPair`.
  */
-const isStableStableTradeAtom = atom<boolean>((get) => {
-  const { chainId } = get(walletInfoAtom)
-  const { inputCurrency, outputCurrency } = get(derivedTradeStateAtom) || {}
-  const stablecoins = STABLECOINS[chainId]
-
-  if (!inputCurrency || !outputCurrency || !stablecoins) return false
-  if (inputCurrency.chainId !== outputCurrency.chainId) return false
-
-  const isInputStable = stablecoins.has(getAddressKey(getCurrencyAddress(inputCurrency)))
-  const isOutputStable = stablecoins.has(getAddressKey(getCurrencyAddress(outputCurrency)))
-
-  return isInputStable && isOutputStable
-})
-
-const widgetPartnerFeeAtom = atom<VolumeFee | undefined>((get) => {
+export const widgetPartnerFeeAtom = atom<VolumeFee | undefined>((get) => {
   const { chainId } = get(walletInfoAtom)
   const partnerFee = get(injectedWidgetPartnerFeeAtom)
   const tradeType = get(tradeTypeAtom)?.tradeType
