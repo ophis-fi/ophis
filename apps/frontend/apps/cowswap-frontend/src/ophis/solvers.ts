@@ -58,7 +58,7 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // lanes are dispatched an auction. Pinned per chain by
   // scripts/check-solver-registry-invariant.sh.
   //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo
-  //   chain 130  baseline, okx, kyberswap, velora, odos, openocean, dodo, lifi, enso
+  //   chain 130  baseline, okx, kyberswap, velora, openocean, dodo, lifi, enso
   //   chain 4663 baseline, lifi, kyberswap, uniswap-v4
   {
     solverId: 'baseline',
@@ -105,10 +105,8 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
     chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
   { solverId: 'uniswap-v4', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
-  // Unichain only: odos is dead (API returns 410) and was removed from OP's
-  // autopilot in #996, but chain 130's autopilot still lists it. The registry
-  // mirrors what each autopilot declares, so it stays here until 130 drops it.
-  { solverId: 'odos', chainIds: [OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
+  // No odos entry: #996 removed that lane from BOTH sovereign autopilots after
+  // its API began answering 410. It is in no autopilot, so it is in no registry.
 ]
 
 /** Neutral, brand-free label shown for every external (non-Ophis) solver. */

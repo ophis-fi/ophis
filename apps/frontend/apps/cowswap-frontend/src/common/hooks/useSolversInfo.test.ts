@@ -4,7 +4,7 @@ import { SolverInfo } from '@cowprotocol/core'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { renderHook } from '@testing-library/react'
-import { getOphisSolversForChain, OPHIS_SOLVER_REGISTRY_CHAIN_ID } from 'ophis/solvers'
+import { getOphisSolversForChain, OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_SOLVERS } from 'ophis/solvers'
 
 import { useSolversInfo } from './useSolversInfo'
 
