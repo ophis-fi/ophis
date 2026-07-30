@@ -10,10 +10,18 @@
  * with zero progress-bar changes.
  *
  * MIRROR INVARIANT: the per-chain solver ids below MUST stay in sync with the
- * `[[solver]] name = "..."` entries in
- * `infra/optimism-mainnet/configs/driver.toml.tmpl` (repo root). Guarded by
+ * `[[drivers]] name = "..."` entries in each stack's AUTOPILOT config, e.g.
+ * `infra/optimism-mainnet/configs/autopilot.toml`. Guarded by
  * `scripts/check-solver-registry-invariant.sh` (security.yml hard gate) plus
  * the jest mirror test in `solvers.test.ts`. Update both sides in the same PR.
+ *
+ * THE AUTOPILOT, NOT driver.toml.tmpl. A lane can exist in the driver config and
+ * still never compete: only the autopilot dispatches auctions. On 2026-07-30 OP's
+ * driver.toml.tmpl listed 9 lanes while autopilot.toml declared 4, so the shipped
+ * "up to N solvers" row claimed 9 when odos, enso, openocean and dodo could not
+ * receive an auction at all. Verified against the live orderbook at the time:
+ * deployed commit 45c1c7e0b3, autopilot drivers baseline/okx/kyberswap/velora,
+ * and auction 2239975 returned solutions from a subset of exactly those.
  *
  * DISPLAY-ALIAS LAYER: `solverId` is INTERNAL ONLY (mirrors the driver config,
  * drives CMS matching and attribution). It is NEVER rendered as-is. User-facing
@@ -22,18 +30,19 @@
  * copy never names a competitor (standing copy rule). Only the Ophis-run
  * baseline solver keeps a plain, non-brand label.
  *
- * Counts derived from this registry are phrased "up to N": listing in the
- * driver config does not guarantee a solver bids on every auction.
+ * Counts derived from this registry are phrased "up to N": being dispatched an
+ * auction does not guarantee a solver returns a solution for it.
  */
 
 /** Chain id of the Ophis-operated Optimism orderbook. */
 export const OPHIS_SOLVER_REGISTRY_CHAIN_ID = 10
+export const OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID = 130
 export const OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID = 4663
 
 export interface OphisStaticSolverInfo {
   /**
-   * Lowercase id, byte-identical to the driver.toml.tmpl `name`. Internal only:
-   * used for CMS matching and attribution, never rendered as a public label.
+   * Lowercase id, byte-identical to the autopilot `[[drivers]] name`. Internal
+   * only: used for CMS matching and attribution, never rendered as a public label.
    */
   solverId: string
   /** Chains (sovereign, Ophis-operated) this solver competes on. */
@@ -45,24 +54,61 @@ export interface OphisStaticSolverInfo {
  * maintainers only; that brand string is never rendered (see the alias layer).
  */
 export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
+  // Mirrors each stack's AUTOPILOT [[drivers]], the only list that decides which
+  // lanes are dispatched an auction. Pinned per chain by
+  // scripts/check-solver-registry-invariant.sh.
+  //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo
+  //   chain 130  baseline, okx, kyberswap, velora, odos, openocean, dodo, lifi, enso
+  //   chain 4663 baseline, lifi, kyberswap, uniswap-v4
   {
     solverId: 'baseline',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [
+      OPHIS_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
+    ],
   }, // Ophis baseline solver
-  { solverId: 'okx', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // OKX OnchainOS (external)
+  {
+    solverId: 'okx',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+  }, // OKX OnchainOS (external)
   {
     solverId: 'kyberswap',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [
+      OPHIS_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
+    ],
   }, // external aggregator
-  { solverId: 'velora', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
-  { solverId: 'enso', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external routing engine
+  {
+    solverId: 'velora',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+  }, // external aggregator
+  {
+    solverId: 'enso',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+  }, // external routing engine
   {
     solverId: 'lifi',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [
+      OPHIS_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
+    ],
   }, // external aggregation layer
+  {
+    solverId: 'openocean',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+  }, // external aggregator
+  {
+    solverId: 'dodo',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+  }, // external aggregator
   { solverId: 'uniswap-v4', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
-  { solverId: 'openocean', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
-  { solverId: 'dodo', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
+  // Unichain only: odos is dead (API returns 410) and was removed from OP's
+  // autopilot in #996, but chain 130's autopilot still lists it. The registry
+  // mirrors what each autopilot declares, so it stays here until 130 drops it.
+  { solverId: 'odos', chainIds: [OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID] }, // external aggregator
 ]
 
 /** Neutral, brand-free label shown for every external (non-Ophis) solver. */
