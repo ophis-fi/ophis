@@ -53,7 +53,15 @@ src = re.sub(r'//[^\n]*', '', src)
 m = re.search(r'OPHIS_SOLVERS\s*:[^=]*=\s*(\[[\s\S]*?\])\s*\n', src)
 if not m:
     print('NO_REGISTRY_FOUND', file=sys.stderr); sys.exit(3)
-names = re.findall(r"solverId\s*:\s*'([^']+)'", m.group(1))
+entries = re.findall(
+    r"\{[^{}]*solverId\s*:\s*'([^']+)'[^{}]*chainIds\s*:\s*\[([^\]]*)\][^{}]*\}",
+    m.group(1),
+)
+names = [
+    solver_id
+    for solver_id, chain_ids in entries
+    if 'OPHIS_SOLVER_REGISTRY_CHAIN_ID' in chain_ids
+]
 if not names:
     print('NO_REGISTRY_SOLVERS_FOUND', file=sys.stderr); sys.exit(3)
 if len(set(names)) != len(names):
