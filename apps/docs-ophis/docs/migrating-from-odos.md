@@ -18,39 +18,32 @@ shape this surface accepts. Ophis is an independent protocol.
 
 ## Production status
 
-As verified against `https://compat.ophis.fi` on 27 July 2026:
+As verified against `https://compat.ophis.fi` on 30 July 2026:
 
-- The health endpoint reports chains 10 and 130 as enabled. An anonymous
-  `POST /sor/quote/v3` request was verified on chain 10; it returned live
-  amounts and `ophis.assemblable: false`.
-- Requests containing `userAddr` currently return `500 CONFIG_MISSING`
-  because the production worker does not have its `COMPAT_PATHID_KEY` secret.
-- Consequently, the advertised quote → assemble → sign flow is not currently
-  usable through the production compat host. `/sor/swap/v3` is affected for the
-  same reason because it requires `userAddr`.
+- The health endpoint reports chains 10, 130, and 4663 as enabled.
+- A `POST /sor/quote/v3` request with `userAddr` was verified on chain 10. It
+  returned HTTP 200, a signed `pathId`, `ophis.assemblable: true`, the unsigned
+  order, and its EIP-712 signing envelope.
+- Quote-only requests without `userAddr` remain supported and return
+  `ophis.assemblable: false`.
 - Integrator-priced `referralFee` is disabled in production and returns
   `PARTNER_FEE_UNAVAILABLE`.
 
-Do not migrate a production execution flow to this endpoint until a quote with
-your `userAddr` succeeds and returns `ophis.assemblable: true`. The SDK-first
-integration remains documented under [Partner integration](./partners.md) and
-the [intent API](./intent-api.md).
-
-## Current quote-only use
+## Quote-only use
 
 1. Change your base URL to `https://compat.ophis.fi`.
 2. Send `POST /sor/quote/v3` without `userAddr`.
-3. Read live quote fields from the response. No `pathId`, order, or signing
-   envelope is returned in the current production configuration.
+3. Read live quote fields from the response. Quote-only responses intentionally
+   omit the `pathId`, order, and signing envelope.
 
 ## What is the same
 
 | Piece | Status |
 |---|---|
 | `POST /sor/quote/v3` request field names | Accepted as-is (single input, single output) |
-| `POST /sor/assemble` with `userAddr` + `pathId` | Implemented, but production cannot currently mint the required `pathId` |
-| `POST /sor/swap/v3` (quote + assembly in one call) | Implemented, but currently fails with `CONFIG_MISSING` |
-| QuoteResponse fields (`inAmounts`, `outAmounts`, `netOutValue`, `pathId`, ...) | Response fields are present; `pathId` is currently `null` on successful quote-only requests |
+| `POST /sor/assemble` with `userAddr` + `pathId` | Live; rebuilds the unsigned order from the signed, expiring `pathId` |
+| `POST /sor/swap/v3` (quote + assembly in one call) | Live |
+| QuoteResponse fields (`inAmounts`, `outAmounts`, `netOutValue`, `pathId`, ...) | Response fields are present; `pathId` is populated for assemblable requests with `userAddr` and null for quote-only requests |
 | `referralCode` attribution | Works today; the integer code becomes the Ophis referral code `odos<code>` |
 | Slippage (`slippageLimitPercent`) | Applied to the draft when assembly is available; hard cap 50% |
 
@@ -120,7 +113,7 @@ the deployment switch, but it is not a production capability while that switch
 is off. See [Partner integration](./partners.md) for the currently supported
 partner-fee integration.
 
-## API flow and current limitation
+## API flow
 
 ### 1. Quote
 
@@ -141,15 +134,14 @@ native-denominated display values come from the live orderbook response; this
 guide does not publish fixed sample output for them. With no `userAddr`,
 `pathId`, `ophis.order`, `ophis.signing`, and `ophis.fullAppData` are `null`.
 
-Do not add `userAddr` to the production request while the deployment status
-above remains unresolved: it currently produces `CONFIG_MISSING`.
+Add `userAddr` to request an assemblable quote containing a signed `pathId`,
+unsigned order, and EIP-712 signing envelope.
 
-### 2. Sign (not currently reachable from a production compat quote)
+### 2. Sign
 
-When the required production secret is configured, `/sor/assemble` rebuilds
-the unsigned draft from the `pathId` (`userAddr` + `pathId`, with an optional
-`receiver` override). An assemblable quote also contains the draft directly.
-Sign it as EIP-712 typed data:
+`/sor/assemble` rebuilds the unsigned draft from the `pathId` (`userAddr` +
+`pathId`, with an optional `receiver` override). An assemblable quote also
+contains the draft directly. Sign it as EIP-712 typed data:
 
 ```ts
 import { createWalletClient, http } from 'viem';
@@ -174,7 +166,7 @@ If you override `receiver` to a different address, the response flags it and
 `/sor/submit` refuses the order unless you also send
 `acceptNonOwnerReceiver: true`. That friction is deliberate.
 
-### 3. Submit and poll (implemented, but not an end-to-end production compat flow)
+### 3. Submit and poll
 
 ```bash
 curl -sS -X POST https://compat.ophis.fi/sor/submit \
@@ -182,9 +174,8 @@ curl -sS -X POST https://compat.ophis.fi/sor/submit \
   --data-binary @signed-order.json
 ```
 
-When assemblable production quotes are restored, build `signed-order.json`
-from that same quote. The submit envelope must have this shape (the values
-below are placeholders):
+Build `signed-order.json` from that same quote. The submit envelope must have
+this shape (the values below are placeholders):
 
 ```json
 {
@@ -235,10 +226,10 @@ soon as the order settles or the wait elapses (see Settlement timing above).
 
 | v3 request field | What Ophis does with it |
 |---|---|
-| `chainId` | Must be an enabled Ophis-operated chain (10, 130 today) |
+| `chainId` | Must be an enabled Ophis-operated chain (10, 130, or 4663) |
 | `inputTokens` | Exactly one entry: sell token + amount (exact-in). More than one returns `MULTI_TOKEN_UNSUPPORTED` |
 | `outputTokens` | Exactly one entry, `proportion` 1. Multiple outputs return `MULTI_TOKEN_UNSUPPORTED` |
-| `userAddr` | Order owner. Absent: quote-only, `assemblable: false`. Present in the current production deployment: `CONFIG_MISSING` |
+| `userAddr` | Order owner. Absent: quote-only, `assemblable: false`. Present: signed `pathId`, order draft, and signing envelope |
 | `slippageLimitPercent` | Signed limit in bips (x100). Above 50%: `INVALID_SLIPPAGE`, never silently clamped |
 | `simple` | `true` maps to the fast price quality, `false` to optimal |
 | `referralCode` | Integer code becomes Ophis referral code `odos<code>` in the order's appData (attribution + rebates) |
