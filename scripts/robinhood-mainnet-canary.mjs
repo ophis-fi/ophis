@@ -4,7 +4,11 @@ import assert from 'node:assert/strict';
 
 const CHAIN_ID = 4663;
 const PUBLIC_RPC = 'https://rpc.mainnet.chain.robinhood.com';
-const ORDERBOOK = 'https://robinhood-mainnet.ophis.fi';
+const SOVEREIGN_ORDERBOOKS = [
+  ['Optimism', 'https://optimism-mainnet.ophis.fi'],
+  ['Unichain', 'https://unichain-mainnet.ophis.fi'],
+  ['Robinhood', 'https://robinhood-mainnet.ophis.fi'],
+];
 const ASSET_FACADE =
   process.env.ROBINHOOD_ASSET_FACADE_URL || 'https://swap.ophis.fi/api/robinhood/assets';
 const TOKEN_LIST = 'https://ipfs.io/ipns/tokens.uniswap.org';
@@ -53,6 +57,24 @@ async function rpc(method, params = []) {
 async function assertContract(name, address) {
   const code = await rpc('eth_getCode', [address, 'latest']);
   assert.ok(code && code !== '0x', `${name} has no bytecode at ${address}`);
+}
+
+async function assertSovereignOrderbook(name, baseUrl) {
+  const [versionResponse, auctionResponse] = await Promise.all([
+    fetch(`${baseUrl}/api/v1/version`, { signal: timeoutSignal() }),
+    fetch(`${baseUrl}/api/v1/auction`, { signal: timeoutSignal() }),
+  ]);
+  assert.ok(versionResponse.ok, `${name} orderbook version returned HTTP ${versionResponse.status}`);
+  assert.ok(auctionResponse.ok, `${name} orderbook auction returned HTTP ${auctionResponse.status}`);
+
+  const version = (await versionResponse.text()).trim();
+  assert.ok(version.length > 0, `${name} orderbook returned an empty version`);
+
+  const auction = await auctionResponse.json();
+  assert.ok(Number.isSafeInteger(auction.id), `${name} orderbook returned an invalid auction id`);
+  assert.ok(Number.isSafeInteger(auction.block), `${name} orderbook returned an invalid block`);
+  assert.ok(Array.isArray(auction.orders), `${name} orderbook returned invalid orders`);
+  return `${name} ${version} (auction ${auction.id}, block ${auction.block})`;
 }
 
 async function liveCanary() {
@@ -117,14 +139,13 @@ async function liveCanary() {
     'canonical AAPL is missing from the default token list',
   );
 
-  const versionResponse = await fetch(`${ORDERBOOK}/api/v1/version`, { signal: timeoutSignal() });
-  assert.ok(versionResponse.ok, `Robinhood orderbook returned HTTP ${versionResponse.status}`);
-  const version = (await versionResponse.text()).trim();
-  assert.ok(version.length > 0, 'Robinhood orderbook returned an empty version');
+  const orderbooks = await Promise.all(
+    SOVEREIGN_ORDERBOOKS.map(([name, baseUrl]) => assertSovereignOrderbook(name, baseUrl)),
+  );
 
   console.log(
     `Robinhood canary passed: chain ${CHAIN_ID}; ${assets.length} official assets; ` +
-      `${listedStockAddresses.size} listed assets; orderbook ${version}.`,
+      `${listedStockAddresses.size} listed assets. Sovereign orderbooks: ${orderbooks.join('; ')}.`,
   );
 }
 
